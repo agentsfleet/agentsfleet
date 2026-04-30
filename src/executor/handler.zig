@@ -7,7 +7,9 @@ const std = @import("std");
 const json = @import("json_helpers.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
-const session_mod = @import("session.zig");
+const context_budget = @import("context_budget.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const runner = @import("runner.zig");
 const network = @import("network.zig");
@@ -15,19 +17,109 @@ const progress_writer_mod = @import("progress_writer.zig");
 
 const log = std.log.scoped(.executor_handler);
 
+/// Error-response message bodies. Centralising these keeps each unique
+/// failure mode greppable (one place to find every message users see) and
+/// satisfies RULE UFS — string literals belong in named constants.
+const Msg = struct {
+    const invalid_jsonrpc: []const u8 = "Invalid JSON-RPC request";
+    const unknown_method: []const u8 = "Unknown method";
+    const missing_params: []const u8 = "Missing params";
+    const params_not_object: []const u8 = "Params must be object";
+    const missing_workspace_path: []const u8 = "Missing workspace_path";
+    const missing_execution_id: []const u8 = "Missing execution_id";
+    const invalid_execution_id: []const u8 = "Invalid execution_id";
+    const session_not_found: []const u8 = "Session not found";
+    const session_cancelled: []const u8 = "Session cancelled";
+    const lease_expired: []const u8 = "Lease expired";
+    const alloc_session_failed: []const u8 = "Failed to allocate session";
+    const dupe_session_inputs_failed: []const u8 = "Failed to dupe session inputs";
+    const store_session_failed: []const u8 = "Failed to store session";
+    const parse_policy_failed: []const u8 = "Failed to parse execution policy";
+    const content_escape_failed: []const u8 = "Content escape failed";
+};
+
+/// Parse the per-execution policy fields off the CreateExecution params
+/// into a borrowed `ExecutionPolicy`. Allocates string slices on `alloc`
+/// (the request frame allocator) — the lifetime is bounded by the frame.
+/// `Session.create` deep-dupes into its own arena before the frame ends.
+fn parsePolicy(alloc: std.mem.Allocator, p: std.json.Value) !context_budget.ExecutionPolicy {
+    var policy: context_budget.ExecutionPolicy = .{};
+
+    if (p.object.get("network_policy")) |np_val| {
+        if (np_val == .object) {
+            if (np_val.object.get("allow")) |allow_val| {
+                policy.network_policy = .{ .allow = try jsonStrArray(alloc, allow_val) };
+            }
+        }
+    }
+
+    if (p.object.get("tools")) |tools_val| {
+        policy.tools = try jsonStrArray(alloc, tools_val);
+    }
+
+    if (p.object.get("secrets_map")) |sm_val| {
+        if (sm_val == .object) policy.secrets_map = sm_val;
+    }
+
+    if (p.object.get("context")) |ctx_val| {
+        if (ctx_val == .object) {
+            if (ctx_val.object.get("tool_window")) |tw| {
+                if (tw == .integer and tw.integer >= 0)
+                    policy.context.tool_window = @intCast(tw.integer);
+            }
+            if (ctx_val.object.get("memory_checkpoint_every")) |mce| {
+                if (mce == .integer and mce.integer > 0)
+                    policy.context.memory_checkpoint_every = @intCast(mce.integer);
+            }
+            if (ctx_val.object.get("stage_chunk_threshold")) |sct| {
+                policy.context.stage_chunk_threshold = switch (sct) {
+                    .float => |f| @floatCast(f),
+                    .integer => |i| @floatFromInt(i),
+                    else => policy.context.stage_chunk_threshold,
+                };
+            }
+            if (json.getStr(ctx_val, "model")) |m| policy.context.model = m;
+            if (ctx_val.object.get("context_cap_tokens")) |cct| {
+                if (cct == .integer and cct.integer >= 0)
+                    policy.context.context_cap_tokens = @intCast(cct.integer);
+            }
+        }
+    }
+
+    return policy;
+}
+
+/// Decode a JSON array of strings into `[]const []const u8` allocated on
+/// `alloc`. Non-array input or non-string elements collapse to an empty
+/// slice — strict typing happens via OpenAPI / spec enforcement upstream;
+/// the executor is permissive at the wire to keep failure modes coarse.
+fn jsonStrArray(alloc: std.mem.Allocator, v: std.json.Value) ![]const []const u8 {
+    if (v != .array) return &.{};
+    const items = v.array.items;
+    const out = try alloc.alloc([]const u8, items.len);
+    var n: usize = 0;
+    for (items) |item| {
+        if (item == .string) {
+            out[n] = item.string;
+            n += 1;
+        }
+    }
+    return out[0..n];
+}
+
 pub const Handler = struct {
-    store: *session_mod.SessionStore,
+    store: *SessionStore,
     lease_timeout_ms: u64,
     resource_limits: types.ResourceLimits,
-    network_policy: network.NetworkPolicy,
+    network_policy: network.PolicyMode,
     alloc: std.mem.Allocator,
 
     pub fn init(
         alloc: std.mem.Allocator,
-        store: *session_mod.SessionStore,
+        store: *SessionStore,
         lease_timeout_ms: u64,
         resource_limits: types.ResourceLimits,
-        net_policy: network.NetworkPolicy,
+        net_policy: network.PolicyMode,
     ) Handler {
         return .{
             .store = store,
@@ -55,7 +147,7 @@ pub const Handler = struct {
         conn_fd: ?std.posix.socket_t,
     ) ![]u8 {
         var req = protocol.parseRequest(alloc, payload) catch {
-            return self.errorResponse(alloc, 0, protocol.ErrorCode.parse_error, "Invalid JSON-RPC request");
+            return self.errorResponse(alloc, 0, protocol.ErrorCode.parse_error, Msg.invalid_jsonrpc);
         };
         defer req.deinit();
 
@@ -86,15 +178,15 @@ pub const Handler = struct {
             // StreamEvents is deferred to v1.1 — return success with empty events for now.
             return std.fmt.allocPrint(alloc, "{{\"{s}\":{d},\"{s}\":[]}}", .{ "id", id, "result" });
         } else {
-            return self.errorResponse(alloc, id, protocol.ErrorCode.method_not_found, "Unknown method");
+            return self.errorResponse(alloc, id, protocol.ErrorCode.method_not_found, Msg.unknown_method);
         }
     }
 
     fn handleCreateExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
-        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
-        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
+        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
+        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const workspace_path = json.getStr(p, "workspace_path") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing workspace_path");
+        const workspace_path = json.getStr(p, "workspace_path") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_workspace_path);
 
         const correlation = types.CorrelationContext{
             .trace_id = json.getStr(p, "trace_id") orelse "",
@@ -103,24 +195,36 @@ pub const Handler = struct {
             .session_id = json.getStr(p, "session_id") orelse "",
         };
 
-        const session_ptr = self.alloc.create(session_mod.Session) catch {
-            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, "Failed to allocate session");
+        // Per-execution policy fields. All optional — absent fields mean
+        // "no policy" (deny-all egress, no tool restriction, no secrets,
+        // default context budget). Intermediate slices live on a scoped
+        // arena that's freed below; Session.create deep-dupes everything
+        // it needs into its own arena before this one tears down.
+        var policy_arena = std.heap.ArenaAllocator.init(alloc);
+        defer policy_arena.deinit();
+        const policy = parsePolicy(policy_arena.allocator(), p) catch {
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.parse_policy_failed);
         };
-        session_ptr.* = session_mod.Session.create(
+
+        const session_ptr = self.alloc.create(Session) catch {
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.alloc_session_failed);
+        };
+        session_ptr.* = Session.create(
             self.alloc,
             workspace_path,
             correlation,
             self.resource_limits,
             self.lease_timeout_ms,
+            policy,
         ) catch {
             self.alloc.destroy(session_ptr);
-            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, "Failed to dupe session inputs");
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.dupe_session_inputs_failed);
         };
 
         self.store.put(session_ptr) catch {
             session_ptr.destroy();
             self.alloc.destroy(session_ptr);
-            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, "Failed to store session");
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.store_session_failed);
         };
 
         executor_metrics.incExecutorSessionsCreated();
@@ -141,20 +245,20 @@ pub const Handler = struct {
         params: ?std.json.Value,
         conn_fd: ?std.posix.socket_t,
     ) ![]u8 {
-        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
-        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
+        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
+        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
-        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
-        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
+        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
 
         if (session.isCancelled()) {
-            return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session cancelled");
+            return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_cancelled);
         }
         if (session.isLeaseExpired()) {
             executor_metrics.incExecutorLeaseExpired();
-            return self.errorResponse(alloc, id, protocol.ErrorCode.lease_expired, "Lease expired");
+            return self.errorResponse(alloc, id, protocol.ErrorCode.lease_expired, Msg.lease_expired);
         }
 
         const hex = types.executionIdHex(exec_id);
@@ -186,6 +290,7 @@ pub const Handler = struct {
             message,
             context,
             writer_ptr,
+            &session.policy,
         );
         // Ownership: every non-empty `content` is an `alloc.dupe` from the
         // runner (production runner.zig:285 and harness runner_harness.zig:96);
@@ -204,7 +309,7 @@ pub const Handler = struct {
 
         // Serialize response with JSON-escaped content.
         const escaped_content = jsonEscapeAlloc(alloc, result.content) catch {
-            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, "Content escape failed");
+            return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.content_escape_failed);
         };
         defer alloc.free(escaped_content);
 
@@ -214,13 +319,13 @@ pub const Handler = struct {
     }
 
     fn handleCancelExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
-        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
-        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
+        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
+        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
-        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
-        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
+        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
         session.cancel();
         executor_metrics.incExecutorCancellations();
 
@@ -228,13 +333,13 @@ pub const Handler = struct {
     }
 
     fn handleGetUsage(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
-        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
-        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
+        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
+        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
-        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
-        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
+        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
         const usage = session.getUsage();
         const res_ctx = session.getResourceContext();
 
@@ -244,13 +349,13 @@ pub const Handler = struct {
     }
 
     fn handleDestroyExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
-        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
-        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
+        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
+        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
-        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
-        const session = self.store.remove(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
+        const session = self.store.remove(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
         session.destroy();
         self.alloc.destroy(session);
         executor_metrics.setExecutorSessionsActive(@intCast(self.store.activeCount()));
@@ -259,13 +364,13 @@ pub const Handler = struct {
     }
 
     fn handleHeartbeat(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
-        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing params");
-        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Params must be object");
+        const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
+        if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Missing execution_id");
-        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, "Invalid execution_id");
+        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id = parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
-        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, "Session not found");
+        const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
         session.touchLease();
 
         return std.fmt.allocPrint(alloc, "{{\"{s}\":{d},\"{s}\":{s}}}", .{ "id", id, "result", "true" });
@@ -362,7 +467,7 @@ test "parseExecutionId rejects non-hex characters" {
 
 test "handler dispatch returns error for malformed JSON frame" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -377,7 +482,7 @@ test "handler dispatch returns error for malformed JSON frame" {
 
 test "handler dispatch returns method_not_found for unknown method" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -394,7 +499,7 @@ test "handler dispatch returns method_not_found for unknown method" {
 
 test "handler CreateExecution returns execution_id" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -418,12 +523,12 @@ test "handler CreateExecution returns execution_id" {
 
     // Clean up session.
     store.deinit();
-    store = session_mod.SessionStore.init(alloc);
+    store = SessionStore.init(alloc);
 }
 
 test "handler CreateExecution without params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -440,7 +545,7 @@ test "handler CreateExecution without params returns invalid_params" {
 
 test "handler StreamEvents returns empty array" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -457,7 +562,7 @@ test "handler StreamEvents returns empty array" {
 // ── T2: Edge case — unicode in correlation fields ────────────────────
 test "handler CreateExecution with unicode correlation fields" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -481,7 +586,7 @@ test "handler CreateExecution with unicode correlation fields" {
 // ── T3: Error path — StartStage with non-existent session ────────────
 test "handler StartStage with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -505,7 +610,7 @@ test "handler StartStage with unknown execution_id returns execution_failed" {
 // ── T3: Error path — DestroyExecution unknown session ────────────────
 test "handler DestroyExecution with unknown execution_id returns error" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -528,7 +633,7 @@ test "handler DestroyExecution with unknown execution_id returns error" {
 // ── T4: Output — verify errorResponse JSON structure ─────────────────
 test "handler errorResponse output is valid parseable JSON-RPC" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -557,7 +662,7 @@ test "handler errorResponse output is valid parseable JSON-RPC" {
 // later add validation, this test should be updated to expect rejection.
 test "handler CreateExecution accepts path traversal without crashing" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -580,7 +685,7 @@ test "handler CreateExecution accepts path traversal without crashing" {
 // ── T11: Perf/leak — repeated handler calls don't leak ───────────────
 test "handler 100 create+destroy cycles no leak" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -770,7 +875,7 @@ test "failureToRpcError maps null to execution_failed" {
 
 test "handler GetUsage returns zero for fresh session" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 
@@ -819,7 +924,7 @@ test "handler GetUsage returns zero for fresh session" {
 
 test "handler Heartbeat refreshes lease" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var handler = Handler.init(alloc, &store, 30_000, .{}, .deny_all);
 

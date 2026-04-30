@@ -5,17 +5,6 @@ const config_types = @import("config_types.zig");
 
 const ZombieConfigError = config_types.ZombieConfigError;
 
-test "validateZombieTools: unknown tool returns UnknownSkill" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"name": "x", "trigger": {"type": "api"}, "tools": ["unknown_tool"], "budget": {"daily_dollars": 1.0}}
-    ;
-    try std.testing.expectError(
-        ZombieConfigError.UnknownSkill,
-        config_parser.parseZombieConfig(alloc, json),
-    );
-}
-
 test "parseZombieConfig: credential names validated (no op:// paths)" {
     const alloc = std.testing.allocator;
     const json =
@@ -29,40 +18,38 @@ test "parseZombieConfig: credential names validated (no op:// paths)" {
     );
 }
 
-test "validateToolsAndCredentials: empty cred name rejected" {
+test "validateCredentials: empty name rejected" {
     try std.testing.expectError(
         ZombieConfigError.InvalidCredentialRef,
-        config_validate.validateToolsAndCredentials(
-            &[_][]const u8{"agentmail"},
-            &[_][]const u8{""},
-        ),
+        config_validate.validateCredentials(&[_][]const u8{""}),
     );
 }
 
-test "validateToolsAndCredentials: 129-char cred name rejected" {
+test "validateCredentials: 129-char name rejected" {
     const long_name = "a" ** 129;
     try std.testing.expectError(
         ZombieConfigError.InvalidCredentialRef,
-        config_validate.validateToolsAndCredentials(
-            &[_][]const u8{"agentmail"},
-            &[_][]const u8{long_name},
-        ),
+        config_validate.validateCredentials(&[_][]const u8{long_name}),
     );
 }
 
-test "validateToolsAndCredentials: dash in cred name rejected" {
+test "validateCredentials: dash in name rejected" {
     try std.testing.expectError(
         ZombieConfigError.InvalidCredentialRef,
-        config_validate.validateToolsAndCredentials(
-            &[_][]const u8{"agentmail"},
-            &[_][]const u8{"has-dash"},
-        ),
+        config_validate.validateCredentials(&[_][]const u8{"has-dash"}),
     );
 }
 
-test "validateToolsAndCredentials: alphanumeric + underscore accepted" {
-    try config_validate.validateToolsAndCredentials(
-        &[_][]const u8{"agentmail"},
-        &[_][]const u8{ "api_key_1", "SECRET_123" },
-    );
+test "validateCredentials: alphanumeric + underscore accepted" {
+    try config_validate.validateCredentials(&[_][]const u8{ "api_key_1", "SECRET_123" });
+}
+
+test "parseZombieConfig: unknown tool name accepted (gate moved to executor sandbox)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","trigger":{"type":"api"},"tools":["whatever_the_skill_wants"],"budget":{"daily_dollars":1.0}}
+    ;
+    var cfg = try config_parser.parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("whatever_the_skill_wants", cfg.tools[0]);
 }

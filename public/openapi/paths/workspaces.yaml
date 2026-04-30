@@ -57,12 +57,14 @@
                   description: Unique request identifier
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/workspaces/{workspace_id}/pause:
-  post:
-    operationId: pause_workspace
-    summary: Pause or unpause a workspace
-    description: Toggles the paused state of a workspace. When paused, no new runs will be started and queued runs will be
-      held. Uses optimistic concurrency via the version field.
+/v1/workspaces/{workspace_id}:
+  patch:
+    operationId: patch_workspace
+    summary: Partial update of a workspace
+    description: Partial update of workspace fields. Today the only patchable
+      surface is the pause/unpause toggle (`pause`, `reason`, `version`);
+      future fields land on the same endpoint. Uses optimistic concurrency
+      via the `version` field — a stale client gets 404.
     tags:
     - Workspaces
     parameters:
@@ -95,7 +97,7 @@
                 description: Optimistic concurrency version — must match current workspace version
     responses:
       '200':
-        description: Workspace pause state updated
+        description: Workspace updated (pause state changed when `pause` field present)
         content:
           application/json:
             schema:

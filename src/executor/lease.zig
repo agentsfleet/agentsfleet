@@ -5,7 +5,8 @@
 //! the executor cancels and cleans up orphaned sessions (§2.3).
 
 const std = @import("std");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const executor_metrics = @import("executor_metrics.zig");
 
 const log = std.log.scoped(.executor_lease);
@@ -19,10 +20,10 @@ const log = std.log.scoped(.executor_lease);
 const REAP_INTERVAL_MS: u64 = 5_000;
 
 pub const LeaseManager = struct {
-    store: *session_mod.SessionStore,
+    store: *SessionStore,
     running: std.atomic.Value(bool),
 
-    pub fn init(store: *session_mod.SessionStore) LeaseManager {
+    pub fn init(store: *SessionStore) LeaseManager {
         return .{
             .store = store,
             .running = std.atomic.Value(bool).init(false),
@@ -51,7 +52,7 @@ pub const LeaseManager = struct {
 
 test "LeaseManager can be created and stopped" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var manager = LeaseManager.init(&store);

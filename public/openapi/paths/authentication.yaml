@@ -79,15 +79,14 @@
                   description: Unique request identifier
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/auth/sessions/{session_id}/complete:
-  post:
-    operationId: complete_auth_session
-    summary: Complete an auth session
-    description: Called by the web frontend after successful OAuth to attach a token to the pending session. The CLI's next
-      poll will receive the token.
+  patch:
+    operationId: patch_auth_session
+    summary: Patch an auth session
+    description: Called by the web frontend after successful OAuth to attach a token to the pending session and transition
+      its status to 'complete'. The CLI's next poll will receive the token. Body mirrors the GET poll response shape so
+      the depositor can read back what a subsequent poll would return.
     tags:
     - Authentication
-    security: []
     parameters:
     - name: session_id
       in: path
@@ -105,6 +104,10 @@
             required:
             - token
             properties:
+              status:
+                type: string
+                const: complete
+                description: Session transition target. Only 'complete' is legal from 'pending'.
               token:
                 type: string
                 description: Bearer token from OAuth flow
@@ -117,11 +120,15 @@
               type: object
               required:
               - status
+              - token
               - request_id
               properties:
                 status:
                   type: string
                   const: complete
+                token:
+                  type: string
+                  description: Bearer token now attached to the session
                 request_id:
                   type: string
                   format: uuid

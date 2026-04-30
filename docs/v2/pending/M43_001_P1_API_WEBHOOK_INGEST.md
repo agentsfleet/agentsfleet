@@ -11,13 +11,13 @@
 **Branch:** feat/m43-webhook-ingest (to be created)
 **Depends on:** M42_001 (writes to `zombie:{id}:events` with the M42 envelope shape). M45_001 (webhook secret stored as a structured credential under `${secrets.github.webhook_secret}`). M40_001 (the per-zombie thread that consumes the event must exist).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §4.1 (Platform-Ops trigger modes), §8.3 (webhook trigger), §8.5 (E2E walkthrough — webhook flow), §12 step 7a.
+**Canonical architecture:** `docs/architecture/` §4.1 (Platform-Ops trigger modes), §8.3 (webhook trigger), §8.5 (E2E walkthrough — webhook flow), §12 step 7a.
 
 ---
 
 ## Implementing agent — read these first
 
-1. `docs/ARCHITECHTURE.md` §8.5 — the GH Actions trigger walkthrough is the worked example.
+1. `docs/architecture/` §8.5 — the GH Actions trigger walkthrough is the worked example.
 2. M42's spec (sibling) for the EventEnvelope shape — DO NOT invent a new envelope.
 3. GitHub's webhook docs: HMAC SHA-256 signature in `X-Hub-Signature-256` header, payload signed with workspace's webhook secret.
 4. `src/http/handlers/zombies/steer.zig` — mirror its HMAC verification pattern (if any) or borrow from the Svix integration if present.

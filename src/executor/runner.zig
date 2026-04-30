@@ -41,6 +41,7 @@ const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
 const runner_harness = @import("runner_harness.zig");
 const progress_writer_mod = @import("progress_writer.zig");
+const context_budget = @import("context_budget.zig");
 
 const log = std.log.scoped(.executor_runner);
 
@@ -108,6 +109,7 @@ pub fn execute(
     message: ?[]const u8,
     context: ?std.json.Value,
     progress: ?*const progress_writer_mod,
+    policy: ?*const context_budget.ExecutionPolicy,
 ) types.ExecutionResult {
     // Test-only harness path. Stripped from the production binary because the
     // build option is a comptime-known false there. See runner_harness.zig.
@@ -124,7 +126,7 @@ pub fn execute(
     executor_metrics.incStagesStarted();
     const start = std.time.milliTimestamp();
 
-    const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, progress) catch |err| {
+    const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, progress, policy) catch |err| {
         const elapsed = elapsedSeconds(start);
         executor_metrics.incStagesFailed();
         executor_metrics.observeAgentDurationSeconds(elapsed);
@@ -165,6 +167,7 @@ fn executeInner(
     message: []const u8,
     context: ?std.json.Value,
     progress: ?*const progress_writer_mod,
+    policy: ?*const context_budget.ExecutionPolicy,
 ) !InnerResult {
     // 1. Build config from env defaults + agent_config overrides.
     var cfg = Config.load(alloc) catch {
@@ -205,7 +208,7 @@ fn executeInner(
     const provider_i = runtime_provider.provider();
 
     // 3. Build tools from spec (or allTools as fallback).
-    const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg) catch {
+    const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {
         log.err("executor.runner.tool_build_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_INIT});
         return RunnerError.AgentInitFailed;
     };
@@ -252,8 +255,20 @@ fn executeInner(
     var obs_runtime = ObserverRuntime.init(alloc);
     var secrets_list = collectSecrets(agent_config);
     var adapter: runner_progress.Adapter = undefined;
+    const checkpoint_every: u32 = if (policy) |p| p.context.memory_checkpoint_every else 0;
+    const tool_window: u32 = if (policy) |p| p.context.tool_window else 0;
+    const stage_chunk_threshold: f32 = if (policy) |p| p.context.stage_chunk_threshold else 0.0;
+    const context_cap_tokens: u32 = if (policy) |p| p.context.context_cap_tokens else 0;
     const obs = if (progress) |w| blk: {
-        adapter = .{ .writer = w, .alloc = alloc, .secrets = secrets_list[0..] };
+        adapter = .{
+            .writer = w,
+            .alloc = alloc,
+            .secrets = secrets_list[0..],
+            .memory_checkpoint_every = checkpoint_every,
+            .tool_window = tool_window,
+            .stage_chunk_threshold = stage_chunk_threshold,
+            .context_cap_tokens = context_cap_tokens,
+        };
         break :blk adapter.observer();
     } else obs_runtime.observer();
 

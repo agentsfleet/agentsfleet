@@ -6,7 +6,7 @@
 //! thread that called `agent.runSingle`, so writes to the connection fd
 //! are sequential — no locking, no concurrent producers.
 //!
-//! Args redaction: ARCHITECHTURE.md mandates that any secret bytes
+//! Args redaction: docs/architecture/ mandates that any secret bytes
 //! substituted into tool arguments are replaced with the canonical
 //! `${secrets.NAME.FIELD}` placeholder before the frame leaves the RPC
 //! boundary. The redactor is constructed in runner.execute from the
@@ -41,6 +41,43 @@ pub const Adapter = struct {
     writer: *const progress_writer_mod,
     alloc: Allocator,
     secrets: []const Secret,
+    /// L1 context-lifecycle: every Nth completed tool call, emit a
+    /// structured log line so observers can confirm the agent's
+    /// SKILL.md "snapshot every N tools" cadence is being prompted.
+    /// 0 disables the cadence (tests + non-streaming paths).
+    memory_checkpoint_every: u32 = 0,
+    /// L2 context-lifecycle: once the cumulative completed-tool count
+    /// crosses this threshold, log a `tool_window_exceeded` line each
+    /// subsequent call. SKILL.md prose tells the agent to compact
+    /// findings via memory_store + memory_forget once the threshold
+    /// is hit; the runtime log lets on-call confirm the prompt
+    /// landed. 0 disables. NullClaw doesn't expose mid-loop
+    /// conversation mutation, so the agent — not the runtime —
+    /// drops oldest tool results by consolidating into memory.
+    tool_window: u32 = 0,
+    /// L3 context-lifecycle: fraction of the model's context cap (0.0..1.0)
+    /// at which the agent is told to snapshot + chunk. Computed at every
+    /// `llm_response` observer event against `prompt_tokens /
+    /// context_cap_tokens`. Crossing the threshold logs a structured
+    /// `chunk_threshold_breached` line and bumps `chunk_threshold_logs`.
+    /// 0.0 disables the layer. NullClaw doesn't expose mid-loop
+    /// interrupt, so the runtime cannot force a chunk — the agent does
+    /// it via SKILL prose ("when context fills, return content='needs
+    /// continuation'"). Spec §6 wires this gap as observability + prose.
+    stage_chunk_threshold: f32 = 0.0,
+    /// L3 context-lifecycle: hard cap on input tokens for the resolved
+    /// model (M49 install-skill writes this into frontmatter; M48 BYOK
+    /// writes from the credential body). Required denominator for the
+    /// fill ratio — when 0, L3 short-circuits (no ratio, no log).
+    context_cap_tokens: u32 = 0,
+    /// Mutable counters — bumped by the observer thread (NullClaw fires
+    /// events on the same thread that called `agent.runSingle`, so no
+    /// atomics needed).
+    tool_call_count: u32 = 0,
+    nudges_emitted: u32 = 0,
+    window_exceeded_logs: u32 = 0,
+    chunk_threshold_logs: u32 = 0,
+    last_prompt_tokens: u32 = 0,
 
     /// NullClaw Observer view of this adapter. Pass to `Agent.fromConfig`.
     pub fn observer(self: *Adapter) observability.Observer {
@@ -105,8 +142,62 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                 .tool_call_completed = .{ .name = b.tool, .ms = ms_signed },
             };
             self.writer.write(done_frame);
+            self.tool_call_count += 1;
+            // L1 nudge: SKILL.md prose tells the agent to snapshot via
+            // memory_store on this cadence. The runtime side just logs
+            // the threshold hit so on-call can confirm the prompt is
+            // landing — actual prompt engineering is in the skill.
+            if (self.memory_checkpoint_every > 0 and
+                self.tool_call_count % self.memory_checkpoint_every == 0)
+            {
+                self.nudges_emitted += 1;
+                log.info("runner_progress.memory_checkpoint_due tool_count={d} every={d} nudges_emitted={d}", .{
+                    self.tool_call_count,
+                    self.memory_checkpoint_every,
+                    self.nudges_emitted,
+                });
+            }
+            // L2 window: once the cumulative count crosses the window
+            // threshold, every subsequent call emits a structured line
+            // so on-call can spot a runaway incident in the activity
+            // stream. The agent compacts findings via memory_store at
+            // the SKILL prose's direction — the runtime doesn't drop
+            // anything from the conversation itself.
+            if (self.tool_window > 0 and self.tool_call_count > self.tool_window) {
+                self.window_exceeded_logs += 1;
+                log.info("runner_progress.tool_window_exceeded tool_count={d} window={d} excess={d}", .{
+                    self.tool_call_count,
+                    self.tool_window,
+                    self.tool_call_count - self.tool_window,
+                });
+            }
         },
-        else => {}, // agent_start / agent_end / llm_request / llm_response / heartbeat / etc. are not on the substrate
+        .llm_response => |b| {
+            // L3 chunk threshold: NullClaw doesn't expose mid-loop
+            // interrupt, so we observe instead of force. After every
+            // LLM round-trip, compute fill = prompt_tokens / cap. When
+            // it crosses the configured threshold, emit a structured
+            // log. SKILL.md prose tells the agent to write a snapshot
+            // and end with content='needs continuation' on the next
+            // turn — the runtime can see the prompt tokens but not
+            // halt the loop, so the agent owns the chunk decision.
+            const prompt: u32 = b.prompt_tokens orelse 0;
+            self.last_prompt_tokens = prompt;
+            if (self.stage_chunk_threshold > 0.0 and self.context_cap_tokens > 0 and prompt > 0) {
+                const ratio: f32 = @as(f32, @floatFromInt(prompt)) / @as(f32, @floatFromInt(self.context_cap_tokens));
+                if (ratio >= self.stage_chunk_threshold) {
+                    self.chunk_threshold_logs += 1;
+                    log.info("runner_progress.chunk_threshold_breached prompt_tokens={d} cap_tokens={d} ratio={d:.3} threshold={d:.3} logs_emitted={d}", .{
+                        prompt,
+                        self.context_cap_tokens,
+                        ratio,
+                        self.stage_chunk_threshold,
+                        self.chunk_threshold_logs,
+                    });
+                }
+            }
+        },
+        else => {}, // agent_start / agent_end / llm_request / heartbeat / etc. are not on the substrate
     }
 }
 

@@ -11,7 +11,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const handler_mod = @import("handler.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 const executor_metrics = @import("executor_metrics.zig");
 
@@ -23,7 +24,7 @@ test "T5: concurrent cancel and destroy on same session does not crash" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -71,7 +72,7 @@ test "T5: concurrent GetUsage from 8 threads returns consistent results" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -133,7 +134,7 @@ test "T5: concurrent StartStage on cancelled session all return execution_failed
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -205,7 +206,7 @@ test "T5: session store count is correct after 16 parallel create+destroy cycles
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -261,7 +262,7 @@ test "T5: sessions_created metric increments for each concurrent CreateExecution
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);

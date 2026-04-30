@@ -162,6 +162,7 @@ pub const Watcher = struct {
             .workspace_path = self.cfg.workspace_path,
             .telemetry = self.cfg.telemetry,
             .cancel_flag = &runtime.cancel,
+            .reload_pending = &runtime.reload_pending,
             .worker_state = self.cfg.worker_state,
         };
         const thread = try std.Thread.spawn(
@@ -275,10 +276,7 @@ pub const Watcher = struct {
                 .killed, .paused => self.cancelZombie(m.zombie_id),
                 .active => log.debug("watcher.status_active zombie_id={s}", .{m.zombie_id}),
             },
-            .zombie_config_changed => |m| log.info(
-                "watcher.config_changed zombie_id={s} revision={d}",
-                .{ m.zombie_id, m.config_revision },
-            ),
+            .zombie_config_changed => |m| self.signalReload(m.zombie_id),
             // {d} formatter handles both u32 and i64 — no type-specific change needed here.
             .worker_drain_request => |m| self.requestDrain(m.reason),
         }
@@ -298,6 +296,16 @@ pub const Watcher = struct {
             }
         }
         return false;
+    }
+
+    /// §9 hot-reload — flip reload_pending under map_lock so the
+    /// runtime pointer can't sweep mid-store. No-op for non-local zombies.
+    fn signalReload(self: *Watcher, zombie_id: []const u8) void {
+        self.map_lock.lock();
+        defer self.map_lock.unlock();
+        if (self.runtimes.get(zombie_id)) |rt| {
+            if (!rt.exited.load(.acquire)) rt.reload_pending.store(true, .release);
+        }
     }
 
     fn cancelZombie(self: *Watcher, zombie_id: []const u8) void {

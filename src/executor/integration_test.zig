@@ -8,7 +8,8 @@ const std = @import("std");
 const builtin = @import("builtin");
 const transport = @import("transport.zig");
 const handler_mod = @import("handler.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
 
@@ -19,7 +20,7 @@ test "integration: full RPC lifecycle over Unix socket" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -154,7 +155,7 @@ test "integration: unknown method returns method_not_found" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -177,7 +178,7 @@ test "integration: create_execution without params returns invalid_params" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -199,7 +200,7 @@ test "integration: start_stage with invalid execution_id returns error" {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var rpc_handler = handler_mod.Handler.init(alloc, &store, 30_000, .{}, .deny_all);
@@ -224,17 +225,17 @@ test "integration: start_stage with invalid execution_id returns error" {
 // Uses page_allocator for session internals to avoid test allocator leak noise.
 test "integration: lease expiry reaps orphaned sessions" {
     const page = std.heap.page_allocator;
-    var store = session_mod.SessionStore.init(page);
+    var store = SessionStore.init(page);
     defer store.deinit();
 
     // Create a session with a very short lease.
-    const session = try page.create(session_mod.Session);
-    session.* = try session_mod.Session.create(page, "/tmp/test", .{
+    const session = try page.create(Session);
+    session.* = try Session.create(page, "/tmp/test", .{
         .trace_id = "t",
         .zombie_id = "r",
         .workspace_id = "w",
         .session_id = "s",
-    }, .{}, 1); // 1ms lease timeout
+    }, .{}, 1, .{}); // 1ms lease timeout
 
     try store.put(session);
     try std.testing.expectEqual(@as(usize, 1), store.activeCount());

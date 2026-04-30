@@ -11,7 +11,11 @@ const hx_mod = @import("../hx.zig");
 const log = std.log.scoped(.http);
 const API_ACTOR = "api";
 
-pub fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
+/// PATCH /v1/workspaces/{workspace_id} — partial update. Today the only
+/// patchable surface is the pause/unpause toggle (body shape carries
+/// `{pause, reason, version}`); future fields land here too. Optimistic
+/// concurrency via `version` — a stale client gets WORKSPACE_NOT_FOUND.
+pub fn innerPatchWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []const u8) void {
     if (!common.requireUuidV7Id(hx.res, hx.req_id, workspace_id, "workspace_id")) return;
 
     const Req = struct {

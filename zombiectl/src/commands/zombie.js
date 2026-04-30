@@ -5,7 +5,7 @@
 
 import {
   wsZombiesPath,
-  wsZombieKillPath,
+  wsZombiePath,
   wsZombieEventsPath,
 } from "../lib/api-paths.js";
 import {
@@ -186,9 +186,10 @@ async function commandKill(ctx, args, workspaces, deps) {
     return 2;
   }
 
-  const res = await request(ctx, wsZombieKillPath(wsId, zombieId), {
-    method: "POST",
-    headers: apiHeaders(ctx),
+  const res = await request(ctx, wsZombiePath(wsId, zombieId), {
+    method: "PATCH",
+    headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "killed" }),
   });
 
   if (ctx.jsonMode) {

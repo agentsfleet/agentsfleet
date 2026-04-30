@@ -11,7 +11,7 @@
 **Branch:** feat/m44-install-contract
 **Depends on:** none — these are bug fixes + a deterministic preflight on existing surfaces.
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §8.2 (Installing the zombie), §12 step 5 (innerCreateZombie atomic publish — depends on M40 too but the contract fix is independent).
+**Canonical architecture:** `docs/architecture/` §8.2 (Installing the zombie), §12 step 5 (innerCreateZombie atomic publish — depends on M40 too but the contract fix is independent).
 
 ---
 

@@ -11,7 +11,7 @@
 **Branch:** feat/m46-frontmatter-schema (to be created)
 **Depends on:** M44_001 (parser conforms to canonical key shape — `tools:` etc.). M45_001 (credential `type` discriminator referenced from `x-usezombie.credentials`).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §8.1 (Authoring), §10 (capabilities — TRIGGER.md row mentions merged frontmatter), §11 (context knobs live under `x-usezombie.context`).
+**Canonical architecture:** `docs/architecture/` §8.1 (Authoring), §10 (capabilities — TRIGGER.md row mentions merged frontmatter), §11 (context knobs live under `x-usezombie.context`).
 
 ---
 

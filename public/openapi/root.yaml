@@ -98,8 +98,6 @@ paths:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions
   /v1/auth/sessions/{session_id}:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}
-  /v1/auth/sessions/{session_id}/complete:
-    $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}~1complete
   /v1/execute:
     $ref: ./paths/execute.yaml#/~1v1~1execute
   /v1/github/callback:
@@ -154,8 +152,6 @@ paths:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1kill
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-grants/{grant_id}:
@@ -182,8 +178,8 @@ paths:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:approve
   /v1/workspaces/{workspace_id}/approvals/{gate_id}:deny:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:deny
-  /v1/workspaces/{workspace_id}/pause:
-    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}~1pause
+  /v1/workspaces/{workspace_id}:
+    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}
 components:
   securitySchemes:
     $ref: ./components/security.yaml#/components/securitySchemes

@@ -17,7 +17,7 @@ const policy_config = @import("executor_network_policy.zig");
 
 const log = std.log.scoped(.executor_network);
 
-pub const NetworkPolicy = enum {
+pub const PolicyMode = enum {
     /// No network access (default). Uses --unshare-net via bubblewrap.
     deny_all,
     /// Allow egress to the public package registries defined in
@@ -26,18 +26,18 @@ pub const NetworkPolicy = enum {
 };
 
 pub const NetworkConfig = struct {
-    policy: NetworkPolicy = .deny_all,
+    policy: PolicyMode = .deny_all,
 };
 
 /// Parse EXECUTOR_NETWORK_POLICY env var. Returns .deny_all if unset or unknown.
-pub fn policyFromEnv(alloc: std.mem.Allocator) NetworkPolicy {
+pub fn policyFromEnv(alloc: std.mem.Allocator) PolicyMode {
     const raw = std.process.getEnvVarOwned(alloc, "EXECUTOR_NETWORK_POLICY") catch return .deny_all;
     defer alloc.free(raw);
     return policyFromSlice(raw);
 }
 
 /// Parse a network policy string. Exported for unit testing.
-fn policyFromSlice(raw: []const u8) NetworkPolicy {
+fn policyFromSlice(raw: []const u8) PolicyMode {
     if (std.ascii.eqlIgnoreCase(raw, "registry_allowlist")) return .registry_allowlist;
     return .deny_all;
 }
@@ -86,7 +86,7 @@ fn isNetworkNamespaceAvailable() bool {
 
 test "deny_all is default policy" {
     const config = NetworkConfig{};
-    try std.testing.expectEqual(NetworkPolicy.deny_all, config.policy);
+    try std.testing.expectEqual(PolicyMode.deny_all, config.policy);
 }
 
 test "appendBwrapNetworkArgs with deny_all adds no args" {
@@ -107,17 +107,17 @@ test "appendBwrapNetworkArgs with registry_allowlist adds --share-net" {
 }
 
 test "policyFromSlice parses registry_allowlist" {
-    try std.testing.expectEqual(NetworkPolicy.registry_allowlist, policyFromSlice("registry_allowlist"));
+    try std.testing.expectEqual(PolicyMode.registry_allowlist, policyFromSlice("registry_allowlist"));
 }
 
 test "policyFromSlice is case-insensitive" {
-    try std.testing.expectEqual(NetworkPolicy.registry_allowlist, policyFromSlice("REGISTRY_ALLOWLIST"));
-    try std.testing.expectEqual(NetworkPolicy.registry_allowlist, policyFromSlice("Registry_Allowlist"));
+    try std.testing.expectEqual(PolicyMode.registry_allowlist, policyFromSlice("REGISTRY_ALLOWLIST"));
+    try std.testing.expectEqual(PolicyMode.registry_allowlist, policyFromSlice("Registry_Allowlist"));
 }
 
 test "policyFromSlice falls back to deny_all for unknown value" {
-    try std.testing.expectEqual(NetworkPolicy.deny_all, policyFromSlice("open_internet"));
-    try std.testing.expectEqual(NetworkPolicy.deny_all, policyFromSlice(""));
+    try std.testing.expectEqual(PolicyMode.deny_all, policyFromSlice("open_internet"));
+    try std.testing.expectEqual(PolicyMode.deny_all, policyFromSlice(""));
 }
 
 test "REGISTRY_ALLOWLIST contains expected hosts" {
@@ -146,7 +146,7 @@ test "isNetworkNamespaceAvailable returns false on non-linux" {
 // ── T9 — Parameterized policyFromSlice ────────────────────────────────────────
 
 test "policyFromSlice parameterized — all variants and edge inputs" {
-    const Case = struct { input: []const u8, want: NetworkPolicy };
+    const Case = struct { input: []const u8, want: PolicyMode };
     const cases = [_]Case{
         // Happy path — exact and case variants
         .{ .input = "registry_allowlist", .want = .registry_allowlist },
@@ -190,17 +190,17 @@ test "appendBwrapNetworkArgs with registry_allowlist accepts empty execution_id"
 
 // ── T10 — Enum shape / constants ──────────────────────────────────────────────
 
-test "NetworkPolicy enum has exactly two variants" {
+test "PolicyMode enum has exactly two variants" {
     // Guards against accidental addition of a third policy that bypasses the
     // deny_all default enforcement.
-    const field_count = @typeInfo(NetworkPolicy).@"enum".fields.len;
+    const field_count = @typeInfo(PolicyMode).@"enum".fields.len;
     try std.testing.expectEqual(@as(usize, 2), field_count);
 }
 
 test "NetworkConfig default policy is deny_all" {
     // Regression: the default must never silently become registry_allowlist.
     const cfg: NetworkConfig = .{};
-    try std.testing.expectEqual(NetworkPolicy.deny_all, cfg.policy);
+    try std.testing.expectEqual(PolicyMode.deny_all, cfg.policy);
     try std.testing.expect(cfg.policy != .registry_allowlist);
 }
 
@@ -236,7 +236,7 @@ test "T8: policyFromSlice with injection-like values fails closed to deny_all (M
     };
     for (cases) |input| {
         const got = policyFromSlice(input);
-        try std.testing.expectEqual(NetworkPolicy.deny_all, got);
+        try std.testing.expectEqual(PolicyMode.deny_all, got);
     }
 }
 

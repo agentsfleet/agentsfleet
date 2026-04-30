@@ -15,10 +15,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [18]db.Migration {
-    // Slot 9 was core.activity_events — removed pre-v2.0.0; replaced by
-    // core.zombie_events (slot 19) plus a Redis pub/sub activity channel.
-    // Slot gap is intentional; do not gap-fill.
+pub fn canonicalMigrations() [19]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -29,16 +26,17 @@ pub fn canonicalMigrations() [18]db.Migration {
         .{ .version = 6, .sql = schema.platform_llm_keys_sql },
         .{ .version = 7, .sql = schema.core_zombies_sql },
         .{ .version = 8, .sql = schema.core_zombie_sessions_sql },
-        .{ .version = 10, .sql = schema.core_zombie_approval_gates_sql },
-        .{ .version = 11, .sql = schema.core_integration_grants_sql },
-        .{ .version = 12, .sql = schema.core_agent_keys_sql },
-        .{ .version = 13, .sql = schema.workspace_integrations_sql },
-        .{ .version = 14, .sql = schema.memory_entries_sql },
-        .{ .version = 15, .sql = schema.zombie_execution_telemetry_sql },
-        .{ .version = 16, .sql = schema.api_keys_sql },
-        .{ .version = 17, .sql = schema.core_users_sql },
-        .{ .version = 18, .sql = schema.tenant_billing_sql },
-        .{ .version = 19, .sql = schema.zombie_events_sql },
+        .{ .version = 9, .sql = schema.core_zombie_approval_gates_sql },
+        .{ .version = 10, .sql = schema.core_integration_grants_sql },
+        .{ .version = 11, .sql = schema.core_agent_keys_sql },
+        .{ .version = 12, .sql = schema.workspace_integrations_sql },
+        .{ .version = 13, .sql = schema.memory_entries_sql },
+        .{ .version = 14, .sql = schema.zombie_execution_telemetry_sql },
+        .{ .version = 15, .sql = schema.api_keys_sql },
+        .{ .version = 16, .sql = schema.core_users_sql },
+        .{ .version = 17, .sql = schema.tenant_billing_sql },
+        .{ .version = 18, .sql = schema.zombie_events_sql },
+        .{ .version = 19, .sql = schema.model_caps_sql },
     };
 }
 

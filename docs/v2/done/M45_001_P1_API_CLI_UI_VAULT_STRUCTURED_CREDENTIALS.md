@@ -11,7 +11,7 @@
 **Branch:** feat/m45-vault-structured
 **Depends on:** none.
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` (note historical typo) §10 (capability table — credential vault row), §12 step 2-4 (credential add flow).
+**Canonical architecture:** `docs/architecture/` (note historical typo) §10 (capability table — credential vault row), §12 step 2-4 (credential add flow).
 
 ---
 

@@ -235,10 +235,12 @@
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}:
   patch:
     operationId: patch_zombie
-    summary: Update a zombie's config
-    description: 'Partial update of zombie config_json. Publishes a zombie_config_changed control-stream signal so
-      the worker observes the new revision on its next loop iteration. Returns the new config_revision (a strictly
-      monotonic ms-epoch timestamp).'
+    summary: Update or kill a zombie
+    description: 'Partial update of a zombie. Body fields are optional and presence-based: `config_json` (replace
+      the zombie''s config — publishes zombie_config_changed) and/or `status:"killed"` (cancel any in-flight executor
+      session and mark the zombie killed — publishes zombie_status_changed). Both fields can ride together; the SQL
+      UPDATE is one statement and one control-stream publish fires per dirty surface. Returns the new config_revision
+      (a strictly monotonic ms-epoch timestamp). Idempotent — re-killing a killed zombie returns 404.'
     tags:
     - Zombies
     parameters:
@@ -266,54 +268,11 @@
               config_json:
                 type: string
                 description: The new zombie config as a JSON string. Validated server-side.
-    responses:
-      '200':
-        description: OK
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                zombie_id:
-                  type: string
-                  format: uuid
-                config_revision:
-                  type: integer
-                  format: int64
-      '400':
-        $ref: ../components/responses.yaml#/components/responses/Error
-      '401':
-        $ref: ../components/responses.yaml#/components/responses/Error
-      '403':
-        $ref: ../components/responses.yaml#/components/responses/Error
-      '404':
-        $ref: ../components/responses.yaml#/components/responses/Error
-/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill:
-  post:
-    operationId: kill_zombie
-    summary: Kill a zombie
-    description: 'Marks the zombie as killed and publishes a zombie_status_changed control-stream signal. The watcher
-      flips the per-zombie cancel flag and (if mid-execution) calls the executor''s cancelExecution. The per-zombie
-      thread observes the cancel at the top of its next loop iteration and exits within ~100ms. Idempotent — re-killing
-      a killed zombie returns 404 (no row to update). Scoped to workspace; cross-workspace kills are rejected at the
-      SQL layer.'
-    tags:
-    - Zombies
-    parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      description: UUIDv7 of the workspace.
-      schema:
-        type: string
-        format: uuid
-    - name: zombie_id
-      in: path
-      required: true
-      description: UUIDv7 of the zombie.
-      schema:
-        type: string
-        format: uuid
+              status:
+                type: string
+                enum:
+                - killed
+                description: 'Set to "killed" to cancel any in-flight session and mark the zombie killed.'
     responses:
       '200':
         description: OK
@@ -329,7 +288,8 @@
                   type: string
                   enum:
                   - killed
-                queued_at:
+                  description: 'Present only when the request body included `status:"killed"`.'
+                config_revision:
                   type: integer
                   format: int64
       '400':

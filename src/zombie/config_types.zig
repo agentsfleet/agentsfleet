@@ -11,7 +11,6 @@ pub const ZombieConfigError = error{
     MissingRequiredField,
     InvalidTriggerType,
     InvalidTriggerSource,
-    UnknownSkill,
     InvalidCredentialRef,
     InvalidBudget,
     InvalidSignatureConfig,

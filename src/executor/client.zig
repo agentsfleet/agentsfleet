@@ -8,6 +8,7 @@ const json = @import("json_helpers.zig");
 const transport = @import("transport.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
+const context_budget = @import("context_budget.zig");
 const executor_metrics = @import("executor_metrics.zig");
 
 const log = std.log.scoped(.executor_client);
@@ -70,19 +71,62 @@ pub const ExecutorClient = struct {
         return id;
     }
 
-    pub fn createExecution(
-        self: *ExecutorClient,
+    /// Per-execution policy + identity payload for `createExecution`.
+    /// `workspace_path` and `correlation` are required; the policy fields
+    /// default to empty (deny-all egress, no tool filter, no secrets,
+    /// default context budget) so callers that don't yet care can omit them.
+    pub const CreateExecutionParams = struct {
         workspace_path: []const u8,
         correlation: types.CorrelationContext,
+        network_policy: context_budget.NetworkPolicy = .{},
+        tools: []const []const u8 = &.{},
+        /// JSON object: `{ [name]: <parsed json value> }`. Null = no secrets.
+        secrets_map: ?std.json.Value = null,
+        context: context_budget.ContextBudget = .{},
+    };
+
+    pub fn createExecution(
+        self: *ExecutorClient,
+        params_in: CreateExecutionParams,
     ) ![]const u8 {
         var params = std.json.Value{ .object = std.json.ObjectMap.init(self.alloc) };
         defer params.object.deinit();
 
-        try params.object.put("workspace_path", .{ .string = workspace_path });
-        try params.object.put("trace_id", .{ .string = correlation.trace_id });
-        try params.object.put("zombie_id", .{ .string = correlation.zombie_id });
-        try params.object.put("workspace_id", .{ .string = correlation.workspace_id });
-        try params.object.put("session_id", .{ .string = correlation.session_id });
+        try params.object.put("workspace_path", .{ .string = params_in.workspace_path });
+        try params.object.put("trace_id", .{ .string = params_in.correlation.trace_id });
+        try params.object.put("zombie_id", .{ .string = params_in.correlation.zombie_id });
+        try params.object.put("workspace_id", .{ .string = params_in.correlation.workspace_id });
+        try params.object.put("session_id", .{ .string = params_in.correlation.session_id });
+
+        // Per-execution policy fields. Always serialised so the wire
+        // shape is invariant; empty defaults are explicit.
+        var network_policy_obj = std.json.ObjectMap.init(self.alloc);
+        defer network_policy_obj.deinit();
+        var allow_arr: std.json.Array = .init(self.alloc);
+        defer allow_arr.deinit();
+        for (params_in.network_policy.allow) |host| {
+            try allow_arr.append(.{ .string = host });
+        }
+        try network_policy_obj.put("allow", .{ .array = allow_arr });
+        try params.object.put("network_policy", .{ .object = network_policy_obj });
+
+        var tools_arr: std.json.Array = .init(self.alloc);
+        defer tools_arr.deinit();
+        for (params_in.tools) |t| try tools_arr.append(.{ .string = t });
+        try params.object.put("tools", .{ .array = tools_arr });
+
+        if (params_in.secrets_map) |sm| {
+            try params.object.put("secrets_map", sm);
+        }
+
+        var ctx_obj = std.json.ObjectMap.init(self.alloc);
+        defer ctx_obj.deinit();
+        try ctx_obj.put("tool_window", .{ .integer = @intCast(params_in.context.tool_window) });
+        try ctx_obj.put("memory_checkpoint_every", .{ .integer = @intCast(params_in.context.memory_checkpoint_every) });
+        try ctx_obj.put("stage_chunk_threshold", .{ .float = @floatCast(params_in.context.stage_chunk_threshold) });
+        try ctx_obj.put("model", .{ .string = params_in.context.model });
+        try ctx_obj.put("context_cap_tokens", .{ .integer = @intCast(params_in.context.context_cap_tokens) });
+        try params.object.put("context", .{ .object = ctx_obj });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.create_execution, params) catch {
             log.err("executor_client.transport_loss error_code=UZ-EXEC-006 method=CreateExecution", .{});
@@ -115,15 +159,20 @@ pub const ExecutorClient = struct {
         wall_seconds: u64,
         exit_ok: bool,
         failure: ?types.FailureClass,
-        /// M27_001: peak RSS bytes from cgroup (0 = not available).
+        /// peak RSS bytes from cgroup (0 = not available).
         memory_peak_bytes: u64 = 0,
-        /// M27_001: CPU throttle time in ms (0 = not available).
+        /// CPU throttle time in ms (0 = not available).
         cpu_throttled_ms: u64 = 0,
-        /// M27_001: memory limit in bytes for scoring normalization.
+        /// Memory limit in bytes for scoring normalization.
         /// Only populated via getUsage() — start_stage response does not include it.
         memory_limit_bytes: u64 = 0,
-        /// M18_001: ms from stage start to first token received. 0 if executor did not report.
+        /// ms from stage start to first token received. 0 if executor did not report.
         time_to_first_token_ms: u64 = 0,
+        /// Set when the agent voluntarily ended a stage to be resumed in
+        /// a fresh stage (L3 chunk-threshold trigger). Caller-owned
+        /// (allocator dupe) when non-null. The worker reads this on
+        /// `exit_ok=false` to drive continuation re-enqueue (§7).
+        checkpoint_id: ?[]const u8 = null,
     };
 
     /// Agent configuration for StartStage payload (M12_003, M16_003).
@@ -225,6 +274,10 @@ pub const ExecutorClient = struct {
         const result = resp.result orelse return ClientError.InvalidResponse;
         if (result != .object) return ClientError.InvalidResponse;
 
+        const checkpoint: ?[]const u8 = if (json.getStr(result, "checkpoint_id")) |s|
+            try self.alloc.dupe(u8, s)
+        else
+            null;
         return .{
             .content = try self.alloc.dupe(u8, json.getStr(result, "content") orelse ""),
             .token_count = json.getIntOrZero(result, "token_count"),
@@ -234,6 +287,7 @@ pub const ExecutorClient = struct {
             .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
             .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
             .time_to_first_token_ms = json.getIntOrZero(result, "time_to_first_token_ms"),
+            .checkpoint_id = checkpoint,
         };
     }
 

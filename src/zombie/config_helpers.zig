@@ -16,12 +16,6 @@ const ZombieConfigError = config_types.ZombieConfigError;
 const WebhookSignatureConfig = config_types.WebhookSignatureConfig;
 const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
 
-// Built-in skills. clawhub:// registry refs are also accepted (must be pinned).
-const KNOWN_ZOMBIE_SKILLS = [_][]const u8{
-    "agentmail", "slack",      "github",    "git",
-    "linear",    "cloudflare", "pagerduty",
-};
-
 pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || ZombieConfigError)!ZombieTrigger {
     const type_str = blk: {
         const val = obj.get("type") orelse return ZombieConfigError.MissingRequiredField;
@@ -166,31 +160,6 @@ pub fn dupeStringArray(alloc: Allocator, items: []const std.json.Value) ![]const
         i += 1;
     }
     return out;
-}
-
-pub fn isKnownZombieSkill(skill: []const u8) bool {
-    if (std.mem.startsWith(u8, skill, "clawhub://")) return isPinnedZombieSkillRef(skill);
-    for (KNOWN_ZOMBIE_SKILLS) |known| {
-        if (std.mem.eql(u8, skill, known)) return true;
-    }
-    return false;
-}
-
-fn isPinnedZombieSkillRef(ref: []const u8) bool {
-    const at = std.mem.lastIndexOfScalar(u8, ref, '@') orelse return false;
-    if (at + 1 >= ref.len) return false;
-    const version = ref[at + 1 ..];
-    if (std.ascii.eqlIgnoreCase(version, "latest")) return false;
-    return std.ascii.isDigit(version[0]);
-}
-
-test "isKnownZombieSkill: built-in and clawhub refs" {
-    try std.testing.expect(isKnownZombieSkill("agentmail"));
-    try std.testing.expect(isKnownZombieSkill("slack"));
-    try std.testing.expect(!isKnownZombieSkill("unknown_tool"));
-    try std.testing.expect(isKnownZombieSkill("clawhub://queen/lead-hunter@1.0.1"));
-    try std.testing.expect(!isKnownZombieSkill("clawhub://queen/lead-hunter@latest"));
-    try std.testing.expect(!isKnownZombieSkill("clawhub://queen/lead-hunter"));
 }
 
 // ── parseWebhookSignature (§3 + §4.7) ────────────────────────────────────

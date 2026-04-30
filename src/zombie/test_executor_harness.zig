@@ -8,7 +8,7 @@
 //   _ = writepath.run(alloc, &session, &evt, cfg, &consec);
 //
 // The harness binary's runner branch is comptime-gated to runner_harness.zig
-// (see docs/ARCHITECHTURE.md §9 streaming substrate notes). When the script
+// (see docs/architecture/ §9 streaming substrate notes). When the script
 // file references frames, the harness emits them via the production
 // ProgressWriter — same wire shape, real socket round-trip — so the worker's
 // streaming reader exercises the genuine code path.

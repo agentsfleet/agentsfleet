@@ -11,7 +11,7 @@
 **Branch:** feat/m47-approval-inbox
 **Depends on:** M42_001 (events stream + history — pending gates write `status='gate_blocked'` on `core.zombie_events`). M4_001 (existing approval gate — DONE; this builds on it).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §10 (capabilities — approval gating row), §13 (path to bastion — per-audience approval).
+**Canonical architecture:** `docs/architecture/` §10 (capabilities — approval gating row), §13 (path to bastion — per-audience approval).
 
 ---
 
@@ -35,7 +35,7 @@ Orphan sweep: nothing removed. Existing approval surface is extended in place.
 
 ## Implementing agent — read these first
 
-1. `docs/ARCHITECHTURE.md` §10 (capabilities — approval gating row) — what the platform guarantees about gate semantics.
+1. `docs/architecture/` §10 (capabilities — approval gating row) — what the platform guarantees about gate semantics.
 2. M4_001 spec (`docs/v2/done/M4_001_APPROVAL_GATE.md`) — existing gate state machine. Its acceptance criteria define the legal `status` values (`pending`, `approved`, `denied`, `timed_out`).
 3. M42_001 spec — the `core.zombie_events.status='gate_blocked'` mechanism that surfaces a stalled zombie. The events row links to the gate via the same `event_id`/`action_id` join key.
 4. `docs/REST_API_DESIGN_GUIDELINES.md` §1–§7 — URL/method/body/response/error/OpenAPI/5-place route registration.
