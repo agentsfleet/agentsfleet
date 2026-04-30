@@ -18,7 +18,7 @@ test "T1: ZombieSession.deinit frees all owned memory" {
     const alloc = std.testing.allocator;
 
     const config_json =
-        \\{"name":"test","trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+        \\{"name":"test","x-usezombie":{"trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
     ;
     const config = try zombie_config.parseZombieConfig(alloc, config_json);
 
@@ -52,7 +52,7 @@ test "T1: updateSessionContext produces valid JSON" {
     const alloc = std.testing.allocator;
 
     const config_json =
-        \\{"name":"test","trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+        \\{"name":"test","x-usezombie":{"trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
     ;
     const config = try zombie_config.parseZombieConfig(alloc, config_json);
     const source_md = try alloc.dupe(u8, "---\nname: test\n---\nYou are a test agent.");
@@ -144,7 +144,7 @@ test "T3: updateSessionContext escapes double quotes in agent_response" {
     const alloc = std.testing.allocator;
 
     const config_json =
-        \\{"name":"test","trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+        \\{"name":"test","x-usezombie":{"trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
     ;
     const config = try zombie_config.parseZombieConfig(alloc, config_json);
     const source_md = try alloc.dupe(u8, "---\nname: test\n---\nAgent.");
@@ -174,7 +174,7 @@ test "T3: updateSessionContext escapes backslashes in event_id" {
     const alloc = std.testing.allocator;
 
     const config_json =
-        \\{"name":"test","trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+        \\{"name":"test","x-usezombie":{"trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
     ;
     const config = try zombie_config.parseZombieConfig(alloc, config_json);
     const source_md = try alloc.dupe(u8, "---\nname: test\n---\nAgent.");
@@ -203,7 +203,7 @@ test "T3: updateSessionContext escapes newlines and control chars" {
     const alloc = std.testing.allocator;
 
     const config_json =
-        \\{"name":"test","trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+        \\{"name":"test","x-usezombie":{"trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
     ;
     const config = try zombie_config.parseZombieConfig(alloc, config_json);
     const source_md = try alloc.dupe(u8, "---\nname: test\n---\nAgent.");
@@ -233,7 +233,7 @@ test "T3: updateSessionContext with empty event_id and response" {
     const alloc = std.testing.allocator;
 
     const config_json =
-        \\{"name":"test","trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+        \\{"name":"test","x-usezombie":{"trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
     ;
     const config = try zombie_config.parseZombieConfig(alloc, config_json);
     const source_md = try alloc.dupe(u8, "---\nname: test\n---\nAgent.");
@@ -262,7 +262,7 @@ test "T3: updateSessionContext replaces previous context (no leak)" {
     const alloc = std.testing.allocator;
 
     const config_json =
-        \\{"name":"test","trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}
+        \\{"name":"test","x-usezombie":{"trigger":{"type":"webhook","source":"email"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
     ;
     const config = try zombie_config.parseZombieConfig(alloc, config_json);
     const source_md = try alloc.dupe(u8, "---\nname: test\n---\nAgent.");

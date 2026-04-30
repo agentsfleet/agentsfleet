@@ -172,9 +172,7 @@ pub const ENTRIES = [_]Entry{
         "Session checkpoint write to Postgres failed. Check database connectivity."),
     e("UZ-ZMB-006", .conflict, "Zombie name already exists",
         "A Zombie with this name already exists. Use 'zombiectl kill <name>' first, then deploy again."),
-    // UZ-ZMB-007 (Zombie credential value too long) was retired with the
-    // single-string credential body. The structured replacement lives at
-    // UZ-VAULT-002 below.
+    // UZ-ZMB-007 retired (single-string credential body) → see UZ-VAULT-002.
     e("UZ-ZMB-008", .bad_request, "Invalid zombie config",
         "Config JSON is malformed. Verify trigger, tools, credentials, and budget fields " ++
         "in your TRIGGER.md frontmatter. See samples/platform-ops/TRIGGER.md for a working example."),
@@ -182,6 +180,8 @@ pub const ENTRIES = [_]Entry{
         "Zombie not found. Verify the zombie_id and that it has not been killed."),
     e("UZ-ZMB-010", .conflict, "Zombie already stopped or killed",
         "This zombie is already stopped or has been killed. Restart it before issuing another stop."),
+    e("UZ-ZMB-011", .bad_request, "SKILL.md and TRIGGER.md disagree on `name:`",
+        "Top-level `name:` in SKILL.md must match `name:` in TRIGGER.md. One identity per zombie bundle."),
     // ── VAULT ────────────────────────────────────────────────────────────────
     e("UZ-VAULT-001", .bad_request, "Credential data must be a non-empty JSON object",
         "POST /credentials body must include a 'data' field that is a JSON object with at least one key. " ++

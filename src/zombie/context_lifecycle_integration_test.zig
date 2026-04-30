@@ -60,8 +60,12 @@ const CHAIN_ESCALATE_LABEL = "chunk_chain_escalate_human";
 const STREAM_KEY = "zombie:" ++ TEST_ZOMBIE_ID ++ ":events";
 
 const ZOMBIE_NAME = "context-lifecycle-bot";
+// Post-M46: runtime keys live under x-usezombie:. `chat` trigger type isn't
+// in the parser's accepted set yet (api/webhook/cron/chain only), so this
+// fixture uses `api` — the test exercises config swap mechanics, not trigger
+// dispatch.
 const ZOMBIE_CONFIG_JSON =
-    \\{"name":"context-lifecycle-bot","trigger":{"type":"chat"},"tools":["http_request"],"budget":{"daily_dollars":1.0}}
+    \\{"name":"context-lifecycle-bot","x-usezombie":{"trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":1.0}}}
 ;
 const ZOMBIE_SOURCE_MD =
     \\---
@@ -300,10 +304,10 @@ test "integration: 11th continuation force-stops with chunk_chain_escalate_human
 const NAME_SEEDED = "ctx-bot-seeded";
 const NAME_RELOADED = "ctx-bot-reloaded";
 const CONFIG_SEEDED =
-    \\{"name":"ctx-bot-seeded","trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":1.0}}
+    \\{"name":"ctx-bot-seeded","x-usezombie":{"trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":1.0}}}
 ;
 const CONFIG_RELOADED =
-    \\{"name":"ctx-bot-reloaded","trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":2.0}}
+    \\{"name":"ctx-bot-reloaded","x-usezombie":{"trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":2.0}}}
 ;
 
 test "integration: reloadZombieConfig swaps session.config after DB row UPDATE" {

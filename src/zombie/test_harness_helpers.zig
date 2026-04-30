@@ -23,7 +23,7 @@ pub const REDIS_TLS_URL_ENV_VAR = "TEST_REDIS_TLS_URL";
 /// Single source of truth for the seeded zombie name. Both the parsed
 /// config JSON and the seedZombie call must agree on it.
 pub const ZOMBIE_NAME = "harness-bot";
-pub const ZOMBIE_CONFIG_JSON = "{\"name\":\"" ++ ZOMBIE_NAME ++ "\",\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"},\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}}";
+pub const ZOMBIE_CONFIG_JSON = "{\"name\":\"" ++ ZOMBIE_NAME ++ "\",\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"},\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}}}";
 pub const ZOMBIE_SOURCE_MD = "---\nname: " ++ ZOMBIE_NAME ++ "\n---\n\nYou are a harness bot.\n";
 
 /// Quiet window after the last received frame before the drain returns.

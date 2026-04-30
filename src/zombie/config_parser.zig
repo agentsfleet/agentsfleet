@@ -1,13 +1,15 @@
 // Zombie config JSON parser.
 //
 // Parses the `config_json` value (server-derived from TRIGGER.md
-// frontmatter) into a ZombieConfig. Decomposed into per-field helpers so
-// every function stays ≤50 lines and so errdefer chains free partial state
-// on mid-parse failure (see ZIG_RULES "Struct Init Partial Leak").
+// frontmatter) into a ZombieConfig. The runtime keys (`trigger`, `tools`,
+// `credentials`, `network`, `budget`, `gates`) live under the `x-usezombie:`
+// top-level object; `name` is the only top-level field outside that block.
+// Field parsers take the runtime ObjectMap (the inside of `x-usezombie:`),
+// not the root.
 //
-// Each helper takes the already-parsed root ObjectMap and returns the
-// owned field value. Caller is the orchestrator `parseZombieConfig`, which
-// threads errdefer between them.
+// Decomposed into per-field helpers so every function stays ≤50 lines and
+// so errdefer chains free partial state on mid-parse failure (see
+// ZIG_RULES "Struct Init Partial Leak").
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -44,28 +46,32 @@ pub fn parseZombieConfig(
         else => return ZombieConfigError.MissingRequiredField,
     };
 
+    try ensureRuntimeKeysNotAtTopLevel(root);
+    const runtime = try extractRuntimeBlock(root);
+    try ensureKnownRuntimeKeys(runtime);
+
     const name = try parseNameField(alloc, root);
     errdefer alloc.free(name);
 
-    const trigger = try parseTriggerField(alloc, root);
+    const trigger = try parseTriggerField(alloc, runtime);
     errdefer freeZombieTrigger(alloc, trigger);
 
-    const tools = try parseToolsField(alloc, root);
+    const tools = try parseToolsField(alloc, runtime);
     errdefer freeStringSlice(alloc, tools);
 
-    const credentials = try parseCredentialsField(alloc, root);
+    const credentials = try parseCredentialsField(alloc, runtime);
     errdefer freeStringSlice(alloc, credentials);
 
-    const network = try parseNetworkField(alloc, root);
+    const network = try parseNetworkField(alloc, runtime);
     errdefer if (network) |net| freeStringSlice(alloc, net.allow);
 
-    const budget = try parseBudgetField(root);
-    const gates = try parseGatesField(alloc, root);
+    const budget = try parseBudgetField(runtime);
+    const gates = try parseGatesField(alloc, runtime);
     errdefer if (gates) |g| config_gates.freeGatePolicy(alloc, g);
 
     try validate.validateCredentials(credentials);
 
-    const extended = try parseExtendedFields(alloc, root);
+    const extended = try parseExtendedFields(alloc, runtime);
 
     return ZombieConfig{
         .name = name,
@@ -80,6 +86,52 @@ pub fn parseZombieConfig(
     };
 }
 
+/// Runtime keys must live under `x-usezombie:`. Their presence at the top
+/// level is a structural error pointing the author at the schema doc.
+/// Forbidden set must mirror the `known` set in `ensureKnownRuntimeKeys` —
+/// any key that's accepted under `x-usezombie:` must also be rejected at
+/// top level. Otherwise an author who forgets the indentation gets a
+/// silently-dropped key (e.g. `gates:` at root → no rate limiting installed,
+/// no error surfaced).
+fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!void {
+    const forbidden = [_][]const u8{
+        "trigger", "tools", "credentials", "network", "budget",
+        "gates",   "skill", "chain",
+    };
+    for (forbidden) |k| {
+        if (root.get(k) != null) return ZombieConfigError.RuntimeKeysOutsideBlock;
+    }
+}
+
+/// Extract the `x-usezombie:` runtime block from the parsed JSON root.
+/// Distinguished from `MissingRequiredField` because the user fix is different:
+/// they need to add a whole namespaced block, not just one missing key.
+fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.ObjectMap {
+    const val = root.get("x-usezombie") orelse return ZombieConfigError.UsezombieBlockRequired;
+    return switch (val) {
+        .object => |o| o,
+        else => ZombieConfigError.UsezombieBlockRequired,
+    };
+}
+
+/// Rigid: any subkey under `x-usezombie:` outside the known set is an
+/// authoring error. Typos must fail loud.
+fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
+    const known = [_][]const u8{
+        "trigger", "tools", "credentials", "network", "budget",
+        "gates",   "skill", "chain",
+    };
+    var it = runtime.iterator();
+    while (it.next()) |entry| {
+        var found = false;
+        for (known) |k| if (std.mem.eql(u8, k, entry.key_ptr.*)) {
+            found = true;
+            break;
+        };
+        if (!found) return ZombieConfigError.UnknownRuntimeKey;
+    }
+}
+
 fn parseNameField(
     alloc: Allocator,
     root: std.json.ObjectMap,
@@ -90,6 +142,7 @@ fn parseNameField(
         else => return ZombieConfigError.MissingRequiredField,
     };
     if (s.len == 0) return ZombieConfigError.MissingRequiredField;
+    try validate.validateSkillName(s);
     return try alloc.dupe(u8, s);
 }
 

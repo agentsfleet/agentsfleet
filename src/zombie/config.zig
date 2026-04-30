@@ -33,6 +33,7 @@ pub const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
 pub const ZombieBudget = config_types.ZombieBudget;
 pub const ZombieNetwork = config_types.ZombieNetwork;
 pub const ZombieConfig = config_types.ZombieConfig;
+pub const SkillMetadata = config_types.SkillMetadata;
 
 // Gate/anomaly policy types (owned by config_gates, surfaced here for callers).
 pub const GateBehavior = config_gates.GateBehavior;
@@ -45,6 +46,7 @@ pub const GatePolicy = config_gates.GatePolicy;
 pub const parseZombieConfig = config_parser.parseZombieConfig;
 pub const parseZombieFromTriggerMarkdown = config_markdown.parseZombieFromTriggerMarkdown;
 pub const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWithJson;
+pub const parseSkillMetadata = config_markdown.parseSkillMetadata;
 pub const ParsedTrigger = config_markdown.ParsedTrigger;
 pub const extractZombieInstructions = config_markdown.extractZombieInstructions;
 
@@ -60,4 +62,5 @@ test {
     _ = @import("config_parser_test.zig");
     _ = @import("config_markdown_test.zig");
     _ = @import("config_validate_test.zig");
+    _ = @import("frontmatter_fixtures_test.zig");
 }

@@ -130,6 +130,7 @@ pub const ERR_ZOMBIE_NAME_EXISTS = "UZ-ZMB-006";
 pub const ERR_ZOMBIE_INVALID_CONFIG = "UZ-ZMB-008";
 pub const ERR_ZOMBIE_NOT_FOUND = "UZ-ZMB-009";
 pub const ERR_ZOMBIE_ALREADY_TERMINAL = "UZ-ZMB-010";
+pub const ERR_ZOMBIE_NAME_MISMATCH = "UZ-ZMB-011";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
@@ -239,7 +240,9 @@ const MSG_INVALID_TOKEN = "Invalid token";
 pub const MSG_ZOMBIE_NOT_ACTIVE = "Zombie is not active";
 // Zombie CRUD messages
 pub const MSG_ZOMBIE_NAME_EXISTS = "Zombie already exists in this workspace. Use `zombiectl kill` first.";
-pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, tools, and budget fields.";
+pub const MSG_ZOMBIE_INVALID_CONFIG = "Config JSON is not valid. Check trigger, tools, budget; `name:` must be kebab `^[a-z0-9-]+$`, 1-64 chars.";
+pub const MSG_ZOMBIE_NAME_MISMATCH = "SKILL.md `name:` must match TRIGGER.md `name:`.";
+pub const MSG_ZOMBIE_SKILL_INVALID = "SKILL.md frontmatter is invalid. Required: name (kebab, 1-64 chars), description, version (semver MAJOR.MINOR.PATCH).";
 pub const MSG_ZOMBIE_NAME_REQUIRED = "name is required (max 64 chars, slug-safe)";
 pub const MSG_ZOMBIE_SOURCE_REQUIRED = "source_markdown is required (max 64KB)";
 pub const MSG_ZOMBIE_TRIGGER_REQUIRED = "trigger_markdown is required (max 64KB)";

@@ -150,3 +150,34 @@ test "integration: zombies list — cursor pagination roundtrip" {
     defer r_anon.deinit();
     try r_anon.expectStatus(.unauthorized);
 }
+
+// Cross-file `name:` invariant: SKILL.md and TRIGGER.md must agree on identity.
+// Handler enforcement at create.zig fires before workspace authorization, so a
+// USER-role token still surfaces the mismatch error (no escalation needed).
+test "integration: zombie create rejects SKILL/TRIGGER name mismatch with UZ-ZMB-011" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+
+    // SKILL.md says alpha-zombie; TRIGGER.md says beta-zombie. Both halves
+    // parse cleanly in isolation — the rejection only fires at the install
+    // handler, which is what this test pins.
+    const body =
+        "{\"source_markdown\":\"---\\nname: alpha-zombie\\ndescription: alpha\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: beta-zombie\\nx-usezombie:\\n  trigger:\\n    type: api\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try r.expectErrorCode("UZ-ZMB-011");
+}

@@ -1,232 +1,152 @@
-// YAML frontmatter to JSON converter for TRIGGER.md parsing.
+// YAML frontmatter to JSON adapter.
 //
-// Supports the subset of YAML used in TRIGGER.md frontmatter:
-//   - Top-level scalar key: value
-//   - One level of nested key: value
-//   - Arrays via "- item" syntax
-//   - Inline arrays via [a, b, c] syntax
-//   - Booleans (true/false) and numbers pass through unquoted
+// Wraps `zig-yaml` (kubkon/zig-yaml v0.2.0) and serializes the parsed tree
+// to a JSON string. The downstream `config_parser.parseZombieConfig` and
+// `config_markdown.parseSkillMetadata` continue to consume JSON; this file
+// is the only seam that knows about YAML.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const yaml = @import("yaml");
 
-const KeyValue = struct { key: []const u8, value: []const u8 };
+pub const YamlError = error{ParseFailure};
 
-// yamlFrontmatterToJson converts simple YAML key-value pairs to a JSON string.
-// Supports: top-level scalars, one level of nesting, and arrays (- items).
-// YamlToJsonConverter holds state for the line-by-line YAML→JSON conversion.
-const YamlToJsonConverter = struct {
-    first_top: bool = true,
-    in_nested: bool = false,
-    first_nested: bool = true,
-    in_array: bool = false,
-    first_array: bool = true,
-    pending_bracket: bool = false,
+/// Convert YAML frontmatter (the bytes between the `---` fences, already
+/// extracted) to a single-line JSON object string. Caller owns the returned
+/// slice. Empty input returns `"{}"`.
+pub fn yamlFrontmatterToJson(alloc: Allocator, source: []const u8) (Allocator.Error || YamlError)![]u8 {
+    var doc: yaml.Yaml = .{ .source = source };
+    defer doc.deinit(alloc);
 
-    fn processLine(self: *YamlToJsonConverter, w: anytype, line: []const u8) !void {
-        if (isArrayItem(line)) {
-            try self.handleArrayItem(w, line);
-            return;
-        }
-        if (self.in_array) {
-            try w.writeByte(']');
-            self.in_array = false;
-        }
-        if (isIndented(line) and (self.in_nested or self.pending_bracket)) {
-            try self.handleNestedKey(w, line);
-            return;
-        }
-        try self.closeNested(w);
-        try self.handleTopLevelKey(w, line);
-    }
+    doc.load(alloc) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return error.ParseFailure,
+    };
 
-    fn handleArrayItem(self: *YamlToJsonConverter, w: anytype, line: []const u8) !void {
-        if (self.pending_bracket) {
-            try w.writeByte('[');
-            self.pending_bracket = false;
-            self.in_nested = false;
-            self.in_array = true;
-            self.first_array = true;
-        }
-        if (!self.in_array) {
-            self.in_array = true;
-            self.first_array = true;
-        }
-        if (!self.first_array) try w.writeAll(", ");
-        try writeJsonString(w, extractArrayValue(line));
-        self.first_array = false;
-    }
-
-    fn handleNestedKey(self: *YamlToJsonConverter, w: anytype, line: []const u8) !void {
-        if (self.pending_bracket) {
-            try w.writeByte('{');
-            self.pending_bracket = false;
-            self.in_nested = true;
-            self.first_nested = true;
-        }
-        if (extractKeyValue(line)) |kv| {
-            if (!self.first_nested) try w.writeAll(", ");
-            try writeJsonString(w, kv.key);
-            try w.writeAll(": ");
-            if (kv.value.len == 0) {
-                try w.writeByte('[');
-                self.in_array = true;
-                self.first_array = true;
-            } else {
-                try writeJsonValue(w, kv.value);
-            }
-            self.first_nested = false;
-        }
-    }
-
-    fn closeNested(self: *YamlToJsonConverter, w: anytype) !void {
-        if (self.in_nested) {
-            try w.writeByte('}');
-            self.in_nested = false;
-        }
-        if (self.pending_bracket) {
-            try w.writeAll("{}");
-            self.pending_bracket = false;
-        }
-    }
-
-    fn handleTopLevelKey(self: *YamlToJsonConverter, w: anytype, line: []const u8) !void {
-        if (extractKeyValue(line)) |kv| {
-            if (!self.first_top) try w.writeAll(", ");
-            try writeJsonString(w, kv.key);
-            try w.writeAll(": ");
-            if (kv.value.len == 0) {
-                self.pending_bracket = true;
-            } else {
-                try writeJsonValue(w, kv.value);
-            }
-            self.first_top = false;
-        }
-    }
-
-    fn finish(self: *YamlToJsonConverter, w: anytype) !void {
-        if (self.in_array) try w.writeByte(']');
-        if (self.in_nested) try w.writeByte('}');
-        if (self.pending_bracket) try w.writeAll("{}");
-        try w.writeByte('}');
-    }
-};
-
-pub fn yamlFrontmatterToJson(alloc: Allocator, yaml: []const u8) ![]u8 {
     var buf: std.ArrayList(u8) = .{};
     errdefer buf.deinit(alloc);
     const w = buf.writer(alloc);
-    try w.writeByte('{');
 
-    var conv = YamlToJsonConverter{};
-    var lines = std.mem.splitScalar(u8, yaml, '\n');
-    while (lines.next()) |raw_line| {
-        const line = std.mem.trimRight(u8, raw_line, " \t\r");
-        if (line.len == 0) continue;
-        if (std.mem.startsWith(u8, std.mem.trimLeft(u8, line, " \t"), "#")) continue;
-        try conv.processLine(w, line);
+    if (doc.docs.items.len == 0) {
+        try w.writeAll("{}");
+    } else {
+        try writeJsonValue(w, doc.docs.items[0]);
     }
-    try conv.finish(w);
 
     return buf.toOwnedSlice(alloc);
 }
 
-fn extractKeyValue(line: []const u8) ?KeyValue {
-    const trimmed = std.mem.trimLeft(u8, line, " \t");
-    const colon = std.mem.indexOfScalar(u8, trimmed, ':') orelse return null;
-    if (colon == 0) return null;
-    const key = trimmed[0..colon];
-    const rest = if (colon + 1 < trimmed.len) std.mem.trimLeft(u8, trimmed[colon + 1 ..], " \t") else "";
-    return .{ .key = key, .value = rest };
+fn writeJsonValue(w: anytype, v: yaml.Yaml.Value) !void {
+    switch (v) {
+        .empty => try w.writeAll("null"),
+        .boolean => |b| try w.writeAll(if (b) "true" else "false"),
+        .scalar => |s| try writeScalar(w, s),
+        .list => |list| {
+            try w.writeByte('[');
+            for (list, 0..) |item, i| {
+                if (i > 0) try w.writeAll(", ");
+                try writeJsonValue(w, item);
+            }
+            try w.writeByte(']');
+        },
+        .map => |map| {
+            try w.writeByte('{');
+            var first = true;
+            for (map.keys(), map.values()) |k, val| {
+                if (!first) try w.writeAll(", ");
+                try writeJsonString(w, k);
+                try w.writeAll(": ");
+                try writeJsonValue(w, val);
+                first = false;
+            }
+            try w.writeByte('}');
+        },
+    }
 }
 
-fn isIndented(line: []const u8) bool {
-    return line.len > 0 and (line[0] == ' ' or line[0] == '\t');
-}
-
-fn isArrayItem(line: []const u8) bool {
-    const trimmed = std.mem.trimLeft(u8, line, " \t");
-    return std.mem.startsWith(u8, trimmed, "- ");
-}
-
-fn extractArrayValue(line: []const u8) []const u8 {
-    const trimmed = std.mem.trimLeft(u8, line, " \t");
-    return std.mem.trim(u8, trimmed[2..], " \t");
+// Known limitation (kubkon/zig-yaml v0.2.0): scalars arrive as raw bytes
+// without quote-style metadata, so `name: true` (bool) and `name: "true"`
+// (quoted string) are indistinguishable here. Both serialize as JSON `true`.
+// Downstream schema validation rejects the type mismatch (e.g. parseNameField
+// requires `.string`), so the user sees a config error rather than silent
+// corruption — only the diagnostic specificity suffers. Documented here so
+// future readers don't try to "fix" it without a parser-side hook.
+fn writeScalar(w: anytype, s: []const u8) !void {
+    if (std.mem.eql(u8, s, "true") or std.mem.eql(u8, s, "false")) {
+        try w.writeAll(s);
+        return;
+    }
+    if (std.mem.eql(u8, s, "null") or std.mem.eql(u8, s, "~")) {
+        try w.writeAll("null");
+        return;
+    }
+    if (isNumeric(s)) {
+        try w.writeAll(s);
+        return;
+    }
+    try writeJsonString(w, s);
 }
 
 fn writeJsonString(w: anytype, s: []const u8) !void {
     try w.writeByte('"');
     for (s) |c| {
-        if (c == '"') {
-            try w.writeAll("\\\"");
-        } else if (c == '\\') {
-            try w.writeAll("\\\\");
-        } else if (c == '\n') {
-            try w.writeAll("\\n");
-        } else if (c == '\r') {
-            try w.writeAll("\\r");
-        } else if (c == '\t') {
-            try w.writeAll("\\t");
-        } else if (c < 0x20) {
-            // Escape remaining ASCII control chars per RFC 8259 §7
-            try w.print("\\u{X:0>4}", .{c});
-        } else {
-            try w.writeByte(c);
+        switch (c) {
+            '"' => try w.writeAll("\\\""),
+            '\\' => try w.writeAll("\\\\"),
+            '\n' => try w.writeAll("\\n"),
+            '\r' => try w.writeAll("\\r"),
+            '\t' => try w.writeAll("\\t"),
+            else => if (c < 0x20)
+                try w.print("\\u{X:0>4}", .{c})
+            else
+                try w.writeByte(c),
         }
     }
     try w.writeByte('"');
 }
 
-fn writeJsonValue(w: anytype, v: []const u8) !void {
-    // Check for inline array: [a, b, c]
-    if (v.len >= 2 and v[0] == '[' and v[v.len - 1] == ']') {
-        const inner = std.mem.trim(u8, v[1 .. v.len - 1], " \t");
-        try w.writeByte('[');
-        var parts = std.mem.splitScalar(u8, inner, ',');
-        var first = true;
-        while (parts.next()) |part| {
-            const trimmed = std.mem.trim(u8, part, " \t");
-            if (trimmed.len == 0) continue;
-            if (!first) try w.writeAll(", ");
-            try writeJsonString(w, trimmed);
-            first = false;
-        }
-        try w.writeByte(']');
-        return;
-    }
-    // Boolean/number pass-through
-    if (std.mem.eql(u8, v, "true") or std.mem.eql(u8, v, "false")) {
-        try w.writeAll(v);
-        return;
-    }
-    // Number
-    if (isNumeric(v)) {
-        try w.writeAll(v);
-        return;
-    }
-    try writeJsonString(w, v);
-}
-
+// Returns true only when `v` is a JSON-valid number literal. Stricter than
+// the YAML 1.2 numeric grammar on purpose: scalars that YAML accepts but
+// JSON rejects (`1.`, `.5`, `-`, bare `.`, `01`) must be quoted, otherwise
+// std.json.parseFromSlice fails downstream with a non-actionable error.
+// Leading sign is accepted only as the first byte, decimal point at most
+// once, must have a digit on each side of any decimal, and no leading
+// zero on a multi-digit integer part (JSON spec).
 fn isNumeric(v: []const u8) bool {
     if (v.len == 0) return false;
     var has_dot = false;
+    var digit_seen = false;
+    var int_part_len: usize = 0;
+    var int_first: u8 = 0;
     for (v, 0..) |c, i| {
         if (c == '-' and i == 0) continue;
         if (c == '.' and !has_dot) {
+            // Must have at least one integer digit before the dot.
+            if (int_part_len == 0) return false;
             has_dot = true;
             continue;
         }
         if (!std.ascii.isDigit(c)) return false;
+        digit_seen = true;
+        if (!has_dot) {
+            if (int_part_len == 0) int_first = c;
+            int_part_len += 1;
+        }
     }
+    if (!digit_seen) return false;
+    // No digit after the decimal point ("1." would emit invalid JSON).
+    if (has_dot and v[v.len - 1] == '.') return false;
+    // No leading zero on multi-digit integer part ("01" → invalid JSON).
+    if (int_part_len > 1 and int_first == '0') return false;
     return true;
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────
+// ── Tests ──────────────────────────────────────────────────────────────────
 
 test "yamlFrontmatterToJson: flat key-value" {
     const alloc = std.testing.allocator;
-    const yaml = "name: lead-collector\ndaily_dollars: 5.0\nactive: true";
-    const json = try yamlFrontmatterToJson(alloc, yaml);
+    const src = "name: lead-collector\ndaily_dollars: 5.0\nactive: true";
+    const json = try yamlFrontmatterToJson(alloc, src);
     defer alloc.free(json);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
@@ -238,8 +158,8 @@ test "yamlFrontmatterToJson: flat key-value" {
 
 test "yamlFrontmatterToJson: nested object" {
     const alloc = std.testing.allocator;
-    const yaml = "trigger:\n  type: webhook\n  source: agentmail";
-    const json = try yamlFrontmatterToJson(alloc, yaml);
+    const src = "trigger:\n  type: webhook\n  source: agentmail";
+    const json = try yamlFrontmatterToJson(alloc, src);
     defer alloc.free(json);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
@@ -250,8 +170,8 @@ test "yamlFrontmatterToJson: nested object" {
 
 test "yamlFrontmatterToJson: array items" {
     const alloc = std.testing.allocator;
-    const yaml = "chain:\n  - lead-enricher\n  - crm-updater";
-    const json = try yamlFrontmatterToJson(alloc, yaml);
+    const src = "chain:\n  - lead-enricher\n  - crm-updater";
+    const json = try yamlFrontmatterToJson(alloc, src);
     defer alloc.free(json);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
@@ -263,12 +183,82 @@ test "yamlFrontmatterToJson: array items" {
 
 test "yamlFrontmatterToJson: inline array" {
     const alloc = std.testing.allocator;
-    const yaml = "tags: [leads, email, agentmail]";
-    const json = try yamlFrontmatterToJson(alloc, yaml);
+    const src = "tags: [leads, email, agentmail]";
+    const json = try yamlFrontmatterToJson(alloc, src);
     defer alloc.free(json);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
     const tags = parsed.value.object.get("tags").?.array;
     try std.testing.expectEqual(@as(usize, 3), tags.items.len);
     try std.testing.expectEqualStrings("leads", tags.items[0].string);
+}
+
+// Pins isNumeric's JSON-correctness guard: scalars that YAML accepts but
+// JSON rejects must be quoted, not emitted as bare numbers. Each input
+// here, if isNumeric returned true, would emit invalid JSON downstream.
+test "yamlFrontmatterToJson: invalid JSON-numeric scalars get quoted (isNumeric guard)" {
+    const alloc = std.testing.allocator;
+    const cases = [_][]const u8{
+        "name: -", // bare sign
+        "name: .", // sole decimal
+        "name: 1.", // trailing decimal
+        "name: .5", // leading decimal
+        "name: '01'", // leading zero — already quoted but proves quoted path works
+        "name: 01", // leading zero unquoted — must NOT emit bare 01 (JSON rejects)
+    };
+    for (cases) |src| {
+        const json = try yamlFrontmatterToJson(alloc, src);
+        defer alloc.free(json);
+        // Must round-trip through std.json without error: the guard kicked in
+        // and produced a quoted string instead of an invalid bare number.
+        const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+        defer parsed.deinit();
+        const v = parsed.value.object.get("name").?;
+        try std.testing.expect(v == .string);
+    }
+}
+
+// Pins the kubkon/zig-yaml v0.2.0 limitation called out in writeScalar: a
+// quoted magic-word scalar collapses to its bare-word JSON type. If this test
+// breaks because the upstream parser starts surfacing quote style, update
+// writeScalar to honor it and delete this pin.
+test "yamlFrontmatterToJson: quoted magic-word scalars collapse to bare type (known limitation)" {
+    const alloc = std.testing.allocator;
+    const src =
+        \\name: "true"
+        \\version: "null"
+    ;
+    const json = try yamlFrontmatterToJson(alloc, src);
+    defer alloc.free(json);
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+    defer parsed.deinit();
+    try std.testing.expect(parsed.value.object.get("name").? == .bool);
+    try std.testing.expect(parsed.value.object.get("version").? == .null);
+}
+
+test "yamlFrontmatterToJson: two-level nesting via x-usezombie shape" {
+    const alloc = std.testing.allocator;
+    const src =
+        \\name: foo
+        \\x-usezombie:
+        \\  network:
+        \\    allow:
+        \\      - api.fly.dev
+        \\      - api.upstash.com
+        \\  budget:
+        \\    daily_dollars: 1.0
+    ;
+    const json = try yamlFrontmatterToJson(alloc, src);
+    defer alloc.free(json);
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
+    defer parsed.deinit();
+    const x = parsed.value.object.get("x-usezombie").?.object;
+    const allow = x.get("network").?.object.get("allow").?.array;
+    try std.testing.expectEqual(@as(usize, 2), allow.items.len);
+    try std.testing.expectEqualStrings("api.fly.dev", allow.items[0].string);
+    try std.testing.expectApproxEqAbs(
+        @as(f64, 1.0),
+        x.get("budget").?.object.get("daily_dollars").?.float,
+        0.001,
+    );
 }

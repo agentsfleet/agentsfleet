@@ -14,6 +14,13 @@ pub const ZombieConfigError = error{
     InvalidCredentialRef,
     InvalidBudget,
     InvalidSignatureConfig,
+    RuntimeKeysOutsideBlock,
+    UnknownRuntimeKey,
+    UsezombieBlockRequired,
+    NameMismatch,
+    InvalidNameFormat,
+    InvalidVersionFormat,
+    InvalidTagFormat,
 };
 
 pub const ZombieStatus = enum {
@@ -110,6 +117,32 @@ pub const ZombieConfig = struct {
 comptime {
     std.debug.assert(@sizeOf(ZombieConfig) == 288);
 }
+
+/// Authoring metadata extracted from SKILL.md frontmatter (the SOUL file's
+/// top-level keys). Required: `name`, `description`, `version`. Optional
+/// pass-through fields (`tags`, `author`, `model`, `when_to_use`) are
+/// parsed but not interpreted by the runtime — they exist for skill-host
+/// portability and ecosystem use. Cross-file invariant enforced upstream:
+/// `SkillMetadata.name == ZombieConfig.name`.
+pub const SkillMetadata = struct {
+    name: []const u8,
+    description: []const u8,
+    version: []const u8,
+    when_to_use: ?[]const u8 = null,
+    tags: []const []const u8 = &.{},
+    author: ?[]const u8 = null,
+    model: ?[]const u8 = null,
+
+    pub fn deinit(self: *const SkillMetadata, alloc: Allocator) void {
+        alloc.free(self.name);
+        alloc.free(self.description);
+        alloc.free(self.version);
+        if (self.when_to_use) |s| alloc.free(s);
+        freeStringSlice(alloc, self.tags);
+        if (self.author) |s| alloc.free(s);
+        if (self.model) |s| alloc.free(s);
+    }
+};
 
 pub fn freeStringSlice(alloc: Allocator, slice: []const []const u8) void {
     for (slice) |s| alloc.free(s);

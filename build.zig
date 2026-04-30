@@ -84,6 +84,17 @@ pub fn build(b: *std.Build) void {
     });
     const posthog_mod = posthog_dep.module("posthog");
 
+    // ── zig-yaml (TRIGGER.md / SKILL.md frontmatter parsing) ────────────────
+    // Pinned to 0.2.0 (Zig 0.15.x compatible). main targets Zig 0.16; do not
+    // re-pin without verifying the toolchain. Replaces the bespoke YAML→JSON
+    // converter in src/zombie/yaml_frontmatter.zig — gains depth-N nesting,
+    // duplicate-key detection, and proper YAML 1.2 scalar handling.
+    const zig_yaml_dep = b.dependency("zig_yaml", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const yaml_mod = zig_yaml_dep.module("yaml");
+
     // ── Schema embed module (root = schema/ so @embedFile is in-bounds) ──────
     const schema_mod = b.createModule(.{
         .root_source_file = b.path("schema/embed.zig"),
@@ -112,6 +123,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "schema", .module = schema_mod },
                 .{ .name = "build_options", .module = build_opts.createModule() },
                 .{ .name = "hmac_sig", .module = hmac_sig_mod },
+                .{ .name = "yaml", .module = yaml_mod },
             },
         }),
     });
@@ -218,6 +230,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "schema", .module = schema_mod },
                 .{ .name = "build_options", .module = build_opts.createModule() },
                 .{ .name = "hmac_sig", .module = hmac_sig_mod },
+                .{ .name = "yaml", .module = yaml_mod },
             },
         }),
         .filters = test_filters,
