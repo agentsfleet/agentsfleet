@@ -4,10 +4,11 @@
 **Milestone:** M41
 **Workstream:** 002
 **Date:** Apr 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — REST §1 cleanup; not user-blocking
 **Categories:** API | CLI | UI
 **Batch:** B1 — single workstream
+**Branch:** feat/m41-002-url-hygiene
 **Depends on:** M41_001 (lands the `/pause`, `/complete`, `/kill` rename pass and the substrate `match(method)` refactor that this spec relies on)
 
 **Canonical architecture:** `docs/architecture/README.md` (capabilities + data_flow). `docs/REST_API_DESIGN_GUIDELINES.md §1` is the canonical rule this spec enforces.
