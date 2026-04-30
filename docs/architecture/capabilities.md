@@ -91,9 +91,22 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the agent works. Forces the agent to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.zombie_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot, returns `{exit_ok: false, content: "needs continuation", checkpoint_id: ...}`, and the worker re-enqueues the same incident as a synthetic event with `actor=continuation`. The next stage starts fresh and immediately calls `memory_recall` to load the snapshot.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot, returns `{exit_ok: false, content: "needs continuation", checkpoint_id: ...}`, and the worker re-enqueues the same event chain as a synthetic event with `actor=continuation:<original_actor>`. The next stage starts fresh and immediately calls `memory_recall` to load the snapshot.
 
-The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the incident from collapse. They never conflict.
+The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
+
+### The chain-cap escape hatch — `chunk_chain_escalate_human`
+
+A pathological agent can in principle chunk forever — each stage hits the L3 threshold, snapshots, and the worker dutifully re-enqueues. To bound this, the runtime caps each chain at **10 continuations**. On the 11th attempt:
+
+- **No XADD.** The worker stops re-enqueueing this chain.
+- **`failure_label = chunk_chain_escalate_human`** is written to the originating event row. The label appears in `zombiectl events {id}`, the dashboard Events tab, and the activity stream's terminal `event_complete` frame.
+- **The zombie itself stays alive.** Only this one chain is forfeit; future webhooks, cron fires, and operator steers land on the events stream as fresh chains with their own 10-chunk budgets.
+- **Idempotency on replay** is preserved by the `(zombie_id, event_id)` PRIMARY KEY — a duplicate XADD of an already-processed event is a no-op.
+
+**Notification today is silent.** The label is observability — the operator sees it only by looking (`zombiectl events`, dashboard, SSE tail). There is no automatic Slack post, email, or page when `chunk_chain_escalate_human` fires. Three follow-ups can wire active notification: (a) extend the M47 approval inbox to surface non-approval failure_labels needing attention, (b) instruct the SKILL prose to post a Slack handoff message preemptively on the agent's 10th continuation, or (c) add an optional `escalation_webhook_url` on the zombie config that the worker POSTs to whenever this label fires. None of these ship in the M41 PR.
+
+**Resuming a forfeited chain manually.** There is no special "resume chunk-chain" endpoint. The cleanest path is `zombiectl steer {id} "continue from incident:<id>:findings — pick up where you left off"`. This XADDs a fresh chat event; the SKILL prose tells the agent to `memory_recall` the snapshot. The new event's chain starts at zero — the operator gets another 10-chunk budget without the runtime needing a dedicated resume verb.
 
 ### Defaults — the user shouldn't have to do token math
 

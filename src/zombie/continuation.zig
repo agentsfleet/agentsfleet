@@ -3,16 +3,18 @@
 //! When a stage finishes with `exit_ok=false` AND a `checkpoint_id`, the
 //! agent is signalling "I voluntarily stopped to be resumed in a fresh
 //! stage" (L3 chunk-threshold trigger). The worker is responsible for
-//! re-enqueueing the same incident as a synthetic event with
-//! `actor=continuation:<original_actor>` so the next stage opens with a
-//! fresh context window and a `memory_recall` of the snapshot.
+//! re-enqueueing the same event chain as a synthetic continuation event
+//! with `actor=continuation:<original_actor>` so the next stage opens
+//! with a fresh context window and a `memory_recall` of the snapshot.
+//! Domain-neutral: works for any zombie shape (incident response,
+//! morning health check, cron-driven housekeeping, steer chats).
 //!
 //! Two safety properties live here, separately from the call site that
 //! actually performs the XADD + PG count:
 //!
 //!   1. The **classifier** maps `(stage_result, prior_continuation_count)`
 //!      onto a `Verdict`. Force-stop fires at exactly 10 prior
-//!      continuations on the same incident — Invariant 4 of the spec.
+//!      continuations on the same chain — Invariant 4 of the spec.
 //!      The classifier never touches Redis or Postgres.
 //!
 //!   2. The **payload builder** produces the JSON-stringified
@@ -33,7 +35,7 @@ const event_envelope = @import("event_envelope.zig");
 /// Hard cap from Invariant 4: never re-enqueue a continuation if the
 /// incident already produced this many. The 11th attempt force-stops
 /// with a clear operator-facing error.
-pub const max_continuations_per_incident: u32 = 10;
+pub const max_continuations_per_chain: u32 = 10;
 
 /// Outcome of `classify`. `enqueue` carries the bytes that the call site
 /// XADDs onto `zombie:{id}:events`; `force_stop` carries the failure
@@ -51,8 +53,8 @@ pub const Verdict = union(enum) {
         original_event_id: []const u8,
         checkpoint_id: []const u8,
     },
-    /// 11th continuation on the same incident. Worker UPDATEs the
-    /// originating row with `failure_label = "incident_chunk_loop"`,
+    /// 11th continuation on the same chain. Worker UPDATEs the
+    /// originating row with `failure_label = "chunk_chain_escalate_human"`,
     /// surfaces to operator, never XADDs.
     force_stop: struct {
         prior_continuation_count: u32,
@@ -72,7 +74,7 @@ pub fn classify(
     const checkpoint_id = stage.checkpoint_id orelse return .no_continuation;
     if (checkpoint_id.len == 0) return .no_continuation;
 
-    if (prior_continuation_count >= max_continuations_per_incident) {
+    if (prior_continuation_count >= max_continuations_per_chain) {
         return .{ .force_stop = .{ .prior_continuation_count = prior_continuation_count } };
     }
 
@@ -169,11 +171,11 @@ test "classify: exit_ok=false + checkpoint_id + count<10 → enqueue" {
     }
 }
 
-test "classify: count == max_continuations_per_incident → force_stop on 11th attempt" {
+test "classify: count == max_continuations_per_chain → force_stop on 11th attempt" {
     const stage = chunkStage("ckpt-xyz");
-    const verdict = classify(stage, "webhook:github", "1729-0", max_continuations_per_incident);
+    const verdict = classify(stage, "webhook:github", "1729-0", max_continuations_per_chain);
     switch (verdict) {
-        .force_stop => |s| try std.testing.expectEqual(@as(u32, max_continuations_per_incident), s.prior_continuation_count),
+        .force_stop => |s| try std.testing.expectEqual(@as(u32, max_continuations_per_chain), s.prior_continuation_count),
         else => try std.testing.expect(false),
     }
 }

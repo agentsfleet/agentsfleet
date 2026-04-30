@@ -95,7 +95,7 @@ Before each tool call, compute fill ratio: `current_tokens / context_cap_tokens`
 
 ### §7 — Continuation event flow
 `src/zombie/continuation.zig`: when stage returns `exit_ok=false` with `checkpoint_id`, the worker:
-1. Counts existing continuation events for this incident — `SELECT count(*) FROM core.zombie_events WHERE incident_id = $1 AND event_type = 'continuation'`. If ≥ 10, force-stop with `incident_chunk_loop` error (Invariant 4) — no XADD, surface to operator.
+1. Counts existing continuation events for this incident — `SELECT count(*) FROM core.zombie_events WHERE incident_id = $1 AND event_type = 'continuation'`. If ≥ 10, force-stop with `chunk_chain_escalate_human` error (Invariant 4) — no XADD, surface to operator.
 2. Otherwise XADD to `zombie:{id}:events` with the **shipped column names** (per `schema/019_zombie_events.sql:20-22`):
    - `event_type = 'continuation'`
    - `actor = 'continuation:<original_actor>'`  (flat string, colon-compound — `event_envelope.zig` already accepts this shape)
@@ -179,7 +179,7 @@ Substitution contract:
 | `test_memory_checkpoint_nudge_fires` | Run 6 tool calls with `memory_checkpoint_every=5` → assert nudge appears in agent prompt at call 5 |
 | `test_stage_chunk_at_threshold` | Force context fill to 80% with `stage_chunk_threshold=0.75` → assert stage returns `exit_ok=false` with checkpoint_id |
 | `test_continuation_event_resumes` | After chunk, assert continuation event lands → next stage opens → memory_recall called → new tokens generated |
-| `test_max_continuation_chain_10` | Force 11 chunks in a row → 11th force-stops with `incident_chunk_loop` error |
+| `test_max_continuation_chain_10` | Force 11 chunks in a row → 11th force-stops with `chunk_chain_escalate_human` error |
 | `test_config_hot_reload_next_event` | PATCH `tool_window` from 30 to 5 → in-flight uses 30 → next event uses 5 |
 
 All tests in `tests/integration/executor_policy_test.zig` and `tests/integration/context_lifecycle_test.zig`.
