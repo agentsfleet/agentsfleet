@@ -29,14 +29,19 @@ const worker_zombie = @import("worker_zombie.zig");
 /// the `worker_zombie.watchShutdown` poll; the exited atomic is set once
 /// by `zombieRuntimeWrapper` after `worker_zombie.zombieWorkerLoop` returns
 /// and is read by `sweepExitedLocked` to decide which entries are reapable.
+/// `reload_pending` is the §9 hot-reload signal — the watcher flips it on
+/// `zombie_config_changed`; the per-zombie thread reads + clears it
+/// between events and reloads `session.config` from PG.
 pub const ZombieRuntime = struct {
     cancel: std.atomic.Value(bool),
     exited: std.atomic.Value(bool),
+    reload_pending: std.atomic.Value(bool),
 
     pub fn init() ZombieRuntime {
         return .{
             .cancel = std.atomic.Value(bool).init(false),
             .exited = std.atomic.Value(bool).init(false),
+            .reload_pending = std.atomic.Value(bool).init(false),
         };
     }
 };

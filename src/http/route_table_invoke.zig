@@ -14,6 +14,7 @@ const common = @import("handlers/common.zig");
 const hx_mod = @import("handlers/hx.zig");
 
 const health = @import("handlers/health.zig");
+const model_caps_h = @import("handlers/model_caps.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
 const github_cb = @import("handlers/auth/github_callback.zig");
 const zombie_api = @import("handlers/zombies/api.zig");
@@ -76,6 +77,11 @@ pub fn invokeMetrics(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     health.innerMetrics(hx.*, req);
 }
 
+pub fn invokeModelCaps(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    model_caps_h.innerGetModelCaps(hx.*, req);
+}
+
 // ── Auth sessions ─────────────────────────────────────────────────────────
 
 pub fn invokeCreateAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -84,14 +90,14 @@ pub fn invokeCreateAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route
     auth_sessions.innerCreateAuthSession(hx.*);
 }
 
-pub fn invokeCompleteAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    auth_sessions.innerCompleteAuthSession(hx.*, req, route.complete_auth_session);
-}
-
 pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
     auth_sessions.innerPollAuthSession(hx.*, route.poll_auth_session);
+}
+
+pub fn invokePatchAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
+    auth_sessions.innerPatchAuthSession(hx.*, req, route.patch_auth_session);
 }
 
 // ── OAuth callbacks ───────────────────────────────────────────────────────
@@ -110,9 +116,9 @@ pub fn invokeCreateWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) 
     ws_lifecycle.innerCreateWorkspace(hx.*, req);
 }
 
-pub fn invokePauseWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_ops.innerPauseWorkspace(hx.*, req, route.pause_workspace);
+pub fn invokePatchWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
+    ws_ops.innerPatchWorkspace(hx.*, req, route.patch_workspace);
 }
 
 pub fn invokeGetTenantBilling(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -199,12 +205,6 @@ pub fn invokePatchWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Ro
     if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.patch_workspace_zombie;
     zombie_api.innerPatchZombie(hx.*, req, r.workspace_id, r.zombie_id);
-}
-
-pub fn invokeKillWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    const r = route.kill_workspace_zombie;
-    zombie_api.innerKillZombie(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {

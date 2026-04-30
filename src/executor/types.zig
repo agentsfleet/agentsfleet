@@ -153,6 +153,12 @@ pub const MemoryBackendConfig = struct {
     }
 };
 
+// Per-execution policy + context-budget bundle lives in
+// `context_budget.zig` — kept out of this file to stay under the 350-line
+// FLL gate and to group the policy types under one cohesive module.
+// Consumers import context_budget directly; types.zig is identity +
+// resource-limits + lease state only.
+
 pub fn generateExecutionId() ExecutionId {
     var id: ExecutionId = undefined;
     std.crypto.random.bytes(&id);
@@ -273,3 +279,4 @@ test "MemoryBackendConfig defaults are sane" {
     try std.testing.expectEqual(@as(u32, 100_000), cfg.max_entries);
     try std.testing.expectEqual(@as(u32, 72), cfg.daily_retention_hours);
 }
+

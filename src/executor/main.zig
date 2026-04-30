@@ -13,7 +13,8 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const transport = @import("transport.zig");
 const handler_mod = @import("handler.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const lease_mod = @import("lease.zig");
 const types = @import("types.zig");
 const landlock = @import("landlock.zig");
@@ -73,7 +74,7 @@ pub fn main() !void {
         log.warn("startup.non_linux host_backend=degraded", .{});
     }
 
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
 
     var lease_manager = lease_mod.LeaseManager.init(&store);
@@ -144,10 +145,19 @@ fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default: u64) u64 {
 // Pull in tests from all executor modules.
 test {
     _ = @import("types.zig");
+    _ = @import("context_budget.zig");
     _ = @import("protocol.zig");
     _ = @import("transport.zig");
     _ = @import("session.zig");
+    _ = @import("session_test.zig");
+    _ = @import("runtime/session_store.zig");
+    _ = @import("runtime/secret_substitution.zig");
+    _ = @import("runtime/policy_http_request.zig");
+    _ = @import("runtime/policy_http_request_test.zig");
+    _ = @import("runner_progress.zig");
+    _ = @import("runner_progress_test.zig");
     _ = @import("handler.zig");
+    _ = @import("handler_create_execution_test.zig");
     _ = @import("lease.zig");
     _ = @import("landlock.zig");
     _ = @import("cgroup.zig");

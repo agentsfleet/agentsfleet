@@ -9,10 +9,11 @@
 
 const std = @import("std");
 const handler_mod = @import("handler.zig");
-const session_mod = @import("session.zig");
+const Session = @import("session.zig");
+const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 
-fn makeHandler(alloc: std.mem.Allocator, store: *session_mod.SessionStore) handler_mod.Handler {
+fn makeHandler(alloc: std.mem.Allocator, store: *SessionStore) handler_mod.Handler {
     return handler_mod.Handler.init(alloc, store, 30_000, .{}, .deny_all);
 }
 
@@ -22,7 +23,7 @@ fn makeHandler(alloc: std.mem.Allocator, store: *session_mod.SessionStore) handl
 
 test "T3: CreateExecution with null params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -39,7 +40,7 @@ test "T3: CreateExecution with null params returns invalid_params" {
 
 test "T3: StartStage with null params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -56,7 +57,7 @@ test "T3: StartStage with null params returns invalid_params" {
 
 test "T3: CancelExecution with null params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -73,7 +74,7 @@ test "T3: CancelExecution with null params returns invalid_params" {
 
 test "T3: GetUsage with null params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -90,7 +91,7 @@ test "T3: GetUsage with null params returns invalid_params" {
 
 test "T3: DestroyExecution with null params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -107,7 +108,7 @@ test "T3: DestroyExecution with null params returns invalid_params" {
 
 test "T3: Heartbeat with null params returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -136,7 +137,7 @@ const MALFORMED_IDS = [_][]const u8{
 
 test "T3: StartStage with malformed execution_id returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -159,7 +160,7 @@ test "T3: StartStage with malformed execution_id returns invalid_params" {
 
 test "T3: GetUsage with malformed execution_id returns invalid_params" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -186,7 +187,7 @@ const NONEXISTENT_ID = "deadbeefdeadbeefdeadbeefdeadbeef";
 
 test "T3: StartStage with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -207,7 +208,7 @@ test "T3: StartStage with unknown execution_id returns execution_failed" {
 
 test "T3: GetUsage with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -228,7 +229,7 @@ test "T3: GetUsage with unknown execution_id returns execution_failed" {
 
 test "T3: CancelExecution with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -249,7 +250,7 @@ test "T3: CancelExecution with unknown execution_id returns execution_failed" {
 
 test "T3: Heartbeat with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -270,7 +271,7 @@ test "T3: Heartbeat with unknown execution_id returns execution_failed" {
 
 test "T3: DestroyExecution with unknown execution_id returns execution_failed" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 
@@ -295,7 +296,7 @@ test "T3: DestroyExecution with unknown execution_id returns execution_failed" {
 
 test "T3: unknown method returns method_not_found" {
     const alloc = std.testing.allocator;
-    var store = session_mod.SessionStore.init(alloc);
+    var store = SessionStore.init(alloc);
     defer store.deinit();
     var h = makeHandler(alloc, &store);
 

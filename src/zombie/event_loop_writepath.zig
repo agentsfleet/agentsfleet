@@ -9,7 +9,7 @@
 // lands when the NullClaw lifecycle hooks ship — until then the emitter
 // fires zero times and behaviour matches a one-shot startStage).
 //
-// The 13 steps follow the EXECUTE flow in docs/ARCHITECHTURE.md.
+// The 13 steps follow the EXECUTE flow in docs/architecture/.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -23,6 +23,7 @@ const progress_callbacks = @import("../executor/progress_callbacks.zig");
 const id_format = @import("../types/id_format.zig");
 
 const event_loop_gate = @import("event_loop_gate.zig");
+const event_loop_continuation = @import("event_loop_continuation.zig");
 const helpers = @import("event_loop_helpers.zig");
 const metering = @import("metering.zig");
 const activity_publisher = @import("activity_publisher.zig");
@@ -47,6 +48,7 @@ const LABEL_AUTO_KILL_POLICY = "auto_kill_policy";
 const STATUS_PROCESSED = "processed";
 const STATUS_AGENT_ERROR = "agent_error";
 const STATUS_GATE_BLOCKED = "gate_blocked";
+
 
 // ── ProgressEmitter wiring → activity_publisher PUBLISH thunks ──────────────
 
@@ -99,6 +101,7 @@ fn emitProgress(ctx_ptr: *anyopaque, frame: progress_callbacks.ProgressFrame) vo
 // ── INSERT zombie_events (status=received) — idempotent on replay ───────────
 
 fn insertReceivedRow(
+    alloc: Allocator,
     pool: *pg.Pool,
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
@@ -106,11 +109,24 @@ fn insertReceivedRow(
     const conn = try pool.acquire();
     defer pool.release(conn);
     const now_ms = std.time.milliTimestamp();
+
+    // Continuation events carry parent event_id in request_json's
+    // `original_event_id` (§7); lift onto resumes_event_id for index walks.
+    var arena = std.heap.ArenaAllocator.init(alloc);
+    defer arena.deinit();
+    const resumes_event_id: ?[]const u8 = blk: {
+        if (!std.mem.eql(u8, event.event_type, "continuation")) break :blk null;
+        const parsed = std.json.parseFromSlice(std.json.Value, arena.allocator(), event.request_json, .{}) catch break :blk null;
+        if (parsed.value != .object) break :blk null;
+        const v = parsed.value.object.get("original_event_id") orelse break :blk null;
+        break :blk if (v == .string) v.string else null;
+    };
+
     _ = try conn.exec(
         \\INSERT INTO core.zombie_events
         \\  (zombie_id, event_id, workspace_id, actor, event_type,
-        \\   status, request_json, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, 'received', $6::jsonb, $7, $7)
+        \\   status, request_json, resumes_event_id, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, 'received', $6::jsonb, $7, $8, $8)
         \\ON CONFLICT (zombie_id, event_id) DO NOTHING
     , .{
         session.zombie_id,
@@ -119,6 +135,7 @@ fn insertReceivedRow(
         event.actor,
         event.event_type,
         event.request_json,
+        resumes_event_id,
         now_ms,
     });
 }
@@ -246,6 +263,7 @@ fn finalize(
     wall_ms: u64,
 ) void {
     markTerminal(cfg.pool, session, event, stage_result, wall_ms);
+    event_loop_continuation.run(alloc, cfg, session, event, stage_result);
     metering.recordZombieDelivery(
         cfg.pool,
         alloc,
@@ -283,7 +301,7 @@ pub fn run(
     cfg: EventLoopConfig,
     consecutive_errors: *u32,
 ) u32 {
-    insertReceivedRow(cfg.pool, session, event) catch |err| {
+    insertReceivedRow(alloc, cfg.pool, session, event) catch |err| {
         obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.received_insert_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
         helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;

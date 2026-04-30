@@ -59,8 +59,8 @@
     },
     {
       "operationId": "pause_workspace",
-      "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}/pause",
+      "method": "PATCH",
+      "path": "/v1/workspaces/{workspace_id}",
       "description": "Pause or unpause admission of new runs for a workspace.",
       "actionClass": "sensitive"
     },

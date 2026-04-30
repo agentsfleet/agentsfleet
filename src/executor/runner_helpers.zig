@@ -9,6 +9,7 @@ const tools_mod = nullclaw.tools;
 
 const json = @import("json_helpers.zig");
 const tool_bridge = @import("tool_bridge.zig");
+const context_budget = @import("context_budget.zig");
 
 const log = std.log.scoped(.executor_runner);
 
@@ -70,11 +71,18 @@ pub fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
 
 /// Build tools from RPC tools array, or fall back to allTools.
 /// Unknown names are logged to stderr and collected in BuildResult.skipped.
+///
+/// `policy` is the session-owned ExecutionPolicy. When non-null, tools that
+/// consult per-execution policy (currently only http_request) construct
+/// the policy-aware variant. Null is the legitimate path for the
+/// `allTools()` fallback (no spec) and for harness/test paths that don't
+/// drive the bridge.
 pub fn buildToolsFromSpec(
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
     tools_spec: ?std.json.Value,
     cfg: *const Config,
+    policy: ?*const context_budget.ExecutionPolicy,
 ) ![]tools_mod.Tool {
     const spec = tools_spec orelse return try tools_mod.allTools(alloc, workspace_path, .{
         .allowed_paths = &.{workspace_path},
@@ -85,7 +93,7 @@ pub fn buildToolsFromSpec(
         .tools_config = cfg.tools,
     });
 
-    const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg);
+    const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg, policy);
     for (result.skipped) |name| {
         log.warn("executor.runner.tool_skipped name={s}", .{name});
         alloc.free(name);

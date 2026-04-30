@@ -11,7 +11,7 @@
 **Branch:** feat/m48-byok-provider (to be created)
 **Depends on:** M45_001 (vault structured creds — JSON-object plaintext lands there; BYOK uses a credential named `llm` carrying `{provider, api_key, model}`). M11_005 (tenant billing — DONE; provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §0 ("not a coding-agent product" — BYOK matters when the provider key drives all LLM cost), §10 (capabilities — implicit in "secrets never in agent context").
+**Canonical architecture:** `docs/architecture/` §0 ("not a coding-agent product" — BYOK matters when the provider key drives all LLM cost), §10 (capabilities — implicit in "secrets never in agent context").
 
 ---
 
@@ -35,6 +35,47 @@ This provenance was folded inline here so the M48 spec is self-contained — pre
 ## Cross-spec amendment (Apr 26, 2026)
 
 M45 dropped the typed credential registry. There is no `type=llm_provider` discriminator and no `samples/fixtures/m45-credential-fixtures.json` — credentials are opaque JSON objects keyed by name. M48 retains every BYOK capability described below by storing the provider config as a vault credential whose `data` is `{provider, api_key, model}`. The CLI / UI side filters by **credential name convention** (BYOK reads the vault credential named `llm` per tenant) instead of by type. Wherever this spec says "credential of type `llm_provider`", read it as "the tenant's `llm` credential". Wherever it references the M45 fixtures file, ignore — that file does not exist.
+
+---
+
+## Cross-spec amendment (Apr 29, 2026 — billing model + cap origin)
+
+Two corrections to the design below, both arising from the M41-spillover Discovery work in M49 and the architecture refactor of `docs/architecture/` (now split into per-topic files under `docs/architecture/`).
+
+**Correction 1 — balance gate stays on for both postures.** The original §3 said "BYOK skips the balance gate." That is wrong. The gate runs for both postures; only the per-event cost function differs:
+
+- **Platform-managed.** Per-event credit deducted bundles language-model tokens, orchestration, and egress / storage. Margin over our wholesale language-model cost.
+- **Bring Your Own Key.** Per-event credit deducted is orchestration only (the operator pays the provider for tokens directly). Smaller, but non-zero.
+
+The Free plan does not allow Bring Your Own Key — Free is the evaluation tier; giving free orchestration to operators with their own language-model key would be a vector for abuse. BYOK requires Team or Scale.
+
+Code shape: `processEvent` runs one balance gate at step 3 (resolve plan + posture, estimate cost, compare against `tenant_billing.balance_cents`). Step 9's telemetry insert calls `compute_charge(plan, posture, tokens)` which returns the right cents for the posture.
+
+Full billing reasoning: [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md).
+
+**Correction 2 — `tenant_providers` carries `context_cap_tokens`.** The credential body stays `{provider, api_key, model}` only. The model's context cap is resolved separately, at `provider set` time, by GETting the model-caps endpoint (`https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json?model=<urlencoded>`) and persisted as `core.tenant_providers.context_cap_tokens`. Splitting cap from credential lets the cap be re-resolved when the model changes without touching the vault.
+
+Resolver shape additions:
+
+```
+resolveActiveProvider(tenant_id) → {
+  provider:           "platform" | "anthropic" | "fireworks" | "openai" | ...,
+  api_key:            string,
+  model:              string,
+  context_cap_tokens: u32,           ← NEW; resolved at provider set time, persisted on tenant_providers
+  mode:               "platform" | "byok",
+}
+```
+
+Worker overlay at `processEvent`: if the zombie's frontmatter carries `model: ""` or `context_cap_tokens: 0` (the install-skill writes these sentinels under BYOK posture), the worker overlays from `tenant_providers`. Both fields are independently overlayable. Full diagram: [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.7.
+
+Schema change relative to original §1 below: `core.tenant_providers` gains `context_cap_tokens INTEGER`. Also `model TEXT` (originally optional override; now persisted authoritatively under BYOK).
+
+Test additions on top of original §10:
+- `test_provider_set_resolves_cap_from_caps_endpoint` — `provider set` writes `tenant_providers.context_cap_tokens` from the endpoint response.
+- `test_byok_overlays_cap_at_trigger_time` — frontmatter `context_cap_tokens: 0` + `mode=byok` → worker uses `tenant_providers.context_cap_tokens`.
+- `test_provider_set_with_unknown_model_400s` — model not in caps endpoint → `400 model_not_in_caps_catalogue`.
+- `test_byok_blocked_on_free_plan` — Free-plan tenant trying to set BYOK → 403 with `byok_requires_paid_plan`.
 
 ---
 
@@ -93,9 +134,14 @@ The mode discriminator is `platform` (default) or `byok`. When `byok`, the resol
 3. If `mode=byok`: read vault credential named `llm` (the tenant-scoped BYOK record), parse `{provider, api_key, model}`, return with `mode=byok`. Surface `credential_missing` if the row is absent.
 4. Return shape consumed by `executor.startStage` to choose provider routing.
 
-### §3 — Balance gate skip on BYOK
+### §3 — Balance gate cost function (corrected — see Apr 29 amendment above)
 
-In `processEvent`, before invoking the executor, the existing balance gate checks `tenant_billing.balance_cents > 0`. With BYOK active, the gate is short-circuited (operator pays their LLM provider directly; we don't meter LLM tokens). Tool-call metering for non-LLM costs (network egress, storage) stays in place if the project has it; otherwise no metering.
+In `processEvent`, before invoking the executor, the balance gate checks `tenant_billing.balance_cents` against the estimated event cost. The estimate uses the per-event cost function for the active posture:
+
+- `mode=platform` → bundled rate (covers language-model tokens + orchestration + egress).
+- `mode=byok` → orchestration-only rate (operator pays their language-model provider directly).
+
+The gate runs for both postures. The Free plan does not allow BYOK (paid plans only). Step 9's telemetry insert calls `compute_charge(plan, posture, tokens)` and updates `tenant_billing.balance_cents`. Full reasoning in [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md).
 
 ### §4 — Provider catalog
 
@@ -105,7 +151,9 @@ In `processEvent`, before invoking the executor, the existing balance gate check
 {
   "anthropic": {"default_model": "claude-sonnet-4-6", "api_base": "https://api.anthropic.com"},
   "openai": {"default_model": "gpt-5", "api_base": "https://api.openai.com"},
-  "cerebras": {"default_model": "qwen3-coder", "api_base": "https://api.cerebras.ai"},
+  "fireworks": {"default_model": "accounts/fireworks/models/kimi-k2.6", "api_base": "https://api.fireworks.ai/inference/v1"},
+  "moonshot": {"default_model": "kimi-k2.6", "api_base": "https://api.moonshot.cn/v1"},
+  "zhipu": {"default_model": "glm-5.1", "api_base": "https://open.bigmodel.cn/api/paas/v4"},
   "together": {"default_model": "deepseek-coder", "api_base": "https://api.together.xyz"}
 }
 ```

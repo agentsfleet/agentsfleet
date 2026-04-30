@@ -17,9 +17,11 @@ const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const executor_client = @import("../executor/client.zig");
 const executor_transport = @import("../executor/transport.zig");
+const context_budget = @import("../executor/context_budget.zig");
 const id_format = @import("../types/id_format.zig");
 
 const types = @import("event_loop_types.zig");
+const event_loop_secrets = @import("event_loop_secrets.zig");
 const ZombieSession = types.ZombieSession;
 const EventLoopConfig = types.EventLoopConfig;
 
@@ -239,11 +241,59 @@ pub fn executeInSandbox(
     // trace_id and session_id both bind to event.event_id: no upstream trace
     // propagator exists yet, so the per-event ID doubles as both the distributed
     // trace handle and the per-turn session identifier.
-    const execution_id = cfg.executor.createExecution(cfg.workspace_path, .{
-        .trace_id = event.event_id,
-        .zombie_id = session.zombie_id,
-        .workspace_id = session.workspace_id,
-        .session_id = event.event_id,
+    // Build the secrets_map from the zombie's configured credential names.
+    // The slice is owned here; createExecution serialises it across the RPC
+    // boundary (handler deep-dupes into the session arena), so the resolved
+    // slice can be freed as soon as the call returns. An empty credential
+    // list or a vault failure produces a null secrets_map — the agent will
+    // surface `secret_not_found` if it tries to substitute against it.
+    var secrets_obj_alive = false;
+    var secrets_obj = std.json.ObjectMap.init(alloc);
+    defer if (secrets_obj_alive) secrets_obj.deinit();
+    var resolved_secrets: ?[]event_loop_secrets.ResolvedSecret = null;
+    defer if (resolved_secrets) |r| event_loop_secrets.freeResolved(alloc, r);
+
+    if (session.config.credentials.len > 0) {
+        if (event_loop_secrets.resolveSecretsMap(alloc, cfg.pool, session.workspace_id, session.config.credentials)) |r| {
+            resolved_secrets = r;
+            for (r) |entry| {
+                secrets_obj.put(entry.name, entry.parsed.value) catch {};
+            }
+            secrets_obj_alive = true;
+        } else |err| {
+            log.warn("zombie_event_loop.secrets_resolve_failed zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+        }
+    }
+    const secrets_map: ?std.json.Value = if (secrets_obj_alive) .{ .object = secrets_obj } else null;
+
+    // §8 auto-defaults: every empty/zero knob is the auto sentinel.
+    // applyContextDefaults substitutes spec defaults so the executor
+    // receives a fully-populated ContextBudget. Frontmatter overrides
+    // (x-usezombie.context) land here once the parser ships — the
+    // parser writes non-zero values, applyContextDefaults leaves them
+    // alone.
+    var ctx_budget: context_budget.ContextBudget = .{};
+    context_budget.applyContextDefaults(&ctx_budget);
+    log.info("zombie_event_loop.context_budget_resolved zombie_id={s} tool_window={d} memory_checkpoint_every={d} stage_chunk_threshold={d:.2} context_cap_tokens={d}", .{
+        session.zombie_id,
+        ctx_budget.tool_window,
+        ctx_budget.memory_checkpoint_every,
+        ctx_budget.stage_chunk_threshold,
+        ctx_budget.context_cap_tokens,
+    });
+
+    const execution_id = cfg.executor.createExecution(.{
+        .workspace_path = cfg.workspace_path,
+        .correlation = .{
+            .trace_id = event.event_id,
+            .zombie_id = session.zombie_id,
+            .workspace_id = session.workspace_id,
+            .session_id = event.event_id,
+        },
+        .secrets_map = secrets_map,
+        .context = ctx_budget,
+        // network_policy / tools remain default empty — slice 3 wires
+        // per-zombie network allowlist + tool filter from frontmatter.
     }) catch |err| {
         log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
         return err;

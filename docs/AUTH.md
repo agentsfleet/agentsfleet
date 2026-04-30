@@ -64,9 +64,9 @@ sequenceDiagram
     Browser->>Clerk: POST /tokens<br/>+ __session cookie<br/>{ template: "api" }
     Clerk-->>Browser: { jwt: <user-jwt><br/>aud=https://api.usezombie.com<br/>iss=https://clerk.dev.usezombie.com }
 
-    Browser->>API: POST /v1/auth/sessions/{id}/complete<br/>Authorization: Bearer <user-jwt><br/>body { token: <user-jwt> }
-    Note over API: bearer_or_api_key validates the user-jwt,<br/>handler stores token in session row
-    API-->>Browser: 201 OK
+    Browser->>API: PATCH /v1/auth/sessions/{id}<br/>Authorization: Bearer <user-jwt><br/>body { status: "complete", token: <user-jwt> }
+    Note over API: bearer_or_api_key validates the user-jwt,<br/>handler stores token in session row.<br/>Body mirrors the GET poll response shape.
+    API-->>Browser: 200 { status: complete, token: <user-jwt> }
 
     CLI->>API: GET /v1/auth/sessions/{id}  (next poll)
     API-->>CLI: 200 { status: complete, token: <user-jwt> }

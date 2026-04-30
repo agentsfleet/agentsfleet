@@ -25,7 +25,7 @@ pub const entries = [_]Entry{
     // Authentication
     .{ .method = "POST", .path = "/v1/auth/sessions" },
     .{ .method = "GET", .path = "/v1/auth/sessions/{session_id}" },
-    .{ .method = "POST", .path = "/v1/auth/sessions/{session_id}/complete" },
+    .{ .method = "PATCH", .path = "/v1/auth/sessions/{session_id}" },
     .{ .method = "GET", .path = "/v1/github/callback" },
 
     // Admin
@@ -35,7 +35,7 @@ pub const entries = [_]Entry{
 
     // Workspaces
     .{ .method = "POST", .path = "/v1/workspaces" },
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/pause" },
+    .{ .method = "PATCH", .path = "/v1/workspaces/{workspace_id}" },
 
     // Tenant billing (plan + balance snapshot)
     .{ .method = "GET", .path = "/v1/tenants/me/billing" },
@@ -55,7 +55,6 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "PATCH", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream" },

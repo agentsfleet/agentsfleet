@@ -85,4 +85,10 @@ pub const EventLoopConfig = struct {
     /// `stop` short-circuits delivery pre-claim; `warn`/`continue` allow the
     /// run and differ only in activity-event emission.
     balance_policy: balance_policy_mod.Policy = balance_policy_mod.DEFAULT,
+    /// §9 hot-reload signal — flipped by the watcher on
+    /// `zombie_config_changed`, read + cleared by the per-zombie thread
+    /// between events. Null in tests + the legacy non-watcher path;
+    /// reload then never fires. The atomic outlives the event loop
+    /// (owned by the watcher's ZombieRuntime).
+    reload_pending: ?*std.atomic.Value(bool) = null,
 };

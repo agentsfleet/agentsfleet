@@ -49,7 +49,6 @@ pub const parseTriggerMarkdownWithJson = config_markdown.parseTriggerMarkdownWit
 pub const parseSkillMetadata = config_markdown.parseSkillMetadata;
 pub const ParsedTrigger = config_markdown.ParsedTrigger;
 pub const extractZombieInstructions = config_markdown.extractZombieInstructions;
-pub const validateZombieTools = config_validate.validateZombieTools;
 
 // Test discovery — Zig only runs tests in transitively imported files. The
 // implementation modules are already reached via the `const` imports above,

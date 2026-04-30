@@ -11,7 +11,7 @@
 **Branch:** feat/m40-worker-substrate
 **Depends on:** none structurally — this is the foundation.
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §5 (Architecture Direction), §9 (Steer Flow), §12 (End-to-End Technical Sequence — steps 5-7, 10).
+**Canonical architecture:** `docs/architecture/` §5 (Architecture Direction), §9 (Steer Flow), §12 (End-to-End Technical Sequence — steps 5-7, 10).
 
 ---
 
@@ -62,7 +62,7 @@ Two streams, two planes:
 - `docs/greptile-learnings/RULES.md` — universal repo discipline.
 - `docs/ZIG_RULES.md` — every Zig touch: drain/dupe/errdefer chain, ownership encoding, sentinel collision, cross-compile, TLS, memory.
 - `docs/REST_API_DESIGN_GUIDELINES.md` — `POST /kill`, `PATCH /zombies/{id}`, OpenAPI surface. §1-§5 (URL/method/body/response/error conventions), §7 (5-place route registration), §8 (Hx handler contract), §10 (pre-PR test gates).
-- `docs/ARCHITECHTURE.md` — §5 (Architecture Direction), §9 (Steer Flow), §12 steps 5-7, 10.
+- `docs/architecture/` — §5 (Architecture Direction), §9 (Steer Flow), §12 steps 5-7, 10.
 - File & Function Length Gate — 350 file / 50 fn / 70 method.
 - Milestone-ID Gate — no `M40_*` / `§*` references in source files (specs only).
 - Verification Gate — `make lint`, `make test`, `make test-integration` (tier 2 + tier 3 fresh-DB), `make memleak`, `make check-pg-drain`, cross-compile both linux targets.

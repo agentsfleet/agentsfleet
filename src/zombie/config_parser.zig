@@ -69,7 +69,7 @@ pub fn parseZombieConfig(
     const gates = try parseGatesField(alloc, runtime);
     errdefer if (gates) |g| config_gates.freeGatePolicy(alloc, g);
 
-    try validate.validateToolsAndCredentials(tools, credentials);
+    try validate.validateCredentials(credentials);
 
     const extended = try parseExtendedFields(alloc, runtime);
 

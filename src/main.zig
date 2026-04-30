@@ -140,6 +140,9 @@ test {
     _ = @import("http/route_matchers.zig");
     _ = @import("zombie/event_envelope.zig");
     _ = @import("zombie/event_envelope_test.zig");
+    _ = @import("zombie/continuation.zig");
+    _ = @import("zombie/event_loop_continuation.zig");
+    _ = @import("zombie/context_lifecycle_integration_test.zig");
     _ = @import("zombie/activity_publisher.zig");
     _ = @import("zombie/event_loop.zig");
     _ = @import("zombie/event_loop_secrets.zig");
@@ -158,6 +161,8 @@ test {
     _ = @import("util/strings/string_joiner.zig");
     _ = @import("util/strings/string_builder.zig");
     _ = @import("util/strings/smol_str.zig");
+    _ = @import("util/strings/case_insensitive_ascii_map.zig");
+    _ = @import("executor/context_budget.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");
@@ -184,6 +189,9 @@ test {
     _ = @import("executor/transport.zig");
     _ = @import("executor/transport_test.zig");
     _ = @import("executor/session.zig");
+    _ = @import("executor/session_test.zig");
+    _ = @import("executor/runtime/session_store.zig");
+    _ = @import("executor/runtime/secret_substitution.zig");
     _ = @import("executor/executor_metrics.zig");
     _ = @import("executor/landlock.zig");
     _ = @import("executor/cgroup.zig");
@@ -209,7 +217,6 @@ test {
     _ = @import("http/handlers/zombies/api_integration_test.zig");
     _ = @import("http/handlers/zombies/create.zig");
     _ = @import("http/handlers/zombies/list.zig");
-    _ = @import("http/handlers/zombies/kill.zig");
     _ = @import("http/handlers/zombies/patch.zig");
     // M18_001: zombie execution telemetry
     _ = @import("state/zombie_telemetry_store.zig");
@@ -230,6 +237,8 @@ test {
     _ = @import("http/handlers/api_keys/list.zig");
     _ = @import("http/handlers/api_keys/tenant_integration_test.zig");
     _ = @import("http/handlers/tenant_billing_integration_test.zig");
+    _ = @import("http/handlers/model_caps.zig");
+    _ = @import("http/handlers/model_caps_integration_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/webhooks/clerk_integration_test.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");

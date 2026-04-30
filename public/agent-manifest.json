@@ -21,17 +21,10 @@
       "actionClass": "sensitive"
     },
     {
-      "operationId": "update_zombie",
+      "operationId": "patch_zombie",
       "method": "PATCH",
       "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}",
-      "description": "Update a Zombie's mutable configuration.",
-      "actionClass": "sensitive"
-    },
-    {
-      "operationId": "kill_zombie",
-      "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill",
-      "description": "Terminate a running Zombie. The watcher cancels any in-flight executor session and marks the Zombie killed.",
+      "description": "Partial update of a Zombie. Body fields are optional and presence-based: config_json (replace config) and/or status:\"killed\" (cancel any in-flight executor session and mark the Zombie killed).",
       "actionClass": "sensitive"
     },
     {
@@ -64,8 +57,8 @@
     },
     {
       "operationId": "pause_workspace",
-      "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}/pause",
+      "method": "PATCH",
+      "path": "/v1/workspaces/{workspace_id}",
       "description": "Pause or unpause admission of new work for a workspace.",
       "actionClass": "sensitive"
     },
@@ -88,7 +81,7 @@
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],
-    "sensitive": ["create_zombie", "update_zombie", "kill_zombie", "steer_zombie", "ingest_zombie_webhook", "pause_workspace", "execute_tool"],
+    "sensitive": ["create_zombie", "patch_zombie", "steer_zombie", "ingest_zombie_webhook", "pause_workspace", "execute_tool"],
     "critical": []
   }
 }

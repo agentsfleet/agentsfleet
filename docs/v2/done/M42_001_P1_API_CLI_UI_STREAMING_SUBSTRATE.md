@@ -14,7 +14,7 @@
 - **M47_001** (Approval Inbox) — *functional* dependency for `gate_blocked` resolution. Until M47 ships, blocked events are stranded; M42 ships a fallback admin endpoint (see §3 step 4 fallback). Independent of M41/M43.
 - **Note:** the executor `startStage` progress-callback channel (`tool_call_started` / `agent_response_chunk` / `tool_call_completed`) is implemented in this milestone (originally implied for M41 but not tracked there) — see §3.5.
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §8.3 (trigger modes), §9 (steer flow diagram), §10 (event stream + history capability), §12 step 7-9 (event ingest, history INSERT/UPDATE).
+**Canonical architecture:** `docs/architecture/` §8.3 (trigger modes), §9 (steer flow diagram), §10 (event stream + history capability), §12 step 7-9 (event ingest, history INSERT/UPDATE).
 
 ---
 
@@ -22,7 +22,7 @@
 
 Before touching any file, read in this order:
 
-1. `docs/ARCHITECHTURE.md` §9 — the canonical A/B/C/D end-to-end sequence (Install / Trigger / Execute / Watch) and the "three durable stores" + "Two streams + one pub/sub channel" tables. Don't reinvent.
+1. `docs/architecture/` §9 — the canonical A/B/C/D end-to-end sequence (Install / Trigger / Execute / Watch) and the "three durable stores" + "Two streams + one pub/sub channel" tables. Don't reinvent.
 2. `src/http/handlers/zombies/steer_integration_test.zig` — current `/steer` endpoint pattern. Note this milestone REWRITES `steer.zig` to direct-XADD; mirror the test scaffolding, not the SET/GETDEL code path.
 3. `src/zombie/event_loop.zig` + `src/zombie/event_loop_helpers.zig` — current worker loop; this milestone removes the top-of-loop `GETDEL zombie:{id}:steer` block and rewires `processEvent` to the 13-step write path in §3.
 4. `src/queue/redis_client.zig` — Redis client. Pub/sub `SUBSCRIBE` blocks the connection; the SSE handler must hold a dedicated conn outside the request-handler pool.
