@@ -159,15 +159,20 @@ pub const ExecutorClient = struct {
         wall_seconds: u64,
         exit_ok: bool,
         failure: ?types.FailureClass,
-        /// M27_001: peak RSS bytes from cgroup (0 = not available).
+        /// peak RSS bytes from cgroup (0 = not available).
         memory_peak_bytes: u64 = 0,
-        /// M27_001: CPU throttle time in ms (0 = not available).
+        /// CPU throttle time in ms (0 = not available).
         cpu_throttled_ms: u64 = 0,
-        /// M27_001: memory limit in bytes for scoring normalization.
+        /// Memory limit in bytes for scoring normalization.
         /// Only populated via getUsage() — start_stage response does not include it.
         memory_limit_bytes: u64 = 0,
-        /// M18_001: ms from stage start to first token received. 0 if executor did not report.
+        /// ms from stage start to first token received. 0 if executor did not report.
         time_to_first_token_ms: u64 = 0,
+        /// Set when the agent voluntarily ended a stage to be resumed in
+        /// a fresh stage (L3 chunk-threshold trigger). Caller-owned
+        /// (allocator dupe) when non-null. The worker reads this on
+        /// `exit_ok=false` to drive continuation re-enqueue (§7).
+        checkpoint_id: ?[]const u8 = null,
     };
 
     /// Agent configuration for StartStage payload (M12_003, M16_003).
@@ -269,6 +274,10 @@ pub const ExecutorClient = struct {
         const result = resp.result orelse return ClientError.InvalidResponse;
         if (result != .object) return ClientError.InvalidResponse;
 
+        const checkpoint: ?[]const u8 = if (json.getStr(result, "checkpoint_id")) |s|
+            try self.alloc.dupe(u8, s)
+        else
+            null;
         return .{
             .content = try self.alloc.dupe(u8, json.getStr(result, "content") orelse ""),
             .token_count = json.getIntOrZero(result, "token_count"),
@@ -278,6 +287,7 @@ pub const ExecutorClient = struct {
             .memory_peak_bytes = json.getIntOrZero(result, "memory_peak_bytes"),
             .cpu_throttled_ms = json.getIntOrZero(result, "cpu_throttled_ms"),
             .time_to_first_token_ms = json.getIntOrZero(result, "time_to_first_token_ms"),
+            .checkpoint_id = checkpoint,
         };
     }
 

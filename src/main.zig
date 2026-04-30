@@ -140,6 +140,7 @@ test {
     _ = @import("http/route_matchers.zig");
     _ = @import("zombie/event_envelope.zig");
     _ = @import("zombie/event_envelope_test.zig");
+    _ = @import("zombie/continuation.zig");
     _ = @import("zombie/activity_publisher.zig");
     _ = @import("zombie/event_loop.zig");
     _ = @import("zombie/event_loop_secrets.zig");
