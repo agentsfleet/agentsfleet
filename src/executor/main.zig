@@ -154,6 +154,8 @@ test {
     _ = @import("runtime/secret_substitution.zig");
     _ = @import("runtime/policy_http_request.zig");
     _ = @import("runtime/policy_http_request_test.zig");
+    _ = @import("runner_progress.zig");
+    _ = @import("runner_progress_test.zig");
     _ = @import("handler.zig");
     _ = @import("handler_create_execution_test.zig");
     _ = @import("lease.zig");

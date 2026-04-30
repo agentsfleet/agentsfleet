@@ -46,11 +46,21 @@ pub const Adapter = struct {
     /// SKILL.md "snapshot every N tools" cadence is being prompted.
     /// 0 disables the cadence (tests + non-streaming paths).
     memory_checkpoint_every: u32 = 0,
+    /// L2 context-lifecycle: once the cumulative completed-tool count
+    /// crosses this threshold, log a `tool_window_exceeded` line each
+    /// subsequent call. SKILL.md prose tells the agent to compact
+    /// findings via memory_store + memory_forget once the threshold
+    /// is hit; the runtime log lets on-call confirm the prompt
+    /// landed. 0 disables. NullClaw doesn't expose mid-loop
+    /// conversation mutation, so the agent — not the runtime —
+    /// drops oldest tool results by consolidating into memory.
+    tool_window: u32 = 0,
     /// Mutable counters — bumped by the observer thread (NullClaw fires
     /// events on the same thread that called `agent.runSingle`, so no
     /// atomics needed).
     tool_call_count: u32 = 0,
     nudges_emitted: u32 = 0,
+    window_exceeded_logs: u32 = 0,
 
     /// NullClaw Observer view of this adapter. Pass to `Agent.fromConfig`.
     pub fn observer(self: *Adapter) observability.Observer {
@@ -128,6 +138,20 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                     self.tool_call_count,
                     self.memory_checkpoint_every,
                     self.nudges_emitted,
+                });
+            }
+            // L2 window: once the cumulative count crosses the window
+            // threshold, every subsequent call emits a structured line
+            // so on-call can spot a runaway incident in the activity
+            // stream. The agent compacts findings via memory_store at
+            // the SKILL prose's direction — the runtime doesn't drop
+            // anything from the conversation itself.
+            if (self.tool_window > 0 and self.tool_call_count > self.tool_window) {
+                self.window_exceeded_logs += 1;
+                log.info("runner_progress.tool_window_exceeded tool_count={d} window={d} excess={d}", .{
+                    self.tool_call_count,
+                    self.tool_window,
+                    self.tool_call_count - self.tool_window,
                 });
             }
         },
@@ -223,83 +247,4 @@ test "redactBytes handles multiple distinct secrets in one pass" {
         "{\"a\":\"${secrets.llm.api_key}\",\"b\":\"${secrets.github.token}\"}",
         result,
     );
-}
-
-// ── L1 memory_checkpoint_every cadence ────────────────────────────────────
-
-const NoopWriter = struct {
-    fd: std.posix.socket_t = -1,
-    request_id: u64 = 0,
-    alloc: Allocator = undefined,
-    fn write(_: *const NoopWriter, _: progress_callbacks.ProgressFrame) void {}
-};
-
-fn fireToolCall(adapter: *Adapter, tool_name: []const u8) void {
-    const evt = observability.ObserverEvent{
-        .tool_call = .{
-            .tool = tool_name,
-            .duration_ms = 0,
-            .success = true,
-            .args = null,
-        },
-    };
-    observerRecordEvent(adapter, &evt);
-}
-
-test "memory_checkpoint_every=0 disables the nudge counter" {
-    const w: progress_writer_mod = undefined;
-    var adapter = Adapter{
-        .writer = &w,
-        .alloc = std.testing.allocator,
-        .secrets = &.{},
-        .memory_checkpoint_every = 0,
-    };
-    // NullClaw fires .tool_call but our writer is undefined — short-circuit
-    // by calling the bookkeeping path directly. Bumping a u32 doesn't
-    // touch the writer.
-    adapter.tool_call_count = 5;
-    // No nudge ever fires when threshold is 0.
-    try std.testing.expectEqual(@as(u32, 0), adapter.nudges_emitted);
-}
-
-test "memory_checkpoint_every=5 fires nudge at every 5th completed tool call" {
-    var w_storage = progress_writer_mod{
-        .fd = -1,
-        .request_id = 0,
-        .alloc = std.testing.allocator,
-    };
-    var adapter = Adapter{
-        .writer = &w_storage,
-        .alloc = std.testing.allocator,
-        .secrets = &.{},
-        .memory_checkpoint_every = 5,
-    };
-    // The writer is stubbed (fd=-1); progress_writer_mod.write swallows
-    // sends to a closed/invalid fd. The bookkeeping path still runs.
-    var i: usize = 0;
-    while (i < 5) : (i += 1) fireToolCall(&adapter, "shell");
-    try std.testing.expectEqual(@as(u32, 5), adapter.tool_call_count);
-    try std.testing.expectEqual(@as(u32, 1), adapter.nudges_emitted);
-
-    while (i < 12) : (i += 1) fireToolCall(&adapter, "http_request");
-    try std.testing.expectEqual(@as(u32, 12), adapter.tool_call_count);
-    // Fired at 5 and 10, not yet at 12.
-    try std.testing.expectEqual(@as(u32, 2), adapter.nudges_emitted);
-}
-
-test "memory_checkpoint_every=1 fires on every call (extreme case)" {
-    var w_storage = progress_writer_mod{
-        .fd = -1,
-        .request_id = 0,
-        .alloc = std.testing.allocator,
-    };
-    var adapter = Adapter{
-        .writer = &w_storage,
-        .alloc = std.testing.allocator,
-        .secrets = &.{},
-        .memory_checkpoint_every = 1,
-    };
-    var i: usize = 0;
-    while (i < 3) : (i += 1) fireToolCall(&adapter, "shell");
-    try std.testing.expectEqual(@as(u32, 3), adapter.nudges_emitted);
 }

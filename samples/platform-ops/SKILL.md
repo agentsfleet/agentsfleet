@@ -137,6 +137,15 @@ can `memory_recall` if your context fills up and the runtime asks you
 to continue in a fresh stage. Operators see your final diagnosis,
 not the snapshot.
 
+**Compaction cadence.** Once you've made roughly twenty tool calls
+in one incident, the earliest tool results are no longer load-bearing
+for your final diagnosis — they're stale logs and superseded
+hypotheses. Before the next tool call, rewrite
+`incident:<id>:findings` with a tighter version that drops the
+ancient bits, then continue. Don't keep growing the snapshot
+indefinitely; compact in place. If a previous result is still
+relevant, the rewrite preserves it.
+
 ## Output format
 
 When you reach a diagnosis, emit a short paragraph followed by the
