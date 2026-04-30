@@ -60,7 +60,7 @@ test "all new id generators produce valid uuidv7" {
         id.generateTransitionId,      id.generateArtifactId,             id.generateUsageLedgerId,
         id.generateWorkspaceMemoryId, id.generatePolicyEventId,          id.generateSideEffectId,
         id.generateOutboxId,          id.generateBillingDeliveryId,      id.generateVaultSecretId,
-        id.generatePromptLifecycleEventId, id.generatePlatformLlmKeyId,
+        id.generatePlatformLlmKeyId,
     }) |gen| {
         const idd = try gen(alloc);
         defer alloc.free(idd);
@@ -84,13 +84,13 @@ test "all generated ids are 36 bytes" {
     try std.testing.expectEqual(@as(usize, 36), idd.len);
 }
 
-test "T2: version nibble and variant bits are correctly set across all generators" {
+test "version nibble and variant bits are correctly set across all generators" {
     const alloc = std.testing.allocator;
     inline for (.{
         id.generateTransitionId,      id.generateArtifactId,             id.generateUsageLedgerId,
         id.generateWorkspaceMemoryId, id.generatePolicyEventId,          id.generateSideEffectId,
         id.generateOutboxId,          id.generateBillingDeliveryId,      id.generateVaultSecretId,
-        id.generatePromptLifecycleEventId, id.generatePlatformLlmKeyId,
+        id.generatePlatformLlmKeyId,
     }) |gen| {
         const idd = try gen(alloc);
         defer alloc.free(idd);
@@ -103,7 +103,7 @@ test "T2: version nibble and variant bits are correctly set across all generator
     }
 }
 
-test "T2: ids from different generators are distinct" {
+test "ids from different generators are distinct" {
     const alloc = std.testing.allocator;
     const a = try id.generateTransitionId(alloc);
     defer alloc.free(a);
@@ -118,7 +118,7 @@ test "T2: ids from different generators are distinct" {
     try std.testing.expect(!std.mem.eql(u8, c, d));
 }
 
-test "T2: all hex chars are lowercase" {
+test "all hex chars are lowercase" {
     const alloc = std.testing.allocator;
     const idd = try id.generateTransitionId(alloc);
     defer alloc.free(idd);
@@ -128,30 +128,30 @@ test "T2: all hex chars are lowercase" {
     }
 }
 
-test "T3: generator returns OutOfMemory when allocator fails" {
+test "generator returns OutOfMemory when allocator fails" {
     var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
     const result = id.generateTransitionId(fa.allocator());
     try std.testing.expectError(error.OutOfMemory, result);
 }
 
-test "T3: isUuidV7 rejects wrong length strings" {
+test "isUuidV7 rejects wrong length strings" {
     try std.testing.expect(!id.isUuidV7(""));
     try std.testing.expect(!id.isUuidV7("short"));
     try std.testing.expect(!id.isUuidV7("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f9")); // 35 chars
     try std.testing.expect(!id.isUuidV7("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f999")); // 37 chars
 }
 
-test "T3: isUuidV7 rejects non-hex characters" {
+test "isUuidV7 rejects non-hex characters" {
     try std.testing.expect(!id.isUuidV7("0195b4ba-8d3a-7f13-8abc-2b3e1e0a6gzz"));
     try std.testing.expect(!id.isUuidV7("zzzzzzzz-zzzz-7zzz-8zzz-zzzzzzzzzzzz"));
 }
 
-test "T3: isUuidV7 rejects wrong variant nibble" {
+test "isUuidV7 rejects wrong variant nibble" {
     try std.testing.expect(!id.isUuidV7("0195b4ba-8d3a-7f13-0abc-2b3e1e0a6f99"));
     try std.testing.expect(!id.isUuidV7("0195b4ba-8d3a-7f13-cabc-2b3e1e0a6f99"));
 }
 
-test "T5: concurrent generation produces no duplicates" {
+test "concurrent generation produces no duplicates" {
     const num_threads = 8;
     const ids_per_thread = 64;
     const total = num_threads * ids_per_thread;

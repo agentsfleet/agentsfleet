@@ -72,10 +72,6 @@ pub fn generateVaultSecretId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generatePromptLifecycleEventId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
 fn generateScoreId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
@@ -100,7 +96,7 @@ pub fn generateActivityEventId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-// M8_001: workspace-level provider integration record ID
+// Workspace-level provider integration record ID
 pub fn generateIntegrationId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
