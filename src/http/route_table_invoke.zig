@@ -39,9 +39,6 @@ const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
-const slack_oauth = @import("handlers/slack/oauth.zig");
-const slack_ev = @import("handlers/slack/events.zig");
-const slack_ix = @import("handlers/slack/interactions.zig");
 const zombie_steer = @import("handlers/zombies/steer.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
@@ -314,28 +311,3 @@ pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) v
     agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_id);
 }
 
-// ── Slack ─────────────────────────────────────────────────────────────────
-
-pub fn invokeSlackInstall(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_oauth.innerInstall(hx.*, req);
-}
-
-pub fn invokeSlackCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_oauth.innerCallback(hx.*, req);
-}
-
-pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_ev.innerSlackEvent(hx.*, req);
-}
-
-pub fn invokeSlackInteractions(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_ix.innerInteraction(hx.*, req);
-}

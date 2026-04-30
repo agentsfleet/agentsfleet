@@ -263,13 +263,7 @@ test {
     _ = @import("zombie/firewall/firewall_test.zig");
     _ = @import("zombie/firewall/firewall_robustness_test.zig");
     _ = @import("zombie/firewall/firewall_greptile_test.zig");
-    // M8_001: Slack plugin
     _ = @import("state/workspace_integrations.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
-    _ = @import("http/handlers/slack/oauth.zig");
-    _ = @import("http/handlers/slack/oauth_client.zig");
-    _ = @import("http/handlers/slack/events.zig");
-    _ = @import("http/handlers/slack/interactions.zig");
-    _ = @import("http/handlers/slack/error_code_pins_test.zig");
 }

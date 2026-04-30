@@ -31,9 +31,7 @@ pub const require_role = @import("require_role.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_url_secret = @import("webhook_url_secret.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
-pub const slack_signature = @import("slack_signature.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
-pub const oauth_state = @import("oauth_state.zig");
 
 pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
@@ -41,9 +39,7 @@ pub const TenantApiKey = tenant_api_key.TenantApiKey;
 pub const RequireRole = require_role.RequireRole;
 pub const WebhookHmac = webhook_hmac.WebhookHmac;
 pub const WebhookUrlSecret = webhook_url_secret.WebhookUrlSecret;
-pub const SlackSignature = slack_signature.SlackSignature;
 pub const SvixSignature = svix_signature_mod.SvixSignature;
-pub const OAuthState = oauth_state.OAuthState;
 
 pub const AuthPrincipal = auth_ctx.AuthPrincipal;
 
@@ -61,9 +57,7 @@ pub const MiddlewareRegistry = struct {
     tenant_api_key_mw: TenantApiKey,
     require_role_admin: RequireRole,
     require_role_operator: RequireRole,
-    slack_sig: SlackSignature,
     webhook_hmac_mw: WebhookHmac,
-    oauth_state_mw: OAuthState,
     webhook_url_secret_mw: WebhookUrlSecret,
 
     // ── Pre-built policy chains ────────────────────────────────────────────
@@ -74,11 +68,9 @@ pub const MiddlewareRegistry = struct {
     _operator_chain: [2]Middleware(AuthCtx) = undefined,
     _webhook_hmac_chain: [1]Middleware(AuthCtx) = undefined,
     _webhook_secret_chain: [1]Middleware(AuthCtx) = undefined,
-    _slack_chain: [1]Middleware(AuthCtx) = undefined,
-    _oauth_chain: [1]Middleware(AuthCtx) = undefined,
-    // M28_001: webhook_sig is generic over LookupCtx, so the host
-    // calls .middleware() on the concrete instance and passes the
-    // pre-built Middleware(AuthCtx) value here. No *anyopaque needed.
+    // webhook_sig is generic over LookupCtx, so the host calls
+    // .middleware() on the concrete instance and passes the pre-built
+    // Middleware(AuthCtx) value here. No *anyopaque needed.
     _webhook_sig_chain: [1]Middleware(AuthCtx) = undefined,
     // M28_001 §5: svix middleware is also generic over LookupCtx; host
     // supplies the built Middleware(AuthCtx) after construction.
@@ -101,8 +93,6 @@ pub const MiddlewareRegistry = struct {
         };
         self._webhook_hmac_chain = .{self.webhook_hmac_mw.middleware()};
         self._webhook_secret_chain = .{self.webhook_url_secret_mw.middleware()};
-        self._slack_chain = .{self.slack_sig.middleware()};
-        self._oauth_chain = .{self.oauth_state_mw.middleware()};
         // _webhook_sig_chain is set by the host via setWebhookSig()
     }
 
@@ -146,16 +136,6 @@ pub const MiddlewareRegistry = struct {
     /// URL-embedded per-zombie secret.
     fn webhookSecret(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._webhook_secret_chain;
-    }
-
-    /// Slack x-slack-signature verification.
-    pub fn slack(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
-        return &self._slack_chain;
-    }
-
-    /// OAuth state nonce + HMAC (GitHub/Slack OAuth callbacks).
-    fn oauthCallback(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
-        return &self._oauth_chain;
     }
 
     /// Unified webhook auth: URL secret + Bearer token (M28_001).

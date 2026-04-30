@@ -33,24 +33,7 @@ fn defaultStopServer() void {
     if (active_server.load(.acquire)) |s| s.stop();
 }
 
-// ── M18_002 C.2: MiddlewareRegistry callbacks ─────────────────────────────
-
-/// Atomically consume an OAuth nonce from Redis. Called by `OAuthState`
-/// middleware when the OAuth callback route is handled by the chain.
-///
-/// Key format: `slack:oauth:nonce:<nonce>` — mirrors `slack_oauth.zig::validateState`.
-/// Returns true if the nonce existed and was deleted; false if it was already
-/// consumed (0-key DEL) or if Redis is unavailable.
-fn consumeOAuthNonce(user: *anyopaque, nonce: []const u8) anyerror!bool {
-    const q: *queue_redis.Client = @ptrCast(@alignCast(user));
-    var key_buf: [64]u8 = undefined;
-    const key = std.fmt.bufPrint(&key_buf, "slack:oauth:nonce:{s}", .{nonce}) catch return error.KeyTooLong;
-    const resp = q.command(&.{ "DEL", key }) catch return error.RedisUnavailable;
-    return switch (resp) {
-        .integer => |n| n > 0,
-        else => false,
-    };
-}
+// ── MiddlewareRegistry callbacks ──────────────────────────────────────────
 
 /// Stub webhook URL-secret lookup. Returns null (no secret configured) until
 /// a future batch wires the real vault/DB lookup. Not called at runtime because
@@ -217,9 +200,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     // alive for the duration of the server. `initChains()` captures pointers
     // into registry fields; do NOT call initChains() before all fields are set,
     // and do NOT move/copy registry after calling initChains().
-    const slack_signing_secret_owned = std.process.getEnvVarOwned(alloc, "SLACK_SIGNING_SECRET") catch null;
-    defer if (slack_signing_secret_owned) |s| alloc.free(s);
-    const slack_signing_secret: []const u8 = if (slack_signing_secret_owned) |s| s else "";
     const approval_signing_secret_owned = std.process.getEnvVarOwned(alloc, "APPROVAL_SIGNING_SECRET") catch null;
     defer if (approval_signing_secret_owned) |s| alloc.free(s);
     const approval_signing_secret: []const u8 = if (approval_signing_secret_owned) |s| s else "";
@@ -236,13 +216,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
-        .slack_sig = .{ .secret = slack_signing_secret },
         .webhook_hmac_mw = .{ .secret = approval_signing_secret },
-        .oauth_state_mw = .{
-            .signing_secret = slack_signing_secret,
-            .consume_ctx = &api_queue,
-            .consume_nonce = consumeOAuthNonce,
-        },
         .webhook_url_secret_mw = .{
             .lookup_ctx = &api_queue, // unused by stub; Batch D will wire real lookup
             .lookup_fn = stubWebhookSecretLookup,

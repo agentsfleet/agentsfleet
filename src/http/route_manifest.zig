@@ -104,10 +104,4 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/v1/api-keys" },
     .{ .method = "PATCH", .path = "/v1/api-keys/{id}" },
     .{ .method = "DELETE", .path = "/v1/api-keys/{id}" },
-
-    // Slack
-    .{ .method = "GET", .path = "/v1/slack/install" },
-    .{ .method = "GET", .path = "/v1/slack/callback" },
-    .{ .method = "POST", .path = "/v1/slack/events" },
-    .{ .method = "POST", .path = "/v1/slack/interactions" },
 };

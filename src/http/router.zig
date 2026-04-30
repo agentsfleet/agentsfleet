@@ -89,14 +89,9 @@ pub const Route = union(enum) {
     // M9_001 / M28_002 §0: Workspace agent-key management (renamed from external_agents).
     agent_keys: []const u8,              // POST|GET /v1/workspaces/{ws}/agent-keys
     delete_agent_key: matchers.WorkspaceAgentRoute, // DELETE /v1/workspaces/{ws}/agent-keys/{agent_id}
-    // M28_002 §3: Tenant API key CRUD.
+    // Tenant API key CRUD.
     tenant_api_keys, // POST|GET /v1/api-keys
     tenant_api_key_by_id: []const u8, // PATCH|DELETE /v1/api-keys/{id}
-    // M8_001: Slack plugin acquisition
-    slack_install, // GET /v1/slack/install
-    slack_callback, // GET /v1/slack/callback
-    slack_events, // POST /v1/slack/events
-    slack_interactions, // POST /v1/slack/interactions
 };
 
 const matchWorkspaceSuffix = matchers.matchWorkspaceSuffix;
@@ -199,13 +194,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
 
     // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval (before /approval)
     if (matchers.matchWebhookAction(path, "/grant-approval")) |zombie_id| return .{ .grant_approval_webhook = zombie_id };
-    // M8_001: Slack plugin routes
-    if (std.mem.eql(u8, path, "/v1/slack/install")) return .slack_install;
-    if (std.mem.eql(u8, path, "/v1/slack/callback")) return .slack_callback;
-    if (std.mem.eql(u8, path, "/v1/slack/events")) return .slack_events;
-    if (std.mem.eql(u8, path, "/v1/slack/interactions")) return .slack_interactions;
-
-    // M4_001: Zombie approval gate callback — /v1/webhooks/{zombie_id}/approval
+    // Zombie approval gate callback — /v1/webhooks/{zombie_id}/approval
     if (matchers.matchWebhookAction(path, "/approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
     // Clerk user.created signup webhook — exact-match before the zombie-scoped
     // /v1/webhooks/{zombie_id} catch-all so "clerk" is not swallowed as a
@@ -294,18 +283,7 @@ test "match resolves workspace LLM credential route (M16_004)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm", .GET) == null);
 }
 
-// ── M8_001 Slack route tests ──────────────────────────────────────────────────
-
-test "match resolves Slack install route (M8_001)" {
-    try std.testing.expectEqualDeep(Route.slack_install, match("/v1/slack/install", .GET).?);
-    try std.testing.expectEqualDeep(Route.slack_callback, match("/v1/slack/callback", .GET).?);
-    try std.testing.expectEqualDeep(Route.slack_events, match("/v1/slack/events", .GET).?);
-    try std.testing.expectEqualDeep(Route.slack_interactions, match("/v1/slack/interactions", .GET).?);
-    try std.testing.expect(match("/v1/slack/other", .GET) == null);
-    try std.testing.expect(match("/v1/slack/", .GET) == null);
-}
-
-// ── M23_001 route tests ───────────────────────────────────────────────────────
+// ── route tests ───────────────────────────────────────────────────────────────
 
 test "match resolves zombie steer route (workspace-scoped)" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
