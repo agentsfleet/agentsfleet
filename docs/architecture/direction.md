@@ -1,6 +1,6 @@
 # Architecture Direction
 
-> Parent: [`ARCHITECHTURE.md`](../ARCHITECHTURE.md)
+> Parent: [`README.md`](./README.md)
 
 The design constants. Every spec under `docs/v2/` lives inside the constraints below. When a spec proposes something that conflicts with these constants, the spec gets amended — not the constants.
 

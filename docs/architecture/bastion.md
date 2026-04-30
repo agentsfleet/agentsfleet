@@ -1,6 +1,6 @@
 # Bastion — the post-MVP shape
 
-> Parent: [`ARCHITECHTURE.md`](../ARCHITECHTURE.md)
+> Parent: [`README.md`](./README.md)
 
 Where the v2 wedge points after launch. Not part of v2; documented here so spec authors can avoid foreclosing it.
 

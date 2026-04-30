@@ -1,6 +1,6 @@
 # User Flow — how an operator uses the system
 
-> Parent: [`ARCHITECHTURE.md`](../ARCHITECHTURE.md)
+> Parent: [`README.md`](./README.md)
 
 Read this when you want to know how a real human gets from "I want a zombie" to "the zombie is running on my repo." The §-numbered subsections are stable anchors that other specs reference; do not rename them without sweeping cross-references.
 

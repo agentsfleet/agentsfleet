@@ -11,7 +11,7 @@
 **Branch:** feat/m49-install-skill (to be created)
 **Depends on:** M40 (worker substrate — install must take effect immediately), M42 (steer CLI for the post-install demo), M43 (webhook ingest — if user opts into GH Actions trigger, install configures the webhook), M44 (install contract + doctor — skill calls `zombiectl doctor` before invoking install), M45 (vault structured creds — skill resolves credentials into structured form), M46 (frontmatter schema — skill generates a single SKILL.md, not SKILL+TRIGGER).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §8.1-§8.5 (authoring, installing, triggering — this skill IS the §8.1-§8.2 workflow automated).
+**Canonical architecture:** `docs/architecture/` §8.1-§8.5 (authoring, installing, triggering — this skill IS the §8.1-§8.2 workflow automated).
 
 ---
 
@@ -351,7 +351,7 @@ The cap is **not** in the `llm` credential body. The body stays `{provider, api_
 
 #### Decision 3 (D3) — architecture cross-reference
 
-**Locked: the architecture doc is split.** ARCHITECHTURE.md is now a TOC. The end-to-end walkthrough lives in:
+**Locked: the architecture doc is split.** architecture/ is now a TOC. The end-to-end walkthrough lives in:
 
 - [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.7 — the three-rail diagram showing platform vs BYOK origin and how the worker overlays sentinels at trigger time.
 - [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §9 — the endpoint shape, rotation, and Cloudflare configuration.

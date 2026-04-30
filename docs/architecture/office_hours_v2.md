@@ -15,7 +15,7 @@ This doc is the original /office-hours session output. The strategic narrative b
 1. **Skill renamed** from `/install-platform-ops` to `/usezombie-install-platform-ops` (same name in every host — no per-host fork). Decision: /plan-ceo-review.
 2. **Self-host deferred to v3.** v2 ships hosted-only on `api.usezombie.com` via Clerk OAuth. The `/self-host` runbook is removed from v2 docs scope. Differentiation pillars compressed from 4 to 3 (OSS + BYOK + markdown-defined). Self-host validation specs (the 4 untested rows) moved out of v2.
 3. **M48 BYOK promoted to substrate-tier.** Was "soft-blocks BYOK launch claim"; now Week 2-3 launch-blocking. Adds ~1 week to the milestone (~6-7 weeks total). Differentiation argument holds at 3 pillars.
-4. **M50 reassigned.** Originally "ARCHITECHTURE.md cross-reference + post-launch reflection" — folded into M51. Slot reused for "M50 Customer-Development Parallel Workstream" — runs Weeks 1-8 alongside substrate, ~2-3 hours/week founder time, goal: 3 named operators committed to Day-35 install slots.
+4. **M50 reassigned.** Originally "README.md cross-reference + post-launch reflection" — folded into M51. Slot reused for "M50 Customer-Development Parallel Workstream" — runs Weeks 1-8 alongside substrate, ~2-3 hours/week founder time, goal: 3 named operators committed to Day-35 install slots.
 5. **Customer-dev runs in parallel from Week 1**, not sequentially after Week 6. Eliminates the "ship into silence" risk; validates wedge framing while substrate is mutable.
 
 The Week-by-Week sequencing in §"Recommended Approach" below is now ~6-7 weeks instead of 5-6. Day-50 validation bar unchanged.
@@ -121,7 +121,7 @@ The original design proposed a 1-week packaging milestone. The eng review + Code
    - Calls `zombiectl install --from .usezombie/platform-ops/` then `zombiectl steer {id}`.
 9. **`usezombie.sh` Cloudflare CDN activation** (per A2) — gates the launch tweet. `https://usezombie.sh/skills.md` resolves; the install-skill is fetchable.
 10. ~~**`/self-host` runbook on docs.usezombie.com**~~ [REVISED Apr 25: removed from v2 scope. Self-host arrives in v3. The 4 untested rows are NOT spec'd in v2 pending/.]
-11. **`docs/ARCHITECHTURE.md` refresh** — completed Apr 25, 2026. The current architecture doc is the canonical reference; supersedes all sub-bullets in this item.
+11. **`docs/architecture/` refresh** — completed Apr 25, 2026. The current architecture doc is the canonical reference; supersedes all sub-bullets in this item.
 12. **`~/Projects/docs/` (docs.usezombie.com source) updates** — owned by M51 spec:
     - Hero copy: *"Durable, BYOK, markdown-defined agent runtime — for operators who own their outcomes."* [REVISED Apr 25: dropped "self-hostable" from hero; sub-line says "Free hosted. Open source. Self-host arrives in v3."]
     - `/quickstart/platform-ops` — install + first-steer walkthrough.

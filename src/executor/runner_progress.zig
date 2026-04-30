@@ -6,7 +6,7 @@
 //! thread that called `agent.runSingle`, so writes to the connection fd
 //! are sequential — no locking, no concurrent producers.
 //!
-//! Args redaction: ARCHITECHTURE.md mandates that any secret bytes
+//! Args redaction: docs/architecture/ mandates that any secret bytes
 //! substituted into tool arguments are replaced with the canonical
 //! `${secrets.NAME.FIELD}` placeholder before the frame leaves the RPC
 //! boundary. The redactor is constructed in runner.execute from the

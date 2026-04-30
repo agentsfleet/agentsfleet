@@ -11,7 +11,7 @@
 **Branch:** feat/m48-byok-provider (to be created)
 **Depends on:** M45_001 (vault structured creds — JSON-object plaintext lands there; BYOK uses a credential named `llm` carrying `{provider, api_key, model}`). M11_005 (tenant billing — DONE; provides the `tenant_billing.balance_cents` gate that triggers the credit-exhausted UX).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §0 ("not a coding-agent product" — BYOK matters when the provider key drives all LLM cost), §10 (capabilities — implicit in "secrets never in agent context").
+**Canonical architecture:** `docs/architecture/` §0 ("not a coding-agent product" — BYOK matters when the provider key drives all LLM cost), §10 (capabilities — implicit in "secrets never in agent context").
 
 ---
 
@@ -40,7 +40,7 @@ M45 dropped the typed credential registry. There is no `type=llm_provider` discr
 
 ## Cross-spec amendment (Apr 29, 2026 — billing model + cap origin)
 
-Two corrections to the design below, both arising from the M41-spillover Discovery work in M49 and the architecture refactor of `docs/ARCHITECHTURE.md` (now split into per-topic files under `docs/architecture/`).
+Two corrections to the design below, both arising from the M41-spillover Discovery work in M49 and the architecture refactor of `docs/architecture/` (now split into per-topic files under `docs/architecture/`).
 
 **Correction 1 — balance gate stays on for both postures.** The original §3 said "BYOK skips the balance gate." That is wrong. The gate runs for both postures; only the per-event cost function differs:
 

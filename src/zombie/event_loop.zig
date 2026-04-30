@@ -31,7 +31,7 @@ pub const truncateForJson = helpers.truncateForJson;
 const sleepWithBackoff = helpers.sleepWithBackoff;
 const clearExecutionActive = helpers.clearExecutionActive;
 
-// ── Public API (spec §7.1) ───────────────────────────────────────────────
+// ── Public API ───────────────────────────────────────────────────────────
 
 /// Claim a Zombie: load config + session checkpoint from Postgres.
 /// Returns a ZombieSession that the caller owns and must deinit.
@@ -97,7 +97,8 @@ pub fn claimZombie(
         .context_json = context_json,
         .source_markdown = source_markdown,
     };
-    // M23_001: clear any stale execution_id left by a crashed worker.
+    // Crash recovery: clear any stale execution_id left by a worker that
+    // died mid-stage so the next createExecution starts from a clean slot.
     clearExecutionActive(alloc, &session, pool);
     return session;
 }
@@ -178,7 +179,12 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
 /// the session, free the old config. In-flight executions are not
 /// interrupted (this only runs between events). Errors leave the old
 /// config in place; the next reload signal can retry.
-fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.Pool) !void {
+///
+/// Public so the integration test in
+/// `src/zombie/context_lifecycle_integration_test.zig` can drive the
+/// reload without spinning the full runEventLoop (which blocks on
+/// XREADGROUP). The runtime entry point stays in runEventLoop above.
+pub fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.Pool) !void {
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(

@@ -1,6 +1,6 @@
 # Capabilities — what the zombie has, what the platform guarantees
 
-> Parent: [`ARCHITECHTURE.md`](../ARCHITECHTURE.md)
+> Parent: [`README.md`](./README.md)
 
 A zombie's capabilities split into two layers: what the language model is told it can do (a soft layer the model can ignore or get wrong), and what the platform actually enforces (a hard layer the model cannot escape from inside the sandbox). Both matter; the second is what makes the first safe.
 
@@ -11,7 +11,9 @@ A zombie's capabilities split into two layers: what the language model is told i
 | File | What it carries | Enforced by |
 |---|---|---|
 | `SKILL.md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose. | The language model reading its own prompt — soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
-| `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md file) | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (webhook / chat / cron), and `context:` budget knobs | Code-enforced at the executor sandbox boundary — the language model cannot escape these |
+| `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md file) | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs | Code-enforced at the executor sandbox boundary — the language model cannot escape these |
+
+> **`trigger.type` vs event type — they are different fields.** `trigger.type` is the static config that says *how* a zombie gets triggered: `webhook` (external sender posts to `/v1/webhooks/...`), `api` (operator/integration calls `/v1/.../zombies/{id}/steer` — the chat path), `cron` (scheduled), or `chain` (another zombie hands off). The per-event `event_type` field on `core.zombie_events` (`chat`, `continuation`, …) tags individual events on the stream. A `trigger.type: api` zombie typically receives `event_type: chat` events from the steer/chat API; the two are orthogonal and live in different tables. See `src/zombie/config_helpers.zig` (`parseZombieTrigger`) and `src/zombie/event_envelope.zig` (`EventType`).
 
 The split matters. `SKILL.md` is *advisory* — the model reads it and tries to comply. `TRIGGER.md` is *binding* — the executor refuses tool calls that would violate it, regardless of what the model wants.
 
@@ -106,7 +108,7 @@ A pathological agent can in principle chunk forever — each stage hits the L3 t
 
 **Notification today is silent.** The label is observability — the operator sees it only by looking (`zombiectl events`, dashboard, SSE tail). There is no automatic Slack post, email, or page when `chunk_chain_escalate_human` fires. Three follow-ups can wire active notification: (a) extend the M47 approval inbox to surface non-approval failure_labels needing attention, (b) instruct the SKILL prose to post a Slack handoff message preemptively on the agent's 10th continuation, or (c) add an optional `escalation_webhook_url` on the zombie config that the worker POSTs to whenever this label fires. None of these ship in the M41 PR.
 
-**Resuming a forfeited chain manually.** There is no special "resume chunk-chain" endpoint. The cleanest path is `zombiectl steer {id} "continue from incident:<id>:findings — pick up where you left off"`. This XADDs a fresh chat event; the SKILL prose tells the agent to `memory_recall` the snapshot. The new event's chain starts at zero — the operator gets another 10-chunk budget without the runtime needing a dedicated resume verb.
+**Resuming a forfeited chain manually.** There is no special "resume chunk-chain" endpoint. The cleanest path is `zombiectl steer {id} "continue from <snapshot-key> — pick up where you left off"`, where `<snapshot-key>` is whatever the zombie's own SKILL.md prose taught the agent to use as the memory key for that work unit (e.g. `incident:<id>:findings` for platform-ops; `lead:<id>:scoring` for a lead-scorer; `applicant:<id>:assessment` for a screener). This XADDs a fresh chat event; the SKILL prose tells the agent to `memory_recall` the snapshot. The new event's chain starts at zero — the operator gets another 10-chunk budget without the runtime needing a dedicated resume verb. The runtime never invents the key shape — it's whatever the zombie's own prose chose.
 
 ### Defaults — the user shouldn't have to do token math
 

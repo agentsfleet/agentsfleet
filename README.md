@@ -58,7 +58,7 @@ You don't code the zombie. You write a SKILL.md in plain English, install it wit
 - **Durable history** — every event (webhook / cron / steer) lands in `core.zombie_events` with actor provenance. Resumable from checkpoint after worker restart.
 - **BYOK** — bring your own LLM provider key (Anthropic, OpenAI, Together, Groq). Resolved via the same vault as your other credentials. No vendor lock-in on inference cost.
 - **Markdown-defined** — operational behavior lives in `SKILL.md` + `TRIGGER.md` (or merged frontmatter under `x-usezombie:`). Iterate by editing prose, not by redeploying code.
-- **Context lifecycle** — long incidents don't crash the model. Three layers compose: rolling tool-result window, periodic `memory_store` checkpoints, and stage chunking with continuation events when context fills past threshold. See [`docs/ARCHITECHTURE.md`](docs/ARCHITECHTURE.md) §11.
+- **Context lifecycle** — long incidents don't crash the model. Three layers compose: rolling tool-result window, periodic `memory_store` checkpoints, and stage chunking with continuation events when context fills past threshold. See [`docs/architecture/`](docs/architecture/) §11.
 - **Budget caps + kill switch** — daily and monthly dollar caps; `zombiectl kill` halts any zombie mid-action with checkpoint saved.
 
 ## Differentiation (v2)

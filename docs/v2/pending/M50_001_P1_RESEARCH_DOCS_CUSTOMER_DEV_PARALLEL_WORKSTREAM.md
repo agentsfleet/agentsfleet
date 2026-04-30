@@ -6,13 +6,13 @@
 **Date:** Apr 25, 2026
 **Status:** PENDING
 
-> **Slot history:** M50 was previously assigned to "ARCHITECHTURE.md cross-reference + post-launch reflection." That spec was folded into M51 on Apr 25, 2026 (see M51's "Note on M50 fold" section). The slot was reassigned to this customer-development workstream the same day, after a /plan-ceo-review surfaced that customer-dev needed first-class status to hit the Day-50 validation bar. Both decisions land in the same `docs/v2-spec-backlog` branch.
+> **Slot history:** M50 was previously assigned to "architecture/ cross-reference + post-launch reflection." That spec was folded into M51 on Apr 25, 2026 (see M51's "Note on M50 fold" section). The slot was reassigned to this customer-development workstream the same day, after a /plan-ceo-review surfaced that customer-dev needed first-class status to hit the Day-50 validation bar. Both decisions land in the same `docs/v2-spec-backlog` branch.
 **Priority:** P1 — validation-blocking. The Day-50 success bar (1 external team using on real event for ≥1 week) requires external operators identified, contacted, and committed to install slots BEFORE the substrate ships. Sequential customer-dev (start at Week 6, find users in 14 days) compresses the validation window past breaking. This workstream runs in parallel from Week 1 so the wedge framing is validated while the substrate is still mutable.
 **Categories:** RESEARCH, DOCS
 **Batch:** B1 — runs in parallel with M40-M48 substrate. ~2-3 hours/week founder time. Non-blocking on engineering work.
 **Branch:** No code branch. Artifacts live in `~/.gstack/projects/usezombie/customer-dev/` (local) and Ripley's Log entries (durable record).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` (TOC) → `docs/architecture/high_level.md` §1 differentiation pillars + §5.1 platform-ops persona + `docs/architecture/office_hours_v2.md` P1 persona expansion (AI-infra / GPU-clouds / regulated mid-market / 10x indies / agentic-OS operators).
+**Canonical architecture:** `docs/architecture/` (TOC) → `docs/architecture/high_level.md` §1 differentiation pillars + §5.1 platform-ops persona + `docs/architecture/office_hours_v2.md` P1 persona expansion (AI-infra / GPU-clouds / regulated mid-market / 10x indies / agentic-OS operators).
 
 ---
 
@@ -57,7 +57,7 @@ This workstream produces artifacts, not code. No source files change.
 | `~/.gstack/projects/usezombie/customer-dev/outreach-templates.md` | NEW | Cold-DM v1 + follow-up + "demo ready" templates. Iterated weekly. |
 | `~/.gstack/projects/usezombie/customer-dev/call-notes/{date}-{handle}.md` | NEW (per call) | Notes from each operator conversation: their workflow today, their current pain, their interest level, the next ask |
 | `docs/nostromo/LOG_{date}_M50_CUSTOMER_DEV.md` | NEW (Friday weekly) | Ripley's Log entry: this week's outreach count, conversations, conversion to Day-35 install slot, blockers |
-| `docs/ARCHITECHTURE.md` | NO EDIT here | M51's cross-reference pass picks up persona learnings post-launch |
+| `docs/architecture/` | NO EDIT here | M51's cross-reference pass picks up persona learnings post-launch |
 
 > **Privacy:** Operator names + handles stay LOCAL to `~/.gstack/`. Nothing committed to the repo until they've explicitly said yes to public attribution. The Ripley's Log entries reference operators by initials or company until written consent.
 

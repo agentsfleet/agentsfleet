@@ -11,13 +11,13 @@
 **Branch:** feat/m47-approval-inbox (to be created)
 **Depends on:** M42_001 (events stream + history — pending gates write to `core.zombie_events` with `status='gate_blocked'`). M4_001 (existing approval gate state machine — DONE in prior milestone, this builds on it).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §10 (capabilities — approval gating row), §13 (path to bastion — per-audience approval).
+**Canonical architecture:** `docs/architecture/` §10 (capabilities — approval gating row), §13 (path to bastion — per-audience approval).
 
 ---
 
 ## Implementing agent — read these first
 
-1. `docs/ARCHITECHTURE.md` §10 (capabilities — approval gating row) — what the platform guarantees about gate semantics.
+1. `docs/architecture/` §10 (capabilities — approval gating row) — what the platform guarantees about gate semantics.
 2. M4_001 (done spec) — existing gate state machine. Read its acceptance criteria to understand what gate states exist (`pending`, `approved`, `denied`, `timeout`).
 3. M42's spec for `core.zombie_events.status='gate_blocked'` — the mechanism that surfaces a pending gate.
 4. `ui/packages/app/` — existing dashboard surface; mirror the events table pattern from M42's `events.tsx` for the `/approvals` page.

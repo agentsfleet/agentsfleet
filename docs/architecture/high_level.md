@@ -1,6 +1,6 @@
 # High-Level Thesis
 
-> Parent: [`ARCHITECHTURE.md`](../ARCHITECHTURE.md)
+> Parent: [`README.md`](./README.md)
 
 The product, the problem, the wedge, the differentiation, and why the obvious alternatives don't make this product redundant. Read this first if you've never seen the project — every other file in `docs/architecture/` and every spec under `docs/v2/` assumes you've internalized this one.
 

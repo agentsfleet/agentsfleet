@@ -1,6 +1,6 @@
 # Billing and Bring-Your-Own-Key
 
-> Parent: [`ARCHITECHTURE.md`](../ARCHITECHTURE.md)
+> Parent: [`README.md`](./README.md)
 
 How operators pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the operator paying the language-model provider directly.
 

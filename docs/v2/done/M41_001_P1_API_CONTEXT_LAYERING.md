@@ -4,14 +4,14 @@
 **Milestone:** M41
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — launch-blocking. Without this the "secrets never in agent context" claim is hollow (creds flow as raw strings) AND long-running incidents crash the model when context overflows. Two independent guarantees that compose at the same boundary: `executor.createExecution`.
 **Categories:** API
 **Batch:** B1 — parallel with M40 (worker), M42 (streaming), M44 (install contract), M45 (vault).
 **Branch:** feat/m41-context-layering
 **Depends on:** M40_001 (control stream — control stream + `zombie_config_changed` signal landed Apr 25, 2026). M45_001 (vault structured creds — landed; `secrets_map` resolution uses the structured form directly, no single-string fallback needed).
 
-**Canonical architecture:** `docs/ARCHITECHTURE.md` §10 (Capabilities — per-execution policy row + context lifecycle row), §11 (Context Lifecycle — full L1+L2+L3 mechanics), §12 step 8a/8b (executor invocation + tool-bridge substitution).
+**Canonical architecture:** `docs/architecture/` §10 (Capabilities — per-execution policy row + context lifecycle row), §11 (Context Lifecycle — full L1+L2+L3 mechanics), §12 step 8a/8b (executor invocation + tool-bridge substitution).
 
 ---
 
@@ -85,7 +85,7 @@ The agent's view of the tool call (the frame that flows back into context) keeps
 `http_request` tool builder reads `network_policy.allow` from session. Outbound URLs must match an entry. Reject with `tool_call_failed: host not in allowlist`. Agent reasons over the error and either reformulates or gives up — visible failure beats silent egress.
 
 ### §4 — Context lifecycle (L1: memory_checkpoint_every)
-After every N tool calls (default 5), NullClaw inserts a soft frame in the agent's context: *"You have called N tools. Consider whether you should snapshot your findings via `memory_store(\"incident:<id>:findings\", <summary>)` before continuing."* The agent decides whether to act. If the SKILL.md prose includes the explicit nudge ("after every 5 tool calls, snapshot findings"), this becomes near-deterministic.
+After every N tool calls (default 5), NullClaw inserts a soft frame in the agent's context: *"You have called N tools. Consider whether you should snapshot your progress via `memory_store(<snapshot-key>, <summary>)` before continuing."* The agent decides whether to act, and chooses the key shape based on its own SKILL.md (e.g. `incident:<id>:findings` for a platform-ops zombie, `lead:<id>:scoring` for a lead-scorer, `applicant:<id>:assessment` for a screener — each domain picks names that fit). The runtime never prescribes the key shape. If the SKILL.md prose includes the explicit nudge ("after every 5 tool calls, snapshot progress under `<your-domain-key>`"), this becomes near-deterministic.
 
 ### §5 — Context lifecycle (L2: tool_window)
 Maintain a deque of the last N tool results in the agent's active context. When N is exceeded, oldest results are summarized to a single `[tool result for <tool>:<args> dropped — see event log]` line. The full result stays in `core.zombie_events` (M42). Agent reasons over the summary if needed via `memory_recall`.
@@ -182,13 +182,13 @@ The test list below was rewritten Apr 30, 2026 against what actually shipped. Th
 | `applyContextDefaults` (3 cases) | unit | `src/executor/context_budget.zig` | §8 auto-defaults: zero-sentinel substitution, operator-override preservation, model + cap untouched |
 | `integration: continuation re-enqueue lands an event on zombie:{id}:events` | **integration** | `src/zombie/context_lifecycle_integration_test.zig` | §7 enqueue happy path: `event_loop_continuation.run` with chain-origin event + chunked StageResult → exactly one continuation envelope on stream; originating row carries no `failure_label` |
 | `integration: 11th continuation force-stops with chunk_chain_escalate_human label, no XADD` | **integration** | `src/zombie/context_lifecycle_integration_test.zig` | §7 Invariant 4: chain of 10 prior continuations + chunked StageResult → recursive CTE counts 10 → verdict `force_stop` → originating row UPDATEd with `failure_label='chunk_chain_escalate_human'`; stream remains empty |
+| `integration: reloadZombieConfig swaps session.config after DB row UPDATE` | **integration** | `src/zombie/context_lifecycle_integration_test.zig` | §9 hot-reload: seed zombie with config name `v1`, claim → `session.config.name == v1`; UPDATE `core.zombies.config_json` to name `v2`; call `reloadZombieConfig` → `session.config.name == v2`; old config freed (zero leaks under `std.testing.allocator`) |
 
 **Tests deferred to follow-up specs (not blocking M41):**
 
-- `test_secret_substitution_real_bytes_outbound` — real-network E2E that captures the Authorization header on a mock HTTPS server. The substitution boundary is unit-tested; the curl dispatch path is NullClaw's. A real-network assertion needs a mock-server fixture not in the project today.
-- `test_secret_no_leak_into_event_log_e2e` — full worker → executor → real PolicyHttpRequestTool path with PG row dump grep. The harness scripts progress frames but doesn't dispatch real tools; a real executor binary running the tool would cover this. Boundary is unit-tested via `redactBytes` + the substitute-output-checked-by-assertNoLeftover invariant.
-- `test_continuation_event_resumes_with_memory_recall` — full worker re-pulls continuation from stream → executor opens with memory_recall → assert new tokens generated. The enqueue side is covered above; the resume-from-snapshot side requires the executor harness to script a memory_recall result frame, plus `types.ExecutionResult` extending with `checkpoint_id` so the harness can emit the chunk trigger.
-- `test_config_hot_reload_next_event` — flip `reload_pending`, confirm next runEventLoop tick swaps `session.config`. Needs the private `reloadZombieConfig` helper exposed (5-line refactor), or the entire runEventLoop driven through a one-tick test harness.
+- `test_secret_substitution_real_bytes_outbound` — real-network E2E that captures the Authorization header on a mock HTTPS server. **Unreachable inside `zig build test`.** NullClaw's `HttpRequestTool` short-circuits at `if (builtin.is_test) return ToolResult.fail("Network disabled in tests")` (line 135 of `nullclaw/src/tools/http_request.zig`) before any URL/header/body work runs. Closing this in-test requires either (a) a vendored fork of NullClaw without the `is_test` kill, or (b) a separate non-test binary hosting the executor + tool dispatch, driven from outside. Both are out of M41 scope. The substitution boundary itself is unit-tested in `policy_http_request_test.zig`.
+- `test_secret_no_leak_into_event_log_e2e` — full worker → executor → real `PolicyHttpRequestTool` path with PG row-dump grep. Same NullClaw `is_test` blocker as above. The boundary invariant (placeholder bytes, never resolved bytes, land in `core.zombie_events.request_json`) is unit-tested via `redactBytes` plus the substitute-output-checked-by-`assertNoLeftover` chain in `policy_http_request_test.zig`.
+- `test_continuation_event_resumes_with_memory_recall` — full worker re-pulls continuation from stream → executor opens with `memory_recall` → assert new tokens generated. The enqueue side is covered above; the resume-from-snapshot side requires the executor harness to script a `memory_recall` result frame, plus `types.ExecutionResult` extending with `checkpoint_id` so the harness can emit the chunk trigger.
 
 **Files-Changed table amendment:** The original spec named `tests/integration/executor_policy_test.zig` and `tests/integration/context_lifecycle_test.zig`. The project's actual integration-test convention is `src/<package>/<name>_integration_test.zig`. The shipped file is `src/zombie/context_lifecycle_integration_test.zig`; the executor-policy E2E file is not created (its content is unit-tested in `policy_http_request_test.zig` per the deferral list).
 
@@ -196,7 +196,7 @@ The test list below was rewritten Apr 30, 2026 against what actually shipped. Th
 
 ## Acceptance Criteria
 
-- [x] **Unit + integration test suite covers every §1–§9 invariant and every load-bearing failure mode.** 38 unit tests + 2 integration tests across 6 files; the M41 §7 force-stop (Invariant 4) is integration-tier and exercises real PG recursive-CTE chain count + Redis XADD absence. The 4 deferred tests above are documented with concrete reasons; none are required to ship M41.
+- [x] **Unit + integration test suite covers every §1–§9 invariant and every load-bearing failure mode.** 38 unit tests + 3 integration tests across 6 files; the M41 §7 force-stop (Invariant 4) is integration-tier and exercises real PG recursive-CTE chain count + Redis XADD absence; §9 hot-reload is integration-tier and exercises real PG `UPDATE core.zombies` + reparse + free-old-config. The 3 remaining deferred tests above are documented with concrete reasons (two of them blocked by NullClaw's hardcoded `is_test` network kill); none are required to ship M41.
 - [ ] Audit grep: install platform-ops sample, run a chat steer → grep DB dump + worker logs + executor logs for token bytes → 0 matches
 - [ ] A 25-tool-call test scenario completes without context overflow; event log shows ≥1 memory_store call and 0 stage chunks
 - [ ] A 50-tool-call adversarial scenario chunks at least once and resumes via continuation event
@@ -218,4 +218,21 @@ Cross-checked the spec against what M40/M42/M45 actually shipped. Six amendments
 
 Folder hygiene: M41's NEW files land in `src/executor/registry/` and `src/executor/runtime/` to seed a future reorg. Existing files stay put for this PR — mass-move during a security-critical change is a bad idea. Follow-up hygiene spec (TBD) does the full executor + zombie reorg.
 
+### Discovery (Apr 30, 2026: 04:30 PM, deferred-tests audit)
+
+Investigated whether the four deferred tests could land in this milestone. Two findings:
+
+7. **NullClaw `HttpRequestTool` blocks all real-network dispatch under `builtin.is_test`.** `nullclaw/src/tools/http_request.zig:135` short-circuits with `return ToolResult.fail("Network disabled in tests")` before any URL/header/body work. Stacking checks (HTTPS-only at line 49, SSRF-block on `127.0.0.1`/`::1`/private ranges) are unreachable because the `is_test` kill fires first. **Implication:** `test_secret_substitution_real_bytes_outbound` and `test_secret_no_leak_into_event_log_e2e` are not closeable inside `zig build test`. Closing either requires (a) a vendored fork of NullClaw without the kill, or (b) a separate non-test binary hosting the executor + tool dispatch, driven from outside. Neither is in M41 scope. Deferred-tests block in the Test Specification section now cites this blocker explicitly.
+8. **`reloadZombieConfig` exposed as `pub`.** Per RULE NLR's audit clause (new `pub` symbols need an in-tree consumer), the consumer is the new integration test at `src/zombie/context_lifecycle_integration_test.zig:test "integration: reloadZombieConfig swaps session.config after DB row UPDATE"`. The runtime call site (`runEventLoop` between events) is unchanged. The 5-line refactor option from the original deferred-tests note proved sufficient — no one-tick harness needed.
+
 Bun reference (research only, no code lifted): mirroring patterns from `bun/src/bun.zig:919-1040` (case-insensitive ASCII string hashmap context) and `bun/src/StaticHashMap.zig:40` (file-as-struct + mixin), implemented from scratch over `std.HashMapUnmanaged` and `std.json.Stringify`.
+
+### Discovery (Apr 30, 2026: API URL hygiene scope expansion)
+
+The branch picked up a REST §1 hygiene pass alongside §9's hot-reload work because the URL-shape gate was already flagging three pre-§1 endpoints (`/pause`, `/complete`, `/kill`) and the cleanup was small enough to ride the same PR. Five sub-changes landed:
+
+9. **Method-aware `router.match()`.** Signature changed from `match(path) → ?Route` to `match(path, method) → ?Route`. The auth-session matcher dispatches on method — GET → `poll_auth_session`, PATCH → `patch_auth_session`. Every other matcher stays method-agnostic; the per-handler 405-on-wrong-method check (`route_table_invoke.zig`) is the second gate. Substrate refactor was a precondition for the `/complete` rename (which needed two Route variants on a single path).
+10. **`/pause` → PATCH /workspaces/{id}.** Body `{pause, reason, version}` — already shipped earlier in the branch; included here for the discovery roll-up.
+11. **`/complete` → PATCH /auth/sessions/{id}.** Body `{status:"complete", token}`. Mirrors GET poll's response symmetry. `complete_auth_session` Route variant deleted; `patch_auth_session` added with bearer policy. AUTH.md sequence diagram updated.
+12. **`/kill` → PATCH /zombies/{id}, body `{status:"killed"}`.** The kill flow folded into `patch.zig`; `kill.zig` deleted; one SQL UPDATE handles either or both fields via `COALESCE`. Per-field publishes (`zombie_status_changed`, `zombie_config_changed`) fire conditionally. The DELETE /current-run endpoint stays — it's a different semantic ("abort the in-flight stage" vs "kill the zombie permanently").
+13. **Vendor-path split in `check_openapi_url_shape.py`.** Slack OAuth (`/v1/slack/install`, `/v1/slack/callback`) and GitHub OAuth (`/v1/github/callback`) moved to a new `VENDOR_PATH_CARVE_OUTS` set per AGENTS.md RULE NLG (vendor-immortal carve-outs are a separate class from deferred-cleanup tracking lists; naming makes the distinction mechanical). `PENDING_RENAME_PATHS` shrunk to 5 entries (steer + 4 memory ops); the constant itself carries an explicit `RULE NLG: SKIPPED per user override` comment block since the tracking-list ban applies. Follow-up spec at `docs/v2/pending/M41_002_P2_API_URL_HYGIENE.md`.

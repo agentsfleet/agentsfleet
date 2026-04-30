@@ -9,7 +9,7 @@
 // lands when the NullClaw lifecycle hooks ship — until then the emitter
 // fires zero times and behaviour matches a one-shot startStage).
 //
-// The 13 steps follow the EXECUTE flow in docs/ARCHITECHTURE.md.
+// The 13 steps follow the EXECUTE flow in docs/architecture/.
 
 const std = @import("std");
 const pg = @import("pg");

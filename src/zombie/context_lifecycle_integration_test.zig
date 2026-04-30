@@ -12,22 +12,24 @@
 //   landed here:
 //     test_continuation_event_resumes      → §7 enqueue happy path
 //     test_max_continuation_chain_10       → §7 Invariant 4 force-stop at 11th
+//     test_config_hot_reload_next_event    → §9 reloadZombieConfig swaps session.config
 //
 //   covered by unit tests instead (see capabilities.md §4 chain-cap section
 //   for the [CHANGED] semantics — runtime can't mutate NullClaw conversation
 //   so §4/§5/§6 became observability counters + SKILL prose):
 //     test_secret_substitution_real_bytes_outbound  → policy_http_request_test.zig
-//                                                     (real-network E2E needs a mock
-//                                                     HTTPS server not in repo today)
+//                                                     (real-network E2E unreachable in
+//                                                     `zig build test`: NullClaw's
+//                                                     HttpRequestTool short-circuits at
+//                                                     `builtin.is_test` before any wire
+//                                                     dispatch; closing it requires a
+//                                                     vendored fork or out-of-test binary)
 //     test_secret_no_leak_into_event_log            → unit-tested via redactBytes
 //     test_secret_no_leak_into_agent_context        → policy_http_request_test.zig
 //     test_network_allow_blocks_off_list            → policy_http_request_test.zig
 //     test_tool_window_drops_old_results            → runner_progress_test.zig
 //     test_memory_checkpoint_nudge_fires            → runner_progress_test.zig
 //     test_stage_chunk_at_threshold                 → runner_progress_test.zig
-//     test_config_hot_reload_next_event             → deferred — needs the private
-//                                                     reloadZombieConfig helper exposed
-//                                                     from event_loop.zig
 //
 // Requires LIVE_DB=1 (TEST_DATABASE_URL or DATABASE_URL) + a reachable Redis
 // (TEST_REDIS_TLS_URL). Skipped when either is missing.
@@ -42,6 +44,7 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const executor_client = @import("../executor/client.zig");
 
 const types = @import("event_loop_types.zig");
+const event_loop = @import("event_loop.zig");
 const event_loop_continuation = @import("event_loop_continuation.zig");
 const base = @import("../db/test_fixtures.zig");
 const helpers = @import("test_harness_helpers.zig");
@@ -290,4 +293,46 @@ test "integration: 11th continuation force-stops with chunk_chain_escalate_human
     defer if (label) |l| ALLOC.free(l);
     try std.testing.expect(label != null);
     try std.testing.expectEqualStrings(CHAIN_ESCALATE_LABEL, label.?);
+}
+
+// ── Test 3: §9 config hot-reload ───────────────────────────────────────────
+
+const NAME_SEEDED = "ctx-bot-seeded";
+const NAME_RELOADED = "ctx-bot-reloaded";
+const CONFIG_SEEDED =
+    \\{"name":"ctx-bot-seeded","trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":1.0}}
+;
+const CONFIG_RELOADED =
+    \\{"name":"ctx-bot-reloaded","trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":2.0}}
+;
+
+test "integration: reloadZombieConfig swaps session.config after DB row UPDATE" {
+    if (std.process.getEnvVarOwned(ALLOC, helpers.SKIP_ENV_VAR)) |s| {
+        defer ALLOC.free(s);
+        return error.SkipZigTest;
+    } else |_| {}
+
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    try base.seedTenant(db_ctx.conn);
+    defer base.teardownTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
+    defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, NAME_SEEDED, CONFIG_SEEDED, ZOMBIE_SOURCE_MD);
+    defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
+    try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, "{}");
+
+    var session = try event_loop.claimZombie(ALLOC, TEST_ZOMBIE_ID, db_ctx.pool);
+    defer session.deinit(ALLOC);
+    try std.testing.expectEqualStrings(NAME_SEEDED, session.config.name);
+
+    _ = try db_ctx.conn.exec(
+        "UPDATE core.zombies SET config_json = $2::jsonb WHERE id = $1::uuid",
+        .{ TEST_ZOMBIE_ID, CONFIG_RELOADED },
+    );
+
+    try event_loop.reloadZombieConfig(ALLOC, &session, db_ctx.pool);
+    try std.testing.expectEqualStrings(NAME_RELOADED, session.config.name);
 }
