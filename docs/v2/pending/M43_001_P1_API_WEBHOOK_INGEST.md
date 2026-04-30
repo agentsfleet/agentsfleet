@@ -11,7 +11,61 @@
 **Branch:** feat/m43-webhook-ingest (to be created)
 **Depends on:** M42_001 (writes to `zombie:{id}:events` with the M42 envelope shape). M45_001 (webhook secret stored as a structured credential under `${secrets.github.webhook_secret}`). M40_001 (the per-zombie thread that consumes the event must exist).
 
-**Canonical architecture:** `docs/architecture/` §4.1 (Platform-Ops trigger modes), §8.3 (webhook trigger), §8.5 (E2E walkthrough — webhook flow), §12 step 7a.
+**Canonical architecture:** `docs/architecture/user_flow.md` (webhook input + GH Actions trigger walkthrough), `docs/architecture/data_flow.md` §B (TRIGGER — three callers, ONE ingress).
+
+---
+
+## Cross-spec amendments (Apr 30, 2026 — pre-implementation review pass)
+
+The original spec below was written assuming greenfield. M28_001 (DONE) had already shipped most of the auth substrate. M45_001 (DONE) reshaped credential storage. The following decisions reconcile this spec with what's already in tree.
+
+**A1 — URL: `POST /v1/webhooks/{zombie_id}/github`.** Reuse the existing `/v1/webhooks/{zombie_id}/...` namespace (5 webhook routes already there: clerk, svix, approval, grant_approval, the generic per-zombie receiver). Workspace prefix `/v1/workspaces/{ws}/...` is wrong for webhook URLs — webhooks are signature-authed, not session-authed, so the workspace is the auth scope of the *secret* (vault lookup), not of the URL.
+
+**A2 — Reuse `webhook_sig.zig` middleware (M28).** The handler is auth-free: parse → filter → dedupe → normalize → XADD → 202. All HMAC verification happens upstream in middleware. GitHub's HMAC scheme is already registered in `src/zombie/webhook_verify.zig` `PROVIDER_REGISTRY` (`{name="github", sig_header="x-hub-signature-256", prefix="sha256="}`).
+
+**A3 — Drop the proposed `webhooks/common.zig`.** No HMAC primitive lives in the handler tree; `src/auth/middleware/webhook_sig.zig` is the source of truth. Re-implementing HMAC in two places is RULE NLR-violating debt.
+
+**A4 — Envelope shape: flat `request={…}`, not nested `request: { message, metadata }`.** Per the canonical envelope at `src/zombie/event_envelope.zig` and `docs/architecture/user_flow.md` line 113. The `request_json` field is opaque JSON bytes; its top-level keys are `{run_url, head_sha, conclusion, ref, repo, attempt, run_id, head_branch, workflow_name, received_at}`.
+
+**A5 — Drop the pre-M45 single-string-secret fallback** (RULE NLG no legacy framing pre-v2.0.0). M45 is DONE; there is one vault shape.
+
+**A6 — Webhook secrets are workspace-scoped via M45 credentials.**
+- Resolver: `vault.loadJson(workspace_id, name=<trigger.source>)` where `name` defaults to the `trigger.source` value (e.g. `"github"`). Pull the `webhook_secret` field from the parsed JSON.
+- Frontmatter override: optional `x-usezombie.trigger.credential_name: github-prod` for workspaces with multiple GH integrations needing different secrets.
+- Operator UX: `zombiectl credential add github --data='{"webhook_secret":"<S>","api_token":"<PAT>"}'` once per workspace per provider; all zombies in the workspace using `trigger.source: github` share the same secret.
+- The `serve_webhook_lookup.zig` resolver migrates from the per-zombie `config_json.signature.secret_ref` pointer pattern to the workspace-credential-by-name pattern.
+
+**A7 — Remove the dead `webhook_secret_ref` column** (RULE NLR touch-it-fix-it). The column on `core.zombies` has zero writers in tree; the only readers are the legacy AgentMail URL-embedded-secret path (per M28's matrix). Removal is in M43's scope:
+- `schema/007_core_zombies.sql` — drop the column line + comment (pre-v2.0 Schema Guard: edit-in-place, no `ALTER TABLE`).
+- `src/cmd/serve_webhook_lookup.zig` — drop the `webhook_secret_ref` SELECT path; resolver simplifies to workspace-credential lookup.
+- `src/http/handlers/webhooks/zombie.zig` — drop `webhook_secret_ref` from row struct + SELECT; rewrite header comment to point at workspace credentials.
+- AgentMail's URL-embedded-secret path is removed with the column. Per M28_003, AgentMail's migration trajectory was already toward `/v1/webhooks/svix/{zombie_id}`.
+
+**A8 — Dedupe ordering: dedupe FIRST after signature verify, before any filtering.** Key shape: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` `EX 86400`. Dedupe-hit response: `{ "deduped": true }` (no `original_event_id` — operator-debuggable info is in the events stream). The `gh:` namespace prefix prevents collision with body-`event_id`-based dedupe keys for the same zombie.
+
+**A9 — Error codes** (RULE EMS — reuse existing `UZ-WH-NNN` family from `src/errors/`):
+- Bad signature → `UZ-WH-010` (existing).
+- Missing workspace credential or missing `webhook_secret` field → new `UZ-WH-020` *webhook_credential_not_configured*.
+- Payload >1 MiB → new `UZ-WH-030` *webhook_payload_too_large*.
+
+**A10 — File layout (PUB GATE + FILE SHAPE strict):**
+- `src/http/handlers/webhooks/github.zig` — handler, conventional layout (matches `webhooks/clerk.zig` pattern), one pub fn `invokeGithubWebhook`.
+- `src/zombie/webhook/normalizer/github.zig` — pure transformation, conventional layout, one pub fn `normalize(alloc, raw_body) ![]u8`. Operations-over-value (no state to bind).
+- `src/zombie/webhook/normalizer/github_test.zig` — colocated unit tests, RULE TST-NAM clean (no milestone IDs in names).
+- `src/http/handlers/webhooks/github_integration_test.zig` — colocated integration test (project convention; not under top-level `tests/`).
+- Fixtures: `samples/fixtures/webhook_github/{workflow_run_failure.json, workflow_run_success.json}` (no `m43-` prefix).
+
+**A11 — Workspace IDOR is naturally resolved.** No explicit binding check needed: the resolver reads `core.zombies.workspace_id` for the given `{zombie_id}` from the URL, then loads workspace credential by that workspace. An attacker forging URLs cannot bypass HMAC; an attacker who has another workspace's secret has compromised that workspace's vault, which is a higher-tier breach. Document the invariant; no extra code.
+
+**A12 — Spec invariants & out-of-scope updated:**
+- Out: 60s secret cache (security-implications; defer to a follow-up perf spec only after measurement).
+- Out: Manual smoke against staging (defer to M49 install-skill validation, parallel to M48b's pattern).
+- Out: high-entropy secret generation and "show once" UX (M49 owns the install-skill UX; M43 assumes the secret exists in vault).
+
+**A13 — Follow-up spec scheduled (not folded here):**
+- Slack workspace-global secret removal (`SLACK_SIGNING_SECRET` env var, `auth/middleware/slack_signature.zig`, `/v1/slack/events`, `/v1/slack/interactions`). Workspace-global secrets are not a valid use case going forward; per-zombie via the unified `webhook_sig` + `PROVIDER_REGISTRY` (which already has SLACK registered) is the only sanctioned path. Pending spec to be filed under `docs/v2/pending/M{next}_001_P2_API_SLACK_WORKSPACE_GLOBAL_REMOVAL.md`.
+
+The original spec text below describes the *problem and intent* correctly; the *implementation shape* is superseded by the amendments above where they conflict.
 
 ---
 

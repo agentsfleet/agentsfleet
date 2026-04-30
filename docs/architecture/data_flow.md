@@ -356,7 +356,8 @@ Considered alternatives:
                                                    to filter SSE frames
 
    WEBHOOK   GH Actions posts workflow_run failure
-               → POST /v1/.../webhooks/github   (HMAC-SHA256 verified)
+               → POST /v1/webhooks/{zombie_id}/github   (HMAC-SHA256 verified
+                 against workspace credential `github`.webhook_secret)
                → XADD zombie:{id}:events *
                       actor=webhook:github  type=webhook
                       workspace_id=<ws>     request=<normalized-json>

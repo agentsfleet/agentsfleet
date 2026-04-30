@@ -15,6 +15,37 @@
 
 ---
 
+## Cross-spec amendment (Apr 30, 2026 — folded from M43 review pass)
+
+The M43 webhook-ingest review pinned several decisions that this skill must absorb because the install-skill is the operator-facing surface for webhook setup. These supersede the original §3 step 4 (credential resolution) and step 10 (post-install messaging) wherever they conflict.
+
+**B1 — Webhook URL is `https://api.usezombie.com/v1/webhooks/{zombie_id}/github`.** Drop the `.../zombies/{id}/webhooks/github` form from the post-install message at the bottom of §3. Workspace prefix is wrong for webhooks.
+
+**B2 — Credentials are workspace-scoped opaque JSON, addressed by name** (M45 contract). The skill calls `zombiectl credential add <name> --data='<json>'`. For GitHub specifically: `<name> = "github"`, JSON body `{"webhook_secret": "<S>", "api_token": "<PAT>"}`. Both the credential name and its field names are conventions the skill follows so the SKILL.md frontmatter doesn't need a per-zombie `signature.secret_ref` pointer — the webhook ingest resolver looks the credential up by `name = trigger.source` automatically.
+
+**B3 — Skill generates the HMAC webhook secret with high entropy.** 32 random bytes from the host's CSPRNG, base64-encoded. Skill displays it once during the install flow, instructs the operator to paste it into GitHub's webhook settings UI, and stores it via `zombiectl credential add github --data='{"webhook_secret":"<displayed>", ...}'`. The secret never logs, never persists outside vault, never re-displays. M43 assumes the secret already exists in vault by the time webhook traffic arrives — that contract lives here.
+
+**B4 — Skill prints the webhook URL inline.** `zombiectl install` returns `webhook_url` in JSON mode but does NOT print it in pretty mode (verified at `zombiectl/src/commands/zombie.js:108-124`). The install-skill consumes JSON mode and prints the operator-actionable URL + secret + GitHub-config instructions in its post-install summary. This is what the dashboard would otherwise need a "Webhook setup" card for; punting that card by handling it here.
+
+**B5 — Frontmatter shape: drop `signature.secret_ref`** when the trigger source is a known provider in `PROVIDER_REGISTRY`. The skill writes:
+
+```yaml
+x-usezombie:
+  trigger:
+    source: github                  # default credential lookup: name="github", field="webhook_secret"
+    # credential_name: github-prod  # optional override, only when one workspace has multiple GH integrations
+```
+
+No `secret_ref:` line. The resolver at `src/cmd/serve_webhook_lookup.zig` migrates to convention-based lookup as part of M43.
+
+**B6 — Variable resolution adjusted.** Drop `byok_provider_credential` from the variables list under §3 step 3 — BYOK provider config is owned by `zombiectl provider set` (M48), invoked separately from install-skill. Replace the slot with **nothing** (3 variables instead of 4): `slack_channel`, `prod_branch_glob`, `cron_opt_in`. Operator chooses BYOK after install via `zombiectl provider set` if/when they want it.
+
+**B7 — `webhook_secret_ref` column is removed in M43.** No skill change required — the skill never wrote to it. Listed here only so the M49 implementer doesn't re-introduce the legacy pattern.
+
+**B8 — Pretty-mode `webhook_url` print** in `zombiectl install` is technically a `zombiectl` concern, not a skill concern. The skill works around the pretty-mode gap by parsing JSON mode. If a future spec adds pretty-mode printing of `webhook_url`, the skill's behavior remains correct (it would still parse JSON mode and print its own formatted block).
+
+---
+
 ## Implementing agent — read these first
 
 1. `~/.claude/skills/gstack/` — read 3-5 gstack skills to learn the canonical SKILL.md pattern (`name`, `description`, `when_to_use`, `tags`, body in markdown).
@@ -183,10 +214,10 @@ a working platform-ops zombie on the user's current repository.
 
 10. Print: "Platform-ops zombie installed (id: {id}). It now watches your GH
     Actions CD pipeline. Configure your repo's webhook to point at:
-    POST https://api.usezombie.com/v1/.../zombies/{id}/webhooks/github
-    with secret: <one-time displayed value, also stored in vault as
-    github.webhook_secret>. To steer manually any time: `zombiectl steer {id}
-    \"<message>\"`. To kill: `zombiectl kill {id}`."
+    POST https://api.usezombie.com/v1/webhooks/{id}/github
+    with secret: <one-time displayed value; already stored in this workspace's
+    vault as the `github` credential, field `webhook_secret`>. To steer manually
+    any time: `zombiectl steer {id} \"<message>\"`. To kill: `zombiectl kill {id}`."
 
 ## Failure modes
 

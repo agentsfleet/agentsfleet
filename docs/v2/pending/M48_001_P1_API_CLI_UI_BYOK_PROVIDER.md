@@ -38,6 +38,18 @@ M45 dropped the typed credential registry. There is no `type=llm_provider` discr
 
 ---
 
+## Cross-spec amendment (Apr 30, 2026 — folded from M43 review pass)
+
+The M43 review confirmed the credential-lookup-by-name convention this spec already uses for `llm`. Two minor reinforcements:
+
+**C1 — Convention-by-name is the project-wide pattern, not BYOK-specific.** M43 webhook ingest follows the same shape — `name = trigger.source` (e.g. `"github"`), field `webhook_secret`. M48 follows it for `llm`, field `api_key`. There is no "lookup by type" anywhere; types are dead and won't return.
+
+**C2 — Scope nuance: `llm` is *tenant*-scoped; webhook credentials (`github`, etc.) are *workspace*-scoped.** Both live in the same M45 vault, but the resolver function differs: BYOK reads at tenant granularity (one `llm` per tenant — billing scope), webhook reads at workspace granularity (one `github` per workspace — operations scope). Reflected already in the resolver function names (`tenant_provider.resolveActiveProvider` vs the workspace-keyed `vault.loadJson(workspace_id, name)` M43 will use). No code change here; documenting the boundary so it doesn't drift.
+
+**C3 — `credential_name:` override pattern is shared.** M43 introduces an optional `x-usezombie.trigger.credential_name:` frontmatter override for the rare multi-integration case (a workspace with two GH orgs needing different secrets). M48's BYOK does not need this override in v1 (one provider per tenant) but the syntax is reserved if a future "two-provider tenant" use case shows up.
+
+---
+
 ## Cross-spec amendment (Apr 29, 2026 — billing model + cap origin)
 
 Two corrections to the design below, both arising from the M41-spillover Discovery work in M49 and the architecture refactor of `docs/architecture/` (now split into per-topic files under `docs/architecture/`).
