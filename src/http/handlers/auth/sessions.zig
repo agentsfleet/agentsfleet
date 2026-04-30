@@ -44,26 +44,36 @@ pub fn innerPollAuthSession(hx: hx_mod.Hx, session_id: []const u8) void {
     hx.ok(.ok, .{ .status = status_str, .token = result.token });
 }
 
-pub fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
-    log.debug("auth.session_complete session_id={s} req_id={s}", .{ session_id, hx.req_id });
+pub fn innerPatchAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
+    log.debug("auth.session_patch session_id={s} req_id={s}", .{ session_id, hx.req_id });
 
     const body = req.body() orelse {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(struct { token: []const u8 }, hx.alloc, body, .{}) catch {
+    const Body = struct {
+        token: []const u8,
+        // The only legal transition from `pending` is `complete`. Future
+        // transitions (e.g. revoke) extend this enum + the parser branch.
+        status: []const u8 = "complete",
+    };
+    const parsed = std.json.parseFromSlice(Body, hx.alloc, body, .{}) catch {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field");
         return;
     };
     defer parsed.deinit();
 
+    if (!std.mem.eql(u8, parsed.value.status, "complete")) {
+        hx.fail(error_codes.ERR_INVALID_REQUEST, "status must be \"complete\"");
+        return;
+    }
     if (parsed.value.token.len == 0) {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "Token must not be empty");
         return;
     }
 
     hx.ctx.auth_sessions.complete(session_id, parsed.value.token) catch |err| {
-        log.err("auth.session_complete_fail err={s} session_id={s} req_id={s}", .{ @errorName(err), session_id, hx.req_id });
+        log.err("auth.session_patch_fail err={s} session_id={s} req_id={s}", .{ @errorName(err), session_id, hx.req_id });
         const code: []const u8 = switch (err) {
             error.SessionNotFound => error_codes.ERR_SESSION_NOT_FOUND,
             error.SessionExpired => error_codes.ERR_SESSION_EXPIRED,
@@ -76,6 +86,12 @@ pub fn innerCompleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: 
 
     log.info("auth.session_completed session_id={s} req_id={s}", .{ session_id, hx.req_id });
     hx.ctx.telemetry.capture(telemetry_mod.AuthLoginCompleted, .{ .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""), .session_id = session_id, .request_id = hx.req_id });
-    hx.ok(.ok, .{ .status = "complete", .request_id = hx.req_id });
+    // Mirror the GET poll response symmetry: {status, token}. The depositor
+    // gets back exactly what a subsequent poll would return.
+    hx.ok(.ok, .{
+        .status = "complete",
+        .token = parsed.value.token,
+        .request_id = hx.req_id,
+    });
 }
 

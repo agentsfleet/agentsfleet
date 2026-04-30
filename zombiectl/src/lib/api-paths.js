@@ -14,9 +14,6 @@ export const wsZombiesPath = (wsId) => `${WORKSPACES_PATH}${enc(wsId)}/zombies`;
 export const wsZombiePath = (wsId, zombieId) =>
   `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}`;
 
-// Workspace-scoped kill action — POST.
-export const wsZombieKillPath = (wsId, zombieId) =>
-  `${WORKSPACES_PATH}${enc(wsId)}/zombies/${enc(zombieId)}/kill`;
 
 // Workspace-scoped per-zombie steer (POST → 202 with event_id).
 export const wsZombieSteerPath = (wsId, zombieId) =>

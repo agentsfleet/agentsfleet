@@ -137,7 +137,7 @@ fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) v
 }
 
 fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, path: []const u8) bool {
-    const matched = router.match(path) orelse return false;
+    const matched = router.match(path, req.method) orelse return false;
 
     // M18_002 Batch D: route_table.specFor covers all Route variants.
     // The legacy switch is removed — all routes are handled here.
@@ -196,7 +196,7 @@ fn respondNotFound(res: *httpz.Response) void {
 }
 
 test "dispatchMatchedRoute route matcher covers tenant billing endpoint" {
-    const matched = router.match("/v1/tenants/me/billing") orelse return error.TestExpectedEqual;
+    const matched = router.match("/v1/tenants/me/billing", .GET) orelse return error.TestExpectedEqual;
     switch (matched) {
         .get_tenant_billing => {},
         else => return error.TestExpectedEqual,

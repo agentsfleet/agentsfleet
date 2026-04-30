@@ -59,6 +59,7 @@ describe("Agents", () => {
     renderAgents();
     expect(screen.getByText("API Operations")).toBeInTheDocument();
     expect(screen.getByText("Create zombie")).toBeInTheDocument();
+    expect(screen.getByText("Update zombie")).toBeInTheDocument();
     expect(screen.getByText("Kill zombie")).toBeInTheDocument();
     expect(screen.getByText("Steer zombie")).toBeInTheDocument();
     expect(screen.getByText("Stream events")).toBeInTheDocument();

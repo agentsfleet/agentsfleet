@@ -199,22 +199,25 @@ test("status without workspace returns exit 1", async () => {
 
 // ── kill ───────────────────────────────────────────────────────────────
 
-test("kill sends POST to /kill endpoint", async () => {
+test("kill sends PATCH /zombies/{id} with body status=killed", async () => {
   const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
   let requestMethod = null;
   let requestUrl = null;
+  let requestBody = null;
   const deps = makeDeps({
     request: async (_ctx, url, opts) => {
       requestMethod = opts.method;
       requestUrl = url;
+      requestBody = opts.body;
       return {};
     },
   });
 
   const code = await commandZombie(makeCtx(), ["kill", ZOMBIE_ID], workspaces, deps);
   assert.equal(code, 0);
-  assert.equal(requestMethod, "POST");
-  assert.ok(requestUrl.endsWith(`/zombies/${ZOMBIE_ID}/kill`), `expected kill suffix, got: ${requestUrl}`);
+  assert.equal(requestMethod, "PATCH");
+  assert.ok(requestUrl.endsWith(`/zombies/${ZOMBIE_ID}`), `expected zombie path, got: ${requestUrl}`);
+  assert.deepEqual(JSON.parse(requestBody), { status: "killed" });
 });
 
 test("kill without zombie_id returns MISSING_ARGUMENT", async () => {

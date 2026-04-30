@@ -239,7 +239,7 @@ test "M24_001 IDOR: GET /workspaces/{foreign}/zombies returns 403" {
     try std.testing.expectEqual(@as(u16, 403), r.status);
 }
 
-test "IDOR: POST /workspaces/{my}/zombies/{foreign}/kill returns 404" {
+test "IDOR: PATCH /workspaces/{my}/zombies/{foreign} status=killed returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -247,17 +247,14 @@ test "IDOR: POST /workspaces/{my}/zombies/{foreign}/kill returns 404" {
         ALLOC.destroy(srv);
     }
 
-    // Caller's ws in path, foreign zombie in path. Must 404 — the kill
+    // Caller's ws in path, foreign zombie in path. Must 404 — the patch
     // handler scopes the UPDATE by both ids and returns 404 when no row
-    // matches. (Was DELETE before the M40 grounding pass swapped the kill
-    // verb to POST /kill.)
-    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/kill", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS });
+    // matches. The kill flow now rides on PATCH .../zombies/{id} with
+    // body {status:"killed"} (folded from the retired POST /kill).
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, ZOMBIE_IN_FOREIGN_WS });
     defer ALLOC.free(url);
 
-    // std.http.Client asserts POST requests carry a body; pass an empty
-    // payload rather than null. The server treats it as no-body for the
-    // kill handler (which reads no body).
-    const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "");
+    const r = try sendReq(ALLOC, url, .PATCH, TOKEN_OPERATOR, "{\"status\":\"killed\"}");
     defer r.deinit(ALLOC);
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }

@@ -171,8 +171,9 @@ pub fn listNonActiveZombieIds(pool: *pg.Pool, alloc: std.mem.Allocator) ![][]con
 
 /// Polls the global shutdown flag, the per-zombie cancel flag, and the
 /// WorkerState drain phase, flipping `running` to false when any of them
-/// fires. Per-zombie cancel propagates `POST /kill`; drain phase
-/// propagates SIGTERM-driven graceful shutdown.
+/// fires. Per-zombie cancel propagates a PATCH .../zombies/{id} with
+/// body {status:"killed"}; drain phase propagates SIGTERM-driven graceful
+/// shutdown.
 fn watchShutdown(
     shutdown: *const std.atomic.Value(bool),
     cancel: *std.atomic.Value(bool),

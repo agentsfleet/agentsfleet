@@ -21,7 +21,7 @@ const fx = @import("zbench_fixtures.zig");
 fn benchRouteMatch(allocator: std.mem.Allocator) void {
     _ = allocator;
     for (fx.ROUTE_PATHS) |path| {
-        const r = router.match(path);
+        const r = router.match(path, .GET);
         std.mem.doNotOptimizeAway(r);
     }
 }

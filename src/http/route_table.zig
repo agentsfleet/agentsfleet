@@ -47,8 +47,8 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
         // Auth sessions
         .create_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeCreateAuthSession },
-        .complete_auth_session => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCompleteAuthSession },
         .poll_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokePollAuthSession },
+        .patch_auth_session => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchAuthSession },
 
         // OAuth callbacks — handler validates state + nonce; use none policy
         // to avoid double-consuming the Redis nonce.
@@ -56,7 +56,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
         // Workspace lifecycle
         .create_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCreateWorkspace },
-        .pause_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePauseWorkspace },
+        .patch_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspace },
         // Tenant billing snapshot
         .get_tenant_billing => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBilling },
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
@@ -82,7 +82,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Zombie CRUD + activity + credentials
         .workspace_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombies },
         .patch_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceZombie },
-        .kill_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeKillWorkspaceZombie },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
         // M23_001 / M24_001: live steering (workspace-scoped)
@@ -151,14 +150,13 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.readyz, &reg) != null);
     try testing.expect(specFor(.metrics, &reg) != null);
     try testing.expect(specFor(.create_auth_session, &reg) != null);
-    try testing.expect(specFor(.{ .complete_auth_session = "s1" }, &reg) != null);
     try testing.expect(specFor(.{ .poll_auth_session = "s1" }, &reg) != null);
+    try testing.expect(specFor(.{ .patch_auth_session = "s1" }, &reg) != null);
     try testing.expect(specFor(.github_callback, &reg) != null);
     try testing.expect(specFor(.create_workspace, &reg) != null);
-    try testing.expect(specFor(.{ .pause_workspace = "ws1" }, &reg) != null);
+    try testing.expect(specFor(.{ .patch_workspace = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .kill_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_steer = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .zombie_telemetry = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
