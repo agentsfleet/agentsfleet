@@ -4,12 +4,21 @@
 **Milestone:** M48b
 **Workstream:** 001
 **Date:** Apr 29, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — substrate. Both M48 (BYOK provider) and M49 (install-skill) consume this endpoint. Carved out of M48 to land independently because the data model + HTTP handler are simple, and the install-skill needs the URL stable before any BYOK CLI ships.
 **Categories:** API, SCHEMA
 **Batch:** B1 — substrate-tier alongside M40-M48.
-**Branch:** Implemented inline on `feat/m41-context-layering` per operator authorization (auto-mode forward instruction); separate commit from the M41 substrate work.
+**Branch:** Shipped inline on `feat/m41-context-layering` per operator authorization (commit `33f7870b feat(api): public model-caps endpoint backed by core.model_caps table`); merged to `main` via PR #269 (M41 close-out). Spec close-out happened on `chore/m48b-spec-close-out`.
 **Depends on:** Nothing. Pure additive — new schema + new route, no existing code paths affected.
+
+---
+
+## Implementation notes (close-out)
+
+- **Schema slot landed as `019_model_caps.sql`**, not `020_*` as the original spec said. M41 used the next available slot at the time of the inline ship.
+- All five §4 test cases live in `src/http/handlers/model_caps_integration_test.zig` under the `integration(model_caps): …` naming pattern (RULE TST-NAM clean — no milestone IDs in test names).
+- Architecture cross-refs verified intact in `docs/architecture/billing_and_byok.md §9` and `docs/architecture/scenarios/01_default_free_tier.md`. No new doc work needed.
+- No `changelog.mdx` entry: M48b is internal substrate (no user-visible CLI/UI surface; consumers are the still-pending M48 BYOK CLI and M49 install-skill). The user-visible release will land on those milestones' close-outs.
 
 **Canonical architecture:** [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §9 (endpoint shape, rotation, Cloudflare caching) and [`docs/architecture/scenarios/01_default_free_tier.md`](../../architecture/scenarios/01_default_free_tier.md) (consumer: install-skill at install time).
 
@@ -37,7 +46,7 @@ The key is hard-coded in `zombiectl` and the install-skill. Quarterly rotation =
 
 | File | Action | Why |
 |---|---|---|
-| `schema/020_model_caps.sql` | NEW | Table + seed |
+| `schema/019_model_caps.sql` | NEW | Table + seed (landed as slot 019, not 020 — see Implementation notes) |
 | `schema/embed.zig` | EXTEND | Register schema file |
 | `src/cmd/common.zig` | EXTEND | Add migration to canonical array |
 | `src/http/handlers/model_caps.zig` | NEW | Handler |
@@ -160,12 +169,12 @@ SQL:
 
 ## Acceptance Criteria
 
-- [ ] `make test` passes (unit shape tests on the handler).
-- [ ] `make test-integration` passes (the five tests in §4 against a fresh-migrated DB).
-- [ ] `make check-pg-drain` clean.
-- [ ] Cross-compile clean: `x86_64-linux` + `aarch64-linux`.
-- [ ] Manual smoke: `curl https://api-dev.usezombie.com/_um/<key>/model-caps.json` returns the seeded catalogue.
-- [ ] Manual smoke: `curl https://api-dev.usezombie.com/_um/wrong-key/model-caps.json` returns 404.
+- [x] `make test` passes (unit shape tests on the handler — three `formatVersion`/path-shape unit tests in `src/http/handlers/model_caps.zig`).
+- [x] `make test-integration` passes (the five tests in §4 against a fresh-migrated DB — `src/http/handlers/model_caps_integration_test.zig`).
+- [x] `make check-pg-drain` clean (verified at M41 PR #269 close-out).
+- [x] Cross-compile clean: `x86_64-linux` + `aarch64-linux` (verified at M41 PR #269 close-out).
+- [ ] Manual smoke: `curl https://api-dev.usezombie.com/_um/<key>/model-caps.json` — DEFERRED to first M48 (BYOK CLI) integration; the endpoint is exercised end-to-end by integration tests already.
+- [ ] Manual smoke: `curl https://api-dev.usezombie.com/_um/wrong-key/model-caps.json` — DEFERRED, same reason.
 
 ---
 
