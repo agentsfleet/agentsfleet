@@ -31,9 +31,15 @@ CREATE TABLE IF NOT EXISTS core.zombie_events (
     PRIMARY KEY (zombie_id, event_id)
 );
 
--- Per-zombie history with actor filter (e.g. all webhook deliveries newest-first).
-CREATE INDEX IF NOT EXISTS zombie_events_actor_idx
-    ON core.zombie_events (zombie_id, actor, created_at DESC);
+-- Per-zombie history newest-first. Covers the dashboard's primary view
+-- (no-actor listing) and keyset-cursor pagination via the (created_at,
+-- event_id) tuple. Actor-filtered reads use this index too via
+-- seek-by-zombie + scan-and-filter; with LIMIT 50 and most-recent-first
+-- ordering this satisfies the limit in a few pages even on chatty
+-- zombies. If actor filtering becomes a measured bottleneck a partial
+-- or expression index can be added back.
+CREATE INDEX IF NOT EXISTS zombie_events_zombie_idx
+    ON core.zombie_events (zombie_id, created_at DESC, event_id DESC);
 
 -- Workspace-aggregate history feeding the dashboard workspace overview.
 CREATE INDEX IF NOT EXISTS zombie_events_workspace_idx

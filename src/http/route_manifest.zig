@@ -36,7 +36,6 @@ pub const entries = [_]Entry{
     // Workspaces
     .{ .method = "POST", .path = "/v1/workspaces" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/pause" },
-    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/sync" },
 
     // Tenant billing (plan + balance snapshot)
     .{ .method = "GET", .path = "/v1/tenants/me/billing" },
@@ -62,6 +61,12 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/events" },
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run" },
+
+    // Approval inbox
+    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/approvals" },
+    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}" },
+    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}:approve" },
+    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/approvals/{gate_id}:deny" },
 
     // Zombie webhook ingest
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}" },

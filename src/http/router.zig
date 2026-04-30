@@ -41,7 +41,6 @@ pub const Route = union(enum) {
     approval_webhook: []const u8,
     // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
     grant_approval_webhook: []const u8,
-    sync_workspace: []const u8,
     // M16_004: admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
@@ -60,6 +59,10 @@ pub const Route = union(enum) {
     workspace_zombie_events_stream: matchers.WorkspaceZombieRoute, // GET /v1/workspaces/{ws}/zombies/{id}/events/stream (SSE)
     // Workspace-aggregate event history (replaces deleted activity.zig)
     workspace_events: []const u8, // GET /v1/workspaces/{ws}/events
+    // Approval inbox (workspace-scoped pending-gate surface)
+    workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
+    workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
+    workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
     // Dashboard-facing kill switch
     workspace_zombie_current_run: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/current-run — kill the running action
     // M18_001: zombie execution telemetry
@@ -152,6 +155,10 @@ pub fn match(path: []const u8) ?Route {
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
     // Workspace-aggregate event history — /v1/workspaces/{ws}/events
     if (matchWorkspaceSuffix(path, "/events")) |workspace_id| return .{ .workspace_events = workspace_id };
+    // Approval inbox — most specific (resolve with colon-noun) before bare detail before list.
+    if (matchers.matchWorkspaceApprovalResolve(path)) |route| return .{ .workspace_approval_resolve = route };
+    if (matchers.matchWorkspaceApprovalGate(path)) |route| return .{ .workspace_approval_detail = route };
+    if (matchWorkspaceSuffix(path, "/approvals")) |workspace_id| return .{ .workspace_approvals = workspace_id };
     // credentials/llm is already handled above; /credentials/{name} matches a single
     // named credential (DELETE), and /credentials (plain) is the collection (GET|POST).
     // Most-specific path first.
@@ -205,11 +212,6 @@ pub fn match(path: []const u8) ?Route {
     }
     // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
     if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
-
-    if (std.mem.startsWith(u8, path, prefix_workspaces) and std.mem.endsWith(u8, path, "/sync")) {
-        const inner = path[prefix_workspaces.len .. path.len - "/sync".len];
-        if (inner.len > 0) return .{ .sync_workspace = inner };
-    }
 
     return null;
 }

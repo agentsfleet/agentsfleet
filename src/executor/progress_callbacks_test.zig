@@ -106,6 +106,29 @@ test "decodeProgress rejects unknown frame kind with typed error" {
     try std.testing.expectError(error.UnknownFrameKind, pc.decodeProgress(alloc, wire));
 }
 
+test "decodeProgressFromValue reuses caller-owned parsed value" {
+    const alloc = std.testing.allocator;
+    const wire =
+        \\{"jsonrpc":"2.0","id":7,"method":"Progress","params":{"kind":"agent_response_chunk","text":"hello"}}
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, wire, .{});
+    defer parsed.deinit();
+    const decoded = try pc.decodeProgressFromValue(parsed.value);
+    try std.testing.expectEqual(@as(u64, 7), decoded.request_id);
+    try std.testing.expectEqual(pc.FrameKind.agent_response_chunk, decoded.frame.kind());
+    try std.testing.expectEqualStrings("hello", decoded.frame.agent_response_chunk.text);
+}
+
+test "decodeProgressFromValue surfaces UnknownFrameKind without parsing" {
+    const alloc = std.testing.allocator;
+    const wire =
+        \\{"jsonrpc":"2.0","id":1,"method":"Progress","params":{"kind":"telepathy"}}
+    ;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, wire, .{});
+    defer parsed.deinit();
+    try std.testing.expectError(error.UnknownFrameKind, pc.decodeProgressFromValue(parsed.value));
+}
+
 test "decodeProgress rejects negative request id" {
     const alloc = std.testing.allocator;
     const wire =

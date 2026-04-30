@@ -6,7 +6,6 @@
 //!   worker     Start worker loop
 //!   doctor     Verify Postgres, git, agent config, and critical env
 //!   migrate    Apply schema migrations and exit
-//!   reconcile  Dead-letter stale outbox rows (cron/scheduled)
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -17,7 +16,6 @@ const cmd_serve = @import("cmd/serve.zig");
 const cmd_worker = @import("cmd/worker.zig");
 const cmd_doctor = @import("cmd/doctor.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
-const cmd_reconcile = @import("cmd/reconcile.zig");
 const config_load = @import("config/load.zig");
 
 const log = std.log.scoped(.zombied);
@@ -106,7 +104,7 @@ pub fn main() !void {
             const bad = argv.next() orelse "";
             std.debug.print(
                 "zombied: unknown subcommand: {s}\n" ++
-                    "usage: zombied [serve|worker|doctor|migrate|reconcile]\n",
+                    "usage: zombied [serve|worker|doctor|migrate]\n",
                 .{bad},
             );
             std.process.exit(1);
@@ -117,7 +115,6 @@ pub fn main() !void {
         .worker => try cmd_worker.run(alloc),
         .doctor => try cmd_doctor.run(alloc),
         .migrate => try cmd_migrate.run(alloc),
-        .reconcile => try cmd_reconcile.run(alloc),
     }
 }
 
@@ -174,7 +171,6 @@ test {
     _ = @import("observability/trace.zig");
     _ = @import("observability/otel_export.zig");
     _ = @import("observability/otel_logs.zig");
-    _ = @import("state/outbox_reconciler.zig");
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/heroku_names.zig");
     _ = @import("state/heroku_names_test.zig");
@@ -249,6 +245,7 @@ test {
     // M23_001: Zombie Steer — live steering + execution tracking
     _ = @import("http/handlers/zombies/steer_integration_test.zig");
     _ = @import("http/handlers/zombies/events_integration_test.zig");
+    _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
     _ = @import("zombie/event_loop_execution_tracking_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)

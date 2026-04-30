@@ -1,0 +1,259 @@
+/v1/workspaces/{workspace_id}/approvals:
+  get:
+    operationId: list_workspace_approvals
+    summary: List pending approval gates for a workspace
+    description: |
+      Returns approval gates oldest-first (oldest is most urgent). Each row
+      surfaces the agent's proposed action, gathered evidence, blast-radius
+      assessment, and timeout countdown. Filter by zombie, gate kind, or
+      status. Cursor pagination over (requested_at, id) so concurrent
+      inserts don't cause silent skips.
+    tags:
+    - Approvals
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    - name: status
+      in: query
+      required: false
+      description: Defaults to "pending". Supply "approved", "denied", "timed_out" to query terminal states.
+      schema: { type: string }
+    - name: zombie_id
+      in: query
+      required: false
+      schema: { type: string, format: uuid }
+    - name: gate_kind
+      in: query
+      required: false
+      schema: { type: string }
+    - name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+    - name: cursor
+      in: query
+      required: false
+      schema: { type: string }
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/ApprovalGate'
+                next_cursor:
+                  type: string
+                  nullable: true
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/workspaces/{workspace_id}/approvals/{gate_id}:
+  get:
+    operationId: get_workspace_approval
+    summary: Get a single approval gate by id
+    description: Drives the dashboard detail page. 404 when the gate doesn't exist or belongs to a different workspace.
+    tags:
+    - Approvals
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    - name: gate_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    responses:
+      '200':
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalGate'
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/workspaces/{workspace_id}/approvals/{gate_id}:approve:
+  post:
+    operationId: approve_workspace_approval
+    summary: Approve a pending gate
+    description: |
+      Resolves the gate to "approved" and wakes the worker thread blocked
+      on the gate. Funnels through the channel-agnostic resolve core that
+      Slack callbacks and the auto-timeout sweeper share — first writer
+      wins; concurrent resolvers receive 409 with the original outcome and
+      resolver attribution.
+    tags:
+    - Approvals
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    - name: gate_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApprovalResolveBody'
+    responses:
+      '200':
+        description: Resolved
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalResolveResponse'
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: Already resolved by another channel
+        content:
+          application/problem+json:
+            schema:
+              $ref: '#/components/schemas/ApprovalAlreadyResolvedResponse'
+
+/v1/workspaces/{workspace_id}/approvals/{gate_id}:deny:
+  post:
+    operationId: deny_workspace_approval
+    summary: Deny a pending gate
+    description: |
+      Resolves the gate to "denied" and wakes the worker thread. The
+      worker treats `denied` as "do not execute the proposed tool call".
+      Same dedup semantics as `:approve`.
+    tags:
+    - Approvals
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    - name: gate_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApprovalResolveBody'
+    responses:
+      '200':
+        description: Resolved
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApprovalResolveResponse'
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        description: Already resolved by another channel
+        content:
+          application/problem+json:
+            schema:
+              $ref: '#/components/schemas/ApprovalAlreadyResolvedResponse'
+
+components:
+  schemas:
+    ApprovalGate:
+      type: object
+      required: [gate_id, zombie_id, workspace_id, action_id, status, requested_at, timeout_at]
+      properties:
+        gate_id: { type: string, format: uuid }
+        zombie_id: { type: string, format: uuid }
+        zombie_name: { type: string }
+        workspace_id: { type: string, format: uuid }
+        action_id: { type: string }
+        tool_name: { type: string }
+        action_name: { type: string }
+        gate_kind:
+          type: string
+          description: Classification driving UI grouping. Empty string when not classified.
+        proposed_action:
+          type: string
+          description: Human-readable summary of what the zombie wants to do.
+        evidence:
+          type: object
+          description: Agent-gathered context (free-form). Rendered as expandable JSON tree.
+        blast_radius:
+          type: string
+          description: Agent's assessment of the action's reach.
+        status:
+          type: string
+          enum: [pending, approved, denied, timed_out, auto_killed]
+        detail:
+          type: string
+          description: Optional reason text supplied by the resolver.
+        requested_at: { type: integer, format: int64, description: ms epoch }
+        timeout_at: { type: integer, format: int64, description: ms epoch — sweeper auto-denies after this point }
+        updated_at:
+          type: integer
+          format: int64
+          nullable: true
+          description: Set on terminal transition; doubles as resolved_at.
+        resolved_by:
+          type: string
+          description: Resolver attribution — "user:<id>", "slack:<channel>", "api:<id>", or "system:timeout".
+    ApprovalResolveBody:
+      type: object
+      properties:
+        reason:
+          type: string
+          maxLength: 4096
+          description: Optional free-form note attached to the resolution.
+    ApprovalResolveResponse:
+      type: object
+      required: [gate_id, action_id, outcome, resolved_at, resolved_by]
+      properties:
+        gate_id: { type: string, format: uuid }
+        action_id: { type: string }
+        outcome:
+          type: string
+          enum: [approved, denied, timed_out, auto_killed]
+        resolved_at: { type: integer, format: int64 }
+        resolved_by: { type: string }
+    ApprovalAlreadyResolvedResponse:
+      description: |
+        RFC 7807 problem+json with structured extension fields carrying the
+        original outcome and resolver attribution so the dashboard can render
+        "already resolved by X at Y" without a follow-up GET.
+      allOf:
+      - $ref: ../components/schemas.yaml#/components/schemas/ErrorBody
+      - type: object
+        required: [gate_id, outcome, resolved_at, resolved_by]
+        properties:
+          gate_id: { type: string, format: uuid }
+          action_id: { type: string }
+          outcome:
+            type: string
+            enum: [approved, denied, timed_out, auto_killed]
+          resolved_at: { type: integer, format: int64 }
+          resolved_by: { type: string }

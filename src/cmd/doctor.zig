@@ -369,27 +369,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     {
-        const config_dir = std.process.getEnvVarOwned(alloc, "AGENT_CONFIG_DIR") catch
-            try alloc.dupe(u8, "./config");
-        defer alloc.free(config_dir);
-
-        const required_files = [_][]const u8{
-            "echo-prompt.md",        "scout-prompt.md", "warden-prompt.md",
-            "echo.json",             "scout.json",      "warden.json",
-            "pipeline-default.json",
-        };
-        for (required_files) |fname| {
-            const path = try std.fmt.allocPrint(alloc, "{s}/{s}", .{ config_dir, fname });
-            defer alloc.free(path);
-            if (std.fs.cwd().access(path, .{})) |_| {
-                try appendFmtCheck(alloc, &results, "agent_config_file", true, &ok, "config/{s}", .{fname});
-            } else |_| {
-                try appendFmtCheck(alloc, &results, "agent_config_file", false, &ok, "config/{s} missing", .{fname});
-            }
-        }
-    }
-
-    {
         const oidc_provider_raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch null;
         defer if (oidc_provider_raw) |v| alloc.free(v);
         const oidc_provider = blk: {

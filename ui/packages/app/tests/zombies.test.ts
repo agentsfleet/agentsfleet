@@ -44,6 +44,12 @@ vi.mock("@/lib/workspace", () => ({
   resolveActiveWorkspace,
   listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
 }));
+// ZombieApprovalsPanel is an async server component that internally renders
+// a client-only list. renderToStaticMarkup() cannot resolve the suspended
+// boundary in the test environment; stub it to a synchronous placeholder.
+vi.mock("@/components/domain/ZombieApprovalsPanel", () => ({
+  default: () => React.createElement("div", { "data-stub": "ZombieApprovalsPanel" }),
+}));
 
 vi.mock("lucide-react", () => {
   function Icon(name: string) {
@@ -455,6 +461,9 @@ describe("zombies routes", () => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         return { ok: true, status: 200, json: async () => billing };
       }
+      if (url.includes("/approvals")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
@@ -616,11 +625,49 @@ describe("zombies routes", () => {
     expect(markup).not.toContain("Balance exhausted");
   });
 
+  it("zombies detail page renders pending-approvals badge + 50+ label when next_cursor set", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            items: [{ gate_id: "g1", zombie_id: "zom_1", zombie_name: "lead-collector" }],
+            next_cursor: "cur_xyz",
+          }),
+        };
+      }
+      if (url.includes("/events")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{ id: "zom_1", name: "lead-collector", status: "active", created_at: 1, updated_at: 1 }],
+          total: 1,
+        }),
+      };
+    });
+    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+    );
+    expect(markup).toMatch(/1\+ pending approval/i);
+  });
+
   it("zombies detail page handles billing fetch failure gracefully (catch branch)", async () => {
     resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith("/v1/tenants/me/billing")) {
         throw new Error("network down");
+      }
+      if (url.includes("/approvals")) {
+        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
       }
       if (url.includes("/events")) {
         return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };

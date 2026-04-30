@@ -3,6 +3,8 @@ Milestone: M11
 Workstream: M11_002
 Name: HX_HANDLER_CONTEXT
 Status: DONE
+Priority: P1 — eliminates handler setup boilerplate; prerequisite for all subsequent handler work
+Categories: API, ZIG
 Branch: feat/m11-hx-handler-context
 Depends-on: M11_001
 Created: Apr 10, 2026

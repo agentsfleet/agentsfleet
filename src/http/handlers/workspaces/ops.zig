@@ -80,11 +80,3 @@ pub fn innerPauseWorkspace(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []c
         .request_id = hx.req_id,
     });
 }
-
-
-/// M10_001: Pipeline v1 removed — specs table dropped. Returns 410.
-/// none policy — 410 stub, no authentication required.
-pub fn innerSyncSpecs(hx: hx_mod.Hx, workspace_id: []const u8) void {
-    _ = workspace_id;
-    hx.fail(error_codes.ERR_PIPELINE_V1_REMOVED, "Pipeline v1 removed — spec sync is no longer available");
-}

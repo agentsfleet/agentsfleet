@@ -6,7 +6,6 @@ const ec = @import("error_registry.zig");
 test "hint returns actionable text for known startup codes" {
     try std.testing.expect(ec.hint(ec.ERR_STARTUP_REDIS_CONNECT).len > 0);
     try std.testing.expect(ec.hint(ec.ERR_INTERNAL_DB_UNAVAILABLE).len > 0);
-    try std.testing.expect(ec.hint(ec.ERR_PIPELINE_V1_REMOVED).len > 0);
 }
 
 test "hint returns UNKNOWN hint for unregistered codes" {

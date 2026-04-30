@@ -167,14 +167,29 @@ pub fn isProgressPayload(parsed_root: std.json.Value) bool {
     return std.mem.eql(u8, method_v.string, progress_method);
 }
 
+/// Frame + id pair extracted from an already-parsed JSON value. Borrowed
+/// slices point into the caller-owned `std.json.Parsed` value.
+pub const ProgressDecoded = struct {
+    request_id: u64,
+    frame: ProgressFrame,
+};
+
 /// Decode a payload known to be a progress frame. Returns the
 /// `DecodeResult` whose `frame` slices are borrowed from `parsed`;
 /// caller calls `result.parsed.deinit()` when done.
 pub fn decodeProgress(alloc: Allocator, payload: []const u8) !DecodeResult {
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc, payload, .{});
     errdefer parsed.deinit();
+    const inner = try decodeProgressFromValue(parsed.value);
+    return .{ .request_id = inner.request_id, .frame = inner.frame, .parsed = parsed };
+}
 
-    const root = parsed.value;
+/// Decode a progress frame from an already-parsed JSON value. The
+/// returned frame's string slices point into the caller's parsed value;
+/// caller is responsible for the parsed value's lifetime. Used by
+/// `transport.sendRequestStreaming` to avoid a second parse after the
+/// progress-vs-terminal discrimination.
+pub fn decodeProgressFromValue(root: std.json.Value) !ProgressDecoded {
     if (root != .object) return error.InvalidProgressFrame;
 
     const id_v = root.object.get("id") orelse return error.InvalidProgressFrame;
@@ -208,7 +223,7 @@ pub fn decodeProgress(alloc: Allocator, payload: []const u8) !DecodeResult {
         } },
     };
 
-    return .{ .request_id = request_id, .frame = frame, .parsed = parsed };
+    return .{ .request_id = request_id, .frame = frame };
 }
 
 pub fn encodeHello(alloc: Allocator, hello: Hello) ![]u8 {

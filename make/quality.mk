@@ -74,7 +74,6 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/auth/github.zig \
 	src/auth/jwks.zig \
 	src/cmd/doctor.zig \
-	src/cmd/reconcile.zig \
 	src/cmd/serve.zig \
 	src/config/runtime.zig \
 	src/db/pool.zig \

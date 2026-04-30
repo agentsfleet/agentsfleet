@@ -1,8 +1,5 @@
-//! Policy enforcement — stub after M10_001 pipeline v1 removal.
-//!
-//! The policy_events table and runs table were dropped. recordPolicyEvent is
-//! now a no-op that logs the decision without persisting to DB. Callers
-//! (workspaces_ops.zig) are unchanged — they catch the error return.
+//! Policy decision recorder. Logs the decision and emits a policy_event
+//! on the local event bus so any in-process subscriber can observe.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -10,7 +7,6 @@ const types = @import("../types.zig");
 const events = @import("../events/bus.zig");
 const log = std.log.scoped(.policy);
 
-/// Record a policy decision. M10_001: policy_events table dropped — log only.
 pub fn recordPolicyEvent(
     conn: *pg.Conn,
     workspace_id: []const u8,
