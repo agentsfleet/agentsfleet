@@ -96,7 +96,7 @@ test "T2: composeMessage with empty context object returns just message" {
 // ── T3: Error — execute with null message ────────────────────────────
 test "T3: execute returns startup_posture failure for null message" {
     const alloc = std.testing.allocator;
-    const result = runner.execute(alloc, "/tmp/ws", null, null, null, null, null);
+    const result = runner.execute(alloc, "/tmp/ws", null, null, null, null, null, null);
     try std.testing.expect(!result.exit_ok);
     try std.testing.expect(result.failure != null);
     try std.testing.expectEqual(types.FailureClass.startup_posture, result.failure.?);
@@ -415,7 +415,7 @@ test "T2: composeMessage with null-valued context fields" {
 test "T2: execute with empty string message returns failure" {
     const alloc = std.testing.allocator;
     // Empty string is not null — should attempt execution (not null check failure).
-    const result = runner.execute(alloc, "/tmp/ws", null, null, "", null, null);
+    const result = runner.execute(alloc, "/tmp/ws", null, null, "", null, null, null);
     // The runner will fail during agent init (no real provider), but the
     // failure should NOT be startup_posture from the null-message guard.
     // It should attempt execution and fail at a later stage.
@@ -432,7 +432,7 @@ test "T5: execute concurrent calls are safe" {
             const alloc = std.testing.allocator;
             // Call execute with null message — triggers the early return path.
             // This exercises the metric increment under concurrency.
-            const result = runner.execute(alloc, "/tmp/ws", null, null, null, null, null);
+            const result = runner.execute(alloc, "/tmp/ws", null, null, null, null, null, null);
             // Should always return the same predictable failure.
             std.debug.assert(!result.exit_ok);
             std.debug.assert(result.failure != null);

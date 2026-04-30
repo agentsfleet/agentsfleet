@@ -12,6 +12,7 @@ const tools_mod = nullclaw.tools;
 const Config = nullclaw.config.Config;
 const bridge = @import("tool_bridge.zig");
 const BuildCtx = bridge.BuildCtx;
+const PolicyHttpRequestTool = @import("runtime/policy_http_request.zig");
 
 // ── Core file tools ────────────────────────────────────────────────────────
 
@@ -176,6 +177,27 @@ pub fn buildSpawn(ctx: BuildCtx) anyerror!tools_mod.Tool {
 // ── Network tools (HTTP/search/fetch) ──────────────────────────────────────
 
 pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
+    // When the session carries an ExecutionPolicy, the policy-aware variant
+    // owns substitution + per-execution allowlist on the same boundary.
+    // Without a policy we fall back to plain NullClaw — relevant for the
+    // executor unit-test path that drives the bridge with no session.
+    if (ctx.policy) |policy_ptr| {
+        const ptr = try ctx.alloc.create(PolicyHttpRequestTool);
+        // `inner.allowed_domains` mirrors the per-execution allowlist so
+        // NullClaw treats these hosts as operator-trusted: skip SSRF, allow
+        // private-IP resolution for hosts the zombie config explicitly
+        // declared. Our outer allowlist remains authoritative — anything
+        // off-list never reaches the inner tool.
+        ptr.* = .{
+            .policy = policy_ptr,
+            .inner = .{
+                .allowed_domains = policy_ptr.network_policy.allow,
+                .max_response_size = 1_000_000,
+                .timeout_secs = ctx.cfg.tools.shell_timeout_secs,
+            },
+        };
+        return ptr.tool();
+    }
     const ptr = try ctx.alloc.create(tools_mod.http_request.HttpRequestTool);
     ptr.* = .{
         .allowed_domains = &.{},

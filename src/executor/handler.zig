@@ -290,6 +290,7 @@ pub const Handler = struct {
             message,
             context,
             writer_ptr,
+            &session.policy,
         );
         // Ownership: every non-empty `content` is an `alloc.dupe` from the
         // runner (production runner.zig:285 and harness runner_harness.zig:96);

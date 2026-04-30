@@ -41,6 +41,7 @@ const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
 const runner_harness = @import("runner_harness.zig");
 const progress_writer_mod = @import("progress_writer.zig");
+const context_budget = @import("context_budget.zig");
 
 const log = std.log.scoped(.executor_runner);
 
@@ -108,6 +109,7 @@ pub fn execute(
     message: ?[]const u8,
     context: ?std.json.Value,
     progress: ?*const progress_writer_mod,
+    policy: ?*const context_budget.ExecutionPolicy,
 ) types.ExecutionResult {
     // Test-only harness path. Stripped from the production binary because the
     // build option is a comptime-known false there. See runner_harness.zig.
@@ -124,7 +126,7 @@ pub fn execute(
     executor_metrics.incStagesStarted();
     const start = std.time.milliTimestamp();
 
-    const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, progress) catch |err| {
+    const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, progress, policy) catch |err| {
         const elapsed = elapsedSeconds(start);
         executor_metrics.incStagesFailed();
         executor_metrics.observeAgentDurationSeconds(elapsed);
@@ -165,6 +167,7 @@ fn executeInner(
     message: []const u8,
     context: ?std.json.Value,
     progress: ?*const progress_writer_mod,
+    policy: ?*const context_budget.ExecutionPolicy,
 ) !InnerResult {
     // 1. Build config from env defaults + agent_config overrides.
     var cfg = Config.load(alloc) catch {
@@ -205,7 +208,7 @@ fn executeInner(
     const provider_i = runtime_provider.provider();
 
     // 3. Build tools from spec (or allTools as fallback).
-    const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg) catch {
+    const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {
         log.err("executor.runner.tool_build_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_INIT});
         return RunnerError.AgentInitFailed;
     };
