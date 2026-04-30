@@ -146,6 +146,16 @@ ancient bits, then continue. Don't keep growing the snapshot
 indefinitely; compact in place. If a previous result is still
 relevant, the rewrite preserves it.
 
+**Hand-off cadence (last resort).** If your context feels close to
+the model's limit — long log dumps, many tool calls, your own
+running summary growing — stop. Write a final, compact version of
+`incident:<id>:findings` via `memory_store`, then end the response
+with the literal string `needs continuation` as your final content
+and a separate line `CHECKPOINT:incident:<id>:findings`. The
+runtime will start a fresh stage that begins with a `memory_recall`
+of the snapshot. Do not try to keep going with a filled context —
+partial diagnoses are worse than a clean handoff.
+
 ## Output format
 
 When you reach a diagnosis, emit a short paragraph followed by the

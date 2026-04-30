@@ -257,6 +257,8 @@ fn executeInner(
     var adapter: runner_progress.Adapter = undefined;
     const checkpoint_every: u32 = if (policy) |p| p.context.memory_checkpoint_every else 0;
     const tool_window: u32 = if (policy) |p| p.context.tool_window else 0;
+    const stage_chunk_threshold: f32 = if (policy) |p| p.context.stage_chunk_threshold else 0.0;
+    const context_cap_tokens: u32 = if (policy) |p| p.context.context_cap_tokens else 0;
     const obs = if (progress) |w| blk: {
         adapter = .{
             .writer = w,
@@ -264,6 +266,8 @@ fn executeInner(
             .secrets = secrets_list[0..],
             .memory_checkpoint_every = checkpoint_every,
             .tool_window = tool_window,
+            .stage_chunk_threshold = stage_chunk_threshold,
+            .context_cap_tokens = context_cap_tokens,
         };
         break :blk adapter.observer();
     } else obs_runtime.observer();

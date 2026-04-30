@@ -55,6 +55,23 @@ fn newStubWriter() progress_writer_mod {
     };
 }
 
+fn fireLlmResponse(adapter: *Adapter, prompt_tokens: u32) void {
+    const evt = observability.ObserverEvent{
+        .llm_response = .{
+            .provider = "anthropic",
+            .model = "claude-sonnet-4-6",
+            .duration_ms = 100,
+            .success = true,
+            .error_message = null,
+            .prompt_tokens = prompt_tokens,
+            .completion_tokens = 50,
+            .total_tokens = prompt_tokens + 50,
+        },
+    };
+    const obs = adapter.observer();
+    obs.vtable.record_event(obs.ptr, &evt);
+}
+
 // ── L1 memory_checkpoint_every cadence ────────────────────────────────────
 
 test "memory_checkpoint_every=0 disables the nudge counter" {
@@ -122,4 +139,59 @@ test "L1 + L2 thresholds fire independently" {
     try std.testing.expectEqual(@as(u32, 2), adapter.nudges_emitted);
     // L2 fired on calls 11 and 12 → 2 logs.
     try std.testing.expectEqual(@as(u32, 2), adapter.window_exceeded_logs);
+}
+
+// ── L3 stage_chunk_threshold ──────────────────────────────────────────────
+
+test "stage_chunk_threshold=0 disables L3 (no log even at 100% fill)" {
+    var w = newStubWriter();
+    var adapter = newAdapterWithStubWriter(&w, 0, 0);
+    adapter.stage_chunk_threshold = 0.0;
+    adapter.context_cap_tokens = 200_000;
+    fireLlmResponse(&adapter, 199_999);
+    try std.testing.expectEqual(@as(u32, 199_999), adapter.last_prompt_tokens);
+    try std.testing.expectEqual(@as(u32, 0), adapter.chunk_threshold_logs);
+}
+
+test "context_cap_tokens=0 short-circuits L3 (no denominator)" {
+    var w = newStubWriter();
+    var adapter = newAdapterWithStubWriter(&w, 0, 0);
+    adapter.stage_chunk_threshold = 0.75;
+    adapter.context_cap_tokens = 0;
+    fireLlmResponse(&adapter, 50_000);
+    try std.testing.expectEqual(@as(u32, 0), adapter.chunk_threshold_logs);
+}
+
+test "stage_chunk_threshold=0.75 fires once fill >= 75% of cap" {
+    var w = newStubWriter();
+    var adapter = newAdapterWithStubWriter(&w, 0, 0);
+    adapter.stage_chunk_threshold = 0.75;
+    adapter.context_cap_tokens = 200_000;
+
+    // 50% fill — under threshold, no log.
+    fireLlmResponse(&adapter, 100_000);
+    try std.testing.expectEqual(@as(u32, 0), adapter.chunk_threshold_logs);
+
+    // 74% — still under.
+    fireLlmResponse(&adapter, 148_000);
+    try std.testing.expectEqual(@as(u32, 0), adapter.chunk_threshold_logs);
+
+    // 75% — first breach.
+    fireLlmResponse(&adapter, 150_000);
+    try std.testing.expectEqual(@as(u32, 1), adapter.chunk_threshold_logs);
+
+    // 80% — every subsequent breach increments (until the agent chunks).
+    fireLlmResponse(&adapter, 160_000);
+    try std.testing.expectEqual(@as(u32, 2), adapter.chunk_threshold_logs);
+}
+
+test "L3 records last_prompt_tokens regardless of threshold state" {
+    var w = newStubWriter();
+    var adapter = newAdapterWithStubWriter(&w, 0, 0);
+    adapter.stage_chunk_threshold = 0.0; // disabled
+    adapter.context_cap_tokens = 200_000;
+    fireLlmResponse(&adapter, 12_345);
+    try std.testing.expectEqual(@as(u32, 12_345), adapter.last_prompt_tokens);
+    fireLlmResponse(&adapter, 67_890);
+    try std.testing.expectEqual(@as(u32, 67_890), adapter.last_prompt_tokens);
 }

@@ -55,12 +55,29 @@ pub const Adapter = struct {
     /// conversation mutation, so the agent — not the runtime —
     /// drops oldest tool results by consolidating into memory.
     tool_window: u32 = 0,
+    /// L3 context-lifecycle: fraction of the model's context cap (0.0..1.0)
+    /// at which the agent is told to snapshot + chunk. Computed at every
+    /// `llm_response` observer event against `prompt_tokens /
+    /// context_cap_tokens`. Crossing the threshold logs a structured
+    /// `chunk_threshold_breached` line and bumps `chunk_threshold_logs`.
+    /// 0.0 disables the layer. NullClaw doesn't expose mid-loop
+    /// interrupt, so the runtime cannot force a chunk — the agent does
+    /// it via SKILL prose ("when context fills, return content='needs
+    /// continuation'"). Spec §6 wires this gap as observability + prose.
+    stage_chunk_threshold: f32 = 0.0,
+    /// L3 context-lifecycle: hard cap on input tokens for the resolved
+    /// model (M49 install-skill writes this into frontmatter; M48 BYOK
+    /// writes from the credential body). Required denominator for the
+    /// fill ratio — when 0, L3 short-circuits (no ratio, no log).
+    context_cap_tokens: u32 = 0,
     /// Mutable counters — bumped by the observer thread (NullClaw fires
     /// events on the same thread that called `agent.runSingle`, so no
     /// atomics needed).
     tool_call_count: u32 = 0,
     nudges_emitted: u32 = 0,
     window_exceeded_logs: u32 = 0,
+    chunk_threshold_logs: u32 = 0,
+    last_prompt_tokens: u32 = 0,
 
     /// NullClaw Observer view of this adapter. Pass to `Agent.fromConfig`.
     pub fn observer(self: *Adapter) observability.Observer {
@@ -155,7 +172,32 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                 });
             }
         },
-        else => {}, // agent_start / agent_end / llm_request / llm_response / heartbeat / etc. are not on the substrate
+        .llm_response => |b| {
+            // L3 chunk threshold: NullClaw doesn't expose mid-loop
+            // interrupt, so we observe instead of force. After every
+            // LLM round-trip, compute fill = prompt_tokens / cap. When
+            // it crosses the configured threshold, emit a structured
+            // log. SKILL.md prose tells the agent to write a snapshot
+            // and end with content='needs continuation' on the next
+            // turn — the runtime can see the prompt tokens but not
+            // halt the loop, so the agent owns the chunk decision.
+            const prompt: u32 = b.prompt_tokens orelse 0;
+            self.last_prompt_tokens = prompt;
+            if (self.stage_chunk_threshold > 0.0 and self.context_cap_tokens > 0 and prompt > 0) {
+                const ratio: f32 = @as(f32, @floatFromInt(prompt)) / @as(f32, @floatFromInt(self.context_cap_tokens));
+                if (ratio >= self.stage_chunk_threshold) {
+                    self.chunk_threshold_logs += 1;
+                    log.info("runner_progress.chunk_threshold_breached prompt_tokens={d} cap_tokens={d} ratio={d:.3} threshold={d:.3} logs_emitted={d}", .{
+                        prompt,
+                        self.context_cap_tokens,
+                        ratio,
+                        self.stage_chunk_threshold,
+                        self.chunk_threshold_logs,
+                    });
+                }
+            }
+        },
+        else => {}, // agent_start / agent_end / llm_request / heartbeat / etc. are not on the substrate
     }
 }
 
