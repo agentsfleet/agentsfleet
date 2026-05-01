@@ -73,7 +73,9 @@ Per operator decision during the review walkthrough, the dead Slack-app inbound 
 
 **What was deleted:** `SLACK_SIGNING_SECRET` env read, `auth/middleware/slack_signature.zig`, `auth/middleware/oauth_state.zig` (Slack-only — referenced `slack:oauth:nonce:` Redis keys), the four `/v1/slack/*` routes + path matches + route-table + invoke entries, `src/http/handlers/slack/{events,interactions,oauth,oauth_client}.zig`, `public/openapi/paths/slack.yaml` + root.yaml refs, the four `route_manifest.zig` entries, and the Slack carve-outs in `scripts/check_openapi_url_shape.py`. Net deletion: ~2100 lines.
 
-**What stayed:** `webhook_verify.PROVIDER_REGISTRY.SLACK` (used by the generic per-zombie webhook receiver if any zombie ever declares `trigger.source: slack`). Outbound Slack via `chat.postMessage`. `/v1/github/callback` (vendor-pinned by GitHub App manifest, alive and used by `zombiectl workspace add` for App-installation binding — different concern from Slack inbound).
+**What stayed:** `webhook_verify.PROVIDER_REGISTRY.SLACK` (used by the generic per-zombie webhook receiver if any zombie ever declares `trigger.source: slack`). Outbound Slack via `chat.postMessage`.
+
+**Also deleted in this PR:** `/v1/github/callback` (path match in `src/http/router.zig`, the `github_callback` `Route` enum variant, `src/http/handlers/auth/github_callback.zig`, `src/auth/github.zig` (412 lines), the OpenAPI entry, the route-manifest entry). `zombiectl workspace add` no longer emits `install_url` or opens the GitHub App page — the App-installation flow is being replaced by per-workspace credential entry under M45 (`zombiectl credential add github`). When/if the GitHub App OAuth flow is reintroduced, it ships as a fresh design.
 
 Verified clean: `zig build`, `make test`, `make openapi` (route-manifest ↔ openapi parity), `make lint`, orphan-grep for the removed symbols.
 
@@ -88,14 +90,14 @@ The original spec text below describes the *problem and intent* correctly; the *
 1. `docs/architecture/` §8.5 — the GH Actions trigger walkthrough is the worked example.
 2. M42's spec (sibling) for the EventEnvelope shape — DO NOT invent a new envelope.
 3. GitHub's webhook docs: HMAC SHA-256 signature in `X-Hub-Signature-256` header, payload signed with workspace's webhook secret.
-4. `src/http/handlers/zombies/steer.zig` — mirror its HMAC verification pattern (if any) or borrow from the Svix integration if present.
+4. `src/auth/middleware/webhook_sig.zig` — the canonical HMAC verification middleware. All webhook signature checks live here; handlers are auth-free (per A2/A3). The provider registry is in `src/zombie/webhook_verify.zig` (`PROVIDER_REGISTRY`); GitHub is already registered.
 5. `samples/platform-ops/SKILL.md` — what the zombie expects to reason over when actor=webhook:github (the SKILL.md prose teaches it to fetch GH run logs first).
 
 ---
 
 ## Overview
 
-**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret`. On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, `request.message=<short summary>` and `request.metadata={run_id, run_url, head_sha, conclusion, ref, repo, attempt}`. XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
+**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret` (HMAC verification is upstream in `auth/middleware/webhook_sig.zig`; the handler is auth-free — see A2). On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, and a flat `request_json` whose top-level keys are `{run_url, head_sha, conclusion, ref, repo, attempt, run_id, head_branch, workflow_name, received_at}` (per A4 — no nested `request.message` / `request.metadata` wrapper). XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
 
 **Problem:** No HTTP receiver exists today for any external webhook. M42 owns the event stream + history but not ingest. The GH Actions wedge is structurally unbuildable until this lands.
 

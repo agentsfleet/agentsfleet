@@ -310,6 +310,7 @@ pub const buildSlackApprovalMessage = @import("approval_gate_slack.zig").buildSl
 
 test {
     _ = @import("approval_gate_test.zig");
+    _ = @import("approval_gate_pins_test.zig");
     _ = @import("approval_gate_slack.zig");
     _ = @import("approval_gate_anomaly.zig");
 }
