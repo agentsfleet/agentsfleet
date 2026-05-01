@@ -389,6 +389,26 @@ Considered alternatives:
    SKILL.md prose and the operator's history filter.
 ```
 
+**Webhook auth taxonomy.** The `webhook_sig` middleware classifies every
+inbound rejection into one of three error codes, each with a distinct
+operator action:
+
+- `UZ-WH-020 webhook_credential_not_configured` — the zombie's
+  `trigger.source` is unknown to the provider registry, OR the workspace
+  has no `zombie:<source>` vault credential (vault row missing OR
+  `webhook_secret` field absent). Operator-recoverable misconfig — fix
+  with `zombiectl credential add <source> --data='{"webhook_secret":"…"}'`.
+- `UZ-WH-010 invalid_signature` — provider + secret both configured but
+  the request is unsigned, mis-signed, or the body was tampered with.
+  Either an attack or a real drift between what the provider has
+  registered vs the workspace vault — investigate.
+- `UZ-WH-011 stale_timestamp` — Slack-style schemes only, request
+  timestamp outside the 5-minute drift window. Clock skew or replay.
+
+There is no Bearer fallback. The `Authorization` header is never
+consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
+(separate surface)` for the full surface.
+
 ### C. EXECUTE  (worker → executor → tables → activity → XACK)
 
 ```

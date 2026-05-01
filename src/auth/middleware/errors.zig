@@ -16,3 +16,4 @@ pub const ERR_APPROVAL_INVALID_SIGNATURE: []const u8 = "UZ-APPROVAL-003";
 // fires for every HMAC-style webhook failure.
 pub const ERR_WEBHOOK_SIG_INVALID: []const u8 = "UZ-WH-010";
 pub const ERR_WEBHOOK_TIMESTAMP_STALE: []const u8 = "UZ-WH-011";
+pub const ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED: []const u8 = "UZ-WH-020";

@@ -136,19 +136,15 @@ test "match resolves workspace LLM credential route (M16_004)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm", .GET) == null);
 }
 
-// M10_001: matchRunAction tests, M16_002 run action tests, M17_001 cancel tests
-// all removed — Route variants (retry_run, replay_run, stream_run, cancel_run,
-// get_run) deleted. Run path null-match covered in "run paths no longer match" above.
+// ── webhook route tests ───────────────────────────────────────────────────
 
-// ── M1_001 webhook route tests ────────────────────────────────────────────
-
-test "M1_001: webhook routes resolve and reject correctly" {
+test "webhook routes resolve and reject correctly" {
     const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     // Webhook tests for matchWebhookRoute are in route_matchers.zig.
     // Test via match() integration:
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings(zombie_id, switch (route) {
-        .receive_webhook => |r| r.zombie_id,
+        .receive_webhook => |id| id,
         else => return error.TestExpectedEqual,
     });
 }
@@ -408,12 +404,10 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     _ = match("/v1/workspaces/ws1:pause", .POST);
 }
 
-test "custom-method reserved segments: approval/grant-approval/svix win over url-secret slot" {
-    // /v1/webhooks/{id}/{secret} is the URL-secret form used by agentmail etc.
-    // The literals "approval", "grant-approval", and "svix" are reserved: a
-    // webhook configured with one of these as its URL secret must never cause
-    // the request to route to receive_webhook. These three action routes MUST
-    // always win the match.
+test "webhook action routes: approval / grant-approval / svix / github dispatch per action" {
+    // 3-segment /v1/webhooks/{id}/{action} dispatches via matchWebhookAction.
+    // 2-segment /v1/webhooks/{id} is HMAC-only receive_webhook (the legacy
+    // URL-embedded-secret form was removed in M43).
     const approval = match("/v1/webhooks/z1/approval", .GET) orelse return error.TestExpectedMatch;
     switch (approval) {
         .approval_webhook => {},
@@ -424,12 +418,16 @@ test "custom-method reserved segments: approval/grant-approval/svix win over url
         .grant_approval_webhook => {},
         else => return error.TestExpectedEqual,
     }
-    // "svix" as the first segment after /webhooks/ is the Svix route prefix,
-    // not a zombie_id. /v1/webhooks/svix/{id} means "svix-signed webhook for
-    // zombie {id}", not "zombie=svix, secret={id}".
+    // "svix" as slot-1 is the Svix route prefix, not a zombie_id.
+    // /v1/webhooks/svix/{id} means "svix-signed webhook for zombie {id}".
     const svix = match("/v1/webhooks/svix/zid", .GET) orelse return error.TestExpectedMatch;
     switch (svix) {
         .receive_svix_webhook => {},
+        else => return error.TestExpectedEqual,
+    }
+    const github = match("/v1/webhooks/z1/github", .POST) orelse return error.TestExpectedMatch;
+    switch (github) {
+        .github_webhook => |id| try std.testing.expectEqualStrings("z1", id),
         else => return error.TestExpectedEqual,
     }
 }
@@ -438,6 +436,7 @@ test "custom-method subpath: trailing segments after action are rejected" {
     // /v1/webhooks/{id}/approval/extra must not match approval_webhook.
     try std.testing.expect(match("/v1/webhooks/z1/approval/extra", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/z1/grant-approval/extra", .GET) == null);
+    try std.testing.expect(match("/v1/webhooks/z1/github/extra", .POST) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/messages/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/current-run/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/pause/extra", .GET) == null);

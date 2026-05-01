@@ -28,12 +28,11 @@ pub const Fixture = struct {
 /// Caller must call `cleanup()` at end of test before `harness.deinit()`.
 ///
 /// `config_json` is the ENTIRE config — e.g.:
-///   {"name":"x","x-usezombie":{"trigger":{"type":"webhook","source":"github","signature":{"secret_ref":"gh_secret"}}}}
+///   {"name":"x","x-usezombie":{"trigger":{"type":"webhook","source":"github"}}}
 pub fn insertZombie(
     conn: *pg.Conn,
     fx: Fixture,
     config_json: []const u8,
-    webhook_secret_ref: ?[]const u8,
 ) !void {
     const now_ms = std.time.milliTimestamp();
 
@@ -48,20 +47,11 @@ pub fn insertZombie(
         \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
         \\VALUES ($1, $2, 'https://example.invalid/webhook-e2e', 'main', false, 1, $3, $3)
     , .{ fx.workspace_id, fx.tenant_id, now_ms });
-
-    if (webhook_secret_ref) |ref| {
-        _ = try conn.exec(
-            \\INSERT INTO core.zombies
-            \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json, webhook_secret_ref, status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, 'webhook-e2e-zombie', '# test', '# test', $3::jsonb, $4, 'active', $5, $5)
-        , .{ fx.zombie_id, fx.workspace_id, config_json, ref, now_ms });
-    } else {
-        _ = try conn.exec(
-            \\INSERT INTO core.zombies
-            \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json, status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, 'webhook-e2e-zombie', '# test', '# test', $3::jsonb, 'active', $4, $4)
-        , .{ fx.zombie_id, fx.workspace_id, config_json, now_ms });
-    }
+    _ = try conn.exec(
+        \\INSERT INTO core.zombies
+        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 'webhook-e2e-zombie', '# test', '# test', $3::jsonb, 'active', $4, $4)
+    , .{ fx.zombie_id, fx.workspace_id, config_json, now_ms });
 }
 
 /// Insert a vault secret that `crypto_store.load(workspace_id, key_name)` can retrieve.
@@ -76,6 +66,31 @@ pub fn insertVaultSecret(
     try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, KEK_VERSION);
 }
 
+/// Insert a workspace credential at `zombie:<credential_name>` containing
+/// `{"webhook_secret": "<plaintext>"}`. Used by webhook integration tests
+/// where the resolver reads the credential via `vault.loadJson`.
+pub fn insertWebhookCredential(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    credential_name: []const u8,
+    webhook_secret: []const u8,
+) !void {
+    // Use the JSON stringifier (not raw string interpolation) so test secrets
+    // containing `"`, `\`, or control chars don't corrupt the credential JSON
+    // and silently confuse `vault.loadJson` at lookup time.
+    const Payload = struct { webhook_secret: []const u8 };
+    const json = try std.json.Stringify.valueAlloc(
+        alloc,
+        Payload{ .webhook_secret = webhook_secret },
+        .{},
+    );
+    defer alloc.free(json);
+    const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{credential_name});
+    defer alloc.free(key_name);
+    try crypto_store.store(alloc, conn, workspace_id, key_name, json, KEK_VERSION);
+}
+
 /// Delete all rows this test created. Idempotent.
 pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
     _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{fx.zombie_id}) catch {};
@@ -84,24 +99,39 @@ pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
     _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch {};
 }
 
-/// Convenience: build a trigger config JSON for a given source + secret_ref.
-/// Caller owns returned slice.
+/// Convenience: build a trigger config JSON for a given source. Optionally
+/// pins an explicit `credential_name` override (defaults to `source` at
+/// resolve time). Caller owns returned slice.
 pub fn buildTriggerConfig(
     alloc: std.mem.Allocator,
     source: []const u8,
-    secret_ref: ?[]const u8,
+    credential_name: ?[]const u8,
 ) ![]u8 {
-    if (secret_ref) |ref| {
-        return std.fmt.allocPrint(
+    // Use the JSON stringifier (not `{s}` interpolation) so test inputs
+    // containing `"` or `\` round-trip correctly — same fix applied to
+    // `insertWebhookCredential` above.
+    const TriggerWith = struct {
+        type: []const u8 = "webhook",
+        source: []const u8,
+        credential_name: []const u8,
+    };
+    const TriggerNoOverride = struct {
+        type: []const u8 = "webhook",
+        source: []const u8,
+    };
+    const WrapWith = struct { @"x-usezombie": struct { trigger: TriggerWith } };
+    const WrapNoOverride = struct { @"x-usezombie": struct { trigger: TriggerNoOverride } };
+    if (credential_name) |name| {
+        return std.json.Stringify.valueAlloc(
             alloc,
-            "{{\"x-usezombie\":{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\",\"signature\":{{\"secret_ref\":\"{s}\"}}}}}}}}",
-            .{ source, ref },
+            WrapWith{ .@"x-usezombie" = .{ .trigger = .{ .source = source, .credential_name = name } } },
+            .{},
         );
     }
-    return std.fmt.allocPrint(
+    return std.json.Stringify.valueAlloc(
         alloc,
-        "{{\"x-usezombie\":{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\"}}}}}}",
-        .{source},
+        WrapNoOverride{ .@"x-usezombie" = .{ .trigger = .{ .source = source } } },
+        .{},
     );
 }
 
@@ -115,19 +145,19 @@ const ID_TENANT_B = "0197a4ba-8d3a-7f13-8abc-22222222bb01";
 const ID_WS_B = "0197a4ba-8d3a-7f13-8abc-22222222bb11";
 const ID_ZOMBIE_B = "0197a4ba-8d3a-7f13-8abc-22222222bb21";
 
-test "buildTriggerConfig with secret_ref produces valid JSON" {
+test "buildTriggerConfig with credential_name override produces valid JSON" {
     const alloc = std.testing.allocator;
-    const got = try buildTriggerConfig(alloc, "github", "my_secret");
+    const got = try buildTriggerConfig(alloc, "github", "github-prod");
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"github\",\"signature\":{\"secret_ref\":\"my_secret\"}}}}";
+    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"github\",\"credential_name\":\"github-prod\"}}}";
     try std.testing.expectEqualStrings(want, got);
 }
 
-test "buildTriggerConfig without secret_ref produces URL-secret-only config" {
+test "buildTriggerConfig without override produces source-only config" {
     const alloc = std.testing.allocator;
-    const got = try buildTriggerConfig(alloc, "agentmail", null);
+    const got = try buildTriggerConfig(alloc, "github", null);
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"}}}";
+    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"github\"}}}";
     try std.testing.expectEqualStrings(want, got);
 }
 

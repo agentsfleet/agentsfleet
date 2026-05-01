@@ -27,7 +27,6 @@ test {
     _ = @import("middleware/tenant_api_key.zig");
     _ = @import("middleware/require_role.zig");
     _ = @import("middleware/webhook_hmac.zig");
-    _ = @import("middleware/webhook_url_secret.zig");
     _ = @import("middleware/webhook_sig.zig");
     _ = @import("middleware/svix_signature.zig");
 }

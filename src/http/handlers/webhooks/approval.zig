@@ -105,16 +105,19 @@ const RawApprovalPayload = struct {
 
 fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
     const body = req.body() orelse {
+        log.warn("approval.no_body req_id={s}", .{hx.req_id});
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY);
         return null;
     };
     if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return null;
-    const parsed = std.json.parseFromSlice(RawApprovalPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+    const parsed = std.json.parseFromSlice(RawApprovalPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch |err| {
+        log.warn("approval.malformed_json req_id={s} err={s}", .{ hx.req_id, @errorName(err) });
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY);
         return null;
     };
     const raw = parsed.value;
     if (raw.action_id.len == 0 or raw.decision.len == 0) {
+        log.warn("approval.missing_fields req_id={s}", .{hx.req_id});
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY);
         return null;
     }
@@ -123,6 +126,7 @@ fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
     else if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_DENY))
         .deny
     else {
+        log.warn("approval.invalid_decision req_id={s} decision={s}", .{ hx.req_id, raw.decision });
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_DECISION);
         return null;
     };

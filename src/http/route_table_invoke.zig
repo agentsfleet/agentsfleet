@@ -28,6 +28,7 @@ const admin_keys = @import("handlers/admin/platform_keys.zig");
 const webhooks = @import("handlers/webhooks/zombie.zig");
 const approval = @import("handlers/webhooks/approval.zig");
 const grant_approval = @import("handlers/webhooks/grant_approval.zig");
+const github_webhook_h = @import("handlers/webhooks/github.zig");
 const memory = @import("handlers/memory/handler.zig");
 const execute_h = @import("handlers/actions/execute.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
@@ -151,8 +152,7 @@ pub fn invokeDeleteAdminPlatformKey(hx: *Hx, req: *httpz.Request, route: router.
 
 pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    const wh = route.receive_webhook;
-    webhooks.innerReceiveWebhook(hx.*, req, wh.zombie_id);
+    webhooks.innerReceiveWebhook(hx.*, req, route.receive_webhook);
 }
 
 pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -176,6 +176,11 @@ pub fn invokeApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) 
 pub fn invokeGrantApprovalWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     grant_approval.innerGrantApproval(hx.*, req, route.grant_approval_webhook);
+}
+
+pub fn invokeGithubWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    github_webhook_h.innerInvokeGithubWebhook(hx.*, req, route.github_webhook);
 }
 
 // ── Zombie CRUD ───────────────────────────────────────────────────────────

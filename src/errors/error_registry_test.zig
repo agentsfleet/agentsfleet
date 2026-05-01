@@ -203,14 +203,14 @@ test "hint() returns UNKNOWN hint for unregistered codes" {
     try std.testing.expectEqualStrings(reg.UNKNOWN.hint, h);
 }
 
-// ── T7: REGISTRY entry count regression ─────────────────────────────────────
+// ── REGISTRY entry count regression ────────────────────────────────────────
 // Pin the count so accidental deletions are caught immediately.
 
-test "registry contains exactly 118 entries" {
-    try std.testing.expectEqual(@as(usize, 118), reg.REGISTRY.len);
+test "registry contains exactly 120 entries" {
+    try std.testing.expectEqual(@as(usize, 120), reg.REGISTRY.len);
 }
 
-// ── T2: Sentinel code lookup ────────────────────────────────────────────────
+// ── Sentinel code lookup ───────────────────────────────────────────────────
 // Looking up the sentinel code itself must return UNKNOWN (it's not in REGISTRY).
 
 test "lookup of sentinel code 'UZ-UNKNOWN' returns UNKNOWN entry" {

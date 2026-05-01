@@ -12,7 +12,6 @@
 const std = @import("std");
 const router = @import("router.zig");
 
-pub const WebhookRoute = router.WebhookRoute;
 pub const ZombieTelemetryRoute = router.ZombieTelemetryRoute;
 
 pub const PATH_MAX_SEGMENTS: usize = 16;
@@ -322,19 +321,16 @@ pub fn matchSvixWebhook(p: Path) ?[]const u8 {
     return p.param(2);
 }
 
-pub fn matchWebhook(p: Path) ?WebhookRoute {
-    if (p.segs.len < 2 or p.segs.len > 3) return null;
+/// Match `/webhooks/{zombie_id}` (HMAC-only). The 3-segment
+/// `/webhooks/{zombie_id}/{action}` form is matched per-action by
+/// `matchWebhookAction` (approval, grant-approval, github, …); the legacy
+/// URL-embedded-secret variant was removed in M43.
+pub fn matchWebhook(p: Path) ?[]const u8 {
+    if (p.segs.len != 2) return null;
     if (!p.eq(0, "webhooks")) return null;
-    // Reserved literals — never accepted as a zombie_id at the slot-1 position
-    // (svix is the receive_svix_webhook prefix; clerk is the signup webhook;
-    // approval / grant-approval are dedicated action endpoints).
     if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
     if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
-    const zid = p.param(1) orelse return null;
-    if (p.segs.len == 2) return .{ .zombie_id = zid, .secret = null };
-    if (p.eq(2, RESERVED_APPROVAL) or p.eq(2, RESERVED_GRANT_APPROVAL)) return null;
-    const secret = p.param(2) orelse return null;
-    return .{ .zombie_id = zid, .secret = secret };
+    return p.param(1);
 }
 
 test {

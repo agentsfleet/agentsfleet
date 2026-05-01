@@ -167,6 +167,7 @@ test {
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");
     _ = @import("zombie/webhook_verify_test.zig");
+    _ = @import("zombie/webhook/normalizer/github.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
@@ -241,6 +242,7 @@ test {
     _ = @import("http/handlers/model_caps_integration_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
     _ = @import("http/handlers/webhooks/clerk_integration_test.zig");
+    _ = @import("http/handlers/webhooks/github.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");
     _ = @import("http/handlers/zombies/messages.zig");

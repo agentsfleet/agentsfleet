@@ -1,4 +1,4 @@
-//! M9_001 §4.4–4.5 — Grant approval webhook handler.
+//! Grant approval webhook handler.
 //! POST /v1/webhooks/{zombie_id}/grant-approval
 //!
 //! Called by the Slack/Discord notification provider after the human clicks
@@ -6,8 +6,8 @@
 //! at grant-request time, stored at grant:nonce:{grant_id} in Redis, embedded
 //! in the Slack button value, and consumed (single-use DEL) on first use here.
 //!
-//! §4.4 decision=approved → status=approved, approved_at set
-//! §4.5 decision=denied   → status=revoked,  revoked_at set
+//! decision=approved → status=approved, approved_at set
+//! decision=denied   → status=revoked,  revoked_at set
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -112,10 +112,12 @@ fn applyDecision(
 
 pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const u8) void {
     const raw_body = req.body() orelse {
+        log.warn("grant_approval.no_body zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
         hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
-    const parsed = std.json.parseFromSlice(GrantApprovalBody, hx.alloc, raw_body, .{}) catch {
+    const parsed = std.json.parseFromSlice(GrantApprovalBody, hx.alloc, raw_body, .{}) catch |err| {
+        log.warn("grant_approval.malformed_json zombie_id={s} req_id={s} err={s}", .{ zombie_id, hx.req_id, @errorName(err) });
         hx.fail(ec.ERR_INVALID_REQUEST, "Malformed JSON body");
         return;
     };
@@ -123,16 +125,19 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
     const body = parsed.value;
 
     if (body.grant_id.len == 0) {
+        log.warn("grant_approval.missing_grant_id zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
         hx.fail(ec.ERR_INVALID_REQUEST, "grant_id required");
         return;
     }
     if (body.nonce.len == 0) {
+        log.warn("grant_approval.missing_nonce zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
         hx.fail(ec.ERR_INVALID_REQUEST, "nonce required");
         return;
     }
     const is_approved = std.mem.eql(u8, body.decision, "approved");
     const is_denied   = std.mem.eql(u8, body.decision, "denied");
     if (!is_approved and !is_denied) {
+        log.warn("grant_approval.invalid_decision zombie_id={s} req_id={s} decision={s}", .{ zombie_id, hx.req_id, body.decision });
         hx.fail(ec.ERR_INVALID_REQUEST, "decision must be 'approved' or 'denied'");
         return;
     }
@@ -141,6 +146,7 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
     // verifyAndConsumeNonce uses a Lua script that only deletes the nonce on match,
     // so a wrong nonce leaves the key intact for the legitimate Slack button.
     if (!verifyAndConsumeNonce(hx.ctx.queue, body.grant_id, body.nonce)) {
+        log.warn("grant_approval.nonce_invalid zombie_id={s} req_id={s} grant_id={s}", .{ zombie_id, hx.req_id, body.grant_id });
         hx.fail(ec.ERR_INVALID_REQUEST, "Invalid or expired approval nonce");
         return;
     }

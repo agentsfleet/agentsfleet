@@ -3,12 +3,6 @@ const httpz = @import("httpz");
 const matchers = @import("route_matchers.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 
-// Webhook route carries zombie_id and optional URL-embedded secret.
-pub const WebhookRoute = struct {
-    zombie_id: []const u8,
-    secret: ?[]const u8,
-};
-
 // Telemetry route — kept as a distinct type so consumers reading
 // `route.zombie_telemetry.*` get a semantically-named binding even though
 // the field set is identical to WorkspaceZombieRoute.
@@ -41,7 +35,10 @@ pub const Route = union(enum) {
     get_tenant_billing,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
-    receive_webhook: WebhookRoute,
+    /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
+    /// HMAC-only via webhook_sig middleware; secret resolved from the
+    /// workspace credential keyed by `trigger.source`.
+    receive_webhook: []const u8,
     // Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
     receive_svix_webhook: []const u8,
     // Clerk user.created signup webhook — /v1/webhooks/clerk (no zombie context).
@@ -50,6 +47,10 @@ pub const Route = union(enum) {
     approval_webhook: []const u8,
     // Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
     grant_approval_webhook: []const u8,
+    /// POST /v1/webhooks/{zombie_id}/github — GitHub Actions ingest. HMAC via
+    /// the workspace's `zombie:github` credential; handler filters to
+    /// workflow_run/failure and XADDs the M42 envelope.
+    github_webhook: []const u8,
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
@@ -181,7 +182,8 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchSvixWebhook(p)) |zid| return .{ .receive_svix_webhook = zid };
     if (matchers.matchWebhookAction(p, "approval")) |zid| return .{ .approval_webhook = zid };
     if (matchers.matchWebhookAction(p, "grant-approval")) |zid| return .{ .grant_approval_webhook = zid };
-    if (matchers.matchWebhook(p)) |r| return .{ .receive_webhook = r };
+    if (matchers.matchWebhookAction(p, "github")) |zid| return .{ .github_webhook = zid };
+    if (matchers.matchWebhook(p)) |zid| return .{ .receive_webhook = zid };
 
     return null;
 }

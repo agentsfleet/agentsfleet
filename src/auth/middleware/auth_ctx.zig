@@ -30,12 +30,10 @@ pub const AuthCtx = struct {
     principal: ?AuthPrincipal = null,
     write_error: WriteErrorFn,
 
-    // M18_002 C.2: Per-request slots for routes that embed auth params in the URL.
-    // The dispatcher populates these from the matched route before calling chain.run.
-    // Middlewares that need them (webhook_url_secret) read them here.
-    // All other middlewares ignore these fields (they remain null).
+    // Per-request slot for webhook routes — the dispatcher populates this from
+    // the matched route's zombie_id before calling chain.run. The webhook_sig
+    // and svix middlewares read it; all others ignore it.
     webhook_zombie_id: ?[]const u8 = null,
-    webhook_provided_secret: ?[]const u8 = null,
 
     /// Write a problem+json error response via the host-supplied writer.
     /// The HTTP status comes from the host's error table (middleware does

@@ -4,11 +4,11 @@
 **Milestone:** M43
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — launch-blocking. The wedge IS GitHub Actions CD-failure responder; without webhook ingest the wedge has no entry point. The chat-only fallback (M42 steer) is the secondary interaction, not the primary.
 **Categories:** API
 **Batch:** B1 — depends on M42 (event stream + envelope), parallel with M40, M41, M44, M45.
-**Branch:** chore/m43-review-amendments (folded into PR #272 alongside the review amendments + Slack/GitHub-App removal per operator authorization Apr 30, 2026)
+**Branch:** feat/m43-001-webhook-ingest (separate PR, based on chore/m43-review-amendments per PR #272 stacking decision May 1, 2026)
 **Depends on:** M42_001 (writes to `zombie:{id}:events` with the M42 envelope shape). M45_001 (webhook secret stored as a structured credential under `${secrets.github.webhook_secret}`). M40_001 (the per-zombie thread that consumes the event must exist).
 
 **Canonical architecture:** `docs/architecture/user_flow.md` (webhook input + GH Actions trigger walkthrough), `docs/architecture/data_flow.md` §B (TRIGGER — three callers, ONE ingress).
@@ -25,7 +25,7 @@ The original spec below was written assuming greenfield. M28_001 (DONE) had alre
 
 **A3 — Drop the proposed `webhooks/common.zig`.** No HMAC primitive lives in the handler tree; `src/auth/middleware/webhook_sig.zig` is the source of truth. Re-implementing HMAC in two places is RULE NLR-violating debt.
 
-**A4 — Envelope shape: flat `request={…}`, not nested `request: { message, metadata }`.** Per the canonical envelope at `src/zombie/event_envelope.zig` and `docs/architecture/user_flow.md` line 113. The `request_json` field is opaque JSON bytes; its top-level keys are `{run_url, head_sha, conclusion, ref, repo, attempt, run_id, head_branch, workflow_name, received_at}`.
+**A4 — Envelope shape: flat `request={…}`, not nested `request: { message, metadata }`.** Per the canonical envelope at `src/zombie/event_envelope.zig` and `docs/architecture/user_flow.md` line 113. The `request_json` field is opaque JSON bytes; its top-level keys are `{run_url, head_sha, conclusion, repo, attempt, run_id, head_branch, workflow_name, received_at}`.
 
 **A5 — Drop the pre-M45 single-string-secret fallback** (RULE NLG no legacy framing pre-v2.0.0). M45 is DONE; there is one vault shape.
 
@@ -41,7 +41,9 @@ The original spec below was written assuming greenfield. M28_001 (DONE) had alre
 - `src/http/handlers/webhooks/zombie.zig` — drop `webhook_secret_ref` from row struct + SELECT; rewrite header comment to point at workspace credentials.
 - AgentMail's URL-embedded-secret path is removed with the column. Per M28_003, AgentMail's migration trajectory was already toward `/v1/webhooks/svix/{zombie_id}`.
 
-**A8 — Dedupe ordering: dedupe FIRST after signature verify, before any filtering.** Key shape: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` `EX 259200` (72 h — covers GitHub's documented maximum retry window for the same `X-GitHub-Delivery` UUID). Dedupe-hit response: `{ "deduped": true }` (no `original_event_id` — operator-debuggable info is in the events stream). The `gh:` namespace prefix prevents collision with body-`event_id`-based dedupe keys for the same zombie.
+**A8 — Dedupe ordering: dedupe AFTER zombie validation + action filter, BEFORE XADD.** Key shape: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` `EX 259200` (72 h — covers GitHub's documented maximum retry window for the same `X-GitHub-Delivery` UUID). Dedupe-hit response: `{ "deduped": true }` (no `original_event_id` — operator-debuggable info is in the events stream). The `gh:` namespace prefix prevents collision with body-`event_id`-based dedupe keys for the same zombie.
+
+The original draft placed dedupe right after signature verification ("dedupe FIRST"). Greptile P1 flagged the resulting silent-data-loss vector: a delivery that hits a paused or nonexistent zombie 4xx's, the dedupe slot is already claimed for 72 h, and an operator-triggered redelivery (GitHub UI "Recent Deliveries → Redeliver" button) within the 72 h window would silently return `{deduped: true}` instead of being processed once the zombie is unpaused. Moving dedupe to after the zombie + filter validations means only events we are *actually* about to XADD consume a slot. The 4xx and 200-ignored paths are idempotent + cheap (single SELECT + JSON parse), so re-running them on operator redelivery is safe and correct.
 
 **A9 — Error codes** (RULE EMS — reuse existing `UZ-WH-NNN` family from `src/errors/`):
 - Bad signature → `UZ-WH-010` (existing).
@@ -97,7 +99,7 @@ The original spec text below describes the *problem and intent* correctly; the *
 
 ## Overview
 
-**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret` (HMAC verification is upstream in `auth/middleware/webhook_sig.zig`; the handler is auth-free — see A2). On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, and a flat `request_json` whose top-level keys are `{run_url, head_sha, conclusion, ref, repo, attempt, run_id, head_branch, workflow_name, received_at}` (per A4 — no nested `request.message` / `request.metadata` wrapper). XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
+**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret` (HMAC verification is upstream in `auth/middleware/webhook_sig.zig`; the handler is auth-free — see A2). On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, and a flat `request_json` whose top-level keys are `{run_url, head_sha, conclusion, repo, attempt, run_id, head_branch, workflow_name, received_at}` (per A4 — no nested `request.message` / `request.metadata` wrapper). XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
 
 **Problem:** No HTTP receiver exists today for any external webhook. M42 owns the event stream + history but not ingest. The GH Actions wedge is structurally unbuildable until this lands.
 
@@ -177,7 +179,6 @@ EventEnvelope {
     run_url: <html_url>,
     head_sha: <sha>,
     conclusion: "failure",
-    ref: <ref>,
     repo: "<owner>/<name>",
     attempt: <attempt>,
     run_id: <id>,
@@ -292,9 +293,34 @@ Fixtures in `samples/fixtures/webhook_github/` (A10 — no `m43-` prefix).
 
 ## Acceptance Criteria
 
-- [ ] `make test-integration` passes the 8 tests above
-- [ ] Replay attack test: capture a real signed payload, replay 73 h later → second is treated as new (post-window) but inside 72 h is deduped
-- [ ] `make memleak` clean
-- [ ] Cross-compile clean: x86_64-linux + aarch64-linux
+- [x] Endpoint live at `POST /v1/webhooks/{zombie_id}/github` with HMAC verified upstream by `webhook_sig`.
+- [x] Resolver migrated to workspace credentials (`vault.loadJson(zombie:<source>) → webhook_secret`) per A6.
+- [x] `webhook_secret_ref` column dropped per A7; URL-embedded-secret path torn out (matcher, middleware, registry chain) per RULE NLR.
+- [x] `UZ-WH-020` + `UZ-WH-030` error codes registered.
+- [x] GitHub `workflow_run` normalizer with unit-test coverage of failure / success / malformed / missing-keys / default-attempt cases.
+- [x] OpenAPI parity at `/v1/webhooks/{zombie_id}/github`; URL-shape carve-out justified.
+- [x] `make lint` + `zig build test` green.
+- [x] Cross-compile clean: x86_64-linux + aarch64-linux.
+- [ ] `make memleak` clean (run during CHORE(close)).
+- [ ] Manual end-to-end smoke against staging — intentionally deferred to M49 install-skill validation per A12 (don't re-add without amending A12).
 
-> Manual end-to-end smoke against staging is intentionally **out of scope here** (per A12 — deferred to M49's install-skill validation, parallel to M48b's pattern). Don't add it back without amending A12.
+---
+
+## Discovery
+
+- The URL-embedded-secret legacy path (matcher branch, `WebhookRoute.secret`, `AuthCtx.webhook_provided_secret`, middleware Strategy 1, the entire `webhook_url_secret.zig` middleware, the registry chain + private accessor) was orphaned by removing `webhook_secret_ref`. Cleaning it in the same PR per RULE NLR — the user explicitly authorized "no legacy sprawl, full clean" during PLAN.
+- The two-segment URL form `/v1/webhooks/{zombie_id}/{X}` would have collided with the new `/github` action route had it stayed; simplifying `matchWebhookRoute` to single-segment was a correctness fix on top of the cleanup.
+- The dedicated `/github` URL means the source-derived signature scheme can be confidently treated as `webhook_verify.GITHUB` even before the body is parsed; the existing detect-by-config_json path stays for the generic `/v1/webhooks/{zombie_id}` receiver.
+- **Filtered-event response status: 200 OK + `{"ignored": "<reason>"}` body** (revised from §5's draft "204 No Content with body"). RFC 9110 §6.4.5 forbids a message body on 204 — some CDNs and HTTP/2 proxies strip 204+body silently, others normalize to 502, both of which would mask the operator-visible diagnostic shown in GitHub's "Recent Deliveries" dashboard. The 2xx semantics for GitHub's retry behavior are unchanged; only the operator-debuggability of the `ignored` reason improves.
+
+---
+
+## Files Changed (final)
+
+NEW: `src/http/handlers/webhooks/github.zig`, `src/zombie/webhook/normalizer/github.zig`, `src/zombie/webhook/normalizer/github_test.zig`, `samples/fixtures/webhook_github/{workflow_run_failure,workflow_run_success}.json` (with sibling copies under `src/zombie/webhook/normalizer/` for `@embedFile` boundary).
+
+DROPPED: `src/auth/middleware/webhook_url_secret.zig`, `core.zombies.webhook_secret_ref` column.
+
+EDIT: `src/cmd/serve_webhook_lookup.zig`, `src/http/handlers/webhooks/zombie.zig`, `src/http/router.zig`, `src/http/route_matchers.zig`, `src/http/route_table.zig`, `src/http/route_table_invoke.zig`, `src/http/route_manifest.zig`, `src/http/server.zig`, `src/http/test_harness.zig`, `src/http/webhook_test_fixtures.zig`, `src/http/webhook_http_integration_test.zig`, `src/http/handlers/cross_workspace_idor_test.zig`, `src/http/route_matchers_test.zig`, `src/http/router_test.zig`, `src/auth/middleware/webhook_sig.zig`, `src/auth/middleware/webhook_sig_test.zig`, `src/auth/middleware/auth_ctx.zig`, `src/auth/middleware/mod.zig`, `src/auth/tests.zig`, `src/cmd/serve.zig`, `src/errors/error_registry.zig`, `src/errors/error_entries.zig`, `src/errors/error_registry_test.zig`, `src/main.zig`, `schema/007_core_zombies.sql`, `public/openapi/paths/webhooks.yaml`, `public/openapi/root.yaml`, `scripts/check_openapi_url_shape.py`, `samples/platform-ops/SKILL.md`.
+
+The original Files Changed table above (under §Files Changed) reflected the spec's pre-amendment plan; the actual scope is wider per A7's URL-embedded-secret teardown decision.

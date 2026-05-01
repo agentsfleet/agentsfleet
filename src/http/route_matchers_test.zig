@@ -139,15 +139,14 @@ test "matchWorkspaceZombieEventsStream: 7-segment shape" {
     try std.testing.expect(matchers.matchWorkspaceZombieEventsStream(parse("/v1/workspaces/ws_abc/zombies/z_123/events", &buf)) == null);
 }
 
-test "matchWebhook: id only and id+secret" {
+test "matchWebhook: HMAC-only 2-segment form" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     const id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const r1 = matchers.matchWebhook(parse("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", &buf)).?;
-    try std.testing.expectEqualStrings(id, r1.zombie_id);
-    try std.testing.expect(r1.secret == null);
-    const r2 = matchers.matchWebhook(parse("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kR7x2mN", &buf)).?;
-    try std.testing.expectEqualStrings(id, r2.zombie_id);
-    try std.testing.expectEqualStrings("kR7x2mN", r2.secret.?);
+    try std.testing.expectEqualStrings(id, r1);
+    // 3-segment forms are matched per-action by matchWebhookAction; matchWebhook
+    // rejects them outright (the URL-embedded-secret variant was removed in M43).
+    try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kR7x2mN", &buf)) == null);
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/", &buf)) == null);
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks", &buf)) == null);
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/a/b/c", &buf)) == null);
@@ -164,7 +163,7 @@ test "matchWebhook: rejects reserved second segments (svix, clerk) and reserved 
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/zid/grant-approval", &buf)) == null);
 }
 
-test "matchWebhookAction: /approval and /grant-approval, rejects /svix/* prefix" {
+test "matchWebhookAction: /approval, /grant-approval, /github; rejects /svix/* prefix" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
     try std.testing.expectEqualStrings(
         "zid",
@@ -173,6 +172,10 @@ test "matchWebhookAction: /approval and /grant-approval, rejects /svix/* prefix"
     try std.testing.expectEqualStrings(
         "zid",
         matchers.matchWebhookAction(parse("/v1/webhooks/zid/grant-approval", &buf), "grant-approval").?,
+    );
+    try std.testing.expectEqualStrings(
+        "zid",
+        matchers.matchWebhookAction(parse("/v1/webhooks/zid/github", &buf), "github").?,
     );
     try std.testing.expect(matchers.matchWebhookAction(parse("/v1/webhooks/svix/approval", &buf), "approval") == null);
 }
