@@ -94,7 +94,7 @@ Single persona: **John Doe**. Every test in the Test Specification maps back to 
    - Balance gate: 1000¢ ≥ 3¢ → pass.
    - Receive deduct: 1¢ → 999¢. INSERT `zombie_execution_telemetry (charge_type='receive', credit_deducted_cents=1)`.
    - Stage deduct (conservative estimate): ~2¢ → ~997¢. INSERT `zombie_execution_telemetry (charge_type='stage', credit_deducted_cents≈2)`.
-   - Worker calls `executor.startStage` with the platform Fireworks api_key (PLATFORM_FIREWORKS_KEY) (server-side config). Outbound call hits `api.fireworks.ai/inference/v1`.
+   - Worker calls `executor.startStage` with the platform Fireworks api_key (`PLATFORM_FIREWORKS_KEY`, loaded at API boot from the platform vault). Outbound call hits `api.fireworks.ai/inference/v1`.
    - StageResult returns. UPDATE the stage telemetry row with actual `token_count_input/output, wall_ms`.
 6. Drains over time at ~3¢/event (token-based). Two telemetry rows per event (`charge_type='receive'`, `charge_type='stage'`).
 
@@ -253,10 +253,10 @@ Algorithm:
   if row IS NULL:
     return synthesizePlatformDefault()
       // { mode: "platform", provider: "fireworks",
-      //   api_key: <PLATFORM_FIREWORKS_KEY from server config>,
+      //   api_key: <PLATFORM_FIREWORKS_KEY loaded at API boot from the platform vault>,
       //   model: "accounts/fireworks/models/kimi-k2.6",
       //   context_cap_tokens: 256000 }
-      // PLATFORM_FIREWORKS_KEY is an admin-primed server config value;
+      // PLATFORM_FIREWORKS_KEY is admin-primed in the platform vault (M45 crypto_store, platform-scope identifier);
       // never returned in any user-facing surface (see api_key boundary).
 
   if row.mode == "platform":
@@ -479,7 +479,7 @@ Exports:
 - `pub fn upsertPlatform(allocator, conn, tenant_id) !void` (for `tenant provider reset`).
 - `pub fn deleteRow(allocator, conn, tenant_id) !void` (test-only).
 
-Synthesises platform default from a server-side constant when no row is present. The platform default model + cap is hardcoded as a constant in this module (per RULE UFS, declared once); the platform api_key is read from server config (M11_005-style env or vault).
+Synthesises platform default from a server-side constant when no row is present. The platform default model + cap is hardcoded as a constant in this module (per RULE UFS, declared once); the platform api_key is loaded at API boot from the platform vault (M45 crypto_store at a platform-scope identifier; same encryption-at-rest path as user credentials, just owned by the platform rather than a user tenant).
 
 ### §3 — Cost functions and debit wiring
 

@@ -46,7 +46,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 
 ## 2. Phase 1 — John on platform-managed (Week 1-2 of his journey)
 
-**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The platform-side server config holds the actual Anthropic api_key.
+**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. `PLATFORM_FIREWORKS_KEY` (the actual Fireworks key UseZombie pays Fireworks with) is admin-primed in the platform vault — same M45 crypto_store path as user credentials, at a platform-scope identifier. It is loaded into server-side process memory at API boot and never echoed to any user-facing surface.
 
 ### 2.1 First webhook fires (Monday morning, week 1)
 
