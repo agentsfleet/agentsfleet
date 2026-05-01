@@ -189,6 +189,8 @@ fn filterParsedRoot(root: std.json.ObjectMap) ?FilterDecision {
     if (!std.mem.eql(u8, conclusion, CONCLUSION_FAILURE)) {
         return .{ .ingest = false, .reason = "non_failure_conclusion" };
     }
+    const repo_ok = if (root.get("repository")) |v| v == .object else false;
+    if (!repo_ok) return .{ .ingest = false, .reason = "missing_repository" };
     return .{ .ingest = true, .reason = "" };
 }
 
@@ -257,12 +259,21 @@ fn recordAccepted(
 
 const testing = std.testing;
 
-test "filterAction: completed + failure → ingest" {
+test "filterAction: completed + failure + repository → ingest" {
+    const body =
+        \\{"action":"completed","workflow_run":{"conclusion":"failure"},"repository":{"full_name":"o/r"}}
+    ;
+    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(got.ingest);
+}
+
+test "filterAction: completed + failure but missing repository → ignore missing_repository" {
     const body =
         \\{"action":"completed","workflow_run":{"conclusion":"failure"}}
     ;
     const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-    try testing.expect(got.ingest);
+    try testing.expect(!got.ingest);
+    try testing.expectEqualStrings("missing_repository", got.reason);
 }
 
 test "filterAction: in_progress action → ignore non_completed_action" {

@@ -263,6 +263,19 @@ test "A8: action=in_progress → 200 ignored non_completed_action" {
     try std.testing.expect(r.bodyContains("\"ignored\":\"non_completed_action\""));
 }
 
+test "A11: completed+failure but missing repository → 200 ignored missing_repository (no dedup claim)" {
+    const alloc = std.testing.allocator;
+    var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
+    defer s.deinit(alloc);
+    const NO_REPO_BODY =
+        \\{"action":"completed","workflow_run":{"id":42,"head_sha":"abc","conclusion":"failure","head_branch":"main","html_url":"u","name":"w","run_attempt":1}}
+    ;
+    const r = try postSigned(alloc, &s, "workflow_run", "del_a11", NO_REPO_BODY);
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"ignored\":\"missing_repository\""));
+}
+
 test "A9: 5 successive deployment_status events with distinct deliveries → all 200 ignored, no dedupe interaction" {
     const alloc = std.testing.allocator;
     var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
