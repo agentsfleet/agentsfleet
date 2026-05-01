@@ -4,11 +4,11 @@
 **Milestone:** M43
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — launch-blocking. The wedge IS GitHub Actions CD-failure responder; without webhook ingest the wedge has no entry point. The chat-only fallback (M42 steer) is the secondary interaction, not the primary.
 **Categories:** API
 **Batch:** B1 — depends on M42 (event stream + envelope), parallel with M40, M41, M44, M45.
-**Branch:** feat/m43-webhook-ingest (to be created)
+**Branch:** chore/m43-review-amendments (folded into PR #272 alongside the review amendments + Slack/GitHub-App removal per operator authorization Apr 30, 2026)
 **Depends on:** M42_001 (writes to `zombie:{id}:events` with the M42 envelope shape). M45_001 (webhook secret stored as a structured credential under `${secrets.github.webhook_secret}`). M40_001 (the per-zombie thread that consumes the event must exist).
 
 **Canonical architecture:** `docs/architecture/user_flow.md` (webhook input + GH Actions trigger walkthrough), `docs/architecture/data_flow.md` §B (TRIGGER — three callers, ONE ingress).
