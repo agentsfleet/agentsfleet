@@ -2,7 +2,9 @@
 
 **Persona:** Operator with their own Fireworks AI account. Wants the orchestration substrate (durable runtime, webhook ingest, audit trail, sandbox, approval gating) but pays Fireworks directly for inference. Common reasons: cost control, model choice (Kimi K2 / 2.6 isn't on the platform-managed pool), data-locality preference, existing enterprise procurement with a specific provider.
 
-**Outcome under test:** A tenant flips to BYOK with a Fireworks key + Kimi 2.6 model. All zombie runs across every workspace under that tenant route inference through the operator's Fireworks account. UseZombie still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
+**Outcome under test:** The intended M48 contract lets a tenant flip to BYOK with a Fireworks key + Kimi 2.6 model. All zombie runs across every workspace under that tenant route inference through the operator's Fireworks account. UseZombie still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
+
+> Current `main` note: the model-caps endpoint described here is shipped, but the tenant-scoped `tenant_providers` posture and `zombiectl provider set` flow are still pending. Today the shipped BYOK storage surface is workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm`.
 
 ---
 
