@@ -21,7 +21,7 @@ The original spec below was written assuming greenfield. M28_001 (DONE) had alre
 
 **A1 — URL: `POST /v1/webhooks/{zombie_id}/github`.** Reuse the existing `/v1/webhooks/{zombie_id}/...` namespace (5 webhook routes already there: clerk, svix, approval, grant_approval, the generic per-zombie receiver). Workspace prefix `/v1/workspaces/{ws}/...` is wrong for webhook URLs — webhooks are signature-authed, not session-authed, so the workspace is the auth scope of the *secret* (vault lookup), not of the URL.
 
-**A2 — Reuse `webhook_sig.zig` middleware (M28).** The handler is auth-free: parse → filter → dedupe → normalize → XADD → 202. All HMAC verification happens upstream in middleware. GitHub's HMAC scheme is already registered in `src/zombie/webhook_verify.zig` `PROVIDER_REGISTRY` (`{name="github", sig_header="x-hub-signature-256", prefix="sha256="}`).
+**A2 — Reuse `webhook_sig.zig` middleware (M28).** The handler is auth-free: dedupe → parse → filter → normalize → XADD → 202 (per A8 — dedupe FIRST after the middleware's signature verify, before any expensive parse/filter work). All HMAC verification happens upstream in middleware. GitHub's HMAC scheme is already registered in `src/zombie/webhook_verify.zig` `PROVIDER_REGISTRY` (`{name="github", sig_header="x-hub-signature-256", prefix="sha256="}`).
 
 **A3 — Drop the proposed `webhooks/common.zig`.** No HMAC primitive lives in the handler tree; `src/auth/middleware/webhook_sig.zig` is the source of truth. Re-implementing HMAC in two places is RULE NLR-violating debt.
 
@@ -136,11 +136,14 @@ The original spec text below describes the *problem and intent* correctly; the *
 3. Resolve workspace_id by reading `core.zombies.workspace_id` for the `{zombie_id}` from the URL (A11) → load workspace credential `github` via `vault.loadJson` → pull `webhook_secret` field
 4. Compute actual_sig = sha256_hmac(webhook_secret, body)
 5. constant_time_compare(actual, expected); on fail → 401 Unauthorized
-6. Parse JSON body; verify event type is workflow_run
-7. Filter: only conclusion=failure (success/cancelled ignored, return 204 No Content with reason)
-8. Normalize → EventEnvelope (§2)
-9. XADD zombie:{id}:events
-10. Return 202 Accepted with event_id
+6. Dedupe FIRST (per A8 — before any parse/filter work):
+   `SET NX webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery} <placeholder> EX 259200`.
+   If the key already existed → return 200 OK `{"deduped": true}` and stop.
+7. Parse JSON body; verify event type is workflow_run
+8. Filter: only conclusion=failure (success/cancelled ignored, return 204 No Content with reason)
+9. Normalize → EventEnvelope (§2)
+10. XADD zombie:{id}:events
+11. Return 202 Accepted with event_id
 ```
 
 **Implementation default**: `constant_time_compare` via std.crypto in Zig (`std.crypto.utils.timingSafeEql`). Never use string equality.
