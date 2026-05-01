@@ -4,7 +4,7 @@
 
 How operators pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the operator paying the language-model provider directly.
 
-This is a cross-cutting topic. The data model lives in M48 (BYOK provider). The runtime hooks live in M41 (Context Layering). The install-time path lives in M49 (install skill). The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
+This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the executor + worker path, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
 ---
 
@@ -77,7 +77,7 @@ flowchart TD
     D -->|balance < estimate| Block[UPDATE status=gate_blocked<br/>failure_label=balance_exhausted]
     Block --> X1([XACK — terminal])
     D -->|balance ≥ estimate| E[Approval gate]
-    E -->|blocked| Wait[gate_blocked, M47 resume later]
+    E -->|blocked| Wait[gate_blocked until<br/>operator resumes]
     E -->|pass| F[Resolve secrets_map<br/>+ resolveActiveProvider]
     F --> G[executor.createExecution<br/>+ startStage]
     G --> H[StageResult]
@@ -97,9 +97,9 @@ When the gate blocks, the operator's surfaces show:
 - **`zombiectl events {id}`** — the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-line suggestion: *Tenant balance exhausted. Upgrade or top up: `zombiectl plan upgrade`.*
 - **Dashboard `/zombies/{id}/events`** — the row renders with a red *Blocked: balance* chip and an inline upgrade call-to-action.
 - **Slack** (optional, if the SKILL.md author wired it) — the SKILL.md prose can include an "if I can't run, post to #ops-billing" instruction. Out-of-the-box samples don't include this; it's an authoring choice.
-- **Email** (post-MVP) — a daily digest "you blocked N events yesterday, upgrade?".
+- **Email** (optional follow-up surface) — a daily digest "you blocked N events yesterday, upgrade?".
 
-The blocked row is **terminal** (XACKed, immutable narrative). When the operator tops up, **no automatic replay.** If they want the missed events processed, they either re-trigger from the source (push another commit, send another steer) or use the M47 approval-inbox "resume" affordance once it ships, which writes a `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
+The blocked row is **terminal** (XACKed, immutable narrative). When the operator tops up, **no automatic replay.** If they want the missed events processed, they either re-trigger from the source (push another commit, send another steer) or use the resume affordance, which writes an `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
 
 The reasoning is that a balance-exhausted event is usually evidence the operator was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
 
@@ -119,7 +119,7 @@ The "in-flight events" question matters because Bring Your Own Key and platform 
 
 ## 7. The `llm` credential — what BYOK actually stores
 
-Per M45, vault credentials are opaque JSON objects keyed by name. The BYOK record uses the well-known name `llm`:
+Vault credentials are opaque JSON objects keyed by name. The BYOK record uses the well-known name `llm`:
 
 ```json
 {
