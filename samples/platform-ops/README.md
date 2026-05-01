@@ -46,21 +46,25 @@ placeholders into `http_request` tool calls after sandbox entry.
 Each credential is a structured JSON record stored under a well-known
 name, so the zombie can reference `${secrets.fly.host}` and
 `${secrets.fly.api_token}` separately. Current `main` uses the
-`--data='<json>'` form:
+`--data='<json>'` form; `jq` keeps the JSON valid even if a token
+contains quotes or backslashes:
 
 ```bash
 # fly.io — personal access token with read scope
 zombiectl credential add fly \
-  --data='{"host":"api.machines.dev","api_token":"'"$FLY_API_TOKEN"'"}'
+  --data="$(jq -n --arg host "api.machines.dev" --arg token "$FLY_API_TOKEN" \
+    '{host:$host,api_token:$token}')"
 
 # upstash — account management API token (not a per-database password)
 zombiectl credential add upstash \
-  --data='{"host":"api.upstash.com","api_token":"'"$UPSTASH_MGMT_TOKEN"'"}'
+  --data="$(jq -n --arg host "api.upstash.com" --arg token "$UPSTASH_MGMT_TOKEN" \
+    '{host:$host,api_token:$token}')"
 
 # slack — bot user OAuth token (xoxb-...), chat:write scope,
 # invited to the channel you want posts in
 zombiectl credential add slack \
-  --data='{"host":"slack.com","bot_token":"'"$SLACK_BOT_TOKEN"'"}'
+  --data="$(jq -n --arg host "slack.com" --arg token "$SLACK_BOT_TOKEN" \
+    '{host:$host,bot_token:$token}')"
 ```
 
 If any of these three is missing at chat-time, the first tool call
@@ -205,7 +209,7 @@ retries. Add the credential and steer again.
   zero hits. The token bytes exist only transiently in the executor
   process's memory and inline in outgoing TLS bytes to fly / upstash /
   slack.
-- **Rotation.** `zombiectl credential add fly --data='{"host":"api.machines.dev","api_token":"<new>"}'`
+- **Rotation.** `zombiectl credential add fly --data="$(jq -n --arg host "api.machines.dev" --arg token "<new>" '{host:$host,api_token:$token}')"`
   overwrites the existing record; the next steer picks up the new token
   with no zombie restart.
 

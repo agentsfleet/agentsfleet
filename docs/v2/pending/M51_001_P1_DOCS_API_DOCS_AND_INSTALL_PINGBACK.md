@@ -112,7 +112,7 @@ Single page, top-to-bottom walkthrough:
 1. Prerequisite: Claude Code (or Amp, Codex CLI, OpenCode) installed locally. `zombiectl` installed (link to install).
 2. Run `zombiectl auth login` (signs in via Clerk OAuth).
 3. Run `/usezombie-install-platform-ops` in any supported host (Claude Code, Amp, Codex CLI, OpenCode).
-4. Answer the 3 prompts (Slack channel, branch glob, cron opt-in). Current `main` keeps BYOK credential setup outside the install flow through the workspace-scoped `credentials/llm` route; the tenant-scoped `zombiectl provider set` flow remains the pending M48 target contract — see the BYOK page.
+4. Answer the 3 prompts (Slack channel, branch glob, cron opt-in). BYOK setup is a separate later step if you want to bring your own key — see the BYOK page.
 5. Skill installs the zombie + posts a first response to Slack.
 6. Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.
 7. Trigger: cause a deploy failure → see the Slack diagnosis arrive.

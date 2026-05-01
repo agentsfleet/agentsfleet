@@ -48,7 +48,7 @@
 | `samples/platform-ops/SKILL.md` | EDIT | Keep the operator-facing sample prose aligned with current steer behavior. |
 | `samples/platform-ops/TRIGGER.md` | EDIT | Fix trigger comments that still point at `/steer`. |
 | `samples/platform-ops/README.md` | EDIT | Fix install, steer/chat, and credential examples that still describe the older operator flow. |
-| `docs/v2/active/M58_001_P1_DOCS_SKILL_INSTALL_CONTRACT_ALIGNMENT.md` | EDIT | Lifecycle notes while the work is in progress. |
+| `docs/v2/done/M58_001_P1_DOCS_SKILL_INSTALL_CONTRACT_ALIGNMENT.md` | EDIT | Lifecycle notes and closeout record for this alignment pass. |
 
 ## Sections (implementation slices)
 
