@@ -160,8 +160,8 @@ paths:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-requests
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry:
     $ref: ./paths/telemetry.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1telemetry
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1steer
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1messages
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1events
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream:

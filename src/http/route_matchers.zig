@@ -87,8 +87,9 @@ pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {
 }
 
 // matchWorkspaceZombieAction matches /v1/workspaces/{ws}/zombies/{zombie_id}{action}.
-// `action` is the full suffix (e.g. "/steer") — M28 migration replaced
-// the Google-style ":action" custom-method form with a validator-friendly subpath.
+// `action` is the full suffix (e.g. "/messages", "/current-run", "/events"). The
+// v0.19.0 migration replaced the Google-style ":action" custom-method form with
+// a validator-friendly subpath.
 pub fn matchWorkspaceZombieAction(path: []const u8, action: []const u8) ?WorkspaceZombieRoute {
     const prefix = "/v1/workspaces/";
     const mid = "/zombies/";

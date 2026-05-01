@@ -1,6 +1,6 @@
 // `zombiectl steer <zombie_id> "<message>"` — batch mode.
 //
-// 1. POST /steer → captures `event_id` from the 202 response.
+// 1. POST /messages → captures `event_id` from the 202 response.
 // 2. Opens GET /events/stream (SSE) with the user's bearer token.
 // 3. For every frame whose `event_id` matches, prints `[claw] <chunk>`
 //    on `chunk` frames; closes the stream and returns 0 on
@@ -13,7 +13,7 @@
 // Interactive REPL (no message) lands in a follow-up. The batch mode is
 // the primary integration with chat-style UIs and operator scripts.
 
-import { wsZombieSteerPath, wsZombieEventsPath, wsZombieEventsStreamPath } from "../lib/api-paths.js";
+import { wsZombieMessagesPath, wsZombieEventsPath, wsZombieEventsStreamPath } from "../lib/api-paths.js";
 import { streamGet as defaultStreamGet } from "../lib/sse.js";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
@@ -43,15 +43,15 @@ export async function commandSteer(ctx, args, workspaces, deps) {
     return 2;
   }
 
-  // Step 1 — POST /steer.
-  const post = await request(ctx, wsZombieSteerPath(wsId, zombieId), {
+  // Step 1 — POST /messages.
+  const post = await request(ctx, wsZombieMessagesPath(wsId, zombieId), {
     method: "POST",
     headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
     body: JSON.stringify({ message }),
   });
   const eventId = post?.event_id;
   if (!eventId) {
-    writeError(ctx, "BAD_RESPONSE", "steer response missing event_id", deps);
+    writeError(ctx, "BAD_RESPONSE", "messages response missing event_id", deps);
     return 1;
   }
 
@@ -71,7 +71,7 @@ export async function commandSteer(ctx, args, workspaces, deps) {
   } else if (outcome.kind === "timeout") {
     writeLine(ctx.stderr, ui.err(`event ${eventId} still in flight after ${Math.round(SSE_FALLBACK_TIMEOUT_MS / 1000)}s — check: zombiectl events ${zombieId}`));
   } else {
-    writeLine(ctx.stderr, ui.err(`steer failed: ${outcome.kind}${outcome.detail ? ` — ${outcome.detail}` : ""}`));
+    writeLine(ctx.stderr, ui.err(`message failed: ${outcome.kind}${outcome.detail ? ` — ${outcome.detail}` : ""}`));
   }
 
   return outcome.kind === "complete" && outcome.status === "processed" ? 0 : 1;
@@ -128,7 +128,7 @@ async function pollEventTerminal(ctx, wsId, zombieId, eventId, deps) {
 // Redis stream IDs are `<ms>-<seq>`. The events endpoint's `since=` accepts
 // RFC 3339 (`YYYY-MM-DDTHH:MM:SSZ`, no fractional seconds). Convert the
 // milliseconds prefix back to that form, rounded to the start of the second
-// the steer was XADDed so the row itself is included.
+// the message was XADDed so the row itself is included.
 function eventIdToSince(eventId) {
   const dash = eventId.indexOf("-");
   if (dash <= 0) return null;

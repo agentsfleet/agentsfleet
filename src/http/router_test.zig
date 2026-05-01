@@ -299,12 +299,12 @@ test "retired path: /v1/workspaces/{ws}/sync no longer resolves" {
     try std.testing.expect(match("/v1/workspaces/ws_123/sync", .GET) == null);
 }
 
-test "custom-method subpath: zombie /steer resolves" {
+test "custom-method subpath: zombie /messages resolves" {
     const ws_id = "ws_abc";
     const zid = "z_xyz";
-    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/steer", .GET) orelse return error.TestExpectedMatch;
+    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/messages", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
-        .workspace_zombie_steer => |r| {
+        .workspace_zombie_messages => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
             try std.testing.expectEqualStrings(zid, r.zombie_id);
         },
@@ -354,14 +354,14 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
         .approval_webhook, .grant_approval_webhook => return error.TestExpectedNotApproval,
         else => {},
     };
-    const steer_old = match("/v1/workspaces/ws1/zombies/z1:steer", .POST);
-    if (steer_old) |r| switch (r) {
-        .workspace_zombie_steer, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+    const messages_colon_old = match("/v1/workspaces/ws1/zombies/z1:messages", .POST);
+    if (messages_colon_old) |r| switch (r) {
+        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
         else => {},
     };
     const stop_old = match("/v1/workspaces/ws1/zombies/z1:stop", .POST);
     if (stop_old) |r| switch (r) {
-        .workspace_zombie_steer, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
         else => {},
     };
     // /v1/workspaces/ws1:pause used to be the colon-op form (POST). It now
@@ -402,7 +402,7 @@ test "custom-method subpath: trailing segments after action are rejected" {
     // /v1/webhooks/{id}/approval/extra must not match approval_webhook.
     try std.testing.expect(match("/v1/webhooks/z1/approval/extra", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/z1/grant-approval/extra", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/steer/extra", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/messages/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/current-run/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/pause/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/sync/extra", .GET) == null);
@@ -411,7 +411,7 @@ test "custom-method subpath: trailing segments after action are rejected" {
 test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/webhooks//approval", .GET) == null);
     try std.testing.expect(match("/v1/webhooks//grant-approval", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces//zombies/z1/steer", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces//zombies/z1/messages", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/zombies//current-run", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//pause", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//sync", .GET) == null);

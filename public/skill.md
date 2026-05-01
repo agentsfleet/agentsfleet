@@ -15,7 +15,7 @@ control-plane API.
 | `create_zombie` | POST | `/v1/workspaces/{workspace_id}/zombies` |
 | `update_zombie` | PATCH | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}` |
 | `kill_zombie` | POST | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill` |
-| `steer_zombie` | POST | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer` |
+| `post_zombie_message` | POST | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages` |
 | `list_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events` |
 | `stream_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream` |
 | `ingest_zombie_webhook` | POST | `/v1/webhooks/{zombie_id}` |
@@ -33,7 +33,7 @@ control-plane API.
 
 ## Policy classes
 - `safe`: `list_zombie_events`, `stream_zombie_events` — allow by default
-- `sensitive`: `create_zombie`, `update_zombie`, `kill_zombie`, `steer_zombie`, `ingest_zombie_webhook`, `pause_workspace`, `execute_tool` — require explicit confirmation
+- `sensitive`: `create_zombie`, `update_zombie`, `kill_zombie`, `post_zombie_message`, `ingest_zombie_webhook`, `pause_workspace`, `execute_tool` — require explicit confirmation
 - `critical`: destructive/permission changes — require double confirmation (none currently)
 
 ## Tool execution

@@ -42,7 +42,7 @@ const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
 const slack_oauth = @import("handlers/slack/oauth.zig");
 const slack_ev = @import("handlers/slack/events.zig");
 const slack_ix = @import("handlers/slack/interactions.zig");
-const zombie_steer = @import("handlers/zombies/steer.zig");
+const zombie_messages = @import("handlers/zombies/messages.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
 const dashboard_invokes = @import("route_table_invoke_dashboard.zig");
@@ -222,12 +222,12 @@ pub fn invokeWorkspaceCredentialDelete(hx: *Hx, req: *httpz.Request, route: rout
     zombie_creds.innerDeleteCredential(hx.*, req, r.workspace_id, r.credential_name);
 }
 
-// ── Zombie steer (M23_001) ────────────────────────────────────────────────
+// ── Zombie messages (chat ingress) ────────────────────────────────────────
 
-pub fn invokeZombieSteer(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeZombieMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    const r = route.workspace_zombie_steer;
-    zombie_steer.innerZombieSteer(hx.*, req, r.workspace_id, r.zombie_id);
+    const r = route.workspace_zombie_messages;
+    zombie_messages.innerZombieMessagesPost(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 // ── Zombie telemetry ──────────────────────────────────────────────────────

@@ -55,16 +55,16 @@ test "matchWorkspaceZombie: workspace_id and zombie_id extracted" {
     try std.testing.expect(matchWorkspaceZombie("/v1/workspaces/ws_1/zombies/z_1/extra") == null);
 }
 
-test "matchWorkspaceZombieAction: /steer extracts ws_id + zombie_id" {
-    const r = matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/steer", "/steer").?;
+test "matchWorkspaceZombieAction: /messages extracts ws_id + zombie_id" {
+    const r = matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/messages", "/messages").?;
     try std.testing.expectEqualStrings("ws1", r.workspace_id);
     try std.testing.expectEqualStrings("z1", r.zombie_id);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies//steer", "/steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces//zombies/z1/steer", "/steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/a/b/steer", "/steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/a/b/zombies/z1/steer", "/steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/other-action", "/steer") == null);
-    try std.testing.expect(matchWorkspaceZombieAction("/v1/zombies/z1/steer", "/steer") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies//messages", "/messages") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces//zombies/z1/messages", "/messages") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/a/b/messages", "/messages") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/a/b/zombies/z1/messages", "/messages") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/workspaces/ws1/zombies/z1/other-action", "/messages") == null);
+    try std.testing.expect(matchWorkspaceZombieAction("/v1/zombies/z1/messages", "/messages") == null);
 }
 
 test "matchZombieTelemetry: extracts workspace_id and zombie_id" {

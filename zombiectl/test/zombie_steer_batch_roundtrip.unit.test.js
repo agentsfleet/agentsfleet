@@ -1,6 +1,6 @@
 // `zombiectl steer <id> "<msg>"` batch roundtrip — exercises the full
 // command path with mocked deps:
-//   - POST /steer returns 202 + event_id.
+//   - POST /messages returns 202 + event_id.
 //   - streamGet emits scripted SSE frames matching the event_id.
 //   - tool_call_started / chunk / tool_call_completed / event_complete
 //     all flow through; chunks render as `[claw] <text>` on stdout.
@@ -40,7 +40,7 @@ function makeCtx(overrides = {}) {
 
 const workspaces = { current_workspace_id: WS_ID, items: [] };
 
-test("steer batch: POST /steer + SSE roundtrip prints chunks and exits 0", async () => {
+test("steer batch: POST /messages + SSE roundtrip prints chunks and exits 0", async () => {
   let postUrl = null;
   let postBody = null;
   let streamUrl = null;
@@ -58,7 +58,7 @@ test("steer batch: POST /steer + SSE roundtrip prints chunks and exits 0", async
   const deps = {
     parseFlags,
     request: async (_ctx, url, opts) => {
-      if (opts.method === "POST" && url.includes("/steer")) {
+      if (opts.method === "POST" && url.includes("/messages")) {
         postUrl = url;
         postBody = JSON.parse(opts.body);
         return { event_id: EVENT_ID };
@@ -84,7 +84,7 @@ test("steer batch: POST /steer + SSE roundtrip prints chunks and exits 0", async
   const code = await commandSteer(ctx, [ZOMBIE_ID, "ping"], workspaces, deps);
 
   assert.equal(code, 0);
-  assert.ok(postUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/steer`));
+  assert.ok(postUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/messages`));
   assert.equal(postBody.message, "ping");
   assert.ok(streamUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events/stream`));
   assert.equal(streamHeaders.Authorization, "Bearer test-token");

@@ -59,8 +59,8 @@ pub const Route = union(enum) {
     patch_workspace_zombie: matchers.WorkspaceZombieRoute, // PATCH /v1/workspaces/{ws}/zombies/{id} (config_json + status:killed)
     workspace_credentials: []const u8, // GET|POST /v1/workspaces/{ws}/credentials
     delete_workspace_credential: matchers.WorkspaceCredentialRoute, // DELETE /v1/workspaces/{ws}/credentials/{name}
-    // Live steering — POST /v1/workspaces/{ws}/zombies/{id}/steer
-    workspace_zombie_steer: matchers.WorkspaceZombieRoute,
+    // Chat ingress — POST /v1/workspaces/{ws}/zombies/{id}/messages
+    workspace_zombie_messages: matchers.WorkspaceZombieRoute,
     // Per-zombie event history + SSE live tail
     workspace_zombie_events: matchers.WorkspaceZombieRoute, // GET /v1/workspaces/{ws}/zombies/{id}/events
     workspace_zombie_events_stream: matchers.WorkspaceZombieRoute, // GET /v1/workspaces/{ws}/zombies/{id}/events/stream (SSE)
@@ -159,7 +159,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     // Most-specific paths first to avoid collisions.
     if (matchers.matchWorkspaceZombieAction(path, "/events/stream")) |route| return .{ .workspace_zombie_events_stream = route };
     if (matchers.matchWorkspaceZombieAction(path, "/events")) |route| return .{ .workspace_zombie_events = route };
-    if (matchers.matchWorkspaceZombieAction(path, "/steer")) |route| return .{ .workspace_zombie_steer = route };
+    if (matchers.matchWorkspaceZombieAction(path, "/messages")) |route| return .{ .workspace_zombie_messages = route };
     if (matchers.matchWorkspaceZombieAction(path, "/current-run")) |route| return .{ .workspace_zombie_current_run = route };
     if (matchers.matchWorkspaceZombie(path)) |route| return .{ .patch_workspace_zombie = route };
     if (matchWorkspaceSuffix(path, "/zombies")) |workspace_id| return .{ .workspace_zombies = workspace_id };
@@ -305,24 +305,26 @@ test "match resolves Slack install route (M8_001)" {
     try std.testing.expect(match("/v1/slack/", .GET) == null);
 }
 
-// ── M23_001 route tests ───────────────────────────────────────────────────────
+// ── Workspace-scoped zombie messages route tests ──────────────────────────────
 
-test "match resolves zombie steer route (workspace-scoped)" {
+test "match resolves zombie messages route (workspace-scoped)" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .GET).?) {
-        .workspace_zombie_steer => |r| {
+    switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET).?) {
+        .workspace_zombie_messages => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
             try std.testing.expectEqualStrings(zid, r.zombie_id);
         },
         else => return error.TestExpectedEqual,
     }
     // Flat /v1/zombies/... path is not workspace-scoped; rejected.
-    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .GET) == null);
-    // plain flat /v1/zombies/{id} is also 404 (not steer, not delete).
+    try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/messages", .GET) == null);
+    // plain flat /v1/zombies/{id} is 404 (not messages, not delete).
     try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
     // multi-segment rejected
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/a/b/steer", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/a/b/messages", .GET) == null);
+    // Pre-rename verb path is rejected (pre-v2: 404 with no compat shim).
+    try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/steer", .POST) == null);
 }
 
 // Webhook + approval route tests are in router_test.zig.

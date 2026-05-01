@@ -38,6 +38,7 @@ TOP_LEVEL_ALLOW: set[str] = {
 NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     # Resource collections (plural nouns, end-of-path):
     "events",            # zombie_events resource
+    "messages",          # chat messages collection (per-zombie ingress)
     "credentials",       # core.credentials
     "zombies",           # core.zombies
     "workspaces",        # core.workspaces
@@ -91,24 +92,17 @@ VENDOR_PATH_CARVE_OUTS: set[str] = {
     "/v1/github/callback",
 }
 
-# Pending-rename carve-outs — every entry MUST have a TODO + spec reference
-# naming the rename owner. Adding to this set buys time, not absolution; the
-# accompanying comment is the durable record of the rename plan.
+# Pending-rename carve-outs — short-lived list. Phase 2 of the active
+# url-hygiene work reshapes /v1/memory/* into a /memories collection;
+# Phase 3 then deletes this constant entirely along with the
+# `if path in PENDING_RENAME_PATHS` branch in `main()`.
 #
-# RULE NLG: SKIPPED per user override (reason: M41 carries the substrate
-# rename pass for /pause, /complete, /kill; the remaining 5 entries belong
-# to follow-up specs — /steer needs body-type polymorphism on EventType
-# (chat | continuation | webhook), and /v1/memory/* needs a key-shape design
-# call (compound key {zombie_id, key} — does the URL carry both? headers?
-# mixed?). The follow-up spec is docs/v2/pending/M41_002_P2_API_URL_HYGIENE.md.
-# Without this override the constant itself violates NLG's tracking-list ban.)
+# RULE NLG: SKIPPED per user override (reason: this constant is being
+# removed by the in-flight spec — interim presence ≤ one branch lifetime.)
 PENDING_RENAME_PATHS: set[str] = {
-    # M41_002 will rename to POST /v1/.../zombies/{id}/events with body
-    # {"type":"chat","actor_kind":"steer","message":"..."}; storage already
-    # treats steer as one actor among many writing to core.zombie_events.
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer",
-    # M41_002 will reshape into a /v1/memories collection. The key-shape
-    # design (compound zombie_id + key) blocks an immediate rename.
+    # The /v1/memory/* surface reshapes into a workspace-scoped /memories
+    # collection in Phase 2 of this same url-hygiene work; Phase 3 deletes
+    # this constant entirely along with its consumer.
     "/v1/memory/forget",
     "/v1/memory/list",
     "/v1/memory/recall",

@@ -103,7 +103,7 @@ Continuations and webhooks stay out of this spec (see Out of Scope).
 
 ### §1 — Steer → messages rename
 
-Pure rename on the existing steer handler. No body-shape design call needed: body is `{content: string}` (whatever the current steer body carries — agent confirms shape during PLAN by reading `src/http/handlers/zombies/steer.zig`). The storage layer (`core.zombie_events` write with `actor_kind:"steer"`) is unchanged. Handler renames `steer.zig` → `messages.zig`, function `innerZombieSteer` → `innerZombieMessagesPost`. 5-place route registration applied per M41_001 pattern.
+Pure rename on the existing steer handler. Body field is `message` (8192-byte cap, today's shape — preserved verbatim; renaming the field is a separate concern outside URL-hygiene scope). The storage layer (`core.zombie_events` write with `actor_kind:"steer"`, `event_type=.chat`) is unchanged. Handler renames `steer.zig` → `messages.zig`, function `innerZombieSteer` → `innerZombieMessagesPost`. 5-place route registration applied per M41_001 pattern.
 
 ### §2 — CLI migration
 
@@ -115,13 +115,13 @@ Workspace-scoped path locked. No design call deferred — symmetric with every o
 
 ### §4 — Memory rename
 
-Apply §3's shape across the 5-place registration. Recall, list, store, forget collapse into resource verbs:
+Apply §3's shape across the 5-place registration. Today's API has 4 RPCs (`store`, `recall`, `list`, `forget`); recall is fuzzy text search (`LIKE %query%` on key OR content), list is enumerate. The two collapse naturally — same SELECT shape, recall just adds a `WHERE key ILIKE $q OR content ILIKE $q` clause. Resulting collection has 3 endpoints:
 
-- `GET /v1/workspaces/{ws}/zombies/{id}/memories` — list
-- `GET /v1/workspaces/{ws}/zombies/{id}/memories?keys=a,b` — multi-key recall
-- `GET /v1/workspaces/{ws}/zombies/{id}/memories/{key}` — single recall
-- `POST /v1/workspaces/{ws}/zombies/{id}/memories` body `{key, value}` — store
-- `DELETE /v1/workspaces/{ws}/zombies/{id}/memories/{key}` — forget
+- `GET /v1/workspaces/{ws}/zombies/{id}/memories?query=...&category=...&limit=...` — list (no `query`) or fuzzy search (with `query`). Replaces both `recall` and `list`. 200 with `{items, total, request_id}` (today's envelope minus `zombie_id`, which is path-derived).
+- `POST /v1/workspaces/{ws}/zombies/{id}/memories` body `{key, content, category?}` — store (`zombie_id` moves from body to path). 201 with `{key, category, request_id}` (path-derivable `zombie_id` dropped).
+- `DELETE /v1/workspaces/{ws}/zombies/{id}/memories/{key}` — forget. **204 No Content** via `hx.noContent()`, strictly idempotent: 204 whether the key existed or not. The legacy `{deleted: bool}` body is dropped per RULE NLG (no compat with prior distinguishability).
+
+`GET /memories/{key}` (exact-key single lookup) is intentionally NOT added — today's API has no exact-key path, only fuzzy search; adding it is new capability beyond URL hygiene.
 
 ### §5 — Carve-out cleanup
 
@@ -138,7 +138,7 @@ POST /v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages
 Content-Type: application/json
 Authorization: Bearer <user-jwt>
 
-Body: { "content": "..." }
+Body: { "message": "..." }   # ≤ 8192 bytes, non-empty
 
 Response: 202 Accepted, body { event_id: <redis-stream-entry-id> }
 ```
@@ -146,10 +146,9 @@ Response: 202 Accepted, body { event_id: <redis-stream-entry-id> }
 ### Memories collection
 
 ```
-GET    /v1/workspaces/{ws}/zombies/{id}/memories                — list
-GET    /v1/workspaces/{ws}/zombies/{id}/memories?keys=a,b       — multi-key recall
-GET    /v1/workspaces/{ws}/zombies/{id}/memories/{key}          — single recall
-POST   /v1/workspaces/{ws}/zombies/{id}/memories                — store (body: {key, value})
+GET    /v1/workspaces/{ws}/zombies/{id}/memories?query=...&category=...&limit=...
+                                                                — list (no query) or search (with query)
+POST   /v1/workspaces/{ws}/zombies/{id}/memories                — store (body: {key, content, category?})
 DELETE /v1/workspaces/{ws}/zombies/{id}/memories/{key}          — forget
 ```
 
@@ -159,10 +158,12 @@ DELETE /v1/workspaces/{ws}/zombies/{id}/memories/{key}          — forget
 
 | Mode | Cause | Handling |
 |------|-------|----------|
-| Missing/empty `content` on POST /messages | Client POSTs `{}` or `{"content":""}` | 400 ERR_INVALID_REQUEST — `content is required` |
+| Missing/empty `message` on POST /messages | Client POSTs `{}` or `{"message":""}` | 400 ERR_INVALID_REQUEST — `message must not be empty` |
+| `message` exceeds 8192 bytes | Client POSTs oversized payload | 400 ERR_INVALID_REQUEST — `message must not exceed 8192 bytes` |
 | Cross-workspace message | API key bound to ws_A targets zombie in ws_B | 403 — existing `authorizeWorkspace` gate |
-| Memory key collision on POST | Duplicate `{zombie_id, key}` in store | Today's behavior: PUT-like (overwrite). Preserved. |
+| Memory key collision on POST | Duplicate `{instance_id, key}` in store | PUT-like (overwrite via `ON CONFLICT … DO UPDATE`). Today's behavior, preserved. |
 | Cross-workspace memory access | API key bound to ws_A reads memory of ws_B | 403 — same `authorizeWorkspace` gate as every other workspace resource |
+| DELETE on missing key | Client DELETEs a key that doesn't exist | 204 — strictly idempotent per RULE NLG; no `{deleted: false}` legacy body |
 
 ---
 
