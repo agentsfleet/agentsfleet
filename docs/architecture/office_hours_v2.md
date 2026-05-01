@@ -112,7 +112,7 @@ These are product questions, not architecture constants.
 
 ## How to use this file
 
-Use this file when writing:
+That is why [`bastion.md`](./bastion.md) exists as direction, while the launch framing stays centered on internal deploy and outage triage.
 
 - product framing in public docs
 - hero copy and quickstart positioning
