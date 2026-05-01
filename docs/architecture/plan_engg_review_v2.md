@@ -39,7 +39,7 @@ The wedge does not introduce new HTTP routes — it exercises existing ones. Pag
 
 1. User runs `/usezombie-install-platform-ops` in a target repo.
 2. Skill detects `.github/workflows/*.yml`, `fly.toml`, `Dockerfile` → infers deploy target.
-3. Skill prompts for `slack_channel`, `prod_branch_glob`, `cron_opt_in`, optional `byok_provider_credential` (deploy_target may be inferred or confirmed).
+3. Skill prompts for `slack_channel`, `prod_branch_glob`, `cron_opt_in` (3 variables per M49 B6; BYOK is configured later via `zombiectl provider set` per M48). `deploy_target` may be inferred or confirmed.
 4. Skill resolves credentials in order: 1Password CLI (`op read`) → env vars → interactive prompt.
 5. Skill writes `.usezombie/platform-ops/{SKILL,TRIGGER,README}.md` with substituted variables.
 6. Skill calls `zombiectl install --from .usezombie/platform-ops/`.

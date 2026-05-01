@@ -187,16 +187,11 @@ fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKey },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
-        .slack_sig = .{ .secret = "" },
         .webhook_hmac_mw = .{ .secret = "" },
-        .oauth_state_mw = .{ .signing_secret = "", .consume_ctx = &h.queue, .consume_nonce = stubConsumeNonce },
         .webhook_url_secret_mw = .{ .lookup_ctx = &h.queue, .lookup_fn = stubWebhookUrlSecret },
     };
 }
 
-fn stubConsumeNonce(_: *anyopaque, _: []const u8) anyerror!bool {
-    return false;
-}
 fn stubWebhookUrlSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) anyerror!?[]const u8 {
     return null;
 }

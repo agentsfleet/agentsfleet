@@ -12,7 +12,6 @@ pub const EventKind = enum {
     startup_failed,
     api_error,
     workspace_created,
-    workspace_github_connected,
     auth_login_completed,
     auth_rejected,
     zombie_triggered,
@@ -154,22 +153,6 @@ pub const WorkspaceCreated = struct {
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
             .{ .key = "tenant_id", .value = .{ .string = self.tenant_id } },
             .{ .key = "repo_url", .value = .{ .string = self.repo_url } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
-        };
-    }
-};
-
-pub const WorkspaceGithubConnected = struct {
-    workspace_id: []const u8,
-    installation_id: []const u8,
-    request_id: []const u8,
-
-    pub const kind: EventKind = .workspace_github_connected;
-
-    pub fn properties(self: @This()) [3]posthog.Property {
-        return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "installation_id", .value = .{ .string = self.installation_id } },
             .{ .key = "request_id", .value = .{ .string = self.request_id } },
         };
     }

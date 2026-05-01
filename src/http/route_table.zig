@@ -50,10 +50,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .poll_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokePollAuthSession },
         .patch_auth_session => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchAuthSession },
 
-        // OAuth callbacks — handler validates state + nonce; use none policy
-        // to avoid double-consuming the Redis nonce.
-        .github_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGitHubCallback },
-
         // Workspace lifecycle
         .create_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCreateWorkspace },
         .patch_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspace },
@@ -124,13 +120,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Tenant API keys (M28_002 §3) — operator-minimum per RULE BIL.
         .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
         .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
-
-        // Slack — install/callback use none (handler validates OAuth state+nonce);
-        // events and interactions use Slack signature middleware.
-        .slack_install => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeSlackInstall },
-        .slack_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeSlackCallback },
-        .slack_events => .{ .middlewares = registry.slack(), .invoke = invoke.invokeSlackEvents },
-        .slack_interactions => .{ .middlewares = registry.slack(), .invoke = invoke.invokeSlackInteractions },
     };
 }
 
@@ -152,7 +141,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.create_auth_session, &reg) != null);
     try testing.expect(specFor(.{ .poll_auth_session = "s1" }, &reg) != null);
     try testing.expect(specFor(.{ .patch_auth_session = "s1" }, &reg) != null);
-    try testing.expect(specFor(.github_callback, &reg) != null);
     try testing.expect(specFor(.create_workspace, &reg) != null);
     try testing.expect(specFor(.{ .patch_workspace = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
@@ -179,10 +167,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);
     try testing.expect(specFor(.{ .agent_keys = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .delete_agent_key = .{ .workspace_id = "ws1", .agent_id = "a1" } }, &reg) != null);
-    try testing.expect(specFor(.slack_install, &reg) != null);
-    try testing.expect(specFor(.slack_callback, &reg) != null);
-    try testing.expect(specFor(.slack_events, &reg) != null);
-    try testing.expect(specFor(.slack_interactions, &reg) != null);
     try testing.expect(specFor(.{ .workspace_approvals = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg) != null);

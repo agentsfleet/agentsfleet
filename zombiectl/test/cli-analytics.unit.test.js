@@ -159,7 +159,6 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
             workspace_id: "ws_123456789abc",
             repo_url: "https://github.com/acme/repo",
             default_branch: "main",
-            install_url: "https://github.com/apps/usezombie/installations/new?state=ws_123456789abc",
             request_id: "req_workspace",
           }),
       });

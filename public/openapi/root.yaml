@@ -100,8 +100,6 @@ paths:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}
   /v1/execute:
     $ref: ./paths/execute.yaml#/~1v1~1execute
-  /v1/github/callback:
-    $ref: ./paths/authentication.yaml#/~1v1~1github~1callback
   /v1/memory/forget:
     $ref: ./paths/memory.yaml#/~1v1~1memory~1forget
   /v1/memory/list:
@@ -110,14 +108,6 @@ paths:
     $ref: ./paths/memory.yaml#/~1v1~1memory~1recall
   /v1/memory/store:
     $ref: ./paths/memory.yaml#/~1v1~1memory~1store
-  /v1/slack/callback:
-    $ref: ./paths/slack.yaml#/~1v1~1slack~1callback
-  /v1/slack/events:
-    $ref: ./paths/slack.yaml#/~1v1~1slack~1events
-  /v1/slack/install:
-    $ref: ./paths/slack.yaml#/~1v1~1slack~1install
-  /v1/slack/interactions:
-    $ref: ./paths/slack.yaml#/~1v1~1slack~1interactions
   /v1/webhooks/clerk:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1clerk
   /v1/webhooks/svix/{zombie_id}:

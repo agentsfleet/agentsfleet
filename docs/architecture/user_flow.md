@@ -78,7 +78,7 @@ After install, the zombie is no longer tied to the interactive Claude session th
 
 For the MVP, the zombie is triggerable in three ways:
 
-- **Webhook input**: an external system (most importantly GitHub Actions on `workflow_run.conclusion == failure`) sends an event to `POST /v1/.../webhooks/github`. The receiver verifies the HMAC signature, normalizes the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:github`.
+- **Webhook input**: an external system (most importantly GitHub Actions on `workflow_run.conclusion == failure`) sends an event to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`), normalizes the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:github`.
 - **Cron input**: NullClaw's `cron_add` tool persists a schedule. Each fire arrives as a synthetic event with `actor=cron:<schedule>`.
 - **Operator steer**: the user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer {id} "<message>"` (or the dashboard chat widget), which `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
 
@@ -108,8 +108,8 @@ While working in Claude, the user defines a `platform-ops` zombie that:
 
 When a GH Actions deploy fails:
 
-1. GitHub posts to `/v1/.../webhooks/github` with the failed `workflow_run` payload.
-2. The webhook receiver verifies the HMAC signature against the workspace's stored GH webhook secret.
+1. GitHub posts to `/v1/webhooks/{zombie_id}/github` with the failed `workflow_run` payload.
+2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every zombie in the workspace using `trigger.source: github` shares it; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)`; an optional `x-usezombie.trigger.credential_name:` frontmatter override addresses the rare multi-org case.
 3. The receiver normalizes the payload into a synthetic event and `XADD`s to `zombie:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
 4. The worker's per-zombie thread unblocks from `XREADGROUP`, processes the event:
    - INSERT `core.zombie_events` (status='received')

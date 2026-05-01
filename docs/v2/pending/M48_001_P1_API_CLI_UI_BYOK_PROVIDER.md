@@ -38,6 +38,18 @@ M45 dropped the typed credential registry. There is no `type=llm_provider` discr
 
 ---
 
+## Cross-spec amendment (Apr 30, 2026 — folded from M43 review pass)
+
+The M43 review confirmed the credential-lookup-by-name convention this spec already uses for `llm`. Two minor reinforcements:
+
+**C1 — Convention-by-name is the project-wide pattern, not BYOK-specific.** M43 webhook ingest follows the same shape — `name = trigger.source` (e.g. `"github"`), field `webhook_secret`. M48 follows it for `llm`, field `api_key`. There is no "lookup by type" anywhere; types are dead and won't return.
+
+**C2 — Scope nuance: `llm` is *tenant*-scoped; webhook credentials (`github`, etc.) are *workspace*-scoped.** Both live in the same M45 vault, but the resolver function differs: BYOK reads at tenant granularity (one `llm` per tenant — billing scope), webhook reads at workspace granularity (one `github` per workspace — operations scope). Reflected already in the resolver function names (`tenant_provider.resolveActiveProvider` vs the workspace-keyed `vault.loadJson(workspace_id, name)` M43 will use). No code change here; documenting the boundary so it doesn't drift.
+
+**C3 — `credential_name:` override pattern is shared.** M43 introduces an optional `x-usezombie.trigger.credential_name:` frontmatter override for the rare multi-integration case (a workspace with two GH orgs needing different secrets). M48's BYOK does not need this override in v1 (one provider per tenant) but the syntax is reserved if a future "two-provider tenant" use case shows up.
+
+---
+
 ## Cross-spec amendment (Apr 29, 2026 — billing model + cap origin)
 
 Two corrections to the design below, both arising from the M41-spillover Discovery work in M49 and the architecture refactor of `docs/architecture/` (now split into per-topic files under `docs/architecture/`).
@@ -218,9 +230,10 @@ Internal:
 
 | Mode | Cause | Handling |
 |------|-------|----------|
-| BYOK set with non-existent credential_ref | Operator typo | 400 with `credential_not_found` |
-| BYOK credential is wrong type | Selected a `fly` credential | 400 with `wrong_credential_type` |
+| BYOK set but `llm` credential missing | Operator hasn't run `zombiectl credential add llm ...` yet | 400 with `credential_not_found` |
+| `llm` credential's data lacks `provider` or `api_key` field | Operator built malformed JSON | 400 with `credential_data_malformed` (per Interfaces). Per the Apr 26 amendment, credentials are typeless opaque JSON keyed by name — there is no "wrong type" check; the resolver validates required fields instead. |
 | BYOK API key invalid (rejected by provider) | Operator pasted wrong key | First zombie run fails with `provider_auth_failed`; operator sees error in event log; provider config remains set (operator can fix it) |
+| BYOK on Free plan | Free disallows BYOK (per Apr 29 Correction 1) | 403 `byok_requires_paid_plan` |
 | Switch from BYOK back to platform when balance=0 | Operator forgot they had run dry | PUT succeeds; next event blocks at balance gate; operator sees clear "balance exhausted" error |
 | Concurrent PUTs from two admin sessions | Race | Last write wins; both succeed; revalidate shows the winner |
 
@@ -230,7 +243,7 @@ Internal:
 
 1. **Provider key never in agent context.** Same as tool-level secrets — passed through executor session, substituted at the API client level (not the agent's tool bridge — different layer; see M41).
 2. **One provider per tenant.** Schema unique constraint.
-3. **BYOK skips balance gate.** Tested explicitly.
+3. **Balance gate runs for both postures** (per Apr 29 Correction 1). Platform-mode cost includes language-model tokens + orchestration; BYOK-mode cost is orchestration only. Free plan disallows BYOK entirely (`byok_requires_paid_plan`).
 4. **Mode change applies on NEXT event.** In-flight events use the provider that was active when claimed.
 
 ---
@@ -241,10 +254,14 @@ Internal:
 |------|---------|
 | `test_default_provider_is_platform` | New tenant → GET returns mode=platform |
 | `test_set_byok_routes_to_operator_key` | Set BYOK → run zombie → outbound LLM call hits operator's API base, uses operator's API key |
-| `test_byok_skips_balance_gate` | Tenant with balance=0 + BYOK active → zombie runs (no gate block) |
+| `test_byok_orchestration_credit_gate` | Team-plan tenant on BYOK with balance=0 → zombie blocks at the orchestration-only gate (Correction 1: gate runs for both postures, only the cost function differs) |
 | `test_platform_mode_enforces_balance_gate` | Tenant with balance=0 + mode=platform → zombie blocks at gate |
-| `test_byok_with_invalid_credential_ref` | PUT with non-existent ref → 400 |
-| `test_byok_with_wrong_credential_type` | PUT pointing at fly credential → 400 |
+| `test_byok_blocked_on_free_plan` | Free-plan tenant tries to set BYOK → 403 `byok_requires_paid_plan` |
+| `test_byok_with_missing_llm_credential` | PUT with `mode=byok` while no `llm` credential exists → 400 `credential_not_found` |
+| `test_byok_with_malformed_llm_data` | `llm` credential present but its data lacks `provider`/`api_key` → 400 `credential_data_malformed` |
+| `test_provider_set_resolves_cap_from_caps_endpoint` | `provider set` writes `tenant_providers.context_cap_tokens` from the model-caps endpoint response (Correction 2) |
+| `test_byok_overlays_cap_at_trigger_time` | Frontmatter `context_cap_tokens: 0` + `mode=byok` → worker uses `tenant_providers.context_cap_tokens` |
+| `test_provider_set_with_unknown_model_400s` | Model not in caps catalogue → 400 `model_not_in_caps_catalogue` |
 | `test_provider_key_no_leak_into_event_log` | Run zombie under BYOK → grep `core.zombie_events` for the API key bytes → 0 matches |
 | `test_provider_key_no_leak_into_tool_context` | Run zombie under BYOK → capture agent's tool-call records → 0 matches for API key bytes |
 | `test_concurrent_put_last_write_wins` | Two PUTs racing → final config = whichever committed last |
@@ -254,8 +271,9 @@ Internal:
 
 ## Acceptance Criteria
 
-- [ ] `make test-integration` passes the 10 tests above
-- [ ] Manual: tenant with 0 platform credits switches to BYOK with own Anthropic key, runs platform-ops zombie, no errors
+- [ ] `make test-integration` passes the 14 tests above
+- [ ] Manual: Team- or Scale-plan tenant with exhausted platform credits switches to BYOK with their own Anthropic key, runs platform-ops zombie; the orchestration-only credit drains as expected (BYOK still hits the balance gate per Correction 1, just with a smaller per-event cost)
+- [ ] Manual: Free-plan tenant attempting `provider set --mode byok` is rejected with `byok_requires_paid_plan`
 - [ ] Manual: switching back to platform with 0 credits surfaces the credit-exhausted UX
 - [ ] Audit grep: BYOK API key bytes never appear in `core.zombie_events`, worker logs, or executor logs
 - [ ] `make check-pg-drain` clean
