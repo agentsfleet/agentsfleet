@@ -178,10 +178,10 @@ The `message` is a short human-readable summary; `metadata` carries the structur
 GitHub retries on 5xx with exponential backoff. To handle replays without duplicate processing:
 
 - The receiver computes a `delivery_id` from `X-GitHub-Delivery` header (a UUID GH provides)
-- Use `delivery_id` as a stable component of a hash → write to a Redis key `webhook:dedupe:github:<delivery_id>` with EX 86400 (24h)
-- If `SET NX` fails, return 200 OK with `{"deduped": true, "original_event_id": <previous>}` — don't 4xx GH (they'd retry).
+- Use `delivery_id` as a stable component of a hash → write to a Redis key `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` with EX 259200 (72h). The `{zombie_id}` scopes the key so two zombies in the same workspace subscribed to the same repo don't share dedupe state.
+- If `SET NX` fails, return 200 OK with `{"deduped": true}` — don't 4xx GH (they'd retry). No `original_event_id`; operator-debuggable info lives in the events stream.
 
-**Implementation default**: 24h dedupe window matches GH's retry window. After that, treat as new.
+**Implementation default**: 72h dedupe window covers GitHub's documented maximum retry window for the same `X-GitHub-Delivery` UUID. After that, treat as new.
 
 ### §4 — Per-zombie webhook secret resolution
 
@@ -218,7 +218,7 @@ HTTP:
        headers: X-Hub-Signature-256, X-GitHub-Event, X-GitHub-Delivery
        body: raw GitHub webhook payload
        → 202 Accepted { event_id }
-       → 200 OK { deduped: true, original_event_id }
+       → 200 OK { deduped: true }
        → 204 No Content { ignored: "<event-type>" }   for non-workflow_run or non-failure
        → 401 Unauthorized                              on signature mismatch
        → 413 Payload Too Large                         for >1MB body
@@ -230,7 +230,7 @@ Vault credential shape (M45 structured):
   }
 
 Redis dedupe key:
-  webhook:dedupe:github:<delivery_uuid>  EX 86400
+  webhook:dedup:{zombie_id}:gh:<X-GitHub-Delivery>  EX 259200
 ```
 
 ---
@@ -279,6 +279,6 @@ Fixtures in `samples/fixtures/m43-webhook-fixtures/`.
 
 - [ ] `make test-integration` passes the 9 tests above
 - [ ] Manual smoke: configure a real GH repo's webhook to point at staging zombid, push a failing deploy, observe zombie posts diagnosis to Slack within 30s
-- [ ] Replay attack test: capture a real signed payload, replay 24h later → second is treated as new (post-window) but inside 24h is deduped
+- [ ] Replay attack test: capture a real signed payload, replay 73h later → second is treated as new (post-window) but inside 72h is deduped
 - [ ] `make memleak` clean
 - [ ] Cross-compile clean: x86_64-linux + aarch64-linux
