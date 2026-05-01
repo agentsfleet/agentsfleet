@@ -1,4 +1,4 @@
-# M41_002: API URL Hygiene — /steer → /messages + /memory resource collection
+# M41_002: API URL Hygiene — /steer → /messages, /memory → /memories, segment-based matchers
 
 **Prototype:** v2.0.0
 **Milestone:** M41
@@ -43,8 +43,9 @@
 
 **Solution summary:**
 
-- Steer becomes its own noun: `POST /v1/workspaces/{ws}/zombies/{id}/messages` body `{content: "..."}`. Mono-shaped handler, mono-shaped OpenAPI body, no discriminator. Storage still writes to `core.zombie_events` with `actor_kind:"steer"` / `event_type:"chat"` — that's a substrate detail the URL doesn't leak. The Redis stream entry id remains the canonical event_id returned to the caller.
-- Memory ops collapse into workspace-scoped `/v1/workspaces/{ws}/zombies/{id}/memories` (symmetric with every other zombie sub-resource). Operations: `GET` (list / multi-key via `?keys=`), `GET /{key}` (single recall), `POST` (store, body `{key, value}`), `DELETE /{key}` (forget).
+- Steer becomes its own noun: `POST /v1/workspaces/{ws}/zombies/{id}/messages` body `{message: "..."}`. Mono-shaped handler, mono-shaped OpenAPI body, no discriminator. Storage still writes to `core.zombie_events` with `actor=steer:<user>` / `event_type=chat` — that's a substrate detail the URL doesn't leak. The Redis stream entry id remains the canonical event_id returned to the caller.
+- Memory ops collapse into workspace-scoped `/v1/workspaces/{ws}/zombies/{id}/memories` (symmetric with every other zombie sub-resource). Operations: `GET` (list / fuzzy search via `?query=`), `POST` (store, body `{key, content, category?}`), `DELETE /{key}` (forget — strictly idempotent 204, no `{deleted: bool}` body).
+- **Route matcher architecture rewrite (bundled).** All HTTP path matchers move from substring-driven (`startsWith`/`endsWith`/`indexOf`) to segment-indexed via a single canonical `Path` view parsed once at the dispatch boundary. Each route gets a typed struct with semantic field names; reservations of literal segments (`svix`, `clerk`, `approval`, `grant-approval`, `llm`) live as explicit predicates inside the catch-all matchers, making any two matchers in a family mutually exclusive by structure. The string `"v1"` lives in exactly one place — the version-dispatch line in `match()` — so a future v2 is one new branch, not a sweep across every matcher. New `RULE RTM` in `docs/greptile-learnings/RULES.md` codifies the pattern.
 
 ---
 
@@ -126,6 +127,18 @@ Apply §3's shape across the 5-place registration. Today's API has 4 RPCs (`stor
 ### §5 — Carve-out cleanup
 
 Delete `PENDING_RENAME_PATHS` and the carve-out function consuming it (RULE NLG tracking-list ban). The constant exists only to legitimize deferral; with this spec there is nothing left to defer.
+
+### §6 — Segment-based matcher refactor
+
+Adversarial review of the matcher consolidation surfaced the deeper architectural concern: every existing matcher is substring-driven (`startsWith` / `endsWith` / `indexOf`) and the dispatcher in `router.zig::match()` relies on call-site ordering to disambiguate routes whose paths share prefixes (e.g. `/credentials/llm` reserved before `/credentials/{name}`; `/webhooks/{id}/approval` before `/webhooks/{id}/{secret}`). Order-dependence is leakage of route semantics into control flow.
+
+The refactor:
+
+- **`Path` primitive** in `src/http/route_matchers.zig` — a stack-allocated array of segments parsed once at the dispatch boundary. Empty segments from `//` and trailing slashes are preserved (visible to matchers via `param()` rejection, not silently absorbed). `Path.tail(n)` strips the API-version prefix once.
+- **All matchers rewritten** to compare by `segs.len` + `p.eq(i, literal)` for static slots and `p.param(i)` for path-param slots. Each `Route` enum variant retains its own typed struct with semantic field names (`credential_name`, `agent_id`, `grant_id`, `memory_key`, `gate_id`); shared parsing logic lives in private helpers.
+- **Reservations as predicates.** `/credentials/llm` reservation, `/webhooks/svix/...` prefix reservation, `/webhooks/{id}/approval` action reservation all expressed as `if (p.eq(i, RESERVED)) return null;` inside the catch-all matchers — the matchers are mutually exclusive at the structural level. `match()` order does not affect correctness.
+- **Single API-version dispatch site.** `match()` parses once, checks `segs[0]`, and calls `matchV1(p.tail(1), method)`. The literal `"v1"` lives in exactly one line — adding v2 is one new branch, not a sweep across every matcher.
+- **`RULE RTM`** added to `docs/greptile-learnings/RULES.md` to codify the pattern for future matchers; `docs/REST_API_DESIGN_GUIDELINES.md` §7 gains a "Matcher style — segment-based" subsection.
 
 ---
 

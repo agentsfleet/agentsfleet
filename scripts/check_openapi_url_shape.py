@@ -39,6 +39,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     # Resource collections (plural nouns, end-of-path):
     "events",            # zombie_events resource
     "messages",          # chat messages collection (per-zombie ingress)
+    "memories",          # memory entries collection (per-zombie scratchpad)
     "credentials",       # core.credentials
     "zombies",           # core.zombies
     "workspaces",        # core.workspaces
@@ -92,23 +93,6 @@ VENDOR_PATH_CARVE_OUTS: set[str] = {
     "/v1/github/callback",
 }
 
-# Pending-rename carve-outs — short-lived list. Phase 2 of the active
-# url-hygiene work reshapes /v1/memory/* into a /memories collection;
-# Phase 3 then deletes this constant entirely along with the
-# `if path in PENDING_RENAME_PATHS` branch in `main()`.
-#
-# RULE NLG: SKIPPED per user override (reason: this constant is being
-# removed by the in-flight spec — interim presence ≤ one branch lifetime.)
-PENDING_RENAME_PATHS: set[str] = {
-    # The /v1/memory/* surface reshapes into a workspace-scoped /memories
-    # collection in Phase 2 of this same url-hygiene work; Phase 3 deletes
-    # this constant entirely along with its consumer.
-    "/v1/memory/forget",
-    "/v1/memory/list",
-    "/v1/memory/recall",
-    "/v1/memory/store",
-}
-
 # A "noun-shaped" final segment is either a path param ({foo}), a colon-op
 # (:approve, :reject), or matches the noun grammar: lowercase letters,
 # digits, hyphens, optional trailing 's' or 'es' (we don't enforce
@@ -157,17 +141,13 @@ def main() -> int:
         last = final_segment(path)
         if is_legal_shape(path, last):
             continue
-        if path in PENDING_RENAME_PATHS:
-            continue
         violations.append((path, last))
 
-    # Catch carve-out rot: an entry that no longer corresponds to a real path.
-    # Both PENDING_RENAME_PATHS and VENDOR_PATH_CARVE_OUTS are scanned —
-    # a stale vendor entry means we've stopped serving an OAuth callback we
-    # claim to register with a vendor, which is a louder failure than a stale
-    # rename TODO.
+    # Catch carve-out rot: a vendor entry that no longer corresponds to a real
+    # path. A stale vendor entry means we've stopped serving an OAuth callback
+    # we claim to register with a vendor — a louder failure than a typo.
     actual = set(paths)
-    for carve_out in PENDING_RENAME_PATHS | VENDOR_PATH_CARVE_OUTS:
+    for carve_out in VENDOR_PATH_CARVE_OUTS:
         if carve_out not in actual:
             stale_carve_outs.append(carve_out)
 
@@ -178,15 +158,13 @@ def main() -> int:
         for path, last in violations:
             print(f"  {path}", file=sys.stderr)
             print(f"    final segment: '{last}'", file=sys.stderr)
-            print(f"    fix: rename to a resource (POST /events) or a colon-op "
-                  f"(POST /{{id}}:{last})", file=sys.stderr)
-            print(f"    or: add '{path}' to PENDING_RENAME_PATHS in "
-                  f"scripts/check_openapi_url_shape.py with a TODO + spec ref.",
-                  file=sys.stderr)
+            print(f"    fix: rename to a plural-noun resource or use a colon-op "
+                  f"(POST /{{id}}:{last}). Pre-v2.0 hygiene admits no "
+                  f"deferral list — fix in place per RULE NLG.", file=sys.stderr)
             print(file=sys.stderr)
 
     if stale_carve_outs:
-        print("PENDING_RENAME_PATHS contains entries that no longer exist in "
+        print("VENDOR_PATH_CARVE_OUTS contains entries that no longer exist in "
               "openapi.json — remove them:\n", file=sys.stderr)
         for p in stale_carve_outs:
             print(f"  {p}", file=sys.stderr)
@@ -195,8 +173,7 @@ def main() -> int:
     if violations or stale_carve_outs:
         return 1
 
-    print(f"OK: openapi.json — {len(paths)} paths, all REST §1 compliant "
-          f"({len(PENDING_RENAME_PATHS)} pre-§1 endpoints with pending-rename carve-outs).")
+    print(f"OK: openapi.json — {len(paths)} paths, all REST §1 compliant.")
     return 0
 
 

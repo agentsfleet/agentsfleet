@@ -245,29 +245,22 @@ pub fn invokeInternalTelemetry(hx: *Hx, req: *httpz.Request, route: router.Route
 }
 
 // ── Memory ────────────────────────────────────────────────────────────────
+// /memories collection — GET (list-or-search) + POST (store).
+// /memories/{key} — DELETE only (idempotent 204).
 
-pub fn invokeMemoryStore(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    memory.innerMemoryStore(hx.*, req);
+pub fn invokeZombieMemoriesCollection(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    const r = route.workspace_zombie_memories;
+    switch (req.method) {
+        .GET => memory.innerListMemories(hx.*, req, r.workspace_id, r.zombie_id),
+        .POST => memory.innerStoreMemory(hx.*, req, r.workspace_id, r.zombie_id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
-pub fn invokeMemoryRecall(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    memory.innerMemoryRecall(hx.*, req);
-}
-
-pub fn invokeMemoryList(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    memory.innerMemoryList(hx.*, req);
-}
-
-pub fn invokeMemoryForget(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    memory.innerMemoryForget(hx.*, req);
+pub fn invokeZombieMemoryByKey(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    const r = route.workspace_zombie_memory;
+    memory.innerDeleteMemory(hx.*, r.workspace_id, r.zombie_id, r.memory_key);
 }
 
 // ── Execute proxy ─────────────────────────────────────────────────────────

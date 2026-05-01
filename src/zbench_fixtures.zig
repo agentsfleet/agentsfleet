@@ -42,7 +42,7 @@ pub const ROUTE_PATHS = [_][]const u8{
     "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/zombies/019abcde-5678-7ccc-8ddd-abcdef012345/activity",
     "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/credentials",
     "/v1/webhooks/019abcde-1234-7aaa-8bbb-abcdef012345",
-    "/v1/memory/store",
+    "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/zombies/019abcde-5678-7ccc-8ddd-abcdef012345/memories",
     "/v1/execute",
 };
 

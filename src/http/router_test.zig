@@ -62,19 +62,33 @@ test "match resolves auth routes" {
     try std.testing.expect(match("/v1/auth/sessions/sess_1/complete", .POST) == null);
 }
 
-// M26_001: memory recall/list are matched regardless of HTTP method — method
-// enforcement happens in route_table_invoke.zig. This test pins the path match
-// so a regression that drops the routes can be caught without spinning up a
-// server. Spec §2.1 — GET /v1/memory/recall resolves to .memory_recall.
-test "match resolves memory recall/list/store/forget routes" {
-    try std.testing.expectEqualDeep(Route.memory_store, match("/v1/memory/store", .GET).?);
-    try std.testing.expectEqualDeep(Route.memory_recall, match("/v1/memory/recall", .GET).?);
-    try std.testing.expectEqualDeep(Route.memory_list, match("/v1/memory/list", .GET).?);
-    try std.testing.expectEqualDeep(Route.memory_forget, match("/v1/memory/forget", .GET).?);
-    // Query-string suffixes are stripped by the httpz layer before match() runs;
-    // path-only match is what we pin here.
-    try std.testing.expect(match("/v1/memory/recall/", .GET) == null); // trailing slash is NOT accepted
-    try std.testing.expect(match("/v1/memory/unknown", .GET) == null);
+// Memory API moved from /v1/memory/{store,recall,list,forget} to
+// workspace-scoped /v1/workspaces/{ws}/zombies/{zid}/memories[/{key}].
+// The retired top-level paths must 404.
+test "match retires /v1/memory/* routes (pre-v2: 404 with no compat shim)" {
+    try std.testing.expect(match("/v1/memory/store", .POST) == null);
+    try std.testing.expect(match("/v1/memory/recall", .GET) == null);
+    try std.testing.expect(match("/v1/memory/list", .GET) == null);
+    try std.testing.expect(match("/v1/memory/forget", .POST) == null);
+}
+
+test "match resolves /v1/workspaces/{ws}/zombies/{zid}/memories collection" {
+    switch (match("/v1/workspaces/ws1/zombies/z1/memories", .GET).?) {
+        .workspace_zombie_memories => |r| {
+            try std.testing.expectEqualStrings("ws1", r.workspace_id);
+            try std.testing.expectEqualStrings("z1", r.zombie_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/workspaces/ws1/zombies/z1/memories/incident:42", .DELETE).?) {
+        .workspace_zombie_memory => |r| {
+            try std.testing.expectEqualStrings("ws1", r.workspace_id);
+            try std.testing.expectEqualStrings("z1", r.zombie_id);
+            try std.testing.expectEqualStrings("incident:42", r.memory_key);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/memories/", .GET) == null);
 }
 
 // M10_001: /v1/runs/* routes removed — get_run, retry_run, replay_run,

@@ -80,11 +80,11 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/internal/v1/telemetry" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry" },
 
-    // Memory
-    .{ .method = "POST", .path = "/v1/memory/store" },
-    .{ .method = "GET", .path = "/v1/memory/recall" },
-    .{ .method = "GET", .path = "/v1/memory/list" },
-    .{ .method = "POST", .path = "/v1/memory/forget" },
+    // Memory — workspace-scoped /memories collection (GET list-or-search,
+    // POST store) + /memories/{key} (DELETE idempotent 204).
+    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories" },
+    .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories" },
+    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}" },
 
     // Execute
     .{ .method = "POST", .path = "/v1/execute" },
