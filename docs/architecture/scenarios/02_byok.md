@@ -105,7 +105,7 @@ When a webhook arrives or the user steers, the worker's `processEvent`:
 2. Balance gate fires. **Important:** the gate runs for BYOK too — see Scenario 03 for the full billing model. (Earlier drafts said BYOK skips the gate; that's wrong. BYOK skips only the **LLM-token meter**, not the orchestration-fee meter. The gate stays on.)
 3. Approval gate.
 4. Resolve `secrets_map` (tool credentials only — `fly`, `slack`, `github`, etc.).
-5. **Resolve provider:** `tenant_provider.resolveActiveProvider(tenant_id)` reads the `tenant_providers` row, follows `credential_ref="account-fireworks-byok"` to the vault, returns `{mode: "byok", provider: "fireworks", api_key: "fw_…", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`. The api_key crosses this boundary in process memory only — never in any user-facing surface. See [`../billing_and_byok.md`](../billing_and_byok.md) §7.2 for the full visibility boundary.
+5. **Resolve provider:** `tenant_provider.resolveActiveProvider(tenant_id)` reads the `tenant_providers` row, follows `credential_ref="account-fireworks-byok"` to the vault, returns `{mode: "byok", provider: "fireworks", api_key: "fw_…", model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`. The api_key crosses this boundary in process memory only — never in any user-facing surface. See [`../billing_and_byok.md`](../billing_and_byok.md) §8.2 for the full visibility boundary.
 6. **Overlay sentinels:**
    - if `frontmatter.context_cap_tokens == 0` → use `tenant_providers.context_cap_tokens`.
    - if `frontmatter.model == ""` → use `tenant_providers.model`.
@@ -224,7 +224,7 @@ The api_key bytes are absent from both surfaces — `doctor --json` strips it be
 
 ### 6.3 Switching models on the same credential
 
-A month later John wants to try DeepSeek V4 Pro on the same Fireworks account. She updates the credential body and re-runs `tenant provider set`:
+A month later John wants to try DeepSeek V4 Pro on the same Fireworks account. He updates the credential body and re-runs `tenant provider set`:
 
 ```text
 $ zombiectl credential set account-fireworks-byok --data '{
@@ -284,7 +284,7 @@ The system never auto-reverts the mode to platform. Either John re-adds the cred
 - Fireworks + Kimi 2.6 works today because NullClaw already speaks OpenAI-compatible. No provider-specific work in this repo. The same path opens up Together AI, Groq, Cerebras, Moonshot, OpenRouter, DeepSeek, Nebius, xAI — every compatible provider in NullClaw's catalogue.
 - The BYOK credential body is `{provider, api_key, model}` only. Cap lives in `tenant_providers`. Splitting the two means the cap can be re-resolved when the model changes without touching vault.
 - The credential name is user-chosen, not a hardcoded convention. Multi-credential tenants are supported; the active credential is whichever name `tenant_providers.credential_ref` points at.
-- The api_key crosses one boundary cleanly — vault → resolver → executor → outbound HTTPS — and is absent from every user-facing surface (doctor, CLI output, dashboard, event log, frontmatter). See [`../billing_and_byok.md`](../billing_and_byok.md) §7.2.
+- The api_key crosses one boundary cleanly — vault → resolver → executor → outbound HTTPS — and is absent from every user-facing surface (doctor, CLI output, dashboard, event log, frontmatter). See [`../billing_and_byok.md`](../billing_and_byok.md) §8.2.
 
 ---
 

@@ -451,7 +451,7 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
         for the BYOK api_key. The api_key crosses this boundary in
         process memory only — it does NOT join secrets_map and is never
         substituted into a tool placeholder. See
-        billing_and_byok.md §7.2 for the full visibility boundary.
+        billing_and_byok.md §8.2 for the full visibility boundary.
 
      5. UPSERT core.zombie_sessions                ← worker marks busy
           SET execution_id, execution_started_at = now()
