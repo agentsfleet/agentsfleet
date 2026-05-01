@@ -306,13 +306,13 @@
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
         $ref: ../components/responses.yaml#/components/responses/Error
-/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer:
+/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages:
   post:
-    operationId: steer_zombie
-    summary: Steer a zombie by enqueueing a chat event
+    operationId: post_zombie_message
+    summary: Post a chat message to a zombie
     description: Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `zombie:{id}:events`.
       The Redis stream entry id IS the canonical event_id and is returned to the caller so SSE consumers can filter
-      frames for the steer they just sent. Same single-ingress contract as webhook and continuation events — no separate
+      frames for the message they just sent. Same single-ingress contract as webhook and continuation events — no separate
       "queued vs instant" mode.
     tags:
     - Zombies

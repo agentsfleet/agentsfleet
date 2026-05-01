@@ -33,8 +33,8 @@ pub fn lookup(
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const row_data = (try fetchZombieRow(conn, alloc, zombie_id)) orelse return null;
-    defer freeRowData(alloc, row_data);
+    const row_data = (try fetchHmacRow(conn, alloc, zombie_id)) orelse return null;
+    defer freeHmacRow(alloc, row_data);
 
     var scheme: ?SignatureScheme = null;
     var signature_secret: ?[]const u8 = null;
@@ -71,8 +71,8 @@ pub fn lookupSvix(
     const conn = try pool.acquire();
     defer pool.release(conn);
 
-    const row_data = (try fetchZombieRow(conn, alloc, zombie_id)) orelse return null;
-    defer freeRowData(alloc, row_data);
+    const row_data = (try fetchSvixRow(conn, alloc, zombie_id)) orelse return null;
+    defer freeSvixRow(alloc, row_data);
 
     const sig_json = row_data.signature_json orelse return .{ .secret = null };
     const secret_ref = (try extractSecretRef(alloc, sig_json)) orelse return .{ .secret = null };
@@ -102,36 +102,53 @@ fn extractSecretRef(alloc: std.mem.Allocator, sig_json: []const u8) !?[]const u8
     return try alloc.dupe(u8, ref);
 }
 
-const RowData = struct {
+const HmacRow = struct {
     workspace_id: []const u8,
     source: []const u8,
     credential_name_override: ?[]const u8,
+};
+
+const SvixRow = struct {
+    workspace_id: []const u8,
     signature_json: ?[]const u8,
 };
 
-fn fetchZombieRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) !?RowData {
+fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) !?HmacRow {
     var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text,
         \\       config_json->'x-usezombie'->'trigger'->>'source',
-        \\       config_json->'x-usezombie'->'trigger'->>'credential_name',
+        \\       config_json->'x-usezombie'->'trigger'->>'credential_name'
+        \\FROM core.zombies WHERE id = $1::uuid
+    , .{zombie_id}));
+    defer q.deinit();
+
+    const row = try q.next() orelse return null;
+    const workspace_id = try alloc.dupe(u8, try row.get([]const u8, 0));
+    errdefer alloc.free(workspace_id);
+    const source = try alloc.dupe(u8, row.get([]const u8, 1) catch "");
+    errdefer alloc.free(source);
+    const credential_name_override = try dupeOptional(alloc, row.get([]const u8, 2) catch null);
+    return HmacRow{
+        .workspace_id = workspace_id,
+        .source = source,
+        .credential_name_override = credential_name_override,
+    };
+}
+
+fn fetchSvixRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) !?SvixRow {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT workspace_id::text,
         \\       config_json->'x-usezombie'->'trigger'->'signature'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id}));
     defer q.deinit();
 
     const row = try q.next() orelse return null;
-    const ws = try row.get([]const u8, 0);
-    const workspace_id = try alloc.dupe(u8, ws);
+    const workspace_id = try alloc.dupe(u8, try row.get([]const u8, 0));
     errdefer alloc.free(workspace_id);
-    const source = try alloc.dupe(u8, row.get([]const u8, 1) catch "");
-    errdefer alloc.free(source);
-    const credential_name_override = try dupeOptional(alloc, row.get([]const u8, 2) catch null);
-    errdefer if (credential_name_override) |v| alloc.free(v);
-    const signature_json = try dupeOptional(alloc, row.get([]const u8, 3) catch null);
-    return RowData{
+    const signature_json = try dupeOptional(alloc, row.get([]const u8, 1) catch null);
+    return SvixRow{
         .workspace_id = workspace_id,
-        .source = source,
-        .credential_name_override = credential_name_override,
         .signature_json = signature_json,
     };
 }
@@ -141,10 +158,14 @@ fn dupeOptional(alloc: std.mem.Allocator, v: ?[]const u8) !?[]const u8 {
     return null;
 }
 
-fn freeRowData(alloc: std.mem.Allocator, r: RowData) void {
+fn freeHmacRow(alloc: std.mem.Allocator, r: HmacRow) void {
     alloc.free(r.workspace_id);
     alloc.free(r.source);
     if (r.credential_name_override) |s| alloc.free(s);
+}
+
+fn freeSvixRow(alloc: std.mem.Allocator, r: SvixRow) void {
+    alloc.free(r.workspace_id);
     if (r.signature_json) |j| alloc.free(j);
 }
 

@@ -25,7 +25,7 @@ The original spec below was written assuming greenfield. M28_001 (DONE) had alre
 
 **A3 — Drop the proposed `webhooks/common.zig`.** No HMAC primitive lives in the handler tree; `src/auth/middleware/webhook_sig.zig` is the source of truth. Re-implementing HMAC in two places is RULE NLR-violating debt.
 
-**A4 — Envelope shape: flat `request={…}`, not nested `request: { message, metadata }`.** Per the canonical envelope at `src/zombie/event_envelope.zig` and `docs/architecture/user_flow.md` line 113. The `request_json` field is opaque JSON bytes; its top-level keys are `{run_url, head_sha, conclusion, ref, repo, attempt, run_id, head_branch, workflow_name, received_at}`.
+**A4 — Envelope shape: flat `request={…}`, not nested `request: { message, metadata }`.** Per the canonical envelope at `src/zombie/event_envelope.zig` and `docs/architecture/user_flow.md` line 113. The `request_json` field is opaque JSON bytes; its top-level keys are `{run_url, head_sha, conclusion, repo, attempt, run_id, head_branch, workflow_name, received_at}`.
 
 **A5 — Drop the pre-M45 single-string-secret fallback** (RULE NLG no legacy framing pre-v2.0.0). M45 is DONE; there is one vault shape.
 
@@ -99,7 +99,7 @@ The original spec text below describes the *problem and intent* correctly; the *
 
 ## Overview
 
-**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret` (HMAC verification is upstream in `auth/middleware/webhook_sig.zig`; the handler is auth-free — see A2). On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, and a flat `request_json` whose top-level keys are `{run_url, head_sha, conclusion, ref, repo, attempt, run_id, head_branch, workflow_name, received_at}` (per A4 — no nested `request.message` / `request.metadata` wrapper). XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
+**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret` (HMAC verification is upstream in `auth/middleware/webhook_sig.zig`; the handler is auth-free — see A2). On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, and a flat `request_json` whose top-level keys are `{run_url, head_sha, conclusion, repo, attempt, run_id, head_branch, workflow_name, received_at}` (per A4 — no nested `request.message` / `request.metadata` wrapper). XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
 
 **Problem:** No HTTP receiver exists today for any external webhook. M42 owns the event stream + history but not ingest. The GH Actions wedge is structurally unbuildable until this lands.
 
@@ -179,7 +179,6 @@ EventEnvelope {
     run_url: <html_url>,
     head_sha: <sha>,
     conclusion: "failure",
-    ref: <ref>,
     repo: "<owner>/<name>",
     attempt: <attempt>,
     run_id: <id>,

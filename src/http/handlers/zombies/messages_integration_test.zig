@@ -1,7 +1,7 @@
-// HTTP integration tests for zombie steer endpoint.
+// HTTP integration tests for zombie messages endpoint.
 //
 // Requires TEST_DATABASE_URL — skipped gracefully otherwise. Success-path
-// tests additionally require a reachable Redis (steer XADDs onto
+// tests additionally require a reachable Redis (XADDs land on
 // zombie:{id}:events) and self-skip via `h.tryConnectRedis()`.
 //
 // Uses the shared TestHarness (src/http/test_harness.zig) — see
@@ -23,7 +23,7 @@ const ZOMBIE_IDLE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa01";
 const ZOMBIE_ACTIVE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa02";
 const ZOMBIE_OTHER_WS = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa03";
 const SESSION_ACTIVE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aaa10";
-const ACTIVE_EXEC_ID = "test-exec-steer-001";
+const ACTIVE_EXEC_ID = "test-exec-messages-001";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
 const TEST_JWKS =
@@ -42,7 +42,7 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
         .audience = TEST_AUDIENCE,
     });
     errdefer h.deinit();
-    _ = h.tryConnectRedis(); // optional — success-path tests gate on has_redis
+    _ = h.tryConnectRedis();
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
     try seedTestData(conn);
@@ -52,13 +52,13 @@ fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
 fn seedTestData(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
-        \\VALUES ($1, 'SteerTest', $2, $2)
+        \\VALUES ($1, 'MessagesTest', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, std.time.milliTimestamp() });
     const now = std.time.milliTimestamp();
     _ = try conn.exec(
         \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'https://github.com/test/steer', 'main', false, 1, $3, $3)
+        \\VALUES ($1, $2, 'https://github.com/test/messages', 'main', false, 1, $3, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
@@ -68,12 +68,12 @@ fn seedTestData(conn: *pg.Conn) !void {
     , .{ OTHER_WS_ID, TEST_TENANT_ID, now });
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'steer-idle', '---\nname: steer-idle\n---\ntest', '{"name":"steer-idle"}', 'active', 0, 0)
+        \\VALUES ($1, $2, 'msg-idle', '---\nname: msg-idle\n---\ntest', '{"name":"msg-idle"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ ZOMBIE_IDLE, TEST_WORKSPACE_ID });
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'steer-active', '---\nname: steer-active\n---\ntest', '{"name":"steer-active"}', 'active', 0, 0)
+        \\VALUES ($1, $2, 'msg-active', '---\nname: msg-active\n---\ntest', '{"name":"msg-active"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ ZOMBIE_ACTIVE, TEST_WORKSPACE_ID });
     _ = try conn.exec(
@@ -83,7 +83,7 @@ fn seedTestData(conn: *pg.Conn) !void {
     , .{ SESSION_ACTIVE, ZOMBIE_ACTIVE, ACTIVE_EXEC_ID });
     _ = try conn.exec(
         \\INSERT INTO core.zombies (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
-        \\VALUES ($1, $2, 'steer-otherws', '---\nname: steer-otherws\n---\ntest', '{"name":"steer-otherws"}', 'active', 0, 0)
+        \\VALUES ($1, $2, 'msg-otherws', '---\nname: msg-otherws\n---\ntest', '{"name":"msg-otherws"}', 'active', 0, 0)
         \\ON CONFLICT DO NOTHING
     , .{ ZOMBIE_OTHER_WS, OTHER_WS_ID });
 }
@@ -96,39 +96,44 @@ fn cleanupTestData(conn: *pg.Conn) void {
 
 // ── Auth + body validation (no Redis needed) ────────────────────────────────
 
-test "integration: zombie steer — auth and body validation" {
+test "integration: zombie messages — auth and body validation" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
     };
     defer h.deinit();
 
-    const steer_idle = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/steer", .{ TEST_WORKSPACE_ID, ZOMBIE_IDLE });
-    defer ALLOC.free(steer_idle);
-    // steer_other: caller's workspace in URL path, but zombie lives in OTHER_WS — handler 404.
-    const steer_other = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/steer", .{ TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS });
-    defer ALLOC.free(steer_other);
+    const url_idle = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/messages", .{ TEST_WORKSPACE_ID, ZOMBIE_IDLE });
+    defer ALLOC.free(url_idle);
+    // url_other: caller's workspace in URL path, but zombie lives in OTHER_WS — handler 404.
+    const url_other = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/messages", .{ TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS });
+    defer ALLOC.free(url_other);
     const body_valid = "{\"message\":\"redirect to phase 2\"}";
     const body_empty = "{\"message\":\"\"}";
     const body_toolong = "{\"message\":\"" ++ "x" ** 8193 ++ "\"}";
 
     { // no bearer → 401
-        const r = try (try h.post(steer_idle).json(body_valid)).send();
+        const r = try (try h.post(url_idle).json(body_valid)).send();
         defer r.deinit();
         try r.expectStatus(.unauthorized);
     }
     { // zombie in different workspace → 404
-        const r = try (try (try h.post(steer_other).bearer(TOKEN_OPERATOR)).json(body_valid)).send();
+        const r = try (try (try h.post(url_other).bearer(TOKEN_OPERATOR)).json(body_valid)).send();
         defer r.deinit();
         try r.expectStatus(.not_found);
     }
     { // empty message → 400
-        const r = try (try (try h.post(steer_idle).bearer(TOKEN_OPERATOR)).json(body_empty)).send();
+        const r = try (try (try h.post(url_idle).bearer(TOKEN_OPERATOR)).json(body_empty)).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+    }
+    { // missing `message` field entirely → 400 (json parse fails the required field)
+        const r = try (try (try h.post(url_idle).bearer(TOKEN_OPERATOR)).json("{}")).send();
         defer r.deinit();
         try r.expectStatus(.bad_request);
     }
     { // message > 8192 bytes → 400
-        const r = try (try (try h.post(steer_idle).bearer(TOKEN_OPERATOR)).json(body_toolong)).send();
+        const r = try (try (try h.post(url_idle).bearer(TOKEN_OPERATOR)).json(body_toolong)).send();
         defer r.deinit();
         try r.expectStatus(.bad_request);
     }
@@ -140,7 +145,7 @@ test "integration: zombie steer — auth and body validation" {
 
 // ── Idle zombie happy path: 202 + event_id ──────────────────────────────────
 
-test "integration: zombie steer idle — 202 returns event_id from xadd" {
+test "integration: zombie messages idle — 202 returns event_id from xadd" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -148,7 +153,7 @@ test "integration: zombie steer idle — 202 returns event_id from xadd" {
     defer h.deinit();
     if (!h.has_redis) return error.SkipZigTest;
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/steer", .{ TEST_WORKSPACE_ID, ZOMBIE_IDLE });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/messages", .{ TEST_WORKSPACE_ID, ZOMBIE_IDLE });
     defer ALLOC.free(url);
 
     const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"proceed to phase 2\"}")).send();
@@ -170,7 +175,7 @@ test "integration: zombie steer idle — 202 returns event_id from xadd" {
 
 // ── Active zombie happy path: same single ingress as idle ───────────────────
 
-test "integration: zombie steer active — 202 returns event_id (same single ingress)" {
+test "integration: zombie messages active — 202 returns event_id (same single ingress)" {
     const h = seedAndHarness(ALLOC) catch |err| switch (err) {
         error.SkipZigTest => return error.SkipZigTest,
         else => return err,
@@ -178,7 +183,7 @@ test "integration: zombie steer active — 202 returns event_id (same single ing
     defer h.deinit();
     if (!h.has_redis) return error.SkipZigTest;
 
-    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/steer", .{ TEST_WORKSPACE_ID, ZOMBIE_ACTIVE });
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}/messages", .{ TEST_WORKSPACE_ID, ZOMBIE_ACTIVE });
     defer ALLOC.free(url);
 
     const r = try (try (try h.post(url).bearer(TOKEN_OPERATOR)).json("{\"message\":\"new objective\"}")).send();

@@ -61,7 +61,7 @@ describe("Agents", () => {
     expect(screen.getByText("Create zombie")).toBeInTheDocument();
     expect(screen.getByText("Update zombie")).toBeInTheDocument();
     expect(screen.getByText("Kill zombie")).toBeInTheDocument();
-    expect(screen.getByText("Steer zombie")).toBeInTheDocument();
+    expect(screen.getByText("Post zombie message")).toBeInTheDocument();
     expect(screen.getByText("Stream events")).toBeInTheDocument();
     expect(screen.getByText("Pause workspace")).toBeInTheDocument();
     expect(screen.getByText("Execute tool")).toBeInTheDocument();

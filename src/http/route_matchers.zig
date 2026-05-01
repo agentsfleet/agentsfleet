@@ -1,209 +1,261 @@
 // Route matching helpers for the HTTP router.
 //
-// Extracted from router.zig to keep files under 400 lines.
-// Pure functions that parse URL paths into route parameters.
+// All matchers operate on a canonical `Path` view — a stack-allocated array
+// of non-empty segment slices parsed once at the dispatch boundary. Matchers
+// compare by segment count + segment[i] equality. Disambiguation is shape-
+// driven, not order-driven; reserved segments live as explicit predicates
+// inside catch-all matchers so any two matchers are mutually exclusive
+// regardless of evaluation order.
+//
+// See `docs/REST_API_DESIGN_GUIDELINES.md` §7 (Matcher style — segment-based).
 
 const std = @import("std");
 const router = @import("router.zig");
 
 pub const ZombieTelemetryRoute = router.ZombieTelemetryRoute;
 
-const prefix_workspaces = "/v1/workspaces/";
-const prefix_agents = "/v1/agents/";
+pub const PATH_MAX_SEGMENTS: usize = 16;
 
-pub fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
-    if (!std.mem.startsWith(u8, path, prefix_workspaces)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
-    const inner = path[prefix_workspaces.len .. path.len - suffix.len];
-    if (!isSingleSegment(inner)) return null;
-    return inner;
-}
+const RESERVED_SVIX = "svix";
+const RESERVED_CLERK = "clerk";
+const RESERVED_APPROVAL = "approval";
+const RESERVED_GRANT_APPROVAL = "grant-approval";
+const RESERVED_LLM = "llm";
 
-pub fn isSingleSegment(value: []const u8) bool {
-    return value.len > 0 and std.mem.indexOfScalar(u8, value, '/') == null;
-}
+const APPROVAL_ACTION_APPROVE = ":approve";
+const APPROVAL_ACTION_DENY = ":deny";
 
-// matchZombieTelemetry matches /v1/workspaces/{ws_id}/zombies/{zombie_id}/telemetry.
-pub fn matchZombieTelemetry(path: []const u8) ?ZombieTelemetryRoute {
-    return matchWorkspaceZombieSuffix(path, "/telemetry");
-}
+/// Canonical view of an HTTP path as a slice of segments.
+///
+/// The leading `/` is treated as a path marker (not a segment). Every other
+/// run of bytes between `/` separators becomes a segment, including empty
+/// runs from `//` or trailing slashes. Matchers MUST use `param()` (not
+/// direct indexing) when extracting an ID slot so empty segments are
+/// rejected at the matcher boundary, not the handler.
+///
+/// The dispatcher in `router.zig::match()` strips the API-version prefix
+/// (e.g. `v1`) once via `tail(1)` and hands the rest to matchers. No "v1"
+/// literal lives in any matcher body.
+pub const Path = struct {
+    segs: []const []const u8,
 
-// M24_001: generic helper for /v1/workspaces/{ws}/zombies/{id}/{suffix} routes.
-// Returns ZombieTelemetryRoute (ws_id + zombie_id) for any suffix.
-pub fn matchWorkspaceZombieSuffix(path: []const u8, suffix: []const u8) ?ZombieTelemetryRoute {
-    const prefix = "/v1/workspaces/";
-    const mid = "/zombies/";
+    pub fn parse(path: []const u8, buf: *[PATH_MAX_SEGMENTS][]const u8) Path {
+        if (path.len == 0) return .{ .segs = buf[0..0] };
+        const start: usize = if (path[0] == '/') 1 else 0;
+        if (start >= path.len) return .{ .segs = buf[0..0] };
 
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    if (!std.mem.endsWith(u8, path, suffix)) return null;
+        var n: usize = 0;
+        var seg_start: usize = start;
+        var i: usize = start;
+        while (i < path.len) : (i += 1) {
+            if (path[i] == '/') {
+                if (n >= buf.len) return .{ .segs = buf[0..0] };
+                buf[n] = path[seg_start..i];
+                n += 1;
+                seg_start = i + 1;
+            }
+        }
+        // Always emit the final segment (may be empty if path ended in '/').
+        if (n >= buf.len) return .{ .segs = buf[0..0] };
+        buf[n] = path[seg_start..i];
+        n += 1;
+        return .{ .segs = buf[0..n] };
+    }
 
-    const inner = path[prefix.len .. path.len - suffix.len];
-    const sep = std.mem.indexOf(u8, inner, mid) orelse return null;
-    const ws_id = inner[0..sep];
-    const zombie_id = inner[sep + mid.len ..];
+    pub fn eq(self: Path, idx: usize, literal: []const u8) bool {
+        return idx < self.segs.len and std.mem.eql(u8, self.segs[idx], literal);
+    }
 
-    if (!isSingleSegment(ws_id)) return null;
-    if (!isSingleSegment(zombie_id)) return null;
-    return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
-}
+    /// Return the segment at `idx` if present and non-empty. Use this for
+    /// path-parameter slots (workspace_id, zombie_id, etc.) — empty segments
+    /// from `//` or trailing slashes get rejected at the matcher.
+    pub fn param(self: Path, idx: usize) ?[]const u8 {
+        if (idx >= self.segs.len) return null;
+        if (self.segs[idx].len == 0) return null;
+        return self.segs[idx];
+    }
 
-/// Match `/v1/webhooks/{zombie_id}` and return the zombie id. The two-segment
-/// `/v1/webhooks/{zombie_id}/{action}` form is matched by `matchWebhookAction`
-/// per registered action (`/approval`, `/grant-approval`, `/github`, …).
-pub fn matchWebhookRoute(path: []const u8) ?[]const u8 {
-    const prefix = "/v1/webhooks/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    const rest = path[prefix.len..];
-    if (!isSingleSegment(rest)) return null;
-    return rest;
-}
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
-// M10_001: matchRunAction test removed — function deleted.
-
-// matchWebhookAction matches /v1/webhooks/{zombie_id}{action} and returns the zombie_id.
-// `action` is the full suffix (e.g. "/approval") — M28 migration replaced the
-// Google-style ":action" custom-method form with a direct subpath so public docs
-// can parameterize it as /v1/webhooks/{zombie_id}/{action} without OpenAPI-validator
-// rejection of the colon.
-pub fn matchWebhookAction(path: []const u8, action: []const u8) ?[]const u8 {
-    const prefix = "/v1/webhooks/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    if (!std.mem.endsWith(u8, path, action)) return null;
-    const inner = path[prefix.len .. path.len - action.len];
-    if (!isSingleSegment(inner)) return null;
-    return inner;
-}
-
-// matchWorkspaceZombieAction matches /v1/workspaces/{ws}/zombies/{zombie_id}{action}.
-// `action` is the full suffix (e.g. "/steer") — M28 migration replaced
-// the Google-style ":action" custom-method form with a validator-friendly subpath.
-pub fn matchWorkspaceZombieAction(path: []const u8, action: []const u8) ?WorkspaceZombieRoute {
-    const prefix = "/v1/workspaces/";
-    const mid = "/zombies/";
-
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    if (!std.mem.endsWith(u8, path, action)) return null;
-
-    const inner = path[prefix.len .. path.len - action.len];
-    const sep = std.mem.indexOf(u8, inner, mid) orelse return null;
-    const ws_id = inner[0..sep];
-    const zombie_id = inner[sep + mid.len ..];
-
-    if (!isSingleSegment(ws_id)) return null;
-    if (!isSingleSegment(zombie_id)) return null;
-    return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
-}
-
-// M24_001: WorkspaceZombieRoute carries workspace_id + zombie_id for /v1/workspaces/{ws}/zombies/{zombie_id}.
-pub const WorkspaceZombieRoute = struct {
-    workspace_id: []const u8,
-    zombie_id: []const u8,
+    /// Drop the first `n` segments. Used by the dispatcher to strip the
+    /// API-version prefix before handing the path to matchers.
+    pub fn tail(self: Path, n: usize) Path {
+        if (n >= self.segs.len) return .{ .segs = &.{} };
+        return .{ .segs = self.segs[n..] };
+    }
 };
 
-// M24_001: matchWorkspaceZombie matches /v1/workspaces/{ws_id}/zombies/{zombie_id}.
-// Used for DELETE and (in later slices) per-zombie sub-resources.
-pub fn matchWorkspaceZombie(path: []const u8) ?WorkspaceZombieRoute {
-    const prefix = "/v1/workspaces/";
-    const mid = "/zombies/";
+// All matchers below operate on version-stripped paths. The dispatcher in
+// `router.zig::match()` peels off the API-version segment (`v1`, future `v2`)
+// before calling these. No matcher checks the API version.
 
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    const rest = path[prefix.len..];
-    const sep = std.mem.indexOf(u8, rest, mid) orelse return null;
-    const ws_id = rest[0..sep];
-    const zombie_id = rest[sep + mid.len ..];
+// ── /auth/sessions/{session_id} ─────────────────────────────────────────────
 
-    if (!isSingleSegment(ws_id)) return null;
-    if (!isSingleSegment(zombie_id)) return null;
-    return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
+pub fn matchAuthSession(p: Path) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, "auth") or !p.eq(1, "sessions")) return null;
+    return p.param(2);
 }
 
-// WorkspaceCredentialRoute carries workspace_id + credential_name for the
-// per-credential DELETE endpoint.
+// ── /admin/platform-keys/{provider} ────────────────────────────────────────
+
+pub fn matchAdminPlatformKey(p: Path) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, "admin") or !p.eq(1, "platform-keys")) return null;
+    return p.param(2);
+}
+
+// ── /api-keys/{id} ─────────────────────────────────────────────────────────
+
+pub fn matchTenantApiKeyById(p: Path) ?[]const u8 {
+    if (p.segs.len != 2) return null;
+    if (!p.eq(0, "api-keys")) return null;
+    return p.param(1);
+}
+
+// ── /workspaces/{workspace_id} ─────────────────────────────────────────────
+
+pub fn matchWorkspace(p: Path) ?[]const u8 {
+    if (p.segs.len != 2) return null;
+    if (!p.eq(0, "workspaces")) return null;
+    return p.param(1);
+}
+
+// ── /workspaces/{workspace_id}/{suffix} ────────────────────────────────────
+// suffix ∈ {"zombies", "credentials", "agent-keys", "events", "approvals"}.
+
+pub fn matchWorkspaceSuffix(p: Path, suffix: []const u8) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, "workspaces")) return null;
+    if (!p.eq(2, suffix)) return null;
+    return p.param(1);
+}
+
+// ── /workspaces/{ws}/credentials/llm  (BYOK reserved) ──────────────────────
+
+pub fn matchWorkspaceLlmCredential(p: Path) ?[]const u8 {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "credentials")) return null;
+    if (!p.eq(3, RESERVED_LLM)) return null;
+    return p.param(1);
+}
+
+// ── /workspaces/{ws}/credentials/{name}  (name != "llm") ───────────────────
+
 pub const WorkspaceCredentialRoute = struct {
     workspace_id: []const u8,
     credential_name: []const u8,
 };
 
-// matchWorkspaceCredential matches /v1/workspaces/{ws}/credentials/{name}.
-// Rejects /credentials/llm — that suffix is owned by the BYOK route family.
-pub fn matchWorkspaceCredential(path: []const u8) ?WorkspaceCredentialRoute {
-    const prefix = "/v1/workspaces/";
-    const mid = "/credentials/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    const rest = path[prefix.len..];
-    const slash = std.mem.indexOf(u8, rest, mid) orelse return null;
-    const workspace_id = rest[0..slash];
-    if (!isSingleSegment(workspace_id)) return null;
-    const credential_name = rest[slash + mid.len ..];
-    if (!isSingleSegment(credential_name)) return null;
-    if (std.mem.eql(u8, credential_name, "llm")) return null;
-    return .{ .workspace_id = workspace_id, .credential_name = credential_name };
+pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "credentials")) return null;
+    if (p.eq(3, RESERVED_LLM)) return null;
+    const ws = p.param(1) orelse return null;
+    const name = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .credential_name = name };
 }
 
-// M9_001 / M28_002 §0: WorkspaceAgentRoute carries workspace_id + agent_id for agent-key DELETE.
+// ── /workspaces/{ws}/agent-keys/{agent_id} ─────────────────────────────────
+
 pub const WorkspaceAgentRoute = struct {
     workspace_id: []const u8,
     agent_id: []const u8,
 };
 
-// M9_001 / M28_002 §0: matchWorkspaceAgentDelete matches /v1/workspaces/{ws}/agent-keys/{agent_id}.
-pub fn matchWorkspaceAgentDelete(path: []const u8) ?WorkspaceAgentRoute {
-    const prefix = "/v1/workspaces/";
-    const mid = "/agent-keys/";
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    const rest = path[prefix.len..];
-    const slash = std.mem.indexOf(u8, rest, mid) orelse return null;
-    const workspace_id = rest[0..slash];
-    if (!isSingleSegment(workspace_id)) return null;
-    const agent_id = rest[slash + mid.len ..];
-    if (!isSingleSegment(agent_id)) return null;
-    return .{ .workspace_id = workspace_id, .agent_id = agent_id };
+pub fn matchWorkspaceAgentDelete(p: Path) ?WorkspaceAgentRoute {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "agent-keys")) return null;
+    const ws = p.param(1) orelse return null;
+    const agent_id = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .agent_id = agent_id };
 }
 
-// M24_001: WorkspaceZombieGrantRoute carries ws_id + zombie_id + grant_id for grant DELETE.
+// ── /workspaces/{ws}/zombies/{zombie_id} ───────────────────────────────────
+
+pub const WorkspaceZombieRoute = struct {
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+};
+
+pub fn matchWorkspaceZombie(p: Path) ?WorkspaceZombieRoute {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    const ws = p.param(1) orelse return null;
+    const zid = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .zombie_id = zid };
+}
+
+// ── /workspaces/{ws}/zombies/{zombie_id}/{action} ──────────────────────────
+// action ∈ {"events", "messages", "current-run", "telemetry", "memories",
+// "integration-requests", "integration-grants"}.
+
+pub fn matchWorkspaceZombieAction(p: Path, action: []const u8) ?WorkspaceZombieRoute {
+    if (p.segs.len != 5) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    if (!p.eq(4, action)) return null;
+    const ws = p.param(1) orelse return null;
+    const zid = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .zombie_id = zid };
+}
+
+// ── /workspaces/{ws}/zombies/{zombie_id}/events/stream ─────────────────────
+// Distinct shape (6 segments) from the bare /events action (5 segments).
+
+pub fn matchWorkspaceZombieEventsStream(p: Path) ?WorkspaceZombieRoute {
+    if (p.segs.len != 6) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    if (!p.eq(4, "events") or !p.eq(5, "stream")) return null;
+    const ws = p.param(1) orelse return null;
+    const zid = p.param(3) orelse return null;
+    return .{ .workspace_id = ws, .zombie_id = zid };
+}
+
+// ── /workspaces/{ws}/zombies/{zombie_id}/{leaf_segment}/{leaf_id} ──────────
+// Per-zombie sub-resource leaves. Each route gets its own typed struct with a
+// semantically named leaf field; the parsing logic is shared via a private
+// helper.
+
+const ZombieLeafView = struct {
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    leaf: []const u8,
+};
+
+fn matchZombieLeaf(p: Path, leaf_segment: []const u8) ?ZombieLeafView {
+    if (p.segs.len != 6) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    if (!p.eq(4, leaf_segment)) return null;
+    const ws = p.param(1) orelse return null;
+    const zid = p.param(3) orelse return null;
+    const leaf = p.param(5) orelse return null;
+    return .{ .workspace_id = ws, .zombie_id = zid, .leaf = leaf };
+}
+
 pub const WorkspaceZombieGrantRoute = struct {
     workspace_id: []const u8,
     zombie_id: []const u8,
     grant_id: []const u8,
 };
 
-// M24_001: matchWorkspaceZombieGrant matches
-//   /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants/{grant_id}.
-pub fn matchWorkspaceZombieGrant(path: []const u8) ?WorkspaceZombieGrantRoute {
-    const prefix = "/v1/workspaces/";
-    const ws_mid = "/zombies/";
-    const grant_mid = "/integration-grants/";
-
-    if (!std.mem.startsWith(u8, path, prefix)) return null;
-    const rest = path[prefix.len..];
-
-    const ws_sep = std.mem.indexOf(u8, rest, ws_mid) orelse return null;
-    const ws_id = rest[0..ws_sep];
-    if (!isSingleSegment(ws_id)) return null;
-
-    const after_ws = rest[ws_sep + ws_mid.len ..];
-    const grant_sep = std.mem.indexOf(u8, after_ws, grant_mid) orelse return null;
-    const zombie_id = after_ws[0..grant_sep];
-    if (!isSingleSegment(zombie_id)) return null;
-
-    const grant_id = after_ws[grant_sep + grant_mid.len ..];
-    if (!isSingleSegment(grant_id)) return null;
-
-    return .{ .workspace_id = ws_id, .zombie_id = zombie_id, .grant_id = grant_id };
+pub fn matchWorkspaceZombieGrant(p: Path) ?WorkspaceZombieGrantRoute {
+    const v = matchZombieLeaf(p, "integration-grants") orelse return null;
+    return .{ .workspace_id = v.workspace_id, .zombie_id = v.zombie_id, .grant_id = v.leaf };
 }
 
+pub const WorkspaceZombieMemoryRoute = struct {
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    memory_key: []const u8,
+};
 
-// ── Approval inbox routes ──────────────────────────────────────────────
+pub fn matchWorkspaceZombieMemoryByKey(p: Path) ?WorkspaceZombieMemoryRoute {
+    const v = matchZombieLeaf(p, "memories") orelse return null;
+    return .{ .workspace_id = v.workspace_id, .zombie_id = v.zombie_id, .memory_key = v.leaf };
+}
 
-/// Colon-noun action segments for the resolve endpoints. Owned here because
-/// the matcher is the single source of truth for URL shape; tests, manifest,
-/// and TS clients import these.
-pub const APPROVAL_ACTION_APPROVE = ":approve";
-pub const APPROVAL_ACTION_DENY = ":deny";
-pub const APPROVALS_PATH_SEGMENT = "/approvals/";
-const WORKSPACES_PREFIX = "/v1/workspaces/";
+// ── /workspaces/{ws}/approvals/{gate_id}[:approve|:deny] ───────────────────
+// Both matchers share segs.len == 4 + segs[2] == "approvals"; mutual
+// exclusivity is decided by whether the leaf ends with one of the colon
+// actions.
 
 pub const ApprovalGateRoute = struct {
     workspace_id: []const u8,
@@ -218,47 +270,67 @@ pub const ApprovalResolveRoute = struct {
     decision: ApprovalResolveDecision,
 };
 
-/// Matches /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny.
-/// REST §1 colon-noun operation form.
-pub fn matchWorkspaceApprovalResolve(path: []const u8) ?ApprovalResolveRoute {
-    if (!std.mem.startsWith(u8, path, WORKSPACES_PREFIX)) return null;
-
-    const action_str: []const u8 = if (std.mem.endsWith(u8, path, APPROVAL_ACTION_APPROVE))
-        APPROVAL_ACTION_APPROVE
-    else if (std.mem.endsWith(u8, path, APPROVAL_ACTION_DENY))
-        APPROVAL_ACTION_DENY
-    else
-        return null;
-
-    const decision: ApprovalResolveDecision = if (action_str.len == APPROVAL_ACTION_APPROVE.len) .approve else .deny;
-    const inner = path[WORKSPACES_PREFIX.len .. path.len - action_str.len];
-    const sep = std.mem.indexOf(u8, inner, APPROVALS_PATH_SEGMENT) orelse return null;
-    const ws_id = inner[0..sep];
-    const gate_id = inner[sep + APPROVALS_PATH_SEGMENT.len ..];
-
-    if (!isSingleSegment(ws_id)) return null;
-    if (gate_id.len == 0 or std.mem.indexOfScalar(u8, gate_id, '/') != null) return null;
-    if (std.mem.indexOfScalar(u8, gate_id, ':') != null) return null;
-    return .{ .workspace_id = ws_id, .gate_id = gate_id, .decision = decision };
+fn approvalDecisionFromLeaf(leaf: []const u8) ?ApprovalResolveDecision {
+    if (std.mem.endsWith(u8, leaf, APPROVAL_ACTION_APPROVE)) return .approve;
+    if (std.mem.endsWith(u8, leaf, APPROVAL_ACTION_DENY)) return .deny;
+    return null;
 }
 
-/// Matches /v1/workspaces/{ws}/approvals/{gate_id} (single-resource GET).
-/// Returns null when the path ends in :approve / :deny so the resolve
-/// route claims those.
-pub fn matchWorkspaceApprovalGate(path: []const u8) ?ApprovalGateRoute {
-    if (std.mem.endsWith(u8, path, APPROVAL_ACTION_APPROVE)) return null;
-    if (std.mem.endsWith(u8, path, APPROVAL_ACTION_DENY)) return null;
-    if (!std.mem.startsWith(u8, path, WORKSPACES_PREFIX)) return null;
-
-    const inner = path[WORKSPACES_PREFIX.len..];
-    const sep = std.mem.indexOf(u8, inner, APPROVALS_PATH_SEGMENT) orelse return null;
-    const ws_id = inner[0..sep];
-    const gate_id = inner[sep + APPROVALS_PATH_SEGMENT.len ..];
-
-    if (!isSingleSegment(ws_id)) return null;
-    if (gate_id.len == 0 or std.mem.indexOfScalar(u8, gate_id, '/') != null) return null;
+pub fn matchWorkspaceApprovalResolve(p: Path) ?ApprovalResolveRoute {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "approvals")) return null;
+    const ws = p.param(1) orelse return null;
+    const leaf = p.param(3) orelse return null;
+    const decision = approvalDecisionFromLeaf(leaf) orelse return null;
+    const action_len = if (decision == .approve) APPROVAL_ACTION_APPROVE.len else APPROVAL_ACTION_DENY.len;
+    if (leaf.len <= action_len) return null;
+    const gate_id = leaf[0 .. leaf.len - action_len];
     if (std.mem.indexOfScalar(u8, gate_id, ':') != null) return null;
-    return .{ .workspace_id = ws_id, .gate_id = gate_id };
+    return .{ .workspace_id = ws, .gate_id = gate_id, .decision = decision };
+}
+
+pub fn matchWorkspaceApprovalGate(p: Path) ?ApprovalGateRoute {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, "workspaces") or !p.eq(2, "approvals")) return null;
+    const ws = p.param(1) orelse return null;
+    const leaf = p.param(3) orelse return null;
+    if (approvalDecisionFromLeaf(leaf) != null) return null;
+    if (std.mem.indexOfScalar(u8, leaf, ':') != null) return null;
+    return .{ .workspace_id = ws, .gate_id = leaf };
+}
+
+// ── /webhooks/* family ─────────────────────────────────────────────────────
+//
+// Five shapes share the prefix; reserved second segments (svix, clerk) and
+// reserved trailing actions (approval, grant-approval) are excluded from the
+// catch-all matchers so any two matchers are mutually exclusive at the
+// segment level.
+
+pub fn matchWebhookAction(p: Path, action: []const u8) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, "webhooks")) return null;
+    if (!p.eq(2, action)) return null;
+    if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
+    if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
+    return p.param(1);
+}
+
+pub fn matchSvixWebhook(p: Path) ?[]const u8 {
+    if (p.segs.len != 3) return null;
+    if (!p.eq(0, "webhooks") or !p.eq(1, RESERVED_SVIX)) return null;
+    return p.param(2);
+}
+
+/// Match `/webhooks/{zombie_id}` (HMAC-only). The 3-segment
+/// `/webhooks/{zombie_id}/{action}` form is matched per-action by
+/// `matchWebhookAction` (approval, grant-approval, github, …); the legacy
+/// URL-embedded-secret variant was removed in M43.
+pub fn matchWebhook(p: Path) ?[]const u8 {
+    if (p.segs.len != 2) return null;
+    if (!p.eq(0, "webhooks")) return null;
+    if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
+    if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
+    return p.param(1);
 }
 
 test {

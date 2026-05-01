@@ -38,6 +38,8 @@ TOP_LEVEL_ALLOW: set[str] = {
 NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     # Resource collections (plural nouns, end-of-path):
     "events",            # zombie_events resource
+    "messages",          # chat messages collection (per-zombie ingress)
+    "memories",          # memory entries collection (per-zombie scratchpad)
     "credentials",       # core.credentials
     "zombies",           # core.zombies
     "workspaces",        # core.workspaces
@@ -81,30 +83,6 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
 # tracking lists, and must be named explicitly so the distinction from
 # "we'll get to it" is mechanical.
 VENDOR_PATH_CARVE_OUTS: set[str] = set()
-
-# Pending-rename carve-outs — every entry MUST have a TODO + spec reference
-# naming the rename owner. Adding to this set buys time, not absolution; the
-# accompanying comment is the durable record of the rename plan.
-#
-# RULE NLG: SKIPPED per user override (reason: M41 carries the substrate
-# rename pass for /pause, /complete, /kill; the remaining 5 entries belong
-# to follow-up specs — /steer needs body-type polymorphism on EventType
-# (chat | continuation | webhook), and /v1/memory/* needs a key-shape design
-# call (compound key {zombie_id, key} — does the URL carry both? headers?
-# mixed?). The follow-up spec is docs/v2/pending/M41_002_P2_API_URL_HYGIENE.md.
-# Without this override the constant itself violates NLG's tracking-list ban.)
-PENDING_RENAME_PATHS: set[str] = {
-    # M41_002 will rename to POST /v1/.../zombies/{id}/events with body
-    # {"type":"chat","actor_kind":"steer","message":"..."}; storage already
-    # treats steer as one actor among many writing to core.zombie_events.
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer",
-    # M41_002 will reshape into a /v1/memories collection. The key-shape
-    # design (compound zombie_id + key) blocks an immediate rename.
-    "/v1/memory/forget",
-    "/v1/memory/list",
-    "/v1/memory/recall",
-    "/v1/memory/store",
-}
 
 # A "noun-shaped" final segment is either a path param ({foo}), a colon-op
 # (:approve, :reject), or matches the noun grammar: lowercase letters,
@@ -154,17 +132,13 @@ def main() -> int:
         last = final_segment(path)
         if is_legal_shape(path, last):
             continue
-        if path in PENDING_RENAME_PATHS:
-            continue
         violations.append((path, last))
 
-    # Catch carve-out rot: an entry that no longer corresponds to a real path.
-    # Both PENDING_RENAME_PATHS and VENDOR_PATH_CARVE_OUTS are scanned —
-    # a stale vendor entry means we've stopped serving an OAuth callback we
-    # claim to register with a vendor, which is a louder failure than a stale
-    # rename TODO.
+    # Catch carve-out rot: a vendor entry that no longer corresponds to a real
+    # path. A stale vendor entry means we've stopped serving an OAuth callback
+    # we claim to register with a vendor — a louder failure than a typo.
     actual = set(paths)
-    for carve_out in PENDING_RENAME_PATHS | VENDOR_PATH_CARVE_OUTS:
+    for carve_out in VENDOR_PATH_CARVE_OUTS:
         if carve_out not in actual:
             stale_carve_outs.append(carve_out)
 
@@ -175,15 +149,13 @@ def main() -> int:
         for path, last in violations:
             print(f"  {path}", file=sys.stderr)
             print(f"    final segment: '{last}'", file=sys.stderr)
-            print(f"    fix: rename to a resource (POST /events) or a colon-op "
-                  f"(POST /{{id}}:{last})", file=sys.stderr)
-            print(f"    or: add '{path}' to PENDING_RENAME_PATHS in "
-                  f"scripts/check_openapi_url_shape.py with a TODO + spec ref.",
-                  file=sys.stderr)
+            print(f"    fix: rename to a plural-noun resource or use a colon-op "
+                  f"(POST /{{id}}:{last}). Pre-v2.0 hygiene admits no "
+                  f"deferral list — fix in place per RULE NLG.", file=sys.stderr)
             print(file=sys.stderr)
 
     if stale_carve_outs:
-        print("PENDING_RENAME_PATHS contains entries that no longer exist in "
+        print("VENDOR_PATH_CARVE_OUTS contains entries that no longer exist in "
               "openapi.json — remove them:\n", file=sys.stderr)
         for p in stale_carve_outs:
             print(f"  {p}", file=sys.stderr)
@@ -192,8 +164,7 @@ def main() -> int:
     if violations or stale_carve_outs:
         return 1
 
-    print(f"OK: openapi.json — {len(paths)} paths, all REST §1 compliant "
-          f"({len(PENDING_RENAME_PATHS)} pre-§1 endpoints with pending-rename carve-outs).")
+    print(f"OK: openapi.json — {len(paths)} paths, all REST §1 compliant.")
     return 0
 
 

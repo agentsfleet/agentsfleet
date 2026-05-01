@@ -62,19 +62,33 @@ test "match resolves auth routes" {
     try std.testing.expect(match("/v1/auth/sessions/sess_1/complete", .POST) == null);
 }
 
-// M26_001: memory recall/list are matched regardless of HTTP method — method
-// enforcement happens in route_table_invoke.zig. This test pins the path match
-// so a regression that drops the routes can be caught without spinning up a
-// server. Spec §2.1 — GET /v1/memory/recall resolves to .memory_recall.
-test "match resolves memory recall/list/store/forget routes" {
-    try std.testing.expectEqualDeep(Route.memory_store, match("/v1/memory/store", .GET).?);
-    try std.testing.expectEqualDeep(Route.memory_recall, match("/v1/memory/recall", .GET).?);
-    try std.testing.expectEqualDeep(Route.memory_list, match("/v1/memory/list", .GET).?);
-    try std.testing.expectEqualDeep(Route.memory_forget, match("/v1/memory/forget", .GET).?);
-    // Query-string suffixes are stripped by the httpz layer before match() runs;
-    // path-only match is what we pin here.
-    try std.testing.expect(match("/v1/memory/recall/", .GET) == null); // trailing slash is NOT accepted
-    try std.testing.expect(match("/v1/memory/unknown", .GET) == null);
+// Memory API moved from /v1/memory/{store,recall,list,forget} to
+// workspace-scoped /v1/workspaces/{ws}/zombies/{zid}/memories[/{key}].
+// The retired top-level paths must 404.
+test "match retires /v1/memory/* routes (pre-v2: 404 with no compat shim)" {
+    try std.testing.expect(match("/v1/memory/store", .POST) == null);
+    try std.testing.expect(match("/v1/memory/recall", .GET) == null);
+    try std.testing.expect(match("/v1/memory/list", .GET) == null);
+    try std.testing.expect(match("/v1/memory/forget", .POST) == null);
+}
+
+test "match resolves /v1/workspaces/{ws}/zombies/{zid}/memories collection" {
+    switch (match("/v1/workspaces/ws1/zombies/z1/memories", .GET).?) {
+        .workspace_zombie_memories => |r| {
+            try std.testing.expectEqualStrings("ws1", r.workspace_id);
+            try std.testing.expectEqualStrings("z1", r.zombie_id);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    switch (match("/v1/workspaces/ws1/zombies/z1/memories/incident:42", .DELETE).?) {
+        .workspace_zombie_memory => |r| {
+            try std.testing.expectEqualStrings("ws1", r.workspace_id);
+            try std.testing.expectEqualStrings("z1", r.zombie_id);
+            try std.testing.expectEqualStrings("incident:42", r.memory_key);
+        },
+        else => return error.TestExpectedEqual,
+    }
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/memories/", .GET) == null);
 }
 
 // M10_001: /v1/runs/* routes removed — get_run, retry_run, replay_run,
@@ -229,6 +243,28 @@ test "M4_001: approval route resolves before webhook route" {
     }
 }
 
+test "matchWebhookAction excludes reserved literals at slot 1" {
+    // /v1/webhooks/{reserved}/approval must NOT dispatch to .approval_webhook
+    // with zombie_id={reserved}. Symmetric with matchWebhook's reserved-segment
+    // guard. (svix is excluded by matchWebhookAction too, but svix paths route
+    // to the svix family via matchSvixWebhook — so they're tested separately.)
+    const cases = [_][]const u8{
+        "/v1/webhooks/clerk/approval",
+        "/v1/webhooks/approval/approval",
+        "/v1/webhooks/grant-approval/approval",
+        "/v1/webhooks/clerk/grant-approval",
+        "/v1/webhooks/approval/grant-approval",
+        "/v1/webhooks/grant-approval/grant-approval",
+    };
+    for (cases) |p| {
+        const r = match(p, .POST);
+        if (r) |route| switch (route) {
+            .approval_webhook, .grant_approval_webhook => return error.TestExpectedNoActionDispatch,
+            else => {},
+        };
+    }
+}
+
 test "svix webhook route resolves with zombie_id" {
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const route = match("/v1/webhooks/svix/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;
@@ -295,12 +331,12 @@ test "retired path: /v1/workspaces/{ws}/sync no longer resolves" {
     try std.testing.expect(match("/v1/workspaces/ws_123/sync", .GET) == null);
 }
 
-test "custom-method subpath: zombie /steer resolves" {
+test "custom-method subpath: zombie /messages resolves" {
     const ws_id = "ws_abc";
     const zid = "z_xyz";
-    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/steer", .GET) orelse return error.TestExpectedMatch;
+    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/messages", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
-        .workspace_zombie_steer => |r| {
+        .workspace_zombie_messages => |r| {
             try std.testing.expectEqualStrings(ws_id, r.workspace_id);
             try std.testing.expectEqualStrings(zid, r.zombie_id);
         },
@@ -350,14 +386,14 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
         .approval_webhook, .grant_approval_webhook => return error.TestExpectedNotApproval,
         else => {},
     };
-    const steer_old = match("/v1/workspaces/ws1/zombies/z1:steer", .POST);
-    if (steer_old) |r| switch (r) {
-        .workspace_zombie_steer, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+    const messages_colon_old = match("/v1/workspaces/ws1/zombies/z1:messages", .POST);
+    if (messages_colon_old) |r| switch (r) {
+        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
         else => {},
     };
     const stop_old = match("/v1/workspaces/ws1/zombies/z1:stop", .POST);
     if (stop_old) |r| switch (r) {
-        .workspace_zombie_steer, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
         else => {},
     };
     // /v1/workspaces/ws1:pause used to be the colon-op form (POST). It now
@@ -368,12 +404,10 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     _ = match("/v1/workspaces/ws1:pause", .POST);
 }
 
-test "custom-method reserved segments: approval/grant-approval/svix win over url-secret slot" {
-    // /v1/webhooks/{id}/{secret} is the URL-secret form used by agentmail etc.
-    // The literals "approval", "grant-approval", and "svix" are reserved: a
-    // webhook configured with one of these as its URL secret must never cause
-    // the request to route to receive_webhook. These three action routes MUST
-    // always win the match.
+test "webhook action routes: approval / grant-approval / svix / github dispatch per action" {
+    // 3-segment /v1/webhooks/{id}/{action} dispatches via matchWebhookAction.
+    // 2-segment /v1/webhooks/{id} is HMAC-only receive_webhook (the legacy
+    // URL-embedded-secret form was removed in M43).
     const approval = match("/v1/webhooks/z1/approval", .GET) orelse return error.TestExpectedMatch;
     switch (approval) {
         .approval_webhook => {},
@@ -384,12 +418,16 @@ test "custom-method reserved segments: approval/grant-approval/svix win over url
         .grant_approval_webhook => {},
         else => return error.TestExpectedEqual,
     }
-    // "svix" as the first segment after /webhooks/ is the Svix route prefix,
-    // not a zombie_id. /v1/webhooks/svix/{id} means "svix-signed webhook for
-    // zombie {id}", not "zombie=svix, secret={id}".
+    // "svix" as slot-1 is the Svix route prefix, not a zombie_id.
+    // /v1/webhooks/svix/{id} means "svix-signed webhook for zombie {id}".
     const svix = match("/v1/webhooks/svix/zid", .GET) orelse return error.TestExpectedMatch;
     switch (svix) {
         .receive_svix_webhook => {},
+        else => return error.TestExpectedEqual,
+    }
+    const github = match("/v1/webhooks/z1/github", .POST) orelse return error.TestExpectedMatch;
+    switch (github) {
+        .github_webhook => |id| try std.testing.expectEqualStrings("z1", id),
         else => return error.TestExpectedEqual,
     }
 }
@@ -398,7 +436,8 @@ test "custom-method subpath: trailing segments after action are rejected" {
     // /v1/webhooks/{id}/approval/extra must not match approval_webhook.
     try std.testing.expect(match("/v1/webhooks/z1/approval/extra", .GET) == null);
     try std.testing.expect(match("/v1/webhooks/z1/grant-approval/extra", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/steer/extra", .GET) == null);
+    try std.testing.expect(match("/v1/webhooks/z1/github/extra", .POST) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/messages/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/current-run/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/pause/extra", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/sync/extra", .GET) == null);
@@ -407,7 +446,7 @@ test "custom-method subpath: trailing segments after action are rejected" {
 test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/webhooks//approval", .GET) == null);
     try std.testing.expect(match("/v1/webhooks//grant-approval", .GET) == null);
-    try std.testing.expect(match("/v1/workspaces//zombies/z1/steer", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces//zombies/z1/messages", .GET) == null);
     try std.testing.expect(match("/v1/workspaces/ws1/zombies//current-run", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//pause", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//sync", .GET) == null);

@@ -28,10 +28,10 @@
       "actionClass": "sensitive"
     },
     {
-      "operationId": "steer_zombie",
+      "operationId": "post_zombie_message",
       "method": "POST",
-      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer",
-      "description": "Inject a steering instruction into a running Zombie's loop.",
+      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages",
+      "description": "Post a chat message to a running Zombie's loop.",
       "actionClass": "sensitive"
     },
     {
@@ -81,7 +81,7 @@
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],
-    "sensitive": ["create_zombie", "patch_zombie", "steer_zombie", "ingest_zombie_webhook", "pause_workspace", "execute_tool"],
+    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook", "pause_workspace", "execute_tool"],
     "critical": []
   }
 }

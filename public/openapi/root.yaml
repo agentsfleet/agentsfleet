@@ -100,14 +100,10 @@ paths:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}
   /v1/execute:
     $ref: ./paths/execute.yaml#/~1v1~1execute
-  /v1/memory/forget:
-    $ref: ./paths/memory.yaml#/~1v1~1memory~1forget
-  /v1/memory/list:
-    $ref: ./paths/memory.yaml#/~1v1~1memory~1list
-  /v1/memory/recall:
-    $ref: ./paths/memory.yaml#/~1v1~1memory~1recall
-  /v1/memory/store:
-    $ref: ./paths/memory.yaml#/~1v1~1memory~1store
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories:
+    $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}:
+    $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories~1{memory_key}
   /v1/webhooks/clerk:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1clerk
   /v1/webhooks/svix/{zombie_id}:
@@ -152,8 +148,8 @@ paths:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-requests
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry:
     $ref: ./paths/telemetry.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1telemetry
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer:
-    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1steer
+  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages:
+    $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1messages
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1events
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream:

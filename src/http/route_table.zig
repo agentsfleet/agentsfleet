@@ -62,9 +62,11 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .admin_platform_keys => .{ .middlewares = registry.admin(), .invoke = invoke.invokeAdminPlatformKeys },
         .delete_admin_platform_key => .{ .middlewares = registry.admin(), .invoke = invoke.invokeDeleteAdminPlatformKey },
 
-        // Webhooks — receive_webhook uses webhookSig middleware (M28_001):
-        // URL secret (vault-backed) or Bearer token fallback.
+        // Webhooks — receive_webhook uses webhookSig middleware (HMAC-only:
+        // scheme + secret resolved per-zombie from the workspace credential
+        // keyed by `trigger.source`).
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
+        .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
         // M28_001 §5: Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
         // Clerk signup webhook — no zombie-scoped vault lookup; the handler
@@ -74,17 +76,14 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
         .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
-        // github_webhook reuses webhook_sig — HMAC scheme + secret resolved
-        // from the workspace's `zombie:github` credential.
-        .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
 
         // Zombie CRUD + activity + credentials
         .workspace_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombies },
         .patch_workspace_zombie => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspaceZombie },
         .workspace_credentials => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentials },
         .delete_workspace_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceCredentialDelete },
-        // M23_001 / M24_001: live steering (workspace-scoped)
-        .workspace_zombie_steer => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieSteer },
+        // Chat ingress (workspace-scoped) — POST /messages
+        .workspace_zombie_messages => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMessagesPost },
         // Per-zombie event history + SSE live tail (Bearer this slice;
         // cookie auth path lands with the dashboard slice).
         .workspace_zombie_events => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieEvents },
@@ -102,11 +101,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .zombie_telemetry => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieTelemetry },
         .internal_telemetry => .{ .middlewares = registry.admin(), .invoke = invoke.invokeInternalTelemetry },
 
-        // External-agent memory API
-        .memory_store => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeMemoryStore },
-        .memory_recall => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeMemoryRecall },
-        .memory_list => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeMemoryList },
-        .memory_forget => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeMemoryForget },
+        // External-agent memory API — workspace-scoped collection (GET/POST)
+        // and per-key DELETE (idempotent 204).
+        .workspace_zombie_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoriesCollection },
+        .workspace_zombie_memory => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoryByKey },
 
         // Execute proxy — zombie api_key auth in handler
         .execute => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeExecute },
@@ -149,7 +147,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_zombie_steer = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_zombie_messages = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .zombie_telemetry = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.internal_telemetry, &reg) != null);
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);
@@ -161,10 +159,8 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .github_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.memory_store, &reg) != null);
-    try testing.expect(specFor(.memory_recall, &reg) != null);
-    try testing.expect(specFor(.memory_list, &reg) != null);
-    try testing.expect(specFor(.memory_forget, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_zombie_memories = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
+    try testing.expect(specFor(.{ .workspace_zombie_memory = .{ .workspace_id = "ws1", .zombie_id = "z1", .memory_key = "k1" } }, &reg) != null);
     try testing.expect(specFor(.execute, &reg) != null);
     try testing.expect(specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);

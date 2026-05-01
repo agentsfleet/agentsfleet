@@ -45,7 +45,6 @@ test "normalize: failure payload — flat envelope shape with all fields" {
     try testing.expectEqualStrings("https://github.com/example/platform/actions/runs/9842731401", fieldString(obj, "run_url"));
     try testing.expectEqualStrings("f1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e", fieldString(obj, "head_sha"));
     try testing.expectEqualStrings("failure", fieldString(obj, "conclusion"));
-    try testing.expectEqualStrings("main", fieldString(obj, "ref"));
     try testing.expectEqualStrings("example/platform", fieldString(obj, "repo"));
     try testing.expectEqual(@as(i64, 2), fieldI64(obj, "attempt"));
     try testing.expectEqual(@as(i64, 9842731401), fieldI64(obj, "run_id"));

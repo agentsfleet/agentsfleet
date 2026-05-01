@@ -107,17 +107,31 @@ pub fn buildTriggerConfig(
     source: []const u8,
     credential_name: ?[]const u8,
 ) ![]u8 {
+    // Use the JSON stringifier (not `{s}` interpolation) so test inputs
+    // containing `"` or `\` round-trip correctly — same fix applied to
+    // `insertWebhookCredential` above.
+    const TriggerWith = struct {
+        type: []const u8 = "webhook",
+        source: []const u8,
+        credential_name: []const u8,
+    };
+    const TriggerNoOverride = struct {
+        type: []const u8 = "webhook",
+        source: []const u8,
+    };
+    const WrapWith = struct { @"x-usezombie": struct { trigger: TriggerWith } };
+    const WrapNoOverride = struct { @"x-usezombie": struct { trigger: TriggerNoOverride } };
     if (credential_name) |name| {
-        return std.fmt.allocPrint(
+        return std.json.Stringify.valueAlloc(
             alloc,
-            "{{\"x-usezombie\":{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\",\"credential_name\":\"{s}\"}}}}}}",
-            .{ source, name },
+            WrapWith{ .@"x-usezombie" = .{ .trigger = .{ .source = source, .credential_name = name } } },
+            .{},
         );
     }
-    return std.fmt.allocPrint(
+    return std.json.Stringify.valueAlloc(
         alloc,
-        "{{\"x-usezombie\":{{\"trigger\":{{\"type\":\"webhook\",\"source\":\"{s}\"}}}}}}",
-        .{source},
+        WrapNoOverride{ .@"x-usezombie" = .{ .trigger = .{ .source = source } } },
+        .{},
     );
 }
 
