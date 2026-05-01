@@ -134,13 +134,13 @@ The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent` wa
 
 1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
 2. PUBLISH `zombie:{id}:activity` (`event_received`).
-3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <PLATFORM_FIREWORKS_KEY>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
+3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
 4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_cents=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
 5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_cents = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
 6. Approval gate (no destructive tools wired in this zombie) → pass.
 7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map` — it travels separately from resolveActiveProvider's return value into `executor.startStage`.
 8. **Stage deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_cents = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
-9. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: <PLATFORM_FIREWORKS_KEY>})`.
+9. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: <fetched from admin workspace vault via platform_llm_keys pointer>})`.
 10. `executor.startStage(execution_id, message=<webhook payload as text>)`.
 
 NullClaw runs the SKILL.md prose against the webhook payload. The agent makes its calls — `http_request GET .../actions/runs/{run_id}/logs`, `http_request GET ${fly.host}/v1/apps/{app}/logs`, etc. — credentials substituted at the tool bridge after sandbox entry. Posts a remediation diagnosis to Slack.

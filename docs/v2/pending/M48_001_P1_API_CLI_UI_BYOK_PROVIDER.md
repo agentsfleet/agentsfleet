@@ -94,7 +94,7 @@ Single persona: **John Doe**. Every test in the Test Specification maps back to 
    - Balance gate: 1000¢ ≥ 3¢ → pass.
    - Receive deduct: 1¢ → 999¢. INSERT `zombie_execution_telemetry (charge_type='receive', credit_deducted_cents=1)`.
    - Stage deduct (conservative estimate): ~2¢ → ~997¢. INSERT `zombie_execution_telemetry (charge_type='stage', credit_deducted_cents≈2)`.
-   - Worker calls `executor.startStage` with the platform Fireworks api_key (`PLATFORM_FIREWORKS_KEY`, loaded at API boot from the platform vault). Outbound call hits `api.fireworks.ai/inference/v1`.
+   - Worker calls `executor.startStage` with the Fireworks api_key returned by `resolveActiveProvider` (the resolver looked it up via `core.platform_llm_keys` → admin workspace's `vault.secrets`). Outbound call hits `api.fireworks.ai/inference/v1`.
    - StageResult returns. UPDATE the stage telemetry row with actual `token_count_input/output, wall_ms`.
 6. Drains over time at ~3¢/event (token-based). Two telemetry rows per event (`charge_type='receive'`, `charge_type='stage'`).
 
@@ -250,21 +250,33 @@ resolveActiveProvider(tenant_id) → ResolvedProvider {
 
 Algorithm:
   row = SELECT * FROM core.tenant_providers WHERE tenant_id = $1
-  if row IS NULL:
-    return synthesizePlatformDefault()
-      // { mode: "platform", provider: "fireworks",
-      //   api_key: <PLATFORM_FIREWORKS_KEY loaded at API boot from the platform vault>,
-      //   model: "accounts/fireworks/models/kimi-k2.6",
-      //   context_cap_tokens: 256000 }
-      // PLATFORM_FIREWORKS_KEY is admin-primed in the platform vault (M45 crypto_store, platform-scope identifier);
-      // never returned in any user-facing surface (see api_key boundary).
-
-  if row.mode == "platform":
-    return { mode: "platform",
-             provider: "fireworks",
-             api_key: <PLATFORM_FIREWORKS_KEY>,
-             model: row.model,
-             context_cap_tokens: row.context_cap_tokens }
+  if row IS NULL OR row.mode == "platform":
+    return resolvePlatformDefault(row)
+      // 1. plk = SELECT provider, source_workspace_id FROM core.platform_llm_keys
+      //          WHERE active = true LIMIT 1
+      //    (Admin-managed via PUT /v1/admin/platform-keys; one active row at v2.0,
+      //     pointing at the usezombie-admin user's workspace. See M11_006 spec
+      //     and playbooks/012_usezombie_admin_bootstrap/.)
+      //
+      // 2. cred = vault.loadJson(plk.source_workspace_id, plk.provider)
+      //    (Same vault.secrets path as any user's BYOK — admin's workspace
+      //     just happens to be the source for platform-managed events.)
+      //
+      // 3. Return { mode: "platform",
+      //             provider: plk.provider,                        // e.g. "fireworks"
+      //             api_key: cred.api_key,                          // process-internal only
+      //             model: row?.model    ?? PLATFORM_DEFAULT_MODEL, // synth-default if no row
+      //             context_cap_tokens: row?.context_cap_tokens
+      //                              ?? PLATFORM_DEFAULT_CAP }
+      //
+      // PLATFORM_DEFAULT_MODEL / PLATFORM_DEFAULT_CAP are RULE-UFS constants
+      // declared once in src/state/tenant_provider.zig — at v2.0:
+      // "accounts/fireworks/models/kimi-k2.6" + 256000.
+      //
+      // No api_key constant lives in code; the api_key always comes through
+      // vault.loadJson on the admin workspace. If platform_llm_keys has no
+      // active row OR the admin's vault row is missing, return
+      // error.PlatformKeyMissing (operator-side incident, not a user error).
 
   if row.mode == "byok":
     cred = vault.loadJson(tenant_id, row.credential_ref)
@@ -479,7 +491,7 @@ Exports:
 - `pub fn upsertPlatform(allocator, conn, tenant_id) !void` (for `tenant provider reset`).
 - `pub fn deleteRow(allocator, conn, tenant_id) !void` (test-only).
 
-Synthesises platform default from a server-side constant when no row is present. The platform default model + cap is hardcoded as a constant in this module (per RULE UFS, declared once); the platform api_key is loaded at API boot from the platform vault (M45 crypto_store at a platform-scope identifier; same encryption-at-rest path as user credentials, just owned by the platform rather than a user tenant).
+Resolves platform default by joining `core.platform_llm_keys` → admin workspace `vault.secrets` (per the M11_006 design and the playbook in `playbooks/012_usezombie_admin_bootstrap/`). The platform default **model + cap** are hardcoded constants in this module (per RULE UFS, declared once — at v2.0: `accounts/fireworks/models/kimi-k2.6` + `256000`). The platform default **api_key** is fetched on-demand from the admin tenant's vault, the same M45 path used for any user's BYOK; no api_key constant exists in code. If `platform_llm_keys` has no active row OR the admin's vault row is missing, the resolver returns `error.PlatformKeyMissing` (an operator-side incident, surfaced via dead-letter on the next event — not a user-recoverable error).
 
 ### §3 — Cost functions and debit wiring
 

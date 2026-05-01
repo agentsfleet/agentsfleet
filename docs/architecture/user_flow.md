@@ -190,7 +190,7 @@ trigger fires  → processEvent:                            → processEvent:
 
 createExecution → context_cap_tokens=256000               → context_cap_tokens=256000
                   model=accounts/fireworks/models/kimi-k2.6                   model=accounts/.../kimi-k2.6
-                  api_key=<PLATFORM_FIREWORKS_KEY>              api_key=<fw_LIVE_…>
+                  api_key=<from admin workspace vault>                   api_key=<fw_LIVE_…>
 
 L3 stage chunking
                 → threshold = 0.75 × 200000               → threshold = 0.75 × 256000

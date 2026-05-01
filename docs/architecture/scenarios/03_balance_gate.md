@@ -46,7 +46,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 
 ## 2. Phase 1 — John on platform-managed (Week 1-2 of his journey)
 
-**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. `PLATFORM_FIREWORKS_KEY` (the actual Fireworks key UseZombie pays Fireworks with) is admin-primed in the platform vault — same M45 crypto_store path as user credentials, at a platform-scope identifier. It is loaded into server-side process memory at API boot and never echoed to any user-facing surface.
+**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key UseZombie pays Fireworks with is **not** a magic constant. It lives in the `usezombie-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's BYOK uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the resolver-to-executor path; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
 
 ### 2.1 First webhook fires (Monday morning, week 1)
 
@@ -206,7 +206,7 @@ If John had stayed on platform the entire time, his $10 would have lasted roughl
 | Aspect | Platform phase | BYOK phase |
 |---|---|---|
 | `tenant_providers` row | Absent (synth-default) | `mode=byok`, `credential_ref=account-fireworks-byok` |
-| Resolver returns | `{provider: fireworks, api_key: <PLATFORM_FIREWORKS_KEY>, model: accounts/fireworks/models/kimi-k2.6, …}` | `{provider: fireworks, api_key: fw_LIVE_…, model: …kimi-k2.6, …}` |
+| Resolver returns | `{provider: fireworks, api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: accounts/fireworks/models/kimi-k2.6, …}` | `{provider: fireworks, api_key: fw_LIVE_…, model: …kimi-k2.6, …}` |
 | Receive deduct per event | 1¢ | 0¢ |
 | Stage deduct per event | 1¢ overhead + token cost (~1–4¢ for Kimi K2.6 platform retail) | 1¢ flat |
 | Typical per-event total | ~3¢ | 1¢ |
@@ -319,7 +319,7 @@ Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_lab
 - **Same code path serves both postures.** The gate, the receive deduct, the stage deduct, and the telemetry rows are identical SQL; only the cents differ.
 - **Drain rate is the BYOK signal.** John's UseZombie credits last ~3× longer under BYOK than they would have under continued platform use — a transparent, observable benefit of bringing a key.
 - **Plan tiers are not a code-path concept.** They never appear inside `processEvent` or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
-- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, worker logs, executor logs, and HTTP responses for either api_key (PLATFORM_FIREWORKS_KEY or `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
+- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, worker logs, executor logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
 - **The credit-exhausted UX is a dashboard story, not a CLI story.** The CLI surfaces the state and points at the dashboard. Purchase / top-up are dashboard-shipping concerns (and ship empty in v2.0, with the actual Stripe integration in v2.1).
 
 ---
