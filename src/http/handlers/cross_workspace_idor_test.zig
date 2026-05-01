@@ -405,7 +405,7 @@ test "M26_001 envelope: GET /workspaces/{my}/agent-keys body has items+total, no
     try std.testing.expect(!bodyHasTopLevelKey(r.body, "agents"));
 }
 
-test "M26_001 method: POST /v1/memory/recall returns 405 (GET-only post-M26)" {
+test "memories: GET with malformed zombie_id in path returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -413,55 +413,9 @@ test "M26_001 method: POST /v1/memory/recall returns 405 (GET-only post-M26)" {
         ALLOC.destroy(srv);
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall", .{});
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "{\"zombie_id\":\"x\"}");
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 405), r.status);
-}
-
-test "M26_001 method: POST /v1/memory/list returns 405" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/list", .{});
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .POST, TOKEN_OPERATOR, "{\"zombie_id\":\"x\"}");
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 405), r.status);
-}
-
-test "M26_001 validation: GET /v1/memory/recall without zombie_id returns 400" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall?query=hello", .{});
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 400), r.status);
-}
-
-test "M26_001 validation: GET /v1/memory/recall with bad-format zombie_id returns 400" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall?zombie_id=not-a-uuid&query=x", .{});
+    // Path-segment zombie_id fails UUIDv7 format check in handler — 400 from
+    // resolveZombieInWorkspace before any DB access.
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/not-a-uuid/memories", .{TEST_WORKSPACE_ID});
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
@@ -554,7 +508,7 @@ test "M26_001 no-content: DELETE integration-grant returns 204 with empty body" 
     try std.testing.expectEqual(@as(usize, 0), r.body.len);
 }
 
-test "M26_001 validation: GET /v1/memory/recall without query param returns 400" {
+test "memories: GET with limit=0 returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -562,8 +516,9 @@ test "M26_001 validation: GET /v1/memory/recall without query param returns 400"
         ALLOC.destroy(srv);
     }
 
-    // zombie_id present but query missing — exercises the second validation branch.
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall?zombie_id={s}", .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0cafe1"});
+    // parseLimitQs returns OutOfRange → 400 before any DB access.
+    const valid_zid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0cafe2";
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/memories?limit=0", .{ TEST_WORKSPACE_ID, valid_zid });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
@@ -571,7 +526,7 @@ test "M26_001 validation: GET /v1/memory/recall without query param returns 400"
     try std.testing.expectEqual(@as(u16, 400), r.status);
 }
 
-test "M26_001 validation: GET /v1/memory/list without zombie_id returns 400" {
+test "memories: GET with non-numeric limit returns 400" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -579,42 +534,8 @@ test "M26_001 validation: GET /v1/memory/list without zombie_id returns 400" {
         ALLOC.destroy(srv);
     }
 
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/list?category=core", .{});
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 400), r.status);
-}
-
-test "M26_001 validation: GET /v1/memory/list with limit=0 returns 400" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    // zombie_id is UUIDv7-valid; limit is the field under test. parseLimitQs must
-    // return OutOfRange → handler returns 400 before DB access.
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/list?zombie_id={s}&limit=0", .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0cafe2"});
-    defer ALLOC.free(url);
-
-    const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
-    defer r.deinit(ALLOC);
-    try std.testing.expectEqual(@as(u16, 400), r.status);
-}
-
-test "M26_001 validation: GET /v1/memory/recall with limit=abc returns 400" {
-    const srv = try startTestServer(ALLOC);
-    defer {
-        if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
-        srv.deinit();
-        ALLOC.destroy(srv);
-    }
-
-    // Non-numeric limit must return 400 via ParseLimitError.InvalidLimit branch.
-    const url = try urlJoin(ALLOC, srv.port, "/v1/memory/recall?zombie_id={s}&query=x&limit=abc", .{"0195b4ba-8d3a-7f13-8abc-2b3e1e0cafe3"});
+    const valid_zid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0cafe3";
+    const url = try urlJoin(ALLOC, srv.port, "/v1/workspaces/{s}/zombies/{s}/memories?query=x&limit=abc", .{ TEST_WORKSPACE_ID, valid_zid });
     defer ALLOC.free(url);
 
     const r = try sendReq(ALLOC, url, .GET, TOKEN_OPERATOR, null);
