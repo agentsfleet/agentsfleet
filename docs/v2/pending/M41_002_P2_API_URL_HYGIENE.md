@@ -195,5 +195,5 @@ The shape is locked once §3 is dispositioned; this section gets edited then.
 ## Out of Scope
 
 - Renaming `/v1/webhooks/{zombie_id}` and friends — webhooks are vendor-driven URL shapes (the secret rides as a path segment), classified separately. If a future hygiene pass reshapes them, that's a different spec.
-- Vendor OAuth callbacks — `/v1/slack/{install,callback}`, `/v1/github/callback` are in `VENDOR_PATH_CARVE_OUTS` permanently.
+- Vendor OAuth callbacks — `VENDOR_PATH_CARVE_OUTS` exists for vendor-pinned redirect URLs that can't be renamed without re-registering with the vendor. The Slack inbound surface (`/v1/slack/*`) and `/v1/github/callback` were removed in PR #272 (M43 review pass), so the carve-out list is currently empty. Re-add entries here when/if a vendor OAuth flow returns.
 - Steer continuations / webhook-as-event — body-type polymorphism opens the door to consolidating webhook ingest into `/events` too, but that's a M41_003 conversation, not this spec.
