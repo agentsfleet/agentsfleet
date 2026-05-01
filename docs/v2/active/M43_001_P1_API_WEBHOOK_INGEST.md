@@ -145,7 +145,7 @@ The original spec text below describes the *problem and intent* correctly; the *
 
 **Implementation default**: `constant_time_compare` via std.crypto in Zig (`std.crypto.utils.timingSafeEql`). Never use string equality.
 
-**Implementation default**: target latency end-to-end <100ms; the bottleneck is vault lookup. Cache the webhook_secret per-workspace in zombied-api's process for 60s with explicit invalidation on credential update.
+**Implementation default**: target latency end-to-end <100ms; the bottleneck is vault lookup. Resolve the webhook_secret per request — no in-process cache. A short-TTL cache was deliberately ruled out of scope by A12 (security implications + needs measurement first); revisit only via a follow-up perf spec backed by a real bottleneck measurement.
 
 ### §2 — Payload normalization
 
@@ -157,26 +157,23 @@ EventEnvelope {
   zombie_id, workspace_id,
   actor: "webhook:github",
   event_type: "webhook",
-  request: {
-    message: "GH Actions deploy failed: workflow=<name>, run=<run_id>, attempt=<n>",
-    metadata: {
-      provider: "github",
-      run_id: <id>,
-      run_url: <html_url>,
-      head_sha: <sha>,
-      head_branch: <branch>,
-      conclusion: "failure",
-      repo: "<owner>/<name>",
-      attempt: <attempt>,
-      workflow_name: <name>,
-      received_at: <RFC3339>,
-    },
+  request_json: {                       // flat per A4 — no nested message/metadata wrapper
+    run_url: <html_url>,
+    head_sha: <sha>,
+    conclusion: "failure",
+    ref: <ref>,
+    repo: "<owner>/<name>",
+    attempt: <attempt>,
+    run_id: <id>,
+    head_branch: <branch>,
+    workflow_name: <name>,
+    received_at: <RFC3339>,
   },
   created_at: <now>,
 }
 ```
 
-The `message` is a short human-readable summary; `metadata` carries the structured fields the agent reasons over.
+`request_json` is opaque JSON bytes carrying the structured fields the agent reasons over. Per the canonical envelope at `src/zombie/event_envelope.zig` (A4); no `message` summary field is constructed by the receiver.
 
 ### §3 — Replay and idempotency
 
@@ -192,9 +189,7 @@ GitHub retries on 5xx with exponential backoff. To handle replays without duplic
 
 The webhook secret is per-zombie-config (or per-workspace), not global. Stored in the vault as a structured credential `github` with field `webhook_secret`. The install-skill (M49) prompts for this when generating the `.usezombie/platform-ops/` config.
 
-**Implementation default**: support both shapes during M45 transition:
-- Structured (M45 done): `secrets.github.webhook_secret`
-- Single-string fallback (pre-M45): `secrets.github_webhook_secret`
+**Implementation default**: M45 is DONE — there is one vault shape. Resolve via `vault.loadJson(workspace_id, name="github")` and pull the `webhook_secret` field (A5 + A6). No pre-M45 single-string fallback; RULE NLG forbids the legacy framing pre-v2.0.0.
 
 ### §5 — Event-type filtering
 
@@ -205,9 +200,9 @@ GH webhooks can carry many event types (`push`, `pull_request`, `workflow_run`, 
 Add to `samples/platform-ops/SKILL.md`:
 
 > **When the trigger is a GitHub Actions failure webhook** (`actor=webhook:github` in the event):
-> 1. Read `metadata.run_url` and `metadata.repo` from the event.
-> 2. Call `http_request GET https://api.github.com/repos/{metadata.repo}/actions/runs/{metadata.run_id}/logs` with header `Authorization: Bearer ${secrets.github.api_token}`. Parse the failed step.
-> 3. Cross-reference recent commits (last 5 on `metadata.head_branch`) via `http_request GET https://api.github.com/repos/{metadata.repo}/commits?sha={metadata.head_sha}&per_page=5` — look for migration files, config changes, dependency bumps.
+> 1. Read `request_json.run_url` and `request_json.repo` from the event.
+> 2. Call `http_request GET https://api.github.com/repos/{request_json.repo}/actions/runs/{request_json.run_id}/logs` with header `Authorization: Bearer ${secrets.github.api_token}`. Parse the failed step.
+> 3. Cross-reference recent commits (last 5 on `request_json.head_branch`) via `http_request GET https://api.github.com/repos/{request_json.repo}/commits?sha={request_json.head_sha}&per_page=5` — look for migration files, config changes, dependency bumps.
 > 4. Correlate with fly + upstash health (see existing prose).
 > 5. Post a Slack diagnosis with the run URL, the failing step name, the most likely root cause from the cross-reference, and a remediation suggestion.
 
@@ -272,8 +267,7 @@ Redis dedupe key:
 | `test_workflow_run_success_ignored` | POST `workflow_run.success` → 204, no XADD |
 | `test_other_event_type_ignored` | POST `push` event → 204, no XADD |
 | `test_payload_too_large` | POST 2MB body → 413 before signature verify |
-| `test_normalizer_extracts_metadata` | Real GH payload (fixture) → assert metadata fields match |
-| `test_secret_cache_invalidation` | Update github.webhook_secret in vault → next POST uses new secret (cache busts within 60s) |
+| `test_normalizer_extracts_request_json` | Real GH payload (fixture) → assert flat `request_json` top-level keys match A4 |
 | `test_e2e_zombie_processes_webhook` | Full path: POST → XADD → worker thread (M40) picks up → processEvent (M42) → executor.startStage (M41) → assertion: `core.zombie_events` row with `actor=webhook:github`, `status=processed` |
 
 Fixtures in `samples/fixtures/webhook_github/` (A10 — no `m43-` prefix).
