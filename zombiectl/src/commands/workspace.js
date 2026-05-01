@@ -6,7 +6,6 @@ import { writeError } from "../program/io.js";
 
 export async function commandWorkspace(ctx, workspaces, args, deps) {
   const {
-    openUrl,
     parseFlags,
     printJson,
     printKeyValue,

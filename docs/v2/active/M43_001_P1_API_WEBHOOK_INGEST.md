@@ -95,7 +95,7 @@ The original spec text below describes the *problem and intent* correctly; the *
 
 ## Overview
 
-**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/workspaces/{ws}/zombies/{id}/webhooks/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret`. On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, `request.message=<short summary>` and `request.metadata={run_id, run_url, head_sha, conclusion, ref, repo, attempt}`. XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
+**Goal (testable):** A configured GitHub repo posts a `workflow_run` event with `conclusion=failure` to `POST /v1/webhooks/{zombie_id}/github`. The receiver verifies the `X-Hub-Signature-256` HMAC against the workspace's stored `github.webhook_secret`. On valid signature: normalize the payload into an EventEnvelope (M42 shape) with `actor=webhook:github`, `event_type=webhook`, `request.message=<short summary>` and `request.metadata={run_id, run_url, head_sha, conclusion, ref, repo, attempt}`. XADD to `zombie:{id}:events`. Return 202 within 100ms. The zombie's per-zombie thread (M40) picks up the event, processes it via M42's processEvent + M41's executor session. The agent reasons, fetches GH run logs via `http_request` (the GH API token is in the vault as `${secrets.github.api_token}`), correlates, posts to Slack.
 
 **Problem:** No HTTP receiver exists today for any external webhook. M42 owns the event stream + history but not ingest. The GH Actions wedge is structurally unbuildable until this lands.
 
@@ -107,15 +107,18 @@ The original spec text below describes the *problem and intent* correctly; the *
 
 | File | Action | Why |
 |---|---|---|
-| `src/http/handlers/zombies/webhooks/github.zig` | NEW | GH-specific receiver: verify signature, normalize, XADD |
-| `src/http/handlers/zombies/webhooks/common.zig` | NEW | Shared helpers: HMAC verification primitive, envelope-write helper |
-| `src/http/router.zig` | EXTEND | Register `/webhooks/github` route under `/v1/workspaces/{ws}/zombies/{id}/` |
-| `src/zombie/webhook_normalizer/github.zig` | NEW | GH `workflow_run` payload → EventEnvelope normalizer |
+| `src/http/handlers/webhooks/github.zig` | NEW | GH-specific receiver: parse → filter → dedupe → normalize → XADD → 202 (HMAC verified upstream by `auth/middleware/webhook_sig.zig`, A2/A3) |
+| `src/http/router.zig` | EXTEND | Register `/v1/webhooks/{zombie_id}/github` (A1 — namespace shared with clerk/svix/approval/grant_approval/zombie) |
+| `src/zombie/webhook/normalizer/github.zig` | NEW | GH `workflow_run` payload → EventEnvelope normalizer (A10 layout) |
+| `src/zombie/webhook/normalizer/github_test.zig` | NEW | Colocated unit tests (A10, RULE TST-NAM clean) |
+| `src/http/handlers/webhooks/github_integration_test.zig` | NEW | Colocated integration test (A10 — project convention; not under top-level `tests/`) |
+| `schema/007_core_zombies.sql` | EDIT | Drop dead `webhook_secret_ref` column (A7, pre-v2.0 Schema Guard edit-in-place) |
+| `src/cmd/serve_webhook_lookup.zig` | EDIT | Drop `webhook_secret_ref` SELECT path; resolver simplifies to workspace-credential lookup (A6/A7) |
+| `src/http/handlers/webhooks/zombie.zig` | EDIT | Drop `webhook_secret_ref` from row struct + SELECT; comment points at workspace credentials (A7) |
 | `samples/platform-ops/TRIGGER.md` (or merged frontmatter — wait for M46) | EXTEND | Add `trigger.webhook.github: enabled` flag (or equivalent under `x-usezombie:`) |
 | `samples/platform-ops/SKILL.md` | EXTEND | Add a paragraph teaching the agent: when actor=webhook:github, first fetch GH run logs via `http_request GET https://api.github.com/repos/{repo}/actions/runs/{run_id}/logs` |
-| `tests/integration/webhook_github_test.zig` | NEW | E2E: post signed payload → assert event lands → assert zombie processes it |
-| `samples/fixtures/m43-webhook-fixtures/github_workflow_run_failure.json` | NEW | Real GH webhook payload structure (anonymized) |
-| `samples/fixtures/m43-webhook-fixtures/github_workflow_run_success.json` | NEW | Used to test "ignore success" filtering |
+| `samples/fixtures/webhook_github/workflow_run_failure.json` | NEW | Real GH webhook payload structure (anonymized) |
+| `samples/fixtures/webhook_github/workflow_run_success.json` | NEW | Used to test "ignore success" filtering |
 
 ---
 
@@ -123,12 +126,12 @@ The original spec text below describes the *problem and intent* correctly; the *
 
 ### §1 — Endpoint + signature verification
 
-`POST /v1/workspaces/{ws}/zombies/{id}/webhooks/github`
+`POST /v1/webhooks/{zombie_id}/github`
 
 ```
 1. Read raw request body (DO NOT parse JSON yet — signature is over raw bytes)
 2. Read X-Hub-Signature-256 header → expected = "sha256=" + hex(HMAC-SHA256(secret, body))
-3. Resolve workspace_id from path → fetch zombie config → resolve secrets.github.webhook_secret from vault
+3. Resolve workspace_id by reading `core.zombies.workspace_id` for the `{zombie_id}` from the URL (A11) → load workspace credential `github` via `vault.loadJson` → pull `webhook_secret` field
 4. Compute actual_sig = sha256_hmac(webhook_secret, body)
 5. constant_time_compare(actual, expected); on fail → 401 Unauthorized
 6. Parse JSON body; verify event type is workflow_run
@@ -214,7 +217,7 @@ This section is what makes the wedge real. Without it, the receiver lands events
 
 ```
 HTTP:
-  POST /v1/workspaces/{ws}/zombies/{id}/webhooks/github
+  POST /v1/webhooks/{zombie_id}/github
        headers: X-Hub-Signature-256, X-GitHub-Event, X-GitHub-Delivery
        body: raw GitHub webhook payload
        → 202 Accepted { event_id }
@@ -271,7 +274,7 @@ Redis dedupe key:
 | `test_secret_cache_invalidation` | Update github.webhook_secret in vault → next POST uses new secret (cache busts within 60s) |
 | `test_e2e_zombie_processes_webhook` | Full path: POST → XADD → worker thread (M40) picks up → processEvent (M42) → executor.startStage (M41) → assertion: `core.zombie_events` row with `actor=webhook:github`, `status=processed` |
 
-Fixtures in `samples/fixtures/m43-webhook-fixtures/`.
+Fixtures in `samples/fixtures/webhook_github/` (A10 — no `m43-` prefix).
 
 ---
 
