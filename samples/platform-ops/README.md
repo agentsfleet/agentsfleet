@@ -43,26 +43,24 @@ writes them into `zombie_vault` (KMS-enveloped in Postgres); the
 executor decrypts just-in-time and substitutes `${secrets.x.y}`
 placeholders into `http_request` tool calls after sandbox entry.
 
-Each credential is a **structured record** — host + token — so the
-zombie can reference `${secrets.fly.host}` and `${secrets.fly.api_token}`
-separately. Flag form:
+Each credential is a structured JSON record stored under a well-known
+name, so the zombie can reference `${secrets.fly.host}` and
+`${secrets.fly.api_token}` separately. Current `main` uses the
+`--data='<json>'` form:
 
 ```bash
 # fly.io — personal access token with read scope
 zombiectl credential add fly \
-  --host api.machines.dev \
-  --api-token "$FLY_API_TOKEN"
+  --data='{"host":"api.machines.dev","api_token":"'"$FLY_API_TOKEN"'"}'
 
 # upstash — account management API token (not a per-database password)
 zombiectl credential add upstash \
-  --host api.upstash.com \
-  --api-token "$UPSTASH_MGMT_TOKEN"
+  --data='{"host":"api.upstash.com","api_token":"'"$UPSTASH_MGMT_TOKEN"'"}'
 
 # slack — bot user OAuth token (xoxb-...), chat:write scope,
 # invited to the channel you want posts in
 zombiectl credential add slack \
-  --host slack.com \
-  --bot-token "$SLACK_BOT_TOKEN"
+  --data='{"host":"slack.com","bot_token":"'"$SLACK_BOT_TOKEN"'"}'
 ```
 
 If any of these three is missing at chat-time, the first tool call
@@ -83,18 +81,17 @@ there is no manual "start" step. Under the hood the API creates the
 so there is no race between install and first chat (see the
 architecture doc's install diagram).
 
-## Step 3 — Chat with it
+## Step 3 — Steer it
 
-`zombiectl chat` opens an interactive session: it replays any
-prior messages, then prompts you. Type a line and press enter — it
-POSTs to `/steer`, the worker injects it as an event (≤5s), and the
-agent's reply streams back into your terminal prefixed with `[claw]`.
-Ctrl-C exits the chat client; the zombie keeps running and any later
-chat picks up the history.
+Current `main` uses batch `zombiectl steer {id} "<message>"` for the
+operator smoke test. The CLI POSTs to the current `/messages` route,
+the worker injects the request as an event (≤5s), and the agent's
+reply streams back into your terminal prefixed with `[claw]`. The
+zombie keeps running after each steer; you can send another message at
+any time.
 
 ```bash
-zombiectl chat <zombie_id>
-> poll fly+upstash, summarise to #platform-ops
+zombiectl steer <zombie_id> "poll fly+upstash, summarise to #platform-ops"
 [claw] Starting from the cluster view. Hypothesis: look for an app that's been
        restarting, and a redis db whose memory is climbing.
        → GET /v1/apps  (14 apps)
@@ -183,7 +180,7 @@ to a host not on the allow list, so a prompt-injected "call
 
 ## Missing credential? Clean halt.
 
-If you chat before running all three `credential add` commands, the
+If you steer before running all three `credential add` commands, the
 first tool call needing the missing one emits a single
 `UZ-GRANT-001` event pointing at the fix:
 
@@ -193,7 +190,7 @@ UZ-GRANT-001: credential 'fly' not found in vault.
 ```
 
 The zombie halts cleanly — no crash, no partial Slack post, no
-retries. Add the credential and chat again.
+retries. Add the credential and steer again.
 
 ## Credential hygiene
 
@@ -208,8 +205,8 @@ retries. Add the credential and chat again.
   zero hits. The token bytes exist only transiently in the executor
   process's memory and inline in outgoing TLS bytes to fly / upstash /
   slack.
-- **Rotation.** `zombiectl credential add fly --host ... --api-token <new>`
-  overwrites the existing record; the next chat picks up the new token
+- **Rotation.** `zombiectl credential add fly --data='{"host":"api.machines.dev","api_token":"<new>"}'`
+  overwrites the existing record; the next steer picks up the new token
   with no zombie restart.
 
 ## How it works (two paragraphs)

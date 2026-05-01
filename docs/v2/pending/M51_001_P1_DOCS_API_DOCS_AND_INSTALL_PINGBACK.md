@@ -20,7 +20,7 @@
 
 The /quickstart/platform-ops walkthrough and the /privacy/cli-telemetry doc both touch surfaces that the M43 webhook review pinned. Three reinforcements:
 
-**D1 — Quickstart step 6 wording.** The current draft (§2 step 6: "Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.") matches the post-M43 design. Concretize the URL: the user pastes `https://api.usezombie.com/v1/webhooks/{zombie_id}/github`. The secret is the value the install-skill (M49) generated and showed once during install — not stored anywhere user-visible after that moment. The doc explicitly says: "Lost the secret? Run `zombiectl credential add github --data='{\"webhook_secret\":\"<new-S>\", ...}'` to rotate."
+**D1 — Quickstart step 6 wording.** The current draft (§2 step 6: "Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.") matches the post-M43 design. Concretize the URL: the user pastes `https://api.usezombie.com/v1/webhooks/{zombie_id}`. The secret is the value the install-skill (M49) generated and showed once during install — not stored anywhere user-visible after that moment. The doc explicitly says: "Lost the secret? Run `zombiectl credential add github --data='{\"webhook_secret\":\"<new-S>\", ...}'` to rotate."
 
 **D2 — Workspace-scoped webhook credential.** The quickstart must show that one operator at one workspace pastes the same secret into N repo webhook configs (one per zombie covering N repos). This is the actually-simple operator UX that the workspace-credential design unlocks; the doc should say so plainly. Tradeoff (also document): rotation is workspace-wide; rotating affects every zombie in the workspace.
 
@@ -112,7 +112,7 @@ Single page, top-to-bottom walkthrough:
 1. Prerequisite: Claude Code (or Amp, Codex CLI, OpenCode) installed locally. `zombiectl` installed (link to install).
 2. Run `zombiectl auth login` (signs in via Clerk OAuth).
 3. Run `/usezombie-install-platform-ops` in any supported host (Claude Code, Amp, Codex CLI, OpenCode).
-4. Answer the 3 prompts (Slack channel, branch glob, cron opt-in). BYOK is configured later via `zombiectl provider set` if you want to bring your own key — see the BYOK page.
+4. Answer the 3 prompts (Slack channel, branch glob, cron opt-in). Current `main` keeps BYOK credential setup outside the install flow through the workspace-scoped `credentials/llm` route; the tenant-scoped `zombiectl provider set` flow remains the pending M48 target contract — see the BYOK page.
 5. Skill installs the zombie + posts a first response to Slack.
 6. Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.
 7. Trigger: cause a deploy failure → see the Slack diagnosis arrive.

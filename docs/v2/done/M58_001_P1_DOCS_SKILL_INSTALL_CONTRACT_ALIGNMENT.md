@@ -4,7 +4,7 @@
 **Milestone:** M58
 **Workstream:** 001
 **Date:** May 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — pending install/docs artifacts now drift from canonical architecture and will mislead the next public-docs pass if left uncorrected.
 **Categories:** DOCS, SKILL
 **Batch:** B1 — follow-up architecture hygiene after M57; no code-path dependency beyond current `main`.
@@ -111,4 +111,6 @@ This workstream does not add or change runtime interfaces; it aligns planning an
 
 ## Discovery (consult log)
 
-N/A at creation.
+- Review, May 01, 2026: M49 and M51 still presented the older source-suffixed webhook URL as current install behavior, and `samples/platform-ops` still described manual interaction through `zombiectl chat` and `/steer`.
+- Decision, May 01, 2026: keep M48 tenant-provider material in the pending specs only when explicitly labeled as future target contract; reconcile webhook and manual steer wording to shipped `main` truth.
+- Closeout, May 01, 2026: M49, M51, and `samples/platform-ops` now align with canonical architecture on current webhook URL, batch `zombiectl steer`, and current-vs-target BYOK wording. No runtime code change was required.
