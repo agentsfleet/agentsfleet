@@ -4,11 +4,11 @@
 **Milestone:** M51
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — packaging-blocking. The launch tweet links to `docs.usezombie.com/quickstart/platform-ops`; if it 404s or shows stale homelab-zombie content, the launch lands flat. The install-pingback is what gives us the Day-N install metric without DM-polling Twitter.
 **Categories:** DOCS, API
 **Batch:** B3 — depends on all other v2 substrate + packaging being shippable. Final milestone before launch.
-**Branch:** feat/m51-docs-and-pingback (to be created)
+**Branch:** feat/m48-m51-onboarding-spec-fixes
 **Depends on:** M40-M49 (substrate + packaging — cross-reference pass walks every shipped spec). Nothing structural for the pingback endpoint itself.
 **Folded in:** M50 (architecture cross-reference + post-launch reflection) — formerly a separate spec, merged here Apr 25, 2026 because the docs workstream owns documentation drift, M50 was meta-work without independent user value, and consolidating reduces milestone count.
 

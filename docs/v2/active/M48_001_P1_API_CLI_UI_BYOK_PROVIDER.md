@@ -4,11 +4,11 @@
 **Milestone:** M48
 **Workstream:** 001
 **Date:** May 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without user-controlled LLM provider config and a clean credit-based billing model, the launch tweet's BYOK claim is hollow and the differentiation argument collapses.
 **Categories:** API, CLI, UI, SCHEMA, BILLING
 **Batch:** B1 — substrate-tier alongside M40-M45.
-**Branch:** feat/m48-byok-provider (to be created)
+**Branch:** feat/m48-m51-onboarding-spec-fixes
 **Depends on:**
 - **M11_005** (tenant billing — DONE) — provides `core.tenant_billing` and `balance_cents`. M48 extends with cost functions, two debit points in `processEvent`, and a one-time $10 starter grant insertion at tenant creation.
 - **M44_001** (install contract + doctor) — owns the `zombiectl doctor --json` surface that this spec extends with a `tenant_provider` block.

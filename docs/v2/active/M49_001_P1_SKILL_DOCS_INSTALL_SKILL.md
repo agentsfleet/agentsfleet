@@ -4,11 +4,11 @@
 **Milestone:** M49
 **Workstream:** 001
 **Date:** May 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — packaging-blocking. The wedge launch demo IS this skill installing platform-ops on Customer Zero's repo. Without it the runtime ships but no one knows how to put a zombie on their repo without running raw `zombiectl install --from`.
 **Categories:** SKILL, DOCS
 **Batch:** B3 — depends on substrate (M40-M46) being shippable end-to-end.
-**Branch:** feat/m49-install-skill (to be created)
+**Branch:** feat/m48-m51-onboarding-spec-fixes
 **Depends on:**
 - **M40** (worker substrate) — install must take effect immediately on the running worker.
 - **M42** (steer CLI) — for the post-install smoke-test event.
