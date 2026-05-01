@@ -9,9 +9,14 @@
 //         `conclusion=failure` are XADDed; everything else returns 200 OK
 //         with a `{"ignored":"<reason>"}` body so the diagnostic survives
 //         CDN / HTTP/2 proxy paths (RFC 9110 §6.4.5 forbids 204+body).
-// Idempotency: webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery} EX 86400.
+// Idempotency: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` (72 h TTL,
+//         covers GitHub's max retry window for the same delivery UUID).
+//         Dedupe is claimed AFTER zombie validation + action filter pass,
+//         so 4xx-rejected deliveries and intentionally ignored events do
+//         NOT consume a slot — operator-triggered redelivery of a
+//         once-paused zombie processes correctly when unpaused.
 // On accept: normalized envelope is XADDed to zombie:{id}:events with
-//            `actor=webhook:github`, `event_type=webhook`. Returns 202.
+//         `actor=webhook:github`, `event_type=webhook`. Returns 202.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -82,8 +87,6 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     }
 
-    if (!claimDeliveryKey(hx, zombie_id, delivery)) return;
-
     var zombie = fetchZombieById(hx.ctx.pool, hx.alloc, zombie_id) catch |err| {
         log.err("github_webhook.db_error zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
@@ -108,6 +111,9 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         hx.ok(.ok, .{ .ignored = decision.reason });
         return;
     }
+
+    // Dedupe AFTER validation+filter — see file header + spec A8 for why.
+    if (!claimDeliveryKey(hx, zombie_id, delivery)) return;
 
     const request_json = normalizer.normalize(hx.alloc, body, std.time.timestamp()) catch |err| {
         log.err("github_webhook.normalize_failed zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });

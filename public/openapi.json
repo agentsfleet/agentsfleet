@@ -1283,7 +1283,7 @@
       "post": {
         "operationId": "receive_webhook",
         "summary": "Deliver an inbound webhook event to a Zombie",
-        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key — no JSONB traversal, no source-name uniqueness required. Bearer token is validated against the Zombie's `trigger.token` (omit if no token configured). Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A new event is enqueued to the Zombie's Redis stream and returns 202.",
+        "description": "Delivers an inbound event to the Zombie identified by `zombie_id`. The Zombie is looked up by primary key — no JSONB traversal, no source-name uniqueness required. The body MUST be HMAC-SHA256 signed with the workspace credential keyed by the Zombie's `trigger.source` (e.g. vault row `zombie:linear`, field `webhook_secret`). The provider-specific signature header (`x-hub-signature-256` for GitHub, `x-slack-signature` for Slack, etc.) is verified upstream by the `webhook_sig` middleware; this handler runs only after the HMAC is valid. There is no Bearer fallback — every inbound webhook MUST be signed. Duplicate events (same `event_id` within 24 h) return 200 `{status: \"duplicate\"}`. A new event is enqueued to the Zombie's Redis stream and returns 202.",
         "tags": [
           "Zombies"
         ],
@@ -1383,7 +1383,7 @@
             }
           },
           "401": {
-            "description": "Missing or invalid Bearer token.",
+            "description": "Webhook auth failure. Three distinct codes: `UZ-WH-020 webhook_credential_not_configured` (zombie has no recognized provider, OR the workspace has no matching `zombie:<source>` vault credential, OR the credential JSON has no `webhook_secret` field — this is the operator-recoverable misconfig path); `UZ-WH-010 invalid_signature` (provider + secret are configured but the request is unsigned, mis-signed, or the body was tampered with); `UZ-WH-011 stale_timestamp` (Slack-style schemes with timestamp drift > 5 min).",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1416,11 +1416,7 @@
             "$ref": "#/components/responses/Error"
           }
         },
-        "security": [
-          {
-            "BearerAuth": []
-          }
-        ]
+        "security": []
       }
     },
     "/v1/webhooks/{zombie_id}/approval": {
