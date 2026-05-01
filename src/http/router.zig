@@ -45,6 +45,10 @@ pub const Route = union(enum) {
     approval_webhook: []const u8,
     /// POST /v1/webhooks/{zombie_id}/grant-approval — integration-grant approval callback.
     grant_approval_webhook: []const u8,
+    /// POST /v1/webhooks/{zombie_id}/github — GitHub Actions ingest. HMAC via
+    /// the workspace's `zombie:github` credential; handler filters to
+    /// workflow_run/failure and XADDs the M42 envelope.
+    github_webhook: []const u8,
     // M16_004: admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
@@ -187,10 +191,12 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     }
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
 
-    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval (before /approval)
+    // Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval (before /approval)
     if (matchers.matchWebhookAction(path, "/grant-approval")) |zombie_id| return .{ .grant_approval_webhook = zombie_id };
     // Zombie approval gate callback — /v1/webhooks/{zombie_id}/approval
     if (matchers.matchWebhookAction(path, "/approval")) |zombie_id| return .{ .approval_webhook = zombie_id };
+    // GitHub Actions ingest — /v1/webhooks/{zombie_id}/github
+    if (matchers.matchWebhookAction(path, "/github")) |zombie_id| return .{ .github_webhook = zombie_id };
     // Clerk user.created signup webhook — exact-match before the zombie-scoped
     // /v1/webhooks/{zombie_id} catch-all so "clerk" is not swallowed as a
     // zombie_id.

@@ -74,6 +74,9 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
         .grant_approval_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGrantApprovalWebhook },
+        // github_webhook reuses webhook_sig — HMAC scheme + secret resolved
+        // from the workspace's `zombie:github` credential.
+        .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
 
         // Zombie CRUD + activity + credentials
         .workspace_zombies => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceZombies },
@@ -157,6 +160,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.clerk_webhook, &reg) != null);
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
+    try testing.expect(specFor(.{ .github_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.memory_store, &reg) != null);
     try testing.expect(specFor(.memory_recall, &reg) != null);
     try testing.expect(specFor(.memory_list, &reg) != null);

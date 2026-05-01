@@ -118,6 +118,8 @@ paths:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1approval
   /v1/webhooks/{zombie_id}/grant-approval:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1grant-approval
+  /v1/webhooks/{zombie_id}/github:
+    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1{zombie_id}~1github
   /v1/workspaces:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces
   /v1/tenants/me/billing:

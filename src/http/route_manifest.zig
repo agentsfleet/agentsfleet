@@ -69,11 +69,12 @@ pub const entries = [_]Entry{
     // Zombie webhook ingest
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}" },
 
-    // Webhooks (clerk + approval + grant-approval + svix)
+    // Webhooks (clerk + approval + grant-approval + svix + github)
     .{ .method = "POST", .path = "/v1/webhooks/clerk" },
     .{ .method = "POST", .path = "/v1/webhooks/svix/{zombie_id}" },
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}/approval" },
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}/grant-approval" },
+    .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}/github" },
 
     // Telemetry
     .{ .method = "GET", .path = "/internal/v1/telemetry" },

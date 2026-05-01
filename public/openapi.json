@@ -1581,6 +1581,117 @@
         "security": []
       }
     },
+    "/v1/webhooks/{zombie_id}/github": {
+      "post": {
+        "operationId": "github_webhook",
+        "summary": "Ingest a GitHub Actions webhook",
+        "description": "GitHub `workflow_run` webhook receiver. Body is HMAC-SHA256 signed (X-Hub-Signature-256) against the workspace's `zombie:github` credential `webhook_secret` field. Only `action=completed` with `conclusion=failure` is XADDed to the zombie event stream; other events return 204. Idempotency keyed on `X-GitHub-Delivery` for 24h.",
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "description": "UUIDv7 of the zombie that owns this webhook receiver.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "X-GitHub-Event",
+            "in": "header",
+            "required": true,
+            "description": "GitHub event type. Only `workflow_run` is ingested.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-GitHub-Delivery",
+            "in": "header",
+            "required": true,
+            "description": "GitHub-issued delivery UUID. Used as the dedupe key.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "required": true,
+            "description": "HMAC-SHA256 of the raw body, prefixed with `sha256=`.",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Raw GitHub webhook payload — see https://docs.github.com/en/webhooks/webhook-events-and-payloads#workflow_run."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Duplicate delivery (idempotency hit).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "deduped": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Event accepted and enqueued.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    },
+                    "event_id": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "Event ignored (non-workflow_run, non-completed action, or non-failure conclusion)."
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "413": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "security": []
+      }
+    },
     "/v1/workspaces": {
       "post": {
         "operationId": "create_workspace",

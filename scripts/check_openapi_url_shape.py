@@ -64,6 +64,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "clerk",             # clerk webhook receiver
     "approval",          # webhook subpath for vendor-driven approval flows
     "grant-approval",    # webhook subpath for grant approval flows
+    "github",            # webhook subpath for GitHub Actions ingest (vendor-named provider)
     "complete",          # auth session completion (vendor-style verb, fine inbound)
     # Memory ops — top-level RPCs without a resource shape, predating §1:
     "forget", "list", "recall", "store",
