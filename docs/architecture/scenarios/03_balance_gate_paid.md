@@ -1,163 +1,353 @@
-# Scenario 03 — Balance gate, plan tiers, and what we charge for
+# Scenario 03 — The credit pool, two postures draining at different rates
 
-**Persona:** Operator past the free tier. Either still on platform-managed Anthropic (paying us bundled), or on BYOK Fireworks (paying Fireworks for inference + paying us for orchestration). Either way, the balance gate is the load-bearing mechanism that keeps a runaway zombie from spending unbounded money.
+**Personas — John Doe and Jane Doe.** Both are past the wedge demo (Scenario 01) and have one running zombie each. Both started with the same one-time $10 starter grant. John stays on platform-managed; Jane has activated BYOK with Fireworks (Scenario 02 setup complete). This scenario watches their credits drain over a normal week and ends with the gate tripping.
 
-**Outcome under test:** A tenant whose balance reaches zero stops dispatching new events at the gate. The operator gets a clear "credit exhausted" UX, a 1-click upgrade path, and an unambiguous picture of what's metered under each plan and each provider posture.
-
-> Current `main` note: the universal balance-gate semantics in this scenario are current, but any references to tenant-scoped `tenant_providers` or `zombiectl provider set` describe the intended M48 contract. Today the shipped BYOK credential storage surface is workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm`.
+**Outcome under test:** A tenant whose `core.tenant_billing.balance_cents` reaches zero stops dispatching new events at the gate. Same code path under both postures; only the per-event drain rate differs. The operator gets a clear "credits exhausted" UX pointing at the dashboard billing page. There is no Stripe purchase flow in v2.0 — exhausted operators contact support for a manual top-up.
 
 ```mermaid
 flowchart TD
     Start([XREADGROUP unblocks<br/>with new event]) --> Insert[INSERT zombie_events<br/>status=received]
-    Insert --> ResolvePlan[Resolve plan +<br/>provider posture]
-    ResolvePlan --> EstCost{Estimate cost:<br/>platform vs BYOK<br/>included vs overage}
-    EstCost -->|balance < est| Block[UPDATE status=gate_blocked<br/>failure_label=balance_exhausted<br/>XACK terminal]
-    EstCost -->|balance ≥ est| Approval[Approval gate]
-    Approval -->|blocked| Wait[gate_blocked until<br/>operator resumes]
-    Approval -->|pass| ResolveCreds[Resolve secrets_map<br/>+ resolveActiveProvider]
-    ResolveCreds --> Exec[executor.createExecution<br/>+ startStage]
-    Exec --> Result[StageResult returns]
-    Result --> Charge["compute_charge(plan, mode, tokens)<br/>platform: bundled LLM + orchestration<br/>BYOK: orchestration only"]
-    Charge --> Telem[INSERT telemetry<br/>UPDATE balance_cents]
-    Telem --> End([XACK])
+    Insert --> Resolve[Resolve posture<br/>tenant_provider.resolveActiveProvider]
+    Resolve --> Estimate[Estimate event cost<br/>receive + worst-case stage]
+    Estimate --> Gate{balance_cents<br/>≥ estimate?}
+    Gate -->|no| Block[UPDATE status=gate_blocked<br/>failure_label=balance_exhausted<br/>XACK terminal]
+    Gate -->|yes| RDeduct[DEDUCT receive cents<br/>UPDATE balance_cents<br/>INSERT telemetry charge_type=receive]
+    RDeduct --> Approve[Approval gate]
+    Approve -->|blocked| Wait[gate_blocked until<br/>operator resumes]
+    Approve -->|pass| Secrets[Resolve secrets_map]
+    Secrets --> SDeduct[DEDUCT stage cents<br/>UPDATE balance_cents<br/>INSERT telemetry charge_type=stage]
+    SDeduct --> Exec[executor.createExecution<br/>+ startStage]
+    Exec --> Result[StageResult returns<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
+    Result --> End([XACK])
     Block --> EndBlocked([XACK])
 ```
 
----
-
-## 1. Plan structure (v2)
-
-Three plans. Tenant-scoped, billed monthly, can be combined with either platform or BYOK provider posture.
-
-| Plan | Monthly | Included events | Overage (platform) | Overage (BYOK) | Notes |
-|---|---|---|---|---|---|
-| **Free** | $0 | 50 events / mo | n/a — gate trips at zero | n/a — gate trips at zero | Single workspace. No BYOK (paid plans only). |
-| **Team** | $99 | 2,000 events / mo | $0.05 / event | $0.01 / event | Multi-workspace per tenant. BYOK enabled. |
-| **Scale** | $499 | 15,000 events / mo | $0.03 / event | $0.005 / event | All Team features + priority support, longer retention. |
-
-Pricing is illustrative — the architectural shape is what matters.
-
-What an "event" is for billing: one entry on `zombie:{id}:events` that the worker dispatches into `executor.startStage`. Steer, webhook, cron, and continuation all count as one event each. Gate-blocked events count as **zero** (they never reach the executor; we charged nothing).
-
-The provider posture changes only the **overage rate**, not the gate logic. Free plan does not allow BYOK because BYOK pricing presumes a paid baseline.
+> Single source of truth for the cost model: [`../billing_and_byok.md`](../billing_and_byok.md). This scenario walks through what those numbers mean in practice for one operator over one week.
 
 ---
 
-## 2. What we meter under each posture
+## 1. The credit pool
 
-The two postures meter different things because the cost structure is different:
-
-### Platform-managed (we pay Anthropic / OpenAI / etc.)
-
-| Cost component | Source of truth | Charged to operator |
-|---|---|---|
-| LLM tokens (input + output) | `StageResult.tokens` | Bundled into per-event price |
-| Egress / storage | Hosting provider | Bundled |
-| Orchestration (worker + executor + DB + Redis) | UseZombie infra | Bundled |
-
-One per-event price covers all three. The bundled rate has margin over our wholesale LLM cost.
-
-### BYOK (operator pays the LLM provider directly)
-
-| Cost component | Source of truth | Charged to operator |
-|---|---|---|
-| LLM tokens | Operator's provider account (Fireworks, etc.) | Provider bills operator directly |
-| Egress / storage | UseZombie hosting | Bundled |
-| Orchestration | UseZombie infra | Per-event orchestration fee |
-
-The operator pays Fireworks for the Kimi inference. We charge a smaller per-event orchestration fee (margin over our infra cost only, no LLM markup).
-
-This means the **balance gate stays on for both postures** — only the cost function differs. Earlier drafts said "BYOK skips balance gate"; that's wrong. BYOK skips only the LLM-token meter.
-
----
-
-## 3. The gate — code path
-
-In `processEvent`, before the executor call:
+Both John and Jane start with the same balance:
 
 ```
-1. INSERT core.zombie_events (status='received')
-2. PUBLISH event_received
-
-3. Balance gate:
-   - resolve tenant plan (tenant_billing.plan)
-   - resolve provider posture (tenant_providers.mode)
-   - estimate event cost:
-       if mode=platform: overage_rate_platform[plan] (or zero if within included)
-       if mode=byok:     overage_rate_byok[plan]     (or zero if within included)
-   - if tenant_billing.balance_cents < estimated_cost:
-       UPDATE core.zombie_events
-         SET status='gate_blocked',
-             failure_label='balance_exhausted',
-             updated_at=now()
-       PUBLISH event_complete (status=gate_blocked)
-       XACK
-       — done. Operator sees the row in zombiectl events.
-
-4. Approval gate (separate, using the same gate-blocked lifecycle).
-5. Resolve secrets_map.
-6. executor.createExecution.
-7. executor.startStage.
-8. UPDATE core.zombie_events (status=processed).
-9. INSERT zombie_execution_telemetry:
-       credit_deducted_cents = compute_charge(plan, mode, tokens)
-   compute_charge:
-       if within included quota for the month → 0
-       elif mode=platform → overage_rate_platform[plan]
-       elif mode=byok     → overage_rate_byok[plan]
-10. UPDATE tenant_billing SET balance_cents = balance_cents - credit_deducted_cents.
-11. UPSERT zombie_sessions, PUBLISH event_complete, XACK.
+SELECT balance_cents FROM core.tenant_billing WHERE tenant_id = $1;
+ balance_cents
+---------------
+          1000
+(1 row)
 ```
 
-The gate is **single-pass at step 3**. If the operator's balance can't cover the estimated cost of *one* event, the event is rejected at the gate. The estimate is conservative (use the overage rate, not the actual token count — we don't know it yet).
+That's $10 USD, granted once at tenant-create. There is no monthly refill. There are no plan tiers in the gate — every tenant runs through the same `processEvent` code path and the same `compute_*_charge` functions. The only number that varies is the drain rate, and the drain rate is purely posture-dependent.
 
-Mid-event balance crossing zero is fine: in-flight events run to completion. The next event hits the gate.
+Plans (Free / Team / Scale, if they exist as marketing constructs) only show up at credit-grant time as bigger or smaller starting numbers — never inside the gate or the cost function. In v2.0 we ship one tier: $10 starter grant for every new tenant.
 
 ---
 
-## 4. The credit-exhausted UX
+## 2. John Doe — platform-managed, token-based drain
 
-When the gate blocks, the operator's surfaces show:
+**Setup recap.** John ran the wedge demo. His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=anthropic`, `model=claude-sonnet-4-6`, `context_cap_tokens=200000`. The platform-side server config holds the actual Anthropic api_key.
 
-- **`zombiectl events {id}`**: the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-liner suggestion: `⚠ Tenant balance exhausted. Upgrade or top up: zombiectl plan upgrade`.
-- **Dashboard `/zombies/{id}/events`**: the row renders with a red `Blocked: balance` chip and an inline upgrade CTA.
-- **Slack (if the SKILL.md author wired it)**: optional — the SKILL.md prose can include a "if I can't run, post to #ops-billing" instruction. Out-of-the-box samples don't include this; it's an authoring choice.
-- **Email** (optional follow-up surface): a daily digest "you blocked N events yesterday — upgrade?".
+### 2.1 First webhook fires (Monday morning)
 
-The blocked row is **terminal** (XACKed, immutable narrative). When the operator tops up, **no automatic replay**. If they want the missed events processed, they either:
+```
+XREADGROUP unblocks → INSERT zombie_events (status='received')
+resolveActiveProvider → mode=platform
+estimate cost = compute_receive_charge(.platform)
+              + compute_stage_charge(.platform, claude-sonnet-4-6,
+                                     worst_case_in=900, worst_case_out=1200)
+              = 1¢ + (1¢ + 0¢ + 1¢) = 3¢
 
-1. Re-trigger from the source (push another commit, send another steer), or
-2. Use the dashboard or CLI resume affordance, which synthesises an `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
+gate: 1000¢ ≥ 3¢ → pass
+
+DEDUCT RECEIVE
+  UPDATE tenant_billing SET balance_cents = 1000 - 1 = 999
+  INSERT zombie_execution_telemetry
+    (event_id, posture='platform', model='claude-sonnet-4-6',
+     charge_type='receive', credit_deducted_cents=1)
+
+approval gate → pass (no destructive tools in this run)
+
+resolveSecretsMap → {fly, slack, github}
+
+DEDUCT STAGE
+  UPDATE tenant_billing SET balance_cents = 999 - 2 = 997
+  INSERT zombie_execution_telemetry
+    (event_id, posture='platform', model='claude-sonnet-4-6',
+     charge_type='stage', credit_deducted_cents=2)
+
+executor.createExecution → executor.startStage
+  outbound to api.anthropic.com
+  StageResult returns: tokens(in=820, out=1040), wall=8.2s
+
+UPDATE zombie_execution_telemetry  (the stage row)
+  SET token_count_input=820, token_count_output=1040, wall_ms=8210
+
+reconcile actual cost:
+  actual_stage = compute_stage_charge(.platform, sonnet, 820, 1040)
+               = 1¢ + ((300×820 + 1500×1040) / 1_000_000) ≈ 1¢ + 1¢ = 2¢
+  matches the conservative estimate; no adjustment.
+
+UPDATE zombie_events status='processed'
+XACK
+```
+
+After event 1: balance = 997¢. John spent 3¢ for one event.
+
+### 2.2 Through the week
+
+Monday's webhook + steers run. John gets ~30 events Monday at an average of 3¢ each = 90¢ spent. Tuesday is busier (a flaky deployment generates 50 webhook events, plus a few manual steers) — say 60 events × ~3¢ = 180¢ spent. By end of Tuesday: 1000 − 90 − 180 = 730¢ left.
+
+Wednesday through Friday continue at ~40 events/day × ~3¢ = ~120¢/day.
+
+End of Friday: 730 − 360 = 370¢ left.
+
+Saturday is quiet but a long-running incident triggers a multi-stage continuation (4 continuation events on the same incident). Each continuation event still goes through `processEvent` independently — receive cent, stage cents — so the 4 continuations add ~12¢ on top of normal Saturday activity.
+
+By Sunday evening: ~50¢ left. The gate hasn't tripped yet, but the next big incident will exhaust it.
+
+### 2.3 Monday morning, the gate trips
+
+A 30-event burst from a CD pipeline misfire hits John's webhook URL. `processEvent` runs through 17 events (drains 50¢ → near 0¢) before the 18th event fires:
+
+```
+estimate cost = 3¢
+gate: 0¢ < 3¢ → BLOCK
+
+UPDATE zombie_events
+  SET status='gate_blocked', failure_label='balance_exhausted'
+PUBLISH event_complete (status=gate_blocked)
+XACK terminal
+```
+
+Events 18 through 30 all gate-block in turn. None of them touch the executor; UseZombie's costs for them are SQL-only.
+
+John's experience:
+
+- His Slack stops getting diagnoses around 09:14 UTC.
+- He runs `zombiectl billing show` (next section's transcript).
+- He sees the empty-balance state in the dashboard and emails support for a top-up. (Stripe Purchase Credits ships in v2.1.)
+- After support tops him up to $10 again, he can re-trigger the missed events manually if any are worth running. There is no auto-replay of gate-blocked events.
+
+---
+
+## 3. Jane Doe — BYOK Fireworks Kimi K2.6, flat drain
+
+**Setup recap.** Jane completed Scenario 02. Her `tenant_providers` row: `mode=byok`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`, `credential_ref=account-fireworks-byok`. The vault holds her `fw_LIVE_…` key.
+
+### 3.1 First webhook fires
+
+```
+resolveActiveProvider → mode=byok, api_key=fw_LIVE_…, model=kimi-k2.6
+estimate cost = compute_receive_charge(.byok) + compute_stage_charge(.byok, …)
+              = 0¢ + 1¢ = 1¢
+
+gate: 1000¢ ≥ 1¢ → pass
+
+DEDUCT RECEIVE → 0¢ deducted (BYOK receive is zero in v2.0)
+  INSERT telemetry (charge_type='receive', credit_deducted_cents=0)
+
+DEDUCT STAGE → 1¢ deducted
+  UPDATE balance_cents = 1000 - 1 = 999
+  INSERT telemetry (charge_type='stage', credit_deducted_cents=1)
+
+executor.startStage with provider_api_key=fw_LIVE_… → outbound to
+  api.fireworks.ai/inference/v1/chat/completions
+StageResult returns: tokens(in=820, out=1320), wall=11.4s
+  — tokens recorded on the row, but compute_stage_charge under BYOK
+    does NOT consume them (flat 1¢ regardless of token count)
+
+UPDATE telemetry stage row SET token_count_input=820, token_count_output=1320,
+                              wall_ms=11400
+(credit_deducted_cents stays 1¢; tokens are FYI only under BYOK)
+
+UPDATE zombie_events status='processed'
+XACK
+
+Fireworks bills Jane's Fireworks account directly for the 820+1320 tokens
+of Kimi K2.6 on her own monthly invoice. UseZombie sees only the
+StageResult.tokens count for telemetry; we do not know what Fireworks
+charged Jane for those tokens, and we do not care.
+```
+
+After event 1: balance = 999¢. Jane spent 1¢ on UseZombie. Fireworks separately bills her some fraction of a cent for the LLM call.
+
+### 3.2 Through the week
+
+Same shape of activity as John's Monday-Sunday week — same workload, same number of events. But every event drains 1¢ instead of ~3¢:
+
+- Mon: 30 events × 1¢ = 30¢.
+- Tue: 60 events × 1¢ = 60¢.
+- Wed-Fri: 120 events × 1¢ = 120¢.
+- Sat (incident with 4 continuations): ~44 events × 1¢ = 44¢.
+- Sun: 30 events × 1¢ = 30¢.
+
+End of Sunday: 1000 − 284 = 716¢ left.
+
+Jane's UseZombie credits last roughly 3× longer than John's for the same workload. Her Fireworks bill, separately, reflects the actual token cost on her own provider — which may be cheaper or more expensive than Anthropic Sonnet at the wholesale level, but doesn't touch UseZombie's books.
+
+### 3.3 The gate eventually trips for Jane too — just later
+
+Jane keeps running for ~3 weeks before her $10 starter grant runs out. When it does, the gate trips identically:
+
+```
+estimate cost = 1¢
+gate: 0¢ < 1¢ → BLOCK
+```
+
+She gets the same `balance_exhausted` state, the same dashboard CTA, the same support-email path for a top-up. The drain rate differed; the failure mode is identical.
+
+---
+
+## 4. Side-by-side comparison
+
+| Aspect | John (platform) | Jane (BYOK Fireworks) |
+|---|---|---|
+| `tenant_providers` row | Absent (synth-default) | `mode=byok`, `credential_ref=account-fireworks-byok` |
+| Resolver returns | `{provider: anthropic, api_key: <PLATFORM>, model: claude-sonnet-4-6, …}` | `{provider: fireworks, api_key: fw_LIVE_…, model: …kimi-k2.6, …}` |
+| Receive deduct per event | 1¢ | 0¢ |
+| Stage deduct per event | 1¢ overhead + token cost (~1–4¢ for typical events on Sonnet) | 1¢ flat |
+| Typical per-event total | ~3¢ | 1¢ |
+| LLM bill payer | UseZombie (passthrough in our token rate) | Jane's Fireworks account directly |
+| Outbound LLM call | `api.anthropic.com` | `api.fireworks.ai/inference/v1` |
+| `$10 starter grant` lasts | ~7 days at moderate use | ~21 days at the same workload |
+| Gate code path | Identical | Identical |
+| Telemetry rows per event | 2 (receive + stage) | 2 (receive=0¢, stage=1¢) |
+
+The 2.5–3× drain difference is the BYOK incentive. Jane gets a flexibility win (her own provider, her own model choice, her own enterprise procurement) **and** a longer runway on UseZombie credits. She still pays Fireworks separately for the actual tokens.
+
+---
+
+## 5. Switching posture mid-stream
+
+Either operator can flip postures at any time. The mechanics:
+
+- **John flips to BYOK** (let's say he gets an OpenRouter account so he can experiment with Kimi K2):
+  ```
+  zombiectl credential set my-openrouter --data '{
+    "provider": "openrouter",
+    "api_key":  "sk-or-…",
+    "model":    "moonshotai/kimi-k2"
+  }'
+  zombiectl tenant provider set --credential my-openrouter
+  ```
+  Next event resolves `mode=byok`. Drain drops from ~3¢ to 1¢ per event. John's remaining credits last longer. The api_key is in vault; he never sees it again from any UseZombie surface.
+
+- **Jane flips back to platform** (Fireworks billing issue, she pauses BYOK):
+  ```
+  zombiectl tenant provider reset
+  ```
+  Next event resolves `mode=platform`. Drain jumps from 1¢ to ~3¢. If her balance is now too low for the platform-rate worst-case estimate, the gate trips on the next event — she'd see the credit-exhausted UX and need to top up.
+
+In-flight events finish under the posture they were claimed under (gate snapshot). No mid-execution re-billing.
+
+---
+
+## 6. The credit-exhausted user experience — terminal transcripts
+
+### 6.1 What John sees when the gate trips
+
+```text
+$ zombiectl events zmb_01HX9N3K… --since 24h | head -3
+EVENT_ID                 ACTOR             STATUS         FAILURE_LABEL
+evt_01HXG2K4…           webhook:github    gate_blocked   balance_exhausted
+evt_01HXG2K3…           webhook:github    gate_blocked   balance_exhausted
+evt_01HXG2K2…           webhook:github    gate_blocked   balance_exhausted
+
+ⓘ Credits exhausted. See https://app.usezombie.com/settings/billing
+```
+
+```text
+$ zombiectl billing show
+Tenant balance:    $0.00 (0¢)
+
+Last 10 events drained credits:
+  EVENT_ID         POSTURE   MODEL                IN_TOK  OUT_TOK  RECEIVE  STAGE  TOTAL
+  evt_01HXG2K0…    platform  claude-sonnet-4-6     820     1040       1¢     2¢     3¢
+  evt_01HXG2JZ…    platform  claude-sonnet-4-6     800     1100       1¢     2¢     3¢
+  evt_01HXG2JY…    platform  claude-sonnet-4-6     880     1320       1¢     2¢     3¢
+  …
+
+ⓘ Out of credits? See https://app.usezombie.com/settings/billing
+   Stripe purchase ships in v2.1; for now contact support for a top-up.
+```
+
+Dashboard `/settings/billing` shows:
+
+- Headline: **$0.00 USD**.
+- **Purchase Credits** button (disabled, tooltip "Coming in v2.1 — contact support for a top-up").
+- Usage tab populated with John's drain history.
+- Invoices tab: empty state.
+- Payment Method tab: empty state.
+- Auto Top Up card: hidden (not shipped in v2.0).
+
+### 6.2 What Jane sees three weeks later
+
+Identical to John's view, except the Usage tab shows BYOK rows:
+
+```text
+$ zombiectl billing show
+Tenant balance:    $0.00 (0¢)
+
+Last 10 events drained credits:
+  EVENT_ID         POSTURE  MODEL                            IN_TOK  OUT_TOK  RECEIVE  STAGE  TOTAL
+  evt_01HXJ4P7…    byok     accounts/.../kimi-k2.6            820     1320       0¢     1¢     1¢
+  evt_01HXJ4P6…    byok     accounts/.../kimi-k2.6            800     1240       0¢     1¢     1¢
+  …
+
+ⓘ Out of credits? See https://app.usezombie.com/settings/billing
+   Stripe purchase ships in v2.1; for now contact support for a top-up.
+```
+
+The `IN_TOK` and `OUT_TOK` columns are present under BYOK for transparency (Jane can see how many tokens her zombies are consuming — useful for her separate Fireworks-bill review), but the `STAGE` cents column is flat 1¢ regardless of token count under BYOK.
+
+### 6.3 No automatic replay
+
+Once topped up (manually in v2.0; via Stripe in v2.1+), the gate-blocked events do **not** auto-replay. If the operator wants to re-process a missed webhook, they:
+
+1. Re-trigger from the source (push a no-op commit, send another steer), or
+2. Use the resume affordance — which writes an `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`, dispatched cleanly through the gate at the new balance.
 
 The reasoning is that a balance-exhausted event is usually evidence the operator was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
 
 ---
 
-## 5. Switching postures mid-month
+## 7. Edge cases
 
-An operator can switch between platform and BYOK at any time. Effects:
+### 7.1 Mid-event balance crossing zero
 
-- **Platform → BYOK** (e.g. operator runs out of platform credit, brings own Fireworks key): `provider set` flips `tenant_providers.mode=byok` immediately. Next event uses BYOK's lower overage rate. In-flight events finish at the platform rate they were claimed under.
-- **BYOK → platform** (operator stops paying Fireworks): `provider reset` flips `mode=platform`. Next event uses the platform overage rate. If the operator's balance is now too low for platform pricing, the gate trips on the next event.
-- **Mid-event change**: the snapshot at claim time wins. Provider posture is resolved exactly once, before `createExecution`.
+In-flight events finish at the snapshot taken at gate time. Both deductions (receive + stage) committed before the executor ran; the executor's success or failure does not retroactively adjust the deduction. If the operator's balance crosses zero during a long stage, the next event hits the gate cleanly and blocks.
 
-The "in-flight events" question matters because BYOK and platform have wildly different per-event costs. We never want a request that the operator started under one posture to bill at another.
+### 7.2 Concurrent events on near-zero balance
 
----
+Two events claim the queue simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance briefly goes negative. We accept the small overshoot rather than serialise all events behind a row lock that would limit throughput. The next event sees `balance_cents < 0`, gate trips, system stabilises.
 
-## 6. What this scenario proves
+### 7.3 Posture flip mid-event
 
-- Balance gate is a single code path. It runs for both postures. The cost function differs; the gate logic does not.
-- Free plan doesn't allow BYOK. BYOK costs us less to serve, but presumes the operator is paying upstream — the Free tier is for evaluation, and giving free orchestration to operators with their own LLM key would be a vector for abuse.
-- The operator's billing surface is `tenant_billing.balance_cents` — same column, regardless of posture. The composition of what depleted it (LLM tokens vs orchestration fees) is a reporting concern, not a runtime concern.
-- No auto-replay of gate-blocked events. Resume is always a deliberate operator action.
-- Plan changes and provider posture changes are independent. Tenant can be on Scale + platform, Team + BYOK, etc. Five product combinations from two orthogonal axes.
+The resolver runs exactly once at gate time (step "Resolve posture" in the flowchart). Whatever posture it returned is the snapshot for both deductions and the outbound LLM call. A `tenant provider set` that lands during step 3-7 of the flowchart has no effect on this event; it takes effect on the next event.
+
+### 7.4 BYOK credential deleted while still in BYOK mode
+
+Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_label='provider_credential_missing'`. **Receive is not debited** (we couldn't even resolve posture, so we wouldn't know which receive rate to use); the dead-letter row stays at the very-early step. This is a different terminal state than `balance_exhausted` and the dashboard distinguishes them.
 
 ---
 
-## 7. Open product questions deferred from this scenario
+## 8. What this scenario proves
 
-- Pre-paid credits vs. post-paid invoicing for Team/Scale. v2 starts pre-paid only — simpler dunning, no AR risk.
-- Per-workspace soft caps inside a tenant (e.g. "the staging workspace can spend at most $10/day even if the tenant balance is $1000"). v3 work — needs a new gate at the workspace level.
-- Refunds for events that completed but produced obviously broken output. Manual support process in v2.
-- Volume discounts beyond Scale (Enterprise tier). Sales-led, off-list pricing, deferred.
+- **Same code path serves both postures.** The gate, the receive deduct, the stage deduct, and the telemetry rows are identical SQL; only the cents differ.
+- **Drain rate is the BYOK signal.** Jane's UseZombie credits last ~3× longer than John's for identical workloads — a transparent, observable benefit of bringing a key.
+- **Plan tiers are not a code-path concept.** They never appear inside `processEvent` or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
+- **The api_key boundary holds in production paid-plan traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, worker logs, executor logs, and HTTP responses for either api_key (PLATFORM_ANTHROPIC or `fw_LIVE_…`) returns zero hits across the entire week's run. (M48 acceptance criterion; tested in CI.)
+- **The credit-exhausted UX is a dashboard story, not a CLI story.** The CLI surfaces the state and points at the dashboard. Purchase / top-up are dashboard-shipping concerns (and ship empty in v2.0, with the actual Stripe integration in v2.1).
+
+---
+
+## 9. Open questions deferred to v2.1+ and v3
+
+- **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement.
+- **Auto Top Up** when balance drops below a threshold. v2.1.
+- **Plan tiers as recurring credit grants.** v2.1+ if onboarding metrics suggest the $10 starter is the wrong knob. Any plan tier ships as a recurring Stripe charge that tops up `balance_cents` — never as a branch inside `compute_charge`.
+- **Refund-on-actual-tokens.** v3. Today the conservative estimate is the charge; reconciling to actual tokens adds bookkeeping for marginal accuracy gain.
+- **Per-workspace soft caps inside a tenant.** v3 — needs a new gate at the workspace level.
+- **Volume discounts.** v3, sales-led.
+- **Auto-fallback from BYOK to platform on provider error.** Errors surface to the operator; no silent fallback (would charge them without consent).

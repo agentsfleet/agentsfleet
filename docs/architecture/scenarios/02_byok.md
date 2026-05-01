@@ -116,10 +116,10 @@ The provider key flows through `executor.createExecution` as a separate field fr
 
 NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks.ai/inference/v1/chat/completions` with `model: accounts/fireworks/models/kimi-k2.6` and the agent's prompt. Fireworks bills the operator. The diagnosis returns over the Unix socket; the worker handles it the same way as Scenario 01.
 
-`StageResult` arrives. Telemetry insert:
-- `token_count=2110` (Kimi tends to be slightly more verbose than Sonnet on the same prompt)
-- `plan_tier='team'` (BYOK requires at least Team — see Scenario 03)
-- `credit_deducted_cents=2` (orchestration-only fee, lower than platform-managed because we don't pay upstream LLM cost)
+`StageResult` arrives. Two telemetry rows exist for this event (per the credit-pool model — see [`../billing_and_byok.md`](../billing_and_byok.md) §3):
+- The receive row was INSERTed earlier at gate time: `charge_type='receive'`, `posture='byok'`, `credit_deducted_cents=0` (BYOK receive is zero in v2.0).
+- The stage row was INSERTed before `startStage`: `charge_type='stage'`, `posture='byok'`, `credit_deducted_cents=1` (flat orchestration overhead under BYOK; no token markup).
+- Now UPDATEd post-execution with `token_count_input=820, token_count_output=1320, wall_ms=11400` — recorded for transparency on the Usage tab and for Jane's separate Fireworks-bill review, but the cents column does **not** change because BYOK pricing is flat.
 
 L3 stage chunking (M41 §6) sees `context_cap_tokens=256000`, sets the chunk-trigger threshold at `0.75 * 256000 = 192000`. Same code path as Scenario 01; only the number differs.
 
@@ -217,7 +217,7 @@ Context cap tokens:  256000
 Credential ref:      account-fireworks-byok
 
 ⓘ LLM tokens billed to Jane's fireworks account. UseZombie charges the
-  orchestration-only rate ($0.01/event over the Team plan's 2000 included).
+  flat 1¢ per event regardless of model or token count.
 ```
 
 The api_key bytes are absent from both surfaces — `doctor --json` strips it before serialising; `tenant provider get` never asks for it.

@@ -1,6 +1,6 @@
 # Scenario 01 — Default install, platform-managed key, free tier
 
-**Persona — John Doe.** First-time operator. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key, no paid plan yet. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
+**Persona — John Doe.** First-time operator. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time $10 starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
 **Outcome under test:** From cold start (`zombiectl` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
 
@@ -134,8 +134,8 @@ The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent`:
 
 1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
 2. PUBLISH `zombie:{id}:activity` (`event_received`).
-3. **Balance gate fires.** Tenant is on Free plan, balance > 0 → pass. (See `scenarios/03_balance_gate_paid.md` for the depleted case.)
-4. Approval gate (Free tier, no destructive tools) → pass.
+3. **Balance gate fires.** John has the $10 starter grant — `balance_cents=1000`, comfortably above the platform-rate event estimate. Gate passes; receive deduct fires (1¢ → 999¢). (See [`./03_balance_gate_paid.md`](./03_balance_gate_paid.md) for the gate-trip case.)
+4. Approval gate (no destructive tools wired in this zombie) → pass.
 5. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`.
 6. **Resolve provider config:** `tenant_provider.resolveActiveProvider(tenant_id)` returns `{mode: "platform", provider: "anthropic", api_key: <platform_key>, model: "claude-sonnet-4-6"}`. The cap from frontmatter (`200_000`) wins because `mode=platform` and the worker prefers the install-time pinned cap when available.
 7. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=200000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "claude-sonnet-4-6"})`.
@@ -251,7 +251,7 @@ No `core.tenant_providers` row exists for John's tenant; `tenant provider get` r
 - The install-skill is the only place where repo detection, ≤4 question discipline, and credential resolution live. The runtime stays prompt-driven.
 - The model→cap lookup is **one external GET per install**, pinned into frontmatter. Adding a new model never requires a usezombie release.
 - The first steer and the first production webhook hit the **same reasoning loop**. Asymmetry would mean a code-path the SKILL.md author can't reason about — the architecture forbids it.
-- Free-tier credit deduction goes through the same `zombie_execution_telemetry` insert as any paid plan. Plan tier is metadata on the row, not a separate code path.
+- Credit deduction goes through the same `zombie_execution_telemetry` insert path under both postures. There is no plan-tier branching — same code path for John (synth-default platform) and any future operator on Stripe-purchased credits.
 
 ---
 
