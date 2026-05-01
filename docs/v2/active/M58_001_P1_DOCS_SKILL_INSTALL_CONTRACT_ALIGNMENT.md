@@ -4,7 +4,7 @@
 **Milestone:** M58
 **Workstream:** 001
 **Date:** May 01, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — pending install/docs artifacts now drift from canonical architecture and will mislead the next public-docs pass if left uncorrected.
 **Categories:** DOCS, SKILL
 **Batch:** B1 — follow-up architecture hygiene after M57; no code-path dependency beyond current `main`.
