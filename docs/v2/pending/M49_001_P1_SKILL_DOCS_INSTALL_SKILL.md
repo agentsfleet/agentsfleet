@@ -11,7 +11,7 @@
 **Branch:** feat/m49-install-skill (to be created)
 **Depends on:** M40 (worker substrate — install must take effect immediately), M42 (steer CLI for the post-install demo), M43 (webhook ingest — if user opts into GH Actions trigger, install configures the webhook), M44 (install contract + doctor — skill calls `zombiectl doctor` before invoking install), M45 (vault structured creds — skill resolves credentials into structured form), M46 (frontmatter schema — skill generates a single SKILL.md, not SKILL+TRIGGER).
 
-**Canonical architecture:** `docs/architecture/` §8.1-§8.5 (authoring, installing, triggering — this skill IS the §8.1-§8.2 workflow automated).
+**Canonical architecture:** `docs/architecture/user_flow.md` §8.1-§8.5 (authoring, installing, triggering — this skill IS the §8.1-§8.2 workflow automated). Cap + model lookup design lives in `docs/architecture/billing_and_byok.md` §9 (see Discovery D1/D2 below).
 
 ---
 
@@ -69,11 +69,11 @@ The directory inside the `usezombie/skills` distribution repo (`usezombie/skills
 
 1. Calls `zombiectl doctor --json`. If any check fails, surfaces the failure with the `auth login` hint and exits.
 2. Detects the user's repo: reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, `package.json`. Infers deploy target.
-3. Resolves variables (4 max) via host-neutral natural-language Q&A (NOT Claude-specific `AskUserQuestion`):
+3. Resolves variables (3 total — per B6) via host-neutral natural-language Q&A (NOT Claude-specific `AskUserQuestion`):
    - `slack_channel` (e.g., `#platform-ops`)
    - `prod_branch_glob` (e.g., `main` or `release/*`)
    - `cron_opt_in` (boolean, default false)
-   - `byok_provider_credential` (optional — if user wants BYOK from start)
+   - BYOK provider config is set later via `zombiectl provider set` (M48), not as part of install.
 4. Resolves credentials in order: `op` (1Password CLI) → env vars → interactive prompt fallback. Stores via `zombiectl credential add` with structured fields.
 5. Fetches the canonical platform-ops template from `https://raw.githubusercontent.com/usezombie/usezombie/<pinned-tag>/samples/platform-ops/SKILL.md`. Caches at `~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/`.
 6. Generates `.usezombie/platform-ops/SKILL.md` in the user's repo with substituted variables.
@@ -151,9 +151,7 @@ x-usezombie:
       prompt: "Should the zombie also run a periodic health check (every 30 min)?"
       type: bool
       default: false
-    - name: byok_provider_credential
-      prompt: "Use BYOK (your own Anthropic/OpenAI key)? Leave blank for platform-hosted."
-      required: false
+  # BYOK provider config is owned by `zombiectl provider set` (M48), not the install skill.
   template_url: "https://raw.githubusercontent.com/usezombie/usezombie/{tag}/samples/platform-ops/SKILL.md"
   template_pinned_tag: "v0.34.0"   # bumped on each skill release
 ---
@@ -183,12 +181,12 @@ a working platform-ops zombie on the user's current repository.
    primitive, fall back to inline natural-language prompts ("Which Slack channel?
    Reply with the channel name.").
 
-4. Resolve credentials. For each of `fly`, `upstash` (optional), `slack`, `github`:
-   - Try `op read 'op://Personal/<credential_name>/api-token'` (1Password CLI).
-   - If `op` not installed or returns nothing, read env var `ZOMBIE_CRED_<NAME>_API_TOKEN`.
-   - If neither, prompt the user interactively (mask the input).
-   - Run `zombiectl credential add <name> --host <default-host> --api-token <resolved>`
-     (or the right field flags per type — see vault docs for shapes).
+4. Resolve credentials. M45 stores credentials as opaque JSON keyed by name, so the skill assembles a JSON body per provider and calls `zombiectl credential add <name> --data='<json>'` (per B2). For each of `fly`, `upstash` (optional), `slack`, `github`:
+   - **`github`** is special (per B3). Generate the webhook secret locally: 32 bytes from the host's CSPRNG, base64-encoded. Display it once for the operator to paste into GitHub's webhook settings UI; never log it, never re-display it. Then resolve `api_token` (the GH PAT) via `op read` → env var `ZOMBIE_CRED_GITHUB_API_TOKEN` → masked interactive prompt. Final shape:
+     `zombiectl credential add github --data='{"webhook_secret":"<generated>","api_token":"<resolved>"}'`
+   - **`fly` / `upstash` / `slack`** resolve each structured field via the same op → env-var → masked-prompt fallback chain. The JSON body shape per provider is `{"api_token":"<value>"[, additional fields]}`; consult the provider's vault credential shape (see M45 conventions). Run:
+     `zombiectl credential add <name> --data='<assembled-json>'`
+   - The legacy single-flag form (`--api-token`, `--host`) is gone; M45 dropped typed credentials in favour of opaque JSON-data per name.
 
 5. Fetch the canonical platform-ops template from the URL in `template_url`,
    substituting `{tag}` with `template_pinned_tag`. Cache at
@@ -201,6 +199,7 @@ a working platform-ops zombie on the user's current repository.
    - `{{cron_opt_in}}` → user's choice (if true, add the cron block to the
      `x-usezombie.trigger.cron:` section; if false, omit)
    - `{{repo}}` → repo name from git remote
+   - `{{model}}` and `{{context_cap_tokens}}` per Discovery D2: this skill is the **platform-managed** install path, so it GETs `https://api.usezombie.com/_um/.../model-caps.json` once for the platform default model (e.g. `claude-sonnet-4-6`) and writes the resolved cap (e.g. `200000`) into `x-usezombie.context.context_cap_tokens`. BYOK installs are not driven by this skill — operators run `zombiectl provider set` (M48) post-install, which writes the BYOK sentinels (`model: ""`, `context_cap_tokens: 0`) into `core.tenant_providers` for the worker to overlay at trigger time.
 
 7. If the directory `.usezombie/platform-ops/` already exists in the user's repo,
    refuse to overwrite without `--force`. Ask the user: "Existing
@@ -214,7 +213,7 @@ a working platform-ops zombie on the user's current repository.
 
 10. Print: "Platform-ops zombie installed (id: {id}). It now watches your GH
     Actions CD pipeline. Configure your repo's webhook to point at:
-    POST https://api.usezombie.com/v1/webhooks/{id}/github
+    POST https://api.usezombie.com/v1/webhooks/{zombie_id}/github
     with secret: <one-time displayed value; already stored in this workspace's
     vault as the `github` credential, field `webhook_secret`>. To steer manually
     any time: `zombiectl steer {id} \"<message>\"`. To kill: `zombiectl kill {id}`."
@@ -264,7 +263,7 @@ Skill input (variables, resolved per host):
   slack_channel: string (required)
   prod_branch_glob: string (default "main")
   cron_opt_in: boolean (default false)
-  byok_provider_credential: string (optional)
+  # BYOK provider config is set post-install via `zombiectl provider set` (M48).
 
 Skill output (filesystem state after success):
   .usezombie/platform-ops/SKILL.md created in user's CWD

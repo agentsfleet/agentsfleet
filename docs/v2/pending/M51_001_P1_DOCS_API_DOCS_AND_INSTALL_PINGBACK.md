@@ -101,8 +101,9 @@ Navigation: top-level entries reorganized to:
 - Concepts (incl. context lifecycle)
 - Skills
 - API Reference
-- Self-Host
 - Privacy
+
+(No `Self-Host` nav entry — self-host is v3. The `/self-host` URL intentionally 404s in v2; see Out of Scope and `test_no_self_host_page_in_v2`.)
 
 ### §2 — `/quickstart/platform-ops`
 
@@ -111,7 +112,7 @@ Single page, top-to-bottom walkthrough:
 1. Prerequisite: Claude Code (or Amp, Codex CLI, OpenCode) installed locally. `zombiectl` installed (link to install).
 2. Run `zombiectl auth login` (signs in via Clerk OAuth).
 3. Run `/usezombie-install-platform-ops` in any supported host (Claude Code, Amp, Codex CLI, OpenCode).
-4. Answer the 4 prompts (Slack channel, branch glob, cron opt-in, BYOK optional).
+4. Answer the 3 prompts (Slack channel, branch glob, cron opt-in). BYOK is configured later via `zombiectl provider set` if you want to bring your own key — see the BYOK page.
 5. Skill installs the zombie + posts a first response to Slack.
 6. Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.
 7. Trigger: cause a deploy failure → see the Slack diagnosis arrive.
@@ -282,7 +283,7 @@ Internal queries (admin-only):
 
 ## Acceptance Criteria
 
-- [ ] All 12 tests pass
+- [ ] All 15 tests pass (10 site/pingback + 5 architecture cross-reference, folded from M50)
 - [ ] `docs.usezombie.com` deploys cleanly with the 4 new v2 pages live (quickstart, skills, concepts/context-lifecycle, privacy/cli-telemetry)
 - [ ] `/self-host` returns 404 — no v2 stub for the v3 feature
 - [ ] Hero copy reflects new positioning (3 pillars: OSS + BYOK + markdown-defined); old homelab references gone
