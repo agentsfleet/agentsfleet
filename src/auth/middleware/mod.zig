@@ -128,10 +128,11 @@ pub const MiddlewareRegistry = struct {
         return &self._webhook_hmac_chain;
     }
 
-    /// Per-zombie HMAC signature + Bearer token fallback for webhooks routed
-    /// to a zombie. The lookup function returns the HMAC scheme + secret
-    /// resolved from the workspace credential identified by the zombie's
-    /// `trigger.source` (or an explicit `trigger.credential_name` override).
+    /// Per-zombie HMAC signature for webhooks routed to a zombie (HMAC-only —
+    /// no Bearer fallback). The lookup function returns the HMAC scheme +
+    /// secret resolved from the workspace credential identified by the
+    /// zombie's `trigger.source` (or an explicit `trigger.credential_name`
+    /// override).
     pub fn webhookSig(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._webhook_sig_chain;
     }

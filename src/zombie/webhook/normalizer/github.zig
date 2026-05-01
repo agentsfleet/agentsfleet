@@ -29,9 +29,13 @@ const Normalized = struct {
     received_at: []const u8,
 };
 
-/// Parse `raw_body` as a GitHub workflow_run webhook payload and return a
+/// Parse `raw_body` as a GitHub workflow_run webhook payload and emit the
 /// canonical flat JSON object as owned bytes. `received_at_unix` is the
 /// server-side receipt timestamp in seconds since epoch — emitted as RFC3339.
+///
+/// Callers that have already parsed the body (e.g. the handler that runs
+/// the action filter inline) should use `normalizeFromValue` to avoid a
+/// redundant parse + allocation on the happy path.
 pub fn normalize(
     alloc: std.mem.Allocator,
     raw_body: []const u8,
@@ -39,18 +43,26 @@ pub fn normalize(
 ) ![]u8 {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, raw_body, .{}) catch return NormalizeError.MalformedJson;
     defer parsed.deinit();
-
     const root = switch (parsed.value) {
         .object => |o| o,
         else => return NormalizeError.MalformedJson,
     };
+    return normalizeFromValue(alloc, root, received_at_unix);
+}
 
+/// Same as `normalize`, but the caller owns the parsed root. Borrowed string
+/// slices in `root` must outlive this call (they're copied by `valueAlloc`
+/// before the allocation returns).
+pub fn normalizeFromValue(
+    alloc: std.mem.Allocator,
+    root: std.json.ObjectMap,
+    received_at_unix: i64,
+) ![]u8 {
     const wr_val = root.get("workflow_run") orelse return NormalizeError.MissingWorkflowRun;
     const wr = switch (wr_val) {
         .object => |o| o,
         else => return NormalizeError.MissingWorkflowRun,
     };
-
     const repo_val = root.get("repository") orelse return NormalizeError.MissingRepository;
     const repo = switch (repo_val) {
         .object => |o| o,
@@ -69,7 +81,6 @@ pub fn normalize(
         .workflow_name = jsonString(wr.get("name")) orelse "",
         .received_at = formatRfc3339(&ts_buf, received_at_unix),
     };
-
     return std.json.Stringify.valueAlloc(alloc, out, .{});
 }
 

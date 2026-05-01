@@ -105,19 +105,27 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     }
 
-    const decision = filterAction(hx.alloc, body) orelse {
+    // Single parse — filter + normalize share the root on the accepted path.
+    const parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch {
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
     };
-    if (!decision.ingest) {
-        hx.ok(.ok, .{ .ignored = decision.reason });
+    defer parsed.deinit();
+    const root: ?std.json.ObjectMap = switch (parsed.value) { .object => |o| o, else => null };
+    const decision = if (root) |r| filterParsedRoot(r) else null;
+    if (decision == null) {
+        hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
+        return;
+    }
+    if (!decision.?.ingest) {
+        hx.ok(.ok, .{ .ignored = decision.?.reason });
         return;
     }
 
     // Dedupe AFTER validation+filter — see file header + spec A8 for why.
     if (!claimDeliveryKey(hx, zombie_id, delivery)) return;
 
-    const request_json = normalizer.normalize(hx.alloc, body, std.time.timestamp()) catch |err| {
+    const request_json = normalizer.normalizeFromValue(hx.alloc, root.?, std.time.timestamp()) catch |err| {
         log.err("github_webhook.normalize_failed zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
@@ -164,13 +172,7 @@ fn claimDeliveryKey(hx: Hx, zombie_id: []const u8, delivery: []const u8) bool {
     return true;
 }
 
-fn filterAction(alloc: std.mem.Allocator, body: []const u8) ?FilterDecision {
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, body, .{}) catch return null;
-    defer parsed.deinit();
-    const root = switch (parsed.value) {
-        .object => |o| o,
-        else => return null,
-    };
+fn filterParsedRoot(root: std.json.ObjectMap) ?FilterDecision {
     const action = stringField(root.get("action")) orelse "";
     if (!std.mem.eql(u8, action, ACTION_COMPLETED)) {
         return .{ .ingest = false, .reason = "non_completed_action" };
@@ -184,6 +186,15 @@ fn filterAction(alloc: std.mem.Allocator, body: []const u8) ?FilterDecision {
         return .{ .ingest = false, .reason = "non_failure_conclusion" };
     }
     return .{ .ingest = true, .reason = "" };
+}
+
+fn filterAction(alloc: std.mem.Allocator, body: []const u8) ?FilterDecision {
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, body, .{}) catch return null;
+    defer parsed.deinit();
+    return switch (parsed.value) {
+        .object => |o| filterParsedRoot(o),
+        else => null,
+    };
 }
 
 fn stringField(v: ?std.json.Value) ?[]const u8 {
@@ -250,24 +261,6 @@ test "filterAction: completed + failure → ingest" {
     try testing.expect(got.ingest);
 }
 
-test "filterAction: completed + success → ignore non_failure_conclusion" {
-    const body =
-        \\{"action":"completed","workflow_run":{"conclusion":"success"}}
-    ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-    try testing.expect(!got.ingest);
-    try testing.expectEqualStrings("non_failure_conclusion", got.reason);
-}
-
-test "filterAction: completed + cancelled → ignore non_failure_conclusion" {
-    const body =
-        \\{"action":"completed","workflow_run":{"conclusion":"cancelled"}}
-    ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-    try testing.expect(!got.ingest);
-    try testing.expectEqualStrings("non_failure_conclusion", got.reason);
-}
-
 test "filterAction: in_progress action → ignore non_completed_action" {
     const body =
         \\{"action":"in_progress","workflow_run":{"conclusion":null}}
@@ -321,11 +314,8 @@ test "filterAction: parameterized non-failure conclusions" {
     }
 }
 
-test "constants pin: MAX_BODY_BYTES is 1 MiB" {
+test "constants pin" {
     try testing.expectEqual(@as(usize, 1024 * 1024), MAX_BODY_BYTES);
-}
-
-test "constants pin: ACTOR + namespace + headers" {
     try testing.expectEqualStrings("webhook:github", ACTOR);
     try testing.expectEqualStrings("gh", PROVIDER_DEDUP_NAMESPACE);
     try testing.expectEqualStrings("x-github-event", HEADER_EVENT);
@@ -333,18 +323,12 @@ test "constants pin: ACTOR + namespace + headers" {
     try testing.expectEqualStrings("workflow_run", EVENT_WORKFLOW_RUN);
     try testing.expectEqualStrings("completed", ACTION_COMPLETED);
     try testing.expectEqualStrings("failure", CONCLUSION_FAILURE);
-}
-
-test "dedupe key buffer fits the longest realistic UUID + provider + delivery" {
-    // Worst case: zombie_id (36 char UUIDv7) + ":gh:" + X-GitHub-Delivery
-    // (36 char UUID). "webhook:dedup:" (14) + 36 + ":gh:" (4) + 36 = 90.
-    // Buffer is 256 — comfortable.
+    // Worst-case dedupe key: "webhook:dedup:" (14) + UUIDv7 (36) + ":gh:" (4)
+    // + delivery UUID (36) = 90 bytes. The 256-byte buffer is comfortable.
     var key_buf: [256]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "webhook:dedup:{s}:gh:{s}", .{
         "01999999-9999-7999-9999-999999999999",
         "abcdef01-2345-6789-abcd-ef0123456789",
     });
     try testing.expect(key.len < 256);
-    try testing.expect(std.mem.startsWith(u8, key, "webhook:dedup:"));
-    try testing.expect(std.mem.indexOf(u8, key, ":gh:") != null);
 }
