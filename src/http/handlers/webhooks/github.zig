@@ -39,6 +39,8 @@ const Hx = hx_mod.Hx;
 const MAX_BODY_BYTES: usize = 1 * 1024 * 1024;
 const ACTOR = "webhook:github";
 const PROVIDER_DEDUP_NAMESPACE = "gh";
+// 72 h covers GitHub's max retry window for the same delivery UUID.
+const GITHUB_DEDUP_TTL_SECONDS: u32 = 72 * 60 * 60;
 const HEADER_EVENT = "x-github-event";
 const HEADER_DELIVERY = "x-github-delivery";
 const EVENT_WORKFLOW_RUN = "workflow_run";
@@ -149,7 +151,7 @@ fn claimDeliveryKey(hx: Hx, zombie_id: []const u8, delivery: []const u8) bool {
         common.internalOperationError(hx.res, "dedup key overflow", hx.req_id);
         return false;
     };
-    const is_new = hx.ctx.queue.setNx(key, "1", ec.DEDUP_TTL_SECONDS) catch |err| {
+    const is_new = hx.ctx.queue.setNx(key, "1", GITHUB_DEDUP_TTL_SECONDS) catch |err| {
         log.err("github_webhook.dedup_error zombie_id={s} delivery={s} err={s}", .{ zombie_id, delivery, @errorName(err) });
         common.internalOperationError(hx.res, "Idempotency check failed", hx.req_id);
         return false;
