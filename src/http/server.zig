@@ -148,12 +148,12 @@ fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegi
         const req_id = common.requestId(alloc);
         var auth = auth_adapter.buildAuthCtx(res, alloc, req_id);
 
-        // M28_001: populate webhook auth slots from route params before
-        // running the middleware chain. The webhook_sig middleware reads these.
+        // Populate the webhook zombie slot before running the middleware
+        // chain. The webhook_sig + svix middlewares read it; all other
+        // middlewares ignore the field.
         switch (matched) {
-            .receive_webhook => |wh| {
-                auth.webhook_zombie_id = wh.zombie_id;
-                auth.webhook_provided_secret = wh.secret;
+            .receive_webhook => |zombie_id| {
+                auth.webhook_zombie_id = zombie_id;
             },
             .receive_svix_webhook => |zombie_id| {
                 auth.webhook_zombie_id = zombie_id;

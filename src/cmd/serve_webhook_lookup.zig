@@ -1,11 +1,19 @@
-//! Webhook-sig lookup: resolves URL-secret, Bearer token, and per-zombie
-//! HMAC signature scheme + secret for the webhook_sig middleware.
-//! Lives in `src/cmd/` so it can import both `src/auth/` and `src/zombie/`.
+//! Webhook-sig lookup: resolves Bearer token + per-zombie HMAC scheme/secret
+//! for the webhook_sig middleware. Lives in `src/cmd/` so it can import both
+//! `src/auth/` and `src/zombie/`.
+//!
+//! Secret resolution: each zombie declares a `trigger.source` (e.g. `github`)
+//! that names the HMAC scheme and the workspace credential to read. The
+//! credential is stored at vault key `zombie:<source>` (overridable via
+//! `trigger.credential_name`) and decodes to a JSON object whose
+//! `webhook_secret` field is the HMAC key.
 
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const crypto_store = @import("../secrets/crypto_store.zig");
+const vault = @import("../state/vault.zig");
+const credential_key = @import("../zombie/credential_key.zig");
 const webhook_verify = @import("../zombie/webhook_verify.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 
@@ -14,6 +22,8 @@ const SignatureScheme = auth_mw.webhook_sig_mod.SignatureScheme;
 const SvixLookupResult = auth_mw.svix_signature_mod.SvixLookupResult;
 
 const log = std.log.scoped(.webhook_sig_lookup);
+
+const WEBHOOK_SECRET_FIELD = "webhook_secret";
 
 pub fn lookup(
     pool: *pg.Pool,
@@ -30,46 +40,34 @@ pub fn lookup(
     errdefer if (token) |t| alloc.free(t);
     if (row_data.token_raw) |t| token = try alloc.dupe(u8, t);
 
-    var expected_secret: ?[]const u8 = null;
-    errdefer if (expected_secret) |s| alloc.free(s);
-    if (row_data.url_secret_ref) |ref| {
-        expected_secret = crypto_store.load(alloc, conn, row_data.workspace_id, ref) catch |err| blk: {
-            log.err("vault_load_failed ref={s} err={s}", .{ ref, @errorName(err) });
-            break :blk null;
-        };
-    }
-
     var scheme: ?SignatureScheme = null;
     var signature_secret: ?[]const u8 = null;
     errdefer if (scheme) |s| freeScheme(alloc, s);
     errdefer if (signature_secret) |s| alloc.free(s);
-    if (row_data.signature_json) |sig_json| {
-        if (try parseSignature(alloc, sig_json, row_data.source)) |p| {
-            scheme = p.scheme;
-            signature_secret = crypto_store.load(alloc, conn, row_data.workspace_id, p.secret_ref) catch |err| blk: {
-                log.err("vault_load_failed signature_ref={s} err={s}", .{ p.secret_ref, @errorName(err) });
-                break :blk null;
-            };
-            alloc.free(p.secret_ref);
+
+    if (row_data.source.len > 0) {
+        if (webhook_verify.detectProvider(row_data.source, webhook_verify.NoHeaders{})) |cfg| {
+            const credential_name = row_data.credential_name_override orelse row_data.source;
+            const key_name = try credential_key.allocKeyName(alloc, credential_name);
+            defer alloc.free(key_name);
+
+            if (loadWebhookSecret(alloc, conn, row_data.workspace_id, key_name)) |secret| {
+                signature_secret = secret;
+                scheme = try schemeFromConfig(alloc, cfg);
+            }
         }
     }
 
     return .{
-        .expected_secret = expected_secret,
         .expected_token = token,
         .signature_scheme = scheme,
         .signature_secret = signature_secret,
     };
 }
 
-/// M28_001 §5: Svix middleware lookup. Fetches the Clerk-style
-/// `signature.secret_ref` from the zombie's config_json and resolves it to
-/// the `whsec_<base64>` secret via the workspace vault. Middleware handles
-/// prefix stripping + base64 decoding.
-///
-/// Uses `extractSecretRef` (scheme-free JSON parse) instead of the full
-/// `parseSignature` path — Svix doesn't need scheme metadata, so skipping
-/// the 4 dup'd strings + their frees saves per-request work.
+/// Svix middleware lookup. Fetches the Clerk-style `signature.secret_ref` from
+/// the zombie's config_json and resolves it to the `whsec_<base64>` secret via
+/// the workspace vault. Middleware handles prefix stripping + base64 decoding.
 pub fn lookupSvix(
     pool: *pg.Pool,
     zombie_id: []const u8,
@@ -92,9 +90,6 @@ pub fn lookupSvix(
     return .{ .secret = secret };
 }
 
-/// Minimal extractor: parses `config_json.trigger.signature` and returns the
-/// dup'd `secret_ref` string only. Avoids the full `parseSignature` scheme
-/// construction for callers (svix) that don't need scheme metadata.
 fn extractSecretRef(alloc: std.mem.Allocator, sig_json: []const u8) !?[]const u8 {
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, sig_json, .{}) catch return null;
     defer parsed.deinit();
@@ -115,8 +110,8 @@ fn extractSecretRef(alloc: std.mem.Allocator, sig_json: []const u8) !?[]const u8
 const RowData = struct {
     workspace_id: []const u8,
     source: []const u8,
+    credential_name_override: ?[]const u8,
     token_raw: ?[]const u8,
-    url_secret_ref: ?[]const u8,
     signature_json: ?[]const u8,
 };
 
@@ -124,8 +119,8 @@ fn fetchZombieRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8
     var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text,
         \\       config_json->'x-usezombie'->'trigger'->>'source',
+        \\       config_json->'x-usezombie'->'trigger'->>'credential_name',
         \\       config_json->'x-usezombie'->'trigger'->>'token',
-        \\       webhook_secret_ref,
         \\       config_json->'x-usezombie'->'trigger'->'signature'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id}));
@@ -137,16 +132,16 @@ fn fetchZombieRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8
     errdefer alloc.free(workspace_id);
     const source = try alloc.dupe(u8, row.get([]const u8, 1) catch "");
     errdefer alloc.free(source);
-    const token_raw = try dupeOptional(alloc, row.get([]const u8, 2) catch null);
+    const credential_name_override = try dupeOptional(alloc, row.get([]const u8, 2) catch null);
+    errdefer if (credential_name_override) |v| alloc.free(v);
+    const token_raw = try dupeOptional(alloc, row.get([]const u8, 3) catch null);
     errdefer if (token_raw) |v| alloc.free(v);
-    const url_secret_ref = try dupeOptional(alloc, row.get([]const u8, 3) catch null);
-    errdefer if (url_secret_ref) |v| alloc.free(v);
     const signature_json = try dupeOptional(alloc, row.get([]const u8, 4) catch null);
     return RowData{
         .workspace_id = workspace_id,
         .source = source,
+        .credential_name_override = credential_name_override,
         .token_raw = token_raw,
-        .url_secret_ref = url_secret_ref,
         .signature_json = signature_json,
     };
 }
@@ -159,72 +154,58 @@ fn dupeOptional(alloc: std.mem.Allocator, v: ?[]const u8) !?[]const u8 {
 fn freeRowData(alloc: std.mem.Allocator, r: RowData) void {
     alloc.free(r.workspace_id);
     alloc.free(r.source);
+    if (r.credential_name_override) |s| alloc.free(s);
     if (r.token_raw) |t| alloc.free(t);
-    if (r.url_secret_ref) |s| alloc.free(s);
     if (r.signature_json) |j| alloc.free(j);
 }
 
-const ParsedSignature = struct {
-    scheme: SignatureScheme,
-    secret_ref: []const u8,
-};
-
-fn parseSignature(
+/// Load the workspace credential at `key_name`, parse it, and return the
+/// `webhook_secret` field as an owned slice. Returns null on any failure
+/// (credential missing, malformed JSON, missing field) — the middleware
+/// fails closed downstream.
+fn loadWebhookSecret(
     alloc: std.mem.Allocator,
-    sig_json: []const u8,
-    source: []const u8,
-) !?ParsedSignature {
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, sig_json, .{}) catch return null;
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    key_name: []const u8,
+) ?[]const u8 {
+    var parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| {
+        log.warn("webhook_credential_load_failed workspace_id={s} key={s} err={s}", .{ workspace_id, key_name, @errorName(err) });
+        return null;
+    };
     defer parsed.deinit();
 
     const obj = switch (parsed.value) {
         .object => |o| o,
         else => return null,
     };
-
-    const secret_ref_val = obj.get("secret_ref") orelse return null;
-    const secret_ref = switch (secret_ref_val) {
+    const val = obj.get(WEBHOOK_SECRET_FIELD) orelse {
+        log.warn("webhook_credential_missing_field workspace_id={s} key={s}", .{ workspace_id, key_name });
+        return null;
+    };
+    const secret = switch (val) {
         .string => |s| s,
         else => return null,
     };
-    if (secret_ref.len == 0) return null;
-
-    const hit = webhook_verify.detectProvider(source, webhook_verify.NoHeaders{});
-    const header_src = stringOrNull(obj.get("header")) orelse if (hit) |h| h.sig_header else return null;
-    const prefix_src = stringOrNull(obj.get("prefix")) orelse if (hit) |h| h.prefix else "";
-    const ts_src: ?[]const u8 = stringOrNull(obj.get("ts_header")) orelse if (hit) |h| h.ts_header else null;
-    const version_src = if (hit) |h| h.hmac_version else "";
-    const includes_ts = if (hit) |h| h.includes_timestamp else (ts_src != null);
-    const drift = if (hit) |h| h.max_ts_drift_seconds else 300;
-
-    const sig_header = try alloc.dupe(u8, header_src);
-    errdefer alloc.free(sig_header);
-    const prefix_dupe = try alloc.dupe(u8, prefix_src);
-    errdefer alloc.free(prefix_dupe);
-    const ts_dupe: ?[]const u8 = if (ts_src) |t| try alloc.dupe(u8, t) else null;
-    errdefer if (ts_dupe) |t| alloc.free(t);
-    const version_dupe = try alloc.dupe(u8, version_src);
-    errdefer alloc.free(version_dupe);
-    const secret_ref_dupe = try alloc.dupe(u8, secret_ref);
-
-    return ParsedSignature{
-        .scheme = .{
-            .sig_header = sig_header,
-            .prefix = prefix_dupe,
-            .ts_header = ts_dupe,
-            .hmac_version = version_dupe,
-            .includes_timestamp = includes_ts,
-            .max_ts_drift_seconds = drift,
-        },
-        .secret_ref = secret_ref_dupe,
-    };
+    if (secret.len == 0) return null;
+    return alloc.dupe(u8, secret) catch null;
 }
 
-fn stringOrNull(v: ?std.json.Value) ?[]const u8 {
-    const val = v orelse return null;
-    return switch (val) {
-        .string => |s| s,
-        else => null,
+fn schemeFromConfig(alloc: std.mem.Allocator, cfg: webhook_verify.VerifyConfig) !SignatureScheme {
+    const sig_header = try alloc.dupe(u8, cfg.sig_header);
+    errdefer alloc.free(sig_header);
+    const prefix = try alloc.dupe(u8, cfg.prefix);
+    errdefer alloc.free(prefix);
+    const ts_header: ?[]const u8 = if (cfg.ts_header) |t| try alloc.dupe(u8, t) else null;
+    errdefer if (ts_header) |t| alloc.free(t);
+    const hmac_version = try alloc.dupe(u8, cfg.hmac_version);
+    return .{
+        .sig_header = sig_header,
+        .prefix = prefix,
+        .ts_header = ts_header,
+        .hmac_version = hmac_version,
+        .includes_timestamp = cfg.includes_timestamp,
+        .max_ts_drift_seconds = cfg.max_ts_drift_seconds,
     };
 }
 

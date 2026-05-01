@@ -122,19 +122,15 @@ test "match resolves workspace LLM credential route (M16_004)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm", .GET) == null);
 }
 
-// M10_001: matchRunAction tests, M16_002 run action tests, M17_001 cancel tests
-// all removed — Route variants (retry_run, replay_run, stream_run, cancel_run,
-// get_run) deleted. Run path null-match covered in "run paths no longer match" above.
+// ── webhook route tests ───────────────────────────────────────────────────
 
-// ── M1_001 webhook route tests ────────────────────────────────────────────
-
-test "M1_001: webhook routes resolve and reject correctly" {
+test "webhook routes resolve and reject correctly" {
     const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     // Webhook tests for matchWebhookRoute are in route_matchers.zig.
     // Test via match() integration:
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings(zombie_id, switch (route) {
-        .receive_webhook => |r| r.zombie_id,
+        .receive_webhook => |id| id,
         else => return error.TestExpectedEqual,
     });
 }

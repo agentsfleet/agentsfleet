@@ -188,13 +188,9 @@ fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
         .webhook_hmac_mw = .{ .secret = "" },
-        .webhook_url_secret_mw = .{ .lookup_ctx = &h.queue, .lookup_fn = stubWebhookUrlSecret },
     };
 }
 
-fn stubWebhookUrlSecret(_: *anyopaque, _: []const u8, _: std.mem.Allocator) anyerror!?[]const u8 {
-    return null;
-}
 fn stubTenantApiKey(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
     return null;
 }

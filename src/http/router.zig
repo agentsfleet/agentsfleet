@@ -3,13 +3,7 @@ const httpz = @import("httpz");
 const matchers = @import("route_matchers.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 
-// M2_002: webhook route carries zombie_id and optional URL-embedded secret
-pub const WebhookRoute = struct {
-    zombie_id: []const u8,
-    secret: ?[]const u8,
-};
-
-// M18_001: zombie telemetry route carries workspace_id and zombie_id
+// Zombie telemetry route carries workspace_id and zombie_id.
 pub const ZombieTelemetryRoute = struct {
     workspace_id: []const u8,
     zombie_id: []const u8,
@@ -39,14 +33,17 @@ pub const Route = union(enum) {
     get_tenant_billing,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
-    receive_webhook: WebhookRoute,
-    // M28_001 §5: Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
+    /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
+    /// Auth via webhook_sig middleware (HMAC scheme + secret resolved from
+    /// the workspace credential keyed by `trigger.source`).
+    receive_webhook: []const u8,
+    /// POST /v1/webhooks/svix/{zombie_id} — Clerk / Svix signed webhooks.
     receive_svix_webhook: []const u8,
-    // Clerk user.created signup webhook — /v1/webhooks/clerk (no zombie context).
+    /// POST /v1/webhooks/clerk — Clerk user.created signup webhook (no zombie context).
     clerk_webhook,
-    // M4_001: Zombie approval gate callback
+    /// POST /v1/webhooks/{zombie_id}/approval — zombie approval gate callback.
     approval_webhook: []const u8,
-    // M9_001: Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
+    /// POST /v1/webhooks/{zombie_id}/grant-approval — integration-grant approval callback.
     grant_approval_webhook: []const u8,
     // M16_004: admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
@@ -207,8 +204,8 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
             if (matchers.isSingleSegment(zombie_id)) return .{ .receive_svix_webhook = zombie_id };
         }
     }
-    // M1_001: Zombie webhook endpoint — /v1/webhooks/{zombie_id}
-    if (matchWebhookRoute(path)) |route| return .{ .receive_webhook = route };
+    // Generic per-zombie webhook receiver — /v1/webhooks/{zombie_id}.
+    if (matchWebhookRoute(path)) |zombie_id| return .{ .receive_webhook = zombie_id };
 
     return null;
 }

@@ -152,7 +152,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);
     try testing.expect(specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_llm_credential = "ws1" }, &reg) != null);
-    try testing.expect(specFor(.{ .receive_webhook = .{ .zombie_id = "z1", .secret = null } }, &reg) != null);
+    try testing.expect(specFor(.{ .receive_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_svix_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.clerk_webhook, &reg) != null);
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);

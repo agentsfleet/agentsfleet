@@ -29,7 +29,6 @@ pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
 pub const require_role = @import("require_role.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
-pub const webhook_url_secret = @import("webhook_url_secret.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
 
@@ -38,7 +37,6 @@ pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const TenantApiKey = tenant_api_key.TenantApiKey;
 pub const RequireRole = require_role.RequireRole;
 pub const WebhookHmac = webhook_hmac.WebhookHmac;
-pub const WebhookUrlSecret = webhook_url_secret.WebhookUrlSecret;
 pub const SvixSignature = svix_signature_mod.SvixSignature;
 
 pub const AuthPrincipal = auth_ctx.AuthPrincipal;
@@ -58,7 +56,6 @@ pub const MiddlewareRegistry = struct {
     require_role_admin: RequireRole,
     require_role_operator: RequireRole,
     webhook_hmac_mw: WebhookHmac,
-    webhook_url_secret_mw: WebhookUrlSecret,
 
     // ── Pre-built policy chains ────────────────────────────────────────────
     // Populated by initChains(). Fixed-size arrays so policy methods can
@@ -67,7 +64,6 @@ pub const MiddlewareRegistry = struct {
     _admin_chain: [2]Middleware(AuthCtx) = undefined,
     _operator_chain: [2]Middleware(AuthCtx) = undefined,
     _webhook_hmac_chain: [1]Middleware(AuthCtx) = undefined,
-    _webhook_secret_chain: [1]Middleware(AuthCtx) = undefined,
     // webhook_sig is generic over LookupCtx, so the host calls
     // .middleware() on the concrete instance and passes the pre-built
     // Middleware(AuthCtx) value here. No *anyopaque needed.
@@ -92,7 +88,6 @@ pub const MiddlewareRegistry = struct {
             self.require_role_operator.middleware(),
         };
         self._webhook_hmac_chain = .{self.webhook_hmac_mw.middleware()};
-        self._webhook_secret_chain = .{self.webhook_url_secret_mw.middleware()};
         // _webhook_sig_chain is set by the host via setWebhookSig()
     }
 
@@ -133,12 +128,10 @@ pub const MiddlewareRegistry = struct {
         return &self._webhook_hmac_chain;
     }
 
-    /// URL-embedded per-zombie secret.
-    fn webhookSecret(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
-        return &self._webhook_secret_chain;
-    }
-
-    /// Unified webhook auth: URL secret + Bearer token (M28_001).
+    /// Per-zombie HMAC signature + Bearer token fallback for webhooks routed
+    /// to a zombie. The lookup function returns the HMAC scheme + secret
+    /// resolved from the workspace credential identified by the zombie's
+    /// `trigger.source` (or an explicit `trigger.credential_name` override).
     pub fn webhookSig(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._webhook_sig_chain;
     }

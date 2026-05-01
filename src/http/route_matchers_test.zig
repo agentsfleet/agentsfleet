@@ -79,16 +79,13 @@ test "matchZombieTelemetry: extracts workspace_id and zombie_id" {
     try std.testing.expect(matchZombieTelemetry("/v1/workspaces//zombies/z_123/telemetry") == null);
 }
 
-test "matchWebhookRoute: id only and id+secret" {
+test "matchWebhookRoute: single-segment zombie id only" {
     const id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
-    const r1 = matchWebhookRoute("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?;
-    try std.testing.expectEqualStrings(id, r1.zombie_id);
-    try std.testing.expect(r1.secret == null);
-    const r2 = matchWebhookRoute("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kR7x2mN").?;
-    try std.testing.expectEqualStrings(id, r2.zombie_id);
-    try std.testing.expectEqualStrings("kR7x2mN", r2.secret.?);
+    const got = matchWebhookRoute("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11").?;
+    try std.testing.expectEqualStrings(id, got);
     try std.testing.expect(matchWebhookRoute("/v1/webhooks/") == null);
     try std.testing.expect(matchWebhookRoute("/v1/webhooks") == null);
+    try std.testing.expect(matchWebhookRoute("/v1/webhooks/a/b") == null);
     try std.testing.expect(matchWebhookRoute("/v1/webhooks/a/b/c") == null);
 }
 

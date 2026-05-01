@@ -1,4 +1,4 @@
-//! Unit tests for webhook_sig middleware (M28_001).
+//! Unit tests for webhook_sig middleware.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -32,7 +32,6 @@ const Fixtures = struct {
 
 /// Concrete test context — replaces *anyopaque with a typed struct.
 const TestLookupCtx = struct {
-    return_secret: ?[]const u8 = null,
     return_token: ?[]const u8 = null,
     return_scheme: ?SignatureScheme = null,
     return_signature_secret: ?[]const u8 = null,
@@ -43,8 +42,6 @@ const TestLookupCtx = struct {
 fn testLookup(ctx: *TestLookupCtx, _: []const u8, alloc: std.mem.Allocator) anyerror!?LookupResult {
     if (ctx.should_fail) return error.Unavailable;
     if (ctx.should_return_null) return null;
-    const secret: ?[]const u8 = if (ctx.return_secret) |s| try alloc.dupe(u8, s) else null;
-    errdefer if (secret) |s| alloc.free(s);
     const token: ?[]const u8 = if (ctx.return_token) |t| try alloc.dupe(u8, t) else null;
     errdefer if (token) |t| alloc.free(t);
     const scheme: ?SignatureScheme = if (ctx.return_scheme) |s| .{
@@ -63,7 +60,6 @@ fn testLookup(ctx: *TestLookupCtx, _: []const u8, alloc: std.mem.Allocator) anye
     };
     const sig_secret: ?[]const u8 = if (ctx.return_signature_secret) |s| try alloc.dupe(u8, s) else null;
     return .{
-        .expected_secret = secret,
         .expected_token = token,
         .signature_scheme = scheme,
         .signature_secret = sig_secret,
@@ -76,7 +72,6 @@ fn runMw(
     mw: *TestWebhookSig,
     ht: anytype,
     zombie_id: ?[]const u8,
-    provided_secret: ?[]const u8,
 ) !chain.Outcome {
     var ctx = auth_ctx.AuthCtx{
         .alloc = testing.allocator,
@@ -84,40 +79,11 @@ fn runMw(
         .req_id = "req_test",
         .write_error = Fixtures.writeError,
         .webhook_zombie_id = zombie_id,
-        .webhook_provided_secret = provided_secret,
     };
     return mw.execute(&ctx, ht.req);
 }
 
-// ── §1 — URL secret tests ────────────────────────────────────────────
-
-test "URL secret match returns .next" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_secret = "correct-secret" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc", "correct-secret");
-    try testing.expectEqual(chain.Outcome.next, outcome);
-    try testing.expectEqual(@as(usize, 0), Fixtures.write_count);
-}
-
-test "URL secret mismatch returns .short_circuit + 401" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_secret = "correct-secret" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc", "wrong-secret");
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
-}
-
-// ── §1 — Bearer token fallback tests ─────────────────────────────────
+// ── Bearer token fallback tests ──────────────────────────────────────
 
 test "Bearer token fallback valid returns .next" {
     Fixtures.reset();
@@ -128,7 +94,7 @@ test "Bearer token fallback valid returns .next" {
     defer ht.deinit();
     ht.header("authorization", "Bearer valid-token");
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.next, outcome);
     try testing.expectEqual(@as(usize, 0), Fixtures.write_count);
 }
@@ -142,7 +108,7 @@ test "Bearer token fallback invalid returns .short_circuit" {
     defer ht.deinit();
     ht.header("authorization", "Bearer wrong-token");
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
 }
@@ -157,7 +123,7 @@ test "no zombie_id returns .short_circuit" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    const outcome = try runMw(&mw, &ht, null, null);
+    const outcome = try runMw(&mw, &ht, null);
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
 }
@@ -170,7 +136,7 @@ test "lookup returns null (zombie not found) → .short_circuit" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    const outcome = try runMw(&mw, &ht, "zombie-xyz", "any-secret");
+    const outcome = try runMw(&mw, &ht, "zombie-xyz");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
 }
@@ -183,12 +149,12 @@ test "lookup error returns .short_circuit" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", "any");
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
 }
 
-test "no URL secret, no Bearer header → .short_circuit" {
+test "no Bearer header configured → .short_circuit" {
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{ .return_token = "some-token" };
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -196,11 +162,11 @@ test "no URL secret, no Bearer header → .short_circuit" {
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
 }
 
-test "no URL secret, no expected_token in config → .short_circuit" {
+test "no expected_token in config → .short_circuit" {
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{};
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -209,23 +175,11 @@ test "no URL secret, no expected_token in config → .short_circuit" {
     defer ht.deinit();
     ht.header("authorization", "Bearer some-token");
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
 }
 
 // ── Edge case tests ──────────────────────────────────────────────────
-
-test "empty vault secret rejects non-empty provided" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_secret = "" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc", "non-empty");
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-}
 
 test "Bearer prefix without token body → .short_circuit" {
     Fixtures.reset();
@@ -236,7 +190,7 @@ test "Bearer prefix without token body → .short_circuit" {
     defer ht.deinit();
     ht.header("authorization", "Bearer ");
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
 }
 
@@ -249,7 +203,7 @@ test "non-Bearer auth scheme → .short_circuit" {
     defer ht.deinit();
     ht.header("authorization", "Basic dXNlcjpwYXNz");
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
 }
 
@@ -291,7 +245,7 @@ test "Jira valid HMAC → .next" {
     ht.header("x-jira-hook-signature", sig);
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.next, outcome);
     try testing.expectEqual(@as(usize, 0), Fixtures.write_count);
 }
@@ -312,7 +266,7 @@ test "tampered body → UZ-WH-010 .short_circuit" {
     ht.header("x-jira-hook-signature", sig);
     ht.body("{\"issue\":{\"key\":\"TAMPERED\"}}");
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }
@@ -345,7 +299,7 @@ test "stale timestamp → UZ-WH-011 .short_circuit" {
     ht.header("x-custom-ts", stale_ts);
     ht.body("body");
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_TIMESTAMP_STALE, Fixtures.last_code);
 }
@@ -370,7 +324,7 @@ test "HMAC scheme configured + secret null → .short_circuit (no Bearer fallthr
     ht.header("authorization", "Bearer valid-token");
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }
@@ -393,7 +347,7 @@ test "HMAC scheme configured + sig_header missing → .short_circuit (no Bearer 
     ht.header("authorization", "Bearer valid-token");
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }
@@ -418,7 +372,7 @@ test "HMAC empty secret (attacker-computable) → .short_circuit" {
     ht.header("x-jira-hook-signature", sig);
     ht.body(JIRA_BODY);
 
-    const outcome = try runMw(&mw, &ht, "zombie-abc", null);
+    const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
 }

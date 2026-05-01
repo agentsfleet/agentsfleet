@@ -1,11 +1,12 @@
-// POST /v1/webhooks/{zombie_id} or /v1/webhooks/{zombie_id}/{secret}
+// POST /v1/webhooks/{zombie_id}
 //
-// Auth: URL-embedded secret (resolved from vault via webhook_secret_ref)
-//       or Bearer token (config_json->'x-usezombie'->'trigger'->>'token') as fallback.
+// Auth: per-zombie HMAC signature (scheme + secret resolved from the
+//       workspace credential keyed by `trigger.source`) or Bearer token
+//       (`config_json->'x-usezombie'->'trigger'->>'token'`) fallback.
+//       Verified upstream by the `webhook_sig` middleware before this
+//       handler runs.
 // Idempotency: Redis SET NX EX on "webhook:dedup:{zombie_id}:{event_id}".
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
-//
-// none policy — auth is via URL-embedded secret or trigger token, not Bearer.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -34,7 +35,6 @@ const ZombieRow = struct {
     workspace_id: []const u8,
     status: []const u8,
     token: ?[]const u8,
-    webhook_secret_ref: ?[]const u8,
     source: ?[]const u8,
 };
 
@@ -42,7 +42,6 @@ fn deinitZombieRow(row: *const ZombieRow, alloc: std.mem.Allocator) void {
     alloc.free(row.workspace_id);
     alloc.free(row.status);
     if (row.token) |t| alloc.free(t);
-    if (row.webhook_secret_ref) |s| alloc.free(s);
     if (row.source) |s| alloc.free(s);
 }
 
@@ -52,7 +51,6 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text, status,
         \\       config_json->'x-usezombie'->'trigger'->>'token',
-        \\       webhook_secret_ref,
         \\       config_json->'x-usezombie'->'trigger'->>'source'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id}));
@@ -65,12 +63,9 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     const token_raw = row.get([]const u8, 2) catch null;
     const token: ?[]const u8 = if (token_raw) |t| try alloc.dupe(u8, t) else null;
     errdefer if (token) |t| alloc.free(t);
-    const ref_raw = row.get([]const u8, 3) catch null;
-    const webhook_secret_ref: ?[]const u8 = if (ref_raw) |s| try alloc.dupe(u8, s) else null;
-    errdefer if (webhook_secret_ref) |s| alloc.free(s);
-    const source_raw = row.get([]const u8, 4) catch null;
+    const source_raw = row.get([]const u8, 3) catch null;
     const source: ?[]const u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
-    return .{ .workspace_id = workspace_id, .status = status, .token = token, .webhook_secret_ref = webhook_secret_ref, .source = source };
+    return .{ .workspace_id = workspace_id, .status = status, .token = token, .source = source };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -155,7 +150,7 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
     };
     defer deinitZombieRow(&zombie, hx.alloc);
 
-    // Auth is handled by webhook_sig middleware (M28_001) before this handler runs.
+    // Auth is handled by webhook_sig middleware before this handler runs.
 
     const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
     if (!status.isRunnable()) {
@@ -194,9 +189,9 @@ fn recordWebhookAccepted(
     });
 }
 
-// Spec §6.0 row 3.1 — webhook_increments_triggered: successful 202 path increments
-// zombies_triggered_total and emits zombie_triggered PostHog event.
-test "M15_002 3.1: webhook_increments_triggered" {
+// Successful 202 path increments zombies_triggered_total and emits the
+// zombie_triggered PostHog event.
+test "successful webhook acceptance increments zombies_triggered counter" {
     const metrics_zombie = @import("../../../observability/metrics_zombie.zig");
     const tel_mod = @import("../../../observability/telemetry.zig");
     metrics_zombie.resetForTest();

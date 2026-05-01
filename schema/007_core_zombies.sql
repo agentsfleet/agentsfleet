@@ -1,8 +1,10 @@
--- M1_001 §6.1 + M2_002: Zombie entity table.
+-- Zombie entity table.
 -- source_markdown: raw SKILL.md (agent instructions)
 -- trigger_markdown: raw TRIGGER.md (deployment manifest)
 -- config_json: server-computed from trigger_markdown frontmatter
--- webhook_secret_ref: vault key_name for the webhook secret (stored in vault.secrets)
+-- Webhook HMAC secrets live in vault.secrets keyed by `zombie:<source>` (or
+-- `zombie:<credential_name>` when the trigger frontmatter overrides) — this
+-- table holds no secret pointers.
 -- Status transitions: active → paused → active | active → stopped (terminal)
 -- Status values enforced in application code (error_codes.ZOMBIE_STATUS_*)
 
@@ -14,7 +16,6 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     source_markdown TEXT NOT NULL,
     trigger_markdown TEXT,
     config_json     JSONB NOT NULL,
-    webhook_secret_ref TEXT,
     status          TEXT NOT NULL,
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,

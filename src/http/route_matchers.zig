@@ -6,13 +6,10 @@
 const std = @import("std");
 const router = @import("router.zig");
 
-pub const WebhookRoute = router.WebhookRoute;
 pub const ZombieTelemetryRoute = router.ZombieTelemetryRoute;
 
 const prefix_workspaces = "/v1/workspaces/";
 const prefix_agents = "/v1/agents/";
-
-// M10_001: matchRunAction removed — /v1/runs/* routes deleted.
 
 pub fn matchWorkspaceSuffix(path: []const u8, suffix: []const u8) ?[]const u8 {
     if (!std.mem.startsWith(u8, path, prefix_workspaces)) return null;
@@ -50,22 +47,15 @@ pub fn matchWorkspaceZombieSuffix(path: []const u8, suffix: []const u8) ?ZombieT
     return .{ .workspace_id = ws_id, .zombie_id = zombie_id };
 }
 
-// matchWebhookRoute matches /v1/webhooks/{zombie_id} or /v1/webhooks/{zombie_id}/{secret}.
-pub fn matchWebhookRoute(path: []const u8) ?WebhookRoute {
+/// Match `/v1/webhooks/{zombie_id}` and return the zombie id. The two-segment
+/// `/v1/webhooks/{zombie_id}/{action}` form is matched by `matchWebhookAction`
+/// per registered action (`/approval`, `/grant-approval`, `/github`, …).
+pub fn matchWebhookRoute(path: []const u8) ?[]const u8 {
     const prefix = "/v1/webhooks/";
     if (!std.mem.startsWith(u8, path, prefix)) return null;
     const rest = path[prefix.len..];
-    if (rest.len == 0) return null;
-
-    if (std.mem.indexOfScalar(u8, rest, '/')) |slash| {
-        const zombie_id = rest[0..slash];
-        const secret = rest[slash + 1 ..];
-        if (zombie_id.len == 0 or secret.len == 0) return null;
-        if (std.mem.indexOfScalar(u8, secret, '/') != null) return null;
-        return .{ .zombie_id = zombie_id, .secret = secret };
-    }
-
-    return .{ .zombie_id = rest, .secret = null };
+    if (!isSingleSegment(rest)) return null;
+    return rest;
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────

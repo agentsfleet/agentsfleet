@@ -1,16 +1,19 @@
-//! `webhook_sig` middleware (M28_001).
+//! `webhook_sig` middleware — per-zombie webhook auth.
 //!
-//! Unified webhook auth: URL-embedded secret → Bearer token fallback.
-//! All comparisons use constant-time XOR (RULE CTM + RULE CTC).
+//! Resolution order:
+//!   1. Per-zombie HMAC signature — when the zombie's `trigger.signature`
+//!      scheme is configured, HMAC is the ONLY acceptable path; missing
+//!      header or vault-secret resolution failure both fail closed.
+//!   2. Bearer token fallback — only when no HMAC scheme is configured;
+//!      compares the Authorization header against the zombie's
+//!      `trigger.token`.
+//!
+//! All comparisons are constant-time (RULE CTM + RULE CTC).
 //!
 //! Generic over `LookupCtx` so the host passes a concrete type (e.g.
 //! `*pg.Pool`) instead of `*anyopaque`. The only `anyopaque` remaining
 //! is in `executeTypeErased` — required by chain.Middleware's type-erased
 //! function pointer interface.
-//!
-//! Auth strategy resolution order:
-//!   1. URL-embedded secret (webhook_provided_secret vs vault-backed expected)
-//!   2. Bearer token fallback (Authorization header vs config_json trigger.token)
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -42,13 +45,11 @@ pub const SignatureScheme = struct {
 /// Owned result from the host-supplied lookup callback.
 /// Caller frees owned slices via `alloc`.
 pub const LookupResult = struct {
-    expected_secret: ?[]const u8,
     expected_token: ?[]const u8,
     signature_scheme: ?SignatureScheme = null,
     signature_secret: ?[]const u8 = null,
 
     pub fn deinit(self: LookupResult, alloc: std.mem.Allocator) void {
-        if (self.expected_secret) |s| alloc.free(s);
         if (self.expected_token) |t| alloc.free(t);
         if (self.signature_scheme) |s| {
             alloc.free(s.sig_header);
@@ -96,24 +97,11 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             };
             defer result.deinit(ctx.alloc);
 
-            // Strategy 1: URL-embedded secret
-            if (ctx.webhook_provided_secret) |provided| {
-                const expected = result.expected_secret orelse {
-                    ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
-                    return .short_circuit;
-                };
-                if (!hs.constantTimeEql(provided, expected)) {
-                    ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
-                    return .short_circuit;
-                }
-                return .next;
-            }
-
-            // Strategy 2: Per-zombie HMAC signature (§3) — when a scheme is
-            // declared, HMAC is the ONLY acceptable auth path. No silent
-            // downgrade to Bearer on vault failure or missing sig_header:
-            // both fail closed. A scheme-configured zombie that authenticated
-            // via Bearer alone would be a header-omission bypass.
+            // Strategy 1: Per-zombie HMAC signature — when a scheme is declared,
+            // HMAC is the ONLY acceptable auth path. No silent downgrade to
+            // Bearer on vault failure or missing sig_header: both fail closed.
+            // A scheme-configured zombie that authenticated via Bearer alone
+            // would be a header-omission bypass.
             if (result.signature_scheme) |scheme| {
                 const secret = result.signature_secret orelse {
                     log.warn("webhook_sig hmac secret unavailable req_id={s} zombie_id={s} (scheme configured; vault load failed or empty)", .{ ctx.req_id, zombie_id });
@@ -127,7 +115,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
                 return verifyHmac(ctx, scheme, secret, provided_sig, req);
             }
 
-            // Strategy 3: Bearer token fallback (reached only when no HMAC
+            // Strategy 2: Bearer token fallback (reached only when no HMAC
             // scheme is configured on the zombie).
             const expected_token = result.expected_token orelse {
                 ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");

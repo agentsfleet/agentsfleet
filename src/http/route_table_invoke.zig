@@ -151,8 +151,7 @@ pub fn invokeDeleteAdminPlatformKey(hx: *Hx, req: *httpz.Request, route: router.
 
 pub fn invokeReceiveWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    const wh = route.receive_webhook;
-    webhooks.innerReceiveWebhook(hx.*, req, wh.zombie_id);
+    webhooks.innerReceiveWebhook(hx.*, req, route.receive_webhook);
 }
 
 pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {

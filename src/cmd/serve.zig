@@ -33,20 +33,6 @@ fn defaultStopServer() void {
     if (active_server.load(.acquire)) |s| s.stop();
 }
 
-// ── MiddlewareRegistry callbacks ──────────────────────────────────────────
-
-/// Stub webhook URL-secret lookup. Returns null (no secret configured) until
-/// a future batch wires the real vault/DB lookup. Not called at runtime because
-/// `.receive_webhook` uses the `none` middleware policy; the real handler does
-/// its own auth for now.
-fn stubWebhookSecretLookup(
-    _: *anyopaque,
-    _: []const u8,
-    _: std.mem.Allocator,
-) anyerror!?[]const u8 {
-    return null;
-}
-
 const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
 
@@ -217,10 +203,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
         .webhook_hmac_mw = .{ .secret = approval_signing_secret },
-        .webhook_url_secret_mw = .{
-            .lookup_ctx = &api_queue, // unused by stub; Batch D will wire real lookup
-            .lookup_fn = stubWebhookSecretLookup,
-        },
     };
     // M28_001: construct the generic WebhookSig with concrete *pg.Pool type.
     // Must be declared before initChains() so the pointer is stable, but

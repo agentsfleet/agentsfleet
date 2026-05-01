@@ -1,4 +1,4 @@
-// End-to-end HTTP integration tests for per-zombie webhook auth (M28_003).
+// End-to-end HTTP integration tests for per-zombie webhook auth.
 //
 // Uses the shared TestHarness (src/http/test_harness.zig) with the real
 // webhook_sig + svix_signature middlewares wired to the production
@@ -7,10 +7,6 @@
 //
 // LIVE DB ONLY. Requires `make test-integration` (or `make up`, then
 // TEST_DATABASE_URL set + LIVE_DB=1). Tests skip when DB is not reachable.
-//
-// Test names follow RULE TST-NAM (milestone-free). Organized by suite:
-//   happy_*  — §2 per-source happy paths
-//   (further suites land in follow-up commits; pattern is set here)
 
 const std = @import("std");
 const pg = @import("pg");
@@ -109,16 +105,15 @@ fn _tracked_github_happy_path(alloc: std.mem.Allocator) !void {
         .workspace_id = fx_mod.ID_WS_A,
         .zombie_id = fx_mod.ID_ZOMBIE_A,
     };
-    const secret_ref = "gh_webhook_secret";
     const secret_plaintext = "topsecret-github-key";
 
-    const trigger_json = try fx_mod.buildTriggerConfig(alloc, "github", secret_ref);
+    const trigger_json = try fx_mod.buildTriggerConfig(alloc, "github", null);
     defer alloc.free(trigger_json);
 
     // ── Insert fixture rows ───────────────────────────────────────────────
     const conn = try h.acquireConn();
-    try fx_mod.insertZombie(conn, fx, trigger_json, null);
-    try fx_mod.insertVaultSecret(alloc, conn, fx.workspace_id, secret_ref, secret_plaintext);
+    try fx_mod.insertZombie(conn, fx, trigger_json);
+    try fx_mod.insertWebhookCredential(alloc, conn, fx.workspace_id, "github", secret_plaintext);
     h.releaseConn(conn);
 
     // ── Sign + POST the webhook payload ───────────────────────────────────
