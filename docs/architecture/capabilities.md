@@ -28,23 +28,23 @@ These are the tool primitives NullClaw exposes. The zombie's `tools:` allowlist 
 | `http_request` | GET / POST to allow-listed hosts. Placeholders like `${secrets.NAME.FIELD}` are substituted at the tool bridge after sandbox entry. | The agent sees placeholders only; it never sees raw secret bytes. |
 | `memory_store` / `memory_recall` | Durable scratchpad keyed by string. Survives stage boundaries and full restart. The "where I am" snapshot mechanism. | Yes — the agent reads and writes. |
 | `cron_add` / `cron_list` / `cron_remove` | Self-schedule future invocations. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. | Yes. |
-| `shell` (future, gated) | Read-only commands like `docker ps`, `kubectl get`. Not in v1 platform-ops. | Yes (when wired). |
+| `shell` (gated) | Read-only commands like `docker ps`, `kubectl get`. Not part of the initial platform-ops surface. | Yes, when explicitly enabled. |
 
 ---
 
 ## 3. Platform-level guarantees (the substrate that wraps every tool call)
 
-| Capability | What it does | Owner spec |
+| Capability | What it does | Primary owner |
 |---|---|---|
-| Worker control stream | A watcher thread on `zombie:control` claims new zombies, spawns per-zombie threads, and propagates kill within milliseconds (not on the 5-second `XREADGROUP` cycle). | Worker substrate (M40) |
-| Per-execution policy | Each `executor.createExecution` carries `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The tool bridge substitutes secrets at the sandbox boundary. | Context Layering (M41) |
-| Event stream + history | Every steer / webhook / cron event lands on `zombie:{id}:events` with actor provenance. `core.zombie_events` row is `INSERT`ed at receive, `UPDATE`d at completion. | Streaming substrate (M42) |
-| Webhook ingest (GitHub Actions in v1) | The HTTP receiver verifies the hash-based-message-authentication signature, normalises the payload, and writes a synthetic event with `actor=webhook:github`. | Webhook ingest (M43) |
-| Credential vault | Stores opaque-JSON-object credentials, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. The tool bridge substitutes at sandbox entry. | Vault (M45) |
-| Provider config (BYOK) | Per-tenant choice between platform-managed inference and Bring Your Own Key. Lives in `core.tenant_providers`; the worker resolves it on every event. See [`billing_and_byok.md`](./billing_and_byok.md). | BYOK Provider (M48) |
-| Approval gating | Risky actions block until a human clicks Approve in the dashboard or a Slack DM. The state machine survives worker restarts. | Approval inbox (M47) |
-| Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-zombie in `TRIGGER.md` / `x-usezombie.budget`. | Already enforced via the M37 sample shape |
-| Per-stage context lifecycle | Rolling tool-result window, memory-store nudge, stage chunking, and continuation events. See §4. | Context Layering (M41) |
+| Worker control stream | A watcher thread on `zombie:control` claims new zombies, spawns per-zombie threads, and propagates kill within milliseconds (not on the 5-second `XREADGROUP` cycle). | Worker control plane |
+| Per-execution policy | Each `executor.createExecution` carries `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The tool bridge substitutes secrets at the sandbox boundary. | Executor session policy |
+| Event stream + history | Every steer / webhook / cron event lands on `zombie:{id}:events` with actor provenance. `core.zombie_events` rows are opened at receive and closed at completion. | Event ingest + history path |
+| Webhook ingest (GitHub Actions in v1) | The HTTP receiver verifies the hash-based-message-authentication signature, normalises the payload, and writes a synthetic event with `actor=webhook:github`. | Webhook receiver |
+| Credential vault | Stores opaque-JSON-object credentials, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. The tool bridge substitutes at sandbox entry. | Vault + secret resolution |
+| Provider config (BYOK) | Per-tenant choice between platform-managed inference and Bring Your Own Key. Lives in `core.tenant_providers`; the worker resolves it on every event. See [`billing_and_byok.md`](./billing_and_byok.md). | Provider resolution path |
+| Approval gating | Risky actions block until a human clicks Approve in the dashboard or a Slack DM. The state machine survives worker restarts. | Approval workflow |
+| Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-zombie in `TRIGGER.md` / `x-usezombie.budget`. | Billing gate |
+| Per-stage context lifecycle | Rolling tool-result window, memory-store nudge, stage chunking, and continuation events. See §4. | Context lifecycle |
 
 ---
 
@@ -106,7 +106,7 @@ A pathological agent can in principle chunk forever — each stage hits the L3 t
 - **The zombie itself stays alive.** Only this one chain is forfeit; future webhooks, cron fires, and operator steers land on the events stream as fresh chains with their own 10-chunk budgets.
 - **Idempotency on replay** is preserved by the `(zombie_id, event_id)` PRIMARY KEY — a duplicate XADD of an already-processed event is a no-op.
 
-**Notification today is silent.** The label is observability — the operator sees it only by looking (`zombiectl events`, dashboard, SSE tail). There is no automatic Slack post, email, or page when `chunk_chain_escalate_human` fires. Three follow-ups can wire active notification: (a) extend the M47 approval inbox to surface non-approval failure_labels needing attention, (b) instruct the SKILL prose to post a Slack handoff message preemptively on the agent's 10th continuation, or (c) add an optional `escalation_webhook_url` on the zombie config that the worker POSTs to whenever this label fires. None of these ship in the M41 PR.
+**Notification today is silent.** The label is observability — the operator sees it only by looking (`zombiectl events`, dashboard, SSE tail). There is no automatic Slack post, email, or page when `chunk_chain_escalate_human` fires. Active notification could later come from the approval surface, from SKILL prose that posts a Slack handoff message preemptively on the agent's 10th continuation, or from an optional `escalation_webhook_url` on the zombie config that the worker POSTs to whenever this label fires.
 
 **Resuming a forfeited chain manually.** There is no special "resume chunk-chain" endpoint. The cleanest path is `zombiectl steer {id} "continue from <snapshot-key> — pick up where you left off"`, where `<snapshot-key>` is whatever the zombie's own SKILL.md prose taught the agent to use as the memory key for that work unit (e.g. `incident:<id>:findings` for platform-ops; `lead:<id>:scoring` for a lead-scorer; `applicant:<id>:assessment` for a screener). This XADDs a fresh chat event; the SKILL prose tells the agent to `memory_recall` the snapshot. The new event's chain starts at zero — the operator gets another 10-chunk budget without the runtime needing a dedicated resume verb. The runtime never invents the key shape — it's whatever the zombie's own prose chose.
 

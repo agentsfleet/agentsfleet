@@ -99,7 +99,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
-7. **Install.** `zombiectl install --from .usezombie/platform-ops/`. The CLI POSTs `{name, config_json, source_markdown}`; the API persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control` (Invariant 1). Worker watcher claims within ≤1s, spawns the per-zombie thread, no worker restart.
+7. **Install.** `zombiectl install --from .usezombie/platform-ops/`. The CLI POSTs `{name, config_json, source_markdown}`; the API persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required.
 8. **Webhook URL + secret.** API returns `{zombie_id, webhook_url, webhook_secret}`. The skill prints them inline:
    ```
    Add this webhook to your repo:
@@ -141,7 +141,7 @@ The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent`:
 3. **Balance gate fires.** Tenant is on Free plan, balance > 0 → pass. (See `scenarios/03_balance_gate_paid.md` for the depleted case.)
 4. Approval gate (Free tier, no destructive tools) → pass.
 5. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`.
-6. **Resolve provider config:** `tenant_provider.resolveActiveProvider(tenant_id)` returns `{mode: "platform", provider: "anthropic", api_key: <platform_key>, model: "claude-sonnet-4-6"}`. The cap from frontmatter (`200_000`) wins because `mode=platform` (the worker prefers the install-time pinned cap when available; see §11).
+6. **Resolve provider config:** `tenant_provider.resolveActiveProvider(tenant_id)` returns `{mode: "platform", provider: "anthropic", api_key: <platform_key>, model: "claude-sonnet-4-6"}`. The cap from frontmatter (`200_000`) wins because `mode=platform` and the worker prefers the install-time pinned cap when available.
 7. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=200000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "claude-sonnet-4-6"})`.
 8. `executor.startStage(execution_id, message=<webhook payload as text>)`.
 
@@ -173,5 +173,5 @@ The operator reads the diagnosis in Slack; later opens `zombiectl events {id}` t
 
 - No BYOK. See `scenarios/02_byok.md`.
 - No balance trip. See `scenarios/03_balance_gate_paid.md`.
-- No customer-facing statuspage / external comms. That's the bastion direction (architecture §13).
+- No customer-facing statuspage / external comms. That's the bastion direction documented in [`../bastion.md`](../bastion.md).
 - No GitHub App for auto-webhook config. Manual step in v2.

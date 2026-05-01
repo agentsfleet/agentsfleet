@@ -11,7 +11,7 @@ flowchart TD
     ResolvePlan --> EstCost{Estimate cost:<br/>platform vs BYOK<br/>included vs overage}
     EstCost -->|balance < est| Block[UPDATE status=gate_blocked<br/>failure_label=balance_exhausted<br/>XACK terminal]
     EstCost -->|balance ≥ est| Approval[Approval gate]
-    Approval -->|blocked| Wait[gate_blocked, M47 resume later]
+    Approval -->|blocked| Wait[gate_blocked until<br/>operator resumes]
     Approval -->|pass| ResolveCreds[Resolve secrets_map<br/>+ resolveActiveProvider]
     ResolveCreds --> Exec[executor.createExecution<br/>+ startStage]
     Exec --> Result[StageResult returns]
@@ -92,7 +92,7 @@ In `processEvent`, before the executor call:
        XACK
        — done. Operator sees the row in zombiectl events.
 
-4. Approval gate (separate, M47).
+4. Approval gate (separate, using the same gate-blocked lifecycle).
 5. Resolve secrets_map.
 6. executor.createExecution.
 7. executor.startStage.
@@ -120,12 +120,12 @@ When the gate blocks, the operator's surfaces show:
 - **`zombiectl events {id}`**: the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-liner suggestion: `⚠ Tenant balance exhausted. Upgrade or top up: zombiectl plan upgrade`.
 - **Dashboard `/zombies/{id}/events`**: the row renders with a red `Blocked: balance` chip and an inline upgrade CTA.
 - **Slack (if the SKILL.md author wired it)**: optional — the SKILL.md prose can include a "if I can't run, post to #ops-billing" instruction. Out-of-the-box samples don't include this; it's an authoring choice.
-- **Email** (post-MVP): a daily digest "you blocked N events yesterday — upgrade?".
+- **Email** (optional follow-up surface): a daily digest "you blocked N events yesterday — upgrade?".
 
 The blocked row is **terminal** (XACKed, immutable narrative). When the operator tops up, **no automatic replay**. If they want the missed events processed, they either:
 
 1. Re-trigger from the source (push another commit, send another steer), or
-2. Use the M47 approval inbox's "resume" affordance once it ships, which synthesises a `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
+2. Use the dashboard or CLI resume affordance, which synthesises an `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
 
 The reasoning is that a balance-exhausted event is usually evidence the operator was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
 
@@ -148,7 +148,7 @@ The "in-flight events" question matters because BYOK and platform have wildly di
 - Balance gate is a single code path. It runs for both postures. The cost function differs; the gate logic does not.
 - Free plan doesn't allow BYOK. BYOK costs us less to serve, but presumes the operator is paying upstream — the Free tier is for evaluation, and giving free orchestration to operators with their own LLM key would be a vector for abuse.
 - The operator's billing surface is `tenant_billing.balance_cents` — same column, regardless of posture. The composition of what depleted it (LLM tokens vs orchestration fees) is a reporting concern, not a runtime concern.
-- No auto-replay of gate-blocked events. M47 adds a manual approval-inbox affordance later.
+- No auto-replay of gate-blocked events. Resume is always a deliberate operator action.
 - Plan changes and provider posture changes are independent. Tenant can be on Scale + platform, Team + BYOK, etc. Five product combinations from two orthogonal axes.
 
 ---

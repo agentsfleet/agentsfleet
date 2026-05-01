@@ -39,17 +39,17 @@ This is a deliberate scope cut, not a gap in the architecture. The runtime is al
 
 Practically, this means:
 
-- v2 launch claim is **OSS + BYOK + markdown-defined** (§0). Not "self-hostable."
+- v2 launch claim is **OSS + BYOK + markdown-defined**. Not "self-hostable."
 - The `/self-host` runbook page does not exist on `docs.usezombie.com` for v2.
 - Operators who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours_v2.md`](./office_hours_v2.md) P1 are v3 customers, not v2.
-- BYOK still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See §10 capabilities and [`scenarios/02_byok.md`](./scenarios/02_byok.md).
+- BYOK still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`scenarios/02_byok.md`](./scenarios/02_byok.md).
 
 ## §8.1 Authoring the zombie
 
 The user defines the zombie in project files:
 
 - `SKILL.md` describes how the zombie should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. No framework syntax.
-- `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md — see §10) describes how the zombie wakes up: webhook, cron, operator steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs.
+- `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md) describes how the zombie wakes up: webhook, cron, operator steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs.
 
 The user iterates those files from Claude in natural language:
 
@@ -68,7 +68,7 @@ Conceptually, the workflow is:
 
 1. Claude (or another agent), typically driven by the `/usezombie-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
 2. **`zombiectl doctor --json` runs first** as the deterministic readiness gate. Doctor is auth-exempt, fast, and verifies four things: token validity, server reachability, an active workspace, and workspace binding for the current CLI. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the operator-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
-3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the API. The CLI POSTs `{name, config_json, source_markdown}`; the API parses frontmatter, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201 (see §12, Invariant 1).
+3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the API. The CLI POSTs `{name, config_json, source_markdown}`; the API parses frontmatter, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201. See [`data_flow.md`](./data_flow.md) for the install-to-worker claim sequence.
 4. The API stores the zombie config, linked credentials reference, approval policy, and trigger settings.
 5. The worker runtime becomes responsible for future triggers — no worker restart required (the watcher thread on `zombie:control` claims the new zombie within milliseconds).
 
@@ -151,7 +151,7 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 ## §8.7 Model and context-cap origin (platform vs. BYOK)
 
-Two things travel together: the **model** the executor invokes, and the **`context_cap_tokens`** L3 stage chunking uses (M41 §6). They originate from different places under platform-managed and BYOK postures, and the worker's overlay logic is what reconciles them at trigger time.
+Two things travel together: the **model** the executor invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and BYOK postures, and the worker's overlay logic is what reconciles them at trigger time.
 
 ```
                      PLATFORM-MANAGED                          BYOK
@@ -188,7 +188,8 @@ createExecution → context_cap_tokens=200000           → context_cap_tokens=2
                   model=claude-sonnet-4-6               model=accounts/.../kimi-k2
                   provider_api_key=<platform>           provider_api_key=<fw_…>
 
-L3 (M41 §6)    → threshold = 0.75 × 200000           → threshold = 0.75 × 256000
+L3 stage chunking
+                → threshold = 0.75 × 200000           → threshold = 0.75 × 256000
 ```
 
 Single source of truth: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at install time (platform path → pinned in frontmatter) or at `provider set` time (BYOK path → pinned in `tenant_providers`). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`scenarios/02_byok.md`](./scenarios/02_byok.md) §5 for the endpoint shape.
