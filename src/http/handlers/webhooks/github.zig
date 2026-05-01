@@ -85,6 +85,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         // CDNs / HTTP/2 proxies that may strip or reject 204+body per
         // RFC 9110 §6.4.5. GitHub's webhook delivery dashboard renders this
         // body when an operator inspects "Recent Deliveries".
+        log.info("github_webhook.ignored_event zombie_id={s} delivery={s} event={s}", .{ zombie_id, delivery, event });
         hx.ok(.ok, .{ .ignored = event });
         return;
     }
@@ -106,7 +107,8 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     }
 
     // Single parse — filter + normalize share the root on the accepted path.
-    const parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch {
+    const parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch |err| {
+        log.warn("github_webhook.parse_failed zombie_id={s} delivery={s} err={s}", .{ zombie_id, delivery, @errorName(err) });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
     };
@@ -114,10 +116,12 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     const root: ?std.json.ObjectMap = switch (parsed.value) { .object => |o| o, else => null };
     const decision = if (root) |r| filterParsedRoot(r) else null;
     if (decision == null) {
+        log.warn("github_webhook.malformed_payload zombie_id={s} delivery={s}", .{ zombie_id, delivery });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
     }
     if (!decision.?.ingest) {
+        log.info("github_webhook.filter_ignored zombie_id={s} delivery={s} reason={s}", .{ zombie_id, delivery, decision.?.reason });
         hx.ok(.ok, .{ .ignored = decision.?.reason });
         return;
     }
@@ -316,6 +320,7 @@ test "filterAction: parameterized non-failure conclusions" {
 
 test "constants pin" {
     try testing.expectEqual(@as(usize, 1024 * 1024), MAX_BODY_BYTES);
+    try testing.expectEqual(@as(u32, 72 * 60 * 60), GITHUB_DEDUP_TTL_SECONDS);
     try testing.expectEqualStrings("webhook:github", ACTOR);
     try testing.expectEqualStrings("gh", PROVIDER_DEDUP_NAMESPACE);
     try testing.expectEqualStrings("x-github-event", HEADER_EVENT);

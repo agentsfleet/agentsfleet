@@ -77,6 +77,7 @@ fn parseBody(hx: Hx, req: *httpz.Request, zombie_id: []const u8) ?WebhookPayload
     };
     const payload = parsed.value;
     if (payload.event_id.len == 0 or payload.type.len == 0) {
+        log.warn("webhook.missing_fields zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS);
         parsed.deinit();
         return null;
