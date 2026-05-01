@@ -75,8 +75,8 @@ The user's agent is a workstation tool driving `zombiectl`. The zombie's agent i
            ║   2. PUBLISH zombie:{id}:activity  ║   │   ← live: pub/sub
            ║      {kind:"event_received"}       ║   │     channel (ephemeral,
            ║                                    ║   │     no buffer, no ACK)
-           ║   3. balance gate, approval gate   ║   │   See §10 Capabilities
-           ║   4. resolve creds from vault      ║   │   for which spec owns
+           ║   3. balance gate, approval gate   ║   │   See
+           ║   4. resolve creds from vault      ║   │   [`capabilities.md`](./capabilities.md)
            ║   5. UPSERT core.zombie_sessions   ║   │   each layer.
            ║      SET execution_id, started_at  ║   │   ← resume cursor:
            ║      (one row per zombie, mutable) ║   │     marks zombie busy
@@ -370,8 +370,8 @@ Considered alternatives:
                       workspace_id=<ws>        request=<msg>
                       created_at=<ms>
 
-   CONTINUATION  worker re-enqueue (chunk-continuation OR M47
-                 gate-resolved fulfillment)
+   CONTINUATION  worker re-enqueue (chunk-continuation or
+                 operator-resumed fulfillment)
                → XADD zombie:{id}:events *
                       actor=continuation:<original_actor>
                       type=continuation
@@ -435,23 +435,17 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
                           status:"gate_blocked" }
                     → XACK zombie:{id}:events       ← row-terminal:
                       gate_blocked rows are NEVER reopened. When the
-                      gate resolves (M47 Approval Inbox), a fresh
+                      gate resolves, a fresh
                       XADD lands with actor=continuation:<original>,
                       type=continuation, resumes_event_id=<blocked>,
                       producing a NEW zombie_events row whose
                       lifecycle is independent. The original blocked
                       row stays as the historical record.
 
-                      Until M47 ships: workspace-admin-gated fallback
-                      endpoint POST /v1/.../zombies/{id}/events/{event_id}/admin-resume
-                      synthesises the continuation XADD on the
-                      operator's behalf, audit-logged, idempotent
-                      (409 on already-resumed). Removed when M47 lands.
-
      4. resolveSecretsMap from vault (per-zombie credentials).
         Current `main`: load workspace-scoped credentials (including `llm`
-        when configured). Target M48 contract: resolve active provider posture
-        from `tenant_providers` (platform or BYOK).
+        when configured). Architectural target: resolve active provider
+        posture from `tenant_providers` (platform or BYOK).
 
      5. UPSERT core.zombie_sessions                ← worker marks busy
           SET execution_id, execution_started_at = now()
@@ -519,17 +513,15 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
     12. XACK zombie:{id}:events                    ← consumer group
                                                      cursor advances
 
-   Crash mid-event → worker restarts. IF an XAUTOCLAIM sweep is wired
-   (currently a v2 followup; v2.0 launches single-replica and does
-   not yet ship the sweep), the pending entry is handed to a
+   Crash mid-event → worker restarts. If an XAUTOCLAIM sweep is present,
+   the pending entry is handed to a
    new consumer name (the same worker process post-restart, with a
    new pid → new consumer name worker-{newpid}:zombie-{id}) inside
    zombie_workers. Step 1's ON CONFLICT (zombie_id, event_id) DO NOTHING
    and the UNIQUE event_id on zombie_execution_telemetry guarantee
    the replay is safe — exactly one zombie_events row, exactly one
    telemetry row — regardless of how many redelivery attempts occur.
-   M42 makes the WRITE PATH replay-safe; the RECLAIM mechanism itself
-   is M40 / v2 followup territory.
+   The write path is replay-safe even when reclaim is added later.
 ```
 
 ### D. WATCH  (operator-side: how the live tail surfaces)
@@ -615,7 +607,7 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
 | Redis data plane (`zombie:{id}:events`) | Key namespaced by zombie UUID (globally unique); no cross-tenant collision possible. No RLS in Redis — protected by `zombie_id` being unguessable + API gatekeeping. |
 | Redis control plane (`zombie:control`) | Fleet-wide, not tenant-scoped. Workers are tenant-blind by design (one fleet serves all tenants). Message payload carries `workspace_id` for logging + downstream PG lookups; routing uses `zombie_id`. |
 | Worker process | Per-zombie thread maintains its own consumer name `worker-{pid}:zombie-{id}` on the data stream. Different zombies' events never cross threads. |
-| Executor (M41 territory) | Per-execution session — secrets resolved at `createExecution` boundary, never flow as raw strings into agent context. |
+| Executor | Per-execution session — secrets resolved at `createExecution` boundary, never flow as raw strings into agent context. |
 
 ## Why one worker = all events for that zombie
 
@@ -623,7 +615,7 @@ Concern: if multiple workers are members of `zombie_workers`, won't `zombie:{id}
 
 No — consumer groups distribute messages across consumers that are actively reading the stream. Only the worker that won the control message spawns the per-zombie thread; only that thread reads `zombie:{id}:events`. Other workers never XREADGROUP that stream → no round-robin → all events flow to the right thread.
 
-Failure mode (out of scope for M40, flagging for v2 followup): if the worker hosting zombie X crashes, no other worker is reading `zombie:{id}:events`. Recovery needs a heartbeat or XAUTOCLAIM sweep. v2.0 launches single-replica; multi-replica HA is a known v3 concern.
+Failure mode: if the worker hosting zombie X crashes, no other worker is reading `zombie:{id}:events` until reclaim logic or failover takes over. Recovery needs a heartbeat or XAUTOCLAIM sweep. Multi-replica high availability remains a later concern, so this file treats reclaim as an architectural requirement even where rollout details may still evolve.
 
 ## What the user's agent never does
 
