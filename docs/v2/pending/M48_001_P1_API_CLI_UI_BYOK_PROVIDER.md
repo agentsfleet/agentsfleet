@@ -228,12 +228,14 @@ CREATE INDEX core_tenant_providers_mode_idx ON core.tenant_providers(mode);
 
 ### Tenant-billing extension — starter grant + cost functions, no new schema
 
-`core.tenant_billing.balance_cents` already exists from M11_005. M48 adds:
+`core.tenant_billing.balance_cents` already exists from M11_005 — **no schema change to that table**. The schema work in M48 lives elsewhere: §1 below adds `core.tenant_providers`, and `core.zombie_execution_telemetry` is rewritten in place to add `charge_type` + `posture` columns and replace its UNIQUE on `event_id` with UNIQUE on `(event_id, charge_type)` (per the two-row-per-event contract). Both schema changes are in the Files Changed table.
+
+M48 adds the runtime billing surface on top of those:
 
 - **One-time $10 starter grant** at tenant creation. Insertion of `STARTER_GRANT_CENTS = 1000` into `tenant_billing.balance_cents` synchronously when the tenant row is created. Implementation: extend the tenant-creation handler (M11_005-owned code) to write the grant in the same transaction as the tenant row.
 - **`compute_receive_charge(posture)`** and **`compute_stage_charge(posture, model, in_tok, out_tok)`** in `src/state/tenant_billing.zig`. No `plan` parameter — the credit-pool model has no plan-tier branching in the cost function.
-- **Two debit points wired into `processEvent`** (`src/zombie/event_loop_helpers.zig`): a receive deduct after the gate passes, a stage deduct before `executor.startStage`.
-- **Per-model token rate cache** populated at API server boot from the extended model-caps endpoint. `lookup_model_rate(model) → {input_cents_per_mtok, output_cents_per_mtok}`.
+- **Two debit points wired into `processEvent`** (`src/zombie/event_loop_helpers.zig`): a receive deduct after the gate passes, a stage deduct before `executor.startStage`. Each debit + telemetry insert is one transaction.
+- **Per-model token rate cache** in `src/state/model_rate_cache.zig` (NEW), populated at API server boot from the extended model-caps endpoint. `lookup_model_rate(model) → {input_cents_per_mtok, output_cents_per_mtok}`.
 
 ### Resolver — `tenant_provider.resolveActiveProvider(tenant_id)`
 
@@ -292,7 +294,7 @@ The resolver is the only code path that handles the api_key. Every consumer (exe
     "model":              "claude-sonnet-4-6",
     "context_cap_tokens": 200000,
     "credential_ref":     "account-fireworks-byok" | null,
-    "error":              "credential_missing" | "credential_data_malformed" | null
+    "error":              "credential_missing" | "credential_data_malformed"   // optional — present only when resolver failed
   }
 }
 ```
@@ -484,7 +486,7 @@ Synthesises platform default from a server-side constant when no row is present.
 **`src/state/tenant_billing.zig` (EDIT):**
 - Add `Posture` enum + the constants above.
 - Add `compute_receive_charge(posture)` and `compute_stage_charge(posture, model, in_tok, out_tok)`.
-- Add `lookup_model_rate(model)` reading from a process-local cache (initialised at API server boot — see §11).
+- `lookup_model_rate(model)` is imported from `src/state/model_rate_cache.zig` (the new module dedicated to the cache; see §11). `tenant_billing.zig` does not own the cache — it just reads from it.
 - Add `insert_starter_grant(conn, tenant_id)` — writes `STARTER_GRANT_CENTS` into `balance_cents`. Called from the tenant-creation transaction.
 - Add `deduct(conn, tenant_id, cents)` — `UPDATE tenant_billing SET balance_cents = balance_cents - $cents`.
 - Add `insert_telemetry_row(conn, event_id, posture, model, charge_type, cents)` — INSERT into `zombie_execution_telemetry`.
@@ -703,7 +705,7 @@ UI uses this for the provider-name display in BYOK mode (the user's `provider` f
 | `schema/embed.zig` | EXTEND | Register schema |
 | `src/cmd/common.zig` | EXTEND | Migration array |
 | `src/state/tenant_provider.zig` | NEW | Resolver + CRUD |
-| `src/state/tenant_billing.zig` | EDIT | `compute_*_charge` + `lookup_model_rate` + `insert_starter_grant` + helper deduct/insert/update |
+| `src/state/tenant_billing.zig` | EDIT | `compute_*_charge` + `insert_starter_grant` + helper deduct/insert/update. Imports `lookup_model_rate` from the new `model_rate_cache.zig` |
 | `src/http/handlers/tenants/provider.zig` | NEW | GET/PUT/DELETE `/v1/tenants/me/provider` |
 | `src/http/handlers/tenants/create.zig` (or wherever M11_005 landed) | EDIT | One line: call `tenant_billing.insert_starter_grant` in the tenant-create transaction |
 | `src/http/handlers/doctor.zig` | EDIT | Add `tenant_provider` block |

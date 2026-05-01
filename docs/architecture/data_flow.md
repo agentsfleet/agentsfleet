@@ -20,7 +20,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | `core.zombie_events` | `zombied-worker` zombie thread (INSERT received → UPDATE terminal) | `zombied-api` `GET /events` endpoints, dashboard, `zombiectl events` |
 | `core.zombies` | `zombied-api` only | `zombied-worker` at claim + watcher tick |
 | `core.zombie_sessions` | `zombied-worker` (checkpoint + execution_id) | `zombied-worker` at claim + kill path |
-| `vault.secrets` | `zombied-api` on `credential add` | `zombied-worker` resolves just-in-time before each `createExecution` |
+| `vault.secrets` | `zombied-api` on `credential set` (upsert) | `zombied-worker` resolves just-in-time before each `createExecution` |
 
 ---
 
@@ -397,7 +397,7 @@ user action:
   `trigger.source` is unknown to the provider registry, OR the workspace
   has no `zombie:<source>` vault credential (vault row missing OR
   `webhook_secret` field absent). User-recoverable misconfig — fix
-  with `zombiectl credential add <source> --data='{"webhook_secret":"…"}'`.
+  with `zombiectl credential set <source> --data='{"webhook_secret":"…"}'`.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.
   Either an attack or a real drift between what the provider has

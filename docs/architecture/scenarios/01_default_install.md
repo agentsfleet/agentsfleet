@@ -27,7 +27,7 @@ sequenceDiagram
     Skill->>Op: ask 3 questions (slack, branch, cron)
     Skill->>CapAPI: GET caps for claude-sonnet-4-6
     CapAPI-->>Skill: { context_cap_tokens: 200000 }
-    Skill->>CLI: credential add (fly, slack, github, upstash)
+    Skill->>CLI: credential set (fly, slack, github, upstash)
     CLI->>API: PUT /credentials
     Skill->>CLI: install --from .usezombie/platform-ops/
     CLI->>API: POST /zombies
@@ -66,7 +66,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    - try `op read 'op://Personal/<name>/api-token'`
    - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
-   then `zombiectl credential add <name> --data '<opaque-json>'` per credential.
+   then `zombiectl credential set <name> --data '<opaque-json>'` per credential (upsert; same surface used for the BYOK credential in Scenario 02).
 5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "claude-sonnet-4-6"`, `context_cap_tokens: 200000`, `provider: "anthropic"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
    The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_byok.md`](../billing_and_byok.md) §9 for the endpoint design.
