@@ -128,20 +128,22 @@ Under platform: a fixed overhead (1¢) plus token cost driven by the per-model r
 
 ### 4.3 Worked example — John under platform, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
 
+> **Illustrative only.** The `{input, output}` cents-per-mtok values below are placeholders chosen to make the math read easily. The canonical rates live at the model-caps endpoint (§10) and change as upstream provider pricing moves. **Do not treat any number in this section as the contracted retail rate.** The contract is the *shape* of the math: `compute_stage_charge` reads cached rates by model id, multiplies by tokens, adds the platform overhead.
+
 ```
 compute_receive_charge(.platform)
   = 1¢
 
 compute_stage_charge(.platform, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
-  rate(accounts/fireworks/models/kimi-k2.6) = { input: 300, output: 1500 } cents/mtok
-  in_cents  = (300  × 800)  / 1_000_000 = 0¢ (rounds to 0; under 1¢)
-  out_cents = (1500 × 1040) / 1_000_000 = 1¢
+  rate ← lookup_model_rate(model)           // from cache, populated at API boot
+                                            // from the model-caps endpoint (§10)
+  // illustrative values: { input: 300, output: 1500 } cents per million
+  in_cents  = (rate.input  × 800)  / 1_000_000 = 0¢ (rounds to 0; under 1¢)
+  out_cents = (rate.output × 1040) / 1_000_000 = 1¢
   = STAGE_OVERHEAD_PLATFORM (1¢) + 0¢ + 1¢ = 2¢
 
 Total event cost: 1¢ + 2¢ = 3¢
 ```
-
-(Numbers illustrative; the actual rates ride the model-caps endpoint and may differ. The shape of the math is the contract.)
 
 ### 4.4 Worked example — John under BYOK, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
 
@@ -297,50 +299,27 @@ The single source of truth for model context caps **and per-model token rates**.
 - **BYOK context cap.** `zombiectl tenant provider set` calls the endpoint and writes the cap into `core.tenant_providers.context_cap_tokens`.
 - **Per-model token rates.** The API server reads the endpoint at boot and on a periodic refresh; `compute_stage_charge` consults the cached rates.
 
-Endpoint shape (extended in M48 with token-rate columns):
+Endpoint shape (extended in M48 with token-rate columns). **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific cents-per-million figures change as upstream provider pricing moves and the admin-zombie reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
 
 ```
 GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
 GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json?model=<urlencoded>
 
 200 {
-  "version": "2026-05-01",
+  "version":      "<ISO date — bumped on every catalogue change>",
   "models": [
-    { "id": "claude-opus-4-7",
-      "context_cap_tokens": 1000000,
-      "input_cents_per_mtok":  1500,
-      "output_cents_per_mtok": 7500 },
-    { "id": "claude-sonnet-4-6",
-      "context_cap_tokens": 256000,
-      "input_cents_per_mtok":  300,
-      "output_cents_per_mtok": 1500 },
-    { "id": "claude-haiku-4-5-20251001",
-      "context_cap_tokens": 256000,
-      "input_cents_per_mtok":  100,
-      "output_cents_per_mtok":  500 },
-    { "id": "gpt-5.5",
-      "context_cap_tokens": 256000,
-      "input_cents_per_mtok":  500,
-      "output_cents_per_mtok": 2000 },
-    { "id": "kimi-k2.6",
-      "context_cap_tokens": 256000,
-      "input_cents_per_mtok":  300,
-      "output_cents_per_mtok": 1500 },
-    { "id": "accounts/fireworks/models/kimi-k2.6",
-      "context_cap_tokens": 256000,
-      "input_cents_per_mtok":  300,
-      "output_cents_per_mtok": 1500 },
-    { "id": "accounts/fireworks/models/deepseek-v4-pro",
-      "context_cap_tokens": 256000,
-      "input_cents_per_mtok":  200,
-      "output_cents_per_mtok":  800 },
-    { "id": "glm-5.1",
-      "context_cap_tokens": 128000,
-      "input_cents_per_mtok":  100,
-      "output_cents_per_mtok":  400 }
+    {
+      "id":                    "<model identifier as the provider expects it>",
+      "context_cap_tokens":    <int — context window in tokens>,
+      "input_cents_per_mtok":  <int — retail rate per 1M input tokens, in cents>,
+      "output_cents_per_mtok": <int — retail rate per 1M output tokens, in cents>
+    },
+    …one row per supported model…
   ]
 }
 ```
+
+The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-zombie keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider set` validates membership, the API server caches all rates at boot, and the worked examples in §4 use illustrative values only (not pinned to whatever's live).
 
 The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their BYOK credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
 
