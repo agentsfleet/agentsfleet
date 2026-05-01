@@ -15,8 +15,11 @@ directly.
 
 This sample is the end-to-end proof of the v2.0 claim: **describe the
 zombie in prose, declare its APIs + credentials in frontmatter, and
-the LLM reasons.** No Zig connector, no vendor SDK, no webhook
-routing. Just `SKILL.md` + `TRIGGER.md` + three credentials.
+the LLM reasons.** No Zig connector, no vendor SDK — just
+`SKILL.md` + `TRIGGER.md` + a handful of credentials. Optionally,
+point a GitHub repo's webhook at this zombie and the same agent
+diagnoses CD failures the moment they fire (see "Step 4 — GitHub
+Actions trigger" below).
 
 ## Prerequisites
 
@@ -43,26 +46,21 @@ writes them into `zombie_vault` (KMS-enveloped in Postgres); the
 executor decrypts just-in-time and substitutes `${secrets.x.y}`
 placeholders into `http_request` tool calls after sandbox entry.
 
-Each credential is a **structured record** — host + token — so the
-zombie can reference `${secrets.fly.host}` and `${secrets.fly.api_token}`
-separately. Flag form:
+Each credential is a **structured JSON record** — typically `host` +
+`api_token`, sometimes additional fields per provider — so the zombie
+can reference `${secrets.fly.host}` and `${secrets.fly.api_token}`
+separately. Pass the body as `--data='<json>'`:
 
 ```bash
 # fly.io — personal access token with read scope
-zombiectl credential add fly \
-  --host api.machines.dev \
-  --api-token "$FLY_API_TOKEN"
+zombiectl credential add fly --data='{"host":"api.machines.dev","api_token":"<your-fly-pat>"}'
 
 # upstash — account management API token (not a per-database password)
-zombiectl credential add upstash \
-  --host api.upstash.com \
-  --api-token "$UPSTASH_MGMT_TOKEN"
+zombiectl credential add upstash --data='{"host":"api.upstash.com","api_token":"<your-upstash-mgmt-token>"}'
 
 # slack — bot user OAuth token (xoxb-...), chat:write scope,
 # invited to the channel you want posts in
-zombiectl credential add slack \
-  --host slack.com \
-  --bot-token "$SLACK_BOT_TOKEN"
+zombiectl credential add slack --data='{"host":"slack.com","bot_token":"<your-xoxb-token>"}'
 ```
 
 If any of these three is missing at chat-time, the first tool call
@@ -108,6 +106,59 @@ zombiectl chat <zombie_id>
 Everything the agent says, every tool call, and the Slack post is also
 visible in the live activity stream (`zombiectl watch <id>` or
 the dashboard's activity tab).
+
+## Step 4 (optional) — GitHub Actions trigger
+
+Beyond manual chat, this zombie can react to GitHub Actions failures
+the moment they happen. Configure a repo-side webhook to point at
+this zombie and any `workflow_run` event with `conclusion=failure`
+arrives as `actor=webhook:github`. The same agent prose drives the
+diagnosis — except now there's no human in the loop; the failed run
+URL, head sha, and recent commit list are already in the event when
+the agent picks it up.
+
+**Generate a webhook secret and store it alongside a GitHub PAT** with
+read scope on Actions:
+
+```bash
+# 32 random bytes, base64-encoded — paste this output into GitHub's
+# webhook UI as the "Secret"
+openssl rand -base64 32
+
+zombiectl credential add github --data='{"webhook_secret":"<paste-the-output-above>","api_token":"<your-github-pat>"}'
+```
+
+The credential is workspace-scoped: one `github` record covers every
+zombie in this workspace whose `trigger.source` is `github`. If you
+need different secrets per zombie (e.g. multiple GitHub orgs), use
+`x-usezombie.trigger.credential_name: github-prod` in that zombie's
+frontmatter to point at a differently-named credential.
+
+**Register the webhook in GitHub.** In the repo's
+*Settings → Webhooks → Add webhook*:
+
+- Payload URL: `https://api.usezombie.com/v1/webhooks/<zombie_id>/github`
+- Content type: `application/json`
+- Secret: the `openssl rand` output from above (paste once, GitHub stores it)
+- Events: *Workflow runs*
+
+That's it. The next failed `workflow_run` for that repo lands on
+`zombie:{id}:events` within ~100 ms; the agent reads the run logs,
+cross-references the last 5 commits on the head branch, and posts a
+plain-prose Slack diagnosis — the runtime prose for that path is in
+`SKILL.md` under "When the trigger is a GitHub Actions failure."
+
+Successes and other event types (`push`, `pull_request`, etc.) are
+filtered out at the receiver — they never burn agent budget. GitHub's
+delivery retries (up to 72 h on the same `X-GitHub-Delivery` UUID)
+are deduped server-side, so a flaky network on GitHub's side won't
+trigger duplicate diagnoses.
+
+> **Coming soon:** a one-command install skill
+> (`/usezombie-install-platform-ops`) that generates the secret,
+> stores both credentials, and prints the GitHub webhook config for
+> you to paste — so you don't have to assemble the JSON or click
+> through GitHub's UI by hand.
 
 ## Example diagnosis
 
@@ -189,7 +240,7 @@ first tool call needing the missing one emits a single
 
 ```
 UZ-GRANT-001: credential 'fly' not found in vault.
-  Run: zombiectl credential add fly --host api.machines.dev --api-token <TOKEN>
+  Run: zombiectl credential add fly --data='{"host":"api.machines.dev","api_token":"<TOKEN>"}'
 ```
 
 The zombie halts cleanly — no crash, no partial Slack post, no
@@ -202,13 +253,13 @@ retries. Add the credential and chat again.
   `${secrets.fly.api_token}`, not the real token. The worst a
   prompt-injection can make it print is the placeholder string.
 - **Grep assertion.** You can seed a fake token
-  (`zombiectl credential add fly --api-token test-token-xyz`), run a
+  (`zombiectl credential add fly --data='{"host":"api.machines.dev","api_token":"test-token-xyz"}'`), run a
   full diagnosis, then grep `test-token-xyz` across `core.zombie_events`,
   `core.zombie_activities`, zombied-api and zombied-worker logs — expect
   zero hits. The token bytes exist only transiently in the executor
   process's memory and inline in outgoing TLS bytes to fly / upstash /
   slack.
-- **Rotation.** `zombiectl credential add fly --host ... --api-token <new>`
+- **Rotation.** `zombiectl credential add fly --data='{"host":"api.machines.dev","api_token":"<new>"}'`
   overwrites the existing record; the next chat picks up the new token
   with no zombie restart.
 
