@@ -247,6 +247,28 @@ test "M4_001: approval route resolves before webhook route" {
     }
 }
 
+test "matchWebhookAction excludes reserved literals at slot 1" {
+    // /v1/webhooks/{reserved}/approval must NOT dispatch to .approval_webhook
+    // with zombie_id={reserved}. Symmetric with matchWebhook's reserved-segment
+    // guard. (svix is excluded by matchWebhookAction too, but svix paths route
+    // to the svix family via matchSvixWebhook — so they're tested separately.)
+    const cases = [_][]const u8{
+        "/v1/webhooks/clerk/approval",
+        "/v1/webhooks/approval/approval",
+        "/v1/webhooks/grant-approval/approval",
+        "/v1/webhooks/clerk/grant-approval",
+        "/v1/webhooks/approval/grant-approval",
+        "/v1/webhooks/grant-approval/grant-approval",
+    };
+    for (cases) |p| {
+        const r = match(p, .POST);
+        if (r) |route| switch (route) {
+            .approval_webhook, .grant_approval_webhook => return error.TestExpectedNoActionDispatch,
+            else => {},
+        };
+    }
+}
+
 test "svix webhook route resolves with zombie_id" {
     const zid = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const route = match("/v1/webhooks/svix/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) orelse return error.TestExpectedMatch;

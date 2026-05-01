@@ -341,34 +341,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     {
-        const app_id = std.process.getEnvVarOwned(alloc, "GITHUB_APP_ID") catch null;
-        if (app_id) |id| {
-            defer alloc.free(id);
-            if (id.len > 0) {
-                try appendCheck(alloc, &results, "github_app_id", true, "GITHUB_APP_ID set", &ok);
-            } else {
-                try appendCheck(alloc, &results, "github_app_id", false, "GITHUB_APP_ID is empty", &ok);
-            }
-        } else {
-            try appendCheck(alloc, &results, "github_app_id", false, "GITHUB_APP_ID not set", &ok);
-        }
-    }
-
-    {
-        const key = std.process.getEnvVarOwned(alloc, "GITHUB_APP_PRIVATE_KEY") catch null;
-        if (key) |k| {
-            defer alloc.free(k);
-            if (k.len > 0) {
-                try appendCheck(alloc, &results, "github_app_private_key", true, "GITHUB_APP_PRIVATE_KEY set", &ok);
-            } else {
-                try appendCheck(alloc, &results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY is empty", &ok);
-            }
-        } else {
-            try appendCheck(alloc, &results, "github_app_private_key", false, "GITHUB_APP_PRIVATE_KEY not set", &ok);
-        }
-    }
-
-    {
         const oidc_provider_raw = std.process.getEnvVarOwned(alloc, "OIDC_PROVIDER") catch null;
         defer if (oidc_provider_raw) |v| alloc.free(v);
         const oidc_provider = blk: {

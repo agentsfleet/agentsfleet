@@ -16,7 +16,6 @@ const hx_mod = @import("handlers/hx.zig");
 const health = @import("handlers/health.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
-const github_cb = @import("handlers/auth/github_callback.zig");
 const zombie_api = @import("handlers/zombies/api.zig");
 const zombie_creds = @import("handlers/zombies/credentials.zig");
 const zombie_tel = @import("handlers/zombies/telemetry.zig");
@@ -39,9 +38,6 @@ const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
-const slack_oauth = @import("handlers/slack/oauth.zig");
-const slack_ev = @import("handlers/slack/events.zig");
-const slack_ix = @import("handlers/slack/interactions.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
@@ -98,14 +94,6 @@ pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) 
 pub fn invokePatchAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
     auth_sessions.innerPatchAuthSession(hx.*, req, route.patch_auth_session);
-}
-
-// ── OAuth callbacks ───────────────────────────────────────────────────────
-
-pub fn invokeGitHubCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    github_cb.innerGitHubCallback(hx.*, req);
 }
 
 // ── Workspace lifecycle ───────────────────────────────────────────────────
@@ -307,28 +295,3 @@ pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) v
     agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_id);
 }
 
-// ── Slack ─────────────────────────────────────────────────────────────────
-
-pub fn invokeSlackInstall(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_oauth.innerInstall(hx.*, req);
-}
-
-pub fn invokeSlackCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_oauth.innerCallback(hx.*, req);
-}
-
-pub fn invokeSlackEvents(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_ev.innerSlackEvent(hx.*, req);
-}
-
-pub fn invokeSlackInteractions(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    slack_ix.innerInteraction(hx.*, req);
-}

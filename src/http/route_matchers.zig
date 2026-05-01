@@ -311,7 +311,8 @@ pub fn matchWebhookAction(p: Path, action: []const u8) ?[]const u8 {
     if (p.segs.len != 3) return null;
     if (!p.eq(0, "webhooks")) return null;
     if (!p.eq(2, action)) return null;
-    if (p.eq(1, RESERVED_SVIX)) return null;
+    if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
+    if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
     return p.param(1);
 }
 

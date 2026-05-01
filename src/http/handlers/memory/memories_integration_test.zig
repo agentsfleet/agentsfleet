@@ -233,6 +233,19 @@ test "integration: memories POST missing content field returns 400" {
     try r.expectStatus(.bad_request);
 }
 
+test "integration: memories POST key containing '/' returns 400" {
+    const f = fixture() catch |e| return e;
+    defer f.deinit();
+
+    const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
+    defer ALLOC.free(url);
+    const r = try (try (try f.h.post(url).bearer(TOKEN_OPERATOR)).json(
+        "{\"key\":\"folder/name\",\"content\":\"would orphan\"}",
+    )).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+}
+
 test "integration: memories POST oversized content returns 400" {
     const f = fixture() catch |e| return e;
     defer f.deinit();

@@ -81,17 +81,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
 # vendor-immortal carve-outs are a separate class from deferred-cleanup
 # tracking lists, and must be named explicitly so the distinction from
 # "we'll get to it" is mechanical.
-VENDOR_PATH_CARVE_OUTS: set[str] = {
-    # Slack OAuth — the install URL initiates the OAuth dance and the
-    # callback receives the redirect. Both are configured in the Slack
-    # App's "OAuth & Permissions" page; renaming requires re-registering
-    # with Slack and a coordinated rollout.
-    "/v1/slack/install",
-    "/v1/slack/callback",
-    # GitHub OAuth callback — registered under the GitHub App's "Callback
-    # URL" setting; same constraint as Slack.
-    "/v1/github/callback",
-}
+VENDOR_PATH_CARVE_OUTS: set[str] = set()
 
 # A "noun-shaped" final segment is either a path param ({foo}), a colon-op
 # (:approve, :reject), or matches the noun grammar: lowercase letters,

@@ -51,7 +51,6 @@ pub const StartupFailed = events.StartupFailed;
 pub const ApiError = events.ApiError;
 pub const ApiErrorWithContext = events.ApiErrorWithContext;
 pub const WorkspaceCreated = events.WorkspaceCreated;
-pub const WorkspaceGithubConnected = events.WorkspaceGithubConnected;
 pub const AuthLoginCompleted = events.AuthLoginCompleted;
 pub const AuthRejected = events.AuthRejected;
 pub const ZombieTriggered = events.ZombieTriggered;

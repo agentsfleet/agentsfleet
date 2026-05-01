@@ -64,12 +64,11 @@ test "T1: all 13 event types can be captured without error" {
     t.capture(telemetry.ApiError, .{ .distinct_id = "u", .error_code = "UZ-001", .message = "m", .request_id = "r" });
     t.capture(telemetry.ApiErrorWithContext, .{ .distinct_id = "u", .error_code = "UZ-001", .message = "m", .workspace_id = "w", .request_id = "r" });
     t.capture(telemetry.WorkspaceCreated, .{ .distinct_id = "u", .workspace_id = "w", .tenant_id = "t", .repo_url = "https://x", .request_id = "r" });
-    t.capture(telemetry.WorkspaceGithubConnected, .{ .workspace_id = "w", .installation_id = "12345", .request_id = "r" });
     t.capture(telemetry.AuthLoginCompleted, .{ .distinct_id = "u", .session_id = "s", .request_id = "r" });
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
     t.capture(telemetry.ZombieTriggered, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .source = "webhook" });
     t.capture(telemetry.ZombieCompleted, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .tokens = 100, .wall_ms = 2000, .exit_status = "processed" });
-    try telemetry.TestBackend.assertCount(13);
+    try telemetry.TestBackend.assertCount(12);
     try telemetry.TestBackend.assertLastEventIs(.zombie_completed);
 }
 
@@ -200,9 +199,9 @@ test "T4: AgentCompleted.properties includes integer fields" {
 
 // ── T7: Regression safety ───────────────────────────────────────────
 
-test "T7: EventKind has exactly 13 variants" {
+test "T7: EventKind has exactly 12 variants" {
     const fields = @typeInfo(telemetry.EventKind).@"enum".fields;
-    try std.testing.expectEqual(@as(usize, 13), fields.len);
+    try std.testing.expectEqual(@as(usize, 12), fields.len);
 }
 
 test "T7: EventKind tagName matches expected event name strings" {
@@ -220,7 +219,6 @@ test "T7: each event struct kind constant matches its EventKind variant" {
     try std.testing.expectEqual(telemetry.EventKind.api_error, telemetry.ApiError.kind);
     try std.testing.expectEqual(telemetry.EventKind.api_error, telemetry.ApiErrorWithContext.kind);
     try std.testing.expectEqual(telemetry.EventKind.workspace_created, telemetry.WorkspaceCreated.kind);
-    try std.testing.expectEqual(telemetry.EventKind.workspace_github_connected, telemetry.WorkspaceGithubConnected.kind);
     try std.testing.expectEqual(telemetry.EventKind.auth_login_completed, telemetry.AuthLoginCompleted.kind);
     try std.testing.expectEqual(telemetry.EventKind.auth_rejected, telemetry.AuthRejected.kind);
 }

@@ -283,33 +283,3 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
     try std.testing.expect(r.status == 401 or r.status == 403);
 }
 
-// ── §1.3 — github_callback rejects unknown workspace in OAuth state ──────
-
-test "integration(m11_006): GET /v1/github/callback with unknown workspace_id → 401" {
-    const alloc = std.testing.allocator;
-    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
-        error.SkipZigTest => return error.SkipZigTest,
-        else => return err,
-    };
-    defer h.deinit();
-
-    // state = workspace_id that does not exist in `workspaces`. Post-M11_006
-    // this path no longer fabricates a tenant; it rejects with
-    // ERR_UNAUTHORIZED("Unknown workspace in OAuth state"). Fresh UUID v7 so
-    // no other test fixture accidentally collides with it.
-    const UNKNOWN_WORKSPACE = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a9999";
-    const path = try std.fmt.allocPrint(
-        alloc,
-        "/v1/github/callback?installation_id=inst_123&state={s}",
-        .{UNKNOWN_WORKSPACE},
-    );
-    defer alloc.free(path);
-
-    const r = try h.get(path).send();
-    defer r.deinit();
-    // GitHub callback is unauthenticated at the middleware level (OAuth
-    // state carries identity). The handler enforces workspace existence
-    // itself and raises ERR_UNAUTHORIZED when the state references an
-    // unknown workspace.
-    try std.testing.expectEqual(@as(u16, 401), r.status);
-}

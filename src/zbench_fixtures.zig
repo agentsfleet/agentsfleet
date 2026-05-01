@@ -36,7 +36,6 @@ pub const ROUTE_PATHS = [_][]const u8{
     "/readyz",
     "/metrics",
     "/v1/auth/sessions",
-    "/v1/github/callback",
     "/v1/workspaces",
     "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/zombies",
     "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/zombies/019abcde-5678-7ccc-8ddd-abcdef012345/activity",

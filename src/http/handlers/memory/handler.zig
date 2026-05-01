@@ -56,6 +56,13 @@ pub fn innerStoreMemory(
         hx.fail(ec.ERR_INVALID_REQUEST, "key must be 1-255 bytes");
         return;
     }
+    // DELETE routes the key as a single path segment, so a stored key
+    // containing '/' would never round-trip back through DELETE — reject at
+    // store time to prevent orphaned entries.
+    if (std.mem.indexOfScalar(u8, b.key, '/') != null) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "key must not contain '/'");
+        return;
+    }
     if (b.content.len == 0 or b.content.len > h.MAX_CONTENT_LEN) {
         hx.fail(ec.ERR_INVALID_REQUEST, "content must be 1-16384 bytes");
         return;
