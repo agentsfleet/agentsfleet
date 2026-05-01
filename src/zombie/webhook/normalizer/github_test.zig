@@ -118,3 +118,54 @@ test "normalize: defaults attempt to 1 when run_attempt missing" {
     defer parsed.deinit();
     try testing.expectEqual(@as(i64, 1), fieldI64(parsed.value.object, "attempt"));
 }
+
+test "normalize: numeric run_id accepted as i64 even when serialized as float" {
+    const alloc = testing.allocator;
+    // GH historically emits IDs as integers but a defensive parser must
+    // accept floats too — std.json may classify large numbers either way.
+    const body =
+        \\{"workflow_run":{"id":1.0e10,"run_attempt":1,"head_sha":"a","conclusion":"failure","head_branch":"m","html_url":"u","name":"w"},"repository":{"full_name":"o/r"}}
+    ;
+    const out = try github.normalize(alloc, body, 0);
+    defer alloc.free(out);
+
+    var parsed = try parseObject(alloc, out);
+    defer parsed.deinit();
+    try testing.expectEqual(@as(i64, 10000000000), fieldI64(parsed.value.object, "run_id"));
+}
+
+test "normalize: empty repository.full_name produces empty repo field" {
+    const alloc = testing.allocator;
+    const body =
+        \\{"workflow_run":{"id":1,"run_attempt":1,"conclusion":"failure"},"repository":{"full_name":""}}
+    ;
+    const out = try github.normalize(alloc, body, 0);
+    defer alloc.free(out);
+
+    var parsed = try parseObject(alloc, out);
+    defer parsed.deinit();
+    try testing.expectEqualStrings("", fieldString(parsed.value.object, "repo"));
+}
+
+test "normalize: unicode workflow_name round-trips through JSON" {
+    const alloc = testing.allocator;
+    const body =
+        \\{"workflow_run":{"id":1,"run_attempt":1,"conclusion":"failure","name":"deploy 🚀 — 部署"},"repository":{"full_name":"o/r"}}
+    ;
+    const out = try github.normalize(alloc, body, 0);
+    defer alloc.free(out);
+
+    var parsed = try parseObject(alloc, out);
+    defer parsed.deinit();
+    try testing.expectEqualStrings("deploy 🚀 — 部署", fieldString(parsed.value.object, "workflow_name"));
+}
+
+test "normalize: negative received_at clamps to epoch" {
+    const alloc = testing.allocator;
+    const out = try github.normalize(alloc, FAILURE_FIXTURE, -1);
+    defer alloc.free(out);
+
+    var parsed = try parseObject(alloc, out);
+    defer parsed.deinit();
+    try testing.expectEqualStrings("1970-01-01T00:00:00Z", fieldString(parsed.value.object, "received_at"));
+}

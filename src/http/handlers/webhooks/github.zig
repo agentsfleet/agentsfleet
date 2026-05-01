@@ -225,3 +225,118 @@ fn recordAccepted(
         .source = "github",
     });
 }
+
+// ── Tests ───────────────────────────────────────────────────────────────────
+// Integration tests that exercise the full HTTP → middleware → Redis → XADD
+// path live in webhook_http_integration_test.zig (TRACKED SKIP today, wires
+// up once the harness gains Redis support). The unit tests below cover the
+// pieces that don't need a live request.
+
+const testing = std.testing;
+
+test "filterAction: completed + failure → ingest" {
+    const body =
+        \\{"action":"completed","workflow_run":{"conclusion":"failure"}}
+    ;
+    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(got.ingest);
+}
+
+test "filterAction: completed + success → ignore non_failure_conclusion" {
+    const body =
+        \\{"action":"completed","workflow_run":{"conclusion":"success"}}
+    ;
+    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(!got.ingest);
+    try testing.expectEqualStrings("non_failure_conclusion", got.reason);
+}
+
+test "filterAction: completed + cancelled → ignore non_failure_conclusion" {
+    const body =
+        \\{"action":"completed","workflow_run":{"conclusion":"cancelled"}}
+    ;
+    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(!got.ingest);
+    try testing.expectEqualStrings("non_failure_conclusion", got.reason);
+}
+
+test "filterAction: in_progress action → ignore non_completed_action" {
+    const body =
+        \\{"action":"in_progress","workflow_run":{"conclusion":null}}
+    ;
+    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(!got.ingest);
+    try testing.expectEqualStrings("non_completed_action", got.reason);
+}
+
+test "filterAction: missing action → ignore non_completed_action" {
+    const body =
+        \\{"workflow_run":{"conclusion":"failure"}}
+    ;
+    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+    try testing.expect(!got.ingest);
+    try testing.expectEqualStrings("non_completed_action", got.reason);
+}
+
+test "filterAction: missing workflow_run → null" {
+    const body =
+        \\{"action":"completed"}
+    ;
+    try testing.expect(filterAction(testing.allocator, body) == null);
+}
+
+test "filterAction: malformed JSON → null" {
+    try testing.expect(filterAction(testing.allocator, "not json") == null);
+}
+
+test "filterAction: non-object root → null" {
+    try testing.expect(filterAction(testing.allocator, "[1,2,3]") == null);
+}
+
+test "filterAction: parameterized non-failure conclusions" {
+    const cases = [_][]const u8{
+        \\{"action":"completed","workflow_run":{"conclusion":"success"}}
+        ,
+        \\{"action":"completed","workflow_run":{"conclusion":"neutral"}}
+        ,
+        \\{"action":"completed","workflow_run":{"conclusion":"skipped"}}
+        ,
+        \\{"action":"completed","workflow_run":{"conclusion":"timed_out"}}
+        ,
+        \\{"action":"completed","workflow_run":{"conclusion":"action_required"}}
+        ,
+    };
+    for (cases) |body| {
+        const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
+        try testing.expect(!got.ingest);
+        try testing.expectEqualStrings("non_failure_conclusion", got.reason);
+    }
+}
+
+test "constants pin: MAX_BODY_BYTES is 1 MiB" {
+    try testing.expectEqual(@as(usize, 1024 * 1024), MAX_BODY_BYTES);
+}
+
+test "constants pin: ACTOR + namespace + headers" {
+    try testing.expectEqualStrings("webhook:github", ACTOR);
+    try testing.expectEqualStrings("gh", PROVIDER_DEDUP_NAMESPACE);
+    try testing.expectEqualStrings("x-github-event", HEADER_EVENT);
+    try testing.expectEqualStrings("x-github-delivery", HEADER_DELIVERY);
+    try testing.expectEqualStrings("workflow_run", EVENT_WORKFLOW_RUN);
+    try testing.expectEqualStrings("completed", ACTION_COMPLETED);
+    try testing.expectEqualStrings("failure", CONCLUSION_FAILURE);
+}
+
+test "dedupe key buffer fits the longest realistic UUID + provider + delivery" {
+    // Worst case: zombie_id (36 char UUIDv7) + ":gh:" + X-GitHub-Delivery
+    // (36 char UUID). "webhook:dedup:" (14) + 36 + ":gh:" (4) + 36 = 90.
+    // Buffer is 256 — comfortable.
+    var key_buf: [256]u8 = undefined;
+    const key = try std.fmt.bufPrint(&key_buf, "webhook:dedup:{s}:gh:{s}", .{
+        "01999999-9999-7999-9999-999999999999",
+        "abcdef01-2345-6789-abcd-ef0123456789",
+    });
+    try testing.expect(key.len < 256);
+    try testing.expect(std.mem.startsWith(u8, key, "webhook:dedup:"));
+    try testing.expect(std.mem.indexOf(u8, key, ":gh:") != null);
+}
