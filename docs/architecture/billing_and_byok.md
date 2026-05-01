@@ -12,12 +12,14 @@ The billing model is **credit-based, Amp-style**: every tenant has a single cred
 
 ## 1. The two postures
 
-One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a zombie on the default platform-managed posture, runs for a while, then brings his own Fireworks AI key when he wants better economics and access to Kimi K2.6. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
+One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a zombie on the default platform-managed posture, runs for a while, then activates BYOK with his own Fireworks key so he stops paying UseZombie for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
 
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
 
-- **Platform-managed.** UseZombie holds the language-model provider key. The user pays UseZombie a per-event fee that bundles inference (token-based, model-rate-driven), orchestration, storage, and egress.
-- **Bring Your Own Key (BYOK).** The user stores their own provider credential — Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-byok`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. UseZombie's executor uses that key to call the provider's API. The user pays the provider directly for inference; UseZombie charges a smaller flat orchestration fee per event with no token markup.
+- **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** UseZombie holds the platform-side Fireworks key (`PLATFORM_FIREWORKS_KEY`, admin-primed in server config). The user pays UseZombie a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress. The user never sees the platform key.
+- **Bring Your Own Key (BYOK).** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-byok`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. UseZombie's executor uses that key to call the provider's API. The user pays their provider directly for inference; UseZombie charges a smaller flat orchestration fee per event with no token markup.
+
+**Why Fireworks Kimi K2.6 is the v2.0 platform default.** Kimi K2.6 is a strong general-purpose model with a 256K context window at significantly cheaper wholesale than Anthropic Sonnet or OpenAI GPT-class. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so the same code path serves both postures — under platform it dials Fireworks with `PLATFORM_FIREWORKS_KEY`; under BYOK it dials Fireworks (or any other provider in the catalogue) with the user's key. The runtime is uniform; only the api_key + the cost-function-vs-flat-fee distinction changes.
 
 The posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl tenant provider set --credential <name>` / `zombiectl tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
 
@@ -31,7 +33,7 @@ Every tenant has exactly one balance: `core.tenant_billing.balance_cents`. The g
 
 Each new tenant receives a **one-time starter grant of 1000 cents (USD $10)** at tenant-create time. The grant is inserted into `tenant_billing.balance_cents` synchronously when the tenant row is created. There is no replenish; the $10 is a one-time onboarding allowance, not a recurring stipend.
 
-At platform rates the grant covers roughly two hundred Sonnet-class events (model rates × stage overhead — exact count varies by token usage per event). At BYOK rates the grant covers roughly five hundred events (flat orchestration only). The exact ratio depends on per-model pricing in §10.
+At platform rates the grant covers roughly three hundred typical Kimi K2.6 events (model retail rate × tokens + 1¢ overhead + 1¢ receive ≈ 3¢/event for an 800/1040-token diagnosis). At BYOK rates the grant covers roughly one thousand events (flat 1¢ stage, 0¢ receive). The exact ratio depends on per-model pricing in §10.
 
 ### 2.2 What happens when the starter grant runs out
 
@@ -69,10 +71,10 @@ Two functions, both in `src/state/tenant_billing.zig`. Both take `posture`. Neit
 
 ### 4.0 Worked examples up front
 
-Two events for John, taken at different points in his journey, drive the worked examples below:
+Two events for John, taken at different points in his journey, drive the worked examples below. Both run against Kimi K2.6 — only the posture differs:
 
-- **John on platform-managed Sonnet.** A typical webhook event: 800 input tokens / 1040 output tokens against `claude-sonnet-4-6`.
-- **John on BYOK Fireworks Kimi K2.6.** Same workload, same prompt shape: 800 input / 1320 output against `accounts/fireworks/models/kimi-k2.6` (Kimi tends to run a bit longer than Sonnet on the same prompt).
+- **John on platform-managed.** A typical webhook event under `mode=platform`: 800 input tokens / 1040 output tokens against `accounts/fireworks/models/kimi-k2.6`. UseZombie holds the Fireworks key; we pay Fireworks for the tokens and bill John at the retail rate from the model-caps endpoint plus orchestration overhead.
+- **John on BYOK.** Same workload, `mode=byok`: 800 input / 1040 output against `accounts/fireworks/models/kimi-k2.6`. John holds the Fireworks key; he pays Fireworks directly. UseZombie bills the flat orchestration overhead, no token markup.
 
 ### 4.1 Receive charge
 
@@ -102,7 +104,7 @@ const STAGE_OVERHEAD_BYOK_CENTS:     u32 = 1;   // same overhead, charged flat u
 
 pub fn compute_stage_charge(
     posture:       Posture,
-    model:         []const u8,        // "claude-sonnet-4-6", "kimi-k2.6", …
+    model:         []const u8,        // "accounts/fireworks/models/kimi-k2.6", "kimi-k2.6", …
     input_tokens:  u32,
     output_tokens: u32,
 ) u32 {
@@ -124,14 +126,14 @@ Under platform: a fixed overhead (1¢) plus token cost driven by the per-model r
 
 `@panic("unknown model")` under platform is correct: a model that's not in the catalogue should never reach `processEvent` — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `compute_stage_charge` with an unknown model is an internal inconsistency; we want to crash the worker, alert, and investigate, not silently use a default.
 
-### 4.3 Worked example — John under platform, claude-sonnet-4-6, 800 in / 1040 out
+### 4.3 Worked example — John under platform, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
 
 ```
 compute_receive_charge(.platform)
   = 1¢
 
-compute_stage_charge(.platform, "claude-sonnet-4-6", 800, 1040)
-  rate(claude-sonnet-4-6) = { input: 300, output: 1500 } cents/mtok
+compute_stage_charge(.platform, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
+  rate(accounts/fireworks/models/kimi-k2.6) = { input: 300, output: 1500 } cents/mtok
   in_cents  = (300  × 800)  / 1_000_000 = 0¢ (rounds to 0; under 1¢)
   out_cents = (1500 × 1040) / 1_000_000 = 1¢
   = STAGE_OVERHEAD_PLATFORM (1¢) + 0¢ + 1¢ = 2¢
@@ -141,20 +143,20 @@ Total event cost: 1¢ + 2¢ = 3¢
 
 (Numbers illustrative; the actual rates ride the model-caps endpoint and may differ. The shape of the math is the contract.)
 
-### 4.4 Worked example — John under BYOK, accounts/fireworks/models/kimi-k2.6, 800 in / 1320 out
+### 4.4 Worked example — John under BYOK, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
 
 ```
 compute_receive_charge(.byok)
   = 0¢
 
-compute_stage_charge(.byok, "accounts/fireworks/models/kimi-k2.6", 800, 1320)
+compute_stage_charge(.byok, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
   posture is BYOK → no rate lookup, no token math
   = STAGE_OVERHEAD_BYOK (1¢)
 
 Total event cost: 0¢ + 1¢ = 1¢
 ```
 
-Same $10 starter grant; different posture, different drain rate. Under platform he gets ~300 typical Sonnet events; under BYOK he gets ~1000 events on the same balance — a 3× runway extension that he buys by paying Fireworks separately for the actual tokens.
+Same $10 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~300 typical events on his $10 grant; under BYOK he gets ~1000 events. The 3× runway extension is what he buys by paying Fireworks directly for the tokens (his Fireworks bill, separate from his UseZombie balance).
 
 ---
 
@@ -309,11 +311,11 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
       "input_cents_per_mtok":  1500,
       "output_cents_per_mtok": 7500 },
     { "id": "claude-sonnet-4-6",
-      "context_cap_tokens": 200000,
+      "context_cap_tokens": 256000,
       "input_cents_per_mtok":  300,
       "output_cents_per_mtok": 1500 },
     { "id": "claude-haiku-4-5-20251001",
-      "context_cap_tokens": 200000,
+      "context_cap_tokens": 256000,
       "input_cents_per_mtok":  100,
       "output_cents_per_mtok":  500 },
     { "id": "gpt-5.5",
@@ -396,7 +398,7 @@ Output:
 Tenant balance:    $4.71 (471¢)
 Last 10 events drained credits:
   EVENT_ID            POSTURE  MODEL                        IN_TOK  OUT_TOK  RECEIVE  STAGE  TOTAL
-  evt_01HXG2K4…       platform claude-sonnet-4-6              800    1040       1¢     2¢     3¢
+  evt_01HXG2K4…       platform accounts/fireworks/models/kimi-k2.6              800    1040       1¢     2¢     3¢
   evt_01HXG3M2…       byok     accounts/.../kimi-k2.6         800    1320       0¢     1¢     1¢
   …
 ⓘ Out of credits? See https://app.usezombie.com/settings/billing

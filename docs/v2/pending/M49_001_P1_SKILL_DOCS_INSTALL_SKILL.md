@@ -15,17 +15,17 @@
 
 ---
 
-## Cross-spec amendment (Apr 30, 2026 — folded from M43 review pass)
+## Cross-spec amendment (May 01, 2026 — supersedes Apr 30 amendment; folded from M43 review pass + M48 contract lock)
 
-The M43 webhook-ingest review pinned several decisions that this skill must absorb because the install-skill is the operator-facing surface for webhook setup. These supersede the original §3 step 4 (credential resolution) and step 10 (post-install messaging) wherever they conflict.
+The M43 webhook-ingest review and the M48 BYOK + credit-pool billing lock pinned several decisions this skill must absorb. The install-skill is the user-facing surface for both webhook setup AND the doctor-driven model+cap pinning. These supersede the original §3 step 4 (credential resolution), step 6 (frontmatter generation), and step 10 (post-install messaging) wherever they conflict.
 
-**B1 — Webhook URL is `https://api.usezombie.com/v1/webhooks/{zombie_id}`.** Drop the `.../zombies/{id}/webhooks/github` form from the post-install message at the bottom of §3. Workspace prefix is wrong for webhooks, and the source-suffixed path is not the shipped `main` contract.
+**B1 — Webhook URL is `https://api.usezombie.com/v1/webhooks/{zombie_id}`.** Drop any workspace-prefixed or source-suffixed form. The flat path is the shipped contract.
 
-**B2 — Credentials are workspace-scoped opaque JSON, addressed by name** (M45 contract). The skill calls `zombiectl credential add <name> --data='<json>'`. For GitHub specifically: `<name> = "github"`, JSON body `{"webhook_secret": "<S>", "api_token": "<PAT>"}`. Both the credential name and its field names are conventions the skill follows so the SKILL.md frontmatter doesn't need a per-zombie `signature.secret_ref` pointer — the webhook ingest resolver looks the credential up by `name = trigger.source` automatically.
+**B2 — Credentials are opaque JSON, addressed by user-chosen name** (M45 contract). The skill calls `zombiectl credential set <name> --data='<json>'` (upsert; same surface used for the BYOK credential under M48). For GitHub specifically: `<name> = "github"` (workspace-scoped webhook credential), JSON body `{"webhook_secret": "<S>", "api_token": "<PAT>"}`. The credential name and field names are conventions the skill follows so the SKILL.md frontmatter doesn't need a per-zombie `signature.secret_ref` pointer — the webhook ingest resolver looks the credential up by `name = trigger.source` automatically.
 
-**B3 — Skill generates the HMAC webhook secret with high entropy.** 32 random bytes from the host's CSPRNG, base64-encoded. Skill displays it once during the install flow, instructs the operator to paste it into GitHub's webhook settings UI, and stores it via `zombiectl credential add github --data='{"webhook_secret":"<displayed>", ...}'`. The secret never logs, never persists outside vault, never re-displays. M43 assumes the secret already exists in vault by the time webhook traffic arrives — that contract lives here.
+**B3 — Skill generates the HMAC webhook secret with high entropy.** 32 random bytes from the host's CSPRNG, base64-encoded. Skill displays it once during the install flow, instructs the user to paste it into GitHub's webhook settings UI, and stores it via `zombiectl credential set github --data='{"webhook_secret":"<displayed>", ...}'`. The secret never logs, never persists outside vault, never re-displays. M43 assumes the secret already exists in vault by the time webhook traffic arrives — that contract lives here.
 
-**B4 — Skill prints the webhook URL inline.** `zombiectl install` returns `webhook_url` in JSON mode but does NOT print it in pretty mode (verified at `zombiectl/src/commands/zombie.js:108-124`). The install-skill consumes JSON mode and prints the operator-actionable URL + secret + GitHub-config instructions in its post-install summary. This is what the dashboard would otherwise need a "Webhook setup" card for; punting that card by handling it here.
+**B4 — Skill prints the webhook URL inline.** `zombiectl install` returns `webhook_url` in JSON mode but does NOT print it in pretty mode. The install-skill consumes JSON mode and prints the user-actionable URL + secret + GitHub-config instructions in its post-install summary.
 
 **B5 — Frontmatter shape: drop `signature.secret_ref`** when the trigger source is a known provider in `PROVIDER_REGISTRY`. The skill writes:
 
@@ -36,13 +36,27 @@ x-usezombie:
     # credential_name: github-prod  # optional override, only when one workspace has multiple GH integrations
 ```
 
-No `secret_ref:` line. The resolver at `src/cmd/serve_webhook_lookup.zig` migrates to convention-based lookup as part of M43.
+**B6 — The install-skill is platform-managed-by-default; BYOK setup is out-of-band.** The skill collects exactly three variables: `slack_channel`, `prod_branch_glob`, `cron_opt_in`. There is no `byok_provider_credential` variable. BYOK is set up separately, before or after install, via M48's contract:
 
-**B6 — Variable resolution adjusted.** Drop `byok_provider_credential` from the variables list under §3 step 3. Current `main` stores BYOK credentials through the workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm` route; the tenant-scoped `zombiectl provider set` posture remains the pending M48 target contract and is not part of the install-skill flow. Replace the slot with **nothing** (3 variables instead of 4): `slack_channel`, `prod_branch_glob`, `cron_opt_in`.
+```bash
+zombiectl credential set <user-chosen-name> --data '{"provider":"...","api_key":"...","model":"..."}'
+zombiectl tenant provider set --credential <user-chosen-name>
+```
+
+The install-skill never asks about BYOK, never writes to `tenant_providers`, never holds an LLM api_key. Instead, it reads `zombiectl doctor --json`'s `tenant_provider` block and branches on `mode` — see B9 below.
 
 **B7 — `webhook_secret_ref` column is removed in M43.** No skill change required — the skill never wrote to it. Listed here only so the M49 implementer doesn't re-introduce the legacy pattern.
 
-**B8 — Pretty-mode `webhook_url` print** in `zombiectl install` is technically a `zombiectl` concern, not a skill concern. The skill works around the pretty-mode gap by parsing JSON mode. If a future spec adds pretty-mode printing of `webhook_url`, the skill's behavior remains correct (it would still parse JSON mode and print its own formatted block).
+**B8 — Pretty-mode `webhook_url` print** in `zombiectl install` is technically a `zombiectl` concern, not a skill concern. The skill works around the pretty-mode gap by parsing JSON mode. If a future spec adds pretty-mode printing of `webhook_url`, the skill's behavior remains correct.
+
+**B9 — Doctor consumes the model + cap; the skill does not call the model-caps endpoint directly.** Per M48's locked contract, `zombiectl doctor --json` returns a `tenant_provider` block carrying the resolved model + cap (synth-default for tenants with no row, real values for tenants with `tenant provider set`). The skill reads this block and writes either:
+
+- **Platform-managed (default):** resolved frontmatter — `model: accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens: 256000` (taken verbatim from doctor's block).
+- **BYOK (when doctor reports `mode=byok`):** sentinel frontmatter — `model: ""`, `context_cap_tokens: 0`. The worker overlays from `tenant_providers` at trigger time.
+
+The model-caps endpoint (`/_um/<key>/model-caps.json`) is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (M48), **not** by the install-skill directly. See [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §10 and [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.7.
+
+**B10 — Workspace-scoped `/credentials/llm` is removed.** Per M48, the workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm` route is deleted. Any historical references in this spec to that route are stale; the skill never used it. Listed here so the implementer doesn't get tripped up by old prose.
 
 ---
 
@@ -74,7 +88,7 @@ The directory inside the `usezombie/skills` distribution repo (`usezombie/skills
    - `prod_branch_glob` (e.g., `main` or `release/*`)
    - `cron_opt_in` (boolean, default false)
    - Current `main` keeps BYOK credential setup outside the install flow through the workspace-scoped `credentials/llm` route. The tenant-scoped `zombiectl provider set` posture remains the pending M48 target contract.
-4. Resolves credentials in order: `op` (1Password CLI) → env vars → interactive prompt fallback. Stores via `zombiectl credential add` with structured fields.
+4. Resolves credentials in order: `op` (1Password CLI) → env vars → interactive prompt fallback. Stores via `zombiectl credential set` with structured fields.
 5. Fetches the canonical platform-ops template from `https://raw.githubusercontent.com/usezombie/usezombie/<pinned-tag>/samples/platform-ops/SKILL.md`. Caches at `~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/`.
 6. Generates `.usezombie/platform-ops/SKILL.md` in the user's repo with substituted variables.
 7. Calls `zombiectl install --from .usezombie/platform-ops/`.
@@ -82,7 +96,7 @@ The directory inside the `usezombie/skills` distribution repo (`usezombie/skills
 
 The user has a working zombie installed in <60 seconds from skill invocation, posting to their Slack.
 
-**Problem:** Without this skill, an external operator has to read `samples/platform-ops/README.md`, manually run 4-6 `zombiectl credential add` commands, edit a SKILL.md to substitute their values, run install, run steer. The friction kills onboarding. The wedge needs a one-command install.
+**Problem:** Without this skill, an external operator has to read `samples/platform-ops/README.md`, manually run 4-6 `zombiectl credential set` commands, edit a SKILL.md to substitute their values, run install, run steer. The friction kills onboarding. The wedge needs a one-command install.
 
 **Solution summary:** Two repos created — `usezombie/skills` (the install-skills, drop-in to `~/.claude/skills/` or fetched via `https://usezombie.sh/skills.md`) and `usezombie/skills-evals` (eval suite). The install skill is a single SKILL.md conforming to the gstack-conformant + `x-usezombie:` extension format (M46). Variables are declared in frontmatter, resolved by the host (Claude Code asks in dropdown, Codex CLI prompts on stdin, OpenCode renders form). Templates are fetched from the main repo at a pinned tag, cached locally. The skill is the install UX.
 
@@ -183,11 +197,11 @@ a working platform-ops zombie on the user's current repository.
    primitive, fall back to inline natural-language prompts ("Which Slack channel?
    Reply with the channel name.").
 
-4. Resolve credentials. M45 stores credentials as opaque JSON keyed by name, so the skill assembles a JSON body per provider and calls `zombiectl credential add <name> --data='<json>'` (per B2). For each of `fly`, `upstash` (optional), `slack`, `github`:
+4. Resolve credentials. M45 stores credentials as opaque JSON keyed by name, so the skill assembles a JSON body per provider and calls `zombiectl credential set <name> --data='<json>'` (per B2). For each of `fly`, `upstash` (optional), `slack`, `github`:
    - **`github`** is special (per B3). Generate the webhook secret locally: 32 bytes from the host's CSPRNG, base64-encoded. Display it once for the operator to paste into GitHub's webhook settings UI; never log it, never re-display it. Then resolve `api_token` (the GH PAT) via `op read` → env var `ZOMBIE_CRED_GITHUB_API_TOKEN` → masked interactive prompt. Final shape:
-     `zombiectl credential add github --data='{"webhook_secret":"<generated>","api_token":"<resolved>"}'`
+     `zombiectl credential set github --data='{"webhook_secret":"<generated>","api_token":"<resolved>"}'`
    - **`fly` / `upstash` / `slack`** resolve each structured field via the same op → env-var → masked-prompt fallback chain. The JSON body shape per provider is `{"api_token":"<value>"[, additional fields]}`; consult the provider's vault credential shape (see M45 conventions). Run:
-     `zombiectl credential add <name> --data='<assembled-json>'`
+     `zombiectl credential set <name> --data='<assembled-json>'`
    - The legacy single-flag form (`--api-token`, `--host`) is gone; M45 dropped typed credentials in favour of opaque JSON-data per name.
 
 5. Fetch the canonical platform-ops template from the URL in `template_url`,
@@ -201,7 +215,7 @@ a working platform-ops zombie on the user's current repository.
    - `{{cron_opt_in}}` → user's choice (if true, add the cron block to the
      `x-usezombie.trigger.cron:` section; if false, omit)
    - `{{repo}}` → repo name from git remote
-   - `{{model}}` and `{{context_cap_tokens}}` per Discovery D2: this skill is the **platform-managed** install path, so it GETs `https://api.usezombie.com/_um/.../model-caps.json` once for the platform default model (e.g. `claude-sonnet-4-6`) and writes the resolved cap (e.g. `200000`) into `x-usezombie.context.context_cap_tokens`. Current `main` does not yet drive BYOK installs through this skill; any tenant-scoped `provider set` flow remains the pending M48 target contract.
+   - `{{model}}` and `{{context_cap_tokens}}` per Discovery D2: this skill is the **platform-managed** install path, so it GETs `https://api.usezombie.com/_um/.../model-caps.json` once for the platform default model (e.g. `accounts/fireworks/models/kimi-k2.6` — the v2.0 platform-managed default) and writes the resolved cap (e.g. `256000` for the Fireworks Kimi K2.6 platform default) into `x-usezombie.context.context_cap_tokens`. Current `main` does not yet drive BYOK installs through this skill. BYOK installs are out-of-band — see B6/B9 in the May 01 amendment.
 
 7. If the directory `.usezombie/platform-ops/` already exists in the user's repo,
    refuse to overwrite without `--force`. Ask the user: "Existing
@@ -290,7 +304,7 @@ Eval contract (usezombie/skills-evals):
 | Repo lacks `.github/workflows/` | Non-GH-CI repo | Skill stops with "GH Actions only in v1" message |
 | `.usezombie/platform-ops/` exists | Re-running on same repo | Skill prompts overwrite (y/N); on N, exits cleanly |
 | Template fetch fails + no cache | Offline | Skill prints clear "no template, try online" message |
-| `zombiectl credential add` fails | API down or auth expired | Skill captures stderr, surfaces verbatim, exits |
+| `zombiectl credential set` fails | API down or auth expired | Skill captures stderr, surfaces verbatim, exits |
 | Steer round-trip times out (>60s) | Worker not picking up event | Skill prints "zombie installed but first response slow — check `zombiectl events {id}`" |
 | Variable resolution: user provides invalid value (e.g., empty Slack channel) | User typo | Skill re-prompts up to 2x; on 3rd empty, exits with hint |
 
@@ -399,9 +413,9 @@ These edits already landed in this same Discovery commit. M49 §1 inherits the l
 
 ```yaml
 x-usezombie:
-  model: claude-sonnet-4-6                    # platform default at install time
+  model: accounts/fireworks/models/kimi-k2.6                    # platform default at install time
   context:
-    context_cap_tokens: 200000                # ← from /_um/.../model-caps.json
+    context_cap_tokens: 256000                # ← from /_um/.../model-caps.json
     tool_window: auto
     memory_checkpoint_every: 5
     stage_chunk_threshold: 0.75

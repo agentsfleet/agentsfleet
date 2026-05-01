@@ -48,7 +48,7 @@ M48 ships both, integrated. The billing model and the provider posture share the
 **Goal (testable).** A new tenant (John Doe — the persona running through every scenario in this spec) experiences the following coherent journey:
 
 1. **Sign-up.** Tenant created; `core.tenant_billing.balance_cents = 1000` (one-time $10 starter grant inserted at tenant create). `core.tenant_providers` has no row. `zombiectl doctor --json`'s `tenant_provider` block reports the synthesised platform default.
-2. **Cold install on default platform-managed posture.** John runs `/usezombie-install-platform-ops` (M49); the install-skill reads doctor's block and writes resolved frontmatter values. First webhook fires, gate passes, two telemetry rows written (`charge_type='receive'` + `charge_type='stage'`), balance drops by ~3¢ (1¢ receive + ~2¢ stage = receive-overhead + token-based stage cost on `claude-sonnet-4-6`).
+2. **Cold install on default platform-managed posture.** John runs `/usezombie-install-platform-ops` (M49); the install-skill reads doctor's block and writes resolved frontmatter values. First webhook fires, gate passes, two telemetry rows written (`charge_type='receive'` + `charge_type='stage'`), balance drops by ~3¢ (1¢ receive + ~2¢ stage = receive-overhead + token-based stage cost on `accounts/fireworks/models/kimi-k2.6`).
 3. **Brings own key.** A couple of weeks in, John runs:
    ```bash
    zombiectl credential set account-fireworks-byok --data '{
@@ -83,18 +83,18 @@ Single persona: **John Doe**. Every test in the Test Specification maps back to 
 3. Doctor's `tenant_provider` block reports the synthesised platform default:
    ```json
    { "mode": "platform",
-     "provider": "anthropic",
-     "model": "claude-sonnet-4-6",
-     "context_cap_tokens": 200000 }
+     "provider": "fireworks",
+     "model": "accounts/fireworks/models/kimi-k2.6",
+     "context_cap_tokens": 256000 }
    ```
-4. Skill writes resolved values into frontmatter (`model: claude-sonnet-4-6`, `context_cap_tokens: 200000`).
+4. Skill writes resolved values into frontmatter (`model: accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens: 256000`).
 5. First event:
    - `processEvent` resolves posture → synthesised platform default.
-   - Estimate cost = `compute_receive_charge(.platform)` + worst-case `compute_stage_charge(.platform, claude-sonnet-4-6, est_in, est_out)` = 1¢ + ~2¢ = 3¢.
+   - Estimate cost = `compute_receive_charge(.platform)` + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, est_in, est_out)` = 1¢ + ~2¢ = 3¢.
    - Balance gate: 1000¢ ≥ 3¢ → pass.
    - Receive deduct: 1¢ → 999¢. INSERT `zombie_execution_telemetry (charge_type='receive', credit_deducted_cents=1)`.
    - Stage deduct (conservative estimate): ~2¢ → ~997¢. INSERT `zombie_execution_telemetry (charge_type='stage', credit_deducted_cents≈2)`.
-   - Worker calls `executor.startStage` with the platform Anthropic api_key (server-side config). Outbound call hits `api.anthropic.com`.
+   - Worker calls `executor.startStage` with the platform Fireworks api_key (PLATFORM_FIREWORKS_KEY) (server-side config). Outbound call hits `api.fireworks.ai/inference/v1`.
    - StageResult returns. UPDATE the stage telemetry row with actual `token_count_input/output, wall_ms`.
 6. Drains over time at ~3¢/event (token-based). Two telemetry rows per event (`charge_type='receive'`, `charge_type='stage'`).
 
@@ -153,8 +153,8 @@ Single persona: **John Doe**. Every test in the Test Specification maps back to 
 ### Scenario D — John reverts to platform
 
 1. John's Fireworks account hits a billing issue. He runs `zombiectl tenant provider reset`.
-2. CLI updates the `tenant_providers` row to `mode = platform`, `credential_ref = NULL`, `provider = anthropic`, `model = claude-sonnet-4-6`, re-resolves cap from caps endpoint → `context_cap_tokens = 200000`.
-3. In-flight events finish under BYOK. Next event runs against platform Anthropic at the platform-rate (~3¢/event).
+2. CLI updates the `tenant_providers` row to `mode = platform`, `credential_ref = NULL`, `provider = fireworks`, `model = accounts/fireworks/models/kimi-k2.6`, re-resolves cap from caps endpoint → `context_cap_tokens = 256000`.
+3. In-flight events finish under BYOK. Next event runs against platform-managed Fireworks at the platform-rate (~3¢/event).
 4. If `tenant_billing.balance_cents` is too low for the platform-rate worst-case, the next event blocks at the balance gate with `failure_label='balance_exhausted'`. The flip itself succeeds regardless of balance — John chose this posture explicitly.
 
 ### Scenario E — John deletes BYOK credential while still in BYOK mode
@@ -200,7 +200,7 @@ CREATE TABLE core.tenant_providers (
 
     model              TEXT         NOT NULL,
     -- Authoritative model name. Under mode=platform: the platform default
-    -- ("claude-sonnet-4-6" at v2.0). Under mode=byok: the model from the
+    -- ("accounts/fireworks/models/kimi-k2.6" at v2.0). Under mode=byok: the model from the
     -- referenced credential (CLI --model flag overrides at set time).
 
     context_cap_tokens INTEGER      NOT NULL,
@@ -252,17 +252,17 @@ Algorithm:
   row = SELECT * FROM core.tenant_providers WHERE tenant_id = $1
   if row IS NULL:
     return synthesizePlatformDefault()
-      // { mode: "platform", provider: "anthropic",
-      //   api_key: <PLATFORM_ANTHROPIC_KEY from server config>,
-      //   model: "claude-sonnet-4-6",
-      //   context_cap_tokens: 200000 }
-      // PLATFORM_ANTHROPIC_KEY is an admin-primed server config value;
+      // { mode: "platform", provider: "fireworks",
+      //   api_key: <PLATFORM_FIREWORKS_KEY from server config>,
+      //   model: "accounts/fireworks/models/kimi-k2.6",
+      //   context_cap_tokens: 256000 }
+      // PLATFORM_FIREWORKS_KEY is an admin-primed server config value;
       // never returned in any user-facing surface (see api_key boundary).
 
   if row.mode == "platform":
     return { mode: "platform",
-             provider: "anthropic",
-             api_key: <PLATFORM_ANTHROPIC_KEY>,
+             provider: "fireworks",
+             api_key: <PLATFORM_FIREWORKS_KEY>,
              model: row.model,
              context_cap_tokens: row.context_cap_tokens }
 
@@ -291,8 +291,8 @@ The resolver is the only code path that handles the api_key. Every consumer (exe
   "tenant_provider": {
     "mode":               "platform" | "byok",
     "provider":           "anthropic" | "fireworks" | "openai" | ...,
-    "model":              "claude-sonnet-4-6",
-    "context_cap_tokens": 200000,
+    "model":              "accounts/fireworks/models/kimi-k2.6",
+    "context_cap_tokens": 256000,
     "credential_ref":     "account-fireworks-byok" | null,
     "error":              "credential_missing" | "credential_data_malformed"   // optional — present only when resolver failed
   }
@@ -436,7 +436,7 @@ A zombie's frontmatter (`x-usezombie.model` and `x-usezombie.context.context_cap
 
 | Frontmatter `model` | Frontmatter `context_cap_tokens` | Worker behavior |
 |---|---|---|
-| Non-empty string (e.g. `claude-sonnet-4-6`) | — | Use frontmatter value |
+| Non-empty string (e.g. `accounts/fireworks/models/kimi-k2.6`) | — | Use frontmatter value |
 | Empty string (`""`) | — | Overlay from `tenant_providers.model` (or synth-default) |
 | Key absent entirely | — | Overlay from `tenant_providers.model` (or synth-default) |
 | — | Non-zero int (e.g. `200000`) | Use frontmatter value |
@@ -558,7 +558,7 @@ Tenant balance:    $4.71 (471¢)
 
 Last 10 events drained credits:
   EVENT_ID         POSTURE   MODEL                IN_TOK  OUT_TOK  RECEIVE  STAGE  TOTAL
-  evt_01HXG2K4…    platform  claude-sonnet-4-6     820     1040       1¢     2¢     3¢
+  evt_01HXG2K4…    platform  accounts/fireworks/models/kimi-k2.6     820     1040       1¢     2¢     3¢
   evt_01HXG3M2…    byok      accounts/.../kimi-k2.6 800   1320       0¢     1¢     1¢
   …
 
@@ -637,11 +637,11 @@ The endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/
       "input_cents_per_mtok":  1500,
       "output_cents_per_mtok": 7500 },
     { "id": "claude-sonnet-4-6",
-      "context_cap_tokens": 200000,
+      "context_cap_tokens": 256000,
       "input_cents_per_mtok":  300,
       "output_cents_per_mtok": 1500 },
     { "id": "claude-haiku-4-5-20251001",
-      "context_cap_tokens": 200000,
+      "context_cap_tokens": 256000,
       "input_cents_per_mtok":  100,
       "output_cents_per_mtok":  500 },
     { "id": "accounts/fireworks/models/kimi-k2.6",
@@ -688,7 +688,7 @@ Comment scrubs: `src/state/vault.zig:10` and `src/zombie/credential_key.zig:9` r
   "moonshot":   {"default_model": "kimi-k2.6",                                  "api_base": "https://api.moonshot.cn/v1"},
   "zhipu":      {"default_model": "glm-5.1",                                    "api_base": "https://open.bigmodel.cn/api/paas/v4"},
   "together":   {"default_model": "deepseek-coder",                             "api_base": "https://api.together.xyz"},
-  "openrouter": {"default_model": "anthropic/claude-sonnet-4-6",                "api_base": "https://openrouter.ai/api/v1"}
+  "openrouter": {"default_model": "anthropic/accounts/fireworks/models/kimi-k2.6",                "api_base": "https://openrouter.ai/api/v1"}
 }
 ```
 
@@ -863,7 +863,7 @@ Every test maps back to a scenario or invariant.
 | `test_byok_set_writes_row_and_resolves_cap` | B | PUT mode=byok with valid credential → row written with mode/provider/model/credential_ref/context_cap_tokens from caps endpoint |
 | `test_byok_set_routes_to_user_provider` | B | Set BYOK fireworks → run zombie → outbound LLM call hits `api.fireworks.ai/inference/v1` with user's api_key |
 | `test_byok_model_switch_rewrites_row` | C | Re-run `tenant provider set` with new model → row's `model` and `context_cap_tokens` updated; `credential_ref` unchanged |
-| `test_byok_reset_to_platform` | D | `tenant provider reset` → `mode=platform`, `credential_ref=NULL`; next event uses platform Anthropic |
+| `test_byok_reset_to_platform` | D | `tenant provider reset` → `mode=platform`, `credential_ref=NULL`; next event uses platform-managed Fireworks |
 | `test_credential_delete_in_byok_dead_letters_event` | E, Inv 13 | Delete vault row while `mode=byok` → next event dead-lettered with `provider_credential_missing`; **no deduction taken**; `tenant_providers` row unchanged |
 | `test_byok_with_missing_credential_ref` | Validation | PUT mode=byok without credential_ref → 400 `credential_ref_required` |
 | `test_byok_with_unknown_credential_name` | Validation | PUT mode=byok referencing a non-existent vault row → 400 `credential_not_found` |
@@ -913,7 +913,7 @@ Every test maps back to a scenario or invariant.
 - [ ] **Manual A:** new tenant on default platform → doctor reports synthesised default → first event drains 3¢ (1¢ receive + 2¢ stage); two telemetry rows visible in Usage tab.
 - [ ] **Manual B:** John runs `credential set` + `tenant provider set --credential …` → outbound LLM call observed (NullClaw debug logging) hitting Fireworks; balance drains at 1¢/event (0¢ receive + 1¢ stage).
 - [ ] **Manual C:** Switch from Kimi K2 to DeepSeek V4 Pro → `tenant_providers.context_cap_tokens` updated; in-flight event finishes on K2; next event runs on V4.
-- [ ] **Manual D:** `tenant provider reset` → next event uses platform Anthropic; if balance too low, gate trips with credit-exhausted UX.
+- [ ] **Manual D:** `tenant provider reset` → next event uses platform-managed Fireworks; if balance too low, gate trips with credit-exhausted UX.
 - [ ] **Manual E:** Delete BYOK credential while in BYOK mode → next event dead-lettered; no deduction taken; system does NOT auto-revert.
 - [ ] **Manual F:** Drain balance to 0¢ → next event blocks; CLI prints `See https://app.usezombie.com/settings/billing`; dashboard shows empty-balance state with disabled Purchase button.
 - [ ] **Audit grep:** BYOK api_key bytes never appear in `core.zombie_events`, `core.zombie_execution_telemetry`, `core.tenant_providers`, worker logs, executor logs, doctor JSON, or any HTTP response body across the full test run.

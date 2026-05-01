@@ -14,7 +14,6 @@ sequenceDiagram
     participant Op as User (in host)
     participant Skill as /usezombie-install-platform-ops
     participant CLI as zombiectl
-    participant CapAPI as model-caps endpoint<br/>(_um/<key>)
     participant API as zombied-api
     participant Worker as zombied-worker
     participant GH as GitHub Actions
@@ -22,11 +21,10 @@ sequenceDiagram
 
     Op->>Skill: invoke
     Skill->>CLI: doctor --json
-    CLI->>API: GET /v1/me + workspace
-    API-->>Skill: ok
+    CLI->>API: GET /v1/me + workspace + tenant_provider
+    API-->>Skill: { auth ✓, workspace ✓, tenant_provider: {mode, provider, model, context_cap_tokens} }
+    Note over Skill: doctor's tenant_provider block carries the resolved<br/>model + cap (synth-default for John). The skill never<br/>calls the model-caps endpoint directly.
     Skill->>Op: ask 3 questions (slack, branch, cron)
-    Skill->>CapAPI: GET caps for claude-sonnet-4-6
-    CapAPI-->>Skill: { context_cap_tokens: 200000 }
     Skill->>CLI: credential set (fly, slack, github, upstash)
     CLI->>API: PUT /credentials
     Skill->>CLI: install --from .usezombie/platform-ops/
@@ -67,7 +65,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
    then `zombiectl credential set <name> --data '<opaque-json>'` per credential (upsert; same surface used for the BYOK credential in Scenario 02).
-5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "claude-sonnet-4-6"`, `context_cap_tokens: 200000`, `provider: "anthropic"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
+5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
    The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_byok.md`](../billing_and_byok.md) §9 for the endpoint design.
 6. **Frontmatter generation.** The skill writes `.usezombie/platform-ops/SKILL.md` substituting variables and the cap. Refuses to overwrite without `--force`.
@@ -78,9 +76,9 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
      trigger:
        types: [chat, webhook:github, cron]
        cron: "*/30 * * * *"          # only if cron_opt_in
-     model: claude-sonnet-4-6
+     model: accounts/fireworks/models/kimi-k2.6
      context:
-       context_cap_tokens: 200000   # ← from /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
+       context_cap_tokens: 256000   # ← from /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
        tool_window: auto
        memory_checkpoint_every: 5
        stage_chunk_threshold: 0.75
@@ -132,29 +130,31 @@ A few hours later, the user pushes a commit. CD fails on a Fly OOM. GitHub Actio
 3. `XADD zombie:{id}:events *` with the envelope.
 4. Returns 202 to GitHub.
 
-The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent`:
+The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent` walks the credit-pool gate path (the same code path that scenario 03 walks more deeply):
 
 1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
 2. PUBLISH `zombie:{id}:activity` (`event_received`).
-3. **Balance gate fires.** John has the $10 starter grant — `balance_cents=1000`, comfortably above the platform-rate event estimate. Gate passes; receive deduct fires (1¢ → 999¢). (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
-4. Approval gate (no destructive tools wired in this zombie) → pass.
-5. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`.
-6. **Resolve provider config:** `tenant_provider.resolveActiveProvider(tenant_id)` returns `{mode: "platform", provider: "anthropic", api_key: <platform_key>, model: "claude-sonnet-4-6"}`. The cap from frontmatter (`200_000`) wins because `mode=platform` and the worker prefers the install-time pinned cap when available.
-7. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=200000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "claude-sonnet-4-6"})`.
-8. `executor.startStage(execution_id, message=<webhook payload as text>)`.
+3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <PLATFORM_FIREWORKS_KEY>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
+4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_cents=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
+5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_cents = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
+6. Approval gate (no destructive tools wired in this zombie) → pass.
+7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map` — it travels separately from resolveActiveProvider's return value into `executor.startStage`.
+8. **Stage deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_cents = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
+9. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: <PLATFORM_FIREWORKS_KEY>})`.
+10. `executor.startStage(execution_id, message=<webhook payload as text>)`.
 
 NullClaw runs the SKILL.md prose against the webhook payload. The agent makes its calls — `http_request GET .../actions/runs/{run_id}/logs`, `http_request GET ${fly.host}/v1/apps/{app}/logs`, etc. — credentials substituted at the tool bridge after sandbox entry. Posts a remediation diagnosis to Slack.
 
-`StageResult{content, tokens=1840, wall_ms=8210, ttft_ms=320, exit_ok=true}` returns over the Unix socket.
+`StageResult{content, token_count_input=820, token_count_output=1040, wall_ms=8210, ttft_ms=320, exit_ok=true}` returns over the Unix socket.
 
 Worker:
 - UPDATE `core.zombie_events` (`status='processed'`, `response_text`, `completed_at`).
-- INSERT `zombie_execution_telemetry` (immutable; `event_id UNIQUE`; `token_count=1840`, `credit_deducted_cents=4`, `plan_tier='free'`).
+- UPDATE `zombie_execution_telemetry` stage row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The cents column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_byok.md`](../billing_and_byok.md) §3).
 - UPSERT `core.zombie_sessions` (advance bookmark, clear execution handle).
 - PUBLISH `event_complete`.
 - XACK.
 
-The user reads the diagnosis in Slack; later opens `zombiectl events {id}` to see the full evidence trail.
+After this event: `balance_cents = 997`. Two telemetry rows (`charge_type='receive'` + `charge_type='stage'`), both with `posture='platform'`. The user reads the diagnosis in Slack; later opens `zombiectl events {id}` (or the dashboard) to see the full evidence trail and the per-charge-type breakdown.
 
 ---
 
@@ -173,9 +173,9 @@ $ /usezombie-install-platform-ops
   "workspace_bound": true,
   "tenant_provider": {
     "mode": "platform",
-    "provider": "anthropic",
-    "model": "claude-sonnet-4-6",
-    "context_cap_tokens": 200000
+    "provider": "fireworks",
+    "model": "accounts/fireworks/models/kimi-k2.6",
+    "context_cap_tokens": 256000
   }
 }
 ✓ Doctor checks pass.
@@ -199,8 +199,8 @@ $ /usezombie-install-platform-ops
     whsec_<32-byte-base64-elided>
 
 ▸ Writing .usezombie/platform-ops/SKILL.md
-   model: claude-sonnet-4-6
-   context_cap_tokens: 200000     ← from doctor's tenant_provider block
+   model: accounts/fireworks/models/kimi-k2.6
+   context_cap_tokens: 256000     ← from doctor's tenant_provider block
 
 ▸ Installing …
   zombie_id   = zmb_01HX9N3K…
@@ -235,9 +235,9 @@ John clicks into `evt_01HX9P7M…` in the dashboard and sees the agent's evidenc
 ```text
 $ zombiectl tenant provider get
 Mode:                platform   (synthesised default — no explicit row)
-Provider:            anthropic
-Model:               claude-sonnet-4-6
-Context cap tokens:  200000
+Provider:            fireworks
+Model:               accounts/fireworks/models/kimi-k2.6
+Context cap tokens:  256000
 
 ⓘ This is the platform default. To bring your own LLM key:
    zombiectl credential set <name> --data '{"provider":"…","api_key":"…","model":"…"}'

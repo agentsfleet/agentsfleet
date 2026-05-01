@@ -46,7 +46,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 
 ## 2. Phase 1 — John on platform-managed (Week 1-2 of his journey)
 
-**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=anthropic`, `model=claude-sonnet-4-6`, `context_cap_tokens=200000`. The platform-side server config holds the actual Anthropic api_key.
+**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The platform-side server config holds the actual Anthropic api_key.
 
 ### 2.1 First webhook fires (Monday morning, week 1)
 
@@ -54,7 +54,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 XREADGROUP unblocks → INSERT zombie_events (status='received')
 resolveActiveProvider → mode=platform
 estimate cost = compute_receive_charge(.platform)
-              + compute_stage_charge(.platform, claude-sonnet-4-6,
+              + compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6,
                                      worst_case_in=900, worst_case_out=1200)
               = 1¢ + (1¢ + 0¢ + 1¢) = 3¢
 
@@ -63,7 +63,7 @@ gate: 1000¢ ≥ 3¢ → pass
 DEDUCT RECEIVE
   UPDATE tenant_billing SET balance_cents = 1000 - 1 = 999
   INSERT zombie_execution_telemetry
-    (event_id, posture='platform', model='claude-sonnet-4-6',
+    (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
      charge_type='receive', credit_deducted_cents=1)
 
 approval gate → pass (no destructive tools in this run)
@@ -73,18 +73,18 @@ resolveSecretsMap → {fly, slack, github}
 DEDUCT STAGE
   UPDATE tenant_billing SET balance_cents = 999 - 2 = 997
   INSERT zombie_execution_telemetry
-    (event_id, posture='platform', model='claude-sonnet-4-6',
+    (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
      charge_type='stage', credit_deducted_cents=2)
 
 executor.createExecution → executor.startStage
-  outbound to api.anthropic.com
+  outbound to api.fireworks.ai/inference/v1
   StageResult returns: tokens(in=820, out=1040), wall=8.2s
 
 UPDATE zombie_execution_telemetry  (the stage row)
   SET token_count_input=820, token_count_output=1040, wall_ms=8210
 
 reconcile actual cost:
-  actual_stage = compute_stage_charge(.platform, sonnet, 820, 1040)
+  actual_stage = compute_stage_charge(.platform, "accounts/fireworks/models/kimi-k2.6", 820, 1040)
                = 1¢ + ((300×820 + 1500×1040) / 1_000_000) ≈ 1¢ + 1¢ = 2¢
   matches the conservative estimate; no adjustment.
 
@@ -206,12 +206,12 @@ If John had stayed on platform the entire time, his $10 would have lasted roughl
 | Aspect | Platform phase | BYOK phase |
 |---|---|---|
 | `tenant_providers` row | Absent (synth-default) | `mode=byok`, `credential_ref=account-fireworks-byok` |
-| Resolver returns | `{provider: anthropic, api_key: <PLATFORM>, model: claude-sonnet-4-6, …}` | `{provider: fireworks, api_key: fw_LIVE_…, model: …kimi-k2.6, …}` |
+| Resolver returns | `{provider: fireworks, api_key: <PLATFORM_FIREWORKS_KEY>, model: accounts/fireworks/models/kimi-k2.6, …}` | `{provider: fireworks, api_key: fw_LIVE_…, model: …kimi-k2.6, …}` |
 | Receive deduct per event | 1¢ | 0¢ |
-| Stage deduct per event | 1¢ overhead + token cost (~1–4¢ for Sonnet) | 1¢ flat |
+| Stage deduct per event | 1¢ overhead + token cost (~1–4¢ for Kimi K2.6 platform retail) | 1¢ flat |
 | Typical per-event total | ~3¢ | 1¢ |
 | LLM bill payer | UseZombie (passthrough in our token rate) | John's Fireworks account directly |
-| Outbound LLM call | `api.anthropic.com` | `api.fireworks.ai/inference/v1` |
+| Outbound LLM call | `api.fireworks.ai/inference/v1` | `api.fireworks.ai/inference/v1` |
 | Gate code path | Identical | Identical |
 | Telemetry rows per event | 2 (receive + stage) | 2 (receive=0¢, stage=1¢) |
 
@@ -241,9 +241,9 @@ Last 10 events drained credits:
   evt_01HXJ4P6…    byok     accounts/.../kimi-k2.6            800     1240       0¢     1¢     1¢
   evt_01HXJ4P5…    byok     accounts/.../kimi-k2.6            860     1180       0¢     1¢     1¢
   …
-  evt_01HX9N3M…    platform claude-sonnet-4-6                 820     1040       1¢     2¢     3¢
-  evt_01HX9N3L…    platform claude-sonnet-4-6                 800     1100       1¢     2¢     3¢
-  evt_01HX9N3K…    platform claude-sonnet-4-6                 880     1320       1¢     2¢     3¢
+  evt_01HX9N3M…    platform accounts/fireworks/models/kimi-k2.6                 820     1040       1¢     2¢     3¢
+  evt_01HX9N3L…    platform accounts/fireworks/models/kimi-k2.6                 800     1100       1¢     2¢     3¢
+  evt_01HX9N3K…    platform accounts/fireworks/models/kimi-k2.6                 880     1320       1¢     2¢     3¢
 
 ⓘ Out of credits? See https://app.usezombie.com/settings/billing
    Stripe purchase ships in v2.1; for now contact support for a top-up.
@@ -319,7 +319,7 @@ Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_lab
 - **Same code path serves both postures.** The gate, the receive deduct, the stage deduct, and the telemetry rows are identical SQL; only the cents differ.
 - **Drain rate is the BYOK signal.** John's UseZombie credits last ~3× longer under BYOK than they would have under continued platform use — a transparent, observable benefit of bringing a key.
 - **Plan tiers are not a code-path concept.** They never appear inside `processEvent` or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
-- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, worker logs, executor logs, and HTTP responses for either api_key (PLATFORM_ANTHROPIC or `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
+- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, worker logs, executor logs, and HTTP responses for either api_key (PLATFORM_FIREWORKS_KEY or `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
 - **The credit-exhausted UX is a dashboard story, not a CLI story.** The CLI surfaces the state and points at the dashboard. Purchase / top-up are dashboard-shipping concerns (and ship empty in v2.0, with the actual Stripe integration in v2.1).
 
 ---

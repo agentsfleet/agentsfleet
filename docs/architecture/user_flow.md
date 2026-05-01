@@ -163,14 +163,14 @@ install-skill →   doctor --json                           doctor --json
                     workspace_bound: true   ✓              workspace_bound: true   ✓
                     tenant_provider:                       tenant_provider:
                       {mode=platform,                        {mode=byok,
-                       model=claude-sonnet-4-6,               provider=fireworks,
-                       context_cap_tokens=200000}             model=accounts/.../kimi-k2.6,
+                       model=accounts/fireworks/models/kimi-k2.6,               provider=fireworks,
+                       context_cap_tokens=256000}             model=accounts/.../kimi-k2.6,
                   ─ if any auth check fails: print           context_cap_tokens=256000}
                     `zombiectl auth login` and STOP. ─    ─ same auth-fail short-circuit ─
                   branch on mode → write frontmatter      branch on mode → write frontmatter
                   pin into frontmatter (resolved):        pin into frontmatter (sentinels):
-                    model: claude-sonnet-4-6                model: ""
-                    context_cap_tokens: 200000              context_cap_tokens: 0
+                    model: accounts/fireworks/models/kimi-k2.6                model: ""
+                    context_cap_tokens: 256000              context_cap_tokens: 0
 
 tenant provider → (nothing — synth-default                → zombiectl tenant provider set
 set                stays in place)                            --credential account-fireworks-byok
@@ -188,9 +188,9 @@ trigger fires  → processEvent:                            → processEvent:
                                                                model "" or absent → overlay
                                                                cap 0   or absent → overlay
 
-createExecution → context_cap_tokens=200000               → context_cap_tokens=256000
-                  model=claude-sonnet-4-6                   model=accounts/.../kimi-k2.6
-                  api_key=<PLATFORM_ANTHROPIC>              api_key=<fw_LIVE_…>
+createExecution → context_cap_tokens=256000               → context_cap_tokens=256000
+                  model=accounts/fireworks/models/kimi-k2.6                   model=accounts/.../kimi-k2.6
+                  api_key=<PLATFORM_FIREWORKS_KEY>              api_key=<fw_LIVE_…>
 
 L3 stage chunking
                 → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
