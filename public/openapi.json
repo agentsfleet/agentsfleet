@@ -1641,7 +1641,7 @@
         },
         "responses": {
           "200": {
-            "description": "Duplicate delivery (idempotency hit).",
+            "description": "Duplicate delivery (idempotency hit) or event ignored (non-workflow_run, non-completed action, or non-failure conclusion). Body distinguishes the two via the `deduped` or `ignored` field.",
             "content": {
               "application/json": {
                 "schema": {
@@ -1649,6 +1649,10 @@
                   "properties": {
                     "deduped": {
                       "type": "boolean"
+                    },
+                    "ignored": {
+                      "type": "string",
+                      "description": "Reason the event was filtered out (e.g. `non_failure_conclusion`)."
                     }
                   }
                 }
@@ -1672,9 +1676,6 @@
                 }
               }
             }
-          },
-          "204": {
-            "description": "Event ignored (non-workflow_run, non-completed action, or non-failure conclusion)."
           },
           "400": {
             "$ref": "#/components/responses/Error"

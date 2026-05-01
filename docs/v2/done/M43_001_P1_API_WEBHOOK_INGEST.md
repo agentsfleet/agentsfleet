@@ -295,6 +295,7 @@ Fixtures in `samples/fixtures/m43-webhook-fixtures/`.
 - The URL-embedded-secret legacy path (matcher branch, `WebhookRoute.secret`, `AuthCtx.webhook_provided_secret`, middleware Strategy 1, the entire `webhook_url_secret.zig` middleware, the registry chain + private accessor) was orphaned by removing `webhook_secret_ref`. Cleaning it in the same PR per RULE NLR — the user explicitly authorized "no legacy sprawl, full clean" during PLAN.
 - The two-segment URL form `/v1/webhooks/{zombie_id}/{X}` would have collided with the new `/github` action route had it stayed; simplifying `matchWebhookRoute` to single-segment was a correctness fix on top of the cleanup.
 - The dedicated `/github` URL means the source-derived signature scheme can be confidently treated as `webhook_verify.GITHUB` even before the body is parsed; the existing detect-by-config_json path stays for the generic `/v1/webhooks/{zombie_id}` receiver.
+- **Filtered-event response status: 200 OK + `{"ignored": "<reason>"}` body** (revised from §5's draft "204 No Content with body"). RFC 9110 §6.4.5 forbids a message body on 204 — some CDNs and HTTP/2 proxies strip 204+body silently, others normalize to 502, both of which would mask the operator-visible diagnostic shown in GitHub's "Recent Deliveries" dashboard. The 2xx semantics for GitHub's retry behavior are unchanged; only the operator-debuggability of the `ignored` reason improves.
 
 ---
 

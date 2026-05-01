@@ -6,8 +6,9 @@
 //
 // Body cap: 1 MiB (UZ-WH-030 before any other work).
 // Filter: only `workflow_run` events with `action=completed` and
-//         `conclusion=failure` are XADDed; everything else returns 204 with
-//         a one-word reason.
+//         `conclusion=failure` are XADDed; everything else returns 200 OK
+//         with a `{"ignored":"<reason>"}` body so the diagnostic survives
+//         CDN / HTTP/2 proxy paths (RFC 9110 §6.4.5 forbids 204+body).
 // Idempotency: webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery} EX 86400.
 // On accept: normalized envelope is XADDed to zombie:{id}:events with
 //            `actor=webhook:github`, `event_type=webhook`. Returns 202.
@@ -58,7 +59,11 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     };
 
     if (!std.mem.eql(u8, event, EVENT_WORKFLOW_RUN)) {
-        hx.ok(.no_content, .{ .ignored = event });
+        // 200 OK + diagnostic body (not 204) so the `ignored` reason survives
+        // CDNs / HTTP/2 proxies that may strip or reject 204+body per
+        // RFC 9110 §6.4.5. GitHub's webhook delivery dashboard renders this
+        // body when an operator inspects "Recent Deliveries".
+        hx.ok(.ok, .{ .ignored = event });
         return;
     }
 
@@ -85,7 +90,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     };
     if (!decision.ingest) {
-        hx.ok(.no_content, .{ .ignored = decision.reason });
+        hx.ok(.ok, .{ .ignored = decision.reason });
         return;
     }
 
