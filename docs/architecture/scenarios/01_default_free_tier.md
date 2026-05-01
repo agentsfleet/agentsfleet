@@ -38,7 +38,7 @@ sequenceDiagram
     API->>Worker: XADD zombie:{id}:events
     Worker->>Slack: posts first-pass health summary
     Note over Op,Slack: Hours later, real CD failure...
-    GH->>API: POST /webhooks/github (HMAC verified)
+    GH->>API: POST /v1/webhooks/{zombie_id} (HMAC verified)
     API->>Worker: XADD zombie:{id}:events
     Worker->>Slack: posts evidenced diagnosis
 ```
@@ -103,12 +103,12 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 8. **Webhook URL + secret.** API returns `{zombie_id, webhook_url, webhook_secret}`. The skill prints them inline:
    ```
    Add this webhook to your repo:
-     URL:    https://api.usezombie.com/v1/.../webhooks/github?zombie_id={id}
+     URL:    https://api.usezombie.com/v1/webhooks/{id}
      Secret: <one-time HMAC-SHA256 secret — copy now, won't be shown again>
      Events: workflow_run
    ```
    Manual step the skill can't automate without a GitHub App — explicitly called out, takes ~30 seconds in the GH UI. (A GitHub App that auto-configures the webhook is a follow-up; v2 keeps the manual step.)
-9. **First steer (smoke test).** The skill runs `zombiectl steer {id} "morning health check"` and streams the response inline.
+9. **First steer (smoke test).** The skill runs `zombiectl steer {id} "morning health check"` in batch mode and streams the response inline.
 
 ### 1.2 What the first steer actually returns
 

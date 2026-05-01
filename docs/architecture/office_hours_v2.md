@@ -87,7 +87,7 @@ Those may become adjacent stories later, but they weaken the v2 wedge if they le
 
 The bastion direction remains strategically important: the same zombie that handles internal triage could later own customer-facing status communication. But that is a second-order extension. The product has to earn trust on internal-only incidents first.
 
-That is why `bastion.md` exists as direction, while the launch framing stays centered on internal deploy and outage triage.
+That is why [`bastion.md`](./bastion.md) exists as direction, while the launch framing stays centered on internal deploy and outage triage.
 
 ## Validation bar
 

@@ -8,14 +8,16 @@ This is a cross-cutting topic. The data model lives in the tenant provider recor
 
 ---
 
-## 1. The two postures
+## 1. The two postures (target M48 contract)
 
-A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
+Current `main` note: this file describes the intended M48 billing/provider contract. The model-caps endpoint is already shipped, but the tenant-scoped `core.tenant_providers` posture and `zombiectl provider set` flow are still pending. Today the shipped BYOK credential storage surface is workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm`.
+
+Under the intended M48 contract, a tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
 
 - **Platform-managed.** UseZombie holds the language-model provider key. The operator pays UseZombie a single bundled per-event fee that covers inference, orchestration, storage, and egress.
 - **Bring Your Own Key (BYOK).** The operator stores their own provider credential — Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under the well-known name `llm`. UseZombie's executor uses that key to call the provider's API. The operator pays the provider directly for inference; UseZombie charges a smaller orchestration-only fee per event.
 
-The posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl provider set` / `zombiectl provider reset`) or a single dashboard toggle.
+Under that target contract, the posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl provider set` / `zombiectl provider reset`) or a single dashboard toggle.
 
 ---
 

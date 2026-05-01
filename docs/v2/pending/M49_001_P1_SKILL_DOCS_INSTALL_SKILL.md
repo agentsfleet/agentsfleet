@@ -19,7 +19,7 @@
 
 The M43 webhook-ingest review pinned several decisions that this skill must absorb because the install-skill is the operator-facing surface for webhook setup. These supersede the original §3 step 4 (credential resolution) and step 10 (post-install messaging) wherever they conflict.
 
-**B1 — Webhook URL is `https://api.usezombie.com/v1/webhooks/{zombie_id}/github`.** Drop the `.../zombies/{id}/webhooks/github` form from the post-install message at the bottom of §3. Workspace prefix is wrong for webhooks.
+**B1 — Webhook URL is `https://api.usezombie.com/v1/webhooks/{zombie_id}`.** Drop the `.../zombies/{id}/webhooks/github` form from the post-install message at the bottom of §3. Workspace prefix is wrong for webhooks, and the source-suffixed path is not the shipped `main` contract.
 
 **B2 — Credentials are workspace-scoped opaque JSON, addressed by name** (M45 contract). The skill calls `zombiectl credential add <name> --data='<json>'`. For GitHub specifically: `<name> = "github"`, JSON body `{"webhook_secret": "<S>", "api_token": "<PAT>"}`. Both the credential name and its field names are conventions the skill follows so the SKILL.md frontmatter doesn't need a per-zombie `signature.secret_ref` pointer — the webhook ingest resolver looks the credential up by `name = trigger.source` automatically.
 
@@ -38,7 +38,7 @@ x-usezombie:
 
 No `secret_ref:` line. The resolver at `src/cmd/serve_webhook_lookup.zig` migrates to convention-based lookup as part of M43.
 
-**B6 — Variable resolution adjusted.** Drop `byok_provider_credential` from the variables list under §3 step 3 — BYOK provider config is owned by `zombiectl provider set` (M48), invoked separately from install-skill. Replace the slot with **nothing** (3 variables instead of 4): `slack_channel`, `prod_branch_glob`, `cron_opt_in`. Operator chooses BYOK after install via `zombiectl provider set` if/when they want it.
+**B6 — Variable resolution adjusted.** Drop `byok_provider_credential` from the variables list under §3 step 3. Current `main` stores BYOK credentials through the workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm` route; the tenant-scoped `zombiectl provider set` posture remains the pending M48 target contract and is not part of the install-skill flow. Replace the slot with **nothing** (3 variables instead of 4): `slack_channel`, `prod_branch_glob`, `cron_opt_in`.
 
 **B7 — `webhook_secret_ref` column is removed in M43.** No skill change required — the skill never wrote to it. Listed here only so the M49 implementer doesn't re-introduce the legacy pattern.
 
@@ -73,7 +73,7 @@ The directory inside the `usezombie/skills` distribution repo (`usezombie/skills
    - `slack_channel` (e.g., `#platform-ops`)
    - `prod_branch_glob` (e.g., `main` or `release/*`)
    - `cron_opt_in` (boolean, default false)
-   - BYOK provider config is set later via `zombiectl provider set` (M48), not as part of install.
+   - Current `main` keeps BYOK credential setup outside the install flow through the workspace-scoped `credentials/llm` route. The tenant-scoped `zombiectl provider set` posture remains the pending M48 target contract.
 4. Resolves credentials in order: `op` (1Password CLI) → env vars → interactive prompt fallback. Stores via `zombiectl credential add` with structured fields.
 5. Fetches the canonical platform-ops template from `https://raw.githubusercontent.com/usezombie/usezombie/<pinned-tag>/samples/platform-ops/SKILL.md`. Caches at `~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/`.
 6. Generates `.usezombie/platform-ops/SKILL.md` in the user's repo with substituted variables.
@@ -151,7 +151,9 @@ x-usezombie:
       prompt: "Should the zombie also run a periodic health check (every 30 min)?"
       type: bool
       default: false
-  # BYOK provider config is owned by `zombiectl provider set` (M48), not the install skill.
+  # Current `main` keeps BYOK credential setup outside the install skill through
+  # the workspace-scoped `credentials/llm` route. Tenant-scoped `provider set`
+  # remains the pending M48 target contract.
   template_url: "https://raw.githubusercontent.com/usezombie/usezombie/{tag}/samples/platform-ops/SKILL.md"
   template_pinned_tag: "v0.34.0"   # bumped on each skill release
 ---
@@ -199,7 +201,7 @@ a working platform-ops zombie on the user's current repository.
    - `{{cron_opt_in}}` → user's choice (if true, add the cron block to the
      `x-usezombie.trigger.cron:` section; if false, omit)
    - `{{repo}}` → repo name from git remote
-   - `{{model}}` and `{{context_cap_tokens}}` per Discovery D2: this skill is the **platform-managed** install path, so it GETs `https://api.usezombie.com/_um/.../model-caps.json` once for the platform default model (e.g. `claude-sonnet-4-6`) and writes the resolved cap (e.g. `200000`) into `x-usezombie.context.context_cap_tokens`. BYOK installs are not driven by this skill — operators run `zombiectl provider set` (M48) post-install, which writes the BYOK sentinels (`model: ""`, `context_cap_tokens: 0`) into `core.tenant_providers` for the worker to overlay at trigger time.
+   - `{{model}}` and `{{context_cap_tokens}}` per Discovery D2: this skill is the **platform-managed** install path, so it GETs `https://api.usezombie.com/_um/.../model-caps.json` once for the platform default model (e.g. `claude-sonnet-4-6`) and writes the resolved cap (e.g. `200000`) into `x-usezombie.context.context_cap_tokens`. Current `main` does not yet drive BYOK installs through this skill; any tenant-scoped `provider set` flow remains the pending M48 target contract.
 
 7. If the directory `.usezombie/platform-ops/` already exists in the user's repo,
    refuse to overwrite without `--force`. Ask the user: "Existing
@@ -213,7 +215,7 @@ a working platform-ops zombie on the user's current repository.
 
 10. Print: "Platform-ops zombie installed (id: {id}). It now watches your GH
     Actions CD pipeline. Configure your repo's webhook to point at:
-    POST https://api.usezombie.com/v1/webhooks/{zombie_id}/github
+    POST https://api.usezombie.com/v1/webhooks/{zombie_id}
     with secret: <one-time displayed value; already stored in this workspace's
     vault as the `github` credential, field `webhook_secret`>. To steer manually
     any time: `zombiectl steer {id} \"<message>\"`. To kill: `zombiectl kill {id}`."
@@ -263,7 +265,9 @@ Skill input (variables, resolved per host):
   slack_channel: string (required)
   prod_branch_glob: string (default "main")
   cron_opt_in: boolean (default false)
-  # BYOK provider config is set post-install via `zombiectl provider set` (M48).
+  # Current `main` keeps BYOK credential setup outside the install skill through
+  # the workspace-scoped `credentials/llm` route. Tenant-scoped `provider set`
+  # remains the pending M48 target contract.
 
 Skill output (filesystem state after success):
   .usezombie/platform-ops/SKILL.md created in user's CWD

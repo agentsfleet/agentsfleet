@@ -6,6 +6,8 @@
 > Use this file for what must be tested around the platform-ops wedge.
 > Do not use it as the source of truth for active milestone status or dated launch sequencing.
 
+This file is consumed by `/qa` and `/qa-only` as primary test input.
+
 ---
 
 ## Purpose
@@ -46,6 +48,8 @@ The core happy path is:
 8. A real "morning health check" message produces a real diagnosis and Slack post.
 
 If this path fails, the wedge is not ready no matter how polished the surrounding docs are.
+
+Current `main` nuance worth preserving: BYOK still flows through the workspace-scoped `credentials/llm` route today, even though the broader architecture set documents a tenant-scoped long-term posture.
 
 ## Hosted posture assumptions
 
