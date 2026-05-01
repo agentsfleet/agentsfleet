@@ -69,11 +69,11 @@ The directory inside the `usezombie/skills` distribution repo (`usezombie/skills
 
 1. Calls `zombiectl doctor --json`. If any check fails, surfaces the failure with the `auth login` hint and exits.
 2. Detects the user's repo: reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, `package.json`. Infers deploy target.
-3. Resolves variables (4 max) via host-neutral natural-language Q&A (NOT Claude-specific `AskUserQuestion`):
+3. Resolves variables (3 total — per B6) via host-neutral natural-language Q&A (NOT Claude-specific `AskUserQuestion`):
    - `slack_channel` (e.g., `#platform-ops`)
    - `prod_branch_glob` (e.g., `main` or `release/*`)
    - `cron_opt_in` (boolean, default false)
-   - `byok_provider_credential` (optional — if user wants BYOK from start)
+   - BYOK provider config is set later via `zombiectl provider set` (M48), not as part of install.
 4. Resolves credentials in order: `op` (1Password CLI) → env vars → interactive prompt fallback. Stores via `zombiectl credential add` with structured fields.
 5. Fetches the canonical platform-ops template from `https://raw.githubusercontent.com/usezombie/usezombie/<pinned-tag>/samples/platform-ops/SKILL.md`. Caches at `~/.cache/usezombie/skills/usezombie-install-platform-ops/<tag>/`.
 6. Generates `.usezombie/platform-ops/SKILL.md` in the user's repo with substituted variables.
@@ -151,9 +151,7 @@ x-usezombie:
       prompt: "Should the zombie also run a periodic health check (every 30 min)?"
       type: bool
       default: false
-    - name: byok_provider_credential
-      prompt: "Use BYOK (your own Anthropic/OpenAI key)? Leave blank for platform-hosted."
-      required: false
+  # BYOK provider config is owned by `zombiectl provider set` (M48), not the install skill.
   template_url: "https://raw.githubusercontent.com/usezombie/usezombie/{tag}/samples/platform-ops/SKILL.md"
   template_pinned_tag: "v0.34.0"   # bumped on each skill release
 ---
@@ -264,7 +262,7 @@ Skill input (variables, resolved per host):
   slack_channel: string (required)
   prod_branch_glob: string (default "main")
   cron_opt_in: boolean (default false)
-  byok_provider_credential: string (optional)
+  # BYOK provider config is set post-install via `zombiectl provider set` (M48).
 
 Skill output (filesystem state after success):
   .usezombie/platform-ops/SKILL.md created in user's CWD
