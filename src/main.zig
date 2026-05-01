@@ -167,6 +167,7 @@ test {
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");
     _ = @import("zombie/webhook_verify_test.zig");
+    _ = @import("zombie/webhook/normalizer/github.zig");
     _ = @import("cli/commands.zig");
     _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
