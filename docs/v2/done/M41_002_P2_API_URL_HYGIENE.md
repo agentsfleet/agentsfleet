@@ -4,7 +4,7 @@
 **Milestone:** M41
 **Workstream:** 002
 **Date:** Apr 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — REST §1 cleanup; not user-blocking
 **Categories:** API | CLI | UI
 **Batch:** B1 — single workstream
@@ -206,12 +206,12 @@ DELETE /v1/workspaces/{ws}/zombies/{id}/memories/{key}          — forget
 
 ## Acceptance Criteria
 
-- [ ] `python3 scripts/check_openapi_url_shape.py` reports `0 pre-§1 endpoints with pending-rename carve-outs` — verify: `python3 scripts/check_openapi_url_shape.py 2>&1 | grep -E '0 pre-§1'`
-- [ ] `make openapi` clean (router ↔ openapi parity holds across the rename) — verify: `make openapi`
-- [ ] `make lint && make test && make test-integration` clean — verify: those three commands
-- [ ] `make memleak` clean (messages + memory handlers do allocator work) — verify: `make memleak`
-- [ ] Cross-compile clean — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] Orphan sweep: zero references to `wsZombieSteerPath`, `memory_store|recall|list|forget`, `innerZombieSteer`, `innerMemoryStore|Recall|List|Forget` — verify: each `grep -rn` returns 0 in non-historical files
+- [x] `python3 scripts/check_openapi_url_shape.py` reports `0 pre-§1 endpoints with pending-rename carve-outs` — verified
+- [x] `make openapi` clean (router ↔ openapi parity holds across the rename) — verified
+- [x] `make lint && make test && make test-integration` clean — verified (1758/1758 unit incl. integration; 8 stale memory-recall/list IDOR tests retargeted to /memories collection in 2d5c496c)
+- [x] `make memleak` clean (messages + memory handlers do allocator work) — verified (1564 passed; 194 skipped; 0 failed)
+- [x] Cross-compile clean — verified (x86_64-linux + aarch64-linux)
+- [x] Orphan sweep: zero references to `wsZombieSteerPath`, `memory_store|recall|list|forget`, `innerZombieSteer`, `innerMemoryStore|Recall|List|Forget` — verified
 
 ---
 
