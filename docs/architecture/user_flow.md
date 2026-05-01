@@ -1,4 +1,4 @@
-# User Flow — how an operator uses the system
+# User Flow — how a user uses the system
 
 > Parent: [`README.md`](./README.md)
 
@@ -29,7 +29,7 @@ What the skill does, in order:
 5. **Generates `.usezombie/platform-ops/{SKILL,TRIGGER,README}.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
 6. **Drives `zombiectl install --from .usezombie/platform-ops/`** then runs a batch `zombiectl steer {id} "morning health check"` smoke test.
 
-This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any agent CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time operator.
+This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any agent CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time user.
 
 ## §8.0.1 Deployment posture: hosted-only in v2
 
@@ -41,7 +41,7 @@ Practically, this means:
 
 - v2 launch claim is **OSS + BYOK + markdown-defined**. Not "self-hostable."
 - The `/self-host` runbook page does not exist on `docs.usezombie.com` for v2.
-- Operators who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours_v2.md`](./office_hours_v2.md) P1 are v3 customers, not v2.
+- Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours_v2.md`](./office_hours_v2.md) P1 are v3 customers, not v2.
 - BYOK still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`scenarios/02_byok.md`](./scenarios/02_byok.md).
 
 ## §8.1 Authoring the zombie
@@ -49,7 +49,7 @@ Practically, this means:
 The user defines the zombie in project files:
 
 - `SKILL.md` describes how the zombie should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. No framework syntax.
-- `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md) describes how the zombie wakes up: webhook, cron, operator steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs.
+- `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md) describes how the zombie wakes up: webhook, cron, user steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs.
 
 The user iterates those files from Claude in natural language:
 
@@ -67,7 +67,7 @@ Once the files are ready, the user installs the zombie into the workspace.
 Conceptually, the workflow is:
 
 1. Claude (or another agent), typically driven by the `/usezombie-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
-2. **`zombiectl doctor --json` runs first** as the deterministic readiness gate. Doctor is auth-exempt, fast, and verifies four things: token validity, server reachability, an active workspace, and workspace binding for the current CLI. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the operator-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
+2. **`zombiectl doctor --json` runs first** as the deterministic readiness gate. Doctor is auth-exempt, fast, and verifies four things: token validity, server reachability, an active workspace, and workspace binding for the current CLI. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
 3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the API. The CLI POSTs `{name, config_json, source_markdown}`; the API parses frontmatter, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201. See [`data_flow.md`](./data_flow.md) for the install-to-worker claim sequence.
 4. The API stores the zombie config, linked credentials reference, approval policy, and trigger settings.
 5. The worker runtime becomes responsible for future triggers — no worker restart required (the watcher thread on `zombie:control` claims the new zombie within milliseconds).
@@ -80,7 +80,7 @@ For the MVP, the zombie is triggerable in three ways:
 
 - **Webhook input**: an external system (most importantly GitHub Actions on `workflow_run.conclusion == failure`) sends an event to the zombie's webhook ingest URL, which on `main` is `POST /v1/webhooks/{zombie_id}` with an optional URL-secret suffix. The receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`), normalizes the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:github`.
 - **Cron input**: NullClaw's `cron_add` tool persists a schedule. Each fire arrives as a synthetic event with `actor=cron:<schedule>`.
-- **Operator steer**: the user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer {id} "<message>"` (or the dashboard chat widget), which `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
+- **User steer**: the user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer {id} "<message>"` (or the dashboard chat widget), which `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
 
 All three flow through the same runtime path. The zombie's reasoning loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the install-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
 
@@ -92,7 +92,7 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 2. The user asks Claude to create or refine an operational zombie.
 3. Claude edits `SKILL.md`, `TRIGGER.md`, and related project instructions.
 4. Claude installs or updates the zombie.
-5. Claude can also manually invoke the zombie via `zombiectl steer` for one-off operator-triggered tasks.
+5. Claude can also manually invoke the zombie via `zombiectl steer` for one-off user-triggered tasks.
 6. Later, the zombie wakes on webhook or cron without the user staying in the terminal.
 7. When the user returns to Claude, they inspect what happened from durable history (`zombiectl events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
 
@@ -104,7 +104,7 @@ While working in Claude, the user defines a `platform-ops` zombie that:
 
 - wakes on GitHub Actions deploy-failure webhooks (primary)
 - wakes on a periodic production health cron (secondary)
-- can also be steered manually by the operator
+- can also be steered manually by the user
 
 When a GH Actions deploy fails:
 
@@ -149,49 +149,53 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 - the user authors and supervises from Claude
 - the zombie executes durably outside that transient chat session
 
-## §8.7 Model and context-cap origin (platform vs. BYOK target contract)
-
-This section describes the intended M48 contract. Current `main` already ships the model-caps endpoint, but it still stores BYOK credentials through the workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm` route and does not yet expose the tenant-scoped `tenant_providers` posture or `zombiectl provider set` flow described below.
+## §8.7 Model and context-cap origin (platform vs. BYOK)
 
 Two things travel together: the **model** the executor invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and BYOK postures, and the worker's overlay logic is what reconciles them at trigger time.
 
+The install-skill's job in both postures is the same shape: **call `zombiectl doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `zombiectl auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
+
 ```
-                     PLATFORM-MANAGED                          BYOK
-                  ─────────────────────────              ──────────────────────
-install-skill →   GET /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json          (skill skips lookup —
-                  → pin into frontmatter:                tenant_providers
-                    model: claude-sonnet-4-6               already has cap)
-                    context_cap_tokens: 200000          → frontmatter pinned to:
-                                                          model: ""
-                                                          context_cap_tokens: 0
+                     PLATFORM-MANAGED (John Doe)                BYOK (John Doe, post-flip)
+                  ─────────────────────────────────       ─────────────────────────────────
+install-skill →   doctor --json                           doctor --json
+                    auth_token_present: true ✓              auth_token_present: true ✓
+                    workspace_bound: true   ✓              workspace_bound: true   ✓
+                    tenant_provider:                       tenant_provider:
+                      {mode=platform,                        {mode=byok,
+                       model=accounts/fireworks/models/kimi-k2.6,               provider=fireworks,
+                       context_cap_tokens=256000}             model=accounts/.../kimi-k2.6,
+                  ─ if any auth check fails: print           context_cap_tokens=256000}
+                    `zombiectl auth login` and STOP. ─    ─ same auth-fail short-circuit ─
+                  branch on mode → write frontmatter      branch on mode → write frontmatter
+                  pin into frontmatter (resolved):        pin into frontmatter (sentinels):
+                    model: accounts/fireworks/models/kimi-k2.6                model: ""
+                    context_cap_tokens: 256000              context_cap_tokens: 0
 
-provider set   → (nothing — defaults stay platform)   → zombiectl provider set
-                                                          → API GETs
-                                                            /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
-                                                            for the llm.model
-                                                          → write
-                                                            tenant_providers.{
-                                                              mode: byok,
-                                                              model,
-                                                              context_cap_tokens
-                                                            }
+tenant provider → (nothing — synth-default                → zombiectl tenant provider set
+set                stays in place)                            --credential account-fireworks-byok
+                                                              → API loads vault row
+                                                              → API GETs /_um/.../model-caps.json
+                                                              → upsert tenant_providers row
+                                                                {mode=byok, provider, model,
+                                                                 context_cap_tokens, credential_ref}
 
-trigger fires  → processEvent:                        → processEvent:
-                   resolveActiveProvider()                resolveActiveProvider()
-                     returns mode=platform                 returns mode=byok +
-                   frontmatter has cap → use it.           tenant_providers
-                                                           {model, cap}
-                                                         frontmatter sentinels
-                                                           (0 / "") → overlay
-                                                           with tenant_providers
-                                                           values
+trigger fires  → processEvent:                            → processEvent:
+                   resolveActiveProvider()                    resolveActiveProvider()
+                     no row → synth-default                    follows credential_ref to vault
+                   frontmatter has resolved cap →              returns mode=byok + cap + key
+                   use it directly.                          frontmatter sentinels overlay:
+                                                               model "" or absent → overlay
+                                                               cap 0   or absent → overlay
 
-createExecution → context_cap_tokens=200000           → context_cap_tokens=256000
-                  model=claude-sonnet-4-6               model=accounts/.../kimi-k2
-                  provider_api_key=<platform>           provider_api_key=<fw_…>
+createExecution → context_cap_tokens=256000               → context_cap_tokens=256000
+                  model=accounts/fireworks/models/kimi-k2.6                   model=accounts/.../kimi-k2.6
+                  api_key=<from admin workspace vault>                   api_key=<fw_LIVE_…>
 
 L3 stage chunking
-                → threshold = 0.75 × 200000           → threshold = 0.75 × 256000
+                → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
 ```
 
-Single source of truth: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at install time (platform path → pinned in frontmatter) or at `provider set` time (BYOK path → pinned in `tenant_providers`). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`scenarios/02_byok.md`](./scenarios/02_byok.md) §5 for the endpoint shape.
+**Worker overlay rule (per-field, independent):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under BYOK posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
+
+Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at `tenant provider set` time (BYOK path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_byok.md`](./billing_and_byok.md) §9 for the endpoint shape and [`scenarios/02_byok.md`](./scenarios/02_byok.md) for the full BYOK walkthrough.

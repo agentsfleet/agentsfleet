@@ -1,0 +1,265 @@
+# Scenario 01 — Default install, platform-managed key
+
+**Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time $10 starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
+
+> **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time $10 grant. John in this scenario, John in Scenario 02 (after he flips to BYOK), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_byok.md`](../billing_and_byok.md) §2.
+
+**Outcome under test:** From cold start (`zombiectl` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
+
+This scenario is the wedge demo. If this path doesn't work end-to-end, nothing else matters.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Op as User (in host)
+    participant Skill as /usezombie-install-platform-ops
+    participant CLI as zombiectl
+    participant API as zombied-api
+    participant Worker as zombied-worker
+    participant GH as GitHub Actions
+    participant Slack
+
+    Op->>Skill: invoke
+    Skill->>CLI: doctor --json
+    CLI->>API: GET /v1/me + workspace + tenant_provider
+    API-->>Skill: { auth ✓, workspace ✓, tenant_provider: {mode, provider, model, context_cap_tokens} }
+    Note over Skill: doctor's tenant_provider block carries the resolved<br/>model + cap (synth-default for John). The skill never<br/>calls the model-caps endpoint directly.
+    Skill->>Op: ask 3 questions (slack, branch, cron)
+    Skill->>CLI: credential set (fly, slack, github, upstash)
+    CLI->>API: PUT /credentials
+    Skill->>CLI: install --from .usezombie/platform-ops/
+    CLI->>API: POST /zombies
+    API->>Worker: XADD zombie:control (zombie_created)
+    Worker-->>API: ≤1s thread spawned
+    API-->>Skill: { id, webhook_url, secret }
+    Skill->>Op: print webhook URL + secret (manual paste in GH)
+    Skill->>CLI: steer {id} "morning health check"
+    CLI->>API: POST /steer
+    API->>Worker: XADD zombie:{id}:events
+    Worker->>Slack: posts first-pass health summary
+    Note over Op,Slack: Hours later, real CD failure...
+    GH->>API: POST /v1/webhooks/{zombie_id} (HMAC verified)
+    API->>Worker: XADD zombie:{id}:events
+    Worker->>Slack: posts evidenced diagnosis
+```
+
+---
+
+## 1. Cold install (user's laptop)
+
+The user is already inside their host (Claude Code, Amp, Codex CLI, or OpenCode). They invoke:
+
+```
+/usezombie-install-platform-ops
+```
+
+The skill's first action is host-neutral: it reads its own `variables:` frontmatter and asks at most four questions through whatever question primitive the host provides (or falls back to inline natural-language Q&A on hosts that have none).
+
+### 1.1 Skill steps
+
+1. **Doctor preflight.** `zombiectl doctor --json` runs. If the CLI isn't installed, the skill prints the one-line install command and stops. If it's installed but unauthenticated, the skill prints `zombiectl auth login` and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
+2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version."
+3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_opt_in`. The skill never asks about model or BYOK in this scenario — both default to platform-managed.
+4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
+   - try `op read 'op://Personal/<name>/api-token'`
+   - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
+   - else interactive masked prompt
+   then `zombiectl credential set <name> --data '<opaque-json>'` per credential (upsert; same surface used for the BYOK credential in Scenario 02).
+5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
+
+   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_byok.md`](../billing_and_byok.md) §9 for the endpoint design.
+6. **Frontmatter generation.** The skill writes `.usezombie/platform-ops/SKILL.md` substituting variables and the cap. Refuses to overwrite without `--force`.
+   ```yaml
+   ---
+   name: platform-ops
+   x-usezombie:
+     trigger:
+       types: [chat, webhook:github, cron]
+       cron: "*/30 * * * *"          # only if cron_opt_in
+     model: accounts/fireworks/models/kimi-k2.6
+     context:
+       context_cap_tokens: 256000   # ← from /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
+       tool_window: auto
+       memory_checkpoint_every: 5
+       stage_chunk_threshold: 0.75
+     credentials: [fly, slack, github, upstash]
+     network:
+       allow:
+         - api.github.com
+         - api.fly.io
+         - "*.upstash.io"
+         - slack.com
+     budget:
+       daily_usd: 5
+       monthly_usd: 100
+   ---
+   <SKILL.md prose body — operational behaviour in plain English>
+   ```
+7. **Install.** `zombiectl install --from .usezombie/platform-ops/`. The CLI POSTs `{name, config_json, source_markdown}`; the API persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required.
+8. **Webhook URL + secret.** API returns `{zombie_id, webhook_url, webhook_secret}`. The skill prints them inline:
+   ```
+   Add this webhook to your repo:
+     URL:    https://api.usezombie.com/v1/webhooks/{id}
+     Secret: <one-time HMAC-SHA256 secret — copy now, won't be shown again>
+     Events: workflow_run
+   ```
+   Manual step the skill can't automate without a GitHub App — explicitly called out, takes ~30 seconds in the GH UI. (A GitHub App that auto-configures the webhook is a follow-up; v2 keeps the manual step.)
+9. **First steer (smoke test).** The skill runs `zombiectl steer {id} "morning health check"` in batch mode and streams the response inline.
+
+### 1.2 What the first steer actually returns
+
+The "morning health check" is **not** a canned ack. It enters the same reasoning loop as any other event — actor `steer:<user>`, type `chat`, into `zombie:{id}:events`. The SKILL.md prose body teaches the agent to handle this input by:
+
+- fetching the latest GH Actions runs on `prod_branch_glob`
+- fetching Fly app status / last deploy
+- fetching Upstash Redis ping if configured
+- posting a one-line "all healthy at HH:MM Z" or a real diagnosis to Slack
+
+So the user sees a **real first-pass evidence sweep**, not a "hello world." This is the install-time proof that everything (creds, network, executor, slack) is wired correctly. If any of the four `http_request` calls fails, the user sees the failure inline and can fix it before any real production webhook arrives.
+
+The webhook-driven path (next section) and this steer path are the **same reasoning loop**. The asymmetry is purely in the input: the webhook brings a `workflow_run` payload; the steer brings the user's text. The SKILL.md prose decides what to do with whichever input arrives. There is no "install-time mode" vs. "production mode" branch — the runtime never sees that distinction.
+
+---
+
+## 2. First production webhook fires
+
+A few hours later, the user pushes a commit. CD fails on a Fly OOM. GitHub Actions fires `workflow_run.conclusion=failure`. The webhook receiver:
+
+1. Verifies HMAC-SHA256 against the per-zombie secret stored at install.
+2. Normalises payload → synthetic event envelope (actor=`webhook:github`, type=`webhook`).
+3. `XADD zombie:{id}:events *` with the envelope.
+4. Returns 202 to GitHub.
+
+The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent` walks the credit-pool gate path (the same code path that scenario 03 walks more deeply):
+
+1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
+2. PUBLISH `zombie:{id}:activity` (`event_received`).
+3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
+4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_cents=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
+5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_cents = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
+6. Approval gate (no destructive tools wired in this zombie) → pass.
+7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map` — it travels separately from resolveActiveProvider's return value into `executor.startStage`.
+8. **Stage deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_cents = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
+9. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: <fetched from admin workspace vault via platform_llm_keys pointer>})`.
+10. `executor.startStage(execution_id, message=<webhook payload as text>)`.
+
+NullClaw runs the SKILL.md prose against the webhook payload. The agent makes its calls — `http_request GET .../actions/runs/{run_id}/logs`, `http_request GET ${fly.host}/v1/apps/{app}/logs`, etc. — credentials substituted at the tool bridge after sandbox entry. Posts a remediation diagnosis to Slack.
+
+`StageResult{content, token_count_input=820, token_count_output=1040, wall_ms=8210, ttft_ms=320, exit_ok=true}` returns over the Unix socket.
+
+Worker:
+- UPDATE `core.zombie_events` (`status='processed'`, `response_text`, `completed_at`).
+- UPDATE `zombie_execution_telemetry` stage row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The cents column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_byok.md`](../billing_and_byok.md) §3).
+- UPSERT `core.zombie_sessions` (advance bookmark, clear execution handle).
+- PUBLISH `event_complete`.
+- XACK.
+
+After this event: `balance_cents = 997`. Two telemetry rows (`charge_type='receive'` + `charge_type='stage'`), both with `posture='platform'`. The user reads the diagnosis in Slack; later opens `zombiectl events {id}` (or the dashboard) to see the full evidence trail and the per-charge-type breakdown.
+
+---
+
+## 3. Terminal transcript — what John Doe sees
+
+This is the verbatim end-to-end CLI experience. The skill drives most of it; John's only typed inputs are the three variable answers and the GitHub webhook paste.
+
+### 3.1 Skill invocation through to first steer
+
+```text
+$ /usezombie-install-platform-ops
+
+▸ Running zombiectl doctor --json …
+{
+  "auth_token_present": true,
+  "workspace_bound": true,
+  "tenant_provider": {
+    "mode": "platform",
+    "provider": "fireworks",
+    "model": "accounts/fireworks/models/kimi-k2.6",
+    "context_cap_tokens": 256000
+  }
+}
+✓ Doctor checks pass.
+
+▸ Detecting repo … github.com/john-doe/widgetly
+  .github/workflows/deploy.yml present
+  fly.toml present
+
+▸ Three quick questions:
+  Slack channel for diagnoses?     #platform-ops
+  Production branch glob?          main
+  Periodic health check (every 30 min)?  no
+
+▸ Resolving tool credentials (op → env → prompt fallback) …
+  fly       ✓ via op
+  slack     ✓ via op
+  github    ✓ via env (ZOMBIE_CRED_GITHUB_API_TOKEN)
+  upstash   skipped (not detected)
+
+▸ Generated webhook secret (one-time view; copy now):
+    whsec_<32-byte-base64-elided>
+
+▸ Writing .usezombie/platform-ops/SKILL.md
+   model: accounts/fireworks/models/kimi-k2.6
+   context_cap_tokens: 256000     ← from doctor's tenant_provider block
+
+▸ Installing …
+  zombie_id   = zmb_01HX9N3K…
+  webhook_url = https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…
+
+✓ Installed. Add this webhook to your repo (Settings → Webhooks):
+  URL:    https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…
+  Secret: whsec_<32-byte-base64-elided>
+  Events: workflow_run
+
+▸ Running first steer ("morning health check") …
+  GH Actions runs on main: 12 in last 24h, all green
+  Fly app widgetly-prod: healthy, last deploy 6h ago, 2 instances
+  Posted to #platform-ops at 09:14 UTC.
+
+✓ Setup complete. To steer manually:  zombiectl steer zmb_01HX9N3K… "<msg>"
+```
+
+### 3.2 First production webhook fires (a few hours later)
+
+```text
+$ zombiectl events zmb_01HX9N3K…
+EVENT_ID                 ACTOR             STATUS     STARTED              TOKENS  CREDIT
+evt_01HX9P7M…           webhook:github    processed  2026-05-01T13:42:01  1840    4¢
+evt_01HX9N4P…           steer:john        processed  2026-05-01T09:14:22  1610    4¢
+```
+
+John clicks into `evt_01HX9P7M…` in the dashboard and sees the agent's evidence trail — the `http_request` calls to GitHub run logs and Fly app status, the diagnosis posted to Slack. The credential names appear (`github`, `fly`, `slack`); their secret bytes do not.
+
+### 3.3 Provider posture confirmed by `tenant provider get`
+
+```text
+$ zombiectl tenant provider get
+Mode:                platform   (synthesised default — no explicit row)
+Provider:            fireworks
+Model:               accounts/fireworks/models/kimi-k2.6
+Context cap tokens:  256000
+
+ⓘ This is the platform default. To bring your own LLM key:
+   zombiectl credential set <name> --data '{"provider":"…","api_key":"…","model":"…"}'
+   zombiectl tenant provider set --credential <name>
+```
+
+No `core.tenant_providers` row exists for John's tenant; `tenant provider get` reads through the resolver and surfaces the synthesised default, plus an inline pointer at the BYOK setup commands.
+
+---
+
+## 4. What this scenario proves
+
+- The install-skill is the only place where repo detection, ≤4 question discipline, and credential resolution live. The runtime stays prompt-driven.
+- The model→cap lookup is **one external GET per install**, pinned into frontmatter. Adding a new model never requires a usezombie release.
+- The first steer and the first production webhook hit the **same reasoning loop**. Asymmetry would mean a code-path the SKILL.md author can't reason about — the architecture forbids it.
+- Credit deduction goes through the same `zombie_execution_telemetry` insert path under both postures. There is no plan-tier branching — same code path for John (synth-default platform) and any future user on Stripe-purchased credits.
+
+---
+
+## 5. What is NOT in this scenario
+
+- No BYOK. See `scenarios/02_byok.md`.
+- No balance trip. See `scenarios/03_balance_gate.md`.
+- No customer-facing statuspage / external comms. That's the bastion direction documented in [`../bastion.md`](../bastion.md).
+- No GitHub App for auto-webhook config. Manual step in v2.

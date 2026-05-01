@@ -12,8 +12,8 @@ The architecture doc used to be a single ~1,500-line file. That was hard to read
 Read in this order if you've never seen the project:
 
 1. [`high_level.md`](./high_level.md) — what the product is, what it isn't, why it exists, and why the obvious alternatives don't make it redundant.
-2. [`user_flow.md`](./user_flow.md) — how an operator gets from "I want a zombie" to "the zombie is running on my repo."
-3. [`scenarios/`](./scenarios/) — three end-to-end walkthroughs (default platform-managed install, Bring-Your-Own-Key with Fireworks + Kimi 2.6, balance-gated paid plans).
+2. [`user_flow.md`](./user_flow.md) — how a user gets from "I want a zombie" to "the zombie is running on my repo."
+3. [`scenarios/`](./scenarios/) — three end-to-end walkthroughs following one persona (John Doe) across his journey: default cold install, switching to BYOK with Fireworks + Kimi 2.6, and the credit pool draining and tripping the gate.
 
 After that, dip into whichever of these matches the change you're making:
 
@@ -21,11 +21,11 @@ After that, dip into whichever of these matches the change you're making:
 |---|---|
 | [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases, why-not-OpenClaw. The "why this exists" reading for new contributors. |
 | [`direction.md`](./direction.md) | The architectural constants. When a spec proposes something that conflicts with these, the spec gets amended — not the constants. |
-| [`user_flow.md`](./user_flow.md) | How an operator authors, installs, triggers, and supervises a zombie. Includes the install-skill walkthrough, deployment posture, and the model-cap origin story (§8.7). |
+| [`user_flow.md`](./user_flow.md) | How a user authors, installs, triggers, and supervises a zombie. Includes the install-skill walkthrough, deployment posture, and the model-cap origin story (§8.7). |
 | [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two agents in play, the three durable stores, the Redis streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
 | [`capabilities.md`](./capabilities.md) | What the zombie has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, stage chunking) that keep long incidents reasoning past the model's context window. |
-| [`billing_and_byok.md`](./billing_and_byok.md) | How operators pay for what they run. Plan tiers, the balance-gate code path, the two cost functions (platform-managed vs Bring-Your-Own-Key), the `llm` credential shape, NullClaw's provider routing for Fireworks + Kimi 2.6, and the model-caps endpoint. |
-| [`scenarios/`](./scenarios/) | Three concrete end-to-end walkthroughs: [`01_default_free_tier.md`](./scenarios/01_default_free_tier.md), [`02_byok.md`](./scenarios/02_byok.md), [`03_balance_gate_paid.md`](./scenarios/03_balance_gate_paid.md). |
+| [`billing_and_byok.md`](./billing_and_byok.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time $10 starter grant, the two debit points (receive + stage), `compute_receive_charge` / `compute_stage_charge`, the BYOK credential shape, the api_key visibility boundary, NullClaw's provider routing, the model-caps endpoint with per-model token rates, and the read-only billing dashboard + CLI surface. |
+| [`scenarios/`](./scenarios/) | Three concrete end-to-end walkthroughs: [`01_default_install.md`](./scenarios/01_default_install.md), [`02_byok.md`](./scenarios/02_byok.md), [`03_balance_gate.md`](./scenarios/03_balance_gate.md). |
 | [`bastion.md`](./bastion.md) | Where the wedge points after launch. Not part of v2 scope; documented so spec authors avoid foreclosing it. |
 | [`office_hours_v2.md`](./office_hours_v2.md) | The product-design session that produced the v2 wedge. Read for persona context, the demand-bucket honesty check, and the rejected approaches. |
 | [`plan_engg_review_v2.md`](./plan_engg_review_v2.md) | The engineering-review pass that produced the substrate-tier vs packaging-tier split. Test plan, critical paths, regression surface. |
@@ -48,10 +48,10 @@ For everything else, follow the topic files above.
 | **Zombie** | A long-lived, durable runtime instance defined by a `SKILL.md` plus `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single `SKILL.md` file). Owns one operational outcome. |
 | **NullClaw** | The language-model agent loop that runs inside the executor sandbox. The "zombie's agent." |
 | **User's agent** | Claude Code, Amp, Codex CLI, OpenCode — the workstation tool the human types into and that drives `zombiectl`. Distinct from the zombie's agent. |
-| **Steer** | An operator-initiated message sent to a zombie via `zombiectl steer {id} "<msg>"` or the dashboard chat widget. Lands as an event with `actor=steer:<user>`. |
+| **Steer** | A user-initiated message sent to a zombie via `zombiectl steer {id} "<msg>"` or the dashboard chat widget. Lands as an event with `actor=steer:<user>`. |
 | **Webhook trigger** | An external system POSTing to the zombie's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}`, with an optional URL-secret suffix). Lands as an event with `actor=webhook:<source>`. |
 | **Cron trigger** | A NullClaw-managed schedule firing on time. Lands as an event with `actor=cron:<schedule>`. |
 | **Stage** | One `runner.execute` call inside the executor — one language-model context window's worth of reasoning. Long incidents span multiple stages via continuation events. |
 | **Tool bridge** | The substitution layer inside the executor that replaces `${secrets.NAME.FIELD}` placeholders with real bytes after sandbox entry. |
-| **Bring Your Own Key (BYOK)** | The posture where the operator stores their own language-model provider credential (Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, …) under the well-known vault name `llm`. On `main` today that credential is stored through the workspace-scoped `credentials/llm` API; the tenant-scoped provider posture described in M48 is still pending. |
+| **Bring Your Own Key (BYOK)** | The posture where the user stores their own language-model provider credential (Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, …) in the vault under a user-chosen name (e.g. `account-fireworks-byok`), then activates it for the tenant via `zombiectl tenant provider set --credential <name>`. The tenant's `core.tenant_providers` row carries `credential_ref` pointing at the active credential. See [`billing_and_byok.md`](./billing_and_byok.md). |
 | **Bastion** | The post-launch framing where the same zombie owns both internal triage and customer-facing status communication. Documented in [`bastion.md`](./bastion.md). |

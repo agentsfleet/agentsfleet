@@ -20,7 +20,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | `core.zombie_events` | `zombied-worker` zombie thread (INSERT received → UPDATE terminal) | `zombied-api` `GET /events` endpoints, dashboard, `zombiectl events` |
 | `core.zombies` | `zombied-api` only | `zombied-worker` at claim + watcher tick |
 | `core.zombie_sessions` | `zombied-worker` (checkpoint + execution_id) | `zombied-worker` at claim + kill path |
-| `vault.secrets` | `zombied-api` on `credential add` | `zombied-worker` resolves just-in-time before each `createExecution` |
+| `vault.secrets` | `zombied-api` on `credential set` (upsert) | `zombied-worker` resolves just-in-time before each `createExecution` |
 
 ---
 
@@ -147,17 +147,17 @@ The user's agent is a workstation tool driving `zombiectl`. The zombie's agent i
 
 ## The three durable stores: who owns what
 
-The flow above writes to three Postgres tables. They are **not** redundant — each answers a distinct operator question, has a different cardinality, mutability, and retention contract. Use the right one for the right question.
+The flow above writes to three Postgres tables. They are **not** redundant — each answers a distinct user question, has a different cardinality, mutability, and retention contract. Use the right one for the right question.
 
 | Table | Cardinality | Mutability | Answers |
 |---|---|---|---|
 | `core.zombie_sessions` | **One row per zombie** | UPSERT — mutated on every event boundary | "Where is this zombie *right now*? Is it idle or executing? What was its last successful response?" — the worker's resume bookmark + active-execution handle. Read at claim, written at start + end of each event. |
-| `core.zombie_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `agent_error` \| `gate_blocked`) | "What did this zombie do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the operator's narrative log. The single source of truth for the Events tab and `zombiectl events`. |
-| `zombie_execution_telemetry` | **One row per delivery** (UNIQUE `event_id`) | INSERT once at end, immutable | "How much did event X cost? How fast was it? Which plan tier was charged?" — billing + latency audit. Joinable to `zombie_events` via `event_id`. Aggregated for p95 latency, token-spend rollups, credit deductions. |
+| `core.zombie_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `agent_error` \| `gate_blocked`) | "What did this zombie do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `zombiectl events`. |
+| `zombie_execution_telemetry` | **Two rows per event** under M48: one `charge_type='receive'` written at the receive deduct, one `charge_type='stage'` written at the stage deduct (then UPDATEd with token counts after `StageResult`). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the cents column; stage row UPDATEd once with token counts. | "How much did event X cost (split by receive vs stage)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `zombie_events` via `event_id`. Aggregated for p95 latency, token-spend rollups, credit deductions. |
 
 Why two per-delivery tables (`events` + `telemetry`) instead of one? They have different write authorities and retention contracts:
 
-- `zombie_events` holds operator-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
+- `zombie_events` holds user-readable strings (`request_json`, `response_text`) — large, mutable mid-lifecycle, deletable on tenant offboarding.
 - `zombie_execution_telemetry` holds numeric audit columns — small, immutable once written, retained for billing reconciliation independent of whether the conversation row is purged.
 
 ## Concrete platform-ops example
@@ -261,7 +261,7 @@ execution_started_at NULL
 - `zombiectl events {id} [--actor=…]` reads **`zombie_events`** — answers "what has this zombie done, what was asked, what did it reply, did any gate block it?"
 - Billing rollups + p95 dashboards read **`zombie_execution_telemetry`** — answers "how many tokens this month, what's the latency tail?"
 
-If only **one** table existed, every operator query would either pay full-table-scan cost (one row per delivery for "is it busy now?") or lose immutability guarantees on billing audit (mutable narrative columns alongside immutable spend columns). Three tables, three contracts, one join key (`event_id`).
+If only **one** table existed, every user query would either pay full-table-scan cost (one row per delivery for "is it busy now?") or lose immutability guarantees on billing audit (mutable narrative columns alongside immutable spend columns). Three tables, three contracts, one join key (`event_id`).
 
 
 ## Two streams + one pub/sub channel — three surfaces, three jobs
@@ -283,7 +283,7 @@ If only **one** table existed, every operator query would either pay full-table-
 └──────────────────────┴─────────────────┴──────────────────────────────────────────────────────────────────────────────────────────────────────────┴───────────────┴────────────────────────────────┘
 ```
 
-The two streams are durable (events appended, XACKed entries pruned) and back the at-least-once delivery contract. The pub/sub channel is ephemeral and exists only to power live operator UIs — its loss never affects correctness, only what the operator sees in real time. Durable activity history lives in core.zombie_events; the pub/sub channel is the eyeballs surface, not the audit surface.
+The two streams are durable (events appended, XACKed entries pruned) and back the at-least-once delivery contract. The pub/sub channel is ephemeral and exists only to power live user UIs — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in core.zombie_events; the pub/sub channel is the eyeballs surface, not the audit surface.
 
 ## Why a single zombie:control instead of per-tenant control
 
@@ -371,7 +371,7 @@ Considered alternatives:
                       created_at=<ms>
 
    CONTINUATION  worker re-enqueue (chunk-continuation or
-                 operator-resumed fulfillment)
+                 user-resumed fulfillment)
                → XADD zombie:{id}:events *
                       actor=continuation:<original_actor>
                       type=continuation
@@ -386,18 +386,18 @@ Considered alternatives:
 
    All four producers land the same envelope on the same stream. The
    reasoning loop never branches on actor — actor is metadata for the
-   SKILL.md prose and the operator's history filter.
+   SKILL.md prose and the user's history filter.
 ```
 
 **Webhook auth taxonomy.** The `webhook_sig` middleware classifies every
 inbound rejection into one of three error codes, each with a distinct
-operator action:
+user action:
 
 - `UZ-WH-020 webhook_credential_not_configured` — the zombie's
   `trigger.source` is unknown to the provider registry, OR the workspace
   has no `zombie:<source>` vault credential (vault row missing OR
-  `webhook_secret` field absent). Operator-recoverable misconfig — fix
-  with `zombiectl credential add <source> --data='{"webhook_secret":"…"}'`.
+  `webhook_secret` field absent). User-recoverable misconfig — fix
+  with `zombiectl credential set <source> --data='{"webhook_secret":"…"}'`.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.
   Either an attack or a real drift between what the provider has
@@ -442,10 +442,16 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
                       lifecycle is independent. The original blocked
                       row stays as the historical record.
 
-     4. resolveSecretsMap from vault (per-zombie credentials).
-        Current `main`: load workspace-scoped credentials (including `llm`
-        when configured). Architectural target: resolve active provider
-        posture from `tenant_providers` (platform or BYOK).
+     4. resolveSecretsMap from vault (per-zombie tool credentials —
+        github, fly, slack, etc. — keyed by name; workspace-scoped).
+        Provider posture (platform or BYOK) is resolved separately
+        through tenant_provider.resolveActiveProvider(tenant_id), which
+        either synthesises the platform default (no row) or reads the
+        tenant_providers row and follows credential_ref into the vault
+        for the BYOK api_key. The api_key crosses this boundary in
+        process memory only — it does NOT join secrets_map and is never
+        substituted into a tool placeholder. See
+        billing_and_byok.md §8.2 for the full visibility boundary.
 
      5. UPSERT core.zombie_sessions                ← worker marks busy
           SET execution_id, execution_started_at = now()
@@ -524,7 +530,7 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
    The write path is replay-safe even when reclaim is added later.
 ```
 
-### D. WATCH  (operator-side: how the live tail surfaces)
+### D. WATCH  (user-side: how the live tail surfaces)
 
 ```
    CLI       zombiectl steer {id} "<message>"   (batch mode)
@@ -568,7 +574,7 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
                → reads core.zombie_sessions
                  ("busy or idle, last response").
 
-   If a live frame drops (slow consumer, network blip), the operator pulls
+   If a live frame drops (slow consumer, network blip), the user pulls
    the gap from GET /events. Live tail is best-effort by design; the
    durable record is core.zombie_events.
 ```
