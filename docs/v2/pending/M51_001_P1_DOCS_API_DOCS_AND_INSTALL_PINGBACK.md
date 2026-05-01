@@ -283,7 +283,7 @@ Internal queries (admin-only):
 
 ## Acceptance Criteria
 
-- [ ] All 12 tests pass
+- [ ] All 15 tests pass (10 site/pingback + 5 architecture cross-reference, folded from M50)
 - [ ] `docs.usezombie.com` deploys cleanly with the 4 new v2 pages live (quickstart, skills, concepts/context-lifecycle, privacy/cli-telemetry)
 - [ ] `/self-host` returns 404 — no v2 stub for the v3 feature
 - [ ] Hero copy reflects new positioning (3 pillars: OSS + BYOK + markdown-defined); old homelab references gone
