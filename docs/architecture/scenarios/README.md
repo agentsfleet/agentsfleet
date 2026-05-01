@@ -1,12 +1,14 @@
 # Architecture Scenarios
 
-Three end-to-end walkthroughs that compose the v2 install, trigger, execute, and bill loop. Each is a complete narrative — you should be able to read one in isolation and understand how a real operator gets to a real outcome.
+Three end-to-end walkthroughs that compose the v2 install, trigger, execute, and bill loop. Each is a complete narrative — you should be able to read one in isolation and understand how a real user gets to a real outcome.
 
-| File | Persona | Posture | What it proves |
-|---|---|---|---|
-| [`01_default_free_tier.md`](./01_default_free_tier.md) | John Doe | Platform-managed (Anthropic) | Wedge demo: cold-install to first webhook diagnosis in <10 min. Doctor returns the synth-default `tenant_provider` block; install-skill writes resolved values into frontmatter. |
-| [`02_byok.md`](./02_byok.md) | Jane Doe | BYOK (Fireworks + Kimi 2.6) | Tenant-scoped provider flip; cap resolves into `tenant_providers` at `tenant provider set` time; worker overlays sentinels at trigger time; api_key never leaves the resolver-to-executor path. |
-| [`03_balance_gate_paid.md`](./03_balance_gate_paid.md) | Both | Both | Credit pool drains under both postures; same gate code path; posture-dependent receive + stage deductions; gate trips at zero with a dashboard-pointer UX. |
+All three scenarios follow the same persona — **John Doe** — across his journey from cold install to BYOK adoption to gate trip.
+
+| File | Phase of John's journey | What it proves |
+|---|---|---|
+| [`01_default_install.md`](./01_default_install.md) | Cold install on platform-managed (Anthropic + Sonnet) | Wedge demo: zero to first webhook diagnosis in <10 min. Doctor returns the synth-default `tenant_provider` block; install-skill writes resolved values into frontmatter. |
+| [`02_byok.md`](./02_byok.md) | Switches to BYOK (Fireworks + Kimi 2.6) | Tenant-scoped provider flip; cap resolves into `tenant_providers` at `tenant provider set` time; worker overlays sentinels at trigger time; api_key never leaves the resolver-to-executor path. |
+| [`03_balance_gate.md`](./03_balance_gate.md) | $10 credit grant drains across both postures, then exhausts | Credit pool drains under both postures; same gate code path; posture-dependent receive + stage deductions; gate trips at zero with a dashboard-pointer UX. |
 
 ## Cross-cutting decisions these scenarios encode
 

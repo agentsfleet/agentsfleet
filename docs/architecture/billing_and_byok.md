@@ -2,7 +2,7 @@
 
 > Parent: [`README.md`](./README.md)
 
-How operators pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the operator paying the language-model provider directly.
+How users pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the user paying the language-model provider directly.
 
 This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the executor + worker path, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
@@ -12,23 +12,20 @@ The billing model is **credit-based, Amp-style**: every tenant has a single cred
 
 ## 1. The two postures
 
-Two personas carry the worked examples through this doc and the scenarios:
-
-- **John Doe** — solo operator on a small repo. Stays on the default platform-managed posture. Drains credits at the platform rate (token-based). The platform-managed path, end to end.
-- **Jane Doe** — small-team operator with a Fireworks AI account already in place. Activates BYOK with her Fireworks key. Drains credits at the BYOK rate (flat orchestration only). The Bring-Your-Own-Key path, end to end.
+One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a zombie on the default platform-managed posture, runs for a while, then brings his own Fireworks AI key when he wants better economics and access to Kimi K2.6. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
 
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
 
-- **Platform-managed.** UseZombie holds the language-model provider key. The operator pays UseZombie a per-event fee that bundles inference (token-based, model-rate-driven), orchestration, storage, and egress.
-- **Bring Your Own Key (BYOK).** The operator stores their own provider credential — Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-byok`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. UseZombie's executor uses that key to call the provider's API. The operator pays the provider directly for inference; UseZombie charges a smaller flat orchestration fee per event with no token markup.
+- **Platform-managed.** UseZombie holds the language-model provider key. The user pays UseZombie a per-event fee that bundles inference (token-based, model-rate-driven), orchestration, storage, and egress.
+- **Bring Your Own Key (BYOK).** The user stores their own provider credential — Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-byok`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. UseZombie's executor uses that key to call the provider's API. The user pays the provider directly for inference; UseZombie charges a smaller flat orchestration fee per event with no token markup.
 
-The posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl tenant provider set --credential <name>` / `zombiectl tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the operator touches provider config.
+The posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl tenant provider set --credential <name>` / `zombiectl tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
 
 ---
 
 ## 2. Pure credits, one-time starter grant
 
-Every tenant has exactly one balance: `core.tenant_billing.balance_cents`. The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_cents = balance_cents - <cents>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the operator buys credits.
+Every tenant has exactly one balance: `core.tenant_billing.balance_cents`. The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_cents = balance_cents - <cents>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
 
 ### 2.1 The starter grant
 
@@ -38,7 +35,7 @@ At platform rates the grant covers roughly two hundred Sonnet-class events (mode
 
 ### 2.2 What happens when the starter grant runs out
 
-When `balance_cents` cannot cover the next event's estimated cost, the gate trips. The event is dead-lettered with `failure_label='balance_exhausted'`. The CLI prints a one-line pointer at the dashboard billing page; the dashboard shows the empty-balance state. **Stripe-backed Purchase Credits is deferred to v2.1.** In v2.0, an operator whose grant runs out either contacts us (manual top-up via support) or stops using the platform. The pricing model and the schema both anticipate Stripe — they just don't ship the integration in v2.0.
+When `balance_cents` cannot cover the next event's estimated cost, the gate trips. The event is dead-lettered with `failure_label='balance_exhausted'`. The CLI prints a one-line pointer at the dashboard billing page; the dashboard shows the empty-balance state. **Stripe-backed Purchase Credits is deferred to v2.1.** In v2.0, a user whose grant runs out either contacts us (manual top-up via support) or stops using the platform. The pricing model and the schema both anticipate Stripe — they just don't ship the integration in v2.0.
 
 ### 2.3 Plan tiers
 
@@ -58,7 +55,7 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 Why two points and not one:
 
 - **Receive captures the orchestration cost of accepting the event.** Queue ingest, gate evaluation, telemetry row setup, persistence overhead. Even an event whose stage decides to do nothing useful (zero-tool-call response, agent declines) has cost us this overhead. We deduct for it regardless.
-- **Stage captures the cost of running NullClaw.** Under platform that's token rate × tokens (we paid Anthropic / OpenAI / Fireworks for the tokens). Under BYOK that's flat orchestration overhead (the operator paid the provider; we did the executor RPC, the sandbox setup, the StageResult plumbing).
+- **Stage captures the cost of running NullClaw.** Under platform that's token rate × tokens (we paid Anthropic / OpenAI / Fireworks for the tokens). Under BYOK that's flat orchestration overhead (the user paid the provider; we did the executor RPC, the sandbox setup, the StageResult plumbing).
 
 Each debit produces its own row in `core.zombie_execution_telemetry` with a `charge_type` discriminator (`'receive'` or `'stage'`). One event → two telemetry rows. This is auditable: a quarterly question like "what fraction of last month's revenue came from receive overhead vs LLM markup" is a one-line SQL query.
 
@@ -69,6 +66,13 @@ The stage debit happens **before** `startStage` returns. We deduct on the conser
 ## 4. `compute_receive_charge` and `compute_stage_charge`
 
 Two functions, both in `src/state/tenant_billing.zig`. Both take `posture`. Neither takes plan.
+
+### 4.0 Worked examples up front
+
+Two events for John, taken at different points in his journey, drive the worked examples below:
+
+- **John on platform-managed Sonnet.** A typical webhook event: 800 input tokens / 1040 output tokens against `claude-sonnet-4-6`.
+- **John on BYOK Fireworks Kimi K2.6.** Same workload, same prompt shape: 800 input / 1320 output against `accounts/fireworks/models/kimi-k2.6` (Kimi tends to run a bit longer than Sonnet on the same prompt).
 
 ### 4.1 Receive charge
 
@@ -86,7 +90,7 @@ pub fn compute_receive_charge(posture: Posture) u32 {
 }
 ```
 
-Receive is one cent under platform, zero cents under BYOK in v2.0. The asymmetry is deliberate: under BYOK the operator is already paying for the LLM elsewhere, and we'd rather take our margin in one transparent place (the stage flat fee) than nickel-and-dime them across two debit points. Under platform we charge the receive cent because the bundled rate already presumes we're pricing the orchestration alongside inference; the receive cent is the separable orchestration share.
+Receive is one cent under platform, zero cents under BYOK in v2.0. The asymmetry is deliberate: under BYOK the user is already paying for the LLM elsewhere, and we'd rather take our margin in one transparent place (the stage flat fee) than nickel-and-dime them across two debit points. Under platform we charge the receive cent because the bundled rate already presumes we're pricing the orchestration alongside inference; the receive cent is the separable orchestration share.
 
 The numbers are illustrative — see §10's caveat about pricing controversy. The function shape is what matters: posture-dependent, plan-independent, plumbed through `processEvent`.
 
@@ -120,7 +124,7 @@ Under platform: a fixed overhead (1¢) plus token cost driven by the per-model r
 
 `@panic("unknown model")` under platform is correct: a model that's not in the catalogue should never reach `processEvent` — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `compute_stage_charge` with an unknown model is an internal inconsistency; we want to crash the worker, alert, and investigate, not silently use a default.
 
-### 4.3 Worked example — John on platform, claude-sonnet-4-6, 800 in / 1040 out
+### 4.3 Worked example — John under platform, claude-sonnet-4-6, 800 in / 1040 out
 
 ```
 compute_receive_charge(.platform)
@@ -137,7 +141,7 @@ Total event cost: 1¢ + 2¢ = 3¢
 
 (Numbers illustrative; the actual rates ride the model-caps endpoint and may differ. The shape of the math is the contract.)
 
-### 4.4 Worked example — Jane on BYOK, accounts/fireworks/models/kimi-k2.6, 800 in / 1320 out
+### 4.4 Worked example — John under BYOK, accounts/fireworks/models/kimi-k2.6, 800 in / 1320 out
 
 ```
 compute_receive_charge(.byok)
@@ -150,7 +154,7 @@ compute_stage_charge(.byok, "accounts/fireworks/models/kimi-k2.6", 800, 1320)
 Total event cost: 0¢ + 1¢ = 1¢
 ```
 
-Jane's $10 starter grant covers ~1000 BYOK events. John's covers ~300 platform-Sonnet events. Different drain rates, same balance column.
+Same $10 starter grant; different posture, different drain rate. Under platform he gets ~300 typical Sonnet events; under BYOK he gets ~1000 events on the same balance — a 3× runway extension that he buys by paying Fireworks separately for the actual tokens.
 
 ---
 
@@ -168,7 +172,7 @@ flowchart TD
     Block --> X1([XACK — terminal])
     E -->|yes| F[DEDUCT RECEIVE<br/>UPDATE balance_cents -=<br/>compute_receive_charge<br/>INSERT telemetry charge_type=receive]
     F --> G[Approval gate]
-    G -->|blocked| Wait[gate_blocked until<br/>operator resumes]
+    G -->|blocked| Wait[gate_blocked until<br/>user resumes]
     G -->|pass| H[Resolve secrets_map]
     H --> I[DEDUCT STAGE<br/>UPDATE balance_cents -=<br/>compute_stage_charge<br/>INSERT telemetry charge_type=stage]
     I --> J[executor.createExecution<br/>+ startStage]
@@ -179,7 +183,7 @@ flowchart TD
 
 Properties:
 
-- **Single-pass gate.** One `balance_cents < estimate` check at the start. If the operator can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the stage portion.
+- **Single-pass gate.** One `balance_cents < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the stage portion.
 - **Two deductions, two telemetry rows, in transaction.** Receive deduct + telemetry insert is one transaction; stage deduct + telemetry insert is another. If the worker crashes between them, the receive-row is the durable record that the receive overhead was charged; on retry the gate re-runs and either passes (still in credit) or blocks (not enough left for the stage portion).
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_cents < 0`, gate trips.
@@ -188,28 +192,28 @@ Properties:
 
 ## 6. The credit-exhausted user experience
 
-When the gate blocks, the operator's surfaces show:
+When the gate blocks, the user's surfaces show:
 
 - **`zombiectl events {id}`** — the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-line pointer: *Credits exhausted. See https://app.usezombie.com/settings/billing.*
 - **`zombiectl billing show`** — balance reads `0¢ ($0.00)`; below it, the most recent N event rows showing where the credits went.
 - **Dashboard `/zombies/{id}/events`** — the row renders with a red *Blocked: balance* chip linking to the billing page.
 - **Dashboard `/settings/billing`** — empty-balance hero state. The Purchase Credits button is visible but disabled in v2.0 with a tooltip *"Coming in v2.1 — contact support for a top-up."*. The Usage tab still shows the historical drain.
 
-The blocked row is **terminal** (XACKed, immutable narrative). When the operator's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they either re-trigger from the source (push another commit, send another steer) or use the resume affordance, which writes an `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
+The blocked row is **terminal** (XACKed, immutable narrative). When the user's balance is later topped up (manually by us in v2.0, or via Stripe in v2.1+), there is **no automatic replay**. If they want the missed events processed, they either re-trigger from the source (push another commit, send another steer) or use the resume affordance, which writes an `actor=continuation:<original>` event referencing `resumes_event_id=<blocked_row>`.
 
-The reasoning is that a balance-exhausted event is usually evidence the operator was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
+The reasoning is that a balance-exhausted event is usually evidence the user was already off the rails (runaway loop, mis-configured cron). Auto-replay would compound the bill.
 
 ---
 
 ## 7. Switching posture mid-stream
 
-An operator can switch between platform and BYOK at any time. Effects on subsequent billing:
+A user can switch between platform and BYOK at any time. Effects on subsequent billing:
 
-- **Platform → BYOK** (operator runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=byok` immediately. The next event's receive + stage debits use the BYOK constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
-- **BYOK → platform** (operator stops paying their provider): `zombiectl tenant provider reset` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
+- **Platform → BYOK** (user runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=byok` immediately. The next event's receive + stage debits use the BYOK constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
+- **BYOK → platform** (user stops paying their provider): `zombiectl tenant provider reset` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
 - **Mid-event change.** The snapshot taken at claim time wins. Provider posture is resolved exactly once, at gate time, before the receive deduct.
 
-The "in-flight events" question matters because BYOK and platform have different per-event costs. We never want a request that the operator started under one posture to bill at another.
+The "in-flight events" question matters because BYOK and platform have different per-event costs. We never want a request that the user started under one posture to bill at another.
 
 The `tenant provider set` PUT validates eagerly on structure (body shape, credential presence, JSON shape, model-caps catalogue membership). It does **not** make a synthetic call to the LLM provider to verify the key works — auth-validity surfaces at the first event as `provider_auth_failed`. The CLI prints a one-line *"Tip: run a test event to verify the key works"* hint after a successful set.
 
@@ -217,9 +221,9 @@ The `tenant provider set` PUT validates eagerly on structure (body shape, creden
 
 ## 8. The BYOK credential and the api_key visibility boundary
 
-### 8.1 The credential body — operator-named, opaque
+### 8.1 The credential body — user-named, opaque
 
-Vault credentials are opaque JSON objects keyed by name (M45 contract). The BYOK record uses an **operator-chosen name**: Jane picks `account-fireworks-byok`, another operator might pick `anthropic-prod` or `openai-team-shared`. The name is whatever makes sense to the operator; the schema does not impose a convention.
+Vault credentials are opaque JSON objects keyed by name (M45 contract). The BYOK record uses an **user-chosen name**: John picks `account-fireworks-byok`, another user might pick `anthropic-prod` or `openai-team-shared`. The name is whatever makes sense to the user; the schema does not impose a convention.
 
 ```json
 {
@@ -229,9 +233,9 @@ Vault credentials are opaque JSON objects keyed by name (M45 contract). The BYOK
 }
 ```
 
-`provider` is one of the names NullClaw's provider catalogue recognises (`anthropic`, `openai`, `fireworks`, `together`, `groq`, `moonshot`, `kimi`, `openrouter`, `cerebras`, …). `model` is the provider's model identifier. `api_key` is the operator's credential.
+`provider` is one of the names NullClaw's provider catalogue recognises (`anthropic`, `openai`, `fireworks`, `together`, `groq`, `moonshot`, `kimi`, `openrouter`, `cerebras`, …). `model` is the provider's model identifier. `api_key` is the user's credential.
 
-The `tenant_providers` row points at the credential by name through `credential_ref`. Multi-credential tenants are supported (an operator can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `zombiectl tenant provider set --credential <other>`); only one is *active* at a time per tenant.
+The `tenant_providers` row points at the credential by name through `credential_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `zombiectl tenant provider set --credential <other>`); only one is *active* at a time per tenant.
 
 **`context_cap_tokens` is not in the credential body.** The cap is resolved separately, at `tenant provider set` time, from the public model-caps endpoint (§10), and pinned into `tenant_providers.context_cap_tokens`. Splitting the two lets the cap be re-resolved when the model changes without touching the vault.
 
@@ -247,7 +251,7 @@ The api_key — platform OR BYOK — crosses one boundary cleanly. It exists onl
 
 **The api_key MUST NEVER appear in:**
 
-- HTTP response bodies — `zombiectl doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the operator sees.
+- HTTP response bodies — `zombiectl doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the user sees.
 - Logs — worker, executor, structured logs, request logs.
 - The agent's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (`executor.startStage`, not `secrets_map`).
 - Persisted event rows — `core.zombie_events`, `zombie_execution_telemetry`, anything else under `core.*`.
@@ -336,7 +340,7 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
 }
 ```
 
-The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Operators pick their provider via their BYOK credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
+The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their BYOK credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
 
 Properties:
 
@@ -401,7 +405,7 @@ Last 10 events drained credits:
 
 No `purchase` / `topup` / `configure` subcommands in v2.0. The CLI's job is to surface state, not to drive Stripe — that lives in the dashboard once it ships in v2.1.
 
-When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) prints a one-line pointer at the dashboard billing page. The CLI never blocks the operator from making the next call (you can still issue another `steer` even with zero balance) — the gate is server-side, and the CLI surfaces the eventual rejection through `zombiectl events`.
+When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) prints a one-line pointer at the dashboard billing page. The CLI never blocks the user from making the next call (you can still issue another `steer` even with zero balance) — the gate is server-side, and the CLI surfaces the eventual rejection through `zombiectl events`.
 
 ---
 
@@ -413,5 +417,5 @@ When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) p
 - **Refund-on-actual-tokens.** v3. Today the conservative estimate at stage-debit time is the charge; reconciling to actual tokens after `StageResult` would add bookkeeping for marginal accuracy gains.
 - **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3 — needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.
-- **Metering BYOK spend for cost reporting.** Operators check their provider's dashboard today.
-- **Auto-fallback from BYOK to platform on provider error.** Errors surface to the operator; no silent fallback (it would charge them without consent).
+- **Metering BYOK spend for cost reporting.** Users check their provider's dashboard today.
+- **Auto-fallback from BYOK to platform on provider error.** Errors surface to the user; no silent fallback (it would charge them without consent).

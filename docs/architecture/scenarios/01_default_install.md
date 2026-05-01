@@ -1,6 +1,8 @@
-# Scenario 01 — Default install, platform-managed key, free tier
+# Scenario 01 — Default install, platform-managed key
 
-**Persona — John Doe.** First-time operator. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time $10 starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
+**Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time $10 starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
+
+> **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time $10 grant. John in this scenario, John in Scenario 02 (after he flips to BYOK), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_byok.md`](../billing_and_byok.md) §2.
 
 **Outcome under test:** From cold start (`zombiectl` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
 
@@ -9,7 +11,7 @@ This scenario is the wedge demo. If this path doesn't work end-to-end, nothing e
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Op as Operator (in host)
+    participant Op as User (in host)
     participant Skill as /usezombie-install-platform-ops
     participant CLI as zombiectl
     participant CapAPI as model-caps endpoint<br/>(_um/<key>)
@@ -45,9 +47,9 @@ sequenceDiagram
 
 ---
 
-## 1. Cold install (operator's laptop)
+## 1. Cold install (user's laptop)
 
-The operator is already inside their host (Claude Code, Amp, Codex CLI, or OpenCode). They invoke:
+The user is already inside their host (Claude Code, Amp, Codex CLI, or OpenCode). They invoke:
 
 ```
 /usezombie-install-platform-ops
@@ -115,15 +117,15 @@ The "morning health check" is **not** a canned ack. It enters the same reasoning
 - fetching Upstash Redis ping if configured
 - posting a one-line "all healthy at HH:MM Z" or a real diagnosis to Slack
 
-So the operator sees a **real first-pass evidence sweep**, not a "hello world." This is the install-time proof that everything (creds, network, executor, slack) is wired correctly. If any of the four `http_request` calls fails, the operator sees the failure inline and can fix it before any real production webhook arrives.
+So the user sees a **real first-pass evidence sweep**, not a "hello world." This is the install-time proof that everything (creds, network, executor, slack) is wired correctly. If any of the four `http_request` calls fails, the user sees the failure inline and can fix it before any real production webhook arrives.
 
-The webhook-driven path (next section) and this steer path are the **same reasoning loop**. The asymmetry is purely in the input: the webhook brings a `workflow_run` payload; the steer brings the operator's text. The SKILL.md prose decides what to do with whichever input arrives. There is no "install-time mode" vs. "production mode" branch — the runtime never sees that distinction.
+The webhook-driven path (next section) and this steer path are the **same reasoning loop**. The asymmetry is purely in the input: the webhook brings a `workflow_run` payload; the steer brings the user's text. The SKILL.md prose decides what to do with whichever input arrives. There is no "install-time mode" vs. "production mode" branch — the runtime never sees that distinction.
 
 ---
 
 ## 2. First production webhook fires
 
-A few hours later, the operator pushes a commit. CD fails on a Fly OOM. GitHub Actions fires `workflow_run.conclusion=failure`. The webhook receiver:
+A few hours later, the user pushes a commit. CD fails on a Fly OOM. GitHub Actions fires `workflow_run.conclusion=failure`. The webhook receiver:
 
 1. Verifies HMAC-SHA256 against the per-zombie secret stored at install.
 2. Normalises payload → synthetic event envelope (actor=`webhook:github`, type=`webhook`).
@@ -134,7 +136,7 @@ The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent`:
 
 1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
 2. PUBLISH `zombie:{id}:activity` (`event_received`).
-3. **Balance gate fires.** John has the $10 starter grant — `balance_cents=1000`, comfortably above the platform-rate event estimate. Gate passes; receive deduct fires (1¢ → 999¢). (See [`./03_balance_gate_paid.md`](./03_balance_gate_paid.md) for the gate-trip case.)
+3. **Balance gate fires.** John has the $10 starter grant — `balance_cents=1000`, comfortably above the platform-rate event estimate. Gate passes; receive deduct fires (1¢ → 999¢). (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
 4. Approval gate (no destructive tools wired in this zombie) → pass.
 5. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`.
 6. **Resolve provider config:** `tenant_provider.resolveActiveProvider(tenant_id)` returns `{mode: "platform", provider: "anthropic", api_key: <platform_key>, model: "claude-sonnet-4-6"}`. The cap from frontmatter (`200_000`) wins because `mode=platform` and the worker prefers the install-time pinned cap when available.
@@ -152,7 +154,7 @@ Worker:
 - PUBLISH `event_complete`.
 - XACK.
 
-The operator reads the diagnosis in Slack; later opens `zombiectl events {id}` to see the full evidence trail.
+The user reads the diagnosis in Slack; later opens `zombiectl events {id}` to see the full evidence trail.
 
 ---
 
@@ -251,13 +253,13 @@ No `core.tenant_providers` row exists for John's tenant; `tenant provider get` r
 - The install-skill is the only place where repo detection, ≤4 question discipline, and credential resolution live. The runtime stays prompt-driven.
 - The model→cap lookup is **one external GET per install**, pinned into frontmatter. Adding a new model never requires a usezombie release.
 - The first steer and the first production webhook hit the **same reasoning loop**. Asymmetry would mean a code-path the SKILL.md author can't reason about — the architecture forbids it.
-- Credit deduction goes through the same `zombie_execution_telemetry` insert path under both postures. There is no plan-tier branching — same code path for John (synth-default platform) and any future operator on Stripe-purchased credits.
+- Credit deduction goes through the same `zombie_execution_telemetry` insert path under both postures. There is no plan-tier branching — same code path for John (synth-default platform) and any future user on Stripe-purchased credits.
 
 ---
 
 ## 5. What is NOT in this scenario
 
 - No BYOK. See `scenarios/02_byok.md`.
-- No balance trip. See `scenarios/03_balance_gate_paid.md`.
+- No balance trip. See `scenarios/03_balance_gate.md`.
 - No customer-facing statuspage / external comms. That's the bastion direction documented in [`../bastion.md`](../bastion.md).
 - No GitHub App for auto-webhook config. Manual step in v2.

@@ -389,7 +389,7 @@ The cap is **not** in the `llm` credential body. The body stays `{provider, api_
 
 - [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.7 — the three-rail diagram showing platform vs BYOK origin and how the worker overlays sentinels at trigger time.
 - [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §9 — the endpoint shape, rotation, and Cloudflare configuration.
-- [`docs/architecture/scenarios/01_default_free_tier.md`](../../architecture/scenarios/01_default_free_tier.md) and [`02_byok.md`](../../architecture/scenarios/02_byok.md) — the two end-to-end scenarios.
+- [`docs/architecture/scenarios/01_default_install.md`](../../architecture/scenarios/01_default_install.md) and [`02_byok.md`](../../architecture/scenarios/02_byok.md) — the two end-to-end scenarios.
 
 These edits already landed in this same Discovery commit. M49 §1 inherits the locked decisions.
 
