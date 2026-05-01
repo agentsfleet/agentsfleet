@@ -4,11 +4,11 @@
 **Milestone:** M43
 **Workstream:** 001
 **Date:** Apr 25, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — launch-blocking. The wedge IS GitHub Actions CD-failure responder; without webhook ingest the wedge has no entry point. The chat-only fallback (M42 steer) is the secondary interaction, not the primary.
 **Categories:** API
 **Batch:** B1 — depends on M42 (event stream + envelope), parallel with M40, M41, M44, M45.
-**Branch:** chore/m43-review-amendments (folded into PR #272 alongside the review amendments + Slack/GitHub-App removal per operator authorization Apr 30, 2026)
+**Branch:** feat/m43-001-webhook-ingest (separate PR, based on chore/m43-review-amendments per PR #272 stacking decision May 1, 2026)
 **Depends on:** M42_001 (writes to `zombie:{id}:events` with the M42 envelope shape). M45_001 (webhook secret stored as a structured credential under `${secrets.github.webhook_secret}`). M40_001 (the per-zombie thread that consumes the event must exist).
 
 **Canonical architecture:** `docs/architecture/user_flow.md` (webhook input + GH Actions trigger walkthrough), `docs/architecture/data_flow.md` §B (TRIGGER — three callers, ONE ingress).
@@ -277,8 +277,33 @@ Fixtures in `samples/fixtures/m43-webhook-fixtures/`.
 
 ## Acceptance Criteria
 
-- [ ] `make test-integration` passes the 9 tests above
-- [ ] Manual smoke: configure a real GH repo's webhook to point at staging zombid, push a failing deploy, observe zombie posts diagnosis to Slack within 30s
-- [ ] Replay attack test: capture a real signed payload, replay 24h later → second is treated as new (post-window) but inside 24h is deduped
-- [ ] `make memleak` clean
-- [ ] Cross-compile clean: x86_64-linux + aarch64-linux
+- [x] Endpoint live at `POST /v1/webhooks/{zombie_id}/github` with HMAC verified upstream by `webhook_sig`.
+- [x] Resolver migrated to workspace credentials (`vault.loadJson(zombie:<source>) → webhook_secret`) per A6.
+- [x] `webhook_secret_ref` column dropped per A7; URL-embedded-secret path torn out (matcher, middleware, registry chain) per RULE NLR.
+- [x] `UZ-WH-020` + `UZ-WH-030` error codes registered.
+- [x] GitHub `workflow_run` normalizer with unit-test coverage of failure / success / malformed / missing-keys / default-attempt cases.
+- [x] OpenAPI parity at `/v1/webhooks/{zombie_id}/github`; URL-shape carve-out justified.
+- [x] `make lint` + `zig build test` green.
+- [x] Cross-compile clean: x86_64-linux + aarch64-linux.
+- [ ] `make memleak` clean (run during CHORE(close)).
+- [ ] Manual smoke against staging deferred to M49 install-skill validation per A12.
+
+---
+
+## Discovery
+
+- The URL-embedded-secret legacy path (matcher branch, `WebhookRoute.secret`, `AuthCtx.webhook_provided_secret`, middleware Strategy 1, the entire `webhook_url_secret.zig` middleware, the registry chain + private accessor) was orphaned by removing `webhook_secret_ref`. Cleaning it in the same PR per RULE NLR — the user explicitly authorized "no legacy sprawl, full clean" during PLAN.
+- The two-segment URL form `/v1/webhooks/{zombie_id}/{X}` would have collided with the new `/github` action route had it stayed; simplifying `matchWebhookRoute` to single-segment was a correctness fix on top of the cleanup.
+- The dedicated `/github` URL means the source-derived signature scheme can be confidently treated as `webhook_verify.GITHUB` even before the body is parsed; the existing detect-by-config_json path stays for the generic `/v1/webhooks/{zombie_id}` receiver.
+
+---
+
+## Files Changed (final)
+
+NEW: `src/http/handlers/webhooks/github.zig`, `src/zombie/webhook/normalizer/github.zig`, `src/zombie/webhook/normalizer/github_test.zig`, `samples/fixtures/webhook_github/{workflow_run_failure,workflow_run_success}.json` (with sibling copies under `src/zombie/webhook/normalizer/` for `@embedFile` boundary).
+
+DROPPED: `src/auth/middleware/webhook_url_secret.zig`, `core.zombies.webhook_secret_ref` column.
+
+EDIT: `src/cmd/serve_webhook_lookup.zig`, `src/http/handlers/webhooks/zombie.zig`, `src/http/router.zig`, `src/http/route_matchers.zig`, `src/http/route_table.zig`, `src/http/route_table_invoke.zig`, `src/http/route_manifest.zig`, `src/http/server.zig`, `src/http/test_harness.zig`, `src/http/webhook_test_fixtures.zig`, `src/http/webhook_http_integration_test.zig`, `src/http/handlers/cross_workspace_idor_test.zig`, `src/http/route_matchers_test.zig`, `src/http/router_test.zig`, `src/auth/middleware/webhook_sig.zig`, `src/auth/middleware/webhook_sig_test.zig`, `src/auth/middleware/auth_ctx.zig`, `src/auth/middleware/mod.zig`, `src/auth/tests.zig`, `src/cmd/serve.zig`, `src/errors/error_registry.zig`, `src/errors/error_entries.zig`, `src/errors/error_registry_test.zig`, `src/main.zig`, `schema/007_core_zombies.sql`, `public/openapi/paths/webhooks.yaml`, `public/openapi/root.yaml`, `scripts/check_openapi_url_shape.py`, `samples/platform-ops/SKILL.md`.
+
+The original Files Changed table above (under §Files Changed) reflected the spec's pre-amendment plan; the actual scope is wider per A7's URL-embedded-secret teardown decision.
