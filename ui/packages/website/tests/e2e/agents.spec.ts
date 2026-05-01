@@ -42,7 +42,7 @@ test.describe("Agents page (/agents)", () => {
     await expect(page.getByText("API Operations")).toBeVisible();
     await expect(page.getByText("Create zombie")).toBeVisible();
     await expect(page.getByText("Kill zombie")).toBeVisible();
-    await expect(page.getByText("Steer zombie")).toBeVisible();
+    await expect(page.getByText("Post zombie message")).toBeVisible();
     await expect(page.getByText("Pause workspace")).toBeVisible();
     await expect(page.getByText("Execute tool")).toBeVisible();
   });

@@ -52,7 +52,7 @@ const apiOps = [
   { action: "Create zombie", method: "POST", path: "/v1/workspaces/:workspace_id/zombies", purpose: "Provision a new Zombie in a workspace" },
   { action: "Update zombie", method: "PATCH", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id", purpose: "Update a Zombie's mutable configuration (body: { config_json })." },
   { action: "Kill zombie", method: "PATCH", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id", purpose: "Cancel any in-flight session and mark the Zombie killed (body: { status: \"killed\" })." },
-  { action: "Steer zombie", method: "POST", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/steer", purpose: "Inject a steering instruction into the Zombie's loop" },
+  { action: "Post zombie message", method: "POST", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/messages", purpose: "Post a chat message to the Zombie's loop" },
   { action: "Stream events", method: "GET", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/events/stream", purpose: "Server-Sent Events stream of new events" },
   { action: "Ingest webhook", method: "POST", path: "/v1/webhooks/:zombie_id", purpose: "Deliver an inbound event to a Zombie" },
   { action: "Pause workspace", method: "PATCH", path: "/v1/workspaces/:workspace_id", purpose: "Pause / unpause admission of new work (body: { pause, reason, version })" },

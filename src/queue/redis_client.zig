@@ -146,7 +146,7 @@ pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
 
 /// XADD an EventEnvelope onto `zombie:{envelope.zombie_id}:events`. The Redis
 /// stream entry id IS the canonical event_id; this function returns it
-/// allocated via `self.alloc` so the caller (e.g. `POST /steer`) can
+/// allocated via `self.alloc` so the caller (e.g. `POST /messages`) can
 /// surface it in the response body for SSE correlation.
 ///
 /// Stream is trimmed approximately to MAXLEN 10000 entries.

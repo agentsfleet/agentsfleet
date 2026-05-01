@@ -1,8 +1,8 @@
-// POST /v1/workspaces/{ws}/zombies/{id}/steer — operator-driven event ingress.
+// POST /v1/workspaces/{ws}/zombies/{id}/messages — operator-driven chat ingress.
 //
 // Verifies workspace ownership, normalizes the body into an EventEnvelope,
 // XADDs onto zombie:{id}:events, and returns 202 with the Redis-assigned
-// event_id. The CLI uses event_id to filter SSE frames for the steer it
+// event_id. The CLI uses event_id to filter SSE frames for the message it
 // just sent. No SETEX, no GETDEL, no synthetic-event injection in the
 // worker — the event hits the same single-ingress stream every other
 // producer (webhook, cron, continuation) writes to.
@@ -19,25 +19,25 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const EventEnvelope = @import("../../../zombie/event_envelope.zig");
 
-const log = std.log.scoped(.zombie_steer);
+const log = std.log.scoped(.zombie_messages);
 
 const Hx = hx_mod.Hx;
 
 const MAX_MESSAGE_LEN: usize = 8192;
 
-const SteerBody = struct {
+const MessageBody = struct {
     message: []const u8,
 };
 
 // ── Handler ───────────────────────────────────────────────────────────────────
 
-pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
+pub fn innerZombieMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
     const body_raw = req.body() orelse {
         hx.fail(ec.ERR_INVALID_REQUEST, "request body required");
         return;
     };
     const parsed = std.json.parseFromSlice(
-        SteerBody,
+        MessageBody,
         hx.alloc,
         body_raw,
         .{ .ignore_unknown_fields = true },
@@ -95,13 +95,13 @@ pub fn innerZombieSteer(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
     };
 
     const event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
-        log.warn("zombie_steer.xadd_failed zombie_id={s} actor={s} err={s}", .{ zombie_id, actor, @errorName(err) });
-        common.internalOperationError(hx.res, "failed to enqueue steer event", hx.req_id);
+        log.warn("zombie_messages.xadd_failed zombie_id={s} actor={s} err={s}", .{ zombie_id, actor, @errorName(err) });
+        common.internalOperationError(hx.res, "failed to enqueue chat event", hx.req_id);
         return;
     };
     defer hx.alloc.free(event_id);
 
-    log.info("zombie_steer.steered zombie_id={s} event_id={s} actor={s}", .{ zombie_id, event_id, actor });
+    log.info("zombie_messages.posted zombie_id={s} event_id={s} actor={s}", .{ zombie_id, event_id, actor });
     hx.ok(.accepted, .{
         .status = "accepted",
         .event_id = event_id,

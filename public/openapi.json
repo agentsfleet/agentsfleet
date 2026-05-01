@@ -769,94 +769,40 @@
         }
       }
     },
-    "/v1/memory/forget": {
-      "post": {
-        "operationId": "memory_forget",
-        "summary": "Forget a memory entry by key",
-        "description": "Deletes the entry with the given `key` under the zombie instance. Returns `{ deleted: false }` if no match — never errors on miss.",
-        "tags": [
-          "Memory"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "zombie_id",
-                  "key"
-                ],
-                "properties": {
-                  "zombie_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
-                  "key": {
-                    "type": "string",
-                    "maxLength": 255
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
-                    "key": {
-                      "type": "string"
-                    },
-                    "deleted": {
-                      "type": "boolean"
-                    },
-                    "request_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/memory/list": {
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories": {
       "get": {
-        "operationId": "memory_list",
-        "summary": "List recent memory entries",
-        "description": "Returns most-recent entries, optionally filtered by category.",
+        "operationId": "list_zombie_memories",
+        "summary": "List or search memory entries for a zombie",
+        "description": "Returns memory entries for the zombie. Without `query` this lists most-recent entries (optionally filtered by `category`). With `query`, performs case-insensitive LIKE search across both `key` and `content` (LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry).\n",
         "tags": [
           "Memory"
         ],
         "parameters": [
           {
-            "name": "zombie_id",
-            "in": "query",
+            "name": "workspace_id",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string",
               "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "description": "Fuzzy text search across key and content. When omitted, the endpoint lists most-recent entries.",
+            "schema": {
+              "type": "string"
             }
           },
           {
@@ -887,9 +833,6 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
                     "items": {
                       "type": "array",
                       "items": {
@@ -920,20 +863,18 @@
             "$ref": "#/components/responses/Error"
           }
         }
-      }
-    },
-    "/v1/memory/recall": {
-      "get": {
-        "operationId": "memory_recall",
-        "summary": "Recall memory entries matching a query",
-        "description": "Case-insensitive LIKE search across both `key` and `content`. LIKE metacharacters in `query` are escaped — a query of `%` does NOT return every entry.",
+      },
+      "post": {
+        "operationId": "store_zombie_memory",
+        "summary": "Store or upsert a memory entry",
+        "description": "Writes a `(key, content, category)` entry scoped to the zombie. Idempotent upsert on `(key, instance_id)`.",
         "tags": [
           "Memory"
         ],
         "parameters": [
           {
-            "name": "zombie_id",
-            "in": "query",
+            "name": "workspace_id",
+            "in": "path",
             "required": true,
             "schema": {
               "type": "string",
@@ -941,75 +882,14 @@
             }
           },
           {
-            "name": "query",
-            "in": "query",
+            "name": "zombie_id",
+            "in": "path",
             "required": true,
             "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "default": 20,
-              "minimum": 1,
-              "maximum": 100
+              "type": "string",
+              "format": "uuid"
             }
           }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
-                    "items": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/MemoryEntry"
-                      }
-                    },
-                    "total": {
-                      "type": "integer"
-                    },
-                    "request_id": {
-                      "type": "string"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/memory/store": {
-      "post": {
-        "operationId": "memory_store",
-        "summary": "Store or upsert a memory entry",
-        "description": "Writes a `(key, content, category)` entry scoped to a zombie instance. Idempotent upsert on `(key, instance_id)`.",
-        "tags": [
-          "Memory"
         ],
         "requestBody": {
           "required": true,
@@ -1018,15 +898,10 @@
               "schema": {
                 "type": "object",
                 "required": [
-                  "zombie_id",
                   "key",
                   "content"
                 ],
                 "properties": {
-                  "zombie_id": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
                   "key": {
                     "type": "string",
                     "maxLength": 255
@@ -1052,9 +927,6 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "zombie_id": {
-                      "type": "string"
-                    },
                     "key": {
                       "type": "string"
                     },
@@ -1068,6 +940,62 @@
                 }
               }
             }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}": {
+      "delete": {
+        "operationId": "delete_zombie_memory",
+        "summary": "Forget a memory entry by key",
+        "description": "Removes the entry at `(zombie_id, memory_key)` if present. Strictly idempotent — returns 204 whether the key existed or not.",
+        "tags": [
+          "Memory"
+        ],
+        "parameters": [
+          {
+            "name": "workspace_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "zombie_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "memory_key",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 255
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "No Content (idempotent — returned whether the key existed or not)"
           },
           "400": {
             "$ref": "#/components/responses/Error"
@@ -3172,11 +3100,11 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer": {
+    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages": {
       "post": {
-        "operationId": "steer_zombie",
-        "summary": "Steer a zombie by enqueueing a chat event",
-        "description": "Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `zombie:{id}:events`. The Redis stream entry id IS the canonical event_id and is returned to the caller so SSE consumers can filter frames for the steer they just sent. Same single-ingress contract as webhook and continuation events — no separate \"queued vs instant\" mode.",
+        "operationId": "post_zombie_message",
+        "summary": "Post a chat message to a zombie",
+        "description": "Build an EventEnvelope with `actor=steer:<user>` / `event_type=chat` and XADD it onto `zombie:{id}:events`. The Redis stream entry id IS the canonical event_id and is returned to the caller so SSE consumers can filter frames for the message they just sent. Same single-ingress contract as webhook and continuation events — no separate \"queued vs instant\" mode.",
         "tags": [
           "Zombies"
         ],

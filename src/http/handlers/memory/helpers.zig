@@ -26,16 +26,23 @@ pub const MemoryEntry = struct {
     updated_at: []const u8,
 };
 
-/// Verify zombie_id exists and belongs to the caller's workspace.
-/// Runs under api_runtime (has access to core.*), before any SET ROLE.
-/// Returns instance_id ("zmb:{zombie_id}") allocated in alloc, or null on failure.
-pub fn resolveInstanceId(
+/// Verify the principal can access the path workspace and the zombie
+/// belongs to that workspace, then build the instance_id used by the
+/// memory storage layer ("zmb:{zombie_id}", arena-allocated).
+///
+/// Runs under api_runtime (core.* access) before any SET ROLE.
+pub fn resolveZombieInWorkspace(
     hx: Hx,
     conn: *pg.Conn,
+    workspace_id: []const u8,
     zombie_id: []const u8,
 ) ?[]const u8 {
     if (!id_format.isUuidV7(zombie_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, "zombie_id must be a valid UUIDv7");
+        return null;
+    }
+    if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
+        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return null;
     }
     var q = PgQuery.from(conn.query(
@@ -55,21 +62,13 @@ pub fn resolveInstanceId(
         return null;
     };
 
-    const workspace_id = row.get([]const u8, 0) catch {
+    const zombie_ws = row.get([]const u8, 0) catch {
         common.internalDbError(hx.res, hx.req_id);
         return null;
     };
-
-    // Memory endpoints require a workspace-scoped token. Service tokens without a
-    // workspace scope are rejected — there is no trusted cross-workspace access model
-    // for memory reads/writes at the HTTP layer (executor-side access is separate and
-    // bypasses this path entirely).
-    const scope = hx.principal.workspace_scope_id orelse {
-        hx.fail(ec.ERR_MEM_SCOPE, "memory API requires a workspace-scoped token");
-        return null;
-    };
-    if (!std.mem.eql(u8, scope, workspace_id)) {
-        hx.fail(ec.ERR_MEM_SCOPE, "zombie belongs to a different workspace");
+    if (!std.mem.eql(u8, workspace_id, zombie_ws)) {
+        // 404 not 403 — don't leak existence across workspaces.
+        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, "zombie not found");
         return null;
     }
 
