@@ -11,7 +11,7 @@ A zombie's capabilities split into two layers: what the language model is told i
 | File | What it carries | Enforced by |
 |---|---|---|
 | `SKILL.md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose. | The language model reading its own prompt — soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
-| `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md file) | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs | Code-enforced at the executor sandbox boundary — the language model cannot escape these |
+| `TRIGGER.md` | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs | Code-enforced at the executor sandbox boundary — the language model cannot escape these |
 
 > **`trigger.type` vs event type — they are different fields.** `trigger.type` is the static config that says *how* a zombie gets triggered: `webhook` (external sender posts to `/v1/webhooks/...`), `api` (user/integration calls `/v1/.../zombies/{id}/messages` — the chat path), `cron` (scheduled), or `chain` (another zombie hands off). The per-event `event_type` field on `core.zombie_events` (`chat`, `continuation`, …) tags individual events on the stream. A `trigger.type: api` zombie typically receives `event_type: chat` events from the steer/chat API; the two are orthogonal and live in different tables. See `src/zombie/config_helpers.zig` (`parseZombieTrigger`) and `src/zombie/event_envelope.zig` (`EventType`).
 
@@ -43,7 +43,7 @@ These are the tool primitives NullClaw exposes. The zombie's `tools:` allowlist 
 | Credential vault | Stores opaque-JSON-object credentials, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. The tool bridge substitutes at sandbox entry. | Vault + secret resolution |
 | Provider config (BYOK) | Per-tenant posture choice between platform-managed inference and Bring Your Own Key. Tenant-scoped `core.tenant_providers` row carries `mode / provider / model / context_cap_tokens / credential_ref`; the user-named credential pointed to by `credential_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → executor → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_byok.md`](./billing_and_byok.md) §8.2. | Provider resolution path |
 | Approval gating | Risky actions block until a human clicks Approve in the dashboard or a Slack DM. The state machine survives worker restarts. | Approval workflow |
-| Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-zombie in `TRIGGER.md` / `x-usezombie.budget`. | Billing gate |
+| Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-zombie in `TRIGGER.md`. | Billing gate |
 | Per-stage context lifecycle | Rolling tool-result window, memory-store nudge, stage chunking, and continuation events. See §4. | Context lifecycle |
 
 ---

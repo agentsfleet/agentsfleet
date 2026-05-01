@@ -4,11 +4,11 @@
 **Milestone:** M48
 **Workstream:** 001
 **Date:** May 01, 2026
-**Status:** IN_PROGRESS
+**Status:** PENDING
 **Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without user-controlled LLM provider config and a clean credit-based billing model, the launch tweet's BYOK claim is hollow and the differentiation argument collapses.
 **Categories:** API, CLI, UI, SCHEMA, BILLING
 **Batch:** B1 — substrate-tier alongside M40-M45.
-**Branch:** feat/m48-m51-onboarding-spec-fixes
+**Branch:** TBD
 **Depends on:**
 - **M11_005** (tenant billing — DONE) — provides `core.tenant_billing` and `balance_cents`. M48 extends with cost functions, two debit points in `processEvent`, and a one-time $10 starter grant insertion at tenant creation.
 - **M44_001** (install contract + doctor) — owns the `zombiectl doctor --json` surface that this spec extends with a `tenant_provider` block.
@@ -51,11 +51,9 @@ M48 ships both, integrated. The billing model and the provider posture share the
 2. **Cold install on default platform-managed posture.** John runs `/usezombie-install-platform-ops` (M49); the install-skill reads doctor's block and writes resolved frontmatter values. First webhook fires, gate passes, two telemetry rows written (`charge_type='receive'` + `charge_type='stage'`), balance drops by ~3¢ (1¢ receive + ~2¢ stage = receive-overhead + token-based stage cost on `accounts/fireworks/models/kimi-k2.6`).
 3. **Brings own key.** A couple of weeks in, John runs:
    ```bash
-   zombiectl credential set account-fireworks-byok --data '{
-     "provider": "fireworks",
-     "api_key":  "fw_LIVE_…",
-     "model":    "accounts/fireworks/models/kimi-k2.6"
-   }'
+   op read 'op://<vault>/fireworks/api_key' |
+     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+     zombiectl credential set account-fireworks-byok --data @-
    zombiectl tenant provider set --credential account-fireworks-byok
    ```
    `core.tenant_providers` now has a row with `mode=byok`, `credential_ref="account-fireworks-byok"`, model + cap resolved from the model-caps endpoint.
@@ -103,13 +101,11 @@ Single persona: **John Doe**. Every test in the Test Specification maps back to 
 1. After a couple of weeks at platform rates John gets a Fireworks AI account.
 2. He runs:
    ```bash
-   zombiectl credential set account-fireworks-byok --data '{
-     "provider": "fireworks",
-     "api_key": "fw_LIVE_…",
-     "model":   "accounts/fireworks/models/kimi-k2.6"
-   }'
+   op read 'op://<vault>/fireworks/api_key' |
+     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+     zombiectl credential set account-fireworks-byok --data @-
    ```
-   This writes a row to `core.vault` at `(tenant_id, "account-fireworks-byok")` with the JSON as opaque plaintext (M45 contract).
+   This writes a row to `core.vault` at `(tenant_id, "account-fireworks-byok")` with the JSON as encrypted opaque data (M45 contract). The API key does not appear in shell history or process argv because it flows through stdin.
 3. He runs `zombiectl tenant provider set --credential account-fireworks-byok`. The CLI's API call:
    - Loads the vault row at `(tenant_id, "account-fireworks-byok")`.
    - Validates `provider`/`api_key`/`model` are present (eager structural validation — 400 `credential_data_malformed` otherwise).
@@ -139,11 +135,9 @@ Single persona: **John Doe**. Every test in the Test Specification maps back to 
 1. A month later John wants to try DeepSeek V4 Pro on the same Fireworks account.
 2. Updates the credential body and re-runs `tenant provider set`:
    ```bash
-   zombiectl credential set account-fireworks-byok --data '{
-     "provider": "fireworks",
-     "api_key": "fw_LIVE_…",
-     "model":   "accounts/fireworks/models/deepseek-v4-pro"
-   }'
+   op read 'op://<vault>/fireworks/api_key' |
+     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/deepseek-v4-pro"}' |
+     zombiectl credential set account-fireworks-byok --data @-
    zombiectl tenant provider set --credential account-fireworks-byok
    ```
 3. CLI re-resolves the cap (e.g. `131072`), rewrites the `tenant_providers` row's `model` and `context_cap_tokens` columns. `credential_ref` stays the same.
@@ -801,7 +795,7 @@ CLI:
   zombiectl tenant provider reset
   zombiectl billing show [--limit N] [--json]
 
-  zombiectl credential set <name> --data '<json>'   # M45 surface
+  zombiectl credential set <name> --data @-         # M45 surface; JSON on stdin
   zombiectl credential delete <name>                # M45 surface
 
 Internal:

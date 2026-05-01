@@ -109,11 +109,9 @@ Week 2 opens. By midweek John is at ~150¢ left and notices his balance is lower
 He runs through Scenario 02's setup:
 
 ```bash
-zombiectl credential set account-fireworks-byok --data '{
-  "provider": "fireworks",
-  "api_key":  "fw_LIVE_…",
-  "model":    "accounts/fireworks/models/kimi-k2.6"
-}'
+op read 'op://<vault>/fireworks/api_key' |
+  jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+  zombiectl credential set account-fireworks-byok --data @-
 zombiectl tenant provider set --credential account-fireworks-byok
 ```
 
@@ -279,7 +277,9 @@ John can flip postures at any time during his journey. The mechanics:
 
 - **Platform → BYOK** (what John did at the start of week 2):
   ```
-  zombiectl credential set <name> --data '{ "provider": "...", "api_key": "...", "model": "..." }'
+  op read 'op://<vault>/<item>/api_key' |
+    jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+    zombiectl credential set <name> --data @-
   zombiectl tenant provider set --credential <name>
   ```
   Next event resolves `mode=byok`. Drain drops from ~3¢ to 1¢ per event. The api_key is in vault; he never sees it again from any UseZombie surface.

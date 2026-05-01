@@ -10,7 +10,7 @@ Principles:
 
 - one zombie is a durable runtime, not a one-shot prompt
 - trigger sources can differ, but execution enters one common event-processing path
-- behavior is primarily defined in natural language through `SKILL.md` and `TRIGGER.md` (or merged frontmatter under `x-usezombie:`)
+- behavior is primarily defined in natural language through `SKILL.md` and `TRIGGER.md`
 - secrets are injected at execution time, never embedded in prompt text or written into the agent's context
 - history is durable with actor provenance
 - checkpoints are durable; mid-stage state survives via `memory_store`

@@ -397,7 +397,7 @@ user action:
   `trigger.source` is unknown to the provider registry, OR the workspace
   has no `zombie:<source>` vault credential (vault row missing OR
   `webhook_secret` field absent). User-recoverable misconfig — fix
-  with `zombiectl credential set <source> --data='{"webhook_secret":"…"}'`.
+  with `zombiectl credential set <source> --data @-` and pipe JSON on stdin.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.
   Either an attack or a real drift between what the provider has

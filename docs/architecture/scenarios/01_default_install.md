@@ -31,8 +31,8 @@ sequenceDiagram
     CLI->>API: POST /zombies
     API->>Worker: XADD zombie:control (zombie_created)
     Worker-->>API: ≤1s thread spawned
-    API-->>Skill: { id, webhook_url, secret }
-    Skill->>Op: print webhook URL + secret (manual paste in GH)
+    API-->>Skill: { id, webhook_url }
+    Skill->>Op: print webhook URL + locally generated secret (manual paste in GH)
     Skill->>CLI: steer {id} "morning health check"
     CLI->>API: POST /steer
     API->>Worker: XADD zombie:{id}:events
@@ -64,11 +64,11 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    - try `op read 'op://Personal/<name>/api-token'`
    - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
-   then `zombiectl credential set <name> --data '<opaque-json>'` per credential (upsert; same surface used for the BYOK credential in Scenario 02).
+   then `zombiectl credential set <name> --data @-` per credential (upsert; same surface used for the BYOK credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
 5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
    The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_byok.md`](../billing_and_byok.md) §9 for the endpoint design.
-6. **Frontmatter generation.** The skill writes `.usezombie/platform-ops/SKILL.md` substituting variables and the cap. Refuses to overwrite without `--force`.
+6. **File generation.** The skill writes `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
    ```yaml
    ---
    name: platform-ops
@@ -96,7 +96,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    <SKILL.md prose body — operational behaviour in plain English>
    ```
 7. **Install.** `zombiectl install --from .usezombie/platform-ops/`. The CLI POSTs `{name, config_json, source_markdown}`; the API persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required.
-8. **Webhook URL + secret.** API returns `{zombie_id, webhook_url, webhook_secret}`. The skill prints them inline:
+8. **Webhook URL + secret.** The skill has already generated the workspace `github.webhook_secret` locally and stored it with `zombiectl credential set github --data @-`. API returns `{zombie_id, webhook_url}`. The skill prints the URL plus the one-time local secret inline:
    ```
    Add this webhook to your repo:
      URL:    https://api.usezombie.com/v1/webhooks/{id}
@@ -125,7 +125,7 @@ The webhook-driven path (next section) and this steer path are the **same reason
 
 A few hours later, the user pushes a commit. CD fails on a Fly OOM. GitHub Actions fires `workflow_run.conclusion=failure`. The webhook receiver:
 
-1. Verifies HMAC-SHA256 against the per-zombie secret stored at install.
+1. Verifies HMAC-SHA256 against the workspace credential `github.webhook_secret` stored during install.
 2. Normalises payload → synthetic event envelope (actor=`webhook:github`, type=`webhook`).
 3. `XADD zombie:{id}:events *` with the envelope.
 4. Returns 202 to GitHub.
@@ -240,7 +240,9 @@ Model:               accounts/fireworks/models/kimi-k2.6
 Context cap tokens:  256000
 
 ⓘ This is the platform default. To bring your own LLM key:
-   zombiectl credential set <name> --data '{"provider":"…","api_key":"…","model":"…"}'
+   op read 'op://<vault>/<item>/api_key' |
+     jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+     zombiectl credential set <name> --data @-
    zombiectl tenant provider set --credential <name>
 ```
 

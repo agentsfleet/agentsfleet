@@ -3,9 +3,9 @@
 **Milestone:** M11
 **Workstream:** 006 (§5 deliverable)
 **Updated:** Apr 21, 2026
-**Prerequisite:** Vault items `ZMB_CD_DEV/usezombie-admin` and `ZMB_CD_PROD/usezombie-admin` exist with fields `username` (email) and `credential` (password). Clerk Dashboard access for both dev and prod. `op` CLI authenticated. Environment `{dev|prod}` selected per run.
+**Prerequisite:** Vault items `ZMB_CD_DEV/usezombie-admin` and `ZMB_CD_PROD/usezombie-admin` exist with fields `username` (email), `credential` (password), and `fireworks_api_key` (platform default Fireworks key). Clerk Dashboard access for both dev and prod. `op` CLI authenticated. Environment `{dev|prod}` selected per run.
 
-Provisions the one global admin user (`usezombie-admin`) in Clerk for a given environment, promotes the user from `operator` to `admin` via `publicMetadata`, mints a tenant API key via `POST /v1/api-keys`, and writes the raw key to the environment's vault item. Idempotent on step 1 (signup) — if the user already exists in Clerk, step 1 becomes a login check and the playbook resumes at step 2.
+Provisions the one global admin user (`usezombie-admin`) in Clerk for a given environment, promotes the user from `operator` to `admin` via `publicMetadata`, mints a tenant API key via `POST /v1/api-keys`, writes the raw key to the environment's vault item, stores the platform Fireworks key in the admin workspace vault, and registers it as the active platform default via `/v1/admin/platform-keys`. Idempotent on step 1 (signup) — if the user already exists in Clerk, step 1 becomes a login check and the playbook resumes at step 2.
 
 **This playbook is not run during the M11_006 merge.** Run it manually, per environment, when you are ready to exercise admin-only endpoints.
 
@@ -22,8 +22,10 @@ Provisions the one global admin user (`usezombie-admin`) in Clerk for a given en
 | 4.0 | Agent | Mint a `zmb_t_` tenant API key via `POST /v1/api-keys` |
 | 5.0 | Agent | Write the raw key to `op://ZMB_CD_<env>/usezombie-admin` field `api_key` |
 | 6.0 | Agent | Verify the stored key authenticates a protected endpoint |
+| 7.0 | Agent | Store the platform Fireworks key in the admin workspace vault |
+| 8.0 | Agent | Register Fireworks as the active platform default |
 
-Steps 1–2 are the only human-interactive steps. Steps 3–6 run end-to-end without intervention.
+Steps 1–2 are the only human-interactive steps. Steps 3–8 run end-to-end without intervention.
 
 ---
 
@@ -46,6 +48,7 @@ export ADMIN_PASS=$(op read "op://$VAULT/usezombie-admin/credential")
 
 test -n "$ADMIN_EMAIL" || { echo "missing admin email"; exit 1; }
 test -n "$ADMIN_PASS"  || { echo "missing admin password"; exit 1; }
+op read "op://$VAULT/usezombie-admin/fireworks_api_key" >/dev/null || { echo "missing Fireworks api key"; exit 1; }
 echo "Resolved admin=$ADMIN_EMAIL against $API_BASE"
 ```
 
@@ -201,6 +204,42 @@ unset KEY
 
 ---
 
+## 7.0 Agent: Store platform Fireworks key in admin workspace vault
+
+**Goal:** write the Fireworks API key into the admin tenant's normal credential vault under the provider name `fireworks`. This is the key platform-managed tenants use through the `core.platform_llm_keys` pointer. The raw key must flow from 1Password to `jq` to `zombiectl` through stdin; do not pass it as a shell argument.
+
+```bash
+op read "op://$VAULT/usezombie-admin/fireworks_api_key" |
+  jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+  zombiectl credential set fireworks --data @-
+```
+
+### Acceptance
+
+`zombiectl credential set` exits 0. The raw Fireworks key does not appear in shell history, process argv, or playbook output.
+
+---
+
+## 8.0 Agent: Register Fireworks as platform default
+
+**Goal:** create or update the active `core.platform_llm_keys` pointer so platform-managed users resolve Fireworks from the admin workspace vault at runtime. No key material is stored in `core.platform_llm_keys`.
+
+```bash
+KEY=$(op read "op://$VAULT/usezombie-admin/api_key")
+curl -s -X PUT \
+  -H "Authorization: Bearer $KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"fireworks","credential_name":"fireworks","model":"accounts/fireworks/models/kimi-k2.6","context_cap_tokens":256000}' \
+  "$API_BASE/v1/admin/platform-keys" | jq .
+unset KEY
+```
+
+### Acceptance
+
+`GET /v1/admin/platform-keys` returns one active Fireworks row pointing at the admin workspace credential named `fireworks`. `zombiectl doctor --json` for a fresh non-admin tenant reports `tenant_provider.mode="platform"`, provider `fireworks`, model `accounts/fireworks/models/kimi-k2.6`, and `context_cap_tokens=256000` without exposing the Fireworks API key.
+
+---
+
 ## Rollback
 
 If the admin user was misconfigured mid-playbook:
@@ -208,4 +247,5 @@ If the admin user was misconfigured mid-playbook:
 1. `DELETE /v1/api-keys/{KEY_ID}` (after PATCHing `active:false`) to revoke the minted key.
 2. Clerk Dashboard → user → Metadata → set `"role": "operator"` to demote.
 3. Clear `op://$VAULT/usezombie-admin/api_key`.
-4. Restart the playbook from step 1.
+4. Deactivate the Fireworks platform-default row through `/v1/admin/platform-keys`.
+5. Restart the playbook from step 1.
