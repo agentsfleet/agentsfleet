@@ -49,9 +49,9 @@ For everything else, follow the topic files above.
 | **NullClaw** | The language-model agent loop that runs inside the executor sandbox. The "zombie's agent." |
 | **User's agent** | Claude Code, Amp, Codex CLI, OpenCode — the workstation tool the human types into and that drives `zombiectl`. Distinct from the zombie's agent. |
 | **Steer** | An operator-initiated message sent to a zombie via `zombiectl steer {id} "<msg>"` or the dashboard chat widget. Lands as an event with `actor=steer:<user>`. |
-| **Webhook trigger** | An external system (GitHub Actions and others) POSTing to `/v1/.../webhooks/<source>`. Lands as an event with `actor=webhook:<source>`. |
+| **Webhook trigger** | An external system POSTing to the zombie's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}`, with an optional URL-secret suffix). Lands as an event with `actor=webhook:<source>`. |
 | **Cron trigger** | A NullClaw-managed schedule firing on time. Lands as an event with `actor=cron:<schedule>`. |
 | **Stage** | One `runner.execute` call inside the executor — one language-model context window's worth of reasoning. Long incidents span multiple stages via continuation events. |
 | **Tool bridge** | The substitution layer inside the executor that replaces `${secrets.NAME.FIELD}` placeholders with real bytes after sandbox entry. |
-| **Bring Your Own Key (BYOK)** | The posture where the operator stores their own language-model provider credential (Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, …) under the well-known vault name `llm`. The executor uses it for inference; the operator pays the provider directly. |
+| **Bring Your Own Key (BYOK)** | The posture where the operator stores their own language-model provider credential (Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, …) under the well-known vault name `llm`. On `main` today that credential is stored through the workspace-scoped `credentials/llm` API; the tenant-scoped provider posture described in M48 is still pending. |
 | **Bastion** | The post-launch framing where the same zombie owns both internal triage and customer-facing status communication. Documented in [`bastion.md`](./bastion.md). |

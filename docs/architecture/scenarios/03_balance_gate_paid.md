@@ -4,6 +4,8 @@
 
 **Outcome under test:** A tenant whose balance reaches zero stops dispatching new events at the gate. The operator gets a clear "credit exhausted" UX, a 1-click upgrade path, and an unambiguous picture of what's metered under each plan and each provider posture.
 
+> Current `main` note: the universal balance-gate semantics in this scenario are current, but any references to tenant-scoped `tenant_providers` or `zombiectl provider set` describe the intended M48 contract. Today the shipped BYOK credential storage surface is workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm`.
+
 ```mermaid
 flowchart TD
     Start([XREADGROUP unblocks<br/>with new event]) --> Insert[INSERT zombie_events<br/>status=received]

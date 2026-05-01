@@ -4,7 +4,7 @@
 **Milestone:** M57
 **Workstream:** 001
 **Date:** May 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — architecture docs drive every downstream spec and must match shipped contracts before install-skill/docs work continues.
 **Categories:** API, DOCS
 **Batch:** B1 — standalone architecture hygiene and contract reconciliation.
@@ -150,3 +150,5 @@ Model-caps endpoint: GET /_um/{cryptic_key}/model-caps.json
 
 - Initial review, May 01, 2026: current `main` shows architecture docs referencing `POST /v1/webhooks/{zombie_id}/github`, while route manifest and dashboard helper expose `POST /v1/webhooks/{zombie_id}`. Decision pending during §3.
 - Initial review, May 01, 2026: architecture docs describe BYOK as tenant-scoped provider posture, while current route manifest exposes workspace-scoped `/v1/workspaces/{workspace_id}/credentials/llm`. Decision pending during §3.
+- Decision, May 01, 2026: reconcile architecture topics to shipped `main` contracts for webhook ingest and batch `steer`; mark tenant-scoped BYOK posture as the pending M48 target rather than current behavior.
+- Closeout, May 01, 2026: no code or OpenAPI route change was required for M57. The MVP-first decision was to make canonical architecture docs honest about shipped `main`, while preserving tenant-scoped provider posture as an explicitly future M48 contract in the scenario and billing topics.

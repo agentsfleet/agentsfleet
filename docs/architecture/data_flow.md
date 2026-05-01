@@ -52,7 +52,7 @@ The user's agent is a workstation tool driving `zombiectl`. The zombie's agent i
 
            ╔═══════════════════════════════════╗
            ║  zombied-api (HTTP)               ║
-           ║  POST /v1/.../zombies/{id}/steer  ║
+           ║  POST /v1/.../zombies/{id}/messages║
            ║  ───────────────────────────────  ║
            ║  XADD zombie:{id}:events *         ║   ← single ingress.
            ║       actor=steer:<user>           ║     Webhook + cron use
@@ -347,7 +347,7 @@ Considered alternatives:
        created_at    <epoch milliseconds; project bigint convention>
 
    STEER     zombiectl steer {id} "morning health check"
-               → POST /v1/.../zombies/{id}/steer
+               → POST /v1/.../zombies/{id}/messages
                → XADD zombie:{id}:events *
                       actor=steer:kishore  type=chat
                       workspace_id=<ws>    request=<msg>
@@ -356,7 +356,7 @@ Considered alternatives:
                                                    to filter SSE frames
 
    WEBHOOK   GH Actions posts workflow_run failure
-               → POST /v1/webhooks/{zombie_id}/github   (HMAC-SHA256 verified
+               → POST /v1/webhooks/{zombie_id}   (HMAC-SHA256 verified
                  against workspace credential `github`.webhook_secret)
                → XADD zombie:{id}:events *
                       actor=webhook:github  type=webhook
@@ -429,7 +429,9 @@ Considered alternatives:
                       (409 on already-resumed). Removed when M47 lands.
 
      4. resolveSecretsMap from vault (per-zombie credentials).
-        resolveActiveProvider from tenant_providers (M48 — platform or BYOK).
+        Current `main`: load workspace-scoped credentials (including `llm`
+        when configured). Target M48 contract: resolve active provider posture
+        from `tenant_providers` (platform or BYOK).
 
      5. UPSERT core.zombie_sessions                ← worker marks busy
           SET execution_id, execution_started_at = now()
@@ -513,7 +515,7 @@ Considered alternatives:
 ### D. WATCH  (operator-side: how the live tail surfaces)
 
 ```
-   CLI       zombiectl steer {id}        (interactive REPL)
+   CLI       zombiectl steer {id} "<message>"   (batch mode)
                → opens GET /v1/.../zombies/{id}/events/stream (SSE)
                → server SUBSCRIBE zombie:{id}:activity on a dedicated
                  Redis connection held outside the request-handler pool

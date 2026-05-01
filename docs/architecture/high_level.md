@@ -163,7 +163,7 @@ Primary job:
 
 Trigger modes:
 
-- **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to `/v1/.../webhooks/github` with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
+- **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the zombie's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}` or `/{secret}`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
 - **Cron.** A periodic production health check, scheduled by NullClaw's `cron_add` tool; each fire arrives as a synthetic event with `actor=cron:<schedule>`.
 - **Steer.** A direct operator instruction via `zombiectl steer {id} [<message>]` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
