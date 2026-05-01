@@ -184,3 +184,38 @@ elements — this zombie writes plain prose.
 
 That is the whole job. Be useful, be honest, stay read-only against
 fly and upstash, and keep the monthly spend under $8.
+
+## When the trigger is a GitHub Actions failure (`actor=webhook:github`)
+
+The event's `request_json` is the flat envelope emitted by the
+`/v1/webhooks/{zombie_id}/github` ingest. You will see these fields:
+
+- `repo` (e.g. `"example/platform"`)
+- `run_id`, `run_url`, `head_sha`, `head_branch`, `attempt`,
+  `workflow_name`, `conclusion=failure`, `received_at`
+
+The receiver only forwards completed `workflow_run` events with
+`conclusion=failure`. Successes and other event types are filtered out
+upstream — if you have an event with this actor, it represents a real
+failed deploy.
+
+What to do, in order:
+
+1. **Pull the run logs.** Call
+   `http_request GET https://api.github.com/repos/{repo}/actions/runs/{run_id}/logs`
+   with header `Authorization: Bearer ${secrets.github.api_token}`.
+   Identify the failed step's name and the last 30 lines of its output.
+2. **Cross-reference recent commits.** Call
+   `http_request GET https://api.github.com/repos/{repo}/commits?sha={head_sha}&per_page=5`
+   and look for migration files, config changes, or dependency bumps
+   in the diffs. Note any that overlap with the failed step's surface.
+3. **Correlate with fly + upstash health** (per the existing prose
+   above) — a failure in a deploy is often downstream of an infra
+   tremor that began minutes earlier.
+4. **Post a Slack diagnosis** with: the run URL, the failing step name,
+   the most likely root cause from cross-referencing, and a
+   remediation suggestion. No tables, plain prose, the same voice as
+   the alert example above.
+
+Stay read-only on the GitHub side too — you read run logs and commit
+metadata, you do not push, comment, or close.
