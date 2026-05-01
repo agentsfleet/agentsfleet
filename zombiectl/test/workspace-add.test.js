@@ -69,7 +69,7 @@ test("workspace add does not persist local state when API create fails", async (
   });
 });
 
-test("workspace add persists backend workspace_id and emits install url in json mode", async () => {
+test("workspace add persists backend workspace_id in json mode", async () => {
   await withStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
@@ -81,7 +81,6 @@ test("workspace add persists backend workspace_id and emits install url in json 
         workspace_id: "ws_123456789abc",
         repo_url: "https://github.com/acme/repo",
         default_branch: "main",
-        install_url: "https://github.com/apps/usezombie/installations/new?state=ws_123456789abc",
         request_id: "req_123",
       }),
     });
@@ -96,7 +95,7 @@ test("workspace add persists backend workspace_id and emits install url in json 
     assert.equal(code, 0);
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.workspace_id, "ws_123456789abc");
-    assert.match(parsed.install_url, /github\.com\/apps\/usezombie\/installations\/new\?state=ws_123456789abc/);
+    assert.equal(parsed.repo_url, "https://github.com/acme/repo");
 
     const workspaces = await loadWorkspaces();
     assert.equal(workspaces.current_workspace_id, "ws_123456789abc");

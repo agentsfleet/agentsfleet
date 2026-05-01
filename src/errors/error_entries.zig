@@ -261,9 +261,6 @@ pub const ENTRIES = [_]Entry{
         "Workspace LLM API key not found in vault.secrets (key: anthropic_api_key). " ++
         "Set it via the workspace credentials API. " ++
         "Executor fell back to process env \u{2014} check ANTHROPIC_API_KEY on the worker if dev mode."),
-    e("UZ-CRED-002", .service_unavailable, "GitHub token failed",
-        "GitHub App installation token request failed. Check GITHUB_APP_ID and " ++
-        "GITHUB_APP_PRIVATE_KEY, verify the installation_id, and inspect GitHub API status."),
     e("UZ-CRED-003", .service_unavailable, "Platform LLM key missing",
         "No active platform LLM key for this provider. Admin must set one via " ++
         "PUT /v1/admin/platform-keys, or the workspace must add its own key " ++
@@ -333,14 +330,4 @@ pub const ENTRIES = [_]Entry{
     // ── GATE (execute path) ───────────────────────────────────────────────────
     e("UZ-GATE-005", .request_timeout, "Approval timed out",
         "Approval timed out — action denied. Retry after approving in Slack, Discord, or the dashboard."),
-    // ── SLACK PLUGIN (M8_001) ────────────────────────────────────────────────
-    e("UZ-SLACK-001", .forbidden, "Slack OAuth state invalid",
-        "OAuth state parameter mismatch — possible CSRF attempt. " ++
-        "Please try installing UseZombie again from the beginning."),
-    e("UZ-SLACK-002", .bad_gateway, "Slack token exchange failed",
-        "Could not exchange OAuth code for bot token. Verify SLACK_CLIENT_SECRET " ++
-        "is set and the code has not expired (codes are single-use, 10-minute TTL)."),
-    e("UZ-SLACK-003", .unauthorized, "Slack bot token expired",
-        "The Slack bot token has been revoked or expired. " ++
-        "Reinstall UseZombie to Slack to issue a fresh token."),
 };

@@ -50,10 +50,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .poll_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokePollAuthSession },
         .patch_auth_session => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchAuthSession },
 
-        // OAuth callbacks — handler validates state + nonce; use none policy
-        // to avoid double-consuming the Redis nonce.
-        .github_callback => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeGitHubCallback },
-
         // Workspace lifecycle
         .create_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCreateWorkspace },
         .patch_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspace },
@@ -145,7 +141,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.create_auth_session, &reg) != null);
     try testing.expect(specFor(.{ .poll_auth_session = "s1" }, &reg) != null);
     try testing.expect(specFor(.{ .patch_auth_session = "s1" }, &reg) != null);
-    try testing.expect(specFor(.github_callback, &reg) != null);
     try testing.expect(specFor(.create_workspace, &reg) != null);
     try testing.expect(specFor(.{ .patch_workspace = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);

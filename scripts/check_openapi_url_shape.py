@@ -79,11 +79,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
 # vendor-immortal carve-outs are a separate class from deferred-cleanup
 # tracking lists, and must be named explicitly so the distinction from
 # "we'll get to it" is mechanical.
-VENDOR_PATH_CARVE_OUTS: set[str] = {
-    # GitHub OAuth callback — registered under the GitHub App's "Callback
-    # URL" setting; rename requires re-registering with GitHub.
-    "/v1/github/callback",
-}
+VENDOR_PATH_CARVE_OUTS: set[str] = set()
 
 # Pending-rename carve-outs — every entry MUST have a TODO + spec reference
 # naming the rename owner. Adding to this set buys time, not absolution; the

@@ -45,7 +45,6 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
       }),
     });
     const workspaceId = created.workspace_id;
-    const installUrl = created.install_url;
 
     const existing = workspaces.items.find((x) => x.workspace_id === workspaceId);
     if (!existing) {
@@ -62,8 +61,6 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     const out = {
       workspace_id: workspaceId,
       repo_url: repoUrl,
-      install_url: installUrl,
-      next_step: "open install_url and complete GitHub App install to bind server-side",
     };
     setCliAnalyticsContext(ctx, {
       workspace_id: workspaceId,
@@ -82,15 +79,6 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
         repo_url: repoUrl,
         branch,
       });
-      writeLine(ctx.stdout);
-      const opened = ctx.noOpen ? false : await openUrl(installUrl, { env: ctx.env });
-      writeLine(ctx.stdout, ui.info(`github_app_install_url: ${installUrl}`));
-      if (opened) {
-        writeLine(ctx.stdout, ui.ok("opened GitHub App install page in browser"));
-      } else {
-        writeLine(ctx.stdout, ui.warn("could not auto-open browser; open URL above manually"));
-      }
-      writeLine(ctx.stdout, ui.dim("After install, GitHub calls /v1/github/callback and binds workspace automatically."));
     }
     return 0;
   }

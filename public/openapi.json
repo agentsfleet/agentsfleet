@@ -769,45 +769,6 @@
         }
       }
     },
-    "/v1/github/callback": {
-      "get": {
-        "operationId": "github_oauth_callback",
-        "summary": "GitHub OAuth callback",
-        "description": "Handles the GitHub OAuth redirect. Exchanges the authorization code for an access token and redirects the user back to the app.",
-        "tags": [
-          "Authentication"
-        ],
-        "security": [],
-        "parameters": [
-          {
-            "name": "code",
-            "in": "query",
-            "required": true,
-            "description": "OAuth authorization code from GitHub",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "state",
-            "in": "query",
-            "required": true,
-            "description": "CSRF state parameter",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "302": {
-            "description": "Redirect to application after successful OAuth exchange"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/memory/forget": {
       "post": {
         "operationId": "memory_forget",

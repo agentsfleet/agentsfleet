@@ -30,7 +30,6 @@ pub const Route = union(enum) {
     /// to mark the session complete. Body: {status:"complete", token}.
     /// Mirrors the GET poll response symmetry: {status, token}.
     patch_auth_session: []const u8,
-    github_callback,
     create_workspace,
     /// PATCH /v1/workspaces/{workspace_id} — partial update of workspace
     /// fields. Today: pause/unpause via {pause, reason, version}; future
@@ -111,7 +110,6 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/metrics")) return .metrics;
     if (std.mem.eql(u8, path, model_caps_h.MODEL_CAPS_PATH)) return .model_caps;
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
-    if (std.mem.eql(u8, path, "/v1/github/callback")) return .github_callback;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;

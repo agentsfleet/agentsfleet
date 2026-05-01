@@ -35,14 +35,6 @@ fn normalizeDefaultBranch(default_branch: ?[]const u8) []const u8 {
     return trimmed;
 }
 
-fn buildInstallUrl(alloc: std.mem.Allocator, app_slug: []const u8, workspace_id: []const u8) ![]const u8 {
-    return std.fmt.allocPrint(
-        alloc,
-        "https://github.com/apps/{s}/installations/new?state={s}",
-        .{ app_slug, workspace_id },
-    );
-}
-
 /// INSERT workspace row. Billing rolls up to the tenant, so new workspaces
 /// inherit the tenant balance — no per-workspace credit provisioning here.
 fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, tenant_id: []const u8, repo_url: []const u8, default_branch: []const u8, now_ms: i64) bool {
@@ -116,12 +108,6 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     if (!insertAndProvision(conn, hx, workspace_id, tenant_id, repo_url, default_branch, now_ms)) return;
 
-    const github_app_slug = std.process.getEnvVarOwned(hx.alloc, "GITHUB_APP_SLUG") catch "usezombie";
-    const install_url = buildInstallUrl(hx.alloc, github_app_slug, workspace_id) catch {
-        common.internalOperationError(hx.res, "Failed to build install URL", hx.req_id);
-        return;
-    };
-
     log.info("workspace.created workspace_id={s} tenant_id={s} repo_url={s}", .{ workspace_id, tenant_id, repo_url });
     hx.ctx.telemetry.capture(telemetry_mod.WorkspaceCreated, .{ .distinct_id = hx.principal.user_id orelse "", .workspace_id = workspace_id, .tenant_id = tenant_id, .repo_url = repo_url, .request_id = hx.req_id });
 
@@ -129,7 +115,6 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
         .workspace_id = workspace_id,
         .repo_url = repo_url,
         .default_branch = default_branch,
-        .install_url = install_url,
         .request_id = hx.req_id,
     });
 }
@@ -143,14 +128,4 @@ test "normalizeDefaultBranch falls back to main for null/blank input" {
 
 test "normalizeDefaultBranch trims provided value" {
     try std.testing.expectEqualStrings("trunk", normalizeDefaultBranch("  trunk\t"));
-}
-
-test "buildInstallUrl renders GitHub app install URL" {
-    const alloc = std.testing.allocator;
-    const url = try buildInstallUrl(alloc, "usezombie", "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21");
-    defer alloc.free(url);
-    try std.testing.expectEqualStrings(
-        "https://github.com/apps/usezombie/installations/new?state=0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f21",
-        url,
-    );
 }

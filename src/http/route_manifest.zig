@@ -26,7 +26,6 @@ pub const entries = [_]Entry{
     .{ .method = "POST", .path = "/v1/auth/sessions" },
     .{ .method = "GET", .path = "/v1/auth/sessions/{session_id}" },
     .{ .method = "PATCH", .path = "/v1/auth/sessions/{session_id}" },
-    .{ .method = "GET", .path = "/v1/github/callback" },
 
     // Admin
     .{ .method = "GET", .path = "/v1/admin/platform-keys" },

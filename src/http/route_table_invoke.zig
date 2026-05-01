@@ -16,7 +16,6 @@ const hx_mod = @import("handlers/hx.zig");
 const health = @import("handlers/health.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
-const github_cb = @import("handlers/auth/github_callback.zig");
 const zombie_api = @import("handlers/zombies/api.zig");
 const zombie_creds = @import("handlers/zombies/credentials.zig");
 const zombie_tel = @import("handlers/zombies/telemetry.zig");
@@ -95,14 +94,6 @@ pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) 
 pub fn invokePatchAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
     auth_sessions.innerPatchAuthSession(hx.*, req, route.patch_auth_session);
-}
-
-// ── OAuth callbacks ───────────────────────────────────────────────────────
-
-pub fn invokeGitHubCallback(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    github_cb.innerGitHubCallback(hx.*, req);
 }
 
 // ── Workspace lifecycle ───────────────────────────────────────────────────
