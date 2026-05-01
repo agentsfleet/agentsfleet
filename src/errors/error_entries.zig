@@ -146,6 +146,13 @@ pub const ENTRIES = [_]Entry{
     e("UZ-WH-011", .unauthorized, "Stale webhook timestamp",
         "Webhook request timestamp is outside the allowed 5-minute drift window. " ++
         "This may indicate a replay attack or clock skew."),
+    e("UZ-WH-020", .unauthorized, "Webhook credential not configured",
+        "No webhook credential is configured for this zombie's source. Run " ++
+        "`zombiectl credential add <source> --data='{\"webhook_secret\":\"...\"}'` " ++
+        "in the zombie's workspace, then resend."),
+    e("UZ-WH-030", .payload_too_large, "Webhook payload too large",
+        "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
+        "or filter at the source."),
     // ── TOOL ─────────────────────────────────────────────────────────────────
     e("UZ-TOOL-001", .failed_dependency, "Tool credential missing",
         "A required credential is not in the vault. Add it with: zombiectl credential add <skill_name>"),
