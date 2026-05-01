@@ -246,6 +246,7 @@ test {
     _ = @import("http/handlers/zombies/messages.zig");
     // Chat ingress — POST /v1/.../zombies/{id}/messages
     _ = @import("http/handlers/zombies/messages_integration_test.zig");
+    _ = @import("http/handlers/memory/memories_integration_test.zig");
     _ = @import("http/handlers/zombies/events_integration_test.zig");
     _ = @import("http/handlers/approvals/inbox_integration_test.zig");
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");

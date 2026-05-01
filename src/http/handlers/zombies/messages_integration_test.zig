@@ -127,6 +127,11 @@ test "integration: zombie messages — auth and body validation" {
         defer r.deinit();
         try r.expectStatus(.bad_request);
     }
+    { // missing `message` field entirely → 400 (json parse fails the required field)
+        const r = try (try (try h.post(url_idle).bearer(TOKEN_OPERATOR)).json("{}")).send();
+        defer r.deinit();
+        try r.expectStatus(.bad_request);
+    }
     { // message > 8192 bytes → 400
         const r = try (try (try h.post(url_idle).bearer(TOKEN_OPERATOR)).json(body_toolong)).send();
         defer r.deinit();
