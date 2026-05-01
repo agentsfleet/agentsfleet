@@ -1,12 +1,17 @@
-//! `webhook_sig` middleware — per-zombie webhook auth.
+//! `webhook_sig` middleware — per-zombie webhook HMAC auth.
 //!
-//! Resolution order:
-//!   1. Per-zombie HMAC signature — when the zombie's `trigger.signature`
-//!      scheme is configured, HMAC is the ONLY acceptable path; missing
-//!      header or vault-secret resolution failure both fail closed.
-//!   2. Bearer token fallback — only when no HMAC scheme is configured;
-//!      compares the Authorization header against the zombie's
-//!      `trigger.token`.
+//! HMAC-SHA256 over the raw body is the ONLY acceptable auth path. The
+//! resolver's job is to return the scheme + secret for the zombie's
+//! configured provider. Three failure modes, all fail-closed:
+//!
+//!   - Provider not recognized / no scheme configured →
+//!     `UZ-WH-020 webhook_credential_not_configured`.
+//!   - Scheme present, vault credential missing or empty →
+//!     `UZ-WH-020 webhook_credential_not_configured`.
+//!   - Scheme + secret present, signature header missing/malformed/wrong →
+//!     `UZ-WH-010 invalid signature` (or `UZ-WH-011 stale timestamp`).
+//!
+//! No Bearer fallback. Pre-v2.0 contract: every webhook is HMAC-signed.
 //!
 //! All comparisons are constant-time (RULE CTM + RULE CTC).
 //!
@@ -27,8 +32,6 @@ const AuthCtx = auth_ctx.AuthCtx;
 
 const log = std.log.scoped(.webhook_sig);
 
-const BEARER_PREFIX: []const u8 = "Bearer ";
-
 /// Mirror of the fields `src/zombie/webhook_verify.VerifyConfig` needs at
 /// verify time. Local to `src/auth/` to preserve the `test-auth` portability
 /// gate; host populates these in `serve_webhook_lookup.zig` by translating
@@ -42,15 +45,20 @@ pub const SignatureScheme = struct {
     max_ts_drift_seconds: i64,
 };
 
-/// Owned result from the host-supplied lookup callback.
+/// Owned result from the host-supplied lookup callback. The resolver MUST
+/// set `signature_scheme` for any zombie configured with a recognized
+/// provider — even when the vault secret is missing — so the middleware
+/// fails closed via `UZ-WH-020` instead of silently rejecting as
+/// "unauthorized." Leaving `signature_scheme` null is reserved for "no
+/// provider configured at all," which also rejects but with a different
+/// error code path.
+///
 /// Caller frees owned slices via `alloc`.
 pub const LookupResult = struct {
-    expected_token: ?[]const u8,
     signature_scheme: ?SignatureScheme = null,
     signature_secret: ?[]const u8 = null,
 
     pub fn deinit(self: LookupResult, alloc: std.mem.Allocator) void {
-        if (self.expected_token) |t| alloc.free(t);
         if (self.signature_scheme) |s| {
             alloc.free(s.sig_header);
             alloc.free(s.prefix);
@@ -82,46 +90,41 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
 
         pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
             const zombie_id = ctx.webhook_zombie_id orelse {
-                ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
                 return .short_circuit;
             };
 
             const result_opt = self.lookup_fn(self.lookup_ctx, zombie_id, ctx.alloc) catch |err| {
                 log.warn("webhook_sig lookup failed req_id={s} zombie_id={s} err={s}", .{ ctx.req_id, zombie_id, @errorName(err) });
-                ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
                 return .short_circuit;
             };
             const result = result_opt orelse {
-                ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
                 return .short_circuit;
             };
             defer result.deinit(ctx.alloc);
 
-            // Strategy 1: Per-zombie HMAC signature — when a scheme is declared,
-            // HMAC is the ONLY acceptable auth path. No silent downgrade to
-            // Bearer on vault failure or missing sig_header: both fail closed.
-            // A scheme-configured zombie that authenticated via Bearer alone
-            // would be a header-omission bypass.
-            if (result.signature_scheme) |scheme| {
-                const secret = result.signature_secret orelse {
-                    log.warn("webhook_sig hmac secret unavailable req_id={s} zombie_id={s} (scheme configured; vault load failed or empty)", .{ ctx.req_id, zombie_id });
-                    ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
-                    return .short_circuit;
-                };
-                const provided_sig = req.header(scheme.sig_header) orelse {
-                    ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
-                    return .short_circuit;
-                };
-                return verifyHmac(ctx, scheme, secret, provided_sig, req);
-            }
-
-            // Strategy 2: Bearer token fallback (reached only when no HMAC
-            // scheme is configured on the zombie).
-            const expected_token = result.expected_token orelse {
-                ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+            // No scheme = no provider configured. Reject as "credential not
+            // configured" so operators see a recoverable error class.
+            const scheme = result.signature_scheme orelse {
+                log.warn("webhook_sig no scheme req_id={s} zombie_id={s}", .{ ctx.req_id, zombie_id });
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
                 return .short_circuit;
             };
-            return verifyBearer(ctx, expected_token, req);
+            // Scheme but no secret = vault row missing or malformed. Distinct
+            // from "signature wrong" — this is a recoverable misconfiguration,
+            // not an attack.
+            const secret = result.signature_secret orelse {
+                log.warn("webhook_sig hmac secret unavailable req_id={s} zombie_id={s} (vault load failed or empty)", .{ ctx.req_id, zombie_id });
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
+                return .short_circuit;
+            };
+            const provided_sig = req.header(scheme.sig_header) orelse {
+                ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+                return .short_circuit;
+            };
+            return verifyHmac(ctx, scheme, secret, provided_sig, req);
         }
     };
 }
@@ -172,23 +175,6 @@ fn verifyHmac(
 
     if (!hs.constantTimeEql(&mac, &expected)) {
         ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
-        return .short_circuit;
-    }
-    return .next;
-}
-
-fn verifyBearer(ctx: *AuthCtx, expected: []const u8, req: *httpz.Request) chain.Outcome {
-    const auth_header = req.header("authorization") orelse {
-        ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
-        return .short_circuit;
-    };
-    if (!std.mem.startsWith(u8, auth_header, BEARER_PREFIX)) {
-        ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
-        return .short_circuit;
-    }
-    const provided = auth_header[BEARER_PREFIX.len..];
-    if (!hs.constantTimeEql(provided, expected)) {
-        ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
         return .short_circuit;
     }
     return .next;

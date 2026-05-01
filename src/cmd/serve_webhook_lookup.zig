@@ -36,10 +36,6 @@ pub fn lookup(
     const row_data = (try fetchZombieRow(conn, alloc, zombie_id)) orelse return null;
     defer freeRowData(alloc, row_data);
 
-    var token: ?[]const u8 = null;
-    errdefer if (token) |t| alloc.free(t);
-    if (row_data.token_raw) |t| token = try alloc.dupe(u8, t);
-
     var scheme: ?SignatureScheme = null;
     var signature_secret: ?[]const u8 = null;
     errdefer if (scheme) |s| freeScheme(alloc, s);
@@ -47,19 +43,18 @@ pub fn lookup(
 
     if (row_data.source.len > 0) {
         if (webhook_verify.detectProvider(row_data.source, webhook_verify.NoHeaders{})) |cfg| {
+            // Always populate the scheme when the provider is recognized, so
+            // the middleware fails closed with UZ-WH-020 on a missing vault
+            // credential (RFC: never silently degrade auth on misconfig).
+            scheme = try schemeFromConfig(alloc, cfg);
             const credential_name = row_data.credential_name_override orelse row_data.source;
             const key_name = try credential_key.allocKeyName(alloc, credential_name);
             defer alloc.free(key_name);
-
-            if (loadWebhookSecret(alloc, conn, row_data.workspace_id, key_name)) |secret| {
-                signature_secret = secret;
-                scheme = try schemeFromConfig(alloc, cfg);
-            }
+            signature_secret = loadWebhookSecret(alloc, conn, row_data.workspace_id, key_name);
         }
     }
 
     return .{
-        .expected_token = token,
         .signature_scheme = scheme,
         .signature_secret = signature_secret,
     };
@@ -111,7 +106,6 @@ const RowData = struct {
     workspace_id: []const u8,
     source: []const u8,
     credential_name_override: ?[]const u8,
-    token_raw: ?[]const u8,
     signature_json: ?[]const u8,
 };
 
@@ -120,7 +114,6 @@ fn fetchZombieRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8
         \\SELECT workspace_id::text,
         \\       config_json->'x-usezombie'->'trigger'->>'source',
         \\       config_json->'x-usezombie'->'trigger'->>'credential_name',
-        \\       config_json->'x-usezombie'->'trigger'->>'token',
         \\       config_json->'x-usezombie'->'trigger'->'signature'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id}));
@@ -134,14 +127,11 @@ fn fetchZombieRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8
     errdefer alloc.free(source);
     const credential_name_override = try dupeOptional(alloc, row.get([]const u8, 2) catch null);
     errdefer if (credential_name_override) |v| alloc.free(v);
-    const token_raw = try dupeOptional(alloc, row.get([]const u8, 3) catch null);
-    errdefer if (token_raw) |v| alloc.free(v);
-    const signature_json = try dupeOptional(alloc, row.get([]const u8, 4) catch null);
+    const signature_json = try dupeOptional(alloc, row.get([]const u8, 3) catch null);
     return RowData{
         .workspace_id = workspace_id,
         .source = source,
         .credential_name_override = credential_name_override,
-        .token_raw = token_raw,
         .signature_json = signature_json,
     };
 }
@@ -155,7 +145,6 @@ fn freeRowData(alloc: std.mem.Allocator, r: RowData) void {
     alloc.free(r.workspace_id);
     alloc.free(r.source);
     if (r.credential_name_override) |s| alloc.free(s);
-    if (r.token_raw) |t| alloc.free(t);
     if (r.signature_json) |j| alloc.free(j);
 }
 

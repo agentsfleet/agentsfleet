@@ -1,10 +1,9 @@
 // POST /v1/webhooks/{zombie_id}
 //
-// Auth: per-zombie HMAC signature (scheme + secret resolved from the
-//       workspace credential keyed by `trigger.source`) or Bearer token
-//       (`config_json->'x-usezombie'->'trigger'->>'token'`) fallback.
-//       Verified upstream by the `webhook_sig` middleware before this
-//       handler runs.
+// Auth: per-zombie HMAC signature only (scheme + secret resolved from the
+//       workspace credential keyed by `trigger.source`). Verified upstream
+//       by the `webhook_sig` middleware before this handler runs. No
+//       Bearer fallback — every inbound webhook MUST be signed.
 // Idempotency: Redis SET NX EX on "webhook:dedup:{zombie_id}:{event_id}".
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
 
@@ -34,14 +33,12 @@ const WebhookPayload = struct {
 const ZombieRow = struct {
     workspace_id: []const u8,
     status: []const u8,
-    token: ?[]const u8,
     source: ?[]const u8,
 };
 
 fn deinitZombieRow(row: *const ZombieRow, alloc: std.mem.Allocator) void {
     alloc.free(row.workspace_id);
     alloc.free(row.status);
-    if (row.token) |t| alloc.free(t);
     if (row.source) |s| alloc.free(s);
 }
 
@@ -50,7 +47,6 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(
         \\SELECT workspace_id::text, status,
-        \\       config_json->'x-usezombie'->'trigger'->>'token',
         \\       config_json->'x-usezombie'->'trigger'->>'source'
         \\FROM core.zombies WHERE id = $1::uuid
     , .{zombie_id}));
@@ -60,12 +56,9 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     errdefer alloc.free(workspace_id);
     const status = try alloc.dupe(u8, try row.get([]const u8, 1));
     errdefer alloc.free(status);
-    const token_raw = row.get([]const u8, 2) catch null;
-    const token: ?[]const u8 = if (token_raw) |t| try alloc.dupe(u8, t) else null;
-    errdefer if (token) |t| alloc.free(t);
-    const source_raw = row.get([]const u8, 3) catch null;
+    const source_raw = row.get([]const u8, 2) catch null;
     const source: ?[]const u8 = if (source_raw) |s| try alloc.dupe(u8, s) else null;
-    return .{ .workspace_id = workspace_id, .status = status, .token = token, .source = source };
+    return .{ .workspace_id = workspace_id, .status = status, .source = source };
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

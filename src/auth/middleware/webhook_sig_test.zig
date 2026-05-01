@@ -32,7 +32,6 @@ const Fixtures = struct {
 
 /// Concrete test context — replaces *anyopaque with a typed struct.
 const TestLookupCtx = struct {
-    return_token: ?[]const u8 = null,
     return_scheme: ?SignatureScheme = null,
     return_signature_secret: ?[]const u8 = null,
     should_fail: bool = false,
@@ -42,8 +41,6 @@ const TestLookupCtx = struct {
 fn testLookup(ctx: *TestLookupCtx, _: []const u8, alloc: std.mem.Allocator) anyerror!?LookupResult {
     if (ctx.should_fail) return error.Unavailable;
     if (ctx.should_return_null) return null;
-    const token: ?[]const u8 = if (ctx.return_token) |t| try alloc.dupe(u8, t) else null;
-    errdefer if (token) |t| alloc.free(t);
     const scheme: ?SignatureScheme = if (ctx.return_scheme) |s| .{
         .sig_header = try alloc.dupe(u8, s.sig_header),
         .prefix = try alloc.dupe(u8, s.prefix),
@@ -60,7 +57,6 @@ fn testLookup(ctx: *TestLookupCtx, _: []const u8, alloc: std.mem.Allocator) anye
     };
     const sig_secret: ?[]const u8 = if (ctx.return_signature_secret) |s| try alloc.dupe(u8, s) else null;
     return .{
-        .expected_token = token,
         .signature_scheme = scheme,
         .signature_secret = sig_secret,
     };
@@ -83,39 +79,9 @@ fn runMw(
     return mw.execute(&ctx, ht.req);
 }
 
-// ── Bearer token fallback tests ──────────────────────────────────────
+// ── Fail-closed: missing scheme / credential / lookup ────────────────
 
-test "Bearer token fallback valid returns .next" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_token = "valid-token" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer valid-token");
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc");
-    try testing.expectEqual(chain.Outcome.next, outcome);
-    try testing.expectEqual(@as(usize, 0), Fixtures.write_count);
-}
-
-test "Bearer token fallback invalid returns .short_circuit" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_token = "valid-token" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer wrong-token");
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc");
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
-}
-
-// ── Negative tests ───────────────────────────────────────────────────
-
-test "no zombie_id returns .short_circuit" {
+test "no zombie_id slot → UZ-WH-020 .short_circuit" {
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{};
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -125,10 +91,10 @@ test "no zombie_id returns .short_circuit" {
 
     const outcome = try runMw(&mw, &ht, null);
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
 
-test "lookup returns null (zombie not found) → .short_circuit" {
+test "lookup returned null (zombie not found) → UZ-WH-020" {
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{ .should_return_null = true };
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -138,10 +104,10 @@ test "lookup returns null (zombie not found) → .short_circuit" {
 
     const outcome = try runMw(&mw, &ht, "zombie-xyz");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
 
-test "lookup error returns .short_circuit" {
+test "lookup errored (DB unavailable) → UZ-WH-020" {
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{ .should_fail = true };
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -151,22 +117,13 @@ test "lookup error returns .short_circuit" {
 
     const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_UNAUTHORIZED, Fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
 
-test "no Bearer header configured → .short_circuit" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_token = "some-token" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc");
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-}
-
-test "no expected_token in config → .short_circuit" {
+test "no signature scheme configured → UZ-WH-020 (Bearer ignored)" {
+    // Resolver returns a result with no scheme (provider not recognized) and
+    // no secret. Sending a Bearer token used to silently authenticate via the
+    // dropped Strategy 2 fallback — that path is gone. Now: fail closed.
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{};
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
@@ -177,39 +134,10 @@ test "no expected_token in config → .short_circuit" {
 
     const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
 
-// ── Edge case tests ──────────────────────────────────────────────────
-
-test "Bearer prefix without token body → .short_circuit" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_token = "valid" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Bearer ");
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc");
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-}
-
-test "non-Bearer auth scheme → .short_circuit" {
-    Fixtures.reset();
-    var lookup_ctx = TestLookupCtx{ .return_token = "valid" };
-    var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("authorization", "Basic dXNlcjpwYXNz");
-
-    const outcome = try runMw(&mw, &ht, "zombie-abc");
-    try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-}
-
-// constantTimeEql canonical tests live in src/crypto/hmac_sig_test.zig.
-
-// ── §3 — HMAC strategy 2 tests ───────────────────────────────────────
+// ── §3 — HMAC tests ──────────────────────────────────────────────────
 
 /// Jira-style scheme (not in PROVIDER_REGISTRY) — custom header, no timestamp.
 const JIRA_SCHEME = SignatureScheme{
@@ -304,47 +232,48 @@ test "stale timestamp → UZ-WH-011 .short_circuit" {
     try testing.expectEqualStrings(errors.ERR_WEBHOOK_TIMESTAMP_STALE, Fixtures.last_code);
 }
 
-// ── Fail-closed when HMAC scheme is declared (no Bearer downgrade) ────
+// ── Fail-closed: scheme declared but secret/header missing ────
 
-test "HMAC scheme configured + secret null → .short_circuit (no Bearer fallthrough)" {
+test "scheme configured + secret null → UZ-WH-020 .short_circuit" {
     // Simulates a vault transient failure: serve_webhook_lookup returns
     // signature_scheme populated but signature_secret = null. Middleware
-    // must fail closed, NOT fall through to Bearer auth.
+    // emits UZ-WH-020 (recoverable misconfig), not UZ-WH-010 (real auth fail).
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{
         .return_scheme = JIRA_SCHEME,
         .return_signature_secret = null,
-        .return_token = "valid-token", // would-be Bearer fallback (must NOT be used)
     };
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
 
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    // Include a valid Bearer so the downgrade path, if taken, would succeed.
-    ht.header("authorization", "Bearer valid-token");
+    // Authorization header is intentionally NOT set — the middleware no
+    // longer reads it on webhook routes. (Pre-Bearer-removal, sending one
+    // here would have silently downgraded auth.)
     ht.body(JIRA_BODY);
 
     const outcome = try runMw(&mw, &ht, "zombie-abc");
     try testing.expectEqual(chain.Outcome.short_circuit, outcome);
-    try testing.expectEqualStrings(errors.ERR_WEBHOOK_SIG_INVALID, Fixtures.last_code);
+    try testing.expectEqualStrings(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, Fixtures.last_code);
 }
 
-test "HMAC scheme configured + sig_header missing → .short_circuit (no Bearer fallthrough)" {
-    // Scheme + secret both present, but request omits the sig_header. Prior
-    // behavior silently fell through to Bearer auth — a header-omission
-    // downgrade. Now: fail closed.
+test "scheme configured + sig_header missing → UZ-WH-010 .short_circuit" {
+    // Provider + secret both present but the request omits the signature
+    // header. Pre-cleanup this silently fell through to Bearer auth — a
+    // header-omission downgrade vector. Now fails closed with UZ-WH-010
+    // (signature invalid).
     Fixtures.reset();
     var lookup_ctx = TestLookupCtx{
         .return_scheme = JIRA_SCHEME,
         .return_signature_secret = JIRA_SECRET,
-        .return_token = "valid-token", // would-be Bearer fallback (must NOT be used)
     };
     var mw = TestWebhookSig{ .lookup_ctx = &lookup_ctx, .lookup_fn = testLookup };
 
     var ht = httpz.testing.init(.{});
     defer ht.deinit();
-    // No x-jira-hook-signature header; valid Bearer that would auth via fallback.
-    ht.header("authorization", "Bearer valid-token");
+    // No x-jira-hook-signature header. Authorization header would have been
+    // a downgrade vector under the old Strategy 2; verify it has no effect.
+    ht.header("authorization", "Bearer would-have-worked-pre-cleanup");
     ht.body(JIRA_BODY);
 
     const outcome = try runMw(&mw, &ht, "zombie-abc");

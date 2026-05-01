@@ -52,7 +52,7 @@
       "operationId": "ingest_zombie_webhook",
       "method": "POST",
       "path": "/v1/webhooks/{zombie_id}",
-      "description": "Deliver an inbound event to a Zombie. Validated against the Zombie's trigger token; idempotent within 24h via event_id.",
+      "description": "Deliver an inbound event to a Zombie. Body must be HMAC-SHA256 signed with the workspace credential matching the Zombie's trigger.source (e.g. vault row zombie:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
     },
     {

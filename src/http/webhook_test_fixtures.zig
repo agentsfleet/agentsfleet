@@ -76,10 +76,14 @@ pub fn insertWebhookCredential(
     credential_name: []const u8,
     webhook_secret: []const u8,
 ) !void {
-    const json = try std.fmt.allocPrint(
+    // Use the JSON stringifier (not raw string interpolation) so test secrets
+    // containing `"`, `\`, or control chars don't corrupt the credential JSON
+    // and silently confuse `vault.loadJson` at lookup time.
+    const Payload = struct { webhook_secret: []const u8 };
+    const json = try std.json.Stringify.valueAlloc(
         alloc,
-        "{{\"webhook_secret\":\"{s}\"}}",
-        .{webhook_secret},
+        Payload{ .webhook_secret = webhook_secret },
+        .{},
     );
     defer alloc.free(json);
     const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{credential_name});

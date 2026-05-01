@@ -43,11 +43,26 @@ const CONCLUSION_FAILURE = "failure";
 const FilterDecision = struct { ingest: bool, reason: []const u8 };
 
 pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void {
+    // Pre-read fence: reject oversized payloads before httpz buffers them.
+    // The httpz server-level max_body_size may be larger than our 1 MiB cap,
+    // so without this guard a >1 MiB body would be fully buffered + discarded.
+    if (req.header("content-length")) |cl_str| {
+        const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
+        if (cl > MAX_BODY_BYTES) {
+            hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, "Webhook body exceeds 1 MiB");
+            return;
+        }
+    }
     const body = req.body() orelse {
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_BODY_REQUIRED);
         return;
     };
-    if (!checkBodyCap(hx, req, body)) return;
+    // Post-buffer guard: catches payloads sent without (or with a lying)
+    // Content-Length header.
+    if (body.len > MAX_BODY_BYTES) {
+        hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, "Webhook body exceeds 1 MiB");
+        return;
+    }
 
     const event = req.header(HEADER_EVENT) orelse {
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, "Missing X-GitHub-Event header");
@@ -120,21 +135,6 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     recordAccepted(hx.ctx.telemetry, zombie.workspace_id, zombie_id, delivery);
     log.info("github_webhook.accepted zombie_id={s} delivery={s} stream_event_id={s}", .{ zombie_id, delivery, new_event_id });
     hx.ok(.accepted, .{ .status = ec.STATUS_ACCEPTED, .event_id = new_event_id });
-}
-
-fn checkBodyCap(hx: Hx, req: *httpz.Request, body: []const u8) bool {
-    if (req.header("content-length")) |cl_str| {
-        const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
-        if (cl > MAX_BODY_BYTES) {
-            hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, "Webhook body exceeds 1 MiB");
-            return false;
-        }
-    }
-    if (body.len > MAX_BODY_BYTES) {
-        hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, "Webhook body exceeds 1 MiB");
-        return false;
-    }
-    return true;
 }
 
 fn claimDeliveryKey(hx: Hx, zombie_id: []const u8, delivery: []const u8) bool {
