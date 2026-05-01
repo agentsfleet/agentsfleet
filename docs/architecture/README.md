@@ -13,7 +13,7 @@ Read in this order if you've never seen the project:
 
 1. [`high_level.md`](./high_level.md) — what the product is, what it isn't, why it exists, and why the obvious alternatives don't make it redundant.
 2. [`user_flow.md`](./user_flow.md) — how an operator gets from "I want a zombie" to "the zombie is running on my repo."
-3. [`scenarios/`](./scenarios/) — three end-to-end walkthroughs (default platform-managed install, Bring-Your-Own-Key with Fireworks + Kimi 2.6, balance-gated paid plans).
+3. [`scenarios/`](./scenarios/) — three end-to-end walkthroughs with two personas (John Doe on the platform-managed path; Jane Doe on the Bring-Your-Own-Key path): default Free install, BYOK with Fireworks + Kimi 2.6, and the paid-plan balance-gate behaviour for both postures.
 
 After that, dip into whichever of these matches the change you're making:
 
@@ -53,5 +53,5 @@ For everything else, follow the topic files above.
 | **Cron trigger** | A NullClaw-managed schedule firing on time. Lands as an event with `actor=cron:<schedule>`. |
 | **Stage** | One `runner.execute` call inside the executor — one language-model context window's worth of reasoning. Long incidents span multiple stages via continuation events. |
 | **Tool bridge** | The substitution layer inside the executor that replaces `${secrets.NAME.FIELD}` placeholders with real bytes after sandbox entry. |
-| **Bring Your Own Key (BYOK)** | The posture where the operator stores their own language-model provider credential (Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, …) under the well-known vault name `llm`. On `main` today that credential is stored through the workspace-scoped `credentials/llm` API; the tenant-scoped provider posture described in M48 is still pending. |
+| **Bring Your Own Key (BYOK)** | The posture where the operator stores their own language-model provider credential (Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, …) in the vault under an operator-chosen name (e.g. `account-fireworks-byok`), then activates it for the tenant via `zombiectl tenant provider set --credential <name>`. The tenant's `core.tenant_providers` row carries `credential_ref` pointing at the active credential. See [`billing_and_byok.md`](./billing_and_byok.md). |
 | **Bastion** | The post-launch framing where the same zombie owns both internal triage and customer-facing status communication. Documented in [`bastion.md`](./bastion.md). |

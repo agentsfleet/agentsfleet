@@ -1,6 +1,6 @@
 # Scenario 01 — Default install, platform-managed key, free tier
 
-**Persona:** First-time operator. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key, no paid plan yet.
+**Persona — John Doe.** First-time operator. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key, no paid plan yet. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
 **Outcome under test:** From cold start (`zombiectl` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
 
@@ -65,13 +65,9 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
    then `zombiectl credential add <name> --data '<opaque-json>'` per credential.
-5. **Model-cap lookup (one-shot at install time).** The skill GETs:
-   ```
-   GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
-   ```
-   The endpoint returns a small JSON catalog (model name → context_cap_tokens, default tool_window, default checkpoint cadence). The skill picks the row for the platform-default model (e.g. `claude-sonnet-4-6`) and pins the cap into the generated frontmatter.
+5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "claude-sonnet-4-6"`, `context_cap_tokens: 200000`, `provider: "anthropic"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
-   The URL is **deliberately cryptic** — the random `/_um/<key>/` prefix is unguessable to random scanners and reduces the DDoS surface against a hot, unauthenticated lookup. The path key ships hard-coded in `zombiectl` and the install-skill; rotation is a coordinated CLI + skill release on a quarterly cadence. Cloudflare in front, aggressive caching (`Cache-Control: public, max-age=86400, immutable` per release), per-IP rate limit beyond that. Adding a new model is a row in the table, not a usezombie release. See [`scenarios/02_byok.md`](./02_byok.md) §5 for the full endpoint shape.
+   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_byok.md`](../billing_and_byok.md) §9 for the endpoint design.
 6. **Frontmatter generation.** The skill writes `.usezombie/platform-ops/SKILL.md` substituting variables and the cap. Refuses to overwrite without `--force`.
    ```yaml
    ---
@@ -160,7 +156,97 @@ The operator reads the diagnosis in Slack; later opens `zombiectl events {id}` t
 
 ---
 
-## 3. What this scenario proves
+## 3. Terminal transcript — what John Doe sees
+
+This is the verbatim end-to-end CLI experience. The skill drives most of it; John's only typed inputs are the three variable answers and the GitHub webhook paste.
+
+### 3.1 Skill invocation through to first steer
+
+```text
+$ /usezombie-install-platform-ops
+
+▸ Running zombiectl doctor --json …
+{
+  "auth_token_present": true,
+  "workspace_bound": true,
+  "tenant_provider": {
+    "mode": "platform",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6",
+    "context_cap_tokens": 200000
+  }
+}
+✓ Doctor checks pass.
+
+▸ Detecting repo … github.com/john-doe/widgetly
+  .github/workflows/deploy.yml present
+  fly.toml present
+
+▸ Three quick questions:
+  Slack channel for diagnoses?     #platform-ops
+  Production branch glob?          main
+  Periodic health check (every 30 min)?  no
+
+▸ Resolving tool credentials (op → env → prompt fallback) …
+  fly       ✓ via op
+  slack     ✓ via op
+  github    ✓ via env (ZOMBIE_CRED_GITHUB_API_TOKEN)
+  upstash   skipped (not detected)
+
+▸ Generated webhook secret (one-time view; copy now):
+    whsec_<32-byte-base64-elided>
+
+▸ Writing .usezombie/platform-ops/SKILL.md
+   model: claude-sonnet-4-6
+   context_cap_tokens: 200000     ← from doctor's tenant_provider block
+
+▸ Installing …
+  zombie_id   = zmb_01HX9N3K…
+  webhook_url = https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…
+
+✓ Installed. Add this webhook to your repo (Settings → Webhooks):
+  URL:    https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…
+  Secret: whsec_<32-byte-base64-elided>
+  Events: workflow_run
+
+▸ Running first steer ("morning health check") …
+  GH Actions runs on main: 12 in last 24h, all green
+  Fly app widgetly-prod: healthy, last deploy 6h ago, 2 instances
+  Posted to #platform-ops at 09:14 UTC.
+
+✓ Setup complete. To steer manually:  zombiectl steer zmb_01HX9N3K… "<msg>"
+```
+
+### 3.2 First production webhook fires (a few hours later)
+
+```text
+$ zombiectl events zmb_01HX9N3K…
+EVENT_ID                 ACTOR             STATUS     STARTED              TOKENS  CREDIT
+evt_01HX9P7M…           webhook:github    processed  2026-05-01T13:42:01  1840    4¢
+evt_01HX9N4P…           steer:john        processed  2026-05-01T09:14:22  1610    4¢
+```
+
+John clicks into `evt_01HX9P7M…` in the dashboard and sees the agent's evidence trail — the `http_request` calls to GitHub run logs and Fly app status, the diagnosis posted to Slack. The credential names appear (`github`, `fly`, `slack`); their secret bytes do not.
+
+### 3.3 Provider posture confirmed by `tenant provider get`
+
+```text
+$ zombiectl tenant provider get
+Mode:                platform   (synthesised default — no explicit row)
+Provider:            anthropic
+Model:               claude-sonnet-4-6
+Context cap tokens:  200000
+
+ⓘ This is the platform default. To bring your own LLM key:
+   zombiectl credential set <name> --data '{"provider":"…","api_key":"…","model":"…"}'
+   zombiectl tenant provider set --credential <name>
+```
+
+No `core.tenant_providers` row exists for John's tenant; `tenant provider get` reads through the resolver and surfaces the synthesised default, plus an inline pointer at the BYOK setup commands.
+
+---
+
+## 4. What this scenario proves
 
 - The install-skill is the only place where repo detection, ≤4 question discipline, and credential resolution live. The runtime stays prompt-driven.
 - The model→cap lookup is **one external GET per install**, pinned into frontmatter. Adding a new model never requires a usezombie release.
@@ -169,7 +255,7 @@ The operator reads the diagnosis in Slack; later opens `zombiectl events {id}` t
 
 ---
 
-## 4. What is NOT in this scenario
+## 5. What is NOT in this scenario
 
 - No BYOK. See `scenarios/02_byok.md`.
 - No balance trip. See `scenarios/03_balance_gate_paid.md`.

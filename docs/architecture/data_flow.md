@@ -442,10 +442,16 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
                       lifecycle is independent. The original blocked
                       row stays as the historical record.
 
-     4. resolveSecretsMap from vault (per-zombie credentials).
-        Current `main`: load workspace-scoped credentials (including `llm`
-        when configured). Architectural target: resolve active provider
-        posture from `tenant_providers` (platform or BYOK).
+     4. resolveSecretsMap from vault (per-zombie tool credentials —
+        github, fly, slack, etc. — keyed by name; workspace-scoped).
+        Provider posture (platform or BYOK) is resolved separately
+        through tenant_provider.resolveActiveProvider(tenant_id), which
+        either synthesises the platform default (no row) or reads the
+        tenant_providers row and follows credential_ref into the vault
+        for the BYOK api_key. The api_key crosses this boundary in
+        process memory only — it does NOT join secrets_map and is never
+        substituted into a tool placeholder. See
+        billing_and_byok.md §7.2 for the full visibility boundary.
 
      5. UPSERT core.zombie_sessions                ← worker marks busy
           SET execution_id, execution_started_at = now()

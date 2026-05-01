@@ -149,49 +149,53 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 - the user authors and supervises from Claude
 - the zombie executes durably outside that transient chat session
 
-## §8.7 Model and context-cap origin (platform vs. BYOK target contract)
-
-This section describes the intended M48 contract. Current `main` already ships the model-caps endpoint, but it still stores BYOK credentials through the workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm` route and does not yet expose the tenant-scoped `tenant_providers` posture or `zombiectl provider set` flow described below.
+## §8.7 Model and context-cap origin (platform vs. BYOK)
 
 Two things travel together: the **model** the executor invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and BYOK postures, and the worker's overlay logic is what reconciles them at trigger time.
 
+The install-skill's job in both postures is the same shape: **call `zombiectl doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `zombiectl auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
+
 ```
-                     PLATFORM-MANAGED                          BYOK
-                  ─────────────────────────              ──────────────────────
-install-skill →   GET /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json          (skill skips lookup —
-                  → pin into frontmatter:                tenant_providers
-                    model: claude-sonnet-4-6               already has cap)
-                    context_cap_tokens: 200000          → frontmatter pinned to:
-                                                          model: ""
-                                                          context_cap_tokens: 0
+                     PLATFORM-MANAGED (John Doe)                BYOK (Jane Doe)
+                  ─────────────────────────────────       ─────────────────────────────────
+install-skill →   doctor --json                           doctor --json
+                    auth_token_present: true ✓              auth_token_present: true ✓
+                    workspace_bound: true   ✓              workspace_bound: true   ✓
+                    tenant_provider:                       tenant_provider:
+                      {mode=platform,                        {mode=byok,
+                       model=claude-sonnet-4-6,               provider=fireworks,
+                       context_cap_tokens=200000}             model=accounts/.../kimi-k2.6,
+                  ─ if any auth check fails: print           context_cap_tokens=256000}
+                    `zombiectl auth login` and STOP. ─    ─ same auth-fail short-circuit ─
+                  branch on mode → write frontmatter      branch on mode → write frontmatter
+                  pin into frontmatter (resolved):        pin into frontmatter (sentinels):
+                    model: claude-sonnet-4-6                model: ""
+                    context_cap_tokens: 200000              context_cap_tokens: 0
 
-provider set   → (nothing — defaults stay platform)   → zombiectl provider set
-                                                          → API GETs
-                                                            /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
-                                                            for the llm.model
-                                                          → write
-                                                            tenant_providers.{
-                                                              mode: byok,
-                                                              model,
-                                                              context_cap_tokens
-                                                            }
+tenant provider → (nothing — synth-default                → zombiectl tenant provider set
+set                stays in place)                            --credential account-fireworks-byok
+                                                              → API loads vault row
+                                                              → API GETs /_um/.../model-caps.json
+                                                              → upsert tenant_providers row
+                                                                {mode=byok, provider, model,
+                                                                 context_cap_tokens, credential_ref}
 
-trigger fires  → processEvent:                        → processEvent:
-                   resolveActiveProvider()                resolveActiveProvider()
-                     returns mode=platform                 returns mode=byok +
-                   frontmatter has cap → use it.           tenant_providers
-                                                           {model, cap}
-                                                         frontmatter sentinels
-                                                           (0 / "") → overlay
-                                                           with tenant_providers
-                                                           values
+trigger fires  → processEvent:                            → processEvent:
+                   resolveActiveProvider()                    resolveActiveProvider()
+                     no row → synth-default                    follows credential_ref to vault
+                   frontmatter has resolved cap →              returns mode=byok + cap + key
+                   use it directly.                          frontmatter sentinels overlay:
+                                                               model "" or absent → overlay
+                                                               cap 0   or absent → overlay
 
-createExecution → context_cap_tokens=200000           → context_cap_tokens=256000
-                  model=claude-sonnet-4-6               model=accounts/.../kimi-k2
-                  provider_api_key=<platform>           provider_api_key=<fw_…>
+createExecution → context_cap_tokens=200000               → context_cap_tokens=256000
+                  model=claude-sonnet-4-6                   model=accounts/.../kimi-k2.6
+                  api_key=<PLATFORM_ANTHROPIC>              api_key=<fw_LIVE_…>
 
 L3 stage chunking
-                → threshold = 0.75 × 200000           → threshold = 0.75 × 256000
+                → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
 ```
 
-Single source of truth: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at install time (platform path → pinned in frontmatter) or at `provider set` time (BYOK path → pinned in `tenant_providers`). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`scenarios/02_byok.md`](./scenarios/02_byok.md) §5 for the endpoint shape.
+**Worker overlay rule (per-field, independent):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under BYOK posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
+
+Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at `tenant provider set` time (BYOK path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_byok.md`](./billing_and_byok.md) §9 for the endpoint shape and [`scenarios/02_byok.md`](./scenarios/02_byok.md) for the full BYOK walkthrough.

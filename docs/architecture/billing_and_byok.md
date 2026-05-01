@@ -8,16 +8,19 @@ This is a cross-cutting topic. The data model lives in the tenant provider recor
 
 ---
 
-## 1. The two postures (target M48 contract)
+## 1. The two postures
 
-Current `main` note: this file describes the intended M48 billing/provider contract. The model-caps endpoint is already shipped, but the tenant-scoped `core.tenant_providers` posture and `zombiectl provider set` flow are still pending. Today the shipped BYOK credential storage surface is workspace-scoped `PUT /v1/workspaces/{workspace_id}/credentials/llm`.
+Two personas carry the worked examples through this doc and the scenarios:
 
-Under the intended M48 contract, a tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
+- **John Doe** — solo operator on a small repo. Starts on Free, upgrades to Team when he runs out of credits, never touches Bring-Your-Own-Key. He is the platform-managed path, end to end.
+- **Jane Doe** — small-team operator with a Fireworks AI account already in place. Goes straight to Team, points her tenant at her Fireworks key. She is the Bring-Your-Own-Key path, end to end.
+
+A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
 
 - **Platform-managed.** UseZombie holds the language-model provider key. The operator pays UseZombie a single bundled per-event fee that covers inference, orchestration, storage, and egress.
-- **Bring Your Own Key (BYOK).** The operator stores their own provider credential — Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under the well-known name `llm`. UseZombie's executor uses that key to call the provider's API. The operator pays the provider directly for inference; UseZombie charges a smaller orchestration-only fee per event.
+- **Bring Your Own Key (BYOK).** The operator stores their own provider credential — Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-byok`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. UseZombie's executor uses that key to call the provider's API. The operator pays the provider directly for inference; UseZombie charges a smaller orchestration-only fee per event.
 
-Under that target contract, the posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl provider set` / `zombiectl provider reset`) or a single dashboard toggle.
+The posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl tenant provider set --credential <name>` / `zombiectl tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the operator touches provider config.
 
 ---
 
@@ -109,17 +112,21 @@ The reasoning is that a balance-exhausted event is usually evidence the operator
 
 An operator can switch between platform and BYOK at any time. Effects:
 
-- **Platform → BYOK** (operator runs out of platform credit, brings own Fireworks key): `provider set` flips `tenant_providers.mode=byok` immediately. The next event uses the BYOK overage rate. In-flight events finish at the platform rate they were claimed under.
-- **BYOK → platform** (operator stops paying their provider): `provider reset` flips `mode=platform`. The next event uses the platform overage rate. If the operator's UseZombie balance is now too low for platform pricing, the gate trips on the next event.
+- **Platform → BYOK** (operator runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=byok` immediately. The next event uses the BYOK overage rate. In-flight events finish at the platform rate they were claimed under.
+- **BYOK → platform** (operator stops paying their provider): `zombiectl tenant provider reset` flips `mode=platform`. The next event uses the platform overage rate. If the operator's UseZombie balance is now too low for platform pricing, the gate trips on the next event.
 - **Mid-event change**: the snapshot taken at claim time wins. Provider posture is resolved exactly once, before `createExecution`.
 
 The "in-flight events" question matters because Bring Your Own Key and platform have very different per-event costs. We never want a request that the operator started under one posture to bill at another.
 
+The `tenant provider set` PUT validates eagerly on structure (body shape, plan eligibility, credential presence, JSON shape, and model-caps catalogue membership). It does **not** make a synthetic call to the LLM provider to verify the key works — auth-validity surfaces at the first event as `provider_auth_failed`. The CLI prints a one-line *"Tip: run a test event to verify the key works"* hint after a successful set.
+
 ---
 
-## 7. The `llm` credential — what BYOK actually stores
+## 7. The BYOK credential and the api_key visibility boundary
 
-Vault credentials are opaque JSON objects keyed by name. The BYOK record uses the well-known name `llm`:
+### 7.1 The credential body — operator-named, opaque
+
+Vault credentials are opaque JSON objects keyed by name (M45 contract). The BYOK record uses an **operator-chosen name**: Jane picks `account-fireworks-byok`, another operator might pick `anthropic-prod` or `openai-team-shared`. The name is whatever makes sense to the operator; the schema does not impose a convention.
 
 ```json
 {
@@ -131,7 +138,29 @@ Vault credentials are opaque JSON objects keyed by name. The BYOK record uses th
 
 `provider` is one of the names NullClaw's provider catalogue recognises (`anthropic`, `openai`, `fireworks`, `together`, `groq`, `moonshot`, `kimi`, `openrouter`, `cerebras`, …). `model` is the provider's model identifier. `api_key` is the operator's credential.
 
-**`context_cap_tokens` is not in the credential body.** The cap is resolved separately, at `provider set` time, from the public model-caps endpoint, and pinned into `tenant_providers.context_cap_tokens`. Splitting the two lets the cap be re-resolved when the model changes without touching the vault.
+The `tenant_providers` row points at the credential by name through `credential_ref`. Multi-credential tenants are supported (an operator can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `zombiectl tenant provider set --credential <other>`); only one is *active* at a time per tenant.
+
+**`context_cap_tokens` is not in the credential body.** The cap is resolved separately, at `tenant provider set` time, from the public model-caps endpoint (§9), and pinned into `tenant_providers.context_cap_tokens`. Splitting the two lets the cap be re-resolved when the model changes without touching the vault.
+
+### 7.2 The api_key visibility boundary
+
+The api_key — platform OR BYOK — crosses one boundary cleanly. It exists only in places that need to call the provider's API; it never appears in any user-facing surface.
+
+**The api_key MAY exist in:**
+
+- `core.vault` rows (encrypted at rest via M45's tenant-scoped data key).
+- Server-side process memory — return value of `tenant_provider.resolveActiveProvider`, the executor session, the per-call HTTP client.
+- Outbound HTTPS request headers to the LLM provider (e.g. `Authorization: Bearer …`).
+
+**The api_key MUST NEVER appear in:**
+
+- HTTP response bodies — `zombiectl doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the operator sees.
+- Logs — worker, executor, structured logs, request logs.
+- The agent's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (`executor.startStage`, not `secrets_map`).
+- Persisted event rows — `core.zombie_events`, `zombie_execution_telemetry`, anything else under `core.*`.
+- User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
+
+The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, worker logs, executor logs, and HTTP responses for the api_key bytes after a BYOK run is a CI-level invariant (M48 acceptance criteria).
 
 ---
 
