@@ -41,7 +41,7 @@ The original spec below was written assuming greenfield. M28_001 (DONE) had alre
 - `src/http/handlers/webhooks/zombie.zig` — drop `webhook_secret_ref` from row struct + SELECT; rewrite header comment to point at workspace credentials.
 - AgentMail's URL-embedded-secret path is removed with the column. Per M28_003, AgentMail's migration trajectory was already toward `/v1/webhooks/svix/{zombie_id}`.
 
-**A8 — Dedupe ordering: dedupe FIRST after signature verify, before any filtering.** Key shape: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` `EX 86400`. Dedupe-hit response: `{ "deduped": true }` (no `original_event_id` — operator-debuggable info is in the events stream). The `gh:` namespace prefix prevents collision with body-`event_id`-based dedupe keys for the same zombie.
+**A8 — Dedupe ordering: dedupe FIRST after signature verify, before any filtering.** Key shape: `webhook:dedup:{zombie_id}:gh:{X-GitHub-Delivery}` `EX 259200` (72 h — covers GitHub's documented maximum retry window for the same `X-GitHub-Delivery` UUID). Dedupe-hit response: `{ "deduped": true }` (no `original_event_id` — operator-debuggable info is in the events stream). The `gh:` namespace prefix prevents collision with body-`event_id`-based dedupe keys for the same zombie.
 
 **A9 — Error codes** (RULE EMS — reuse existing `UZ-WH-NNN` family from `src/errors/`):
 - Bad signature → `UZ-WH-010` (existing).

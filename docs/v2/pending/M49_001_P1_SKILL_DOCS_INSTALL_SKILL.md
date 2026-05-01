@@ -214,7 +214,7 @@ a working platform-ops zombie on the user's current repository.
 
 10. Print: "Platform-ops zombie installed (id: {id}). It now watches your GH
     Actions CD pipeline. Configure your repo's webhook to point at:
-    POST https://api.usezombie.com/v1/webhooks/{id}/github
+    POST https://api.usezombie.com/v1/webhooks/{zombie_id}/github
     with secret: <one-time displayed value; already stored in this workspace's
     vault as the `github` credential, field `webhook_secret`>. To steer manually
     any time: `zombiectl steer {id} \"<message>\"`. To kill: `zombiectl kill {id}`."
