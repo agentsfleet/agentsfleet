@@ -5,13 +5,13 @@ Three end-to-end walkthroughs that compose the v2 install, trigger, execute, and
 | File | Posture | Plan | What it proves |
 |---|---|---|---|
 | [`01_default_free_tier.md`](./01_default_free_tier.md) | Platform-managed (Anthropic) | Free | The wedge demo: cold-install to first webhook diagnosis in <10 min. Public model-caps endpoint resolves cap at install time. |
-| [`02_byok.md`](./02_byok.md) | BYOK (Fireworks + Kimi 2.6) | Team or Scale | Tenant-scoped provider flip; cap resolves into `tenant_providers` at `provider set` time; worker overlays sentinels at trigger time. |
+| [`02_byok.md`](./02_byok.md) | BYOK (Fireworks + Kimi 2.6) | Team or Scale | Target M48 contract: tenant-scoped provider flip; cap resolves into `tenant_providers` at `provider set` time; worker overlays sentinels at trigger time. |
 | [`03_balance_gate_paid.md`](./03_balance_gate_paid.md) | Either | Any | Plan tiers, balance gate semantics, the two cost functions (platform = bundled LLM + orchestration; BYOK = orchestration only). |
 
 ## Cross-cutting decisions these scenarios encode
 
 1. **Model-caps endpoint** — `GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` (cryptic-prefix to dodge opportunistic crawlers) is the single source of truth for model → context cap. Resolved at install time (platform path → pinned in frontmatter) or at `provider set` time (Bring-Your-Own-Key path → pinned in `tenant_providers`). Never resolved at trigger time. See [`02_byok.md`](./02_byok.md) §5 and [`../billing_and_byok.md`](../billing_and_byok.md) §9 for the endpoint shape.
-2. **Worker overlay** — when frontmatter carries `model: ""` or `context_cap_tokens: 0`, the worker overlays from `tenant_providers` at `processEvent` time. Both fields independently overlayable.
+2. **Worker overlay** — when frontmatter carries `model: ""` or `context_cap_tokens: 0`, the worker overlay from `tenant_providers` is the intended M48 contract. Current `main` does not expose that tenant-scoped posture yet.
 3. **Balance gate is universal** — runs for both platform and BYOK postures. Only the per-event cost differs.
 4. **One reasoning loop** — install-time steer, production webhook, cron fire, manual steer, and continuation event all enter `processEvent` with the same envelope shape and the same SKILL.md prose-driven dispatch. The runtime never branches on actor type.
 
