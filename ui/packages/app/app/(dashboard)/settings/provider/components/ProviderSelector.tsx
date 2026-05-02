@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2Icon } from "lucide-react";
-import { Button } from "@usezombie/design-system";
+import { Alert, Button } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
 import { resetTenantProvider, setTenantProviderByok } from "@/lib/api/tenant_provider";
 import type { CredentialSummary } from "@/lib/api/credentials";
@@ -134,12 +134,9 @@ export default function ProviderSelector({
       </div>
 
       {state.error ? (
-        <p
-          role="alert"
-          className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
-        >
+        <Alert variant="destructive" className="text-xs">
           {state.error}
-        </p>
+        </Alert>
       ) : null}
     </form>
   );

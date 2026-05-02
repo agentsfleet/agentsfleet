@@ -1,4 +1,5 @@
 import { AlertTriangleIcon } from "lucide-react";
+import { Alert, AlertTitle, AlertDescription } from "@usezombie/design-system";
 import type { TenantBilling } from "@/lib/types";
 
 type Props = { billing: TenantBilling | null };
@@ -9,14 +10,11 @@ export default function ExhaustionBanner({ billing }: Props) {
     ? new Date(billing.exhausted_at).toLocaleString()
     : null;
   return (
-    <div
-      role="alert"
-      className="mb-6 flex items-start gap-3 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive"
-    >
-      <AlertTriangleIcon size={18} className="mt-0.5 shrink-0" />
-      <div>
-        <div className="font-semibold">Your credit balance is exhausted.</div>
-        <div className="mt-1 text-destructive/80">
+    <Alert variant="destructive" className="mb-6">
+      <AlertTriangleIcon size={18} className="mt-0.5 shrink-0" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <AlertTitle>Your credit balance is exhausted.</AlertTitle>
+        <AlertDescription className="text-destructive/80">
           New zombie runs follow the server{"'"}s{" "}
           <code className="font-mono text-xs">BALANCE_EXHAUSTED_POLICY</code>{" "}
           (continue, warn, or stop).{" "}
@@ -28,8 +26,8 @@ export default function ExhaustionBanner({ billing }: Props) {
             Contact support
           </a>{" "}
           to top up.
-        </div>
+        </AlertDescription>
       </div>
-    </div>
+    </Alert>
   );
 }

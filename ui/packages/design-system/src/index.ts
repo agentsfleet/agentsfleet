@@ -105,4 +105,13 @@ export {
   type PageTitleProps,
   SectionLabel,
   type SectionLabelProps,
+  DataTable,
+  type DataTableColumn,
+  type DataTableProps,
+  Alert,
+  AlertTitle,
+  AlertDescription,
+  alertVariants,
+  type AlertProps,
+  type AlertVariant,
 } from "./design-system";

@@ -1,8 +1,10 @@
-// SSR-based unit tests for app-local presentational primitives that stay
-// in this package (DataTable). Wave 3 of §3.8 promoted StatusCard /
-// EmptyState / Pagination / ConfirmDialog into @usezombie/design-system;
-// their coverage moved into co-located tests under
-// ui/packages/design-system/src/design-system/*.test.tsx.
+// SSR smoke tests asserting the design-system DataTable resolves through
+// the package boundary as `import { DataTable } from "@usezombie/design-system"`.
+// The primitive itself is now owned by the design-system package — its
+// behavioural coverage lives co-located at
+// ui/packages/design-system/src/design-system/DataTable.test.tsx. The tests
+// here remain to catch a regression in the public package signature
+// (export name + generic prop shape).
 //
 // ActivityFeed was retired in slice 10 (M42); the dashboard now renders
 // `core.zombie_events` directly via <EventsList />. Co-located rendering
@@ -16,7 +18,7 @@ import React from "react";
 import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { DataTable, type DataTableColumn } from "../components/ui/data-table";
+import { DataTable, type DataTableColumn } from "@usezombie/design-system";
 
 // ── DataTable ──────────────────────────────────────────────────────────────
 
@@ -33,7 +35,7 @@ describe("DataTable", () => {
       React.createElement(DataTable<Row>, {
         columns: cols,
         rows: [{ id: "z1", name: "one", spend: 12 }],
-        rowKey: (r) => r.id,
+        rowKey: (r: Row) => r.id,
       }),
     );
     expect(html).toContain('scope="col"');
@@ -50,7 +52,7 @@ describe("DataTable", () => {
       React.createElement(DataTable<Row>, {
         columns: cols,
         rows: [],
-        rowKey: (r) => r.id,
+        rowKey: (r: Row) => r.id,
       }),
     );
     expect(html).toContain("Nothing to show yet");
@@ -62,7 +64,7 @@ describe("DataTable", () => {
       React.createElement(DataTable<Row>, {
         columns: cols,
         rows: [],
-        rowKey: (r) => r.id,
+        rowKey: (r: Row) => r.id,
         empty: React.createElement("div", null, "Nada"),
       }),
     );
@@ -75,7 +77,7 @@ describe("DataTable", () => {
       React.createElement(DataTable<Row>, {
         columns: cols,
         rows: [{ id: "z1", name: "one", spend: 12 }],
-        rowKey: (r) => r.id,
+        rowKey: (r: Row) => r.id,
         onRowClick: () => {},
       }),
     );
@@ -89,7 +91,7 @@ describe("DataTable", () => {
       React.createElement(DataTable<Row>, {
         columns: cols,
         rows: [{ id: "z1", name: "one", spend: 1 }],
-        rowKey: (r) => r.id,
+        rowKey: (r: Row) => r.id,
         isLoading: true,
       }),
     );

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import {
+  Alert,
   Badge,
   Button,
   Card,
@@ -165,9 +166,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       </ul>
 
       {error ? (
-        <div role="alert" className="mt-3 text-sm text-destructive">
-          {error}
-        </div>
+        <Alert variant="destructive" className="mt-3">{error}</Alert>
       ) : null}
 
       {cursor ? (

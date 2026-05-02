@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import {
+  Alert,
   Badge,
   type BadgeVariant,
   Card,
@@ -91,9 +92,7 @@ export function EventsList({
         ))}
       </ol>
       {error ? (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
+        <Alert variant="destructive">{error}</Alert>
       ) : null}
       <Separator />
       <Pagination kind="cursor" nextCursor={cursor} onNext={loadMore} isLoading={pending} />
