@@ -8,6 +8,7 @@ export function registerProgramCommands(handlers) {
     admin: handlers.admin,
     agent: handlers.agent,
     grant: handlers.grant,
+    tenant: handlers.tenant,
     // Zombie commands
     "zombie.install": handlers.zombieInstall,
     "zombie.list": handlers.zombieList,

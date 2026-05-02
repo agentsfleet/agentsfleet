@@ -8,6 +8,8 @@ const routes = [
   // External agent key management + integration grants
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "grant", match: (cmd) => cmd === "grant" },
+  // Tenant-scoped commands (provider posture, billing snapshot)
+  { key: "tenant", match: (cmd) => cmd === "tenant" },
   // Zombie commands — flat top-level for common ops
   { key: "zombie.install", match: (cmd) => cmd === "install" },
   { key: "zombie.list", match: (cmd) => cmd === "list" },
