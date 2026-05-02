@@ -72,11 +72,6 @@ test "PlanTier.label round-trips" {
     try std.testing.expectEqualStrings("scale", tenant_billing.PlanTier.scale.label());
 }
 
-test "runtimeUsageCostCents: linear in agent_seconds, overflow-safe" {
-    try std.testing.expectEqual(@as(i64, 0), tenant_billing.runtimeUsageCostCents(0));
-    try std.testing.expectEqual(@as(i64, 30), tenant_billing.runtimeUsageCostCents(30));
-}
-
 test "provision inserts one row and replay is a no-op" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();

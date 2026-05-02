@@ -78,9 +78,9 @@ fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
 
 
 
-// ── §3.3 — stop-policy pre-claim gate ────────────────────────────────────
+// ── stop-policy pre-claim balance gate ────────────────────────────────────
 
-test "integration(m11_006): shouldBlockDelivery returns true only when policy=stop AND balance is exhausted" {
+test "integration: balanceCoversEstimate honours policy and tenant balance" {
     const alloc = std.testing.allocator;
     const db_ctx = (try @import("../../db/test_fixtures.zig").openTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -92,42 +92,42 @@ test "integration(m11_006): shouldBlockDelivery returns true only when policy=st
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
 
-    // Not yet exhausted — stop policy must NOT block.
-    try std.testing.expect(!metering.shouldBlockDelivery(
+    // 1000¢ starter grant covers a 1¢ BYOK event under stop policy.
+    try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         alloc,
-        TEST_WORKSPACE_ID,
-        TEST_ZOMBIE_ID,
+        TEST_TENANT_ID,
+        .byok,
+        "any-model",
         .stop,
     ));
 
-    // Mark exhausted on the seeded tenant.
-    _ = try tenant_billing.markExhausted(db_ctx.conn, TEST_TENANT_ID);
-
-    // policy=stop + exhausted → block.
-    try std.testing.expect(metering.shouldBlockDelivery(
+    // Drain the balance to 0¢; stop policy must now block.
+    _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, 1000);
+    try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
         alloc,
-        TEST_WORKSPACE_ID,
-        TEST_ZOMBIE_ID,
+        TEST_TENANT_ID,
+        .byok,
+        "any-model",
         .stop,
     ));
 
-    // policy=warn + exhausted → NEVER block (gate only fires under stop).
-    try std.testing.expect(!metering.shouldBlockDelivery(
+    // Non-stop policies fail-open — the event passes the gate even at 0¢.
+    try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         alloc,
-        TEST_WORKSPACE_ID,
-        TEST_ZOMBIE_ID,
+        TEST_TENANT_ID,
+        .byok,
+        "any-model",
         .warn,
     ));
-
-    // policy=continue + exhausted → NEVER block.
-    try std.testing.expect(!metering.shouldBlockDelivery(
+    try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         alloc,
-        TEST_WORKSPACE_ID,
-        TEST_ZOMBIE_ID,
+        TEST_TENANT_ID,
+        .byok,
+        "any-model",
         .@"continue",
     ));
 }

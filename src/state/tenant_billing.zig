@@ -10,7 +10,6 @@ const log = std.log.scoped(.state);
 /// One-time grant inserted at tenant creation. Funds the first ~333 platform-
 /// managed events (3¢ each) or ~1000 BYOK events (1¢ each).
 pub const STARTER_GRANT_CENTS: i64 = 1000;
-pub const FREE_PLAN_CENTS_PER_AGENT_SECOND: i64 = 1;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 const STARTER_GRANT_PLAN_TIER = "free";
 const STARTER_GRANT_PLAN_SKU = "free_default";
@@ -193,12 +192,6 @@ pub fn resolveTenantFromWorkspace(
     workspace_id: []const u8,
 ) ![]u8 {
     return store.resolveTenantFromWorkspace(conn, alloc, workspace_id);
-}
-
-pub fn runtimeUsageCostCents(agent_seconds: u64) i64 {
-    if (agent_seconds == 0) return 0;
-    const seconds = std.math.cast(i64, agent_seconds) orelse return std.math.maxInt(i64);
-    return std.math.mul(i64, seconds, FREE_PLAN_CENTS_PER_AGENT_SECOND) catch std.math.maxInt(i64);
 }
 
 test {

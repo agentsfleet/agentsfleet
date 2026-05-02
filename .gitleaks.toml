@@ -13,6 +13,8 @@ paths = [
   '''(^|/)app/\.next/.*''',
   # Zig test files (deterministic fixtures, not real credentials)
   '''(^|/).*_test\.zig$''',
+  # Shared test-fixture helpers (deterministic seeds, not real credentials)
+  '''(^|/)test_fixtures\.zig$''',
   # Zig build/cache directories
   '''(^|/)\.tmp/''',
   '''(^|/)zig-cache/''',

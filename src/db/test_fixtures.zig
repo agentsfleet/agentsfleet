@@ -164,6 +164,86 @@ pub fn teardownZombies(conn: *pg.Conn, workspace_id: []const u8) void {
     ) catch {};
 }
 
+// ── Provider + KEK fixtures ─────────────────────────────────────────────
+// Tests that exercise the worker write path now hit the resolver per event,
+// which needs a vault row reachable through `core.platform_llm_keys`. These
+// helpers set up the minimum config that lets `tenant_provider.resolveActive
+// Provider` succeed for the canonical TEST_TENANT_ID.
+
+const ENCRYPTION_KEY_HEX_TEST = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+const TEST_PROVIDER_NAME = "test_fireworks";
+const TEST_PROVIDER_API_KEY = "fw_test_stub_not_real";
+
+/// Set ENCRYPTION_MASTER_KEY in the process env so vault.storeJson /
+/// crypto_store.load can wrap/unwrap DEKs in tests. Idempotent; safe to
+/// call from every test that touches the vault.
+pub fn setTestEncryptionKey() void {
+    const c = @cImport(@cInclude("stdlib.h"));
+    var z: [65]u8 = undefined;
+    @memcpy(z[0..64], ENCRYPTION_KEY_HEX_TEST);
+    z[64] = 0;
+    _ = c.setenv("ENCRYPTION_MASTER_KEY", &z, 1);
+}
+
+/// Seed the minimum state for `tenant_provider.resolveActiveProvider` to
+/// succeed under platform mode for TEST_TENANT_ID, and provision the
+/// tenant_billing row with the starter grant. Calls `setTestEncryptionKey`
+/// up front. Idempotent (uses ON CONFLICT DO UPDATE / DO NOTHING).
+pub fn seedPlatformProvider(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+) !void {
+    setTestEncryptionKey();
+
+    const vault = @import("../state/vault.zig");
+    const tenant_billing = @import("../state/tenant_billing.zig");
+    const id_format = @import("../types/id_format.zig");
+    const model_rate_cache = @import("../state/model_rate_cache.zig");
+
+    // Populate the process-global model rate cache from core.model_caps so
+    // computeStageCharge() can resolve the platform default model. The
+    // production server boots this from serve.zig; integration tests don't
+    // hit that path. Use page_allocator: the cache is process-global and
+    // outlives any single test, so a per-test allocator would be flagged as
+    // leaked. populate() deinits any prior cache before reseating.
+    try model_rate_cache.populate(std.heap.page_allocator, conn);
+
+    // Vault credential at (workspace_id, TEST_PROVIDER_NAME).
+    var obj = std.json.ObjectMap.init(alloc);
+    defer obj.deinit();
+    try obj.put("provider", .{ .string = TEST_PROVIDER_NAME });
+    try obj.put("api_key", .{ .string = TEST_PROVIDER_API_KEY });
+    try vault.storeJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj }, 1);
+
+    // platform_llm_keys row pointing at the seeded vault credential.
+    const key_id = try id_format.generateZombieId(alloc);
+    defer alloc.free(key_id);
+    const now_ms: i64 = std.time.milliTimestamp();
+    _ = try conn.exec(
+        \\INSERT INTO core.platform_llm_keys (id, provider, source_workspace_id, active, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, true, $4, $4)
+        \\ON CONFLICT (provider) DO UPDATE
+        \\SET source_workspace_id = EXCLUDED.source_workspace_id,
+        \\    active = true,
+        \\    updated_at = EXCLUDED.updated_at
+    , .{ key_id, TEST_PROVIDER_NAME, workspace_id, now_ms });
+
+    // Starter grant — funds the receive + stage debits the writepath fires.
+    try tenant_billing.insertStarterGrant(conn, TEST_TENANT_ID);
+}
+
+/// Counterpart to seedPlatformProvider — drops the platform key + vault row
+/// for the workspace. Tenant_billing row is NOT touched here (some tests
+/// override balance_cents and want to control teardown explicitly).
+pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
+    _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE provider = $1", .{TEST_PROVIDER_NAME}) catch {};
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch {};
+    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch {};
+    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch {};
+}
+
 // ── Shared DB connection ────────────────────────────────────────────────
 
 /// Open a test DB connection. Returns null when TEST_DATABASE_URL / DATABASE_URL

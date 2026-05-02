@@ -78,7 +78,7 @@ fn skipIfHarnessDisabled() !void {
     } else |_| {}
 }
 
-test "integration: one processed event lands exactly 1 zombie_events + 1 telemetry + 1 zombie_sessions row" {
+test "integration: one processed event lands 1 zombie_events + 2 telemetry (receive+stage) + 1 zombie_sessions row" {
     try skipIfHarnessDisabled();
 
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
@@ -92,6 +92,8 @@ test "integration: one processed event lands exactly 1 zombie_events + 1 telemet
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, LC_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, LC_WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, LC_WORKSPACE_ID);
+    defer base.teardownPlatformProvider(db_ctx.conn, LC_WORKSPACE_ID);
     try base.seedZombie(db_ctx.conn, LC_ZOMBIE_ID, LC_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, LC_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, LC_SESSION_ID, LC_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
@@ -139,7 +141,7 @@ test "integration: one processed event lands exactly 1 zombie_events + 1 telemet
     try std.testing.expectEqual(@as(u32, 0), next_consec);
 
     try assertSingleProcessedRow(db_ctx.pool, LC_ZOMBIE_ID, evt.event_id);
-    try assertSingleTelemetryRow(db_ctx.pool, LC_ZOMBIE_ID, evt.event_id);
+    try assertReceiveAndStageTelemetryRows(db_ctx.pool, LC_ZOMBIE_ID, evt.event_id);
     try assertCheckpointedSession(db_ctx.pool, LC_ZOMBIE_ID);
 }
 
@@ -157,6 +159,8 @@ test "integration: replaying the same event_id twice does not duplicate any of t
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, RP_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, RP_WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, RP_WORKSPACE_ID);
+    defer base.teardownPlatformProvider(db_ctx.conn, RP_WORKSPACE_ID);
     try base.seedZombie(db_ctx.conn, RP_ZOMBIE_ID, RP_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, RP_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, RP_SESSION_ID, RP_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
@@ -219,7 +223,7 @@ test "integration: replaying the same event_id twice does not duplicate any of t
     _ = writepath.run(ALLOC, &session, &evt2, cfg, &consec2);
 
     try assertSingleProcessedRow(db_ctx.pool, RP_ZOMBIE_ID, evt1.event_id);
-    try assertSingleTelemetryRow(db_ctx.pool, RP_ZOMBIE_ID, evt1.event_id);
+    try assertReceiveAndStageTelemetryRows(db_ctx.pool, RP_ZOMBIE_ID, evt1.event_id);
     try assertCheckpointedSession(db_ctx.pool, RP_ZOMBIE_ID);
 }
 
@@ -240,17 +244,23 @@ fn assertSingleProcessedRow(pool: *pg.Pool, zombie_id: []const u8, event_id: []c
     try std.testing.expectEqualStrings("ok", try row.get([]const u8, 2));
 }
 
-fn assertSingleTelemetryRow(pool: *pg.Pool, zombie_id: []const u8, event_id: []const u8) !void {
+fn assertReceiveAndStageTelemetryRows(pool: *pg.Pool, zombie_id: []const u8, event_id: []const u8) !void {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    // zombie_execution_telemetry.zombie_id is TEXT — see schema/015.
+    // Two-debit model: each event lands one `receive` row + one `stage` row.
+    // UNIQUE (event_id, charge_type) keeps replays at exactly 2.
     var q = PgQuery.from(try conn.query(
-        \\SELECT count(*)::int FROM zombie_execution_telemetry
+        \\SELECT count(*)::int,
+        \\       count(*) FILTER (WHERE charge_type = 'receive')::int,
+        \\       count(*) FILTER (WHERE charge_type = 'stage')::int
+        \\FROM zombie_execution_telemetry
         \\WHERE zombie_id = $1 AND event_id = $2
     , .{ zombie_id, event_id }));
     defer q.deinit();
     const row = (try q.next()) orelse return error.RowNotFound;
-    try std.testing.expectEqual(@as(i32, 1), try row.get(i32, 0));
+    try std.testing.expectEqual(@as(i32, 2), try row.get(i32, 0));
+    try std.testing.expectEqual(@as(i32, 1), try row.get(i32, 1));
+    try std.testing.expectEqual(@as(i32, 1), try row.get(i32, 2));
 }
 
 fn assertCheckpointedSession(pool: *pg.Pool, zombie_id: []const u8) !void {

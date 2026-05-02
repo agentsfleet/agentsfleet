@@ -126,38 +126,8 @@ test "telemetry_row_deinit_frees_owned_slices_with_null_optionals" {
 }
 
 // ── Struct field presence (comptime) ────────────────────────────────────────
-// Proves ExecutionUsage and EventResult carry the latency/epoch fields. If a
-// future refactor removes them, these tests fail to compile — not just to run.
-
-test "execution_usage_has_time_to_first_token_ms_and_epoch_wall_time_ms" {
-    const metering = @import("../../../zombie/metering.zig");
-    const usage = metering.ExecutionUsage{
-        .zombie_id = "z",
-        .workspace_id = "w",
-        .event_id = "e",
-        .agent_seconds = 0,
-        .token_count = 0,
-        .time_to_first_token_ms = 870,
-        .epoch_wall_time_ms = 1712924400000,
-    };
-    try std.testing.expectEqual(@as(u64, 870), usage.time_to_first_token_ms);
-    try std.testing.expectEqual(@as(i64, 1712924400000), usage.epoch_wall_time_ms);
-}
-
-test "execution_usage_defaults_zero_ttft_and_zero_epoch_compile" {
-    const metering = @import("../../../zombie/metering.zig");
-    // Both fields added with zero-value semantics: TTFT=0 means executor did not report;
-    // epoch=0 means gate-blocked event (skipped by recordZombieDelivery).
-    _ = metering.ExecutionUsage{
-        .zombie_id = "",
-        .workspace_id = "",
-        .event_id = "",
-        .agent_seconds = 0,
-        .token_count = 0,
-        .time_to_first_token_ms = 0,
-        .epoch_wall_time_ms = 0,
-    };
-}
+// Proves EventResult carries the latency/epoch fields. If a future refactor
+// removes them, this test fails to compile — not just to run.
 
 test "event_result_has_time_to_first_token_ms_and_epoch_wall_time_ms" {
     const event_types = @import("../../../zombie/event_loop_types.zig");

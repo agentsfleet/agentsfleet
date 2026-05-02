@@ -9,20 +9,18 @@
 // lands when the NullClaw lifecycle hooks ship — until then the emitter
 // fires zero times and behaviour matches a one-shot startStage).
 //
-// The 13 steps follow the EXECUTE flow in docs/architecture/.
+// Row-level helpers (insert/blocked/terminal/checkpoint) live in
+// event_loop_writepath_rows.zig; tenant + provider resolution and the
+// approval gate dispatch live in event_loop_writepath_resolve.zig.
 
 const std = @import("std");
-const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_redis = @import("../queue/redis_client.zig");
-const executor_client = @import("../executor/client.zig");
 const executor_transport = @import("../executor/transport.zig");
 const progress_callbacks = @import("../executor/progress_callbacks.zig");
-const id_format = @import("../types/id_format.zig");
 
-const event_loop_gate = @import("event_loop_gate.zig");
 const event_loop_continuation = @import("event_loop_continuation.zig");
 const helpers = @import("event_loop_helpers.zig");
 const metering = @import("metering.zig");
@@ -30,25 +28,13 @@ const activity_publisher = @import("activity_publisher.zig");
 const obs_log = @import("../observability/logging.zig");
 const error_codes = @import("../errors/error_registry.zig");
 
+const rows = @import("event_loop_writepath_rows.zig");
+const resolve = @import("event_loop_writepath_resolve.zig");
 const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
 const EventLoopConfig = types.EventLoopConfig;
 
 const log = std.log.scoped(.zombie_event_loop);
-
-// ── failure_label values written to core.zombie_events on gate_blocked ──────
-
-const LABEL_BALANCE_EXHAUSTED = "balance_exhausted";
-const LABEL_APPROVAL_DENIED = "approval_denied";
-const LABEL_APPROVAL_TIMEOUT = "approval_timeout";
-const LABEL_APPROVAL_UNAVAILABLE = "approval_unavailable";
-const LABEL_AUTO_KILL_ANOMALY = "auto_kill_anomaly";
-const LABEL_AUTO_KILL_POLICY = "auto_kill_policy";
-
-const STATUS_PROCESSED = "processed";
-const STATUS_AGENT_ERROR = "agent_error";
-const STATUS_GATE_BLOCKED = "gate_blocked";
-
 
 // ── ProgressEmitter wiring → activity_publisher PUBLISH thunks ──────────────
 
@@ -98,159 +84,7 @@ fn emitProgress(ctx_ptr: *anyopaque, frame: progress_callbacks.ProgressFrame) vo
     }
 }
 
-// ── INSERT zombie_events (status=received) — idempotent on replay ───────────
-
-fn insertReceivedRow(
-    alloc: Allocator,
-    pool: *pg.Pool,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
-) !void {
-    const conn = try pool.acquire();
-    defer pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
-
-    // Continuation events carry parent event_id in request_json's
-    // `original_event_id` (§7); lift onto resumes_event_id for index walks.
-    var arena = std.heap.ArenaAllocator.init(alloc);
-    defer arena.deinit();
-    const resumes_event_id: ?[]const u8 = blk: {
-        if (!std.mem.eql(u8, event.event_type, "continuation")) break :blk null;
-        const parsed = std.json.parseFromSlice(std.json.Value, arena.allocator(), event.request_json, .{}) catch break :blk null;
-        if (parsed.value != .object) break :blk null;
-        const v = parsed.value.object.get("original_event_id") orelse break :blk null;
-        break :blk if (v == .string) v.string else null;
-    };
-
-    _ = try conn.exec(
-        \\INSERT INTO core.zombie_events
-        \\  (zombie_id, event_id, workspace_id, actor, event_type,
-        \\   status, request_json, resumes_event_id, created_at, updated_at)
-        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, 'received', $6::jsonb, $7, $8, $8)
-        \\ON CONFLICT (zombie_id, event_id) DO NOTHING
-    , .{
-        session.zombie_id,
-        event.event_id,
-        session.workspace_id,
-        event.actor,
-        event.event_type,
-        event.request_json,
-        resumes_event_id,
-        now_ms,
-    });
-}
-
-// ── UPDATE zombie_events status=gate_blocked + PUBLISH + XACK ───────────────
-
-fn markGateBlocked(
-    cfg: EventLoopConfig,
-    scratch: *activity_publisher.Scratch,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
-    failure_label: []const u8,
-) void {
-    const conn = cfg.pool.acquire() catch |err| {
-        log.warn("zombie_event_loop.gate_blocked_acquire_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
-        return;
-    };
-    defer cfg.pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
-    _ = conn.exec(
-        \\UPDATE core.zombie_events
-        \\SET status = 'gate_blocked', failure_label = $3, updated_at = $4
-        \\WHERE zombie_id = $1::uuid AND event_id = $2
-    , .{ session.zombie_id, event.event_id, failure_label, now_ms }) catch |err| {
-        log.warn("zombie_event_loop.gate_blocked_update_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
-    };
-    activity_publisher.publishEventComplete(cfg.redis_publish, scratch, session.zombie_id, event.event_id, STATUS_GATE_BLOCKED);
-    redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
-        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.gate_blocked_xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
-    };
-}
-
-// ── UPDATE zombie_events terminal (processed | agent_error) ─────────────────
-
-fn markTerminal(
-    pool: *pg.Pool,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
-    stage: *const executor_client.ExecutorClient.StageResult,
-    wall_ms: u64,
-) void {
-    const conn = pool.acquire() catch |err| {
-        log.warn("zombie_event_loop.terminal_acquire_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
-        return;
-    };
-    defer pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
-    const status_text: []const u8 = if (stage.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
-    _ = conn.exec(
-        \\UPDATE core.zombie_events
-        \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7
-        \\WHERE zombie_id = $1::uuid AND event_id = $2
-    , .{
-        session.zombie_id,
-        event.event_id,
-        status_text,
-        stage.content,
-        @as(i64, @intCast(stage.token_count)),
-        @as(i64, @intCast(wall_ms)),
-        now_ms,
-    }) catch |err| {
-        log.warn("zombie_event_loop.terminal_update_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
-    };
-}
-
-// ── UPSERT core.zombie_sessions (idle bookmark) ─────────────────────────────
-
-fn checkpointZombieSession(alloc: Allocator, pool: *pg.Pool, session: *const ZombieSession) !void {
-    const row_id = try id_format.generateZombieId(alloc);
-    defer alloc.free(row_id);
-    const now_ms = std.time.milliTimestamp();
-    const conn = try pool.acquire();
-    defer pool.release(conn);
-    _ = try conn.exec(
-        \\INSERT INTO core.zombie_sessions (id, zombie_id, context_json, checkpoint_at, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $4, $4)
-        \\ON CONFLICT (zombie_id) DO UPDATE
-        \\  SET context_json = EXCLUDED.context_json,
-        \\      checkpoint_at = EXCLUDED.checkpoint_at,
-        \\      updated_at = EXCLUDED.updated_at
-    , .{ row_id, session.zombie_id, session.context_json, now_ms });
-}
-
-// ── Gate composition ────────────────────────────────────────────────────────
-
-const GateOutcome = union(enum) {
-    passed: void,
-    blocked: []const u8, // failure_label
-};
-
-fn runGates(
-    alloc: Allocator,
-    cfg: EventLoopConfig,
-    session: *ZombieSession,
-    event: *const redis_zombie.ZombieEvent,
-) GateOutcome {
-    if (metering.shouldBlockDelivery(cfg.pool, alloc, session.workspace_id, session.zombie_id, cfg.balance_policy)) {
-        return .{ .blocked = LABEL_BALANCE_EXHAUSTED };
-    }
-    const gate = event_loop_gate.checkApprovalGate(alloc, session, event, cfg.pool, cfg.redis);
-    return switch (gate) {
-        .passed => .{ .passed = {} },
-        .blocked => |reason| .{ .blocked = switch (reason) {
-            .approval_denied => LABEL_APPROVAL_DENIED,
-            .timeout => LABEL_APPROVAL_TIMEOUT,
-            .unavailable => LABEL_APPROVAL_UNAVAILABLE,
-        } },
-        .auto_killed => |trigger| .{ .blocked = switch (trigger) {
-            .anomaly => LABEL_AUTO_KILL_ANOMALY,
-            .policy => LABEL_AUTO_KILL_POLICY,
-        } },
-    };
-}
-
-// ── Post-execution finalize: steps 9 → 13 ───────────────────────────────────
+// ── Post-execution finalize: steps 11 → 13 ──────────────────────────────────
 
 fn finalize(
     alloc: Allocator,
@@ -258,32 +92,36 @@ fn finalize(
     session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     cfg: EventLoopConfig,
-    stage_result: *const executor_client.ExecutorClient.StageResult,
+    stage_result: *const @import("../executor/client.zig").ExecutorClient.StageResult,
+    ctx: metering.PreflightContext,
+    tenant_id: []const u8,
     epoch_wall_time_ms: i64,
     wall_ms: u64,
 ) void {
-    markTerminal(cfg.pool, session, event, stage_result, wall_ms);
+    rows.markTerminal(cfg.pool, session, event, stage_result, wall_ms);
     event_loop_continuation.run(alloc, cfg, session, event, stage_result);
-    metering.recordZombieDelivery(
+    // The executor reports a single token_count (no input/output split yet);
+    // attribute it all to output, mirroring the legacy convention. When the
+    // executor surfaces the split, the call site here is the only place to
+    // update.
+    metering.recordStageActuals(
         cfg.pool,
         alloc,
-        session.workspace_id,
-        session.zombie_id,
-        event.event_id,
-        stage_result.wall_seconds,
+        tenant_id,
+        ctx,
+        0,
         stage_result.token_count,
-        stage_result.time_to_first_token_ms,
+        wall_ms,
         epoch_wall_time_ms,
-        cfg.balance_policy,
     );
     helpers.updateSessionContext(alloc, session, event.event_id, stage_result.content) catch |err| {
         log.warn("zombie_event_loop.context_update_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
     };
-    checkpointZombieSession(alloc, cfg.pool, session) catch |err| {
+    rows.checkpointZombieSession(alloc, cfg.pool, session) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
     };
     helpers.logDeliveryResult(cfg, alloc, session, event, stage_result, wall_ms);
-    const status_text: []const u8 = if (stage_result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
+    const status_text: []const u8 = if (stage_result.exit_ok) rows.STATUS_PROCESSED else rows.STATUS_AGENT_ERROR;
     activity_publisher.publishEventComplete(cfg.redis_publish, scratch, session.zombie_id, event.event_id, status_text);
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
         obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
@@ -292,8 +130,19 @@ fn finalize(
 
 // ── Orchestrator ────────────────────────────────────────────────────────────
 
-/// Drive a single event through the 13-step write path. Returns the new
-/// consecutive_errors count for the caller's loop.
+/// Drive a single event through the write path under the credit-pool model:
+///
+///   1. INSERT zombie_events status=received
+///   2. Resolve tenant + provider (dead-letter on user-fixable BYOK error)
+///   3. Balance gate (estimate = receive + stage at floor tokens)
+///   4. RECEIVE debit + telemetry (transactional)
+///   5. Approval gate
+///   6. STAGE debit + telemetry (transactional, conservative estimate)
+///   7. executor.startStage
+///   8. UPDATE stage telemetry tokens + wall_ms; UPDATE zombie_events terminal;
+///      checkpoint; PUBLISH event_complete; XACK
+///
+/// Returns the new consecutive_errors count for the caller's loop.
 pub fn run(
     alloc: Allocator,
     session: *ZombieSession,
@@ -301,7 +150,7 @@ pub fn run(
     cfg: EventLoopConfig,
     consecutive_errors: *u32,
 ) u32 {
-    insertReceivedRow(alloc, cfg.pool, session, event) catch |err| {
+    rows.insertReceivedRow(alloc, cfg.pool, session, event) catch |err| {
         obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.received_insert_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
         helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;
@@ -310,11 +159,75 @@ pub fn run(
     defer scratch.deinit();
     activity_publisher.publishEventReceived(cfg.redis_publish, &scratch, session.zombie_id, event.event_id, event.actor);
 
-    switch (runGates(alloc, cfg, session, event)) {
+    // Resolver: load tenant_id + posture/model/api_key. The api_key isn't
+    // consumed in this slice (executor still uses its own credential path),
+    // but we need posture + model for the cost functions.
+    var resolved_struct = switch (resolve.resolveTenantAndProvider(alloc, cfg, session, event.event_id)) {
+        .resolved => |pair| pair,
+        .dead_letter => |label| {
+            rows.markBlocked(cfg, &scratch, session, event, rows.STATUS_DEAD_LETTERED, label);
+            return 0;
+        },
+        .transient_err => {
+            helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
+            return consecutive_errors.* + 1;
+        },
+    };
+    defer alloc.free(resolved_struct.tenant_id);
+    defer resolved_struct.resolved.deinit(alloc);
+
+    const ctx = metering.PreflightContext{
+        .workspace_id = session.workspace_id,
+        .zombie_id = session.zombie_id,
+        .event_id = event.event_id,
+        .posture = resolved_struct.resolved.mode,
+        .model = resolved_struct.resolved.model,
+    };
+
+    if (!metering.balanceCoversEstimate(
+        cfg.pool,
+        alloc,
+        resolved_struct.tenant_id,
+        resolved_struct.resolved.mode,
+        resolved_struct.resolved.model,
+        cfg.balance_policy,
+    )) {
+        rows.markBlocked(cfg, &scratch, session, event, rows.STATUS_GATE_BLOCKED, rows.LABEL_BALANCE_EXHAUSTED);
+        return 0;
+    }
+
+    switch (metering.debitReceive(cfg.pool, alloc, resolved_struct.tenant_id, ctx, cfg.balance_policy)) {
+        .deducted => {},
+        .exhausted => {
+            rows.markBlocked(cfg, &scratch, session, event, rows.STATUS_GATE_BLOCKED, rows.LABEL_BALANCE_EXHAUSTED);
+            return 0;
+        },
+        .missing_tenant_billing, .db_error => {
+            helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
+            return consecutive_errors.* + 1;
+        },
+    }
+
+    switch (resolve.checkApprovalOnly(alloc, cfg, session, event)) {
         .passed => {},
         .blocked => |label| {
-            markGateBlocked(cfg, &scratch, session, event, label);
+            rows.markBlocked(cfg, &scratch, session, event, rows.STATUS_GATE_BLOCKED, label);
             return 0;
+        },
+    }
+
+    switch (metering.debitStage(cfg.pool, alloc, resolved_struct.tenant_id, ctx, cfg.balance_policy)) {
+        .deducted => {},
+        .exhausted => {
+            // Per design: receive cents are NOT refunded on a stage-side
+            // exhaust. The receive row stays committed; the event is
+            // gate_blocked at the stage step.
+            rows.markBlocked(cfg, &scratch, session, event, rows.STATUS_GATE_BLOCKED, rows.LABEL_BALANCE_EXHAUSTED);
+            return 0;
+        },
+        .missing_tenant_billing, .db_error => {
+            helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
+            return consecutive_errors.* + 1;
         },
     }
 
@@ -343,6 +256,6 @@ pub fn run(
         break :blk now.since(s) / std.time.ns_per_ms;
     } else 0;
 
-    finalize(alloc, &scratch, session, event, cfg, &stage_result, epoch_wall_time_ms, wall_ms);
+    finalize(alloc, &scratch, session, event, cfg, &stage_result, ctx, resolved_struct.tenant_id, epoch_wall_time_ms, wall_ms);
     return 0;
 }

@@ -1,8 +1,8 @@
-// Integration tests for event_loop_writepath.run — the 13-step processEvent body.
+// Integration tests for event_loop_writepath.run.
 //
-// Slice 4c lands the gate-blocked happy path coverage that does not require an
-// executor harness. Approval-gate / executor-streaming end-to-end tests live
-// in slice 11 once the executor harness lands.
+// Covers the gate-blocked happy path that does not require an executor
+// harness. Approval-gate / executor-streaming end-to-end tests run with the
+// live executor harness elsewhere.
 //
 // Requires LIVE_DB=1 + a reachable Redis. Skipped when either is missing.
 
@@ -18,6 +18,7 @@ const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const EventEnvelope = @import("event_envelope.zig");
 const balance_policy_mod = @import("../config/balance_policy.zig");
+const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -46,25 +47,25 @@ fn deleteZombieEventsRows(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
 }
 
-fn setBalanceExhausted(conn: *pg.Conn, exhausted_at_ms: i64) !void {
+fn provisionEmptyBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
         \\  (tenant_id, plan_tier, plan_sku, balance_cents, grant_source,
-        \\   balance_exhausted_at, created_at, updated_at)
-        \\VALUES ($1::uuid, 'free', 'free.v1', 0, 'test', $2, 0, 0)
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, 'free', 'free.v1', 0, 'test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
-        \\  SET balance_exhausted_at = EXCLUDED.balance_exhausted_at,
-        \\      balance_cents = EXCLUDED.balance_cents
-    , .{ base.TEST_TENANT_ID, exhausted_at_ms });
+        \\  SET balance_cents = 0,
+        \\      balance_exhausted_at = NULL
+    , .{base.TEST_TENANT_ID});
 }
 
 fn clearTenantBilling(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{base.TEST_TENANT_ID}) catch {};
 }
 
-// ── Balance-exhausted gate: writepath must mark gate_blocked + XACK ─────────
+// ── Balance-gate: writepath must mark gate_blocked + XACK when balance < est_total ─
 
-test "integration: writepath.run on balance-exhausted tenant writes gate_blocked row + xacks" {
+test "integration: writepath.run with empty balance writes gate_blocked row + xacks" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -80,7 +81,9 @@ test "integration: writepath.run on balance-exhausted tenant writes gate_blocked
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, "{}");
 
-    try setBalanceExhausted(db_ctx.conn, std.time.milliTimestamp());
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID);
+    defer base.teardownPlatformProvider(db_ctx.conn, TEST_WORKSPACE_ID);
+    try provisionEmptyBalance(db_ctx.conn);
     defer clearTenantBilling(db_ctx.conn);
 
     deleteEventStream(&redis);
