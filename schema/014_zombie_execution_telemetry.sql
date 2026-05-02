@@ -1,21 +1,27 @@
--- M18_001: Per-delivery execution telemetry store.
--- One row per zombie event delivery, keyed on event_id (UNIQUE — idempotent on replay).
--- Non-billing: credit audit remains in workspace_credit_audit; this table is for
--- latency and token observability accessible via customer and operator APIs.
+-- Per-event execution telemetry. Two rows per event under the credit-pool
+-- billing model (charge_type ∈ {receive, stage}); UNIQUE (event_id, charge_type).
+-- The receive row is INSERTed at gate-pass; the stage row is INSERTed before
+-- startStage and UPDATEd post-execution with token counts and wall_ms.
+--
+-- Value constraints on `charge_type` and `posture` are enforced in application
+-- code via constants in src/state/tenant_provider.zig and
+-- src/state/zombie_telemetry_store.zig — RULE STS forbids static-string CHECKs.
 
 CREATE TABLE zombie_execution_telemetry (
-    id                       TEXT        NOT NULL PRIMARY KEY,
-    zombie_id                TEXT        NOT NULL,
-    workspace_id             TEXT        NOT NULL,
-    event_id                 TEXT        NOT NULL,
-    token_count              BIGINT      NOT NULL DEFAULT 0,
-    time_to_first_token_ms   BIGINT      NOT NULL DEFAULT 0,
-    epoch_wall_time_ms       BIGINT      NOT NULL DEFAULT 0,
-    wall_seconds             BIGINT      NOT NULL DEFAULT 0,
-    plan_tier                TEXT        NOT NULL DEFAULT 'free',
-    credit_deducted_cents    BIGINT      NOT NULL DEFAULT 0,
-    recorded_at              BIGINT      NOT NULL,
-    CONSTRAINT uq_telemetry_event_id UNIQUE (event_id)
+    id                       TEXT   NOT NULL PRIMARY KEY,
+    tenant_id                UUID   NOT NULL,
+    workspace_id             TEXT   NOT NULL,
+    zombie_id                TEXT   NOT NULL,
+    event_id                 TEXT   NOT NULL,
+    charge_type              TEXT   NOT NULL,
+    posture                  TEXT   NOT NULL,
+    model                    TEXT   NOT NULL,
+    credit_deducted_cents    BIGINT NOT NULL DEFAULT 0,
+    token_count_input        BIGINT NULL,
+    token_count_output       BIGINT NULL,
+    wall_ms                  BIGINT NULL,
+    recorded_at              BIGINT NOT NULL,
+    CONSTRAINT uq_telemetry_event_charge UNIQUE (event_id, charge_type)
 );
 
 -- Customer query: workspace + zombie, newest-first (cursor pagination).
@@ -30,7 +36,13 @@ CREATE INDEX idx_telemetry_workspace_time
 CREATE INDEX idx_telemetry_zombie
     ON zombie_execution_telemetry (zombie_id, recorded_at DESC);
 
--- api_runtime: customer + operator read endpoints (SELECT), metering INSERT from HTTP path.
-GRANT SELECT, INSERT ON zombie_execution_telemetry TO api_runtime;
--- worker_runtime: event-loop metering writes.
-GRANT INSERT ON zombie_execution_telemetry TO worker_runtime;
+-- Tenant-scoped Usage tab query: GET /v1/tenants/me/billing/usage.
+CREATE INDEX idx_telemetry_tenant_time
+    ON zombie_execution_telemetry (tenant_id, recorded_at DESC);
+
+-- api_runtime: customer + operator + tenant Usage read endpoints (SELECT),
+-- metering INSERT from HTTP path.
+GRANT SELECT, INSERT, UPDATE ON zombie_execution_telemetry TO api_runtime;
+-- worker_runtime: event-loop metering writes (receive INSERT pre-stage,
+-- stage INSERT pre-execution, stage UPDATE post-execution).
+GRANT INSERT, UPDATE ON zombie_execution_telemetry TO worker_runtime;

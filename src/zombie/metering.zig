@@ -17,6 +17,7 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
 const tenant_billing = @import("../state/tenant_billing.zig");
+const tenant_provider = @import("../state/tenant_provider.zig");
 const zombie_telemetry_store = @import("../state/zombie_telemetry_store.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
 const trace = @import("../observability/trace.zig");
@@ -146,16 +147,27 @@ pub fn recordZombieDelivery(
     }
     if (epoch_wall_time_ms == 0) return;
 
+    // wall_ms in the new schema is the agent's processing duration in ms
+    // (post-execution stage telemetry). The receive row is added by the
+    // event-loop debit path; this site writes only the stage row.
+    const wall_ms_capped: u64 = @min(agent_seconds, std.math.maxInt(i64) / 1000) * 1000;
+    const tok_capped: i64 = @intCast(@min(token_count, @as(u64, @intCast(std.math.maxInt(i64)))));
     zombie_telemetry_store.insertTelemetry(conn, alloc, .{
-        .zombie_id = zombie_id,
+        .tenant_id = tenant_id,
         .workspace_id = workspace_id,
+        .zombie_id = zombie_id,
         .event_id = event_id,
-        .token_count = token_count,
-        .time_to_first_token_ms = time_to_first_token_ms,
-        .epoch_wall_time_ms = epoch_wall_time_ms,
-        .wall_seconds = agent_seconds,
-        .plan_tier = plan_tier.label(),
+        .charge_type = .stage,
+        .posture = .platform,
+        .model = tenant_provider.PLATFORM_DEFAULT_MODEL,
         .credit_deducted_cents = deducted_cents,
+        // Pre-resolver: executor doesn't yet split input/output. Charge the
+        // entire token_count to output as a conservative estimate for now;
+        // the resolver path arrives in the next slice and will provide the
+        // real input/output split via updateStageTokens.
+        .token_count_input = 0,
+        .token_count_output = tok_capped,
+        .wall_ms = @intCast(wall_ms_capped),
         .recorded_at = std.time.milliTimestamp(),
     }) catch |err| {
         log.warn("metering.telemetry_insert_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
