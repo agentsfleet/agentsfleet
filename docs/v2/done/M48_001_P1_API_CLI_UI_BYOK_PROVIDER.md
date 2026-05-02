@@ -4,7 +4,7 @@
 **Milestone:** M48
 **Workstream:** 001
 **Date:** May 01, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without user-controlled LLM provider config and a clean credit-based billing model, the launch tweet's BYOK claim is hollow and the differentiation argument collapses.
 **Categories:** API, CLI, UI, SCHEMA, BILLING
 **Batch:** B1 — substrate-tier alongside M40-M45.
@@ -471,11 +471,11 @@ Audit grep across event log, worker logs, executor logs, telemetry rows, and HTT
 
 ## Implementation slices
 
-### §1 — Schema migration (`schema/0NN_tenant_providers.sql`)
+### §1 — Schema migration (`schema/020_tenant_providers.sql`) — DONE
 
 Full `core.tenant_providers` SQL above. Register in `schema/embed.zig` and `src/cmd/common.zig` migration array. Pre-v2.0.0 teardown-rebuild semantics per Schema Table Removal Guard — no `ALTER`/`DROP` migrations, no slot-marker files.
 
-### §2 — Resolver (`src/state/tenant_provider.zig` — NEW)
+### §2 — Resolver (`src/state/tenant_provider.zig` — NEW) — DONE
 
 **Vault scope (workspace-keyed; pre-v2.0 bridge).** `vault.secrets` is keyed by `(workspace_id, key_name)` — that's what M45 shipped, and reworking it is out of M48 scope. Wherever this spec writes `vault.loadJson(tenant_id, name)` for narrative clarity (Scenario B, the resolver pseudocode below, etc.), the actual call signature is `vault.loadJson(alloc, conn, ws_id, name)` where `ws_id` comes from `tenant_provider_resolver.resolvePrimaryWorkspace(tenant_id)`. That helper picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the common v2.0 case) work transparently. Multi-workspace tenants implicitly pin **all** BYOK credentials to the earliest-named workspace; if a tenant ever needs per-workspace credential isolation, fully tenant-keyed vault is the post-v2.0 path. Until then, the bridge is the contract — documented here so future readers don't trip on the discrepancy. (Implementation landed in commit `78b6d3d4`.)
 
@@ -489,7 +489,7 @@ Exports:
 
 Resolves platform default by joining `core.platform_llm_keys` → admin workspace `vault.secrets` (per the M11_006 design and the playbook in `playbooks/012_usezombie_admin_bootstrap/`). The platform default **model + cap** are hardcoded constants in this module (per RULE UFS, declared once — at v2.0: `accounts/fireworks/models/kimi-k2.6` + `256000`). The platform default **api_key** is fetched on-demand from the admin tenant's vault, the same M45 path used for any user's BYOK; no api_key constant exists in code. If `platform_llm_keys` has no active row OR the admin's vault row is missing, the resolver returns `error.PlatformKeyMissing` (an operator-side incident, surfaced via dead-letter on the next event — not a user-recoverable error).
 
-### §3 — Cost functions and debit wiring
+### §3 — Cost functions and debit wiring — DONE
 
 **`src/state/tenant_billing.zig` (EDIT):**
 - Add `Posture` enum + the constants above.
@@ -506,11 +506,11 @@ Resolves platform default by joining `core.platform_llm_keys` → admin workspac
 
 **`schema/zombie_execution_telemetry.sql`:** schema change — drop the existing UNIQUE on `event_id` (if present) and replace with UNIQUE on `(event_id, charge_type)`. Add `charge_type TEXT NOT NULL`. Pre-v2.0.0 teardown-rebuild: the existing telemetry table file is rewritten in place; old data is wiped on rebuild.
 
-### §4 — Doctor extension (`src/http/handlers/doctor.zig` — EDIT)
+### §4 — Doctor extension (`src/http/handlers/doctor.zig` — EDIT) — DONE
 
 Add `tenant_provider` block to the JSON response. Calls `resolveActiveProvider`, strips `api_key`, returns the rest. On resolver failure (`CredentialMissing`, `CredentialDataMalformed`), surfaces `tenant_provider: { mode: "byok", error: "credential_missing", credential_ref: "<name>", … }` so the install-skill can detect the broken state.
 
-### §5 — HTTP API (`src/http/handlers/tenants/provider.zig` — NEW)
+### §5 — HTTP API (`src/http/handlers/tenant_provider.zig` — NEW) — DONE
 
 ```
 GET    /v1/tenants/me/provider
@@ -534,7 +534,7 @@ The handler does NOT make a synthetic call to the LLM provider. Auth-validity su
 
 **Note on plan-tier rejection.** The credit-pool model has no plan-tier code path, so there is no `byok_requires_paid_plan` 403 (which earlier drafts proposed). Any tenant with credits can flip to BYOK; default-platform-managed and BYOK both run through the same `processEvent` and the same `compute_*_charge` functions. They differ in drain rate, not in eligibility. "Free" is not a tier — it's just "the user hasn't exhausted the $10 starter grant yet."
 
-### §6 — CLI: `tenant provider {get|set|reset}` (`zombiectl/src/commands/tenant.js` + `provider.js` — NEW)
+### §6 — CLI: `tenant provider {get|set|reset}` (`zombiectl/src/commands/tenant.js` + `tenant_provider.js` — NEW) — DONE
 
 ```bash
 zombiectl tenant provider get
@@ -621,7 +621,7 @@ New components:
 
 Use design-system primitives per the UI Component Substitution Gate. No design-system primitive exists for the disabled-with-tooltip Purchase button pattern → compose from `Button` + `Tooltip` (no new primitive).
 
-### §10 — Worker overlay integration (`src/zombie/event_loop_helpers.zig` — EDIT)
+### §10 — Worker overlay integration (two-debit metering in `src/zombie/metering.zig`) — DONE
 
 Per the worker overlay table above. The same edit that wires the two debit points (§3) also wires:
 1. Read frontmatter `model` and `context_cap_tokens`.
@@ -667,7 +667,7 @@ Two changes in this repo:
 
 The endpoint stays public-but-unguessable. **Pricing visibility caveat:** the per-model rates are now in the public-but-unguessable response. Anyone who finds the URL can read platform margins. Acknowledged-controversial trade-off: the alternative (auth-required pricing endpoint) breaks the "hot, unauthenticated, cacheable" property that lets `tenant provider set` resolve at low latency without a tenant token. We accept the trade-off and revisit if a competitor uses the data strategically.
 
-### §12 — Workspace `/credentials/llm` route removal
+### §12 — Workspace `/credentials/llm` route removal — DONE
 
 Pre-v2.0.0 cleanup. The `PUT|GET|DELETE /v1/workspaces/{ws}/credentials/llm` route exists in `main` but has zero runtime consumers (verified by grep across `src/zombie/`, `src/executor/`, `src/state/` — only the vault module references it, in comments). It was a write surface that was never wired to a resolver. RULE NLG forbids leaving it in place pre-v2.0.0.
 
@@ -686,7 +686,7 @@ Migration cleanup: a one-line `DELETE FROM core.vault WHERE name='llm' AND tenan
 
 Comment scrubs: `src/state/vault.zig:10` and `src/zombie/credential_key.zig:9` reference "BYOK provider record (`llm`)" — update to "BYOK provider records (user-named)".
 
-### §13 — Provider catalog (`samples/fixtures/m48-provider-fixtures.json` — NEW)
+### §13 — Provider catalog (`samples/fixtures/m48-provider-fixtures.json` — NEW) — DONE
 
 ```json
 {
