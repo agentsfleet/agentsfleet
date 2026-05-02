@@ -25,7 +25,6 @@ const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_doctor_h = @import("handlers/tenant_doctor.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const ws_ops = @import("handlers/workspaces/ops.zig");
-const ws_creds = @import("handlers/workspaces/credentials.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
 const webhooks = @import("handlers/webhooks/zombie.zig");
 const approval = @import("handlers/webhooks/approval.zig");
@@ -136,16 +135,6 @@ pub fn invokeTenantProvider(hx: *Hx, req: *httpz.Request, route: router.Route) v
         .GET => tenant_provider_h.innerGetTenantProvider(hx.*, req),
         .PUT => tenant_provider_h.innerPutTenantProvider(hx.*, req),
         .DELETE => tenant_provider_h.innerDeleteTenantProvider(hx.*, req),
-        else => common.respondMethodNotAllowed(hx.res),
-    }
-}
-
-pub fn invokeWorkspaceLlmCredential(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const workspace_id = route.workspace_llm_credential;
-    switch (req.method) {
-        .PUT => ws_creds.innerPutWorkspaceLlmCredential(hx.*, req, workspace_id),
-        .DELETE => ws_creds.innerDeleteWorkspaceLlmCredential(hx.*, req, workspace_id),
-        .GET => ws_creds.innerGetWorkspaceLlmCredential(hx.*, req, workspace_id),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

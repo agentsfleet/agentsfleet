@@ -20,7 +20,6 @@ const RESERVED_SVIX = "svix";
 const RESERVED_CLERK = "clerk";
 const RESERVED_APPROVAL = "approval";
 const RESERVED_GRANT_APPROVAL = "grant-approval";
-const RESERVED_LLM = "llm";
 
 const APPROVAL_ACTION_APPROVE = ":approve";
 const APPROVAL_ACTION_DENY = ":deny";
@@ -129,16 +128,7 @@ pub fn matchWorkspaceSuffix(p: Path, suffix: []const u8) ?[]const u8 {
     return p.param(1);
 }
 
-// ── /workspaces/{ws}/credentials/llm  (BYOK reserved) ──────────────────────
-
-pub fn matchWorkspaceLlmCredential(p: Path) ?[]const u8 {
-    if (p.segs.len != 4) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "credentials")) return null;
-    if (!p.eq(3, RESERVED_LLM)) return null;
-    return p.param(1);
-}
-
-// ── /workspaces/{ws}/credentials/{name}  (name != "llm") ───────────────────
+// ── /workspaces/{ws}/credentials/{name} ────────────────────────────────────
 
 pub const WorkspaceCredentialRoute = struct {
     workspace_id: []const u8,
@@ -148,7 +138,6 @@ pub const WorkspaceCredentialRoute = struct {
 pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
     if (p.segs.len != 4) return null;
     if (!p.eq(0, "workspaces") or !p.eq(2, "credentials")) return null;
-    if (p.eq(3, RESERVED_LLM)) return null;
     const ws = p.param(1) orelse return null;
     const name = p.param(3) orelse return null;
     return .{ .workspace_id = ws, .credential_name = name };

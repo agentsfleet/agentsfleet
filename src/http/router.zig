@@ -58,8 +58,6 @@ pub const Route = union(enum) {
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
-    // Workspace BYOK LLM credentials
-    workspace_llm_credential: []const u8, // PUT|DELETE|GET /v1/workspaces/{id}/credentials/llm
     // Zombie CRUD + activity + credentials (workspace-scoped)
     workspace_zombies: []const u8, // GET|POST /v1/workspaces/{ws}/zombies
     patch_workspace_zombie: matchers.WorkspaceZombieRoute, // PATCH /v1/workspaces/{ws}/zombies/{id} (config_json + status:killed)
@@ -167,7 +165,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     }
 
     // ── Workspace + leaf ──────────────────────────────────────────────────
-    if (matchers.matchWorkspaceLlmCredential(p)) |ws_id| return .{ .workspace_llm_credential = ws_id };
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .delete_workspace_credential = r };
     if (matchers.matchWorkspaceAgentDelete(p)) |r| return .{ .delete_agent_key = r };
     if (matchers.matchWorkspaceZombie(p)) |r| return .{ .patch_workspace_zombie = r };
@@ -237,18 +234,6 @@ test "match resolves admin platform key routes" {
     );
     try std.testing.expect(match("/v1/admin/platform-keys/a/b", .GET) == null);
     try std.testing.expect(match("/v1/admin/platform-keys/", .GET) == null);
-}
-
-test "match resolves workspace LLM credential route" {
-    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        ws_id,
-        switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials/llm", .GET).?) {
-            .workspace_llm_credential => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm", .GET) == null);
 }
 
 // ── route tests ───────────────────────────────────────────────────────────────

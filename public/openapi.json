@@ -2148,7 +2148,7 @@
       "delete": {
         "operationId": "delete_workspace_credential",
         "summary": "Delete a credential from the workspace vault",
-        "description": "Idempotent — returns 204 whether or not the credential existed. The\nreserved name `llm` is **not** routed here; use the BYOK\n`DELETE /v1/workspaces/{workspace_id}/credentials/llm` path instead.\n",
+        "description": "Idempotent — returns 204 whether or not the credential existed.\n",
         "tags": [
           "Credentials"
         ],
@@ -2167,7 +2167,7 @@
             "name": "credential_name",
             "in": "path",
             "required": true,
-            "description": "Credential name. Cannot be `llm` (reserved for BYOK).",
+            "description": "Credential name.",
             "schema": {
               "type": "string",
               "maxLength": 64
@@ -2185,142 +2185,6 @@
             "$ref": "#/components/responses/Error"
           },
           "403": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}/credentials/llm": {
-      "put": {
-        "operationId": "put_llm_credential",
-        "summary": "Set LLM credential",
-        "description": "Stores or replaces the BYOK LLM API key for a workspace. The key is encrypted at rest and never returned in API responses.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "provider",
-                  "api_key"
-                ],
-                "properties": {
-                  "provider": {
-                    "type": "string",
-                    "description": "LLM provider name (e.g. openai, anthropic)"
-                  },
-                  "api_key": {
-                    "type": "string",
-                    "description": "API key for the provider — encrypted at rest, never echoed"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": "Credential stored"
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "get": {
-        "operationId": "get_llm_credential",
-        "summary": "Get LLM credential status",
-        "description": "Returns whether a BYOK LLM key is configured for the workspace and which provider it belongs to. Never returns the actual key.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Credential status",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "provider",
-                    "has_key",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "provider": {
-                      "type": "string",
-                      "description": "Configured LLM provider name"
-                    },
-                    "has_key": {
-                      "type": "boolean",
-                      "description": "True if an API key is stored"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      },
-      "delete": {
-        "operationId": "delete_llm_credential",
-        "summary": "Delete LLM credential",
-        "description": "Removes the stored BYOK LLM API key for the workspace. Future runs will fall back to platform-provided keys if available.",
-        "tags": [
-          "Credentials"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Credential deleted"
-          },
-          "default": {
             "$ref": "#/components/responses/Error"
           }
         }

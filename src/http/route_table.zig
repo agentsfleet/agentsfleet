@@ -58,7 +58,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
         .get_tenant_doctor => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantDoctor },
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
-        .workspace_llm_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceLlmCredential },
 
         // Admin platform keys (admin role required)
         .admin_platform_keys => .{ .middlewares = registry.admin(), .invoke = invoke.invokeAdminPlatformKeys },
@@ -154,7 +153,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.internal_telemetry, &reg) != null);
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);
     try testing.expect(specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg) != null);
-    try testing.expect(specFor(.{ .workspace_llm_credential = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_svix_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.clerk_webhook, &reg) != null);
