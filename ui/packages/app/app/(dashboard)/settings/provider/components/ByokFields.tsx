@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Alert, Input, Label } from "@usezombie/design-system";
+import {
+  Alert,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@usezombie/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
 
 export type ByokFieldsProps = {
@@ -53,17 +62,20 @@ export default function ByokFields({
             </span>
           </Alert>
         ) : (
-          <select
-            id="credential-ref"
-            name="credential_ref"
-            value={credentialRef}
-            onChange={(e) => onCredentialRefChange(e.target.value)}
-            className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition-colors duration-200 ease-out focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {credentials.map((c) => (
-              <option key={c.name} value={c.name}>{c.name}</option>
-            ))}
-          </select>
+          <>
+            <Select value={credentialRef} onValueChange={onCredentialRefChange}>
+              <SelectTrigger id="credential-ref" aria-label="Credential">
+                <SelectValue placeholder="Select a credential" />
+              </SelectTrigger>
+              <SelectContent>
+                {credentials.map((c) => (
+                  <SelectItem key={c.name} value={c.name}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
         )}
       </div>
 

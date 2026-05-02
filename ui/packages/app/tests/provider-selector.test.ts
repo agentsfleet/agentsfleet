@@ -101,11 +101,11 @@ describe("ByokFields", () => {
     expect(link.getAttribute("data-workspace-id")).toBe(WORKSPACE_ID);
   });
 
-  it("renders a select with one option per credential", () => {
+  it("renders a credential combobox showing the current value", () => {
     render(React.createElement(ByokFields, baseProps));
-    const select = screen.getByLabelText(/credential/i) as HTMLSelectElement;
-    expect(select.value).toBe(CRED.name);
-    expect(select.options.length).toBe(1);
+    const trigger = screen.getByLabelText(/credential/i);
+    expect(trigger.getAttribute("role")).toBe("combobox");
+    expect(trigger.textContent).toContain(CRED.name);
   });
 
   it("propagates credential and model edits to the parent", () => {
@@ -119,7 +119,12 @@ describe("ByokFields", () => {
         onModelOverrideChange: onModel,
       }),
     );
-    fireEvent.change(screen.getByLabelText(/credential/i), { target: { value: "anth" } });
+    const trigger = screen.getByLabelText(/credential/i);
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    const anth = screen.getByText("anth");
+    fireEvent.click(anth);
     expect(onCred).toHaveBeenCalledWith("anth");
     fireEvent.change(screen.getByLabelText(/model override/i), { target: { value: "claude-sonnet-4-6" } });
     expect(onModel).toHaveBeenCalledWith("claude-sonnet-4-6");
