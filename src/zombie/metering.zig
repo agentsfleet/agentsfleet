@@ -132,7 +132,7 @@ pub fn recordZombieDelivery(
             break :blk 0;
         },
         .missing_tenant_billing => blk: {
-            log.err("metering.missing_tenant_billing zombie_id={s} tenant_id={s} workspace_id={s} — tenant_billing.provisionFreeDefault was never called for this tenant", .{ zombie_id, tenant_id, workspace_id });
+            log.err("metering.missing_tenant_billing zombie_id={s} tenant_id={s} workspace_id={s} — tenant_billing.insertStarterGrant was never called for this tenant", .{ zombie_id, tenant_id, workspace_id });
             break :blk 0;
         },
         .db_error => blk: {

@@ -155,7 +155,7 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
         try std.testing.expectEqualSlices(u8, "free", try row.get([]const u8, 0));
         try std.testing.expectEqualSlices(u8, "free_default", try row.get([]const u8, 1));
         try std.testing.expectEqual(@as(i64, 1000), try row.get(i64, 2));
-        try std.testing.expectEqualSlices(u8, "bootstrap_free_grant", try row.get([]const u8, 3));
+        try std.testing.expectEqualSlices(u8, "bootstrap_starter_grant", try row.get([]const u8, 3));
     }
 }
 

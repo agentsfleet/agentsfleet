@@ -172,7 +172,7 @@ pub fn bootstrapTransaction(
     );
     errdefer alloc.free(workspace_name);
 
-    try tenant_billing.provisionFreeDefault(conn, tenant_id);
+    try tenant_billing.insertStarterGrant(conn, tenant_id);
 
     _ = try conn.exec("COMMIT", .{});
     tx_open = false;

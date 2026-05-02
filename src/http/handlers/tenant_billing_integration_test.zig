@@ -90,7 +90,7 @@ test "integration(m11_006): shouldBlockDelivery returns true only when policy=st
     try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
     defer teardown(db_ctx.conn, TEST_TENANT_ID);
 
-    try tenant_billing.provisionFreeDefault(db_ctx.conn, TEST_TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
 
     // Not yet exhausted — stop policy must NOT block.
     try std.testing.expect(!metering.shouldBlockDelivery(
@@ -211,7 +211,7 @@ test "integration(m11_006): concurrent markExhausted calls — exactly one trans
     const now_ms = std.time.milliTimestamp();
     {
         try seedTenantAndWorkspace(db_ctx.conn, TEST_TENANT_ID, now_ms);
-        try tenant_billing.provisionFreeDefault(db_ctx.conn, TEST_TENANT_ID);
+        try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
     }
     defer {
         teardown(db_ctx.conn, TEST_TENANT_ID);

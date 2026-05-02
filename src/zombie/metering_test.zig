@@ -76,7 +76,7 @@ test "free-tier deduction decrements tenant balance" {
     try uc1.seed(db_ctx.conn, WS_DEDUCTED);
     defer uc1.teardown(db_ctx.conn, WS_DEDUCTED);
 
-    try tenant_billing.provisionFreeDefault(db_ctx.conn, uc1.TENANT_ID);
+    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     const result = metering.deductZombieUsage(db_ctx.conn, uc1.TENANT_ID, .{
         .zombie_id = "z",

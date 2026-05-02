@@ -32,7 +32,7 @@ const WS_TEL_IDEMPOTENT = "0195b4ba-8d3a-7f13-8abc-aa1800000004";
 /// the epoch-guard behavior under test.
 fn seedTelemetryWorkspace(conn: *pg.Conn, ws_id: []const u8) !void {
     try uc1.seed(conn, ws_id);
-    try tenant_billing.provisionFreeDefault(conn, uc1.TENANT_ID);
+    try tenant_billing.insertStarterGrant(conn, uc1.TENANT_ID);
 }
 
 fn teardownTelemetryWorkspace(conn: *pg.Conn, ws_id: []const u8) void {

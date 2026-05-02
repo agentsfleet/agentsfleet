@@ -20,6 +20,7 @@ const serve_args = @import("serve_args.zig");
 const pg = @import("pg");
 const approval_gate_sweeper = @import("../zombie/approval_gate_sweeper.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
+const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const log = std.log.scoped(.zombied);
 
@@ -136,6 +137,21 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     const migrate_on_start = preflight.parseMigrateOnStart(alloc) catch std.process.exit(1);
     preflight.checkMigrations(api_pool, migrate_on_start) catch std.process.exit(1);
+
+    log.info("startup.model_rate_cache status=start", .{});
+    {
+        const cache_conn = api_pool.acquire() catch |err| {
+            log.err("startup.model_rate_cache status=fail err={s}", .{@errorName(err)});
+            std.process.exit(1);
+        };
+        defer api_pool.release(cache_conn);
+        model_rate_cache.populate(alloc, cache_conn) catch |err| {
+            log.err("startup.model_rate_cache status=fail err={s}", .{@errorName(err)});
+            std.process.exit(1);
+        };
+    }
+    defer model_rate_cache.deinit();
+    log.info("startup.model_rate_cache status=ok", .{});
 
     _ = preflight.prepareCacheRoot(alloc, serve_cfg.cache_root, "startup");
 
