@@ -12,7 +12,14 @@
 //! Provider hosting is encoded in the model_id itself
 //! (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot;
 //! `claude-*` is Anthropic; etc.). The catalogue does not carry a provider
-//! column — operators pick provider via their `llm` credential body.
+//! column — tenants pick provider via a user-named credential body and
+//! `tenant provider set --credential <name>`.
+//!
+//! Per-token rates (input_cents_per_mtok / output_cents_per_mtok) accompany
+//! each cap row. Rates are charged only under platform-managed posture; BYOK
+//! pays a flat overhead and is billed by the tenant's own provider account.
+//! Models that are BYOK-only at the platform tier carry zero rates; those
+//! zeros never enter the cost path because BYOK uses the flat overhead.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -36,6 +43,8 @@ pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/model-caps.json"
 const ModelCap = struct {
     id: []const u8,
     context_cap_tokens: i32,
+    input_cents_per_mtok: i32,
+    output_cents_per_mtok: i32,
 };
 
 const ResponseBody = struct {
@@ -45,13 +54,17 @@ const ResponseBody = struct {
 
 /// SELECT clause shared by both list-all and filter-by-model paths.
 const SELECT_ALL =
-    \\SELECT model_id, context_cap_tokens, updated_at_ms
+    \\SELECT model_id, context_cap_tokens,
+    \\       input_cents_per_mtok, output_cents_per_mtok,
+    \\       updated_at_ms
     \\  FROM core.model_caps
     \\ ORDER BY model_id
 ;
 
 const SELECT_ONE =
-    \\SELECT model_id, context_cap_tokens, updated_at_ms
+    \\SELECT model_id, context_cap_tokens,
+    \\       input_cents_per_mtok, output_cents_per_mtok,
+    \\       updated_at_ms
     \\  FROM core.model_caps
     \\ WHERE model_id = $1
 ;
@@ -100,21 +113,13 @@ fn buildResponse(
         var q = PgQuery.from(try conn.query(SELECT_ONE, .{m}));
         defer q.deinit();
         while (try q.next()) |row| {
-            const id = try alloc.dupe(u8, try row.get([]const u8, 0));
-            const cap = try row.get(i32, 1);
-            const updated = try row.get(i64, 2);
-            try models.append(alloc, .{ .id = id, .context_cap_tokens = cap });
-            if (updated > max_updated_ms) max_updated_ms = updated;
+            try appendRow(alloc, &models, &max_updated_ms, row);
         }
     } else {
         var q = PgQuery.from(try conn.query(SELECT_ALL, .{}));
         defer q.deinit();
         while (try q.next()) |row| {
-            const id = try alloc.dupe(u8, try row.get([]const u8, 0));
-            const cap = try row.get(i32, 1);
-            const updated = try row.get(i64, 2);
-            try models.append(alloc, .{ .id = id, .context_cap_tokens = cap });
-            if (updated > max_updated_ms) max_updated_ms = updated;
+            try appendRow(alloc, &models, &max_updated_ms, row);
         }
     }
 
@@ -123,6 +128,26 @@ fn buildResponse(
         .version = version,
         .models = try models.toOwnedSlice(alloc),
     };
+}
+
+fn appendRow(
+    alloc: std.mem.Allocator,
+    models: *std.ArrayList(ModelCap),
+    max_updated_ms: *i64,
+    row: anytype,
+) !void {
+    const id = try alloc.dupe(u8, try row.get([]const u8, 0));
+    const cap = try row.get(i32, 1);
+    const in_rate = try row.get(i32, 2);
+    const out_rate = try row.get(i32, 3);
+    const updated = try row.get(i64, 4);
+    try models.append(alloc, .{
+        .id = id,
+        .context_cap_tokens = cap,
+        .input_cents_per_mtok = in_rate,
+        .output_cents_per_mtok = out_rate,
+    });
+    if (updated > max_updated_ms.*) max_updated_ms.* = updated;
 }
 
 /// Format the maximum updated_at_ms as YYYY-MM-DD (UTC). Empty result set

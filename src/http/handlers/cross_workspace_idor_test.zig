@@ -1,11 +1,11 @@
-// Cross-workspace IDOR integration tests — M24_001.
+// Cross-workspace IDOR integration tests.
 //
 // Every workspace-scoped handler must reject requests whose path workspace_id
 // or zombie_id points to a different tenant's data. `authorizeWorkspace` guards
 // the principal→workspace edge; `common.getZombieWorkspaceId` guards the
 // workspace→zombie edge. These tests exercise both edges via HTTP.
 //
-// Coverage matrix (steer endpoint is covered by T1.4 in
+// Coverage matrix (steer endpoint is covered separately in
 // zombie_steer_http_integration_test.zig; not duplicated here):
 //
 //   | Endpoint                                                | Expected |
@@ -70,6 +70,15 @@ const HttpResp = struct {
     }
 };
 
+// Listen-thread status. Set by serverThread on listen() error so the main
+// thread can distinguish a recoverable port race from a real failure.
+//   0 = running (or not started)
+//   1 = listen failed with AddressInUse — retry with a new port
+//   2 = listen failed with some other error — surface to the caller
+const LISTEN_OK: u8 = 0;
+const LISTEN_ADDRESS_IN_USE: u8 = 1;
+const LISTEN_OTHER_ERR: u8 = 2;
+
 const TestServer = struct {
     pool: *pg.Pool,
     session_store: auth_sessions.SessionStore,
@@ -82,6 +91,7 @@ const TestServer = struct {
     server: *http_server.Server,
     thread: std.Thread,
     port: u16,
+    listen_status: std.atomic.Value(u8) = std.atomic.Value(u8).init(LISTEN_OK),
 
     fn deinit(self: *TestServer) void {
         self.server.stop();
@@ -94,8 +104,12 @@ const TestServer = struct {
     }
 };
 
-fn serverThread(srv: *http_server.Server) void {
-    srv.listen() catch |e| std.debug.panic("idor test server: {s}", .{@errorName(e)});
+fn serverThread(srv: *TestServer) void {
+    srv.server.listen() catch |e| {
+        const code: u8 = if (e == error.AddressInUse) LISTEN_ADDRESS_IN_USE else LISTEN_OTHER_ERR;
+        srv.listen_status.store(code, .seq_cst);
+        std.log.warn("idor test server listen failed: {s}", .{@errorName(e)});
+    };
 }
 
 fn seedTestData(conn: *pg.Conn) !void {
@@ -132,11 +146,58 @@ fn cleanupTestData(conn: *pg.Conn) void {
     _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch {};
 }
 
+// Bind/spawn/healthz attempts before we give up. The TOCTOU window between
+// `test_port.allocFreePort` (which closes the probe socket) and httpz's bind
+// can lose the port to another process. SO_REUSEADDR is set on both ends but
+// doesn't help when a different socket is already actively bound. We just
+// pick a fresh port and try again.
+const PORT_RETRY_ATTEMPTS: usize = 5;
+
+fn bindAndWaitReady(alloc: std.mem.Allocator, srv: *TestServer) !void {
+    var attempt: usize = 0;
+    while (attempt < PORT_RETRY_ATTEMPTS) : (attempt += 1) {
+        srv.port = try test_port.allocFreePort();
+        srv.listen_status = std.atomic.Value(u8).init(LISTEN_OK);
+        srv.server = try http_server.Server.init(&srv.ctx, &srv.registry, .{ .port = srv.port, .threads = 1, .workers = 1, .max_clients = 64 });
+        srv.thread = try std.Thread.spawn(.{}, serverThread, .{srv});
+
+        const health_url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/healthz", .{srv.port});
+        defer alloc.free(health_url);
+        var i: usize = 0;
+        while (i < 40) : (i += 1) {
+            switch (srv.listen_status.load(.seq_cst)) {
+                LISTEN_ADDRESS_IN_USE => break, // retry with a fresh port
+                LISTEN_OTHER_ERR => return error.ListenFailed,
+                else => {},
+            }
+            const r = sendReq(alloc, health_url, .GET, null, null) catch { std.Thread.sleep(25_000_000); continue; };
+            defer r.deinit(alloc);
+            if (r.status == 200) return;
+            std.Thread.sleep(25_000_000);
+        }
+
+        // Either the port was lost to a race, or the server never came up.
+        // Tear down this attempt's server+thread cleanly. listen() returns once
+        // stop() is invoked, so the join completes regardless of which path
+        // fired (AddressInUse early-exit, real OtherErr, or healthz timeout).
+        srv.server.stop();
+        srv.thread.join();
+        srv.server.deinit();
+
+        if (srv.listen_status.load(.seq_cst) != LISTEN_ADDRESS_IN_USE) {
+            // Healthz never returned 200 but listen didn't fail with
+            // AddressInUse — surface the timeout, don't loop on a real bug.
+            return error.ConnectionTimedOut;
+        }
+        // AddressInUse — fall through and retry with a new port.
+    }
+    return error.PortRetriesExhausted;
+}
+
 fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     const db_ctx = (try common.openHandlerTestConn(alloc)) orelse return error.SkipZigTest;
     try seedTestData(db_ctx.conn);
     db_ctx.pool.release(db_ctx.conn);
-    const port = try test_port.allocFreePort();
     const srv = try alloc.create(TestServer);
     srv.* = TestServer{
         .pool = db_ctx.pool,
@@ -147,7 +208,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .telemetry = undefined,
         .server = undefined,
         .thread = undefined,
-        .port = port,
+        .port = 0,
     };
     srv.telemetry = telemetry_mod.Telemetry.initTest();
     srv.ctx.telemetry = &srv.telemetry;
@@ -166,19 +227,8 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .webhook_hmac_mw = .{ .secret = "" },
     };
     srv.registry.initChains();
-    srv.server = try http_server.Server.init(&srv.ctx, &srv.registry, .{ .port = port, .threads = 1, .workers = 1, .max_clients = 64 });
-    srv.thread = try std.Thread.spawn(.{}, serverThread, .{srv.server});
-    errdefer { srv.server.stop(); srv.thread.join(); srv.server.deinit(); }
-    const health_url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}/healthz", .{port});
-    defer alloc.free(health_url);
-    var i: usize = 0;
-    while (i < 40) : (i += 1) {
-        const r = sendReq(alloc, health_url, .GET, null, null) catch { std.Thread.sleep(25_000_000); continue; };
-        defer r.deinit(alloc);
-        if (r.status == 200) return srv;
-        std.Thread.sleep(25_000_000);
-    }
-    return error.ConnectionTimedOut;
+    try bindAndWaitReady(alloc, srv);
+    return srv;
 }
 
 fn sendReq(alloc: std.mem.Allocator, url: []const u8, method: std.http.Method, token: ?[]const u8, body: ?[]const u8) !HttpResp {
@@ -213,7 +263,7 @@ fn urlJoin(alloc: std.mem.Allocator, port: u16, comptime path_fmt: []const u8, a
 
 // ── IDOR Tests ────────────────────────────────────────────────────────────
 
-test "M24_001 IDOR: GET /workspaces/{foreign}/zombies returns 403" {
+test "IDOR: GET /workspaces/{foreign}/zombies returns 403" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -250,7 +300,7 @@ test "IDOR: PATCH /workspaces/{my}/zombies/{foreign} status=killed returns 404" 
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }
 
-test "M24_001 IDOR: GET /workspaces/{my}/zombies/{foreign}/activity returns 404" {
+test "IDOR: GET /workspaces/{my}/zombies/{foreign}/activity returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -267,7 +317,7 @@ test "M24_001 IDOR: GET /workspaces/{my}/zombies/{foreign}/activity returns 404"
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }
 
-test "M24_001 IDOR: GET /workspaces/{foreign}/credentials returns 403" {
+test "IDOR: GET /workspaces/{foreign}/credentials returns 403" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -283,7 +333,7 @@ test "M24_001 IDOR: GET /workspaces/{foreign}/credentials returns 403" {
     try std.testing.expectEqual(@as(u16, 403), r.status);
 }
 
-test "M24_001 IDOR: GET /workspaces/{my}/zombies/{foreign}/integration-grants returns 404" {
+test "IDOR: GET /workspaces/{my}/zombies/{foreign}/integration-grants returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -299,7 +349,7 @@ test "M24_001 IDOR: GET /workspaces/{my}/zombies/{foreign}/integration-grants re
     try std.testing.expectEqual(@as(u16, 404), r.status);
 }
 
-test "M24_001 IDOR: DELETE /workspaces/{my}/zombies/{foreign}/integration-grants/{g} returns 404" {
+test "IDOR: DELETE /workspaces/{my}/zombies/{foreign}/integration-grants/{g} returns 404" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -317,7 +367,7 @@ test "M24_001 IDOR: DELETE /workspaces/{my}/zombies/{foreign}/integration-grants
 
 // ── getZombieWorkspaceId orelse branch — nonexistent zombie ────────────────
 
-test "M24_001 IDOR: GET activity for nonexistent zombie returns 404 (getZombieWorkspaceId orelse branch)" {
+test "IDOR: GET activity for nonexistent zombie returns 404 (getZombieWorkspaceId orelse branch)" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -337,7 +387,7 @@ test "M24_001 IDOR: GET activity for nonexistent zombie returns 404 (getZombieWo
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// M26_001: REST conventions — envelope shape, method enforcement, 204 body.
+// REST conventions — envelope shape, method enforcement, 204 body.
 // Added to this file because it shares TestServer + operator JWT + cleanup.
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -357,7 +407,7 @@ fn bodyHasTopLevelKey(body: []const u8, key: []const u8) bool {
     return std.mem.indexOf(u8, body, needle) != null;
 }
 
-test "M26_001 envelope: GET /workspaces/{my}/zombies body has items+total, no zombies key" {
+test "envelope: GET /workspaces/{my}/zombies body has items+total, no zombies key" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -377,7 +427,7 @@ test "M26_001 envelope: GET /workspaces/{my}/zombies body has items+total, no zo
     try std.testing.expect(!bodyHasTopLevelKey(r.body, "zombies"));
 }
 
-test "M26_001 envelope: GET /workspaces/{my}/agent-keys body has items+total, no agents key" {
+test "envelope: GET /workspaces/{my}/agent-keys body has items+total, no agents key" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -414,7 +464,7 @@ test "memories: GET with malformed zombie_id in path returns 400" {
     try std.testing.expectEqual(@as(u16, 400), r.status);
 }
 
-test "M26_001 no-content: DELETE agent-key returns 204 with empty body" {
+test "no-content: DELETE agent-key returns 204 with empty body" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -452,12 +502,12 @@ test "M26_001 no-content: DELETE agent-key returns 204 with empty body" {
     const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);
     defer r.deinit(ALLOC);
     try std.testing.expectEqual(@as(u16, 204), r.status);
-    // RFC 9110 §6.4.5: 204 responses MUST NOT include a message body.
+    // RFC 9110 section 6.4.5: 204 responses MUST NOT include a message body.
     try std.testing.expectEqual(@as(usize, 0), r.body.len);
 }
 
 
-test "M26_001 no-content: DELETE integration-grant returns 204 with empty body" {
+test "no-content: DELETE integration-grant returns 204 with empty body" {
     const srv = try startTestServer(ALLOC);
     defer {
         if (srv.pool.acquire()) |c| { cleanupTestData(c); srv.pool.release(c); } else |_| {}
@@ -495,7 +545,7 @@ test "M26_001 no-content: DELETE integration-grant returns 204 with empty body" 
     const r = try sendReq(ALLOC, url, .DELETE, TOKEN_OPERATOR, null);
     defer r.deinit(ALLOC);
     try std.testing.expectEqual(@as(u16, 204), r.status);
-    // RFC 9110 §6.4.5: 204 MUST NOT include a message body.
+    // RFC 9110 section 6.4.5: 204 MUST NOT include a message body.
     try std.testing.expectEqual(@as(usize, 0), r.body.len);
 }
 

@@ -1,4 +1,4 @@
-//! Invoke functions for the M18_002 route table.
+//! Invoke functions for the route table.
 //!
 //! One `pub fn invokeXxx` per Route variant. Each function:
 //!   1. Checks the HTTP method and writes 405 if wrong.
@@ -22,8 +22,9 @@ const zombie_tel = @import("handlers/zombies/telemetry.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
+const tenant_doctor_h = @import("handlers/tenant_doctor.zig");
+const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const ws_ops = @import("handlers/workspaces/ops.zig");
-const ws_creds = @import("handlers/workspaces/credentials.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
 const webhooks = @import("handlers/webhooks/zombie.zig");
 const approval = @import("handlers/webhooks/approval.zig");
@@ -116,18 +117,30 @@ pub fn invokeGetTenantBilling(hx: *Hx, req: *httpz.Request, route: router.Route)
     tenant_billing_h.innerGetTenantBilling(hx.*, req);
 }
 
+pub fn invokeGetTenantBillingCharges(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    tenant_billing_h.innerGetTenantBillingCharges(hx.*, req);
+}
+
 pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
     tenant_workspaces_h.innerListTenantWorkspaces(hx.*, req);
 }
 
-pub fn invokeWorkspaceLlmCredential(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    const workspace_id = route.workspace_llm_credential;
+pub fn invokeGetTenantDoctor(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    tenant_doctor_h.innerGetTenantDoctor(hx.*, req);
+}
+
+pub fn invokeTenantProvider(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
     switch (req.method) {
-        .PUT => ws_creds.innerPutWorkspaceLlmCredential(hx.*, req, workspace_id),
-        .DELETE => ws_creds.innerDeleteWorkspaceLlmCredential(hx.*, req, workspace_id),
-        .GET => ws_creds.innerGetWorkspaceLlmCredential(hx.*, req, workspace_id),
+        .GET => tenant_provider_h.innerGetTenantProvider(hx.*, req),
+        .PUT => tenant_provider_h.innerPutTenantProvider(hx.*, req),
+        .DELETE => tenant_provider_h.innerDeleteTenantProvider(hx.*, req),
         else => common.respondMethodNotAllowed(hx.res),
     }
 }

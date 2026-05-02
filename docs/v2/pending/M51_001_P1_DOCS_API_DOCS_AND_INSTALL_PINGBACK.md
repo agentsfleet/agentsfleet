@@ -5,10 +5,10 @@
 **Workstream:** 001
 **Date:** Apr 25, 2026
 **Status:** PENDING
-**Priority:** P1 — packaging-blocking. The launch tweet links to `docs.usezombie.com/quickstart/platform-ops`; if it 404s or shows stale homelab-zombie content, the launch lands flat. The install-pingback is what gives us the Day-N install metric without DM-polling Twitter.
+**Priority:** P1 — packaging-blocking. The launch tweet links to `docs.usezombie.com/quickstart/platform-ops`; if it 404s or shows stale homelab-zombie content, the launch lands flat. The optional install pingback is what gives us the Day-N install metric without DM-polling Twitter.
 **Categories:** DOCS, API
 **Batch:** B3 — depends on all other v2 substrate + packaging being shippable. Final milestone before launch.
-**Branch:** feat/m51-docs-and-pingback (to be created)
+**Branch:** TBD
 **Depends on:** M40-M49 (substrate + packaging — cross-reference pass walks every shipped spec). Nothing structural for the pingback endpoint itself.
 **Folded in:** M50 (architecture cross-reference + post-launch reflection) — formerly a separate spec, merged here Apr 25, 2026 because the docs workstream owns documentation drift, M50 was meta-work without independent user value, and consolidating reduces milestone count.
 
@@ -20,11 +20,11 @@
 
 The /quickstart/platform-ops walkthrough and the /privacy/cli-telemetry doc both touch surfaces that the M43 webhook review pinned. Three reinforcements:
 
-**D1 — Quickstart step 6 wording.** The current draft (§2 step 6: "Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.") matches the post-M43 design. Concretize the URL: the user pastes `https://api.usezombie.com/v1/webhooks/{zombie_id}`. The secret is the value the install-skill (M49) generated and showed once during install — not stored anywhere user-visible after that moment. The doc explicitly says: "Lost the secret? Run `zombiectl credential set github --data='{\"webhook_secret\":\"<new-S>\", ...}'` to rotate (upsert)."
+**D1 — Quickstart step 6 wording.** The current draft (§2 step 6: "Set up the GH webhook: copy the URL + secret the skill emits, paste into the GH repo's webhook settings.") matches the post-M43 design. Concretize the URL: the user pastes `https://api.usezombie.com/v1/webhooks/{zombie_id}`. The secret is the value the install-skill (M49) generated and showed once during install — not stored anywhere user-visible after that moment. The doc explicitly says: "Lost the secret? Rotate the workspace `github` credential with `zombiectl credential set github --data @-` and pipe the JSON on stdin."
 
 **D2 — Workspace-scoped webhook credential.** The quickstart must show that one operator at one workspace pastes the same secret into N repo webhook configs (one per zombie covering N repos). This is the actually-simple operator UX that the workspace-credential design unlocks; the doc should say so plainly. Tradeoff (also document): rotation is workspace-wide; rotating affects every zombie in the workspace.
 
-**D3 — Privacy doc /privacy/cli-telemetry stays unchanged.** Webhook secrets are not telemetry. The pingback endpoint collects only `{install_id, skill, skill_version, os, ts}`. No webhook URL, no secret bytes, no zombie_id. Verify in the audit acceptance criterion (already present at line 277).
+**D3 — Privacy doc /privacy/cli-telemetry stays unchanged.** Webhook secrets are not telemetry. The pingback endpoint collects only `{install_id, skill, skill_version, os, ts}` and is optional / best-effort. No webhook URL, no secret bytes, no zombie_id. Verify in the audit acceptance criterion (already present at line 277).
 
 No file additions or removals from §M51 §Files Changed table.
 
@@ -36,7 +36,7 @@ No file additions or removals from §M51 §Files Changed table.
 2. `docs/architecture/` (this repo) — the canonical reference; the docs site is the user-facing version of relevant sections.
 3. M49's spec (sibling) for the install-skill flow — `/quickstart/platform-ops` walks through this.
 4. Vercel / Cloudflare project configs (whichever hosts docs.usezombie.com today) — know how the site deploys.
-5. Existing privacy doc patterns — Turso, Resend, PlanetScale all have CLI telemetry privacy pages worth mirroring for tone.
+5. Existing privacy / telemetry doc patterns from other developer tools. During execution, re-check current public docs from comparable players (Turso, Resend, PlanetScale, Homebrew, and `gstack`) for tone and opt-out clarity before writing our `/privacy/cli-telemetry` page. Mirror the best parts, not their data collection breadth.
 
 ---
 
@@ -48,17 +48,17 @@ No file additions or removals from §M51 §Files Changed table.
 2. **`/quickstart/platform-ops`** — single page walking through `/usezombie-install-platform-ops` (same name in every host) from agent installation through first Slack post. Includes screenshots and a short screen recording.
 3. **`/skills`** — describes the `usezombie-*` skill family (`usezombie-install-platform-ops` for now; future `usezombie-steer`, `usezombie-doctor`) and the single install procedure: drop the SKILL.md directory into the host's skills folder or fetch via `usezombie.sh`.
 4. **`/concepts/context-lifecycle`** — user-facing version of §11 in architecture/. Includes the L1+L2+L3 ASCII diagram and the override table.
-5. **`/privacy/cli-telemetry`** — privacy contract for the install-pingback (what we collect, what we don't, opt-out flag).
+5. **`/privacy/cli-telemetry`** — privacy contract for the optional install pingback (what we collect, what we don't, opt-out flag).
 
-Plus: `POST https://api.usezombie.com/v1/skills/install-pingback` is live, accepting anonymous install events from the install-skill (M49). Returns 204 No Content. Daily aggregates visible in an internal dashboard.
+Plus: `POST https://api.usezombie.com/v1/skills/install-pingback` is live, accepting anonymous, optional install events from the install-skill (M49). Returns 204 No Content. Daily aggregates visible in an internal dashboard.
 
 **Plus (folded from M50):** `docs/architecture/` cross-referenced against shipped specs and updated with a §14 ship reflection. Every `(M{N})` mention in the architecture doc points at a real spec in `docs/v2/done/`. §14 captures what shipped vs planned, what surprised us, what was deferred.
 
 **Launch-tweet copy freeze:** 48h before ship date, the launch tweet copy + landing-page hero + first-screenshot are signed off against the architecture doc's §0 differentiation pillars. Catches the moment the tweet drifts from the substrate truth (e.g., accidentally claims self-host).
 
-**Problem:** The current docs site (`~/Projects/docs/`) still talks about homelab-zombie and a kubectl-first narrative that no longer ships. If the launch tweet links to it, readers see a contradiction with the tweet's claim. There's also no install metric — Day-50 validation depends on knowing if anyone installed. Separately, the architecture doc was rewritten BEFORE substrate shipped; predictions in it (e.g., "M43 owns webhook ingest") are guesses until reconciled.
+**Problem:** The current docs site (`~/Projects/docs/`) still talks about homelab-zombie and a kubectl-first narrative that no longer ships. If the launch tweet links to it, readers see a contradiction with the tweet's claim. There's also no install metric — Day-50 validation depends on knowing if anyone installed, but the metric must be privacy-preserving and optional. Separately, the architecture doc was rewritten BEFORE substrate shipped; predictions in it (e.g., "M43 owns webhook ingest") are guesses until reconciled.
 
-**Solution summary:** Three parallel deliverables. (1) Docs site rewrite — positioning + 5 new pages, deprecate stale ones. (2) Server-side install-pingback endpoint that the install-skill POSTs to anonymously after a successful install. Privacy-first: anonymized install ID (random UUID stored locally, not user/repo identity), skill version, timestamp, OS family. No repo names, no email, no token, no IP retention beyond aggregation. (3) Architecture cross-reference + §14 ship reflection — keeps the canonical doc honest post-ship.
+**Solution summary:** Three parallel deliverables. (1) Docs site rewrite — positioning + 5 new pages, deprecate stale ones. (2) Server-side install-pingback endpoint that the install-skill POSTs to anonymously after a successful install unless the user opted out. Privacy-first: anonymized install ID (random UUID stored locally, not user/repo identity), skill version, timestamp, OS family. No repo names, no email, no token, no IP retention beyond abuse control. (3) Architecture cross-reference + §14 ship reflection — keeps the canonical doc honest post-ship.
 
 ---
 
@@ -82,6 +82,9 @@ Plus: `POST https://api.usezombie.com/v1/skills/install-pingback` is live, accep
 | `src/http/handlers/skills/install_pingback.zig` | NEW | The pingback endpoint |
 | `src/http/router.zig` | EXTEND | Wire `/v1/skills/install-pingback` |
 | `src/state/install_metrics.zig` | NEW | Aggregation: count by day, skill version, OS family |
+| `schema/0NN_install_pingbacks.sql` | NEW | Anonymous install telemetry table |
+| `schema/embed.zig` | EXTEND | Register install-pingback schema |
+| `src/cmd/common.zig` | EXTEND | Register migration |
 | `tests/integration/install_pingback_test.zig` | NEW | E2E: POST → 204; aggregation increments |
 
 > **Cross-repo PR**: docs site changes are in a different repo (`~/Projects/docs/`). Coordinate the merge timing with the main repo's launch.
@@ -168,14 +171,16 @@ Output: a one-line note per spec in §14 — either "matches plan" or "deviated:
 
 ### §5 — `/privacy/cli-telemetry`
 
-Privacy contract for the pingback. Mirror Turso / Resend tone — direct, no legalese. Cover:
+Privacy contract for the optional install pingback. Before drafting, review current public telemetry/privacy pages from comparable developer tools (Turso, Resend, PlanetScale, Homebrew, and `gstack`) and copy the directness, opt-out clarity, and small-data posture where applicable. Cover:
 
 - What we collect: anonymous install ID (random UUID, stored locally), skill version, timestamp, OS family (`darwin`, `linux`, `windows-wsl`, etc.).
 - What we don't: repo names, file paths, email, IP (we discard after aggregation), Slack channel, credential identifiers.
-- How to opt out: `gstack-config set usezombie_telemetry off` (or skill-equivalent flag — define in M49's prose).
+- How to opt out before install: `gstack-config set usezombie_telemetry off` (or skill-equivalent flag — define in M49's prose). The install still succeeds when telemetry is off.
 - How to delete: tell us; we wipe by anonymous install ID.
 
 ### §6 — Install-pingback endpoint
+
+**What pingback means.** Pingback is anonymous install telemetry, not webhook delivery and not customer runtime data. After `/usezombie-install-platform-ops` finishes a successful local install, the installer makes a best-effort POST saying, "one install happened for this skill version on this operating system." It does not include the user's repo, email, webhook URL, zombie ID, Slack channel, credential names, or secret bytes. The product use is launch validation: we can see whether people actually installed the skill without asking them to DM screenshots.
 
 `POST /v1/skills/install-pingback` (note: under `/v1/skills`, not `/v1/workspaces` — anonymous, no auth):
 
@@ -192,9 +197,9 @@ body:
 → 400 if body schema invalid
 ```
 
-Server: insert into `core.install_pingbacks` table (date-bucketed, no PII columns). IP discarded after `INSERT`.
+Server: validate a closed JSON schema, derive `day_utc` from `ts`, insert into `core.install_pingbacks` (date-bucketed, no PII columns), then discard request IP after edge-rate-limit enforcement. The handler does not write request headers, source IP, user agent, repo path, or raw body to application logs.
 
-> **Implementation default:** rate-limit to 1 request per `install_id` per day (idempotent). Multiple installs from the same anonymous user count as 1 unique install per day.
+> **Implementation default:** dedupe to 1 request per `(install_id, skill, day_utc)`. Add edge abuse controls because the endpoint is anonymous: body size cap, `skill` allowlist, `skill_version` length/pattern bound, `ts` skew bound, per-IP edge rate limit, and a server-side daily aggregate cap. Multiple installs from the same anonymous user count as 1 unique install per day.
 
 ### §7 — Aggregation + dashboard
 
@@ -245,6 +250,7 @@ Internal queries (admin-only):
 |------|-------|----------|
 | Pingback POST blocked by user firewall | Air-gapped env | Skill's pingback call has 5s timeout; on fail, silently continues (telemetry is best-effort) |
 | Schema-invalid POST | Skill bug or attacker | 400; no insert |
+| Anonymous endpoint abuse | Scanner or script posts random install IDs | Edge IP rate limit + body cap + allowlisted skill names + bounded timestamp skew; dedupe still returns 204 for repeats |
 | Duplicate `install_id` for same skill+day | Re-running skill | Silent dedupe (UNIQUE constraint); endpoint returns 204 either way |
 | Docs page 404 from launch tweet link | Page not deployed yet | Verify: launch only proceeds after `curl https://docs.usezombie.com/quickstart/platform-ops` returns 200 |
 
@@ -265,6 +271,7 @@ Internal queries (admin-only):
 |------|---------|
 | `test_pingback_happy_path` | POST valid body → 204; row in `core.install_pingbacks` |
 | `test_pingback_invalid_body` | POST with extra fields like `email` → 400; no insert |
+| `test_pingback_abuse_bounds` | Oversized body, unknown skill, malformed version, and timestamp outside allowed skew → 400 or edge rejection; no insert |
 | `test_pingback_dedupe_same_day` | Same install_id+skill+day twice → 204 both times; 1 row in DB |
 | `test_pingback_no_pii_in_logs` | Mock logger; POST → grep logs for the install_id and skill_version → only intended fields appear (no IP/headers logged) |
 | `test_quickstart_page_renders` | Build docs site → assert /quickstart/platform-ops/index.html exists with non-empty body |
@@ -283,14 +290,15 @@ Internal queries (admin-only):
 
 ## Acceptance Criteria
 
-- [ ] All 15 tests pass (10 site/pingback + 5 architecture cross-reference, folded from M50)
+- [ ] All 16 tests pass (11 site/pingback + 5 architecture cross-reference, folded from M50)
 - [ ] `docs.usezombie.com` deploys cleanly with the 4 new v2 pages live (quickstart, skills, concepts/context-lifecycle, privacy/cli-telemetry)
 - [ ] `/self-host` returns 404 — no v2 stub for the v3 feature
 - [ ] Hero copy reflects new positioning (3 pillars: OSS + BYOK + markdown-defined); old homelab references gone
-- [ ] `POST /v1/skills/install-pingback` accepting traffic in production
+- [ ] `POST /v1/skills/install-pingback` accepting optional telemetry in production
 - [ ] Privacy doc reviewed; matches what's actually collected (audit)
 - [ ] Internal `/admin/installs` dashboard shows the first install (Customer Zero) on Day 0
 - [ ] Manual: Customer Zero re-runs the install skill on a fresh laptop → pingback fires → row in DB → opt-out flag works
+- [ ] Privacy wording reviewed against current telemetry docs from comparable developer tools; final page explains optionality and opt-out before the first pingback
 - [ ] **Architecture cross-reference pass complete** (folded from M50): every `M{N}` reference in `docs/architecture/` verified against `docs/v2/done/`
 - [ ] **§14 Ship Reflection added** with real evidence (launch date, first external install, URLs, first real diagnosis)
 - [ ] **Cold-read smoke test done** on `docs/architecture/`; resulting clarity fixes applied

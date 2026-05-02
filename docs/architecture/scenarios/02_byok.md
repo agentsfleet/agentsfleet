@@ -48,11 +48,9 @@ flowchart LR
 John runs two CLI commands. He picks the credential name himself — `account-fireworks-byok` — so his vault list is self-documenting.
 
 ```bash
-zombiectl credential set account-fireworks-byok --data '{
-  "provider": "fireworks",
-  "api_key":  "fw_LIVE_xxxxxxxxxxxxxxxx",
-  "model":    "accounts/fireworks/models/kimi-k2.6"
-}'
+op read 'op://<vault>/fireworks/api_key' |
+  jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+  zombiectl credential set account-fireworks-byok --data @-
 
 zombiectl tenant provider set --credential account-fireworks-byok
 ```
@@ -173,11 +171,9 @@ This is the verbatim end-to-end CLI experience for the BYOK setup, model switch,
 ### 6.1 Initial setup
 
 ```text
-$ zombiectl credential set account-fireworks-byok --data '{
-    "provider": "fireworks",
-    "api_key":  "fw_LIVE_xxxxxxxxxxxxxxxx",
-    "model":    "accounts/fireworks/models/kimi-k2.6"
-  }'
+$ op read 'op://<vault>/fireworks/api_key' |
+    jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
+    zombiectl credential set account-fireworks-byok --data @-
 ✓ Credential `account-fireworks-byok` stored in vault for tenant tnt_01HX9P…
 
 $ zombiectl tenant provider set --credential account-fireworks-byok
@@ -227,11 +223,9 @@ The api_key bytes are absent from both surfaces — `doctor --json` strips it be
 A month later John wants to try DeepSeek V4 Pro on the same Fireworks account. He updates the credential body and re-runs `tenant provider set`:
 
 ```text
-$ zombiectl credential set account-fireworks-byok --data '{
-    "provider": "fireworks",
-    "api_key":  "fw_LIVE_xxxxxxxxxxxxxxxx",
-    "model":    "accounts/fireworks/models/deepseek-v4-pro"
-  }'
+$ op read 'op://<vault>/fireworks/api_key' |
+    jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/deepseek-v4-pro"}' |
+    zombiectl credential set account-fireworks-byok --data @-
 ✓ Credential `account-fireworks-byok` updated.
 
 $ zombiectl tenant provider set --credential account-fireworks-byok

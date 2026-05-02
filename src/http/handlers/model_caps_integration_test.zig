@@ -33,7 +33,10 @@ test "integration(model_caps): GET returns seed catalogue with claude-sonnet-4-6
     try std.testing.expect(r.bodyContains("\"version\""));
     try std.testing.expect(r.bodyContains("claude-sonnet-4-6"));
     try std.testing.expect(r.bodyContains("kimi-k2.6"));
-    try std.testing.expect(r.bodyContains("\"context_cap_tokens\":200000"));
+    try std.testing.expect(r.bodyContains("\"context_cap_tokens\":256000"));
+    // Per-token rates accompany every row (zero for BYOK-only models).
+    try std.testing.expect(r.bodyContains("\"input_cents_per_mtok\":300"));
+    try std.testing.expect(r.bodyContains("\"output_cents_per_mtok\":1500"));
 }
 
 test "integration(model_caps): GET ?model=<known> returns one row" {
@@ -48,7 +51,7 @@ test "integration(model_caps): GET ?model=<known> returns one row" {
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(r.bodyContains("claude-sonnet-4-6"));
-    try std.testing.expect(r.bodyContains("\"context_cap_tokens\":200000"));
+    try std.testing.expect(r.bodyContains("\"context_cap_tokens\":256000"));
     // Other models should NOT appear in a filtered response.
     try std.testing.expect(!r.bodyContains("kimi-k2.6"));
 }

@@ -55,7 +55,7 @@ It is not a bash installer and it is not a hosted demo first. It is a host-neutr
 - detects the user's repo shape
 - asks a very small number of gating questions
 - resolves credentials with minimal repeated input
-- generates `.usezombie/platform-ops/{SKILL,TRIGGER,README}.md`
+- generates `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md`
 - drives `zombiectl install --from ...`
 - immediately opens `zombiectl steer` for a real smoke test
 

@@ -30,7 +30,7 @@ test "removed workspace billing routes are 404 (pre-v2.0 per RULE EP4)" {
     try std.testing.expect(match("/v1/workspaces/ws_1/scoring/config", .GET) == null);
 }
 
-test "match rejects /v1/agents paths after agent_profiles removal (M17_001)" {
+test "match rejects /v1/agents paths after agent_profiles removal" {
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/scores", .GET) == null);
     try std.testing.expect(match("/v1/agents/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/improvement-report", .GET) == null);
@@ -91,9 +91,9 @@ test "match resolves /v1/workspaces/{ws}/zombies/{zid}/memories collection" {
     try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/memories/", .GET) == null);
 }
 
-// M10_001: /v1/runs/* routes removed — get_run, retry_run, replay_run,
+// /v1/runs/* routes removed (pipeline v1) — get_run, retry_run, replay_run,
 // stream_run, cancel_run variants deleted from Route union.
-test "M10_001: run paths no longer match any route" {
+test "match: run paths no longer match any route (post-pipeline-v1 removal)" {
     try std.testing.expect(match("/v1/runs/run_1", .GET) == null);
     try std.testing.expect(match("/v1/runs/run_1:retry", .GET) == null);
     try std.testing.expect(match("/v1/runs/run_1:replay", .GET) == null);
@@ -101,9 +101,9 @@ test "M10_001: run paths no longer match any route" {
     try std.testing.expect(match("/v1/runs/run_1:cancel", .GET) == null);
 }
 
-// ── M16_004 route tests ───────────────────────────────────────────────────────
+// ── admin platform key route tests ────────────────────────────────────────
 
-test "match resolves admin platform key routes (M16_004)" {
+test "match resolves admin platform key routes" {
     try std.testing.expectEqualDeep(Route.admin_platform_keys, match("/v1/admin/platform-keys", .GET).?);
     try std.testing.expectEqualStrings(
         "anthropic",
@@ -124,18 +124,6 @@ test "match returns null for removed spec relay routes" {
     try std.testing.expect(match("/v1/workspaces/ws_1/spec/", .GET) == null);
 }
 
-test "match resolves workspace LLM credential route (M16_004)" {
-    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        ws_id,
-        switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials/llm", .GET).?) {
-            .workspace_llm_credential => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm", .GET) == null);
-}
-
 // ── webhook route tests ───────────────────────────────────────────────────
 
 test "webhook routes resolve and reject correctly" {
@@ -149,9 +137,9 @@ test "webhook routes resolve and reject correctly" {
     });
 }
 
-// ── M2_001 zombie CRUD route tests ────────────────────────────────────
+// ── zombie CRUD route tests ───────────────────────────────────────────────
 
-test "M24_001: workspace-scoped zombie collection resolves" {
+test "match resolves workspace-scoped zombie collection" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies", .GET).?) {
         .workspace_zombies => |id| id,
@@ -159,7 +147,7 @@ test "M24_001: workspace-scoped zombie collection resolves" {
     });
 }
 
-test "M24_001: flat /v1/zombies/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
+test "match: flat /v1/zombies/ is removed (pre-v2.0 bare 404 per RULE EP4)" {
     try std.testing.expect(match("/v1/zombies/", .GET) == null);
 }
 
@@ -183,7 +171,7 @@ test "retired path: /v1/workspaces/{ws}/zombies/{id}/kill no longer resolves" {
     try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
 }
 
-test "M24_001: workspace-scoped credentials route resolves" {
+test "match resolves workspace-scoped credentials collection" {
     const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
     try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials", .GET).?) {
         .workspace_credentials => |id| id,
@@ -192,26 +180,18 @@ test "M24_001: workspace-scoped credentials route resolves" {
     try std.testing.expect(match("/v1/zombies/credentials", .GET) == null);
 }
 
-test "M24_001: /credentials/llm still distinct from /credentials" {
-    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(ws_id, switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials/llm", .GET).?) {
-        .workspace_llm_credential => |id| id,
-        else => return error.TestExpectedEqual,
-    });
-}
-
-test "M24_001: flat /v1/zombies/{id} DELETE path is removed (bare 404 per RULE EP4)" {
+test "match: flat /v1/zombies/{id} DELETE path is removed (bare 404 per RULE EP4)" {
     try std.testing.expect(match("/v1/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11", .GET) == null);
 }
 
-test "M2_001: zombie routes reject invalid paths" {
+test "match: zombie routes reject invalid paths" {
     try std.testing.expect(match("/v1/zombies/a/b", .GET) == null);
     try std.testing.expect(match("/v1/zombies", .GET) == null);
 }
 
-// ── M4_001 approval gate route tests ────────────────────────────────────
+// ── approval gate route tests ─────────────────────────────────────────────
 
-test "M4_001: approval webhook route resolves correctly" {
+test "match: approval webhook route resolves correctly" {
     const zombie_id = "019abc12-8d3a-7f13-8abc-2b3e1e0a6f11";
     const route = match("/v1/webhooks/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/approval", .GET) orelse return error.TestExpectedMatch;
     try std.testing.expectEqualStrings(zombie_id, switch (route) {
@@ -220,7 +200,7 @@ test "M4_001: approval webhook route resolves correctly" {
     });
 }
 
-test "M4_001: approval route does not interfere with regular webhook" {
+test "match: approval route does not interfere with regular webhook" {
     const route = match("/v1/webhooks/z1", .GET) orelse return error.TestExpectedMatch;
     switch (route) {
         .receive_webhook => {},
@@ -228,7 +208,7 @@ test "M4_001: approval route does not interfere with regular webhook" {
     }
 }
 
-test "M4_001: approval route resolves before webhook route" {
+test "match: approval route resolves before webhook route" {
     // /approval suffix is matched before the generic webhook route
     const route = match("/v1/webhooks/z1/approval", .GET) orelse return error.TestExpectedMatch;
     switch (route) {

@@ -89,6 +89,8 @@ test "integration: harness emits started/chunk/completed frames in order via rea
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID);
+    defer base.teardownPlatformProvider(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, EMPTY_CONTEXT_JSON);

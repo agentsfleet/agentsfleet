@@ -26,7 +26,7 @@ What the skill does, in order:
 2. **Asks at most three or four gating questions** through the host-neutral `variables:` frontmatter (so the same SKILL.md works on Claude Code, Amp, Codex CLI, and OpenCode without `AskUserQuestion` lock-in). Slack channel, prod branch glob, and cron opt-in.
 3. **Resolves credentials in order**: 1Password CLI (`op read`) → environment variables → interactive prompt. The skill never asks again for what `op` already has.
 4. **Calls `zombiectl doctor --json` first** (see §8.2) to verify auth + workspace binding before any write.
-5. **Generates `.usezombie/platform-ops/{SKILL,TRIGGER,README}.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
+5. **Generates `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
 6. **Drives `zombiectl install --from .usezombie/platform-ops/`** then runs a batch `zombiectl steer {id} "morning health check"` smoke test.
 
 This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any agent CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time user.
@@ -49,7 +49,7 @@ Practically, this means:
 The user defines the zombie in project files:
 
 - `SKILL.md` describes how the zombie should think, what its job is, what "good" looks like, what evidence to gather, and what actions require caution. Plain English. No framework syntax.
-- `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single SKILL.md) describes how the zombie wakes up: webhook, cron, user steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs.
+- `TRIGGER.md` describes how the zombie wakes up: webhook, cron, user steer, or a combination. Also declares `tools:`, `credentials:`, `network.allow:`, `budget:`, and `context:` knobs.
 
 The user iterates those files from Claude in natural language:
 
@@ -78,7 +78,7 @@ After install, the zombie is no longer tied to the interactive Claude session th
 
 For the MVP, the zombie is triggerable in three ways:
 
-- **Webhook input**: an external system (most importantly GitHub Actions on `workflow_run.conclusion == failure`) sends an event to the zombie's webhook ingest URL, which on `main` is `POST /v1/webhooks/{zombie_id}` with an optional URL-secret suffix. The receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`), normalizes the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:github`.
+- **Webhook input**: an external system (most importantly GitHub Actions on `workflow_run.conclusion == failure`) sends an event to the zombie's webhook ingest URL, which on `main` is `POST /v1/webhooks/{zombie_id}`. The receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`), normalizes the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:github`.
 - **Cron input**: NullClaw's `cron_add` tool persists a schedule. Each fire arrives as a synthetic event with `actor=cron:<schedule>`.
 - **User steer**: the user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer {id} "<message>"` (or the dashboard chat widget), which `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
 

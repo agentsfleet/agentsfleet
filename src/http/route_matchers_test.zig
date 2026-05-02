@@ -62,17 +62,7 @@ test "matchWorkspaceCredential: workspace_id and credential_name" {
     try std.testing.expectEqualStrings("fly", r.credential_name);
     try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials/", &buf)) == null);
     try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces//credentials/fly", &buf)) == null);
-    try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials/llm", &buf)) == null);
     try std.testing.expect(matchers.matchWorkspaceCredential(parse("/v1/workspaces/ws1/credentials", &buf)) == null);
-}
-
-test "matchWorkspaceLlmCredential: BYOK reserved name" {
-    var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    try std.testing.expectEqualStrings(
-        "ws1",
-        matchers.matchWorkspaceLlmCredential(parse("/v1/workspaces/ws1/credentials/llm", &buf)).?,
-    );
-    try std.testing.expect(matchers.matchWorkspaceLlmCredential(parse("/v1/workspaces/ws1/credentials/fly", &buf)) == null);
 }
 
 test "matchWorkspaceAgentDelete: workspace_id and agent_id" {

@@ -33,8 +33,14 @@ pub const Route = union(enum) {
     patch_workspace: []const u8,
     // Tenant-scoped billing snapshot — GET /v1/tenants/me/billing
     get_tenant_billing,
+    // Tenant-scoped credit-pool charges (Usage tab) — GET /v1/tenants/me/billing/charges
+    get_tenant_billing_charges,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
+    // Tenant-scoped doctor block — GET /v1/tenants/me/diagnostics
+    get_tenant_doctor,
+    // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
+    tenant_provider,
     /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
     /// workspace credential keyed by `trigger.source`.
@@ -54,8 +60,6 @@ pub const Route = union(enum) {
     // Admin platform key management
     admin_platform_keys, // GET + PUT /v1/admin/platform-keys (method-dispatched in server.zig)
     delete_admin_platform_key: []const u8, // DELETE /v1/admin/platform-keys/{provider}
-    // Workspace BYOK LLM credentials
-    workspace_llm_credential: []const u8, // PUT|DELETE|GET /v1/workspaces/{id}/credentials/llm
     // Zombie CRUD + activity + credentials (workspace-scoped)
     workspace_zombies: []const u8, // GET|POST /v1/workspaces/{ws}/zombies
     patch_workspace_zombie: matchers.WorkspaceZombieRoute, // PATCH /v1/workspaces/{ws}/zombies/{id} (config_json + status:killed)
@@ -101,8 +105,11 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/metrics")) return .metrics;
     if (std.mem.eql(u8, path, model_caps_h.MODEL_CAPS_PATH)) return .model_caps;
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/billing/charges")) return .get_tenant_billing_charges;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/diagnostics")) return .get_tenant_doctor;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/provider")) return .tenant_provider;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
     if (std.mem.eql(u8, path, "/internal/v1/telemetry")) return .internal_telemetry;
@@ -161,7 +168,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     }
 
     // ── Workspace + leaf ──────────────────────────────────────────────────
-    if (matchers.matchWorkspaceLlmCredential(p)) |ws_id| return .{ .workspace_llm_credential = ws_id };
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .delete_workspace_credential = r };
     if (matchers.matchWorkspaceAgentDelete(p)) |r| return .{ .delete_agent_key = r };
     if (matchers.matchWorkspaceZombie(p)) |r| return .{ .patch_workspace_zombie = r };
@@ -190,6 +196,10 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
 test "match resolves tenant billing route" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing", .GET).?);
+}
+
+test "match resolves tenant billing charges route" {
+    try std.testing.expectEqualDeep(Route.get_tenant_billing_charges, match("/v1/tenants/me/billing/charges", .GET).?);
 }
 
 test "match rejects removed workspace billing routes (pre-v2.0 404s)" {
@@ -231,18 +241,6 @@ test "match resolves admin platform key routes" {
     );
     try std.testing.expect(match("/v1/admin/platform-keys/a/b", .GET) == null);
     try std.testing.expect(match("/v1/admin/platform-keys/", .GET) == null);
-}
-
-test "match resolves workspace LLM credential route" {
-    const ws_id = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-    try std.testing.expectEqualStrings(
-        ws_id,
-        switch (match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/credentials/llm", .GET).?) {
-            .workspace_llm_credential => |id| id,
-            else => return error.TestExpectedEqual,
-        },
-    );
-    try std.testing.expect(match("/v1/workspaces/ws_1/extra/credentials/llm", .GET) == null);
 }
 
 // ── route tests ───────────────────────────────────────────────────────────────

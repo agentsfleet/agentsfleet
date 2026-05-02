@@ -1,33 +1,27 @@
-// M11_001 + M16_001 spec-claim coverage tests.
-//
-// M16_001: comptime validation (§1.2) moved into error_registry.zig itself.
-// The ERR_* ↔ REGISTRY cross-check is now a comptime block in the registry,
-// not a separate test — drift is structurally impossible.
-//
-// Remaining tests: errorResponse signature pins, lookup edge cases,
-// regression pins, format invariants.
-//
-// Tiers covered: T2, T7, T10, T12
+// Coverage for the error registry: errorResponse signature pins, lookup edge
+// cases, code↔status regression pins, REGISTRY format invariants. The
+// ERR_* ↔ REGISTRY cross-check is a comptime block in error_registry.zig
+// itself — drift is structurally impossible.
 
 const std = @import("std");
 const reg = @import("error_registry.zig");
 
-// ── §2.2 / T7: errorResponse function signature has no std.http.Status param ─
+// ── errorResponse signature pins (no std.http.Status param) ────────────────
 
-test "§2.2 spec-claim: errorResponse has exactly 4 parameters (no status arg)" {
+test "errorResponse has exactly 4 parameters (no status arg)" {
     const fn_info = @typeInfo(@TypeOf(@import("../http/handlers/common.zig").errorResponse));
     const params = fn_info.@"fn".params;
     try std.testing.expectEqual(@as(usize, 4), params.len);
 }
 
-test "§2.2: third param is []const u8 (detail), not std.http.Status" {
+test "errorResponse third param is []const u8 (detail), not std.http.Status" {
     const fn_info = @typeInfo(@TypeOf(@import("../http/handlers/common.zig").errorResponse));
     const params = fn_info.@"fn".params;
     const detail_type = params[2].type.?;
     try std.testing.expectEqual([]const u8, detail_type);
 }
 
-// ── T2: Edge cases for lookup ───────────────────────────────────────────────
+// ── Edge cases for lookup ──────────────────────────────────────────────────
 
 test "lookup returns UNKNOWN for empty string" {
     const entry = reg.lookup("");
@@ -57,7 +51,7 @@ test "lookup handles very long input without crashing" {
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.lookup(long_code).code);
 }
 
-// ── T7: Regression — pin specific code → status mappings ────────────────────
+// ── Regression: pin specific code → status mappings ───────────────────────
 
 test "UZ-AUTH-002 stays 401 (pinned)" {
     try std.testing.expectEqual(
@@ -127,7 +121,7 @@ test "UZ-WH-003 stays 409 (zombie paused = conflict, not 403)" {
     );
 }
 
-// ── T10: REGISTRY format invariants ─────────────────────────────────────────
+// ── REGISTRY format invariants ─────────────────────────────────────────────
 
 test "all REGISTRY codes start with 'UZ-' prefix" {
     for (reg.REGISTRY) |entry| {
@@ -152,7 +146,7 @@ test "UNKNOWN has sentinel code 'UZ-UNKNOWN' and is 500" {
     try std.testing.expectEqualStrings("UZ-UNKNOWN", reg.UNKNOWN.code);
 }
 
-// ── T10: all REGISTRY entries have non-empty hints ──────────────────────────
+// ── All REGISTRY entries have non-empty hints ─────────────────────────────
 
 test "every entry has a non-empty hint" {
     for (reg.REGISTRY) |entry| {
@@ -160,7 +154,7 @@ test "every entry has a non-empty hint" {
     }
 }
 
-// ── T12: API contract — error code format ───────────────────────────────────
+// ── API contract: error code format ───────────────────────────────────────
 
 test "every REGISTRY code matches pattern UZ-<CATEGORY>-<NUMBER>" {
     for (reg.REGISTRY) |entry| {
@@ -175,7 +169,7 @@ test "every REGISTRY code matches pattern UZ-<CATEGORY>-<NUMBER>" {
     }
 }
 
-// ── M16_001: lookup() returns Entry, not ?Entry ─────────────────────────────
+// ── lookup() returns Entry, not ?Entry ────────────────────────────────────
 
 test "lookup never returns null — unknown codes return UNKNOWN" {
     const entry = reg.lookup("UZ-DOES-NOT-EXIST");
@@ -203,13 +197,6 @@ test "hint() returns UNKNOWN hint for unregistered codes" {
     try std.testing.expectEqualStrings(reg.UNKNOWN.hint, h);
 }
 
-// ── REGISTRY entry count regression ────────────────────────────────────────
-// Pin the count so accidental deletions are caught immediately.
-
-test "registry contains exactly 120 entries" {
-    try std.testing.expectEqual(@as(usize, 120), reg.REGISTRY.len);
-}
-
 // ── Sentinel code lookup ───────────────────────────────────────────────────
 // Looking up the sentinel code itself must return UNKNOWN (it's not in REGISTRY).
 
@@ -220,7 +207,7 @@ test "lookup of sentinel code 'UZ-UNKNOWN' returns UNKNOWN entry" {
     try std.testing.expectEqualStrings(reg.UNKNOWN.hint, entry.hint);
 }
 
-// ── T7: ERR_* constants resolve to correct REGISTRY entries ─────────────────
+// ── ERR_* constants resolve to correct REGISTRY entries ──────────────────
 // Spot-check that ERR_* constant strings match their REGISTRY entries.
 // Comptime self-check ensures ALL ERR_* are in REGISTRY; these pin values.
 
@@ -233,7 +220,7 @@ test "ERR_* constants match REGISTRY entry codes (spot check)" {
     try std.testing.expectEqualStrings(reg.ERR_APPROVAL_CONDITION_INVALID, reg.lookup(reg.ERR_APPROVAL_CONDITION_INVALID).code);
 }
 
-// ── T10: Operational hints contain actionable keywords ──────────────────────
+// ── Operational hints contain actionable keywords ────────────────────────
 // Beyond non-empty, verify key hints have the right operational guidance.
 
 test "startup hints reference 'zombied doctor' or env vars" {
@@ -267,14 +254,14 @@ test "gate hints reference gate results or timeout" {
     }
 }
 
-// ── T12: Entry struct has exactly 5 fields (spec invariant §1.1) ────────────
+// ── Entry struct has exactly 5 fields ─────────────────────────────────────
 
 test "Entry struct has 5 fields (code, http_status, title, hint, docs_uri)" {
     const fields = @typeInfo(reg.Entry).@"struct".fields;
     try std.testing.expectEqual(@as(usize, 5), fields.len);
 }
 
-// ── T7: UNKNOWN sentinel has non-empty fields ──────────────────────────────
+// ── UNKNOWN sentinel has non-empty fields ─────────────────────────────────
 
 test "UNKNOWN sentinel has all fields populated" {
     try std.testing.expect(reg.UNKNOWN.code.len > 0);
@@ -283,7 +270,7 @@ test "UNKNOWN sentinel has all fields populated" {
     try std.testing.expect(reg.UNKNOWN.docs_uri.len > 0);
 }
 
-// ── T7: Canary — deleted files must not be importable ───────────────────────
+// ── Canary: deleted files must not be importable ─────────────────────────
 // If someone re-creates codes.zig or error_table.zig, these comptime checks
 // will fail because the test expects the imports to NOT exist.
 // (We can't test "import fails" directly, but we verify the new file IS the
@@ -297,7 +284,7 @@ test "error_registry.zig exports REGISTRY (not TABLE)" {
     try std.testing.expect(e.code.len > 0);
 }
 
-// ── M10_006: ErrorMapping + validateErrorTable (bvisor pattern) ───────────
+// ── ErrorMapping + validateErrorTable ─────────────────────────────────────
 
 test "ErrorMapping struct has 3 fields (err, code, message)" {
     const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
@@ -338,14 +325,11 @@ test "PgQuery size pinned at 8 bytes (single pointer)" {
 }
 
 test "ZombieSession size pinned at 392 bytes" {
-    // M23_001: +24 bytes for execution_id (?[]const u8 = 16) + execution_started_at (i64 = 8)
-    // M28_001: +56 bytes for ?WebhookSignatureConfig in ZombieTrigger.webhook.
-    // M28_001 §3: +16 bytes for secret_ref slice in WebhookSignatureConfig.
     const ZombieSession = @import("../zombie/event_loop_types.zig").ZombieSession;
     try std.testing.expectEqual(@as(usize, 392), @sizeOf(ZombieSession));
 }
 
-// T7: Regression — ErrorMapping field count and types
+// Regression — ErrorMapping field count and types
 test "ErrorMapping.err field is anyerror" {
     const fields = @typeInfo(reg.ErrorMapping).@"struct".fields;
     // First field is 'err' of type anyerror

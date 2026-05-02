@@ -45,11 +45,11 @@ For everything else, follow the topic files above.
 
 | Term | Meaning |
 |---|---|
-| **Zombie** | A long-lived, durable runtime instance defined by a `SKILL.md` plus `TRIGGER.md` (or merged frontmatter under `x-usezombie:` in a single `SKILL.md` file). Owns one operational outcome. |
+| **Zombie** | A long-lived, durable runtime instance defined by a `SKILL.md` plus `TRIGGER.md`. Owns one operational outcome. |
 | **NullClaw** | The language-model agent loop that runs inside the executor sandbox. The "zombie's agent." |
 | **User's agent** | Claude Code, Amp, Codex CLI, OpenCode — the workstation tool the human types into and that drives `zombiectl`. Distinct from the zombie's agent. |
 | **Steer** | A user-initiated message sent to a zombie via `zombiectl steer {id} "<msg>"` or the dashboard chat widget. Lands as an event with `actor=steer:<user>`. |
-| **Webhook trigger** | An external system POSTing to the zombie's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}`, with an optional URL-secret suffix). Lands as an event with `actor=webhook:<source>`. |
+| **Webhook trigger** | An external system POSTing to the zombie's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}`). Lands as an event with `actor=webhook:<source>`. |
 | **Cron trigger** | A NullClaw-managed schedule firing on time. Lands as an event with `actor=cron:<schedule>`. |
 | **Stage** | One `runner.execute` call inside the executor — one language-model context window's worth of reasoning. Long incidents span multiple stages via continuation events. |
 | **Tool bridge** | The substitution layer inside the executor that replaces `${secrets.NAME.FIELD}` placeholders with real bytes after sandbox entry. |

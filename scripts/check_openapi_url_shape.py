@@ -50,6 +50,9 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "tenants",           # tenant resource
     "telemetry",         # zombie_execution_telemetry rows
     "billing",           # billing summary view
+    "charges",           # credit-pool charge rows (receive + stage per event)
+    "diagnostics",       # tenant doctor block (provider posture, resolver state)
+    "provider",          # tenant's currently-active LLM provider (singleton resource — exactly one row per tenant in core.tenant_providers)
     "integration-grants",
     "integration-requests",
     "approvals",         # approval-gate inbox collection

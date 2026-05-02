@@ -39,16 +39,24 @@ pub const entries = [_]Entry{
     // Tenant billing (plan + balance snapshot)
     .{ .method = "GET", .path = "/v1/tenants/me/billing" },
 
+    // Tenant credit-pool charges (backs Settings → Billing Usage tab).
+    .{ .method = "GET", .path = "/v1/tenants/me/billing/charges" },
+
     // Tenant-scoped workspace list (backs the dashboard workspace switcher)
     .{ .method = "GET", .path = "/v1/tenants/me/workspaces" },
+
+    // Tenant-scoped doctor block — provider posture + resolver state.
+    .{ .method = "GET", .path = "/v1/tenants/me/diagnostics" },
+
+    // Tenant-scoped LLM provider config (GET/PUT/DELETE on the same path).
+    .{ .method = "GET", .path = "/v1/tenants/me/provider" },
+    .{ .method = "PUT", .path = "/v1/tenants/me/provider" },
+    .{ .method = "DELETE", .path = "/v1/tenants/me/provider" },
 
     // Credentials
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/credentials" },
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/credentials/{credential_name}" },
-    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
-    .{ .method = "PUT", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
-    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/credentials/llm" },
 
     // Zombies
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies" },

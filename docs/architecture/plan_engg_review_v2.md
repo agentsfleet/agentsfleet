@@ -27,7 +27,7 @@ The wedge mainly exercises existing runtime surfaces rather than inventing a com
 
 - CLI: `zombiectl install --from <path>`
 - CLI: `zombiectl steer {id}`
-- CLI: `zombiectl credential add ...`
+- CLI: `zombiectl credential set <name> --data @-`
 - CLI: `zombiectl doctor --json`
 - Skill: `/usezombie-install-platform-ops`
 - Docs surface: `docs.usezombie.com/quickstart/platform-ops`
@@ -41,7 +41,7 @@ The core happy path is:
 1. The user runs `/usezombie-install-platform-ops` inside a target repo.
 2. The skill detects the repo shape and asks a small number of gating questions.
 3. The skill resolves credentials in the expected order.
-4. The skill writes `.usezombie/platform-ops/{SKILL,TRIGGER,README}.md`.
+4. The skill writes `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md`.
 5. The skill calls `zombiectl doctor --json` and gets a clean readiness result.
 6. The skill calls `zombiectl install --from .usezombie/platform-ops/`.
 7. The skill opens `zombiectl steer {id}`.
@@ -49,7 +49,7 @@ The core happy path is:
 
 If this path fails, the wedge is not ready no matter how polished the surrounding docs are.
 
-Current `main` nuance worth preserving: BYOK still flows through the workspace-scoped `credentials/llm` route today, even though the broader architecture set documents a tenant-scoped long-term posture.
+Current launch contract: BYOK flows through tenant-scoped provider configuration (`zombiectl tenant provider set --credential <name>`). The workspace-scoped `/credentials/llm` route is removed before v2.0.0 and must not be preserved as a compatibility path.
 
 ## Hosted posture assumptions
 
@@ -113,7 +113,7 @@ Packaging the install experience must not silently break existing substrate beha
 These should be treated as regression-sensitive:
 
 - `zombiectl install --from <path>`
-- `zombiectl credential add`
+- `zombiectl credential set`
 - `zombiectl list`
 - `zombiectl status`
 - `zombiectl kill`
