@@ -283,3 +283,72 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
     try std.testing.expect(r.status == 401 or r.status == 403);
 }
 
+// ── GET /v1/tenants/me/billing/charges — cursor parse paths ───────────────
+//
+// Pins the cursor branch in `innerGetTenantBillingCharges`: missing,
+// empty-string, and malformed. Empty DB suffices — these tests are about
+// the handler's cursor parsing, not the row mapping (which the telemetry
+// store's own suite covers). The empty-cursor case is the proof for the
+// `?cursor=` → null behaviour that prevents a noisy 400 on first-page
+// requests expressed verbosely.
+
+test "integration: GET /billing/charges with no cursor returns 200 + empty items on a tenant with no telemetry" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = std.time.milliTimestamp();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    const r = try (try h.get("/v1/tenants/me/billing/charges").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"items\":[]"));
+    try std.testing.expect(r.bodyContains("\"next_cursor\":null"));
+}
+
+test "integration: GET /billing/charges with empty ?cursor= is treated as no-cursor (200 not 400)" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = std.time.milliTimestamp();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    const r = try (try h.get("/v1/tenants/me/billing/charges?cursor=").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("\"items\":[]"));
+}
+
+test "integration: GET /billing/charges with malformed cursor returns 400 invalid cursor" {
+    const alloc = std.testing.allocator;
+    const h = openHarnessOrSkip(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    const now_ms = std.time.milliTimestamp();
+    try seedTenantAndWorkspace(conn, TOKEN_TENANT_ID, now_ms);
+    defer teardown(conn, TOKEN_TENANT_ID);
+
+    const r = try (try h.get("/v1/tenants/me/billing/charges?cursor=!!not-a-real-cursor!!").bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try std.testing.expect(r.bodyContains("invalid cursor"));
+}
