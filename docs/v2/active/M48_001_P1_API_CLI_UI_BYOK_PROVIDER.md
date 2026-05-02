@@ -477,6 +477,8 @@ Full `core.tenant_providers` SQL above. Register in `schema/embed.zig` and `src/
 
 ### §2 — Resolver (`src/state/tenant_provider.zig` — NEW)
 
+**Vault scope (workspace-keyed; pre-v2.0 bridge).** `vault.secrets` is keyed by `(workspace_id, key_name)` — that's what M45 shipped, and reworking it is out of M48 scope. Wherever this spec writes `vault.loadJson(tenant_id, name)` for narrative clarity (Scenario B, the resolver pseudocode below, etc.), the actual call signature is `vault.loadJson(alloc, conn, ws_id, name)` where `ws_id` comes from `tenant_provider_resolver.resolvePrimaryWorkspace(tenant_id)`. That helper picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the common v2.0 case) work transparently. Multi-workspace tenants implicitly pin **all** BYOK credentials to the earliest-named workspace; if a tenant ever needs per-workspace credential isolation, fully tenant-keyed vault is the post-v2.0 path. Until then, the bridge is the contract — documented here so future readers don't trip on the discrepancy. (Implementation landed in commit `78b6d3d4`.)
+
 Exports:
 - `pub const Mode = enum { platform, byok }`.
 - `pub const ResolvedProvider = struct { mode, provider, api_key, model, context_cap_tokens }`.
