@@ -4,11 +4,11 @@
 **Milestone:** M59
 **Workstream:** 001
 **Date:** May 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — design-system hygiene; reduces duplication across 6+ existing call sites and unblocks future tabular surfaces.
 **Categories:** UI
 **Batch:** B1
-**Branch:** feat/m59-001-design-system-datatable-alert (to be created)
+**Branch:** feat/m59-001-design-system-datatable-alert
 **Depends on:** M48_001 (DONE) — surfaces the gap that motivates this spec; the Settings → Billing Usage tab is the first DataTable consumer that should switch from the app-local primitive to the design-system version once it lands.
 
 **Canonical architecture:** `docs/ARCHITECTURE.md` §UI Design System — defines the primitive boundary between `ui/packages/design-system/` (cross-app primitives) and `ui/packages/app/components/ui/` (app-local helpers awaiting promotion).
