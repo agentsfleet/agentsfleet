@@ -71,6 +71,15 @@
         minimum: 1
         maximum: 200
         default: 50
+    - name: cursor
+      in: query
+      description: >
+        Opaque pagination token returned in `next_cursor` from a previous
+        page. Omit for the first page. Treat as a black-box string — the
+        encoded `(recorded_at, id)` tuple is an implementation detail.
+      required: false
+      schema:
+        type: string
     responses:
       '200':
         description: Newest-first telemetry rows scoped to the caller's tenant.
@@ -80,7 +89,12 @@
               type: object
               required:
               - items
+              - next_cursor
               properties:
+                next_cursor:
+                  type: string
+                  nullable: true
+                  description: Opaque token for the next page; null when no more rows.
                 items:
                   type: array
                   items:

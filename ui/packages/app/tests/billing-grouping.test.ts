@@ -85,6 +85,15 @@ describe("groupChargesByEvent", () => {
     expect(groups[0]?.recorded_at).toBe(100);
   });
 
+  it("orders ties by event_id (stable sort across engines)", () => {
+    // Two events at the same recorded_at — the secondary event_id sort
+    // pins ordering deterministically so the dashboard doesn't flicker.
+    const a: ChargeRow = { ...RECEIVE, event_id: "evt_b", recorded_at: 5_000 };
+    const b: ChargeRow = { ...RECEIVE, event_id: "evt_a", recorded_at: 5_000 };
+    const groups = groupChargesByEvent([a, b]);
+    expect(groups.map((g) => g.event_id)).toEqual(["evt_a", "evt_b"]);
+  });
+
   it("ignores rows with an unknown charge_type (defensive)", () => {
     const weird = { ...RECEIVE, charge_type: "unknown" as ChargeRow["charge_type"] };
     const groups = groupChargesByEvent([weird]);

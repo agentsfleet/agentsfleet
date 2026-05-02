@@ -35,7 +35,11 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
       <CardHeader className="flex flex-row items-start justify-between gap-4">
         <div>
           <CardTitle className="text-3xl tabular-nums">
-            <span className={isExhausted ? "text-destructive" : undefined}>
+            <span
+              data-exhausted={isExhausted}
+              className={isExhausted ? "text-destructive" : undefined}
+              data-testid="balance-headline"
+            >
               {formatDollars(balance)} <span className="text-base font-normal text-muted-foreground">USD</span>
             </span>
           </CardTitle>
@@ -69,15 +73,29 @@ function PurchaseCreditsButton() {
     <TooltipProvider delayDuration={150}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="cursor-not-allowed">
-            {/* Wrapper span captures hover for the Tooltip while the
-                disabled button itself swallows pointer events. */}
-            <Button variant="outline" disabled aria-disabled>
+          {/* Disabled <button> doesn't fire pointer events, so the
+              tooltip won't show without a wrapper. tabIndex={0} keeps
+              the trigger keyboard-reachable; cursor-not-allowed lives
+              on the wrapper because the disabled button blocks its
+              own pointer events. */}
+          <span
+            tabIndex={0}
+            aria-describedby="purchase-credits-tooltip"
+            className="inline-block cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            data-testid="purchase-credits-trigger"
+          >
+            <Button
+              variant="outline"
+              disabled
+              aria-disabled
+              tabIndex={-1}
+              className="pointer-events-none"
+            >
               Purchase Credits
             </Button>
           </span>
         </TooltipTrigger>
-        <TooltipContent>{PURCHASE_TOOLTIP}</TooltipContent>
+        <TooltipContent id="purchase-credits-tooltip">{PURCHASE_TOOLTIP}</TooltipContent>
       </Tooltip>
     </TooltipProvider>
   );

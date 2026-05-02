@@ -7,10 +7,13 @@ export async function getTenantBilling(token: string): Promise<TenantBilling> {
 
 export async function listTenantBillingCharges(
   token: string,
-  limit = 50,
+  opts: { limit?: number; cursor?: string | null } = {},
 ): Promise<TenantBillingChargesResponse> {
+  const limit = opts.limit ?? 50;
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (opts.cursor) params.set("cursor", opts.cursor);
   return request<TenantBillingChargesResponse>(
-    `/v1/tenants/me/billing/charges?limit=${encodeURIComponent(String(limit))}`,
+    `/v1/tenants/me/billing/charges?${params.toString()}`,
     { method: "GET" },
     token,
   );

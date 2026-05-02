@@ -183,6 +183,17 @@ describe("ProviderSelector", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
+  it("returns a 'Not authenticated' alert when getToken resolves null", async () => {
+    getTokenFn.mockResolvedValue(null);
+    render(React.createElement(ProviderSelector, { ...defaultProps }));
+    fireEvent.click(screen.getByRole("button", { name: /reset to platform default/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toContain("Not authenticated"),
+    );
+    expect(resetTenantProviderMock).not.toHaveBeenCalled();
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
   it("blocks BYOK submit when no credential is picked", async () => {
     getTokenFn.mockResolvedValue(TOKEN);
     render(

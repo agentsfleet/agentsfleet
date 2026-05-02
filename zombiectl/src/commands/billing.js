@@ -1,10 +1,11 @@
-// Read-only `zombiectl billing show [--limit N] [--json]`.
+// Read-only `zombiectl billing show [--limit N] [--cursor TOKEN] [--json]`.
 //
 // Calls GET /v1/tenants/me/billing for the balance card and GET
 // /v1/tenants/me/billing/charges for the per-event drain history. Each event
 // produces up to two charge rows (charge_type ∈ {receive, stage}); the CLI
 // groups them by event_id so each row in the table represents one event with
-// both charges combined. `--json` emits the raw shape for scripting.
+// both charges combined. `--json` emits the raw shape for scripting and
+// includes `next_cursor` so callers can paginate.
 
 import { writeError } from "../program/io.js";
 
@@ -26,7 +27,7 @@ export async function commandBilling(ctx, args, _workspaces, deps) {
   if (ctx.jsonMode) {
     writeError(ctx, "UNKNOWN_COMMAND", `unknown billing action: ${action ?? "(none)"}`, deps);
   } else {
-    writeLine(ctx.stderr, ui.err("usage: zombiectl billing show [--limit N] [--json]"));
+    writeLine(ctx.stderr, ui.err("usage: zombiectl billing show [--limit N] [--cursor TOKEN] [--json]"));
   }
   return 2;
 }
@@ -46,19 +47,26 @@ export async function commandBillingShow(ctx, parsed, deps) {
 
   // Fetch balance + charges in parallel. Charges limit is `limit * 2` because
   // each event has up to 2 rows (receive + stage); after grouping we slice to
-  // the user-requested event count.
+  // the user-requested event count. `--cursor` is forwarded verbatim — the
+  // server treats it as opaque.
+  const cursor = parsed.options.cursor;
+  const chargesQs = cursor
+    ? `${CHARGES_PATH}?limit=${limit * 2}&cursor=${encodeURIComponent(String(cursor))}`
+    : `${CHARGES_PATH}?limit=${limit * 2}`;
   const [billing, charges] = await Promise.all([
     request(ctx, BILLING_PATH, { method: "GET", headers: apiHeaders(ctx) }),
-    request(ctx, `${CHARGES_PATH}?limit=${limit * 2}`, { method: "GET", headers: apiHeaders(ctx) }),
+    request(ctx, chargesQs, { method: "GET", headers: apiHeaders(ctx) }),
   ]);
 
   const events = groupRowsByEvent(charges?.items ?? []).slice(0, limit);
+  const nextCursor = charges?.next_cursor ?? null;
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, {
       balance_cents: billing.balance_cents ?? 0,
       is_exhausted: Boolean(billing.is_exhausted),
       events,
+      next_cursor: nextCursor,
     });
     return 0;
   }
@@ -93,6 +101,10 @@ export async function commandBillingShow(ctx, parsed, deps) {
     })));
   }
 
+  if (nextCursor) {
+    writeLine(ctx.stdout);
+    writeLine(ctx.stdout, ui.dim(`(more events available — re-run with --cursor ${nextCursor})`));
+  }
   writeLine(ctx.stdout);
   if (billing.is_exhausted) {
     writeLine(ctx.stdout, ui.err(`⚠ Out of credits. See ${BILLING_DASHBOARD_URL}`));

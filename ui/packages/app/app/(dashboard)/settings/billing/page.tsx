@@ -29,9 +29,10 @@ export default async function BillingSettingsPage() {
   // page still renders the balance card.
   const [billing, chargesResp] = await Promise.all([
     getTenantBilling(token),
-    listTenantBillingCharges(token, 50).catch(() => ({ items: [] }) as Awaited<
-      ReturnType<typeof listTenantBillingCharges>
-    >),
+    listTenantBillingCharges(token, { limit: 50 }).catch(() => ({
+      items: [],
+      next_cursor: null,
+    }) as Awaited<ReturnType<typeof listTenantBillingCharges>>),
   ]);
 
   const events = groupChargesByEvent(chargesResp.items);

@@ -89,4 +89,5 @@ export type TenantBillingChargesResponse = {
     wall_ms: number | null;
     recorded_at: number;
   }>;
+  next_cursor: string | null;
 };

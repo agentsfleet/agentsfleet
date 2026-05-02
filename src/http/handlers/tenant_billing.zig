@@ -67,10 +67,16 @@ pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    const limit = parseLimit(qs) catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, "limit must be between 1 and 200");
+    const limit = parseLimit(qs) catch |err| {
+        const msg = switch (err) {
+            error.LimitNotNumeric => "limit must be a positive integer",
+            error.LimitOutOfRange => "limit must be between 1 and 200",
+        };
+        hx.fail(ec.ERR_INVALID_REQUEST, msg);
         return;
     };
+
+    const cursor = qs.get("cursor");
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -78,17 +84,77 @@ pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    const rows = telemetry_store.listTelemetryForTenant(conn, hx.alloc, tenant_id, limit) catch {
+    const rows = telemetry_store.listTelemetryForTenant(conn, hx.alloc, tenant_id, limit, cursor) catch |err| {
+        if (err == error.InvalidCursor) {
+            hx.fail(ec.ERR_INVALID_REQUEST, "invalid cursor");
+            return;
+        }
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    hx.ok(.ok, .{ .items = rows });
+    // A full page → emit a next_cursor pointing at the last row so the
+    // caller can ask for the next slice. Short page → null (no more rows).
+    const next_cursor: ?[]u8 = if (rows.len == limit and rows.len > 0) blk: {
+        break :blk telemetry_store.makeCursor(hx.alloc, rows[rows.len - 1]) catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return;
+        };
+    } else null;
+
+    hx.ok(.ok, .{ .items = rows, .next_cursor = next_cursor });
 }
 
-fn parseLimit(qs: anytype) !u32 {
+const ParseLimitError = error{ LimitNotNumeric, LimitOutOfRange };
+
+fn parseLimit(qs: anytype) ParseLimitError!u32 {
     const raw = qs.get("limit") orelse return USAGE_LIMIT_DEFAULT;
-    const n = std.fmt.parseInt(u32, raw, 10) catch return error.InvalidLimit;
-    if (n == 0 or n > USAGE_LIMIT_MAX) return error.InvalidLimit;
+    const n = std.fmt.parseInt(u32, raw, 10) catch return error.LimitNotNumeric;
+    if (n == 0 or n > USAGE_LIMIT_MAX) return error.LimitOutOfRange;
     return n;
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────
+
+const FakeQuery = struct {
+    value: ?[]const u8,
+    pub fn get(self: FakeQuery, key: []const u8) ?[]const u8 {
+        _ = key;
+        return self.value;
+    }
+};
+
+test "parseLimit: missing limit returns the default" {
+    const qs = FakeQuery{ .value = null };
+    try std.testing.expectEqual(USAGE_LIMIT_DEFAULT, try parseLimit(qs));
+}
+
+test "parseLimit: numeric in-range value passes through" {
+    const qs = FakeQuery{ .value = "10" };
+    try std.testing.expectEqual(@as(u32, 10), try parseLimit(qs));
+}
+
+test "parseLimit: zero rejected as LimitOutOfRange" {
+    const qs = FakeQuery{ .value = "0" };
+    try std.testing.expectError(error.LimitOutOfRange, parseLimit(qs));
+}
+
+test "parseLimit: above max rejected as LimitOutOfRange" {
+    const qs = FakeQuery{ .value = "201" };
+    try std.testing.expectError(error.LimitOutOfRange, parseLimit(qs));
+}
+
+test "parseLimit: non-numeric rejected as LimitNotNumeric" {
+    const qs = FakeQuery{ .value = "lots" };
+    try std.testing.expectError(error.LimitNotNumeric, parseLimit(qs));
+}
+
+test "parseLimit: negative input rejected as LimitNotNumeric (u32 parse rejects sign)" {
+    const qs = FakeQuery{ .value = "-1" };
+    try std.testing.expectError(error.LimitNotNumeric, parseLimit(qs));
+}
+
+test "parseLimit: max boundary is accepted" {
+    const qs = FakeQuery{ .value = "200" };
+    try std.testing.expectEqual(@as(u32, 200), try parseLimit(qs));
 }

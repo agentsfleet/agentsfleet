@@ -46,13 +46,33 @@ describe("listTenantBillingCharges", () => {
 
   it("passes through custom limit", async () => {
     fetchMock.mockResolvedValue({
-      ok: true, status: 200, json: async () => ({ items: [] }),
+      ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }),
     });
     const { listTenantBillingCharges } = await import("./tenant_billing");
-    await listTenantBillingCharges("tok", 10);
+    await listTenantBillingCharges("tok", { limit: 10 });
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining("/v1/tenants/me/billing/charges?limit=10"),
       expect.any(Object),
     );
+  });
+
+  it("URI-encodes the cursor token in the query string", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }),
+    });
+    const { listTenantBillingCharges } = await import("./tenant_billing");
+    await listTenantBillingCharges("tok", { cursor: "tok+with/special=chars" });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("cursor=tok%2Bwith%2Fspecial%3Dchars");
+  });
+
+  it("omits cursor when null/undefined (first page)", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }),
+    });
+    const { listTenantBillingCharges } = await import("./tenant_billing");
+    await listTenantBillingCharges("tok", { cursor: null });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).not.toContain("cursor=");
   });
 });

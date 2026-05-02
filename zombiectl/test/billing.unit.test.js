@@ -50,6 +50,7 @@ test("billing without action: prints usage and exits 2", async () => {
   const code = await commandBilling(ctx, [], null, makeDeps());
   assert.equal(code, 2);
   assert.match(stderr.read(), /usage: zombiectl billing show/);
+  assert.match(stderr.read(), /--cursor TOKEN/);
 });
 
 test("billing unknown action: --json emits UNKNOWN_COMMAND error", async () => {
@@ -188,6 +189,48 @@ test("billing show --json: emits balance + grouped events array", async () => {
   assert.equal(ev.total_cents, 3);
   assert.equal(ev.token_count_input, 820);
   assert.equal(ev.token_count_output, 1040);
+});
+
+test("billing show: forwards --cursor verbatim (URI-encoded) to the charges endpoint", async () => {
+  const calls = [];
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      calls.push(url);
+      if (url === BILLING_PATH) return { balance_cents: 100, is_exhausted: false };
+      return { items: [], next_cursor: null };
+    },
+  });
+  const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false };
+  await commandBilling(ctx, ["show", "--cursor", "abc/=def"], null, deps);
+  const usageUrl = calls.find((u) => u.startsWith(CHARGES_PATH_PREFIX));
+  assert.match(usageUrl, /[?&]cursor=abc%2F%3Ddef/);
+});
+
+test("billing show: surfaces next_cursor in text mode footer when present", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_cents: 100, is_exhausted: false };
+      return { items: [RECEIVE_ROW, STAGE_ROW], next_cursor: "next_token_xyz" };
+    },
+  });
+  const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
+  await commandBilling(ctx, ["show"], null, deps);
+  assert.match(stdout.read(), /more events available — re-run with --cursor next_token_xyz/);
+});
+
+test("billing show --json: surfaces next_cursor in the body for scripting", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_cents: 100, is_exhausted: false };
+      return { items: [], next_cursor: "tok_for_page_2" };
+    },
+  });
+  const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: true };
+  await commandBilling(ctx, ["show", "--json"], null, deps);
+  const body = JSON.parse(stdout.read());
+  assert.equal(body.next_cursor, "tok_for_page_2");
 });
 
 test("billing show --json: limit slices grouped events not raw rows", async () => {
