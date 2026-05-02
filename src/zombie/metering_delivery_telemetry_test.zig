@@ -1,13 +1,12 @@
-// M18_001: Integration tests for recordZombieDelivery telemetry path.
+// Integration tests for recordZombieDelivery telemetry path.
 //
 // Split from metering_test.zig (RULE FLL: 350-line gate). Covers:
-//   T1  — negative epoch_wall_time_ms skips telemetry write
-//   T2  — zero epoch_wall_time_ms (gate-blocked) skips telemetry write
-//   T3  — positive epoch writes one row with correct fields
-//   T4  — same event_id called twice produces exactly one row (ON CONFLICT DO NOTHING)
+//   - negative epoch_wall_time_ms skips telemetry write
+//   - zero epoch_wall_time_ms (gate-blocked) skips telemetry write
+//   - positive epoch writes one stage row with correct fields
+//   - same event_id called twice produces exactly one row (ON CONFLICT DO NOTHING)
 //
 // Requires real DB (TEST_DATABASE_URL or DATABASE_URL). Skips if not available.
-// Workspace IDs use segment aa18* to isolate M18 test rows.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -15,6 +14,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
+const tenant_provider = @import("../state/tenant_provider.zig");
 const balance_policy = @import("../config/balance_policy.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
@@ -49,10 +49,10 @@ fn countTelemetryRows(conn: *pg.Conn, ws_id: []const u8) !i64 {
     return r.get(i64, 0);
 }
 
-// T1 — negative epoch_wall_time_ms must not write a telemetry row.
+// negative epoch_wall_time_ms must not write a telemetry row.
 // Spec: "Negative epoch is a system clock anomaly — log and skip rather than
 // storing a corrupt row or passing a negative value to @intCast."
-test "M18_001: recordZombieDelivery skips telemetry on negative epoch_wall_time_ms" {
+test "record_zombie_delivery_skips_telemetry_on_negative_epoch_wall_time_ms" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -77,9 +77,9 @@ test "M18_001: recordZombieDelivery skips telemetry on negative epoch_wall_time_
     try std.testing.expectEqual(@as(i64, 0), count);
 }
 
-// T2 — zero epoch_wall_time_ms (gate-blocked event) must not write telemetry.
+// zero epoch_wall_time_ms (gate-blocked event) must not write telemetry.
 // Spec: "Skip gate-blocked events (epoch_wall_time_ms=0) — no meaningful wall time."
-test "M18_001: recordZombieDelivery skips telemetry on zero epoch_wall_time_ms" {
+test "record_zombie_delivery_skips_telemetry_on_zero_epoch_wall_time_ms" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -104,9 +104,8 @@ test "M18_001: recordZombieDelivery skips telemetry on zero epoch_wall_time_ms" 
     try std.testing.expectEqual(@as(i64, 0), count);
 }
 
-// T3 — positive epoch writes exactly one telemetry row with correct field values.
-// Spec dim 2.4: "zombie_execution_telemetry has one row with matching fields after call."
-test "M18_001: recordZombieDelivery writes one telemetry row on successful delivery" {
+// positive epoch writes exactly one telemetry row with correct field values.
+test "record_zombie_delivery_writes_one_stage_row_on_successful_delivery" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -123,16 +122,17 @@ test "M18_001: recordZombieDelivery writes one telemetry row on successful deliv
         WS_TEL_EPOCH_POS,
         "zombie-tel-pos",
         event_id,
-        30, // agent_seconds → wall_seconds
+        30, // agent_seconds → wall_ms = 30000
         1420, // token_count
-        870, // time_to_first_token_ms
+        870, // time_to_first_token_ms (no longer persisted)
         epoch, // positive epoch — telemetry must be written
         balance_policy.DEFAULT,
     );
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT token_count, time_to_first_token_ms, epoch_wall_time_ms,
-        \\       wall_seconds, plan_tier, event_id
+        \\SELECT charge_type, posture, model,
+        \\       token_count_input, token_count_output, wall_ms,
+        \\       event_id
         \\FROM zombie_execution_telemetry
         \\WHERE workspace_id = $1
     , .{WS_TEL_EPOCH_POS}));
@@ -141,19 +141,19 @@ test "M18_001: recordZombieDelivery writes one telemetry row on successful deliv
         try std.testing.expect(false); // no row written — test fails
         return;
     };
-    try std.testing.expectEqual(@as(i64, 1420), try r.get(i64, 0)); // token_count
-    try std.testing.expectEqual(@as(i64, 870), try r.get(i64, 1)); // time_to_first_token_ms
-    try std.testing.expectEqual(epoch, try r.get(i64, 2)); // epoch_wall_time_ms
-    try std.testing.expectEqual(@as(i64, 30), try r.get(i64, 3)); // wall_seconds
-    try std.testing.expectEqualStrings("free", try r.get([]const u8, 4)); // plan_tier
-    try std.testing.expectEqualStrings(event_id, try r.get([]const u8, 5)); // event_id
+    try std.testing.expectEqualStrings("stage", try r.get([]const u8, 0));
+    try std.testing.expectEqualStrings("platform", try r.get([]const u8, 1));
+    try std.testing.expectEqualStrings(tenant_provider.PLATFORM_DEFAULT_MODEL, try r.get([]const u8, 2));
+    try std.testing.expectEqual(@as(?i64, 0), try r.get(?i64, 3)); // token_count_input — placeholder until resolver lands
+    try std.testing.expectEqual(@as(?i64, 1420), try r.get(?i64, 4)); // token_count_output ← token_count
+    try std.testing.expectEqual(@as(?i64, 30_000), try r.get(?i64, 5)); // wall_ms ← agent_seconds * 1000
+    try std.testing.expectEqualStrings(event_id, try r.get([]const u8, 6));
 }
 
-// T4 — telemetry insert is idempotent: same event_id replayed twice inserts 1 row.
-// Spec dim 2.2: "second call with same event_id is a no-op (ON CONFLICT DO NOTHING)."
-// Mirrors the credit deduction idempotency contract (metering_test.zig T6) but for
-// the telemetry table.
-test "M18_001: recordZombieDelivery telemetry insert is idempotent on replay" {
+// telemetry insert is idempotent: same event_id replayed twice inserts 1 row.
+// Mirrors the credit deduction idempotency contract (metering_test.zig)
+// but for the telemetry table — UNIQUE (event_id, charge_type) + ON CONFLICT DO NOTHING.
+test "record_zombie_delivery_telemetry_insert_is_idempotent_on_replay" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
