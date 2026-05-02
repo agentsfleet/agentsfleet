@@ -67,8 +67,31 @@ vi.mock("@/lib/api/zombies", () => ({
   deleteZombie: vi.fn(),
 }));
 
+const listTenantBillingChargesMock = vi.fn();
 vi.mock("@/lib/api/tenant_billing", () => ({
   getTenantBilling: getTenantBillingMock,
+  listTenantBillingCharges: listTenantBillingChargesMock,
+}));
+
+const getTenantProviderMock = vi.fn();
+const setTenantProviderByokMock = vi.fn();
+const resetTenantProviderMock = vi.fn();
+vi.mock("@/lib/api/tenant_provider", () => ({
+  getTenantProvider: getTenantProviderMock,
+  setTenantProviderByok: setTenantProviderByokMock,
+  resetTenantProvider: resetTenantProviderMock,
+}));
+
+vi.mock("@/app/(dashboard)/settings/provider/components/ProviderSelector", () => ({
+  default: ({ workspaceId }: { workspaceId: string }) =>
+    React.createElement("div", { "data-provider-selector": workspaceId }),
+}));
+vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", () => ({
+  default: () => React.createElement("div", { "data-balance-card": "1" }),
+}));
+vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", () => ({
+  default: ({ events }: { events: { event_id: string }[] }) =>
+    React.createElement("div", { "data-usage-tab": "1", "data-event-count": events.length }),
 }));
 
 vi.mock("@/lib/api/events", () => ({
@@ -140,6 +163,9 @@ vi.mock("lucide-react", () => {
     Trash2Icon: make("Trash2Icon"),
     WalletIcon: make("WalletIcon"),
     ZapIcon: make("ZapIcon"),
+    ReceiptIcon: make("ReceiptIcon"),
+    CreditCardIcon: make("CreditCardIcon"),
+    ActivityIcon: make("ActivityIcon"),
   };
 });
 
@@ -343,6 +369,114 @@ describe("placeholder pages", () => {
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Settings");
     expect(m).toContain("—");
+  });
+
+  it("provider settings page renders selector with current config and empty credentials", async () => {
+    getServerTokenMock.mockResolvedValue("token_provider");
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
+    getTenantProviderMock.mockResolvedValue({
+      mode: "platform",
+      provider: "fireworks",
+      model: "kimi-k2.6",
+      context_cap_tokens: 256000,
+      credential_ref: null,
+      synthesised_default: true,
+    });
+    listCredentialsMock.mockResolvedValue({ credentials: [] });
+    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("LLM Provider");
+    expect(m).toContain("platform");
+    expect(m).toContain("data-provider-selector=\"ws_p\"");
+    expect(m).toContain("This is the platform default");
+  });
+
+  it("provider settings page surfaces resolver error banner from the API", async () => {
+    getServerTokenMock.mockResolvedValue("token_provider");
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
+    getTenantProviderMock.mockResolvedValue({
+      mode: "byok",
+      provider: "fireworks",
+      model: "kimi-k2.6",
+      context_cap_tokens: 256000,
+      credential_ref: "fw-byok",
+      error: "credential_missing",
+    });
+    listCredentialsMock.mockResolvedValue({ credentials: [{ name: "fw-byok", created_at: "2026-04-01T00:00:00Z" }] });
+    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Provider resolver error");
+    expect(m).toContain("credential_missing");
+  });
+
+  it("provider settings page renders empty-workspace empty-state when no workspace", async () => {
+    getServerTokenMock.mockResolvedValue("token_provider");
+    resolveActiveWorkspaceMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("No workspace yet");
+  });
+
+  it("provider settings page notFound when no token", async () => {
+    getServerTokenMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    await expect(Page()).rejects.toThrow("notFound");
+  });
+
+  it("provider settings page tolerates a getTenantProvider 5xx (catch fallback)", async () => {
+    getServerTokenMock.mockResolvedValue("token_provider");
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
+    getTenantProviderMock.mockRejectedValue(new Error("503"));
+    listCredentialsMock.mockResolvedValue({ credentials: [] });
+    const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
+    // The page swallows the error to keep rendering.
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("LLM Provider");
+  });
+
+  it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
+    getServerTokenMock.mockResolvedValue("token_billing");
+    getTenantBillingMock.mockResolvedValue({
+      plan_tier: "free", plan_sku: "starter", balance_cents: 471,
+      updated_at: 1, is_exhausted: false, exhausted_at: null,
+    });
+    listTenantBillingChargesMock.mockResolvedValue({
+      items: [
+        {
+          id: "tel_1", tenant_id: "t", workspace_id: "w", zombie_id: "z",
+          event_id: "evt_1", charge_type: "receive", posture: "platform",
+          model: "kimi-k2.6", credit_deducted_cents: 1,
+          token_count_input: null, token_count_output: null, wall_ms: null, recorded_at: 1,
+        },
+      ],
+    });
+    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Billing");
+    expect(m).toContain("data-balance-card=\"1\"");
+    expect(m).toContain("data-usage-tab=\"1\"");
+    // Radix Tabs only renders the active panel; assert the tab triggers
+    // are wired so Invoices / Payment Method are reachable on click.
+    expect(m).toContain(">Invoices</button>");
+    expect(m).toContain(">Payment Method</button>");
+  });
+
+  it("billing settings page tolerates a /charges 5xx by falling back to empty events", async () => {
+    getServerTokenMock.mockResolvedValue("token_billing");
+    getTenantBillingMock.mockResolvedValue({
+      plan_tier: "free", plan_sku: "starter", balance_cents: 0,
+      updated_at: 1, is_exhausted: true, exhausted_at: 2,
+    });
+    listTenantBillingChargesMock.mockRejectedValue(new Error("503"));
+    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("data-event-count=\"0\"");
+  });
+
+  it("billing settings page notFound when no token", async () => {
+    getServerTokenMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    await expect(Page()).rejects.toThrow("notFound");
   });
 });
 

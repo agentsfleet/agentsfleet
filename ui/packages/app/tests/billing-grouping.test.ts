@@ -68,6 +68,29 @@ describe("groupChargesByEvent", () => {
     expect(groups[0]?.stage_cents).toBe(2);
     expect(groups[0]?.total_cents).toBe(2);
   });
+
+  it("ignores zero/null credit_deducted_cents fallbacks", () => {
+    const zeroRow: ChargeRow = { ...RECEIVE, credit_deducted_cents: 0 };
+    const groups = groupChargesByEvent([zeroRow]);
+    expect(groups[0]?.receive_cents).toBe(0);
+    expect(groups[0]?.total_cents).toBe(0);
+  });
+
+  it("skips updating recorded_at when the new row's timestamp is later", () => {
+    // Verifies the `r.recorded_at < entry.recorded_at` branch — the second
+    // row arrives later than the first, so entry.recorded_at must NOT change.
+    const earlier: ChargeRow = { ...RECEIVE, event_id: "evt_x", recorded_at: 100 };
+    const later: ChargeRow = { ...STAGE, event_id: "evt_x", recorded_at: 200 };
+    const groups = groupChargesByEvent([earlier, later]);
+    expect(groups[0]?.recorded_at).toBe(100);
+  });
+
+  it("ignores rows with an unknown charge_type (defensive)", () => {
+    const weird = { ...RECEIVE, charge_type: "unknown" as ChargeRow["charge_type"] };
+    const groups = groupChargesByEvent([weird]);
+    expect(groups[0]?.receive_cents).toBe(0);
+    expect(groups[0]?.stage_cents).toBe(0);
+  });
 });
 
 describe("formatDollars", () => {

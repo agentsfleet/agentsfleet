@@ -24,7 +24,6 @@ type ActionState = { ok: string | null; error: string | null };
 type ModeStrategy = {
   submitLabel: string;
   successMsg: string;
-  validate: (form: { credentialRef: string }) => string | null;
   run: (token: string, form: { credentialRef: string; modelOverride: string }) => Promise<unknown>;
 };
 
@@ -32,14 +31,11 @@ const MODE_STRATEGIES: Record<ProviderMode, ModeStrategy> = {
   platform: {
     submitLabel: "Reset to platform default",
     successMsg: "Reset to platform default.",
-    validate: () => null,
     run: (token) => resetTenantProvider(token),
   },
   byok: {
     submitLabel: "Save BYOK config",
     successMsg: "Switched to BYOK. Run a test event to verify the key.",
-    validate: ({ credentialRef }) =>
-      credentialRef ? null : "Pick a credential before switching to BYOK.",
     run: (token, { credentialRef, modelOverride }) =>
       setTenantProviderByok(
         { credential_ref: credentialRef, model: modelOverride.trim() || undefined },
@@ -76,8 +72,6 @@ export default function ProviderSelector({
   const strategy = MODE_STRATEGIES[mode];
 
   async function action(_prev: ActionState, _formData: FormData): Promise<ActionState> {
-    const validation = strategy.validate({ credentialRef });
-    if (validation) return { ok: null, error: validation };
     const token = await getToken();
     if (!token) return { ok: null, error: "Not authenticated" };
     try {
