@@ -696,7 +696,7 @@ Comment scrubs: `src/state/vault.zig:10` and `src/zombie/credential_key.zig:9` r
   "moonshot":   {"default_model": "kimi-k2.6",                                  "api_base": "https://api.moonshot.cn/v1"},
   "zhipu":      {"default_model": "glm-5.1",                                    "api_base": "https://open.bigmodel.cn/api/paas/v4"},
   "together":   {"default_model": "deepseek-coder",                             "api_base": "https://api.together.xyz"},
-  "openrouter": {"default_model": "anthropic/accounts/fireworks/models/kimi-k2.6",                "api_base": "https://openrouter.ai/api/v1"}
+  "openrouter": {"default_model": "anthropic/claude-sonnet-4-6",          "api_base": "https://openrouter.ai/api/v1"}
 }
 ```
 
