@@ -580,7 +580,7 @@ No `purchase` / `topup` / `configure` subcommands in v2.0. The CLI's job is to s
 
 When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) prints a one-line pointer at the dashboard billing page. The gate is server-side; the CLI surfaces the eventual rejection via `zombiectl events`.
 
-### §8 — UI Settings → Provider (`ui/packages/app/src/routes/settings/provider.tsx` — NEW)
+### §8 — UI Settings → Provider (`ui/packages/app/app/(dashboard)/settings/provider/page.tsx` — NEW) — DONE
 
 Page at `/settings/provider`:
 
@@ -593,7 +593,7 @@ Page at `/settings/provider`:
 
 New components: `ui/packages/app/src/routes/settings/provider.tsx`, `ui/packages/app/src/components/ProviderSelector.tsx`. Use design-system primitives per the UI Component Substitution Gate.
 
-### §9 — UI Settings → Billing (`ui/packages/app/src/routes/settings/billing.tsx` — NEW)
+### §9 — UI Settings → Billing (`ui/packages/app/app/(dashboard)/settings/billing/page.tsx` — NEW) — DONE
 
 Read-only Amp-style billing dashboard. Layout mirrors Amp Code's `/settings` Billing card.
 
@@ -632,7 +632,7 @@ Per the worker overlay table above. The same edit that wires the two debit point
 
 The legacy `resolveFirstCredential` (deprecated for tool-level secrets in M45) is unused for provider resolution — `resolveActiveProvider` is the only path.
 
-### §11 — Model-caps endpoint extension (token-rate columns)
+### §11 — Model-caps endpoint extension (token-rate columns) — DONE
 
 The endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is extended to carry per-model token rates alongside the existing `context_cap_tokens` column.
 

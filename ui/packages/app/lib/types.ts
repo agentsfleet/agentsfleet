@@ -48,3 +48,45 @@ export type TenantBilling = {
   is_exhausted: boolean;
   exhausted_at: number | null;
 };
+
+// ── Tenant LLM provider ──
+
+export type ProviderMode = "platform" | "byok";
+
+export const PROVIDER_MODE = {
+  platform: "platform" as ProviderMode,
+  byok: "byok" as ProviderMode,
+} as const;
+
+export type TenantProvider = {
+  mode: ProviderMode;
+  provider: string;
+  model: string;
+  context_cap_tokens: number;
+  credential_ref: string | null;
+  // Set when no tenant_providers row exists and the resolver returned the
+  // platform default. UI uses this to surface "this is the default" copy.
+  synthesised_default?: boolean;
+  // Set when the resolver tried to load a BYOK credential and failed
+  // (credential row missing from the vault). The UI surfaces this as a
+  // warning banner.
+  error?: string;
+};
+
+export type TenantBillingChargesResponse = {
+  items: Array<{
+    id: string;
+    tenant_id: string;
+    workspace_id: string;
+    zombie_id: string;
+    event_id: string;
+    charge_type: "receive" | "stage";
+    posture: ProviderMode;
+    model: string;
+    credit_deducted_cents: number;
+    token_count_input: number | null;
+    token_count_output: number | null;
+    wall_ms: number | null;
+    recorded_at: number;
+  }>;
+};

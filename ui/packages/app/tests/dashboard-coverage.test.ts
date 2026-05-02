@@ -131,12 +131,15 @@ vi.mock("lucide-react", () => {
   };
   return {
     ChevronDownIcon: make("ChevronDownIcon"),
+    ChevronRightIcon: make("ChevronRightIcon"),
     KeyRoundIcon: make("KeyRoundIcon"),
     ShieldIcon: make("ShieldIcon"),
     SettingsIcon: make("SettingsIcon"),
     PlusIcon: make("PlusIcon"),
     Loader2Icon: make("Loader2Icon"),
     Trash2Icon: make("Trash2Icon"),
+    WalletIcon: make("WalletIcon"),
+    ZapIcon: make("ZapIcon"),
   };
 });
 
