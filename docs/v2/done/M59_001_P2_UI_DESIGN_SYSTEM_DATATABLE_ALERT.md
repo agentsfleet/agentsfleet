@@ -4,7 +4,7 @@
 **Milestone:** M59
 **Workstream:** 001
 **Date:** May 03, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — design-system hygiene; reduces duplication across 6+ existing call sites and unblocks future tabular surfaces.
 **Categories:** UI
 **Batch:** B1
