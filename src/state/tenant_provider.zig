@@ -184,6 +184,87 @@ pub fn deleteRow(conn: *pg.Conn, tenant_id: []const u8) !void {
     , .{tenant_id});
 }
 
+/// Doctor-surface variant of ResolvedProvider — strips api_key and adds an
+/// `error_label` field that surfaces user-fixable BYOK problems
+/// (credential_missing / credential_data_malformed) without 5xx-ing the
+/// doctor request. Caller owns the slices and must call .deinit(alloc).
+pub const DoctorBlock = struct {
+    mode: Mode,
+    provider: []u8,
+    model: []u8,
+    context_cap_tokens: u32,
+    credential_ref: ?[]u8,
+    /// One of "credential_missing" / "credential_data_malformed" when the
+    /// resolver reported a user-fixable BYOK fault, else null.
+    error_label: ?[]const u8,
+
+    pub fn deinit(self: *DoctorBlock, alloc: std.mem.Allocator) void {
+        alloc.free(self.provider);
+        alloc.free(self.model);
+        if (self.credential_ref) |c| alloc.free(c);
+        self.* = undefined;
+    }
+};
+
+/// Describe the tenant's provider posture for the doctor surface — never
+/// returns the api_key, and degrades gracefully on user-fixable BYOK errors
+/// (returns the row's surface fields plus an `error_label` instead of
+/// failing). Operator-side errors (PlatformKeyMissing, TenantHasNoWorkspace)
+/// still propagate so the handler can map them to 5xx.
+pub fn describeForDoctor(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+) (ResolveError || anyerror)!DoctorBlock {
+    if (resolveActiveProvider(alloc, conn, tenant_id)) |resolved| {
+        var r = resolved;
+        defer r.deinit(alloc);
+        // Fetch the row's credential_ref separately so the doctor block can
+        // surface "byok with credential X" without re-implementing resolve.
+        var row_opt = try resolver.loadProviderRow(alloc, conn, tenant_id);
+        defer if (row_opt) |*pr| pr.deinit(alloc);
+
+        const provider = try alloc.dupe(u8, r.provider);
+        errdefer alloc.free(provider);
+        const model = try alloc.dupe(u8, r.model);
+        errdefer alloc.free(model);
+        const cred_ref: ?[]u8 = if (row_opt) |pr|
+            if (pr.credential_ref) |c| try alloc.dupe(u8, c) else null
+        else
+            null;
+        return .{
+            .mode = r.mode,
+            .provider = provider,
+            .model = model,
+            .context_cap_tokens = r.context_cap_tokens,
+            .credential_ref = cred_ref,
+            .error_label = null,
+        };
+    } else |err| switch (err) {
+        ResolveError.CredentialMissing, ResolveError.CredentialDataMalformed => {
+            // BYOK user-fixable error — load the row and surface the fault.
+            // The row's owned slices transfer into the returned DoctorBlock;
+            // we deliberately do NOT call row.deinit so DoctorBlock.deinit
+            // owns the lifetime.
+            const row_opt = try resolver.loadProviderRow(alloc, conn, tenant_id);
+            const r = row_opt orelse return err;
+            const label: []const u8 = if (err == ResolveError.CredentialMissing)
+                "credential_missing"
+            else
+                "credential_data_malformed";
+            return .{
+                .mode = r.mode,
+                .provider = r.provider,
+                .model = r.model,
+                .context_cap_tokens = r.context_cap_tokens,
+                .credential_ref = r.credential_ref,
+                .error_label = label,
+            };
+        },
+        else => return err,
+    }
+}
+
 test {
     _ = @import("tenant_provider_test.zig");
 }

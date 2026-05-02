@@ -50,6 +50,7 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "tenants",           # tenant resource
     "telemetry",         # zombie_execution_telemetry rows
     "billing",           # billing summary view
+    "diagnostics",       # tenant doctor block (provider posture, resolver state)
     "integration-grants",
     "integration-requests",
     "approvals",         # approval-gate inbox collection

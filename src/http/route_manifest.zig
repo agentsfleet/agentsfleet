@@ -42,6 +42,9 @@ pub const entries = [_]Entry{
     // Tenant-scoped workspace list (backs the dashboard workspace switcher)
     .{ .method = "GET", .path = "/v1/tenants/me/workspaces" },
 
+    // Tenant-scoped doctor block — provider posture + resolver state.
+    .{ .method = "GET", .path = "/v1/tenants/me/diagnostics" },
+
     // Credentials
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/credentials" },

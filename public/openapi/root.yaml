@@ -24,6 +24,10 @@ tags:
   description: Create and manage workspaces (one workspace per repo)
   x-mintlify:
     navigation: Workspaces
+- name: Tenant
+  description: Tenant-scoped surfaces — provider posture, doctor, and tenant-level configuration
+  x-mintlify:
+    navigation: Tenant
 - name: Runs
   description: Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs
   x-mintlify:
@@ -122,6 +126,8 @@ paths:
     $ref: ./paths/billing.yaml#/~1v1~1tenants~1me~1billing
   /v1/tenants/me/workspaces:
     $ref: ./paths/tenant-workspaces.yaml#/~1v1~1tenants~1me~1workspaces
+  /v1/tenants/me/diagnostics:
+    $ref: ./paths/tenant-diagnostics.yaml#/~1v1~1tenants~1me~1diagnostics
   /v1/workspaces/{workspace_id}/credentials:
     $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials
   /v1/workspaces/{workspace_id}/credentials/{credential_name}:
