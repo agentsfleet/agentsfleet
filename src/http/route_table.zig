@@ -1,4 +1,4 @@
-//! Route table for the M18_002 middleware pipeline (M18_002 §4.1).
+//! Route table for the middleware pipeline.
 //!
 //! Maps each `Route` variant to a `RouteSpec` that declares the middleware
 //! chain and invoke function. `specFor` is called by the dispatcher; if it
@@ -57,6 +57,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .get_tenant_billing => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBilling },
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
         .get_tenant_doctor => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantDoctor },
+        .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
         .workspace_llm_credential => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceLlmCredential },
 
         // Admin platform keys (admin role required)
@@ -68,7 +69,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // keyed by `trigger.source`).
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
-        // M28_001 §5: Clerk via Svix — dedicated middleware, shared handler.
+        // Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
         // Clerk signup webhook — no zombie-scoped vault lookup; the handler
         // verifies Svix inline against env CLERK_WEBHOOK_SECRET.
@@ -115,11 +116,11 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .list_integration_grants => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListGrants },
         .revoke_integration_grant => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeRevokeGrant },
 
-        // Workspace agent-key management (M28_002 §0 rename)
+        // Workspace agent-key management.
         .agent_keys => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeAgentKeys },
         .delete_agent_key => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteAgentKey },
 
-        // Tenant API keys (M28_002 §3) — operator-minimum per RULE BIL.
+        // Tenant API keys — operator-minimum per RULE BIL.
         .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
         .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
     };

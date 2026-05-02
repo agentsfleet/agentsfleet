@@ -45,6 +45,11 @@ pub const entries = [_]Entry{
     // Tenant-scoped doctor block — provider posture + resolver state.
     .{ .method = "GET", .path = "/v1/tenants/me/diagnostics" },
 
+    // Tenant-scoped LLM provider config (GET/PUT/DELETE on the same path).
+    .{ .method = "GET", .path = "/v1/tenants/me/provider" },
+    .{ .method = "PUT", .path = "/v1/tenants/me/provider" },
+    .{ .method = "DELETE", .path = "/v1/tenants/me/provider" },
+
     // Credentials
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/credentials" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/credentials" },

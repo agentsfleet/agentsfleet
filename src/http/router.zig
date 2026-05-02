@@ -37,6 +37,8 @@ pub const Route = union(enum) {
     list_tenant_workspaces,
     // Tenant-scoped doctor block — GET /v1/tenants/me/diagnostics
     get_tenant_doctor,
+    // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
+    tenant_provider,
     /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
     /// workspace credential keyed by `trigger.source`.
@@ -106,6 +108,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
     if (std.mem.eql(u8, path, "/v1/tenants/me/diagnostics")) return .get_tenant_doctor;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/provider")) return .tenant_provider;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
     if (std.mem.eql(u8, path, "/internal/v1/telemetry")) return .internal_telemetry;

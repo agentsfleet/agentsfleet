@@ -1,4 +1,4 @@
-//! Invoke functions for the M18_002 route table.
+//! Invoke functions for the route table.
 //!
 //! One `pub fn invokeXxx` per Route variant. Each function:
 //!   1. Checks the HTTP method and writes 405 if wrong.
@@ -23,6 +23,7 @@ const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
 const tenant_doctor_h = @import("handlers/tenant_doctor.zig");
+const tenant_provider_h = @import("handlers/tenant_provider.zig");
 const ws_ops = @import("handlers/workspaces/ops.zig");
 const ws_creds = @import("handlers/workspaces/credentials.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
@@ -127,6 +128,16 @@ pub fn invokeGetTenantDoctor(hx: *Hx, req: *httpz.Request, route: router.Route) 
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
     tenant_doctor_h.innerGetTenantDoctor(hx.*, req);
+}
+
+pub fn invokeTenantProvider(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    switch (req.method) {
+        .GET => tenant_provider_h.innerGetTenantProvider(hx.*, req),
+        .PUT => tenant_provider_h.innerPutTenantProvider(hx.*, req),
+        .DELETE => tenant_provider_h.innerDeleteTenantProvider(hx.*, req),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
 pub fn invokeWorkspaceLlmCredential(hx: *Hx, req: *httpz.Request, route: router.Route) void {

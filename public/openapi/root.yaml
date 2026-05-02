@@ -128,6 +128,8 @@ paths:
     $ref: ./paths/tenant-workspaces.yaml#/~1v1~1tenants~1me~1workspaces
   /v1/tenants/me/diagnostics:
     $ref: ./paths/tenant-diagnostics.yaml#/~1v1~1tenants~1me~1diagnostics
+  /v1/tenants/me/provider:
+    $ref: ./paths/tenant-provider.yaml#/~1v1~1tenants~1me~1provider
   /v1/workspaces/{workspace_id}/credentials:
     $ref: ./paths/credentials.yaml#/~1v1~1workspaces~1{workspace_id}~1credentials
   /v1/workspaces/{workspace_id}/credentials/{credential_name}:

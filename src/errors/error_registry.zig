@@ -1,17 +1,19 @@
 /// error_registry.zig — comptime-generated error registry.
 ///
 /// Single source of truth for error codes. Adding a new error code:
-/// 1. Add one e() entry to ENTRIES in error_entries.zig
-/// 2. Add the ERR_* constant below
+/// 1. Add one e() entry to ENTRIES in error_entries.zig (control-plane)
+///    or ENTRIES_RUNTIME in error_entries_runtime.zig (execute path).
+/// 2. Add the ERR_* constant below.
 /// Comptime validation guarantees: non-empty hints, UZ- prefix, no duplicates,
 /// no sentinel collision, and every ERR_* resolves in the registry.
 const std = @import("std");
 const entries = @import("error_entries.zig");
+const entries_runtime = @import("error_entries_runtime.zig");
 
 pub const Entry = entries.Entry;
 pub const UNKNOWN = entries.UNKNOWN;
 pub const ERROR_DOCS_BASE = entries.ERROR_DOCS_BASE;
-pub const REGISTRY = entries.ENTRIES;
+pub const REGISTRY = entries.ENTRIES ++ entries_runtime.ENTRIES_RUNTIME;
 
 // ── Comptime validation ────────────────────────────────────────────────────
 comptime {
@@ -136,6 +138,11 @@ pub const ERR_ZOMBIE_NAME_MISMATCH = "UZ-ZMB-011";
 // VAULT (structured-credential JSON shape)
 pub const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 pub const ERR_VAULT_DATA_TOO_LARGE = "UZ-VAULT-002";
+// PROVIDER (tenant-scoped LLM provider config — PUT /v1/tenants/me/provider)
+pub const ERR_PROVIDER_CREDENTIAL_REF_REQUIRED = "UZ-PROVIDER-001";
+pub const ERR_PROVIDER_CREDENTIAL_NOT_FOUND = "UZ-PROVIDER-002";
+pub const ERR_PROVIDER_CREDENTIAL_DATA_MALFORMED = "UZ-PROVIDER-003";
+pub const ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE = "UZ-PROVIDER-004";
 // MEMORY
 pub const ERR_MEM_SCOPE = "UZ-MEM-001";
 pub const ERR_MEM_ZOMBIE_NOT_FOUND = "UZ-MEM-002";

@@ -184,6 +184,22 @@ pub fn deleteRow(conn: *pg.Conn, tenant_id: []const u8) !void {
     , .{tenant_id});
 }
 
+pub const ProbedCredential = resolver.ProbedCredential;
+
+/// Probe the tenant's BYOK credential and return the {provider, api_key,
+/// model} triplet. Used by the HTTP PUT handler to read the effective
+/// model from the credential before catalogue validation, and by tests.
+/// Caller owns the returned struct and must call .deinit(alloc) — the
+/// api_key bytes are zeroed on free.
+pub fn probeByok(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    tenant_id: []const u8,
+    credential_ref: []const u8,
+) (ResolveError || anyerror)!ProbedCredential {
+    return resolver.probeByokCredential(alloc, conn, tenant_id, credential_ref);
+}
+
 /// Doctor-surface variant of ResolvedProvider — strips api_key and adds an
 /// `error_label` field that surfaces user-fixable BYOK problems
 /// (credential_missing / credential_data_malformed) without 5xx-ing the

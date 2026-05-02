@@ -46,11 +46,13 @@ pub const PlatformKey = struct {
 pub const ProbedCredential = struct {
     provider: []u8,
     api_key: []u8,
+    model: []u8,
 
     pub fn deinit(self: *ProbedCredential, alloc: std.mem.Allocator) void {
         std.crypto.secureZero(u8, self.api_key);
         alloc.free(self.api_key);
         alloc.free(self.provider);
+        alloc.free(self.model);
     }
 };
 
@@ -155,13 +157,19 @@ pub fn probeByokCredential(
 
     const provider_v = parsed.value.object.get("provider") orelse return ResolveError.CredentialDataMalformed;
     const api_key_v = parsed.value.object.get("api_key") orelse return ResolveError.CredentialDataMalformed;
-    if (provider_v != .string or api_key_v != .string) return ResolveError.CredentialDataMalformed;
-    if (provider_v.string.len == 0 or api_key_v.string.len == 0) return ResolveError.CredentialDataMalformed;
+    const model_v = parsed.value.object.get("model") orelse return ResolveError.CredentialDataMalformed;
+    if (provider_v != .string or api_key_v != .string or model_v != .string) return ResolveError.CredentialDataMalformed;
+    if (provider_v.string.len == 0 or api_key_v.string.len == 0 or model_v.string.len == 0) return ResolveError.CredentialDataMalformed;
 
     const provider = try alloc.dupe(u8, provider_v.string);
     errdefer alloc.free(provider);
     const api_key = try alloc.dupe(u8, api_key_v.string);
-    return .{ .provider = provider, .api_key = api_key };
+    errdefer {
+        std.crypto.secureZero(u8, api_key);
+        alloc.free(api_key);
+    }
+    const model = try alloc.dupe(u8, model_v.string);
+    return .{ .provider = provider, .api_key = api_key, .model = model };
 }
 
 pub fn loadVaultApiKey(

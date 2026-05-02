@@ -1911,6 +1911,109 @@
         }
       }
     },
+    "/v1/tenants/me/provider": {
+      "get": {
+        "operationId": "get_tenant_provider",
+        "summary": "Read tenant LLM provider configuration",
+        "description": "Returns the tenant's persisted provider config — mode, provider name, model, context cap, and (under BYOK) the user-named credential_ref. The api_key is never serialised. Tenants with no row receive a synthesised platform default.\n",
+        "tags": [
+          "Tenant"
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProviderConfig"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "put": {
+        "operationId": "put_tenant_provider",
+        "summary": "Set tenant LLM provider posture",
+        "description": "Eager-validates and UPSERTs the tenant_providers row. Validation order: body shape → credential_ref required (mode=byok) → credential_not_found → credential_data_malformed → model_not_in_caps_catalogue → UPSERT. Stored `provider` is read from the credential JSON; effective `model` is the body override (when present) else the credential's stored model.\n",
+        "tags": [
+          "Tenant"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "mode"
+                ],
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": [
+                      "platform",
+                      "byok"
+                    ]
+                  },
+                  "credential_ref": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "User-named vault key. Required when mode=byok."
+                  },
+                  "model": {
+                    "type": "string",
+                    "nullable": true,
+                    "description": "Optional model override. Falls back to the credential's stored model when absent."
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Provider config after upsert",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProviderConfig"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_tenant_provider",
+        "summary": "Reset tenant LLM provider to platform default",
+        "description": "Equivalent to `PUT {mode: \"platform\"}`. Writes the explicit mode=platform row so the dashboard can distinguish \"never configured\" from \"explicitly reset\".\n",
+        "tags": [
+          "Tenant"
+        ],
+        "responses": {
+          "200": {
+            "description": "Provider config after reset",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TenantProviderConfig"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/v1/workspaces/{workspace_id}/credentials": {
       "get": {
         "operationId": "list_workspace_credentials",
@@ -4219,6 +4322,39 @@
           "updated_at": {
             "type": "integer",
             "format": "int64"
+          }
+        }
+      },
+      "TenantProviderConfig": {
+        "type": "object",
+        "required": [
+          "mode",
+          "provider",
+          "model",
+          "context_cap_tokens",
+          "credential_ref"
+        ],
+        "properties": {
+          "mode": {
+            "type": "string",
+            "enum": [
+              "platform",
+              "byok"
+            ]
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "context_cap_tokens": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "credential_ref": {
+            "type": "string",
+            "nullable": true
           }
         }
       },
