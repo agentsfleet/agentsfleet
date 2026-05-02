@@ -76,7 +76,13 @@ pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    const cursor = qs.get("cursor");
+    // `?cursor=` (empty value) is treated as "no cursor" rather than
+    // bouncing the caller with a 400 — empty cursor isn't malformed, it's
+    // just the first page expressed verbosely.
+    const cursor: ?[]const u8 = if (qs.get("cursor")) |c|
+        (if (c.len == 0) null else c)
+    else
+        null;
 
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
@@ -84,6 +90,12 @@ pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
+    // `listTelemetryForTenant` returns the union of cursor_mod.parseCursor's
+    // error set + the pg driver's anyerror surface, hence the open `!`. Only
+    // `error.InvalidCursor` is a 400; everything else (PG, alloc) is a 500.
+    // The local helpers like `parseLimit` use a closed set because their
+    // surface is tiny and operator-discrimination matters; this call sits
+    // on top of pg + cursor_mod, so widening to anyerror is intentional.
     const rows = telemetry_store.listTelemetryForTenant(conn, hx.alloc, tenant_id, limit, cursor) catch |err| {
         if (err == error.InvalidCursor) {
             hx.fail(ec.ERR_INVALID_REQUEST, "invalid cursor");
@@ -95,6 +107,10 @@ pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
 
     // A full page → emit a next_cursor pointing at the last row so the
     // caller can ask for the next slice. Short page → null (no more rows).
+    //
+    // `hx.alloc` is the per-request arena (see hx.zig); it's freed when
+    // the response is serialized, so the rows slice + the cursor token
+    // both ride that lifetime — no manual deinit / dupe needed.
     const next_cursor: ?[]u8 = if (rows.len == limit and rows.len > 0) blk: {
         break :blk telemetry_store.makeCursor(hx.alloc, rows[rows.len - 1]) catch {
             common.internalDbError(hx.res, hx.req_id);

@@ -36,6 +36,7 @@ export default async function BillingSettingsPage() {
   ]);
 
   const events = groupChargesByEvent(chargesResp.items);
+  const initialCursor = chargesResp.next_cursor;
 
   return (
     <div className="space-y-8">
@@ -53,7 +54,7 @@ export default async function BillingSettingsPage() {
         </TabsList>
 
         <TabsContent value="usage" className="mt-4">
-          <BillingUsageTab events={events} />
+          <BillingUsageTab initialEvents={events} initialCursor={initialCursor} />
         </TabsContent>
 
         <TabsContent value="invoices" className="mt-4">

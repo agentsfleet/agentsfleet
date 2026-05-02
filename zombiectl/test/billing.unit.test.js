@@ -111,6 +111,38 @@ test("billing show: rejects non-numeric --limit", async () => {
   assert.match(stderr.read(), /--limit must be an integer between 1 and 100/);
 });
 
+test("billing show: rejects bare --limit (no value) with usage hint", async () => {
+  const stderr = makeBufferStream();
+  const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: false };
+  // parseFlags treats `--limit` followed by `--json` (a flag) as boolean true.
+  const code = await commandBilling(ctx, ["show", "--limit", "--json"], null, makeDeps());
+  assert.equal(code, 2);
+  assert.match(stderr.read(), /--limit requires a value/);
+});
+
+test("billing show: rejects bare --cursor (no value)", async () => {
+  const stderr = makeBufferStream();
+  const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: false };
+  const code = await commandBilling(ctx, ["show", "--cursor"], null, makeDeps());
+  assert.equal(code, 2);
+  assert.match(stderr.read(), /--cursor requires a value/);
+});
+
+test("billing show: rejects empty --cursor with JSON error code", async () => {
+  const stderr = makeBufferStream();
+  const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: true };
+  // Use the real parseFlags so `--cursor=` resolves to options.cursor="".
+  const { parseFlags: realParseFlags } = await import("../src/program/args.js");
+  const code = await commandBilling(
+    ctx,
+    ["show", "--cursor=", "--json"],
+    null,
+    makeDeps({ parseFlagsImpl: realParseFlags }),
+  );
+  assert.equal(code, 2);
+  assert.equal(JSON.parse(stderr.read()).error.code, "INVALID_CURSOR");
+});
+
 test("billing show: rejects --limit above max with JSON error code", async () => {
   const stderr = makeBufferStream();
   const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: true };

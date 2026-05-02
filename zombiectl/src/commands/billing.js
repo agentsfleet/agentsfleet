@@ -45,13 +45,22 @@ export async function commandBillingShow(ctx, parsed, deps) {
     return 2;
   }
 
+  const cursor = parseCursorOption(parsed.options.cursor);
+  if (cursor instanceof Error) {
+    if (ctx.jsonMode) {
+      writeError(ctx, "INVALID_CURSOR", cursor.message, deps);
+    } else {
+      writeLine(ctx.stderr, ui.err(cursor.message));
+    }
+    return 2;
+  }
+
   // Fetch balance + charges in parallel. Charges limit is `limit * 2` because
   // each event has up to 2 rows (receive + stage); after grouping we slice to
   // the user-requested event count. `--cursor` is forwarded verbatim — the
   // server treats it as opaque.
-  const cursor = parsed.options.cursor;
   const chargesQs = cursor
-    ? `${CHARGES_PATH}?limit=${limit * 2}&cursor=${encodeURIComponent(String(cursor))}`
+    ? `${CHARGES_PATH}?limit=${limit * 2}&cursor=${encodeURIComponent(cursor)}`
     : `${CHARGES_PATH}?limit=${limit * 2}`;
   const [billing, charges] = await Promise.all([
     request(ctx, BILLING_PATH, { method: "GET", headers: apiHeaders(ctx) }),
@@ -117,11 +126,24 @@ export async function commandBillingShow(ctx, parsed, deps) {
 
 function parseLimitOption(raw) {
   if (raw === undefined || raw === null) return DEFAULT_LIMIT;
+  // parseFlags returns `true` for --limit with no following value. Treat
+  // that as a usage error rather than parsing "true" → NaN below.
+  if (raw === true) return new Error("--limit requires a value (e.g. --limit 25)");
   const n = Number.parseInt(String(raw), 10);
   if (!Number.isFinite(n) || n <= 0 || n > MAX_LIMIT) {
     return new Error(`--limit must be an integer between 1 and ${MAX_LIMIT}`);
   }
   return n;
+}
+
+function parseCursorOption(raw) {
+  if (raw === undefined || raw === null) return null;
+  // parseFlags returns `true` for --cursor with no following value. Reject
+  // before it gets URI-encoded as the literal string "true".
+  if (raw === true) return new Error("--cursor requires a value (the next_cursor token from a previous page)");
+  const s = String(raw);
+  if (s.length === 0) return new Error("--cursor must not be empty");
+  return s;
 }
 
 function groupRowsByEvent(rows) {

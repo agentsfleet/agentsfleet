@@ -1,18 +1,90 @@
-import { Badge, EmptyState } from "@usezombie/design-system";
-import { ActivityIcon } from "lucide-react";
-import type { GroupedEvent } from "../lib/groupCharges";
+"use client";
+
+import { useState, useTransition } from "react";
+import { ActivityIcon, Loader2Icon } from "lucide-react";
+import { Badge, Button, EmptyState } from "@usezombie/design-system";
+import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import { useClientToken } from "@/lib/auth/client";
+import { listTenantBillingCharges } from "@/lib/api/tenant_billing";
+import { groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";
 
 export type BillingUsageTabProps = {
-  events: GroupedEvent[];
+  initialEvents: GroupedEvent[];
+  initialCursor: string | null;
 };
 
 /**
- * Read-only Usage tab — newest-first per-event drain history. CSV export
- * + zombie/time filters land alongside Stripe billing in v2.1; the v2.0
- * surface is read-only on purpose so we can ship without a dependency on
- * a chart/filter primitive.
+ * Read-only Usage tab — newest-first per-event drain history with
+ * cursor-based "Load more" pagination. CSV export + zombie/time filters
+ * land alongside Stripe billing in v2.1; the v2.0 surface stays read-only
+ * on purpose so we can ship without a dependency on a chart/filter
+ * primitive.
+ *
+ * Initial events + cursor come from the server-rendered page; subsequent
+ * pages are fetched client-side with the bearer token from useClientToken.
+ * `limit * 2` is intentional: each event yields up to two rows (receive +
+ * stage), so we ask for double the rows we'll surface as events.
  */
-export default function BillingUsageTab({ events }: BillingUsageTabProps) {
+const PAGE_SIZE = 50;
+
+const COLUMNS: DataTableColumn<GroupedEvent>[] = [
+  { key: "event_id", header: "Event", cell: (e) => <span className="font-mono text-xs">{e.event_id}</span> },
+  {
+    key: "posture",
+    header: "Posture",
+    cell: (e) => (
+      <Badge variant={e.posture === "byok" ? "cyan" : "default"}>{e.posture}</Badge>
+    ),
+  },
+  { key: "model", header: "Model", cell: (e) => <span className="font-mono text-xs">{e.model}</span>, hideOnMobile: true },
+  { key: "in_tok",  header: "In tok",  cell: (e) => e.token_count_input ?? "—", numeric: true, hideOnMobile: true },
+  { key: "out_tok", header: "Out tok", cell: (e) => e.token_count_output ?? "—", numeric: true, hideOnMobile: true },
+  { key: "receive", header: "Receive", cell: (e) => `${e.receive_cents}¢`, numeric: true },
+  { key: "stage",   header: "Stage",   cell: (e) => `${e.stage_cents}¢`,   numeric: true },
+  {
+    key: "total",
+    header: "Total",
+    cell: (e) => <span className="font-semibold">{e.total_cents}¢</span>,
+    numeric: true,
+  },
+];
+
+export default function BillingUsageTab({
+  initialEvents,
+  initialCursor,
+}: BillingUsageTabProps) {
+  const { getToken } = useClientToken();
+  const [events, setEvents] = useState<GroupedEvent[]>(initialEvents);
+  const [cursor, setCursor] = useState<string | null>(initialCursor);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function loadMore() {
+    if (!cursor) return;
+    setError(null);
+    startTransition(async () => {
+      const token = await getToken();
+      if (!token) {
+        setError("Not authenticated");
+        return;
+      }
+      try {
+        const resp = await listTenantBillingCharges(token, {
+          limit: PAGE_SIZE,
+          cursor,
+        });
+        const more = groupChargesByEvent(resp.items);
+        // De-dupe by event_id in case the page boundary repeats an event.
+        const seen = new Set(events.map((e) => e.event_id));
+        const fresh = more.filter((e) => !seen.has(e.event_id));
+        setEvents([...events, ...fresh]);
+        setCursor(resp.next_cursor);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    });
+  }
+
   if (events.length === 0) {
     return (
       <EmptyState
@@ -24,39 +96,38 @@ export default function BillingUsageTab({ events }: BillingUsageTabProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border border-border animate-in fade-in-0 duration-200">
-      <table className="w-full text-left text-xs">
-        <thead className="border-b border-border bg-muted/50 text-muted-foreground">
-          <tr>
-            <th scope="col" className="p-3 font-medium">Event</th>
-            <th scope="col" className="p-3 font-medium">Posture</th>
-            <th scope="col" className="p-3 font-medium">Model</th>
-            <th scope="col" className="p-3 font-medium text-right">In tok</th>
-            <th scope="col" className="p-3 font-medium text-right">Out tok</th>
-            <th scope="col" className="p-3 font-medium text-right">Receive</th>
-            <th scope="col" className="p-3 font-medium text-right">Stage</th>
-            <th scope="col" className="p-3 font-medium text-right">Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((e) => (
-            <tr key={e.event_id} className="border-b border-border/50 last:border-0">
-              <td className="p-3 font-mono">{e.event_id}</td>
-              <td className="p-3">
-                <Badge variant={e.posture === "byok" ? "cyan" : "default"}>
-                  {e.posture}
-                </Badge>
-              </td>
-              <td className="p-3 font-mono">{e.model}</td>
-              <td className="p-3 text-right tabular-nums">{e.token_count_input ?? "—"}</td>
-              <td className="p-3 text-right tabular-nums">{e.token_count_output ?? "—"}</td>
-              <td className="p-3 text-right tabular-nums">{e.receive_cents}¢</td>
-              <td className="p-3 text-right tabular-nums">{e.stage_cents}¢</td>
-              <td className="p-3 text-right tabular-nums font-semibold">{e.total_cents}¢</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-3 animate-in fade-in-0 duration-200">
+      <DataTable
+        columns={COLUMNS}
+        rows={events}
+        rowKey={(e) => e.event_id}
+        caption="Credit-pool charges"
+      />
+      <div className="flex items-center gap-3 text-xs">
+        {cursor ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={loadMore}
+            disabled={pending}
+            data-testid="usage-load-more"
+          >
+            {pending ? <Loader2Icon size={12} className="animate-spin" aria-hidden /> : null}
+            Load more
+          </Button>
+        ) : (
+          <span className="text-muted-foreground">No more events.</span>
+        )}
+        {error ? (
+          <span
+            role="alert"
+            className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive animate-in fade-in-0 duration-200"
+          >
+            {error}
+          </span>
+        ) : null}
+      </div>
     </div>
   );
 }

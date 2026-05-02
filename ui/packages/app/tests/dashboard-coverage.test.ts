@@ -90,8 +90,12 @@ vi.mock("@/app/(dashboard)/settings/billing/components/BillingBalanceCard", () =
   default: () => React.createElement("div", { "data-balance-card": "1" }),
 }));
 vi.mock("@/app/(dashboard)/settings/billing/components/BillingUsageTab", () => ({
-  default: ({ events }: { events: { event_id: string }[] }) =>
-    React.createElement("div", { "data-usage-tab": "1", "data-event-count": events.length }),
+  default: ({ initialEvents, initialCursor }: { initialEvents: { event_id: string }[]; initialCursor: string | null }) =>
+    React.createElement("div", {
+      "data-usage-tab": "1",
+      "data-event-count": initialEvents.length,
+      "data-cursor": initialCursor ?? "",
+    }),
 }));
 
 vi.mock("@/lib/api/events", () => ({
