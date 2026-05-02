@@ -249,6 +249,24 @@ pub fn makeCursor(alloc: std.mem.Allocator, row: TelemetryRow) ![]u8 {
     return cursor_mod.makeCursor(alloc, row.recorded_at, row.id);
 }
 
+/// Tenant-scoped charges query — backs `GET /v1/tenants/me/billing/charges`
+/// (read by the Settings → Billing dashboard's Usage tab and `zombiectl
+/// billing show`). Newest-first; no cursor (limit-only paging is sufficient
+/// for the v2.0 dashboard — deeper history can land alongside Stripe
+/// billing in v2.1).
+pub fn listTelemetryForTenant(
+    conn: *pg.Conn,
+    alloc: std.mem.Allocator,
+    tenant_id: []const u8,
+    limit: u32,
+) ![]TelemetryRow {
+    return queryRows(conn, alloc, TELEMETRY_SELECT ++
+        \\WHERE tenant_id = $1
+        \\ORDER BY recorded_at DESC, id DESC
+        \\LIMIT $2
+    , .{ tenant_id, @as(i32, @intCast(limit)) });
+}
+
 // ── Internal helpers ────────────────────────────────────────────────
 
 fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8, params: anytype) ![]TelemetryRow {

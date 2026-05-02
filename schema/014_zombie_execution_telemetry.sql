@@ -36,7 +36,7 @@ CREATE INDEX idx_telemetry_workspace_time
 CREATE INDEX idx_telemetry_zombie
     ON zombie_execution_telemetry (zombie_id, recorded_at DESC);
 
--- Tenant-scoped Usage tab query: GET /v1/tenants/me/billing/usage.
+-- Tenant-scoped charges query: GET /v1/tenants/me/billing/charges.
 CREATE INDEX idx_telemetry_tenant_time
     ON zombie_execution_telemetry (tenant_id, recorded_at DESC);
 

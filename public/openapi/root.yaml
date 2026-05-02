@@ -124,6 +124,8 @@ paths:
     $ref: ./paths/workspaces.yaml#/~1v1~1workspaces
   /v1/tenants/me/billing:
     $ref: ./paths/billing.yaml#/~1v1~1tenants~1me~1billing
+  /v1/tenants/me/billing/charges:
+    $ref: ./paths/billing.yaml#/~1v1~1tenants~1me~1billing~1charges
   /v1/tenants/me/workspaces:
     $ref: ./paths/tenant-workspaces.yaml#/~1v1~1tenants~1me~1workspaces
   /v1/tenants/me/diagnostics:

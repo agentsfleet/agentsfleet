@@ -47,3 +47,68 @@
                   description: Epoch ms of the first exhausting debit. Null until the balance is exhausted.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+/v1/tenants/me/billing/charges:
+  get:
+    operationId: get_tenant_billing_charges
+    summary: Tenant credit-pool charges
+    description: >
+      Returns the newest-first slice of `zombie_execution_telemetry` rows for the
+      caller's tenant. Two rows per event under the credit-pool model
+      (`charge_type` ∈ `receive`, `stage`); the dashboard groups them by
+      `event_id` to show one line per event with both charges. Limit-only
+      paging is sufficient for the v2.0 Settings → Billing Usage tab; deeper
+      history pages with Stripe billing in v2.1.
+    tags:
+    - Billing
+    parameters:
+    - name: limit
+      in: query
+      description: Page size (1–200, default 50).
+      required: false
+      schema:
+        type: integer
+        format: int32
+        minimum: 1
+        maximum: 200
+        default: 50
+    responses:
+      '200':
+        description: Newest-first telemetry rows scoped to the caller's tenant.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                items:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                    - id
+                    - tenant_id
+                    - workspace_id
+                    - zombie_id
+                    - event_id
+                    - charge_type
+                    - posture
+                    - model
+                    - credit_deducted_cents
+                    - recorded_at
+                    properties:
+                      id:                    { type: string }
+                      tenant_id:             { type: string }
+                      workspace_id:          { type: string }
+                      zombie_id:             { type: string }
+                      event_id:              { type: string }
+                      charge_type:           { type: string, enum: [receive, stage] }
+                      posture:               { type: string, enum: [platform, byok] }
+                      model:                 { type: string }
+                      credit_deducted_cents: { type: integer, format: int64 }
+                      token_count_input:     { type: integer, format: int64, nullable: true }
+                      token_count_output:    { type: integer, format: int64, nullable: true }
+                      wall_ms:               { type: integer, format: int64, nullable: true }
+                      recorded_at:           { type: integer, format: int64 }
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error

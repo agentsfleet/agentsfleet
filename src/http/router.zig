@@ -33,6 +33,8 @@ pub const Route = union(enum) {
     patch_workspace: []const u8,
     // Tenant-scoped billing snapshot — GET /v1/tenants/me/billing
     get_tenant_billing,
+    // Tenant-scoped credit-pool charges (Usage tab) — GET /v1/tenants/me/billing/charges
+    get_tenant_billing_charges,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
     // Tenant-scoped doctor block — GET /v1/tenants/me/diagnostics
@@ -103,6 +105,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/metrics")) return .metrics;
     if (std.mem.eql(u8, path, model_caps_h.MODEL_CAPS_PATH)) return .model_caps;
     if (std.mem.eql(u8, path, "/v1/auth/sessions")) return .create_auth_session;
+    if (std.mem.eql(u8, path, "/v1/tenants/me/billing/charges")) return .get_tenant_billing_charges;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
     if (std.mem.eql(u8, path, "/v1/tenants/me/diagnostics")) return .get_tenant_doctor;
@@ -193,6 +196,10 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
 
 test "match resolves tenant billing route" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing", .GET).?);
+}
+
+test "match resolves tenant billing charges route" {
+    try std.testing.expectEqualDeep(Route.get_tenant_billing_charges, match("/v1/tenants/me/billing/charges", .GET).?);
 }
 
 test "match rejects removed workspace billing routes (pre-v2.0 404s)" {

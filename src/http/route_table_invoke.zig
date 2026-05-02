@@ -117,6 +117,12 @@ pub fn invokeGetTenantBilling(hx: *Hx, req: *httpz.Request, route: router.Route)
     tenant_billing_h.innerGetTenantBilling(hx.*, req);
 }
 
+pub fn invokeGetTenantBillingCharges(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    tenant_billing_h.innerGetTenantBillingCharges(hx.*, req);
+}
+
 pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }

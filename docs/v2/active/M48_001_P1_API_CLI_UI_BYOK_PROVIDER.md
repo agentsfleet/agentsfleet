@@ -551,7 +551,7 @@ Output:
 - `get` prints a table (mode, provider, model, context_cap_tokens, credential_ref or "—") + footer noting "this is the platform default" when the row is absent. Surfaces `⚠ Credential <name> is missing from vault` when resolver returned `CredentialMissing` (Scenario E).
 - `reset` prints the new platform-default config and warns if `tenant_billing.balance_cents` is below a threshold.
 
-### §7 — CLI: `zombiectl billing show` (`zombiectl/src/commands/billing.js` — NEW)
+### §7 — CLI: `zombiectl billing show` (`zombiectl/src/commands/billing.js` — NEW) — DONE
 
 Read-only.
 
@@ -777,10 +777,14 @@ HTTP — billing (read-only):
   GET /v1/tenants/me/billing/balance
     → 200 { balance_cents: u32 }
 
-  GET /v1/tenants/me/billing/usage?since=&limit=&zombie_id=
-    → 200 { rows: [{ event_id, zombie_id, posture, model, charge_type,
-                     credit_deducted_cents, token_count_input,
-                     token_count_output, occurred_at }, ...] }
+  GET /v1/tenants/me/billing/charges?limit=
+    → 200 { items: [{ id, tenant_id, workspace_id, zombie_id, event_id,
+                      charge_type, posture, model,
+                      credit_deducted_cents, token_count_input,
+                      token_count_output, wall_ms, recorded_at }, ...] }
+    Note: REST §1 forbids `/usage` as a final segment (not a plural noun);
+    the resource is `/charges`. Each event yields up to two rows
+    (`charge_type=receive` then `charge_type=stage`); UI groups by event_id.
 
 Doctor extension (surface owned by M44, field owned by M48):
   zombiectl doctor --json
@@ -904,7 +908,7 @@ Every test maps back to a scenario or invariant.
 | `test_workspace_credentials_llm_route_404s` | Inv 9 | `PUT /v1/workspaces/{ws}/credentials/llm` → 404 |
 | `test_billing_show_cli_renders_balance_and_history` | UI | `zombiectl billing show` text output matches the documented format |
 | `test_billing_dashboard_balance_card_renders` | UI | `/settings/billing` renders Balance card with disabled Purchase button + tooltip |
-| `test_billing_dashboard_usage_tab_two_rows_per_event` | UI, Inv 5 | Usage tab fetches `/v1/tenants/me/billing/usage` and renders one row per (event_id, charge_type) |
+| `test_billing_dashboard_usage_tab_two_rows_per_event` | UI, Inv 5 | Usage tab fetches `/v1/tenants/me/billing/charges` and renders one row per (event_id, charge_type) |
 | `test_model_caps_endpoint_includes_token_rates` | §11 | `GET /_um/<key>/model-caps.json` response includes `input_cents_per_mtok` and `output_cents_per_mtok` per model |
 | `test_model_rate_cache_populated_at_boot` | §11 | API server boot calls the caps endpoint and populates `lookup_model_rate` |
 
