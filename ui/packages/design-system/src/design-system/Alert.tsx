@@ -52,16 +52,31 @@ export const alertVariants = cva(
 
 export type AlertVariant = NonNullable<VariantProps<typeof alertVariants>["variant"]>;
 
-export interface AlertProps
-  extends Omit<ComponentProps<"div">, "role">,
-    VariantProps<typeof alertVariants> {
-  /** Optional dismiss handler. Renders an X button when provided. */
-  onDismiss?: () => void;
-  /** Override the default role (alert for destructive/warning, status otherwise). */
-  role?: "alert" | "status";
-  /** Render the alert as the child element instead of a div. */
-  asChild?: boolean;
-}
+type AlertBaseProps = Omit<ComponentProps<"div">, "role"> &
+  VariantProps<typeof alertVariants> & {
+    /** Override the default role (alert for destructive/warning, status otherwise). */
+    role?: "alert" | "status";
+  };
+
+/*
+ * `asChild` and `onDismiss` are mutually exclusive: when the alert
+ * renders as its child element via Radix Slot there is no surrounding
+ * <div> to host a dismiss button, so accepting `onDismiss` would be a
+ * silent no-op. Encoded as a discriminated union so the compiler
+ * rejects `<Alert asChild onDismiss={...}>` at the call site.
+ */
+export type AlertProps =
+  | (AlertBaseProps & {
+      asChild?: false;
+      /** Optional dismiss handler. Renders an X button when provided. */
+      onDismiss?: () => void;
+    })
+  | (AlertBaseProps & {
+      /** Render the alert as the child element instead of a div. */
+      asChild: true;
+      /** Not supported with `asChild` — there is no host div for the dismiss button. */
+      onDismiss?: never;
+    });
 
 function defaultRole(variant: AlertVariant | null | undefined): "alert" | "status" {
   return variant === "destructive" || variant === "warning" ? "alert" : "status";
