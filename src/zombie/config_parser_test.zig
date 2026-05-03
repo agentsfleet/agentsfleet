@@ -253,24 +253,61 @@ test "parseZombieConfig: missing context block → null (auto downstream)" {
     try std.testing.expect(cfg.model == null);
 }
 
-test "parseZombieConfig: context with non-numeric tool_window rejects" {
+test "parseZombieConfig: context with non-numeric tool_window → InvalidFieldType (not MissingRequiredField)" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
         \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"tool_window":true}}}
     ;
-    try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
+    // Distinguishes "you forgot a key" (MissingRequiredField) from "you got
+    // the shape wrong" (InvalidFieldType). A future author reading a CI log
+    // shouldn't waste time hunting for a missing field that's actually
+    // present-but-mistyped.
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: negative tool_window rejects" {
+test "parseZombieConfig: negative tool_window → InvalidFieldType" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
         \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"tool_window":-1}}}
     ;
-    try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: context block as string (not object) → InvalidFieldType" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":"oops-not-an-object"}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: model field as integer (not string) → InvalidFieldType" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "model":42}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: tool_window string other than 'auto' → InvalidFieldType (not silently coerced)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":"AUTO"}}}
+    ;
+    // Tight contract: the auto-sentinel is exactly "auto" — case-sensitive,
+    // no trimming, no synonyms. Anything else fails loud rather than
+    // silently coercing to 0.
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
 }
 
 test "parseZombieConfig: model at top level → RuntimeKeysOutsideBlock" {

@@ -25,6 +25,10 @@ pub fn resolveContextBudget(
         ctx.memory_checkpoint_every = c.memory_checkpoint_every;
         ctx.stage_chunk_threshold = c.stage_chunk_threshold;
     }
+    // Borrowed slice — lifetime is `session.config.model`, owned by the
+    // caller. ContextBudget is a value-type with no deinit; the executor
+    // must not free this. If ContextBudget ever gains a destructor, this
+    // assignment becomes unsafe and needs alloc.dupe.
     if (config_model) |m| ctx.model = m;
     context_budget.applyContextDefaults(&ctx);
     return ctx;

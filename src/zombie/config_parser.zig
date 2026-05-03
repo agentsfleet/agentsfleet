@@ -277,7 +277,7 @@ fn parseModelField(
     const val = runtime.get("model") orelse return null;
     const s = switch (val) {
         .string => |str| str,
-        else => return ZombieConfigError.MissingRequiredField,
+        else => return ZombieConfigError.InvalidFieldType,
     };
     if (s.len == 0) return null;
     return try alloc.dupe(u8, s);
@@ -291,7 +291,7 @@ fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieConte
     const val = runtime.get("context") orelse return null;
     const obj = switch (val) {
         .object => |o| o,
-        else => return ZombieConfigError.MissingRequiredField,
+        else => return ZombieConfigError.InvalidFieldType,
     };
     return ZombieContextBudget{
         .context_cap_tokens = try readU32(obj, "context_cap_tokens"),
@@ -305,14 +305,14 @@ fn readU32(obj: std.json.ObjectMap, key: []const u8) ZombieConfigError!u32 {
     const v = obj.get(key) orelse return 0;
     return switch (v) {
         .integer => |i| blk: {
-            if (i < 0 or i > std.math.maxInt(u32)) return ZombieConfigError.MissingRequiredField;
+            if (i < 0 or i > std.math.maxInt(u32)) return ZombieConfigError.InvalidFieldType;
             break :blk @intCast(i);
         },
         // Authoring convenience: `tool_window: auto` (bare YAML string) maps to
         // the zero-value auto-sentinel. Same observable behaviour as omitting
         // the key, but keeps the template self-documenting.
-        .string => |s| if (std.mem.eql(u8, s, "auto")) 0 else return ZombieConfigError.MissingRequiredField,
-        else => return ZombieConfigError.MissingRequiredField,
+        .string => |s| if (std.mem.eql(u8, s, "auto")) 0 else return ZombieConfigError.InvalidFieldType,
+        else => return ZombieConfigError.InvalidFieldType,
     };
 }
 
@@ -321,6 +321,6 @@ fn readF32(obj: std.json.ObjectMap, key: []const u8) ZombieConfigError!f32 {
     return switch (v) {
         .float => |f| @floatCast(f),
         .integer => |i| @floatFromInt(i),
-        else => return ZombieConfigError.MissingRequiredField,
+        else => return ZombieConfigError.InvalidFieldType,
     };
 }

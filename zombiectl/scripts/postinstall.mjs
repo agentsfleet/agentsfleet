@@ -37,9 +37,13 @@ function warn(msg) {
 }
 
 function manifestOf(root) {
-  // Cheap, deterministic: walk in sorted order, hash relative-path + size.
-  // Mtimes deliberately excluded — git checkouts and tarball extracts both
-  // smear them, which would make the manifest churn on every install.
+  // Deterministic content hash: walk in sorted order, hash relative-path +
+  // file content. Mtimes deliberately excluded — git checkouts and tarball
+  // extracts both smear them. Sizes alone aren't enough either: a one-char
+  // edit that preserves total size would slip past a size-only manifest
+  // and leave stale templates at ~/.config/usezombie/samples/. Reading
+  // bytes is fine — the source tree is small (<100 KB) and runs once per
+  // npm install.
   const h = createHash("sha256");
   function walk(d, rel = "") {
     const entries = readdirSync(d, { withFileTypes: true })
@@ -51,7 +55,9 @@ function manifestOf(root) {
         h.update(`d:${r}\n`);
         walk(full, r);
       } else if (e.isFile()) {
-        h.update(`f:${r}:${statSync(full).size}\n`);
+        h.update(`f:${r}:${statSync(full).size}:`);
+        h.update(readFileSync(full));
+        h.update("\n");
       }
     }
   }

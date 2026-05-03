@@ -21,6 +21,12 @@ pub const ZombieConfigError = error{
     InvalidNameFormat,
     InvalidVersionFormat,
     InvalidTagFormat,
+    /// Field is present but its YAML/JSON type or value is wrong (e.g.
+    /// `context: "bad"` where an object is expected, `tool_window: -1`,
+    /// `tool_window: true`). Distinct from `MissingRequiredField` so a CI
+    /// log clearly distinguishes "you forgot a key" from "you got the
+    /// shape wrong."
+    InvalidFieldType,
 };
 
 pub const ZombieStatus = enum {
