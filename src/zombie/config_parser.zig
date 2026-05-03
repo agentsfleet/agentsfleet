@@ -24,6 +24,7 @@ const ZombieConfigError = config_types.ZombieConfigError;
 const ZombieTrigger = config_types.ZombieTrigger;
 const ZombieNetwork = config_types.ZombieNetwork;
 const ZombieBudget = config_types.ZombieBudget;
+const ZombieContextBudget = config_types.ZombieContextBudget;
 
 const freeStringSlice = config_types.freeStringSlice;
 const freeZombieTrigger = config_types.freeZombieTrigger;
@@ -72,6 +73,12 @@ pub fn parseZombieConfig(
     try validate.validateCredentials(credentials);
 
     const extended = try parseExtendedFields(alloc, runtime);
+    errdefer if (extended.skill) |s| alloc.free(s);
+    errdefer freeStringSlice(alloc, extended.chain);
+
+    const model = try parseModelField(alloc, runtime);
+    errdefer if (model) |s| alloc.free(s);
+    const ctx = try parseContextField(runtime);
 
     return ZombieConfig{
         .name = name,
@@ -83,6 +90,8 @@ pub fn parseZombieConfig(
         .gates = gates,
         .skill = extended.skill,
         .chain = extended.chain,
+        .model = model,
+        .context = ctx,
     };
 }
 
@@ -95,8 +104,8 @@ pub fn parseZombieConfig(
 /// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!void {
     const forbidden = [_][]const u8{
-        "trigger", "tools", "credentials", "network", "budget",
-        "gates",   "skill", "chain",
+        "trigger", "tools",   "credentials", "network", "budget",
+        "gates",   "skill",   "chain",       "model",   "context",
     };
     for (forbidden) |k| {
         if (root.get(k) != null) return ZombieConfigError.RuntimeKeysOutsideBlock;
@@ -118,8 +127,8 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.Obje
 /// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        "trigger", "tools", "credentials", "network", "budget",
-        "gates",   "skill", "chain",
+        "trigger", "tools",   "credentials", "network", "budget",
+        "gates",   "skill",   "chain",       "model",   "context",
     };
     var it = runtime.iterator();
     while (it.next()) |entry| {
@@ -257,4 +266,84 @@ fn parseChainArray(
         else => return ZombieConfigError.MissingRequiredField,
     };
     return try helpers.dupeStringArray(alloc, arr.items);
+}
+
+/// Opaque pass-through. Empty string → null (BYOK sentinel; the executor
+/// resolves the model from `tenant_providers` at trigger time).
+fn parseModelField(
+    alloc: Allocator,
+    runtime: std.json.ObjectMap,
+) (Allocator.Error || ZombieConfigError)!?[]const u8 {
+    const val = runtime.get("model") orelse return null;
+    const s = switch (val) {
+        .string => |str| str,
+        else => return ZombieConfigError.InvalidFieldType,
+    };
+    if (s.len == 0) return null;
+    return try alloc.dupe(u8, s);
+}
+
+/// Optional `x-usezombie.context:` block. Every field zero-defaults so the
+/// executor's `applyContextDefaults` can substitute auto-sentinel values.
+/// Absent block → null; present-but-empty block → all-zero struct (still
+/// gets defaulted downstream — same observable behaviour).
+fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieContextBudget {
+    const val = runtime.get("context") orelse return null;
+    const obj = switch (val) {
+        .object => |o| o,
+        else => return ZombieConfigError.InvalidFieldType,
+    };
+    try ensureKnownContextKeys(obj);
+    return ZombieContextBudget{
+        .context_cap_tokens = try readU32(obj, "context_cap_tokens"),
+        .tool_window = try readU32(obj, "tool_window"),
+        .memory_checkpoint_every = try readU32(obj, "memory_checkpoint_every"),
+        .stage_chunk_threshold = try readF32(obj, "stage_chunk_threshold"),
+    };
+}
+
+/// Same rigid contract as `ensureKnownRuntimeKeys` but for the nested
+/// `x-usezombie.context:` object. Without this, a typo like
+/// `tool_windw: 30` silently falls through to the zero auto-sentinel
+/// and the operator's intended override is dropped at runtime — the
+/// failure is invisible until somebody traces a confusing budget at
+/// runtime back to a misspelled key in frontmatter.
+fn ensureKnownContextKeys(ctx: std.json.ObjectMap) ZombieConfigError!void {
+    const known = [_][]const u8{
+        "context_cap_tokens", "tool_window",
+        "memory_checkpoint_every", "stage_chunk_threshold",
+    };
+    var it = ctx.iterator();
+    while (it.next()) |entry| {
+        var found = false;
+        for (known) |k| if (std.mem.eql(u8, k, entry.key_ptr.*)) {
+            found = true;
+            break;
+        };
+        if (!found) return ZombieConfigError.UnknownRuntimeKey;
+    }
+}
+
+fn readU32(obj: std.json.ObjectMap, key: []const u8) ZombieConfigError!u32 {
+    const v = obj.get(key) orelse return 0;
+    return switch (v) {
+        .integer => |i| blk: {
+            if (i < 0 or i > std.math.maxInt(u32)) return ZombieConfigError.InvalidFieldType;
+            break :blk @intCast(i);
+        },
+        // Authoring convenience: `tool_window: auto` (bare YAML string) maps to
+        // the zero-value auto-sentinel. Same observable behaviour as omitting
+        // the key, but keeps the template self-documenting.
+        .string => |s| if (std.mem.eql(u8, s, "auto")) 0 else return ZombieConfigError.InvalidFieldType,
+        else => return ZombieConfigError.InvalidFieldType,
+    };
+}
+
+fn readF32(obj: std.json.ObjectMap, key: []const u8) ZombieConfigError!f32 {
+    const v = obj.get(key) orelse return 0.0;
+    return switch (v) {
+        .float => |f| @floatCast(f),
+        .integer => |i| @floatFromInt(i),
+        else => return ZombieConfigError.InvalidFieldType,
+    };
 }

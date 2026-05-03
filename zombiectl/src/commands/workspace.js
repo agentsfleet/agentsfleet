@@ -166,7 +166,7 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     }
     const known = workspaces.items.find((x) => x.workspace_id === workspaceId);
     if (!known) {
-      writeError(ctx, "UNKNOWN_WORKSPACE", `workspace ${workspaceId} is not in your local list — run "zombiectl workspace add" or "list" first`, deps);
+      writeError(ctx, "UNKNOWN_WORKSPACE", `workspace ${workspaceId} is not in your local list — run "zombiectl workspace add" or "workspace list" first`, deps);
       return 2;
     }
     workspaces.current_workspace_id = workspaceId;
@@ -229,11 +229,11 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  if (action === "remove") {
+  if (action === "delete") {
     const parsed = parseFlags(tail);
     const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
     if (!workspaceId) {
-      writeError(ctx, "USAGE_ERROR", "workspace remove requires <workspace_id>", deps);
+      writeError(ctx, "USAGE_ERROR", "workspace delete requires <workspace_id>", deps);
       return 2;
     }
 
@@ -250,12 +250,12 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     await saveWorkspaces(workspaces);
 
     setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-    queueCliAnalyticsEvent(ctx, "workspace_removed", { workspace_id: workspaceId });
-    if (ctx.jsonMode) printJson(ctx.stdout, { removed: workspaceId });
-    else writeLine(ctx.stdout, ui.ok(`workspace removed: ${workspaceId}`));
+    queueCliAnalyticsEvent(ctx, "workspace_deleted", { workspace_id: workspaceId });
+    if (ctx.jsonMode) printJson(ctx.stdout, { deleted: workspaceId });
+    else writeLine(ctx.stdout, ui.ok(`workspace deleted: ${workspaceId}`));
     return 0;
   }
 
-  writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|use|show|credentials|remove|billing|upgrade-scale", deps);
+  writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|use|show|credentials|delete|billing|upgrade-scale", deps);
   return 2;
 }

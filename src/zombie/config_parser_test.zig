@@ -188,3 +188,164 @@ test "parseZombieConfig: unknown top-level key passes (permissive top level)" {
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("x", cfg.name);
 }
+
+test "parseZombieConfig: x-usezombie.model populates ZombieConfig.model verbatim" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "model":"accounts/fireworks/models/kimi-k2.6"}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
+}
+
+test "parseZombieConfig: empty x-usezombie.model becomes null (BYOK sentinel)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "model":""}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expect(cfg.model == null);
+}
+
+test "parseZombieConfig: x-usezombie.context populates every knob" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"context_cap_tokens":256000,"tool_window":30,"memory_checkpoint_every":7,"stage_chunk_threshold":0.8}}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    const ctx = cfg.context.?;
+    try std.testing.expectEqual(@as(u32, 256000), ctx.context_cap_tokens);
+    try std.testing.expectEqual(@as(u32, 30), ctx.tool_window);
+    try std.testing.expectEqual(@as(u32, 7), ctx.memory_checkpoint_every);
+    try std.testing.expectEqual(@as(f32, 0.8), ctx.stage_chunk_threshold);
+}
+
+test "parseZombieConfig: tool_window auto-string maps to 0 (auto-sentinel)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":"auto"}}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqual(@as(u32, 0), cfg.context.?.tool_window);
+}
+
+test "parseZombieConfig: missing context block → null (auto downstream)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expect(cfg.context == null);
+    try std.testing.expect(cfg.model == null);
+}
+
+test "parseZombieConfig: context with non-numeric tool_window → InvalidFieldType (not MissingRequiredField)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":true}}}
+    ;
+    // Distinguishes "you forgot a key" (MissingRequiredField) from "you got
+    // the shape wrong" (InvalidFieldType). A future author reading a CI log
+    // shouldn't waste time hunting for a missing field that's actually
+    // present-but-mistyped.
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: negative tool_window → InvalidFieldType" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":-1}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: context block as string (not object) → InvalidFieldType" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":"oops-not-an-object"}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: model field as integer (not string) → InvalidFieldType" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "model":42}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: tool_window string other than 'auto' → InvalidFieldType (not silently coerced)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":"AUTO"}}}
+    ;
+    // Tight contract: the auto-sentinel is exactly "auto" — case-sensitive,
+    // no trimming, no synonyms. Anything else fails loud rather than
+    // silently coercing to 0.
+    try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: model at top level → RuntimeKeysOutsideBlock" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","model":"oops",
+        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: typo inside x-usezombie.context → UnknownRuntimeKey (not silent default)" {
+    const alloc = std.testing.allocator;
+    // `tool_windw` (typo, missing 'o') — without the guard, this silently
+    // falls through to the zero auto-sentinel and the operator's intended
+    // override of 30 is dropped at runtime. Catching it at install time
+    // surfaces the typo where the operator can fix it.
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_windw":30}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.UnknownRuntimeKey, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: every documented context key accepted (no false positives from the typo guard)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{
+        \\    "context_cap_tokens":256000,
+        \\    "tool_window":30,
+        \\    "memory_checkpoint_every":7,
+        \\    "stage_chunk_threshold":0.8
+        \\  }}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqual(@as(u32, 30), cfg.context.?.tool_window);
+}

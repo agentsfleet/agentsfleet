@@ -54,9 +54,8 @@ test "T1: distinct_id defaults to system for events without it" {
     try std.testing.expectEqualStrings("system", last.distinctId());
 }
 
-test "T1: all 13 event types can be captured without error" {
+test "T1: all event types can be captured without error" {
     var t = telemetry.Telemetry.initTest();
-    t.capture(telemetry.AgentCompleted, .{ .distinct_id = "u", .run_id = "r", .workspace_id = "w", .actor = "a", .tokens = 10, .duration_ms = 50, .exit_status = "ok" });
     t.capture(telemetry.EntitlementRejected, .{ .distinct_id = "u", .workspace_id = "w", .boundary = "COMPILE", .reason_code = "ERR", .request_id = "r" });
     t.capture(telemetry.ServerStarted, .{ .port = 3000 });
     t.capture(telemetry.WorkerStarted, .{ .concurrency = 4 });
@@ -68,7 +67,7 @@ test "T1: all 13 event types can be captured without error" {
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
     t.capture(telemetry.ZombieTriggered, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .source = "webhook" });
     t.capture(telemetry.ZombieCompleted, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .tokens = 100, .wall_ms = 2000, .exit_status = "processed" });
-    try telemetry.TestBackend.assertCount(12);
+    try telemetry.TestBackend.assertCount(11);
     try telemetry.TestBackend.assertLastEventIs(.zombie_completed);
 }
 
@@ -177,41 +176,20 @@ test "T4: StartupFailed.properties returns all 4 fields" {
     try std.testing.expectEqualStrings("UZ-STARTUP-003", props[3].value.string);
 }
 
-test "T4: AgentCompleted.properties includes integer fields" {
-    const ev = telemetry.AgentCompleted{
-        .distinct_id = "u",
-        .run_id = "run_1",
-        .workspace_id = "ws_1",
-        .actor = "api",
-        .tokens = 1500,
-        .duration_ms = 42000,
-        .exit_status = "ok",
-    };
-    const props = ev.properties();
-    try std.testing.expectEqual(@as(usize, 6), props.len);
-    // tokens is at index 3
-    try std.testing.expectEqualStrings("tokens", props[3].key);
-    try std.testing.expectEqual(@as(i64, 1500), props[3].value.integer);
-    // duration_ms is at index 4
-    try std.testing.expectEqualStrings("duration_ms", props[4].key);
-    try std.testing.expectEqual(@as(i64, 42000), props[4].value.integer);
-}
-
 // ── T7: Regression safety ───────────────────────────────────────────
 
-test "T7: EventKind has exactly 12 variants" {
+test "T7: EventKind has exactly 11 variants" {
     const fields = @typeInfo(telemetry.EventKind).@"enum".fields;
-    try std.testing.expectEqual(@as(usize, 12), fields.len);
+    try std.testing.expectEqual(@as(usize, 11), fields.len);
 }
 
 test "T7: EventKind tagName matches expected event name strings" {
-    try std.testing.expectEqualStrings("agent_completed", @tagName(telemetry.EventKind.agent_completed));
     try std.testing.expectEqualStrings("server_started", @tagName(telemetry.EventKind.server_started));
     try std.testing.expectEqualStrings("auth_rejected", @tagName(telemetry.EventKind.auth_rejected));
+    try std.testing.expectEqualStrings("zombie_completed", @tagName(telemetry.EventKind.zombie_completed));
 }
 
 test "T7: each event struct kind constant matches its EventKind variant" {
-    try std.testing.expectEqual(telemetry.EventKind.agent_completed, telemetry.AgentCompleted.kind);
     try std.testing.expectEqual(telemetry.EventKind.entitlement_rejected, telemetry.EntitlementRejected.kind);
     try std.testing.expectEqual(telemetry.EventKind.server_started, telemetry.ServerStarted.kind);
     try std.testing.expectEqual(telemetry.EventKind.worker_started, telemetry.WorkerStarted.kind);
@@ -234,15 +212,7 @@ test "T11: initTest + capture cycle has no leaks" {
     var t = telemetry.Telemetry.initTest();
     for (0..128) |i| {
         if (i % 2 == 0) {
-            t.capture(telemetry.AgentCompleted, .{
-                .distinct_id = "user",
-                .run_id = "run",
-                .workspace_id = "ws",
-                .actor = "api",
-                .tokens = i,
-                .duration_ms = i * 10,
-                .exit_status = "ok",
-            });
+            t.capture(telemetry.WorkerStarted, .{ .concurrency = @intCast(i) });
         } else {
             t.capture(telemetry.ServerStarted, .{ .port = 3000 });
         }

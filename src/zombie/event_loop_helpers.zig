@@ -18,6 +18,7 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const executor_client = @import("../executor/client.zig");
 const executor_transport = @import("../executor/transport.zig");
 const context_budget = @import("../executor/context_budget.zig");
+const event_loop_context_resolve = @import("event_loop_context_resolve.zig");
 const id_format = @import("../types/id_format.zig");
 
 const types = @import("event_loop_types.zig");
@@ -266,14 +267,10 @@ pub fn executeInSandbox(
     }
     const secrets_map: ?std.json.Value = if (secrets_obj_alive) .{ .object = secrets_obj } else null;
 
-    // §8 auto-defaults: every empty/zero knob is the auto sentinel.
-    // applyContextDefaults substitutes spec defaults so the executor
-    // receives a fully-populated ContextBudget. Frontmatter overrides
-    // (x-usezombie.context) land here once the parser ships — the
-    // parser writes non-zero values, applyContextDefaults leaves them
-    // alone.
-    var ctx_budget: context_budget.ContextBudget = .{};
-    context_budget.applyContextDefaults(&ctx_budget);
+    const ctx_budget = event_loop_context_resolve.resolveContextBudget(
+        session.config.context,
+        session.config.model,
+    );
     log.info("zombie_event_loop.context_budget_resolved zombie_id={s} tool_window={d} memory_checkpoint_every={d} stage_chunk_threshold={d:.2} context_cap_tokens={d}", .{
         session.zombie_id,
         ctx_budget.tool_window,

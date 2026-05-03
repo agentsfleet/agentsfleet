@@ -152,11 +152,11 @@ test "T6 integration: generated UUID PKs round-trip through INSERT and SELECT" {
     , .{});
 
     // INSERT with generated ids
-    const tid = try id_format.generateTransitionId(alloc);
+    const tid = try id_format.allocUuidV7(alloc);
     defer alloc.free(tid);
-    const uid = try id_format.generateUsageLedgerId(alloc);
+    const uid = try id_format.allocUuidV7(alloc);
     defer alloc.free(uid);
-    const pid = try id_format.generatePolicyEventId(alloc);
+    const pid = try id_format.allocUuidV7(alloc);
     defer alloc.free(pid);
 
     _ = try db_ctx.conn.exec(
@@ -237,7 +237,7 @@ test "T6 integration: duplicate UUID PK is rejected" {
         \\)
     , .{});
 
-    const dup_id = try id_format.generateTransitionId(alloc);
+    const dup_id = try id_format.allocUuidV7(alloc);
     defer alloc.free(dup_id);
 
     _ = try db_ctx.conn.exec(

@@ -2,7 +2,6 @@ const routes = [
   { key: "login", match: (cmd) => cmd === "login" },
   { key: "logout", match: (cmd) => cmd === "logout" },
   { key: "workspace", match: (cmd) => cmd === "workspace" },
-  { key: "specs.sync", match: (cmd, args) => cmd === "specs" && args[0] === "sync" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
   { key: "admin", match: (cmd) => cmd === "admin" },
   // External agent key management + integration grants

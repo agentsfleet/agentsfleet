@@ -47,12 +47,12 @@ describe("help output", () => {
       expect(output).toContain("logout");
       expect(output).toContain("workspace add");
       expect(output).toContain("workspace list");
-      expect(output).toContain("workspace remove");
-      expect(output).toContain("specs sync");
+      expect(output).toContain("workspace delete");
       expect(output).toContain("doctor");
       expect(output).not.toContain("run status");
       expect(output).not.toContain("runs list");
       expect(output).not.toContain("spec init");
+      expect(output).not.toContain("specs sync");
       expect(output).not.toContain("workspace upgrade-scale");
     });
   });
@@ -105,7 +105,7 @@ describe("help output", () => {
       const output = out.read();
       expect(output).toContain("OPERATOR COMMANDS");
       expect(output).toContain("workspace upgrade-scale");
-      expect(output).toContain("admin config set scoring_context_max_tokens");
+      expect(output).toContain("admin config add scoring_context_max_tokens");
     });
   });
 

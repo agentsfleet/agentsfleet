@@ -76,6 +76,20 @@ test "fixture trigger/full.md parses with full webhook signature" {
     try std.testing.expectEqual(@as(usize, 3), cfg.tools.len);
 }
 
+test "fixture trigger/with_model_and_context.md parses model + every context knob" {
+    const alloc = std.testing.allocator;
+    const md = try loadFixture(alloc, "trigger/with_model_and_context.md");
+    defer alloc.free(md);
+    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
+    const ctx = cfg.context.?;
+    try std.testing.expectEqual(@as(u32, 256000), ctx.context_cap_tokens);
+    try std.testing.expectEqual(@as(u32, 0), ctx.tool_window); // "auto" → 0
+    try std.testing.expectEqual(@as(u32, 5), ctx.memory_checkpoint_every);
+    try std.testing.expectEqual(@as(f32, 0.75), ctx.stage_chunk_threshold);
+}
+
 test "fixture trigger/runtime_at_top_level.md → RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const md = try loadFixture(alloc, "trigger/runtime_at_top_level.md");
@@ -111,6 +125,29 @@ test "fixture bundles/name_mismatch — both files parse but identities disagree
     // Both parse cleanly — the cross-file invariant is enforced by the
     // install handler, not the per-file parsers.
     try std.testing.expect(!std.mem.eql(u8, meta.name, cfg.name));
+}
+
+test "fixture bundles/platform_ops_installed_default — post-substitution TRIGGER.md parses" {
+    const alloc = std.testing.allocator;
+    const md = try loadFixture(alloc, "bundles/platform_ops_installed_default/TRIGGER.md");
+    defer alloc.free(md);
+    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("platform-ops-zombie", cfg.name);
+    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
+    try std.testing.expectEqual(@as(u32, 256000), cfg.context.?.context_cap_tokens);
+    try std.testing.expectEqualStrings("github", cfg.trigger.webhook.source);
+}
+
+test "fixture bundles/platform_ops_installed_byok — sentinel model/cap parses to null/zero" {
+    const alloc = std.testing.allocator;
+    const md = try loadFixture(alloc, "bundles/platform_ops_installed_byok/TRIGGER.md");
+    defer alloc.free(md);
+    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
+    defer cfg.deinit(alloc);
+    // Empty-string model becomes null (BYOK overlay sentinel); cap stays 0.
+    try std.testing.expect(cfg.model == null);
+    try std.testing.expectEqual(@as(u32, 0), cfg.context.?.context_cap_tokens);
 }
 
 test "shipped sample samples/platform-ops SKILL.md frontmatter validates" {

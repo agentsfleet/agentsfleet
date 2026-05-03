@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "prebuild": "node -e \"require('fs').copyFileSync('../../../public/openapi.json','public/openapi.json')\"",
+    "prebuild": "node ./scripts/prebuild.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint src tests/e2e playwright.config.ts",

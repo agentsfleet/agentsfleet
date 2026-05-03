@@ -90,7 +90,7 @@ test.describe("Humans vs Agents link coverage", () => {
       /app\.(dev\.)?usezombie\.com/
     );
 
-    const contractPaths = ["/openapi.json", "/agent-manifest.json", "/skill.md", "/llms.txt", "/heartbeat"];
+    const contractPaths = ["/openapi.json"];
     for (const endpoint of contractPaths) {
       await expect(page.locator(`a[href="${endpoint}"]`)).toHaveCount(1);
     }

@@ -5,6 +5,9 @@
 **Workstream:** 001
 **Date:** Apr 26, 2026
 **Status:** DONE
+
+> **CLI augmentation note (May 03, 2026):** M49's standardization slice extended `zombiectl credential add` with three features the install-skill flow needs: (a) `--data=@-` reads JSON from stdin so secret bytes never appear in shell history or process argv; (b) default skip-if-exists — re-running on a workspace that already has the named credential returns 0 with status `skipped` instead of clobbering (client-side guard against the backend's existing upsert-on-conflict behaviour); (c) `--force` flag bypasses the skip-if-exists check. Also added `zombiectl credential show <name>` returning existence + `created_at` (never secret bytes) for the install-skill's webhook-secret existence probe.
+
 **Priority:** P1 — launch-blocking. M41 Context Layering depends on `secrets_map` being a structured object, not a single string. M43 Webhook Ingest depends on multi-field credential shape. The current `--value` (single-string) credential storage is the chokepoint that prevents both.
 **Categories:** API, CLI, UI
 **Batch:** B1 — parallel with M40, M41, M42, M43, M44.

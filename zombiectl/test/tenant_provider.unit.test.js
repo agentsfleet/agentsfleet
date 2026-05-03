@@ -17,9 +17,9 @@ function makeDeps({ requestImpl, parseFlagsImpl } = {}) {
   };
 }
 
-// ── tenant provider get ────────────────────────────────────────────────────
+// ── tenant provider show ────────────────────────────────────────────────────
 
-test("tenant provider get: GETs /v1/tenants/me/provider and exits 0", async () => {
+test("tenant provider show: GETs /v1/tenants/me/provider and exits 0", async () => {
   let called = null;
   const deps = makeDeps({
     requestImpl: async (_ctx, url, opts) => {
@@ -28,40 +28,41 @@ test("tenant provider get: GETs /v1/tenants/me/provider and exits 0", async () =
     },
   });
   const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "get"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "show"], null, deps);
   assert.equal(code, 0);
   assert.equal(called.url, TENANT_PROVIDER_PATH);
   assert.equal(called.method, "GET");
 });
 
-test("tenant provider get: surfaces resolver error to stderr and still tables the response", async () => {
+test("tenant provider show: surfaces resolver error to stderr and still tables the response", async () => {
   const stderr = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async () => ({ mode: "byok", provider: "fireworks", error: "credential_missing", credential_ref: "fw-byok" }),
   });
   const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "get"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "show"], null, deps);
   assert.equal(code, 0);
   const errOut = stderr.read();
   assert.match(errOut, /Credential fw-byok is missing/);
-  assert.match(errOut, /tenant provider reset/);
+  assert.match(errOut, /tenant provider delete/);
 });
 
-test("tenant provider get: --json mode prints raw response and skips warning prose", async () => {
+
+test("tenant provider show: --json mode prints raw response and skips warning prose", async () => {
   const stdout = makeBufferStream();
   const stderr = makeBufferStream();
   const payload = { mode: "byok", error: "credential_missing", credential_ref: "fw-byok" };
   const deps = makeDeps({ requestImpl: async () => payload });
   const ctx = { stdout: stdout.stream, stderr: stderr.stream, jsonMode: true };
-  const code = await commandTenant(ctx, ["provider", "get"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "show"], null, deps);
   assert.equal(code, 0);
   assert.deepEqual(JSON.parse(stdout.read()), payload);
   assert.equal(stderr.read(), "");
 });
 
-// ── tenant provider set ────────────────────────────────────────────────────
+// ── tenant provider add ────────────────────────────────────────────────────
 
-test("tenant provider set: PUTs mode=byok with credential_ref and prints tip", async () => {
+test("tenant provider add: PUTs mode=byok with credential_ref and prints tip", async () => {
   let called = null;
   const stdout = makeBufferStream();
   const deps = makeDeps({
@@ -72,7 +73,7 @@ test("tenant provider set: PUTs mode=byok with credential_ref and prints tip", a
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "set"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "add"], null, deps);
   assert.equal(code, 0);
   assert.equal(called.url, TENANT_PROVIDER_PATH);
   assert.equal(called.method, "PUT");
@@ -80,33 +81,33 @@ test("tenant provider set: PUTs mode=byok with credential_ref and prints tip", a
   assert.match(stdout.read(), /Tip: run a test event to verify the key works against fireworks\./);
 });
 
-test("tenant provider set: --model flag forwards as body.model", async () => {
+test("tenant provider add: --model flag forwards as body.model", async () => {
   let called = null;
   const deps = makeDeps({
     parseFlagsImpl: () => ({ options: { credential: "fw-byok", model: "accounts/fireworks/models/kimi-k2.6" }, positionals: [] }),
     requestImpl: async (_ctx, _url, opts) => { called = JSON.parse(opts.body); return { mode: "byok", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", credential_ref: "fw-byok" }; },
   });
   const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "set"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "add"], null, deps);
   assert.equal(code, 0);
   assert.deepEqual(called, { mode: "byok", credential_ref: "fw-byok", model: "accounts/fireworks/models/kimi-k2.6" });
 });
 
-test("tenant provider set: missing --credential exits 2 without making a request", async () => {
+test("tenant provider add: missing --credential exits 2 without making a request", async () => {
   let requestCalls = 0;
   const deps = makeDeps({
     parseFlagsImpl: () => ({ options: {}, positionals: [] }),
     requestImpl: async () => { requestCalls += 1; return {}; },
   });
   const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "set"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "add"], null, deps);
   assert.equal(code, 2);
   assert.equal(requestCalls, 0);
 });
 
-// ── tenant provider reset ──────────────────────────────────────────────────
+// ── tenant provider delete ──────────────────────────────────────────────────
 
-test("tenant provider reset: DELETEs and warns on low balance", async () => {
+test("tenant provider delete: DELETEs and warns on low balance", async () => {
   const stdout = makeBufferStream();
   const calls = [];
   const deps = makeDeps({
@@ -119,7 +120,7 @@ test("tenant provider reset: DELETEs and warns on low balance", async () => {
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "reset"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "delete"], null, deps);
   assert.equal(code, 0);
   assert.deepEqual(calls.map((c) => `${c.method} ${c.url}`), [
     `DELETE ${TENANT_PROVIDER_PATH}`,
@@ -128,7 +129,7 @@ test("tenant provider reset: DELETEs and warns on low balance", async () => {
   assert.match(stdout.read(), /Tenant balance is low: 42¢/);
 });
 
-test("tenant provider reset: high balance suppresses warning", async () => {
+test("tenant provider delete: high balance suppresses warning", async () => {
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
@@ -137,12 +138,12 @@ test("tenant provider reset: high balance suppresses warning", async () => {
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "reset"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "delete"], null, deps);
   assert.equal(code, 0);
   assert.doesNotMatch(stdout.read(), /Tenant balance is low/);
 });
 
-test("tenant provider reset: billing snapshot failure does not break reset success path", async () => {
+test("tenant provider delete: billing snapshot failure does not break delete success path", async () => {
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
@@ -151,9 +152,9 @@ test("tenant provider reset: billing snapshot failure does not break reset succe
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
-  const code = await commandTenant(ctx, ["provider", "reset"], null, deps);
+  const code = await commandTenant(ctx, ["provider", "delete"], null, deps);
   assert.equal(code, 0);
-  assert.match(stdout.read(), /Tenant provider reset to platform default/);
+  assert.match(stdout.read(), /Tenant provider deleted; using platform default/);
 });
 
 // ── dispatch errors ────────────────────────────────────────────────────────

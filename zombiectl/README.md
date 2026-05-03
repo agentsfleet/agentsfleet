@@ -2,7 +2,7 @@
 
 The official CLI for [UseZombie](https://usezombie.com).
 
-Manage workspaces, trigger runs, monitor agents, and operate your UseZombie deployment from the terminal.
+Install zombies, manage workspaces, monitor zombie events, and operate your UseZombie deployment from the terminal.
 
 > **Pre-release** — UseZombie is in pre-release. APIs, CLI, and behavior may change without notice before general availability. This package is published under the `next` dist-tag.
 
@@ -21,10 +21,6 @@ zombiectl login
 # Add a GitHub repository as a workspace
 zombiectl workspace add https://github.com/org/repo
 
-# Sync specs and trigger a run
-zombiectl specs sync
-zombiectl run
-
 # Check your environment
 zombiectl doctor
 ```
@@ -32,9 +28,8 @@ zombiectl doctor
 ## Features
 
 - **Workspaces** — add, switch, and manage GitHub-connected workspaces
-- **Runs** — trigger, list, and cancel agent runs
-- **Specs** — sync and initialize specifications
-- **Agent operations** — view profiles, improvement reports, and proposals
+- **Zombies** — install, list, kill, and steer zombies; tail their event streams
+- **Credential vault** — store workspace-scoped tool credentials (Slack, GitHub, Fly, Upstash, etc.)
 - **Diagnostics** — `doctor` command validates your environment
 - **JSON output** — `--json` flag for scripts and CI/CD pipelines
 
@@ -45,14 +40,22 @@ zombiectl doctor
 | `login` | Authenticate with UseZombie |
 | `logout` | Clear stored credentials |
 | `workspace add <url>` | Connect a GitHub repository |
-| `specs sync` | Sync specifications from the API |
-| `spec init` | Initialize a new spec |
-| `run` | Trigger a run |
-| `runs list` | List run history |
-| `runs cancel <id>` | Cancel an in-flight run |
-| `agent profile <id>` | View agent profile |
-| `agent improvement-report <id>` | View improvement report |
-| `agent proposals <id>` | List agent proposals |
+| `workspace list` | List your workspaces |
+| `workspace show` | Show details for the active workspace |
+| `workspace use <id>` | Switch the active workspace |
+| `workspace delete <id>` | Remove a workspace from your local list |
+| `install --from <path>` | Install a zombie from a local template directory |
+| `list` | List zombies in the active workspace |
+| `status [<zombie_id>]` | Show zombie status |
+| `kill <zombie_id>` | Delete a zombie |
+| `logs <zombie_id>` | Tail zombie activity |
+| `steer <zombie_id> <message>` | Send a message into a zombie's loop |
+| `events <zombie_id>` | Stream zombie events (SSE) |
+| `credential add <name> --data=@-` | Add a workspace credential (pipe JSON on stdin; default skip-if-exists) |
+| `credential add <name> --data=@- --force` | Overwrite an existing credential |
+| `credential show <name>` | Check existence + created_at (never echoes secret bytes) |
+| `credential list` | List workspace credentials |
+| `credential delete <name>` | Remove a workspace credential |
 | `doctor` | Run environment diagnostics |
 | `doctor --json` | Diagnostics in JSON format |
 

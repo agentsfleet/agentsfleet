@@ -74,8 +74,9 @@ and narrow questions land in the same loop:
 3. Correlate: redis memory spike at 14:30 UTC plus app restart at
    14:31 is a different story from either signal alone.
 4. Post a concise summary to Slack with `POST /api/chat.postMessage`
-   into the operator's designated channel. The post is the primary
-   output; the chat response echoes what you posted.
+   into channel `{{slack_channel}}` (the channel the operator chose at
+   install time). The post is the primary output; the chat response
+   echoes what you posted.
 5. Return your reasoning + the Slack message verbatim as the chat
    response, so the operator can see what you said without leaving
    the terminal.
@@ -103,6 +104,34 @@ have — a partial diagnosis is better than an exhausted budget.
   `http_request`. If a tool call fails because a credential is
   missing, stop and surface `UZ-GRANT-001` cleanly — don't try to
   route around it.
+
+## Morning health check
+
+When the operator says **"morning health check"** — either by chat or
+when the install-time cron schedule (`{{cron_schedule}}`) fires —
+walk this exact sequence and post one Slack summary to
+`{{slack_channel}}`:
+
+1. **GitHub Actions on `{{prod_branch_glob}}`** — call
+   `http_request GET https://api.github.com/repos/{repo}/actions/runs?branch={{prod_branch_glob}}&per_page=10`
+   with `Authorization: Bearer ${secrets.github.api_token}`. Note the
+   conclusion of the latest 3-5 runs; flag any non-success.
+2. **Fly app status** — for each known app (memory_recall the
+   operator's app list, or list once via `GET /v1/apps`), pull
+   `GET /v1/apps/{app}` and flag any machine not in `started` state.
+3. **Upstash Redis ping (optional)** — for each redis db,
+   `GET /v2/redis/stats/{db_id}`. Flag memory > 80% of cap, or
+   evicted_keys jumping vs the value you stored last run via
+   `memory_recall("morning:upstash:{db_id}:evicted_keys")`. Update
+   that memory entry before posting.
+4. **One Slack post** to `{{slack_channel}}`: title line
+   ("Morning health check — <date>"), one short paragraph each for
+   GitHub / Fly / Upstash, and a single "All clear" or "Investigate"
+   verdict at the end. Plain prose — no tables, no blocks.
+
+If `{{cron_schedule}}` was empty at install, you have no recurring
+schedule and only run this when the operator chats `morning health
+check` explicitly.
 
 ## Self-scheduling (only if the operator asks)
 
@@ -198,6 +227,13 @@ The receiver only forwards completed `workflow_run` events with
 `conclusion=failure`. Successes and other event types are filtered out
 upstream — if you have an event with this actor, it represents a real
 failed deploy.
+
+If `head_branch` does not match `{{prod_branch_glob}}` (the production
+branch glob the operator chose at install — typically `main` or
+`release/*`), the failure is on a feature branch and is **not**
+production-impacting. Acknowledge it briefly in chat if asked, but do
+not post to Slack — operators only want production-branch noise in
+`{{slack_channel}}`.
 
 What to do, in order:
 

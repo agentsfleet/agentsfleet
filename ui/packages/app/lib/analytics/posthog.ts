@@ -16,13 +16,8 @@ type AnalyticsProps = {
   workspace_count?: number;
   workspace_plan?: string;
   paused?: boolean;
-  run_id?: string;
-  run_status?: string;
-  run_attempts?: number;
   has_error?: boolean;
   has_pr_url?: boolean;
-  active_run_id?: string;
-  active_run_status?: string;
   error_code?: string;
   error_message?: string;
   reason?: string;
@@ -46,13 +41,8 @@ const ALLOWED_PROP_KEYS = new Set<keyof AnalyticsProps>([
   "workspace_count",
   "workspace_plan",
   "paused",
-  "run_id",
-  "run_status",
-  "run_attempts",
   "has_error",
   "has_pr_url",
-  "active_run_id",
-  "active_run_status",
   "error_code",
   "error_message",
   "reason",

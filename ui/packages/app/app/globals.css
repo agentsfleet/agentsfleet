@@ -150,8 +150,6 @@ code, pre, kbd {
 }
 
 /* Repeated dashboard layout patterns live in @usezombie/design-system as
- * React components (PageHeader, PageTitle, SectionLabel). Status badges use
- * the DS Badge via RunStatus.tsx. Pipeline visualization is domain-specific
- * and renders Tailwind utilities inline on PipelineStage.tsx. No parallel
+ * React components (PageHeader, PageTitle, SectionLabel). No parallel
  * CSS vocabulary in this file.
  */

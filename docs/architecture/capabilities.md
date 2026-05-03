@@ -55,17 +55,38 @@ Every zombie reasoning loop lives inside a single `runner.execute` call. As the 
 ### The three knobs
 
 ```yaml
-# In the zombie's SKILL.md frontmatter under x-usezombie:
+# In the zombie's TRIGGER.md frontmatter under x-usezombie:
 x-usezombie:
+  model: accounts/fireworks/models/kimi-k2.6   # opaque pass-through; the worker
+                                                # forwards it to the executor's
+                                                # ContextBudget.model. Empty
+                                                # string ("") = BYOK overlay
+                                                # sentinel: the worker resolves
+                                                # the real model from
+                                                # core.tenant_providers at
+                                                # trigger time.
   context:
-    tool_window: auto              # rolling tool-result window size
+    tool_window: auto              # rolling tool-result window size; "auto"
+                                    # (bare YAML string) and 0 are equivalent
+                                    # — both mean "let the runtime pick".
     memory_checkpoint_every: 5     # call memory_store every N tool calls
     stage_chunk_threshold: 0.75    # % context fill that triggers chunking
     context_cap_tokens: 200000     # the active model's context window
                                     # (resolved at install time from the
                                     #  model-caps endpoint — see user_flow.md
-                                    #  §8.7 and billing_and_byok.md)
+                                    #  §8.7 and billing_and_byok.md). 0 is the
+                                    # BYOK overlay sentinel — same shape as
+                                    # the empty `model` value above.
 ```
+
+**Wire-shape parser status.** Both `x-usezombie.model` and the four
+`x-usezombie.context.*` knobs are parsed into `ZombieConfig` and forwarded
+to the executor's `ContextBudget` at every `executeInSandbox` call. Before
+the M46 parser extension that landed alongside M49, the doc described
+these fields but the parser dropped them silently — every zombie ran on
+runtime auto-defaults regardless of authoring. Operator overrides now take
+effect; absent or zero fields still fall through to the runtime defaults
+below via `applyContextDefaults`.
 
 ### How the three layers compose (defence-in-depth, not override)
 

@@ -55,10 +55,9 @@ describe("M30 §1 — route inventory matches command registry", () => {
     { cmd: "login", args: [], key: "login" },
     { cmd: "logout", args: [], key: "logout" },
     { cmd: "workspace", args: ["add"], key: "workspace" },
-    { cmd: "specs", args: ["sync"], key: "specs.sync" },
     { cmd: "doctor", args: [], key: "doctor" },
     { cmd: "admin", args: ["config"], key: "admin" },
-    { cmd: "agent", args: ["create"], key: "agent" },
+    { cmd: "agent", args: ["add"], key: "agent" },
     { cmd: "grant", args: ["list"], key: "grant" },
     { cmd: "install", args: [], key: "zombie.install" },
     { cmd: "status", args: [], key: "zombie.status" },
@@ -84,7 +83,6 @@ describe("M30 §1 — route inventory matches command registry", () => {
       login: sentinel,
       logout: sentinel,
       workspace: sentinel,
-      specsSync: sentinel,
       doctor: sentinel,
       admin: sentinel,
       agent: sentinel,
@@ -107,6 +105,7 @@ describe("M30 §1 — route inventory matches command registry", () => {
     expect(findRoute("runs", ["replay"])).toBeNull();
     expect(findRoute("runs", ["interrupt"])).toBeNull();
     expect(findRoute("spec", ["init"])).toBeNull();
+    expect(findRoute("specs", ["sync"])).toBeNull();
   });
 });
 
@@ -250,10 +249,10 @@ describe("M30 §3.5 — workspace JSON errors", () => {
     expect(parsed.error.code).toBe("USAGE_ERROR");
   });
 
-  test("workspace remove missing id emits USAGE_ERROR", async () => {
+  test("workspace delete missing id emits USAGE_ERROR", async () => {
     const out = makeBufferStream();
     const err = makeBufferStream();
-    const code = await runCli(["--json", "workspace", "remove"], {
+    const code = await runCli(["--json", "workspace", "delete"], {
       stdout: out.stream, stderr: err.stream,
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
     });

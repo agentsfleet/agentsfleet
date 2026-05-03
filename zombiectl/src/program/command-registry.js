@@ -3,7 +3,6 @@ export function registerProgramCommands(handlers) {
     login: handlers.login,
     logout: handlers.logout,
     workspace: handlers.workspace,
-    "specs.sync": handlers.specsSync,
     doctor: handlers.doctor,
     admin: handlers.admin,
     agent: handlers.agent,

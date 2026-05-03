@@ -204,28 +204,26 @@ describe("app analytics", () => {
 
   it("captures app events with the current pathname fallback", async () => {
     const { mod, client } = await loadModule({
-      pathname: "/workspaces/ws_123/runs/run_456",
+      pathname: "/workspaces/ws_123",
       env: {
         NEXT_PUBLIC_POSTHOG_KEY: "phc_live",
       },
     });
 
     await mod.initAnalytics();
-    mod.trackAppEvent("run_detail_viewed", {
-      source: "run_page",
-      surface: "run_detail",
+    mod.trackAppEvent("workspace_detail_viewed", {
+      source: "workspace_page",
+      surface: "workspace_detail",
       workspace_id: "ws_123",
-      run_id: "run_456",
       has_error: false,
     });
 
-    expect(client.capture).toHaveBeenCalledWith("run_detail_viewed", {
-      source: "run_page",
-      surface: "run_detail",
+    expect(client.capture).toHaveBeenCalledWith("workspace_detail_viewed", {
+      source: "workspace_page",
+      surface: "workspace_detail",
       workspace_id: "ws_123",
-      run_id: "run_456",
       has_error: false,
-      path: "/workspaces/ws_123/runs/run_456",
+      path: "/workspaces/ws_123",
     });
   });
 

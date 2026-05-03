@@ -43,7 +43,6 @@ pub const RecordedEvent = struct {
         return r;
     }
 };
-pub const AgentCompleted = events.AgentCompleted;
 pub const EntitlementRejected = events.EntitlementRejected;
 pub const ServerStarted = events.ServerStarted;
 pub const WorkerStarted = events.WorkerStarted;

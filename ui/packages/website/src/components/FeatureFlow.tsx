@@ -68,13 +68,13 @@ function Panel({ kind }: { kind: FeatureFlowItem["panel"] }) {
     return (
       <div className="feature-flow-panel-shell">
         <p className="feature-flow-code">
-          run_id: zmb_2041
+          zombie_id: zmb_2041
           <br />
-          stage: validate
+          event: workflow_run.failed
           <br />
-          status: passed
+          status: notified
           <br />
-          pr: github.com/org/repo/pull/482
+          slack: #platform-ops
         </p>
       </div>
     );

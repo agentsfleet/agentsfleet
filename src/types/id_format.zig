@@ -1,94 +1,10 @@
 const std = @import("std");
 
-pub fn generateRunId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateTenantId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
 pub fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn generateSpecId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateAgentId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateProfileVersionId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateCompileJobId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateProfileLinkageArtifactId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateEntitlementSnapshotId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateTransitionId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateArtifactId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateUsageLedgerId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateWorkspaceMemoryId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generatePolicyEventId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateSideEffectId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateOutboxId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateBillingDeliveryId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generateVaultSecretId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-fn generateScoreId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-fn generateGateResultId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-pub fn generatePlatformLlmKeyId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
 pub fn generateZombieId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
-fn generateZombieSessionId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
@@ -101,11 +17,15 @@ pub fn generateIntegrationId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-pub fn isSupportedAgentId(id: []const u8) bool {
-    return isUuidV7(id);
+pub fn generateVaultSecretId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
 }
 
-pub fn isSupportedRunId(id: []const u8) bool {
+pub fn generatePlatformLlmKeyId(alloc: std.mem.Allocator) ![]const u8 {
+    return allocUuidV7(alloc);
+}
+
+pub fn isSupportedAgentId(id: []const u8) bool {
     return isUuidV7(id);
 }
 
@@ -114,30 +34,6 @@ pub fn isSupportedTenantId(id: []const u8) bool {
 }
 
 pub fn isSupportedWorkspaceId(id: []const u8) bool {
-    return isUuidV7(id);
-}
-
-pub fn isSupportedSpecId(id: []const u8) bool {
-    return isUuidV7(id);
-}
-
-pub fn isSupportedProfileId(id: []const u8) bool {
-    return isUuidV7(id);
-}
-
-pub fn isSupportedProfileVersionId(id: []const u8) bool {
-    return isUuidV7(id);
-}
-
-pub fn isSupportedCompileJobId(id: []const u8) bool {
-    return isUuidV7(id);
-}
-
-pub fn isSupportedProfileLinkageArtifactId(id: []const u8) bool {
-    return isUuidV7(id);
-}
-
-pub fn isSupportedEntitlementSnapshotId(id: []const u8) bool {
     return isUuidV7(id);
 }
 
@@ -193,7 +89,6 @@ fn isHex(c: u8) bool {
         (c >= 'A' and c <= 'F');
 }
 
-// Tests in id_format_test.zig (RULE FLL: keep file ≤ 350 lines).
 test {
     _ = @import("id_format_test.zig");
 }

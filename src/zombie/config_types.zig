@@ -21,6 +21,12 @@ pub const ZombieConfigError = error{
     InvalidNameFormat,
     InvalidVersionFormat,
     InvalidTagFormat,
+    /// Field is present but its YAML/JSON type or value is wrong (e.g.
+    /// `context: "bad"` where an object is expected, `tool_window: -1`,
+    /// `tool_window: true`). Distinct from `MissingRequiredField` so a CI
+    /// log clearly distinguishes "you forgot a key" from "you got the
+    /// shape wrong."
+    InvalidFieldType,
 };
 
 pub const ZombieStatus = enum {
@@ -84,6 +90,17 @@ pub const ZombieNetwork = struct {
     allow: []const []const u8,
 };
 
+/// Frontmatter knobs from `x-usezombie.context`. Zero means "auto" — the
+/// executor's `applyContextDefaults` substitutes `DEFAULT_*` constants.
+/// Mirrors the wire-shape of `executor/context_budget.zig:ContextBudget`
+/// minus the opaque `model` (which lives one level up at `x-usezombie.model`).
+pub const ZombieContextBudget = struct {
+    context_cap_tokens: u32 = 0,
+    tool_window: u32 = 0,
+    memory_checkpoint_every: u32 = 0,
+    stage_chunk_threshold: f32 = 0.0,
+};
+
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ZombieConfig = struct {
     name: []const u8,
@@ -98,6 +115,13 @@ pub const ZombieConfig = struct {
     skill: ?[]const u8,
     // M2_002: Downstream zombies to chain events to.
     chain: []const []const u8,
+    // Opaque model identifier from `x-usezombie.model`. Pass-through: the
+    // executor's ContextBudget.model carries it; nothing in this binary
+    // interprets it. Empty/null means "fall back to tenant_providers" (BYOK).
+    model: ?[]const u8,
+    // Frontmatter overrides for the context budget knobs. Null means
+    // "no `x-usezombie.context:` block authored — every knob is auto."
+    context: ?ZombieContextBudget,
 
     pub fn deinit(self: *const ZombieConfig, alloc: Allocator) void {
         alloc.free(self.name);
@@ -108,14 +132,16 @@ pub const ZombieConfig = struct {
         if (self.gates) |gates| config_gates.freeGatePolicy(alloc, gates);
         if (self.skill) |s| alloc.free(s);
         freeStringSlice(alloc, self.chain);
+        if (self.model) |s| alloc.free(s);
     }
 };
 
 // Guards against silent field drift: if a field is added to ZombieConfig
 // without updating deinit(), @sizeOf changes and this assert fails at compile.
-// 288 bytes on 64-bit: 9 pointer/slice fields + trigger union + budget + gates optional.
+// New fields: `model: ?[]const u8` (16 bytes) + `context: ?ZombieContextBudget`
+// (20 bytes payload + 1 byte tag, padded to 24 bytes). Total 288 + 16 + 24 = 328.
 comptime {
-    std.debug.assert(@sizeOf(ZombieConfig) == 288);
+    std.debug.assert(@sizeOf(ZombieConfig) == 328);
 }
 
 /// Authoring metadata extracted from SKILL.md frontmatter (the SOUL file's

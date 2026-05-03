@@ -38,8 +38,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  workspace show [--workspace-id ID]");
   writeLine(stdout, "  workspace credentials");
   writeLine(stdout, "  workspace billing [--workspace-id ID]");
-  writeLine(stdout, "  workspace remove <workspace_id>");
-  writeLine(stdout, "  specs sync [--workspace-id ID]");
+  writeLine(stdout, "  workspace delete <workspace_id>");
   writeLine(stdout, "  doctor");
   writeLine(stdout);
   writeLine(stdout, ui.head("ZOMBIE COMMANDS  (top-level — e.g. `zombiectl list`)"));
@@ -48,13 +47,13 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  status [<zombie_id>]                Show zombie(s) status");
   writeLine(stdout, "  kill <zombie_id>                    Delete a zombie");
   writeLine(stdout, "  logs <zombie_id>                    Tail zombie activity");
-  writeLine(stdout, "  credential add|list|delete          Workspace credential vault (JSON-object data)");
+  writeLine(stdout, "  credential add|show|list|delete     Workspace credential vault (--data=@- pipes JSON on stdin)");
 
   if (showOperator) {
     writeLine(stdout);
     writeLine(stdout, ui.head("OPERATOR COMMANDS"));
     writeLine(stdout, "  workspace upgrade-scale --workspace-id ID --subscription-id SUBSCRIPTION_ID");
-    writeLine(stdout, "  admin config set scoring_context_max_tokens <value> --workspace-id ID");
+    writeLine(stdout, "  admin config add scoring_context_max_tokens <value> --workspace-id ID");
   }
 
   writeLine(stdout);
