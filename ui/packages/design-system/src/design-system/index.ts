@@ -146,3 +146,25 @@ export {
   type SelectLabelProps,
   type SelectSeparatorProps,
 } from "./Select";
+export { Time, type TimeProps } from "./Time";
+export {
+  formatTimeAbsolute,
+  formatTimeRelative,
+  TIME_INVALID_FALLBACK,
+  type TimeFormat,
+} from "./time-utils";
+export {
+  List,
+  ListItem,
+  listVariants,
+  type ListProps,
+  type ListVariant,
+} from "./List";
+export {
+  DescriptionList,
+  DescriptionTerm,
+  DescriptionDetails,
+  dlVariants,
+  type DescriptionListProps,
+  type DescriptionDetailsProps,
+} from "./DescriptionList";

@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import {
   Alert,
+  DescriptionList,
+  DescriptionTerm,
+  DescriptionDetails,
   EmptyState,
   PageHeader,
   PageTitle,
@@ -56,32 +59,34 @@ export default async function ProviderSettingsPage() {
         <Section asChild>
           <section aria-label="Active provider configuration" className="max-w-lg">
             <SectionLabel>Active configuration</SectionLabel>
-            <dl className="mt-3 space-y-3 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Mode</dt>
-                <dd className="font-medium capitalize">{provider.mode ?? "—"}</dd>
+            <DescriptionList className="mt-3">
+              <div>
+                <DescriptionTerm>Mode</DescriptionTerm>
+                <DescriptionDetails className="font-medium capitalize">
+                  {provider.mode ?? "—"}
+                </DescriptionDetails>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Provider</dt>
-                <dd>{provider.provider ?? "—"}</dd>
+              <div>
+                <DescriptionTerm>Provider</DescriptionTerm>
+                <DescriptionDetails>{provider.provider ?? "—"}</DescriptionDetails>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Model</dt>
-                <dd className="font-mono text-xs">{provider.model ?? "—"}</dd>
+              <div>
+                <DescriptionTerm>Model</DescriptionTerm>
+                <DescriptionDetails mono>{provider.model ?? "—"}</DescriptionDetails>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Context cap</dt>
-                <dd className="tabular-nums">
+              <div>
+                <DescriptionTerm>Context cap</DescriptionTerm>
+                <DescriptionDetails className="tabular-nums">
                   {typeof provider.context_cap_tokens === "number"
-                    ? provider.context_cap_tokens.toLocaleString() + " tokens"
+                    ? new Intl.NumberFormat("en-US").format(provider.context_cap_tokens) + " tokens"
                     : "—"}
-                </dd>
+                </DescriptionDetails>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Credential</dt>
-                <dd className="font-mono text-xs">{provider.credential_ref ?? "—"}</dd>
+              <div>
+                <DescriptionTerm>Credential</DescriptionTerm>
+                <DescriptionDetails mono>{provider.credential_ref ?? "—"}</DescriptionDetails>
               </div>
-            </dl>
+            </DescriptionList>
             {provider.synthesised_default ? (
               <p className="mt-4 text-xs italic text-muted-foreground animate-in fade-in-0 duration-200">
                 This is the platform default — no tenant override is set.

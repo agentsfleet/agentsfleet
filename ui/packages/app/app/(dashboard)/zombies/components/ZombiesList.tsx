@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Alert, Button, Input } from "@usezombie/design-system";
+import { Alert, Button, Input, List, ListItem } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
 import { listZombies, type Zombie } from "@/lib/api/zombies";
 
@@ -73,9 +73,12 @@ export default function ZombiesList({
           No zombies match &ldquo;{deferredQuery}&rdquo; in the loaded set.
         </p>
       ) : (
-        <ul className="divide-y divide-border rounded-lg border border-border">
+        <List
+          variant="plain"
+          className="divide-y divide-border rounded-lg border border-border space-y-0"
+        >
           {filtered.map((z) => (
-            <li key={z.id}>
+            <ListItem key={z.id}>
               <Link
                 href={`/zombies/${z.id}`}
                 className="flex items-center justify-between px-4 py-3 hover:bg-muted/40"
@@ -90,9 +93,9 @@ export default function ZombiesList({
                   {z.id}
                 </div>
               </Link>
-            </li>
+            </ListItem>
           ))}
-        </ul>
+        </List>
       )}
 
       {error ? (

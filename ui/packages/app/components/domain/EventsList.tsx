@@ -11,11 +11,11 @@ import {
   CardTitle,
   CardDescription,
   EmptyState,
+  List,
+  ListItem,
   Pagination,
   Separator,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+  Time,
 } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
 import {
@@ -84,13 +84,13 @@ export function EventsList({
 
   return (
     <div className="flex flex-col gap-3">
-      <ol role="list" className="flex flex-col gap-2">
+      <List variant="ordered" className="flex flex-col gap-2 list-none pl-0 space-y-0">
         {items.map((row) => (
-          <li key={`${row.zombie_id}:${row.event_id}`}>
+          <ListItem key={`${row.zombie_id}:${row.event_id}`}>
             <EventCard row={row} showZombieId={scope.kind === "workspace"} />
-          </li>
+          </ListItem>
         ))}
-      </ol>
+      </List>
       {error ? (
         <Alert variant="destructive">{error}</Alert>
       ) : null}
@@ -118,17 +118,13 @@ function EventCard({ row, showZombieId }: { row: EventRow; showZombieId: boolean
           </CardDescription>
           <div className="ml-auto">
             {ts ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <time
-                    dateTime={ts}
-                    className="font-mono text-xs text-muted-foreground tabular-nums"
-                  >
-                    {clockTime(created)}
-                  </time>
-                </TooltipTrigger>
-                <TooltipContent>{ts}</TooltipContent>
-              </Tooltip>
+              <Time
+                value={created}
+                tooltip
+                label={clockTime(created)}
+                tooltipContent={ts}
+                className="font-mono text-xs text-muted-foreground tabular-nums"
+              />
             ) : null}
           </div>
         </CardHeader>
@@ -156,8 +152,17 @@ function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id;
 }
 
+// Visible HH:MM clock label is intentionally browser-local — operators
+// scan the activity feed in their own time zone. The Tooltip surfaces
+// the canonical UTC ISO string (`tooltipContent={ts}`), so the precise
+// instant is always one hover away. Using Intl rather than getHours()
+// so locale formatting (24h vs 12h) follows the user's region instead
+// of forcing 24h everywhere.
+const CLOCK_FORMAT = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function clockTime(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return CLOCK_FORMAT.format(d);
 }
