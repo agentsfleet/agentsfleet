@@ -81,7 +81,6 @@ describe("DataTable", () => {
         onRowClick: () => {},
       }),
     );
-    expect(html).toContain('role="button"');
     expect(html).toContain('tabindex="0"');
     expect(html).toContain("cursor-pointer");
   });

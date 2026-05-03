@@ -91,7 +91,6 @@ export function DataTable<T>({
                   }
                 } : undefined}
                 tabIndex={clickable ? 0 : undefined}
-                role={clickable ? "button" : undefined}
               >
                 {columns.map((c) => (
                   <td

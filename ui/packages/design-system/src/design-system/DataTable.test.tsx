@@ -69,7 +69,7 @@ describe("DataTable", () => {
     fireEvent.keyDown(row, { key: " " });
     fireEvent.keyDown(row, { key: "Tab" });
     expect(onRowClick).toHaveBeenCalledTimes(3);
-    expect(row.getAttribute("role")).toBe("button");
+    expect(row.getAttribute("role")).toBeNull();
     expect(row.getAttribute("tabindex")).toBe("0");
   });
 
