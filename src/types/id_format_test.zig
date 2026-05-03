@@ -1,46 +1,32 @@
-// Tests extracted from id_format.zig to keep that file under 350 lines.
-// Pattern: approval_gate_test.zig.
-
 const std = @import("std");
 const id = @import("id_format.zig");
 
-test "generate ids support both formats" {
+test "generators produce uuidv7-shaped ids that pass their validators" {
     const alloc = std.testing.allocator;
-    const tenant_id = try id.generateTenantId(alloc);
-    defer alloc.free(tenant_id);
-    try std.testing.expect(id.isSupportedTenantId(tenant_id));
 
     const workspace_id = try id.generateWorkspaceId(alloc);
     defer alloc.free(workspace_id);
     try std.testing.expect(id.isSupportedWorkspaceId(workspace_id));
 
-    const spec_id = try id.generateSpecId(alloc);
-    defer alloc.free(spec_id);
-    try std.testing.expect(id.isSupportedSpecId(spec_id));
+    const zombie_id = try id.generateZombieId(alloc);
+    defer alloc.free(zombie_id);
+    try std.testing.expect(id.isUuidV7(zombie_id));
 
-    const run_id = try id.generateRunId(alloc);
-    defer alloc.free(run_id);
-    try std.testing.expect(id.isSupportedRunId(run_id));
+    const activity_id = try id.generateActivityEventId(alloc);
+    defer alloc.free(activity_id);
+    try std.testing.expect(id.isUuidV7(activity_id));
 
-    const profile_id = try id.generateAgentId(alloc);
-    defer alloc.free(profile_id);
-    try std.testing.expect(id.isSupportedProfileId(profile_id));
+    const integration_id = try id.generateIntegrationId(alloc);
+    defer alloc.free(integration_id);
+    try std.testing.expect(id.isUuidV7(integration_id));
 
-    const pver_id = try id.generateProfileVersionId(alloc);
-    defer alloc.free(pver_id);
-    try std.testing.expect(id.isSupportedProfileVersionId(pver_id));
+    const vault_id = try id.generateVaultSecretId(alloc);
+    defer alloc.free(vault_id);
+    try std.testing.expect(id.isUuidV7(vault_id));
 
-    const cjob_id = try id.generateCompileJobId(alloc);
-    defer alloc.free(cjob_id);
-    try std.testing.expect(id.isSupportedCompileJobId(cjob_id));
-
-    const artifact_id = try id.generateProfileLinkageArtifactId(alloc);
-    defer alloc.free(artifact_id);
-    try std.testing.expect(id.isSupportedProfileLinkageArtifactId(artifact_id));
-
-    const snapshot_id = try id.generateEntitlementSnapshotId(alloc);
-    defer alloc.free(snapshot_id);
-    try std.testing.expect(id.isSupportedEntitlementSnapshotId(snapshot_id));
+    const llm_key_id = try id.generatePlatformLlmKeyId(alloc);
+    defer alloc.free(llm_key_id);
+    try std.testing.expect(id.isUuidV7(llm_key_id));
 }
 
 test "uuidv7 validator accepts canonical v7 variant 10xx" {
@@ -48,18 +34,20 @@ test "uuidv7 validator accepts canonical v7 variant 10xx" {
     try std.testing.expect(!id.isUuidV7("0195b4ba-8d3a-6f13-8abc-2b3e1e0a6f99"));
 }
 
-test "validators reject legacy prefixed ids after uuid cutover" {
-    try std.testing.expect(!id.isSupportedRunId("not-a-uuid"));
-    try std.testing.expect(!id.isSupportedProfileVersionId("missing-uuid-shape"));
-    try std.testing.expect(!id.isSupportedCompileJobId("0195b4ba8d3a7f138abc2b3e1e0a6f99"));
+test "validators reject non-uuid inputs" {
+    try std.testing.expect(!id.isSupportedWorkspaceId("not-a-uuid"));
+    try std.testing.expect(!id.isSupportedTenantId("missing-uuid-shape"));
+    try std.testing.expect(!id.isSupportedAgentId("0195b4ba8d3a7f138abc2b3e1e0a6f99"));
 }
 
-test "all new id generators produce valid uuidv7" {
+test "all live id generators produce valid uuidv7" {
     const alloc = std.testing.allocator;
     inline for (.{
-        id.generateTransitionId,      id.generateArtifactId,             id.generateUsageLedgerId,
-        id.generateWorkspaceMemoryId, id.generatePolicyEventId,          id.generateSideEffectId,
-        id.generateOutboxId,          id.generateBillingDeliveryId,      id.generateVaultSecretId,
+        id.generateWorkspaceId,
+        id.generateZombieId,
+        id.generateActivityEventId,
+        id.generateIntegrationId,
+        id.generateVaultSecretId,
         id.generatePlatformLlmKeyId,
     }) |gen| {
         const idd = try gen(alloc);
@@ -70,26 +58,28 @@ test "all new id generators produce valid uuidv7" {
 
 test "generated ids are unique across calls" {
     const alloc = std.testing.allocator;
-    const id1 = try id.generateTransitionId(alloc);
+    const id1 = try id.generateZombieId(alloc);
     defer alloc.free(id1);
-    const id2 = try id.generateTransitionId(alloc);
+    const id2 = try id.generateZombieId(alloc);
     defer alloc.free(id2);
     try std.testing.expect(!std.mem.eql(u8, id1, id2));
 }
 
 test "all generated ids are 36 bytes" {
     const alloc = std.testing.allocator;
-    const idd = try id.generateTransitionId(alloc);
+    const idd = try id.generateZombieId(alloc);
     defer alloc.free(idd);
     try std.testing.expectEqual(@as(usize, 36), idd.len);
 }
 
-test "version nibble and variant bits are correctly set across all generators" {
+test "version nibble and variant bits are correctly set across all live generators" {
     const alloc = std.testing.allocator;
     inline for (.{
-        id.generateTransitionId,      id.generateArtifactId,             id.generateUsageLedgerId,
-        id.generateWorkspaceMemoryId, id.generatePolicyEventId,          id.generateSideEffectId,
-        id.generateOutboxId,          id.generateBillingDeliveryId,      id.generateVaultSecretId,
+        id.generateWorkspaceId,
+        id.generateZombieId,
+        id.generateActivityEventId,
+        id.generateIntegrationId,
+        id.generateVaultSecretId,
         id.generatePlatformLlmKeyId,
     }) |gen| {
         const idd = try gen(alloc);
@@ -105,13 +95,13 @@ test "version nibble and variant bits are correctly set across all generators" {
 
 test "ids from different generators are distinct" {
     const alloc = std.testing.allocator;
-    const a = try id.generateTransitionId(alloc);
+    const a = try id.generateWorkspaceId(alloc);
     defer alloc.free(a);
-    const b = try id.generateArtifactId(alloc);
+    const b = try id.generateZombieId(alloc);
     defer alloc.free(b);
-    const c = try id.generateUsageLedgerId(alloc);
+    const c = try id.generateActivityEventId(alloc);
     defer alloc.free(c);
-    const d = try id.generateSideEffectId(alloc);
+    const d = try id.generateIntegrationId(alloc);
     defer alloc.free(d);
     try std.testing.expect(!std.mem.eql(u8, a, b));
     try std.testing.expect(!std.mem.eql(u8, b, c));
@@ -120,7 +110,7 @@ test "ids from different generators are distinct" {
 
 test "all hex chars are lowercase" {
     const alloc = std.testing.allocator;
-    const idd = try id.generateTransitionId(alloc);
+    const idd = try id.generateZombieId(alloc);
     defer alloc.free(idd);
     for (idd) |c| {
         if (c == '-') continue;
@@ -130,7 +120,7 @@ test "all hex chars are lowercase" {
 
 test "generator returns OutOfMemory when allocator fails" {
     var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
-    const result = id.generateTransitionId(fa.allocator());
+    const result = id.generateZombieId(fa.allocator());
     try std.testing.expectError(error.OutOfMemory, result);
 }
 
@@ -162,7 +152,7 @@ test "concurrent generation produces no duplicates" {
         fn worker(self: *@This(), base: usize) void {
             const alloc = std.testing.allocator;
             for (0..ids_per_thread) |i| {
-                self.ids[base + i] = id.generateTransitionId(alloc) catch "FAILED";
+                self.ids[base + i] = id.generateZombieId(alloc) catch "FAILED";
             }
         }
     };

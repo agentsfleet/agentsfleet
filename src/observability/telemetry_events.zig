@@ -5,7 +5,6 @@
 const posthog = @import("posthog");
 
 pub const EventKind = enum {
-    agent_completed,
     entitlement_rejected,
     server_started,
     worker_started,
@@ -17,29 +16,6 @@ pub const EventKind = enum {
     zombie_triggered,
     zombie_completed,
     signup_bootstrapped,
-};
-
-pub const AgentCompleted = struct {
-    distinct_id: []const u8,
-    run_id: []const u8,
-    workspace_id: []const u8,
-    actor: []const u8,
-    tokens: u64,
-    duration_ms: u64,
-    exit_status: []const u8,
-
-    pub const kind: EventKind = .agent_completed;
-
-    pub fn properties(self: @This()) [6]posthog.Property {
-        return .{
-            .{ .key = "run_id", .value = .{ .string = self.run_id } },
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "actor", .value = .{ .string = self.actor } },
-            .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
-            .{ .key = "duration_ms", .value = .{ .integer = @intCast(self.duration_ms) } },
-            .{ .key = "exit_status", .value = .{ .string = self.exit_status } },
-        };
-    }
 };
 
 pub const EntitlementRejected = struct {
