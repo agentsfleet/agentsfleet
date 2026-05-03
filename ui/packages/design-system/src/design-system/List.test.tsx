@@ -77,6 +77,21 @@ describe("List", () => {
     expect(listVariants({ variant: "plain" })).toContain("list-none");
   });
 
+  it("defaults role='list' on the host (Safari VoiceOver list-none guard)", () => {
+    const { container: ul } = render(<List variant="plain"><ListItem>x</ListItem></List>);
+    expect((ul.firstChild as HTMLElement).getAttribute("role")).toBe("list");
+
+    const { container: ol } = render(<List variant="ordered"><ListItem>x</ListItem></List>);
+    expect((ol.firstChild as HTMLElement).getAttribute("role")).toBe("list");
+  });
+
+  it("respects an explicit role override", () => {
+    const { container } = render(
+      <List role="navigation"><ListItem>x</ListItem></List>,
+    );
+    expect((container.firstChild as HTMLElement).getAttribute("role")).toBe("navigation");
+  });
+
   it("ListItem renders <li> and forwards className", () => {
     const { container } = render(
       <ul>

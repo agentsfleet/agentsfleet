@@ -11,6 +11,10 @@ import { cn } from "../utils";
  *
  * `asChild` swaps the host element (e.g. <menu>) while preserving the
  * variant classes — for the rare case the caller needs a non-ul/ol tag.
+ *
+ * Default `role="list"` preserves list semantics in Safari VoiceOver,
+ * which strips the implicit role from any <ul>/<ol> with list-style:none
+ * applied via CSS. Pass an explicit `role` to override.
  */
 
 export const listVariants = cva("space-y-2 text-sm", {
@@ -41,6 +45,7 @@ export function List({
   variant = "unordered",
   divided = false,
   asChild = false,
+  role = "list",
   className,
   children,
   ref,
@@ -50,7 +55,7 @@ export function List({
 
   if (asChild) {
     return (
-      <Slot ref={ref} className={classes} {...props}>
+      <Slot ref={ref} role={role} className={classes} {...props}>
         {children}
       </Slot>
     );
@@ -60,6 +65,7 @@ export function List({
     return (
       <ol
         ref={ref as ComponentProps<"ol">["ref"]}
+        role={role}
         className={classes}
         {...(props as ComponentProps<"ol">)}
       >
@@ -69,7 +75,7 @@ export function List({
   }
 
   return (
-    <ul ref={ref} className={classes} {...props}>
+    <ul ref={ref} role={role} className={classes} {...props}>
       {children}
     </ul>
   );
