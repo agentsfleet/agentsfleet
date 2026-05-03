@@ -4,7 +4,7 @@
 **Milestone:** M49
 **Workstream:** 001
 **Date:** May 03, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — packaging-blocking. The wedge launch demo IS this skill installing platform-ops on Customer Zero's repo. Without it the runtime ships but no one knows how to put a zombie on their repo without running raw `zombiectl zombie install --from`.
 **Categories:** SKILL, DOCS
 **Batch:** B3 — depends on substrate (M40-M46) being shippable end-to-end.
@@ -545,21 +545,21 @@ Fixtures in `tests/skill-evals/fixtures/`:
 
 ## Acceptance Criteria
 
-- [ ] `skills/usezombie-install-platform-ops/SKILL.md` lives in this repo with Resend-pattern frontmatter (name, description, license, metadata, inputs, references)
-- [ ] `skills/usezombie-install-platform-ops/references/{credential-resolution,failure-modes,byok-handoff}.md` all present and referenced from frontmatter
-- [ ] `tests/skill-evals/usezombie-install-platform-ops/` exists with the basic file-generation eval + LLM-judge prose clarity eval
-- [ ] `package.json` includes `samples/` and `skills/` in `files:`; `postinstall` script wired
-- [ ] `scripts/postinstall.js` is defensive: idempotent, never crashes `npm install` on FS errors
-- [ ] `samples/platform-ops/SKILL.md` body teaches the agent to handle "morning health check" by fetching GH Actions runs on `prod_branch_glob`, Fly app status, optional Upstash ping, posting Slack summary
-- [ ] Generated `.usezombie/platform-ops/SKILL.md` and `TRIGGER.md` parse cleanly under M46's schema
-- [ ] All 22 tests pass (21 functional + 1 eval-suite)
+- [x] `skills/usezombie-install-platform-ops/SKILL.md` lives in this repo with Resend-pattern frontmatter (name, description, license, metadata, inputs, references)
+- [x] `skills/usezombie-install-platform-ops/references/{credential-resolution,failure-modes,byok-handoff}.md` all present and referenced from frontmatter
+- [x] `tests/skill-evals/usezombie-install-platform-ops/` exists with the basic file-generation eval + LLM-judge prose clarity eval
+- [x] `package.json` includes `samples/` and `skills/` in `files:`; `postinstall` script wired
+- [x] `scripts/postinstall.js` is defensive: idempotent, never crashes `npm install` on FS errors
+- [x] `samples/platform-ops/SKILL.md` body teaches the agent to handle "morning health check" by fetching GH Actions runs on `prod_branch_glob`, Fly app status, optional Upstash ping, posting Slack summary
+- [x] Generated `.usezombie/platform-ops/SKILL.md` and `TRIGGER.md` parse cleanly under M46's schema
+- [x] All 22 tests pass (21 functional + 1 eval-suite)
 - [ ] Manual: `npm install -g @usezombie/zombiectl` on a clean Mac → `~/.config/usezombie/samples/platform-ops/` populated
 - [ ] Manual: `npx skills add usezombie/usezombie` → `~/.claude/skills/usezombie-install-platform-ops/` symlink present (and equivalents for other hosts where dirs exist)
 - [ ] Manual: Customer Zero (author) runs `/usezombie-install-platform-ops` on the usezombie repo itself, ends with a working zombie posting to author's Slack
 - [ ] Manual: same author runs `/usezombie-install-platform-ops` after running `tenant provider add --credential <name>` first → generated frontmatter carries the BYOK sentinels (`model: ""`, `context_cap_tokens: 0`)
 - [ ] Manual: same author runs `/usezombie-install-platform-ops` a second time on a different repo in the same workspace → skill prompts reuse-vs-scope-per-zombie; both paths produce working zombies
 - [ ] Manual: same author runs `/usezombie-install-platform-ops` in at least two non-Claude hosts (Amp + Codex CLI or OpenCode), produces byte-identical `.usezombie/platform-ops/SKILL.md` and `TRIGGER.md`
-- [ ] No new GitHub repos created — agent skill, evals, samples all in this repo
+- [x] No new GitHub repos created — agent skill, evals, samples all in this repo
 
 ---
 
