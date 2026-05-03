@@ -188,3 +188,96 @@ test "parseZombieConfig: unknown top-level key passes (permissive top level)" {
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("x", cfg.name);
 }
+
+test "parseZombieConfig: x-usezombie.model populates ZombieConfig.model verbatim" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "model":"accounts/fireworks/models/kimi-k2.6"}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
+}
+
+test "parseZombieConfig: empty x-usezombie.model becomes null (BYOK sentinel)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "model":""}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expect(cfg.model == null);
+}
+
+test "parseZombieConfig: x-usezombie.context populates every knob" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"context_cap_tokens":256000,"tool_window":30,"memory_checkpoint_every":7,"stage_chunk_threshold":0.8}}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    const ctx = cfg.context.?;
+    try std.testing.expectEqual(@as(u32, 256000), ctx.context_cap_tokens);
+    try std.testing.expectEqual(@as(u32, 30), ctx.tool_window);
+    try std.testing.expectEqual(@as(u32, 7), ctx.memory_checkpoint_every);
+    try std.testing.expectEqual(@as(f32, 0.8), ctx.stage_chunk_threshold);
+}
+
+test "parseZombieConfig: tool_window auto-string maps to 0 (auto-sentinel)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":"auto"}}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqual(@as(u32, 0), cfg.context.?.tool_window);
+}
+
+test "parseZombieConfig: missing context block → null (auto downstream)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expect(cfg.context == null);
+    try std.testing.expect(cfg.model == null);
+}
+
+test "parseZombieConfig: context with non-numeric tool_window rejects" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":true}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: negative tool_window rejects" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_window":-1}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: model at top level → RuntimeKeysOutsideBlock" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","model":"oops",
+        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
+}

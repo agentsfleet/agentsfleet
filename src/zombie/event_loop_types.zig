@@ -30,7 +30,7 @@ pub const ZombieSession = struct {
     execution_started_at: i64 = 0,
 
     comptime {
-        if (@sizeOf(ZombieSession) != 392) @compileError("ZombieSession size changed; update this assertion");
+        if (@sizeOf(ZombieSession) != 432) @compileError("ZombieSession size changed; update this assertion");
     }
 
     pub fn deinit(self: *ZombieSession, alloc: Allocator) void {

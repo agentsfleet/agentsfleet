@@ -76,6 +76,20 @@ test "fixture trigger/full.md parses with full webhook signature" {
     try std.testing.expectEqual(@as(usize, 3), cfg.tools.len);
 }
 
+test "fixture trigger/with_model_and_context.md parses model + every context knob" {
+    const alloc = std.testing.allocator;
+    const md = try loadFixture(alloc, "trigger/with_model_and_context.md");
+    defer alloc.free(md);
+    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
+    const ctx = cfg.context.?;
+    try std.testing.expectEqual(@as(u32, 256000), ctx.context_cap_tokens);
+    try std.testing.expectEqual(@as(u32, 0), ctx.tool_window); // "auto" → 0
+    try std.testing.expectEqual(@as(u32, 5), ctx.memory_checkpoint_every);
+    try std.testing.expectEqual(@as(f32, 0.75), ctx.stage_chunk_threshold);
+}
+
 test "fixture trigger/runtime_at_top_level.md → RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const md = try loadFixture(alloc, "trigger/runtime_at_top_level.md");

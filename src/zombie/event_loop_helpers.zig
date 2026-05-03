@@ -267,12 +267,19 @@ pub fn executeInSandbox(
     const secrets_map: ?std.json.Value = if (secrets_obj_alive) .{ .object = secrets_obj } else null;
 
     // §8 auto-defaults: every empty/zero knob is the auto sentinel.
-    // applyContextDefaults substitutes spec defaults so the executor
-    // receives a fully-populated ContextBudget. Frontmatter overrides
-    // (x-usezombie.context) land here once the parser ships — the
-    // parser writes non-zero values, applyContextDefaults leaves them
-    // alone.
+    // The parser surfaces `x-usezombie.context` as ZombieContextBudget
+    // and `x-usezombie.model` as a string — both feed the executor's
+    // ContextBudget here. applyContextDefaults then substitutes spec
+    // defaults for any field that arrived zero, leaving operator
+    // overrides alone.
     var ctx_budget: context_budget.ContextBudget = .{};
+    if (session.config.context) |c| {
+        ctx_budget.context_cap_tokens = c.context_cap_tokens;
+        ctx_budget.tool_window = c.tool_window;
+        ctx_budget.memory_checkpoint_every = c.memory_checkpoint_every;
+        ctx_budget.stage_chunk_threshold = c.stage_chunk_threshold;
+    }
+    if (session.config.model) |m| ctx_budget.model = m;
     context_budget.applyContextDefaults(&ctx_budget);
     log.info("zombie_event_loop.context_budget_resolved zombie_id={s} tool_window={d} memory_checkpoint_every={d} stage_chunk_threshold={d:.2} context_cap_tokens={d}", .{
         session.zombie_id,
