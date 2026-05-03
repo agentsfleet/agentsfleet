@@ -152,8 +152,17 @@ function shortId(id: string): string {
   return id.length > 12 ? `${id.slice(0, 4)}…${id.slice(-4)}` : id;
 }
 
+// Visible HH:MM clock label is intentionally browser-local — operators
+// scan the activity feed in their own time zone. The Tooltip surfaces
+// the canonical UTC ISO string (`tooltipContent={ts}`), so the precise
+// instant is always one hover away. Using Intl rather than getHours()
+// so locale formatting (24h vs 12h) follows the user's region instead
+// of forcing 24h everywhere.
+const CLOCK_FORMAT = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function clockTime(d: Date): string {
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${hh}:${mm}`;
+  return CLOCK_FORMAT.format(d);
 }
