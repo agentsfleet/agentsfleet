@@ -66,6 +66,19 @@ describe("Time", () => {
     expect(ssrMatch?.[1]?.replace(/^"|"$/g, "")).toBe(ISO);
   });
 
+  it("renders without runtime error when tooltipContent overrides the body", () => {
+    const past = new Date(Date.now() - 60 * 60_000).toISOString();
+    const { container } = renderTime(
+      <Time value={past} tooltip tooltipContent="raw-iso-marker" />,
+    );
+    // Trigger-only by default in jsdom (no hover); the trigger label is the
+    // formatted absolute, not the override. Portal-mounted body is asserted
+    // separately by Tooltip.test.tsx.
+    expect(container.querySelector("time")?.textContent).not.toContain(
+      "raw-iso-marker",
+    );
+  });
+
   it("relative format opts into suppressHydrationWarning on the time element", () => {
     // suppressHydrationWarning is a React-only flag stripped from the DOM,
     // so we assert via the renderToString output containing the value
@@ -80,6 +93,13 @@ describe("Time", () => {
 
 describe("formatTimeRelative", () => {
   const now = new Date("2026-05-03T12:00:00Z");
+  it("returns 'just now' when value equals now", () => {
+    expect(formatTimeRelative(now, now)).toBe("just now");
+  });
+  it("returns 'just now' for sub-5-second deltas in either direction", () => {
+    expect(formatTimeRelative(new Date(now.getTime() - 2_000), now)).toBe("just now");
+    expect(formatTimeRelative(new Date(now.getTime() + 3_000), now)).toBe("just now");
+  });
   it("returns 'X seconds ago' under a minute", () => {
     expect(formatTimeRelative(new Date(now.getTime() - 30_000), now)).toBe("30 seconds ago");
   });

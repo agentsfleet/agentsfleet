@@ -122,6 +122,7 @@ function EventCard({ row, showZombieId }: { row: EventRow; showZombieId: boolean
                 value={created}
                 tooltip
                 label={clockTime(created)}
+                tooltipContent={ts}
                 className="font-mono text-xs text-muted-foreground tabular-nums"
               />
             ) : null}

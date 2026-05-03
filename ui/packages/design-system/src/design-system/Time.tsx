@@ -1,6 +1,6 @@
 "use client";
 
-import { type ComponentProps } from "react";
+import { type ComponentProps, type ReactNode } from "react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./Tooltip";
 
 /*
@@ -27,6 +27,8 @@ export interface TimeProps
   locale?: string;
   /** Override the visible label while keeping the canonical datetime attr. */
   label?: string;
+  /** Override the tooltip body. Defaults to the absolute formatted string. */
+  tooltipContent?: ReactNode;
 }
 
 const DEFAULT_LOCALE = "en-US";
@@ -62,8 +64,10 @@ export function formatTimeRelative(
   const d = coerceDate(value);
   const deltaSec = Math.round((d.getTime() - now.getTime()) / 1000);
   const abs = Math.abs(deltaSec);
-  const past = deltaSec <= 0;
 
+  if (abs < 5) return "just now";
+
+  const past = deltaSec < 0;
   const unit =
     abs < 60 ? { n: abs, label: "second" }
     : abs < 3_600 ? { n: Math.floor(abs / 60), label: "minute" }
@@ -93,6 +97,7 @@ export function Time({
   tooltip,
   locale = DEFAULT_LOCALE,
   label: labelOverride,
+  tooltipContent,
   className,
   ref,
   ...rest
@@ -117,7 +122,7 @@ export function Time({
 
   if (!showTooltip) return timeEl;
 
-  const tooltipBody = formatTimeAbsolute(value, locale);
+  const tooltipBody = tooltipContent ?? formatTimeAbsolute(value, locale);
   return (
     <Tooltip>
       <TooltipTrigger asChild>{timeEl}</TooltipTrigger>
