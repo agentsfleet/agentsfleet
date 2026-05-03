@@ -19,6 +19,13 @@ import { cn } from "../utils";
  * element when rendering many rows.
  */
 
+/*
+ * Inline layout requires each <DescriptionTerm>/<DescriptionDetails>
+ * pair to be wrapped in a <div> (one row group per <div>) — the
+ * `[&>div]:flex …` utilities only target direct <div> children. Bare
+ * <dt>/<dd> children inside <dl layout="inline"> render with no flex
+ * row layout. Stacked layout has no such requirement.
+ */
 export const dlVariants = cva("text-sm", {
   variants: {
     layout: {
@@ -32,7 +39,18 @@ export const dlVariants = cva("text-sm", {
 
 export interface DescriptionListProps
   extends ComponentProps<"dl">,
-    VariantProps<typeof dlVariants> {}
+    VariantProps<typeof dlVariants> {
+  /**
+   * Layout shape.
+   *
+   * - `inline` (default): each row is a `<div>` wrapping a `<DescriptionTerm>`
+   *   + `<DescriptionDetails>` pair (label left, value right). The `<div>`
+   *   wrapper is required — flex utilities target direct `<div>` children
+   *   only; bare `<dt>`/`<dd>` siblings will not pick up the row layout.
+   * - `stacked`: term above detail, no per-row wrapper required.
+   */
+  layout?: "inline" | "stacked";
+}
 
 export function DescriptionList({
   layout = "inline",
