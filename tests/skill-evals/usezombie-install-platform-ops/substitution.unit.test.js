@@ -81,6 +81,44 @@ test("substitute is idempotent against fully-substituted output", () => {
   assert.equal(out1, out2);
 });
 
+test("substituted platform-default TRIGGER.md matches the M46 round-trip fixture byte-for-byte", async () => {
+  // Connects the JS substitution path to the Zig parser-acceptance path:
+  // the fixture under samples/fixtures/frontmatter/bundles/platform_ops_installed_default/
+  // is what the Zig frontmatter_fixtures_test.zig parses. If the JS
+  // substitute() drifts from what the Zig parser accepts, this test
+  // catches it before a user gets a broken install.
+  const { readFile } = await import("node:fs/promises");
+  const { resolve } = await import("node:path");
+  const { repoRoot } = await import("./substitute.js");
+  const expected = await readFile(
+    resolve(repoRoot, "samples/fixtures/frontmatter/bundles/platform_ops_installed_default/TRIGGER.md"),
+    "utf8",
+  );
+  const actual = substitute(readTemplate("TRIGGER.md"), FULL_VARS_PLATFORM);
+  // The fixture is hand-authored to the parsed shape (tools list trimmed
+  // for parser-test focus). We assert the structural fields match: model,
+  // context, trigger.{type,source,signature}, network.allow.
+  for (const needle of [
+    'model: "accounts/fireworks/models/kimi-k2.6"',
+    "context_cap_tokens: 256000",
+    "tool_window: auto",
+    "memory_checkpoint_every: 5",
+    "stage_chunk_threshold: 0.75",
+    "type: webhook",
+    "source: github",
+    "secret_ref: github_secret",
+    "header: x-hub-signature-256",
+    'prefix: "sha256="',
+    "api.machines.dev",
+    "api.upstash.com",
+    "slack.com",
+    "api.github.com",
+  ]) {
+    assert.ok(actual.includes(needle), `substituted output missing: ${needle}`);
+    assert.ok(expected.includes(needle), `parser fixture missing: ${needle} (drift between JS path + Zig fixture)`);
+  }
+});
+
 test("empty cron_schedule still substitutes cleanly (the no-cron path)", () => {
   const out = substitute(readTemplate("SKILL.md"), {
     ...FULL_VARS_PLATFORM,
