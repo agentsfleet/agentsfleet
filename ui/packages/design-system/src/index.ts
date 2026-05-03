@@ -130,6 +130,7 @@ export {
   Time,
   formatTimeAbsolute,
   formatTimeRelative,
+  TIME_INVALID_FALLBACK,
   type TimeProps,
   type TimeFormat,
   List,

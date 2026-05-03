@@ -18,6 +18,12 @@ const ABSOLUTE_OPTIONS: Intl.DateTimeFormatOptions = {
   minute: "2-digit",
 };
 
+/**
+ * Fallback string for invalid timestamp inputs. Matches the visible "—"
+ * the <Time> component renders when `coerceDate(value)` produces NaN.
+ */
+export const TIME_INVALID_FALLBACK = "—";
+
 export function coerceDate(value: string | Date): Date {
   return value instanceof Date ? value : new Date(value);
 }
@@ -31,6 +37,7 @@ export function formatTimeAbsolute(
   locale: string = DEFAULT_LOCALE,
 ): string {
   const d = coerceDate(value);
+  if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
   return new Intl.DateTimeFormat(locale, ABSOLUTE_OPTIONS).format(d);
 }
 
@@ -39,6 +46,7 @@ export function formatTimeRelative(
   now: Date = new Date(),
 ): string {
   const d = coerceDate(value);
+  if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
   const deltaSec = Math.round((d.getTime() - now.getTime()) / 1000);
   const abs = Math.abs(deltaSec);
 

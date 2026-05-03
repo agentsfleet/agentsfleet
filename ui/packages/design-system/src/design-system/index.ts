@@ -150,6 +150,7 @@ export { Time, type TimeProps } from "./Time";
 export {
   formatTimeAbsolute,
   formatTimeRelative,
+  TIME_INVALID_FALLBACK,
   type TimeFormat,
 } from "./time-utils";
 export {

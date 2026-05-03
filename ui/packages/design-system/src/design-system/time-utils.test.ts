@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   TIME_DEFAULT_LOCALE,
+  TIME_INVALID_FALLBACK,
   coerceDate,
   formatTimeAbsolute,
   formatTimeRelative,
@@ -143,6 +144,41 @@ describe("formatTimeRelative — defaults", () => {
     // We can't pin Date.now() here without fakeTimers, so just assert the
     // shape: a freshly created Date renders as 'just now'.
     expect(formatTimeRelative(new Date())).toBe("just now");
+  });
+});
+
+describe("formatTimeAbsolute — invalid input", () => {
+  // Bug this catches: Intl.DateTimeFormat.format(NaN-Date) raises RangeError
+  // ("Invalid time value"). Without a guard, server components calling this
+  // on junk timestamps crash the entire subtree.
+  it("returns the invalid fallback for an unparseable string (no throw)", () => {
+    expect(() => formatTimeAbsolute("not-a-date")).not.toThrow();
+    expect(formatTimeAbsolute("not-a-date")).toBe(TIME_INVALID_FALLBACK);
+  });
+  it("returns the invalid fallback for a NaN-epoch Date", () => {
+    expect(formatTimeAbsolute(new Date(Number.NaN))).toBe(TIME_INVALID_FALLBACK);
+  });
+  it("returns the invalid fallback regardless of locale", () => {
+    expect(formatTimeAbsolute("garbage", "en-GB")).toBe(TIME_INVALID_FALLBACK);
+  });
+});
+
+describe("formatTimeRelative — invalid input", () => {
+  // Bug this catches: previously produced "NaN years ago" by cascading NaN
+  // through Math.floor — silent gibberish visible to end users. Now returns
+  // a deterministic fallback. If anyone removes the guard, these tests fail
+  // loudly instead of shipping NaN strings.
+  it("returns the invalid fallback for an unparseable string", () => {
+    expect(formatTimeRelative("not-a-date", NOW)).toBe(TIME_INVALID_FALLBACK);
+  });
+  it("returns the invalid fallback for a NaN-epoch Date", () => {
+    expect(formatTimeRelative(new Date(Number.NaN), NOW)).toBe(TIME_INVALID_FALLBACK);
+  });
+  it("never returns a NaN-bearing label for any malformed input shape", () => {
+    for (const v of ["", "not-a-date", "2026-99-99T00:00:00Z", "🐈"]) {
+      const out = formatTimeRelative(v, NOW);
+      expect(out).not.toMatch(/NaN/);
+    }
   });
 });
 

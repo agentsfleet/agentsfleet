@@ -92,6 +92,30 @@ describe("List", () => {
     expect((container.firstChild as HTMLElement).getAttribute("role")).toBe("navigation");
   });
 
+  it("preserves divided utility classes when asChild swaps the host element", () => {
+    // Bug this catches: a previous refactor passed variant classes through Slot
+    // but dropped the `divided` class set, silently breaking the borderless
+    // separator UX on every divided + asChild call site.
+    const { container } = render(
+      <List divided asChild>
+        <menu data-testid="m">
+          <ListItem>one</ListItem>
+          <ListItem>two</ListItem>
+        </menu>
+      </List>,
+    );
+    const cls = (container.firstChild as HTMLElement).className;
+    expect(cls).toContain("border-b");
+    expect(cls).toContain("border-border");
+  });
+
+  it("renders an empty <ul> for a children-less List (no crash, no spurious markup)", () => {
+    const { container } = render(<List>{[]}</List>);
+    const el = container.firstChild as HTMLElement;
+    expect(el.tagName).toBe("UL");
+    expect(el.children.length).toBe(0);
+  });
+
   it("ListItem renders <li> and forwards className", () => {
     const { container } = render(
       <ul>
