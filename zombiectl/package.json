@@ -13,13 +13,23 @@
   "bin": {
     "zombiectl": "./bin/zombiectl.js"
   },
+  "files": [
+    "bin",
+    "src",
+    "samples",
+    "skills",
+    "scripts/postinstall.mjs",
+    "README.md"
+  ],
   "engines": {
     "node": ">=24.0.0",
     "bun": ">=1.3.0"
   },
   "scripts": {
     "test": "node ./scripts/run-tests.mjs",
-    "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js"
+    "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js",
+    "prepublishOnly": "node ./scripts/prepublish.mjs",
+    "postinstall": "node ./scripts/postinstall.mjs"
   },
   "dependencies": {
     "posthog-node": "^5.28.11"
