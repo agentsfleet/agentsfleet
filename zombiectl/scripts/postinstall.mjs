@@ -83,7 +83,9 @@ try {
 
   if (existsSync(dst)) {
     const ts = new Date().toISOString().replace(/[:.]/g, "-");
-    const backup = resolve(dstParent, `samples.backup-${ts}`);
+    // Append pid so two concurrent `npm install -g` runs landing in the
+    // same millisecond can't collide on the backup directory name.
+    const backup = resolve(dstParent, `samples.backup-${ts}-${process.pid}`);
     cpSync(dst, backup, { recursive: true });
     rmSync(dst, { recursive: true, force: true });
   }
