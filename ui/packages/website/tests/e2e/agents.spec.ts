@@ -25,17 +25,12 @@ test.describe("Agents page (/agents)", () => {
   test("renders bootstrap commands", async ({ page }) => {
     const block = page.getByLabel(/bootstrap commands/i);
     await expect(block).toBeVisible();
-    await expect(block).toContainText("curl -s https://usezombie.sh/skill.md");
     await expect(block).toContainText("npx zombiectl login");
   });
 
   test("renders machine contracts table with all endpoints", async ({ page }) => {
     await expect(page.getByText("Machine Contracts")).toBeVisible();
     await expect(page.getByRole("link", { name: "/openapi.json" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "/agent-manifest.json" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "/skill.md" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "/llms.txt" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "/heartbeat" })).toBeVisible();
   });
 
   test("renders API operations table", async ({ page }) => {

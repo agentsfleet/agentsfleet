@@ -42,17 +42,13 @@ describe("Agents", () => {
   it("renders bootstrap commands", () => {
     renderAgents();
     expect(screen.getByLabelText(/bootstrap commands/i)).toBeInTheDocument();
-    expect(screen.getByText(/curl -s https:\/\/usezombie\.sh\/skill\.md/)).toBeInTheDocument();
+    expect(screen.getByText(/npx zombiectl login/)).toBeInTheDocument();
   });
 
   it("renders machine contracts table", () => {
     renderAgents();
     expect(screen.getByText("Machine Contracts")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "/openapi.json" })).toHaveAttribute("href", "/openapi.json");
-    expect(screen.getByRole("link", { name: "/agent-manifest.json" })).toHaveAttribute("href", "/agent-manifest.json");
-    expect(screen.getByRole("link", { name: "/skill.md" })).toHaveAttribute("href", "/skill.md");
-    expect(screen.getByRole("link", { name: "/llms.txt" })).toHaveAttribute("href", "/llms.txt");
-    expect(screen.getByRole("link", { name: "/heartbeat" })).toHaveAttribute("href", "/heartbeat");
   });
 
   it("renders API operations table", () => {

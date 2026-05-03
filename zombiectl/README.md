@@ -2,7 +2,7 @@
 
 The official CLI for [UseZombie](https://usezombie.com).
 
-Manage workspaces, trigger runs, monitor agents, and operate your UseZombie deployment from the terminal.
+Install zombies, manage workspaces, monitor zombie events, and operate your UseZombie deployment from the terminal.
 
 > **Pre-release** — UseZombie is in pre-release. APIs, CLI, and behavior may change without notice before general availability. This package is published under the `next` dist-tag.
 
@@ -28,9 +28,8 @@ zombiectl doctor
 ## Features
 
 - **Workspaces** — add, switch, and manage GitHub-connected workspaces
-- **Runs** — trigger, list, and cancel agent runs
-- **Specs** — sync and initialize specifications
-- **Agent operations** — view profiles, improvement reports, and proposals
+- **Zombies** — install, list, kill, and steer zombies; tail their event streams
+- **Credential vault** — store workspace-scoped tool credentials (Slack, GitHub, Fly, Upstash, etc.)
 - **Diagnostics** — `doctor` command validates your environment
 - **JSON output** — `--json` flag for scripts and CI/CD pipelines
 
@@ -41,12 +40,18 @@ zombiectl doctor
 | `login` | Authenticate with UseZombie |
 | `logout` | Clear stored credentials |
 | `workspace add <url>` | Connect a GitHub repository |
-| `run` | Trigger a run |
-| `runs list` | List run history |
-| `runs cancel <id>` | Cancel an in-flight run |
-| `agent profile <id>` | View agent profile |
-| `agent improvement-report <id>` | View improvement report |
-| `agent proposals <id>` | List agent proposals |
+| `workspace list` | List your workspaces |
+| `workspace use <id>` | Switch the active workspace |
+| `install --from <path>` | Install a zombie from a local template directory |
+| `list` | List zombies in the active workspace |
+| `status [<zombie_id>]` | Show zombie status |
+| `kill <zombie_id>` | Delete a zombie |
+| `logs <zombie_id>` | Tail zombie activity |
+| `steer <zombie_id> <message>` | Send a message into a zombie's loop |
+| `events <zombie_id>` | Stream zombie events (SSE) |
+| `credential add <name> --data '<json>'` | Add a workspace credential (JSON object) |
+| `credential list` | List workspace credentials (no secret bytes) |
+| `credential delete <name>` | Remove a workspace credential |
 | `doctor` | Run environment diagnostics |
 | `doctor --json` | Diagnostics in JSON format |
 

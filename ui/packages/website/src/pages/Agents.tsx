@@ -35,17 +35,11 @@ const jsonLd = {
   url: "https://usezombie.sh/agents",
   sameAs: [
     "https://usezombie.sh/openapi.json",
-    "https://usezombie.sh/agent-manifest.json",
-    "https://usezombie.sh/skill.md",
   ],
 };
 
 const contracts = [
   { endpoint: "/openapi.json", purpose: "Canonical API contract (OpenAPI 3.1)" },
-  { endpoint: "/agent-manifest.json", purpose: "Machine-readable capability and endpoint summary" },
-  { endpoint: "/skill.md", purpose: "Bootstrap instructions for autonomous agents" },
-  { endpoint: "/llms.txt", purpose: "LLM-friendly index to docs and endpoints" },
-  { endpoint: "/heartbeat", purpose: "Health check (static JSON)" },
 ];
 
 const apiOps = [
@@ -111,10 +105,7 @@ export default function Agents() {
       <div>
         <h2 style={{ marginBottom: "0.75rem" }}>Bootstrap</h2>
         <pre className="terminal" aria-label="Bootstrap commands">
-          <code>{`# Read the skill guide
-curl -s https://usezombie.sh/skill.md
-
-# Authenticate and add a workspace
+          <code>{`# Authenticate and add a workspace
 npx zombiectl login && zombiectl workspace add https://github.com/your-org/your-repo`}</code>
         </pre>
       </div>

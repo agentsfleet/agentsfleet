@@ -5,6 +5,9 @@
 **Workstream:** 002
 **Date:** Apr 18, 2026
 **Status:** DONE
+
+> **Follow-up note (May 03, 2026):** The CLI/HTTP/Zig surface this milestone retired was confirmed clean during M49's standardization slice. Public-facing v1 surface that this milestone did NOT cover (and that the M49 slice now nukes): `ui/packages/website/public/{llms.txt, skill.md, agent-manifest.json, heartbeat}` (stale static files describing Echo/Scout/Warden + `/v1/runs` + `version:0.1.0`); residual `run_id`/`active_run_id`/`run_status`/`run_attempts` fields in `ui/packages/app/lib/analytics/posthog.ts`; one stale comment referencing nonexistent `RunStatus.tsx`/`PipelineStage.tsx` in `ui/packages/app/app/globals.css`; v1-shaped rows in `zombiectl/README.md`.
+
 **Priority:** P1 — Pure cleanup. The spec→run flow is no longer the product model; zombies are. Leaving the v1 scaffolding around adds surface area for reviewers to interpret, makes the CLI help confusing, and keeps dead code paths in the build. Not a production blocker because nothing in the v1 flow is relied on today, but worth doing before v1.0.0.
 **Batch:** B1 — runs in parallel with M29_001.
 **Branch:** feat/m29-remove-v1-spec-run
