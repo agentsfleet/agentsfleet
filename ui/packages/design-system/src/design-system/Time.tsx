@@ -53,6 +53,19 @@ export function Time({
   ...rest
 }: TimeProps) {
   const d = coerceDate(value);
+
+  // Soft-fail on Invalid Date — preserves the pre-migration behaviour of
+  // `new Date(bad).toLocaleString()` returning a string instead of throwing.
+  // Without this guard `toIso(NaN-Date)` raises RangeError and crashes the
+  // surrounding React subtree (server components → 500).
+  if (Number.isNaN(d.getTime())) {
+    return (
+      <time ref={ref} className={className} {...rest}>
+        {labelOverride ?? "—"}
+      </time>
+    );
+  }
+
   const iso = toIso(d);
   const label = labelOverride ?? visibleTimeLabel(value, format, locale, iso);
   const showTooltip = tooltip ?? format === "relative";

@@ -79,6 +79,26 @@ describe("Time", () => {
     );
   });
 
+  it("renders a soft-fail fallback for an Invalid Date input (no throw)", () => {
+    // Pre-migration: `new Date("nope").toLocaleString()` returned "Invalid Date"
+    // without throwing. <Time> must preserve that contract — otherwise a junk
+    // value crashes the surrounding subtree (server components → 500).
+    expect(() => {
+      const { container } = renderTime(<Time value="not-a-date" tooltip={false} />);
+      const t = container.querySelector("time");
+      expect(t).not.toBeNull();
+      expect(t?.getAttribute("datetime")).toBeNull();
+      expect(t?.textContent).toBe("—");
+    }).not.toThrow();
+  });
+
+  it("uses labelOverride as the fallback text when value is invalid", () => {
+    const { container } = renderTime(
+      <Time value="bogus" label="n/a" tooltip={false} />,
+    );
+    expect(container.querySelector("time")?.textContent).toBe("n/a");
+  });
+
   it("relative format opts into suppressHydrationWarning on the time element", () => {
     // suppressHydrationWarning is a React-only flag stripped from the DOM,
     // so we assert via the renderToString output containing the value
