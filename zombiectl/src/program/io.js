@@ -39,7 +39,6 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  workspace credentials");
   writeLine(stdout, "  workspace billing [--workspace-id ID]");
   writeLine(stdout, "  workspace remove <workspace_id>");
-  writeLine(stdout, "  specs sync [--workspace-id ID]");
   writeLine(stdout, "  doctor");
   writeLine(stdout);
   writeLine(stdout, ui.head("ZOMBIE COMMANDS  (top-level — e.g. `zombiectl list`)"));

@@ -5,6 +5,9 @@
 **Workstream:** 001
 **Date:** Apr 18, 2026
 **Status:** DONE
+
+> **Superseded note (May 03, 2026):** The `zombiectl specs sync` CLI surface this milestone preserved was retired alongside the backend `/v1/workspaces/{ws}/sync` endpoint (see `src/http/router_test.zig` "retired path" assertions). Removed in the M49 standardization slice — CLI verb policy now enforces `add / show / list / delete`; no `specs` subcommand exists.
+
 **Priority:** P0 — Public documentation on docs.usezombie.com currently describes the v1 spec→run lifecycle that is being removed in M29_002. Users who follow the docs today land on commands and endpoints that either don't work or are slated for deletion. Customer-facing correctness beats internal cleanup.
 **Batch:** B1 — runs in parallel with M29_002; doc rewrite doesn't wait on code removal.
 **Branch:** feat/m29-docs-zombie

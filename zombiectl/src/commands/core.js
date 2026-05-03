@@ -1,9 +1,6 @@
 import { createCoreOpsHandlers } from "./core-ops.js";
 import { commandWorkspace as commandWorkspaceModule } from "./workspace.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
-import { ERR_BILLING_CREDIT_EXHAUSTED } from "../constants/error-codes.js";
-import { ApiError } from "../lib/http.js";
-import { writeError } from "../program/io.js";
 
 function createCoreHandlers(ctx, workspaces, deps) {
   const {
@@ -29,11 +26,6 @@ function createCoreHandlers(ctx, workspaces, deps) {
     ui,
     writeLine,
   });
-
-  async function ensureWorkspaceId(explicit) {
-    if (explicit) return explicit;
-    return workspaces.current_workspace_id;
-  }
 
   async function commandLogin(args) {
     const { options } = parseFlags(args);
@@ -139,61 +131,10 @@ function createCoreHandlers(ctx, workspaces, deps) {
     return commandWorkspaceModule(ctx, workspaces, args, deps);
   }
 
-  async function commandSpecsSync(args) {
-    const parsed = parseFlags(args);
-    const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"]);
-    if (!workspaceId) {
-      writeError(ctx, "USAGE_ERROR", "workspace_id required (set one with workspace add or pass --workspace-id)", deps);
-      return 2;
-    }
-
-    let res;
-    try {
-      res = await request(ctx, `/v1/workspaces/${encodeURIComponent(workspaceId)}/sync`, {
-        method: "POST",
-        headers: apiHeaders(ctx),
-        body: "{}",
-      });
-    } catch (err) {
-      if (!ctx.jsonMode && err instanceof ApiError && err.code === ERR_BILLING_CREDIT_EXHAUSTED) {
-        writeLine(ctx.stderr, ui.info(`Upgrade path: zombiectl workspace upgrade-scale --workspace-id ${workspaceId} --subscription-id <SUBSCRIPTION_ID>`));
-      }
-      throw err;
-    }
-
-    setCliAnalyticsContext(ctx, {
-      workspace_id: workspaceId,
-      synced_count: res.synced_count ?? 0,
-      total_pending: res.total_pending ?? 0,
-    });
-    queueCliAnalyticsEvent(ctx, "specs_synced", {
-      workspace_id: workspaceId,
-      synced_count: res.synced_count ?? 0,
-    });
-    if (ctx.jsonMode) printJson(ctx.stdout, res);
-    else {
-      printSection(ctx.stdout, "Specs synced");
-      printKeyValue(ctx.stdout, {
-        workspace_id: workspaceId,
-        synced_count: res.synced_count ?? 0,
-        total_pending: res.total_pending ?? 0,
-        plan_tier: res.plan_tier ?? "unknown",
-        credit_remaining_cents: res.credit_remaining_cents ?? "unknown",
-        credit_currency: res.credit_currency ?? "USD",
-      });
-      if (typeof res.credit_remaining_cents === "number" && res.credit_remaining_cents <= 0) {
-        writeLine(ctx.stdout);
-        writeLine(ctx.stdout, ui.info(`Upgrade path: zombiectl workspace upgrade-scale --workspace-id ${workspaceId} --subscription-id <SUBSCRIPTION_ID>`));
-      }
-    }
-    return 0;
-  }
-
   return {
     commandDoctor: ops.commandDoctor,
     commandLogin,
     commandLogout,
-    commandSpecsSync,
     commandWorkspace,
   };
 }

@@ -21,10 +21,6 @@ zombiectl login
 # Add a GitHub repository as a workspace
 zombiectl workspace add https://github.com/org/repo
 
-# Sync specs and trigger a run
-zombiectl specs sync
-zombiectl run
-
 # Check your environment
 zombiectl doctor
 ```
@@ -45,8 +41,6 @@ zombiectl doctor
 | `login` | Authenticate with UseZombie |
 | `logout` | Clear stored credentials |
 | `workspace add <url>` | Connect a GitHub repository |
-| `specs sync` | Sync specifications from the API |
-| `spec init` | Initialize a new spec |
 | `run` | Trigger a run |
 | `runs list` | List run history |
 | `runs cancel <id>` | Cancel an in-flight run |

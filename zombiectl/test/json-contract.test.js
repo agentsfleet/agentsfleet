@@ -55,7 +55,6 @@ describe("M30 §1 — route inventory matches command registry", () => {
     { cmd: "login", args: [], key: "login" },
     { cmd: "logout", args: [], key: "logout" },
     { cmd: "workspace", args: ["add"], key: "workspace" },
-    { cmd: "specs", args: ["sync"], key: "specs.sync" },
     { cmd: "doctor", args: [], key: "doctor" },
     { cmd: "admin", args: ["config"], key: "admin" },
     { cmd: "agent", args: ["create"], key: "agent" },
@@ -84,7 +83,6 @@ describe("M30 §1 — route inventory matches command registry", () => {
       login: sentinel,
       logout: sentinel,
       workspace: sentinel,
-      specsSync: sentinel,
       doctor: sentinel,
       admin: sentinel,
       agent: sentinel,
@@ -107,6 +105,7 @@ describe("M30 §1 — route inventory matches command registry", () => {
     expect(findRoute("runs", ["replay"])).toBeNull();
     expect(findRoute("runs", ["interrupt"])).toBeNull();
     expect(findRoute("spec", ["init"])).toBeNull();
+    expect(findRoute("specs", ["sync"])).toBeNull();
   });
 });
 

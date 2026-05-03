@@ -126,7 +126,6 @@ export async function runCli(argv, io = {}) {
     login: (routeArgs) => core.commandLogin(routeArgs),
     logout: () => core.commandLogout(),
     workspace: (routeArgs) => core.commandWorkspace(routeArgs),
-    specsSync: (routeArgs) => core.commandSpecsSync(routeArgs.slice(1)),
     doctor: () => core.commandDoctor(),
     // External agent key management
     agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
