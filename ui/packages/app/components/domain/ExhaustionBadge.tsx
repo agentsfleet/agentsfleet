@@ -1,11 +1,10 @@
 import { AlertTriangleIcon } from "lucide-react";
+import { formatTimeAbsolute } from "@usezombie/design-system";
 
 type Props = { exhaustedAt: number | null };
 
 export default function ExhaustionBadge({ exhaustedAt }: Props) {
-  const when = exhaustedAt
-    ? new Date(exhaustedAt).toLocaleString()
-    : null;
+  const when = exhaustedAt ? formatTimeAbsolute(new Date(exhaustedAt)) : null;
   return (
     <span
       role="status"

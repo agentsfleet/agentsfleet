@@ -181,8 +181,10 @@ describe("EventsList", () => {
     const times = container.querySelectorAll("time");
     expect(times.length).toBe(1);
     expect(times[0]!.getAttribute("datetime")).toMatch(/^2026-01-02T/);
-    // "HH:MM" formatted in local time — assert digits/colon shape
-    expect(times[0]!.textContent).toMatch(/^\d{2}:\d{2}$/);
+    // Locale-aware HH:MM (Intl.DateTimeFormat) — accept either 24h
+    // ("13:04") or 12h with AM/PM ("01:04 pm"). The exact format depends
+    // on the test runner's resolved locale.
+    expect(times[0]!.textContent).toMatch(/^\d{2}:\d{2}(\s?[ap]m)?$/i);
   });
 
   it("loadMore (zombie scope) appends items and updates cursor", async () => {

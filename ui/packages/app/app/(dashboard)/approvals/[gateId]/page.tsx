@@ -4,10 +4,14 @@ import {
   Badge,
   Card,
   CardContent,
+  DescriptionList,
+  DescriptionTerm,
+  DescriptionDetails,
   PageHeader,
   PageTitle,
   Section,
   SectionLabel,
+  Time,
 } from "@usezombie/design-system";
 
 import { getServerToken } from "@/lib/auth/server";
@@ -78,7 +82,12 @@ export default async function ApprovalDetailPage({
             <Card>
               <CardContent className="pt-6 text-sm">
                 Resolved as <strong>{gate.status}</strong> by {gate.resolved_by || "(unknown)"}
-                {gate.updated_at ? ` at ${new Date(gate.updated_at).toLocaleString()}` : null}.
+                {gate.updated_at ? (
+                  <>
+                    {" at "}
+                    <Time value={new Date(gate.updated_at)} tooltip={false} />
+                  </>
+                ) : null}.
                 {gate.detail ? <> Reason: <em>{gate.detail}</em></> : null}
               </CardContent>
             </Card>
@@ -102,7 +111,10 @@ export default async function ApprovalDetailPage({
 
 function KeyValueGrid({ gate }: { gate: ApprovalGate }) {
   return (
-    <dl className="grid grid-cols-1 gap-y-3 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6">
+    <DescriptionList
+      layout="stacked"
+      className="grid grid-cols-1 gap-y-3 text-sm sm:grid-cols-[max-content_1fr] sm:gap-x-6 space-y-0"
+    >
       <Row label="Zombie" value={
         <Link href={`/zombies/${gate.zombie_id}`} className="hover:underline">
           {gate.zombie_name}
@@ -112,18 +124,18 @@ function KeyValueGrid({ gate }: { gate: ApprovalGate }) {
       <Row label="Action" value={<code className="font-mono text-xs">{gate.action_name}</code>} />
       {gate.gate_kind ? <Row label="Kind" value={<Badge variant="default">{gate.gate_kind}</Badge>} /> : null}
       {gate.blast_radius ? <Row label="Blast radius" value={gate.blast_radius} /> : null}
-      <Row label="Requested" value={new Date(gate.requested_at).toLocaleString()} />
-      <Row label="Auto-deny at" value={new Date(gate.timeout_at).toLocaleString()} />
+      <Row label="Requested" value={<Time value={new Date(gate.requested_at)} tooltip={false} />} />
+      <Row label="Auto-deny at" value={<Time value={new Date(gate.timeout_at)} tooltip={false} />} />
       <Row label="Action id" value={<code className="font-mono text-xs">{gate.action_id}</code>} />
-    </dl>
+    </DescriptionList>
   );
 }
 
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <>
-      <dt className="font-medium text-muted-foreground">{label}</dt>
-      <dd>{value}</dd>
+      <DescriptionTerm className="font-medium">{label}</DescriptionTerm>
+      <DescriptionDetails>{value}</DescriptionDetails>
     </>
   );
 }

@@ -15,9 +15,12 @@ This gate enforces "use the primitive when one exists" without enumerating the p
 ## Pre-edit check
 
 1. Read (or recall) the design-system index. Treat its exports as the substitute set.
-2. For each raw HTML element your edit adds (`<section>`, `<button>`, `<input>`, `<article>`, `<dialog>`, `<dl>`, `<table>`, `<nav>`, `<header>`, `<form>`, etc.), check the index for a matching primitive. If one exists, use it.
+2. For each raw HTML element your edit adds (`<section>`, `<button>`, `<input>`, `<article>`, `<dialog>`, `<dl>`, `<dt>`, `<dd>`, `<ul>`, `<ol>`, `<time>`, `<table>`, `<nav>`, `<header>`, `<form>`, etc.), check the index for a matching primitive. If one exists, use it.
    - `<table>` → `DataTable` (declarative `columns` + `rows`; compose with `Pagination` for cursor/page nav).
    - `<div role="alert">` / `<p role="alert">` / `<span role="alert">` (or `role="status"`) → `<Alert variant>` with `info` / `success` / `warning` / `destructive`. Default role is `alert` for `destructive`/`warning` and `status` otherwise; override via the `role` prop only for a concrete reason.
+   - `<time>` (and any inline `new Date(x).toLocaleString()` / `.toLocaleDateString()` for a user-visible timestamp) → `<Time value format="absolute|relative|datetime">`. Use `formatTimeAbsolute` when the formatted string must live in a `title=` attribute or other non-element context. The canonical `datetime` attribute is hydration-safe; the visible `relative` label opts into `suppressHydrationWarning`.
+   - `<ul>` / `<ol>` (semantic listing of items) → `<List variant="unordered|ordered|plain" divided?>` + `<ListItem>`. Layout-only `<ul>` (top nav, dropdown menus) stay raw with a "Raw HTML kept" justification.
+   - `<dl>` / `<dt>` / `<dd>` (label/value pairs) → `<DescriptionList layout="inline|stacked">` + `<DescriptionTerm>` + `<DescriptionDetails mono?>`.
 3. Use `asChild` when you need the underlying HTML tag for semantics:
 
    ```tsx
@@ -46,7 +49,7 @@ UI GATE: <file>
 
 ```bash
 git diff -U0 HEAD -- 'ui/packages/app/**/*.tsx' \
-  | grep -E '^\+.*(<(section|button|input|dialog|article|nav|header|form|table)\b|role="(alert|status)")' \
+  | grep -E '^\+.*(<(section|button|input|dialog|article|nav|header|form|table|time|ul|ol|dl|dt|dd)\b|role="(alert|status)"|toLocaleString|toLocaleDateString)' \
   | head
 ```
 
