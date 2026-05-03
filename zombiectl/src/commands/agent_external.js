@@ -1,17 +1,17 @@
-// M9_001 §6.0 — External Agent Key CLI commands.
+// External Agent Key CLI commands.
 //
 // These commands manage zmb_ API keys issued to LangGraph/CrewAI/Composio agents.
 // The raw key is shown once at creation and cannot be retrieved again.
 //
-// zombiectl agent create --workspace <ws> --zombie <id> --name <name> [--description <desc>]
+// zombiectl agent add    --workspace <ws> --zombie <id> --name <name> [--description <desc>]
 // zombiectl agent list   --workspace <ws>
 // zombiectl agent delete --workspace <ws> <agent_id>
 
 import { WORKSPACES_PATH } from "../lib/api-paths.js";
 
-// ── agent create ──────────────────────────────────────────────────────────────
+// ── agent add ────────────────────────────────────────────────────────────────
 
-export async function commandAgentCreate(ctx, parsed, deps) {
+export async function commandAgentAdd(ctx, parsed, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const workspaceId = parsed.options["workspace"] || parsed.options["workspace-id"];
@@ -19,9 +19,9 @@ export async function commandAgentCreate(ctx, parsed, deps) {
   const name        = parsed.options["name"];
   const description = parsed.options["description"] || "";
 
-  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent create requires --workspace <id>")); return 2; }
-  if (!zombieId)    { writeLine(ctx.stderr, ui.err("agent create requires --zombie <id>")); return 2; }
-  if (!name)        { writeLine(ctx.stderr, ui.err("agent create requires --name <name>")); return 2; }
+  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent add requires --workspace <id>")); return 2; }
+  if (!zombieId)    { writeLine(ctx.stderr, ui.err("agent add requires --zombie <id>")); return 2; }
+  if (!name)        { writeLine(ctx.stderr, ui.err("agent add requires --name <name>")); return 2; }
 
   const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
   const res = await request(ctx, url, {
@@ -35,7 +35,7 @@ export async function commandAgentCreate(ctx, parsed, deps) {
     return 0;
   }
 
-  writeLine(ctx.stdout, ui.ok(`External agent created: ${res.agent_id}`));
+  writeLine(ctx.stdout, ui.ok(`External agent added: ${res.agent_id}`));
   writeLine(ctx.stdout);
   writeLine(ctx.stdout, ui.bold("API Key (shown once — store securely):"));
   writeLine(ctx.stdout, `  ${res.key}`);

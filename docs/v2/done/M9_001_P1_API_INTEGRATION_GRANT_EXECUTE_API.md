@@ -5,6 +5,9 @@
 **Workstream:** 001
 **Date:** Apr 12, 2026
 **Status:** DONE
+
+> **CLI rename note (May 03, 2026):** M49's standardization slice renamed `zombiectl agent create` → `agent add` and `zombiectl grant revoke` → `grant delete`. Historical command examples below preserve the verbs as shipped; current canonical verbs follow the `add / show / list / delete` standard.
+
 **Priority:** P1 — Core trust layer for zombie integrations and external agent access
 **Batch:** B4 — after M6 (firewall), M4 (approval gate), M5 (tool bridge)
 **Branch:** feat/m9-001-execute-api

@@ -10,6 +10,8 @@ const KNOWN_COMMANDS = [
   "admin",
   "agent",
   "grant",
+  "tenant",
+  "billing",
   // Flat zombie commands — top-level aliases per routes.js.
   "install",
   "status",
@@ -19,10 +21,11 @@ const KNOWN_COMMANDS = [
 ];
 
 const KNOWN_SUBCOMMANDS = {
-  workspace: ["add", "list", "remove"],
+  workspace: ["add", "list", "show", "use", "delete"],
   admin: ["config"],
-  agent: ["create", "list", "delete"],
-  grant: ["list", "revoke"],
+  agent: ["add", "list", "delete"],
+  grant: ["list", "delete"],
+  tenant: ["provider"],
 };
 
 export function levenshteinDistance(a, b) {

@@ -41,7 +41,9 @@ zombiectl doctor
 | `logout` | Clear stored credentials |
 | `workspace add <url>` | Connect a GitHub repository |
 | `workspace list` | List your workspaces |
+| `workspace show` | Show details for the active workspace |
 | `workspace use <id>` | Switch the active workspace |
+| `workspace delete <id>` | Remove a workspace from your local list |
 | `install --from <path>` | Install a zombie from a local template directory |
 | `list` | List zombies in the active workspace |
 | `status [<zombie_id>]` | Show zombie status |

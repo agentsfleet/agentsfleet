@@ -1,7 +1,7 @@
-// M9_001 §6.0 — Integration Grant CLI commands.
+// Integration Grant CLI commands.
 //
 // zombiectl grant list   --zombie <id>              → list grants for a zombie
-// zombiectl grant revoke --zombie <id> <grant_id>   → revoke a grant immediately
+// zombiectl grant delete --zombie <id> <grant_id>   → revoke a grant immediately
 
 import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.js";
 import { writeError } from "../program/io.js";
@@ -19,13 +19,13 @@ export async function commandGrant(ctx, args, workspaces, deps) {
   }
 
   if (action === "list") return commandGrantList(ctx, parsed, wsId, { request, apiHeaders, ui, printJson, printTable, writeLine });
-  if (action === "revoke") return commandGrantRevoke(ctx, parsed, wsId, { request, apiHeaders, ui, printJson, writeLine, writeError, deps });
+  if (action === "delete") return commandGrantDelete(ctx, parsed, wsId, { request, apiHeaders, ui, printJson, writeLine, writeError, deps });
 
   if (ctx.jsonMode) {
     writeError(ctx, "UNKNOWN_COMMAND", `unknown grant subcommand: ${action ?? "(none)"}`, deps);
   } else {
     writeLine(ctx.stderr, ui.err("usage: zombiectl grant list   --zombie <id>"));
-    writeLine(ctx.stderr, ui.err("       zombiectl grant revoke --zombie <id> <grant_id>"));
+    writeLine(ctx.stderr, ui.err("       zombiectl grant delete --zombie <id> <grant_id>"));
   }
   return 2;
 }
@@ -69,16 +69,16 @@ async function commandGrantList(ctx, parsed, wsId, deps) {
   return 0;
 }
 
-// ── grant revoke ─────────────────────────────────────────────────────────────
+// ── grant delete ─────────────────────────────────────────────────────────────
 
-async function commandGrantRevoke(ctx, parsed, wsId, deps) {
+async function commandGrantDelete(ctx, parsed, wsId, deps) {
   const { request, apiHeaders, ui, printJson, writeLine } = deps;
 
   const zombieId = parsed.options["zombie"];
   const grantId = parsed.positionals[0];
 
   if (!zombieId || !grantId) {
-    writeLine(ctx.stderr, ui.err("grant revoke requires --zombie <id> <grant_id>"));
+    writeLine(ctx.stderr, ui.err("grant delete requires --zombie <id> <grant_id>"));
     return 2;
   }
 
@@ -86,9 +86,9 @@ async function commandGrantRevoke(ctx, parsed, wsId, deps) {
   await request(ctx, url, { method: "DELETE", headers: apiHeaders(ctx) });
 
   if (ctx.jsonMode) {
-    printJson(ctx.stdout, { revoked: true, grant_id: grantId });
+    printJson(ctx.stdout, { deleted: true, grant_id: grantId });
   } else {
-    writeLine(ctx.stdout, ui.ok(`Grant ${grantId} revoked. Zombie will receive UZ-GRANT-003 on next execute attempt.`));
+    writeLine(ctx.stdout, ui.ok(`Grant ${grantId} deleted. Zombie will receive UZ-GRANT-003 on next execute attempt.`));
   }
   return 0;
 }

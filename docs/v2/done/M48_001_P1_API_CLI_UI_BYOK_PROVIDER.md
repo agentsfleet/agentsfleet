@@ -5,6 +5,9 @@
 **Workstream:** 001
 **Date:** May 01, 2026
 **Status:** DONE
+
+> **CLI rename note (May 03, 2026):** M49's standardization slice renamed `zombiectl tenant provider get/set/reset` → `show/add/delete`. Historical command examples below preserve the verbs as shipped; current canonical verbs follow the `add / show / list / delete` standard.
+
 **Priority:** P1 — launch-blocking (substrate-tier, Week 2-3). BYOK is the second of three v2 differentiation pillars (OSS + BYOK + markdown-defined; self-host deferred to v3). Without user-controlled LLM provider config and a clean credit-based billing model, the launch tweet's BYOK claim is hollow and the differentiation argument collapses.
 **Categories:** API, CLI, UI, SCHEMA, BILLING
 **Batch:** B1 — substrate-tier alongside M40-M45.

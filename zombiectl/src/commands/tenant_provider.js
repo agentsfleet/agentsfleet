@@ -1,4 +1,4 @@
-// Tenant provider configuration: get / set / reset the active LLM
+// Tenant provider configuration: show / add / delete the active LLM
 // posture (platform-managed default vs BYOK with a named credential).
 //
 // Backed by /v1/tenants/me/provider — see src/http/handlers/tenant_provider.zig
@@ -9,9 +9,9 @@
 const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 const LOW_BALANCE_THRESHOLD_CENTS = 100; // <$1 left → warn on reset
 
-// ── tenant provider get ──────────────────────────────────────────────────────
+// ── tenant provider show ─────────────────────────────────────────────────────
 
-export async function commandTenantProviderGet(ctx, _parsed, deps) {
+export async function commandTenantProviderShow(ctx, _parsed, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const res = await request(ctx, TENANT_PROVIDER_PATH, { method: "GET", headers: apiHeaders(ctx) });
@@ -26,7 +26,7 @@ export async function commandTenantProviderGet(ctx, _parsed, deps) {
   if (res && typeof res.error === "string" && res.error.length > 0) {
     const ref = res.credential_ref ?? "(unknown)";
     if (res.error === "credential_missing") {
-      writeLine(ctx.stderr, ui.err(`⚠ Credential ${ref} is missing from vault — re-add under the same name OR run 'zombiectl tenant provider reset'.`));
+      writeLine(ctx.stderr, ui.err(`⚠ Credential ${ref} is missing from vault — re-add under the same name OR run 'zombiectl tenant provider delete'.`));
     } else {
       writeLine(ctx.stderr, ui.err(`⚠ Provider resolver error: ${res.error} (credential_ref=${ref})`));
     }
@@ -50,16 +50,16 @@ export async function commandTenantProviderGet(ctx, _parsed, deps) {
   return 0;
 }
 
-// ── tenant provider set ──────────────────────────────────────────────────────
+// ── tenant provider add ──────────────────────────────────────────────────────
 
-export async function commandTenantProviderSet(ctx, parsed, deps) {
+export async function commandTenantProviderAdd(ctx, parsed, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const credentialRef = parsed.options["credential"];
   const modelOverride = parsed.options["model"];
 
   if (!credentialRef) {
-    writeLine(ctx.stderr, ui.err("tenant provider set requires --credential <name>"));
+    writeLine(ctx.stderr, ui.err("tenant provider add requires --credential <name>"));
     writeLine(ctx.stderr, ui.dim("(no default — pick the credential explicitly so the link to your vault entry is clear)"));
     return 2;
   }
@@ -78,7 +78,7 @@ export async function commandTenantProviderSet(ctx, parsed, deps) {
     return 0;
   }
 
-  writeLine(ctx.stdout, ui.ok(`Tenant provider set: mode=byok credential=${credentialRef}`));
+  writeLine(ctx.stdout, ui.ok(`Tenant provider added: mode=byok credential=${credentialRef}`));
   writeLine(ctx.stdout);
   printTable(ctx.stdout, [
     { key: "field", label: "FIELD" },
@@ -95,9 +95,9 @@ export async function commandTenantProviderSet(ctx, parsed, deps) {
   return 0;
 }
 
-// ── tenant provider reset ────────────────────────────────────────────────────
+// ── tenant provider delete ───────────────────────────────────────────────────
 
-export async function commandTenantProviderReset(ctx, _parsed, deps) {
+export async function commandTenantProviderDelete(ctx, _parsed, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const res = await request(ctx, TENANT_PROVIDER_PATH, {
@@ -110,7 +110,7 @@ export async function commandTenantProviderReset(ctx, _parsed, deps) {
     return 0;
   }
 
-  writeLine(ctx.stdout, ui.ok("Tenant provider reset to platform default."));
+  writeLine(ctx.stdout, ui.ok("Tenant provider deleted; using platform default."));
   writeLine(ctx.stdout);
   printTable(ctx.stdout, [
     { key: "field", label: "FIELD" },

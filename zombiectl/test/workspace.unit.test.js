@@ -69,7 +69,7 @@ describe("commandWorkspace", () => {
     expect(out.read()).toContain("no workspaces");
   });
 
-  test("remove by ID", async () => {
+  test("delete by ID", async () => {
     let savedWs = null;
     const deps = makeDeps({
       saveWorkspaces: async (ws) => { savedWs = ws; },
@@ -78,12 +78,12 @@ describe("commandWorkspace", () => {
     const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: WS_ID, items: [...items] };
     const core = createCoreHandlers(ctx, workspaces, deps);
-    const code = await core.commandWorkspace(["remove", WS_ID]);
+    const code = await core.commandWorkspace(["delete", WS_ID]);
     expect(code).toBe(0);
     expect(savedWs.items.length).toBe(0);
   });
 
-  test("remove updates current workspace", async () => {
+  test("delete updates current workspace", async () => {
     let savedWs = null;
     const deps = makeDeps({
       saveWorkspaces: async (ws) => { savedWs = ws; },
@@ -95,20 +95,20 @@ describe("commandWorkspace", () => {
     const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: WS_ID, items: [...items] };
     const core = createCoreHandlers(ctx, workspaces, deps);
-    const code = await core.commandWorkspace(["remove", WS_ID]);
+    const code = await core.commandWorkspace(["delete", WS_ID]);
     expect(code).toBe(0);
     expect(savedWs.current_workspace_id).toBe(WS_ID_2);
   });
 
-  test("remove without id returns error", async () => {
+  test("delete without id returns error", async () => {
     const err = makeBufferStream();
     const deps = makeDeps();
     const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: null, items: [] };
     const core = createCoreHandlers(ctx, workspaces, deps);
-    const code = await core.commandWorkspace(["remove"]);
+    const code = await core.commandWorkspace(["delete"]);
     expect(code).toBe(2);
-    expect(err.read()).toContain("workspace remove requires");
+    expect(err.read()).toContain("workspace delete requires");
   });
 
   test("upgrade-scale requires workspace id", async () => {
