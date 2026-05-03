@@ -14,9 +14,9 @@
 - **M42** (steer CLI) — for the post-install smoke-test event.
 - **M43** (webhook ingest) — the install-skill is the user-facing surface for webhook setup; it generates the HMAC secret, stores it in the workspace `github` credential, and prints the webhook URL inline. M43's only dependency is the receiver itself (`POST /v1/webhooks/{zombie_id}` with HMAC verification). The skill verifies the webhook in-flow by computing HMAC-SHA256 of a synthetic payload and curling the receiver — no `zombiectl webhook test` subcommand needed.
 - **M44** (install contract + doctor) — skill calls `zombiectl doctor --json` first; doctor's `tenant_provider` block is the source of the model + cap the skill pins into frontmatter.
-- **M45** (vault structured creds) — skill calls `zombiectl credential set <name> --data @-` for each tool credential, piping JSON on stdin so secret bytes never appear in shell history or process argv. Default upsert is skip-if-exists; `--force` overwrites. The skill relies on this default to avoid clobbering a workspace's shared `github.webhook_secret` on a second install.
+- **M45** (vault structured creds) — skill calls `zombiectl credential add <name> --data @-` for each tool credential, piping JSON on stdin so secret bytes never appear in shell history or process argv. Default upsert is skip-if-exists; `--force` overwrites. The skill relies on this default to avoid clobbering a workspace's shared `github.webhook_secret` on a second install.
 - **M46** (frontmatter schema) — skill generates `SKILL.md` plus `TRIGGER.md`; `SKILL.md` carries behavior prose, `TRIGGER.md` carries the typed trigger/tool/budget/context envelope.
-- **M48** (BYOK provider + credit-pool billing) — locks doctor's `tenant_provider` block, the user-named credential model, the platform default (Fireworks Kimi K2.6 + 256K cap), and the deletion of the workspace-scoped `/credentials/llm` route. The install-skill is platform-managed-by-default; BYOK setup happens out-of-band via M48's `tenant provider set`.
+- **M48** (BYOK provider + credit-pool billing) — locks doctor's `tenant_provider` block, the user-named credential model, the platform default (Fireworks Kimi K2.6 + 256K cap), and the deletion of the workspace-scoped `/credentials/llm` route. The install-skill is platform-managed-by-default; BYOK setup happens out-of-band via M48's `tenant provider add`.
 
 **Canonical architecture:**
 - [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.1-§8.5 (authoring, installing, triggering — this skill IS that workflow automated) and §8.7 (model + cap origin under both postures).
@@ -33,7 +33,7 @@
 2. `samples/platform-ops/` (already exists in this repo) — the canonical zombie template the skill substitutes variables into and installs via `zombiectl zombie install --from <path>`.
 3. M44's `zombiectl doctor` interface — the skill calls `zombiectl doctor --json` first and reads the `tenant_provider` block.
 4. M48's spec — for the doctor block shape, the user-named credential model, and the platform default values.
-5. M45's `zombiectl credential set --data @-` interface, default skip-if-exists semantics, and `--force` flag.
+5. M45's `zombiectl credential add --data @-` interface, default skip-if-exists semantics, and `--force` flag.
 6. M43's webhook receiver contract (`POST /v1/webhooks/{zombie_id}`, HMAC-SHA256 verification against vault `github.webhook_secret`). The skill computes its own HMAC and curls the receiver in-flow — no separate test subcommand.
 
 ---
@@ -65,7 +65,7 @@ Then in any supported host, invokes `/usezombie-install-platform-ops`. The skill
 3. Detects the user's repo: reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, `package.json`. Infers deploy target. If no GitHub workflow, bails clearly.
 4. Resolves three variables via host-neutral natural-language Q&A: `slack_channel`, `prod_branch_glob`, `cron_schedule`. The skill never asks about LLM model or BYOK — those are doctor-driven and out-of-band respectively.
 5. Generates the GitHub webhook secret locally (32 CSPRNG bytes, base64) **only on first install for the workspace**. On second install with an existing `github.webhook_secret`, prompts the user to either reuse the workspace-shared secret or scope a per-zombie credential (see `Locked design points → webhook secret`).
-6. Resolves four tool credentials in order `op` (1Password CLI) → env var → masked interactive prompt: `fly`, `slack`, `github` (carrying `{webhook_secret, api_token}`), optional `upstash`. Stores each via `zombiectl credential set <name> --data @-` (M45 upsert surface, default skip-if-exists), with JSON piped on stdin.
+6. Resolves four tool credentials in order `op` (1Password CLI) → env var → masked interactive prompt: `fly`, `slack`, `github` (carrying `{webhook_secret, api_token}`), optional `upstash`. Stores each via `zombiectl credential add <name> --data @-` (M45 upsert surface, default skip-if-exists), with JSON piped on stdin.
 7. Reads the canonical platform-ops template from `~/.config/usezombie/samples/platform-ops/` (laid down by zombiectl's npm postinstall). No URL fetch, no cache. Missing dir = npm install corrupted; print one-line repair hint and exit.
 8. Generates `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md` in the user's repo. Substitutes the three variables plus the model + cap from doctor's block (resolved values under platform; sentinels `model: ""` / `context_cap_tokens: 0` under BYOK).
 9. Calls `zombiectl zombie install --from .usezombie/platform-ops/`. Captures `{zombie_id, webhook_url}` from JSON output.
@@ -75,7 +75,7 @@ Then in any supported host, invokes `/usezombie-install-platform-ops`. The skill
 
 The user has a working zombie installed and webhook-verified in <60 seconds from skill invocation, posting to their Slack.
 
-**Problem:** Without this skill, an external user has to read `samples/platform-ops/README.md`, manually run 4-6 `zombiectl credential set` commands, edit a SKILL.md to substitute their values, run install, run steer, then verify the webhook by hand. The friction kills onboarding. The wedge needs a one-command install (after the two-command bootstrap).
+**Problem:** Without this skill, an external user has to read `samples/platform-ops/README.md`, manually run 4-6 `zombiectl credential add` commands, edit a SKILL.md to substitute their values, run install, run steer, then verify the webhook by hand. The friction kills onboarding. The wedge needs a one-command install (after the two-command bootstrap).
 
 **Solution summary:** Two new directories in this repo — `skills/usezombie-install-platform-ops/` (the agent skill, distributed via `npx skills add usezombie/usezombie`) and `tests/skill-evals/usezombie-install-platform-ops/` (eval suite). The zombie template stays at `samples/platform-ops/` (already exists; M49 edits it for substitution placeholders + morning-health-check prose). The npm package bundles `samples/` and `skills/`; postinstall copies samples to `~/.config/usezombie/samples/`. The skill reads templates from there, substitutes variables, drives `zombiectl zombie install --from`, verifies the webhook, and runs the smoke-test steer. The skill IS the install UX — there is no separate dashboard "Webhook setup" card or "First credential" wizard to maintain; this skill replaces both.
 
@@ -113,7 +113,7 @@ These are the contracts the skill must hit. Every decision below is final — al
 
 ### Credentials use the user-named, opaque-JSON model (M45)
 
-The skill calls `zombiectl credential set <name> --data @-` (M45's upsert; default skip-if-exists, `--force` to overwrite). JSON is piped on stdin. The skill must not pass secret JSON through command arguments, because that leaks through shell history and process inspection. For each tool:
+The skill calls `zombiectl credential add <name> --data @-` (M45's upsert; default skip-if-exists, `--force` to overwrite). JSON is piped on stdin. The skill must not pass secret JSON through command arguments, because that leaks through shell history and process inspection. For each tool:
 
 | Credential | Vault name | JSON body shape | Notes |
 |---|---|---|---|
@@ -129,11 +129,11 @@ The vault credential name is a **convention**, not a per-zombie pointer. The web
 32 random bytes from the host's CSPRNG, base64-encoded. The skill:
 
 1. Checks if vault credential `github` already has a `webhook_secret` field (read via `zombiectl credential get github --json`, which returns field presence without echoing secret bytes — this is M45's contract).
-2. **First install for the workspace** (no existing secret): generates the secret in-process, stores it via `zombiectl credential set github --data @-`, displays it once during the post-install summary.
+2. **First install for the workspace** (no existing secret): generates the secret in-process, stores it via `zombiectl credential add github --data @-`, displays it once during the post-install summary.
 3. **Second install for the workspace** (secret exists): prompts the user with two options:
    - **A) Reuse the workspace-shared secret** (recommended) — one secret protects every GitHub-triggered zombie in the workspace; one rotation rotates all. Skill writes nothing new to the `github` credential's `webhook_secret` field; api_token still upserted. Post-install summary instructs the user to use the same secret already configured for prior zombies.
    - **B) Scope a per-zombie credential** — generates a new secret, stores under credential name `github-{zombie_slug}`, writes `credential_name: github-{zombie_slug}` into the generated TRIGGER.md (the M43 override). Two credentials, two rotation surfaces, smaller blast radius per zombie.
-4. Never logs the secret, never persists it outside the vault, never re-displays it after the post-install summary. Subsequent rotation: user runs `zombiectl credential set github --force --data @-` and pipes the replacement JSON on stdin.
+4. Never logs the secret, never persists it outside the vault, never re-displays it after the post-install summary. Subsequent rotation: user runs `zombiectl credential add github --force --data @-` and pipes the replacement JSON on stdin.
 
 The resolver assumes the secret is already in vault by the time webhook traffic arrives — this contract lives in the skill, not in M43.
 
@@ -176,8 +176,8 @@ The skill collects exactly: `slack_channel`, `prod_branch_glob`, `cron_schedule`
 ```bash
 op read 'op://<vault>/<item>/api_key' |
   jq -Rn '{provider:"fireworks", api_key: input, model:"accounts/fireworks/models/kimi-k2.6"}' |
-  zombiectl credential set <user-chosen-name> --data @-
-zombiectl tenant provider set --credential <user-chosen-name>
+  zombiectl credential add <user-chosen-name> --data @-
+zombiectl tenant provider add --credential <user-chosen-name>
 ```
 
 The install-skill never asks about BYOK, never writes to `tenant_providers`, never holds an LLM api_key. It reads `zombiectl doctor --json`'s `tenant_provider` block and branches on `mode` to decide what to write into frontmatter.
@@ -190,7 +190,7 @@ The skill body documents the resolution order — `op read 'op://<your-vault>/<y
 
 ### Doctor consumes the model + cap (skill does not call the model-caps endpoint)
 
-`zombiectl doctor --json` returns a `tenant_provider` block carrying the resolved model + cap. Synth-default for tenants with no row; real values for tenants who ran `tenant provider set`. The skill writes:
+`zombiectl doctor --json` returns a `tenant_provider` block carrying the resolved model + cap. Synth-default for tenants with no row; real values for tenants who ran `tenant provider add`. The skill writes:
 
 | Mode | Frontmatter `model` | Frontmatter `context_cap_tokens` |
 |---|---|---|
@@ -199,7 +199,7 @@ The skill body documents the resolution order — `op read 'op://<your-vault>/<y
 
 Under BYOK the worker overlays the sentinel values from `core.tenant_providers` at trigger time (M48 contract). The visible sentinels (`""` / `0`) make it obvious to a human reading the file that "this zombie inherits from tenant config." Hand-edits that strip the keys still work — absent-key is the safety net.
 
-The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is consumed by the platform-side resolver (for the synth-default constants and the per-model token-rate cache) and by `zombiectl tenant provider set` (M48). **The install-skill never calls this endpoint directly.** This keeps the skill simple — read doctor, branch on mode, write frontmatter.
+The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is consumed by the platform-side resolver (for the synth-default constants and the per-model token-rate cache) and by `zombiectl tenant provider add` (M48). **The install-skill never calls this endpoint directly.** This keeps the skill simple — read doctor, branch on mode, write frontmatter.
 
 ---
 
@@ -332,7 +332,7 @@ per field:
 2. Env var `ZOMBIE_CRED_<NAME>_<FIELD>` (e.g. `ZOMBIE_CRED_FLY_API_TOKEN`).
 3. Masked interactive prompt.
 
-JSON bodies are piped through stdin into `zombiectl credential set <name> --data @-` so secret bytes never appear in shell history or process argv.
+JSON bodies are piped through stdin into `zombiectl credential add <name> --data @-` so secret bytes never appear in shell history or process argv.
 
 ## Plan
 
@@ -358,7 +358,7 @@ JSON bodies are piped through stdin into `zombiectl credential set <name> --data
 ## Out of Scope
 
 - Non-GitHub CI providers (GitLab, CircleCI, Jenkins) — future milestone.
-- BYOK setup — out-of-band, via `zombiectl credential set <name> --data @-` + `zombiectl tenant provider set --credential <name>` (M48). The skill never asks about, holds, or stores an LLM api_key.
+- BYOK setup — out-of-band, via `zombiectl credential add <name> --data @-` + `zombiectl tenant provider add --credential <name>` (M48). The skill never asks about, holds, or stores an LLM api_key.
 - GitHub App for auto-webhook configuration — separate milestone (next install-UX iteration). Until then, manual paste is the documented compromise.
 ```
 
@@ -418,7 +418,7 @@ x-usezombie:
     stage_chunk_threshold: 0.75
 ```
 
-### BYOK install (Scenario 02 — operator already ran `tenant provider set`)
+### BYOK install (Scenario 02 — operator already ran `tenant provider add`)
 
 `TRIGGER.md`:
 
@@ -463,7 +463,7 @@ Skill output (filesystem state after success):
     BYOK; per-zombie credential_name override only when user picked option B).
   Zombie installed in user's tenant + workspace via `zombiectl zombie install`.
   Vault populated with the four tool credentials (github, fly, slack, optional
-    upstash) via `zombiectl credential set --data @-`. On second install,
+    upstash) via `zombiectl credential add --data @-`. On second install,
     `github.webhook_secret` reused or new `github-{slug}` credential created.
   M43 webhook test passed before GitHub-paste instructions printed.
   zombiectl steer round-trip printed to stdout.
@@ -485,7 +485,7 @@ Eval contract (tests/skill-evals/):
 | Repo lacks `.github/workflows/` | Non-GitHub-CI repo | Skill stops with "GitHub Actions only in v1" message |
 | `.usezombie/platform-ops/` exists | Re-running on same repo | Skill prompts overwrite (y/N); on N, exits cleanly |
 | `~/.config/usezombie/samples/platform-ops/` missing | npm postinstall skipped or install corrupted | Skill prints reinstall hint, exits |
-| `zombiectl credential set` fails | API down or auth expired | Skill captures stderr, surfaces verbatim, exits |
+| `zombiectl credential add` fails | API down or auth expired | Skill captures stderr, surfaces verbatim, exits |
 | Existing `github.webhook_secret` in vault | Workspace already has GitHub-triggered zombies | Skill prompts reuse-vs-scope-per-zombie; user picks |
 | Webhook test fails after install | HMAC mismatch, receiver bug, network | Skill prints the test response, points at `zombiectl events {id}`, exits — does not advance to GitHub-paste step |
 | Steer round-trip times out (>60s) | Worker not picking up event | Skill prints "zombie installed but first response slow — check `zombiectl events {id}`" |
@@ -500,7 +500,7 @@ Eval contract (tests/skill-evals/):
 1. **Skill never runs `zombiectl zombie install` until `zombiectl doctor` passes.** Hard precondition.
 2. **Skill never overwrites `.usezombie/platform-ops/` without explicit consent.** Refuse without `--force`.
 3. **Skill is host-neutral.** Variables resolved via the host's primitive, OR fall back to inline natural-language prompts. NEVER hard-codes Claude Code's AskUserQuestion.
-4. **Skill never holds an LLM api_key.** BYOK setup is out-of-band via M48's `tenant provider set`. The skill reads doctor's `tenant_provider` block to learn model + cap; the api_key never crosses the skill boundary.
+4. **Skill never holds an LLM api_key.** BYOK setup is out-of-band via M48's `tenant provider add`. The skill reads doctor's `tenant_provider` block to learn model + cap; the api_key never crosses the skill boundary.
 5. **Skill never calls the model-caps endpoint directly.** Doctor's response is the source of model + cap.
 6. **The HMAC webhook secret is generated only on first-install for a workspace; reused or per-zombie-scoped on subsequent installs.** Never re-displayed after the post-install summary in which it was generated.
 7. **Skill verifies the webhook works before asking the user to paste it into GitHub.** No silent broken-webhook ship.
@@ -526,7 +526,7 @@ Eval contract (tests/skill-evals/):
 | `test_doctor_byok_mode_writes_sentinels` | Doctor reports `mode=byok` → generated frontmatter has `model: ""` and `context_cap_tokens: 0` |
 | `test_webhook_secret_generated_on_first_install` | No existing `github.webhook_secret` → skill generates, stores, displays once |
 | `test_webhook_secret_reuse_prompted_on_second_install` | Existing `github.webhook_secret` → skill prompts reuse-vs-scope; on reuse, no new secret generated; on scope, `github-{slug}` credential created and TRIGGER.md gets `credential_name:` override |
-| `test_webhook_secret_never_in_argv_or_logs` | Skill generates secret, runs `credential set github --data @-`, prints secret in summary; secret bytes never appear in command argv, generated files, or any log file produced by the skill |
+| `test_webhook_secret_never_in_argv_or_logs` | Skill generates secret, runs `credential add github --data @-`, prints secret in summary; secret bytes never appear in command argv, generated files, or any log file produced by the skill |
 | `test_webhook_curl_runs_before_github_paste_step` | Mock receiver → skill computes HMAC + curls receiver with synthetic payload after install, before printing GitHub paste instructions |
 | `test_webhook_curl_failure_aborts_before_github_paste` | Mock receiver returns 401 (HMAC mismatch) or 5xx → skill prints response, does not print GitHub paste instructions |
 | `test_webhook_curl_uses_openssl_and_curl_only` | Skill's verification path uses `openssl` + `curl` (no zombiectl subcommand) — verifies the in-flow check has zero new CLI surface dependency |
@@ -556,7 +556,7 @@ Fixtures in `tests/skill-evals/fixtures/`:
 - [ ] Manual: `npm install -g @usezombie/zombiectl` on a clean Mac → `~/.config/usezombie/samples/platform-ops/` populated
 - [ ] Manual: `npx skills add usezombie/usezombie` → `~/.claude/skills/usezombie-install-platform-ops/` symlink present (and equivalents for other hosts where dirs exist)
 - [ ] Manual: Customer Zero (author) runs `/usezombie-install-platform-ops` on the usezombie repo itself, ends with a working zombie posting to author's Slack
-- [ ] Manual: same author runs `/usezombie-install-platform-ops` after running `tenant provider set --credential <name>` first → generated frontmatter carries the BYOK sentinels (`model: ""`, `context_cap_tokens: 0`)
+- [ ] Manual: same author runs `/usezombie-install-platform-ops` after running `tenant provider add --credential <name>` first → generated frontmatter carries the BYOK sentinels (`model: ""`, `context_cap_tokens: 0`)
 - [ ] Manual: same author runs `/usezombie-install-platform-ops` a second time on a different repo in the same workspace → skill prompts reuse-vs-scope-per-zombie; both paths produce working zombies
 - [ ] Manual: same author runs `/usezombie-install-platform-ops` in at least two non-Claude hosts (Amp + Codex CLI or OpenCode), produces byte-identical `.usezombie/platform-ops/SKILL.md` and `TRIGGER.md`
 - [ ] No new GitHub repos created — agent skill, evals, samples all in this repo
