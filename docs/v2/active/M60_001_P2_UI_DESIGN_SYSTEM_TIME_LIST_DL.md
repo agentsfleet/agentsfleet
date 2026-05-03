@@ -4,11 +4,11 @@
 **Milestone:** M60
 **Workstream:** 001
 **Date:** May 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — design-system hygiene; closes the remaining raw-HTML drift surfaced during M59_001 PR review (Captain flagged `<time>` / `<ul>` / `<dl>` patterns the dashboard re-discovers per site).
 **Categories:** UI
 **Batch:** B1
-**Branch:** feat/m60-001-design-system-time-list-dl (to be created)
+**Branch:** feat/m60-001-design-system-time-list-dl
 **Depends on:** M59_001 (DONE) — established the design-system promotion pattern (`cva` variants, file-as-struct shape, co-located test, exports through `src/design-system/index.ts` + `src/index.ts`, dual `asChild` + variant API).
 
 **Canonical architecture:** `docs/ARCHITECTURE.md` §UI Design System — primitive boundary between `ui/packages/design-system/` (cross-app primitives) and `ui/packages/app/components/ui/` (app-local helpers awaiting promotion).
