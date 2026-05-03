@@ -318,3 +318,34 @@ test "parseZombieConfig: model at top level → RuntimeKeysOutsideBlock" {
     ;
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
+
+test "parseZombieConfig: typo inside x-usezombie.context → UnknownRuntimeKey (not silent default)" {
+    const alloc = std.testing.allocator;
+    // `tool_windw` (typo, missing 'o') — without the guard, this silently
+    // falls through to the zero auto-sentinel and the operator's intended
+    // override of 30 is dropped at runtime. Catching it at install time
+    // surfaces the typo where the operator can fix it.
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{"tool_windw":30}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.UnknownRuntimeKey, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: every documented context key accepted (no false positives from the typo guard)" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "context":{
+        \\    "context_cap_tokens":256000,
+        \\    "tool_window":30,
+        \\    "memory_checkpoint_every":7,
+        \\    "stage_chunk_threshold":0.8
+        \\  }}}
+    ;
+    var cfg = try parseZombieConfig(alloc, json);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqual(@as(u32, 30), cfg.context.?.tool_window);
+}

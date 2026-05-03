@@ -11,6 +11,34 @@ const std = @import("std");
 const context_budget = @import("../executor/context_budget.zig");
 const config_types = @import("config_types.zig");
 
+// Drift guard: every field on the parser-side `ZombieContextBudget` must
+// exist on the executor-side `ContextBudget` at the same name + type, OR
+// the field-by-field copy below silently drops the operator override at
+// trigger time. Adding `max_tool_calls` to `ContextBudget` without a
+// matching `ZombieContextBudget` field is a separate failure mode (the
+// new knob would be runtime-only, never frontmatter-overridable) — caught
+// by the inverse check.
+comptime {
+    const ZB = config_types.ZombieContextBudget;
+    const CB = context_budget.ContextBudget;
+    const zb_fields = std.meta.fields(ZB);
+    for (zb_fields) |f| {
+        if (!@hasField(CB, f.name)) {
+            @compileError("ZombieContextBudget field '" ++ f.name ++ "' missing from ContextBudget — pair them or rename");
+        }
+        const cb_field_type = @FieldType(CB, f.name);
+        if (cb_field_type != f.type) {
+            @compileError("ZombieContextBudget." ++ f.name ++ " type drifts from ContextBudget." ++ f.name ++ " — pair them");
+        }
+    }
+    // Inverse guard: any new ContextBudget field that LOOKS like a
+    // frontmatter knob (numeric, non-`model`) but isn't paired in
+    // ZombieContextBudget would silently be runtime-only forever.
+    // Pin ZombieContextBudget's size so a zombie-side addition without
+    // a matching parser entry trips this assert in the same commit.
+    std.debug.assert(@sizeOf(ZB) == 16);
+}
+
 /// Build a fully-resolved `ContextBudget` from the zombie's parsed config.
 /// Frontmatter overrides win; absent / zero fields fall through to
 /// `applyContextDefaults`. `model` is opaque pass-through.

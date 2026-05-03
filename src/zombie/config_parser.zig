@@ -293,12 +293,35 @@ fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieConte
         .object => |o| o,
         else => return ZombieConfigError.InvalidFieldType,
     };
+    try ensureKnownContextKeys(obj);
     return ZombieContextBudget{
         .context_cap_tokens = try readU32(obj, "context_cap_tokens"),
         .tool_window = try readU32(obj, "tool_window"),
         .memory_checkpoint_every = try readU32(obj, "memory_checkpoint_every"),
         .stage_chunk_threshold = try readF32(obj, "stage_chunk_threshold"),
     };
+}
+
+/// Same rigid contract as `ensureKnownRuntimeKeys` but for the nested
+/// `x-usezombie.context:` object. Without this, a typo like
+/// `tool_windw: 30` silently falls through to the zero auto-sentinel
+/// and the operator's intended override is dropped at runtime — the
+/// failure is invisible until somebody traces a confusing budget at
+/// runtime back to a misspelled key in frontmatter.
+fn ensureKnownContextKeys(ctx: std.json.ObjectMap) ZombieConfigError!void {
+    const known = [_][]const u8{
+        "context_cap_tokens", "tool_window",
+        "memory_checkpoint_every", "stage_chunk_threshold",
+    };
+    var it = ctx.iterator();
+    while (it.next()) |entry| {
+        var found = false;
+        for (known) |k| if (std.mem.eql(u8, k, entry.key_ptr.*)) {
+            found = true;
+            break;
+        };
+        if (!found) return ZombieConfigError.UnknownRuntimeKey;
+    }
 }
 
 fn readU32(obj: std.json.ObjectMap, key: []const u8) ZombieConfigError!u32 {
