@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PLACEHOLDERS, PLATFORM_DEFAULTS, BYOK_SENTINELS,
+  PLATFORM_DEFAULTS, BYOK_SENTINELS,
   readTemplate, substitute,
 } from "./substitute.js";
 
