@@ -53,6 +53,11 @@ test-unit-app:  ## Run app unit tests (vitest)
 	@cd ui/packages/app && bun run test
 	@echo "✓ [app] Unit tests passed"
 
+test-skill-evals:  ## Run agent-skill evals (node --test, deterministic subset)
+	@echo "→ [skill-evals] Running install-skill substitution + invariant suite..."
+	@node --test --test-reporter=spec $$(find tests/skill-evals -name '*.test.js' | sort)
+	@echo "✓ [skill-evals] All skill evals passed"
+
 test-coverage-app:  ## Run app unit tests with v8 coverage and enforce thresholds (vitest.config.ts)
 	@echo "→ [app] Running Vitest with --coverage..."
 	@cd ui/packages/app && bun run test:coverage

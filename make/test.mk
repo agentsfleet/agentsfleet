@@ -19,5 +19,5 @@ MEMLEAK_CPU    ?= baseline
 
 .PHONY: test
 
-test: test-zombied test-unit-zombiectl test-unit-website test-unit-app  ## Run all unit tests (zombied + zombiectl + website + app)
+test: test-zombied test-unit-zombiectl test-unit-website test-unit-app test-skill-evals  ## Run all unit tests (zombied + zombiectl + website + app + skill-evals)
 	@echo "✓ All unit tests passed"
