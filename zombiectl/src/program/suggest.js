@@ -26,6 +26,7 @@ const KNOWN_SUBCOMMANDS = {
   agent: ["add", "list", "delete"],
   grant: ["list", "delete"],
   tenant: ["provider"],
+  credential: ["add", "show", "list", "delete"],
 };
 
 export function levenshteinDistance(a, b) {

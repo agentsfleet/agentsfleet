@@ -51,8 +51,10 @@ zombiectl doctor
 | `logs <zombie_id>` | Tail zombie activity |
 | `steer <zombie_id> <message>` | Send a message into a zombie's loop |
 | `events <zombie_id>` | Stream zombie events (SSE) |
-| `credential add <name> --data '<json>'` | Add a workspace credential (JSON object) |
-| `credential list` | List workspace credentials (no secret bytes) |
+| `credential add <name> --data=@-` | Add a workspace credential (pipe JSON on stdin; default skip-if-exists) |
+| `credential add <name> --data=@- --force` | Overwrite an existing credential |
+| `credential show <name>` | Check existence + created_at (never echoes secret bytes) |
+| `credential list` | List workspace credentials |
 | `credential delete <name>` | Remove a workspace credential |
 | `doctor` | Run environment diagnostics |
 | `doctor --json` | Diagnostics in JSON format |

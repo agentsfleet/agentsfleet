@@ -47,7 +47,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  status [<zombie_id>]                Show zombie(s) status");
   writeLine(stdout, "  kill <zombie_id>                    Delete a zombie");
   writeLine(stdout, "  logs <zombie_id>                    Tail zombie activity");
-  writeLine(stdout, "  credential add|list|delete          Workspace credential vault (JSON-object data)");
+  writeLine(stdout, "  credential add|show|list|delete     Workspace credential vault (--data=@- pipes JSON on stdin)");
 
   if (showOperator) {
     writeLine(stdout);

@@ -42,14 +42,16 @@ const workspaces = { current_workspace_id: WS_ID, items: [] };
 // ── credential add/list/delete ─────────────────────────────────────────
 
 test("credential add stores via API with structured data", async () => {
-  let requestUrl = null;
-  let requestMethod = null;
-  let requestBody = null;
+  let postUrl = null;
+  let postMethod = null;
+  let postBody = null;
   const deps = makeDeps({
     request: async (_ctx, url, opts) => {
-      requestUrl = url;
-      requestMethod = opts.method;
-      requestBody = JSON.parse(opts.body);
+      // Skip-if-exists guard does GET first — return empty list so add proceeds.
+      if (opts.method === "GET") return { credentials: [] };
+      postUrl = url;
+      postMethod = opts.method;
+      postBody = JSON.parse(opts.body);
       return {};
     },
   });
@@ -61,11 +63,111 @@ test("credential add stores via API with structured data", async () => {
     deps,
   );
   assert.equal(code, 0);
-  assert.equal(requestMethod, "POST");
-  assert.ok(requestUrl.includes(`/v1/workspaces/${WS_ID}/credentials`));
-  assert.equal(requestBody.name, "fly");
-  assert.deepEqual(requestBody.data, { host: "api.machines.dev", api_token: "FLY_TOKEN" });
-  assert.equal(requestBody.value, undefined);
+  assert.equal(postMethod, "POST");
+  assert.ok(postUrl.includes(`/v1/workspaces/${WS_ID}/credentials`));
+  assert.equal(postBody.name, "fly");
+  assert.deepEqual(postBody.data, { host: "api.machines.dev", api_token: "FLY_TOKEN" });
+  assert.equal(postBody.value, undefined);
+});
+
+test("credential add skips when name already exists (default)", async () => {
+  let postCalls = 0;
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts.method === "GET") {
+        return { credentials: [{ name: "fly", created_at: 12345 }] };
+      }
+      postCalls += 1;
+      return {};
+    },
+  });
+
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", '--data={"host":"x","api_token":"y"}'],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0, "exits 0 on skip — re-running an install flow is non-destructive");
+  assert.equal(postCalls, 0, "no POST issued when credential already exists");
+});
+
+test("credential add --force overwrites without skip-if-exists check", async () => {
+  let postCalls = 0;
+  let getCalls = 0;
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts.method === "GET") { getCalls += 1; return { credentials: [{ name: "fly", created_at: 1 }] }; }
+      postCalls += 1;
+      return {};
+    },
+  });
+
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", '--data={"host":"x","api_token":"y"}', "--force"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.equal(getCalls, 0, "--force skips the existence GET");
+  assert.equal(postCalls, 1, "POST runs once");
+});
+
+test("credential add --data=@- reads JSON from stdin", async () => {
+  let postBody = null;
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts.method === "GET") return { credentials: [] };
+      postBody = JSON.parse(opts.body);
+      return {};
+    },
+  });
+
+  const ctx = makeCtx({ stdin: '{"webhook_secret":"whsec_abc","api_token":"ghp_xyz"}' });
+  const code = await commandZombie(
+    ctx,
+    ["credential", "add", "github", "--data=@-"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.deepEqual(postBody.data, { webhook_secret: "whsec_abc", api_token: "ghp_xyz" });
+});
+
+test("credential add --data=@- with empty stdin exits 2", async () => {
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts.method === "GET") return { credentials: [] };
+      return {};
+    },
+  });
+
+  const ctx = makeCtx({ stdin: "" });
+  const code = await commandZombie(ctx, ["credential", "add", "github", "--data=@-"], workspaces, deps);
+  assert.equal(code, 2);
+});
+
+test("credential show returns existence + created_at without secret bytes", async () => {
+  let captured = null;
+  const deps = makeDeps({
+    request: async () => ({ credentials: [{ name: "github", created_at: 99 }] }),
+    printJson: (_s, obj) => { captured = obj; },
+  });
+  const code = await commandZombie(makeCtx({ jsonMode: true }), ["credential", "show", "github"], workspaces, deps);
+  assert.equal(code, 0);
+  assert.deepEqual(captured, { name: "github", exists: true, created_at: 99 });
+});
+
+test("credential show returns exists:false on miss (json) and exit 1", async () => {
+  let captured = null;
+  const deps = makeDeps({
+    request: async () => ({ credentials: [] }),
+    printJson: (_s, obj) => { captured = obj; },
+  });
+  const code = await commandZombie(makeCtx({ jsonMode: true }), ["credential", "show", "missing"], workspaces, deps);
+  assert.equal(code, 1);
+  assert.deepEqual(captured, { name: "missing", exists: false });
 });
 
 test("credential add without name returns exit 2", async () => {
