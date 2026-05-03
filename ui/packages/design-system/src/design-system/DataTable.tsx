@@ -1,6 +1,6 @@
 import * as React from "react";
-import { cn } from "@usezombie/design-system/utils";
-import { EmptyState } from "@usezombie/design-system";
+import { cn } from "../utils";
+import { EmptyState } from "./EmptyState";
 
 export type DataTableColumn<T> = {
   key: string;
@@ -91,7 +91,6 @@ export function DataTable<T>({
                   }
                 } : undefined}
                 tabIndex={clickable ? 0 : undefined}
-                role={clickable ? "button" : undefined}
               >
                 {columns.map((c) => (
                   <td

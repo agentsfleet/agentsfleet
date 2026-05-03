@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import {
+  Alert,
   EmptyState,
   PageHeader,
   PageTitle,
@@ -87,19 +88,20 @@ export default async function ProviderSettingsPage() {
               </p>
             ) : null}
             {provider.error ? (
-              <p
-                role="alert"
-                className="mt-4 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive animate-in fade-in-0 slide-in-from-top-1 duration-200"
-              >
-                ⚠ Provider resolver error: <code className="font-mono">{provider.error}</code>
-                {provider.credential_ref ? (
-                  <>
-                    {" "}(credential_ref=<code className="font-mono">{provider.credential_ref}</code>)
-                  </>
-                ) : null}
-                . Re-add the credential under the same name OR reset to the
-                platform default.
-              </p>
+              <Alert variant="destructive" className="mt-4 text-xs">
+                <span>
+                  ⚠ Provider resolver error:{" "}
+                  <code className="font-mono">{provider.error}</code>
+                  {provider.credential_ref ? (
+                    <>
+                      {" "}(credential_ref=
+                      <code className="font-mono">{provider.credential_ref}</code>)
+                    </>
+                  ) : null}
+                  . Re-add the credential under the same name OR reset to the
+                  platform default.
+                </span>
+              </Alert>
             ) : null}
           </section>
         </Section>

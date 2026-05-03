@@ -2,7 +2,7 @@
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Button, Input } from "@usezombie/design-system";
+import { Alert, Button, Input } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
 import { listZombies, type Zombie } from "@/lib/api/zombies";
 
@@ -96,9 +96,7 @@ export default function ZombiesList({
       )}
 
       {error ? (
-        <div role="alert" className="mt-3 text-sm text-destructive">
-          {error}
-        </div>
+        <Alert variant="destructive" className="mt-3">{error}</Alert>
       ) : null}
 
       {cursor ? (

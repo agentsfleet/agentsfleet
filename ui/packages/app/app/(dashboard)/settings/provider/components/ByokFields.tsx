@@ -1,7 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { Input, Label } from "@usezombie/design-system";
+import {
+  Alert,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@usezombie/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
 
 export type ByokFieldsProps = {
@@ -34,33 +43,39 @@ export default function ByokFields({
       <div className="space-y-2">
         <Label htmlFor="credential-ref">Credential</Label>
         {noCredentials ? (
-          <div
-            role="status"
+          <Alert
+            variant="warning"
             data-testid="byok-no-credentials"
-            className="rounded-md border border-warning/40 bg-warning/10 p-3 text-xs text-warning-foreground animate-in fade-in-0 duration-200"
+            className="text-xs"
           >
-            No credentials in this workspace yet.{" "}
-            <Link
-              href="/credentials"
-              className="font-semibold underline"
-              data-workspace-id={workspaceId}
-            >
-              Add a credential first
-            </Link>
-            {" "}— it must contain JSON fields <code>provider</code>, <code>api_key</code>, and <code>model</code>.
-          </div>
+            <span>
+              No credentials in this workspace yet.{" "}
+              <Link
+                href="/credentials"
+                className="font-semibold underline"
+                data-workspace-id={workspaceId}
+              >
+                Add a credential first
+              </Link>
+              {" "}— it must contain JSON fields <code>provider</code>,{" "}
+              <code>api_key</code>, and <code>model</code>.
+            </span>
+          </Alert>
         ) : (
-          <select
-            id="credential-ref"
-            name="credential_ref"
-            value={credentialRef}
-            onChange={(e) => onCredentialRefChange(e.target.value)}
-            className="block w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm transition-colors duration-200 ease-out focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring"
-          >
-            {credentials.map((c) => (
-              <option key={c.name} value={c.name}>{c.name}</option>
-            ))}
-          </select>
+          <>
+            <Select value={credentialRef} onValueChange={onCredentialRefChange}>
+              <SelectTrigger id="credential-ref" aria-label="Credential">
+                <SelectValue placeholder="Select a credential" />
+              </SelectTrigger>
+              <SelectContent>
+                {credentials.map((c) => (
+                  <SelectItem key={c.name} value={c.name}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
         )}
       </div>
 

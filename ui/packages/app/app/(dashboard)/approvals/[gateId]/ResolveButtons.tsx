@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Button, Label, Textarea } from "@usezombie/design-system";
+import { Alert, Button, Label, Textarea } from "@usezombie/design-system";
 
 import { useClientToken } from "@/lib/auth/client";
 import { approveApproval, denyApproval } from "@/lib/api/approvals";
@@ -67,9 +67,7 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
         </Button>
       </div>
       {error ? (
-        <div role="alert" className="text-sm text-destructive">
-          {error}
-        </div>
+        <Alert variant="destructive">{error}</Alert>
       ) : null}
     </div>
   );

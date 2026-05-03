@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Card,
   CardContent,
@@ -51,17 +52,14 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
       </CardHeader>
       {isExhausted ? (
         <CardContent>
-          <p
-            role="alert"
-            className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-          >
+          <Alert variant="destructive" className="text-xs">
             Balance exhausted. New zombie events are gate-blocked until a
             top-up — Stripe purchase ships in v2.1; contact{" "}
             <a href="mailto:support@usezombie.com" className="underline">
               support
             </a>{" "}
             for a manual top-up.
-          </p>
+          </Alert>
         </CardContent>
       ) : null}
     </Card>

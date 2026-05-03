@@ -2,8 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { ActivityIcon, Loader2Icon } from "lucide-react";
-import { Badge, Button, EmptyState } from "@usezombie/design-system";
-import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
+import {
+  Alert,
+  Badge,
+  Button,
+  DataTable,
+  EmptyState,
+  type DataTableColumn,
+} from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
 import { listTenantBillingCharges } from "@/lib/api/tenant_billing";
 import { groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";
@@ -120,12 +126,9 @@ export default function BillingUsageTab({
           <span className="text-muted-foreground">No more events.</span>
         )}
         {error ? (
-          <span
-            role="alert"
-            className="rounded-md border border-destructive/40 bg-destructive/10 px-2 py-1 text-destructive animate-in fade-in-0 duration-200"
-          >
+          <Alert variant="destructive" className="px-2 py-1">
             {error}
-          </span>
+          </Alert>
         ) : null}
       </div>
     </div>

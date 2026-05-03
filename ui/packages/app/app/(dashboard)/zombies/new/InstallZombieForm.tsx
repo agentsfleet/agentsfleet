@@ -8,6 +8,7 @@ import { z } from "zod";
 import { useClientToken } from "@/lib/auth/client";
 import { Loader2Icon } from "lucide-react";
 import {
+  Alert,
   Button,
   Form,
   FormControl,
@@ -149,12 +150,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
         />
 
         {apiError ? (
-          <div
-            role="alert"
-            className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
-          >
-            {apiError}
-          </div>
+          <Alert variant="destructive">{apiError}</Alert>
         ) : null}
 
         <div className="flex gap-2 pt-2">

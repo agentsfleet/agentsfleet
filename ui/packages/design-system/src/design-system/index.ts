@@ -118,3 +118,31 @@ export {
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { PageTitle, type PageTitleProps } from "./PageTitle";
 export { SectionLabel, type SectionLabelProps } from "./SectionLabel";
+export {
+  DataTable,
+  type DataTableColumn,
+  type DataTableProps,
+} from "./DataTable";
+export {
+  Alert,
+  AlertTitle,
+  AlertDescription,
+  alertVariants,
+  type AlertProps,
+  type AlertVariant,
+} from "./Alert";
+export {
+  Select,
+  SelectGroup,
+  SelectValue,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  type SelectTriggerProps,
+  type SelectContentProps,
+  type SelectItemProps,
+  type SelectLabelProps,
+  type SelectSeparatorProps,
+} from "./Select";
