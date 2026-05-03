@@ -11,11 +11,11 @@ import {
   CardTitle,
   CardDescription,
   EmptyState,
+  List,
+  ListItem,
   Pagination,
   Separator,
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
+  Time,
 } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
 import {
@@ -84,13 +84,13 @@ export function EventsList({
 
   return (
     <div className="flex flex-col gap-3">
-      <ol role="list" className="flex flex-col gap-2">
+      <List variant="ordered" className="flex flex-col gap-2 list-none pl-0 space-y-0">
         {items.map((row) => (
-          <li key={`${row.zombie_id}:${row.event_id}`}>
+          <ListItem key={`${row.zombie_id}:${row.event_id}`}>
             <EventCard row={row} showZombieId={scope.kind === "workspace"} />
-          </li>
+          </ListItem>
         ))}
-      </ol>
+      </List>
       {error ? (
         <Alert variant="destructive">{error}</Alert>
       ) : null}
@@ -118,17 +118,12 @@ function EventCard({ row, showZombieId }: { row: EventRow; showZombieId: boolean
           </CardDescription>
           <div className="ml-auto">
             {ts ? (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <time
-                    dateTime={ts}
-                    className="font-mono text-xs text-muted-foreground tabular-nums"
-                  >
-                    {clockTime(created)}
-                  </time>
-                </TooltipTrigger>
-                <TooltipContent>{ts}</TooltipContent>
-              </Tooltip>
+              <Time
+                value={created}
+                tooltip
+                label={clockTime(created)}
+                className="font-mono text-xs text-muted-foreground tabular-nums"
+              />
             ) : null}
           </div>
         </CardHeader>

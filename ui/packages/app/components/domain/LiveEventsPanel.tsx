@@ -8,6 +8,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  List,
+  ListItem,
 } from "@usezombie/design-system";
 import { FRAME_KIND, streamZombieEventsUrl, type FrameKind, type LiveFrame } from "@/lib/api/events";
 
@@ -132,13 +134,13 @@ export function LiveEventsPanel({
               Waiting for activity. Tool calls, chunks, and completions will appear here as the zombie runs.
             </p>
           ) : (
-            <ol role="list" className="flex flex-col gap-1.5">
+            <List variant="ordered" className="flex flex-col gap-1.5 list-none pl-0 space-y-0">
               {frames.map(({ id, frame }) => (
-                <li key={id}>
+                <ListItem key={id}>
                   <FrameLine frame={frame} />
-                </li>
+                </ListItem>
               ))}
-            </ol>
+            </List>
           )}
         </CardContent>
       </article>

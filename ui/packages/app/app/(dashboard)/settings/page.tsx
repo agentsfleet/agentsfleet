@@ -2,7 +2,17 @@ import { getServerAuth } from "@/lib/auth/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ChevronRightIcon, ZapIcon, WalletIcon } from "lucide-react";
-import { PageHeader, PageTitle, Section, SectionLabel } from "@usezombie/design-system";
+import {
+  DescriptionList,
+  DescriptionTerm,
+  DescriptionDetails,
+  List,
+  ListItem,
+  PageHeader,
+  PageTitle,
+  Section,
+  SectionLabel,
+} from "@usezombie/design-system";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
@@ -23,26 +33,26 @@ export default async function SettingsPage() {
         <Section asChild>
           <section aria-label="Workspace">
             <SectionLabel>Workspace</SectionLabel>
-            <dl className="mt-3 space-y-3 text-sm">
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Name</dt>
-                <dd>{workspace?.name ?? "—"}</dd>
+            <DescriptionList className="mt-3">
+              <div>
+                <DescriptionTerm>Name</DescriptionTerm>
+                <DescriptionDetails>{workspace?.name ?? "—"}</DescriptionDetails>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">Workspace ID</dt>
-                <dd className="font-mono">{workspace?.id ?? "—"}</dd>
+              <div>
+                <DescriptionTerm>Workspace ID</DescriptionTerm>
+                <DescriptionDetails mono>{workspace?.id ?? "—"}</DescriptionDetails>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-muted-foreground">User ID</dt>
-                <dd className="font-mono">{userId ?? "—"}</dd>
+              <div>
+                <DescriptionTerm>User ID</DescriptionTerm>
+                <DescriptionDetails mono>{userId ?? "—"}</DescriptionDetails>
               </div>
-            </dl>
+            </DescriptionList>
           </section>
         </Section>
         <Section asChild>
           <section aria-label="Settings index">
             <SectionLabel>More settings</SectionLabel>
-            <ul className="mt-3 space-y-2 text-sm">
+            <List variant="plain" className="mt-3">
               <SettingsLink
                 href="/settings/provider"
                 icon={<ZapIcon size={16} />}
@@ -55,7 +65,7 @@ export default async function SettingsPage() {
                 label="Billing"
                 description="Tenant balance, credit-pool charges, invoices."
               />
-            </ul>
+            </List>
           </section>
         </Section>
       </div>
@@ -67,7 +77,7 @@ function SettingsLink({
   href, icon, label, description,
 }: { href: string; icon: React.ReactNode; label: string; description: string }) {
   return (
-    <li>
+    <ListItem>
       <Link
         href={href}
         className="flex items-center justify-between gap-3 rounded-md border border-border p-3 transition-colors duration-200 ease-out hover:bg-accent/40 hover:border-primary/40"
@@ -81,6 +91,6 @@ function SettingsLink({
         </div>
         <ChevronRightIcon size={16} className="text-muted-foreground" aria-hidden />
       </Link>
-    </li>
+    </ListItem>
   );
 }

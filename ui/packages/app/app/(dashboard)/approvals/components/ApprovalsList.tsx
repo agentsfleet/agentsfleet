@@ -13,6 +13,8 @@ import {
   CardTitle,
   EmptyState,
   Input,
+  List,
+  ListItem,
 } from "@usezombie/design-system";
 
 import { useClientToken } from "@/lib/auth/client";
@@ -157,13 +159,13 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
         />
       </div>
 
-      <ul className="space-y-3">
+      <List variant="plain" className="space-y-3">
         {filtered.map((g) => (
-          <li key={g.gate_id}>
+          <ListItem key={g.gate_id}>
             <ApprovalCard gate={g} onResolve={resolve} />
-          </li>
+          </ListItem>
         ))}
-      </ul>
+      </List>
 
       {error ? (
         <Alert variant="destructive" className="mt-3">{error}</Alert>

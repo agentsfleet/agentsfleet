@@ -23,4 +23,15 @@ describe("design-system public exports", () => {
     expect(DesignSystem.buttonVariants).toBeDefined();
     expect(DesignSystem.buttonClassName).toBeDefined();
   });
+
+  it.each([
+    "Time",
+    "List",
+    "ListItem",
+    "DescriptionList",
+    "DescriptionTerm",
+    "DescriptionDetails",
+  ] as const)("exports %s", (name) => {
+    expect(DesignSystem[name]).toBeDefined();
+  });
 });

@@ -1,14 +1,11 @@
 import { AlertTriangleIcon } from "lucide-react";
-import { Alert, AlertTitle, AlertDescription } from "@usezombie/design-system";
+import { Alert, AlertTitle, AlertDescription, Time } from "@usezombie/design-system";
 import type { TenantBilling } from "@/lib/types";
 
 type Props = { billing: TenantBilling | null };
 
 export default function ExhaustionBanner({ billing }: Props) {
   if (!billing?.is_exhausted) return null;
-  const when = billing.exhausted_at
-    ? new Date(billing.exhausted_at).toLocaleString()
-    : null;
   return (
     <Alert variant="destructive" className="mb-6">
       <AlertTriangleIcon size={18} className="mt-0.5 shrink-0" aria-hidden />
@@ -18,7 +15,11 @@ export default function ExhaustionBanner({ billing }: Props) {
           New zombie runs follow the server{"'"}s{" "}
           <code className="font-mono text-xs">BALANCE_EXHAUSTED_POLICY</code>{" "}
           (continue, warn, or stop).{" "}
-          {when ? <>Exhausted since {when}. </> : null}
+          {billing.exhausted_at ? (
+            <>
+              Exhausted since <Time value={new Date(billing.exhausted_at)} tooltip={false} />.{" "}
+            </>
+          ) : null}
           <a
             href="mailto:support@usezombie.com"
             className="underline underline-offset-2 hover:text-destructive"
