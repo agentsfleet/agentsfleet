@@ -127,6 +127,29 @@ test "fixture bundles/name_mismatch — both files parse but identities disagree
     try std.testing.expect(!std.mem.eql(u8, meta.name, cfg.name));
 }
 
+test "fixture bundles/platform_ops_installed_default — post-substitution TRIGGER.md parses" {
+    const alloc = std.testing.allocator;
+    const md = try loadFixture(alloc, "bundles/platform_ops_installed_default/TRIGGER.md");
+    defer alloc.free(md);
+    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
+    defer cfg.deinit(alloc);
+    try std.testing.expectEqualStrings("platform-ops-zombie", cfg.name);
+    try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
+    try std.testing.expectEqual(@as(u32, 256000), cfg.context.?.context_cap_tokens);
+    try std.testing.expectEqualStrings("github", cfg.trigger.webhook.source);
+}
+
+test "fixture bundles/platform_ops_installed_byok — sentinel model/cap parses to null/zero" {
+    const alloc = std.testing.allocator;
+    const md = try loadFixture(alloc, "bundles/platform_ops_installed_byok/TRIGGER.md");
+    defer alloc.free(md);
+    var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
+    defer cfg.deinit(alloc);
+    // Empty-string model becomes null (BYOK overlay sentinel); cap stays 0.
+    try std.testing.expect(cfg.model == null);
+    try std.testing.expectEqual(@as(u32, 0), cfg.context.?.context_cap_tokens);
+}
+
 test "shipped sample samples/platform-ops SKILL.md frontmatter validates" {
     // Note: the trigger side of platform-ops uses `type: chat` and tools
     // (`http_request`, `memory_*`, `cron_*`) that the registry in

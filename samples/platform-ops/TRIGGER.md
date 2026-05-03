@@ -2,13 +2,28 @@
 name: platform-ops-zombie
 
 x-usezombie:
+  # Both fields are populated by `/usezombie-install-platform-ops` from the
+  # `tenant_provider` block of `zombiectl doctor --json`. Under the platform
+  # default they carry resolved values (e.g. Fireworks Kimi K2.6 + 256K cap);
+  # under BYOK they carry the empty-string / zero sentinels and the worker
+  # overlays the real values from `core.tenant_providers` at trigger time.
+  model: "{{model}}"
+  context:
+    context_cap_tokens: {{context_cap_tokens}}
+    tool_window: auto
+    memory_checkpoint_every: 5
+    stage_chunk_threshold: 0.75
+
   trigger:
-    type: chat
-    # Chat is the one operator-initiated input channel. Current `main` uses
-    # batch `zombiectl steer {id} "<message>"` and the UI chat widget to hit
-    # POST /v1/.../zombies/{id}/messages; the zombie thread's top-of-loop
-    # poller converts the message into a stream event. There is no webhook
-    # payload for this zombie, so no payload_schema.
+    type: webhook
+    source: github
+    # Default credential lookup: vault `github`, field `webhook_secret`. The
+    # install-skill rewrites `credential_name:` to `github-{zombie_slug}` only
+    # when the operator picks per-zombie scoping at second-install time.
+    signature:
+      secret_ref: github_secret
+      header: x-hub-signature-256
+      prefix: "sha256="
 
   tools:
     - http_request
@@ -22,10 +37,12 @@ x-usezombie:
     - fly
     - upstash
     - slack
+    - github
     # Credential shapes — see README for the `zombiectl credential add` flag form.
-    # fly       = { host: "api.machines.dev", api_token: "<fly token>" }
-    # upstash   = { host: "api.upstash.com",  api_token: "<upstash token>" }
-    # slack     = { host: "slack.com",        bot_token: "<slack bot token>" }
+    # fly      = { host: "api.machines.dev", api_token: "<fly token>" }
+    # upstash  = { host: "api.upstash.com",  api_token: "<upstash token>" }
+    # slack    = { host: "slack.com",        bot_token: "<slack bot token>" }
+    # github   = { webhook_secret: "<base64>", api_token: "<gh PAT>" }
     # Substituted into http_request at the tool-bridge as ${secrets.NAME.FIELD}
     # after the executor sandbox closes around the agent. The agent never sees
     # raw bytes — the worst a prompt-injection can make it print is the
@@ -36,6 +53,7 @@ x-usezombie:
       - api.machines.dev
       - api.upstash.com
       - slack.com
+      - api.github.com
     # The sandbox firewall rejects any outbound HTTPS to a host not on this
     # list. If the agent invents an endpoint on an unexpected host, the call
     # fails fast and the agent reasons from the error.
