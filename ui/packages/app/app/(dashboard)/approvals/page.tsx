@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { PageHeader, PageTitle, Section, SectionLabel } from "@usezombie/design-system";
 
 import { getServerToken } from "@/lib/auth/server";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ApprovalsPage() {
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) notFound();
 

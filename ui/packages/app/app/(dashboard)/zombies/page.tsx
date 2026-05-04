@@ -1,6 +1,6 @@
 import { getServerToken } from "@/lib/auth/server";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   buttonClassName,
   EmptyState,
@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ZombiesListPage() {
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) {

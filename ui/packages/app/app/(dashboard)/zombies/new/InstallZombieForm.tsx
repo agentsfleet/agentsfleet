@@ -43,9 +43,10 @@ const schema = z.object({
 type FormValues = z.infer<typeof schema>;
 
 // Power-user install. Server contract is {name, source_markdown, config_json}.
-// The ergonomic flow is `zombiectl up`, which reads SKILL.md + TRIGGER.md
-// from disk and compiles the config JSON. This form exists so an operator
-// without CLI access can still install by pasting the two bodies directly.
+// The ergonomic flow is `zombiectl install --from`, which reads SKILL.md +
+// TRIGGER.md from disk and compiles the config JSON. This form exists so an
+// operator without CLI access can still install by pasting the two bodies
+// directly.
 export default function InstallZombieForm({ workspaceId }: Props) {
   const router = useRouter();
   const { getToken } = useClientToken();
@@ -85,8 +86,9 @@ export default function InstallZombieForm({ workspaceId }: Props) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-xl space-y-4">
         <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           Power-user install. Prefer{" "}
-          <code className="font-mono">zombiectl up</code>, which reads SKILL.md
-          and TRIGGER.md from disk and compiles the config JSON automatically.
+          <code className="font-mono">zombiectl install --from</code>, which
+          reads SKILL.md and TRIGGER.md from disk and compiles the config JSON
+          automatically.
         </p>
 
         <FormField

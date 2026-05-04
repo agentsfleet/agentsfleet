@@ -1,3 +1,4 @@
+import { Card } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 type FeatureFlowItem = {
@@ -96,10 +97,12 @@ export default function FeatureFlow() {
   return (
     <section className="section-gap feature-flow-wrap" aria-label="Feature flow">
       {items.map((item, index) => (
-        <article
+        <Card
           key={item.id}
-          className={`feature-flow-row ${index % 2 === 1 ? "reverse" : ""}`}
+          asChild
+          className="!bg-transparent !border-0 !rounded-none !p-0 hover:!shadow-none"
         >
+        <article className={`feature-flow-row ${index % 2 === 1 ? "reverse" : ""}`}>
           <Panel kind={item.panel} />
           <div className="feature-flow-copy">
             <h3>{item.title}</h3>
@@ -114,6 +117,7 @@ export default function FeatureFlow() {
             </a>
           </div>
         </article>
+        </Card>
       ))}
     </section>
   );

@@ -7,9 +7,9 @@ const model_rate_cache = @import("model_rate_cache.zig");
 
 const log = std.log.scoped(.state);
 
-/// One-time grant inserted at tenant creation. Funds the first ~333 platform-
-/// managed events (3¢ each) or ~1000 BYOK events (1¢ each).
-pub const STARTER_GRANT_CENTS: i64 = 1000;
+/// One-time grant inserted at tenant creation. Funds the first ~166 platform-
+/// managed events (3¢ each) or ~500 BYOK events (1¢ each).
+pub const STARTER_GRANT_CENTS: i64 = 500;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 const STARTER_GRANT_PLAN_TIER = "free";
 const STARTER_GRANT_PLAN_SKU = "free_default";
@@ -97,7 +97,7 @@ pub fn provision(
     log.info("tenant_billing.provisioned tenant_id={s} balance_cents={d} source={s}", .{ tenant_id, balance_cents, grant_source });
 }
 
-/// Insert the one-time $10 starter grant for a new tenant. Called from the
+/// Insert the one-time $5 starter grant for a new tenant. Called from the
 /// tenant-create transaction in signup_bootstrap. Idempotent via the
 /// underlying ON CONFLICT DO NOTHING.
 pub fn insertStarterGrant(conn: *pg.Conn, tenant_id: []const u8) !void {

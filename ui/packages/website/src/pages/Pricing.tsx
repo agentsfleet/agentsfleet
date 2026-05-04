@@ -1,5 +1,5 @@
 import FAQ from "../components/FAQ";
-import { Button } from "@usezombie/design-system";
+import { Button, Card } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupCompleted, trackLeadCaptureClicked } from "../analytics/posthog";
 import { MODE_HUMANS } from "../constants/mode";
@@ -84,7 +84,8 @@ export default function Pricing() {
 
       <div className="pricing-grid">
         {tiers.map((tier) => (
-          <article key={tier.name} className={`pricing-card${tier.featured ? " pricing-card--featured" : ""}`}>
+          <Card key={tier.name} asChild>
+          <article className={`pricing-card${tier.featured ? " pricing-card--featured" : ""}`}>
             <div className="pricing-card-head">
               <span className="pricing-card-badge">{tier.availability}</span>
               <h2>{tier.name}</h2>
@@ -120,6 +121,7 @@ export default function Pricing() {
               ))}
             </ul>
           </article>
+          </Card>
         ))}
       </div>
 

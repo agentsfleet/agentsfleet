@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import { getServerToken } from "@/lib/auth/server";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@usezombie/design-system";
 import { listZombies } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
@@ -71,7 +71,7 @@ export async function RecentActivity() {
 
 export default async function DashboardPage() {
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
 
   return (
     <div>

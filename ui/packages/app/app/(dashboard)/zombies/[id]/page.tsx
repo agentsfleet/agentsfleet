@@ -1,5 +1,5 @@
 import { getServerToken } from "@/lib/auth/server";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Badge, PageHeader, PageTitle, Section, SectionLabel } from "@usezombie/design-system";
 import { getZombie } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
@@ -24,7 +24,7 @@ export default async function ZombieDetailPage({
 }) {
   const { id } = await params;
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) notFound();

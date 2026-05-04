@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   Alert,
   DescriptionList,
@@ -21,7 +21,7 @@ export const dynamic = "force-dynamic";
 
 export default async function ProviderSettingsPage() {
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) {

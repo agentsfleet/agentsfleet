@@ -7,7 +7,7 @@
 //!   2. user (oidc_subject unique)            — Clerk identity hook
 //!   3. membership (role=owner)               — links user to tenant
 //!   4. workspace (Heroku-style unique name)  — default workspace
-//!   5. billing.tenant_billing (1000¢ free)   — tenant-scoped starter balance
+//!   5. billing.tenant_billing (500¢ free)    — tenant-scoped starter balance
 //!
 //! Any failure rolls back. Idempotent on `oidc_subject` — replayed webhooks
 //! return existing rows without re-inserting. Platform LLM keys + provider

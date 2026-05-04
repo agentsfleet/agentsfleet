@@ -144,7 +144,7 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
         try std.testing.expectEqualSlices(u8, "owner", try row.get([]const u8, 0));
     }
 
-    // Tenant billing row initialized at 1000¢ free.
+    // Tenant billing row initialized at 500¢ free.
     {
         var q = PgQuery.from(try db_ctx.conn.query(
             \\SELECT plan_tier, plan_sku, balance_cents, grant_source
@@ -154,7 +154,7 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
         try std.testing.expectEqualSlices(u8, "free", try row.get([]const u8, 0));
         try std.testing.expectEqualSlices(u8, "free_default", try row.get([]const u8, 1));
-        try std.testing.expectEqual(@as(i64, 1000), try row.get(i64, 2));
+        try std.testing.expectEqual(@as(i64, 500), try row.get(i64, 2));
         try std.testing.expectEqualSlices(u8, "bootstrap_starter_grant", try row.get([]const u8, 3));
     }
 }

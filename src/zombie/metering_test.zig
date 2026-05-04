@@ -107,7 +107,7 @@ test "balanceCoversEstimate: passes when stop policy AND balance covers est_tota
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
-    // 1000¢ starter grant covers a 1¢ BYOK event.
+    // 500¢ starter grant covers a 1¢ BYOK event.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         ALLOC,
@@ -147,7 +147,7 @@ test "debitReceive BYOK: 0¢ charge writes telemetry row, balance unchanged" {
     defer ALLOC.free(@constCast(row.plan_tier));
     defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 1000), row.balance_cents);
+    try std.testing.expectEqual(@as(i64, 500), row.balance_cents);
 
     // Telemetry row must exist with charge_type='receive'.
     var q = PgQuery.from(try db_ctx.conn.query(
@@ -189,7 +189,7 @@ test "debitStage BYOK: 1¢ flat overhead drains balance and writes stage telemet
     defer ALLOC.free(@constCast(row.plan_tier));
     defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 999), row.balance_cents); // 1000 - 1¢ stage overhead
+    try std.testing.expectEqual(@as(i64, 499), row.balance_cents); // 500 - 1¢ stage overhead
 
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT charge_type, token_count_input, token_count_output, wall_ms

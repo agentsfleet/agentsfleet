@@ -1,5 +1,5 @@
 import { getServerToken } from "@/lib/auth/server";
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import { PageHeader, PageTitle } from "@usezombie/design-system";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import InstallZombieForm from "./InstallZombieForm";
@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 // backend exposes a skills catalog endpoint.
 export default async function InstallZombiePage() {
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) {

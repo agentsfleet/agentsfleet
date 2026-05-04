@@ -7,7 +7,7 @@ const GATE_ID = "01999999-0000-7000-8000-000000000001";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const TOKEN = "token_pages";
 
-const { getServerToken, resolveActiveWorkspace, listApprovalsMock, getApprovalMock, notFound } =
+const { getServerToken, resolveActiveWorkspace, listApprovalsMock, getApprovalMock, notFound, redirect } =
   vi.hoisted(() => ({
     getServerToken: vi.fn(),
     resolveActiveWorkspace: vi.fn(),
@@ -16,9 +16,12 @@ const { getServerToken, resolveActiveWorkspace, listApprovalsMock, getApprovalMo
     notFound: vi.fn(() => {
       throw new Error("notFound");
     }),
+    redirect: vi.fn((path: string) => {
+      throw new Error(`redirect:${path}`);
+    }),
   }));
 
-vi.mock("next/navigation", () => ({ notFound }));
+vi.mock("next/navigation", () => ({ notFound, redirect }));
 vi.mock("@/lib/auth/server", () => ({ getServerToken }));
 vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace }));
 vi.mock("@/lib/api/approvals", () => ({
@@ -59,10 +62,10 @@ afterEach(() => {
 // ── /approvals (workspace inbox) ──────────────────────────────────────
 
 describe("ApprovalsPage (workspace inbox)", () => {
-  it("notFound when no token", async () => {
+  it("redirects to /sign-in when no token", async () => {
     getServerToken.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/approvals/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("notFound when no active workspace", async () => {
@@ -138,11 +141,11 @@ describe("ApprovalDetailPage", () => {
     };
   }
 
-  it("notFound when no token", async () => {
+  it("redirects to /sign-in when no token", async () => {
     getServerToken.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
     await expect(Page({ params: Promise.resolve({ gateId: GATE_ID }) })).rejects.toThrow(
-      "notFound",
+      "redirect:/sign-in",
     );
   });
 

@@ -31,7 +31,7 @@ const DEMO_OUTPUTS: Record<number, string[]> = {
     "Webhook URL: https://api.usezombie.com/v1/webhooks/zmb_2041",
   ],
   2: [
-    "[steer] gathering evidence: fly status, upstash health, last 3 runs…",
+    "[steer] gathering evidence: infra status, dependency health, last 3 runs…",
     "[steer] diagnosis posted to #platform-ops",
   ],
 };
