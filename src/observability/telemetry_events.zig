@@ -119,16 +119,14 @@ pub const WorkspaceCreated = struct {
     distinct_id: []const u8,
     workspace_id: []const u8,
     tenant_id: []const u8,
-    repo_url: []const u8,
     request_id: []const u8,
 
     pub const kind: EventKind = .workspace_created;
 
-    pub fn properties(self: @This()) [4]posthog.Property {
+    pub fn properties(self: @This()) [3]posthog.Property {
         return .{
             .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
             .{ .key = "tenant_id", .value = .{ .string = self.tenant_id } },
-            .{ .key = "repo_url", .value = .{ .string = self.repo_url } },
             .{ .key = "request_id", .value = .{ .string = self.request_id } },
         };
     }

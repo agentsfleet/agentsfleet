@@ -136,7 +136,7 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     const final_name = insertAndProvision(conn, hx, workspace_id, tenant_id, name, now_ms) orelse return;
 
     log.info("workspace.created workspace_id={s} tenant_id={s} name={s}", .{ workspace_id, tenant_id, final_name });
-    hx.ctx.telemetry.capture(telemetry_mod.WorkspaceCreated, .{ .distinct_id = hx.principal.user_id orelse "", .workspace_id = workspace_id, .tenant_id = tenant_id, .repo_url = "", .request_id = hx.req_id });
+    hx.ctx.telemetry.capture(telemetry_mod.WorkspaceCreated, .{ .distinct_id = hx.principal.user_id orelse "", .workspace_id = workspace_id, .tenant_id = tenant_id, .request_id = hx.req_id });
 
     hx.ok(.created, .{
         .workspace_id = workspace_id,

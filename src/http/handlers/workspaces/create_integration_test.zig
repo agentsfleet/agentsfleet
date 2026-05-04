@@ -167,10 +167,12 @@ test "integration: POST /v1/workspaces rejects duplicate name within tenant" {
 
     const r2 = try (try (try h.post("/v1/workspaces").bearer(TOKEN_USER)).json(body)).send();
     defer r2.deinit();
-    // The handler does a single-attempt insert on caller-supplied names; a
-    // unique-violation surfaces as the generic create_workspace failure path.
-    // 5xx is the contract today; tightening to a 409 is a follow-up.
-    try std.testing.expect(r2.status >= 400);
+    // The handler does a single-attempt insert on caller-supplied names;
+    // a unique-violation surfaces as the generic create_workspace failure
+    // path (5xx). Pinning to >= 500 catches the contract today AND fails
+    // loudly if a tenant-probe / auth path ever masks the real outcome
+    // with a 401/422. Tightening to a 409 is a follow-up.
+    try std.testing.expect(r2.status >= 500);
 }
 
 test "integration: POST /v1/workspaces without auth returns 401" {
