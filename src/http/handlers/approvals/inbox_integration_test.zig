@@ -498,7 +498,7 @@ test "integration: approvals POST :approve — pending → approved + resolved_b
     defer r.deinit();
     try r.expectStatus(.ok);
     try std.testing.expect(std.mem.indexOf(u8, r.body, "\"outcome\":\"approved\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"resolved_by\":\"user:user_approvals\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, r.body, "\"resolved_by\":\"user:user_test\"") != null);
 
     const status = try statusOf(conn, ALLOC, gid);
     defer ALLOC.free(status);
