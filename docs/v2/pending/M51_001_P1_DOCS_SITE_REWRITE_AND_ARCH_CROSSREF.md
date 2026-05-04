@@ -111,7 +111,7 @@ This sequencing is load-bearing for the launch tweet: the marketing site is the 
 | `ui/packages/website/src/pages/Agents.tsx` | EDIT | DEMO_COMMANDS + DEMO_OUTPUTS rewritten to platform-ops; apiOps table updated; webhook payload updated; InstallBlock command + Bootstrap pre-block updated |
 | `ui/packages/website/src/pages/Pricing.tsx` | EDIT | Tier highlights, lead, roadmapSignals rewritten to BYOK + hosted-execution framing |
 | `ui/packages/website/src/components/HeroIllustration.tsx` | UNCHANGED | Pure SVG zombie mark; no copy |
-| `ui/packages/website/src/config.ts` | UNCHANGED | `DOCS_QUICKSTART_URL` stays at `/quickstart` per Q-new C (collapse) |
+| `ui/packages/website/src/config.ts` | UNCHANGED | `DOCS_QUICKSTART_URL` stays as `` `${DOCS_URL}/quickstart` `` (resolves to `https://docs.usezombie.com/quickstart`) per Q-new C (collapse). The constant is already absolute; do not change it to a bare relative path or the Hero CTA will navigate to `usezombie.com/quickstart` (404) instead of the docs site |
 | `ui/packages/website/tests/e2e/*.spec.ts` | EDIT | Smoke spec string assertions updated to match new copy |
 
 ### Cross-cutting
@@ -217,7 +217,7 @@ Three repos touched: this repo (`usezombie/usezombie` — marketing site under `
 
 Land in this order (Captain's directive May 04, 2026):
 
-1. **Marketing site rewrite** in this repo on its own branch (`feat/m51-marketing-rewrite`). Preview deploy verified before merge. PostHog event names unchanged.
+1. **Marketing site rewrite** in this repo on its own branch (`feat/m51-marketing-rewrite`). Preview deploy verified before merge. PostHog event names unchanged. **Production deploy of `usezombie.com` is held until step 3 ships** — the Hero primary CTA points at `https://docs.usezombie.com/quickstart`, which only carries v2 content after the docs site rewrite lands. Merging the marketing PR is allowed (preview is fine); promoting to production is not. The production-cutover gate (see Failure Modes — "Marketing site primary CTA points at stale `/quickstart`") blocks `vercel promote` on the website project until `curl https://docs.usezombie.com/quickstart` returns 200 with v2 content (grep body for `platform-ops`).
 2. **Architecture cross-reference pass + §14** in this repo on its own branch (or same branch as marketing if scope is small). Architecture must be in `done/` before docs work begins so docs cross-references resolve.
 3. **Docs site rewrite** in `~/Projects/docs/`. Mintlify preview deploy verified before merge.
 4. **README sync** — root README + org-profile README in lockstep.
@@ -332,8 +332,8 @@ Repurpose: `surfaces` array becomes BYOK provider list.
 #### §6.8 `Agents.tsx`
 Keep `BackgroundBeamsWithCollision`, `AnimatedTerminal`, scanline, JSON-LD block, table layout. Surgical fixes:
 
-- `DEMO_COMMANDS`: `["zombiectl auth login", "/usezombie-install-platform-ops", "zombiectl steer zmb_2041 \"morning health check\""]`
-- `DEMO_OUTPUTS`: `{1: ["Generated .usezombie/platform-ops/SKILL.md + TRIGGER.md", "Installed platform-ops@0.1.0", "Webhook URL: https://api.usezombie.com/v1/webhooks/zmb_2041"], 2: ["[steer] gathering evidence: fly status, upstash health, last 3 runs…", "[steer] diagnosis posted to #platform-ops"]}`
+- `DEMO_COMMANDS` (0-indexed array): `["zombiectl auth login", "/usezombie-install-platform-ops", "zombiectl steer zmb_2041 \"morning health check\""]` — index `0` = auth login, `1` = install skill, `2` = steer.
+- `DEMO_OUTPUTS` (keyed by `DEMO_COMMANDS` index — 0-based, matching the array above; `auth login` at index 0 has no demo output by design, so key `0` is intentionally absent): `{1: ["Generated .usezombie/platform-ops/SKILL.md + TRIGGER.md", "Installed platform-ops@0.1.0", "Webhook URL: https://api.usezombie.com/v1/webhooks/zmb_2041"], 2: ["[steer] gathering evidence: fly status, upstash health, last 3 runs…", "[steer] diagnosis posted to #platform-ops"]}` — key `1` maps to the install-skill command's output, key `2` maps to the steer command's output. Preserve the existing `Record<number, string[]>` typing in `Agents.tsx`; do not switch to a dense array or 1-based scheme.
 - `InstallBlock` `title`: `Install Zombiectl` (unchanged)
 - `InstallBlock` `command`: `npm install -g @usezombie/zombiectl`
 - Bootstrap `<pre>` block:
