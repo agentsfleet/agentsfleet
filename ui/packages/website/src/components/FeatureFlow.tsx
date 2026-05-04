@@ -14,13 +14,12 @@ type FeatureFlowItem = {
 const items: FeatureFlowItem[] = [
   {
     id: "install",
-    title: "Install once. Operate forever.",
+    title: "Install once.",
     description:
-      "One command installs zombiectl, one skill installs the platform-ops agent. The skill detects your repo shape, asks three gating questions, and writes .usezombie/platform-ops/SKILL.md + TRIGGER.md.",
+      "One command installs the CLI; one skill installs the platform-ops agent. Host-neutral — Claude Code, Amp, Codex CLI, or OpenCode.",
     bullets: [
-      "Host-neutral skill: Claude Code, Amp, Codex CLI, OpenCode",
-      "Detects fly.toml, GitHub Actions workflows, monorepo layouts",
-      "Idempotent re-runs against the same workspace",
+      "Detects fly.toml, GitHub Actions, monorepos",
+      "Idempotent re-runs",
     ],
     ctaLabel: "Install guide",
     ctaHref: DOCS_QUICKSTART_URL,
@@ -28,13 +27,12 @@ const items: FeatureFlowItem[] = [
   },
   {
     id: "trace",
-    title: "Every event, every actor, on the record.",
+    title: "Every event on the record.",
     description:
-      "Every steer, webhook, and cron fire lands on zombie:{id}:events with actor provenance. Replay the full timeline. Stream live via SSE. Audit who or what triggered each step.",
+      "Steer, webhook, cron — all land on the same event stream with actor provenance. Replay the timeline; stream live via SSE.",
     bullets: [
-      "Append-only event stream with actor=webhook|cron|steer|continuation",
-      "SSE tail at /v1/.../events/stream",
-      "Stage chunking preserves long-running reasoning across context boundaries",
+      "actor = webhook | cron | steer | continuation",
+      "Stage chunking carries reasoning past the model's context cap",
     ],
     ctaLabel: "Read docs",
     ctaHref: DOCS_URL,
@@ -44,10 +42,9 @@ const items: FeatureFlowItem[] = [
     id: "mission",
     title: "Mission Control",
     description:
-      "Approvals, budgets, BYOK provider switching, and the kill switch — one dashboard. Approve a risky action from a Slack DM or the web.",
+      "Approvals, budgets, BYOK provider, kill switch — one dashboard. Approve from Slack or the web.",
     bullets: [
-      "Per-day and per-month dollar caps; trip-blocked at the gate",
-      "Switch BYOK provider with `zombiectl tenant provider set --credential <name>`",
+      "Daily + monthly dollar caps, trip-blocked at the gate",
       "`zombiectl kill` checkpoints state; nothing lost",
     ],
     ctaLabel: "Open Mission Control",

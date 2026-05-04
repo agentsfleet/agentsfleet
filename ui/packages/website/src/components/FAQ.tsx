@@ -8,12 +8,12 @@ import {
 
 const items: { q: string; a: ReactNode }[] = [
   {
-    q: "What is UseZombie?",
+    q: "What is usezombie?",
     a: "A durable runtime for one operational outcome. The platform-ops agent wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via `zombiectl steer` for manual investigation.",
   },
   {
     q: "What does BYOK mean?",
-    a: "Bring Your Own Key. Store your own LLM provider credential — Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot — and the executor resolves it at the tool bridge. UseZombie marks up zero on inference; you pay your provider directly.",
+    a: "Bring Your Own Key. Store your own LLM provider credential — Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot — and the executor resolves it at the tool bridge. usezombie marks up zero on inference; you pay your provider directly.",
   },
   {
     q: "What am I actually paying for?",
@@ -31,7 +31,7 @@ const items: { q: string; a: ReactNode }[] = [
     q: "What if my agent hits the model's context window?",
     a: (
       <>
-        It doesn&apos;t lose the thread. UseZombie keeps long incidents coherent through three layers
+        It doesn&apos;t lose the thread. usezombie keeps long incidents coherent through three layers
         working together. The runtime watches three signals — a <strong>tool-result window</strong>,{" "}
         <strong>memory checkpoints</strong>, and a <strong>stage-chunk threshold</strong> — and the
         agent responds by compacting tool results into durable memory via <code>memory_store</code>,

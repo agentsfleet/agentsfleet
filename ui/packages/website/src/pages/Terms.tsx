@@ -7,13 +7,13 @@ export default function Terms() {
 
       <h2>1. Acceptance</h2>
       <p>
-        By accessing or using UseZombie (&quot;the Service&quot;), you agree to these Terms of Service.
+        By accessing or using usezombie (&quot;the Service&quot;), you agree to these Terms of Service.
         If you do not agree, do not use the Service.
       </p>
 
       <h2>2. Service Description</h2>
       <p>
-        UseZombie is an agent delivery control plane that processes specification queues into
+        usezombie is an agent delivery control plane that processes specification queues into
         validated pull requests. The Service operates on your Git repositories using branch-based
         state and BYOK (Bring Your Own Keys) model access.
       </p>
@@ -28,21 +28,21 @@ export default function Terms() {
 
       <h2>4. Billing</h2>
       <ul>
-        <li>UseZombie charges for agent compute time (per second of wall-clock time).</li>
+        <li>usezombie charges for agent compute time (per second of wall-clock time).</li>
         <li>A one-time workspace activation fee of $5 applies to each new workspace.</li>
-        <li>LLM token costs are paid directly to your provider — UseZombie never marks up tokens.</li>
+        <li>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</li>
         <li>Billing cycles are monthly. Invoices are issued at the start of each billing period.</li>
       </ul>
 
       <h2>5. Intellectual Property</h2>
       <p>
         You retain all rights to your source code, specifications, and generated artifacts.
-        UseZombie claims no ownership over outputs produced by the pipeline.
+        usezombie claims no ownership over outputs produced by the pipeline.
       </p>
 
       <h2>6. Limitation of Liability</h2>
       <p>
-        UseZombie is provided &quot;as is&quot; without warranty. We are not liable for damages arising
+        usezombie is provided &quot;as is&quot; without warranty. We are not liable for damages arising
         from agent-generated code, pipeline failures, or third-party service outages. Enterprise
         tier customers may negotiate contractual SLAs.
       </p>

@@ -40,7 +40,7 @@ const DEMO_OUTPUTS: Record<number, string[]> = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "UseZombie",
+  name: "usezombie",
   applicationCategory: "DeveloperApplication",
   url: "https://usezombie.sh/agents",
   sameAs: [

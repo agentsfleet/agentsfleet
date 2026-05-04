@@ -103,7 +103,7 @@ describe("Agents", () => {
     expect(script).not.toBeNull();
     const data = JSON.parse(script!.textContent!);
     expect(data["@type"]).toBe("SoftwareApplication");
-    expect(data.name).toBe("UseZombie");
+    expect(data.name).toBe("usezombie");
   });
 
   it("uses agent-surface class for terminal aesthetic", () => {

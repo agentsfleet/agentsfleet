@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import { DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 
-const BRAND_NAME = "UseZombie";
+const BRAND_NAME = "usezombie";
 
 export default function Footer() {
   return (

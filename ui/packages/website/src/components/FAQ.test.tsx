@@ -13,7 +13,7 @@ describe("FAQ", () => {
     render(<FAQ />);
     const buttons = screen.getAllByRole("button");
     expect(buttons.length).toBeGreaterThanOrEqual(6);
-    expect(screen.getByText("What is UseZombie?")).toBeInTheDocument();
+    expect(screen.getByText("What is usezombie?")).toBeInTheDocument();
     expect(screen.getByText("What does BYOK mean?")).toBeInTheDocument();
     expect(screen.getByText("What am I actually paying for?")).toBeInTheDocument();
     expect(screen.getByText("Can I self-host?")).toBeInTheDocument();

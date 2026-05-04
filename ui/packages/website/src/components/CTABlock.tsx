@@ -6,7 +6,7 @@ import { trackNavigationClicked } from "../analytics/posthog";
 export default function CTABlock() {
   return (
     <div className="cta-block">
-      <h2>Building agents on UseZombie?</h2>
+      <h2>Building agents on usezombie?</h2>
       <p>Stable machine surface via OpenAPI 3.1. Webhook ingest, steer, event streams, approval grants — the same surfaces the human dashboard uses.</p>
       <div className="cta-row">
         <Button asChild>

@@ -9,39 +9,23 @@ import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 const features = [
   {
     number: "01",
-    title: "Markdown-defined behaviour",
-    description:
-      "SKILL.md + TRIGGER.md. Iterate on prose, not redeploys.",
+    title: "Markdown-defined",
+    description: "SKILL.md + TRIGGER.md. Iterate on prose, not redeploys.",
   },
   {
     number: "02",
-    title: "Three triggers, one loop",
-    description:
-      "Webhook (GitHub Actions), cron, and `zombiectl steer` all flow through the same reasoning. The agent doesn't branch on actor type.",
+    title: "BYOK",
+    description: "Bring your own LLM key. We never mark up inference.",
   },
   {
     number: "03",
-    title: "Bring Your Own Key",
-    description:
-      "Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot. The executor treats your provider key as another secret resolved at the tool bridge.",
+    title: "Approval gating",
+    description: "Risky actions block until a human clicks Approve. State survives worker restarts.",
   },
   {
     number: "04",
-    title: "Reasons past the context limit",
-    description:
-      "Memory checkpoints, rolling tool-result window, and stage chunking compose so deep incidents continue past the model's working-memory cap.",
-  },
-  {
-    number: "05",
-    title: "Approval gating",
-    description:
-      "Risky actions block until a human clicks Approve in the dashboard or Slack. State machine survives worker restarts.",
-  },
-  {
-    number: "06",
-    title: "Open-source runtime",
-    description:
-      "The code that holds your credentials and runs against your infrastructure is code you can read.",
+    title: "Open source",
+    description: "The code that holds your credentials and runs against your infra is code you can read.",
   },
 ];
 

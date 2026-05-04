@@ -21,10 +21,9 @@ export default function Hero() {
           </h1>
 
           <p className="hero-kicker">
-            UseZombie turns runbooks into markdown-defined agents, not workflows. Define behaviour
-            with <code>SKILL.md</code> and <code>TRIGGER.md</code>. When GitHub Actions fails, an
-            agent wakes, gathers evidence, and posts a diagnosis to Slack. Open source. Bring your
-            own keys.
+            usezombie turns runbooks into markdown-defined agents. Write <code>SKILL.md</code> +
+            {" "}<code>TRIGGER.md</code>; when CI fails, an agent wakes, gathers evidence, and
+            posts a diagnosis to Slack. Open source. BYOK.
           </p>
 
           <div className="hero-cta-row">

@@ -24,7 +24,7 @@ function renderApp(initialRoute = "/") {
 describe("App", () => {
   it("renders the brand name in header and footer", () => {
     renderApp();
-    const brands = screen.getAllByText("UseZombie");
+    const brands = screen.getAllByText("usezombie");
     expect(brands.length).toBeGreaterThanOrEqual(2);
   });
 
