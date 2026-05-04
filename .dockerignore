@@ -1,5 +1,5 @@
 # Exclude everything except what the runtime container needs
-# Runtime needs: dist/zombied-linux-{amd64,arm64} and config/
+# Runtime needs: dist/zombied-linux-{amd64,arm64}
 
 .tmp/
 zig-cache/
