@@ -241,12 +241,31 @@
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}:
   patch:
     operationId: patch_zombie
-    summary: Update or kill a zombie
-    description: 'Partial update of a zombie. Body fields are optional and presence-based: `config_json` (replace
-      the zombie''s config — publishes zombie_config_changed) and/or `status:"killed"` (cancel any in-flight executor
-      session and mark the zombie killed — publishes zombie_status_changed). Both fields can ride together; the SQL
-      UPDATE is one statement and one control-stream publish fires per dirty surface. Returns the new config_revision
-      (a strictly monotonic ms-epoch timestamp). Idempotent — re-killing a killed zombie returns 404.'
+    summary: Update zombie config or drive its status FSM
+    description: |
+      Partial update of a zombie. Body fields are optional and presence-based:
+
+      - `config_json` — replace the zombie's config; publishes `zombie_config_changed`.
+      - `status` — drive the lifecycle FSM. Allowed values: `active` (resume from
+        stopped or auto-paused), `stopped` (halt the running session, resumable),
+        `killed` (terminal mark, irreversible). The `paused` state is platform-only
+        (set by the anomaly gate) and rejected here.
+
+      Both fields can ride together; the SQL UPDATE is one statement and one
+      control-stream publish fires per dirty surface. Returns the new
+      `config_revision` (a strictly monotonic ms-epoch timestamp).
+
+      FSM rules:
+
+      - `killed` is terminal — any further PATCH on a killed zombie returns 404
+        (the row is a tombstone).
+      - Stop requires status ∈ {active, paused}; Resume requires status ∈
+        {stopped, paused}; Kill is allowed from any non-killed state.
+      - Disallowed transitions return 409 (e.g. resume on an active zombie).
+
+      Status transitions (stop/resume/kill) require operator-minimum role
+      per RULE BIL — destructive lifecycle actions. Pure config updates stay
+      at workspace-member.
     tags:
     - Zombies
     parameters:
@@ -277,8 +296,14 @@
               status:
                 type: string
                 enum:
+                - active
+                - stopped
                 - killed
-                description: 'Set to "killed" to cancel any in-flight session and mark the zombie killed.'
+                description: |
+                  Target FSM state. `active` resumes from stopped/paused; `stopped`
+                  halts the running session (resumable); `killed` is terminal. Note
+                  that `paused` is intentionally not in this enum — it is set only
+                  by the platform's anomaly gate.
     responses:
       '200':
         description: OK
@@ -293,8 +318,10 @@
                 status:
                   type: string
                   enum:
+                  - active
+                  - stopped
                   - killed
-                  description: 'Present only when the request body included `status:"killed"`.'
+                  description: 'Present only when the request body included a `status` field. Echoes the new status.'
                 config_revision:
                   type: integer
                   format: int64
@@ -305,6 +332,49 @@
       '403':
         $ref: ../components/responses.yaml#/components/responses/Error
       '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+  delete:
+    operationId: delete_zombie
+    summary: Hard-delete a zombie and cascade its history
+    description: |
+      Hard-purge a zombie. Removes the `core.zombies` row and cascades every
+      per-zombie record across PG schemas (events, telemetry, sessions,
+      approval gates, integration grants, agent keys, memory entries) plus
+      best-effort DELs the Redis event stream.
+
+      Two-step lifecycle for safety: kill first (PATCH `{status:"killed"}`),
+      then delete. Returns 409 if the zombie is not yet `killed`.
+
+      Operator-minimum role required (RULE BIL — destructive lifecycle).
+    tags:
+    - Zombies
+    parameters:
+    - name: workspace_id
+      in: path
+      required: true
+      description: UUIDv7 of the workspace.
+      schema:
+        type: string
+        format: uuid
+    - name: zombie_id
+      in: path
+      required: true
+      description: UUIDv7 of the zombie.
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '204':
+        description: Zombie purged.
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages:
   post:
@@ -488,51 +558,3 @@
         $ref: ../components/responses.yaml#/components/responses/Error
     security:
     - BearerAuth: []
-/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run:
-  delete:
-    operationId: delete_workspace_zombie_current_run
-    summary: Kill the zombie's current running action
-    description: Transitions the zombie's status from `active` or `paused` to `stopped` and records a `zombie_stopped`
-      activity event. Modeled as a DELETE on a singleton sub-resource (the zombie's "current run") rather than the
-      retired `POST .../stop` path-verb form — see `docs/REST_API_DESIGN_GUIDELINES.md` §7. Returns 409 if the zombie
-      is already stopped or killed. Returns 404 if the zombie is not in the path workspace (cross-workspace IDOR guard).
-    tags:
-    - Zombies
-    parameters:
-    - name: workspace_id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-    - name: zombie_id
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-    responses:
-      '200':
-        description: Zombie transitioned to stopped
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              - zombie_id
-              - workspace_id
-              - status
-              - request_id
-              properties:
-                zombie_id:
-                  type: string
-                workspace_id:
-                  type: string
-                status:
-                  type: string
-                  enum:
-                  - stopped
-                request_id:
-                  type: string
-      default:
-        $ref: ../components/responses.yaml#/components/responses/Error

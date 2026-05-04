@@ -53,7 +53,7 @@ test("--help lists the zombie subcommand group", async () => {
   assert.ok(text.includes("credential"), "zombie credential line missing");
 });
 
-test("--help surfaces workspace use/show/credentials/billing", async () => {
+test("--help surfaces workspace use/show/credentials", async () => {
   const out = bufferStream();
   const err = bufferStream();
   await runCli(["--help"], {
@@ -65,7 +65,6 @@ test("--help surfaces workspace use/show/credentials/billing", async () => {
   assert.ok(text.includes("workspace use <workspace_id>"));
   assert.ok(text.includes("workspace show"));
   assert.ok(text.includes("workspace credentials"));
-  assert.ok(text.includes("workspace billing"));
 });
 
 // ── workspace use <id> persists active workspace ─────────────────────────

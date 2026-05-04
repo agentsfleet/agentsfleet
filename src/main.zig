@@ -217,11 +217,9 @@ test {
     _ = @import("http/handlers/zombies/create.zig");
     _ = @import("http/handlers/zombies/list.zig");
     _ = @import("http/handlers/zombies/patch.zig");
-    // M18_001: zombie execution telemetry
+    _ = @import("http/handlers/zombies/delete.zig");
+    // Zombie execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
     _ = @import("state/zombie_telemetry_store.zig");
-    _ = @import("http/handlers/zombies/telemetry.zig");
-    _ = @import("http/handlers/zombies/telemetry_test.zig");
-    _ = @import("http/handlers/zombies/telemetry_integration_test.zig");
     _ = @import("http/handlers/workspaces/dashboard_integration_test.zig");
     _ = @import("http/handlers/tenant_workspaces.zig");
     _ = @import("http/handlers/tenant_workspaces_integration_test.zig");

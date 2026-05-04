@@ -99,7 +99,7 @@ pub fn innerZombieMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []cons
         common.internalOperationError(hx.res, "failed to enqueue chat event", hx.req_id);
         return;
     };
-    defer hx.alloc.free(event_id);
+    defer hx.ctx.alloc.free(event_id);
 
     log.info("zombie_messages.posted zombie_id={s} event_id={s} actor={s}", .{ zombie_id, event_id, actor });
     hx.ok(.accepted, .{

@@ -34,7 +34,6 @@ pub const entries = [_]Entry{
 
     // Workspaces
     .{ .method = "POST", .path = "/v1/workspaces" },
-    .{ .method = "PATCH", .path = "/v1/workspaces/{workspace_id}" },
 
     // Tenant billing (plan + balance snapshot)
     .{ .method = "GET", .path = "/v1/tenants/me/billing" },
@@ -44,9 +43,6 @@ pub const entries = [_]Entry{
 
     // Tenant-scoped workspace list (backs the dashboard workspace switcher)
     .{ .method = "GET", .path = "/v1/tenants/me/workspaces" },
-
-    // Tenant-scoped doctor block — provider posture + resolver state.
-    .{ .method = "GET", .path = "/v1/tenants/me/diagnostics" },
 
     // Tenant-scoped LLM provider config (GET/PUT/DELETE on the same path).
     .{ .method = "GET", .path = "/v1/tenants/me/provider" },
@@ -62,11 +58,11 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "PATCH", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
+    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/events" },
-    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run" },
 
     // Approval inbox
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/approvals" },
@@ -83,9 +79,6 @@ pub const entries = [_]Entry{
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}/approval" },
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}/grant-approval" },
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}/github" },
-
-    // Telemetry
-    .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry" },
 
     // Memory — workspace-scoped /memories collection (GET list-or-search,
     // POST store) + /memories/{key} (DELETE idempotent 204).

@@ -24,7 +24,10 @@ export async function commandZombie(ctx, args, workspaces, deps) {
   if (action === "install") return commandInstall(ctx, args.slice(1), workspaces, deps);
   if (action === "list") return commandList(ctx, args.slice(1), workspaces, deps);
   if (action === "status") return commandStatus(ctx, args.slice(1), workspaces, deps);
-  if (action === "kill") return commandKill(ctx, args.slice(1), workspaces, deps);
+  if (action === "stop") return commandSetStatus(ctx, args.slice(1), workspaces, deps, "stopped");
+  if (action === "resume") return commandSetStatus(ctx, args.slice(1), workspaces, deps, "active");
+  if (action === "kill") return commandSetStatus(ctx, args.slice(1), workspaces, deps, "killed");
+  if (action === "delete") return commandDelete(ctx, args.slice(1), workspaces, deps);
   if (action === "logs") return commandLogs(ctx, args.slice(1), workspaces, deps);
   if (action === "events") return commandEvents(ctx, args.slice(1), workspaces, deps);
   if (action === "steer") return commandSteer(ctx, args.slice(1), workspaces, deps);
@@ -37,7 +40,10 @@ export async function commandZombie(ctx, args, workspaces, deps) {
     writeLine(ctx.stderr);
     writeLine(ctx.stderr, "usage: zombiectl install --from <path>");
     writeLine(ctx.stderr, "       zombiectl status");
-    writeLine(ctx.stderr, "       zombiectl kill");
+    writeLine(ctx.stderr, "       zombiectl stop <id>     # halt the running session (resumable)");
+    writeLine(ctx.stderr, "       zombiectl resume <id>   # resume from stopped or auto-paused");
+    writeLine(ctx.stderr, "       zombiectl kill <id>     # mark terminal (irreversible)");
+    writeLine(ctx.stderr, "       zombiectl delete <id>   # hard-purge (must kill first)");
     writeLine(ctx.stderr, "       zombiectl logs");
     writeLine(ctx.stderr, "       zombiectl steer <id> \"<msg>\"");
     writeLine(ctx.stderr, "       zombiectl events <id> [--actor=glob] [--since=2h]");
@@ -168,9 +174,60 @@ async function commandStatus(ctx, args, workspaces, deps) {
   return 0;
 }
 
-// ── kill ─────────────────────────────────────────────────────────────────
+// ── status transitions: stop / resume / kill ──────────────────────────────
+// Drives PATCH /v1/workspaces/{ws}/zombies/{id} {status: ...}.
+//   stopped — halt the running session, resumable
+//   active  — resume from stopped or auto-paused
+//   killed  — terminal mark (irreversible)
+// `paused` is gate-only and intentionally not exposed here.
 
-async function commandKill(ctx, args, workspaces, deps) {
+const STATUS_PAST_TENSE = {
+  stopped: "stopped",
+  active: "resumed",
+  killed: "killed",
+};
+
+const STATUS_VERB = {
+  stopped: "stop",
+  active: "resume",
+  killed: "kill",
+};
+
+async function commandSetStatus(ctx, args, workspaces, deps, status) {
+  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
+  const parsed = parseFlags(args);
+  const zombieId = parsed.positionals[0];
+  const verb = STATUS_VERB[status] ?? "patch";
+
+  const wsId = workspaces.current_workspace_id;
+  if (!wsId) {
+    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
+    return 1;
+  }
+  if (!zombieId) {
+    writeError(ctx, "MISSING_ARGUMENT", `usage: zombiectl ${verb} <zombie_id>`, deps);
+    return 2;
+  }
+
+  const res = await request(ctx, wsZombiePath(wsId, zombieId), {
+    method: "PATCH",
+    headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+
+  if (ctx.jsonMode) {
+    printJson(ctx.stdout, res);
+  } else {
+    writeLine(ctx.stdout, ui.ok(`${zombieId} ${STATUS_PAST_TENSE[status]}.`));
+  }
+  return 0;
+}
+
+// ── delete (hard-purge) ───────────────────────────────────────────────────
+// DELETE /v1/workspaces/{ws}/zombies/{id}. Must kill first; server returns
+// 409 (UZ-ZMB-010) if the zombie isn't terminal yet.
+
+async function commandDelete(ctx, args, workspaces, deps) {
   const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const parsed = parseFlags(args);
   const zombieId = parsed.positionals[0];
@@ -180,24 +237,21 @@ async function commandKill(ctx, args, workspaces, deps) {
     writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
     return 1;
   }
-
   if (!zombieId) {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl kill <zombie_id>", deps);
+    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl delete <zombie_id>", deps);
     return 2;
   }
 
-  const res = await request(ctx, wsZombiePath(wsId, zombieId), {
-    method: "PATCH",
-    headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "killed" }),
+  await request(ctx, wsZombiePath(wsId, zombieId), {
+    method: "DELETE",
+    headers: apiHeaders(ctx),
   });
 
   if (ctx.jsonMode) {
-    printJson(ctx.stdout, res);
+    printJson(ctx.stdout, { zombie_id: zombieId, deleted: true });
   } else {
-    writeLine(ctx.stdout, ui.ok(`${zombieId} killed.`));
+    writeLine(ctx.stdout, ui.ok(`${zombieId} deleted.`));
   }
-
   return 0;
 }
 

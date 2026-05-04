@@ -1,5 +1,3 @@
-import { commandWorkspaceUpgradeScale } from "./workspace_billing.js";
-import { commandWorkspaceBillingSummary } from "./workspace_billing_summary.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
@@ -116,42 +114,6 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  if (action === "upgrade-scale") {
-    const parsed = parseFlags(tail);
-    const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"] || parsed.positionals[0]);
-    if (!workspaceId) {
-      writeError(ctx, "USAGE_ERROR", "workspace upgrade-scale requires --workspace-id", deps);
-      return 2;
-    }
-    const check = validateRequiredId(workspaceId, "workspace_id");
-    if (!check.ok) {
-      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
-      return 2;
-    }
-    setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-    return commandWorkspaceUpgradeScale(ctx, parsed, workspaceId, {
-      request, apiHeaders, ui, printJson, writeLine,
-    });
-  }
-
-  if (action === "billing") {
-    const parsed = parseFlags(tail);
-    const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"] || parsed.positionals[0]);
-    if (!workspaceId) {
-      writeError(ctx, "USAGE_ERROR", "workspace billing requires --workspace-id", deps);
-      return 2;
-    }
-    const check = validateRequiredId(workspaceId, "workspace_id");
-    if (!check.ok) {
-      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
-      return 2;
-    }
-    setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-    return commandWorkspaceBillingSummary(ctx, parsed, workspaceId, {
-      request, apiHeaders, ui, printJson, writeLine,
-    });
-  }
-
   if (action === "use") {
     const parsed = parseFlags(tail);
     const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
@@ -256,6 +218,6 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|use|show|credentials|delete|billing|upgrade-scale", deps);
+  writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|use|show|credentials|delete", deps);
   return 2;
 }

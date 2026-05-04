@@ -61,21 +61,37 @@ export async function installZombie(
   );
 }
 
-// DELETE /v1/workspaces/{ws}/zombies/{id}/current-run
-// Returns the updated zombie. Throws ApiError UZ-ZMB-010 on 409 (already
-// stopped) and UZ-ZMB-009 on 404 (zombie not found).
-export async function stopZombie(
+// PATCH /v1/workspaces/{ws}/zombies/{id}
+// Drives the zombie status FSM. `paused` is gate-only — the API never lets
+// callers set it. Throws ApiError UZ-ZMB-010 on 409 (transition not allowed
+// from current state, e.g. resume on an active zombie) and UZ-ZMB-009 on
+// 404 (zombie missing or already-killed tombstone).
+export type ZombieStatus = "active" | "stopped" | "killed";
+
+export async function setZombieStatus(
   workspaceId: string,
   zombieId: string,
+  status: ZombieStatus,
   token: string,
 ): Promise<Zombie> {
   return request<Zombie>(
-    `/v1/workspaces/${workspaceId}/zombies/${zombieId}/current-run`,
-    { method: "DELETE" },
+    `/v1/workspaces/${workspaceId}/zombies/${zombieId}`,
+    { method: "PATCH", body: JSON.stringify({ status }) },
     token,
   );
 }
 
+// Convenience wrappers — the dashboard's three lifecycle buttons.
+export const stopZombie = (workspaceId: string, zombieId: string, token: string) =>
+  setZombieStatus(workspaceId, zombieId, "stopped", token);
+export const resumeZombie = (workspaceId: string, zombieId: string, token: string) =>
+  setZombieStatus(workspaceId, zombieId, "active", token);
+export const killZombie = (workspaceId: string, zombieId: string, token: string) =>
+  setZombieStatus(workspaceId, zombieId, "killed", token);
+
+// DELETE /v1/workspaces/{ws}/zombies/{id}
+// Hard-purge. Precondition: status='killed'. Throws UZ-ZMB-010 (409) if not
+// killed yet, UZ-ZMB-009 (404) if zombie missing.
 export async function deleteZombie(
   workspaceId: string,
   zombieId: string,

@@ -7,7 +7,6 @@ const KNOWN_COMMANDS = [
   "logout",
   "workspace",
   "doctor",
-  "admin",
   "agent",
   "grant",
   "tenant",
@@ -16,13 +15,15 @@ const KNOWN_COMMANDS = [
   "install",
   "status",
   "kill",
+  "stop",
+  "resume",
+  "delete",
   "logs",
   "credential",
 ];
 
 const KNOWN_SUBCOMMANDS = {
   workspace: ["add", "list", "show", "use", "delete"],
-  admin: ["config"],
   agent: ["add", "list", "delete"],
   grant: ["list", "delete"],
   tenant: ["provider"],

@@ -29,7 +29,7 @@ test "MessageType: round-trip toSlice/fromSlice covers all variants" {
 }
 
 test "ZombieStatus: round-trip toSlice/fromSlice covers all variants" {
-    const cases = [_]ZombieStatus{ .active, .killed, .paused };
+    const cases = [_]ZombieStatus{ .active, .killed, .paused, .stopped };
     for (cases) |s| {
         const back = ZombieStatus.fromSlice(s.toSlice()) orelse return error.RoundTripFailed;
         try std.testing.expectEqual(s, back);
@@ -61,15 +61,14 @@ test "decodeEntry: zombie_created carries zombie_id + workspace_id" {
     }
 }
 
-test "decodeEntry: zombie_status_changed carries zombie_id + status" {
-    const alloc = std.testing.allocator;
+fn decodeStatusChange(alloc: std.mem.Allocator, status_str: []const u8) !ZombieStatus {
     var fields = try alloc.alloc(RespValue, 6);
     fields[0] = try bulk(alloc, "type");
     fields[1] = try bulk(alloc, "zombie_status_changed");
     fields[2] = try bulk(alloc, "zombie_id");
     fields[3] = try bulk(alloc, "z-xyz");
     fields[4] = try bulk(alloc, "status");
-    fields[5] = try bulk(alloc, "killed");
+    fields[5] = try bulk(alloc, status_str);
     defer freeFields(alloc, fields);
 
     var decoded = try control_stream.decodeEntry(alloc, "1700000000-1", fields);
@@ -78,10 +77,52 @@ test "decodeEntry: zombie_status_changed carries zombie_id + status" {
     switch (decoded.message) {
         .zombie_status_changed => |m| {
             try std.testing.expectEqualStrings("z-xyz", m.zombie_id);
-            try std.testing.expectEqual(ZombieStatus.killed, m.status);
+            return m.status;
         },
         else => return error.WrongVariant,
     }
+}
+
+test "decodeEntry: zombie_status_changed accepts every FSM-reachable status" {
+    const alloc = std.testing.allocator;
+    // The four states the platform publishes: active (resume), killed
+    // (terminal), paused (anomaly-gate auto-halt), stopped (operator stop).
+    try std.testing.expectEqual(ZombieStatus.killed, try decodeStatusChange(alloc, "killed"));
+    try std.testing.expectEqual(ZombieStatus.stopped, try decodeStatusChange(alloc, "stopped"));
+    try std.testing.expectEqual(ZombieStatus.active, try decodeStatusChange(alloc, "active"));
+    try std.testing.expectEqual(ZombieStatus.paused, try decodeStatusChange(alloc, "paused"));
+}
+
+test "decodeEntry: unknown status string is rejected" {
+    const alloc = std.testing.allocator;
+    var fields = try alloc.alloc(RespValue, 6);
+    fields[0] = try bulk(alloc, "type");
+    fields[1] = try bulk(alloc, "zombie_status_changed");
+    fields[2] = try bulk(alloc, "zombie_id");
+    fields[3] = try bulk(alloc, "z-xyz");
+    fields[4] = try bulk(alloc, "status");
+    fields[5] = try bulk(alloc, "garbage_state");
+    defer freeFields(alloc, fields);
+
+    // Invalid status string parses to null via ZombieStatus.fromSlice; the
+    // builder then surfaces it as a missing-field error. The watcher does
+    // NOT XACK on this path, so the bad entry stays in PEL and we don't
+    // silently swallow it.
+    try std.testing.expectError(error.ControlDecodeMissingField, control_stream.decodeEntry(alloc, "1700000000-1", fields));
+}
+
+test "decodeEntry: missing status field is rejected" {
+    const alloc = std.testing.allocator;
+    // No status key — caller forgot the field. Decoder must NOT default;
+    // surfacing the malformation up the stack is the safe behavior.
+    var fields = try alloc.alloc(RespValue, 4);
+    fields[0] = try bulk(alloc, "type");
+    fields[1] = try bulk(alloc, "zombie_status_changed");
+    fields[2] = try bulk(alloc, "zombie_id");
+    fields[3] = try bulk(alloc, "z-xyz");
+    defer freeFields(alloc, fields);
+
+    try std.testing.expectError(error.ControlDecodeMissingField, control_stream.decodeEntry(alloc, "1700000000-1", fields));
 }
 
 test "decodeEntry: zombie_config_changed parses revision" {

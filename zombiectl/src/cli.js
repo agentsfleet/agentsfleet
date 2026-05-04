@@ -8,7 +8,6 @@ import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandGrant as commandGrantModule } from "./commands/grant.js";
-import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { commandTenant as commandTenantModule } from "./commands/tenant.js";
 import { commandBilling as commandBillingModule } from "./commands/billing.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
@@ -149,15 +148,6 @@ export async function runCli(argv, io = {}) {
       printTable,
       writeLine,
     }),
-    admin: (routeArgs) => commandAdminModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printSection,
-      writeLine,
-    }),
     // Tenant-scoped: provider posture (get/set/reset), billing snapshot.
     tenant: (routeArgs) => commandTenantModule(ctx, routeArgs, workspaces, {
       parseFlags,
@@ -189,6 +179,15 @@ export async function runCli(argv, io = {}) {
       parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
     }),
     zombieKill: (routeArgs) => commandZombieModule(ctx, ["kill", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieStop: (routeArgs) => commandZombieModule(ctx, ["stop", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieResume: (routeArgs) => commandZombieModule(ctx, ["resume", ...routeArgs], workspaces, {
+      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
+    }),
+    zombieDelete: (routeArgs) => commandZombieModule(ctx, ["delete", ...routeArgs], workspaces, {
       parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
     }),
     zombieLogs: (routeArgs) => commandZombieModule(ctx, ["logs", ...routeArgs], workspaces, {

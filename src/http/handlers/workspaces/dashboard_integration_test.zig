@@ -130,30 +130,43 @@ test "integration: dashboard kill switch — transitions, 409, 404" {
     try seedWorkspace(conn, now_ms);
     try seedZombies(conn, alloc, fx, now_ms);
 
-    const kill_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, fx.zombie_active });
-    defer alloc.free(kill_url);
+    const stop_url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, fx.zombie_active });
+    defer alloc.free(stop_url);
+    const stop_body = "{\"status\":\"stopped\"}";
 
     { // T5: user role → 403
-        const r = try (try h.delete(kill_url).bearer(TOKEN_USER)).send();
+        var req = h.request(.PATCH, stop_url);
+        req = try req.bearer(TOKEN_USER);
+        req = try req.json(stop_body);
+        const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.forbidden);
     }
     { // T6: operator active → 200 status=stopped
-        const r = try (try h.delete(kill_url).bearer(TOKEN_OPERATOR)).send();
+        var req = h.request(.PATCH, stop_url);
+        req = try req.bearer(TOKEN_OPERATOR);
+        req = try req.json(stop_body);
+        const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.ok);
         try std.testing.expect(r.bodyContains("\"status\":\"stopped\""));
     }
-    { // T7: re-call on stopped zombie → 409 UZ-ZMB-010
-        const r = try (try h.delete(kill_url).bearer(TOKEN_OPERATOR)).send();
+    { // T7: re-stopping an already-stopped zombie → 409 UZ-ZMB-010 (no transition)
+        var req = h.request(.PATCH, stop_url);
+        req = try req.bearer(TOKEN_OPERATOR);
+        req = try req.json(stop_body);
+        const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.conflict);
         try std.testing.expect(r.bodyContains("UZ-ZMB-010"));
     }
     { // nonexistent zombie → 404 UZ-ZMB-009
-        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}/current-run", .{ TEST_WORKSPACE_ID, fx.zombie_nonexistent });
+        const missing = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, fx.zombie_nonexistent });
         defer alloc.free(missing);
-        const r = try (try h.delete(missing).bearer(TOKEN_OPERATOR)).send();
+        var req = h.request(.PATCH, missing);
+        req = try req.bearer(TOKEN_OPERATOR);
+        req = try req.json(stop_body);
+        const r = try req.send();
         defer r.deinit();
         try r.expectStatus(.not_found);
         try std.testing.expect(r.bodyContains("UZ-ZMB-009"));
