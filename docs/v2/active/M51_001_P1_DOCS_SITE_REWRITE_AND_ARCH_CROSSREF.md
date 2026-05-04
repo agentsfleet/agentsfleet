@@ -3,12 +3,12 @@
 **Prototype:** v2.0.0
 **Milestone:** M51
 **Workstream:** 001
-**Date:** Apr 25, 2026 · revised May 03, 2026
-**Status:** PENDING
+**Date:** Apr 25, 2026 · revised May 03, 2026 · revised May 04, 2026
+**Status:** IN_PROGRESS
 **Priority:** P1 — packaging-blocking. The launch tweet links to `docs.usezombie.com/quickstart/platform-ops`; if it 404s or shows stale homelab-zombie content, the launch lands flat.
 **Categories:** DOCS
 **Batch:** B3 — depends on all other v2 substrate + packaging being shippable. Final milestone before launch.
-**Branch:** TBD
+**Branch:** feat/m51-launch-prep
 **Depends on:** M40-M49 (substrate + packaging — cross-reference pass walks every shipped spec).
 **Folded in:** M50 (architecture cross-reference + post-launch reflection) — formerly a separate spec, merged here Apr 25, 2026 because the docs workstream owns documentation drift, M50 was meta-work without independent user value, and consolidating reduces milestone count.
 **Scope reduction (May 03, 2026):** install-pingback endpoint and `/privacy/cli-telemetry` page removed from scope — Day-N adoption is measured by other means (npm download counts, Customer Zero anecdotes, GitHub issue volume, organic Slack DMs). Building anonymous-telemetry plumbing for a dataset we don't yet need is heavier than the answer it would give. See "Out of Scope" for the deferral rationale; if Day-N data becomes load-bearing, file a fresh spec then.
