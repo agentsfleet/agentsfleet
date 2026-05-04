@@ -127,13 +127,4 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "The request body triggered the approval gate. Awaiting human approval before execution."),
     e("UZ-FW-003", .forbidden, "Prompt injection detected",
         "A prompt injection pattern was detected in the request body. Request blocked."),
-    // ── TOOL / CREDENTIAL (execute path) ─────────────────────────────────────
-    e("UZ-CRED-004", .not_found, "Credential not found in vault",
-        "Credential ref not found. Add it with: zombiectl credential add {ref}"),
-    // ── PROXY (execute path) ──────────────────────────────────────────────────
-    e("UZ-PROXY-001", .bad_gateway, "Target API error",
-        "The target API returned an error or was unreachable. Check the target service status."),
-    // ── GATE (execute path) ───────────────────────────────────────────────────
-    e("UZ-GATE-005", .request_timeout, "Approval timed out",
-        "Approval timed out — action denied. Retry after approving in Slack, Discord, or the dashboard."),
 };

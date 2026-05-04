@@ -101,15 +101,11 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
         // Zombie telemetry
         .zombie_telemetry => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieTelemetry },
-        .internal_telemetry => .{ .middlewares = registry.admin(), .invoke = invoke.invokeInternalTelemetry },
 
         // External-agent memory API — workspace-scoped collection (GET/POST)
         // and per-key DELETE (idempotent 204).
         .workspace_zombie_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoriesCollection },
         .workspace_zombie_memory => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoryByKey },
-
-        // Execute proxy — zombie api_key auth in handler
-        .execute => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeExecute },
 
         // Integration grants
         .request_integration_grant => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeRequestGrant },
@@ -153,7 +149,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_messages = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .zombie_telemetry = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.internal_telemetry, &reg) != null);
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);
     try testing.expect(specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_webhook = "z1" }, &reg) != null);
@@ -164,7 +159,6 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .github_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_memories = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_memory = .{ .workspace_id = "ws1", .zombie_id = "z1", .memory_key = "k1" } }, &reg) != null);
-    try testing.expect(specFor(.execute, &reg) != null);
     try testing.expect(specFor(.{ .request_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .list_integration_grants = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .revoke_integration_grant = .{ .workspace_id = "ws1", .zombie_id = "z1", .grant_id = "g1" } }, &reg) != null);

@@ -135,7 +135,7 @@
     },
     {
       "name": "Telemetry",
-      "description": "Per-zombie execution telemetry and internal operator telemetry",
+      "description": "Per-zombie execution telemetry",
       "x-mintlify": {
         "navigation": "Telemetry"
       }
@@ -195,51 +195,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/internal/v1/telemetry": {
-      "get": {
-        "operationId": "internal_telemetry",
-        "summary": "Internal operator telemetry",
-        "description": "Admin-only platform health snapshot — in-flight request counts, queue depth, error rates. Requires the admin API key, not a user bearer token.",
-        "tags": [
-          "Telemetry"
-        ],
-        "responses": {
-          "200": {
-            "description": "Operator telemetry snapshot.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "api_in_flight_requests": {
-                      "type": "integer"
-                    },
-                    "api_max_in_flight_requests": {
-                      "type": "integer"
-                    },
-                    "queue_depth": {
-                      "type": "integer",
-                      "nullable": true
-                    },
-                    "queue_age_ms": {
-                      "type": "integer",
-                      "nullable": true
-                    }
-                  },
-                  "additionalProperties": true
-                }
-              }
-            }
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -652,125 +607,6 @@
             }
           },
           "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
-    "/v1/execute": {
-      "post": {
-        "operationId": "execute_tool",
-        "summary": "Execute a tool on behalf of an external agent",
-        "description": "Synchronous tool execution proxy. The external agent calls this endpoint with its API key (bearer), names a tool, and receives the tool's result inline. Used by LangGraph / CrewAI / Composio integrations.",
-        "tags": [
-          "Execute"
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "target",
-                  "method",
-                  "credential_ref"
-                ],
-                "properties": {
-                  "target": {
-                    "type": "string",
-                    "format": "uri",
-                    "description": "Target URL for the outbound call."
-                  },
-                  "method": {
-                    "type": "string",
-                    "enum": [
-                      "GET",
-                      "POST",
-                      "PUT",
-                      "PATCH",
-                      "DELETE"
-                    ],
-                    "description": "HTTP method to use against the target."
-                  },
-                  "credential_ref": {
-                    "type": "string",
-                    "description": "Named credential from the workspace vault to inject on the outbound request."
-                  },
-                  "body": {
-                    "type": "string",
-                    "nullable": true,
-                    "description": "Request body to forward to the target. Null for GET/DELETE."
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Tool executed; upstream status and body are returned plus UseZombie metadata.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "status",
-                    "body",
-                    "usezombie"
-                  ],
-                  "properties": {
-                    "status": {
-                      "type": "integer",
-                      "description": "HTTP status returned by the upstream target."
-                    },
-                    "body": {
-                      "type": "string",
-                      "description": "Response body returned by the upstream target (as string)."
-                    },
-                    "usezombie": {
-                      "type": "object",
-                      "required": [
-                        "action_id",
-                        "firewall_decision",
-                        "credential_injected",
-                        "approval_required"
-                      ],
-                      "properties": {
-                        "action_id": {
-                          "type": "string"
-                        },
-                        "firewall_decision": {
-                          "type": "string",
-                          "enum": [
-                            "allow",
-                            "deny",
-                            "approval_required"
-                          ]
-                        },
-                        "credential_injected": {
-                          "type": "boolean"
-                        },
-                        "approval_required": {
-                          "type": "boolean"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -4212,6 +4048,30 @@
       }
     },
     "schemas": {
+      "ReadyzBody": {
+        "type": "object",
+        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
+        "required": [
+          "ready",
+          "database",
+          "queue"
+        ],
+        "properties": {
+          "ready": {
+            "type": "boolean",
+            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
+          },
+          "database": {
+            "type": "boolean",
+            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
+          },
+          "queue": {
+            "type": "boolean",
+            "description": "True if the Redis queue backend is reachable"
+          }
+        },
+        "additionalProperties": false
+      },
       "ErrorBody": {
         "type": "object",
         "description": "RFC 7807 problem detail error response (application/problem+json)",
@@ -4249,30 +4109,6 @@
             "description": "Correlation ID for this request"
           }
         }
-      },
-      "ReadyzBody": {
-        "type": "object",
-        "description": "Response body for GET /readyz. Identical shape for both 200 (healthy) and 503 (degraded) responses — only the boolean values differ.",
-        "required": [
-          "ready",
-          "database",
-          "queue"
-        ],
-        "properties": {
-          "ready": {
-            "type": "boolean",
-            "description": "Overall readiness — true only when every dependency is healthy. Mirrors the HTTP status (true ↔ 200, false ↔ 503)."
-          },
-          "database": {
-            "type": "boolean",
-            "description": "True if the PostgreSQL connection pool is reachable and a trivial query succeeds"
-          },
-          "queue": {
-            "type": "boolean",
-            "description": "True if the Redis queue backend is reachable"
-          }
-        },
-        "additionalProperties": false
       },
       "PlatformKey": {
         "type": "object",

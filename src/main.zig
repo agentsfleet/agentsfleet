@@ -227,10 +227,7 @@ test {
     _ = @import("http/handlers/tenant_workspaces.zig");
     _ = @import("http/handlers/tenant_workspaces_integration_test.zig");
     _ = @import("http/router_test.zig");
-    // M9_001: Integration grant + execute API
-    _ = @import("http/handlers/actions/execute.zig");
-    _ = @import("http/handlers/proxy/outbound.zig");
-    _ = @import("http/handlers/proxy/outbound_test.zig");
+    // Integration grant API
     _ = @import("http/handlers/integration_grants/handler.zig");
     _ = @import("http/handlers/api_keys/agent.zig");
     _ = @import("http/handlers/api_keys/tenant.zig");

@@ -61,13 +61,6 @@
       "path": "/v1/workspaces/{workspace_id}",
       "description": "Pause or unpause admission of new work for a workspace.",
       "actionClass": "sensitive"
-    },
-    {
-      "operationId": "execute_tool",
-      "method": "POST",
-      "path": "/v1/execute",
-      "description": "Synchronous tool execution proxy. External agents (LangGraph, CrewAI, Composio) call this with their API key and a tool name; the tool result returns inline.",
-      "actionClass": "sensitive"
     }
   ],
   "authentication": {
@@ -81,7 +74,7 @@
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],
-    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook", "pause_workspace", "execute_tool"],
+    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook", "pause_workspace"],
     "critical": []
   }
 }
