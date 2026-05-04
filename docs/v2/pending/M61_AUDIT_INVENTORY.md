@@ -91,83 +91,13 @@ Decision points that block auto-execution:
 
 ---
 
-## Eval — production-only orphan script
+## Eval — production-only orphan walk
 
-The shared eval the four specs reference is the script below. Place at `scripts/audit-orphan-prod.py`. After all four specs land, this script must print zero entries.
+After all four M61_* specs land, the production-only `@import` closure under `src/` must contain zero un-exempt files. The walk: starting from `src/main.zig` and `src/executor/main.zig`, transitively follow `@import("...")` edges **after stripping every `test "..." { ... }` / `test { ... }` block**, then list any `*.zig` under `src/` outside the closure (excluding `vendor/`, `third_party/`, `.zig-cache/`, `*_test.zig`, `test_*.zig`, `*_harness*.zig`, `*fixture*.zig`, `src/zbench_*.zig`, `src/auth/tests.zig`).
 
-```python
-#!/usr/bin/env python3
-"""Production-only @import closure for Zig — emits any *.zig under src/ that is
-not transitively imported from src/main.zig or src/executor/main.zig OUTSIDE
-their `test "..." { ... }` / `test { ... }` blocks.
+A Python codification (`scripts/audit-orphan-prod.py`) was authored during M61_001 EXECUTE and removed in the same PR — codecov/patch flagged the script as untested (0% diff coverage, 90% target), and a CI gate would hard-fail until M61_002 lands and clears the remaining 11 entries. The last M61_* spec to land owns shipping a tested codification (`audit-orphan-prod.py` + `audit-orphan-prod.test.py`) wired into `make lint` or CI.
 
-Excluded from candidacy: vendor/, third_party/, .zig-cache/, *_test.zig,
-test_*.zig, *_harness*.zig, *fixture*.zig, src/zbench_*.zig, src/auth/tests.zig.
-"""
-import os, re, sys
-ROOT = 'src'
-ENTRIES = ['src/main.zig', 'src/executor/main.zig']
-
-all_files = set()
-for dp, dn, fn in os.walk(ROOT):
-    if '/vendor' in dp or '/.zig-cache' in dp or '/third_party' in dp: continue
-    for f in fn:
-        if f.endswith('.zig'): all_files.add(os.path.join(dp, f))
-
-imp_re = re.compile(r'@import\("([^"]+\.zig)"\)')
-
-def strip_test_blocks(s: str) -> str:
-    """Remove top-level `test "..." {...}` and `test {...}` blocks (depth-1 brace match)."""
-    out, i = [], 0
-    while i < len(s):
-        m = re.match(r'\btest\b\s*("[^"]*"\s*)?\{', s[i:])
-        if m:
-            j = i + m.end(); depth = 1
-            while j < len(s) and depth > 0:
-                if s[j] == '{': depth += 1
-                elif s[j] == '}': depth -= 1
-                j += 1
-            i = j; continue
-        out.append(s[i]); i += 1
-    return ''.join(out)
-
-def imports(path):
-    try:
-        src = open(path).read()
-    except OSError:
-        return []
-    src = strip_test_blocks(src)
-    base = os.path.dirname(path)
-    out = []
-    for m in imp_re.findall(src):
-        cand = os.path.normpath(os.path.join(base, m))
-        if cand in all_files: out.append(cand)
-    return out
-
-seen = set(ENTRIES); stack = list(ENTRIES)
-while stack:
-    f = stack.pop()
-    for n in imports(f):
-        if n not in seen:
-            seen.add(n); stack.append(n)
-
-EXEMPT = lambda f: (
-    f.endswith('_test.zig')
-    or '/test_' in f
-    or f.endswith('test_harness.zig')
-    or f.endswith('test_port.zig')
-    or 'fixture' in f.lower()
-    or 'harness' in f.lower()
-    or f.startswith('src/zbench')
-    or f == 'src/auth/tests.zig'
-)
-
-orphans = sorted(f for f in all_files - seen if not EXEMPT(f))
-for o in orphans: print(o)
-sys.exit(1 if orphans else 0)
-```
-
-(Lands as part of M61_001 §Eval Commands so all four specs share the eval.)
+Until then run the eval by hand or via a one-shot Python invocation matching the algorithm above.
 
 ---
 

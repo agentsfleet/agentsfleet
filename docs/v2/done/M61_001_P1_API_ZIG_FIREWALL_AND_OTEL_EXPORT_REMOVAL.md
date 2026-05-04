@@ -131,7 +131,7 @@ N/A — no public interface (HTTP, CLI, library, RPC) changes. No symbol in the 
 |------|---------|-------|
 | Existing OTEL logs/traces tests | Production OTEL paths still wired and emitting | `src/observability/otel_logs_test.zig`, `src/observability/otel_traces_test.zig` (untouched by this spec). |
 | Existing zombie event_loop integration tests | Zombie execution path unchanged after firewall deletion | `src/zombie/event_loop_*_test.zig` (untouched). |
-| Eval E1 in CI | No production-orphan regressions | Adds a CI check via `scripts/audit-orphan-prod.py` (see §Eval Commands). |
+| Eval E1 (manual `rg`) | No production-orphan regressions vs the baseline 19 | Run on demand per §Eval Commands. CI wiring deferred — see Discovery. |
 
 No new test code lands with this spec — every deletion is matched by deleting the test that exercised it. The remaining test surface is unchanged.
 
@@ -139,15 +139,11 @@ No new test code lands with this spec — every deletion is matched by deleting 
 
 ## Eval Commands
 
-**E1 — production-only orphan eval (codify in `scripts/audit-orphan-prod.py`):**
+**E1 — production-only orphan eval (manual `rg` workflow):**
 
-```bash
-python3 scripts/audit-orphan-prod.py
-```
+A Python codification of this lived briefly at `scripts/audit-orphan-prod.py` during EXECUTE; it was removed before merge (see Discovery — codecov diff-coverage gate flagged it as untested, and a CI gate would fire-fail until M61_002 lands). Until a tested codification ships, run the eval by hand: walk `@import("...")` from `src/main.zig` and `src/executor/main.zig` ignoring `test "..." { ... }` / `test { ... }` blocks, and grep any `*.zig` under `src/` (excluding `vendor/`, `third_party/`, `.zig-cache/`, `*_test.zig`, `test_*.zig`, fixtures, `zbench_*.zig`, `auth/tests.zig`) outside the closure. Empty output = pass.
 
-The script walks `@import("...")` from `src/main.zig` and `src/executor/main.zig`, **stripping `test "…" { ... }` and `test { ... }` blocks** (depth-1 brace match) before extracting imports, and prints any `*.zig` under `src/` (excluding `vendor/`, `third_party/`, `.zig-cache/`, `*_test.zig`, `test_*.zig`, fixtures, `zbench_*.zig`, `auth/tests.zig`) not in the closure. Empty output = pass.
-
-The audit on May 04, 2026 produced 19 entries from this script; this spec retires 8 of them (firewall family + otel-export trio). M61_002 retires the rest.
+The May 04, 2026 audit baseline was 19 entries; this spec retires 8 of them (firewall family + otel-export trio). M61_002 retires the rest.
 
 **E2 — firewall-name sweep:**
 
@@ -167,7 +163,7 @@ Reserve this section for surprises: a callsite the audit missed, a sibling that 
 
 - **May 04, 2026** — `src/errors/error_entries_runtime.zig:48,122-128` + `src/errors/error_registry.zig:175,205-207` + `src/errors/error_entries.zig:240` — Cascade orphans uncovered by firewall delete. Four error registry entries (`UZ-EXEC-008`, `UZ-FW-001/002/003`) and three pub constants (`ERR_FW_DOMAIN_BLOCKED`, `ERR_FW_APPROVAL_REQUIRED`, `ERR_FW_INJECTION_DETECTED`) had zero consumers in `src/`, public docs (`docs.usezombie.com` mdx), and JS/TS — verified via `rg`. Decision: remove with the engine per RULE ORP. Comment in `error_entries.zig` listing error families also dropped the now-stale "firewall" mention. No public-API impact: the codes were never reachable in production responses (the engine that returns them was never wired).
 - **May 04, 2026** — `src/observability/metrics_counters.zig:50-52,79-81,123-131,167-169` + `metrics_render.zig:114-116` + `metrics.zig:29-31,100-112` — Cascade orphans from OTEL push-export delete. Three Prometheus metrics (`zombie_otel_export_total`, `zombie_otel_export_failed_total`, `zombie_otel_last_success_at_ms`), the inc/set helpers (`incOtelExportTotal`, `incOtelExportFailed`, `setOtelLastSuccessAtMs`), the Snapshot fields, the atomic globals, and the integration test that asserted those metric names — all sole consumers were inside the deleted `otel_export.zig`. Decision: remove with the engine per RULE ORP. Side effect: `/metrics` Prometheus output drops three lines on a fresh deployment; harmless because nothing scraped them (the only emitter was unwired).
-- **May 04, 2026** — `scripts/audit-orphan-prod.py` — Initial run after delete: 11 remaining orphans (19 pre-delete − 8 retired here = 11). All are M61_002 territory (10 entries) plus `src/crypto/hmac_sig.zig` (false-positive — reachable via `build.zig`'s `add_module("hmac_sig", ...)`, which the @import-walk doesn't model). Zero new orphans introduced by this spec; invariant #1 satisfied. CI wiring deferred to the last M61_* spec to land — wiring as a hard gate now would block CI until M61_002 ships.
+- **May 04, 2026** — `scripts/audit-orphan-prod.py` (authored, then removed in same PR) — Initial run after delete confirmed 11 remaining orphans (19 baseline − 8 retired here = 11). All are M61_002 territory (10 entries) plus `src/crypto/hmac_sig.zig` (false-positive — reachable via `build.zig`'s `add_module("hmac_sig", ...)`, which the @import-walk doesn't model). Zero new orphans introduced by this spec; invariant #1 satisfied. **Script removed before merge:** codecov/patch gate failed (0% diff hit, 90% target — no tests authored for the script in this PR), and a CI gate would hard-fail until M61_002 lands and clears the remaining 11. The eval lives as a manual `rg`/Python one-liner until M61_002 (or a follow-up) ships a tested codification.
 - **May 04, 2026** — `src/main.zig` — Spec body said "drop five `@import("observability/otel_(export|histogram|json|...)*.zig")` lines from src/main.zig". Reality: only **one** line in `src/main.zig` (line 176, `otel_export.zig`); the other four files chained via `otel_export.zig`'s own imports (lines 12-13 + lines 328-330 test bridge) and `otel_histogram.zig:262`. Net effect on the test count is identical — files dying together — but the spec's count was off. Noted for spec hygiene; no action needed.
 
 ---
