@@ -17,7 +17,7 @@ describe("AnimatedTerminal — SSR", () => {
       <AnimatedTerminal
         commands={[
           "zombiectl login",
-          "zombiectl zombie install --template lead-collector",
+          "zombiectl zombie install --template platform-ops",
         ]}
       />,
     );

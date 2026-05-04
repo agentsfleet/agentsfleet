@@ -14,11 +14,11 @@ const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-000000000099";
 const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000100";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"lead-collector","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"platform-ops","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---
-    \\name: lead-collector
+    \\name: platform-ops
     \\---
     \\
     \\You are a lead collector agent. Reply to every inbound email with a friendly greeting.
@@ -36,7 +36,7 @@ test "integration M15_002: recordDeliverError increments failed counter + PostHo
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);
@@ -82,7 +82,7 @@ test "integration M15_002 3.2: event_loop_emits_completion updates all 4 counter
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);
@@ -154,7 +154,7 @@ test "integration M15_002: null telemetry in recordDeliverError does not panic" 
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);

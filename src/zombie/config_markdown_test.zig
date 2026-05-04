@@ -12,7 +12,7 @@ test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
     const alloc = std.testing.allocator;
     const trigger_md =
         \\---
-        \\name: lead-collector
+        \\name: platform-ops
         \\x-usezombie:
         \\  trigger:
         \\    type: webhook
@@ -31,7 +31,7 @@ test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
     ;
     var cfg = try parseZombieFromTriggerMarkdown(alloc, trigger_md);
     defer cfg.deinit(alloc);
-    try std.testing.expectEqualStrings("lead-collector", cfg.name);
+    try std.testing.expectEqualStrings("platform-ops", cfg.name);
     try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
     try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
     try std.testing.expectEqualStrings("lead-enricher", cfg.chain[0]);
@@ -56,7 +56,7 @@ test "parseZombieFromTriggerMarkdown: unterminated frontmatter returns error" {
 test "extractZombieInstructions: returns body after frontmatter" {
     const md =
         \\---
-        \\name: lead-collector
+        \\name: platform-ops
         \\---
         \\
         \\You are a lead collector.

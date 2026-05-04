@@ -8,7 +8,7 @@ const ZombieConfigError = config_types.ZombieConfigError;
 test "parseZombieConfig: valid config parses all fields" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"lead-collector",
+        \\{"name":"platform-ops",
         \\ "x-usezombie":{
         \\   "trigger":{"type":"webhook","source":"agentmail","event":"message.received"},
         \\   "tools":["agentmail"],"credentials":["agentmail_api_key"],
@@ -18,7 +18,7 @@ test "parseZombieConfig: valid config parses all fields" {
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
-    try std.testing.expectEqualStrings("lead-collector", cfg.name);
+    try std.testing.expectEqualStrings("platform-ops", cfg.name);
     try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
     try std.testing.expectApproxEqAbs(@as(f64, 5.0), cfg.budget.daily_dollars, 0.001);
     try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
@@ -47,14 +47,14 @@ test "parseZombieConfig: skill field parsed from runtime block" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"enricher",
-        \\ "x-usezombie":{"trigger":{"type":"chain","source":"lead-collector"},
+        \\ "x-usezombie":{"trigger":{"type":"chain","source":"platform-ops"},
         \\   "tools":["agentmail"],"skill":"clawhub://queen/lead-hunter@1.0.1",
         \\   "budget":{"daily_dollars":2.0}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("clawhub://queen/lead-hunter@1.0.1", cfg.skill.?);
-    try std.testing.expectEqualStrings("lead-collector", cfg.trigger.chain.source);
+    try std.testing.expectEqualStrings("platform-ops", cfg.trigger.chain.source);
 }
 
 test "parseZombieConfig: cron trigger + empty chain defaults" {
