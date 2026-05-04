@@ -350,6 +350,38 @@ describe("placeholder pages", () => {
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
+  it("events page redirects to /sign-in when no token", async () => {
+    getServerTokenMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/events/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("events page calls notFound when no active workspace", async () => {
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/events/page");
+    await expect(Page()).rejects.toThrow("notFound");
+  });
+
+  it("events page renders Workspace events section with EventsList", async () => {
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
+    listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+    const { default: Page } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Events");
+    expect(m).toContain("Workspace events");
+  });
+
+  it("events page falls back to empty page when listWorkspaceEvents errors", async () => {
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
+    listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
+    const { default: Page } = await import("../app/(dashboard)/events/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("Workspace events");
+  });
+
   it("settings page renders workspace info and userId when authenticated", async () => {
     getServerAuthMock.mockResolvedValue({ token: "tkn", userId: "usr_42" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
