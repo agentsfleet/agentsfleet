@@ -17,9 +17,9 @@ DO $$
 DECLARE
     r RECORD;
 BEGIN
-    FOR r IN 
-        SELECT tablename 
-        FROM pg_tables 
+    FOR r IN
+        SELECT tablename
+        FROM pg_tables
         WHERE schemaname = 'public'
         AND tablename NOT LIKE 'pg_%'
         AND tablename NOT LIKE 'sql_%'
@@ -28,7 +28,11 @@ BEGIN
     END LOOP;
 END $$;
 
--- Verification - count remaining user objects
+-- Verification - count remaining user objects.
+-- Filters must match between schema_count and table_count, otherwise
+-- PlanetScale-managed schemas (pscale_extensions and friends) get
+-- excluded from one count but not the other and the check trips on a
+-- successful teardown.
 DO $$
 DECLARE
     schema_count INT;
@@ -39,13 +43,15 @@ BEGIN
     WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public')
     AND schema_name NOT LIKE 'pg_%'
     AND schema_name NOT LIKE 'pscale%';
-    
+
     SELECT COUNT(*) INTO table_count
     FROM information_schema.tables
-    WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public');
-    
+    WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public')
+    AND table_schema NOT LIKE 'pg_%'
+    AND table_schema NOT LIKE 'pscale%';
+
     RAISE NOTICE 'Teardown complete: % user schemas remain, % user tables remain', schema_count, table_count;
-    
+
     IF schema_count = 0 AND table_count = 0 THEN
         RAISE NOTICE 'SUCCESS: All user schemas and tables have been removed';
     ELSE
