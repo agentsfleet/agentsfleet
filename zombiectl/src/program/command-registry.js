@@ -4,7 +4,6 @@ export function registerProgramCommands(handlers) {
     logout: handlers.logout,
     workspace: handlers.workspace,
     doctor: handlers.doctor,
-    admin: handlers.admin,
     agent: handlers.agent,
     grant: handlers.grant,
     tenant: handlers.tenant,

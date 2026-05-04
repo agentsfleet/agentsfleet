@@ -63,8 +63,8 @@ describe("Agents", () => {
     expect(screen.getByText("Steer / chat")).toBeInTheDocument();
     expect(screen.getByText("Stream events")).toBeInTheDocument();
     expect(screen.getByText("Ingest webhook")).toBeInTheDocument();
-    expect(screen.getByText("Pause workspace")).toBeInTheDocument();
     expect(screen.queryByText("Execute tool")).not.toBeInTheDocument();
+    expect(screen.queryByText("Pause workspace")).not.toBeInTheDocument();
   });
 
   it("renders HTTP methods", () => {
@@ -74,7 +74,7 @@ describe("Agents", () => {
     const patches = screen.getAllByText("PATCH");
     expect(posts.length).toBeGreaterThanOrEqual(2);
     expect(gets.length).toBeGreaterThanOrEqual(1);
-    expect(patches.length).toBeGreaterThanOrEqual(3);
+    expect(patches.length).toBeGreaterThanOrEqual(2);
   });
 
   it("renders webhook example", () => {

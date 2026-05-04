@@ -1,3 +1,9 @@
+//! Admin platform LLM key management — operational/bootstrap-only surface.
+//! Primary callers are humans/agents driving environment provisioning via
+//! `playbooks/012_usezombie_admin_bootstrap/001_playbook.md` (steps 3 + 8 +
+//! rollback step 4). No first-party UI/CLI consumes these routes; if you add
+//! one, drop the playbook reference.
+
 const std = @import("std");
 const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;

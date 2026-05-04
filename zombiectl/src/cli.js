@@ -8,7 +8,6 @@ import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
 import { commandGrant as commandGrantModule } from "./commands/grant.js";
-import { commandAdmin as commandAdminModule } from "./commands/admin.js";
 import { commandTenant as commandTenantModule } from "./commands/tenant.js";
 import { commandBilling as commandBillingModule } from "./commands/billing.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
@@ -147,15 +146,6 @@ export async function runCli(argv, io = {}) {
       ui,
       printJson,
       printTable,
-      writeLine,
-    }),
-    admin: (routeArgs) => commandAdminModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printSection,
       writeLine,
     }),
     // Tenant-scoped: provider posture (get/set/reset), billing snapshot.

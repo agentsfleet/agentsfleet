@@ -52,12 +52,10 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
         // Workspace lifecycle
         .create_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCreateWorkspace },
-        .patch_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchWorkspace },
         // Tenant billing snapshot
         .get_tenant_billing => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBilling },
         .get_tenant_billing_charges => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantBillingCharges },
         .list_tenant_workspaces => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeListTenantWorkspaces },
-        .get_tenant_doctor => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeGetTenantDoctor },
         .tenant_provider => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeTenantProvider },
 
         // Admin platform keys (admin role required)
@@ -99,9 +97,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Dashboard endpoints — kill switch, per-zombie billing
         .workspace_zombie_current_run => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteCurrentRun },
 
-        // Zombie telemetry
-        .zombie_telemetry => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieTelemetry },
-
         // External-agent memory API — workspace-scoped collection (GET/POST)
         // and per-key DELETE (idempotent 204).
         .workspace_zombie_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoriesCollection },
@@ -141,14 +136,12 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .poll_auth_session = "s1" }, &reg) != null);
     try testing.expect(specFor(.{ .patch_auth_session = "s1" }, &reg) != null);
     try testing.expect(specFor(.create_workspace, &reg) != null);
-    try testing.expect(specFor(.{ .patch_workspace = "ws1" }, &reg) != null);
     try testing.expect(specFor(.get_tenant_billing, &reg) != null);
     try testing.expect(specFor(.get_tenant_billing_charges, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombies = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .patch_workspace_zombie = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_credentials = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_zombie_messages = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
-    try testing.expect(specFor(.{ .zombie_telemetry = .{ .workspace_id = "ws1", .zombie_id = "z1" } }, &reg) != null);
     try testing.expect(specFor(.admin_platform_keys, &reg) != null);
     try testing.expect(specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_webhook = "z1" }, &reg) != null);

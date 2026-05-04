@@ -25,7 +25,7 @@ tags:
   x-mintlify:
     navigation: Workspaces
 - name: Tenant
-  description: Tenant-scoped surfaces — provider posture, doctor, and tenant-level configuration
+  description: Tenant-scoped surfaces — provider posture and tenant-level configuration
   x-mintlify:
     navigation: Tenant
 - name: Runs
@@ -124,8 +124,6 @@ paths:
     $ref: ./paths/billing.yaml#/~1v1~1tenants~1me~1billing~1charges
   /v1/tenants/me/workspaces:
     $ref: ./paths/tenant-workspaces.yaml#/~1v1~1tenants~1me~1workspaces
-  /v1/tenants/me/diagnostics:
-    $ref: ./paths/tenant-diagnostics.yaml#/~1v1~1tenants~1me~1diagnostics
   /v1/tenants/me/provider:
     $ref: ./paths/tenant-provider.yaml#/~1v1~1tenants~1me~1provider
   /v1/workspaces/{workspace_id}/credentials:
@@ -150,8 +148,6 @@ paths:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-grants~1{grant_id}
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests:
     $ref: ./paths/integration-grants.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1integration-requests
-  /v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry:
-    $ref: ./paths/telemetry.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1telemetry
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages:
     $ref: ./paths/zombies.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1messages
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events:
@@ -170,8 +166,6 @@ paths:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:approve
   /v1/workspaces/{workspace_id}/approvals/{gate_id}:deny:
     $ref: ./paths/approvals.yaml#/~1v1~1workspaces~1{workspace_id}~1approvals~1{gate_id}:deny
-  /v1/workspaces/{workspace_id}:
-    $ref: ./paths/workspaces.yaml#/~1v1~1workspaces~1{workspace_id}
 components:
   securitySchemes:
     $ref: ./components/security.yaml#/components/securitySchemes

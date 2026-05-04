@@ -44,7 +44,7 @@
     },
     {
       "name": "Tenant",
-      "description": "Tenant-scoped surfaces — provider posture, doctor, and tenant-level configuration",
+      "description": "Tenant-scoped surfaces — provider posture and tenant-level configuration",
       "x-mintlify": {
         "navigation": "Tenant"
       }
@@ -1803,85 +1803,6 @@
         }
       }
     },
-    "/v1/tenants/me/diagnostics": {
-      "get": {
-        "operationId": "get_tenant_doctor",
-        "summary": "Tenant doctor — provider posture",
-        "description": "Returns the resolver's view of the tenant's LLM provider posture as a `tenant_provider` block. Covers both platform-managed (synthesised default OR explicit reset) and BYOK modes. The api_key is never serialised. User-fixable BYOK errors (credential row missing, malformed credential JSON) surface as an `error_label` field rather than a 5xx so the client doctor can report them as actionable findings; operator-side errors (platform key missing, tenant has no workspace) still 5xx.\n",
-        "tags": [
-          "Tenant"
-        ],
-        "responses": {
-          "200": {
-            "description": "Tenant provider posture",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "tenant_provider"
-                  ],
-                  "properties": {
-                    "tenant_provider": {
-                      "type": "object",
-                      "required": [
-                        "mode",
-                        "provider",
-                        "model",
-                        "context_cap_tokens",
-                        "credential_ref",
-                        "error_label"
-                      ],
-                      "properties": {
-                        "mode": {
-                          "type": "string",
-                          "enum": [
-                            "platform",
-                            "byok"
-                          ],
-                          "description": "Active posture for the tenant."
-                        },
-                        "provider": {
-                          "type": "string",
-                          "description": "Provider name (e.g. fireworks, anthropic, openai). Under platform mode, read from the active core.platform_llm_keys row.\n"
-                        },
-                        "model": {
-                          "type": "string",
-                          "description": "Resolved model id (e.g. accounts/fireworks/models/kimi-k2.6)."
-                        },
-                        "context_cap_tokens": {
-                          "type": "integer",
-                          "format": "int64",
-                          "description": "Resolved context window cap in tokens."
-                        },
-                        "credential_ref": {
-                          "type": "string",
-                          "nullable": true,
-                          "description": "User-named vault key holding the BYOK credential. Null under platform mode."
-                        },
-                        "error_label": {
-                          "type": "string",
-                          "nullable": true,
-                          "enum": [
-                            "credential_missing",
-                            "credential_data_malformed",
-                            null
-                          ],
-                          "description": "Set when BYOK resolution failed at a user-fixable point — credential row missing from vault, or stored JSON missing required fields. Null on success.\n"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/tenants/me/provider": {
       "get": {
         "operationId": "get_tenant_provider",
@@ -3175,63 +3096,6 @@
         }
       }
     },
-    "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry": {
-      "get": {
-        "operationId": "get_zombie_telemetry",
-        "summary": "Get per-zombie telemetry",
-        "description": "Returns execution telemetry for a specific zombie — last activity, event count, budget consumed, error counts.",
-        "tags": [
-          "Telemetry"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the workspace.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          },
-          {
-            "name": "zombie_id",
-            "in": "path",
-            "required": true,
-            "description": "UUIDv7 of the zombie.",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "description": "Telemetry payload (shape evolves with operator needs)."
-                }
-              }
-            }
-          },
-          "400": {
-            "$ref": "#/components/responses/Error"
-          },
-          "401": {
-            "$ref": "#/components/responses/Error"
-          },
-          "403": {
-            "$ref": "#/components/responses/Error"
-          },
-          "404": {
-            "$ref": "#/components/responses/Error"
-          }
-        }
-      }
-    },
     "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages": {
       "post": {
         "operationId": "post_zombie_message",
@@ -3933,94 +3797,6 @@
                 }
               }
             }
-          }
-        }
-      }
-    },
-    "/v1/workspaces/{workspace_id}": {
-      "patch": {
-        "operationId": "patch_workspace",
-        "summary": "Partial update of a workspace",
-        "description": "Partial update of workspace fields. Today the only patchable surface is the pause/unpause toggle (`pause`, `reason`, `version`); future fields land on the same endpoint. Uses optimistic concurrency via the `version` field — a stale client gets 404.",
-        "tags": [
-          "Workspaces"
-        ],
-        "parameters": [
-          {
-            "name": "workspace_id",
-            "in": "path",
-            "required": true,
-            "description": "Workspace identifier",
-            "schema": {
-              "type": "string",
-              "format": "uuid"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "pause",
-                  "reason",
-                  "version"
-                ],
-                "properties": {
-                  "pause": {
-                    "type": "boolean",
-                    "description": "True to pause, false to unpause"
-                  },
-                  "reason": {
-                    "type": "string",
-                    "description": "Human-readable reason for the state change"
-                  },
-                  "version": {
-                    "type": "integer",
-                    "description": "Optimistic concurrency version — must match current workspace version"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Workspace updated (pause state changed when `pause` field present)",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "workspace_id",
-                    "paused",
-                    "version",
-                    "request_id"
-                  ],
-                  "properties": {
-                    "workspace_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    },
-                    "paused": {
-                      "type": "boolean"
-                    },
-                    "version": {
-                      "type": "integer"
-                    },
-                    "request_id": {
-                      "type": "string",
-                      "format": "uuid"
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "default": {
-            "$ref": "#/components/responses/Error"
           }
         }
       }

@@ -10,9 +10,6 @@
 // See `docs/REST_API_DESIGN_GUIDELINES.md` §7 (Matcher style — segment-based).
 
 const std = @import("std");
-const router = @import("router.zig");
-
-pub const ZombieTelemetryRoute = router.ZombieTelemetryRoute;
 
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
@@ -107,14 +104,6 @@ pub fn matchAdminPlatformKey(p: Path) ?[]const u8 {
 pub fn matchTenantApiKeyById(p: Path) ?[]const u8 {
     if (p.segs.len != 2) return null;
     if (!p.eq(0, "api-keys")) return null;
-    return p.param(1);
-}
-
-// ── /workspaces/{workspace_id} ─────────────────────────────────────────────
-
-pub fn matchWorkspace(p: Path) ?[]const u8 {
-    if (p.segs.len != 2) return null;
-    if (!p.eq(0, "workspaces")) return null;
     return p.param(1);
 }
 

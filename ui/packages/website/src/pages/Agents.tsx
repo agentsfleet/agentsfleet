@@ -58,7 +58,6 @@ const apiOps = [
   { action: "Steer / chat", method: "POST", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/messages", purpose: "Send a steer message to an agent" },
   { action: "Stream events", method: "GET", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/events/stream", purpose: "Server-Sent Events stream of new events" },
   { action: "Ingest webhook", method: "POST", path: "/v1/webhooks/:zombie_id", purpose: "Deliver an inbound event to an agent" },
-  { action: "Pause workspace", method: "PATCH", path: "/v1/workspaces/:workspace_id", purpose: "Pause / unpause admission of new work (body: { pause, reason, version })" },
 ];
 
 const webhookPayload = `{

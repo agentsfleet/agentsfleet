@@ -3,7 +3,6 @@ const routes = [
   { key: "logout", match: (cmd) => cmd === "logout" },
   { key: "workspace", match: (cmd) => cmd === "workspace" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
-  { key: "admin", match: (cmd) => cmd === "admin" },
   // External agent key management + integration grants
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "grant", match: (cmd) => cmd === "grant" },
