@@ -3,7 +3,7 @@ export default function Terms() {
     <section className="stack legal-page route-fade">
       <p className="eyebrow">legal</p>
       <h1>Terms of Service</h1>
-      <p className="lead">Last updated: March 6, 2026</p>
+      <p className="lead">Last updated: May 4, 2026</p>
 
       <h2>1. Acceptance</h2>
       <p>

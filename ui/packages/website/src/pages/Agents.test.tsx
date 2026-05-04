@@ -44,7 +44,8 @@ describe("Agents", () => {
     const block = screen.getByLabelText(/bootstrap commands/i);
     expect(block).toBeInTheDocument();
     expect(block).toHaveTextContent(/npm install -g @usezombie\/zombiectl/);
-    expect(block).toHaveTextContent(/zombiectl auth login/);
+    expect(block).toHaveTextContent(/zombiectl login/);
+    expect(block).toHaveTextContent(/npx skills add usezombie\/usezombie/);
     expect(block).toHaveTextContent(/usezombie-install-platform-ops/);
   });
 
@@ -85,7 +86,7 @@ describe("Agents", () => {
   it("renders webhook example", () => {
     renderAgents();
     expect(screen.getByText("Webhook Ingest Example")).toBeInTheDocument();
-    expect(screen.getByText(/workflow_run\.failed/)).toBeInTheDocument();
+    expect(screen.getByText(/deploy\.failed/)).toBeInTheDocument();
   });
 
   it("renders safety limits cards", () => {

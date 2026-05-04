@@ -136,7 +136,7 @@ test("workspace show prints current workspace details", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "ws_a",
-      items: [{ workspace_id: "ws_a", repo_url: "https://example.com/a", default_branch: "main", created_at: 1 }],
+      items: [{ workspace_id: "ws_a", name: "jolly-harbor-482", created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -148,8 +148,7 @@ test("workspace show prints current workspace details", async () => {
     assert.equal(code, 0);
     const text = out.read();
     assert.ok(text.includes("ws_a"));
-    assert.ok(text.includes("https://example.com/a"));
-    assert.ok(text.includes("main"));
+    assert.ok(text.includes("jolly-harbor-482"));
   });
 });
 
@@ -157,7 +156,7 @@ test("workspace show --json returns the full detail object", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "ws_a",
-      items: [{ workspace_id: "ws_a", repo_url: "r", default_branch: "main", created_at: 1 }],
+      items: [{ workspace_id: "ws_a", name: "jolly-harbor-482", created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -169,8 +168,7 @@ test("workspace show --json returns the full detail object", async () => {
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.workspace_id, "ws_a");
     assert.equal(parsed.active, true);
-    assert.equal(parsed.repo_url, "r");
-    assert.equal(parsed.default_branch, "main");
+    assert.equal(parsed.name, "jolly-harbor-482");
   });
 });
 

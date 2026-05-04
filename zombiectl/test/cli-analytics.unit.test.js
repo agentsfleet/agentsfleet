@@ -157,13 +157,12 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         text: async () =>
           JSON.stringify({
             workspace_id: "ws_123456789abc",
-            repo_url: "https://github.com/acme/repo",
-            default_branch: "main",
+            name: "jolly-harbor-482",
             request_id: "req_workspace",
           }),
       });
 
-      const code = await runCli(["workspace", "add", "https://github.com/acme/repo"], {
+      const code = await runCli(["workspace", "add"], {
         env: { ...process.env, NO_COLOR: "1", BROWSER: "false", ZOMBIE_TOKEN: clerkToken },
         stdout: stdout.stream,
         stderr: stderr.stream,
@@ -192,8 +191,6 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
           command: "workspace",
           exit_code: "0",
           workspace_id: "ws_123456789abc",
-          repo_url: "https://github.com/acme/repo",
-          branch: "main",
         },
       });
       assert.deepEqual(events[2], {
@@ -203,8 +200,6 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         properties: {
           command: "workspace",
           workspace_id: "ws_123456789abc",
-          repo_url: "https://github.com/acme/repo",
-          branch: "main",
         },
       });
       assert.deepEqual(events[3], {
@@ -214,8 +209,6 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         properties: {
           command: "workspace",
           workspace_id: "ws_123456789abc",
-          repo_url: "https://github.com/acme/repo",
-          branch: "main",
         },
       });
     });

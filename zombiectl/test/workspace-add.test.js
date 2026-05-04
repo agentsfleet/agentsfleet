@@ -52,7 +52,7 @@ test("workspace add does not persist local state when API create fails", async (
       };
     };
 
-    const code = await runCli(["workspace", "add", "https://github.com/acme/repo"], {
+    const code = await runCli(["workspace", "add", "acme-prod"], {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig", BROWSER: "false" },
       stdout: out.stream,
       stderr: err.stream,
@@ -79,13 +79,12 @@ test("workspace add persists backend workspace_id in json mode", async () => {
       status: 201,
       text: async () => JSON.stringify({
         workspace_id: "ws_123456789abc",
-        repo_url: "https://github.com/acme/repo",
-        default_branch: "main",
+        name: "jolly-harbor-482",
         request_id: "req_123",
       }),
     });
 
-    const code = await runCli(["--json", "workspace", "add", "https://github.com/acme/repo"], {
+    const code = await runCli(["--json", "workspace", "add"], {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,
       stderr: err.stream,
@@ -95,7 +94,7 @@ test("workspace add persists backend workspace_id in json mode", async () => {
     assert.equal(code, 0);
     const parsed = JSON.parse(out.read());
     assert.equal(parsed.workspace_id, "ws_123456789abc");
-    assert.equal(parsed.repo_url, "https://github.com/acme/repo");
+    assert.equal(parsed.name, "jolly-harbor-482");
 
     const workspaces = await loadWorkspaces();
     assert.equal(workspaces.current_workspace_id, "ws_123456789abc");

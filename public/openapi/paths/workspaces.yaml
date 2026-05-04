@@ -2,26 +2,21 @@
   post:
     operationId: create_workspace
     summary: Create a workspace
-    description: Creates a new workspace linked to a GitHub repository. Returns the workspace ID and a GitHub App install
-      URL if the app is not yet installed on the repo.
+    description: Creates a new workspace in the caller's tenant. All fields are optional — an empty body
+      provisions a workspace with a server-assigned Heroku-style name.
     tags:
     - Workspaces
     requestBody:
-      required: true
+      required: false
       content:
         application/json:
           schema:
             type: object
-            required:
-            - repo_url
             properties:
-              repo_url:
+              name:
                 type: string
-                format: uri
-                description: Full GitHub repository URL (e.g. https://github.com/org/repo)
-              default_branch:
-                type: string
-                description: Default branch name, defaults to 'main' if omitted
+                description: Human-readable workspace name. Must be unique within the tenant. If omitted, the
+                  server may assign one or leave it null.
     responses:
       '201':
         description: Workspace created
@@ -31,26 +26,16 @@
               type: object
               required:
               - workspace_id
-              - repo_url
-              - default_branch
-              - install_url
               - request_id
               properties:
                 workspace_id:
                   type: string
                   format: uuid
                   description: Unique workspace identifier
-                repo_url:
+                name:
                   type: string
-                  format: uri
-                  description: Repository URL
-                default_branch:
-                  type: string
-                  description: Default branch for the workspace
-                install_url:
-                  type: string
-                  format: uri
-                  description: GitHub App installation URL — direct user here if the app is not yet installed
+                  nullable: true
+                  description: Human-readable workspace name, if any.
                 request_id:
                   type: string
                   format: uuid

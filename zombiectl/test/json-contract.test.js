@@ -234,19 +234,6 @@ describe("M30 §3.5 — workspace JSON errors", () => {
     expect(parsed.error.code).toBe("UNKNOWN_COMMAND");
   });
 
-  test("workspace add missing repo_url emits USAGE_ERROR", async () => {
-    const out = makeBufferStream();
-    const err = makeBufferStream();
-    const code = await runCli(["--json", "workspace", "add"], {
-      stdout: out.stream, stderr: err.stream,
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
-    });
-    expect(code).toBe(2);
-    const parsed = tryParseJson(err.read());
-    expect(parsed).not.toBeNull();
-    expect(parsed.error.code).toBe("USAGE_ERROR");
-  });
-
   test("workspace delete missing id emits USAGE_ERROR", async () => {
     const out = makeBufferStream();
     const err = makeBufferStream();

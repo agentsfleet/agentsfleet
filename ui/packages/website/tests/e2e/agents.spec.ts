@@ -26,7 +26,8 @@ test.describe("Agents page (/agents)", () => {
     const block = page.getByLabel(/bootstrap commands/i);
     await expect(block).toBeVisible();
     await expect(block).toContainText("npm install -g @usezombie/zombiectl");
-    await expect(block).toContainText("zombiectl auth login");
+    await expect(block).toContainText("zombiectl login");
+    await expect(block).toContainText("npx skills add usezombie/usezombie");
     await expect(block).toContainText("/usezombie-install-platform-ops");
   });
 
