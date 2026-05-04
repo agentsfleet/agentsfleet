@@ -68,8 +68,8 @@ test.describe("Home page", () => {
   });
 
   test("renders feature flow rows", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Install once. Operate forever." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Every event, every actor, on the record." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Install once." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Every event on the record." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Mission Control" })).toBeVisible();
   });
 
