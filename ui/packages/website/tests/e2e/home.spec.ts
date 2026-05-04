@@ -7,8 +7,8 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("Operational outcomes");
-    await expect(h1).toContainText("don't fall into limbo.");
+    await expect(h1).toContainText("Operational knowledge lives in heads, not in code.");
+    await expect(h1).toContainText("That's where outcomes get stuck.");
   });
 
   test("renders hero CTAs", async ({ page }) => {

@@ -5,10 +5,8 @@ import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog
 export default function Hero() {
   const heading = {
     badge: "Durable agent runtime · BYOK · Open source",
-    line1: "Operational outcomes",
-    line2: "don't fall into limbo.",
-    kicker:
-      "A durable, markdown-defined agent runtime. The platform-ops agent wakes on triggers — a deploy failure, a cron, a `zombiectl steer` — gathers evidence, and posts an evidenced diagnosis to Slack. BYOK. Open source.",
+    line1: "Operational knowledge lives in heads, not in code.",
+    line2: "That's where outcomes get stuck.",
   };
 
   return (
@@ -22,7 +20,13 @@ export default function Hero() {
             <span className="hero-line2">{heading.line2}</span>
           </h1>
 
-          <p className="hero-kicker">{heading.kicker}</p>
+          <p className="hero-kicker">
+            When the senior engineer is asleep and a deploy fails, you guess. UseZombie is a
+            markdown-defined agent runtime that captures that tribal knowledge — <code>SKILL.md</code>{" "}
+            + <code>TRIGGER.md</code>, no workflow DAG. The flagship <code>platform-ops</code> agent
+            wakes on a GitHub Actions failure, gathers evidence, and posts a diagnosis to Slack.
+            Author your own next. BYOK. Open source.
+          </p>
 
           <div className="hero-cta-row">
             <Button asChild className="hero-cta-primary">

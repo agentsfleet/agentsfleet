@@ -71,7 +71,7 @@ export default function App() {
           <Link className="brand" to="/">
             UseZombie
           </Link>
-          <span className="badge">durable agent runtime</span>
+          <span className="badge">open source · markdown-defined</span>
         </div>
 
         <div className="mode-switch" role="tablist" aria-label="Mode switch" data-testid="mode-switch">

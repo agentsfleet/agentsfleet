@@ -239,7 +239,7 @@ Where the §6 proposed copy below shows "zombie" as a runtime-instance noun, the
 **Scope additions folded into this branch (not in original Files Changed table):**
 | File | Action | Why |
 |------|--------|-----|
-| `ui/packages/website/src/App.tsx` | EDIT | Header badge `agent delivery control plane` → `durable agent runtime` (load-bearing brand surface visible on every page; original spec missed it) |
+| `ui/packages/website/src/App.tsx` | EDIT | Header badge `agent delivery control plane` → `open source · markdown-defined` (May 04, 2026 amendment — initial revision said `durable agent runtime` but that duplicated the Hero badge within ~80px on the home route; swapped to a complementary phrase that carries positioning context across `/agents`, `/pricing`, `/privacy`, `/terms` without repeating the Hero's framing) |
 | `ui/packages/website/src/pages/DesignSystemGallery.tsx` | EDIT | InstallBlock command in dev-only design gallery updated to `npm install -g @usezombie/zombiectl` (was `usezombie.sh/install` — forbidden string) |
 | `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | EDIT | Tokenizer fixture corpus refreshed to v2 commands; the curl-pipe-bash example now uses a generic example.com URL (was `usezombie.sh/install` — forbidden string) |
 | `ui/packages/website/src/marketing-no-legacy-pr-framing.test.ts` | NEW | Vitest enforcer for the §6 forbidden-strings list (skips its own file + every `*.test.ts` / `*.spec.ts`) |
@@ -259,10 +259,12 @@ Where the §6 proposed copy below shows "zombie" as a runtime-instance noun, the
 These map to the v1 PR-validator framing the product pivoted away from.
 
 #### §6.1 `Hero.tsx`
+> **May 04, 2026 amendment — Option C "codification-first" framing.** After the animation/visual audit ran on the Vercel preview, Captain reframed the hero from a wedge-led problem-pose ("Operational outcomes don't fall into limbo") to a knowledge-codification problem-pose. The platform-ops agent stays in the kicker as the worked example, but the H1 names the broader differentiator (operational knowledge trapped in senior engineers' heads → markdown-defined agent runtime). Backticked technical terms (`SKILL.md`, `TRIGGER.md`, `platform-ops`) now render as inline `<code>` instead of literal-backtick text — the kicker is no longer a single string assignment, it's a JSX block.
+
 - `badge`: `Durable agent runtime · BYOK · Open source`
-- `line1`: `Operational outcomes`
-- `line2`: `don't fall into limbo.`
-- `kicker`: `UseZombie is a durable, markdown-defined agent runtime. The flagship platform-ops zombie wakes on a GitHub Actions deploy failure, gathers evidence from Fly, Upstash, and your run logs, and posts an evidenced diagnosis to Slack — and keeps reasoning after your terminal closes. Bring your own model key. Read every line of the runtime.`
+- `line1`: `Operational knowledge lives in heads, not in code.`
+- `line2`: `That's where outcomes get stuck.`
+- `kicker` (JSX block, not a string): `When the senior engineer is asleep and a deploy fails, you guess. UseZombie is a markdown-defined agent runtime that captures that tribal knowledge — <code>SKILL.md</code> + <code>TRIGGER.md</code>, no workflow DAG. The flagship <code>platform-ops</code> agent wakes on a GitHub Actions failure, gathers evidence, and posts a diagnosis to Slack. Author your own next. BYOK. Open source.`
 - Primary CTA label: `Install platform-ops`
 - Primary CTA href: `DOCS_QUICKSTART_URL` (was `APP_BASE_URL`; sign-up happens during `zombiectl auth login` inside the install skill)
 - Secondary CTA label: `See pricing` (unchanged)

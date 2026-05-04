@@ -30,7 +30,7 @@ describe("App", () => {
 
   it("renders the badge", () => {
     renderApp();
-    expect(screen.getByText("durable agent runtime")).toBeInTheDocument();
+    expect(screen.getByText("open source · markdown-defined")).toBeInTheDocument();
   });
 
   it("renders the mode switch", () => {
@@ -76,7 +76,7 @@ describe("App", () => {
       expect(screen.getByRole("tab", { name: "Humans" })).toHaveAttribute("aria-selected", "true"),
     );
     await waitFor(() =>
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational outcomes/i),
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational knowledge lives in heads/i),
     );
   });
 
@@ -108,7 +108,7 @@ describe("App", () => {
 
   it("renders home page by default", () => {
     renderApp("/");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational outcomes/i);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational knowledge lives in heads/i);
   });
 
   it("renders pricing page at /pricing", async () => {

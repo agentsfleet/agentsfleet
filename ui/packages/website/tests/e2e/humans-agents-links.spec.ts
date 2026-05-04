@@ -38,7 +38,7 @@ test.describe("Humans vs Agents link coverage", () => {
   test("Humans page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
     await expectMode(page, "humans");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Operational outcomes");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Operational knowledge lives in heads");
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: "Pricing" }).click();
