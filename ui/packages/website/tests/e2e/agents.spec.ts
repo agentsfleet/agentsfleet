@@ -40,8 +40,8 @@ test.describe("Agents page (/agents)", () => {
     await expect(page.getByText("Create agent")).toBeVisible();
     await expect(page.getByText("Kill agent")).toBeVisible();
     await expect(page.getByText("Steer / chat")).toBeVisible();
-    await expect(page.getByText("Pause workspace")).toBeVisible();
     await expect(page.getByText("Execute tool")).toHaveCount(0);
+    await expect(page.getByText("Pause workspace")).toHaveCount(0);
   });
 
   test("renders webhook example", async ({ page }) => {
