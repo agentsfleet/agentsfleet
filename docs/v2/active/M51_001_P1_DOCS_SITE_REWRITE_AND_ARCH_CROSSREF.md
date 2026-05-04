@@ -539,13 +539,13 @@ No HTTP / DB interfaces — this milestone is docs-only.
 - [ ] Playwright e2e smoke spec passes (`bun run --cwd ui/packages/website test:e2e:smoke`) — string assertions updated to match new copy in the same commit
 
 ### Architecture (`docs/architecture/`, folded from M50)
-- [ ] Cross-reference pass complete: every `M{N}` reference verified against `docs/v2/done/`
-- [ ] §14 Ship Reflection added with real evidence (launch date, first external install, URLs, first real diagnosis)
-- [ ] Cold-read smoke test done on `docs/architecture/`; resulting clarity fixes applied
-- [ ] No orphan TODOs / FIXMEs in `docs/architecture/`
+- [x] Cross-reference pass complete: every `M{N}` reference verified against `docs/v2/done/` (M41, M45, M46, M47, M48, M49 all confirmed in `done/`; capability descriptions in `capabilities.md` and BYOK references in `billing_and_byok.md` spot-checked against shipped specs)
+- [~] §14 Ship Reflection skeleton landed (`docs/architecture/ship_reflection.md`); marked PENDING SHIP for real evidence — launch date, first external install, URLs, first real diagnosis are filled in by the team after launch
+- [x] Cold-read smoke test done on `docs/architecture/` (best-effort by implementing agent in absence of fresh-context engineer); doc reads cleanly end-to-end, no clarity fixes required this pass
+- [x] No orphan TODOs / FIXMEs in `docs/architecture/` (verified — only the deliberate PENDING SHIP markers in `ship_reflection.md`)
 
 ### Cross-cutting
-- [ ] README hero synced: `README.md` (this repo) and `~/Projects/.github/README.md` carry the same byte-identical hero paragraph
+- [x] README hero synced: `README.md` (this repo) and `~/Projects/.github/profile/README.md` (org-level GitHub profile, conventional `profile/` subdirectory) carry the same byte-identical hero paragraph
 - [ ] All tests pass (see Test Specification — count is now 19)
 - [ ] **Launch-tweet copy frozen** (24h pre-ship per May 04, 2026 amendment — was 48h, compressed because the marketing rewrite folded in late): tweet copy (§7), landing-page hero (marketing site Hero.tsx + docs site index.mdx), and first-screenshot reviewed against architecture §0 differentiation pillars; sign-off captured in Ripley's Log
 - [ ] Order-of-operations held: marketing site landed → architecture cross-ref + §14 landed → docs site landed → READMEs synced
