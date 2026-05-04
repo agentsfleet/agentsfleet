@@ -54,13 +54,6 @@
       "path": "/v1/webhooks/{zombie_id}",
       "description": "Deliver an inbound event to a Zombie. Body must be HMAC-SHA256 signed with the workspace credential matching the Zombie's trigger.source (e.g. vault row zombie:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
-    },
-    {
-      "operationId": "pause_workspace",
-      "method": "PATCH",
-      "path": "/v1/workspaces/{workspace_id}",
-      "description": "Pause or unpause admission of new work for a workspace.",
-      "actionClass": "sensitive"
     }
   ],
   "authentication": {
@@ -74,7 +67,7 @@
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],
-    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook", "pause_workspace"],
+    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook"],
     "critical": []
   }
 }

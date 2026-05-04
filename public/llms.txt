@@ -18,7 +18,6 @@ https://usezombie.com/v1
 - list_zombie_events: GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events
 - stream_zombie_events: GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream
 - ingest_zombie_webhook: POST /v1/webhooks/{zombie_id}
-- pause_workspace: POST /v1/workspaces/{workspace_id}/pause
 
 ## Authentication
 Bearer token: Authorization: Bearer <api_key>

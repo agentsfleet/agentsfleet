@@ -19,7 +19,6 @@ control-plane API.
 | `list_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events` |
 | `stream_zombie_events` | GET | `/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream` |
 | `ingest_zombie_webhook` | POST | `/v1/webhooks/{zombie_id}` |
-| `pause_workspace` | POST | `/v1/workspaces/{workspace_id}/pause` |
 
 ## Authentication
 `Authorization: Bearer <api_key>`
@@ -32,7 +31,7 @@ control-plane API.
 
 ## Policy classes
 - `safe`: `list_zombie_events`, `stream_zombie_events` — allow by default
-- `sensitive`: `create_zombie`, `update_zombie`, `kill_zombie`, `post_zombie_message`, `ingest_zombie_webhook`, `pause_workspace` — require explicit confirmation
+- `sensitive`: `create_zombie`, `update_zombie`, `kill_zombie`, `post_zombie_message`, `ingest_zombie_webhook` — require explicit confirmation
 - `critical`: destructive/permission changes — require double confirmation (none currently)
 
 ## Revenue model
