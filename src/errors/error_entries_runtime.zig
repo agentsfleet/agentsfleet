@@ -45,8 +45,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Connection to execution transport was lost."),
     e("UZ-EXEC-007", .internal_server_error, "Execution lease expired",
         "Execution lease expired. The task took too long to complete."),
-    e("UZ-EXEC-008", .forbidden, "Execution policy deny",
-        "Execution was denied by policy. Check firewall rules."),
     e("UZ-EXEC-009", .internal_server_error, "Execution startup posture failure",
         "Execution startup posture check failed. Verify runner security config."),
     e("UZ-EXEC-010", .internal_server_error, "Execution crash",
@@ -120,11 +118,4 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Approve it in Slack, Discord, or the dashboard."),
     e("UZ-GRANT-003", .forbidden, "Integration grant denied",
         "The integration grant for this service was denied or revoked by the workspace owner."),
-    // ── FIREWALL (execute path) ───────────────────────────────────────────────
-    e("UZ-FW-001", .forbidden, "Domain not in workspace allowlist",
-        "The target domain is not in the workspace allowlist. Add it via firewall configuration."),
-    e("UZ-FW-002", .bad_request, "Human approval required",
-        "The request body triggered the approval gate. Awaiting human approval before execution."),
-    e("UZ-FW-003", .forbidden, "Prompt injection detected",
-        "A prompt injection pattern was detected in the request body. Request blocked."),
 };

@@ -47,9 +47,6 @@ pub const Snapshot = struct {
     run_limit_token_budget_exceeded_total: u64,
     run_limit_wall_time_exceeded_total: u64,
     run_limit_repair_loops_exhausted_total: u64,
-    otel_export_total: u64,
-    otel_export_failed_total: u64,
-    otel_last_success_at_ms: i64,
     agent_duration_seconds: HistogramSnapshot,
     // M15_002 §1.0 — zombie counters + wall-time histogram
     zombie_triggered_total: u64 = 0,
@@ -76,9 +73,6 @@ var g_gate_repair_exhausted_total = std.atomic.Value(u64).init(0);
 var g_run_limit_token_budget_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_wall_time_exceeded_total = std.atomic.Value(u64).init(0);
 var g_run_limit_repair_loops_exhausted_total = std.atomic.Value(u64).init(0);
-var g_otel_export_total = std.atomic.Value(u64).init(0);
-var g_otel_export_failed_total = std.atomic.Value(u64).init(0);
-var g_otel_last_success_at_ms = std.atomic.Value(i64).init(0);
 var g_signup_bootstrapped_total = std.atomic.Value(u64).init(0);
 var g_signup_replayed_total = std.atomic.Value(u64).init(0);
 var g_signup_failed_bad_sig_total = std.atomic.Value(u64).init(0);
@@ -120,15 +114,6 @@ pub fn incRunLimitWallTimeExceeded() void {
 pub fn incRunLimitRepairLoopsExhausted() void {
     _ = g_run_limit_repair_loops_exhausted_total.fetchAdd(1, .monotonic);
 }
-pub fn incOtelExportTotal() void {
-    _ = g_otel_export_total.fetchAdd(1, .monotonic);
-}
-pub fn incOtelExportFailed() void {
-    _ = g_otel_export_failed_total.fetchAdd(1, .monotonic);
-}
-pub fn setOtelLastSuccessAtMs(ms: i64) void {
-    g_otel_last_success_at_ms.store(ms, .release);
-}
 
 // Signup funnel counters. Failure reasons enumerated so a single Prometheus
 // query can answer "how many signups failed for reason X over Y?"
@@ -164,9 +149,6 @@ pub fn snapshot() Snapshot {
         .run_limit_token_budget_exceeded_total = g_run_limit_token_budget_exceeded_total.load(.acquire),
         .run_limit_wall_time_exceeded_total = g_run_limit_wall_time_exceeded_total.load(.acquire),
         .run_limit_repair_loops_exhausted_total = g_run_limit_repair_loops_exhausted_total.load(.acquire),
-        .otel_export_total = g_otel_export_total.load(.acquire),
-        .otel_export_failed_total = g_otel_export_failed_total.load(.acquire),
-        .otel_last_success_at_ms = g_otel_last_success_at_ms.load(.acquire),
         .agent_duration_seconds = .{},
     };
     const ext = me.snapshotExternalFields();
