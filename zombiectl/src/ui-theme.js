@@ -6,11 +6,11 @@ function color(code, text) {
 }
 
 export const ui = {
-  ok:    (s) => color("32",   `✔ ${s}`),
-  info:  (s) => color("36",   `ℹ ${s}`),
-  warn:  (s) => color("33",   `▲ ${s}`),
-  err:   (s) => color("31",   `✖ ${s}`),
-  head:  (s) => color("1;36", s),
+  ok:    (s) => color("32",         `✔ ${s}`),
+  info:  (s) => color("38;5;208",   `ℹ ${s}`),
+  warn:  (s) => color("33",         `▲ ${s}`),
+  err:   (s) => color("31",         `✖ ${s}`),
+  head:  (s) => color("1;38;5;208", s),
   dim:   (s) => color("2",    s),
   label: (s) => color("2",    s),          // dim alias for KV labels
   run:   (s) => color("1;35", `◉ ${s}`),  // bold magenta — active/running state

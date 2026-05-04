@@ -18,9 +18,9 @@ export function printBanner(stream, version, opts = {}) {
   const c = (code, s) => `\u001b[${code}m${s}\u001b[0m`;
   const bar = "\u2500".repeat(label.length);
 
-  stream.write(`    ${c("1;36", `\u256D${bar}\u256E`)}\n`);
-  stream.write(` \u{1F9DF} ${c("1;36", "\u2502")}${c("1;37", label)}${c("1;36", "\u2502")}\n`);
-  stream.write(`    ${c("1;36", `\u2570${bar}\u256F`)}\n`);
+  stream.write(`    ${c("1;38;5;208", `\u256D${bar}\u256E`)}\n`);
+  stream.write(` \u{1F9DF} ${c("1;38;5;208", "\u2502")}${c("1;37", label)}${c("1;38;5;208", "\u2502")}\n`);
+  stream.write(`    ${c("1;38;5;208", `\u2570${bar}\u256F`)}\n`);
   stream.write(`    ${c("2", "  autonomous agent cli")}\n`);
 }
 
