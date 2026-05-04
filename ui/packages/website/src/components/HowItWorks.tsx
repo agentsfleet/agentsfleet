@@ -1,23 +1,23 @@
 const steps = [
   {
-    title: "Queue work",
-    description: "Drop intent into your backlog and trigger a run from CLI or API. UseZombie picks up execution automatically.",
+    title: "A trigger arrives",
+    description: "A GitHub Actions deploy fails, a cron fires, or you run `zombiectl steer`. Each lands on the event stream with actor provenance: webhook:github, cron:<schedule>, steer:<user>.",
   },
   {
-    title: "Agents execute with guardrails",
-    description: "Agents plan, implement, and validate with policy controls, sandbox limits, and repo-specific profiles so automation stays inside defined boundaries.",
+    title: "The agent gathers evidence",
+    description: "It calls the tools TRIGGER.md allow-lists — http_request, memory_store, cron_add. Secrets substitute at the sandbox boundary; the model sees placeholders, never raw bytes.",
   },
   {
-    title: "Review a validated PR",
-    description: "Each pull request includes run replay, validation output, and run quality scoring so reviewers can assess both the change and the run that produced it.",
+    title: "Diagnosis posts; the run is auditable",
+    description: "Slack receives the evidenced diagnosis. Every event is on core.zombie_events with actor and timestamp. `zombiectl steer {id}` picks the conversation up later.",
   },
 ];
 
 export default function HowItWorks() {
   return (
     <div className="section-gap">
-      <p className="eyebrow">Why UseZombie</p>
-      <h2>From queued intent to validated pull requests.</h2>
+      <p className="eyebrow">How it works</p>
+      <h2>From trigger to evidenced diagnosis, durably.</h2>
       <div className="how-steps">
         {steps.map((step) => (
           <div key={step.title} className="how-step">

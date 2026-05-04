@@ -18,10 +18,10 @@ type Tier = {
 };
 
 const roadmapSignals = [
-  "Direct provider billing with BYOK/BYOM",
-  "Validated PR delivery before review",
-  "Run quality scoring and failure analysis",
-  "Sandbox governance and team controls",
+  "BYOK with no token markup",
+  "Open source runtime",
+  "Three triggers, one reasoning loop",
+  "Self-host arrives in v3",
 ];
 
 const tiers: Tier[] = [
@@ -29,34 +29,34 @@ const tiers: Tier[] = [
     name: "Hobby",
     availability: "Available now",
     price: "Free",
-    audience: "For solo builders and early evaluation.",
+    audience: "For solo operators evaluating the wedge.",
     ctaSource: "pricing_hobby_start_free",
     ctaLabel: "Start free",
-    proof: "Best for getting real PRs running without a credit card.",
+    proof: "Best for installing platform-ops on a real repo and seeing a real diagnosis.",
     highlights: [
-      "$10 credit included with no expiry",
-      "1 workspace and automated pull request generation",
-      "Harness validation in the PR flow",
-      "BYOK/BYOM with no token markup",
+      "$10 starter credit, never expires",
+      "1 workspace",
+      "BYOK on Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot",
+      "Hosted execution metered per stage; no token markup",
     ],
   },
   {
     name: "Scale",
     availability: "Upgrade when ready",
     price: "From Mission Control",
-    audience: "For teams moving from trial usage to governed production delivery.",
+    audience: "For teams running agents across shared workspaces.",
     featured: true,
     ctaSource: "pricing_scale_upgrade",
     ctaLabel: "Upgrade in app",
     priceNote: "Operator-visible upgrade path after free credit exhaustion",
-    proof: "Built for teams running automation across shared repos with stronger governance, quality visibility, and a direct Scale activation path.",
+    proof: "Built for teams operating multiple agents across shared workspaces with approval gates and budget controls.",
     highlights: [
-      "Everything in Hobby, plus team workspaces and shared run history",
-      "Longer execution windows and higher concurrency for active repos",
-      "Sandbox resource governance with memory, CPU, and disk caps",
-      "Agent run scoring with tier history and workspace baselines",
-      "Failure analysis with deterministic context injection",
-      "Upgrade from the app with a workspace subscription id",
+      "Everything in Hobby",
+      "Multiple workspaces with shared event history",
+      "Higher concurrency and longer per-stage windows",
+      "Approval gating in dashboard and Slack DM",
+      "Workspace-scoped credentials and webhooks",
+      "Priority support",
     ],
   },
 ];
@@ -68,9 +68,9 @@ export default function Pricing() {
         <p className="eyebrow">pricing</p>
         <h1>Start free. Upgrade when you need stronger control.</h1>
         <p className="lead">
-          UseZombie sells agent execution and delivery control, not marked-up model usage.
-          Paid plans are where deeper sandbox governance, agent scoring, and rollout controls
-          come online.
+          UseZombie sells durable execution and operational ownership — not marked-up model usage.
+          Bring your own model key; pay your provider directly. Hosted execution is metered against
+          a credit pool with a $10 starter grant.
         </p>
 
         <div className="pricing-roadmap-strip" aria-label="Pricing proof points">
@@ -124,11 +124,11 @@ export default function Pricing() {
       <div className="pricing-bottom-band">
         <div>
           <p className="eyebrow">When to move up</p>
-          <h2>Start on Hobby. Move to Scale when automation becomes shared infrastructure.</h2>
+          <h2>Start on Hobby. Move to Scale when agents become shared infrastructure.</h2>
         </div>
         <p>
-          Hobby is enough to validate the workflow on real repos. Scale adds shared history,
-          stronger controls, and deeper quality analysis for teams operating across multiple repos.
+          Hobby validates the wedge on one repo. Scale adds shared event history, approval flows,
+          and the budget controls a team needs once agents own real production outcomes.
         </p>
       </div>
 

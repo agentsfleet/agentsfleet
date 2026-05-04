@@ -30,7 +30,7 @@ describe("App", () => {
 
   it("renders the badge", () => {
     renderApp();
-    expect(screen.getByText("agent delivery control plane")).toBeInTheDocument();
+    expect(screen.getByText("durable agent runtime")).toBeInTheDocument();
   });
 
   it("renders the mode switch", () => {
@@ -76,7 +76,7 @@ describe("App", () => {
       expect(screen.getByRole("tab", { name: "Humans" })).toHaveAttribute("aria-selected", "true"),
     );
     await waitFor(() =>
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/ship ai-generated prs/i),
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational outcomes/i),
     );
   });
 
@@ -96,18 +96,19 @@ describe("App", () => {
     renderApp("/");
     const header = screen.getByRole("banner");
     expect(within(header).getByRole("link", { name: "Mission Control" })).toHaveAttribute("href", APP_BASE_URL);
-    expect(within(header).queryByRole("link", { name: "Connect GitHub, automate PRs" })).not.toBeInTheDocument();
+    expect(within(header).queryByRole("link", { name: "Install platform-ops" })).not.toBeInTheDocument();
   });
 
   it("does not render humans header actions in agents mode", () => {
     renderApp("/agents");
-    expect(screen.queryByRole("link", { name: "Mission Control" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Connect GitHub, automate PRs" })).not.toBeInTheDocument();
+    const header = screen.getByRole("banner");
+    expect(within(header).queryByRole("link", { name: "Mission Control" })).not.toBeInTheDocument();
+    expect(within(header).queryByRole("link", { name: "Install platform-ops" })).not.toBeInTheDocument();
   });
 
   it("renders home page by default", () => {
     renderApp("/");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/ship ai-generated prs/i);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational outcomes/i);
   });
 
   it("renders pricing page at /pricing", async () => {

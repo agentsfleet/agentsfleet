@@ -14,12 +14,12 @@ function renderCtaBlock() {
 describe("CTABlock", () => {
   it("renders the heading", () => {
     renderCtaBlock();
-    expect(screen.getByRole("heading", { level: 2, name: /wire autonomous agents into the control plane\./i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: /building agents on usezombie\?/i })).toBeInTheDocument();
   });
 
   it("renders the description", () => {
     renderCtaBlock();
-    expect(screen.getByText(/without mixing agent traffic into the human launch funnel/i)).toBeInTheDocument();
+    expect(screen.getByText(/stable machine surface via openapi 3\.1/i)).toBeInTheDocument();
   });
 
   it("renders quickstart CTA with correct href", () => {

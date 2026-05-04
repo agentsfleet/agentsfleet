@@ -13,17 +13,17 @@ describe("FAQ", () => {
     render(<FAQ />);
     const buttons = screen.getAllByRole("button");
     expect(buttons.length).toBeGreaterThanOrEqual(6);
+    expect(screen.getByText("What is UseZombie?")).toBeInTheDocument();
     expect(screen.getByText("What does BYOK mean?")).toBeInTheDocument();
     expect(screen.getByText("What am I actually paying for?")).toBeInTheDocument();
-    expect(screen.getByText("Can I try it before committing?")).toBeInTheDocument();
-    expect(screen.getByText("What happens to my code?")).toBeInTheDocument();
-    expect(screen.getByText("Which Git providers are supported?")).toBeInTheDocument();
-    expect(screen.getByText("Is there an SLA?")).toBeInTheDocument();
+    expect(screen.getByText("Can I self-host?")).toBeInTheDocument();
+    expect(screen.getByText("Which agent hosts work for the install skill?")).toBeInTheDocument();
+    expect(screen.getByText("What if my agent hits the model's context window?")).toBeInTheDocument();
   });
 
   it("answers are hidden by default", () => {
     render(<FAQ />);
-    expect(screen.queryByText(/Bring Your Own Keys/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bring Your Own Key\./)).not.toBeInTheDocument();
   });
 
   it("shows answer when question is clicked", async () => {
@@ -31,7 +31,7 @@ describe("FAQ", () => {
     render(<FAQ />);
 
     await user.click(screen.getByText("What does BYOK mean?"));
-    expect(screen.getByText(/Bring Your Own Keys/)).toBeInTheDocument();
+    expect(screen.getByText(/Bring Your Own Key\./)).toBeInTheDocument();
   });
 
   it("hides answer when clicked again", async () => {
@@ -39,10 +39,10 @@ describe("FAQ", () => {
     render(<FAQ />);
 
     await user.click(screen.getByText("What does BYOK mean?"));
-    expect(screen.getByText(/Bring Your Own Keys/)).toBeInTheDocument();
+    expect(screen.getByText(/Bring Your Own Key\./)).toBeInTheDocument();
 
     await user.click(screen.getByText("What does BYOK mean?"));
-    expect(screen.queryByText(/Bring Your Own Keys/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Bring Your Own Key\./)).not.toBeInTheDocument();
   });
 
   it("closes previous answer when another is opened", async () => {
@@ -50,11 +50,11 @@ describe("FAQ", () => {
     render(<FAQ />);
 
     await user.click(screen.getByText("What does BYOK mean?"));
-    expect(screen.getByText(/Bring Your Own Keys/)).toBeInTheDocument();
+    expect(screen.getByText(/Bring Your Own Key\./)).toBeInTheDocument();
 
     await user.click(screen.getByText("What am I actually paying for?"));
-    expect(screen.queryByText(/Bring Your Own Keys/)).not.toBeInTheDocument();
-    expect(screen.getByText(/hosted agent execution time/)).toBeInTheDocument();
+    expect(screen.queryByText(/Bring Your Own Key\./)).not.toBeInTheDocument();
+    expect(screen.getByText(/Hosted execution\./)).toBeInTheDocument();
   });
 
   it("sets aria-expanded correctly", async () => {

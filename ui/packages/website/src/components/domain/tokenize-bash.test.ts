@@ -59,11 +59,11 @@ describe("tokenizeBash — table-driven coverage (§5.8.4 dim 5.8.9)", () => {
   }
 });
 
-describe("tokenizeBash — preservation contract", () => {
+describe("tokenizeBash — preservation rules", () => {
   const corpus = [
-    "zombiectl login",
-    "curl -sSL https://usezombie.sh/install | bash",
-    "zombiectl zombie install --template lead-collector",
+    "zombiectl auth login",
+    "curl -fsSL https://example.com/script.sh | bash",
+    "zombiectl steer zmb_2041 \"morning health check\"",
     'echo "hello world" > /tmp/out',
     "# starts with comment",
     "",
@@ -76,8 +76,8 @@ describe("tokenizeBash — preservation contract", () => {
     });
   }
 
-  it("classifies the curl install one-liner with a pipe", () => {
-    const line = "curl -sSL https://usezombie.sh/install | bash";
+  it("classifies a piped curl one-liner", () => {
+    const line = "curl -fsSL https://example.com/script.sh | bash";
     const types = typesOf(tokenizeBash(line));
     expect(types).toContain("command");
     expect(types).toContain("flag");

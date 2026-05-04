@@ -17,14 +17,23 @@ const AnimatedTerminal = lazy(() =>
 );
 
 const DEMO_COMMANDS = [
-  "zombiectl login",
-  "zombiectl zombie install --template lead-collector",
-  "zombiectl zombie up lead-collector --watch",
+  "zombiectl auth login",
+  "/usezombie-install-platform-ops",
+  'zombiectl steer zmb_2041 "morning health check"',
 ];
 
+// Keys are 0-indexed against DEMO_COMMANDS above. Key `0` (auth login) is
+// intentionally absent — login has no demo output.
 const DEMO_OUTPUTS: Record<number, string[]> = {
-  1: ["Installed lead-collector@0.1.0"],
-  2: ["[ready] lead-collector awaiting triggers"],
+  1: [
+    "Generated .usezombie/platform-ops/SKILL.md + TRIGGER.md",
+    "Installed platform-ops@0.1.0",
+    "Webhook URL: https://api.usezombie.com/v1/webhooks/zmb_2041",
+  ],
+  2: [
+    "[steer] gathering evidence: fly status, upstash health, last 3 runs…",
+    "[steer] diagnosis posted to #platform-ops",
+  ],
 };
 
 const jsonLd = {
@@ -38,28 +47,28 @@ const jsonLd = {
   ],
 };
 
-const contracts = [
-  { endpoint: "/openapi.json", purpose: "Canonical API contract (OpenAPI 3.1)" },
+const machineSurfaces = [
+  { endpoint: "/openapi.json", purpose: "Canonical API surface (OpenAPI 3.1)" },
 ];
 
 const apiOps = [
-  { action: "Create zombie", method: "POST", path: "/v1/workspaces/:workspace_id/zombies", purpose: "Provision a new Zombie in a workspace" },
-  { action: "Update zombie", method: "PATCH", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id", purpose: "Update a Zombie's mutable configuration (body: { config_json })." },
-  { action: "Kill zombie", method: "PATCH", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id", purpose: "Cancel any in-flight session and mark the Zombie killed (body: { status: \"killed\" })." },
-  { action: "Post zombie message", method: "POST", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/messages", purpose: "Post a chat message to the Zombie's loop" },
+  { action: "Create agent", method: "POST", path: "/v1/workspaces/:workspace_id/zombies", purpose: "Provision a new agent in a workspace" },
+  { action: "Update agent", method: "PATCH", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id", purpose: "Update an agent's mutable configuration (body: { config_json })." },
+  { action: "Kill agent", method: "PATCH", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id", purpose: "Cancel any in-flight session and mark the agent killed (body: { status: \"killed\" })." },
+  { action: "Steer / chat", method: "POST", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/messages", purpose: "Send a steer message to an agent" },
   { action: "Stream events", method: "GET", path: "/v1/workspaces/:workspace_id/zombies/:zombie_id/events/stream", purpose: "Server-Sent Events stream of new events" },
-  { action: "Ingest webhook", method: "POST", path: "/v1/webhooks/:zombie_id", purpose: "Deliver an inbound event to a Zombie" },
+  { action: "Ingest webhook", method: "POST", path: "/v1/webhooks/:zombie_id", purpose: "Deliver an inbound event to an agent" },
   { action: "Pause workspace", method: "PATCH", path: "/v1/workspaces/:workspace_id", purpose: "Pause / unpause admission of new work (body: { pause, reason, version })" },
-  { action: "Execute tool", method: "POST", path: "/v1/execute", purpose: "Synchronous tool execution proxy for external agents" },
 ];
 
 const webhookPayload = `{
   "event_id": "evt_01JEXAMPLE",
-  "type": "email.received",
+  "type": "workflow_run.failed",
   "data": {
-    "from": "lead@example.com",
-    "subject": "Demo request",
-    "body": "..."
+    "repository": "your-org/your-repo",
+    "workflow": "deploy.yml",
+    "run_id": 8421337,
+    "conclusion": "failure"
   }
 }`;
 
@@ -71,14 +80,14 @@ export default function Agents() {
       <p className="eyebrow">agent surface</p>
       <h1>This page is for autonomous agents.</h1>
       <p className="lead" style={{ color: "var(--z-text-muted)" }}>
-        Use <code>/openapi.json</code> as canonical contract. Docs are secondary.
+        Use <code>/openapi.json</code> as canonical surface. Docs are secondary.
       </p>
 
       <Suspense fallback={<div className="min-h-[20rem]" aria-hidden="true" />}>
         <BackgroundBeamsWithCollision className="rounded-lg border border-border">
           <div className="flex flex-col items-start gap-md px-xl py-2xl">
             <p className="eyebrow">interactive</p>
-            <h2 className="text-2xl">Zombie agents orchestrate work, humans approve.</h2>
+            <h2 className="text-2xl">Agents orchestrate work, humans approve.</h2>
             <p className="text-muted-foreground max-w-[52ch]">
               Install, run, and observe the agent lifecycle without leaving this page.
             </p>
@@ -93,9 +102,9 @@ export default function Agents() {
       {/* Install Zombiectl */}
       <InstallBlock
         title="Install Zombiectl"
-        command="curl -sSL https://usezombie.sh/install | bash"
+        command="npm install -g @usezombie/zombiectl"
         actions={[
-          { label: "Install Zombiectl", to: DOCS_QUICKSTART_URL, variant: "default" },
+          { label: "Install platform-ops", to: DOCS_QUICKSTART_URL, variant: "default" },
           { label: "Read the docs", to: DOCS_URL, variant: "ghost" },
           { label: "Setup your personal dashboard", to: APP_BASE_URL, variant: "double-border" },
         ]}
@@ -105,14 +114,16 @@ export default function Agents() {
       <div>
         <h2 style={{ marginBottom: "0.75rem" }}>Bootstrap</h2>
         <pre className="terminal" aria-label="Bootstrap commands">
-          <code>{`# Authenticate and add a workspace
-npx zombiectl login && zombiectl workspace add https://github.com/your-org/your-repo`}</code>
+          <code>{`# Authenticate, install the platform-ops agent
+npm install -g @usezombie/zombiectl
+zombiectl auth login
+/usezombie-install-platform-ops    # in Claude Code, Amp, Codex CLI, or OpenCode`}</code>
         </pre>
       </div>
 
-      {/* Machine contracts */}
+      {/* Machine surface */}
       <div>
-        <h2 style={{ marginBottom: "0.75rem" }}>Machine Contracts</h2>
+        <h2 style={{ marginBottom: "0.75rem" }}>Machine Surface</h2>
         <table className="agent-table">
           <thead>
             <tr>
@@ -121,7 +132,7 @@ npx zombiectl login && zombiectl workspace add https://github.com/your-org/your-
             </tr>
           </thead>
           <tbody>
-            {contracts.map((c) => (
+            {machineSurfaces.map((c) => (
               <tr key={c.endpoint}>
                 <td><a href={c.endpoint}>{c.endpoint}</a></td>
                 <td>{c.purpose}</td>
@@ -160,8 +171,8 @@ npx zombiectl login && zombiectl workspace add https://github.com/your-org/your-
       <div>
         <h2 style={{ marginBottom: "0.75rem" }}>Webhook Ingest Example</h2>
         <p style={{ color: "var(--z-text-muted)", marginBottom: "0.75rem" }}>
-          Configure a Zombie&apos;s trigger and POST inbound events to <code>/v1/webhooks/:zombie_id</code>.
-          The event is appended to the Zombie&apos;s stream and dispatched to its loop:
+          Configure an agent&apos;s trigger and POST inbound events to <code>/v1/webhooks/:zombie_id</code>.
+          The event is appended to the agent&apos;s stream and dispatched to its loop:
         </p>
         <pre className="terminal" aria-label="Webhook payload example">
           <code>{webhookPayload}</code>
@@ -178,7 +189,7 @@ npx zombiectl login && zombiectl workspace add https://github.com/your-org/your-
           </article>
           <article className="card">
             <h3>Audit Trail</h3>
-            <p>Append-only zombie event stream records every inbound trigger, steer, status change, and tool call with timestamps and actor identity.</p>
+            <p>Append-only agent event stream records every inbound trigger, steer, status change, and tool call with timestamps and actor identity.</p>
           </article>
           <article className="card">
             <h3>Secret Management</h3>

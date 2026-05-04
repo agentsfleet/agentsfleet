@@ -17,16 +17,16 @@ describe("Agents", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/autonomous agents/i);
   });
 
-  it("renders the canonical contract note", () => {
+  it("renders the canonical surface note", () => {
     renderAgents();
-    expect(screen.getByText(/canonical contract/i)).toBeInTheDocument();
+    expect(screen.getByText(/canonical surface/i)).toBeInTheDocument();
   });
 
-  it("renders the install block with curl command", () => {
+  it("renders the install block with npm command", () => {
     renderAgents();
     expect(screen.getByRole("heading", { name: "Install Zombiectl" })).toBeInTheDocument();
     expect(screen.getByLabelText(/install zombiectl command/i)).toHaveTextContent(
-      /curl -sSL https:\/\/usezombie\.sh\/install \| bash/
+      /npm install -g @usezombie\/zombiectl/
     );
   });
 
@@ -41,26 +41,30 @@ describe("Agents", () => {
 
   it("renders bootstrap commands", () => {
     renderAgents();
-    expect(screen.getByLabelText(/bootstrap commands/i)).toBeInTheDocument();
-    expect(screen.getByText(/npx zombiectl login/)).toBeInTheDocument();
+    const block = screen.getByLabelText(/bootstrap commands/i);
+    expect(block).toBeInTheDocument();
+    expect(block).toHaveTextContent(/npm install -g @usezombie\/zombiectl/);
+    expect(block).toHaveTextContent(/zombiectl auth login/);
+    expect(block).toHaveTextContent(/usezombie-install-platform-ops/);
   });
 
-  it("renders machine contracts table", () => {
+  it("renders machine surface table", () => {
     renderAgents();
-    expect(screen.getByText("Machine Contracts")).toBeInTheDocument();
+    expect(screen.getByText("Machine Surface")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "/openapi.json" })).toHaveAttribute("href", "/openapi.json");
   });
 
   it("renders API operations table", () => {
     renderAgents();
     expect(screen.getByText("API Operations")).toBeInTheDocument();
-    expect(screen.getByText("Create zombie")).toBeInTheDocument();
-    expect(screen.getByText("Update zombie")).toBeInTheDocument();
-    expect(screen.getByText("Kill zombie")).toBeInTheDocument();
-    expect(screen.getByText("Post zombie message")).toBeInTheDocument();
+    expect(screen.getByText("Create agent")).toBeInTheDocument();
+    expect(screen.getByText("Update agent")).toBeInTheDocument();
+    expect(screen.getByText("Kill agent")).toBeInTheDocument();
+    expect(screen.getByText("Steer / chat")).toBeInTheDocument();
     expect(screen.getByText("Stream events")).toBeInTheDocument();
+    expect(screen.getByText("Ingest webhook")).toBeInTheDocument();
     expect(screen.getByText("Pause workspace")).toBeInTheDocument();
-    expect(screen.getByText("Execute tool")).toBeInTheDocument();
+    expect(screen.queryByText("Execute tool")).not.toBeInTheDocument();
   });
 
   it("renders HTTP methods", () => {
@@ -68,15 +72,15 @@ describe("Agents", () => {
     const posts = screen.getAllByText("POST");
     const gets = screen.getAllByText("GET");
     const patches = screen.getAllByText("PATCH");
-    expect(posts.length).toBeGreaterThanOrEqual(3);
+    expect(posts.length).toBeGreaterThanOrEqual(2);
     expect(gets.length).toBeGreaterThanOrEqual(1);
-    expect(patches.length).toBeGreaterThanOrEqual(1);
+    expect(patches.length).toBeGreaterThanOrEqual(3);
   });
 
   it("renders webhook example", () => {
     renderAgents();
     expect(screen.getByText("Webhook Ingest Example")).toBeInTheDocument();
-    expect(screen.getByText(/email\.received/)).toBeInTheDocument();
+    expect(screen.getByText(/workflow_run\.failed/)).toBeInTheDocument();
   });
 
   it("renders safety limits cards", () => {

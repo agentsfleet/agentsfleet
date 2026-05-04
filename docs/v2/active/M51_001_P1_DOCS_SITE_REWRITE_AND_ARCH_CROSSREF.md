@@ -227,6 +227,23 @@ Land in this order (Captain's directive May 04, 2026):
 
 Copy-only rewrite. Every animation, lazy chunk, motion-library binding, design-system component, PostHog event name, `data-testid` attribute, and the SVG zombie mark stays put. The intent is to make the most-visited launch-day surface match the architecture's three pillars without a structural rewrite.
 
+**Lexicon decision (May 04, 2026 amendment):** marketing-site body copy uses **"agent"** as the runtime-instance noun (e.g., "the platform-ops agent"), while preserving these as legitimate brand/technical surfaces:
+- Brand name `UseZombie`, CLI `zombiectl`, package `@usezombie/zombiectl`
+- Filesystem paths (`.usezombie/platform-ops/`)
+- Database/identifier prefixes (`zmb_2041`, `zombie_id`, `core.zombie_events`, `zombie:{id}:events`)
+- Design-system icon names (`ZombieHandIcon`), CSS class hooks (`.hero-zombie-mark`)
+- `data-testid` attributes (preserved verbatim for e2e selectors)
+
+Where the §6 proposed copy below shows "zombie" as a runtime-instance noun, the implementation lands "agent". Docs site (`~/Projects/docs/`) and architecture docs continue to use "zombie" as the brand-voice term — the swap is marketing-only.
+
+**Scope additions folded into this branch (not in original Files Changed table):**
+| File | Action | Why |
+|------|--------|-----|
+| `ui/packages/website/src/App.tsx` | EDIT | Header badge `agent delivery control plane` → `durable agent runtime` (load-bearing brand surface visible on every page; original spec missed it) |
+| `ui/packages/website/src/pages/DesignSystemGallery.tsx` | EDIT | InstallBlock command in dev-only design gallery updated to `npm install -g @usezombie/zombiectl` (was `usezombie.sh/install` — forbidden string) |
+| `ui/packages/website/src/components/domain/tokenize-bash.test.ts` | EDIT | Tokenizer fixture corpus refreshed to v2 commands; the curl-pipe-bash example now uses a generic example.com URL (was `usezombie.sh/install` — forbidden string) |
+| `ui/packages/website/src/marketing-no-legacy-pr-framing.test.ts` | NEW | Vitest enforcer for the §6 forbidden-strings list (skips its own file + every `*.test.ts` / `*.spec.ts`) |
+
 **Forbidden strings** (must not appear in `ui/packages/website/src/**/*.tsx` after this lands — `test_marketing_no_legacy_pr_framing` enforces):
 - `AI-generated PRs`
 - `Automated PR delivery`

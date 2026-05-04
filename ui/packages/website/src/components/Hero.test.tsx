@@ -10,7 +10,7 @@ const analytics = vi.hoisted(() => ({
 vi.mock("../analytics/posthog", () => analytics);
 
 import Hero from "./Hero";
-import { APP_BASE_URL } from "../config";
+import { DOCS_QUICKSTART_URL } from "../config";
 
 function renderHero() {
   return render(
@@ -29,21 +29,21 @@ describe("Hero", () => {
   it("renders h1 with both headline lines", () => {
     const { container } = renderHero();
     const h1 = container.querySelector("h1");
-    expect(h1).toHaveTextContent(/ship ai-generated prs/i);
-    expect(h1).toHaveTextContent(/without babysitting the run/i);
+    expect(h1).toHaveTextContent(/operational outcomes/i);
+    expect(h1).toHaveTextContent(/don't fall into limbo/i);
   });
 
   it("shows the human badge text", () => {
     renderHero();
-    expect(screen.getByText(/for engineering teams/i)).toBeInTheDocument();
+    expect(screen.getByText(/durable agent runtime/i)).toBeInTheDocument();
   });
 
-  it("renders the primary CTA linking to app", () => {
+  it("renders the primary CTA linking to docs quickstart", () => {
     const { container } = renderHero();
     const cta = Array.from(container.querySelectorAll("a")).find((link) =>
-      link.textContent?.match(/connect github, automate prs/i),
+      link.textContent?.match(/install platform-ops/i),
     );
-    expect(cta).toHaveAttribute("href", APP_BASE_URL);
+    expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
   });
 
   it("renders the pricing CTA", () => {
@@ -54,7 +54,7 @@ describe("Hero", () => {
 
   it("tracks clicks on the primary CTA", () => {
     renderHero();
-    fireEvent.click(screen.getByRole("link", { name: /connect github, automate prs/i }));
+    fireEvent.click(screen.getByRole("link", { name: /install platform-ops/i }));
     expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
       source: "hero_primary",
       surface: "hero",
@@ -85,7 +85,7 @@ describe("Hero", () => {
   it("renders the data-command attribute on the terminal", () => {
     renderHero();
     const terminal = screen.getByLabelText(/quick start command/i);
-    expect(terminal).toHaveAttribute("data-command", "curl -fsSL https://usezombie.sh/install.sh | bash");
+    expect(terminal).toHaveAttribute("data-command", "npm install -g @usezombie/zombiectl");
   });
 
   it("does not render the removed proof cards", () => {

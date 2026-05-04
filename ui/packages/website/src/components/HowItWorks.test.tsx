@@ -7,25 +7,25 @@ describe("HowItWorks", () => {
     const { container } = render(<HowItWorks />);
     const heading = container.querySelector("h2");
     expect(heading).toBeInTheDocument();
-    expect(heading?.textContent).toBe("From queued intent to validated pull requests.");
+    expect(heading?.textContent).toBe("From trigger to evidenced diagnosis, durably.");
   });
 
   it("renders the eyebrow", () => {
     render(<HowItWorks />);
-    expect(screen.getByText("Why UseZombie")).toBeInTheDocument();
+    expect(screen.getByText("How it works")).toBeInTheDocument();
   });
 
   it("renders all three steps", () => {
     render(<HowItWorks />);
-    expect(screen.getByText("Queue work")).toBeInTheDocument();
-    expect(screen.getByText("Agents execute with guardrails")).toBeInTheDocument();
-    expect(screen.getByText("Review a validated PR")).toBeInTheDocument();
+    expect(screen.getByText("A trigger arrives")).toBeInTheDocument();
+    expect(screen.getByText("The agent gathers evidence")).toBeInTheDocument();
+    expect(screen.getByText("Diagnosis posts; the run is auditable")).toBeInTheDocument();
   });
 
   it("renders step descriptions", () => {
     render(<HowItWorks />);
-    expect(screen.getByText(/trigger a run from CLI or API/i)).toBeInTheDocument();
-    expect(screen.getByText(/Agents plan, implement, and validate with policy controls/i)).toBeInTheDocument();
-    expect(screen.getByText(/pull request includes run replay/i)).toBeInTheDocument();
+    expect(screen.getByText(/A GitHub Actions deploy fails, a cron fires/i)).toBeInTheDocument();
+    expect(screen.getByText(/calls the tools TRIGGER\.md allow-lists/i)).toBeInTheDocument();
+    expect(screen.getByText(/Slack receives the evidenced diagnosis/i)).toBeInTheDocument();
   });
 });

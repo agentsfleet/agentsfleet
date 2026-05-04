@@ -137,7 +137,7 @@ test.describe("Mode toggle — multi-step cycles", () => {
     selected = expectModeToggle("humans");
     await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
     await expect(page.getByTestId("mode-agents")).toHaveAttribute("aria-selected", selected.agents);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Ship AI-generated PRs");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Operational outcomes");
   });
 
   test("pricing → home → agents updates URLs and selection state", async ({ page }) => {
@@ -169,7 +169,7 @@ test.describe("Mode toggle — multi-step cycles", () => {
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Home" }).click();
     await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
     await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Ship AI-generated PRs");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Operational outcomes");
   });
 });
 
@@ -243,10 +243,10 @@ test.describe("Agents page — install block", () => {
     await expect(page.getByRole("heading", { name: "Install Zombiectl" })).toBeVisible();
   });
 
-  test("curl command is readable in install block", async ({ page }) => {
+  test("npm install command is readable in install block", async ({ page }) => {
     await page.goto("/agents");
     const block = page.getByLabel(/install zombiectl command/i);
-    await expect(block).toContainText("curl -sSL https://usezombie.sh/install | bash");
+    await expect(block).toContainText("npm install -g @usezombie/zombiectl");
   });
 
   test("Read the docs button links to docs", async ({ page }) => {
