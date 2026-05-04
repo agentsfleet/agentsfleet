@@ -4,7 +4,7 @@
 **Milestone:** M51
 **Workstream:** 001
 **Date:** Apr 25, 2026 · revised May 03, 2026 · revised May 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — packaging-blocking. The launch tweet links to `docs.usezombie.com/quickstart/platform-ops`; if it 404s or shows stale homelab-zombie content, the launch lands flat.
 **Categories:** DOCS
 **Batch:** B3 — depends on all other v2 substrate + packaging being shippable. Final milestone before launch.
