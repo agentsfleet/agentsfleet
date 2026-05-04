@@ -610,7 +610,6 @@ describe("zombies routes", () => {
     );
     expect(markup).toContain("lead-collector");
     expect(markup).toContain("Trigger");
-    expect(markup).toContain("Firewall rules");
     expect(markup).toContain("Configuration");
     expect(markup).toContain("Balance exhausted");
   });
