@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   Accordion,
   AccordionItem,
@@ -5,10 +6,10 @@ import {
   AccordionContent,
 } from "@usezombie/design-system";
 
-const items = [
+const items: { q: string; a: ReactNode }[] = [
   {
     q: "What is UseZombie?",
-    a: "A durable runtime for one operational outcome. The platform-ops agent wakes on a GitHub Actions deploy failure, gathers evidence from Fly, Upstash, Redis, and GitHub run logs, and posts an evidenced diagnosis to Slack. Reachable via `zombiectl steer` for manual investigation.",
+    a: "A durable runtime for one operational outcome. The platform-ops agent wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via `zombiectl steer` for manual investigation.",
   },
   {
     q: "What does BYOK mean?",
@@ -16,7 +17,7 @@ const items = [
   },
   {
     q: "What am I actually paying for?",
-    a: "Hosted execution. Runs are metered against a credit pool with a $10 starter grant that never expires; the two debit points are event receipt and per-stage execution. Inference cost is yours via BYOK.",
+    a: "Hosted execution. Runs are metered against a credit pool with a $5 starter grant that never expires; the two debit points are event receipt and per-stage execution. Inference cost is yours via BYOK.",
   },
   {
     q: "Can I self-host?",
@@ -28,7 +29,26 @@ const items = [
   },
   {
     q: "What if my agent hits the model's context window?",
-    a: "It won't. The runtime layers three independent mechanisms — periodic memory checkpoints, a rolling tool-result window, and stage chunking — so a long incident keeps reasoning past the model's working-memory cap. See concepts/context-lifecycle.",
+    a: (
+      <>
+        It doesn&apos;t lose the thread. UseZombie keeps long incidents coherent through three layers
+        working together. The runtime watches three signals — a <strong>tool-result window</strong>,{" "}
+        <strong>memory checkpoints</strong>, and a <strong>stage-chunk threshold</strong> — and the
+        agent responds by compacting tool results into durable memory via <code>memory_store</code>,
+        ending the stage at safe boundaries, and re-entering on a continuation chain (capped at 10)
+        for the next stage. Underneath, the agent loop runs its own rolling-summary compaction once
+        message count or token budget crosses a built-in threshold. Net: a 40-tool-call deploy
+        investigation stays reasoned through to a Slack diagnosis, not a context-overflow loop.{" "}
+        <a
+          href="https://docs.usezombie.com/concepts/context-lifecycle"
+          target="_blank"
+          rel="noreferrer"
+        >
+          Read more in the context lifecycle docs
+        </a>
+        .
+      </>
+    ),
   },
 ];
 

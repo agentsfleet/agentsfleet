@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { redirect } from "next/navigation";
 import {
   EmptyState,
   PageHeader,
@@ -21,7 +21,7 @@ const PURCHASE_FOOTNOTE = "Stripe purchase ships in v2.1.";
 
 export default async function BillingSettingsPage() {
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
 
   // Fetch in parallel — both endpoints are tenant-scoped (bearer-auth) and
   // independent. listTenantBillingCharges 503s on a fresh tenant with no

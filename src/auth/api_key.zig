@@ -1,5 +1,5 @@
 //! Shared helpers for zmb_ agent-key authentication.
-//! Used by execute.zig, integration_grants.zig, and agent_keys.zig.
+//! Used by integration_grants/handler.zig and api_keys/agent.zig.
 
 const std = @import("std");
 

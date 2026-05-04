@@ -78,7 +78,7 @@ tags:
   x-mintlify:
     navigation: Webhooks
 - name: Telemetry
-  description: Per-zombie execution telemetry and internal operator telemetry
+  description: Per-zombie execution telemetry
   x-mintlify:
     navigation: Telemetry
 - name: Approvals
@@ -88,8 +88,6 @@ tags:
 paths:
   /healthz:
     $ref: ./paths/health.yaml#/~1healthz
-  /internal/v1/telemetry:
-    $ref: ./paths/telemetry.yaml#/~1internal~1v1~1telemetry
   /metrics:
     $ref: ./paths/health.yaml#/~1metrics
   /readyz:
@@ -102,8 +100,6 @@ paths:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions
   /v1/auth/sessions/{session_id}:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}
-  /v1/execute:
-    $ref: ./paths/execute.yaml#/~1v1~1execute
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories:
     $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}:

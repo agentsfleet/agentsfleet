@@ -80,12 +80,9 @@ pub const Route = union(enum) {
     workspace_zombie_current_run: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/current-run — kill the running action
     // Zombie execution telemetry
     zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
-    internal_telemetry, // GET /internal/v1/telemetry
     // External-agent memory API — workspace-scoped resource collection.
     workspace_zombie_memories: matchers.WorkspaceZombieRoute, // GET (list-or-search) + POST (store)
     workspace_zombie_memory: matchers.WorkspaceZombieMemoryRoute, // DELETE /memories/{key}
-    // Execute proxy endpoint
-    execute, // POST /v1/execute
     // Integration grant CRUD (workspace-scoped)
     request_integration_grant: matchers.WorkspaceZombieRoute, // POST /v1/workspaces/{ws}/zombies/{id}/integration-requests
     list_integration_grants: matchers.WorkspaceZombieRoute, // GET  /v1/workspaces/{ws}/zombies/{id}/integration-grants
@@ -112,8 +109,6 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/tenants/me/provider")) return .tenant_provider;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
-    if (std.mem.eql(u8, path, "/internal/v1/telemetry")) return .internal_telemetry;
-    if (std.mem.eql(u8, path, "/v1/execute")) return .execute;
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
     // Clerk user.created signup webhook — exact-match before the zombie-scoped
     // /v1/webhooks/{zombie_id} catch-all so "clerk" is not swallowed as a

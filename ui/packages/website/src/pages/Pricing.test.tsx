@@ -88,10 +88,10 @@ describe("Pricing", () => {
   it("renders all highlight bullet points for both tiers", () => {
     renderPricing();
     // Hobby highlights
-    expect(screen.getByText("$10 starter credit, never expires")).toBeInTheDocument();
+    expect(screen.getByText("$5 starter credit, never expires")).toBeInTheDocument();
     expect(screen.getByText("1 workspace")).toBeInTheDocument();
     expect(screen.getByText("BYOK on Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot")).toBeInTheDocument();
-    expect(screen.getByText("Hosted execution metered per stage; no token markup")).toBeInTheDocument();
+    expect(screen.getByText("Hosted execution metered on event receipt + per stage; no token markup")).toBeInTheDocument();
     // Scale highlights
     expect(screen.getByText("Everything in Hobby")).toBeInTheDocument();
     expect(screen.getByText("Multiple workspaces with shared event history")).toBeInTheDocument();

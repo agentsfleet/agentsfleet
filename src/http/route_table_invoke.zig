@@ -31,7 +31,6 @@ const approval = @import("handlers/webhooks/approval.zig");
 const grant_approval = @import("handlers/webhooks/grant_approval.zig");
 const github_webhook_h = @import("handlers/webhooks/github.zig");
 const memory = @import("handlers/memory/handler.zig");
-const execute_h = @import("handlers/actions/execute.zig");
 const grants = @import("handlers/integration_grants/handler.zig");
 const grants_ws = @import("handlers/integration_grants/workspace.zig");
 const agent_keys_h = @import("handlers/api_keys/agent.zig");
@@ -244,12 +243,6 @@ pub fn invokeZombieTelemetry(hx: *Hx, req: *httpz.Request, route: router.Route) 
     zombie_tel.innerZombieTelemetry(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
-pub fn invokeInternalTelemetry(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    zombie_tel.innerInternalTelemetry(hx.*, req);
-}
-
 // ── Memory ────────────────────────────────────────────────────────────────
 // /memories collection — GET (list-or-search) + POST (store).
 // /memories/{key} — DELETE only (idempotent 204).
@@ -267,14 +260,6 @@ pub fn invokeZombieMemoryByKey(hx: *Hx, req: *httpz.Request, route: router.Route
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.workspace_zombie_memory;
     memory.innerDeleteMemory(hx.*, r.workspace_id, r.zombie_id, r.memory_key);
-}
-
-// ── Execute proxy ─────────────────────────────────────────────────────────
-
-pub fn invokeExecute(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    execute_h.innerExecute(hx.*, req);
 }
 
 // ── Integration grants ────────────────────────────────────────────────────

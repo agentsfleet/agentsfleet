@@ -494,10 +494,10 @@ describe("zombies routes", () => {
     expect(el.querySelector("[data-icon=Loader2Icon]")).toBeTruthy();
   });
 
-  it("zombies list page notFound when no token", async () => {
+  it("zombies list page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: Page } = await import("../app/(dashboard)/zombies/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("zombies list page renders empty-workspace state", async () => {
@@ -553,10 +553,10 @@ describe("zombies routes", () => {
     expect(markup).toContain("No zombies yet");
   });
 
-  it("zombies new page notFound when no token", async () => {
+  it("zombies new page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("zombies new page renders empty-workspace guard", async () => {
@@ -576,11 +576,11 @@ describe("zombies routes", () => {
     expect(markup).toContain("name=\"config_json\"");
   });
 
-  it("zombies detail page notFound when no token", async () => {
+  it("zombies detail page redirects to /sign-in when no token", async () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
     await expect(Page({ params: Promise.resolve({ id: "zom_1" }) })).rejects.toThrow(
-      "notFound",
+      "redirect:/sign-in",
     );
   });
 

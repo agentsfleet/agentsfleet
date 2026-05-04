@@ -205,9 +205,6 @@ pub const ERR_GRANT_DENIED = "UZ-GRANT-003";
 pub const ERR_FW_DOMAIN_BLOCKED = "UZ-FW-001";
 pub const ERR_FW_APPROVAL_REQUIRED = "UZ-FW-002";
 pub const ERR_FW_INJECTION_DETECTED = "UZ-FW-003";
-pub const ERR_TOOL_CRED_NOT_FOUND = "UZ-CRED-004";
-pub const ERR_PROXY_TARGET_ERROR = "UZ-PROXY-001";
-const ERR_GATE_APPROVAL_TIMEOUT = "UZ-GATE-005";
 
 // ── Error mapping table (bvisor pattern) ─────────────────────────────────────
 // Shared type for modules that map Zig errors to registry codes + messages.

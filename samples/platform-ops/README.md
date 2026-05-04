@@ -23,8 +23,8 @@ quick-start.
 
 ## Quick start
 
-Prereqs: `zombiectl` installed (run `zombiectl up` for a local
-stack), a signed-in Clerk tenant, a fly.io PAT with read scope, an
+Prereqs: `zombiectl` installed (`npm install -g @usezombie/zombiectl`),
+a signed-in Clerk tenant, a fly.io PAT with read scope, an
 upstash account-management API token, and a Slack bot (`chat:write`)
 already invited to the channel you want posts in.
 

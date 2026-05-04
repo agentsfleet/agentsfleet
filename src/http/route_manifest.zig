@@ -85,7 +85,6 @@ pub const entries = [_]Entry{
     .{ .method = "POST", .path = "/v1/webhooks/{zombie_id}/github" },
 
     // Telemetry
-    .{ .method = "GET", .path = "/internal/v1/telemetry" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry" },
 
     // Memory — workspace-scoped /memories collection (GET list-or-search,
@@ -93,9 +92,6 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories" },
     .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}" },
-
-    // Execute
-    .{ .method = "POST", .path = "/v1/execute" },
 
     // Integration Grants
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/integration-requests" },

@@ -29,8 +29,8 @@ describe("Hero", () => {
   it("renders h1 with both headline lines", () => {
     const { container } = renderHero();
     const h1 = container.querySelector("h1");
-    expect(h1).toHaveTextContent(/operational knowledge lives in heads/i);
-    expect(h1).toHaveTextContent(/that's where outcomes get stuck/i);
+    expect(h1).toHaveTextContent(/operational knowledge isn't executable/i);
+    expect(h1).toHaveTextContent(/when a deploy fails, teams guess/i);
   });
 
   it("shows the human badge text", () => {

@@ -90,7 +90,7 @@ test "provision inserts one row and replay is a no-op" {
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqualStrings("free", row.plan_tier);
     try std.testing.expectEqualStrings("free_default", row.plan_sku);
-    try std.testing.expectEqual(@as(i64, 1000), row.balance_cents);
+    try std.testing.expectEqual(@as(i64, 500), row.balance_cents);
     try std.testing.expectEqualStrings("bootstrap_starter_grant", row.grant_source);
 }
 
@@ -105,7 +105,7 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 5);
-    try std.testing.expectEqual(@as(i64, 995), after.balance_cents);
+    try std.testing.expectEqual(@as(i64, 495), after.balance_cents);
 
     // Exhaust: try to debit more than remaining.
     try std.testing.expectError(error.CreditExhausted, tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 10_000));
@@ -114,7 +114,7 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     defer ALLOC.free(@constCast(row.plan_tier));
     defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 995), row.balance_cents);
+    try std.testing.expectEqual(@as(i64, 495), row.balance_cents);
 }
 
 test "debit on missing tenant returns TenantBillingMissing (distinct from CreditExhausted)" {
@@ -184,7 +184,7 @@ test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
     // Simulate a top-up path: the next successful debit must clear the
     // exhausted flag so the `stop` gate re-opens atomically.
     const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 5);
-    try std.testing.expectEqual(@as(i64, 995), after.balance_cents);
+    try std.testing.expectEqual(@as(i64, 495), after.balance_cents);
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.plan_tier));

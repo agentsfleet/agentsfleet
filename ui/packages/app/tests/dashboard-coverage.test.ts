@@ -11,6 +11,9 @@ const routerPush = vi.fn();
 const notFound = vi.fn(() => {
   throw new Error("notFound");
 });
+const redirect = vi.fn((path: string) => {
+  throw new Error(`redirect:${path}`);
+});
 const setActiveWorkspaceMock = vi.fn().mockResolvedValue(undefined);
 const getTokenFn = vi.fn().mockResolvedValue("token_abc");
 const stopZombieMock = vi.fn();
@@ -24,7 +27,7 @@ const getServerAuthMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   notFound,
-  redirect: vi.fn(),
+  redirect,
   usePathname: vi.fn(() => "/"),
   useRouter: () => ({ push: routerPush, refresh: routerRefresh }),
 }));
@@ -349,10 +352,10 @@ describe("placeholder pages", () => {
     expect(m).toContain("firewall extension ships");
   });
 
-  it("settings page notFound when no token", async () => {
+  it("settings page redirects to /sign-in when no token", async () => {
     getServerAuthMock.mockResolvedValue({ token: null, userId: null });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("settings page renders workspace info and userId when authenticated", async () => {
@@ -421,10 +424,10 @@ describe("placeholder pages", () => {
     expect(m).toContain("No workspace yet");
   });
 
-  it("provider settings page notFound when no token", async () => {
+  it("provider settings page redirects to /sign-in when no token", async () => {
     getServerTokenMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("provider settings page tolerates a getTenantProvider 5xx (catch fallback)", async () => {
@@ -477,20 +480,20 @@ describe("placeholder pages", () => {
     expect(m).toContain("data-event-count=\"0\"");
   });
 
-  it("billing settings page notFound when no token", async () => {
+  it("billing settings page redirects to /sign-in when no token", async () => {
     getServerTokenMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 });
 
 // ── Dashboard page (StatusTiles + RecentActivity) ──────────────────────────
 
 describe("dashboard overview page", () => {
-  it("notFound when no server token", async () => {
+  it("redirects to /sign-in when no server token", async () => {
     getServerTokenMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/page");
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("renders page header with Suspense fallbacks when authenticated", async () => {
@@ -504,7 +507,7 @@ describe("dashboard overview page", () => {
     const mod = await import("../app/(dashboard)/page");
     const Page = mod.default;
     getServerTokenMock.mockResolvedValue(null);
-    await expect(Page()).rejects.toThrow("notFound");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
 
     getServerTokenMock.mockResolvedValue("token_abc");
     resolveActiveWorkspaceMock.mockResolvedValue(null);

@@ -1,34 +1,3 @@
-/internal/v1/telemetry:
-  get:
-    operationId: internal_telemetry
-    summary: Internal operator telemetry
-    description: Admin-only platform health snapshot — in-flight request counts, queue depth, error rates. Requires the admin
-      API key, not a user bearer token.
-    tags:
-    - Telemetry
-    responses:
-      '200':
-        description: Operator telemetry snapshot.
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                api_in_flight_requests:
-                  type: integer
-                api_max_in_flight_requests:
-                  type: integer
-                queue_depth:
-                  type: integer
-                  nullable: true
-                queue_age_ms:
-                  type: integer
-                  nullable: true
-              additionalProperties: true
-      '401':
-        $ref: ../components/responses.yaml#/components/responses/Error
-      '403':
-        $ref: ../components/responses.yaml#/components/responses/Error
 /v1/workspaces/{workspace_id}/zombies/{zombie_id}/telemetry:
   get:
     operationId: get_zombie_telemetry

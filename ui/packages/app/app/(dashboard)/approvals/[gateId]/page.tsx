@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   Badge,
   Card,
@@ -28,7 +28,7 @@ export default async function ApprovalDetailPage({
 }) {
   const { gateId } = await params;
   const token = await getServerToken();
-  if (!token) notFound();
+  if (!token) redirect("/sign-in");
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) notFound();
 

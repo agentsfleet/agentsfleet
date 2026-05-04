@@ -1,5 +1,5 @@
 import FAQ from "../components/FAQ";
-import { Button } from "@usezombie/design-system";
+import { Button, Card } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupCompleted, trackLeadCaptureClicked } from "../analytics/posthog";
 import { MODE_HUMANS } from "../constants/mode";
@@ -34,10 +34,10 @@ const tiers: Tier[] = [
     ctaLabel: "Start free",
     proof: "Best for installing platform-ops on a real repo and seeing a real diagnosis.",
     highlights: [
-      "$10 starter credit, never expires",
+      "$5 starter credit, never expires",
       "1 workspace",
       "BYOK on Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot",
-      "Hosted execution metered per stage; no token markup",
+      "Hosted execution metered on event receipt + per stage; no token markup",
     ],
   },
   {
@@ -52,6 +52,7 @@ const tiers: Tier[] = [
     proof: "Built for teams operating multiple agents across shared workspaces with approval gates and budget controls.",
     highlights: [
       "Everything in Hobby",
+      "Credit-pool billing, Amp-style: debits on event receipt + per-stage execution",
       "Multiple workspaces with shared event history",
       "Higher concurrency and longer per-stage windows",
       "Approval gating in dashboard and Slack DM",
@@ -70,7 +71,8 @@ export default function Pricing() {
         <p className="lead">
           UseZombie sells durable execution and operational ownership — not marked-up model usage.
           Bring your own model key; pay your provider directly. Hosted execution is metered against
-          a credit pool with a $10 starter grant.
+          a credit pool with a $5 starter grant — debits fire on event receipt and per-stage
+          execution.
         </p>
 
         <div className="pricing-roadmap-strip" aria-label="Pricing proof points">
@@ -82,7 +84,8 @@ export default function Pricing() {
 
       <div className="pricing-grid">
         {tiers.map((tier) => (
-          <article key={tier.name} className={`pricing-card${tier.featured ? " pricing-card--featured" : ""}`}>
+          <Card key={tier.name} asChild>
+          <article className={`pricing-card${tier.featured ? " pricing-card--featured" : ""}`}>
             <div className="pricing-card-head">
               <span className="pricing-card-badge">{tier.availability}</span>
               <h2>{tier.name}</h2>
@@ -118,6 +121,7 @@ export default function Pricing() {
               ))}
             </ul>
           </article>
+          </Card>
         ))}
       </div>
 
