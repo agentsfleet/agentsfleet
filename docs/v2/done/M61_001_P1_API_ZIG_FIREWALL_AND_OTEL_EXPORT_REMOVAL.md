@@ -4,7 +4,7 @@
 **Milestone:** M61
 **Workstream:** 001
 **Date:** May 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — biggest single deletion lever found in the May 04 audit. ~2.6k LOC of compiled-but-unwired code; every commit pays for it in build time, test time, and reader cognitive load. Pre-v2.0.0, RULE NLG forbids carrying unwired engines on speculation.
 **Categories:** API
 **Batch:** B1
@@ -77,23 +77,23 @@ No schema changes. No HTTP handler changes. No CLI changes. No UI changes. No pu
 
 ## Sections (implementation slices)
 
-### §1 — User decision on firewall retirement
+### §1 — User decision on firewall retirement — DONE
 
 Surface the Decision Point above as a Legacy-Design Consult block. Wait for A/B/C. Do not start §2 until answered. If B: drop firewall rows from §Files Changed, proceed to §3. If C: close this spec REJECTED. Implementation default: do not pick A on auto-mode — the engine is a P0 spec marker and Captain owns retirement of P0 commitments.
 
-### §2 — Delete firewall engine (only on decision = A)
+### §2 — Delete firewall engine (only on decision = A) — DONE
 
 `git rm` all eight files in `src/zombie/firewall/` and the directory. Drop the eight `@import` lines from `src/main.zig`'s test block. Verify no remaining `firewall` references survive in src/ via `rg -nw 'firewall' src/ -g '!*_test.zig'` (acceptable hits: webhook signature verification `webhook_verify.zig`, which is unrelated; the audit's name collision was on the substring "firewall" inside webhook context — confirm by reading each hit). Append the Apr 30 → May 04 retirement amendment to the M6_001 spec.
 
-### §3 — Delete OTEL push-export pipeline (always)
+### §3 — Delete OTEL push-export pipeline (always) — DONE
 
 `git rm` the five files: `otel_export.zig`, `otel_histogram.zig`, `otel_json.zig`, `otel_export_test.zig`, `otel_histogram_test.zig`. Drop the five `@import` lines from `src/main.zig`'s test block. Confirm `otel_logs.zig` and `otel_traces.zig` remain wired and live: `rg -n '@import.*otel_(logs|traces)' src/cmd/preflight.zig src/zombie/metering.zig src/http/server.zig src/main.zig` should still show the existing imports.
 
-### §4 — Re-run orphan eval
+### §4 — Re-run orphan eval — DONE
 
 Run E1 (production-only orphan eval, see `Eval Commands`). Expected output: zero entries that were not already orphans before this spec. If a new orphan surfaces (e.g. a sibling helper that becomes unreachable after deletion), surface it in `Discovery` and decide remove-or-keep before COMMIT.
 
-### §5 — Verification + ship
+### §5 — Verification + ship — DONE
 
 Run the full `Verification` block. Memleak evidence (last 3 lines of `make memleak`) lands in PR Session Notes per AGENTS.md. Cross-compile `x86_64-linux` and `aarch64-linux` mandatory because Zig changed.
 
