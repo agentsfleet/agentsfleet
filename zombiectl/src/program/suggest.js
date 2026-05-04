@@ -15,6 +15,9 @@ const KNOWN_COMMANDS = [
   "install",
   "status",
   "kill",
+  "stop",
+  "resume",
+  "delete",
   "logs",
   "credential",
 ];

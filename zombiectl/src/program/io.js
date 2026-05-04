@@ -43,7 +43,10 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  install --from <path>               Register the zombie at <path>; server activates it");
   writeLine(stdout, "  list [--cursor C] [--limit N]       List zombies (cursor-paginated)");
   writeLine(stdout, "  status [<zombie_id>]                Show zombie(s) status");
-  writeLine(stdout, "  kill <zombie_id>                    Delete a zombie");
+  writeLine(stdout, "  stop <zombie_id>                    Halt the running session (resumable)");
+  writeLine(stdout, "  resume <zombie_id>                  Resume from stopped or auto-paused");
+  writeLine(stdout, "  kill <zombie_id>                    Mark terminal (irreversible)");
+  writeLine(stdout, "  delete <zombie_id>                  Hard-delete (must kill first)");
   writeLine(stdout, "  logs <zombie_id>                    Tail zombie activity");
   writeLine(stdout, "  credential add|show|list|delete     Workspace credential vault (--data=@- pipes JSON on stdin)");
 

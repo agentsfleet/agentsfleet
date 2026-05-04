@@ -64,7 +64,10 @@ vi.mock("@/lib/workspace", () => ({
 
 vi.mock("@/lib/api/zombies", () => ({
   listZombies: listZombiesMock,
-  stopZombie: stopZombieMock,
+  setZombieStatus: stopZombieMock,
+  stopZombie: (ws: string, id: string, tok: string) => stopZombieMock(ws, id, "stopped", tok),
+  resumeZombie: (ws: string, id: string, tok: string) => stopZombieMock(ws, id, "active", tok),
+  killZombie: (ws: string, id: string, tok: string) => stopZombieMock(ws, id, "killed", tok),
   getZombie: vi.fn(),
   installZombie: vi.fn(),
   deleteZombie: vi.fn(),
@@ -544,28 +547,64 @@ describe("KillSwitch component", () => {
     );
   }
 
-  it("renders Stopped label when zombie is already stopped", async () => {
-    await renderSwitch("stopped");
-    expect(screen.getByText("Stopped")).toBeTruthy();
+  it("renders Killed label when zombie is terminal (no actions)", async () => {
+    await renderSwitch("killed");
+    expect(screen.getByText("Killed")).toBeTruthy();
   });
 
-  it("happy path: click → confirm → stopZombie called → router refresh", async () => {
+  it("offers Resume + Kill when zombie is stopped", async () => {
+    await renderSwitch("stopped");
+    expect(screen.getByRole("button", { name: /^resume$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
+  });
+
+  it("offers Resume + Kill when zombie is paused (auto-halt)", async () => {
+    await renderSwitch("paused");
+    expect(screen.getByRole("button", { name: /^resume$/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^kill$/i })).toBeTruthy();
+  });
+
+  // After opening the action dialog, both the trigger button and the
+  // ConfirmDialog confirm button carry the same accessible name. Scope the
+  // confirm-click to the alertdialog subtree to disambiguate.
+  async function clickConfirmInDialog(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
+    const dialog = await screen.findByRole("alertdialog");
+    const { within } = await import("@testing-library/react");
+    await user.click(within(dialog).getByRole("button", { name }));
+  }
+
+  it("active → Stop happy path: click → confirm → setZombieStatus(stopped) → refresh", async () => {
     const user = userEvent.setup();
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /kill switch/i }));
-    await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
-    await waitFor(() => expect(stopZombieMock).toHaveBeenCalledWith("ws_1", "zom_1", "token_abc"));
+    await clickConfirmInDialog(user, /^stop$/i);
+    await waitFor(() => expect(stopZombieMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped", "token_abc"));
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
 
-  it("409 conflict closes the dialog and refreshes (already stopped elsewhere)", async () => {
-    const { ApiError } = await import("../lib/api/errors");
-    stopZombieMock.mockRejectedValue(new ApiError("already stopped", 409, "UZ-ZOM-000", "req_x"));
+  it("stopped → Resume sends status='active'", async () => {
+    const user = userEvent.setup();
+    await renderSwitch("stopped");
+    await user.click(screen.getByRole("button", { name: /^resume$/i }));
+    await clickConfirmInDialog(user, /^resume$/i);
+    await waitFor(() => expect(stopZombieMock).toHaveBeenCalledWith("ws_1", "zom_1", "active", "token_abc"));
+  });
+
+  it("active → Kill sends status='killed'", async () => {
     const user = userEvent.setup();
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /kill switch/i }));
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await clickConfirmInDialog(user, /^kill$/i);
+    await waitFor(() => expect(stopZombieMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed", "token_abc"));
+  });
+
+  it("409 conflict closes the dialog and refreshes (status changed elsewhere)", async () => {
+    const { ApiError } = await import("../lib/api/errors");
+    stopZombieMock.mockRejectedValue(new ApiError("transition not allowed", 409, "UZ-ZMB-010", "req_x"));
+    const user = userEvent.setup();
+    await renderSwitch("active");
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
 
@@ -573,8 +612,8 @@ describe("KillSwitch component", () => {
     stopZombieMock.mockRejectedValue(new Error("network down"));
     const user = userEvent.setup();
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /kill switch/i }));
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() => expect(stopZombieMock).toHaveBeenCalled());
     expect(screen.queryByRole("alertdialog")).toBeTruthy();
   });
@@ -583,9 +622,9 @@ describe("KillSwitch component", () => {
     getTokenFn.mockResolvedValue(null);
     const user = userEvent.setup();
     await renderSwitch("active");
-    await user.click(screen.getByRole("button", { name: /kill switch/i }));
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
-    // Wait a tick — stopZombie must NOT be called.
+    await clickConfirmInDialog(user, /^stop$/i);
+    // Wait a tick — setZombieStatus must NOT be called.
     await new Promise((r) => setTimeout(r, 10));
     expect(stopZombieMock).not.toHaveBeenCalled();
   });

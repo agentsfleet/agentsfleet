@@ -43,21 +43,46 @@ describe("getZombie", () => {
   });
 });
 
-describe("stopZombie", () => {
-  it("DELETE /v1/workspaces/:ws/zombies/:id/current-run, returns updated zombie", async () => {
+describe("setZombieStatus", () => {
+  it("PATCH /v1/workspaces/:ws/zombies/:id with body {status:'stopped'} returns updated zombie", async () => {
     const stopped = { ...zombie, status: "stopped" };
     fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => stopped });
     const { stopZombie } = await import("./zombies");
     const result = await stopZombie("ws_1", "zom_1", "tok");
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/zombies/zom_1/current-run"),
-      expect.objectContaining({ method: "DELETE" }),
+      expect.stringContaining("/v1/workspaces/ws_1/zombies/zom_1"),
+      expect.objectContaining({
+        method: "PATCH",
+        body: JSON.stringify({ status: "stopped" }),
+      }),
     );
     expect(result.status).toBe("stopped");
   });
 
-  it("throws ApiError UZ-ZMB-010 on 409 (already stopped)", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: "already stopped", code: "UZ-ZMB-010" }) });
+  it("resumeZombie sends body {status:'active'}", async () => {
+    const active = { ...zombie, status: "active" };
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => active });
+    const { resumeZombie } = await import("./zombies");
+    await resumeZombie("ws_1", "zom_1", "tok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "active" }) }),
+    );
+  });
+
+  it("killZombie sends body {status:'killed'}", async () => {
+    const killed = { ...zombie, status: "killed" };
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => killed });
+    const { killZombie } = await import("./zombies");
+    await killZombie("ws_1", "zom_1", "tok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ method: "PATCH", body: JSON.stringify({ status: "killed" }) }),
+    );
+  });
+
+  it("throws ApiError UZ-ZMB-010 on 409 (transition not allowed)", async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: "transition not allowed", code: "UZ-ZMB-010" }) });
     const { stopZombie } = await import("./zombies");
     const err = await stopZombie("ws_1", "zom_1", "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
