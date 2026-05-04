@@ -187,11 +187,17 @@ const STATUS_PAST_TENSE = {
   killed: "killed",
 };
 
+const STATUS_VERB = {
+  stopped: "stop",
+  active: "resume",
+  killed: "kill",
+};
+
 async function commandSetStatus(ctx, args, workspaces, deps, status) {
   const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const parsed = parseFlags(args);
   const zombieId = parsed.positionals[0];
-  const verb = STATUS_PAST_TENSE[status]?.replace(/d$/, "") ?? "patch";
+  const verb = STATUS_VERB[status] ?? "patch";
 
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
