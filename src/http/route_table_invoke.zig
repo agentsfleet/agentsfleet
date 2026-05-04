@@ -39,8 +39,6 @@ const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
-const dashboard_invokes = @import("route_table_invoke_dashboard.zig");
-pub const invokeDeleteCurrentRun = dashboard_invokes.invokeDeleteCurrentRun;
 const events_invokes = @import("route_table_invoke_events.zig");
 pub const invokeZombieEvents = events_invokes.invokeZombieEvents;
 pub const invokeZombieEventsStream = events_invokes.invokeZombieEventsStream;
@@ -193,9 +191,12 @@ pub fn invokeWorkspaceZombies(hx: *Hx, req: *httpz.Request, route: router.Route)
 }
 
 pub fn invokePatchWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.patch_workspace_zombie;
-    zombie_api.innerPatchZombie(hx.*, req, r.workspace_id, r.zombie_id);
+    switch (req.method) {
+        .PATCH => zombie_api.innerPatchZombie(hx.*, req, r.workspace_id, r.zombie_id),
+        .DELETE => zombie_api.innerDeleteZombie(hx.*, req, r.workspace_id, r.zombie_id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
 pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {

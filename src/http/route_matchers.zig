@@ -163,7 +163,7 @@ pub fn matchWorkspaceZombie(p: Path) ?WorkspaceZombieRoute {
 }
 
 // ── /workspaces/{ws}/zombies/{zombie_id}/{action} ──────────────────────────
-// action ∈ {"events", "messages", "current-run", "telemetry", "memories",
+// action ∈ {"events", "messages", "memories",
 // "integration-requests", "integration-grants"}.
 
 pub fn matchWorkspaceZombieAction(p: Path, action: []const u8) ?WorkspaceZombieRoute {

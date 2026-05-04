@@ -58,11 +58,11 @@ pub const entries = [_]Entry{
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies" },
     .{ .method = "PATCH", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
+    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}" },
     .{ .method = "POST", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream" },
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/events" },
-    .{ .method = "DELETE", .path = "/v1/workspaces/{workspace_id}/zombies/{zombie_id}/current-run" },
 
     // Approval inbox
     .{ .method = "GET", .path = "/v1/workspaces/{workspace_id}/approvals" },

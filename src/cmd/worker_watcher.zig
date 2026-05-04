@@ -272,9 +272,10 @@ pub const Watcher = struct {
     fn dispatch(self: *Watcher, msg: control_stream.ControlMessage) !void {
         switch (msg) {
             .zombie_created => |m| try self.spawnZombieThread(m.zombie_id),
+            // killed/paused/stopped cancel; active spawns (idempotent — handles resume).
             .zombie_status_changed => |m| switch (m.status) {
-                .killed, .paused => self.cancelZombie(m.zombie_id),
-                .active => log.debug("watcher.status_active zombie_id={s}", .{m.zombie_id}),
+                .killed, .paused, .stopped => self.cancelZombie(m.zombie_id),
+                .active => try self.spawnZombieThread(m.zombie_id),
             },
             .zombie_config_changed => |m| self.signalReload(m.zombie_id),
             // {d} formatter handles both u32 and i64 — no type-specific change needed here.

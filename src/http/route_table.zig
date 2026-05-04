@@ -94,9 +94,6 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .workspace_approvals => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovals },
         .workspace_approval_detail => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalDetail },
         .workspace_approval_resolve => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeWorkspaceApprovalResolve },
-        // Dashboard endpoints — kill switch, per-zombie billing
-        .workspace_zombie_current_run => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteCurrentRun },
-
         // External-agent memory API — workspace-scoped collection (GET/POST)
         // and per-key DELETE (idempotent 204).
         .workspace_zombie_memories => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeZombieMemoriesCollection },

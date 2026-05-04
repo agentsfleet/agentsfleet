@@ -165,9 +165,9 @@ test "workspace-scoped zombie PATCH resolves to patch_workspace_zombie" {
 }
 
 test "retired path: /v1/workspaces/{ws}/zombies/{id}/kill no longer resolves" {
-    // The standalone POST .../kill endpoint folded into PATCH .../zombies/{id}
-    // with body {status:"killed"}. The verb path 404s; aborting the in-flight
-    // stage (a different semantic) still lives at DELETE .../current-run.
+    // All status transitions fold into PATCH /zombies/{id} with body
+    // {status: "active" | "stopped" | "killed"}. Verb-suffix paths (/kill,
+    // /stop, /current-run) all 404.
     try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
 }
 
@@ -322,26 +322,20 @@ test "custom-method subpath: zombie /messages resolves" {
     }
 }
 
-test "subpath: zombie /current-run resolves" {
-    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .GET) orelse return error.TestExpectedMatch;
-    switch (route) {
-        .workspace_zombie_current_run => |r| {
-            try std.testing.expectEqualStrings("ws_abc", r.workspace_id);
-            try std.testing.expectEqualStrings("z_xyz", r.zombie_id);
-        },
-        else => return error.TestExpectedEqual,
-    }
+test "retired path: zombie /current-run no longer resolves" {
+    // /current-run was the singleton-sub-resource form for stop. After the
+    // PATCH FSM unification (status: stopped|active|killed on the zombie
+    // resource itself), /current-run is gone — must not match.
+    try std.testing.expect(match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .DELETE) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .GET) == null);
 }
 
 test "retired path: /stop no longer resolves as a zombie action" {
-    // /stop was the pre-hygiene path-verb form. After the REST cleanup it must
-    // either not match or fall through to a plain resource route — it must not
-    // dispatch to the current-run handler.
-    const stop_retired = match("/v1/workspaces/ws1/zombies/z1/stop", .GET);
-    if (stop_retired) |r| switch (r) {
-        .workspace_zombie_current_run => return error.TestExpectedNotAction,
-        else => {},
-    };
+    // /stop was the pre-hygiene path-verb form. With both /stop and
+    // /current-run retired in favor of PATCH /zombies/{id} {status:"stopped"},
+    // this path must return null.
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/stop", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/stop", .POST) == null);
 }
 
 test "custom-method regression: old colon-action forms no longer hit the migrated routes" {
@@ -366,12 +360,12 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     };
     const messages_colon_old = match("/v1/workspaces/ws1/zombies/z1:messages", .POST);
     if (messages_colon_old) |r| switch (r) {
-        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+        .workspace_zombie_messages => return error.TestExpectedNotAction,
         else => {},
     };
     const stop_old = match("/v1/workspaces/ws1/zombies/z1:stop", .POST);
     if (stop_old) |r| switch (r) {
-        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+        .workspace_zombie_messages => return error.TestExpectedNotAction,
         else => {},
     };
     // /v1/workspaces/ws1:pause used to be the colon-op form (POST). With

@@ -62,8 +62,6 @@ pub const Route = union(enum) {
     workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
     workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
     workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
-    // Dashboard-facing kill switch
-    workspace_zombie_current_run: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/current-run — kill the running action
     // External-agent memory API — workspace-scoped resource collection.
     workspace_zombie_memories: matchers.WorkspaceZombieRoute, // GET (list-or-search) + POST (store)
     workspace_zombie_memory: matchers.WorkspaceZombieMemoryRoute, // DELETE /memories/{key}
@@ -134,7 +132,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Workspace + zombie + action ───────────────────────────────────────
     if (matchers.matchWorkspaceZombieAction(p, "events")) |r| return .{ .workspace_zombie_events = r };
     if (matchers.matchWorkspaceZombieAction(p, "messages")) |r| return .{ .workspace_zombie_messages = r };
-    if (matchers.matchWorkspaceZombieAction(p, "current-run")) |r| return .{ .workspace_zombie_current_run = r };
     if (matchers.matchWorkspaceZombieAction(p, "memories")) |r| return .{ .workspace_zombie_memories = r };
     if (matchers.matchWorkspaceZombieAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
     if (matchers.matchWorkspaceZombieAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
