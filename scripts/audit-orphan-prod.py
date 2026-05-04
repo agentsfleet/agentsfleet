@@ -3,20 +3,28 @@
 
 Walks @import("...") edges from the production entry points (src/main.zig and
 src/executor/main.zig) AFTER stripping every `test "..." { ... }` and
-`test { ... }` block (depth-1 brace match). Emits any *.zig under src/ that
-is not in the resulting closure.
+`test { ... }` block (full nested-brace match). Emits any *.zig under src/
+that is not in the resulting closure.
 
 Test files, harnesses, fixtures, and zbench micro-benchmarks are exempt from
 candidacy — they exist outside the production graph by design.
 
-Exit 0 = no production orphans. Exit 1 = orphans found (printed to stdout).
+Exit 0 = no production orphans. Exit 1 = orphans found. Exit 2 = misconfig
+(no source files discovered — likely wrong CWD).
 """
 import os
 import re
 import sys
 
-ROOT = "src"
-ENTRIES = ["src/main.zig", "src/executor/main.zig"]
+# Anchor paths to the repo root so the script behaves identically no matter
+# where it's invoked from (e.g. `cd scripts && python audit-orphan-prod.py`
+# would otherwise scan an empty tree and silently exit 0).
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROOT = os.path.join(REPO_ROOT, "src")
+ENTRIES = [
+    os.path.join(REPO_ROOT, "src/main.zig"),
+    os.path.join(REPO_ROOT, "src/executor/main.zig"),
+]
 
 all_files = set()
 for dp, dn, fn in os.walk(ROOT):
@@ -25,6 +33,10 @@ for dp, dn, fn in os.walk(ROOT):
     for f in fn:
         if f.endswith(".zig"):
             all_files.add(os.path.join(dp, f))
+
+if not all_files:
+    print(f"audit-orphan-prod: no .zig files found under {ROOT}", file=sys.stderr)
+    sys.exit(2)
 
 imp_re = re.compile(r'@import\("([^"]+\.zig)"\)')
 
@@ -51,7 +63,8 @@ def strip_test_blocks(s: str) -> str:
 
 def imports(path):
     try:
-        src = open(path).read()
+        with open(path) as fh:
+            src = fh.read()
     except OSError:
         return []
     src = strip_test_blocks(src)
@@ -74,20 +87,23 @@ while stack:
             stack.append(n)
 
 
-def is_exempt(f: str) -> bool:
+def is_exempt(rel: str) -> bool:
     return (
-        f.endswith("_test.zig")
-        or "/test_" in f
-        or f.endswith("test_harness.zig")
-        or f.endswith("test_port.zig")
-        or "fixture" in f.lower()
-        or "harness" in f.lower()
-        or f.startswith("src/zbench")
-        or f == "src/auth/tests.zig"
+        rel.endswith("_test.zig")
+        or "/test_" in rel
+        or rel.endswith("test_harness.zig")
+        or rel.endswith("test_port.zig")
+        or "fixture" in rel.lower()
+        or "harness" in rel.lower()
+        or rel.startswith("src/zbench")
+        or rel == "src/auth/tests.zig"
     )
 
 
-orphans = sorted(f for f in all_files - seen if not is_exempt(f))
+orphans = sorted(
+    os.path.relpath(f, REPO_ROOT) for f in all_files - seen
+)
+orphans = [o for o in orphans if not is_exempt(o)]
 for o in orphans:
     print(o)
 sys.exit(1 if orphans else 0)

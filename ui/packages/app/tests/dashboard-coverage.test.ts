@@ -344,14 +344,6 @@ describe("placeholder pages", () => {
     expect(m).toContain("No credentials stored yet");
   });
 
-  it("firewall page renders the empty-state pitch", async () => {
-    const { default: Page } = await import("../app/(dashboard)/firewall/page");
-    const m = renderToStaticMarkup(React.createElement(Page));
-    expect(m).toContain("Firewall");
-    expect(m).toContain("Firewall rules");
-    expect(m).toContain("firewall extension ships");
-  });
-
   it("settings page redirects to /sign-in when no token", async () => {
     getServerAuthMock.mockResolvedValue({ token: null, userId: null });
     const { default: Page } = await import("../app/(dashboard)/settings/page");

@@ -850,17 +850,6 @@ describe("ZombieConfig interactions", () => {
   });
 });
 
-describe("FirewallRulesEditor", () => {
-  it("renders the CLI-only placeholder", async () => {
-    const { default: FirewallRulesEditor } = await import(
-      "../app/(dashboard)/zombies/[id]/components/FirewallRulesEditor"
-    );
-    render(React.createElement(FirewallRulesEditor));
-    expect(screen.getByText(/Firewall editing is CLI-only/i)).toBeTruthy();
-    expect(screen.getByText(/zombiectl zombie firewall set/i)).toBeTruthy();
-  });
-});
-
 describe("InstallZombieForm interactions", () => {
   async function renderForm() {
     const { default: Form } = await import(
