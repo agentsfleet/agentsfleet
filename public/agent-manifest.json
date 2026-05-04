@@ -32,7 +32,7 @@
       "method": "DELETE",
       "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}",
       "description": "Hard-delete a Zombie and cascade its history (events, telemetry, sessions, approval gates, memory entries). Precondition: status='killed' — kill the zombie before deleting. Returns 204 on success, 409 if not yet killed.",
-      "actionClass": "sensitive"
+      "actionClass": "critical"
     },
     {
       "operationId": "post_zombie_message",
@@ -74,7 +74,7 @@
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],
-    "sensitive": ["create_zombie", "patch_zombie", "delete_zombie", "post_zombie_message", "ingest_zombie_webhook"],
-    "critical": []
+    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook"],
+    "critical": ["delete_zombie"]
   }
 }
