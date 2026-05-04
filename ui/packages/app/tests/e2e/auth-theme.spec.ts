@@ -50,7 +50,7 @@ test.describe("Auth theming", () => {
     );
 
     const body = page.locator("body");
-    await expect(body).toContainText(/UseZombie|Zombies|Dashboard/);
+    await expect(body).toContainText(/usezombie|Zombies|Dashboard/);
     await expect(await getCss(body, "background-color")).toBe("rgb(5, 8, 13)");
   });
 

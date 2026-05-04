@@ -18,7 +18,7 @@ LOCAL_ZIG_TARGET := x86_64-linux
 endif
 
 up: _prepare_local_zombied_binary ## Start all services and tail app logs
-	@echo "Starting UseZombie..."
+	@echo "Starting usezombie..."
 	@TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose up -d --build
 	@echo ""
 	@echo "Services:"

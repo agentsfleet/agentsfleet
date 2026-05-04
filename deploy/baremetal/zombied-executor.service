@@ -7,7 +7,7 @@
 #   sudo systemctl enable --now zombied-executor
 
 [Unit]
-Description=UseZombie Sandbox Executor
+Description=usezombie Sandbox Executor
 Documentation=https://docs.usezombie.com
 After=network.target
 Before=zombied-worker.service

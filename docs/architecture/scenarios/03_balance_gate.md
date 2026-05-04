@@ -46,7 +46,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 
 ## 2. Phase 1 — John on platform-managed (Week 1-2 of his journey)
 
-**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key UseZombie pays Fireworks with is **not** a magic constant. It lives in the `usezombie-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's BYOK uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the resolver-to-executor path; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
+**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key usezombie pays Fireworks with is **not** a magic constant. It lives in the `usezombie-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's BYOK uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the resolver-to-executor path; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
 
 ### 2.1 First webhook fires (Monday morning, week 1)
 
@@ -115,7 +115,7 @@ op read 'op://<vault>/fireworks/api_key' |
 zombiectl tenant provider set --credential account-fireworks-byok
 ```
 
-`core.tenant_providers` now has a row: `mode=byok`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`, `credential_ref=account-fireworks-byok`. John's UseZombie balance is unchanged at ~150¢.
+`core.tenant_providers` now has a row: `mode=byok`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`, `credential_ref=account-fireworks-byok`. John's usezombie balance is unchanged at ~150¢.
 
 ### 3.1 First post-flip event
 
@@ -147,12 +147,12 @@ UPDATE zombie_events status='processed'
 XACK
 
 Fireworks bills John's Fireworks account directly for the 820+1320 tokens
-of Kimi K2.6 on his own monthly invoice. UseZombie sees only the
+of Kimi K2.6 on his own monthly invoice. usezombie sees only the
 StageResult.tokens count for telemetry; we do not know what Fireworks
 charged John for those tokens, and we do not care.
 ```
 
-After this event: balance = 149¢. John's UseZombie drain dropped from ~3¢ to 1¢ per event the moment he flipped postures.
+After this event: balance = 149¢. John's usezombie drain dropped from ~3¢ to 1¢ per event the moment he flipped postures.
 
 ### 3.2 Through weeks 2-4
 
@@ -176,7 +176,7 @@ PUBLISH event_complete (status=gate_blocked)
 XACK terminal
 ```
 
-The next event (and every event after) gate-blocks identically. None of them touch the executor; UseZombie's costs for them are SQL-only.
+The next event (and every event after) gate-blocks identically. None of them touch the executor; usezombie's costs for them are SQL-only.
 
 John's experience:
 
@@ -208,7 +208,7 @@ If John had stayed on platform the entire time, his $10 would have lasted roughl
 | Receive deduct per event | 1¢ | 0¢ |
 | Stage deduct per event | 1¢ overhead + token cost (~1–4¢ for Kimi K2.6 platform retail) | 1¢ flat |
 | Typical per-event total | ~3¢ | 1¢ |
-| LLM bill payer | UseZombie (passthrough in our token rate) | John's Fireworks account directly |
+| LLM bill payer | usezombie (passthrough in our token rate) | John's Fireworks account directly |
 | Outbound LLM call | `api.fireworks.ai/inference/v1` | `api.fireworks.ai/inference/v1` |
 | Gate code path | Identical | Identical |
 | Telemetry rows per event | 2 (receive + stage) | 2 (receive=0¢, stage=1¢) |
@@ -282,7 +282,7 @@ John can flip postures at any time during his journey. The mechanics:
     zombiectl credential set <name> --data @-
   zombiectl tenant provider set --credential <name>
   ```
-  Next event resolves `mode=byok`. Drain drops from ~3¢ to 1¢ per event. The api_key is in vault; he never sees it again from any UseZombie surface.
+  Next event resolves `mode=byok`. Drain drops from ~3¢ to 1¢ per event. The api_key is in vault; he never sees it again from any usezombie surface.
 
 - **BYOK → platform** (e.g. if Fireworks has a billing issue):
   ```
@@ -317,7 +317,7 @@ Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_lab
 ## 9. What this scenario proves
 
 - **Same code path serves both postures.** The gate, the receive deduct, the stage deduct, and the telemetry rows are identical SQL; only the cents differ.
-- **Drain rate is the BYOK signal.** John's UseZombie credits last ~3× longer under BYOK than they would have under continued platform use — a transparent, observable benefit of bringing a key.
+- **Drain rate is the BYOK signal.** John's usezombie credits last ~3× longer under BYOK than they would have under continued platform use — a transparent, observable benefit of bringing a key.
 - **Plan tiers are not a code-path concept.** They never appear inside `processEvent` or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
 - **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, worker logs, executor logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
 - **The credit-exhausted UX is a dashboard story, not a CLI story.** The CLI surfaces the state and points at the dashboard. Purchase / top-up are dashboard-shipping concerns (and ship empty in v2.0, with the actual Stripe integration in v2.1).

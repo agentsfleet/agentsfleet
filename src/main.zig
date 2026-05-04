@@ -1,4 +1,4 @@
-//! UseZombie — agent delivery control plane.
+//! usezombie — agent delivery control plane.
 //! One Zig binary. Takes a spec. Ships a validated PR.
 //!
 //! Subcommands:

@@ -11,7 +11,7 @@ import { cn } from "../utils";
  * via `asChild`. React 19 accepts `ref` as a prop, so no forwardRef.
  *
  * Variants match the shadcn/ui convention: default / destructive /
- * outline / secondary / ghost / link + UseZombie's signature
+ * outline / secondary / ghost / link + usezombie's signature
  * double-border. Sizes: default / sm / lg / icon.
  *
  *   <Button>Click</Button>                                        // <button>, default variant

@@ -23,7 +23,7 @@ function printHelp(stdout, ui, opts = {}) {
 
   printBanner(stdout, version, { noColor, jsonMode });
   writeLine(stdout);
-  writeLine(stdout, "  " + ui.head("UseZombie CLI") + ui.dim("  —  autonomous agent platform"));
+  writeLine(stdout, "  " + ui.head("usezombie CLI") + ui.dim("  —  autonomous agent platform"));
   writeLine(stdout);
   writeLine(stdout, ui.head("USAGE"));
   writeLine(stdout, "  zombiectl [--api URL] [--json] <command> [subcommand] [flags]");

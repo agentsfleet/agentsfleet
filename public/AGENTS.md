@@ -1,6 +1,6 @@
 # Agent-facing surfaces
 
-UseZombie exposes a set of machine-readable files at stable public URLs. This index documents what each file is, where it is served, and how to edit it.
+usezombie exposes a set of machine-readable files at stable public URLs. This index documents what each file is, where it is served, and how to edit it.
 
 | File | Served at | Format | Purpose |
 |---|---|---|---|

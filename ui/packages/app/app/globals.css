@@ -12,7 +12,7 @@
 @source "../../../design-system/src/**/*.{ts,tsx}";
 
 /*
- * UseZombie Mission Control — Global Styles
+ * usezombie Mission Control — Global Styles
  *
  * The four-layer token pyramid now lives in the shared package:
  *   Layer 0 — @usezombie/design-system/tokens.css   — palette primitives (--z-*)

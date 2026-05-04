@@ -1,5 +1,5 @@
 -- M9_001: Integration grants for zombie-to-service authorization.
--- A zombie must have an approved grant for a service before UseZombie
+-- A zombie must have an approved grant for a service before usezombie
 -- will inject credentials for it. Zombie-initiated, human-approved.
 -- scopes: v2 defaults to ["*"]. Expandable to per-channel/per-action
 -- without schema change (TEXT[] column).

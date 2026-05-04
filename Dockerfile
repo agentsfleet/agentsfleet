@@ -1,4 +1,4 @@
-# UseZombie — runtime container
+# usezombie — runtime container
 # Binary must be pre-built before docker build:
 #   CI:    binaries job produces dist/zombied-linux-{amd64,arm64}
 #   Local: zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSafe

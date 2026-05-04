@@ -7,7 +7,7 @@ test.describe("App smoke", () => {
   test("sign-in page loads", async ({ page }) => {
     await page.goto("/sign-in");
     await expect(page).toHaveURL(/\/sign-in/);
-    await expect(page.getByText("UseZombie", { exact: true })).toBeVisible();
+    await expect(page.getByText("usezombie", { exact: true })).toBeVisible();
   });
 
   test("protected route stays on first-party app surfaces", async ({ page }) => {
@@ -17,6 +17,6 @@ test.describe("App smoke", () => {
     expect(redirected.hostname).toBe(EXPECTED_HOSTNAME);
     expect(["/sign-in", "/zombies", "/"]).toContain(redirected.pathname);
     expect(page.url()).not.toContain("accounts.dev");
-    await expect(page.locator("body")).toContainText(/UseZombie|Zombies|Dashboard/);
+    await expect(page.locator("body")).toContainText(/usezombie|Zombies|Dashboard/);
   });
 });

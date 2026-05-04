@@ -1,4 +1,4 @@
-# UseZombie — Agent Delivery Control Plane
+# usezombie — Agent Delivery Control Plane
 
 ## Machine-readable API surfaces
 - OpenAPI spec: /openapi.json

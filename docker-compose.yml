@@ -1,4 +1,4 @@
-# UseZombie local dev — Postgres + Redis + zombied API
+# usezombie local dev — Postgres + Redis + zombied API
 # `make up` prepares the matching local linux binary in `dist/` and passes
 # `TARGETARCH` to docker compose. CI does not use this path.
 services:
