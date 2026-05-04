@@ -43,7 +43,7 @@ test.describe("/agents — M26.8 demos", () => {
     // Terminal still renders its prompt + commands (printed instantly).
     const terminal = page.getByRole("region", { name: "Interactive terminal demonstration" });
     await expect(terminal).toBeVisible();
-    await expect(terminal).toContainText("zombiectl login");
+    await expect(terminal).toContainText("zombiectl auth login");
     await ctx.close();
   });
 
