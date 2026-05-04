@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { InstallBlock } from "@usezombie/design-system";
+import { Card, InstallBlock } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 /* M26.8 demos are loaded from a lazy chunk so the agents-route initial
@@ -183,22 +183,22 @@ zombiectl auth login
       <div>
         <h2 style={{ marginBottom: "0.75rem" }}>Safety Limits</h2>
         <div className="grid two">
-          <article className="card">
+          <Card className="card">
             <h3>Idempotency</h3>
             <p>Inbound webhook events deduplicate on <code>event_id</code> within a 24-hour window. Workspace updates use monotonic versions to prevent lost updates.</p>
-          </article>
-          <article className="card">
+          </Card>
+          <Card className="card">
             <h3>Audit Trail</h3>
             <p>Append-only agent event stream records every inbound trigger, steer, status change, and tool call with timestamps and actor identity.</p>
-          </article>
-          <article className="card">
+          </Card>
+          <Card className="card">
             <h3>Secret Management</h3>
             <p>Vault secrets encrypted via BYTEA columns. Git hooks disabled during agent runs. Subprocess timeouts enforced.</p>
-          </article>
-          <article className="card">
+          </Card>
+          <Card className="card">
             <h3>Policy Enforcement</h3>
             <p>Commands classified as safe, sensitive, or critical. Critical operations require explicit policy approval.</p>
-          </article>
+          </Card>
         </div>
       </div>
 

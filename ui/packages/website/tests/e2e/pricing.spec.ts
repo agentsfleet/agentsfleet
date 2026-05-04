@@ -20,7 +20,7 @@ test.describe("Pricing page", () => {
   });
 
   test("Hobby tier lists no-expiry credit", async ({ page }) => {
-    await expect(page.getByText(/\$10 starter credit, never expires/i)).toBeVisible();
+    await expect(page.getByText(/\$5 starter credit, never expires/i)).toBeVisible();
   });
 
   test("renders move-up guidance note", async ({ page }) => {

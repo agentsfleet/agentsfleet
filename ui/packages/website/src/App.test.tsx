@@ -76,7 +76,7 @@ describe("App", () => {
       expect(screen.getByRole("tab", { name: "Humans" })).toHaveAttribute("aria-selected", "true"),
     );
     await waitFor(() =>
-      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational knowledge lives in heads/i),
+      expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational knowledge isn't executable/i),
     );
   });
 
@@ -108,7 +108,7 @@ describe("App", () => {
 
   it("renders home page by default", () => {
     renderApp("/");
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational knowledge lives in heads/i);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/operational knowledge isn't executable/i);
   });
 
   it("renders pricing page at /pricing", async () => {

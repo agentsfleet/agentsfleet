@@ -16,13 +16,13 @@ describe("Home", () => {
   it("renders the hero headline with two lines", () => {
     renderHome();
     const h1 = screen.getByRole("heading", { level: 1 });
-    expect(h1).toHaveTextContent(/operational knowledge lives in heads/i);
-    expect(h1).toHaveTextContent(/that's where outcomes get stuck/i);
+    expect(h1).toHaveTextContent(/operational knowledge isn't executable/i);
+    expect(h1).toHaveTextContent(/when a deploy fails, teams guess/i);
   });
 
   it("renders the hero kicker description", () => {
     renderHome();
-    expect(screen.getByText(/markdown-defined agent runtime that captures that tribal knowledge/i)).toBeInTheDocument();
+    expect(screen.getByText(/markdown-defined agents, not workflows/i)).toBeInTheDocument();
   });
 
   it("renders primary docs CTA with quickstart link", () => {
