@@ -11,13 +11,18 @@
 https://usezombie.com/v1
 
 ## Operations (operationId: method path)
-- create_zombie: POST /v1/workspaces/{workspace_id}/zombies
-- update_zombie: PATCH /v1/workspaces/{workspace_id}/zombies/{zombie_id}
-- kill_zombie: POST /v1/workspaces/{workspace_id}/zombies/{zombie_id}/kill
-- steer_zombie: POST /v1/workspaces/{workspace_id}/zombies/{zombie_id}/steer
-- list_zombie_events: GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events
-- stream_zombie_events: GET /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream
-- ingest_zombie_webhook: POST /v1/webhooks/{zombie_id}
+Status transitions ride PATCH on the zombie resource — body {status: "active"|"stopped"|"killed"}.
+"paused" is a platform-only state set by the anomaly gate; not callable from the API.
+- create_zombie:        POST   /v1/workspaces/{workspace_id}/zombies
+- update_zombie:        PATCH  /v1/workspaces/{workspace_id}/zombies/{zombie_id}     # body: {config_json}
+- stop_zombie:          PATCH  /v1/workspaces/{workspace_id}/zombies/{zombie_id}     # body: {status:"stopped"}    — halt session, resumable
+- resume_zombie:        PATCH  /v1/workspaces/{workspace_id}/zombies/{zombie_id}     # body: {status:"active"}     — resume from stopped/paused
+- kill_zombie:          PATCH  /v1/workspaces/{workspace_id}/zombies/{zombie_id}     # body: {status:"killed"}     — terminal mark (irreversible)
+- delete_zombie:        DELETE /v1/workspaces/{workspace_id}/zombies/{zombie_id}     # hard-purge; precondition status='killed'
+- post_zombie_message:  POST   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/messages   # steer / chat
+- list_zombie_events:   GET    /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events
+- stream_zombie_events: GET    /v1/workspaces/{workspace_id}/zombies/{zombie_id}/events/stream
+- ingest_zombie_webhook: POST  /v1/webhooks/{zombie_id}
 
 ## Authentication
 Bearer token: Authorization: Bearer <api_key>

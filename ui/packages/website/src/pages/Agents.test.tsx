@@ -59,7 +59,10 @@ describe("Agents", () => {
     expect(screen.getByText("API Operations")).toBeInTheDocument();
     expect(screen.getByText("Create agent")).toBeInTheDocument();
     expect(screen.getByText("Update agent")).toBeInTheDocument();
+    expect(screen.getByText("Stop agent")).toBeInTheDocument();
+    expect(screen.getByText("Resume agent")).toBeInTheDocument();
     expect(screen.getByText("Kill agent")).toBeInTheDocument();
+    expect(screen.getByText("Delete agent")).toBeInTheDocument();
     expect(screen.getByText("Steer / chat")).toBeInTheDocument();
     expect(screen.getByText("Stream events")).toBeInTheDocument();
     expect(screen.getByText("Ingest webhook")).toBeInTheDocument();
@@ -72,9 +75,11 @@ describe("Agents", () => {
     const posts = screen.getAllByText("POST");
     const gets = screen.getAllByText("GET");
     const patches = screen.getAllByText("PATCH");
+    const deletes = screen.getAllByText("DELETE");
     expect(posts.length).toBeGreaterThanOrEqual(2);
     expect(gets.length).toBeGreaterThanOrEqual(1);
-    expect(patches.length).toBeGreaterThanOrEqual(2);
+    expect(patches.length).toBeGreaterThanOrEqual(4); // update, stop, resume, kill
+    expect(deletes.length).toBeGreaterThanOrEqual(1); // delete
   });
 
   it("renders webhook example", () => {
