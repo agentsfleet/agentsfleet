@@ -27,3 +27,4 @@ scratch_pad.md
 .claude/scheduled_tasks.lock
 zombiectl/docs/spec/new-feature.md
 __pycache__/
+.gstack/

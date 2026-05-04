@@ -6,9 +6,7 @@
   <img src="assets/logo-dark.svg" width="200" alt="usezombie" />
 </picture>
 
-**A markdown-defined, durable, BYOK zombie that owns one operational outcome — wakes on a GitHub Actions deploy failure, gathers evidence, posts a diagnosis to your Slack.**
-
-**Open source. Bring your own LLM key. The zombie keeps state across attempts, requests approval for risky actions, and stays on the outcome until it's resolved or explicitly blocked.**
+**A durable, markdown-defined runtime that owns one operational outcome.** Open source · BYOK · hosted on `api.usezombie.com`. The flagship `platform-ops` zombie wakes on a GitHub Actions deploy failure, gathers evidence, and posts an evidenced diagnosis to your Slack.
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)

@@ -6,8 +6,8 @@ import { trackNavigationClicked } from "../analytics/posthog";
 export default function CTABlock() {
   return (
     <div className="cta-block">
-      <h2>Wire autonomous agents into the control plane.</h2>
-      <p>Use the machine contract, docs, and pricing path without mixing agent traffic into the human launch funnel.</p>
+      <h2>Building agents on UseZombie?</h2>
+      <p>Stable machine surface via OpenAPI 3.1. Webhook ingest, steer, event streams, approval grants — the same surfaces the human dashboard uses.</p>
       <div className="cta-row">
         <Button asChild>
           <a

@@ -4,44 +4,44 @@ import FeatureSection from "../components/FeatureSection";
 import FeatureFlow from "../components/FeatureFlow";
 import HowItWorks from "../components/HowItWorks";
 import { InstallBlock } from "@usezombie/design-system";
-import { APP_BASE_URL, DOCS_URL } from "../config";
+import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 const features = [
   {
     number: "01",
-    title: "Automated PR delivery",
+    title: "Markdown-defined behaviour",
     description:
-      "Turn queued engineering work into review-ready pull requests without manually shepherding each run.",
+      "SKILL.md + TRIGGER.md. Iterate on prose, not redeploys.",
   },
   {
     number: "02",
-    title: "Validation before review",
+    title: "Three triggers, one loop",
     description:
-      "Run validation before reviewers are pulled in, and attach validation output to every pull request.",
+      "Webhook (GitHub Actions), cron, and `zombiectl steer` all flow through the same reasoning. The agent doesn't branch on actor type.",
   },
   {
     number: "03",
-    title: "Replay and traceability",
+    title: "Bring Your Own Key",
     description:
-      "Track each run from intent to PR with event history, replayable artifacts, and a clear audit trail.",
+      "Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot. The executor treats your provider key as another secret resolved at the tool bridge.",
   },
   {
     number: "04",
-    title: "Run quality scoring",
+    title: "Reasons past the context limit",
     description:
-      "Score runs across completion, reliability, latency, and efficiency so teams can track whether automation is actually improving.",
+      "Memory checkpoints, rolling tool-result window, and stage chunking compose so deep incidents continue past the model's working-memory cap.",
   },
   {
     number: "05",
-    title: "Failure analysis and improvement guidance",
+    title: "Approval gating",
     description:
-      "When a run fails, surface the likely cause, preserve the right context, and guide the next run toward a better outcome.",
+      "Risky actions block until a human clicks Approve in the dashboard or Slack. State machine survives worker restarts.",
   },
   {
     number: "06",
-    title: "Repo-level governance",
+    title: "Open-source runtime",
     description:
-      "Apply repo and team-specific profiles, approvals, and sandbox limits so agents operate inside clear boundaries.",
+      "The code that holds your credentials and runs against your infrastructure is code you can read.",
   },
 ];
 
@@ -52,7 +52,7 @@ export default function Home() {
       <FeatureFlow />
       <div className="section-gap home-section-head">
         <p className="eyebrow">Core capabilities</p>
-        <h2>Validated PR delivery, measurable run quality, and tighter control as automation scales.</h2>
+        <h2>A long-lived runtime that owns the outcome until it&apos;s resolved or blocked.</h2>
       </div>
       <div className="grid two features-grid">
         {features.map((f) => (
@@ -62,11 +62,11 @@ export default function Home() {
       <HowItWorks />
       <div className="section-gap">
         <InstallBlock
-          title="Install zombiectl and connect GitHub"
-          command="curl -fsSL https://usezombie.sh/install.sh | bash"
+          title="Install zombiectl, then run /usezombie-install-platform-ops"
+          command="npm install -g @usezombie/zombiectl"
           actions={[
             { label: "Read the docs", to: DOCS_URL, variant: "ghost" },
-            { label: "Connect GitHub, automate PRs", to: APP_BASE_URL, variant: "double-border" },
+            { label: "Install platform-ops", to: DOCS_QUICKSTART_URL, variant: "double-border" },
           ]}
         />
       </div>

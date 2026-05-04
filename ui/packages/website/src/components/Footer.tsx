@@ -9,7 +9,7 @@ export default function Footer() {
       <div className="footer-grid">
         <div className="footer-brand">
           <span className="brand">{BRAND_NAME}</span>
-          <p>Agent delivery control plane for governed, review-ready pull requests.</p>
+          <p>Durable, markdown-defined agent runtime. BYOK. Open source.</p>
         </div>
 
         <div className="footer-col">

@@ -37,7 +37,7 @@ test.describe("Humans/Agents mode switch", () => {
 
   test("eyebrow text changes with mode", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("for engineering teams")).toBeVisible();
+    await expect(page.getByText(/durable agent runtime/i).first()).toBeVisible();
 
     await page.getByTestId("mode-agents").click();
     await expect(page).toHaveURL(/\/agents/);

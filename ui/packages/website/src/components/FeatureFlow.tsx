@@ -13,13 +13,13 @@ type FeatureFlowItem = {
 const items: FeatureFlowItem[] = [
   {
     id: "install",
-    title: "Install once. Start shipping PRs.",
+    title: "Install once. Operate forever.",
     description:
-      "Install zombiectl, connect GitHub, and keep your team workflow intact while UseZombie handles execution and PR delivery.",
+      "One command installs zombiectl, one skill installs the platform-ops agent. The skill detects your repo shape, asks three gating questions, and writes .usezombie/platform-ops/SKILL.md + TRIGGER.md.",
     bullets: [
-      "Works with existing coding agents and IDE-first teams",
-      "No workflow migration required",
-      "Automated PR lifecycle with validation before review",
+      "Host-neutral skill: Claude Code, Amp, Codex CLI, OpenCode",
+      "Detects fly.toml, GitHub Actions workflows, monorepo layouts",
+      "Idempotent re-runs against the same workspace",
     ],
     ctaLabel: "Install guide",
     ctaHref: DOCS_QUICKSTART_URL,
@@ -27,13 +27,13 @@ const items: FeatureFlowItem[] = [
   },
   {
     id: "trace",
-    title: "Traceability and replay by default",
+    title: "Every event, every actor, on the record.",
     description:
-      "Track each run from intent to merged PR with event history, validation output, replay, and run quality scores that show whether automation is improving over time.",
+      "Every steer, webhook, and cron fire lands on zombie:{id}:events with actor provenance. Replay the full timeline. Stream live via SSE. Audit who or what triggered each step.",
     bullets: [
-      "Replay runs with deterministic artifacts and preserved context",
-      "Spot regressions early with score and failure breakdowns",
-      "Use failure analysis to improve the next run",
+      "Append-only event stream with actor=webhook|cron|steer|continuation",
+      "SSE tail at /v1/.../events/stream",
+      "Stage chunking preserves long-running reasoning across context boundaries",
     ],
     ctaLabel: "Read docs",
     ctaHref: DOCS_URL,
@@ -43,11 +43,11 @@ const items: FeatureFlowItem[] = [
     id: "mission",
     title: "Mission Control",
     description:
-      "Centralize run visibility, profile behavior, and rollout guardrails so teams can scale automation without giving up control.",
+      "Approvals, budgets, BYOK provider switching, and the kill switch — one dashboard. Approve a risky action from a Slack DM or the web.",
     bullets: [
-      "Observe quality trends and policy outcomes in one place",
-      "Tune agent profiles by repo and team with auditability",
-      "Apply sandbox limits and approval controls to sensitive code paths",
+      "Per-day and per-month dollar caps; trip-blocked at the gate",
+      "Switch BYOK provider with `zombiectl tenant provider set --credential <name>`",
+      "`zombiectl kill` checkpoints state; nothing lost",
     ],
     ctaLabel: "Open Mission Control",
     ctaHref: APP_BASE_URL,
@@ -59,7 +59,7 @@ function Panel({ kind }: { kind: FeatureFlowItem["panel"] }) {
   if (kind === "install") {
     return (
       <div className="feature-flow-panel-shell">
-        <p className="feature-flow-code">$ curl -fsSL https://usezombie.sh/install.sh | bash</p>
+        <p className="feature-flow-code">$ npm install -g @usezombie/zombiectl</p>
       </div>
     );
   }
@@ -82,12 +82,12 @@ function Panel({ kind }: { kind: FeatureFlowItem["panel"] }) {
 
   return (
     <div className="feature-flow-panel-shell feature-flow-mission-grid" aria-hidden="true">
-      <span>AI Code</span>
-      <span>78%</span>
-      <span>Runs</span>
-      <span>243</span>
-      <span>Merged</span>
-      <span>91%</span>
+      <span>Agents</span>
+      <span>12</span>
+      <span>Approvals</span>
+      <span>3</span>
+      <span>Credits</span>
+      <span>$7.40</span>
     </div>
   );
 }

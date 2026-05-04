@@ -39,8 +39,10 @@ describe("Pricing", () => {
 
   it("renders roadmap proof points", () => {
     renderPricing();
-    expect(screen.getByText(/run quality scoring and failure analysis/i)).toBeInTheDocument();
-    expect(screen.getByText(/sandbox governance and team controls/i)).toBeInTheDocument();
+    expect(screen.getByText(/byok with no token markup/i)).toBeInTheDocument();
+    expect(screen.getByText(/open source runtime/i)).toBeInTheDocument();
+    expect(screen.getByText(/three triggers, one reasoning loop/i)).toBeInTheDocument();
+    expect(screen.getByText(/self-host arrives in v3/i)).toBeInTheDocument();
   });
 
   it("renders Hobby and Scale tiers", () => {
@@ -70,7 +72,7 @@ describe("Pricing", () => {
       "https://app.dev.usezombie.com",
     );
     expect(screen.getByText(/operator-visible upgrade path after free credit exhaustion/i)).toBeInTheDocument();
-    expect(screen.getByText(/workspace subscription id/i)).toBeInTheDocument();
+    expect(screen.getByText(/workspace-scoped credentials and webhooks/i)).toBeInTheDocument();
   });
 
   it("renders move-up guidance copy", () => {
@@ -86,17 +88,17 @@ describe("Pricing", () => {
   it("renders all highlight bullet points for both tiers", () => {
     renderPricing();
     // Hobby highlights
-    expect(screen.getByText("$10 credit included with no expiry")).toBeInTheDocument();
-    expect(screen.getByText("1 workspace and automated pull request generation")).toBeInTheDocument();
-    expect(screen.getByText("Harness validation in the PR flow")).toBeInTheDocument();
-    expect(screen.getByText("BYOK/BYOM with no token markup")).toBeInTheDocument();
+    expect(screen.getByText("$10 starter credit, never expires")).toBeInTheDocument();
+    expect(screen.getByText("1 workspace")).toBeInTheDocument();
+    expect(screen.getByText("BYOK on Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot")).toBeInTheDocument();
+    expect(screen.getByText("Hosted execution metered per stage; no token markup")).toBeInTheDocument();
     // Scale highlights
-    expect(screen.getByText("Everything in Hobby, plus team workspaces and shared run history")).toBeInTheDocument();
-    expect(screen.getByText("Longer execution windows and higher concurrency for active repos")).toBeInTheDocument();
-    expect(screen.getByText("Sandbox resource governance with memory, CPU, and disk caps")).toBeInTheDocument();
-    expect(screen.getByText("Agent run scoring with tier history and workspace baselines")).toBeInTheDocument();
-    expect(screen.getByText("Failure analysis with deterministic context injection")).toBeInTheDocument();
-    expect(screen.getByText("Upgrade from the app with a workspace subscription id")).toBeInTheDocument();
+    expect(screen.getByText("Everything in Hobby")).toBeInTheDocument();
+    expect(screen.getByText("Multiple workspaces with shared event history")).toBeInTheDocument();
+    expect(screen.getByText("Higher concurrency and longer per-stage windows")).toBeInTheDocument();
+    expect(screen.getByText("Approval gating in dashboard and Slack DM")).toBeInTheDocument();
+    expect(screen.getByText("Workspace-scoped credentials and webhooks")).toBeInTheDocument();
+    expect(screen.getByText("Priority support")).toBeInTheDocument();
   });
 
   it("applies featured card class only to Scale tier", () => {

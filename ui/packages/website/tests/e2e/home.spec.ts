@@ -7,25 +7,25 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("Ship AI-generated PRs");
-    await expect(h1).toContainText("without babysitting the run.");
+    await expect(h1).toContainText("Operational knowledge lives in heads, not in code.");
+    await expect(h1).toContainText("That's where outcomes get stuck.");
   });
 
   test("renders hero CTAs", async ({ page }) => {
-    const connect = page.getByRole("link", { name: /connect github, automate prs/i }).first();
-    await expect(connect).toBeVisible();
-    await expect(connect).toHaveAttribute("href", /app\.(dev\.)?usezombie\.com/);
+    const install = page.getByRole("link", { name: /install platform-ops/i }).first();
+    await expect(install).toBeVisible();
+    await expect(install).toHaveAttribute("href", /docs\.usezombie\.com\/quickstart/);
     await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
   });
 
   test("renders bootstrap terminal command", async ({ page }) => {
     await expect(page.getByLabel(/quick start command/i)).toBeVisible();
-    await expect(page.getByLabel(/quick start command/i)).toContainText("curl -fsSL https://usezombie.sh/install.sh | bash");
+    await expect(page.getByLabel(/quick start command/i)).toContainText("npm install -g @usezombie/zombiectl");
   });
 
   test("renders top header actions in humans mode", async ({ page }) => {
     await expect(page.locator("header").getByRole("link", { name: "Mission Control", exact: true })).toBeVisible();
-    await expect(page.locator("header").getByRole("link", { name: "Connect GitHub, automate PRs" })).toHaveCount(0);
+    await expect(page.locator("header").getByRole("link", { name: "Install platform-ops" })).toHaveCount(0);
   });
 
   test("Mission Control button applies hover style", async ({ page }) => {
@@ -68,24 +68,24 @@ test.describe("Home page", () => {
   });
 
   test("renders feature flow rows", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Install once. Start shipping PRs." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Traceability and replay by default" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Install once. Operate forever." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Every event, every actor, on the record." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Mission Control" })).toBeVisible();
   });
 
   test("renders how it works steps", async ({ page }) => {
     const how = page.locator(".how-steps");
-    await expect(how.getByRole("heading", { name: "Queue work", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "Agents execute with guardrails", exact: true })).toBeVisible();
-    await expect(how.getByRole("heading", { name: "Review a validated PR", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "A trigger arrives", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "The agent gathers evidence", exact: true })).toBeVisible();
+    await expect(how.getByRole("heading", { name: "Diagnosis posts; the run is auditable", exact: true })).toBeVisible();
   });
 
   test("renders final install block actions", async ({ page }) => {
-    await expect(page.getByRole("heading", { level: 2, name: "Install zombiectl and connect GitHub" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: "Install zombiectl, then run /usezombie-install-platform-ops" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Read the docs" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Connect GitHub, automate PRs" }).last()).toHaveAttribute(
+    await expect(page.getByRole("link", { name: "Install platform-ops" }).last()).toHaveAttribute(
       "href",
-      /app\.(dev\.)?usezombie\.com/
+      /docs\.usezombie\.com\/quickstart/
     );
   });
 

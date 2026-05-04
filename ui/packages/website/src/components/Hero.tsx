@@ -1,14 +1,12 @@
 import { Link } from "react-router-dom";
 import { Button, Terminal } from "@usezombie/design-system";
-import { APP_BASE_URL } from "../config";
+import { DOCS_QUICKSTART_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 export default function Hero() {
   const heading = {
-    badge: "For engineering teams · BYOK · No token markup",
-    line1: "Ship AI-generated PRs",
-    line2: "without babysitting the run.",
-    kicker:
-      "UseZombie turns queued engineering work into validated pull requests with replay, run quality scoring, and policy controls so teams can improve automation with evidence, not guesswork.",
+    badge: "Durable agent runtime · BYOK · Open source",
+    line1: "Operational knowledge lives in heads, not in code.",
+    line2: "That's where outcomes get stuck.",
   };
 
   return (
@@ -22,17 +20,23 @@ export default function Hero() {
             <span className="hero-line2">{heading.line2}</span>
           </h1>
 
-          <p className="hero-kicker">{heading.kicker}</p>
+          <p className="hero-kicker">
+            When the senior engineer is asleep and a deploy fails, you guess. UseZombie is a
+            markdown-defined agent runtime that captures that tribal knowledge — <code>SKILL.md</code>{" "}
+            + <code>TRIGGER.md</code>, no workflow DAG. The flagship <code>platform-ops</code> agent
+            wakes on a GitHub Actions failure, gathers evidence, and posts a diagnosis to Slack.
+            Author your own next. BYOK. Open source.
+          </p>
 
           <div className="hero-cta-row">
             <Button asChild className="hero-cta-primary">
               <a
-                href={APP_BASE_URL}
+                href={DOCS_QUICKSTART_URL}
                 onClick={() => {
                   trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
                 }}
               >
-                Connect GitHub, automate PRs
+                Install platform-ops
               </a>
             </Button>
             <Button asChild variant="double-border" className="hero-cta-secondary">
@@ -48,10 +52,10 @@ export default function Hero() {
           <div className="hero-command-card">
             <p className="hero-command-label">Quick start command</p>
             <Terminal label="Quick start command" copyable>
-              {"curl -fsSL https://usezombie.sh/install.sh | bash"}
+              {"npm install -g @usezombie/zombiectl"}
             </Terminal>
             <p className="hero-command-note">
-              Install `zombiectl`, connect GitHub, and keep the rest of your workflow intact.
+              Then run /usezombie-install-platform-ops in Claude Code, Amp, Codex CLI, or OpenCode.
             </p>
           </div>
         </div>

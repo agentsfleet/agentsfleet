@@ -19,7 +19,7 @@ describe("Footer", () => {
 
   it("renders the tagline", () => {
     renderFooter();
-    expect(screen.getByText(/agent delivery control plane/i)).toBeInTheDocument();
+    expect(screen.getByText(/durable, markdown-defined agent runtime/i)).toBeInTheDocument();
   });
 
   it("renders Product column with links", () => {
@@ -56,11 +56,6 @@ describe("Footer", () => {
     renderFooter();
     const year = new Date().getFullYear().toString();
     expect(screen.getByText(new RegExp(year))).toBeInTheDocument();
-  });
-
-  it("does not render the legacy BYOK filler footer text", () => {
-    renderFooter();
-    expect(screen.queryByText(/BYOK/)).not.toBeInTheDocument();
   });
 
 });

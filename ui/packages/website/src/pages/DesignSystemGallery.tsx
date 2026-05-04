@@ -140,7 +140,7 @@ export default function DesignSystemGallery() {
         <h2>InstallBlock</h2>
         <InstallBlock
           title="Install zombiectl"
-          command="curl -sSL https://usezombie.sh/install | bash"
+          command="npm install -g @usezombie/zombiectl"
           actions={[
             { label: "Docs", to: "https://docs.usezombie.com", external: true },
             { label: "Pricing", to: "/pricing", variant: "ghost" },

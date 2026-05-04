@@ -28,3 +28,7 @@ This is post-MVP. It's the shape that competes structurally with Atlassian Statu
 - The credential vault, network policy, budget caps, context lifecycle.
 
 The bastion is a `SKILL.md` authoring pattern plus a few new tool primitives plus a new rendering surface. It is not a different product. The MVP's job is to earn enough trust on internal-only diagnoses that customers feel safe letting the same zombie talk to *their* customers.
+
+---
+
+> Next: [`ship_reflection.md`](./ship_reflection.md) — §14 post-launch reflection appendix (PENDING SHIP until v2 launches; populated with real evidence post-ship).
