@@ -142,33 +142,6 @@ pub fn updateStageTokens(
     , .{ event_id, token_count_input, token_count_output, wall_ms });
 }
 
-/// Customer query — returns newest-first rows for one zombie in one workspace.
-/// cursor is an opaque base64url token (from makeCursor) or null for first page.
-pub fn listTelemetryForZombie(
-    conn: *pg.Conn,
-    alloc: std.mem.Allocator,
-    workspace_id: []const u8,
-    zombie_id: []const u8,
-    limit: u32,
-    cursor: ?[]const u8,
-) ![]TelemetryRow {
-    if (cursor) |c| {
-        const parsed = try cursor_mod.parseCursor(alloc, c);
-        defer alloc.free(parsed.id);
-        return queryRows(conn, alloc, TELEMETRY_SELECT ++
-            \\WHERE workspace_id = $1 AND zombie_id = $2
-            \\  AND (recorded_at, id) < ($3, $4)
-            \\ORDER BY recorded_at DESC, id DESC
-            \\LIMIT $5
-        , .{ workspace_id, zombie_id, parsed.recorded_at, parsed.id, @as(i32, @intCast(limit)) });
-    }
-    return queryRows(conn, alloc, TELEMETRY_SELECT ++
-        \\WHERE workspace_id = $1 AND zombie_id = $2
-        \\ORDER BY recorded_at DESC, id DESC
-        \\LIMIT $3
-    , .{ workspace_id, zombie_id, @as(i32, @intCast(limit)) });
-}
-
 /// Build an opaque base64url cursor token from the last row of a page.
 pub fn makeCursor(alloc: std.mem.Allocator, row: TelemetryRow) ![]u8 {
     return cursor_mod.makeCursor(alloc, row.recorded_at, row.id);

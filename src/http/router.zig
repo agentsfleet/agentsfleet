@@ -3,14 +3,6 @@ const httpz = @import("httpz");
 const matchers = @import("route_matchers.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 
-// Telemetry route — kept as a distinct type so consumers reading
-// `route.zombie_telemetry.*` get a semantically-named binding even though
-// the field set is identical to WorkspaceZombieRoute.
-pub const ZombieTelemetryRoute = struct {
-    workspace_id: []const u8,
-    zombie_id: []const u8,
-};
-
 pub const Route = union(enum) {
     healthz,
     readyz,
@@ -27,18 +19,12 @@ pub const Route = union(enum) {
     /// Mirrors the GET poll response symmetry: {status, token}.
     patch_auth_session: []const u8,
     create_workspace,
-    /// PATCH /v1/workspaces/{workspace_id} — partial update of workspace
-    /// fields. Today: pause/unpause via {pause, reason, version}; future
-    /// fields land on the same handler.
-    patch_workspace: []const u8,
     // Tenant-scoped billing snapshot — GET /v1/tenants/me/billing
     get_tenant_billing,
     // Tenant-scoped credit-pool charges (Usage tab) — GET /v1/tenants/me/billing/charges
     get_tenant_billing_charges,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
-    // Tenant-scoped doctor block — GET /v1/tenants/me/diagnostics
-    get_tenant_doctor,
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
     tenant_provider,
     /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
@@ -76,10 +62,6 @@ pub const Route = union(enum) {
     workspace_approvals: []const u8, // GET /v1/workspaces/{ws}/approvals
     workspace_approval_detail: matchers.ApprovalGateRoute, // GET /v1/workspaces/{ws}/approvals/{gate_id}
     workspace_approval_resolve: matchers.ApprovalResolveRoute, // POST /v1/workspaces/{ws}/approvals/{gate_id}:approve|:deny
-    // Dashboard-facing kill switch
-    workspace_zombie_current_run: matchers.WorkspaceZombieRoute, // DELETE /v1/workspaces/{ws}/zombies/{id}/current-run — kill the running action
-    // Zombie execution telemetry
-    zombie_telemetry: ZombieTelemetryRoute, // GET /v1/workspaces/{ws}/zombies/{id}/telemetry
     // External-agent memory API — workspace-scoped resource collection.
     workspace_zombie_memories: matchers.WorkspaceZombieRoute, // GET (list-or-search) + POST (store)
     workspace_zombie_memory: matchers.WorkspaceZombieMemoryRoute, // DELETE /memories/{key}
@@ -105,7 +87,6 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing/charges")) return .get_tenant_billing_charges;
     if (std.mem.eql(u8, path, "/v1/tenants/me/billing")) return .get_tenant_billing;
     if (std.mem.eql(u8, path, "/v1/tenants/me/workspaces")) return .list_tenant_workspaces;
-    if (std.mem.eql(u8, path, "/v1/tenants/me/diagnostics")) return .get_tenant_doctor;
     if (std.mem.eql(u8, path, "/v1/tenants/me/provider")) return .tenant_provider;
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
@@ -141,9 +122,6 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Tenant API key by id ──────────────────────────────────────────────
     if (matchers.matchTenantApiKeyById(p)) |id| return .{ .tenant_api_key_by_id = id };
 
-    // ── Workspace bare patch ──────────────────────────────────────────────
-    if (matchers.matchWorkspace(p)) |ws_id| return .{ .patch_workspace = ws_id };
-
     // ── Workspace + zombie + events/stream (deepest shape first) ──────────
     if (matchers.matchWorkspaceZombieEventsStream(p)) |r| return .{ .workspace_zombie_events_stream = r };
 
@@ -154,14 +132,9 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // ── Workspace + zombie + action ───────────────────────────────────────
     if (matchers.matchWorkspaceZombieAction(p, "events")) |r| return .{ .workspace_zombie_events = r };
     if (matchers.matchWorkspaceZombieAction(p, "messages")) |r| return .{ .workspace_zombie_messages = r };
-    if (matchers.matchWorkspaceZombieAction(p, "current-run")) |r| return .{ .workspace_zombie_current_run = r };
     if (matchers.matchWorkspaceZombieAction(p, "memories")) |r| return .{ .workspace_zombie_memories = r };
     if (matchers.matchWorkspaceZombieAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
     if (matchers.matchWorkspaceZombieAction(p, "integration-grants")) |r| return .{ .list_integration_grants = r };
-    if (matchers.matchWorkspaceZombieAction(p, "telemetry")) |r| {
-        return .{ .zombie_telemetry = .{ .workspace_id = r.workspace_id, .zombie_id = r.zombie_id } };
-    }
-
     // ── Workspace + leaf ──────────────────────────────────────────────────
     if (matchers.matchWorkspaceCredential(p)) |r| return .{ .delete_workspace_credential = r };
     if (matchers.matchWorkspaceAgentDelete(p)) |r| return .{ .delete_agent_key = r };

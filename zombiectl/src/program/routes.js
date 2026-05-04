@@ -3,7 +3,6 @@ const routes = [
   { key: "logout", match: (cmd) => cmd === "logout" },
   { key: "workspace", match: (cmd) => cmd === "workspace" },
   { key: "doctor", match: (cmd) => cmd === "doctor" },
-  { key: "admin", match: (cmd) => cmd === "admin" },
   // External agent key management + integration grants
   { key: "agent", match: (cmd) => cmd === "agent" },
   { key: "grant", match: (cmd) => cmd === "grant" },
@@ -16,6 +15,9 @@ const routes = [
   { key: "zombie.list", match: (cmd) => cmd === "list" },
   { key: "zombie.status", match: (cmd) => cmd === "status" },
   { key: "zombie.kill", match: (cmd) => cmd === "kill" },
+  { key: "zombie.stop", match: (cmd) => cmd === "stop" },
+  { key: "zombie.resume", match: (cmd) => cmd === "resume" },
+  { key: "zombie.delete", match: (cmd) => cmd === "delete" },
   { key: "zombie.logs", match: (cmd) => cmd === "logs" },
   { key: "zombie.steer", match: (cmd) => cmd === "steer" },
   { key: "zombie.events", match: (cmd) => cmd === "events" },

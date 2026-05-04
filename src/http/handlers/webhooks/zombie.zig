@@ -123,7 +123,7 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payl
         common.internalOperationError(hx.res, "Failed to enqueue event", hx.req_id);
         return false;
     };
-    defer hx.alloc.free(new_event_id);
+    defer hx.ctx.alloc.free(new_event_id);
     log.info("webhook.enqueued zombie_id={s} stream_event_id={s} sender_event_id={s} actor={s}", .{ zombie_id, new_event_id, payload.event_id, actor });
     return true;
 }

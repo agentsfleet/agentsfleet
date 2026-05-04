@@ -165,9 +165,9 @@ test "workspace-scoped zombie PATCH resolves to patch_workspace_zombie" {
 }
 
 test "retired path: /v1/workspaces/{ws}/zombies/{id}/kill no longer resolves" {
-    // The standalone POST .../kill endpoint folded into PATCH .../zombies/{id}
-    // with body {status:"killed"}. The verb path 404s; aborting the in-flight
-    // stage (a different semantic) still lives at DELETE .../current-run.
+    // All status transitions fold into PATCH /zombies/{id} with body
+    // {status: "active" | "stopped" | "killed"}. Verb-suffix paths (/kill,
+    // /stop, /current-run) all 404.
     try std.testing.expect(match("/v1/workspaces/0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11/zombies/019abc12-8d3a-7f13-8abc-2b3e1e0a6f11/kill", .POST) == null);
 }
 
@@ -290,17 +290,15 @@ test "custom-method subpath: /grant-approval is distinct from /approval" {
     }
 }
 
-test "PATCH /v1/workspaces/{id} resolves to patch_workspace" {
-    const route = match("/v1/workspaces/ws_123", .GET) orelse return error.TestExpectedMatch;
-    try std.testing.expectEqualStrings("ws_123", switch (route) {
-        .patch_workspace => |id| id,
-        else => return error.TestExpectedEqual,
-    });
+test "retired path: bare /v1/workspaces/{id} no longer resolves" {
+    // PATCH /v1/workspaces/{id} (workspace pause/unpause) was removed —
+    // the bare workspace shape now has no matcher and must return null.
+    try std.testing.expect(match("/v1/workspaces/ws_123", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_123", .PATCH) == null);
 }
 
 test "old verb-suffix /v1/workspaces/{ws}/pause no longer resolves" {
-    // Migrated to PATCH /v1/workspaces/{id} body {pause, reason, version}.
-    // Multi-segment path is rejected by isSingleSegment guard.
+    // Multi-segment path with no matching action falls through to null.
     try std.testing.expect(match("/v1/workspaces/ws_123/pause", .GET) == null);
 }
 
@@ -324,26 +322,20 @@ test "custom-method subpath: zombie /messages resolves" {
     }
 }
 
-test "subpath: zombie /current-run resolves" {
-    const route = match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .GET) orelse return error.TestExpectedMatch;
-    switch (route) {
-        .workspace_zombie_current_run => |r| {
-            try std.testing.expectEqualStrings("ws_abc", r.workspace_id);
-            try std.testing.expectEqualStrings("z_xyz", r.zombie_id);
-        },
-        else => return error.TestExpectedEqual,
-    }
+test "retired path: zombie /current-run no longer resolves" {
+    // /current-run was the singleton-sub-resource form for stop. After the
+    // PATCH FSM unification (status: stopped|active|killed on the zombie
+    // resource itself), /current-run is gone — must not match.
+    try std.testing.expect(match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .DELETE) == null);
+    try std.testing.expect(match("/v1/workspaces/ws_abc/zombies/z_xyz/current-run", .GET) == null);
 }
 
 test "retired path: /stop no longer resolves as a zombie action" {
-    // /stop was the pre-hygiene path-verb form. After the REST cleanup it must
-    // either not match or fall through to a plain resource route — it must not
-    // dispatch to the current-run handler.
-    const stop_retired = match("/v1/workspaces/ws1/zombies/z1/stop", .GET);
-    if (stop_retired) |r| switch (r) {
-        .workspace_zombie_current_run => return error.TestExpectedNotAction,
-        else => {},
-    };
+    // /stop was the pre-hygiene path-verb form. With both /stop and
+    // /current-run retired in favor of PATCH /zombies/{id} {status:"stopped"},
+    // this path must return null.
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/stop", .GET) == null);
+    try std.testing.expect(match("/v1/workspaces/ws1/zombies/z1/stop", .POST) == null);
 }
 
 test "custom-method regression: old colon-action forms no longer hit the migrated routes" {
@@ -368,20 +360,19 @@ test "custom-method regression: old colon-action forms no longer hit the migrate
     };
     const messages_colon_old = match("/v1/workspaces/ws1/zombies/z1:messages", .POST);
     if (messages_colon_old) |r| switch (r) {
-        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+        .workspace_zombie_messages => return error.TestExpectedNotAction,
         else => {},
     };
     const stop_old = match("/v1/workspaces/ws1/zombies/z1:stop", .POST);
     if (stop_old) |r| switch (r) {
-        .workspace_zombie_messages, .workspace_zombie_current_run => return error.TestExpectedNotAction,
+        .workspace_zombie_messages => return error.TestExpectedNotAction,
         else => {},
     };
-    // /v1/workspaces/ws1:pause used to be the colon-op form (POST). It now
-    // falls through to the generic patch_workspace handler with a garbled id
-    // ("ws1:pause"), which the handler 404s at the requireUuidV7Id check.
-    // That's the test comment's "fail-closed at the handler layer" path —
-    // no assertion needed, just don't crash.
-    _ = match("/v1/workspaces/ws1:pause", .POST);
+    // /v1/workspaces/ws1:pause used to be the colon-op form (POST). With
+    // both the colon-op and the bare PATCH /v1/workspaces/{id} handler
+    // removed, it must return null outright — no current matcher accepts
+    // the shape.
+    try std.testing.expect(match("/v1/workspaces/ws1:pause", .POST) == null);
 }
 
 test "webhook action routes: approval / grant-approval / svix / github dispatch per action" {

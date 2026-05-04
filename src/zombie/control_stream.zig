@@ -50,20 +50,14 @@ pub const ZombieStatus = enum {
     active,
     killed,
     paused,
+    stopped,
 
     pub fn toSlice(self: ZombieStatus) []const u8 {
-        return switch (self) {
-            .active => "active",
-            .killed => "killed",
-            .paused => "paused",
-        };
+        return @tagName(self);
     }
 
     pub fn fromSlice(s: []const u8) ?ZombieStatus {
-        if (std.mem.eql(u8, s, "active")) return .active;
-        if (std.mem.eql(u8, s, "killed")) return .killed;
-        if (std.mem.eql(u8, s, "paused")) return .paused;
-        return null;
+        return std.meta.stringToEnum(ZombieStatus, s);
     }
 };
 

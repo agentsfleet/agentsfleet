@@ -150,7 +150,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         common.internalOperationError(hx.res, "Failed to enqueue event", hx.req_id);
         return;
     };
-    defer hx.alloc.free(new_event_id);
+    defer hx.ctx.alloc.free(new_event_id);
 
     recordAccepted(hx.ctx.telemetry, zombie.workspace_id, zombie_id, delivery);
     log.info("github_webhook.accepted zombie_id={s} delivery={s} stream_event_id={s}", .{ zombie_id, delivery, new_event_id });

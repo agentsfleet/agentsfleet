@@ -56,7 +56,6 @@ describe("M30 §1 — route inventory matches command registry", () => {
     { cmd: "logout", args: [], key: "logout" },
     { cmd: "workspace", args: ["add"], key: "workspace" },
     { cmd: "doctor", args: [], key: "doctor" },
-    { cmd: "admin", args: ["config"], key: "admin" },
     { cmd: "agent", args: ["add"], key: "agent" },
     { cmd: "grant", args: ["list"], key: "grant" },
     { cmd: "install", args: [], key: "zombie.install" },
@@ -84,7 +83,6 @@ describe("M30 §1 — route inventory matches command registry", () => {
       logout: sentinel,
       workspace: sentinel,
       doctor: sentinel,
-      admin: sentinel,
       agent: sentinel,
       grant: sentinel,
       zombieInstall: sentinel,
@@ -263,17 +261,3 @@ describe("M30 §3.5 — workspace JSON errors", () => {
   });
 });
 
-describe("M30 §3.5 — admin JSON errors", () => {
-  test("admin unknown subcommand emits UNKNOWN_COMMAND", async () => {
-    const out = makeBufferStream();
-    const err = makeBufferStream();
-    const code = await runCli(["--json", "admin", "bogus"], {
-      stdout: out.stream, stderr: err.stream,
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
-    });
-    expect(code).toBe(2);
-    const parsed = tryParseJson(err.read());
-    expect(parsed).not.toBeNull();
-    expect(parsed.error.code).toBe("UNKNOWN_COMMAND");
-  });
-});

@@ -20,7 +20,6 @@ function printHelp(stdout, ui, opts = {}) {
   const version = opts.version || "0.1.0";
   const noColor = Boolean(opts.env?.NO_COLOR === "1" || opts.env?.NO_COLOR === "true");
   const jsonMode = opts.jsonMode || false;
-  const showOperator = Boolean(opts.env?.ZOMBIE_OPERATOR === "1" || opts.authRole === "operator" || opts.authRole === "admin" || opts.operator);
 
   printBanner(stdout, version, { noColor, jsonMode });
   writeLine(stdout);
@@ -37,7 +36,6 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  workspace use <workspace_id>");
   writeLine(stdout, "  workspace show [--workspace-id ID]");
   writeLine(stdout, "  workspace credentials");
-  writeLine(stdout, "  workspace billing [--workspace-id ID]");
   writeLine(stdout, "  workspace delete <workspace_id>");
   writeLine(stdout, "  doctor");
   writeLine(stdout);
@@ -45,16 +43,12 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  install --from <path>               Register the zombie at <path>; server activates it");
   writeLine(stdout, "  list [--cursor C] [--limit N]       List zombies (cursor-paginated)");
   writeLine(stdout, "  status [<zombie_id>]                Show zombie(s) status");
-  writeLine(stdout, "  kill <zombie_id>                    Delete a zombie");
+  writeLine(stdout, "  stop <zombie_id>                    Halt the running session (resumable)");
+  writeLine(stdout, "  resume <zombie_id>                  Resume from stopped or auto-paused");
+  writeLine(stdout, "  kill <zombie_id>                    Mark terminal (irreversible)");
+  writeLine(stdout, "  delete <zombie_id>                  Hard-delete (must kill first)");
   writeLine(stdout, "  logs <zombie_id>                    Tail zombie activity");
   writeLine(stdout, "  credential add|show|list|delete     Workspace credential vault (--data=@- pipes JSON on stdin)");
-
-  if (showOperator) {
-    writeLine(stdout);
-    writeLine(stdout, ui.head("OPERATOR COMMANDS"));
-    writeLine(stdout, "  workspace upgrade-scale --workspace-id ID --subscription-id SUBSCRIPTION_ID");
-    writeLine(stdout, "  admin config add scoring_context_max_tokens <value> --workspace-id ID");
-  }
 
   writeLine(stdout);
   writeLine(stdout, ui.head("GLOBAL FLAGS"));
@@ -70,7 +64,6 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  ZOMBIE_API_URL   API base URL (overridden by --api)");
   writeLine(stdout, "  ZOMBIE_TOKEN     Auth token (overridden by login)");
   writeLine(stdout, "  ZOMBIE_API_KEY   API key for service auth");
-  writeLine(stdout, "  ZOMBIE_OPERATOR  Set to 1 to force-show operator commands in help");
   writeLine(stdout, "  NO_COLOR         Set to 1 to disable color output");
   writeLine(stdout);
   writeLine(stdout, ui.dim("workspace add opens UseZombie GitHub App install and binds via callback."));

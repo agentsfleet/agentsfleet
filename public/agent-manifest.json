@@ -24,8 +24,15 @@
       "operationId": "patch_zombie",
       "method": "PATCH",
       "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}",
-      "description": "Partial update of a Zombie. Body fields are optional and presence-based: config_json (replace config) and/or status:\"killed\" (cancel any in-flight executor session and mark the Zombie killed).",
+      "description": "Partial update of a Zombie. Body fields are optional and presence-based: config_json (replace config) and/or status (\"active\" to resume, \"stopped\" to halt, \"killed\" to mark terminal). The 'paused' state is platform-only — anomaly-gate auto-halt — and rejected here.",
       "actionClass": "sensitive"
+    },
+    {
+      "operationId": "delete_zombie",
+      "method": "DELETE",
+      "path": "/v1/workspaces/{workspace_id}/zombies/{zombie_id}",
+      "description": "Hard-delete a Zombie and cascade its history (events, telemetry, sessions, approval gates, memory entries). Precondition: status='killed' — kill the zombie before deleting. Returns 204 on success, 409 if not yet killed.",
+      "actionClass": "critical"
     },
     {
       "operationId": "post_zombie_message",
@@ -54,13 +61,6 @@
       "path": "/v1/webhooks/{zombie_id}",
       "description": "Deliver an inbound event to a Zombie. Body must be HMAC-SHA256 signed with the workspace credential matching the Zombie's trigger.source (e.g. vault row zombie:github, field webhook_secret); the provider-specific signature header is verified upstream. Idempotent within 24h via event_id.",
       "actionClass": "sensitive"
-    },
-    {
-      "operationId": "pause_workspace",
-      "method": "PATCH",
-      "path": "/v1/workspaces/{workspace_id}",
-      "description": "Pause or unpause admission of new work for a workspace.",
-      "actionClass": "sensitive"
     }
   ],
   "authentication": {
@@ -74,7 +74,7 @@
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],
-    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook", "pause_workspace"],
-    "critical": []
+    "sensitive": ["create_zombie", "patch_zombie", "post_zombie_message", "ingest_zombie_webhook"],
+    "critical": ["delete_zombie"]
   }
 }

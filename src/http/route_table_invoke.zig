@@ -18,13 +18,10 @@ const model_caps_h = @import("handlers/model_caps.zig");
 const auth_sessions = @import("handlers/auth/sessions.zig");
 const zombie_api = @import("handlers/zombies/api.zig");
 const zombie_creds = @import("handlers/zombies/credentials.zig");
-const zombie_tel = @import("handlers/zombies/telemetry.zig");
 const ws_lifecycle = @import("handlers/workspaces/lifecycle.zig");
 const tenant_billing_h = @import("handlers/tenant_billing.zig");
 const tenant_workspaces_h = @import("handlers/tenant_workspaces.zig");
-const tenant_doctor_h = @import("handlers/tenant_doctor.zig");
 const tenant_provider_h = @import("handlers/tenant_provider.zig");
-const ws_ops = @import("handlers/workspaces/ops.zig");
 const admin_keys = @import("handlers/admin/platform_keys.zig");
 const webhooks = @import("handlers/webhooks/zombie.zig");
 const approval = @import("handlers/webhooks/approval.zig");
@@ -42,8 +39,6 @@ const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
-const dashboard_invokes = @import("route_table_invoke_dashboard.zig");
-pub const invokeDeleteCurrentRun = dashboard_invokes.invokeDeleteCurrentRun;
 const events_invokes = @import("route_table_invoke_events.zig");
 pub const invokeZombieEvents = events_invokes.invokeZombieEvents;
 pub const invokeZombieEventsStream = events_invokes.invokeZombieEventsStream;
@@ -105,11 +100,6 @@ pub fn invokeCreateWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) 
     ws_lifecycle.innerCreateWorkspace(hx.*, req);
 }
 
-pub fn invokePatchWorkspace(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
-    ws_ops.innerPatchWorkspace(hx.*, req, route.patch_workspace);
-}
-
 pub fn invokeGetTenantBilling(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
@@ -126,12 +116,6 @@ pub fn invokeListTenantWorkspaces(hx: *Hx, req: *httpz.Request, route: router.Ro
     _ = route;
     if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
     tenant_workspaces_h.innerListTenantWorkspaces(hx.*, req);
-}
-
-pub fn invokeGetTenantDoctor(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    _ = route;
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    tenant_doctor_h.innerGetTenantDoctor(hx.*, req);
 }
 
 pub fn invokeTenantProvider(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -207,9 +191,12 @@ pub fn invokeWorkspaceZombies(hx: *Hx, req: *httpz.Request, route: router.Route)
 }
 
 pub fn invokePatchWorkspaceZombie(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.patch_workspace_zombie;
-    zombie_api.innerPatchZombie(hx.*, req, r.workspace_id, r.zombie_id);
+    switch (req.method) {
+        .PATCH => zombie_api.innerPatchZombie(hx.*, req, r.workspace_id, r.zombie_id),
+        .DELETE => zombie_api.innerDeleteZombie(hx.*, req, r.workspace_id, r.zombie_id),
+        else => common.respondMethodNotAllowed(hx.res),
+    }
 }
 
 pub fn invokeWorkspaceCredentials(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -233,14 +220,6 @@ pub fn invokeZombieMessagesPost(hx: *Hx, req: *httpz.Request, route: router.Rout
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.workspace_zombie_messages;
     zombie_messages.innerZombieMessagesPost(hx.*, req, r.workspace_id, r.zombie_id);
-}
-
-// ── Zombie telemetry ──────────────────────────────────────────────────────
-
-pub fn invokeZombieTelemetry(hx: *Hx, req: *httpz.Request, route: router.Route) void {
-    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
-    const r = route.zombie_telemetry;
-    zombie_tel.innerZombieTelemetry(hx.*, req, r.workspace_id, r.zombie_id);
 }
 
 // ── Memory ────────────────────────────────────────────────────────────────

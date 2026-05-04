@@ -69,10 +69,12 @@ pub const TestHarness = struct {
 
     /// Opportunistic Redis connect. Sets `has_redis = true` on success so
     /// tests that need the queue can `if (!h.has_redis) return error.SkipZigTest;`.
-    /// Reads REDIS_URL (role .default); returns false silently if unset/unreachable.
+    /// Reads REDIS_URL_API (role .api) — the same env var `serve.zig` uses,
+    /// since the harness simulates the API server. `make test-integration`
+    /// exports REDIS_URL_API automatically.
     pub fn tryConnectRedis(self: *TestHarness) bool {
         if (self.has_redis) return true;
-        if (queue_redis.Client.connectFromEnv(self.alloc, .default)) |client| {
+        if (queue_redis.Client.connectFromEnv(self.alloc, .api)) |client| {
             self.queue = client;
             self.has_redis = true;
             return true;
@@ -139,6 +141,16 @@ pub const TestHarness = struct {
             h.server.deinit();
         }
         try waitForServer(alloc, port, cfg.wait_timeout_ms);
+        // Wire the queue upfront so handlers that publish (PATCH zombie
+        // status, webhooks, approvals, etc.) don't dereference undefined
+        // memory. `make test-integration` always exports REDIS_URL_API.
+        // Failure is hard — silent skip would mask coverage gaps.
+        if (!h.tryConnectRedis()) {
+            h.server.stop();
+            h.thread.join();
+            h.server.deinit();
+            return error.RedisRequiredForTestHarness;
+        }
         return h;
     }
 
