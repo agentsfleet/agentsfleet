@@ -6,7 +6,7 @@ vi.stubGlobal("fetch", fetchMock);
 
 afterEach(() => fetchMock.mockReset());
 
-const zombie = { id: "zom_1", name: "lead-collector", status: "active", created_at: 0, updated_at: 0 };
+const zombie = { id: "zom_1", name: "platform-ops", status: "active", created_at: 0, updated_at: 0 };
 
 describe("listZombies", () => {
   it("GET /v1/workspaces/:ws/zombies with bearer, returns envelope", async () => {

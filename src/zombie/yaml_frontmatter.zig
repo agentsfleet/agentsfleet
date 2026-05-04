@@ -145,13 +145,13 @@ fn isNumeric(v: []const u8) bool {
 
 test "yamlFrontmatterToJson: flat key-value" {
     const alloc = std.testing.allocator;
-    const src = "name: lead-collector\ndaily_dollars: 5.0\nactive: true";
+    const src = "name: platform-ops\ndaily_dollars: 5.0\nactive: true";
     const json = try yamlFrontmatterToJson(alloc, src);
     defer alloc.free(json);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
     const obj = parsed.value.object;
-    try std.testing.expectEqualStrings("lead-collector", obj.get("name").?.string);
+    try std.testing.expectEqualStrings("platform-ops", obj.get("name").?.string);
     try std.testing.expectApproxEqAbs(@as(f64, 5.0), obj.get("daily_dollars").?.float, 0.001);
     try std.testing.expect(obj.get("active").?.bool);
 }

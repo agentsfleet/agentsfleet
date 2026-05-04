@@ -7,7 +7,7 @@ function typesOf(tokens: Token[]): TokenType[] {
 
 describe("tokenizeBash — canonical zombiectl demo (§5.8.4 dim 5.8.8)", () => {
   it("classifies the command / flag / default / comment pattern", () => {
-    const line = "zombiectl zombie install --template lead-collector # deploys";
+    const line = "zombiectl zombie install --template platform-ops # deploys";
     const tokens = tokenizeBash(line);
 
     // Assert ordered types — whitespace tokens collapse to `default`.

@@ -6,7 +6,7 @@ describe("smoke: app vitest lane", () => {
   it("validates core runtime contract helpers", () => {
     const zombie: Zombie = {
       id: "zom_1",
-      name: "lead-collector",
+      name: "platform-ops",
       status: "active",
       created_at: 0,
       updated_at: 0,

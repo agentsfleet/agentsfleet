@@ -266,7 +266,7 @@ test("status shows zombie info", async () => {
   const deps = makeDeps({
     request: async () => ({
       zombies: [{
-        name: "lead-collector",
+        name: "platform-ops",
         status: "active",
         events_processed: 42,
         budget_used_dollars: 1.23,
@@ -282,7 +282,7 @@ test("status shows zombie info", async () => {
     deps,
   );
   assert.equal(code, 0);
-  assert.equal(printed.zombies[0].name, "lead-collector");
+  assert.equal(printed.zombies[0].name, "platform-ops");
 });
 
 test("status with no zombies shows info message", async () => {

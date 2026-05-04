@@ -98,7 +98,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
             <FormItem>
               <FormLabel>Name</FormLabel>
               <FormControl>
-                <Input placeholder="lead-collector" {...field} />
+                <Input placeholder="platform-ops" {...field} />
               </FormControl>
               <FormMessage />
             </FormItem>
@@ -113,7 +113,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
               <FormLabel>SKILL.md body</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder={"---\nname: lead-collector\n---\n# Lead Collector\n..."}
+                  placeholder={"---\nname: platform-ops\n---\n# Platform Ops\n..."}
                   rows={8}
                   className="font-mono text-xs"
                   {...field}
@@ -136,7 +136,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
               <FormLabel>Config JSON</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder={'{"name":"lead-collector","trigger":{"kind":"webhook"}}'}
+                  placeholder={'{"name":"platform-ops","trigger":{"kind":"webhook"}}'}
                   rows={6}
                   className="font-mono text-xs"
                   {...field}

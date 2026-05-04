@@ -172,7 +172,6 @@ const ERR_EXEC_OOM_KILL = "UZ-EXEC-004";
 const ERR_EXEC_RESOURCE_KILL = "UZ-EXEC-005";
 const ERR_EXEC_TRANSPORT_LOSS = "UZ-EXEC-006";
 const ERR_EXEC_LEASE_EXPIRED = "UZ-EXEC-007";
-const ERR_EXEC_POLICY_DENY = "UZ-EXEC-008";
 pub const ERR_EXEC_STARTUP_POSTURE = "UZ-EXEC-009";
 const ERR_EXEC_CRASH = "UZ-EXEC-010";
 const ERR_EXEC_LANDLOCK_DENY = "UZ-EXEC-011";
@@ -202,9 +201,6 @@ pub const ERR_APIKEY_MUST_REVOKE_FIRST = "UZ-APIKEY-008";
 pub const ERR_GRANT_NOT_FOUND = "UZ-GRANT-001";
 pub const ERR_GRANT_PENDING = "UZ-GRANT-002";
 pub const ERR_GRANT_DENIED = "UZ-GRANT-003";
-pub const ERR_FW_DOMAIN_BLOCKED = "UZ-FW-001";
-pub const ERR_FW_APPROVAL_REQUIRED = "UZ-FW-002";
-pub const ERR_FW_INJECTION_DETECTED = "UZ-FW-003";
 
 // ── Error mapping table (bvisor pattern) ─────────────────────────────────────
 // Shared type for modules that map Zig errors to registry codes + messages.

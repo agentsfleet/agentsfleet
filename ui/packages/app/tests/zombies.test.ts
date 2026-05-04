@@ -206,9 +206,9 @@ describe("lib/api/zombies", () => {
     });
     const mod = await import("../lib/api/zombies");
     const body = {
-      name: "lead-collector",
-      source_markdown: "---\nname: lead-collector\n---\nhi",
-      config_json: '{"name":"lead-collector"}',
+      name: "platform-ops",
+      source_markdown: "---\nname: platform-ops\n---\nhi",
+      config_json: '{"name":"platform-ops"}',
     };
     const res = await mod.installZombie("ws_1", body, "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
@@ -474,7 +474,7 @@ describe("zombies routes", () => {
           items: [
             {
               id: "zom_1",
-              name: "lead-collector",
+              name: "platform-ops",
               status: "active",
               created_at: 1713700000000,
               updated_at: 1713700000000,
@@ -532,7 +532,7 @@ describe("zombies routes", () => {
     const { default: Page } = await import("../app/(dashboard)/zombies/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain("href=\"/zombies/zom_1\"");
-    expect(markup).toContain("lead-collector");
+    expect(markup).toContain("platform-ops");
     expect(markup).toContain("credit balance is exhausted");
   });
 
@@ -608,9 +608,8 @@ describe("zombies routes", () => {
     const markup = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ id: "zom_1" }) }),
     );
-    expect(markup).toContain("lead-collector");
+    expect(markup).toContain("platform-ops");
     expect(markup).toContain("Trigger");
-    expect(markup).toContain("Firewall rules");
     expect(markup).toContain("Configuration");
     expect(markup).toContain("Balance exhausted");
   });
@@ -636,7 +635,7 @@ describe("zombies routes", () => {
           ok: true,
           status: 200,
           json: async () => ({
-            items: [{ gate_id: "g1", zombie_id: "zom_1", zombie_name: "lead-collector" }],
+            items: [{ gate_id: "g1", zombie_id: "zom_1", zombie_name: "platform-ops" }],
             next_cursor: "cur_xyz",
           }),
         };
@@ -648,7 +647,7 @@ describe("zombies routes", () => {
         ok: true,
         status: 200,
         json: async () => ({
-          items: [{ id: "zom_1", name: "lead-collector", status: "active", created_at: 1, updated_at: 1 }],
+          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
           total: 1,
         }),
       };
@@ -679,7 +678,7 @@ describe("zombies routes", () => {
           items: [
             {
               id: "zom_1",
-              name: "lead-collector",
+              name: "platform-ops",
               status: "active",
               created_at: 1713700000000,
               updated_at: 1713700000000,
@@ -693,7 +692,7 @@ describe("zombies routes", () => {
     const markup = renderToStaticMarkup(
       await Page({ params: Promise.resolve({ id: "zom_1" }) }),
     );
-    expect(markup).toContain("lead-collector");
+    expect(markup).toContain("platform-ops");
     expect(markup).not.toContain("Balance exhausted");
   });
 });
@@ -764,7 +763,7 @@ describe("ZombieConfig interactions", () => {
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
         zombieId: "zom_1",
-        zombieName: "lead-collector",
+        zombieName: "platform-ops",
       }),
     );
 
@@ -793,7 +792,7 @@ describe("ZombieConfig interactions", () => {
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
         zombieId: "zom_1",
-        zombieName: "lead-collector",
+        zombieName: "platform-ops",
       }),
     );
     await user.click(screen.getByRole("button", { name: /delete zombie/i }));
@@ -819,7 +818,7 @@ describe("ZombieConfig interactions", () => {
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
         zombieId: "zom_1",
-        zombieName: "lead-collector",
+        zombieName: "platform-ops",
       }),
     );
     await user.click(screen.getByRole("button", { name: /delete zombie/i }));
@@ -839,7 +838,7 @@ describe("ZombieConfig interactions", () => {
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
         zombieId: "zom_1",
-        zombieName: "lead-collector",
+        zombieName: "platform-ops",
       }),
     );
     await user.click(screen.getByRole("button", { name: /delete zombie/i }));
@@ -847,17 +846,6 @@ describe("ZombieConfig interactions", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-});
-
-describe("FirewallRulesEditor", () => {
-  it("renders the CLI-only placeholder", async () => {
-    const { default: FirewallRulesEditor } = await import(
-      "../app/(dashboard)/zombies/[id]/components/FirewallRulesEditor"
-    );
-    render(React.createElement(FirewallRulesEditor));
-    expect(screen.getByText(/Firewall editing is CLI-only/i)).toBeTruthy();
-    expect(screen.getByText(/zombiectl zombie firewall set/i)).toBeTruthy();
   });
 });
 
@@ -882,7 +870,7 @@ describe("InstallZombieForm interactions", () => {
   it("empty SKILL.md blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy(),
@@ -893,7 +881,7 @@ describe("InstallZombieForm interactions", () => {
   it("empty config JSON blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "hello");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
@@ -905,7 +893,7 @@ describe("InstallZombieForm interactions", () => {
   it("invalid config JSON blocks submit with a parse error", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "hello");
     await user.type(screen.getByLabelText(/Config JSON/i), "not-json");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
@@ -923,7 +911,7 @@ describe("InstallZombieForm interactions", () => {
     });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill body");
     await user.type(screen.getByLabelText(/Config JSON/i), '{{"name":"x"}');
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
@@ -938,7 +926,7 @@ describe("InstallZombieForm interactions", () => {
       (fetchMock.mock.calls[0]![1] as RequestInit).body as string,
     );
     expect(callBody).toEqual({
-      name: "lead-collector",
+      name: "platform-ops",
       source_markdown: "# skill body",
       config_json: '{"name":"x"}',
     });
@@ -955,7 +943,7 @@ describe("InstallZombieForm interactions", () => {
     });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
     await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
@@ -974,7 +962,7 @@ describe("InstallZombieForm interactions", () => {
     });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
     await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
@@ -987,7 +975,7 @@ describe("InstallZombieForm interactions", () => {
     getTokenFn.mockResolvedValueOnce(null);
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "lead-collector");
+    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
     await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));

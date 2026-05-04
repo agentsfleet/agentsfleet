@@ -18,11 +18,11 @@ const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000100";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-000000000101";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"lead-collector","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"platform-ops","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---
-    \\name: lead-collector
+    \\name: platform-ops
     \\---
     \\
     \\You are a lead collector agent. Reply to every inbound email with a friendly greeting.
@@ -41,13 +41,13 @@ test "integration 3.1: claimZombie loads config from core.zombies" {
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
 
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);
     defer session.deinit(alloc);
 
-    try std.testing.expectEqualStrings("lead-collector", session.config.name);
+    try std.testing.expectEqualStrings("platform-ops", session.config.name);
     try std.testing.expectEqualStrings(TEST_ZOMBIE_ID, session.zombie_id);
     try std.testing.expectEqualStrings(TEST_WORKSPACE_ID, session.workspace_id);
     try std.testing.expectEqualStrings("agentmail", session.config.trigger.webhook.source);
@@ -64,7 +64,7 @@ test "integration 3.1: claimZombie extracts instructions from source_markdown" {
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
 
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);
@@ -86,7 +86,7 @@ test "integration 3.1: claimZombie returns fresh session when no checkpoint exis
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
 
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);
@@ -120,7 +120,7 @@ test "integration 3.1: claimZombie returns ZombieNotActive for paused zombie" {
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
 
     // Seed zombie, then update status to 'paused'
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     _ = try db_ctx.conn.exec(
@@ -147,7 +147,7 @@ test "integration 3.3: claimZombie loads existing checkpoint from zombie_session
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
 
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     // Seed a checkpoint with conversation context
@@ -175,7 +175,7 @@ test "integration 3.3: checkpointState writes session to zombie_sessions" {
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
 
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     // Claim with empty checkpoint, update context, then checkpoint
@@ -203,7 +203,7 @@ test "integration 3.3: checkpointState UPSERT overwrites previous checkpoint" {
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
 
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "lead-collector", VALID_CONFIG_JSON, VALID_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, "platform-ops", VALID_CONFIG_JSON, VALID_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
 
     var session = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);

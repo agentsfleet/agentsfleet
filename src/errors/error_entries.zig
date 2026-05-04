@@ -237,7 +237,7 @@ pub const ENTRIES = [_]Entry{
         "Redis connected but consumer group creation failed. " ++
         "Check Redis ACL permissions allow XGROUP CREATE."),
     // Runtime / execute-path entries (sandbox, executor, relay, credentials,
-    // approval-gate, memory, api-keys, grants, firewall, tool/credential,
-    // proxy, gate-execute) live in error_entries_runtime.zig and are
-    // concatenated into REGISTRY by error_registry.zig.
+    // approval-gate, memory, api-keys, grants, tool/credential, proxy,
+    // gate-execute) live in error_entries_runtime.zig and are concatenated
+    // into REGISTRY by error_registry.zig.
 };

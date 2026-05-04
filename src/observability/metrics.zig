@@ -25,11 +25,6 @@ pub const incRunLimitWallTimeExceeded = mc.incRunLimitWallTimeExceeded;
 pub const incRunLimitRepairLoopsExhausted = mc.incRunLimitRepairLoopsExhausted;
 pub const snapshot = mc.snapshot;
 
-// OTel exporter metrics.
-pub const incOtelExportTotal = mc.incOtelExportTotal;
-pub const incOtelExportFailed = mc.incOtelExportFailed;
-pub const setOtelLastSuccessAtMs = mc.setOtelLastSuccessAtMs;
-
 pub const renderPrometheus = mr.renderPrometheus;
 
 // Per-(workspace, zombie) token counter.
@@ -97,21 +92,7 @@ test "integration: api throughput guardrail metrics are exposed in prometheus ou
     try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_api_backpressure_rejections_total"));
 }
 
-test "integration: otel exporter metrics are exposed in prometheus output" {
-    const alloc = std.testing.allocator;
-    incOtelExportTotal();
-    incOtelExportFailed();
-    setOtelLastSuccessAtMs(1710000000000);
-
-    const body = try renderPrometheus(alloc, true);
-    defer alloc.free(body);
-
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_export_failed_total"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, body, 1, "zombie_otel_last_success_at_ms"));
-}
-
-// T7 — all zombie counters + histogram render in Prometheus output after increment.
+// All zombie counters + histogram render in Prometheus output after increment.
 test "T7: prometheus render includes all zombie counters and histogram after increment" {
     const metrics_zombie = @import("metrics_zombie.zig");
     metrics_zombie.resetForTest();

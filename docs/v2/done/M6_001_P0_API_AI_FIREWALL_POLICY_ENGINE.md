@@ -369,3 +369,19 @@ pub fn scanResponse(body: []const u8, credentials: []const []const u8) ScanResul
 - Firewall bypass for admin/debug (no bypass — security is unconditional)
 - Custom pattern upload by users (hardcoded patterns for v1)
 - Streaming response scanning (buffered responses only for v1)
+
+---
+
+## 14.0 Retired May 04, 2026
+
+**Status:** RETIRED (engine deleted; spec retained for archaeology).
+
+The May 04, 2026 production-only `@import`-closure audit confirmed the engine had **zero production callers**. The five source files and three test files at `src/zombie/firewall/` were imported only inside `src/main.zig`'s `test {}` bridge block; no zombie execution path, HTTP handler, or worker step ever invoked `firewall.evaluate(...)`.
+
+Per RULE NLG (no legacy framing pre-v2.0.0; `cat VERSION` = `0.33.0` at retirement), an unwired engine is dead weight — it misleads readers about what the system enforces and pays a build/test cost every commit.
+
+**Decision (Captain, May 04, 2026):** option A — delete engine + amend this spec. Spec stays in `docs/v2/done/` for archaeology; do not move out.
+
+**Refile rule:** if a future wedge requires AI-firewalling for zombie traffic, ship a new milestone with engine + production wiring + tests in the **same** commit.
+
+**LOC retired:** ~1488 (5 src + 3 tests).

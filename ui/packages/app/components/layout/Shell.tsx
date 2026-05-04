@@ -14,7 +14,6 @@ import {
   BookOpenIcon,
   ZapIcon,
   SkullIcon,
-  ShieldIcon,
   KeyRoundIcon,
   CheckCircle2Icon,
 } from "lucide-react";
@@ -31,11 +30,6 @@ const NAV = [
     icon: SkullIcon,
   },
   {
-    label: "Firewall",
-    href: "/firewall",
-    icon: ShieldIcon,
-  },
-  {
     label: "Credentials",
     href: "/credentials",
     icon: KeyRoundIcon,
@@ -47,7 +41,7 @@ const NAV = [
   },
   {
     label: "Events",
-    href: "/",
+    href: "/events",
     icon: ActivityIcon,
   },
 ];

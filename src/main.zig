@@ -173,7 +173,6 @@ test {
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
     _ = @import("observability/trace.zig");
-    _ = @import("observability/otel_export.zig");
     _ = @import("observability/otel_logs.zig");
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/heroku_names.zig");
@@ -251,15 +250,6 @@ test {
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     _ = @import("cmd/worker_zombie.zig");
     _ = @import("cmd/worker/state.zig");
-    // M6_001: AI Firewall Policy Engine
-    _ = @import("zombie/firewall/domain_policy.zig");
-    _ = @import("zombie/firewall/endpoint_policy.zig");
-    _ = @import("zombie/firewall/injection_detector.zig");
-    _ = @import("zombie/firewall/content_scanner.zig");
-    _ = @import("zombie/firewall/firewall.zig");
-    _ = @import("zombie/firewall/firewall_test.zig");
-    _ = @import("zombie/firewall/firewall_robustness_test.zig");
-    _ = @import("zombie/firewall/firewall_greptile_test.zig");
     _ = @import("state/workspace_integrations.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");

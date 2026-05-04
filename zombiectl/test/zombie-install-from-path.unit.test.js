@@ -464,7 +464,7 @@ test("install <bundled-name>: legacy usage exits 2 and points at --from", async 
   let captured = null;
   const code = await commandZombie(
     { stdout: makeStdout(), stderr: makeNoop(), jsonMode: false, noInput: false },
-    ["install", "lead-collector"],
+    ["install", "platform-ops"],
     workspaces,
     makeDeps({
       writeError: (_ctx, errCode, message) => { captured = { code: errCode, message }; },

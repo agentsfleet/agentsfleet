@@ -11,7 +11,6 @@ import { LiveEventsPanel } from "@/components/domain/LiveEventsPanel";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import ZombieApprovalsPanel from "@/components/domain/ZombieApprovalsPanel";
 import TriggerPanel from "./components/TriggerPanel";
-import FirewallRulesEditor from "./components/FirewallRulesEditor";
 import ZombieConfig from "./components/ZombieConfig";
 import KillSwitch from "./components/KillSwitch";
 
@@ -65,13 +64,6 @@ export default async function ZombieDetailPage({
         <section aria-label="Trigger">
           <SectionLabel>Trigger</SectionLabel>
           <TriggerPanel zombieId={zombie.id} />
-        </section>
-      </Section>
-
-      <Section asChild>
-        <section aria-label="Firewall rules">
-          <SectionLabel>Firewall rules</SectionLabel>
-          <FirewallRulesEditor />
         </section>
       </Section>
 

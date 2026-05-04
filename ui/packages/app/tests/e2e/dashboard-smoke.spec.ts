@@ -9,7 +9,7 @@ const EXPECTED_HOSTNAME = new URL(
   process.env.BASE_URL ?? "http://localhost:3000",
 ).hostname;
 
-const M27_ROUTES = ["/", "/zombies", "/firewall", "/credentials", "/settings"];
+const M27_ROUTES = ["/", "/zombies", "/credentials", "/settings"];
 
 test.describe("M27 dashboard routes — unauthenticated smoke", () => {
   for (const route of M27_ROUTES) {
