@@ -4,7 +4,7 @@
 **Milestone:** M61
 **Workstream:** 004
 **Date:** May 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P3 — small bundle and reader-cognitive-load wins. Zero user-visible behavior change. The biggest piece is one local `Card` primitive that duplicates `@usezombie/design-system`'s `Card` (RULE NLG: pre-v2.0 we do not carry parallel implementations of the same shape) and two analytics components that have unit tests but never render in any production page.
 **Categories:** UI
 **Batch:** B1
