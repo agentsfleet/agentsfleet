@@ -4,7 +4,7 @@
 **Milestone:** M61
 **Workstream:** 002
 **Date:** May 04, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — pre-v2.0.0 hygiene; long tail of single-file orphans found by the May 04 production-only `@import` closure. Each one is small, but together they're ~1.2k LOC of compiled-but-unwired code that lies to readers about what the binary does.
 **Categories:** API
 **Batch:** B1
@@ -152,9 +152,26 @@ Empty output for every cluster except `webhook_test_signers` is the keep/delete 
 
 ## Discovery (filled during EXECUTE)
 
-`webhook_test_signers.zig` decision: ____
-`src/sys/` registry-coverage gap (if any): ____
-Cascade orphans surfaced: ____
+**`webhook_test_signers.zig` decision: KEEP.** It is consumed by `src/http/webhook_http_integration_test.zig` (real test fixture) and by `src/http/server.zig:268` (test bridge inside server.zig). Per §3 KEEP/DELETE rule: test consumer present → KEEP. Row dropped from §Files Changed.
+
+**`src/auth/clerk.zig` extension: deleted as a pair with `src/auth/clerk_test.zig`.** The original spec only mentioned dropping the import line in `src/auth/tests.zig`, but `clerk.zig:81` self-imported `./clerk_test.zig` and `clerk_test.zig` is a substantive `Verifier` test for the dead module. Per RULE NLR (touch-it-fix-it) the test goes with the module. No production caller — `auth/clerk.zig` was the unbuilt "verify Clerk-issued user JWTs on every request" path; production auth uses API-key + OIDC bearer middleware that doesn't route through `Verifier.verifyAuthorization`.
+
+**`src/http/route_manifest.zig` cluster — extended scope, not orphan.** Spec claimed "ZERO references anywhere"; the actual consumers were:
+1. `src/http/router_test.zig:441` — Zig invariant `route_manifest: every entry dispatches through match()`.
+2. `scripts/check_openapi_sync.py` — Python (method, path) parity gate wired into `make openapi`.
+3. `scripts/test_check_openapi_sync.py` — Python parser regression tests.
+
+User decision: delete the entire chain (file + Zig invariant test + both Python scripts + the `make openapi` wiring), since the chain only enforces "manifest agrees with `match()` agrees with `openapi.json`" — and once the manifest is gone, `match()` and `openapi.json` are the only two sources of truth, with no daily drift signal. Accepted coverage gap: drift between `router.match()` and `public/openapi.json` is no longer caught by `make lint`. Reviewer-discipline gate via REST §1 `check_openapi_url_shape.py` survives.
+
+**`src/sys/` registry-coverage gap:** none. `src/errors/error_registry.zig` already covers the error codes the deleted pair handled; no port required.
+
+**Cascade orphans surfaced:** in `src/http/router_test.zig` the `parseMethod` helper, `httpz` import, and `matchers` import lived only to feed the deleted `route_manifest:` test — all three removed in the same commit per RULE NLR.
+
+**Final Files Changed extension** (beyond §Files Changed in the original spec):
+- `scripts/check_openapi_sync.py` — DELETE (only consumer of `route_manifest.zig` outside the test bridge).
+- `scripts/test_check_openapi_sync.py` — DELETE (regression tests for the deleted script).
+- `make/quality.mk` — EDIT (drop the two `scripts/check_openapi_sync.py` invocations + the `route_manifest`-parity wording from the `openapi:` target).
+- `src/http/router_test.zig` — also drop `parseMethod`, the `httpz` import, and the `matchers` import (cascade dead code).
 
 ---
 

@@ -128,7 +128,6 @@ test "parseLogLevel accepts common values" {
 
 test {
     _ = @import("types.zig");
-    _ = @import("secrets/crypto.zig");
     _ = @import("db/pool.zig");
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
@@ -156,12 +155,8 @@ test {
     _ = @import("cmd/worker_watcher_poll.zig");
     _ = @import("cmd/worker_watcher_lifecycle_test.zig");
     _ = @import("cmd/worker_dynamic_discovery_integration_test.zig");
-    _ = @import("sys/errno.zig");
-    _ = @import("sys/error.zig");
     _ = @import("util/strings/string_joiner.zig");
     _ = @import("util/strings/string_builder.zig");
-    _ = @import("util/strings/smol_str.zig");
-    _ = @import("util/strings/case_insensitive_ascii_map.zig");
     _ = @import("executor/context_budget.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
@@ -251,7 +246,6 @@ test {
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     _ = @import("cmd/worker_zombie.zig");
     _ = @import("cmd/worker/state.zig");
-    _ = @import("state/workspace_integrations.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
 }
