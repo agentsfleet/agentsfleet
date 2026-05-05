@@ -10,7 +10,7 @@ The product, the problem, the wedge, the differentiation, and why the obvious al
 
 ### What we are
 
-UseZombie v2 is a durable runtime for one operational outcome.
+usezombie v2 is a durable runtime for one operational outcome.
 
 It is meant for work that:
 
@@ -22,7 +22,7 @@ It is meant for work that:
 
 ### What we are not
 
-UseZombie v2 is not:
+usezombie v2 is not:
 
 - a general-purpose personal assistant in the cloud
 - a generic coding-agent orchestration product
@@ -130,7 +130,7 @@ That is why the MVP bar is strict: the zombie must make a real operational outco
 
 ## 4. MVP Thesis
 
-UseZombie v2 should be judged on one promise:
+usezombie v2 should be judged on one promise:
 
 > Operational outcomes do not fall into limbo.
 
@@ -193,7 +193,7 @@ This is the hardest product challenge and is stated plainly.
 
 For many technical users, OpenClaw or a similar local assistant can already do a meaningful subset of the work: inspect deploy logs, analyze production failures, prepare a recovery plan, use tools from a supervised terminal session, ask for confirmation before risky actions.
 
-If that is enough, then UseZombie v2 should not exist as a separate product.
+If that is enough, then usezombie v2 should not exist as a separate product.
 
 ### What OpenClaw already does well
 
@@ -213,9 +213,9 @@ That means v2 cannot claim novelty simply by saying:
 
 Those are table stakes.
 
-### What UseZombie must do better
+### What usezombie must do better
 
-UseZombie v2 only earns its existence if it does at least some of these materially better than OpenClaw alone:
+usezombie v2 only earns its existence if it does at least some of these materially better than OpenClaw alone:
 
 - waits for future events while the user is gone
 - wakes on cron or webhook without a live interactive session

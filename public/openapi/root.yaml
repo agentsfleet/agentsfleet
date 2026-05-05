@@ -1,10 +1,10 @@
 openapi: 3.1.0
 info:
-  title: UseZombie Control Plane API
+  title: usezombie Control Plane API
   version: 1.0.0
   description: Zombie automation control plane — webhook-driven agent execution in a bwrap+landlock sandbox.
   contact:
-    name: UseZombie
+    name: usezombie
     url: https://usezombie.com
 servers:
 - url: https://api.usezombie.com

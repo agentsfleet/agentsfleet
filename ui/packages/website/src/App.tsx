@@ -69,7 +69,7 @@ export default function App() {
         <ScrollRestoration />
         <div className="brand-wrap">
           <Link className="brand" to="/">
-            UseZombie
+            usezombie
           </Link>
           <span className="badge">open source · markdown-defined</span>
         </div>

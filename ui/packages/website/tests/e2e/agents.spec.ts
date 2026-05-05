@@ -26,7 +26,8 @@ test.describe("Agents page (/agents)", () => {
     const block = page.getByLabel(/bootstrap commands/i);
     await expect(block).toBeVisible();
     await expect(block).toContainText("npm install -g @usezombie/zombiectl");
-    await expect(block).toContainText("zombiectl auth login");
+    await expect(block).toContainText("zombiectl login");
+    await expect(block).toContainText("npx skills add usezombie/usezombie");
     await expect(block).toContainText("/usezombie-install-platform-ops");
   });
 
@@ -49,7 +50,7 @@ test.describe("Agents page (/agents)", () => {
 
   test("renders webhook example", async ({ page }) => {
     await expect(page.getByText("Webhook Ingest Example")).toBeVisible();
-    await expect(page.getByText(/workflow_run\.failed/)).toBeVisible();
+    await expect(page.getByText(/deploy\.failed/)).toBeVisible();
   });
 
   test("renders safety limit cards", async ({ page }) => {

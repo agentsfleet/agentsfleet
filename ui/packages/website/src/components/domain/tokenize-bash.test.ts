@@ -61,7 +61,7 @@ describe("tokenizeBash — table-driven coverage (§5.8.4 dim 5.8.9)", () => {
 
 describe("tokenizeBash — preservation rules", () => {
   const corpus = [
-    "zombiectl auth login",
+    "zombiectl login",
     "curl -fsSL https://example.com/script.sh | bash",
     "zombiectl steer zmb_2041 \"morning health check\"",
     'echo "hello world" > /tmp/out',

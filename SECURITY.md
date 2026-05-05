@@ -1,6 +1,6 @@
 # Security Model
 
-This is the short policy entrypoint for UseZombie.
+This is the short policy entrypoint for usezombie.
 
 ## Security Objectives
 

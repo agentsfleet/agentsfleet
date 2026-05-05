@@ -62,7 +62,7 @@ test "T1: all event types can be captured without error" {
     t.capture(telemetry.StartupFailed, .{ .command = "serve", .phase = "db", .reason = "err", .error_code = "UZ-001" });
     t.capture(telemetry.ApiError, .{ .distinct_id = "u", .error_code = "UZ-001", .message = "m", .request_id = "r" });
     t.capture(telemetry.ApiErrorWithContext, .{ .distinct_id = "u", .error_code = "UZ-001", .message = "m", .workspace_id = "w", .request_id = "r" });
-    t.capture(telemetry.WorkspaceCreated, .{ .distinct_id = "u", .workspace_id = "w", .tenant_id = "t", .repo_url = "https://x", .request_id = "r" });
+    t.capture(telemetry.WorkspaceCreated, .{ .distinct_id = "u", .workspace_id = "w", .tenant_id = "t", .request_id = "r" });
     t.capture(telemetry.AuthLoginCompleted, .{ .distinct_id = "u", .session_id = "s", .request_id = "r" });
     t.capture(telemetry.AuthRejected, .{ .reason = "token_expired", .request_id = "r" });
     t.capture(telemetry.ZombieTriggered, .{ .distinct_id = "w", .workspace_id = "w", .zombie_id = "z", .event_id = "e", .source = "webhook" });

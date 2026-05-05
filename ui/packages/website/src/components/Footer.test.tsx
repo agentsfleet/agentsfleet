@@ -14,7 +14,7 @@ function renderFooter() {
 describe("Footer", () => {
   it("renders the brand name", () => {
     renderFooter();
-    expect(screen.getByText("UseZombie")).toBeInTheDocument();
+    expect(screen.getByText("usezombie")).toBeInTheDocument();
   });
 
   it("renders the tagline", () => {

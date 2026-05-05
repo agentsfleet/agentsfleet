@@ -23,7 +23,7 @@ function printHelp(stdout, ui, opts = {}) {
 
   printBanner(stdout, version, { noColor, jsonMode });
   writeLine(stdout);
-  writeLine(stdout, "  " + ui.head("UseZombie CLI") + ui.dim("  —  autonomous agent platform"));
+  writeLine(stdout, "  " + ui.head("usezombie CLI") + ui.dim("  —  autonomous agent platform"));
   writeLine(stdout);
   writeLine(stdout, ui.head("USAGE"));
   writeLine(stdout, "  zombiectl [--api URL] [--json] <command> [subcommand] [flags]");
@@ -31,7 +31,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, ui.head("USER COMMANDS"));
   writeLine(stdout, "  login [--timeout-sec N] [--poll-ms N] [--no-open]");
   writeLine(stdout, "  logout");
-  writeLine(stdout, "  workspace add <repo_url> [--default-branch BRANCH]");
+  writeLine(stdout, "  workspace add [<name>]");
   writeLine(stdout, "  workspace list");
   writeLine(stdout, "  workspace use <workspace_id>");
   writeLine(stdout, "  workspace show [--workspace-id ID]");
@@ -48,6 +48,7 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  kill <zombie_id>                    Mark terminal (irreversible)");
   writeLine(stdout, "  delete <zombie_id>                  Hard-delete (must kill first)");
   writeLine(stdout, "  logs <zombie_id>                    Tail zombie activity");
+  writeLine(stdout, "  steer <zombie_id> \"<message>\"       Send a message to the zombie and stream its response");
   writeLine(stdout, "  credential add|show|list|delete     Workspace credential vault (--data=@- pipes JSON on stdin)");
 
   writeLine(stdout);
@@ -65,8 +66,6 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  ZOMBIE_TOKEN     Auth token (overridden by login)");
   writeLine(stdout, "  ZOMBIE_API_KEY   API key for service auth");
   writeLine(stdout, "  NO_COLOR         Set to 1 to disable color output");
-  writeLine(stdout);
-  writeLine(stdout, ui.dim("workspace add opens UseZombie GitHub App install and binds via callback."));
 }
 
 export {

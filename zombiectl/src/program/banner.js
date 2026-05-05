@@ -18,9 +18,9 @@ export function printBanner(stream, version, opts = {}) {
   const c = (code, s) => `\u001b[${code}m${s}\u001b[0m`;
   const bar = "\u2500".repeat(label.length);
 
-  stream.write(`    ${c("1;36", `\u256D${bar}\u256E`)}\n`);
-  stream.write(` \u{1F9DF} ${c("1;36", "\u2502")}${c("1;37", label)}${c("1;36", "\u2502")}\n`);
-  stream.write(`    ${c("1;36", `\u2570${bar}\u256F`)}\n`);
+  stream.write(`    ${c("1;38;5;208", `\u256D${bar}\u256E`)}\n`);
+  stream.write(` \u{1F9DF} ${c("1;38;5;208", "\u2502")}${c("1;37", label)}${c("1;38;5;208", "\u2502")}\n`);
+  stream.write(`    ${c("1;38;5;208", `\u2570${bar}\u256F`)}\n`);
   stream.write(`    ${c("2", "  autonomous agent cli")}\n`);
 }
 
@@ -34,13 +34,11 @@ export function printPreReleaseWarning(stream, opts = {}) {
 
   if (noColor) {
     stream.write(`\n[PRE-RELEASE] This is a pre-release build for early access testing.\n`);
-    stream.write(`Contact nkishore@megam.io to get access.\n`);
-    stream.write(`General availability: April 5, 2026\n\n`);
+    stream.write(`Contact nkishore@megam.io to get access.\n\n`);
     return;
   }
 
   const c = (code, s) => `\u001b[${code}m${s}\u001b[0m`;
   stream.write(`\n  ${c("1;33", "⚠  Pre-release build")} — not for production use.\n`);
-  stream.write(`     Early access testing only. Contact ${c("1;37", "nkishore@megam.io")} to get access.\n`);
-  stream.write(`     General availability: ${c("1;37", "April 5, 2026")}\n\n`);
+  stream.write(`     Early access testing only. Contact ${c("1;37", "nkishore@megam.io")} to get access.\n\n`);
 }

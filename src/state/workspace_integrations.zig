@@ -76,7 +76,7 @@ pub fn upsertIntegration(
 }
 
 /// Look up workspace_id for an active integration. Returns owned slice or null.
-/// Used by event routing: given Slack team_id → find UseZombie workspace.
+/// Used by event routing: given Slack team_id → find usezombie workspace.
 pub fn lookupWorkspace(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,

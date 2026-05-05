@@ -1,7 +1,7 @@
 {
   "name": "@usezombie/zombiectl",
   "version": "0.33.0",
-  "description": "UseZombie CLI",
+  "description": "usezombie CLI",
   "repository": {
     "type": "git",
     "url": "https://github.com/usezombie/usezombie"

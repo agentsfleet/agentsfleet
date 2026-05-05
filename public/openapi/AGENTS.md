@@ -97,7 +97,7 @@ make openapi
 
 ## Cross-reference: agent-facing public surfaces
 
-See [`../AGENTS.md`](../AGENTS.md) for the full index of machine-readable files UseZombie publishes — `openapi.json`, `llms.txt`, `skill.md`, `agent-manifest.json`, `heartbeat`.
+See [`../AGENTS.md`](../AGENTS.md) for the full index of machine-readable files usezombie publishes — `openapi.json`, `llms.txt`, `skill.md`, `agent-manifest.json`, `heartbeat`.
 
 If a rename/add/remove changes the **operation surface**, update `public/llms.txt` and `public/skill.md` operation tables in the same commit so the agent-facing discovery docs stay in sync with the bundled OpenAPI.
 

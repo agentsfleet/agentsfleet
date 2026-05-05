@@ -22,7 +22,7 @@ describe("Home", () => {
 
   it("renders the hero kicker description", () => {
     renderHome();
-    expect(screen.getByText(/markdown-defined agents, not workflows/i)).toBeInTheDocument();
+    expect(screen.getByText(/markdown-defined agents/i)).toBeInTheDocument();
   });
 
   it("renders primary docs CTA with quickstart link", () => {
@@ -44,8 +44,8 @@ describe("Home", () => {
 
   it("renders feature flow rows including Mission Control", () => {
     renderHome();
-    expect(screen.getByRole("heading", { level: 3, name: "Install once. Operate forever." })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Every event, every actor, on the record." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Install once." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Every event on the record." })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 3, name: "Mission Control" })).toBeInTheDocument();
   });
 
@@ -60,8 +60,8 @@ describe("Home", () => {
   it("renders core capabilities on the homepage", () => {
     renderHome();
     expect(screen.getByText(/core capabilities/i)).toBeInTheDocument();
-    expect(screen.getByText("Markdown-defined behaviour")).toBeInTheDocument();
-    expect(screen.getByText("Bring Your Own Key")).toBeInTheDocument();
+    expect(screen.getByText("Markdown-defined")).toBeInTheDocument();
+    expect(screen.getByText("BYOK")).toBeInTheDocument();
   });
 
   it("renders the install block", () => {

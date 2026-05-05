@@ -1,4 +1,4 @@
--- UseZombie clean-state role and schema privilege baseline
+-- usezombie clean-state role and schema privilege baseline
 
 CREATE SCHEMA IF NOT EXISTS vault;
 CREATE SCHEMA IF NOT EXISTS ops_ro;

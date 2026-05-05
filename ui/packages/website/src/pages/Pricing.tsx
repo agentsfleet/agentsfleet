@@ -69,7 +69,7 @@ export default function Pricing() {
         <p className="eyebrow">pricing</p>
         <h1>Start free. Upgrade when you need stronger control.</h1>
         <p className="lead">
-          UseZombie sells durable execution and operational ownership — not marked-up model usage.
+          usezombie sells durable execution and operational ownership — not marked-up model usage.
           Bring your own model key; pay your provider directly. Hosted execution is metered against
           a credit pool with a $5 starter grant — debits fire on event receipt and per-stage
           execution.

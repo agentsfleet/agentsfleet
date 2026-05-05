@@ -2,7 +2,7 @@
 
 **Persona — John Doe.** Small-team user with his own Fireworks AI account already provisioned. Wants the orchestration substrate (durable runtime, webhook ingest, audit trail, sandbox, approval gating) but pays Fireworks directly for inference. Common reasons: cost control, model choice (Kimi K2 / 2.6 isn't in the platform-managed pool), data-locality preference, existing enterprise procurement with a specific provider. Tenant carries an explicit `core.tenant_providers` row with `mode=byok` after he runs `tenant provider set`.
 
-**Outcome under test:** John flips his tenant to BYOK with a Fireworks key + Kimi 2.6 model. All zombie runs across every workspace under that tenant route inference through John's Fireworks account. UseZombie still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
+**Outcome under test:** John flips his tenant to BYOK with a Fireworks key + Kimi 2.6 model. All zombie runs across every workspace under that tenant route inference through John's Fireworks account. usezombie still mediates the sandbox, the event log, and the orchestration-fee billing — but the LLM tokens hit Fireworks's quota, not ours.
 
 ---
 
@@ -212,7 +212,7 @@ Model:               accounts/fireworks/models/kimi-k2.6
 Context cap tokens:  256000
 Credential ref:      account-fireworks-byok
 
-ⓘ LLM tokens billed to John's fireworks account. UseZombie charges the
+ⓘ LLM tokens billed to John's fireworks account. usezombie charges the
   flat 1¢ per event regardless of model or token count.
 ```
 

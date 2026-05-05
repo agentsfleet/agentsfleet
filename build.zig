@@ -13,7 +13,7 @@ pub fn build(b: *std.Build) void {
 
     // ── NullClaw dependency ──────────────────────────────────────────────────
     // Use base engines (sqlite for per-run memory) + no channels (we don't
-    // need chat channels — UseZombie runs agents programmatically).
+    // need chat channels — usezombie runs agents programmatically).
     const nullclaw_dep = b.dependency("nullclaw", .{
         .target = target,
         .optimize = optimize,
@@ -108,7 +108,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/crypto/hmac_sig.zig"),
     });
 
-    // ── UseZombie executable ───────────────────────────────────────────────────
+    // ── usezombie executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
         .name = "zombied",
         .root_module = b.createModule(.{

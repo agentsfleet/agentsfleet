@@ -1,10 +1,10 @@
 # zombiectl
 
-The official CLI for [UseZombie](https://usezombie.com).
+The official CLI for [usezombie](https://usezombie.com).
 
-Install zombies, manage workspaces, monitor zombie events, and operate your UseZombie deployment from the terminal.
+Install zombies, manage workspaces, monitor zombie events, and operate your usezombie deployment from the terminal.
 
-> **Pre-release** — UseZombie is in pre-release. APIs, CLI, and behavior may change without notice before general availability. This package is published under the `next` dist-tag.
+> **Pre-release** — usezombie is in pre-release. APIs, CLI, and behavior may change without notice before general availability. This package is published under the `next` dist-tag.
 
 ## Install
 
@@ -15,7 +15,7 @@ npm install -g @usezombie/zombiectl@next
 ## Quick start
 
 ```bash
-# Authenticate with your UseZombie account
+# Authenticate with your usezombie account
 zombiectl login
 
 # Add a GitHub repository as a workspace
@@ -37,7 +37,7 @@ zombiectl doctor
 
 | Command | Description |
 |---------|-------------|
-| `login` | Authenticate with UseZombie |
+| `login` | Authenticate with usezombie |
 | `logout` | Clear stored credentials |
 | `workspace add <url>` | Connect a GitHub repository |
 | `workspace list` | List your workspaces |

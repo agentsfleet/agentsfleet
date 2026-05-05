@@ -80,7 +80,7 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
       <header className="mc-header">
         <Link href="/" className="mc-brand">
           <ZapIcon size={16} className="mc-brand-icon" />
-          <span>UseZombie</span>
+          <span>usezombie</span>
           <span className="mc-brand-tag">Mission Control</span>
         </Link>
 
@@ -109,7 +109,7 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
             className="mc-header-link"
             onClick={() => trackNavigationClicked({ source: "app_header_marketing", surface: "app_header", target: "marketing_site" })}
           >
-            UseZombie.com
+            usezombie.com
           </a>
         </nav>
 

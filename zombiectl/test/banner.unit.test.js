@@ -39,7 +39,6 @@ function stripAnsi(str) {
 // ── T10: constants guard — pin strings that appear in both code paths ─────────
 // If either of these breaks, update the source AND the tests together.
 const CONTACT_EMAIL = "nkishore@megam.io";
-const LAUNCH_DATE   = "April 5, 2026";
 const PRE_RELEASE_TAG = "[PRE-RELEASE]";
 
 // ── printPreReleaseWarning ─────────────────────────────────────────────────────
@@ -145,12 +144,6 @@ describe("printPreReleaseWarning — T4: output fidelity (color mode)", () => {
     expect(stripAnsi(out.read())).toContain(CONTACT_EMAIL);
   });
 
-  test("color output contains launch date", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(stripAnsi(out.read())).toContain(LAUNCH_DATE);
-  });
-
   test("color output contains warning symbol", () => {
     const out = makeBufferStream();
     printPreReleaseWarning(out.stream, {});
@@ -189,12 +182,6 @@ describe("printPreReleaseWarning — T4: output fidelity (noColor mode)", () => 
     expect(out.read()).toContain(CONTACT_EMAIL);
   });
 
-  test("noColor output contains launch date", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toContain(LAUNCH_DATE);
-  });
-
   test("noColor output contains [PRE-RELEASE] tag", () => {
     const out = makeBufferStream();
     printPreReleaseWarning(out.stream, { noColor: true });
@@ -221,12 +208,6 @@ describe("printPreReleaseWarning — T7: regression guards", () => {
     expect(out.read()).toContain("nkishore@megam.io");
   });
 
-  test("launch date is April 5, 2026 — pin against accidental change", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toContain("April 5, 2026");
-  });
-
   test("plain [PRE-RELEASE] tag present in noColor output — regression guard", () => {
     const out = makeBufferStream();
     printPreReleaseWarning(out.stream, { noColor: true });
@@ -242,14 +223,6 @@ describe("printPreReleaseWarning — T7: regression guards", () => {
     expect(plain.read()).toContain(CONTACT_EMAIL);
   });
 
-  test("launch date same in both color and noColor paths — not diverged", () => {
-    const color = makeBufferStream();
-    const plain = makeBufferStream();
-    printPreReleaseWarning(color.stream, {});
-    printPreReleaseWarning(plain.stream, { noColor: true });
-    expect(stripAnsi(color.read())).toContain(LAUNCH_DATE);
-    expect(plain.read()).toContain(LAUNCH_DATE);
-  });
 });
 
 // ── printBanner ────────────────────────────────────────────────────────────────

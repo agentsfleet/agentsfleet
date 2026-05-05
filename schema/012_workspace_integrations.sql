@@ -2,7 +2,7 @@
 -- M8_001: Workspace-level provider integration table.
 --
 -- Purpose: routing metadata only.
---   - Maps external provider team/org ID back to a UseZombie workspace_id
+--   - Maps external provider team/org ID back to a usezombie workspace_id
 --     so incoming Slack events can be routed to the right workspace.
 --   - Records which OAuth scopes were granted at install time (audit/display).
 --

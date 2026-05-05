@@ -1,4 +1,4 @@
-# UseZombie Worker — connects to zombied-executor for agent execution.
+# usezombie Worker — connects to zombied-executor for agent execution.
 # Runs on the same baremetal/VM host as zombied-executor.
 #
 # Install:
@@ -7,7 +7,7 @@
 #   sudo systemctl enable --now zombied-worker
 
 [Unit]
-Description=UseZombie Worker
+Description=usezombie Worker
 Documentation=https://docs.usezombie.com
 After=zombied-executor.service
 Requires=zombied-executor.service

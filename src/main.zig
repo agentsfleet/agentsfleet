@@ -1,4 +1,4 @@
-//! UseZombie — agent delivery control plane.
+//! usezombie — agent delivery control plane.
 //! One Zig binary. Takes a spec. Ships a validated PR.
 //!
 //! Subcommands:
@@ -221,6 +221,7 @@ test {
     // Zombie execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
     _ = @import("state/zombie_telemetry_store.zig");
     _ = @import("http/handlers/workspaces/dashboard_integration_test.zig");
+    _ = @import("http/handlers/workspaces/create_integration_test.zig");
     _ = @import("http/handlers/tenant_workspaces.zig");
     _ = @import("http/handlers/tenant_workspaces_integration_test.zig");
     _ = @import("http/router_test.zig");

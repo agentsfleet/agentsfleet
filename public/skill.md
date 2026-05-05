@@ -1,6 +1,6 @@
-# UseZombie — Agent Delivery Control Plane
+# usezombie — Agent Delivery Control Plane
 
-## What UseZombie does
+## What usezombie does
 Hosts long-lived, event-driven autonomous workers (Zombies) scoped to a
 workspace. Inbound events arrive via webhooks (or other configured triggers)
 and are appended to each Zombie's event stream; the worker watcher dispatches
@@ -43,4 +43,4 @@ platform-only (set by the anomaly gate) and rejected if requested via API.
 
 ## Revenue model
 BYOK (bring your own LLM API key) + per-agent-second compute billing.
-UseZombie never stores or marks up LLM provider costs.
+usezombie never stores or marks up LLM provider costs.

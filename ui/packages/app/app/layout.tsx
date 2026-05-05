@@ -4,7 +4,7 @@ import AnalyticsBootstrap from "@/components/analytics/AnalyticsBootstrap";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "UseZombie — Mission Control",
+  title: "usezombie — Mission Control",
   description: "Agent delivery control plane. Manage workspaces, runs, and pipeline visibility.",
 };
 

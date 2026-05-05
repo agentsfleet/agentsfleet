@@ -26,29 +26,22 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
 
   if (action === "add") {
     const parsed = parseFlags(tail);
-    const repoUrl = parsed.positionals[0];
-    if (!repoUrl) {
-      writeError(ctx, "USAGE_ERROR", "workspace add requires <repo_url>", deps);
-      return 2;
-    }
+    const name = parsed.positionals[0] || null;
 
-    const branch = parsed.options["default-branch"] || "main";
+    const body = name ? { name } : {};
     const created = await request(ctx, "/v1/workspaces", {
       method: "POST",
       headers: apiHeaders(ctx),
-      body: JSON.stringify({
-        repo_url: repoUrl,
-        default_branch: branch,
-      }),
+      body: JSON.stringify(body),
     });
     const workspaceId = created.workspace_id;
+    const resolvedName = created.name ?? name ?? null;
 
     const existing = workspaces.items.find((x) => x.workspace_id === workspaceId);
     if (!existing) {
       workspaces.items.push({
         workspace_id: workspaceId,
-        repo_url: repoUrl,
-        default_branch: branch,
+        name: resolvedName,
         created_at: Date.now(),
       });
     }
@@ -57,12 +50,10 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
 
     const out = {
       workspace_id: workspaceId,
-      repo_url: repoUrl,
+      name: resolvedName,
     };
     setCliAnalyticsContext(ctx, {
       workspace_id: workspaceId,
-      repo_url: repoUrl,
-      branch,
     });
     queueCliAnalyticsEvent(ctx, "workspace_add_completed", {
       workspace_id: workspaceId,
@@ -73,8 +64,7 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
       printSection(ctx.stdout, "Workspace added");
       printKeyValue(ctx.stdout, {
         workspace_id: workspaceId,
-        repo_url: repoUrl,
-        branch,
+        name: resolvedName ?? "—",
       });
     }
     return 0;
@@ -102,12 +92,12 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
         [
           { key: "active", label: "ACTIVE" },
           { key: "workspace_id", label: "WORKSPACE" },
-          { key: "repo_url", label: "REPO" },
+          { key: "name", label: "NAME" },
         ],
         workspaces.items.map((item) => ({
           active: item.workspace_id === workspaces.current_workspace_id ? "*" : "",
           workspace_id: item.workspace_id,
-          repo_url: item.repo_url,
+          name: item.name ?? "—",
         })),
       );
     }
@@ -154,8 +144,7 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     const detail = {
       workspace_id: workspaceId,
       active: workspaceId === workspaces.current_workspace_id,
-      repo_url: known?.repo_url ?? null,
-      default_branch: known?.default_branch ?? null,
+      name: known?.name ?? null,
       created_at: known?.created_at ?? null,
     };
     setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
@@ -166,8 +155,7 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
       printKeyValue(ctx.stdout, {
         workspace_id: detail.workspace_id,
         active: detail.active ? "yes" : "no",
-        repo_url: detail.repo_url ?? "—",
-        default_branch: detail.default_branch ?? "—",
+        name: detail.name ?? "—",
       });
     }
     return 0;

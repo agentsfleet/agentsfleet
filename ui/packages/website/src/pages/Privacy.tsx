@@ -3,11 +3,11 @@ export default function Privacy() {
     <section className="stack legal-page route-fade">
       <p className="eyebrow">legal</p>
       <h1>Privacy Policy</h1>
-      <p className="lead">Last updated: March 6, 2026</p>
+      <p className="lead">Last updated: May 4, 2026</p>
 
       <h2>1. Information We Collect</h2>
       <p>
-        UseZombie collects only the minimum information required to operate the service:
+        usezombie collects only the minimum information required to operate the service:
       </p>
       <ul>
         <li><strong>Account information</strong> — email address and authentication credentials managed by our identity provider (Clerk).</li>
@@ -17,8 +17,8 @@ export default function Privacy() {
 
       <h2>2. Information We Do Not Collect</h2>
       <ul>
-        <li><strong>LLM API keys</strong> — your keys are stored encrypted and never transmitted to UseZombie servers in plaintext. We operate on a BYOK model.</li>
-        <li><strong>Source code contents</strong> — UseZombie agents operate within your Git repositories via branch-based state. Code is never copied to UseZombie infrastructure.</li>
+        <li><strong>LLM API keys</strong> — your keys are stored encrypted and never transmitted to usezombie servers in plaintext. We operate on a BYOK model.</li>
+        <li><strong>Source code contents</strong> — usezombie agents operate within your Git repositories via branch-based state. Code is never copied to usezombie infrastructure.</li>
         <li><strong>Model outputs</strong> — generated patches, plans, and validation results remain in your repository as artifacts.</li>
       </ul>
 

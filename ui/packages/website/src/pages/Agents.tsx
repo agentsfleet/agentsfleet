@@ -17,20 +17,21 @@ const AnimatedTerminal = lazy(() =>
 );
 
 const DEMO_COMMANDS = [
-  "zombiectl auth login",
+  "zombiectl login",
+  "npx skills add usezombie/usezombie",
   "/usezombie-install-platform-ops",
   'zombiectl steer zmb_2041 "morning health check"',
 ];
 
-// Keys are 0-indexed against DEMO_COMMANDS above. Key `0` (auth login) is
-// intentionally absent — login has no demo output.
+// Keys are 0-indexed against DEMO_COMMANDS above. Keys `0` (login) and `1`
+// (skills add) are intentionally absent — they have no demo output.
 const DEMO_OUTPUTS: Record<number, string[]> = {
-  1: [
+  2: [
     "Generated .usezombie/platform-ops/SKILL.md + TRIGGER.md",
     "Installed platform-ops@0.1.0",
     "Webhook URL: https://api.usezombie.com/v1/webhooks/zmb_2041",
   ],
-  2: [
+  3: [
     "[steer] gathering evidence: infra status, dependency health, last 3 runs…",
     "[steer] diagnosis posted to #platform-ops",
   ],
@@ -39,7 +40,7 @@ const DEMO_OUTPUTS: Record<number, string[]> = {
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  name: "UseZombie",
+  name: "usezombie",
   applicationCategory: "DeveloperApplication",
   url: "https://usezombie.sh/agents",
   sameAs: [
@@ -65,12 +66,11 @@ const apiOps = [
 
 const webhookPayload = `{
   "event_id": "evt_01JEXAMPLE",
-  "type": "workflow_run.failed",
+  "type": "deploy.failed",
   "data": {
-    "repository": "your-org/your-repo",
-    "workflow": "deploy.yml",
-    "run_id": 8421337,
-    "conclusion": "failure"
+    "service": "checkout-api",
+    "environment": "production",
+    "reason": "health_check_timeout"
   }
 }`;
 
@@ -116,10 +116,17 @@ export default function Agents() {
       <div>
         <h2 style={{ marginBottom: "0.75rem" }}>Bootstrap</h2>
         <pre className="terminal" aria-label="Bootstrap commands">
-          <code>{`# Authenticate, install the platform-ops agent
+          <code>{`# 1. Shell — install the CLI and the skill bundle
 npm install -g @usezombie/zombiectl
-zombiectl auth login
-/usezombie-install-platform-ops    # in Claude Code, Amp, Codex CLI, or OpenCode`}</code>
+zombiectl login
+npx skills add usezombie/usezombie
+
+# 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
+#    /usezombie-install-platform-ops
+#    The slash-command provisions the platform-ops zombie and prints its zombie_id.
+
+# 3. Back in the shell — steer the zombie
+zombiectl steer <zombie_id> "morning health check"`}</code>
         </pre>
       </div>
 
@@ -174,7 +181,10 @@ zombiectl auth login
         <h2 style={{ marginBottom: "0.75rem" }}>Webhook Ingest Example</h2>
         <p style={{ color: "var(--z-text-muted)", marginBottom: "0.75rem" }}>
           Configure an agent&apos;s trigger and POST inbound events to <code>/v1/webhooks/:zombie_id</code>.
-          The event is appended to the agent&apos;s stream and dispatched to its loop:
+          The event is appended to the agent&apos;s stream and dispatched to its loop. Every inbound webhook
+          must carry a per-zombie HMAC signature header — unsigned requests are rejected. The signing
+          scheme + secret are resolved from the workspace credential keyed by the trigger&apos;s
+          <code> source</code>.
         </p>
         <pre className="terminal" aria-label="Webhook payload example">
           <code>{webhookPayload}</code>

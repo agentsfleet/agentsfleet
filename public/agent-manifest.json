@@ -1,7 +1,7 @@
 {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
-  "name": "UseZombie",
+  "name": "usezombie",
   "description": "Agent Delivery Control Plane — long-lived, event-driven autonomous workers (Zombies) scoped to a workspace.",
   "url": "https://usezombie.com",
   "applicationCategory": "DeveloperApplication",
@@ -70,7 +70,7 @@
   },
   "revenue": {
     "model": "BYOK + agent-second compute billing",
-    "description": "Users supply their own LLM API keys. UseZombie bills per agent-second. Never stores LLM costs."
+    "description": "Users supply their own LLM API keys. usezombie bills per agent-second. Never stores LLM costs."
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],

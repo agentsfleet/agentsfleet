@@ -84,7 +84,7 @@ describe("app layouts and pages", () => {
 
     expect(rootMarkup).toContain("root child");
     expect(dashboardMarkup).toContain("dash child");
-    expect(authMarkup).toContain("UseZombie");
+    expect(authMarkup).toContain("usezombie");
     expect(authMarkup).toContain("Mission Control");
   });
 
