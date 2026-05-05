@@ -103,9 +103,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
             runtime_config.ValidationError.InvalidApiMaxInFlightRequests,
             runtime_config.ValidationError.InvalidReadyMaxQueueDepth,
             runtime_config.ValidationError.InvalidReadyMaxQueueAgeMs,
-            runtime_config.ValidationError.InvalidKekVersion,
-            runtime_config.ValidationError.MissingEncryptionMasterKeyV2,
-            runtime_config.ValidationError.InvalidEncryptionMasterKeyV2,
             => {
                 runtime_config.ServeConfig.printValidationError(@errorCast(err));
                 log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});

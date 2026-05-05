@@ -40,6 +40,21 @@ test "parseZombieConfig: invalid trigger type returns InvalidTriggerType" {
     try std.testing.expectError(ZombieConfigError.InvalidTriggerType, parseZombieConfig(alloc, json));
 }
 
+// Regression: `chain` was a parser-accepted trigger type whose runtime had no
+// matching EventType variant — meaning a config could declare `type: chain`
+// and the runtime would silently never deliver an event. The chain branch was
+// removed; this test pins the rejection so anyone re-adding the branch (e.g.
+// to wire chained execution) gets a failing test forcing them to confirm the
+// EventType + writepath consumers exist before re-introducing the config.
+test "parseZombieConfig: chain trigger type rejected as InvalidTriggerType" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{"trigger":{"type":"chain","source":"upstream-zombie"},
+        \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidTriggerType, parseZombieConfig(alloc, json));
+}
+
 test "parseZombieConfig: skill field parsed from runtime block" {
     const alloc = std.testing.allocator;
     const json =

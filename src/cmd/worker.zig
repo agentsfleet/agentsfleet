@@ -80,7 +80,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 worker_config.printValidationError(@errorCast(err));
                 log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});
             },
-            else => log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)}),
         }
         std.process.exit(1);
     };
