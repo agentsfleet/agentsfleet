@@ -43,4 +43,36 @@ describe("AnimatedTerminal — SSR", () => {
     expect(html).not.toContain("/sounds/");
     expect(html).not.toContain("AudioContext");
   });
+
+  it("renders prompt overrides verbatim under reduced motion", () => {
+    // SSR + reduced-motion is the deterministic path that exercises
+    // buildInstantLines — guarantees the prompts prop reaches the rendered
+    // output even when the phase machine never runs.
+    const reducedMotionMatch = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("reduce"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+
+    try {
+      const html = renderToStaticMarkup(
+        <AnimatedTerminal
+          commands={["zombiectl login", "/usezombie-install-platform-ops"]}
+          prompts={{ 1: "claude-code ›" }}
+        />,
+      );
+      // Override appears in place of the default `you@usezombie $` prompt
+      // for index 1, while index 0 keeps the default.
+      expect(html).toContain("claude-code ›");
+      expect(html).toContain("you@usezombie");
+    } finally {
+      window.matchMedia = reducedMotionMatch;
+    }
+  });
 });

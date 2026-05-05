@@ -105,9 +105,14 @@ for row in "${ROWS[@]}"; do
     '.envs[] | select(.key==$k and (.target|index("production"))) | .id // empty')"
   preview_id="$(echo "$current" | jq -r --arg k "$key" \
     '.envs[] | select(.key==$k and (.target|index("preview"))) | .id // empty')"
-  cur_prod=""; cur_preview=""
-  [ -n "$prod_id" ] && cur_prod="$(fetch_value "$pid" "$prod_id")"
-  [ -n "$preview_id" ] && cur_preview="$(fetch_value "$pid" "$preview_id")"
+  cur_prod=""
+  cur_preview=""
+  if [ -n "$prod_id" ]; then
+    cur_prod="$(fetch_value "$pid" "$prod_id")"
+  fi
+  if [ -n "$preview_id" ]; then
+    cur_preview="$(fetch_value "$pid" "$preview_id")"
+  fi
 
   for target in production preview; do
     if [ "$target" = "production" ]; then

@@ -199,8 +199,18 @@ check_vercel_envs() {
   # actually landed on the Vercel projects. Vault items existing is not
   # the same as Vercel projects having them — that gap shipped to prod
   # once already (PostHog rows missing on all three projects).
-  command -v curl >/dev/null 2>&1 || { echo "skip: vercel env check needs curl" >&2; return; }
-  command -v jq >/dev/null 2>&1 || { echo "skip: vercel env check needs jq" >&2; return; }
+  # Preflight is a gate, not advice — missing tooling fails the run loud
+  # rather than letting a half-checked bootstrap proceed.
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "✗ MISSING TOOL: curl (required to verify Vercel env state)"
+    missing=$((missing + 1))
+    return
+  fi
+  if ! command -v jq >/dev/null 2>&1; then
+    echo "✗ MISSING TOOL: jq (required to verify Vercel env state)"
+    missing=$((missing + 1))
+    return
+  fi
 
   local token
   token="$(op_read_with_retry "op://$vault_prod/vercel-api-token/credential" || true)"

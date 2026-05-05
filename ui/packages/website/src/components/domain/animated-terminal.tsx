@@ -109,7 +109,7 @@ export function AnimatedTerminal({
         const prompt: RenderedLine = {
           kind: "prompt",
           text: typed,
-          prompt: prompts[commandIndex],
+          promptOverride: prompts[commandIndex],
         };
         const out: RenderedLine[] = (outputs[commandIndex] ?? []).map((line) => ({
           kind: "output",
@@ -178,7 +178,7 @@ export function AnimatedTerminal({
 }
 
 type RenderedLine =
-  | { kind: "prompt"; text: string; prompt?: string }
+  | { kind: "prompt"; text: string; promptOverride?: string }
   | { kind: "output"; text: string };
 
 function buildInstantLines(
@@ -188,7 +188,7 @@ function buildInstantLines(
 ): RenderedLine[] {
   const lines: RenderedLine[] = [];
   for (let i = 0; i < commands.length; i += 1) {
-    lines.push({ kind: "prompt", text: commands[i]!, prompt: prompts[i] });
+    lines.push({ kind: "prompt", text: commands[i]!, promptOverride: prompts[i] });
     for (const out of outputs[i] ?? []) {
       lines.push({ kind: "output", text: out });
     }
@@ -210,7 +210,7 @@ function TerminalLine({
   }
   return (
     <div className="whitespace-pre-wrap">
-      <Prompt username={username} override={line.prompt} />
+      <Prompt username={username} override={line.promptOverride} />
       <SyntaxHighlighted tokens={tokenizeBash(line.text)} />
     </div>
   );
@@ -242,7 +242,9 @@ function ActiveLine({
 }
 
 function Prompt({ username, override }: { username: string; override?: string }): ReactNode {
-  if (override !== undefined) {
+  // Empty/whitespace-only override falls through to the default prompt — an
+  // empty `prompts[i]` shouldn't render a blank prompt on the demo line.
+  if (override) {
     return <span className="text-warning">{override} </span>;
   }
   return (
