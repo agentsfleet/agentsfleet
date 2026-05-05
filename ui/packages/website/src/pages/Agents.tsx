@@ -23,18 +23,39 @@ const DEMO_COMMANDS = [
   'zombiectl steer zmb_2041 "morning health check"',
 ];
 
-// Keys are 0-indexed against DEMO_COMMANDS above. Keys `0` (login) and `1`
-// (skills add) are intentionally absent — they have no demo output.
+// Keys are 0-indexed against DEMO_COMMANDS above. Output strings mirror the
+// shape produced by the live CLI (see zombiectl/src/commands/core.js +
+// zombie_steer.js) — section header, key/value pairs, browser line,
+// `✔ login complete` for login; `[claw] …` chunks then `✔ event … processed`
+// for steer. Keep these in sync if the CLI's UI strings change.
 const DEMO_OUTPUTS: Record<number, string[]> = {
+  0: [
+    "Login session",
+    "  session_id: sess_01JEXAMPLE",
+    "  login_url:  https://app.usezombie.com/auth/sessions/sess_01JEXAMPLE",
+    "",
+    "browser: opened",
+    "✔ login complete",
+  ],
+  1: ["added skill bundle: usezombie/usezombie"],
   2: [
     "Generated .usezombie/platform-ops/SKILL.md + TRIGGER.md",
     "Installed platform-ops@0.1.0",
     "Webhook URL: https://api.usezombie.com/v1/webhooks/zmb_2041",
   ],
   3: [
-    "[steer] gathering evidence: infra status, dependency health, last 3 runs…",
-    "[steer] diagnosis posted to #platform-ops",
+    "[claw] gathering evidence: infra status, dependency health, last 3 runs…",
+    "[claw] diagnosis posted to #platform-ops",
+    "",
+    "✔ event 1730812800000-0 processed",
   ],
+};
+
+// The slash command runs inside a coding agent (Claude Code / Amp / Codex CLI /
+// OpenCode), not in zsh. Override the prompt for that line so the demo doesn't
+// suggest you can paste it into a shell.
+const DEMO_PROMPTS: Record<number, string> = {
+  2: "claude-code ›",
 };
 
 const jsonLd = {
@@ -98,7 +119,7 @@ export default function Agents() {
       </Suspense>
 
       <Suspense fallback={<div className="min-h-[16rem]" aria-hidden="true" />}>
-        <AnimatedTerminal commands={DEMO_COMMANDS} outputs={DEMO_OUTPUTS} />
+        <AnimatedTerminal commands={DEMO_COMMANDS} outputs={DEMO_OUTPUTS} prompts={DEMO_PROMPTS} />
       </Suspense>
 
       {/* Install Zombiectl */}
