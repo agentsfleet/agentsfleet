@@ -9,7 +9,6 @@ CREATE TABLE IF NOT EXISTS billing.workspace_entitlements (
     allow_custom_skills  BOOLEAN NOT NULL,
     enable_agent_scoring BOOLEAN NOT NULL,
     agent_scoring_weights_json TEXT NOT NULL,
-    -- Canonical constant: src/types/defaults.zig#DEFAULT_SCORING_CONTEXT_MAX_TOKENS
     scoring_context_max_tokens INTEGER NOT NULL DEFAULT 2048,
     created_at           BIGINT NOT NULL,
     updated_at           BIGINT NOT NULL,
