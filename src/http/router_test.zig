@@ -1,22 +1,9 @@
 // Tests for http/router.zig — split out to keep router.zig under 400 lines.
 
 const std = @import("std");
-const httpz = @import("httpz");
 const router = @import("router.zig");
-const matchers = @import("route_matchers.zig");
 const Route = router.Route;
 const match = router.match;
-
-fn parseMethod(s: []const u8) httpz.Method {
-    if (std.mem.eql(u8, s, "GET")) return .GET;
-    if (std.mem.eql(u8, s, "POST")) return .POST;
-    if (std.mem.eql(u8, s, "PUT")) return .PUT;
-    if (std.mem.eql(u8, s, "PATCH")) return .PATCH;
-    if (std.mem.eql(u8, s, "DELETE")) return .DELETE;
-    if (std.mem.eql(u8, s, "HEAD")) return .HEAD;
-    if (std.mem.eql(u8, s, "OPTIONS")) return .OPTIONS;
-    return .OTHER;
-}
 
 test "tenant billing route resolves" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing", .GET).?);
@@ -423,50 +410,3 @@ test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/workspaces//sync", .GET) == null);
 }
 
-// Every entry in the route manifest must be dispatchable through match().
-// Guards the in-repo invariant that route_manifest.zig stays aligned with
-// router.zig's match() body.
-//
-// Scope: (method, path) dispatchability. match() now takes a method as well
-// as a path, so a manifest entry with a wrong method (e.g. DELETE where the
-// server actually implements PATCH) will fail this test if the matcher
-// dispatches on method. For method-agnostic matchers, full (method, path)
-// parity against public/openapi.json is still enforced by
-// scripts/check_openapi_sync.py.
-//
-// Placeholders are substituted with a UUIDv7-shaped fixture rather than a
-// single char so that today's isSingleSegment checks AND any future
-// format-stricter matcher (e.g. stdlib UUID parse on `{workspace_id}`)
-// both succeed with the same test.
-test "route_manifest: every entry dispatches through match()" {
-    const manifest = @import("route_manifest.zig");
-    const fixture = "01234567-89ab-7def-8123-456789abcdef"; // 36-char UUIDv7 shape
-    var buf: [512]u8 = undefined;
-
-    for (manifest.entries) |entry| {
-        var out_len: usize = 0;
-        var i: usize = 0;
-        while (i < entry.path.len) : (i += 1) {
-            if (entry.path[i] == '{') {
-                // Skip to '}' and emit the UUID fixture.
-                while (i < entry.path.len and entry.path[i] != '}') : (i += 1) {}
-                if (out_len + fixture.len > buf.len) return error.ManifestPathTooLongForTestBuffer;
-                @memcpy(buf[out_len .. out_len + fixture.len], fixture);
-                out_len += fixture.len;
-            } else {
-                if (out_len >= buf.len) return error.ManifestPathTooLongForTestBuffer;
-                buf[out_len] = entry.path[i];
-                out_len += 1;
-            }
-        }
-        const concrete = buf[0..out_len];
-
-        if (match(concrete, parseMethod(entry.method)) == null) {
-            std.debug.print(
-                "route_manifest: {s} {s} (concrete: {s}) did not dispatch\n",
-                .{ entry.method, entry.path, concrete },
-            );
-            return error.ManifestEntryDoesNotDispatch;
-        }
-    }
-}

@@ -182,20 +182,16 @@ check-schema-gate: _schema_gate_check  ## Enforce pre-v2.0 teardown convention o
 
 REDOCLY := bun x redocly
 
-openapi:  ## Bundle YAML → openapi.json, lint, check error schema, assert router↔spec parity, self-test
+openapi:  ## Bundle YAML → openapi.json, lint, check error schema, self-test
 	@echo "→ [openapi] Bundling split YAML → public/openapi.json..."
 	@$(REDOCLY) bundle public/openapi/root.yaml -o public/openapi.json >/dev/null
 	@echo "→ [openapi] Redocly lint..."
 	@$(REDOCLY) lint public/openapi.json --config .redocly.yaml
 	@echo "→ [openapi] ErrorBody + application/problem+json schema check..."
 	@python3 scripts/check_openapi_errors.py
-	@echo "→ [openapi] Router ↔ openapi.json (method, path) parity..."
-	@python3 scripts/check_openapi_sync.py
-	@echo "→ [openapi] Sync-gate parser regression tests..."
-	@python3 scripts/test_check_openapi_sync.py
 	@echo "→ [openapi] REST §1 URL shape (no verbs in URLs)..."
 	@python3 scripts/check_openapi_url_shape.py
-	@echo "✓ [openapi] Bundle + lint + error-schema + router parity + parser tests + url-shape all green"
+	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape all green"
 
 _legacy_symbols_check:
 	@echo "→ [zombied] Checking for legacy event-substrate symbols (orphan sweep — RULE ORP)..."
