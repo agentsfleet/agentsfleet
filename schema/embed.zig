@@ -1,6 +1,5 @@
 pub const core_foundation_sql = @embedFile("001_core_foundation.sql");
 pub const vault_sql = @embedFile("002_vault_schema.sql");
-pub const rls_tenant_isolation_sql = @embedFile("003_rls_tenant_isolation.sql");
 pub const workspace_entitlements_sql = @embedFile("004_workspace_entitlements.sql");
 pub const agent_failure_analysis_context_sql = @embedFile("005_agent_failure_analysis_and_context_injection.sql");
 pub const platform_llm_keys_sql = @embedFile("006_platform_llm_keys.sql");

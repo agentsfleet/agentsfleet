@@ -4,7 +4,7 @@
 **Milestone:** M61
 **Workstream:** 003
 **Date:** May 04, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — pre-v2.0.0 schema hygiene. Two unused tables + an audit-logging surface + a dead boolean column. None hold data anyone reads, but they all show up in every `\dt`/`\d+`/`pg_dump` and lie about what the schema enforces. Pre-v2.0, the Schema Removal Guard says the right cleanup is to edit/remove the migration file directly (no down-migration ceremony).
 **Categories:** API
 **Batch:** B1
@@ -158,9 +158,15 @@ wc -l schema/*.sql | awk '$1 > 100 && $2 != "total"'
 
 ## Discovery (filled during EXECUTE)
 
-Migration 005 status (file empty after trim?): ____
-`pool_test.zig` other test blocks (kept/deleted): ____
-Any `enable_score_context_injection` reference outside `schema/`: ____
+Migration 003 status: **entire file deleted**. Despite its name (`003_rls_tenant_isolation.sql`), the file held only `prompt_lifecycle_events` DDL — the codebase has zero `ENABLE ROW LEVEL SECURITY` / `CREATE POLICY` statements anywhere. Tenant isolation is enforced at the application layer (Zig handlers + middleware), not at Postgres. The spec's "RLS sections of the file remain" was incorrect; corrected to full-file delete + `schema/embed.zig` row removed + `src/cmd/common.zig` migration array shrunk from `[20]` to `[19]` (version 3 left as a gap; `runMigrations` is gap-tolerant and `reapOrphanedMigrationRows` handles existing dev rows).
+
+Migration 005 status: not empty after trim. The vault REVOKE on `vault.secrets` (formerly line 71) is a separate security invariant, preserved. File rewritten to a 3-line vault-only REVOKE + header comment. The spec's line-range advice ("4-46 + line 48") missed the dangling `GRANT SELECT ON ops_ro.workspace_overview` (lines 67-69) and the vault REVOKE (line 71); corrected to remove 4-69 and keep 71.
+
+`pool_test.zig` other test blocks: the `test "...readonly roles..."` block contained two assertions — vault denial (kept) and `workspace_overview` privilege (deleted). Test renamed to `"integration: readonly roles cannot read vault.secrets"`. The file's other tests are unrelated and kept.
+
+Any `enable_score_context_injection` reference outside `schema/`: zero, confirmed via `rg -nF`.
+
+Tier 3 verification: ran `make down && make up && make test-integration` from clean state on this worktree (after sibling worktree's containers were taken down by user). All integration tests passed; schema applied cleanly with version 3 as a gap.
 
 ---
 
