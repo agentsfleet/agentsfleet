@@ -419,14 +419,12 @@ test "T10: zombie consumer group is non-empty" {
     try std.testing.expect(queue_consts.zombie_consumer_group.len > 0);
 }
 
-test "T10: zombie xread block time matches pipeline pattern" {
-    // Both pipeline and zombie use 5000ms block
+test "T10: zombie xread block time is 5000ms" {
     try std.testing.expectEqualStrings("5000", queue_consts.zombie_xread_block_ms);
-    try std.testing.expectEqualStrings("5000", queue_consts.xread_block_ms);
 }
 
-test "T10: zombie reclaim interval matches pipeline pattern" {
-    try std.testing.expectEqual(queue_consts.reclaim_interval_ms, queue_consts.zombie_reclaim_interval_ms);
+test "T10: zombie reclaim interval is 60s" {
+    try std.testing.expectEqual(@as(i64, 60_000), queue_consts.zombie_reclaim_interval_ms);
 }
 
 // ── T11: Memory — ZombieEvent.deinit ────────────────────────────────────

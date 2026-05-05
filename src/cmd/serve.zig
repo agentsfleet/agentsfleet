@@ -126,10 +126,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
     defer api_queue.deinit();
-    api_queue.ensureConsumerGroup() catch |err| {
-        log.err("startup.redis_group role=api status=fail error_code=" ++ error_codes.ERR_STARTUP_REDIS_GROUP ++ " err={s}", .{@errorName(err)});
-        std.process.exit(1);
-    };
     log.info("startup.redis_connect role=api status=ok", .{});
 
     const migrate_on_start = preflight.parseMigrateOnStart(alloc) catch std.process.exit(1);

@@ -53,18 +53,6 @@ test "integration: rediss ping via TEST_REDIS_TLS_URL" {
     try client.ping();
 }
 
-test "integration: ensureConsumerGroup is idempotent for readiness checks" {
-    const alloc = std.testing.allocator;
-    const redis_url = std.process.getEnvVarOwned(alloc, "TEST_REDIS_TLS_URL") catch return error.SkipZigTest;
-    defer alloc.free(redis_url);
-
-    var client = try redis.testing.connectFromUrl(alloc, redis_url);
-    defer client.deinit();
-
-    try client.ensureConsumerGroup();
-    try client.ensureConsumerGroup();
-}
-
 test "roleEnvVarName maps redis roles deterministically" {
     try std.testing.expectEqualStrings("REDIS_URL", redis.roleEnvVarName(.default));
     try std.testing.expectEqualStrings("REDIS_URL_API", redis.roleEnvVarName(.api));
@@ -75,26 +63,12 @@ test "roleEnvVarName maps redis roles deterministically" {
 
 const queue_consts = @import("constants.zig");
 
-test "queue constants: stream name and consumer group are stable" {
-    try std.testing.expectEqualStrings("run_queue", queue_consts.stream_name);
-    try std.testing.expectEqualStrings("workers", queue_consts.consumer_group);
+test "queue constants: consumer prefix is stable" {
     try std.testing.expectEqualStrings("worker", queue_consts.consumer_prefix);
 }
 
-test "queue constants: field names match Redis XADD/XREADGROUP contract" {
-    try std.testing.expectEqualStrings("run_id", queue_consts.field_run_id);
-    try std.testing.expectEqualStrings("attempt", queue_consts.field_attempt);
-    try std.testing.expectEqualStrings("workspace_id", queue_consts.field_workspace_id);
-}
 
-test "queue constants: XREADGROUP blocks for 5s and reads 1 message" {
-    try std.testing.expectEqualStrings("5000", queue_consts.xread_block_ms);
-    try std.testing.expectEqualStrings("1", queue_consts.xread_count);
-}
-
-test "queue constants: XAUTOCLAIM reclaims after 5 min idle, every 60s" {
-    try std.testing.expectEqualStrings("300000", queue_consts.xautoclaim_min_idle_ms);
-    try std.testing.expectEqual(@as(i64, 60_000), queue_consts.reclaim_interval_ms);
+test "queue constants: XAUTOCLAIM cursor seed and batch size" {
     try std.testing.expectEqualStrings("0-0", queue_consts.xautoclaim_start);
     try std.testing.expectEqualStrings("1", queue_consts.xautoclaim_count);
 }
@@ -117,27 +91,3 @@ test "makeConsumerId produces unique IDs across calls" {
     try std.testing.expect(!std.mem.eql(u8, id1, id2));
 }
 
-// ── QueueMessage deinit tests ────────────────────────────────────────────
-
-test "QueueMessage.deinit frees all fields including workspace_id" {
-    const alloc = std.testing.allocator;
-    var msg = redis.QueueMessage{
-        .message_id = try alloc.dupe(u8, "1234-0"),
-        .run_id = try alloc.dupe(u8, "run_abc"),
-        .attempt = 1,
-        .workspace_id = try alloc.dupe(u8, "ws_xyz"),
-    };
-    msg.deinit(alloc);
-    // testing.allocator detects leaks — no leak = pass
-}
-
-test "QueueMessage.deinit handles null workspace_id without crash" {
-    const alloc = std.testing.allocator;
-    var msg = redis.QueueMessage{
-        .message_id = try alloc.dupe(u8, "5678-0"),
-        .run_id = try alloc.dupe(u8, "run_def"),
-        .attempt = 0,
-        .workspace_id = null,
-    };
-    msg.deinit(alloc);
-}

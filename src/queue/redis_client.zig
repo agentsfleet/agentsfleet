@@ -87,30 +87,14 @@ pub fn ping(self: *Client) !void {
     }
 }
 
-pub fn ensureConsumerGroup(self: *Client) !void {
-    var resp = try self.commandAllowError(&.{
-        "XGROUP",
-        "CREATE",
-        queue_consts.stream_name,
-        queue_consts.consumer_group,
-        "0",
-        "MKSTREAM",
-    });
-    defer resp.deinit(self.alloc);
-
-    switch (resp) {
-        .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.RedisGroupCreateFailed,
-        .err => |msg| {
-            if (std.mem.indexOf(u8, msg, "BUSYGROUP") != null) return;
-            return error.RedisGroupCreateFailed;
-        },
-        else => return error.RedisGroupCreateFailed,
-    }
-}
-
 pub fn readyCheck(self: *Client) !void {
+    // PING-only: the API server doesn't consume any stream itself, so a
+    // consumer-group probe (which would also require XGROUP CREATE perms in
+    // role-based-ACL Redis) adds no signal. Per-zombie streams + groups are
+    // created lazily by the worker via `redis_zombie.ensureZombieEventsGroup`
+    // when a zombie spawns; the control stream by `control_stream.ensureGroup`
+    // at worker boot.
     try self.ping();
-    try self.ensureConsumerGroup();
 }
 
 pub fn aclWhoAmI(self: *Client) ![]u8 {
@@ -174,28 +158,6 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
     return owned_id;
 }
 
-pub fn xack(self: *Client, message_id: []const u8) !void {
-    var resp = try self.command(&.{
-        "XACK",
-        queue_consts.stream_name,
-        queue_consts.consumer_group,
-        message_id,
-    });
-    defer resp.deinit(self.alloc);
-
-    switch (resp) {
-        .integer => |v| if (v < 0) {
-            log.err("redis.xack_fail message_id={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{message_id});
-            return error.RedisXackFailed;
-        },
-        else => {
-            log.err("redis.xack_fail message_id={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{message_id});
-            return error.RedisXackFailed;
-        },
-    }
-    log.debug("redis.xack message_id={s}", .{message_id});
-}
-
 pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
     var value = try self.commandAllowError(argv);
     if (value == .err) {
@@ -226,70 +188,6 @@ fn commandUnlocked(self: *Client, argv: []const []const u8) !redis_protocol.Resp
 
     const reader = self.transport.reader();
     return try redis_protocol.readRespValue(self.alloc, reader);
-}
-
-fn decodeSingleMessage(self: *Client, value: redis_protocol.RespValue) !?redis_types.QueueMessage {
-    if (value != .array) return null;
-    const top = value.array orelse return null;
-    if (top.len == 0) return null;
-    if (top.len != 1) return error.RedisUnexpectedResponse;
-    if (top[0] != .array) return error.RedisUnexpectedResponse;
-    const stream_entry = top[0].array orelse return error.RedisUnexpectedResponse;
-    if (stream_entry.len != 2) return error.RedisUnexpectedResponse;
-    if (stream_entry[1] != .array) return error.RedisUnexpectedResponse;
-    const messages = stream_entry[1].array orelse return null;
-    if (messages.len == 0) return null;
-    const message = try self.decodeMessageTuple(messages[0]);
-    return message;
-}
-
-fn decodeAutoClaimMessage(self: *Client, value: redis_protocol.RespValue) !?redis_types.QueueMessage {
-    if (value != .array) return null;
-    const top = value.array orelse return null;
-    if (top.len < 2) return error.RedisUnexpectedResponse;
-    if (top[1] != .array) return error.RedisUnexpectedResponse;
-    const messages = top[1].array orelse return null;
-    if (messages.len == 0) return null;
-    const message = try self.decodeMessageTuple(messages[0]);
-    return message;
-}
-
-fn decodeMessageTuple(self: *Client, item: redis_protocol.RespValue) !redis_types.QueueMessage {
-    if (item != .array) return error.RedisUnexpectedResponse;
-    const tuple = item.array orelse return error.RedisUnexpectedResponse;
-    if (tuple.len != 2) return error.RedisUnexpectedResponse;
-    const msg_id = redis_protocol.valueAsString(tuple[0]) orelse return error.RedisUnexpectedResponse;
-
-    if (tuple[1] != .array) return error.RedisUnexpectedResponse;
-    const fields = tuple[1].array orelse return error.RedisUnexpectedResponse;
-    if (fields.len % 2 != 0) return error.RedisUnexpectedResponse;
-
-    var run_id: ?[]u8 = null;
-    var workspace_id: ?[]u8 = null;
-    var attempt: u32 = 0;
-
-    var i: usize = 0;
-    while (i < fields.len) : (i += 2) {
-        const key = redis_protocol.valueAsString(fields[i]) orelse continue;
-        const val = redis_protocol.valueAsString(fields[i + 1]) orelse continue;
-
-        if (std.mem.eql(u8, key, queue_consts.field_run_id)) {
-            run_id = try self.alloc.dupe(u8, val);
-        } else if (std.mem.eql(u8, key, queue_consts.field_workspace_id)) {
-            workspace_id = try self.alloc.dupe(u8, val);
-        } else if (std.mem.eql(u8, key, queue_consts.field_attempt)) {
-            attempt = std.fmt.parseInt(u32, val, 10) catch 0;
-        }
-    }
-
-    if (run_id == null) return error.RedisUnexpectedResponse;
-
-    return .{
-        .message_id = try self.alloc.dupe(u8, msg_id),
-        .run_id = run_id.?,
-        .attempt = attempt,
-        .workspace_id = workspace_id,
-    };
 }
 
 pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
