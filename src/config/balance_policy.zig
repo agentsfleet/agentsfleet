@@ -33,22 +33,31 @@ pub fn parse(raw: []const u8) ?Policy {
     return null;
 }
 
+/// Pure resolution: null/unknown → DEFAULT (with warn log on unknown).
+/// Split out from `resolveFromEnv` so tests can pin every branch without
+/// round-tripping through libc setenv — short env values trigger a SIMD
+/// over-read in `posix.getenv` that valgrind flags as invalid.
+pub fn resolve(raw: ?[]const u8) Policy {
+    const s = raw orelse return DEFAULT;
+    return parse(s) orelse {
+        log.warn("balance_policy.unknown_value observed=\"{s}\" defaulting={s}", .{ s, DEFAULT.label() });
+        return DEFAULT;
+    };
+}
+
 /// Resolve from env. Absent / unknown values fall back to DEFAULT with a
 /// startup warn log that names the observed value (so operators see why
 /// they didn't get what they typed).
 pub fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
     const raw = std.process.getEnvVarOwned(alloc, ENV_VAR_NAME) catch |err| switch (err) {
-        error.EnvironmentVariableNotFound => return DEFAULT,
+        error.EnvironmentVariableNotFound => return resolve(null),
         else => {
             log.warn("balance_policy.env_read_err err={s} defaulting={s}", .{ @errorName(err), DEFAULT.label() });
             return DEFAULT;
         },
     };
     defer alloc.free(raw);
-    return parse(raw) orelse {
-        log.warn("balance_policy.unknown_value observed=\"{s}\" defaulting={s}", .{ raw, DEFAULT.label() });
-        return DEFAULT;
-    };
+    return resolve(raw);
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
@@ -77,53 +86,30 @@ test "label round-trips" {
     try std.testing.expectEqualStrings("stop", Policy.stop.label());
 }
 
-// ── resolveFromEnv ────────────────────────────────────────────────────────
+// ── resolve ───────────────────────────────────────────────────────────────
 //
-// resolveFromEnv() is the env→Policy wire consumed by worker_zombie.zig at
-// every zombie spawn. The env var name and the default-on-missing/unknown
-// contract is operator-facing — tests pin all three branches.
+// resolve() is the pure env→Policy core consumed by worker.zig at startup.
+// Tests exercise it directly; `resolveFromEnv` is a thin libc wrapper whose
+// body is just `getEnvVarOwned + resolve`. Round-tripping through setenv in
+// tests trips a Zig stdlib SIMD over-read inside posix.getenv that valgrind
+// (memleak gate) flags as invalid for short env values.
 
-test "resolveFromEnv: returns DEFAULT when BALANCE_EXHAUSTED_POLICY is unset" {
-    // Branch: env var absent → catch error.EnvironmentVariableNotFound → DEFAULT.
-    // Bug catch: regression that removes the catch arm and causes startup to
-    // panic when operators haven't set the env var.
-    const c = @cImport(@cInclude("stdlib.h"));
-    _ = c.unsetenv("BALANCE_EXHAUSTED_POLICY");
-    try std.testing.expectEqual(DEFAULT, resolveFromEnv(std.testing.allocator));
+test "resolve: null raw returns DEFAULT (env-absent branch)" {
+    try std.testing.expectEqual(DEFAULT, resolve(null));
 }
 
-test "resolveFromEnv: returns parsed value for each known token (case-insensitive)" {
-    // Branch: env var read → parse() succeeds → that policy.
-    // Bug catch: regression that breaks the env→enum wire, e.g. someone renames
-    // the env var or changes parse() to be case-sensitive while the env-side
-    // contract keeps case-insensitive.
-    const c = @cImport(@cInclude("stdlib.h"));
-    defer _ = c.unsetenv("BALANCE_EXHAUSTED_POLICY");
-
-    const cases = [_]struct { raw: [*:0]const u8, expected: Policy }{
-        .{ .raw = "stop", .expected = .stop },
-        .{ .raw = "warn", .expected = .warn },
-        .{ .raw = "continue", .expected = .@"continue" },
-        .{ .raw = "STOP", .expected = .stop }, // case-insensitive contract
-        .{ .raw = "Continue", .expected = .@"continue" },
-    };
-    for (cases) |case| {
-        _ = c.setenv("BALANCE_EXHAUSTED_POLICY", case.raw, 1);
-        try std.testing.expectEqual(case.expected, resolveFromEnv(std.testing.allocator));
-    }
+test "resolve: known tokens parse case-insensitively" {
+    try std.testing.expectEqual(Policy.stop, resolve("stop"));
+    try std.testing.expectEqual(Policy.warn, resolve("warn"));
+    try std.testing.expectEqual(Policy.@"continue", resolve("continue"));
+    try std.testing.expectEqual(Policy.stop, resolve("STOP"));
+    try std.testing.expectEqual(Policy.@"continue", resolve("Continue"));
 }
 
-test "resolveFromEnv: falls back to DEFAULT on unknown / empty / whitespace values" {
-    // Branch: env var read → parse() returns null → log + DEFAULT.
-    // Bug catch: regression that returns the wrong value or panics on garbage
-    // input. parse() rejects whitespace-padded tokens (no trimming), so
-    // "  warn  " must NOT be accepted as warn — the contract is strict-eq.
-    const c = @cImport(@cInclude("stdlib.h"));
-    defer _ = c.unsetenv("BALANCE_EXHAUSTED_POLICY");
-
-    const garbage = [_][*:0]const u8{ "halt", "", "  warn  ", "stop;DROP TABLE", "STOPPED" };
+test "resolve: unknown / empty / whitespace falls back to DEFAULT" {
+    // parse() is strict-eq (no trimming) — "  warn  " must NOT decode to warn.
+    const garbage = [_][]const u8{ "halt", "", "  warn  ", "stop;DROP TABLE", "STOPPED" };
     for (garbage) |val| {
-        _ = c.setenv("BALANCE_EXHAUSTED_POLICY", val, 1);
-        try std.testing.expectEqual(DEFAULT, resolveFromEnv(std.testing.allocator));
+        try std.testing.expectEqual(DEFAULT, resolve(val));
     }
 }
