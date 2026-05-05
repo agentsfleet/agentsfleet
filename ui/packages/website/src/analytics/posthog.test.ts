@@ -65,7 +65,7 @@ describe("posthog init contract", () => {
     expect(opts.autocapture).toBe(true);
     expect(opts.capture_pageview).toBe("history_change");
     expect(opts.capture_pageleave).toBe(true);
-    expect(opts.persistence).toBe("localStorage+cookie");
+    expect(opts.persistence).toBe("localStorage");
   });
 
   it("does not initialize when key is empty", async () => {

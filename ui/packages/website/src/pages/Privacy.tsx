@@ -43,10 +43,10 @@ export default function Privacy() {
           <strong>PostHog</strong> — product analytics. Captures pageviews, anonymized
           interaction events (clicks, form submissions with values masked), and
           performance metrics. Stores a first-party identifier in <code>localStorage</code>
-          and a cookie scoped to <code>usezombie.com</code> so we can stitch the
-          marketing site and signed-in app into one journey for funnel analysis.
-          Known bots are auto-tagged and excluded from human-traffic insights.
-          PostHog data is hosted on US infrastructure (<code>us.i.posthog.com</code>).
+          (no tracking cookie) so we can recognize a returning visitor on the
+          marketing site. Known bots are auto-tagged and excluded from
+          human-traffic insights. PostHog data is hosted on US infrastructure
+          (<code>us.i.posthog.com</code>).
         </li>
         <li><strong>Vercel</strong> — website hosting.</li>
       </ul>
@@ -62,16 +62,16 @@ export default function Privacy() {
         </li>
         <li>
           <strong>Analytics</strong> — a PostHog-managed identifier in
-          <code> localStorage</code> and a same-site cookie that lets us recognize
-          a returning visitor across pages and across the marketing site / app
-          subdomain. It does not contain personal information.
+          <code> localStorage</code> on the marketing site. It is not a cookie
+          and does not contain personal information.
         </li>
       </ul>
       <p>
-        We do not run third-party advertising trackers, cross-site cookies, or
-        re-targeting pixels. To opt out of analytics, block
-        <code> us.i.posthog.com</code> in your browser or content blocker — the
-        site continues to function normally without it.
+        We do not set a tracking cookie for analytics, run third-party
+        advertising trackers, or use cross-site cookies / re-targeting pixels.
+        To opt out of analytics, block <code>us.i.posthog.com</code> in your
+        browser or content blocker — the site continues to function normally
+        without it.
       </p>
 
       <h2>7. Contact</h2>

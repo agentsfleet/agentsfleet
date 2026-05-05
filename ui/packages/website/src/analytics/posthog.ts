@@ -97,10 +97,19 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
     // SPA route change so the funnel is anchored. Bots are auto-tagged
     // by posthog-js via $browser_type — filter them out in the PostHog
     // UI rather than dropping them at the SDK so we keep the count.
+    //
+    // `persistence: "localStorage"` (not "localStorage+cookie") so we
+    // do NOT set a first-party tracking cookie on every page load. A
+    // cookie is what would require a prior-consent banner under
+    // ePrivacy/GDPR; localStorage-only analytics is the disclosure-then-
+    // opt-out posture documented in Privacy.tsx. If/when a consent
+    // banner ships, flip this back to "localStorage+cookie" to enable
+    // cross-subdomain identity stitching with usezombie.com ↔ app
+    // (the cookie is what crosses subdomains; localStorage does not).
     autocapture: true,
     capture_pageview: "history_change",
     capture_pageleave: true,
-    persistence: "localStorage+cookie",
+    persistence: "localStorage",
   });
   while (pendingEvents.length > 0) {
     const next = pendingEvents.shift();
