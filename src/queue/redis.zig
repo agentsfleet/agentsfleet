@@ -5,7 +5,6 @@ const redis_pubsub = @import("redis_pubsub.zig");
 
 pub const RedisRole = redis_types.RedisRole;
 pub const roleEnvVarName = redis_types.roleEnvVarName;
-pub const QueueMessage = redis_types.QueueMessage;
 pub const Client = redis_client.Client;
 pub const makeConsumerId = redis_client.makeConsumerId;
 pub const Subscriber = redis_pubsub.Subscriber;

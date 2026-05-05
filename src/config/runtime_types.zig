@@ -17,7 +17,4 @@ pub const ValidationError = error{
     InvalidApiMaxInFlightRequests,
     InvalidReadyMaxQueueDepth,
     InvalidReadyMaxQueueAgeMs,
-    InvalidKekVersion,
-    MissingEncryptionMasterKeyV2,
-    InvalidEncryptionMasterKeyV2,
 };

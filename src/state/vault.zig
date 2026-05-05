@@ -32,8 +32,6 @@ pub const Error = error{
 /// (workspace_id, key_name). Rejects non-object and empty-object inputs at
 /// the API boundary so we never store ambiguous shapes.
 ///
-/// `kek_version` selects which `ENCRYPTION_MASTER_KEY_V{N}` envelope key is
-/// used — symmetrical with `crypto_store.store`. Most callers pass `1`.
 /// Pure shape gate — exposed so unit tests can exercise rejection branches
 /// without spinning up a DB. Mirrors the checks `storeJson` runs before
 /// touching the connection.
@@ -48,14 +46,13 @@ pub fn storeJson(
     workspace_id: []const u8,
     key_name: []const u8,
     value: std.json.Value,
-    kek_version: u32,
 ) !void {
     try validateObject(value);
 
     const plaintext = try std.json.Stringify.valueAlloc(alloc, value, .{});
     defer alloc.free(plaintext);
 
-    try storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, kek_version);
+    try storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
 }
 
 /// Lower-level form for callers that already hold the canonical-stringified
@@ -69,9 +66,8 @@ pub fn storeJsonPlaintext(
     workspace_id: []const u8,
     key_name: []const u8,
     plaintext: []const u8,
-    kek_version: u32,
 ) !void {
-    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, kek_version);
+    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext);
 }
 
 /// Decrypt and parse the row at (workspace_id, key_name) as a JSON object.

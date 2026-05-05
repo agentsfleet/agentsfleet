@@ -170,15 +170,15 @@ test "yamlFrontmatterToJson: nested object" {
 
 test "yamlFrontmatterToJson: array items" {
     const alloc = std.testing.allocator;
-    const src = "chain:\n  - lead-enricher\n  - crm-updater";
+    const src = "credentials:\n  - agentmail_api_key\n  - openai_api_key";
     const json = try yamlFrontmatterToJson(alloc, src);
     defer alloc.free(json);
     const parsed = try std.json.parseFromSlice(std.json.Value, alloc, json, .{});
     defer parsed.deinit();
-    const chain = parsed.value.object.get("chain").?.array;
-    try std.testing.expectEqual(@as(usize, 2), chain.items.len);
-    try std.testing.expectEqualStrings("lead-enricher", chain.items[0].string);
-    try std.testing.expectEqualStrings("crm-updater", chain.items[1].string);
+    const creds = parsed.value.object.get("credentials").?.array;
+    try std.testing.expectEqual(@as(usize, 2), creds.items.len);
+    try std.testing.expectEqualStrings("agentmail_api_key", creds.items[0].string);
+    try std.testing.expectEqualStrings("openai_api_key", creds.items[1].string);
 }
 
 test "yamlFrontmatterToJson: inline array" {

@@ -6,7 +6,6 @@ const std = @import("std");
 const posthog = @import("posthog");
 
 const db = @import("../db/pool.zig");
-const git_ops = @import("../git/ops.zig");
 const obs_log = @import("../observability/logging.zig");
 const otel_logs = @import("../observability/otel_logs.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
@@ -151,35 +150,6 @@ pub fn parseMigrateOnStart(alloc: std.mem.Allocator) !bool {
     return common.migrateOnStartEnabledFromEnv(alloc) catch |err| {
         log.err("startup.migration_check status=fail error_code=UZ-STARTUP-005 err=invalid_MIGRATE_ON_START err_detail={s}", .{@errorName(err)});
         return err;
-    };
-}
-
-// ---------------------------------------------------------------------------
-// Cache root + git artifact cleanup
-// ---------------------------------------------------------------------------
-
-const CleanupStats = struct {
-    removed_worktrees: u32,
-    failed_worktree_removals: u32,
-    pruned_bare_repos: u32,
-    failed_bare_prunes: u32,
-};
-
-pub fn prepareCacheRoot(alloc: std.mem.Allocator, cache_root: []const u8, phase: []const u8) CleanupStats {
-    std.fs.makeDirAbsolute(cache_root) catch |err| switch (err) {
-        error.PathAlreadyExists => {},
-        else => obs_log.logWarnErr(.preflight, err, "startup.cache_root_create status=fail path={s}", .{cache_root}),
-    };
-    const stats = git_ops.cleanupRuntimeArtifacts(alloc, cache_root, "/tmp");
-    log.info(
-        "{s}.cleanup removed_worktrees={d} failed_worktrees={d} pruned_bare={d} failed_prunes={d}",
-        .{ phase, stats.removed_worktrees, stats.failed_worktree_removals, stats.pruned_bare_repos, stats.failed_bare_prunes },
-    );
-    return .{
-        .removed_worktrees = stats.removed_worktrees,
-        .failed_worktree_removals = stats.failed_worktree_removals,
-        .pruned_bare_repos = stats.pruned_bare_repos,
-        .failed_bare_prunes = stats.failed_bare_prunes,
     };
 }
 

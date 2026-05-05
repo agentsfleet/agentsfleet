@@ -40,35 +40,6 @@ test "parseMigrateOnStart returns false for '0'" {
 }
 
 // ---------------------------------------------------------------------------
-// Cache root preparation
-// ---------------------------------------------------------------------------
-
-test "prepareCacheRoot handles non-existent temp directory" {
-    const stats = preflight.prepareCacheRoot(
-        std.testing.allocator,
-        "/tmp/zombied-test-preflight-cache",
-        "test",
-    );
-    // Cleanup — verify it ran without crashing
-    try std.testing.expect(stats.removed_worktrees == 0 or stats.removed_worktrees >= 0);
-
-    // Clean up created dir
-    std.fs.deleteTreeAbsolute("/tmp/zombied-test-preflight-cache") catch {};
-}
-
-test "prepareCacheRoot handles already-existing directory" {
-    std.fs.makeDirAbsolute("/tmp/zombied-test-preflight-exists") catch {};
-    defer std.fs.deleteTreeAbsolute("/tmp/zombied-test-preflight-exists") catch {};
-
-    const stats = preflight.prepareCacheRoot(
-        std.testing.allocator,
-        "/tmp/zombied-test-preflight-exists",
-        "test",
-    );
-    try std.testing.expect(stats.removed_worktrees == 0 or stats.removed_worktrees >= 0);
-}
-
-// ---------------------------------------------------------------------------
 // Signal handlers
 // ---------------------------------------------------------------------------
 

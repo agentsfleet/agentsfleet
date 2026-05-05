@@ -176,14 +176,6 @@ pub fn upsertPlatform(
     });
 }
 
-/// Test-only helper: drop the tenant_providers row entirely. Production
-/// code paths use upsertPlatform to reset rather than deleteRow.
-pub fn deleteRow(conn: *pg.Conn, tenant_id: []const u8) !void {
-    _ = try conn.exec(
-        \\DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid
-    , .{tenant_id});
-}
-
 pub const ProbedCredential = resolver.ProbedCredential;
 
 /// Probe the tenant's BYOK credential and return the {provider, api_key,

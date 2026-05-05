@@ -14,22 +14,14 @@ fn parseSubcommandName(name: []const u8) ?Subcommand {
     return std.meta.stringToEnum(Subcommand, name);
 }
 
-/// Pure helper — resolves a subcommand from a pre-collected argv slice.
-/// Extracted from `parseSubcommandFromProcessArgs` so tests can exercise
-/// both the "no subcommand → default" path and the unknown-token error.
-fn parseSubcommandFromArgv(argv: []const []const u8) !Subcommand {
+/// Resolve a subcommand from a pre-collected argv slice.
+/// Returns `.serve` when argv has no subcommand (the historical default),
+/// or `error.UnknownSubcommand` when the given token is not a known
+/// subcommand. Caller (main.zig) is the argv source — keeps this fn pure
+/// and trivially testable.
+pub fn parseSubcommandFromArgv(argv: []const []const u8) !Subcommand {
     if (argv.len <= 1) return .serve;
     return parseSubcommandName(argv[1]) orelse error.UnknownSubcommand;
-}
-
-/// Parse argv[1] into a Subcommand. Returns `.serve` when argv has no
-/// subcommand (the historical default), or an error when the given token
-/// is not a known subcommand.
-pub fn parseSubcommandFromProcessArgs() !Subcommand {
-    var args = std.process.args();
-    _ = args.next();
-    const cmd = args.next() orelse return .serve;
-    return parseSubcommandName(cmd) orelse error.UnknownSubcommand;
 }
 
 test "parseSubcommandName returns known subcommands" {

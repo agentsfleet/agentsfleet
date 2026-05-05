@@ -10,6 +10,7 @@
 const std = @import("std");
 const pg = @import("pg");
 const event_loop = @import("event_loop.zig");
+const writepath_rows = @import("event_loop_writepath_rows.zig");
 const zombie_config = @import("config.zig");
 const base = @import("../db/test_fixtures.zig");
 
@@ -164,7 +165,7 @@ test "integration 3.3: claimZombie loads existing checkpoint from zombie_session
     try std.testing.expect(std.mem.indexOf(u8, session.context_json, "evt_prior") != null);
 }
 
-test "integration 3.3: checkpointState writes session to zombie_sessions" {
+test "integration: checkpointZombieSession writes session to zombie_sessions" {
     const alloc = std.testing.allocator;
     const db_ctx = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -183,7 +184,7 @@ test "integration 3.3: checkpointState writes session to zombie_sessions" {
     defer session.deinit(alloc);
 
     try event_loop.updateSessionContext(alloc, &session, "evt_new", "Replied to the lead.");
-    try event_loop.checkpointState(alloc, &session, db_ctx.pool);
+    try writepath_rows.checkpointZombieSession(alloc, db_ctx.pool, &session);
 
     // Re-claim the zombie — checkpoint should be loaded
     var session2 = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);
@@ -192,7 +193,7 @@ test "integration 3.3: checkpointState writes session to zombie_sessions" {
     try std.testing.expect(std.mem.indexOf(u8, session2.context_json, "evt_new") != null);
 }
 
-test "integration 3.3: checkpointState UPSERT overwrites previous checkpoint" {
+test "integration: checkpointZombieSession UPSERT overwrites previous checkpoint" {
     const alloc = std.testing.allocator;
     const db_ctx = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -211,11 +212,11 @@ test "integration 3.3: checkpointState UPSERT overwrites previous checkpoint" {
 
     // First checkpoint
     try event_loop.updateSessionContext(alloc, &session, "evt_001", "first");
-    try event_loop.checkpointState(alloc, &session, db_ctx.pool);
+    try writepath_rows.checkpointZombieSession(alloc, db_ctx.pool, &session);
 
     // Second checkpoint (UPSERT should overwrite)
     try event_loop.updateSessionContext(alloc, &session, "evt_002", "second");
-    try event_loop.checkpointState(alloc, &session, db_ctx.pool);
+    try writepath_rows.checkpointZombieSession(alloc, db_ctx.pool, &session);
 
     // Re-claim — should see the SECOND checkpoint, not the first
     var session2 = try event_loop.claimZombie(alloc, TEST_ZOMBIE_ID, db_ctx.pool);

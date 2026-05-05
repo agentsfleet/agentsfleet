@@ -37,10 +37,6 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
         const schedule = try requireString(alloc, obj, "schedule") orelse return ZombieConfigError.MissingRequiredField;
         return .{ .cron = .{ .schedule = schedule } };
     }
-    if (std.mem.eql(u8, type_str, "chain")) {
-        const source = try requireString(alloc, obj, "source") orelse return ZombieConfigError.InvalidTriggerSource;
-        return .{ .chain = .{ .source = source } };
-    }
     if (std.mem.eql(u8, type_str, "api")) return .{ .api = {} };
     return ZombieConfigError.InvalidTriggerType;
 }

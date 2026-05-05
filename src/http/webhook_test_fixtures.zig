@@ -9,9 +9,7 @@ const std = @import("std");
 const pg = @import("pg");
 const crypto_store = @import("../secrets/crypto_store.zig");
 
-const KEK_VERSION: u32 = 1;
-
-/// Set `ENCRYPTION_MASTER_KEY_V1` so `crypto_store.store/load` can operate.
+/// Set `ENCRYPTION_MASTER_KEY` so `crypto_store.store/load` can operate.
 /// Safe to call once per test. Value is a fixed test key — not a secret.
 pub fn setTestEncryptionKey() void {
     const c = @cImport(@cInclude("stdlib.h"));
@@ -63,7 +61,7 @@ pub fn insertVaultSecret(
     key_name: []const u8,
     plaintext: []const u8,
 ) !void {
-    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext, KEK_VERSION);
+    try crypto_store.store(alloc, conn, workspace_id, key_name, plaintext);
 }
 
 /// Insert a workspace credential at `zombie:<credential_name>` containing
@@ -88,7 +86,7 @@ pub fn insertWebhookCredential(
     defer alloc.free(json);
     const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{credential_name});
     defer alloc.free(key_name);
-    try crypto_store.store(alloc, conn, workspace_id, key_name, json, KEK_VERSION);
+    try crypto_store.store(alloc, conn, workspace_id, key_name, json);
 }
 
 /// Delete all rows this test created. Idempotent.

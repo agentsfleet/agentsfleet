@@ -10,18 +10,18 @@
 //!   - `zombie_config_changed` → log; full hot-reload deferred.
 //!   - `worker_drain_request`  → kick the WorkerState drain phase.
 //!
-//! Owns the per-zombie runtime map shared with per-zombie threads. Each
-//! runtime carries a cancel atomic + exited atomic; the wrapper at
-//! `worker_watcher_runtime.zombieRuntimeWrapper` flips exited on return,
-//! and `sweepExitedLocked` (called from `spawnZombieThread`) reaps the
-//! entry on the next spawn attempt. Map storage is freed in `deinit()`
-//! after every spawned thread has been joined — never sooner.
+//! Owns the per-zombie runtime map. Each runtime carries cancel + exited
+//! atomics; the wrapper at `worker_watcher_runtime.zombieRuntimeWrapper`
+//! flips exited on return, and `sweepExitedLocked` (called from
+//! `spawnZombieThread`) reaps the entry on the next spawn attempt. Map
+//! storage is freed in `deinit()` after every thread has been joined.
 
 const std = @import("std");
 const pg = @import("pg");
 
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_protocol = @import("../queue/redis_protocol.zig");
+const balance_policy_mod = @import("../config/balance_policy.zig");
 const control_stream = @import("../zombie/control_stream.zig");
 const worker_state_mod = @import("worker/state.zig");
 const worker_zombie = @import("worker_zombie.zig");
@@ -33,11 +33,10 @@ const error_codes = @import("../errors/error_registry.zig");
 
 const log = std.log.scoped(.worker_watcher);
 
-/// Reconcile sweep cadence. The watcher walks core.zombies every Nth tick
-/// (≈ N × 5s) and calls spawnZombieThread for every active row. Picks up:
-/// orphans from a failed install-time XADD; missed zombie_created control
-/// messages; any drift between PG state and the watcher's in-memory map.
-/// 6 ticks ≈ 30 seconds — bounded staleness, low PG load.
+/// Reconcile sweep cadence. Watcher walks core.zombies every Nth tick
+/// (≈ N × 5s = 30s @ N=6) and spawns missing threads — covering orphans
+/// from failed install-time XADDs, missed zombie_created messages, and
+/// drift between PG and the in-memory map.
 const reconcile_every_ticks: u32 = 6;
 
 const WatcherConfig = struct {
@@ -48,9 +47,10 @@ const WatcherConfig = struct {
     telemetry: ?*telemetry_mod.Telemetry,
     worker_state: *worker_state_mod.WorkerState,
     shutdown_requested: *const std.atomic.Value(bool),
-    /// Stable consumer name within `zombie_workers`. Worker.run derives this
-    /// from the hostname + pid so multiple replicas land in distinct slots.
+    /// Hostname+pid; replicas land in distinct `zombie_workers` slots.
     consumer_name: []const u8,
+    /// `BALANCE_EXHAUSTED_POLICY`, resolved once at startup.
+    balance_policy: balance_policy_mod.Policy,
 };
 
 pub const Watcher = struct {
@@ -164,6 +164,7 @@ pub const Watcher = struct {
             .cancel_flag = &runtime.cancel,
             .reload_pending = &runtime.reload_pending,
             .worker_state = self.cfg.worker_state,
+            .balance_policy = self.cfg.balance_policy,
         };
         const thread = try std.Thread.spawn(
             .{},

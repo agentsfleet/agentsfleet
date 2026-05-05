@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const worker_config = @import("worker_config.zig");
+const balance_policy_mod = @import("../config/balance_policy.zig");
 const env_vars = @import("../config/env_vars.zig");
 const events_bus = @import("../events/bus.zig");
 const obs_log = @import("../observability/logging.zig");
@@ -29,8 +30,8 @@ fn signalWatcher(event_bus: *events_bus.Bus, ws: *worker_state_mod.WorkerState) 
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
     // Triggers WorkerState drain so per-zombie threads exit at the next loop
-    // iteration (via beginEventIfActive in the zombie event loop). Idempotent
-    // for repeated SIGTERM.
+    // iteration (they poll isAcceptingWork() between events). Idempotent for
+    // repeated SIGTERM.
     _ = ws.startDrain();
     event_bus.stop();
 }
@@ -80,7 +81,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 worker_config.printValidationError(@errorCast(err));
                 log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});
             },
-            else => log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)}),
         }
         std.process.exit(1);
     };
@@ -123,8 +123,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
 
-    _ = preflight.prepareCacheRoot(alloc, worker_cfg.cache_root, "startup");
-
     shutdown_requested.store(false, .release);
     preflight.installSignalHandlers(onSignal);
 
@@ -161,6 +159,11 @@ pub fn run(alloc: std.mem.Allocator) !void {
     const consumer_name = try makeConsumerName(alloc);
     defer alloc.free(consumer_name);
 
+    // Resolve once at startup. BALANCE_EXHAUSTED_POLICY is a deployment-time
+    // setting; reading it per zombie spawn would re-do an env read + alloc + parse
+    // for a value that never changes within the worker's lifetime.
+    const balance_policy = balance_policy_mod.resolveFromEnv(alloc);
+
     var watcher = worker_watcher.Watcher.init(alloc, .{
         .redis = &watcher_redis,
         .pool = worker_pool,
@@ -170,6 +173,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .worker_state = &ws,
         .shutdown_requested = &shutdown_requested,
         .consumer_name = consumer_name,
+        .balance_policy = balance_policy,
     });
     // Trigger drain before joining zombie threads so they exit cleanly even
     // on an error path. Idempotent — startDrain() returns false if already
@@ -213,6 +217,4 @@ pub fn run(alloc: std.mem.Allocator) !void {
     // above) will join them. The completeDrain CAS asserts we passed through
     // `draining` — if it wasn't entered we skip rather than panic.
     if (ws.getDrainPhase() == .draining) ws.completeDrain();
-
-    _ = preflight.prepareCacheRoot(alloc, worker_cfg.cache_root, "shutdown");
 }

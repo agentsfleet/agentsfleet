@@ -36,8 +36,9 @@ test "encode → decode round-trip for tool_call_started" {
     const wire = try pc.encodeProgress(alloc, 42, original);
     defer alloc.free(wire);
 
-    var result = try pc.decodeProgress(alloc, wire);
-    defer result.parsed.deinit();
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, wire, .{});
+    defer parsed.deinit();
+    const result = try pc.decodeProgressFromValue(parsed.value);
     try std.testing.expectEqual(@as(u64, 42), result.request_id);
     try std.testing.expectEqual(pc.FrameKind.tool_call_started, result.frame.kind());
     try std.testing.expectEqualStrings("http_request", result.frame.tool_call_started.name);
@@ -55,8 +56,9 @@ test "encode → decode round-trip for agent_response_chunk" {
     const wire = try pc.encodeProgress(alloc, 7, original);
     defer alloc.free(wire);
 
-    var result = try pc.decodeProgress(alloc, wire);
-    defer result.parsed.deinit();
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, wire, .{});
+    defer parsed.deinit();
+    const result = try pc.decodeProgressFromValue(parsed.value);
     try std.testing.expectEqualStrings(original.agent_response_chunk.text, result.frame.agent_response_chunk.text);
 }
 
@@ -66,8 +68,9 @@ test "encode → decode round-trip for tool_call_completed" {
     const wire = try pc.encodeProgress(alloc, 1, original);
     defer alloc.free(wire);
 
-    var result = try pc.decodeProgress(alloc, wire);
-    defer result.parsed.deinit();
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, wire, .{});
+    defer parsed.deinit();
+    const result = try pc.decodeProgressFromValue(parsed.value);
     try std.testing.expectEqualStrings("fly_status", result.frame.tool_call_completed.name);
     try std.testing.expectEqual(@as(i64, 8210), result.frame.tool_call_completed.ms);
 }
@@ -78,8 +81,9 @@ test "encode → decode round-trip for tool_call_progress (heartbeat)" {
     const wire = try pc.encodeProgress(alloc, 99, original);
     defer alloc.free(wire);
 
-    var result = try pc.decodeProgress(alloc, wire);
-    defer result.parsed.deinit();
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, wire, .{});
+    defer parsed.deinit();
+    const result = try pc.decodeProgressFromValue(parsed.value);
     try std.testing.expectEqual(@as(i64, 4000), result.frame.tool_call_progress.elapsed_ms);
 }
 
@@ -96,14 +100,6 @@ test "isProgressPayload distinguishes Progress notifications from terminal respo
     var term_parsed = try std.json.parseFromSlice(std.json.Value, alloc, terminal_wire, .{});
     defer term_parsed.deinit();
     try std.testing.expect(!pc.isProgressPayload(term_parsed.value));
-}
-
-test "decodeProgress rejects unknown frame kind with typed error" {
-    const alloc = std.testing.allocator;
-    const wire =
-        \\{"jsonrpc":"2.0","id":1,"method":"Progress","params":{"kind":"telepathy"}}
-    ;
-    try std.testing.expectError(error.UnknownFrameKind, pc.decodeProgress(alloc, wire));
 }
 
 test "decodeProgressFromValue reuses caller-owned parsed value" {
@@ -127,14 +123,6 @@ test "decodeProgressFromValue surfaces UnknownFrameKind without parsing" {
     var parsed = try std.json.parseFromSlice(std.json.Value, alloc, wire, .{});
     defer parsed.deinit();
     try std.testing.expectError(error.UnknownFrameKind, pc.decodeProgressFromValue(parsed.value));
-}
-
-test "decodeProgress rejects negative request id" {
-    const alloc = std.testing.allocator;
-    const wire =
-        \\{"jsonrpc":"2.0","id":-5,"method":"Progress","params":{"kind":"agent_response_chunk","text":"x"}}
-    ;
-    try std.testing.expectError(error.InvalidProgressFrame, pc.decodeProgress(alloc, wire));
 }
 
 test "Hello encode → decode round-trip" {

@@ -17,7 +17,6 @@ const ALLOC = std.testing.allocator;
 const WS_TP_RESOLVE = "0195b4ba-8d3a-7f13-8abc-aa2000000001";
 const WS_TP_UPSERT = "0195b4ba-8d3a-7f13-8abc-aa2000000002";
 const WS_TP_BYOK = "0195b4ba-8d3a-7f13-8abc-aa2000000003";
-const WS_TP_DELETE = "0195b4ba-8d3a-7f13-8abc-aa2000000004";
 
 // Provider name scoped to this test file. The platform_llm_keys table has
 // UNIQUE on provider, so tests that share a provider name fight over the
@@ -49,7 +48,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     try obj.put("provider", .{ .string = provider });
     try obj.put("api_key", .{ .string = api_key });
     const value = std.json.Value{ .object = obj };
-    try vault.storeJson(alloc, conn, ws_id, provider, value, 1);
+    try vault.storeJson(alloc, conn, ws_id, provider, value);
 
     // Generate a UUIDv7 (required by ck_platform_llm_keys_id_uuidv7).
     const id_format = @import("../types/id_format.zig");
@@ -79,7 +78,7 @@ fn seedByokCredential(
     try obj.put("api_key", .{ .string = api_key });
     try obj.put("model", .{ .string = model });
     const value = std.json.Value{ .object = obj };
-    try vault.storeJson(alloc, conn, ws_id, name, value, 1);
+    try vault.storeJson(alloc, conn, ws_id, name, value);
 }
 
 // ── Mode enum + ResolvedProvider invariants ────────────────────────────────
@@ -222,7 +221,7 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_
     defer obj.deinit();
     try obj.put("provider", .{ .string = TP_TEST_PROVIDER });
     try obj.put("model", .{ .string = "any-model" });
-    try vault.storeJson(ALLOC, db_ctx.conn, WS_TP_BYOK, "bad-cred", .{ .object = obj }, 1);
+    try vault.storeJson(ALLOC, db_ctx.conn, WS_TP_BYOK, "bad-cred", .{ .object = obj });
 
     try std.testing.expectError(
         tenant_provider.ResolveError.CredentialDataMalformed,
@@ -230,7 +229,7 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_
     );
 }
 
-// ── upsertByok / upsertPlatform / deleteRow ────────────────────────────────
+// ── upsertByok / upsertPlatform ──────────────────────────────────────────
 
 test "upsertByok with non-existent credential returns CredentialMissing" {
     setEncryptionKey();
@@ -272,24 +271,3 @@ test "upsertPlatform writes mode=platform with NULL credential_ref" {
     try std.testing.expectEqual(@as(?[]const u8, null), try row.get(?[]const u8, 4));
 }
 
-test "deleteRow removes the tenant_providers row" {
-    setEncryptionKey();
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_TP_DELETE);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_DELETE);
-
-    try seedPlatformLlmKey(db_ctx.conn, ALLOC, WS_TP_DELETE, TP_TEST_PROVIDER, "fw_PLATFORM_xyz");
-    try tenant_provider.upsertPlatform(ALLOC, db_ctx.conn, uc1.TENANT_ID);
-
-    try tenant_provider.deleteRow(db_ctx.conn, uc1.TENANT_ID);
-
-    var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT COUNT(*)::BIGINT FROM core.tenant_providers WHERE tenant_id = $1::uuid
-    , .{uc1.TENANT_ID}));
-    defer q.deinit();
-    const row = (try q.next()).?;
-    try std.testing.expectEqual(@as(i64, 0), try row.get(i64, 0));
-}

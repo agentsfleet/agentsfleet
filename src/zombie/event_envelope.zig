@@ -47,12 +47,6 @@ pub const EventType = enum {
 
 pub const continuation_actor_prefix = "continuation:";
 
-pub const DecodeError = error{
-    MissingField,
-    UnknownEventType,
-    InvalidCreatedAt,
-};
-
 /// Build the XADD field/value argv for a fresh envelope (event_id is
 /// assigned by Redis via `*`, so it is omitted here).
 ///
@@ -86,53 +80,6 @@ pub fn encodeForXAdd(self: EventEnvelope, alloc: Allocator) ![]const []const u8 
 pub fn freeXAddArgv(alloc: Allocator, argv: []const []const u8) void {
     if (argv.len >= 10) alloc.free(argv[9]);
     alloc.free(argv);
-}
-
-/// Decode a stream entry as returned from XREADGROUP. `event_id` is
-/// the stream entry ID; `fields` is the flat `[][]const u8` of
-/// alternating field/value pairs.
-///
-/// Returned strings are borrowed from `fields` — copy if you need
-/// to outlive the source buffer.
-pub fn decodeFromXReadGroup(
-    event_id: []const u8,
-    zombie_id: []const u8,
-    fields: []const []const u8,
-) DecodeError!EventEnvelope {
-    var type_str: ?[]const u8 = null;
-    var actor: ?[]const u8 = null;
-    var workspace_id: ?[]const u8 = null;
-    var request_json: ?[]const u8 = null;
-    var created_at_str: ?[]const u8 = null;
-
-    var i: usize = 0;
-    while (i + 1 < fields.len) : (i += 2) {
-        const k = fields[i];
-        const v = fields[i + 1];
-        if (std.mem.eql(u8, k, "type")) type_str = v;
-        if (std.mem.eql(u8, k, "actor")) actor = v;
-        if (std.mem.eql(u8, k, "workspace_id")) workspace_id = v;
-        if (std.mem.eql(u8, k, "request")) request_json = v;
-        if (std.mem.eql(u8, k, "created_at")) created_at_str = v;
-    }
-
-    const type_raw = type_str orelse return DecodeError.MissingField;
-    const event_type = EventType.fromSlice(type_raw) orelse return DecodeError.UnknownEventType;
-    const actor_v = actor orelse return DecodeError.MissingField;
-    const ws_v = workspace_id orelse return DecodeError.MissingField;
-    const req_v = request_json orelse return DecodeError.MissingField;
-    const ts_str = created_at_str orelse return DecodeError.MissingField;
-    const ts = std.fmt.parseInt(i64, ts_str, 10) catch return DecodeError.InvalidCreatedAt;
-
-    return .{
-        .event_id = event_id,
-        .zombie_id = zombie_id,
-        .workspace_id = ws_v,
-        .actor = actor_v,
-        .event_type = event_type,
-        .request_json = req_v,
-        .created_at = ts,
-    };
 }
 
 /// Compute the continuation actor for a re-enqueued event. Flat — never

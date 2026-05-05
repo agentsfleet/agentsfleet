@@ -10,7 +10,6 @@ test {
     _ = @import("api_key.zig");
     _ = @import("claims.zig");
     _ = @import("clerk_backend.zig");
-    _ = @import("github.zig");
     _ = @import("jwks.zig");
     _ = @import("oidc.zig");
     _ = @import("principal.zig");

@@ -39,6 +39,23 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  workspace delete <workspace_id>");
   writeLine(stdout, "  doctor");
   writeLine(stdout);
+  writeLine(stdout, ui.head("AGENT COMMANDS"));
+  writeLine(stdout, "  agent add                           Mint a new agent API key for the current workspace");
+  writeLine(stdout, "  agent list                          List agent API keys");
+  writeLine(stdout, "  agent delete <key_id>               Revoke an agent API key");
+  writeLine(stdout);
+  writeLine(stdout, ui.head("GRANT COMMANDS"));
+  writeLine(stdout, "  grant list                          List integration grants for the current workspace");
+  writeLine(stdout, "  grant delete <grant_id>             Revoke an integration grant");
+  writeLine(stdout);
+  writeLine(stdout, ui.head("TENANT COMMANDS"));
+  writeLine(stdout, "  tenant provider show                Show the BYOK provider config for this tenant");
+  writeLine(stdout, "  tenant provider add --credential <name> [--model <override>]");
+  writeLine(stdout, "  tenant provider delete              Reset to platform-default provider");
+  writeLine(stdout);
+  writeLine(stdout, ui.head("BILLING COMMANDS"));
+  writeLine(stdout, "  billing show                        Show tenant billing snapshot (plan, balance, usage)");
+  writeLine(stdout);
   writeLine(stdout, ui.head("ZOMBIE COMMANDS  (top-level — e.g. `zombiectl list`)"));
   writeLine(stdout, "  install --from <path>               Register the zombie at <path>; server activates it");
   writeLine(stdout, "  list [--cursor C] [--limit N]       List zombies (cursor-paginated)");
@@ -48,6 +65,8 @@ function printHelp(stdout, ui, opts = {}) {
   writeLine(stdout, "  kill <zombie_id>                    Mark terminal (irreversible)");
   writeLine(stdout, "  delete <zombie_id>                  Hard-delete (must kill first)");
   writeLine(stdout, "  logs <zombie_id>                    Tail zombie activity");
+  writeLine(stdout, "  events <zombie_id> [--actor=glob] [--since=2h] [--cursor=C] [--limit=N]");
+  writeLine(stdout, "                                      Page through historical events (richer than logs)");
   writeLine(stdout, "  steer <zombie_id> \"<message>\"       Send a message to the zombie and stream its response");
   writeLine(stdout, "  credential add|show|list|delete     Workspace credential vault (--data=@- pipes JSON on stdin)");
 

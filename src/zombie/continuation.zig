@@ -103,16 +103,6 @@ pub fn buildContinuationRequestJson(
     }, .{});
 }
 
-/// Convenience: compute the new event's actor by walking the source
-/// actor through the existing `buildContinuationActor` helper. Caller
-/// owns the returned slice.
-pub fn buildContinuationActor(
-    alloc: std.mem.Allocator,
-    source_actor: []const u8,
-) ![]u8 {
-    return event_envelope.buildContinuationActor(alloc, source_actor);
-}
-
 // ── Tests ──────────────────────────────────────────────────────────────────
 
 const StageResult = executor_client.ExecutorClient.StageResult;
@@ -195,12 +185,3 @@ test "buildContinuationRequestJson produces compact JSON with both fields" {
     try std.testing.expect(std.mem.indexOf(u8, out, "\"original_event_id\":\"1729874000000-0\"") != null);
 }
 
-test "buildContinuationActor: flat — does not re-nest on already-continuation actors" {
-    const a1 = try buildContinuationActor(std.testing.allocator, "steer:kishore");
-    defer std.testing.allocator.free(a1);
-    try std.testing.expectEqualStrings("continuation:steer:kishore", a1);
-
-    const a2 = try buildContinuationActor(std.testing.allocator, a1);
-    defer std.testing.allocator.free(a2);
-    try std.testing.expectEqualStrings("continuation:steer:kishore", a2);
-}

@@ -21,7 +21,6 @@ const API_ACTOR = "api";
 
 pub const Context = common.Context;
 
-const KEK_VERSION: u32 = 1;
 const MAX_CREDENTIAL_DATA_LEN: usize = 4 * 1024; // 4KB stringified JSON
 const MAX_CREDENTIAL_NAME_LEN: usize = 64;
 
@@ -112,7 +111,7 @@ fn storeCredentialJsonOnConn(
 
     const key_name = try credential_key.allocKeyName(alloc, cred.name);
     defer alloc.free(key_name);
-    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext, KEK_VERSION);
+    try vault.storeJsonPlaintext(alloc, conn, workspace_id, key_name, plaintext);
 }
 
 // ── Delete Credential ─────────────────────────────────────────────────

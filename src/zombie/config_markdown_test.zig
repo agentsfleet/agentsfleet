@@ -17,8 +17,6 @@ test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
         \\  trigger:
         \\    type: webhook
         \\    source: agentmail
-        \\  chain:
-        \\    - lead-enricher
         \\  credentials:
         \\    - agentmail_api_key
         \\  budget:
@@ -33,8 +31,6 @@ test "parseZombieFromTriggerMarkdown: parses frontmatter into config" {
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("platform-ops", cfg.name);
     try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
-    try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
-    try std.testing.expectEqualStrings("lead-enricher", cfg.chain[0]);
 }
 
 test "parseZombieFromTriggerMarkdown: no frontmatter returns error" {

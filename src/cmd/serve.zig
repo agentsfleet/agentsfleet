@@ -103,9 +103,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
             runtime_config.ValidationError.InvalidApiMaxInFlightRequests,
             runtime_config.ValidationError.InvalidReadyMaxQueueDepth,
             runtime_config.ValidationError.InvalidReadyMaxQueueAgeMs,
-            runtime_config.ValidationError.InvalidKekVersion,
-            runtime_config.ValidationError.MissingEncryptionMasterKeyV2,
-            runtime_config.ValidationError.InvalidEncryptionMasterKeyV2,
             => {
                 runtime_config.ServeConfig.printValidationError(@errorCast(err));
                 log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});
@@ -129,10 +126,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
     defer api_queue.deinit();
-    api_queue.ensureConsumerGroup() catch |err| {
-        log.err("startup.redis_group role=api status=fail error_code=" ++ error_codes.ERR_STARTUP_REDIS_GROUP ++ " err={s}", .{@errorName(err)});
-        std.process.exit(1);
-    };
     log.info("startup.redis_connect role=api status=ok", .{});
 
     const migrate_on_start = preflight.parseMigrateOnStart(alloc) catch std.process.exit(1);
@@ -152,8 +145,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
     defer model_rate_cache.deinit();
     log.info("startup.model_rate_cache status=ok", .{});
-
-    _ = preflight.prepareCacheRoot(alloc, serve_cfg.cache_root, "startup");
 
     var sessions = auth_sessions.SessionStore.init(alloc);
     defer sessions.deinit();
@@ -286,7 +277,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     if (signal_thread) |*t| t.join();
     if (event_thread) |*t| t.join();
     if (approval_sweeper_thread) |*t| t.join();
-    _ = preflight.prepareCacheRoot(alloc, serve_cfg.cache_root, "shutdown");
 }
 
 fn testStopServerHook() void {

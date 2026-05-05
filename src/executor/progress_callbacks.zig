@@ -148,15 +148,6 @@ pub fn encodeProgress(alloc: Allocator, request_id: u64, frame: ProgressFrame) !
     };
 }
 
-pub const DecodeResult = struct {
-    request_id: u64,
-    frame: ProgressFrame,
-    /// Backing parsed-JSON value the frame's borrowed slices are
-    /// pointing into. Caller must call `parsed.deinit()` after
-    /// consuming the frame.
-    parsed: std.json.Parsed(std.json.Value),
-};
-
 /// Detect whether a JSON payload is a progress frame (`method ==
 /// "Progress"`) without fully decoding. Used by the worker's read loop
 /// to fork between progress dispatch and terminal-response handling.
@@ -173,16 +164,6 @@ pub const ProgressDecoded = struct {
     request_id: u64,
     frame: ProgressFrame,
 };
-
-/// Decode a payload known to be a progress frame. Returns the
-/// `DecodeResult` whose `frame` slices are borrowed from `parsed`;
-/// caller calls `result.parsed.deinit()` when done.
-pub fn decodeProgress(alloc: Allocator, payload: []const u8) !DecodeResult {
-    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, payload, .{});
-    errdefer parsed.deinit();
-    const inner = try decodeProgressFromValue(parsed.value);
-    return .{ .request_id = inner.request_id, .frame = inner.frame, .parsed = parsed };
-}
 
 /// Decode a progress frame from an already-parsed JSON value. The
 /// returned frame's string slices point into the caller's parsed value;
