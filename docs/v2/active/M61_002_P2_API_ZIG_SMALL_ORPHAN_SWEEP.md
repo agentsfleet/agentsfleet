@@ -4,7 +4,7 @@
 **Milestone:** M61
 **Workstream:** 002
 **Date:** May 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — pre-v2.0.0 hygiene; long tail of single-file orphans found by the May 04 production-only `@import` closure. Each one is small, but together they're ~1.2k LOC of compiled-but-unwired code that lies to readers about what the binary does.
 **Categories:** API
 **Batch:** B1
