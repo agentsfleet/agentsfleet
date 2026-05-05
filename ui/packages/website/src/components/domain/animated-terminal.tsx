@@ -136,7 +136,7 @@ export function AnimatedTerminal({
       }, delayBetweenCommands);
       return () => window.clearTimeout(t);
     }
-  }, [phase, typed, commandIndex, commands, outputs, typingSpeed, delayBetweenCommands, reducedMotion]);
+  }, [phase, typed, commandIndex, commands, outputs, prompts, typingSpeed, delayBetweenCommands, reducedMotion]);
 
   return (
     <div
