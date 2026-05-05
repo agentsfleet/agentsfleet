@@ -238,7 +238,14 @@ curl -s -H "Authorization: Bearer $CF_TOKEN" \
 
 ### 2.7 Vercel — Set Env Vars
 
-Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATCH /v9/projects/{id}/env`).
+Agent reads project IDs and API token from 1Password, then upserts via the Vercel v10 env API (`POST /v10/projects/{id}/env?upsert=true`). Use the script — the table is reference, the script is the source of truth:
+
+```bash
+./playbooks/001_bootstrap/02_vercel_env.sh           # apply
+./playbooks/001_bootstrap/02_vercel_env.sh --check   # read-only diff, exits 1 on drift
+```
+
+After applying, **trigger a fresh redeploy per project without build cache** — `VITE_*` and `NEXT_PUBLIC_*` are inlined at build time, so existing deployments keep stale (or empty) values until they rebuild.
 
 **`usezombie-app`:**
 
@@ -248,6 +255,7 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 | `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | Clerk DEV publishable key | Clerk PROD publishable key |
 | `CLERK_SECRET_KEY` | Clerk DEV secret key | Clerk PROD secret key |
 | `NEXT_PUBLIC_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
+| `NEXT_PUBLIC_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
 **`usezombie-agents-sh`** and **`usezombie-website`:**
 
@@ -255,6 +263,7 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 |---|---|---|
 | `VITE_APP_BASE_URL` | `https://app.dev.usezombie.com` | `https://app.usezombie.com` |
 | `VITE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
+| `VITE_POSTHOG_HOST` | `https://us.i.posthog.com` | `https://us.i.posthog.com` |
 
 **`zombied` API + worker + `zombiectl`:**
 
@@ -262,6 +271,8 @@ Agent reads project IDs and API token from 1Password, sets via Vercel API (`PATC
 |---|---|---|
 | `POSTHOG_API_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
 | `ZOMBIE_POSTHOG_KEY` | `op://$VAULT_DEV/posthog-dev/credential` | `op://$VAULT_PROD/posthog-prod/credential` |
+
+> Code defaults `*_POSTHOG_HOST` to `https://us.i.posthog.com` when unset, so the explicit row is documentation, not strictly required on US cloud. If you ever migrate PostHog to EU or self-host, the `*_HOST` row becomes load-bearing — update it here and re-run the script.
 
 ---
 

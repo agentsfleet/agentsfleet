@@ -3,7 +3,7 @@ export default function Privacy() {
     <section className="stack legal-page route-fade">
       <p className="eyebrow">legal</p>
       <h1>Privacy Policy</h1>
-      <p className="lead">Last updated: May 4, 2026</p>
+      <p className="lead">Last updated: May 5, 2026</p>
 
       <h2>1. Information We Collect</h2>
       <p>
@@ -39,11 +39,42 @@ export default function Privacy() {
       <h2>5. Third-Party Services</h2>
       <ul>
         <li><strong>Clerk</strong> — identity and authentication.</li>
-        <li><strong>PostHog</strong> — product analytics (anonymized).</li>
+        <li>
+          <strong>PostHog</strong> — product analytics. Captures pageviews, anonymized
+          interaction events (clicks, form submissions with values masked), and
+          performance metrics. Stores a first-party identifier in <code>localStorage</code>
+          (no tracking cookie) so we can recognize a returning visitor on the
+          marketing site. Known bots are auto-tagged and excluded from
+          human-traffic insights. PostHog data is hosted on US infrastructure
+          (<code>us.i.posthog.com</code>).
+        </li>
         <li><strong>Vercel</strong> — website hosting.</li>
       </ul>
 
-      <h2>6. Contact</h2>
+      <h2>6. Cookies and Local Storage</h2>
+      <p>
+        We use a small number of first-party identifiers to operate the site:
+      </p>
+      <ul>
+        <li>
+          <strong>Authentication</strong> — session cookies set by Clerk to keep
+          you signed in.
+        </li>
+        <li>
+          <strong>Analytics</strong> — a PostHog-managed identifier in
+          <code> localStorage</code> on the marketing site. It is not a cookie
+          and does not contain personal information.
+        </li>
+      </ul>
+      <p>
+        We do not set a tracking cookie for analytics, run third-party
+        advertising trackers, or use cross-site cookies / re-targeting pixels.
+        To opt out of analytics, block <code>us.i.posthog.com</code> in your
+        browser or content blocker — the site continues to function normally
+        without it.
+      </p>
+
+      <h2>7. Contact</h2>
       <p>
         For privacy inquiries, contact <a href="mailto:privacy@usezombie.com">privacy@usezombie.com</a>.
       </p>

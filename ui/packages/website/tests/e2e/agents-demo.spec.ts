@@ -44,6 +44,15 @@ test.describe("/agents — M26.8 demos", () => {
     const terminal = page.getByRole("region", { name: "Interactive terminal demonstration" });
     await expect(terminal).toBeVisible();
     await expect(terminal).toContainText("zombiectl login");
+    // Demo outputs mirror the real zombiectl strings — guards against the
+    // demo silently drifting away from the CLI it claims to demonstrate
+    // (see zombiectl/src/commands/core.js + zombie_steer.js).
+    await expect(terminal).toContainText("✔ login complete");
+    await expect(terminal).toContainText("[claw]");
+    await expect(terminal).toContainText("event 1730812800000-0 processed");
+    // Slash command renders under a non-zsh prompt override so the demo
+    // doesn't suggest you can paste it into a shell.
+    await expect(terminal).toContainText("claude-code ›");
     await ctx.close();
   });
 

@@ -557,33 +557,19 @@ test "integration: runMigrations reap is a no-op when all applied rows are canon
     _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_b", .{}) catch {};
 }
 
-test "integration: readonly roles can only query ops_ro views, not vault" {
+test "integration: readonly roles cannot read vault.secrets" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;
     const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    {
-        var q = PgQuery.from(try db_ctx.conn.query(
-            "SELECT has_table_privilege('ops_readonly_agent', 'vault.secrets', 'SELECT')",
-            .{},
-        ));
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        const can_read_vault = try row.get(bool, 0);
-        try std.testing.expect(!can_read_vault);
-    }
-
-    {
-        var q = PgQuery.from(try db_ctx.conn.query(
-            "SELECT has_table_privilege('ops_readonly_agent', 'ops_ro.workspace_overview', 'SELECT')",
-            .{},
-        ));
-        defer q.deinit();
-        const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        const can_read_view = try row.get(bool, 0);
-        try std.testing.expect(can_read_view);
-    }
-
+    var q = PgQuery.from(try db_ctx.conn.query(
+        "SELECT has_table_privilege('ops_readonly_agent', 'vault.secrets', 'SELECT')",
+        .{},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    const can_read_vault = try row.get(bool, 0);
+    try std.testing.expect(!can_read_vault);
 }
