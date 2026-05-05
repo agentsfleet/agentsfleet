@@ -79,4 +79,21 @@ describe("posthog init contract", () => {
     await mod.flushAnalyticsForTests();
     expect(captured).toHaveLength(0);
   });
+
+  it("does not initialize when explicitly disabled despite a valid key", async () => {
+    // Closes the failure-path: a privacy-conscious caller setting
+    // window.__UZ_ANALYTICS_CONFIG__ = { enabled: false, ... } must keep
+    // posthog-js out of the bundle entirely. Asserts the disable flag
+    // wins over a present key — the opposite ordering would silently
+    // re-enable analytics for users who explicitly opted out.
+    (globalThis as { __UZ_ANALYTICS_CONFIG__?: unknown }).__UZ_ANALYTICS_CONFIG__ = {
+      enabled: false,
+      key: TEST_KEY,
+      host: "https://us.i.posthog.com",
+    };
+    const mod = await import("./posthog");
+    mod.initAnalytics();
+    await mod.flushAnalyticsForTests();
+    expect(captured).toHaveLength(0);
+  });
 });

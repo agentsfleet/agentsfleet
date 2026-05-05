@@ -44,6 +44,41 @@ describe("AnimatedTerminal — SSR", () => {
     expect(html).not.toContain("AudioContext");
   });
 
+  it("falls through to the default prompt when override is an empty string", () => {
+    // Regression test for the `if (override)` (vs `!== undefined`) change:
+    // a caller passing prompts={2: ""} must not render a blank prompt
+    // line. The `you@usezombie $` default has to win for any falsy
+    // override value.
+    const reducedMotionMatch = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query.includes("reduce"),
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    })) as unknown as typeof window.matchMedia;
+
+    try {
+      const html = renderToStaticMarkup(
+        <AnimatedTerminal
+          commands={["zombiectl login"]}
+          prompts={{ 0: "" }}
+        />,
+      );
+      // Default prompt survives despite the empty override.
+      expect(html).toContain("you@usezombie");
+      // Negative: an empty <span class="text-warning"> ... </span> would
+      // appear here if the fallthrough broke. Match the exact warning-only
+      // empty-prompt shape so the assertion fails loudly on regression.
+      expect(html).not.toMatch(/<span[^>]*class="text-warning"[^>]*>\s*<\/span>/);
+    } finally {
+      window.matchMedia = reducedMotionMatch;
+    }
+  });
+
   it("renders prompt overrides verbatim under reduced motion", () => {
     // SSR + reduced-motion is the deterministic path that exercises
     // buildInstantLines — guarantees the prompts prop reaches the rendered
