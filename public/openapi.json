@@ -1477,7 +1477,7 @@
                 "properties": {
                   "name": {
                     "type": "string",
-                    "description": "Human-readable workspace name. Must be unique within the tenant. If omitted, the server may assign one or leave it null."
+                    "description": "Human-readable workspace name. Must be unique within the tenant. If omitted, the server assigns a Heroku-style name (e.g. `jolly-harbor-482`)."
                   }
                 }
               }
@@ -1493,6 +1493,7 @@
                   "type": "object",
                   "required": [
                     "workspace_id",
+                    "name",
                     "request_id"
                   ],
                   "properties": {
@@ -1503,8 +1504,7 @@
                     },
                     "name": {
                       "type": "string",
-                      "nullable": true,
-                      "description": "Human-readable workspace name, if any."
+                      "description": "Human-readable workspace name. Always present — caller-supplied or server-generated Heroku-style."
                     },
                     "request_id": {
                       "type": "string",

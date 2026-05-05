@@ -16,7 +16,7 @@
               name:
                 type: string
                 description: Human-readable workspace name. Must be unique within the tenant. If omitted, the
-                  server may assign one or leave it null.
+                  server assigns a Heroku-style name (e.g. `jolly-harbor-482`).
     responses:
       '201':
         description: Workspace created
@@ -26,6 +26,7 @@
               type: object
               required:
               - workspace_id
+              - name
               - request_id
               properties:
                 workspace_id:
@@ -34,8 +35,8 @@
                   description: Unique workspace identifier
                 name:
                   type: string
-                  nullable: true
-                  description: Human-readable workspace name, if any.
+                  description: Human-readable workspace name. Always present — caller-supplied
+                    or server-generated Heroku-style.
                 request_id:
                   type: string
                   format: uuid
