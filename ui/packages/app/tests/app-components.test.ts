@@ -91,20 +91,8 @@ afterEach(() => {
 });
 
 describe("app components", () => {
-  it("tracks analytics wrapper components and shell navigation", async () => {
-    const { default: AnalyticsPageEvent } = await import("../components/analytics/AnalyticsPageEvent");
-    const { default: TrackedAnchor } = await import("../components/analytics/TrackedAnchor");
+  it("tracks shell navigation", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
-
-    AnalyticsPageEvent({ event: "workspace_list_viewed", properties: { surface: "workspace_list" } });
-    const trackedAnchor = TrackedAnchor({
-      event: "workspace_action_clicked",
-      properties: { target: "pause" },
-      onClick: vi.fn(),
-      href: "/workspaces/ws_1/pause",
-      children: "Pause",
-    });
-    trackedAnchor.props.onClick?.({ type: "click" } as unknown as React.MouseEvent<HTMLAnchorElement>);
 
     const shellTree = Shell({ children: React.createElement("div", null, "content") });
     const clickable = findElements(shellTree, (el) => typeof el.props?.onClick === "function");
@@ -113,8 +101,6 @@ describe("app components", () => {
     mocks.usePathname.mockReturnValue("/");
     renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div", null, "root")));
 
-    expect(mocks.trackAppEvent).toHaveBeenCalledWith("workspace_list_viewed", { surface: "workspace_list" });
-    expect(mocks.trackAppEvent).toHaveBeenCalledWith("workspace_action_clicked", { target: "pause" });
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
     expect(renderToStaticMarkup(React.createElement(React.Fragment, null, shellTree))).toContain("Mission Control");
   });

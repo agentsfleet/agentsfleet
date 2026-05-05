@@ -4,7 +4,7 @@
 **Milestone:** M61
 **Workstream:** 004
 **Date:** May 04, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P3 — small bundle and reader-cognitive-load wins. Zero user-visible behavior change. The biggest piece is one local `Card` primitive that duplicates `@usezombie/design-system`'s `Card` (RULE NLG: pre-v2.0 we do not carry parallel implementations of the same shape) and two analytics components that have unit tests but never render in any production page.
 **Categories:** UI
 **Batch:** B1
@@ -165,9 +165,9 @@ bun run --cwd ui/packages/website test:e2e -- --grep design-system-smoke
 
 ## Discovery (filled during EXECUTE)
 
-Empty `components/ui/` after card.tsx removal: ____
-Internal DS file references to pruned re-exports: ____
-Gallery page renders correctly post-prune: ____
+Empty `components/ui/` after card.tsx removal: yes — directory removed after `card.tsx` deletion.
+Internal DS file references to pruned re-exports: source files still define/use internal Radix sub-primitives; both public barrels no longer re-export the 10 unused runtime names.
+Gallery page renders correctly post-prune: yes — `bun run test:e2e -- --grep design-system-smoke` passed 42/42.
 
 ---
 

@@ -35,16 +35,6 @@ vi.mock("@clerk/nextjs", () => ({
   useUser,
 }));
 
-vi.mock("@/components/analytics/AnalyticsPageEvent", () => ({
-  default: ({ event }: { event: string }) =>
-    React.createElement("div", { "data-analytics-event": event }),
-}));
-
-vi.mock("@/components/analytics/TrackedAnchor", () => ({
-  default: ({ href, children, event }: { href: string; children: React.ReactNode; event: string }) =>
-    React.createElement("a", { href, "data-track-event": event }, children),
-}));
-
 vi.mock("lucide-react", () => ({
   PlusIcon: () => React.createElement("svg", { "data-icon": "PlusIcon" }),
   LayoutDashboardIcon: () => React.createElement("svg", { "data-icon": "LayoutDashboardIcon" }),
