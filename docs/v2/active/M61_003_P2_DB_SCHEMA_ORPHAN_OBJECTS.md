@@ -4,7 +4,7 @@
 **Milestone:** M61
 **Workstream:** 003
 **Date:** May 04, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — pre-v2.0.0 schema hygiene. Two unused tables + an audit-logging surface + a dead boolean column. None hold data anyone reads, but they all show up in every `\dt`/`\d+`/`pg_dump` and lie about what the schema enforces. Pre-v2.0, the Schema Removal Guard says the right cleanup is to edit/remove the migration file directly (no down-migration ceremony).
 **Categories:** API
 **Batch:** B1
