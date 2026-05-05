@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# Bootstrap section 2.7: Vercel project env-var sync.
+# Bootstrap section 2.7: Vercel project env-var sync — PostHog rows only.
 #
-# Reads PostHog + Clerk + API URL credentials from 1Password (vaults
-# $VAULT_DEV / $VAULT_PROD) and upserts them on each Vercel project for
-# both `preview` and `production` targets via the v10 env API.
+# Reads PostHog Project API keys from 1Password (vaults $VAULT_DEV /
+# $VAULT_PROD) and upserts the website/agents/app project envs for both
+# `preview` and `production` targets via the v10 env API. Specifically:
+#   - usezombie-website   : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
+#   - usezombie-agents-sh : VITE_POSTHOG_KEY, VITE_POSTHOG_HOST
+#   - usezombie-app       : NEXT_PUBLIC_POSTHOG_KEY, NEXT_PUBLIC_POSTHOG_HOST
+#
+# Out of scope (live in the §2.7 table but require per-project values
+# this script doesn't model — left to the prose path until/unless they
+# regress): Clerk publishable + secret keys, `NEXT_PUBLIC_API_URL`,
+# `VITE_APP_BASE_URL`. Extend ROWS below if those need automation too.
 #
 # Run modes:
 #   ./02_vercel_env.sh           # apply (POST upsert=true)
