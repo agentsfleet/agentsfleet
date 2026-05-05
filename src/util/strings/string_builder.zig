@@ -115,22 +115,6 @@ fn allocatedSlice(self: *StringBuilder) []u8 {
     return ptr[0..self.cap];
 }
 
-/// Returns the unwritten remainder of the buffer.
-fn writable(self: *StringBuilder) []u8 {
-    const ptr = self.ptr orelse return &.{};
-    std.debug.assert(self.cap > 0);
-    return ptr[self.len..self.cap];
-}
-
-/// Transfer ownership of the underlying memory to `into_slice`. After this
-/// the builder is empty (zero cap) and must not be `append`-ed to again.
-/// Caller is responsible for freeing the returned slice with the same
-/// allocator that `allocate` (or `initCapacity`) received.
-fn moveToSlice(self: *StringBuilder, into_slice: *[]u8) void {
-    into_slice.* = self.allocatedSlice();
-    self.* = .{};
-}
-
 test "count → allocate → append round-trips a concatenation" {
     const alloc = std.testing.allocator;
     var b: StringBuilder = .{};

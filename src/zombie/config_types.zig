@@ -61,7 +61,7 @@ pub const ZombieStatus = enum {
     }
 };
 
-pub const ZombieTriggerType = enum { webhook, cron, api, chain };
+pub const ZombieTriggerType = enum { webhook, cron, api };
 
 pub const MAX_SIGNATURE_HEADER_LEN: usize = 64;
 
@@ -78,7 +78,6 @@ pub const ZombieTrigger = union(ZombieTriggerType) {
     webhook: struct { source: []const u8, event: ?[]const u8, signature: ?WebhookSignatureConfig = null },
     cron: struct { schedule: []const u8 },
     api: void,
-    chain: struct { source: []const u8 },
 };
 
 pub const ZombieBudget = struct {
@@ -113,8 +112,6 @@ pub const ZombieConfig = struct {
     // M2_002: ClaHub skill reference (e.g. "clawhub://queen/lead-hunter@1.0.1")
     // Resolution deferred — stored but not fetched.
     skill: ?[]const u8,
-    // M2_002: Downstream zombies to chain events to.
-    chain: []const []const u8,
     // Opaque model identifier from `x-usezombie.model`. Pass-through: the
     // executor's ContextBudget.model carries it; nothing in this binary
     // interprets it. Empty/null means "fall back to tenant_providers" (BYOK).
@@ -131,17 +128,16 @@ pub const ZombieConfig = struct {
         if (self.network) |net| freeStringSlice(alloc, net.allow);
         if (self.gates) |gates| config_gates.freeGatePolicy(alloc, gates);
         if (self.skill) |s| alloc.free(s);
-        freeStringSlice(alloc, self.chain);
         if (self.model) |s| alloc.free(s);
     }
 };
 
 // Guards against silent field drift: if a field is added to ZombieConfig
 // without updating deinit(), @sizeOf changes and this assert fails at compile.
-// New fields: `model: ?[]const u8` (16 bytes) + `context: ?ZombieContextBudget`
-// (20 bytes payload + 1 byte tag, padded to 24 bytes). Total 288 + 16 + 24 = 328.
+// `model: ?[]const u8` (16 bytes) + `context: ?ZombieContextBudget`
+// (20 bytes payload + 1 byte tag, padded to 24 bytes). Base 272 + 16 + 24 = 312.
 comptime {
-    std.debug.assert(@sizeOf(ZombieConfig) == 328);
+    std.debug.assert(@sizeOf(ZombieConfig) == 312);
 }
 
 /// Authoring metadata extracted from SKILL.md frontmatter (the SOUL file's
@@ -188,7 +184,6 @@ pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
             }
         },
         .cron => |c| alloc.free(c.schedule),
-        .chain => |ch| alloc.free(ch.source),
         .api => {},
     }
 }

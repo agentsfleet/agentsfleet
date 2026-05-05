@@ -214,7 +214,7 @@ pub fn seedPlatformProvider(
     defer obj.deinit();
     try obj.put("provider", .{ .string = TEST_PROVIDER_NAME });
     try obj.put("api_key", .{ .string = TEST_PROVIDER_API_KEY });
-    try vault.storeJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj }, 1);
+    try vault.storeJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_llm_keys row pointing at the seeded vault credential.
     const key_id = try id_format.generateZombieId(alloc);

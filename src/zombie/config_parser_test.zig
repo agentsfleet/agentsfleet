@@ -12,8 +12,7 @@ test "parseZombieConfig: valid config parses all fields" {
         \\ "x-usezombie":{
         \\   "trigger":{"type":"webhook","source":"agentmail","event":"message.received"},
         \\   "tools":["agentmail"],"credentials":["agentmail_api_key"],
-        \\   "network":{"allow":["api.agentmail.to"]},"budget":{"daily_dollars":5.0},
-        \\   "chain":["lead-enricher"]
+        \\   "network":{"allow":["api.agentmail.to"]},"budget":{"daily_dollars":5.0}
         \\ }}
     ;
     var cfg = try parseZombieConfig(alloc, json);
@@ -21,8 +20,6 @@ test "parseZombieConfig: valid config parses all fields" {
     try std.testing.expectEqualStrings("platform-ops", cfg.name);
     try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
     try std.testing.expectApproxEqAbs(@as(f64, 5.0), cfg.budget.daily_dollars, 0.001);
-    try std.testing.expectEqual(@as(usize, 1), cfg.chain.len);
-    try std.testing.expectEqualStrings("lead-enricher", cfg.chain[0]);
     try std.testing.expect(cfg.skill == null);
 }
 
@@ -47,17 +44,16 @@ test "parseZombieConfig: skill field parsed from runtime block" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"enricher",
-        \\ "x-usezombie":{"trigger":{"type":"chain","source":"platform-ops"},
+        \\ "x-usezombie":{"trigger":{"type":"api"},
         \\   "tools":["agentmail"],"skill":"clawhub://queen/lead-hunter@1.0.1",
         \\   "budget":{"daily_dollars":2.0}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("clawhub://queen/lead-hunter@1.0.1", cfg.skill.?);
-    try std.testing.expectEqualStrings("platform-ops", cfg.trigger.chain.source);
 }
 
-test "parseZombieConfig: cron trigger + empty chain defaults" {
+test "parseZombieConfig: cron trigger defaults" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"nightly",
@@ -67,7 +63,6 @@ test "parseZombieConfig: cron trigger + empty chain defaults" {
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("0 3 * * *", cfg.trigger.cron.schedule);
-    try std.testing.expectEqual(@as(usize, 0), cfg.chain.len);
     try std.testing.expectEqual(@as(usize, 0), cfg.credentials.len);
     try std.testing.expect(cfg.network == null);
     try std.testing.expect(cfg.gates == null);
@@ -134,15 +129,6 @@ test "parseZombieConfig: skill at top level → RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","skill":"clawhub://q/s@1","x-usezombie":{"trigger":{"type":"api"},
-        \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
-    ;
-    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
-}
-
-test "parseZombieConfig: chain at top level → RuntimeKeysOutsideBlock" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"name":"x","chain":["downstream"],"x-usezombie":{"trigger":{"type":"api"},
         \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));

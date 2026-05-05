@@ -96,8 +96,6 @@ pub fn freeOidc(alloc: Allocator, cfg: OidcConfig) void {
 
 const EncryptionConfig = struct {
     master_key: []u8,
-    master_key_v2: ?[]u8,
-    active_kek_version: u32,
 };
 
 pub fn loadEncryption(alloc: Allocator) !EncryptionConfig {
@@ -105,34 +103,18 @@ pub fn loadEncryption(alloc: Allocator) !EncryptionConfig {
     errdefer alloc.free(master_key);
     if (master_key.len != 64 or !validate.isHexString(master_key)) return ValidationError.InvalidEncryptionMasterKey;
 
-    const kek_version = try env.parseU32Env(alloc, "KEK_VERSION", 1, ValidationError.InvalidKekVersion);
-    if (kek_version == 0 or kek_version > 2) return ValidationError.InvalidKekVersion;
-
-    const master_key_v2: ?[]u8 = if (kek_version == 2) blk: {
-        const v2 = try env.requiredEnvOwned(alloc, "ENCRYPTION_MASTER_KEY_V2", ValidationError.MissingEncryptionMasterKeyV2);
-        if (v2.len != 64 or !validate.isHexString(v2)) {
-            alloc.free(v2);
-            return ValidationError.InvalidEncryptionMasterKeyV2;
-        }
-        break :blk v2;
-    } else std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY_V2") catch null;
-
-    return .{ .master_key = master_key, .master_key_v2 = master_key_v2, .active_kek_version = kek_version };
+    return .{ .master_key = master_key };
 }
 
 pub fn freeEncryption(alloc: Allocator, cfg: EncryptionConfig) void {
     alloc.free(cfg.master_key);
-    if (cfg.master_key_v2) |v| alloc.free(v);
 }
 
 const MiscConfig = struct {
-    cache_root: []u8,
     app_url: []u8,
 };
 
 pub fn loadMisc(alloc: Allocator) !MiscConfig {
-    const cache_root = try env.envOrDefaultOwned(alloc, "GIT_CACHE_ROOT", "/tmp/zombie-git-cache");
-    errdefer alloc.free(cache_root);
     const app_url = try env.envOrDefaultOwned(alloc, "APP_URL", "https://app.usezombie.com");
-    return .{ .cache_root = cache_root, .app_url = app_url };
+    return .{ .app_url = app_url };
 }

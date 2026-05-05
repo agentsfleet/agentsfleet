@@ -28,9 +28,7 @@ const ALL_RUNTIME_ENV_VARS = [_][]const u8{
     "READY_MAX_QUEUE_AGE_MS",     "OIDC_JWKS_URL",
     "OIDC_ISSUER",                "OIDC_AUDIENCE",
     "OIDC_PROVIDER",              "API_KEY",
-    "ENCRYPTION_MASTER_KEY",      "KEK_VERSION",
-    "ENCRYPTION_MASTER_KEY_V2",   "GIT_CACHE_ROOT",
-    "APP_URL",
+    "ENCRYPTION_MASTER_KEY",      "APP_URL",
 };
 
 fn clearAllRuntimeEnv() void {
@@ -157,8 +155,6 @@ test "ServeConfig.load applies default port" {
     try std.testing.expectEqual(@as(u16, 3000), cfg.port);
     try std.testing.expectEqual(@as(i16, 1), cfg.api_http_threads);
     try std.testing.expectEqual(@as(u32, 1024), cfg.api_max_clients);
-    try std.testing.expectEqualStrings("/tmp/zombie-git-cache", cfg.cache_root);
-    try std.testing.expectEqual(@as(u32, 1), cfg.active_kek_version);
 }
 
 test "ServeConfig.load rejects short encryption key" {
@@ -181,48 +177,6 @@ test "ServeConfig.load rejects non-hex encryption key" {
     defer unsetTestEnv(&env_pairs);
 
     try std.testing.expectError(ValidationError.InvalidEncryptionMasterKey, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load rejects KEK_VERSION=2 without v2 key" {
-    const env_pairs = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "2" },
-    };
-    try setTestEnv(&env_pairs);
-    defer unsetTestEnv(&env_pairs);
-
-    try std.testing.expectError(ValidationError.MissingEncryptionMasterKeyV2, ServeConfig.load(std.testing.allocator));
-}
-
-test "ServeConfig.load accepts KEK_VERSION=2 with valid v2 key" {
-    const v2_key = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-    const env_pairs = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "2" },
-        .{ "ENCRYPTION_MASTER_KEY_V2", v2_key },
-    };
-    try setTestEnv(&env_pairs);
-    defer unsetTestEnv(&env_pairs);
-
-    var cfg = try ServeConfig.load(std.testing.allocator);
-    defer cfg.deinit();
-
-    try std.testing.expectEqual(@as(u32, 2), cfg.active_kek_version);
-    try std.testing.expectEqualStrings(v2_key, cfg.encryption_master_key_v2.?);
-}
-
-test "ServeConfig.load rejects KEK_VERSION=0" {
-    const env_pairs = [_][2][]const u8{
-        .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "0" },
-    };
-    try setTestEnv(&env_pairs);
-    defer unsetTestEnv(&env_pairs);
-
-    try std.testing.expectError(ValidationError.InvalidKekVersion, ServeConfig.load(std.testing.allocator));
 }
 
 test "ServeConfig.load rejects negative READY_MAX_QUEUE_DEPTH" {
@@ -296,31 +250,6 @@ test "loadSizes applies all defaults when env empty" {
     try std.testing.expect(sizes.ready_max_queue_age_ms == null);
 }
 
-test "loadEncryption rejects short ENCRYPTION_MASTER_KEY_V2 when KEK_VERSION=2" {
-    const alloc = std.testing.allocator;
-    const env_pairs = [_][2][]const u8{
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "2" },
-        .{ "ENCRYPTION_MASTER_KEY_V2", "tooshort" },
-    };
-    try setTestEnv(&env_pairs);
-    defer unsetTestEnv(&env_pairs);
-    try std.testing.expectError(ValidationError.InvalidEncryptionMasterKeyV2, loader.loadEncryption(alloc));
-}
-
-test "loadEncryption rejects non-hex ENCRYPTION_MASTER_KEY_V2 when KEK_VERSION=2" {
-    const alloc = std.testing.allocator;
-    const non_hex_v2 = "gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg";
-    const env_pairs = [_][2][]const u8{
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "2" },
-        .{ "ENCRYPTION_MASTER_KEY_V2", non_hex_v2 },
-    };
-    try setTestEnv(&env_pairs);
-    defer unsetTestEnv(&env_pairs);
-    try std.testing.expectError(ValidationError.InvalidEncryptionMasterKeyV2, loader.loadEncryption(alloc));
-}
-
 test "loadOidc populates issuer and audience when set" {
     const alloc = std.testing.allocator;
     const env_pairs = [_][2][]const u8{
@@ -352,20 +281,19 @@ test "loadOidc returns disabled with all-null fields when env empty" {
 test "ServeConfig.load partial-build frees oidc + api_keys when encryption rejected (RULE OWN)" {
     // Proves the orchestrator's per-section errdefer chain frees every prior
     // heap-owning section when a late sub-loader fails. Loads valid OIDC +
-    // API_KEY (each allocates), then forces loadEncryption to fail via
-    // KEK_VERSION=0. std.testing.allocator panics on any leak, so a clean
-    // exit means the chain is intact.
+    // API_KEY (each allocates), then forces loadEncryption to fail via a
+    // wrong-length ENCRYPTION_MASTER_KEY. std.testing.allocator panics on
+    // any leak, so a clean exit means the chain is intact.
     const env_pairs = [_][2][]const u8{
         .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
         .{ "OIDC_ISSUER", "https://idp.example.com/" },
         .{ "OIDC_AUDIENCE", "zombied-prod" },
         .{ "API_KEY", "dev-key" },
-        .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
-        .{ "KEK_VERSION", "0" },
+        .{ "ENCRYPTION_MASTER_KEY", "tooshort" },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
-    try std.testing.expectError(ValidationError.InvalidKekVersion, ServeConfig.load(std.testing.allocator));
+    try std.testing.expectError(ValidationError.InvalidEncryptionMasterKey, ServeConfig.load(std.testing.allocator));
 }
 
 test "loadSizes rejects PORT overflow (>u16 max)" {

@@ -153,8 +153,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer model_rate_cache.deinit();
     log.info("startup.model_rate_cache status=ok", .{});
 
-    _ = preflight.prepareCacheRoot(alloc, serve_cfg.cache_root, "startup");
-
     var sessions = auth_sessions.SessionStore.init(alloc);
     defer sessions.deinit();
 
@@ -286,7 +284,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
     if (signal_thread) |*t| t.join();
     if (event_thread) |*t| t.join();
     if (approval_sweeper_thread) |*t| t.join();
-    _ = preflight.prepareCacheRoot(alloc, serve_cfg.cache_root, "shutdown");
 }
 
 fn testStopServerHook() void {

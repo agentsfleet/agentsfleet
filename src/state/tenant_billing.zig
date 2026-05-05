@@ -64,27 +64,6 @@ pub const Billing = struct {
 
 pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
 
-const billing_error_table = [_]error_codes.ErrorMapping{
-    .{ .err = error.CreditExhausted, .code = error_codes.ERR_CREDIT_EXHAUSTED, .message = "Free plan balance exhausted. Upgrade to Scale to continue." },
-};
-comptime {
-    error_codes.validateErrorTable(&billing_error_table);
-}
-
-pub fn errorCode(err: anyerror) ?[]const u8 {
-    inline for (billing_error_table) |entry| {
-        if (err == entry.err) return entry.code;
-    }
-    return null;
-}
-
-pub fn errorMessage(err: anyerror) ?[]const u8 {
-    inline for (billing_error_table) |entry| {
-        if (err == entry.err) return entry.message;
-    }
-    return null;
-}
-
 pub fn provision(
     conn: *pg.Conn,
     tenant_id: []const u8,
@@ -174,16 +153,6 @@ pub fn getBilling(
         .updated_at_ms = row.updated_at_ms,
         .exhausted_at_ms = row.exhausted_at_ms,
     };
-}
-
-pub fn getPlanTier(
-    conn: *pg.Conn,
-    alloc: std.mem.Allocator,
-    tenant_id: []const u8,
-) !PlanTier {
-    var row = (try store.loadByTenant(conn, alloc, tenant_id)) orelse return .free;
-    defer row.deinit(alloc);
-    return PlanTier.parse(row.plan_tier);
 }
 
 pub fn resolveTenantFromWorkspace(

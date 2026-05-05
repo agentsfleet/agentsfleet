@@ -69,17 +69,6 @@ pub fn setEx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32
     }
 }
 
-/// GETDEL key — atomically get and delete. Returns null if key does not exist.
-/// Caller owns the returned slice (allocated with self.alloc).
-pub fn getDel(self: *Client, key: []const u8) !?[]u8 {
-    var resp = try self.command(&.{ "GETDEL", key });
-    defer resp.deinit(self.alloc);
-    return switch (resp) {
-        .bulk => |v| if (v) |s| try self.alloc.dupe(u8, s) else null,
-        else => null,
-    };
-}
-
 pub fn exists(self: *Client, key: []const u8) !bool {
     var resp = try self.command(&.{ "EXISTS", key });
     defer resp.deinit(self.alloc);

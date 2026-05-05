@@ -36,7 +36,7 @@ pub fn parse(raw: []const u8) ?Policy {
 /// Resolve from env. Absent / unknown values fall back to DEFAULT with a
 /// startup warn log that names the observed value (so operators see why
 /// they didn't get what they typed).
-fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
+pub fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
     const raw = std.process.getEnvVarOwned(alloc, ENV_VAR_NAME) catch |err| switch (err) {
         error.EnvironmentVariableNotFound => return DEFAULT,
         else => {

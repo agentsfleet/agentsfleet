@@ -24,7 +24,6 @@ pub const ServeConfig = struct {
     pub const printValidationError = validate.printValidationError;
 
     port: u16,
-    cache_root: []u8,
     api_http_threads: i16,
     api_http_workers: i16,
     api_max_clients: u32,
@@ -38,8 +37,6 @@ pub const ServeConfig = struct {
     oidc_issuer: ?[]u8,
     oidc_audience: ?[]u8,
     encryption_master_key: []u8,
-    encryption_master_key_v2: ?[]u8,
-    active_kek_version: u32,
 
     alloc: std.mem.Allocator,
 
@@ -61,7 +58,6 @@ pub const ServeConfig = struct {
 
         return .{
             .port = sizes.port,
-            .cache_root = misc.cache_root,
             .api_http_threads = sizes.api_http_threads,
             .api_http_workers = sizes.api_http_workers,
             .api_max_clients = sizes.api_max_clients,
@@ -75,20 +71,16 @@ pub const ServeConfig = struct {
             .oidc_issuer = oidc_cfg.issuer,
             .oidc_audience = oidc_cfg.audience,
             .encryption_master_key = enc.master_key,
-            .encryption_master_key_v2 = enc.master_key_v2,
-            .active_kek_version = enc.active_kek_version,
             .alloc = alloc,
         };
     }
 
     pub fn deinit(self: *ServeConfig) void {
-        self.alloc.free(self.cache_root);
         self.alloc.free(self.app_url);
         if (self.oidc_jwks_url) |v| self.alloc.free(v);
         if (self.oidc_issuer) |v| self.alloc.free(v);
         if (self.oidc_audience) |v| self.alloc.free(v);
         self.alloc.free(self.encryption_master_key);
-        if (self.encryption_master_key_v2) |v| self.alloc.free(v);
     }
 };
 

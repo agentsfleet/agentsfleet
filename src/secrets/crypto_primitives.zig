@@ -28,39 +28,10 @@ pub const EncryptedBlob = struct {
     }
 };
 
-/// Load the 32-byte master key from ENCRYPTION_MASTER_KEY env var (64 hex chars).
+/// Load the 32-byte KEK from `ENCRYPTION_MASTER_KEY` env var (64 hex chars).
 pub fn loadKek(alloc: std.mem.Allocator) ![KEY_LEN]u8 {
     const hex = std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY") catch {
-        log.err("secret.master_key_not_set error_code=UZ-INTERNAL-003", .{});
-        return SecretError.MissingMasterKey;
-    };
-    defer alloc.free(hex);
-
-    if (hex.len != KEY_LEN * 2) return SecretError.InvalidKeyHex;
-
-    var key: [KEY_LEN]u8 = undefined;
-    _ = try std.fmt.hexToBytes(&key, hex);
-    return key;
-}
-
-/// Backward-compatible alias.
-pub fn loadMasterKey(alloc: std.mem.Allocator) ![KEY_LEN]u8 {
-    return loadKek(alloc);
-}
-
-/// Load KEK by version number. Version 1 reads ENCRYPTION_MASTER_KEY,
-/// version 2 reads ENCRYPTION_MASTER_KEY_V2.
-pub fn loadKekByVersion(alloc: std.mem.Allocator, version: u32) ![KEY_LEN]u8 {
-    const env_name = switch (version) {
-        1 => "ENCRYPTION_MASTER_KEY",
-        2 => "ENCRYPTION_MASTER_KEY_V2",
-        else => {
-            log.err("secret.unsupported_kek_version kek_version={d} error_code=UZ-INTERNAL-003", .{version});
-            return SecretError.InvalidKeyHex;
-        },
-    };
-    const hex = std.process.getEnvVarOwned(alloc, env_name) catch {
-        log.err("secret.kek_env_not_set env={s} kek_version={d} error_code=UZ-INTERNAL-003", .{ env_name, version });
+        log.err("secret.kek_env_not_set error_code=UZ-INTERNAL-003", .{});
         return SecretError.MissingMasterKey;
     };
     defer alloc.free(hex);
@@ -154,34 +125,22 @@ test "decrypt fails when tag is tampered" {
     );
 }
 
-test "loadKekByVersion dispatches to correct env var" {
+test "loadKek reads ENCRYPTION_MASTER_KEY env var" {
     const alloc = std.testing.allocator;
 
-    var key_v1: [KEY_LEN]u8 = undefined;
-    std.crypto.random.bytes(&key_v1);
-    var key_v2: [KEY_LEN]u8 = undefined;
-    std.crypto.random.bytes(&key_v2);
+    var key_bytes: [KEY_LEN]u8 = undefined;
+    std.crypto.random.bytes(&key_bytes);
 
-    const hex_v1 = std.fmt.bytesToHex(key_v1, .lower);
-    const hex_v2 = std.fmt.bytesToHex(key_v2, .lower);
-    var hex_v1_z: [65]u8 = undefined;
-    var hex_v2_z: [65]u8 = undefined;
-    @memcpy(hex_v1_z[0..64], &hex_v1);
-    hex_v1_z[64] = 0;
-    @memcpy(hex_v2_z[0..64], &hex_v2);
-    hex_v2_z[64] = 0;
+    const hex = std.fmt.bytesToHex(key_bytes, .lower);
+    var hex_z: [65]u8 = undefined;
+    @memcpy(hex_z[0..64], &hex);
+    hex_z[64] = 0;
 
     const c = @cImport(@cInclude("stdlib.h"));
-    _ = c.setenv("ENCRYPTION_MASTER_KEY", &hex_v1_z, 1);
-    _ = c.setenv("ENCRYPTION_MASTER_KEY_V2", &hex_v2_z, 1);
+    _ = c.setenv("ENCRYPTION_MASTER_KEY", &hex_z, 1);
     defer _ = c.unsetenv("ENCRYPTION_MASTER_KEY");
-    defer _ = c.unsetenv("ENCRYPTION_MASTER_KEY_V2");
 
-    const loaded_v1 = try loadKekByVersion(alloc, 1);
-    const loaded_v2 = try loadKekByVersion(alloc, 2);
-
-    try std.testing.expectEqualSlices(u8, &key_v1, &loaded_v1);
-    try std.testing.expectEqualSlices(u8, &key_v2, &loaded_v2);
-    try std.testing.expect(!std.mem.eql(u8, &loaded_v1, &loaded_v2));
+    const loaded = try loadKek(alloc);
+    try std.testing.expectEqualSlices(u8, &key_bytes, &loaded);
 }
 

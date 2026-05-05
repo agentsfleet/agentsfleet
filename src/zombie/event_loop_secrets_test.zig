@@ -34,7 +34,7 @@ fn putCredential(
     for (fields) |f| try obj.put(f.k, .{ .string = f.v });
     const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{name});
     defer alloc.free(key_name);
-    try vault.storeJson(alloc, conn, TEST_WS_ID, key_name, .{ .object = obj }, 1);
+    try vault.storeJson(alloc, conn, TEST_WS_ID, key_name, .{ .object = obj });
 }
 
 // resolveSecretsMap acquires its own connection from the pool. Tests must

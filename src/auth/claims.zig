@@ -3,7 +3,6 @@
 const std = @import("std");
 const jwks = @import("jwks.zig");
 const rbac = @import("rbac.zig");
-const StringJoiner = @import("../util/strings/string_joiner.zig");
 
 const log = std.log.scoped(.auth);
 
@@ -244,18 +243,18 @@ fn getScopesOwned(alloc: std.mem.Allocator, obj: std.json.ObjectMap) !?[]u8 {
     const scp = obj.get(CLAIM_SCP) orelse obj.get(CLAIM_SCOPES) orelse return null;
     if (scp != .array) return null;
 
-    var joiner = StringJoiner.init(alloc);
-    errdefer joiner.deinit();
+    var buf: std.ArrayList(u8) = .{};
+    errdefer buf.deinit(alloc);
     for (scp.array.items) |item| {
         if (item != .string or item.string.len == 0) continue;
-        if (joiner.len > 0) try joiner.pushStatic(" ");
-        try joiner.pushStatic(item.string);
+        if (buf.items.len > 0) try buf.append(alloc, ' ');
+        try buf.appendSlice(alloc, item.string);
     }
-    if (joiner.len == 0) {
-        joiner.deinit();
+    if (buf.items.len == 0) {
+        buf.deinit(alloc);
         return null;
     }
-    return try joiner.done(alloc);
+    return try buf.toOwnedSlice(alloc);
 }
 
 test "extractClerkClaims from metadata.tenant_id" {

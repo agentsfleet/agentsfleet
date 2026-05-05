@@ -32,8 +32,5 @@ pub fn printValidationError(err: ValidationError) void {
         ValidationError.InvalidApiMaxInFlightRequests => std.debug.print("fatal: invalid API_MAX_IN_FLIGHT_REQUESTS value\n", .{}),
         ValidationError.InvalidReadyMaxQueueDepth => std.debug.print("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),
         ValidationError.InvalidReadyMaxQueueAgeMs => std.debug.print("fatal: invalid READY_MAX_QUEUE_AGE_MS value\n", .{}),
-        ValidationError.InvalidKekVersion => std.debug.print("fatal: KEK_VERSION must be 1 or 2\n", .{}),
-        ValidationError.MissingEncryptionMasterKeyV2 => std.debug.print("fatal: ENCRYPTION_MASTER_KEY_V2 not set (required when KEK_VERSION=2)\n", .{}),
-        ValidationError.InvalidEncryptionMasterKeyV2 => std.debug.print("fatal: ENCRYPTION_MASTER_KEY_V2 must be 64 hex chars\n", .{}),
     }
 }

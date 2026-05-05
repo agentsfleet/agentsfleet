@@ -74,7 +74,6 @@ pub fn parseZombieConfig(
 
     const extended = try parseExtendedFields(alloc, runtime);
     errdefer if (extended.skill) |s| alloc.free(s);
-    errdefer freeStringSlice(alloc, extended.chain);
 
     const model = try parseModelField(alloc, runtime);
     errdefer if (model) |s| alloc.free(s);
@@ -89,7 +88,6 @@ pub fn parseZombieConfig(
         .budget = budget,
         .gates = gates,
         .skill = extended.skill,
-        .chain = extended.chain,
         .model = model,
         .context = ctx,
     };
@@ -104,8 +102,8 @@ pub fn parseZombieConfig(
 /// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!void {
     const forbidden = [_][]const u8{
-        "trigger", "tools",   "credentials", "network", "budget",
-        "gates",   "skill",   "chain",       "model",   "context",
+        "trigger", "tools", "credentials", "network", "budget",
+        "gates",   "skill", "model",       "context",
     };
     for (forbidden) |k| {
         if (root.get(k) != null) return ZombieConfigError.RuntimeKeysOutsideBlock;
@@ -127,8 +125,8 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.Obje
 /// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        "trigger", "tools",   "credentials", "network", "budget",
-        "gates",   "skill",   "chain",       "model",   "context",
+        "trigger", "tools", "credentials", "network", "budget",
+        "gates",   "skill", "model",       "context",
     };
     var it = runtime.iterator();
     while (it.next()) |entry| {
@@ -230,7 +228,6 @@ fn parseGatesField(
 
 const ExtendedFields = struct {
     skill: ?[]const u8,
-    chain: []const []const u8,
 };
 
 fn parseExtendedFields(
@@ -238,9 +235,7 @@ fn parseExtendedFields(
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!ExtendedFields {
     const skill_ref = try parseSkillRef(alloc, root);
-    errdefer if (skill_ref) |s| alloc.free(s);
-    const chain_arr = try parseChainArray(alloc, root);
-    return .{ .skill = skill_ref, .chain = chain_arr };
+    return .{ .skill = skill_ref };
 }
 
 fn parseSkillRef(
@@ -254,18 +249,6 @@ fn parseSkillRef(
     };
     if (s.len == 0) return null;
     return try alloc.dupe(u8, s);
-}
-
-fn parseChainArray(
-    alloc: Allocator,
-    root: std.json.ObjectMap,
-) (Allocator.Error || ZombieConfigError)![]const []const u8 {
-    const val = root.get("chain") orelse return try alloc.alloc([]const u8, 0);
-    const arr = switch (val) {
-        .array => |a| a,
-        else => return ZombieConfigError.MissingRequiredField,
-    };
-    return try helpers.dupeStringArray(alloc, arr.items);
 }
 
 /// Opaque pass-through. Empty string → null (BYOK sentinel; the executor

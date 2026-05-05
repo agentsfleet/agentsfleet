@@ -10,6 +10,7 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const queue_redis = @import("../queue/redis_client.zig");
+const balance_policy = @import("../config/balance_policy.zig");
 const event_loop = @import("../zombie/event_loop.zig");
 const executor_client = @import("../executor/client.zig");
 const zombie_config = @import("../zombie/config.zig");
@@ -85,7 +86,7 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
         .workspace_path = cfg.workspace_path,
         .telemetry = cfg.telemetry,
         .reload_pending = cfg.reload_pending,
-
+        .balance_policy = balance_policy.resolveFromEnv(alloc),
     });
     log.info("zombie_worker.stopped zombie_id={s}", .{cfg.zombie_id});
 }

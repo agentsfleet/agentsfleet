@@ -324,9 +324,9 @@ test "PgQuery size pinned at 8 bytes (single pointer)" {
     try std.testing.expectEqual(@as(usize, 8), @sizeOf(PgQuery));
 }
 
-test "ZombieSession size pinned at 432 bytes" {
+test "ZombieSession size pinned at 416 bytes" {
     const ZombieSession = @import("../zombie/event_loop_types.zig").ZombieSession;
-    try std.testing.expectEqual(@as(usize, 432), @sizeOf(ZombieSession));
+    try std.testing.expectEqual(@as(usize, 416), @sizeOf(ZombieSession));
 }
 
 // Regression — ErrorMapping field count and types

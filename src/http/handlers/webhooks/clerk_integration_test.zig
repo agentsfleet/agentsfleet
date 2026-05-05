@@ -10,7 +10,7 @@ const hs = @import("hmac_sig");
 const c = @cImport(@cInclude("stdlib.h"));
 
 const auth_mw = @import("../../../auth/middleware/mod.zig");
-const svix = @import("../../../crypto/svix_verify.zig");
+const svix = @import("../../../auth/crypto/svix_verify.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
 const harness_mod = @import("../../test_harness.zig");

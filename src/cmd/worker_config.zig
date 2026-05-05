@@ -9,7 +9,6 @@ pub const ValidationError = error{
 };
 
 pub const Config = struct {
-    cache_root: []u8,
     worker_concurrency: u32,
     drain_timeout_ms: u64,
     executor_socket_path: ?[]u8 = null,
@@ -22,7 +21,6 @@ pub const Config = struct {
     pub fn load(alloc: std.mem.Allocator) !Config {
         const worker_concurrency = std.process.getEnvVarOwned(alloc, "WORKER_CONCURRENCY") catch {
             return Config{
-                .cache_root = try alloc.dupe(u8, "/tmp/zombie-git-cache"),
                 .worker_concurrency = 1,
                 .drain_timeout_ms = 270_000,
                 .alloc = alloc,
@@ -41,11 +39,7 @@ pub const Config = struct {
 
         if (executor_cpu_limit_percent == 0 or executor_cpu_limit_percent > 100) return ValidationError.InvalidExecutorCpuLimitPercent;
 
-        const cache_root = try envOrDefaultOwned(alloc, "GIT_CACHE_ROOT", "/tmp/zombie-git-cache");
-        errdefer alloc.free(cache_root);
-
         return .{
-            .cache_root = cache_root,
             .worker_concurrency = concurrency,
             .drain_timeout_ms = drain_timeout_ms,
             .executor_socket_path = executor_socket_path,
@@ -58,7 +52,6 @@ pub const Config = struct {
     }
 
     pub fn deinit(self: *Config) void {
-        self.alloc.free(self.cache_root);
         if (self.executor_socket_path) |p| self.alloc.free(p);
     }
 };
@@ -108,7 +101,6 @@ test "Config.load succeeds with defaults" {
     var cfg = try Config.load(std.testing.allocator);
     defer cfg.deinit();
 
-    try std.testing.expectEqualStrings("/tmp/zombie-git-cache", cfg.cache_root);
     try std.testing.expectEqual(@as(u64, 270_000), cfg.drain_timeout_ms);
     try std.testing.expect(cfg.executor_socket_path == null);
 }

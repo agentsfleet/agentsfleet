@@ -95,7 +95,7 @@ test "storeJson + loadJson round-trip preserves nested object" {
     var stored = try buildFlyCredential(alloc);
     defer stored.object.deinit();
 
-    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", stored, 1);
+    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", stored);
 
     var loaded = try vault.loadJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly");
     defer loaded.deinit();
@@ -147,7 +147,7 @@ test "storeJson + loadJson round-trip preserves nested + arrays + numbers + bool
     try top.put("nested", .{ .object = nested });
     try top.put("arr", .{ .array = arr });
 
-    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed", .{ .object = top }, 1);
+    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed", .{ .object = top });
 
     var loaded = try vault.loadJson(alloc, handle.conn, TEST_WS_ID, "zombie:mixed");
     defer loaded.deinit();
@@ -186,7 +186,7 @@ test "loadJson surfaces MalformedPlaintext when row was written as bare string" 
     // Simulate a row written by the legacy `--value <string>` path: the
     // plaintext is a bare string, not JSON. loadJson must fail loud rather
     // than silently wrap.
-    try crypto_store.store(alloc, handle.conn, TEST_WS_ID, "zombie:legacy", "raw-token", 1);
+    try crypto_store.store(alloc, handle.conn, TEST_WS_ID, "zombie:legacy", "raw-token");
     try std.testing.expectError(
         vault.Error.MalformedPlaintext,
         vault.loadJson(alloc, handle.conn, TEST_WS_ID, "zombie:legacy"),
@@ -206,7 +206,7 @@ test "deleteCredential reports true on existing row, false on missing" {
 
     var v = try buildFlyCredential(alloc);
     defer v.object.deinit();
-    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", v, 1);
+    try vault.storeJson(alloc, handle.conn, TEST_WS_ID, "zombie:fly", v);
 
     try std.testing.expect(try vault.deleteCredential(handle.conn, TEST_WS_ID, "zombie:fly"));
     try std.testing.expect(!(try vault.deleteCredential(handle.conn, TEST_WS_ID, "zombie:fly")));

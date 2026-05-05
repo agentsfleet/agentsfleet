@@ -139,11 +139,6 @@ test "resolveTenantFromWorkspace returns the owning tenant" {
     try std.testing.expectEqualStrings(uc1.TENANT_ID, tid);
 }
 
-test "error mapping: CreditExhausted → UZ-BILLING-005" {
-    try std.testing.expectEqualStrings("UZ-BILLING-005", tenant_billing.errorCode(error.CreditExhausted).?);
-    try std.testing.expect(tenant_billing.errorMessage(error.CreditExhausted) != null);
-}
-
 test "clearExhausted + debit together: replenishment path resets the stop gate" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();

@@ -19,10 +19,9 @@ const http_auth = @import("../../db/test_fixtures_http_auth.zig");
 pub const TraceContext = trace_ctx.TraceContext;
 
 // HTTP wire constants. Centralised here so handlers cannot drift from the
-// canonical Content-Type strings used by the error envelope and JSON paths.
+// canonical Content-Type strings used by the error envelope.
 pub const HEADER_CONTENT_TYPE = "Content-Type";
 pub const CONTENT_TYPE_PROBLEM_JSON = "application/problem+json";
-pub const CONTENT_TYPE_JSON = "application/json";
 
 pub const Context = struct {
     pool: *pg.Pool,

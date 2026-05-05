@@ -29,8 +29,8 @@ fn signalWatcher(event_bus: *events_bus.Bus, ws: *worker_state_mod.WorkerState) 
         std.Thread.sleep(100 * std.time.ns_per_ms);
     }
     // Triggers WorkerState drain so per-zombie threads exit at the next loop
-    // iteration (via beginEventIfActive in the zombie event loop). Idempotent
-    // for repeated SIGTERM.
+    // iteration (they poll isAcceptingWork() between events). Idempotent for
+    // repeated SIGTERM.
     _ = ws.startDrain();
     event_bus.stop();
 }
@@ -123,8 +123,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
 
-    _ = preflight.prepareCacheRoot(alloc, worker_cfg.cache_root, "startup");
-
     shutdown_requested.store(false, .release);
     preflight.installSignalHandlers(onSignal);
 
@@ -213,6 +211,4 @@ pub fn run(alloc: std.mem.Allocator) !void {
     // above) will join them. The completeDrain CAS asserts we passed through
     // `draining` — if it wasn't entered we skip rather than panic.
     if (ws.getDrainPhase() == .draining) ws.completeDrain();
-
-    _ = preflight.prepareCacheRoot(alloc, worker_cfg.cache_root, "shutdown");
 }

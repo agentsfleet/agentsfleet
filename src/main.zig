@@ -95,13 +95,13 @@ pub fn main() !void {
         log.warn("startup.debug_build hint=not_for_production", .{});
     }
 
-    const cmd = cli_commands.parseSubcommandFromProcessArgs() catch |err| switch (err) {
+    const argv = try std.process.argsAlloc(alloc);
+    defer std.process.argsFree(alloc, argv);
+    const cmd = cli_commands.parseSubcommandFromArgv(argv) catch |err| switch (err) {
         error.UnknownSubcommand => {
             // Fail loudly so a stale script invoking a removed subcommand
             // doesn't silently start the HTTP server.
-            var argv = std.process.args();
-            _ = argv.next();
-            const bad = argv.next() orelse "";
+            const bad = if (argv.len > 1) argv[1] else "";
             std.debug.print(
                 "zombied: unknown subcommand: {s}\n" ++
                     "usage: zombied [serve|worker|doctor|migrate]\n",
@@ -155,7 +155,6 @@ test {
     _ = @import("cmd/worker_watcher_poll.zig");
     _ = @import("cmd/worker_watcher_lifecycle_test.zig");
     _ = @import("cmd/worker_dynamic_discovery_integration_test.zig");
-    _ = @import("util/strings/string_joiner.zig");
     _ = @import("util/strings/string_builder.zig");
     _ = @import("executor/context_budget.zig");
     _ = @import("hmac_sig");

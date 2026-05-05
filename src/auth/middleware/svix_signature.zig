@@ -4,14 +4,14 @@
 //! signed provider) webhooks. Route path `/v1/webhooks/svix/{zombie_id}`
 //! selects this middleware statically; no per-request provider switch.
 //!
-//! Crypto core lives in `src/zombie/svix_verify.zig` and is shared with
-//! the `/v1/webhooks/clerk` handler (M11_003). This file is a thin adapter
+//! Crypto core lives in the sibling `auth/crypto/svix_verify.zig` and is
+//! shared with the `/v1/webhooks/clerk` handler. This file is a thin adapter
 //! that bridges the pure verifier to the middleware chain: vault secret
 //! lookup, `*AuthCtx` fail-write, and the typed-handle pattern.
 //!
-//! Live in `src/auth/` under the portability gate — imports only std,
-//! httpz, the `hmac_sig` named module, and `svix_verify` (which itself
-//! imports only std + `hmac_sig`).
+//! Lives in `src/auth/` under the portability gate — imports only std,
+//! httpz, the `hmac_sig` named module, and the sibling `svix_verify` module
+//! (which itself imports only std + `hmac_sig`).
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -19,7 +19,7 @@ const httpz = @import("httpz");
 const chain = @import("chain.zig");
 const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
-const sv = @import("../../crypto/svix_verify.zig");
+const sv = @import("../crypto/svix_verify.zig");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 

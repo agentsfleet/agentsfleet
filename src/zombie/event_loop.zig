@@ -14,7 +14,6 @@ const queue_redis = @import("../queue/redis_client.zig");
 const queue_consts = @import("../queue/constants.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const obs_log = @import("../observability/logging.zig");
-const id_format = @import("../types/id_format.zig");
 
 const log = std.log.scoped(.zombie_event_loop);
 
@@ -202,34 +201,6 @@ pub fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.P
     session.config = new_config;
     old_config.deinit(alloc);
     log.info("zombie_event_loop.config_reloaded zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
-}
-
-/// Checkpoint session state to Postgres (UPSERT on zombie_id).
-/// Stores the current context_json so crash recovery can resume.
-pub fn checkpointState(
-    alloc: Allocator,
-    session: *const ZombieSession,
-    pool: *pg.Pool,
-) !void {
-    // row_id is the zombie_sessions PK — only consumed on INSERT; the ON CONFLICT
-    // branch updates an existing row keyed by zombie_id and discards this id.
-    const row_id = try id_format.generateZombieId(alloc);
-    defer alloc.free(row_id);
-
-    const now_ms = std.time.milliTimestamp();
-    const conn = try pool.acquire();
-    defer pool.release(conn);
-
-    _ = try conn.exec(
-        \\INSERT INTO core.zombie_sessions (id, zombie_id, context_json, checkpoint_at, created_at, updated_at)
-        \\VALUES ($1, $2, $3, $4, $4, $4)
-        \\ON CONFLICT (zombie_id) DO UPDATE
-        \\  SET context_json = EXCLUDED.context_json,
-        \\      checkpoint_at = EXCLUDED.checkpoint_at,
-        \\      updated_at = EXCLUDED.updated_at
-    , .{ row_id, session.zombie_id, session.context_json, now_ms });
-
-    log.debug("zombie_event_loop.checkpointed zombie_id={s} context_len={d}", .{ session.zombie_id, session.context_json.len });
 }
 
 test {

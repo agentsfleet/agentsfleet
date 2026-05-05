@@ -107,7 +107,7 @@ fn enqueueContinuationEvent(
     event: *const redis_zombie.ZombieEvent,
     checkpoint_id: []const u8,
 ) !void {
-    const new_actor = try continuation.buildContinuationActor(alloc, event.actor);
+    const new_actor = try event_envelope.buildContinuationActor(alloc, event.actor);
     defer alloc.free(new_actor);
     const request_json = try continuation.buildContinuationRequestJson(alloc, checkpoint_id, event.event_id);
     defer alloc.free(request_json);
