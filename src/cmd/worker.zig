@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const worker_config = @import("worker_config.zig");
+const balance_policy_mod = @import("../config/balance_policy.zig");
 const env_vars = @import("../config/env_vars.zig");
 const events_bus = @import("../events/bus.zig");
 const obs_log = @import("../observability/logging.zig");
@@ -158,6 +159,11 @@ pub fn run(alloc: std.mem.Allocator) !void {
     const consumer_name = try makeConsumerName(alloc);
     defer alloc.free(consumer_name);
 
+    // Resolve once at startup. BALANCE_EXHAUSTED_POLICY is a deployment-time
+    // setting; reading it per zombie spawn would re-do an env read + alloc + parse
+    // for a value that never changes within the worker's lifetime.
+    const balance_policy = balance_policy_mod.resolveFromEnv(alloc);
+
     var watcher = worker_watcher.Watcher.init(alloc, .{
         .redis = &watcher_redis,
         .pool = worker_pool,
@@ -167,6 +173,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .worker_state = &ws,
         .shutdown_requested = &shutdown_requested,
         .consumer_name = consumer_name,
+        .balance_policy = balance_policy,
     });
     // Trigger drain before joining zombie threads so they exit cleanly even
     // on an error path. Idempotent — startDrain() returns false if already

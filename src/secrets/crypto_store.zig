@@ -71,7 +71,7 @@ pub fn load(
     key_name: []const u8,
 ) ![]u8 {
     var result = PgQuery.from(try conn.query(
-        \\SELECT encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag
+        \\SELECT encrypted_dek, dek_nonce, dek_tag, nonce, ciphertext, tag, kek_version
         \\FROM vault.secrets
         \\WHERE workspace_id = $1 AND key_name = $2
     , .{ workspace_id, key_name }));
@@ -90,6 +90,15 @@ pub fn load(
     const payload_nonce_slice = try row.get([]u8, 3);
     const payload_ciphertext = try row.get([]u8, 4);
     const payload_tag_slice = try row.get([]u8, 5);
+    // Only kek_version=1 is supported. Pre-cleanup, a multi-key dispatch path
+    // (KEK_VERSION + ENCRYPTION_MASTER_KEY_V2) could store rows with version=2;
+    // that path is gone, so any non-1 row would silently decrypt with the wrong
+    // key and surface as DecryptFailed. Fail loud instead.
+    const kek_version = try row.get(i32, 6);
+    if (kek_version != 1) {
+        log.err("secret.unsupported_kek_version workspace_id={s} key_name={s} kek_version={d} error_code=UZ-INTERNAL-003", .{ workspace_id, key_name, kek_version });
+        return cp.SecretError.UnsupportedKekVersion;
+    }
 
     const dek_nonce = try cp.toFixed(NONCE_LEN, dek_nonce_slice);
     const dek_tag = try cp.toFixed(TAG_LEN, dek_tag_slice);

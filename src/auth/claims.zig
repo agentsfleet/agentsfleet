@@ -243,7 +243,7 @@ fn getScopesOwned(alloc: std.mem.Allocator, obj: std.json.ObjectMap) !?[]u8 {
     const scp = obj.get(CLAIM_SCP) orelse obj.get(CLAIM_SCOPES) orelse return null;
     if (scp != .array) return null;
 
-    var buf: std.ArrayList(u8) = .{};
+    var buf: std.ArrayListUnmanaged(u8) = .{};
     errdefer buf.deinit(alloc);
     for (scp.array.items) |item| {
         if (item != .string or item.string.len == 0) continue;

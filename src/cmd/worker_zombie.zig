@@ -42,6 +42,8 @@ pub const ZombieWorkerConfig = struct {
     /// flips this; per-zombie watchShutdown observes `!isAcceptingWork()`
     /// and flips `running` so the event loop exits.
     worker_state: *const worker_state_mod.WorkerState,
+    /// Resolved once in worker.zig from `BALANCE_EXHAUSTED_POLICY`.
+    balance_policy: balance_policy.Policy,
 };
 
 /// Entry point for a Zombie worker thread.
@@ -86,7 +88,7 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
         .workspace_path = cfg.workspace_path,
         .telemetry = cfg.telemetry,
         .reload_pending = cfg.reload_pending,
-        .balance_policy = balance_policy.resolveFromEnv(alloc),
+        .balance_policy = cfg.balance_policy,
     });
     log.info("zombie_worker.stopped zombie_id={s}", .{cfg.zombie_id});
 }
