@@ -25,7 +25,9 @@ Source layout decisions:
 
 ## Four recipes
 
-Copy-paste-ready. After each, run `make openapi` before committing — it chains bundle, Redocly lint, `check_openapi_errors.py`, and the router↔spec parity gate.
+Copy-paste-ready. After each, run `make openapi` before committing — it chains bundle, Redocly lint, `check_openapi_errors.py`, and `check_openapi_url_shape.py` (REST §1).
+
+**Router ↔ openapi.json parity is reviewer-enforced** — there is no mechanical gate. When you add, rename, or remove a route, both surfaces must move in the same diff and the reviewer verifies it. See `docs/REST_API_DESIGN_GUIDELINES.md` §6.
 
 ### Rename a path (e.g. `/v1/external-agents` → `/v1/agent-keys`)
 
@@ -42,9 +44,7 @@ grep -rl "external-agents:" public/openapi/paths/
 
 # 4. Rename the match() arm in src/http/router.zig (literal string + enum variant).
 
-# 5. Update src/http/route_manifest.zig — same method + new path.
-
-# 6. Verify.
+# 5. Verify.
 make openapi
 ```
 
@@ -64,8 +64,7 @@ make openapi
 #       /v1/new/path:
 #         $ref: ./paths/<tag>.yaml#/~1v1~1new~1path
 
-# 4. Add the dispatch in src/http/router.zig match() AND append the manifest
-#    entry in src/http/route_manifest.zig.
+# 4. Add the dispatch in src/http/router.zig match().
 
 # 5. Verify.
 make openapi
@@ -78,8 +77,8 @@ make openapi
 #    If the file becomes empty, delete the file AND remove its $ref
 #    from root.yaml (paths map and — if applicable — the top-level tag).
 
-# 2. Remove the match() arm in src/http/router.zig and the manifest entry in
-#    src/http/route_manifest.zig. Delete the handler if nothing else uses it.
+# 2. Remove the match() arm in src/http/router.zig. Delete the handler if
+#    nothing else uses it.
 
 # 3. Verify.
 make openapi
@@ -90,8 +89,7 @@ make openapi
 ```bash
 # 1. Edit the field in public/openapi/paths/<tag>.yaml.
 
-# 2. Re-bundle. Router changes are not required for content-only edits, but
-#    running the sync gate is cheap and catches accidental path edits.
+# 2. Re-bundle. Router changes are not required for content-only edits.
 make openapi
 ```
 
