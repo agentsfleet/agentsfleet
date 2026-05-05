@@ -194,16 +194,67 @@ check_dev() {
     "dev redis api vs worker"
 }
 
+check_vercel_envs() {
+  # Asserts that the env vars produced by 001_bootstrap/02_vercel_env.sh
+  # actually landed on the Vercel projects. Vault items existing is not
+  # the same as Vercel projects having them — that gap shipped to prod
+  # once already (PostHog rows missing on all three projects).
+  command -v curl >/dev/null 2>&1 || { echo "skip: vercel env check needs curl" >&2; return; }
+  command -v jq >/dev/null 2>&1 || { echo "skip: vercel env check needs jq" >&2; return; }
+
+  local token
+  token="$(op_read_with_retry "op://$vault_prod/vercel-api-token/credential" || true)"
+  if [ -z "$token" ]; then
+    echo "✗ MISSING: vercel-api-token (cannot verify Vercel env state)"
+    missing=$((missing + 1))
+    return
+  fi
+
+  echo "-- checking Vercel project envs"
+  local api="${VERCEL_API:-https://api.vercel.com}"
+  local -a expectations=(
+    "usezombie-website|VITE_POSTHOG_KEY"
+    "usezombie-website|VITE_POSTHOG_HOST"
+    "usezombie-agents-sh|VITE_POSTHOG_KEY"
+    "usezombie-agents-sh|VITE_POSTHOG_HOST"
+    "usezombie-app|NEXT_PUBLIC_POSTHOG_KEY"
+    "usezombie-app|NEXT_PUBLIC_POSTHOG_HOST"
+  )
+  declare -A ENV_CACHE
+  local entry project key envs targets
+  for entry in "${expectations[@]}"; do
+    IFS='|' read -r project key <<<"$entry"
+    if [ -z "${ENV_CACHE[$project]:-}" ]; then
+      ENV_CACHE["$project"]="$(curl -fsS \
+        -H "Authorization: Bearer $token" \
+        "$api/v9/projects/$project/env?decrypt=false" 2>/dev/null || echo '{}')"
+    fi
+    envs="${ENV_CACHE[$project]}"
+    targets="$(echo "$envs" | jq -r --arg k "$key" \
+      '[.envs[]? | select(.key==$k) | .target[]?] | unique | join(",")')"
+    if echo ",$targets," | grep -q ",production," && \
+       echo ",$targets," | grep -q ",preview,"; then
+      echo "✓ vercel:$project/$key (production+preview)"
+    else
+      echo "✗ MISSING: vercel:$project/$key (have targets: ${targets:-none})"
+      echo "  fix: ./playbooks/001_bootstrap/02_vercel_env.sh"
+      missing=$((missing + 1))
+    fi
+  done
+}
+
 case "$env_mode" in
   all)
     check_prod
     check_dev
+    check_vercel_envs
     ;;
   dev)
     check_dev
     ;;
   prod)
     check_prod
+    check_vercel_envs
     ;;
   *)
     echo "Unknown ENV: $env_mode (supported: all, dev, prod)" >&2

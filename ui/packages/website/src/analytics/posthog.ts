@@ -92,9 +92,15 @@ async function loadPosthog(cfg: RuntimeConfig): Promise<void> {
   posthogModule = mod.default;
   posthogModule.init(cfg.key, {
     api_host: cfg.host,
-    autocapture: false,
-    capture_pageview: false,
-    persistence: "localStorage",
+    // Autocapture covers clicks/changes/submits with element metadata
+    // (text, href, css path, surrounding form). Pageviews fire on every
+    // SPA route change so the funnel is anchored. Bots are auto-tagged
+    // by posthog-js via $browser_type — filter them out in the PostHog
+    // UI rather than dropping them at the SDK so we keep the count.
+    autocapture: true,
+    capture_pageview: "history_change",
+    capture_pageleave: true,
+    persistence: "localStorage+cookie",
   });
   while (pendingEvents.length > 0) {
     const next = pendingEvents.shift();
