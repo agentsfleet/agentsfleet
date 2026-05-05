@@ -22,6 +22,10 @@ type Phase = "idle" | "typing" | "executing" | "outputting" | "pausing" | "done"
 export interface AnimatedTerminalProps {
   commands: readonly string[];
   outputs?: Readonly<Record<number, readonly string[]>>;
+  /** Per-command prompt override. Renders verbatim in place of the default
+   * `username $ ` prompt — used when a command runs in a non-shell host
+   * (e.g. a slash command typed into Claude Code, not zsh). */
+  prompts?: Readonly<Record<number, string>>;
   username?: string;
   typingSpeed?: number;
   delayBetweenCommands?: number;
@@ -44,6 +48,7 @@ const TOKEN_CLASSNAME: Record<Token["type"], string> = {
 export function AnimatedTerminal({
   commands,
   outputs = {},
+  prompts = {},
   username = "you@usezombie",
   typingSpeed = 55,
   delayBetweenCommands = 700,
@@ -66,7 +71,7 @@ export function AnimatedTerminal({
   const [commandIndex, setCommandIndex] = useState(0);
   const [typed, setTyped] = useState("");
   const [renderedLines, setRenderedLines] = useState<RenderedLine[]>(() =>
-    reducedMotion ? buildInstantLines(commands, outputs) : [],
+    reducedMotion ? buildInstantLines(commands, outputs, prompts) : [],
   );
 
   // Drive the phase machine once the element intersects.
@@ -101,7 +106,11 @@ export function AnimatedTerminal({
     }
     if (phase === "executing") {
       const t = window.setTimeout(() => {
-        const prompt: RenderedLine = { kind: "prompt", text: typed };
+        const prompt: RenderedLine = {
+          kind: "prompt",
+          text: typed,
+          promptOverride: prompts[commandIndex],
+        };
         const out: RenderedLine[] = (outputs[commandIndex] ?? []).map((line) => ({
           kind: "output",
           text: line,
@@ -127,7 +136,7 @@ export function AnimatedTerminal({
       }, delayBetweenCommands);
       return () => window.clearTimeout(t);
     }
-  }, [phase, typed, commandIndex, commands, outputs, typingSpeed, delayBetweenCommands, reducedMotion]);
+  }, [phase, typed, commandIndex, commands, outputs, prompts, typingSpeed, delayBetweenCommands, reducedMotion]);
 
   return (
     <div
@@ -155,7 +164,12 @@ export function AnimatedTerminal({
             <TerminalLine key={i} line={line} username={username} />
           ))}
           {phase !== "done" && !reducedMotion ? (
-            <ActiveLine typed={typed} username={username} showCursor />
+            <ActiveLine
+              typed={typed}
+              username={username}
+              promptOverride={prompts[commandIndex]}
+              showCursor
+            />
           ) : null}
         </code>
       </pre>
@@ -163,15 +177,18 @@ export function AnimatedTerminal({
   );
 }
 
-type RenderedLine = { kind: "prompt"; text: string } | { kind: "output"; text: string };
+type RenderedLine =
+  | { kind: "prompt"; text: string; promptOverride?: string }
+  | { kind: "output"; text: string };
 
 function buildInstantLines(
   commands: readonly string[],
   outputs: Readonly<Record<number, readonly string[]>>,
+  prompts: Readonly<Record<number, string>>,
 ): RenderedLine[] {
   const lines: RenderedLine[] = [];
   for (let i = 0; i < commands.length; i += 1) {
-    lines.push({ kind: "prompt", text: commands[i]! });
+    lines.push({ kind: "prompt", text: commands[i]!, promptOverride: prompts[i] });
     for (const out of outputs[i] ?? []) {
       lines.push({ kind: "output", text: out });
     }
@@ -193,7 +210,7 @@ function TerminalLine({
   }
   return (
     <div className="whitespace-pre-wrap">
-      <Prompt username={username} />
+      <Prompt username={username} override={line.promptOverride} />
       <SyntaxHighlighted tokens={tokenizeBash(line.text)} />
     </div>
   );
@@ -202,15 +219,17 @@ function TerminalLine({
 function ActiveLine({
   typed,
   username,
+  promptOverride,
   showCursor,
 }: {
   typed: string;
   username: string;
+  promptOverride?: string;
   showCursor: boolean;
 }): ReactNode {
   return (
     <div className="whitespace-pre-wrap">
-      <Prompt username={username} />
+      <Prompt username={username} override={promptOverride} />
       <SyntaxHighlighted tokens={tokenizeBash(typed)} />
       {showCursor ? (
         <span
@@ -222,7 +241,12 @@ function ActiveLine({
   );
 }
 
-function Prompt({ username }: { username: string }): ReactNode {
+function Prompt({ username, override }: { username: string; override?: string }): ReactNode {
+  // Empty/whitespace-only override falls through to the default prompt — an
+  // empty `prompts[i]` shouldn't render a blank prompt on the demo line.
+  if (override) {
+    return <span className="text-warning">{override} </span>;
+  }
   return (
     <span>
       <span className="text-info">{username}</span>
