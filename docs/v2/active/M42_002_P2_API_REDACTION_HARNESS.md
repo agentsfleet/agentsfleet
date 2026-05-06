@@ -26,16 +26,16 @@ A test that asserts redaction therefore needs:
 
 - The production `zombied-executor` binary (NullClaw + tool builders + adapter all included).
 - A stub or recorded LLM provider that emits a deterministic tool_use event (otherwise the test spends real tokens, costs money, and is non-deterministic).
-- A real tool spec containing `${secrets.fly.api_token}` so the substitution path fires.
+- A real tool spec containing `${secrets.llm.api_key}` so the substitution path fires.
 - The RpcRecorder fixture (already in tree at `src/zombie/test_rpc_recorder.zig`) for the byte-level assertion.
 
 ## Scope
 
 ### Files to add
 
-- `src/executor/test_stub_provider.zig` — a NullClaw `Provider` implementation that returns a canned response containing one tool_use event whose args reference `${secrets.fly.api_token}`. ~150 lines.
+- `src/executor/test_stub_provider.zig` — a NullClaw `Provider` implementation that returns a canned response containing one tool_use event whose args reference `${secrets.llm.api_key}`. ~150 lines.
 - `src/zombie/event_loop_harness_redaction_test.zig` — drives the stub-provider binary spawn (parallel to `test_executor_harness.zig` but pointed at `zig-out/bin/zombied-executor-stub`), sends a real StartStage with `agent_config.api_key = SYNTHETIC_SECRET`, captures via RpcRecorder, asserts:
-  - placeholder bytes appear in the captured RPC stream (`recorder.contains("${secrets.fly.api_token}")`)
+  - placeholder bytes appear in the captured RPC stream (`recorder.contains("${secrets.llm.api_key}")`)
   - resolved secret bytes do **not** appear (`!recorder.contains(SYNTHETIC_SECRET)`)
   - no PUBLISH frame on `zombie:{id}:activity` contains the resolved bytes
 - `src/zombie/test_production_executor.zig` — fixture mirroring `test_executor_harness.zig` but for the stub-provider binary (separate file: the spawn target and its build-option gating differ, and we want to avoid muddling the harness fixture with two execution modes).
@@ -67,7 +67,7 @@ A test that asserts redaction therefore needs:
 
 | Test | Asserts |
 |---|---|
-| `test_executor_args_redacted_at_sandbox_boundary` | Stub provider emits tool_use with args referencing `${secrets.fly.api_token}` → recorder captures `${secrets.fly.api_token}` in RPC bytes; `SYNTHETIC_SECRET` never appears. |
+| `test_executor_args_redacted_at_sandbox_boundary` | Stub provider emits tool_use with args referencing `${secrets.llm.api_key}` → recorder captures `${secrets.llm.api_key}` in RPC bytes; `SYNTHETIC_SECRET` never appears. |
 | `test_args_redacted_no_secret_leak` | Same scenario, but check pub/sub side: subscriber on `zombie:{id}:activity` collects all frames, none contain `SYNTHETIC_SECRET`. |
 | `test_executor_passes_through_redacted_for_chunks` | `agent_response_chunk` frames containing the secret string also redact (regression — chunks reuse the same redactor as tool args). |
 
