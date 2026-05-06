@@ -119,12 +119,25 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const EventEnvelope = @import("event_envelope.zig");
 const base = @import("../db/test_fixtures.zig");
 const helpers = @import("test_harness_helpers.zig");
+const crypto_store = @import("../secrets/crypto_store.zig");
 
 const TEST_ACTOR = "steer:test-user";
 const TEST_REQUEST_JSON = "{\"message\":\"redact me\"}";
 const EMPTY_CONTEXT_JSON = "{}";
 const TEST_CONSUMER = "redaction-pubsub-consumer";
 const ACTIVITY_DRAIN_BUDGET_MS: u64 = 5_000;
+
+// Zombie config that declares a credential named "llm_key". The writepath's
+// resolveFirstCredential iterates session.config.credentials and looks up
+// each name in vault.secrets keyed `zombie:{name}` — we seed exactly that
+// row below with SYNTHETIC_SECRET as plaintext.
+const REDACTION_ZOMBIE_NAME = "redaction-bot";
+const REDACTION_ZOMBIE_CONFIG_JSON =
+    "{\"name\":\"" ++ REDACTION_ZOMBIE_NAME ++
+    "\",\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"}," ++
+    "\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}," ++
+    "\"credentials\":[\"llm_key\"]}}";
+const REDACTION_ZOMBIE_SOURCE_MD = "---\nname: " ++ REDACTION_ZOMBIE_NAME ++ "\n---\n\nYou are a redaction bot.\n";
 
 fn deleteEventStream(redis: *queue_redis.Client) void {
     var resp = redis.command(&.{ "DEL", "zombie:" ++ TEST_ZOMBIE_ID ++ ":events" }) catch return;
@@ -161,13 +174,27 @@ test "test_args_redacted_no_secret_leak" {
     defer base.teardownTenant(db_ctx.conn);
     try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
-    // Pin the resolved api_key to SYNTHETIC_SECRET so collectSecrets in
-    // runner.zig sees the exact bytes the redactor must scrub.
-    try base.seedPlatformProviderWithKey(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID, SYNTHETIC_SECRET);
+    // Platform provider for billing + model_caps; the api_key it stores is
+    // unused on the redaction path (we resolve via resolveFirstCredential
+    // below), but the writepath's debit/balance gates need the row.
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownPlatformProvider(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, REDACTION_ZOMBIE_NAME, REDACTION_ZOMBIE_CONFIG_JSON, REDACTION_ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
+    // Plant SYNTHETIC_SECRET at vault.secrets[(workspace, "zombie:llm_key")]
+    // — the exact slot resolveFirstCredential reads, given the zombie
+    // config above declares "llm_key" in its credentials list. Without
+    // this, the executor receives an empty api_key, collectSecrets has
+    // nothing to scrub, and the test would falsely catch its own setup.
+    base.setTestEncryptionKey();
+    try crypto_store.store(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID, "zombie:llm_key", SYNTHETIC_SECRET);
+    defer {
+        _ = db_ctx.conn.exec(
+            "DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2",
+            .{ TEST_WORKSPACE_ID, "zombie:llm_key" },
+        ) catch {};
+    }
 
     deleteEventStream(&redis);
     defer deleteEventStream(&redis);
