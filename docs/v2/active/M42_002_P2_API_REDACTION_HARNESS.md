@@ -1,10 +1,11 @@
-# M42_002: Production-Binary Test Harness — Wire-Level Redaction + Pub/Sub-Failure Coverage
+# M42_002: Production-Binary Test Harness — Wire-Level Redaction
 
 **Prototype:** v2.0.0
 **Milestone:** M42
 **Workstream:** 002
 **Date:** Apr 28, 2026: 09:35 PM
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m42-002-redaction-harness
 **Priority:** P2 — invariant is currently protected by code review; mechanical regression gate is desirable but not launch-blocking.
 **Categories:** API
 **Batch:** —
