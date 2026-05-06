@@ -173,8 +173,27 @@ jobs:
               ln -sf /usr/include/openssl /usr/include/aarch64-linux-gnu/openssl
               cp -a /src/. /build
               cd /build
-              echo "  fetching zig 0.15.2 for aarch64..."
-              wget -q https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz -O /tmp/zig.tar.xz
+              echo "  fetching zig 0.15.2 for aarch64 (mach → hryx → ziglang fallback)..."
+              # M62_001: prefer pkg.machengine.org over ziglang.org/download
+              # (recurring CI hangs). SHA256 verification stays identical
+              # regardless of mirror.
+              for url in \
+                https://pkg.machengine.org/zig/zig-aarch64-linux-0.15.2.tar.xz \
+                https://zigmirror.hryx.net/zig/zig-aarch64-linux-0.15.2.tar.xz \
+                https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz \
+              ; do
+                echo "    trying $url"
+                if wget -q "$url" -O /tmp/zig.tar.xz; then
+                  if echo "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f  /tmp/zig.tar.xz" | sha256sum -c - >/dev/null 2>&1; then
+                    echo "    ✓ downloaded + verified from $url"
+                    break
+                  else
+                    echo "    ✗ checksum mismatch from $url; trying next"
+                    rm -f /tmp/zig.tar.xz
+                  fi
+                fi
+              done
+              [ -f /tmp/zig.tar.xz ] || { echo "FAIL: zig 0.15.2 download failed from every mirror"; exit 1; }
               echo "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f  /tmp/zig.tar.xz" | sha256sum -c -
               (cd /tmp && tar xf zig.tar.xz)
               export PATH="/tmp/zig-aarch64-linux-0.15.2:$PATH"
