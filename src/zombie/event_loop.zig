@@ -217,5 +217,6 @@ test {
     _ = @import("event_loop_harness_heartbeat_test.zig");
     _ = @import("event_loop_harness_version_test.zig");
     _ = @import("event_loop_harness_recorder_test.zig");
+    _ = @import("event_loop_harness_redaction_test.zig");
     _ = @import("event_loop_lifecycle_test.zig");
 }

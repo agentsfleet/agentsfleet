@@ -28,7 +28,8 @@ const ChatResponse = providers.ChatResponse;
 const ToolCall = providers.ToolCall;
 const TokenUsage = providers.TokenUsage;
 
-pub const SYNTHETIC_SECRET = "ZMBSTUB-redaction-canary-9c8f4e1a2d";
+const canary = @import("redaction_canary.zig");
+pub const SYNTHETIC_SECRET = canary.SYNTHETIC_SECRET;
 
 const CANNED_TOOL_NAME = "stub_canary_tool";
 const CANNED_TOOL_CALL_ID = "call_stub_001";
@@ -101,11 +102,15 @@ fn emptyResponse(allocator: std.mem.Allocator) !ChatResponse {
         .tool_calls = &.{},
         .usage = TokenUsage{},
         .provider = try allocator.dupe(u8, "stub"),
-        .model = "stub",
+        .model = try allocator.dupe(u8, "stub"),
     };
 }
 
 fn cannedResponse(allocator: std.mem.Allocator) !ChatResponse {
+    // Every non-empty string in ChatResponse must be allocated by the
+    // same allocator NullClaw uses to free it (Agent.freeResponseFields
+    // calls allocator.free on each non-empty field). String literals
+    // here would crash with a bus error on free.
     const content = try allocator.dupe(u8, CONTENT_TEMPLATE);
     errdefer allocator.free(content);
 
@@ -125,6 +130,6 @@ fn cannedResponse(allocator: std.mem.Allocator) !ChatResponse {
         .tool_calls = calls,
         .usage = TokenUsage{ .prompt_tokens = 8, .completion_tokens = 16, .total_tokens = 24 },
         .provider = try allocator.dupe(u8, "stub"),
-        .model = "stub",
+        .model = try allocator.dupe(u8, "stub"),
     };
 }

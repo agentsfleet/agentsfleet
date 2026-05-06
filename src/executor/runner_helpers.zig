@@ -13,8 +13,25 @@ const json = @import("json_helpers.zig");
 const tool_bridge = @import("tool_bridge.zig");
 const context_budget = @import("context_budget.zig");
 const stub_gate = @import("stub_provider_gate.zig");
+const runner_progress = @import("runner_progress.zig");
 
 const log = std.log.scoped(.executor_runner);
+
+/// Take ownership of NullClaw's composeFinalReply buffer, redact every
+/// known secret value, and return a freshly-allocated, redacted copy.
+/// The terminal StageResponse content rides the same RPC channel as
+/// progress frames; the redactor must scrub it identically before the
+/// bytes leave the executor process.
+pub fn redactedFinalReply(
+    alloc: std.mem.Allocator,
+    response: []const u8,
+    secrets: []const runner_progress.Secret,
+) ![]const u8 {
+    defer alloc.free(response);
+    const redacted = runner_progress.redactBytes(alloc, response, secrets) catch response;
+    defer if (redacted.ptr != response.ptr) alloc.free(redacted);
+    return alloc.dupe(u8, redacted);
+}
 
 /// Holds the runtime LLM provider bundle for the agent loop. In the stub
 /// binary `inner` stays null and `stub` carries the canned-response provider;

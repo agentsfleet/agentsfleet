@@ -289,12 +289,12 @@ fn executeInner(
     };
     defer if (composed.ptr != message.ptr) alloc.free(composed);
 
-    // 8. Run agent.
+    // 8. Run agent + redact terminal reply (see runner_helpers).
     const response = agent.runSingle(composed) catch {
         log.err("executor.runner.agent_run_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_RUN});
         return RunnerError.AgentRunFailed;
     };
-    const owned = alloc.dupe(u8, response) catch return RunnerError.AgentRunFailed;
+    const owned = runner_helpers.redactedFinalReply(alloc, response, &secrets_list) catch return RunnerError.AgentRunFailed;
 
     return .{
         .content = owned,

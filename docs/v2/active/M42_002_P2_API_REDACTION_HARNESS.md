@@ -46,8 +46,16 @@ A test that asserts redaction therefore needs:
 
 ### Files NOT to modify
 
-- `src/executor/runner_progress.zig` — redaction logic itself is what the test exercises; don't touch it.
 - `src/executor/main.zig` — provider selection lives in `runner.zig` for parity with the harness gate.
+
+### Discovered during EXECUTE — redactor gap closed in this spec
+
+The original spec assumed `runner_progress.Adapter` already redacted every outbound path. The Slice-4 tests revealed two leaks:
+
+- `streamCallbackThunk` emitted `agent_response_chunk.text = chunk.delta` without scrubbing (chunks bypassed redaction entirely).
+- `runner.executeInner` returned `agent.runSingle(composed)` as the terminal `StageResponse.content` without scrubbing.
+
+Both are now closed in this spec (per Captain decision, expand scope rather than split). Net change: ~10 LOC across `runner_progress.zig` (chunk path + `pub` on `redactBytes`) and `runner.zig` (terminal redaction + ownership-transfer cleanup of the `agent.runSingle` buffer, which was also leaking pre-fix).
 
 ## Resolved decisions
 
