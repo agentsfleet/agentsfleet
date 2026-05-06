@@ -10,8 +10,8 @@
 //! lookup, `*AuthCtx` fail-write, and the typed-handle pattern.
 //!
 //! Lives in `src/auth/` under the portability gate — imports only std,
-//! httpz, the `hmac_sig` named module, and the sibling `svix_verify` module
-//! (which itself imports only std + `hmac_sig`).
+//! httpz, the `hmac_sig` and `log` named modules, and the sibling
+//! `svix_verify` module (which itself imports only std + `hmac_sig`).
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -20,6 +20,7 @@ const chain = @import("chain.zig");
 const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
 const sv = @import("../crypto/svix_verify.zig");
+const logging = @import("log");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 
@@ -38,7 +39,7 @@ fn defaultNowSeconds() i64 {
     return std.time.timestamp();
 }
 
-const log = std.log.scoped(.svix);
+const log = logging.scoped(.svix);
 
 /// Owned lookup result. `secret` is the `whsec_<base64>` string loaded from
 /// vault for the target zombie — the verifier handles prefix stripping and
@@ -74,7 +75,7 @@ pub fn SvixSignature(comptime LookupCtx: type) type {
             const zombie_id = ctx.webhook_zombie_id orelse return failSig(ctx);
 
             const result_opt = self.lookup_fn(self.lookup_ctx, zombie_id, ctx.alloc) catch |err| {
-                log.warn("svix lookup failed req_id={s} zombie_id={s} err={s}", .{ ctx.req_id, zombie_id, @errorName(err) });
+                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .err = @errorName(err) });
                 return failSig(ctx);
             };
             const result = result_opt orelse return failSig(ctx);

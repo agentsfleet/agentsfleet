@@ -33,7 +33,7 @@ pub const EncryptedBlob = struct {
 /// Load the 32-byte KEK from `ENCRYPTION_MASTER_KEY` env var (64 hex chars).
 pub fn loadKek(alloc: std.mem.Allocator) ![KEY_LEN]u8 {
     const hex = std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY") catch {
-        log.err("secret.kek_env_not_set", .{ .error_code = "UZ-INTERNAL-003" });
+        log.err("kek_env_not_set", .{ .error_code = "UZ-INTERNAL-003" });
         return SecretError.MissingMasterKey;
     };
     defer alloc.free(hex);

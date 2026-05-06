@@ -27,10 +27,11 @@ const chain = @import("chain.zig");
 const auth_ctx = @import("auth_ctx.zig");
 const errors = @import("errors.zig");
 const hs = @import("hmac_sig");
+const logging = @import("log");
 
 const AuthCtx = auth_ctx.AuthCtx;
 
-const log = std.log.scoped(.webhook_sig);
+const log = logging.scoped(.webhook_sig);
 
 /// Mirror of the fields `src/zombie/webhook_verify.VerifyConfig` needs at
 /// verify time. Local to `src/auth/` to preserve the `test-auth` portability
@@ -95,7 +96,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             };
 
             const result_opt = self.lookup_fn(self.lookup_ctx, zombie_id, ctx.alloc) catch |err| {
-                log.warn("webhook_sig lookup failed req_id={s} zombie_id={s} err={s}", .{ ctx.req_id, zombie_id, @errorName(err) });
+                log.warn("lookup_failed", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .err = @errorName(err) });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
                 return .short_circuit;
             };
@@ -108,7 +109,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // No scheme = no provider configured. Reject as "credential not
             // configured" so operators see a recoverable error class.
             const scheme = result.signature_scheme orelse {
-                log.warn("webhook_sig no scheme req_id={s} zombie_id={s}", .{ ctx.req_id, zombie_id });
+                log.warn("no_scheme", .{ .req_id = ctx.req_id, .zombie_id = zombie_id });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
                 return .short_circuit;
             };
@@ -116,7 +117,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // from "signature wrong" — this is a recoverable misconfiguration,
             // not an attack.
             const secret = result.signature_secret orelse {
-                log.warn("webhook_sig hmac secret unavailable req_id={s} zombie_id={s} (vault load failed or empty)", .{ ctx.req_id, zombie_id });
+                log.warn("hmac_secret_unavailable", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .reason = "vault load failed or empty" });
                 ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
                 return .short_circuit;
             };

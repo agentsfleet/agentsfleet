@@ -61,7 +61,7 @@ pub fn store(
         encrypted_payload.tag[0..],
         now_ms,
     });
-    log.info("secret.stored", .{ .workspace_id = workspace_id, .key_name = key_name });
+    log.info("stored", .{ .workspace_id = workspace_id, .key_name = key_name });
 }
 
 /// Load and decrypt a secret from vault.secrets.
@@ -81,7 +81,7 @@ pub fn load(
     const row = try result.next() orelse {
         // Not-found is a normal control-flow path — caller decides whether to treat
         // it as an error. Log at debug so it doesn't trip "logged errors" test gates.
-        log.debug("secret.not_found", .{ .workspace_id = workspace_id, .key_name = key_name });
+        log.debug("not_found", .{ .workspace_id = workspace_id, .key_name = key_name });
         return cp.SecretError.NotFound;
     };
 
@@ -97,7 +97,7 @@ pub fn load(
     // key and surface as DecryptFailed. Fail loud instead.
     const kek_version = try row.get(i32, 6);
     if (kek_version != 1) {
-        log.err("secret.unsupported_kek_version", .{
+        log.err("unsupported_kek_version", .{
             .workspace_id = workspace_id,
             .key_name = key_name,
             .kek_version = kek_version,
@@ -122,14 +122,14 @@ pub fn load(
 
     const dek = try cp.toFixed(KEY_LEN, dek_plain);
     const plaintext_result = cp.decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, &dek) catch |err| {
-        log.err("secret.decrypt_failed", .{
+        log.err("decrypt_failed", .{
             .workspace_id = workspace_id,
             .key_name = key_name,
             .error_code = "UZ-INTERNAL-003",
         });
         return err;
     };
-    log.info("secret.retrieved", .{ .workspace_id = workspace_id, .key_name = key_name });
+    log.info("retrieved", .{ .workspace_id = workspace_id, .key_name = key_name });
     return plaintext_result;
 }
 

@@ -24,6 +24,7 @@ const auth_ctx = @import("auth_ctx.zig");
 const bearer = @import("bearer.zig");
 const errors = @import("errors.zig");
 const api_key = @import("../api_key.zig");
+const logging = @import("log");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 
@@ -34,7 +35,7 @@ pub const TENANT_KEY_PREFIX = "zmb_t_";
 // error-code strings) keeps them in sync.
 const ERR_APIKEY_REVOKED: []const u8 = "UZ-APIKEY-004";
 
-const log = std.log.scoped(.api_keys);
+const log = logging.scoped(.api_keys);
 
 /// Outcome of a key-hash lookup. All slices are owned by the allocator
 /// passed to `LookupFn`; the caller of `LookupFn` is responsible for
@@ -89,19 +90,19 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
         return .short_circuit;
     };
     const row = maybe_row orelse {
-        log.info("api_key.auth_rejected reason=unknown key_prefix=" ++ TENANT_KEY_PREFIX, .{});
+        log.info("auth_rejected", .{ .reason = "unknown", .key_prefix = TENANT_KEY_PREFIX });
         ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
         return .short_circuit;
     };
 
     if (!row.active) {
-        log.info("api_key.auth_rejected reason=revoked api_key_id={s}", .{row.api_key_id});
+        log.info("auth_rejected", .{ .reason = "revoked", .api_key_id = row.api_key_id });
         freeRow(ctx.alloc, row);
         ctx.fail(ERR_APIKEY_REVOKED, "API key has been revoked");
         return .short_circuit;
     }
 
-    log.info("api_key.auth_succeeded api_key_id={s} tenant_id={s}", .{ row.api_key_id, row.tenant_id });
+    log.info("auth_succeeded", .{ .api_key_id = row.api_key_id, .tenant_id = row.tenant_id });
     ctx.alloc.free(row.api_key_id);
     ctx.principal = .{
         .mode = .api_key,

@@ -4,8 +4,9 @@
 const std = @import("std");
 const jwks = @import("jwks.zig");
 const claims = @import("claims.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.auth);
+const log = logging.scoped(.auth);
 
 pub const Provider = enum {
     clerk,
@@ -70,10 +71,10 @@ pub const Verifier = struct {
     }
 
     pub fn verifyAuthorization(self: *Verifier, alloc: std.mem.Allocator, authorization: []const u8) !Principal {
-        log.debug("provider={s}", .{@tagName(self.provider)});
+        log.debug("provider_selected", .{ .provider = @tagName(self.provider) });
 
         const verified = self.inner.verifyAndDecode(alloc, authorization) catch |err| {
-            log.warn("verification failed err={s}", .{@errorName(err)});
+            log.warn("verification_failed", .{ .err = @errorName(err) });
             return err;
         };
         errdefer {
@@ -87,7 +88,7 @@ pub const Verifier = struct {
         };
         alloc.free(verified.claims_json);
 
-        log.info("verification ok sub={s} iss={s}", .{ verified.subject, verified.issuer });
+        log.info("verification_ok", .{ .sub = verified.subject, .iss = verified.issuer });
 
         return .{
             .subject = verified.subject,
