@@ -194,6 +194,20 @@ pub fn seedPlatformProvider(
     conn: *pg.Conn,
     workspace_id: []const u8,
 ) !void {
+    return seedPlatformProviderWithKey(alloc, conn, workspace_id, TEST_PROVIDER_API_KEY);
+}
+
+/// Variant of seedPlatformProvider that lets the caller pin the api_key
+/// the platform credential resolves to. Used by the redaction-harness
+/// pub/sub test (M42_002) to seed `SYNTHETIC_SECRET` so the worker's
+/// resolveFirstCredential returns the exact bytes the redactor must
+/// scrub from outbound frames.
+pub fn seedPlatformProviderWithKey(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    api_key: []const u8,
+) !void {
     setTestEncryptionKey();
 
     const vault = @import("../state/vault.zig");
@@ -213,7 +227,7 @@ pub fn seedPlatformProvider(
     var obj = std.json.ObjectMap.init(alloc);
     defer obj.deinit();
     try obj.put("provider", .{ .string = TEST_PROVIDER_NAME });
-    try obj.put("api_key", .{ .string = TEST_PROVIDER_API_KEY });
+    try obj.put("api_key", .{ .string = api_key });
     try vault.storeJson(alloc, conn, workspace_id, TEST_PROVIDER_NAME, .{ .object = obj });
 
     // platform_llm_keys row pointing at the seeded vault credential.

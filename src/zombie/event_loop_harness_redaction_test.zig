@@ -103,8 +103,126 @@ test "test_executor_passes_through_redacted_for_chunks" {
     try std.testing.expect(!run.recorder.contains(SYNTHETIC_SECRET));
 }
 
-// `test_args_redacted_no_secret_leak` (pub/sub-side assertion) is tracked
-// separately; it requires the worker→Redis publish path which depends on
-// a live Postgres + Redis test environment. Captured here as a plain
-// reminder rather than skipped, to keep this file integration-free.
-//   See M42_002 spec §Test Specification, row 2.
+// ── Pub/sub-side assertion (test row 2) ─────────────────────────────────────
+//
+// Drives the full worker writepath against the stub-provider executor and
+// asserts no Redis publish frame on `zombie:{id}:activity` carries the
+// resolved secret. Skip-safe locally: needs Postgres + a TLS Redis URL
+// (`TEST_REDIS_TLS_URL`) — both absent on a fresh checkout, so the test
+// returns `error.SkipZigTest` without spinning up infrastructure.
+
+const event_loop = @import("event_loop.zig");
+const writepath = @import("event_loop_writepath.zig");
+const types = @import("event_loop_types.zig");
+const queue_redis = @import("../queue/redis_client.zig");
+const redis_zombie = @import("../queue/redis_zombie.zig");
+const EventEnvelope = @import("event_envelope.zig");
+const base = @import("../db/test_fixtures.zig");
+const helpers = @import("test_harness_helpers.zig");
+
+const TEST_ACTOR = "steer:test-user";
+const TEST_REQUEST_JSON = "{\"message\":\"redact me\"}";
+const EMPTY_CONTEXT_JSON = "{}";
+const TEST_CONSUMER = "redaction-pubsub-consumer";
+const ACTIVITY_DRAIN_BUDGET_MS: u64 = 5_000;
+
+fn deleteEventStream(redis: *queue_redis.Client) void {
+    var resp = redis.command(&.{ "DEL", "zombie:" ++ TEST_ZOMBIE_ID ++ ":events" }) catch return;
+    defer resp.deinit(redis.alloc);
+}
+
+fn cleanupZombieEventsRows(conn: *@import("pg").Conn) void {
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
+}
+
+test "test_args_redacted_no_secret_leak" {
+    if (std.process.getEnvVarOwned(ALLOC, helpers.SKIP_ENV_VAR)) |s| {
+        defer ALLOC.free(s);
+        return error.SkipZigTest;
+    } else |_| {}
+
+    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    var redis = blk: {
+        const tls_url = std.process.getEnvVarOwned(ALLOC, helpers.REDIS_TLS_URL_ENV_VAR) catch return error.SkipZigTest;
+        defer ALLOC.free(tls_url);
+        break :blk queue_redis.Client.connectFromUrl(ALLOC, tls_url) catch return error.SkipZigTest;
+    };
+    defer redis.deinit();
+
+    var subscriber = (try helpers.connectSubscriber(ALLOC)) orelse return error.SkipZigTest;
+    defer subscriber.deinit();
+    try subscriber.subscribe("zombie:" ++ TEST_ZOMBIE_ID ++ ":activity");
+    std.Thread.sleep(helpers.SUBSCRIBE_SETTLE_MS * std.time.ns_per_ms);
+
+    try base.seedTenant(db_ctx.conn);
+    defer base.teardownTenant(db_ctx.conn);
+    try base.seedWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
+    defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
+    // Pin the resolved api_key to SYNTHETIC_SECRET so collectSecrets in
+    // runner.zig sees the exact bytes the redactor must scrub.
+    try base.seedPlatformProviderWithKey(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID, SYNTHETIC_SECRET);
+    defer base.teardownPlatformProvider(db_ctx.conn, TEST_WORKSPACE_ID);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
+    defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
+    try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
+
+    deleteEventStream(&redis);
+    defer deleteEventStream(&redis);
+    defer cleanupZombieEventsRows(db_ctx.conn);
+
+    try redis_zombie.ensureZombieConsumerGroup(&redis, TEST_ZOMBIE_ID);
+
+    var harness = try Harness.start(ALLOC, .{ .binary = .stub });
+    defer harness.deinit();
+
+    const envelope = EventEnvelope{
+        .event_id = "",
+        .zombie_id = TEST_ZOMBIE_ID,
+        .workspace_id = TEST_WORKSPACE_ID,
+        .actor = TEST_ACTOR,
+        .event_type = .chat,
+        .request_json = TEST_REQUEST_JSON,
+        .created_at = std.time.milliTimestamp(),
+    };
+    const xadded_id = try redis.xaddZombieEvent(envelope);
+    defer ALLOC.free(xadded_id);
+
+    var evt = (try redis_zombie.xreadgroupZombie(&redis, TEST_ZOMBIE_ID, TEST_CONSUMER)) orelse
+        return error.UnexpectedNullEvent;
+    defer evt.deinit(ALLOC);
+
+    var session = try event_loop.claimZombie(ALLOC, TEST_ZOMBIE_ID, db_ctx.pool);
+    defer session.deinit(ALLOC);
+
+    var running = std.atomic.Value(bool).init(true);
+    const cfg = types.EventLoopConfig{
+        .pool = db_ctx.pool,
+        .redis = &redis,
+        .redis_publish = &redis,
+        .executor = harness.executorPtr(),
+        .running = &running,
+        .balance_policy = .stop,
+    };
+    var consec: u32 = 0;
+    _ = writepath.run(ALLOC, &session, &evt, cfg, &consec);
+
+    // Drain raw payloads off the activity channel, asserting per-frame
+    // that SYNTHETIC_SECRET never appears. Bounded by the overall budget
+    // and a quiet-window after the last frame.
+    const overall_deadline = std.time.milliTimestamp() + @as(i64, @intCast(ACTIVITY_DRAIN_BUDGET_MS));
+    var last_msg_at = std.time.milliTimestamp();
+    while (std.time.milliTimestamp() < overall_deadline) {
+        const msg_opt = try subscriber.readMessage();
+        if (msg_opt) |m| {
+            var msg = m;
+            defer msg.deinit();
+            try std.testing.expect(std.mem.indexOf(u8, msg.data, SYNTHETIC_SECRET) == null);
+            last_msg_at = std.time.milliTimestamp();
+            continue;
+        }
+        if (std.time.milliTimestamp() - last_msg_at > @as(i64, @intCast(helpers.DRAIN_QUIET_MS))) break;
+    }
+}
