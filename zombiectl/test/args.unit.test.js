@@ -63,12 +63,17 @@ test("parseGlobalArgs prioritizes --api over env and forwards remaining args", (
   assert.deepEqual(out.rest, ["doctor"]);
 });
 
-test("parseGlobalArgs falls back through env chain and defaults", () => {
-  const outApiUrl = parseGlobalArgs(["doctor"], { API_URL: "https://api-url.example" });
-  assert.equal(outApiUrl.global.apiUrl, "https://api-url.example");
+test("parseGlobalArgs falls back to API_URL when ZOMBIE_API_URL is unset", () => {
+  const out = parseGlobalArgs(["doctor"], { API_URL: "https://api-url.example" });
+  assert.equal(out.global.apiUrl, "https://api-url.example");
+});
 
-  const outDefault = parseGlobalArgs(["doctor"], {});
-  assert.equal(outDefault.global.apiUrl, "https://api.usezombie.com");
+test("parseGlobalArgs returns null apiUrl when no flag and no env vars are set", () => {
+  // null is the contract — it tells cli.js to consult creds.api_url before
+  // falling to DEFAULT_API_URL. The default-is-production claim is asserted
+  // at the integration layer in api-url-resolution.integration.test.js.
+  const out = parseGlobalArgs(["doctor"], {});
+  assert.equal(out.global.apiUrl, null);
 });
 
 test("parseGlobalArgs uses ZOMBIE_API_URL when no flag is provided", () => {
@@ -84,15 +89,15 @@ test("parseGlobalArgs prefers ZOMBIE_API_URL over API_URL when both env vars are
   assert.equal(out.global.apiUrl, "https://zombie-env.example");
 });
 
-test("parseGlobalArgs falls through empty ZOMBIE_API_URL to API_URL or default", () => {
+test("parseGlobalArgs falls through empty ZOMBIE_API_URL to API_URL or null", () => {
   const outFallthroughToApiUrl = parseGlobalArgs(["doctor"], {
     ZOMBIE_API_URL: "",
     API_URL: "https://api-url.example",
   });
   assert.equal(outFallthroughToApiUrl.global.apiUrl, "https://api-url.example");
 
-  const outFallthroughToDefault = parseGlobalArgs(["doctor"], { ZOMBIE_API_URL: "" });
-  assert.equal(outFallthroughToDefault.global.apiUrl, "https://api.usezombie.com");
+  const outFallthroughToNull = parseGlobalArgs(["doctor"], { ZOMBIE_API_URL: "" });
+  assert.equal(outFallthroughToNull.global.apiUrl, null);
 });
 
 test("parseGlobalArgs sets global boolean options and leaves command argv intact", () => {

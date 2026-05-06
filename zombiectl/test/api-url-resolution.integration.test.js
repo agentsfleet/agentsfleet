@@ -5,6 +5,7 @@ import path from "node:path";
 import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
+import { saveCredentials } from "../src/lib/state.js";
 
 function bufferStream() {
   let data = "";
@@ -111,6 +112,46 @@ describe("api url resolution drives every fetch from runCli", () => {
       );
       expect(code).toBe(1);
       expect(calls[0]).toEqual({ url: "https://api-dev.usezombie.com/v1/auth/sessions", method: "POST" });
+    });
+  });
+
+  test("honors creds.api_url when no flag and no env override are set (regression: PR #297 review)", async () => {
+    // Regression for the dead-code bug in cli.js:76's `||` chain: parseGlobalArgs
+    // used to bake DEFAULT_API_URL into its return, making global.apiUrl always
+    // truthy and short-circuiting creds.api_url. A user who ran
+    // `zombiectl login --api http://localhost:3000` would have their URL written
+    // to credentials.json but every subsequent invocation silently fell through
+    // to the production default. This test pre-seeds the saved api_url and
+    // proves it survives end-to-end as the ctx.apiUrl that drives fetch.
+    await withStateDir(async () => {
+      await saveCredentials({
+        token: "header.payload.sig",
+        saved_at: Date.now(),
+        session_id: "sess_persisted",
+        api_url: "http://localhost:3000",
+      });
+
+      const out = bufferStream();
+      const err = bufferStream();
+      const calls = [];
+      const fetchImpl = async (url) => {
+        calls.push({ url });
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({ status: "ok" }),
+        };
+      };
+
+      await runCli(["doctor"], {
+        stdout: out.stream,
+        stderr: err.stream,
+        env: {},
+        fetchImpl,
+      });
+
+      expect(calls.length).toBeGreaterThan(0);
+      expect(calls[0].url).toBe("http://localhost:3000/healthz");
     });
   });
 
