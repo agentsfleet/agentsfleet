@@ -16,14 +16,11 @@ import { createSpinner } from "./ui-progress.js";
 import {
   clearCredentials,
   loadCredentials,
-  loadPreferences,
   loadWorkspaces,
   newIdempotencyKey,
   saveCredentials,
-  savePreferences,
   saveWorkspaces,
 } from "./lib/state.js";
-import { promptYesNo } from "./program/prompt.js";
 import { ApiError, apiHeaders, printApiError, request } from "./program/http-client.js";
 import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
@@ -42,7 +39,6 @@ const AUTH_EXEMPT_ROUTES = new Set(["login"]);
 export async function runCli(argv, io = {}) {
   const stdout = io.stdout || process.stdout;
   const stderr = io.stderr || process.stderr;
-  const stdin = io.stdin || process.stdin;
   const env = io.env || process.env;
   const fetchImpl = io.fetchImpl || globalThis.fetch;
 
@@ -62,9 +58,6 @@ export async function runCli(argv, io = {}) {
 
   const creds = await loadCredentials().catch(() => ({}));
   const workspaces = await loadWorkspaces().catch(() => ({ items: [], current_workspace_id: null }));
-  const preferences = await loadPreferences({ stderr }).catch(() => ({
-    schema_version: 1, posthog_enabled: null, decided_at: null,
-  }));
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? "admin" : null);
@@ -87,12 +80,10 @@ export async function runCli(argv, io = {}) {
     jsonMode: global.json,
     noOpen: global.noOpen,
     noInput: global.noInput,
-    stdin,
     stdout,
     stderr,
     env,
     fetchImpl,
-    preferences,
   };
 
   const command = rest[0];
@@ -122,15 +113,12 @@ export async function runCli(argv, io = {}) {
     request,
     saveCredentials,
     saveWorkspaces,
-    loadPreferences,
-    savePreferences,
-    promptYesNo,
     ui,
     writeLine,
     apiHeaders,
   });
 
-  const analyticsClient = await cliAnalytics.createCliAnalytics(env, preferences);
+  const analyticsClient = await cliAnalytics.createCliAnalytics(env);
   const distinctId = extractDistinctIdFromToken(ctx.token);
 
   const handlers = registerProgramCommands({

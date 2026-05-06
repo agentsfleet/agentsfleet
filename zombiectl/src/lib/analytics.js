@@ -12,18 +12,10 @@ function boolFromEnv(value, fallback) {
   return !(normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no");
 }
 
-function resolveConfig(env = process.env, preferences = null) {
+function resolveConfig(env = process.env) {
   const key = env.ZOMBIE_POSTHOG_KEY || DEFAULT_POSTHOG_KEY;
   const host = env.ZOMBIE_POSTHOG_HOST || DEFAULT_POSTHOG_HOST;
-  const envValue = env.ZOMBIE_POSTHOG_ENABLED;
-  let enabled;
-  if (envValue != null && envValue !== "") {
-    enabled = boolFromEnv(envValue, false);
-  } else if (preferences && typeof preferences.posthog_enabled === "boolean") {
-    enabled = preferences.posthog_enabled;
-  } else {
-    enabled = false;
-  }
+  const enabled = boolFromEnv(env.ZOMBIE_POSTHOG_ENABLED, key.length > 0);
   return { key, host, enabled };
 }
 
@@ -36,8 +28,8 @@ function sanitizeProperties(properties = {}) {
   return out;
 }
 
-export async function createCliAnalytics(env = process.env, preferences = null) {
-  const cfg = resolveConfig(env, preferences);
+export async function createCliAnalytics(env = process.env) {
+  const cfg = resolveConfig(env);
   if (!cfg.enabled || !cfg.key) return null;
 
   try {
