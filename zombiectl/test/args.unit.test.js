@@ -100,6 +100,33 @@ test("parseGlobalArgs falls through empty ZOMBIE_API_URL to API_URL or null", ()
   assert.equal(outFallthroughToNull.global.apiUrl, null);
 });
 
+test("parseGlobalArgs precedence matrix across flag, ZOMBIE_API_URL, API_URL (8 combinations)", () => {
+  // Walks every combination of (--api flag, ZOMBIE_API_URL, API_URL) being
+  // set or unset. parseGlobalArgs is the parse-layer half of the precedence
+  // chain — creds.api_url is consumed downstream in cli.js:76. The default
+  // is consulted only at cli.js:76 (parseGlobalArgs returns null when
+  // nothing explicit is set).
+  const FLAG = "https://flag.example";
+  const ZENV = "https://zombie-env.example";
+  const AENV = "https://api-url-env.example";
+
+  const cases = [
+    { argv: ["--api", FLAG, "doctor"], env: { ZOMBIE_API_URL: ZENV, API_URL: AENV }, expected: FLAG, label: "flag + zenv + aenv" },
+    { argv: ["--api", FLAG, "doctor"], env: { ZOMBIE_API_URL: ZENV },                expected: FLAG, label: "flag + zenv" },
+    { argv: ["--api", FLAG, "doctor"], env: { API_URL: AENV },                       expected: FLAG, label: "flag + aenv" },
+    { argv: ["--api", FLAG, "doctor"], env: {},                                      expected: FLAG, label: "flag alone" },
+    { argv: ["doctor"],                env: { ZOMBIE_API_URL: ZENV, API_URL: AENV }, expected: ZENV, label: "zenv + aenv" },
+    { argv: ["doctor"],                env: { ZOMBIE_API_URL: ZENV },                expected: ZENV, label: "zenv alone" },
+    { argv: ["doctor"],                env: { API_URL: AENV },                       expected: AENV, label: "aenv alone" },
+    { argv: ["doctor"],                env: {},                                      expected: null, label: "nothing set" },
+  ];
+
+  for (const c of cases) {
+    const out = parseGlobalArgs(c.argv, c.env);
+    assert.equal(out.global.apiUrl, c.expected, `case: ${c.label}`);
+  }
+});
+
 test("parseGlobalArgs sets global boolean options and leaves command argv intact", () => {
   const out = parseGlobalArgs(["--json", "--no-input", "--no-open", "run", "status", "run_1"], {});
   assert.equal(out.global.json, true);

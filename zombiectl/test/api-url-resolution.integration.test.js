@@ -155,6 +155,79 @@ describe("api url resolution drives every fetch from runCli", () => {
     });
   });
 
+  // Full precedence-chain matrix. The bug fixed in bb1ca7c9 lived in the
+  // composition at cli.js:76 — parseGlobalArgs unit tests alone could not
+  // catch it because the bug was the cross-module short-circuit, not the
+  // parser. This 16-case matrix walks every combination of (--api flag,
+  // ZOMBIE_API_URL env, API_URL env, creds.api_url persisted) and asserts
+  // the resolved URL drives the actual outbound fetch through the runCli
+  // dispatch.
+  describe("full precedence matrix", () => {
+    const FLAG = "https://flag.example";
+    const ZENV = "https://zombie-env.example";
+    const AENV = "https://api-url-env.example";
+    const CREDS = "https://saved-creds.example";
+    const DEFAULT = "https://api.usezombie.com";
+
+    const cases = [
+      // Flag set → flag wins regardless of all four other inputs.
+      { set: { flag: 1, zenv: 1, aenv: 1, creds: 1 }, expected: FLAG },
+      { set: { flag: 1, zenv: 1, aenv: 1, creds: 0 }, expected: FLAG },
+      { set: { flag: 1, zenv: 1, aenv: 0, creds: 1 }, expected: FLAG },
+      { set: { flag: 1, zenv: 1, aenv: 0, creds: 0 }, expected: FLAG },
+      { set: { flag: 1, zenv: 0, aenv: 1, creds: 1 }, expected: FLAG },
+      { set: { flag: 1, zenv: 0, aenv: 1, creds: 0 }, expected: FLAG },
+      { set: { flag: 1, zenv: 0, aenv: 0, creds: 1 }, expected: FLAG },
+      { set: { flag: 1, zenv: 0, aenv: 0, creds: 0 }, expected: FLAG },
+      // Flag unset, ZOMBIE_API_URL set → ZOMBIE_API_URL wins over API_URL / creds / default.
+      { set: { flag: 0, zenv: 1, aenv: 1, creds: 1 }, expected: ZENV },
+      { set: { flag: 0, zenv: 1, aenv: 1, creds: 0 }, expected: ZENV },
+      { set: { flag: 0, zenv: 1, aenv: 0, creds: 1 }, expected: ZENV },
+      { set: { flag: 0, zenv: 1, aenv: 0, creds: 0 }, expected: ZENV },
+      // Flag + ZOMBIE_API_URL unset, API_URL set → API_URL wins over creds / default.
+      { set: { flag: 0, zenv: 0, aenv: 1, creds: 1 }, expected: AENV },
+      { set: { flag: 0, zenv: 0, aenv: 1, creds: 0 }, expected: AENV },
+      // Only creds set → creds.api_url wins over default. (This is the leg
+      // the original bug short-circuited.)
+      { set: { flag: 0, zenv: 0, aenv: 0, creds: 1 }, expected: CREDS },
+      // Nothing explicit set → DEFAULT_API_URL.
+      { set: { flag: 0, zenv: 0, aenv: 0, creds: 0 }, expected: DEFAULT },
+    ];
+
+    for (const c of cases) {
+      const setNames = Object.entries(c.set)
+        .filter(([, v]) => v === 1)
+        .map(([k]) => k);
+      const label = setNames.length === 0 ? "nothing set" : setNames.join(" + ");
+      test(`${label} → ${c.expected}`, async () => {
+        await withStateDir(async () => {
+          await saveCredentials({
+            token: "header.payload.sig",
+            saved_at: Date.now(),
+            session_id: "sess_matrix",
+            api_url: c.set.creds === 1 ? CREDS : null,
+          });
+          const env = {};
+          if (c.set.zenv === 1) env.ZOMBIE_API_URL = ZENV;
+          if (c.set.aenv === 1) env.API_URL = AENV;
+          const argv = c.set.flag === 1 ? ["--api", FLAG, "doctor"] : ["doctor"];
+
+          const out = bufferStream();
+          const err = bufferStream();
+          const calls = [];
+          const fetchImpl = async (url) => {
+            calls.push({ url });
+            return { ok: true, status: 200, text: async () => JSON.stringify({ status: "ok" }) };
+          };
+
+          await runCli(argv, { stdout: out.stream, stderr: err.stream, env, fetchImpl });
+          expect(calls.length).toBeGreaterThan(0);
+          expect(calls[0].url).toBe(`${c.expected}/healthz`);
+        });
+      });
+    }
+  });
+
   test("strips trailing slashes from --api before composing the request URL", async () => {
     await withStateDir(async () => {
       const out = bufferStream();
