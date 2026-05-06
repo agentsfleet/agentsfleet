@@ -196,7 +196,16 @@ pub fn logWarnErr(
 }
 
 // ---------------------------------------------------------------------------
-// Section 3 — Pre-init stderr write.
+// Section 3 — Pretty-printer (re-exports from pretty.zig).
+// ---------------------------------------------------------------------------
+
+const pretty = @import("pretty.zig");
+pub const initPrettyMode = pretty.initPrettyMode;
+pub const isPretty = pretty.isPretty;
+pub const formatPretty = pretty.formatPretty;
+
+// ---------------------------------------------------------------------------
+// Section 4 — Pre-init stderr write.
 // ---------------------------------------------------------------------------
 
 /// Write a fatal startup message to stderr without going through the
@@ -217,7 +226,7 @@ pub fn fatalStderr(comptime fmt: []const u8, args: anytype) void {
 }
 
 // ---------------------------------------------------------------------------
-// Section 4 — Tests.
+// Section 5 — Tests.
 // ---------------------------------------------------------------------------
 
 test "logging helpers accept scoped error context" {

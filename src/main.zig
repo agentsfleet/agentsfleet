@@ -70,11 +70,14 @@ fn zombiedLog(
     var msg_buf: [4096]u8 = undefined;
     const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch return;
     var line_buf: [8192]u8 = undefined;
-    const line = std.fmt.bufPrint(
-        &line_buf,
-        "ts_ms={d} level={s} scope={s} msg={f}\n",
-        .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
-    ) catch return;
+    const line = if (obs.isPretty())
+        obs.formatPretty(&line_buf, ts, level, scope_str, msg)
+    else
+        std.fmt.bufPrint(
+            &line_buf,
+            "ts_ms={d} level={s} scope={s} msg={f}\n",
+            .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
+        ) catch return;
     const stderr = std.fs.File.stderr();
     stderr.writeAll(line) catch {};
 
@@ -91,6 +94,7 @@ pub fn main() !void {
         std.process.exit(1);
     };
     initRuntimeLogLevel(alloc);
+    obs.initPrettyMode(alloc);
 
     if (builtin.mode == .Debug) {
         log.warn("startup.debug_build hint=not_for_production", .{});
