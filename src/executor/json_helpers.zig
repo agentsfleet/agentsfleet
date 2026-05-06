@@ -98,18 +98,19 @@ pub fn escapeAlloc(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
 /// elements are silently skipped. Strict typing happens via OpenAPI / spec
 /// enforcement upstream — the executor is permissive at the wire to keep
 /// failure modes coarse.
+///
+/// Uses ArrayList + toOwnedSlice so the returned slice's length matches
+/// the underlying allocation exactly. The earlier sub-slice-of-fixed-alloc
+/// shape silently leaked under arena allocators and panicked under the
+/// debug allocator's "Invalid free" check when the caller `alloc.free`d.
 pub fn strArray(alloc: std.mem.Allocator, v: std.json.Value) ![]const []const u8 {
     if (v != .array) return &.{};
-    const items = v.array.items;
-    const out = try alloc.alloc([]const u8, items.len);
-    var n: usize = 0;
-    for (items) |item| {
-        if (item == .string) {
-            out[n] = item.string;
-            n += 1;
-        }
+    var out: std.ArrayList([]const u8) = .{};
+    errdefer out.deinit(alloc);
+    for (v.array.items) |item| {
+        if (item == .string) try out.append(alloc, item.string);
     }
-    return out[0..n];
+    return out.toOwnedSlice(alloc);
 }
 
 test {
