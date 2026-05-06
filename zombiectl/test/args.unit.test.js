@@ -45,6 +45,17 @@ test("normalizeApiUrl strips trailing slashes but keeps core URL", () => {
   assert.equal(normalizeApiUrl("http://localhost:3000"), "http://localhost:3000");
 });
 
+test("normalizeApiUrl strips trailing slash on the production default host", () => {
+  assert.equal(normalizeApiUrl("https://api.usezombie.com/"), "https://api.usezombie.com");
+  assert.equal(normalizeApiUrl("https://api.usezombie.com//"), "https://api.usezombie.com");
+});
+
+test("normalizeApiUrl falls back to the production default for nullish or empty input", () => {
+  assert.equal(normalizeApiUrl(null), "https://api.usezombie.com");
+  assert.equal(normalizeApiUrl(undefined), "https://api.usezombie.com");
+  assert.equal(normalizeApiUrl(""), "https://api.usezombie.com");
+});
+
 test("parseGlobalArgs prioritizes --api over env and forwards remaining args", () => {
   const env = { ZOMBIE_API_URL: "https://env.example" };
   const out = parseGlobalArgs(["--api", "https://flag.example/", "doctor"], env);
@@ -71,6 +82,17 @@ test("parseGlobalArgs prefers ZOMBIE_API_URL over API_URL when both env vars are
     API_URL: "https://api-url.example",
   });
   assert.equal(out.global.apiUrl, "https://zombie-env.example");
+});
+
+test("parseGlobalArgs falls through empty ZOMBIE_API_URL to API_URL or default", () => {
+  const outFallthroughToApiUrl = parseGlobalArgs(["doctor"], {
+    ZOMBIE_API_URL: "",
+    API_URL: "https://api-url.example",
+  });
+  assert.equal(outFallthroughToApiUrl.global.apiUrl, "https://api-url.example");
+
+  const outFallthroughToDefault = parseGlobalArgs(["doctor"], { ZOMBIE_API_URL: "" });
+  assert.equal(outFallthroughToDefault.global.apiUrl, "https://api.usezombie.com");
 });
 
 test("parseGlobalArgs sets global boolean options and leaves command argv intact", () => {
