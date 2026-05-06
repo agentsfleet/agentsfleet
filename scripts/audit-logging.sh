@@ -126,6 +126,11 @@ for f in "${FILES[@]}"; do
   [[ "$f" == *.zig ]] || continue
   case "$f" in
     src/observability/*) continue ;;
+    # src/auth/** is a portability island per M18_002 §1.3 — its files
+    # cannot import from src/observability/. Auth keeps `std.log.scoped`;
+    # carve-out documented in LOGGING_STANDARD §13. A future workstream
+    # could expose obs.scoped via a named module to lift this exception.
+    src/auth/*) continue ;;
   esac
   count=$(grep -cE '\bstd\.log\.scoped\(' "$f" 2>/dev/null || echo 0)
   if [[ "$count" -gt 0 ]]; then
