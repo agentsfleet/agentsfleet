@@ -1,23 +1,19 @@
 //! Structured-log helpers per docs/LOGGING_STANDARD.md.
 //!
-//! Two surfaces:
+//! Imported via the named module `log`:
 //!
-//!   1. `obs.scoped(.tag).<level>(event, fields)` — preferred. Builds a
-//!      logfmt key=value record from `event` + `fields` (an anonymous
-//!      struct literal) and emits via `std.log.scoped(scope).<level>`.
-//!      The custom `logFn` in main.zig wraps it with the required
-//!      `ts_ms / level / scope` keys.
+//!   const logging = @import("log");
+//!   const log = logging.scoped(.tag);
+//!   log.<level>(event, fields)
 //!
-//!   2. Legacy `logErr` / `logErrWithHint` / `logWarnErr` — kept for
-//!      compat during the migration. New call sites SHOULD use the
-//!      scoped API. The audit (scripts/audit-logging.sh) flags
-//!      remaining `std.log.scoped` callers as INFO-level migration
-//!      candidates.
+//! Builds a logfmt `key=value` record from `event` (comptime snake_case)
+//! + `fields` (an anonymous struct literal). Emits via
+//! `std.log.scoped(scope).<level>`; the custom `logFn` in `src/main.zig`
+//! wraps it with the required `ts_ms / level / scope` keys.
 //!
 //! Plus `fatalStderr` for pre-init startup output (see its docstring).
 
 const std = @import("std");
-const error_codes = @import("../errors/error_registry.zig");
 
 // ---------------------------------------------------------------------------
 // Section 1 — `obs.scoped` API (LOGGING_STANDARD §7).
@@ -159,43 +155,6 @@ fn writeStringValue(w: anytype, s: []const u8) !void {
 }
 
 // ---------------------------------------------------------------------------
-// Section 2 — Legacy helpers (compat during migration).
-// ---------------------------------------------------------------------------
-
-pub fn logErr(
-    comptime scope: @TypeOf(.enum_literal),
-    err: anyerror,
-    comptime fmt: []const u8,
-    args: anytype,
-) void {
-    std.log.scoped(scope).err(fmt ++ " err={s}", args ++ .{@errorName(err)});
-}
-
-/// Log an error with an actionable hint and docs link (git-style).
-/// Use for fatal/startup errors where the operator needs next steps.
-pub fn logErrWithHint(
-    comptime scope: @TypeOf(.enum_literal),
-    err: anyerror,
-    comptime code: []const u8,
-    comptime fmt: []const u8,
-    args: anytype,
-) void {
-    const log = std.log.scoped(scope);
-    log.err(fmt ++ " error_code=" ++ code ++ " err={s}", args ++ .{@errorName(err)});
-    log.err("  hint: " ++ comptime error_codes.hint(code), .{});
-    log.err("  see: " ++ error_codes.ERROR_DOCS_BASE ++ code, .{});
-}
-
-pub fn logWarnErr(
-    comptime scope: @TypeOf(.enum_literal),
-    err: anyerror,
-    comptime fmt: []const u8,
-    args: anytype,
-) void {
-    std.log.scoped(scope).warn(fmt ++ " err={s}", args ++ .{@errorName(err)});
-}
-
-// ---------------------------------------------------------------------------
 // Section 3 — Pretty-printer (re-exports from pretty.zig).
 // ---------------------------------------------------------------------------
 
@@ -229,12 +188,8 @@ pub fn fatalStderr(comptime fmt: []const u8, args: anytype) void {
 // Section 5 — Tests.
 // ---------------------------------------------------------------------------
 
-test "logging helpers accept scoped error context" {
-    const err_fn = logErr;
-    const warn_fn = logWarnErr;
-    _ = err_fn;
-    _ = warn_fn;
-    try std.testing.expect(true);
+test "fatalStderr is callable (compile check)" {
+    _ = @TypeOf(fatalStderr);
 }
 
 test "integration: logging helpers operate from catch paths" {

@@ -25,7 +25,7 @@ const event_loop_continuation = @import("event_loop_continuation.zig");
 const helpers = @import("event_loop_helpers.zig");
 const metering = @import("metering.zig");
 const activity_publisher = @import("activity_publisher.zig");
-const obs_log = @import("../observability/logging.zig");
+const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 
 const rows = @import("event_loop_writepath_rows.zig");
@@ -34,7 +34,7 @@ const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
 const EventLoopConfig = types.EventLoopConfig;
 
-const log = std.log.scoped(.zombie_event_loop);
+const log = logging.scoped(.zombie_event_loop);
 
 // ── ProgressEmitter wiring → activity_publisher PUBLISH thunks ──────────────
 
@@ -115,16 +115,20 @@ fn finalize(
         epoch_wall_time_ms,
     );
     helpers.updateSessionContext(alloc, session, event.event_id, stage_result.content) catch |err| {
-        log.warn("zombie_event_loop.context_update_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+        log.warn("zombie_event_loop.context_update_failed", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
     };
     rows.checkpointZombieSession(alloc, cfg.pool, session) catch |err| {
-        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.checkpoint_fail zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED, .{session.zombie_id});
+        log.warn("zombie_event_loop.checkpoint_failed", .{
+            .zombie_id = session.zombie_id,
+            .error_code = error_codes.ERR_ZOMBIE_CHECKPOINT_FAILED,
+            .err = @errorName(err),
+        });
     };
     helpers.logDeliveryResult(cfg, alloc, session, event, stage_result, wall_ms);
     const status_text: []const u8 = if (stage_result.exit_ok) rows.STATUS_PROCESSED else rows.STATUS_AGENT_ERROR;
     activity_publisher.publishEventComplete(cfg.redis_publish, scratch, session.zombie_id, event.event_id, status_text);
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
-        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
+        log.warn("zombie_event_loop.xack_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
     };
 }
 
@@ -151,7 +155,7 @@ pub fn run(
     consecutive_errors: *u32,
 ) u32 {
     rows.insertReceivedRow(alloc, cfg.pool, session, event) catch |err| {
-        obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.received_insert_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
+        log.err("zombie_event_loop.received_insert_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
         helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;
     };
@@ -245,7 +249,7 @@ pub fn run(
     const epoch_wall_time_ms = std.time.milliTimestamp();
     const t_start = std.time.Instant.now() catch null;
     const stage_result = helpers.executeInSandbox(alloc, session, event, cfg, emitter) catch |err| {
-        obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.deliver_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
+        log.err("zombie_event_loop.deliver_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
         helpers.recordDeliverError(cfg, session, event.event_id);
         helpers.sleepWithBackoff(cfg, consecutive_errors.* + 1);
         return consecutive_errors.* + 1;

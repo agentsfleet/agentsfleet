@@ -15,9 +15,9 @@ const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
 const EventLoopConfig = types.EventLoopConfig;
 const activity_publisher = @import("activity_publisher.zig");
-const obs_log = @import("../observability/logging.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.zombie_event_loop);
+const log = logging.scoped(.zombie_event_loop);
 
 // ── failure_label values written to core.zombie_events on gate_blocked ──────
 
@@ -84,7 +84,7 @@ pub fn markBlocked(
     failure_label: []const u8,
 ) void {
     const conn = cfg.pool.acquire() catch |err| {
-        log.warn("zombie_event_loop.blocked_acquire_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
+        log.warn("zombie_event_loop.blocked_acquire_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
         return;
     };
     defer cfg.pool.release(conn);
@@ -94,11 +94,11 @@ pub fn markBlocked(
         \\SET status = $3, failure_label = $4, updated_at = $5
         \\WHERE zombie_id = $1::uuid AND event_id = $2
     , .{ session.zombie_id, event.event_id, status_text, failure_label, now_ms }) catch |err| {
-        log.warn("zombie_event_loop.blocked_update_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
+        log.warn("zombie_event_loop.blocked_update_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
     };
     activity_publisher.publishEventComplete(cfg.redis_publish, scratch, session.zombie_id, event.event_id, status_text);
     redis_zombie.xackZombie(cfg.redis, session.zombie_id, event.event_id) catch |err| {
-        obs_log.logWarnErr(.zombie_event_loop, err, "zombie_event_loop.blocked_xack_fail zombie_id={s} event_id={s}", .{ session.zombie_id, event.event_id });
+        log.warn("zombie_event_loop.blocked_xack_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
     };
 }
 
@@ -110,7 +110,7 @@ pub fn markTerminal(
     wall_ms: u64,
 ) void {
     const conn = pool.acquire() catch |err| {
-        log.warn("zombie_event_loop.terminal_acquire_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
+        log.warn("zombie_event_loop.terminal_acquire_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
         return;
     };
     defer pool.release(conn);
@@ -129,7 +129,7 @@ pub fn markTerminal(
         @as(i64, @intCast(wall_ms)),
         now_ms,
     }) catch |err| {
-        log.warn("zombie_event_loop.terminal_update_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
+        log.warn("zombie_event_loop.terminal_update_failed", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
     };
 }
 

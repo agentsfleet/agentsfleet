@@ -13,9 +13,9 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const queue_consts = @import("../queue/constants.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const obs_log = @import("../observability/logging.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.zombie_event_loop);
+const log = logging.scoped(.zombie_event_loop);
 
 // Types + helpers extracted per RULE FLL (350-line gate).
 const types = @import("event_loop_types.zig");
@@ -50,7 +50,11 @@ pub fn claimZombie(
     defer q.deinit();
 
     const row = try q.next() orelse {
-        log.warn("zombie_event_loop.claim_not_found zombie_id={s} error_code=" ++ error_codes.ERR_ZOMBIE_CLAIM_FAILED ++ " reason=not_found", .{zombie_id_input});
+        log.warn("zombie_event_loop.claim_not_found", .{
+            .zombie_id = zombie_id_input,
+            .error_code = error_codes.ERR_ZOMBIE_CLAIM_FAILED,
+            .reason = "not_found",
+        });
         return error.ZombieNotFound;
     };
 
@@ -64,7 +68,7 @@ pub fn claimZombie(
     const status = zombie_config.ZombieStatus.fromSlice(try row.get([]const u8, 3)) orelse .stopped;
 
     if (!status.isRunnable()) {
-        log.warn("zombie_event_loop.claim_skipped zombie_id={s}", .{zombie_id_input});
+        log.warn("zombie_event_loop.claim_skipped", .{ .zombie_id = zombie_id_input });
         // errdefer on workspace_id and source_markdown fires automatically —
         // no manual free here (would be a double-free).
         return error.ZombieNotActive;
@@ -84,8 +88,10 @@ pub fn claimZombie(
     const zombie_id = try alloc.dupe(u8, zombie_id_input);
     errdefer alloc.free(zombie_id);
 
-    log.info("zombie_event_loop.claimed zombie_id={s} name={s} has_checkpoint={}", .{
-        zombie_id, config.name, context_json.len > 2,
+    log.info("zombie_event_loop.claimed", .{
+        .zombie_id = zombie_id,
+        .name = config.name,
+        .has_checkpoint = context_json.len > 2,
     });
 
     var session = ZombieSession{
@@ -110,14 +116,18 @@ pub fn runEventLoop(
     cfg: EventLoopConfig,
 ) void {
     redis_zombie.ensureZombieConsumerGroup(cfg.redis, session.zombie_id) catch |err| {
-        obs_log.logErrWithHint(.zombie_event_loop, err, error_codes.ERR_STARTUP_REDIS_GROUP, "zombie_event_loop.group_create_fail zombie_id={s}", .{session.zombie_id});
+        log.err("zombie_event_loop.group_create_failed", .{
+            .zombie_id = session.zombie_id,
+            .error_code = error_codes.ERR_STARTUP_REDIS_GROUP,
+            .err = @errorName(err),
+        });
         return;
     };
 
     const consumer_id = queue_redis.makeConsumerId(alloc) catch "zombie-local";
     defer if (!std.mem.eql(u8, consumer_id, "zombie-local")) alloc.free(consumer_id);
 
-    log.info("zombie_event_loop.started zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
+    log.info("zombie_event_loop.started", .{ .zombie_id = session.zombie_id, .name = session.config.name });
 
     var last_reclaim_ms: i64 = std.time.milliTimestamp();
     var consecutive_errors: u32 = 0;
@@ -126,7 +136,7 @@ pub fn runEventLoop(
         if (cfg.reload_pending) |flag| {
             if (flag.swap(false, .acq_rel)) {
                 reloadZombieConfig(alloc, session, cfg.pool) catch |err| {
-                    log.warn("zombie_event_loop.reload_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+                    log.warn("zombie_event_loop.reload_failed", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
                 };
             }
         }
@@ -146,7 +156,7 @@ pub fn runEventLoop(
         if (!cfg.running.load(.acquire)) break;
     }
 
-    log.info("zombie_event_loop.stopped zombie_id={s}", .{session.zombie_id});
+    log.info("zombie_event_loop.stopped", .{ .zombie_id = session.zombie_id });
 }
 
 const PollResult = struct { event: ?redis_zombie.ZombieEvent, err: bool };
@@ -158,14 +168,14 @@ fn pollNextEvent(cfg: EventLoopConfig, session: *ZombieSession, consumer_id: []c
         if (redis_zombie.xautoclaimZombie(cfg.redis, session.zombie_id, consumer_id)) |evt| {
             return .{ .event = evt, .err = false };
         } else |err| {
-            obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.xautoclaim_fail zombie_id={s}", .{session.zombie_id});
+            log.err("zombie_event_loop.xautoclaim_failed", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
             return .{ .event = null, .err = true };
         }
     }
     if (redis_zombie.xreadgroupZombie(cfg.redis, session.zombie_id, consumer_id)) |evt| {
         return .{ .event = evt, .err = false };
     } else |err| {
-        obs_log.logErr(.zombie_event_loop, err, "zombie_event_loop.xreadgroup_fail zombie_id={s}", .{session.zombie_id});
+        log.err("zombie_event_loop.xreadgroup_failed", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
         return .{ .event = null, .err = true };
     }
 }
@@ -200,7 +210,7 @@ pub fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.P
     var old_config = session.config;
     session.config = new_config;
     old_config.deinit(alloc);
-    log.info("zombie_event_loop.config_reloaded zombie_id={s} name={s}", .{ session.zombie_id, session.config.name });
+    log.info("zombie_event_loop.config_reloaded", .{ .zombie_id = session.zombie_id, .name = session.config.name });
 }
 
 test {

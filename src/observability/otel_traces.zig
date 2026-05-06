@@ -7,7 +7,7 @@
 
 const std = @import("std");
 const metrics = @import("metrics.zig");
-const obs_log = @import("logging.zig");
+const logging = @import("log");
 const otel_logs = @import("otel_logs.zig");
 const trace = @import("trace.zig");
 const StringBuilder = @import("../util/strings/string_builder.zig");

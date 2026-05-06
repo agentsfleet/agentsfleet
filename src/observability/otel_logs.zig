@@ -7,7 +7,7 @@
 
 const std = @import("std");
 const metrics = @import("metrics.zig");
-const obs_log = @import("logging.zig");
+const logging = @import("log");
 const StringBuilder = @import("../util/strings/string_builder.zig");
 
 const log = std.log.scoped(.otel_logs);

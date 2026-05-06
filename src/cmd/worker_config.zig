@@ -1,5 +1,5 @@
 const std = @import("std");
-const obs = @import("../observability/logging.zig");
+const logging = @import("log");
 
 pub const ValidationError = error{
     InvalidDrainTimeoutMs,
@@ -59,11 +59,11 @@ pub const Config = struct {
 
 pub fn printValidationError(err: ValidationError) void {
     switch (err) {
-        ValidationError.InvalidDrainTimeoutMs => obs.fatalStderr("fatal: invalid DRAIN_TIMEOUT_MS value\n", .{}),
-        ValidationError.InvalidExecutorStartupTimeoutMs => obs.fatalStderr("fatal: invalid EXECUTOR_STARTUP_TIMEOUT_MS value\n", .{}),
-        ValidationError.InvalidExecutorLeaseTimeoutMs => obs.fatalStderr("fatal: invalid EXECUTOR_LEASE_TIMEOUT_MS value\n", .{}),
-        ValidationError.InvalidExecutorMemoryLimitMb => obs.fatalStderr("fatal: invalid EXECUTOR_MEMORY_LIMIT_MB value\n", .{}),
-        ValidationError.InvalidExecutorCpuLimitPercent => obs.fatalStderr("fatal: invalid EXECUTOR_CPU_LIMIT_PERCENT value (must be 1-100)\n", .{}),
+        ValidationError.InvalidDrainTimeoutMs => logging.fatalStderr("fatal: invalid DRAIN_TIMEOUT_MS value\n", .{}),
+        ValidationError.InvalidExecutorStartupTimeoutMs => logging.fatalStderr("fatal: invalid EXECUTOR_STARTUP_TIMEOUT_MS value\n", .{}),
+        ValidationError.InvalidExecutorLeaseTimeoutMs => logging.fatalStderr("fatal: invalid EXECUTOR_LEASE_TIMEOUT_MS value\n", .{}),
+        ValidationError.InvalidExecutorMemoryLimitMb => logging.fatalStderr("fatal: invalid EXECUTOR_MEMORY_LIMIT_MB value\n", .{}),
+        ValidationError.InvalidExecutorCpuLimitPercent => logging.fatalStderr("fatal: invalid EXECUTOR_CPU_LIMIT_PERCENT value (must be 1-100)\n", .{}),
     }
 }
 

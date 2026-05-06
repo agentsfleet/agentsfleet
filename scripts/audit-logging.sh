@@ -11,10 +11,11 @@
 #            - `std.debug.print(` in non-test source under src/.
 #            - `console.log/debug/info/warn/error` in zombiectl/src outside tests.
 #   INFO   — surfaced for reviewer/agent attention, doesn't block:
-#            - `std.log.scoped(...)` outside `src/observability/` (LOGGING_STANDARD §7
-#              says only `obs.scoped` should be used; today's callers are pre-migration).
+#            - `std.log.scoped(...)` outside `src/logging/` (LOGGING_STANDARD §7
+#              says only the named-module `log.scoped` API should be used;
+#              today's callers are pre-migration).
 #            - `std.log.{err,warn,info,debug}` calls (positional fmt format) — the
-#              old API. Migration to `obs.<level>(.event, .{...})` pending.
+#              old API. Migration to `log.<level>("event", .{...})` pending.
 #            - `err`/`warn` log calls without an `error_code=` substring nearby.
 #
 # Modes:
@@ -119,22 +120,20 @@ for f in "${FILES[@]}"; do
 done
 
 # ---------------------------------------------------------------------------
-# 4. INFO: std.log.scoped outside src/observability/ (pre-migration to obs.scoped).
+# 4. INFO: std.log.scoped outside src/logging/ (pre-migration to the named
+#    `log` module's scoped API). The audit no longer carves out src/auth/ —
+#    the named module is import-able from layer-isolated trees, so the
+#    portability exception is gone.
 # ---------------------------------------------------------------------------
 scoped_hits=0
 for f in "${FILES[@]}"; do
   [[ "$f" == *.zig ]] || continue
   case "$f" in
-    src/observability/*) continue ;;
-    # src/auth/** is a portability island per M18_002 §1.3 — its files
-    # cannot import from src/observability/. Auth keeps `std.log.scoped`;
-    # carve-out documented in LOGGING_STANDARD §13. A future workstream
-    # could expose obs.scoped via a named module to lift this exception.
-    src/auth/*) continue ;;
+    src/logging/*) continue ;;
   esac
-  count=$(grep -cE '\bstd\.log\.scoped\(' "$f" 2>/dev/null || echo 0)
+  count=$(grep -cE '\bstd\.log\.scoped\(' "$f" 2>/dev/null) || count=0
   if [[ "$count" -gt 0 ]]; then
-    note "$f — $count call(s) to \`std.log.scoped\` (migrate to \`obs.scoped\` per LOGGING_STANDARD §7)"
+    note "$f — $count call(s) to \`std.log.scoped\` (migrate to \`logging.scoped\` per LOGGING_STANDARD §7)"
     scoped_hits=$((scoped_hits + count))
   fi
 done
