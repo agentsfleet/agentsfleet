@@ -169,6 +169,13 @@ pub fn executionIdHex(id: ExecutionId) [32]u8 {
     return std.fmt.bytesToHex(id, .lower);
 }
 
+pub fn parseExecutionId(hex: []const u8) ?ExecutionId {
+    if (hex.len != 32) return null;
+    var id: ExecutionId = undefined;
+    _ = std.fmt.hexToBytes(&id, hex) catch return null;
+    return id;
+}
+
 test "generateExecutionId produces unique ids" {
     const a = generateExecutionId();
     const b = generateExecutionId();

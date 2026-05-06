@@ -267,7 +267,7 @@ fn parseModelField(
 }
 
 /// Optional `x-usezombie.context:` block. Every field zero-defaults so the
-/// executor's `applyContextDefaults` can substitute auto-sentinel values.
+/// executor's `ContextBudget.applyDefaults` can substitute auto-sentinel values.
 /// Absent block → null; present-but-empty block → all-zero struct (still
 /// gets defaulted downstream — same observable behaviour).
 fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieContextBudget {

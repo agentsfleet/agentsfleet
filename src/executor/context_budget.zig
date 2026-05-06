@@ -5,6 +5,8 @@
 //! they're all set once per execution and invariant for its lifetime.
 
 const std = @import("std");
+const json = @import("json_helpers.zig");
+const wire = @import("wire.zig");
 
 /// Per-execution network egress policy. Outbound HTTPS requests must
 /// match at least one entry in `allow` (exact hostname match — wildcard
@@ -35,6 +37,18 @@ pub const ContextBudget = struct {
     /// for BYOK flows where the customer sets it on their credential.
     /// Slice §6 decides the fallback when this is 0.
     context_cap_tokens: u32 = 0,
+
+    /// Substitute defaults for any zero-value (auto-sentinel) field. Mutates
+    /// in place. Non-zero fields are operator overrides and left alone.
+    /// `model` and `context_cap_tokens` are upstream-populated and don't
+    /// participate in auto-defaulting here — `model` is opaque to this
+    /// binary, `context_cap_tokens=0` is the install-skill / BYOK signal
+    /// that L3 short-circuits (capabilities.md §4 escape clause).
+    pub fn applyDefaults(self: *ContextBudget) void {
+        if (self.tool_window == 0) self.tool_window = DEFAULT_TOOL_WINDOW;
+        if (self.memory_checkpoint_every == 0) self.memory_checkpoint_every = DEFAULT_MEMORY_CHECKPOINT_EVERY;
+        if (self.stage_chunk_threshold == 0.0) self.stage_chunk_threshold = DEFAULT_STAGE_CHUNK_THRESHOLD;
+    }
 };
 
 // ── §8 auto-defaults — applied at the worker's createExecution boundary ─────
@@ -61,37 +75,25 @@ pub const DEFAULT_MEMORY_CHECKPOINT_EVERY: u32 = 5;
 /// 75% fill of the resolved context cap.
 pub const DEFAULT_STAGE_CHUNK_THRESHOLD: f32 = 0.75;
 
-/// Substitute defaults for any zero-value (auto-sentinel) field. Mutates
-/// in place. Non-zero fields are operator overrides and left alone.
-/// `model` and `context_cap_tokens` are upstream-populated and don't
-/// participate in auto-defaulting here — `model` is opaque to this
-/// binary, `context_cap_tokens=0` is the install-skill / BYOK signal
-/// that L3 short-circuits (capabilities.md §4 escape clause).
-pub fn applyContextDefaults(c: *ContextBudget) void {
-    if (c.tool_window == 0) c.tool_window = DEFAULT_TOOL_WINDOW;
-    if (c.memory_checkpoint_every == 0) c.memory_checkpoint_every = DEFAULT_MEMORY_CHECKPOINT_EVERY;
-    if (c.stage_chunk_threshold == 0.0) c.stage_chunk_threshold = DEFAULT_STAGE_CHUNK_THRESHOLD;
-}
-
-test "applyContextDefaults substitutes the three auto-sentinel knobs" {
+test "ContextBudget.applyDefaults substitutes the three auto-sentinel knobs" {
     var cb: ContextBudget = .{ .tool_window = 0, .memory_checkpoint_every = 0, .stage_chunk_threshold = 0.0 };
-    applyContextDefaults(&cb);
+    cb.applyDefaults();
     try std.testing.expectEqual(DEFAULT_TOOL_WINDOW, cb.tool_window);
     try std.testing.expectEqual(DEFAULT_MEMORY_CHECKPOINT_EVERY, cb.memory_checkpoint_every);
     try std.testing.expectEqual(DEFAULT_STAGE_CHUNK_THRESHOLD, cb.stage_chunk_threshold);
 }
 
-test "applyContextDefaults preserves operator overrides" {
+test "ContextBudget.applyDefaults preserves operator overrides" {
     var cb: ContextBudget = .{ .tool_window = 8, .memory_checkpoint_every = 3, .stage_chunk_threshold = 0.6 };
-    applyContextDefaults(&cb);
+    cb.applyDefaults();
     try std.testing.expectEqual(@as(u32, 8), cb.tool_window);
     try std.testing.expectEqual(@as(u32, 3), cb.memory_checkpoint_every);
     try std.testing.expectEqual(@as(f32, 0.6), cb.stage_chunk_threshold);
 }
 
-test "applyContextDefaults leaves model and context_cap_tokens untouched" {
+test "ContextBudget.applyDefaults leaves model and context_cap_tokens untouched" {
     var cb: ContextBudget = .{ .model = "claude-sonnet-4-6", .context_cap_tokens = 0 };
-    applyContextDefaults(&cb);
+    cb.applyDefaults();
     try std.testing.expectEqualStrings("claude-sonnet-4-6", cb.model);
     try std.testing.expectEqual(@as(u32, 0), cb.context_cap_tokens);
 }
@@ -112,4 +114,56 @@ pub const ExecutionPolicy = struct {
     /// time.
     secrets_map: ?std.json.Value = null,
     context: ContextBudget = .{},
+
+    /// Parse the per-execution policy fields off CreateExecution params
+    /// into a borrowed `ExecutionPolicy`. Allocates string slices on
+    /// `alloc` (the request frame allocator) — the lifetime is bounded by
+    /// the frame. `Session.create` deep-dupes into its own arena before
+    /// the frame ends.
+    pub fn fromJson(alloc: std.mem.Allocator, p: std.json.Value) !ExecutionPolicy {
+        var policy: ExecutionPolicy = .{};
+
+        if (p.object.get(wire.network_policy)) |np_val| {
+            if (np_val == .object) {
+                if (np_val.object.get(wire.allow)) |allow_val| {
+                    policy.network_policy = .{ .allow = try json.strArray(alloc, allow_val) };
+                }
+            }
+        }
+
+        if (p.object.get(wire.tools)) |tools_val| {
+            policy.tools = try json.strArray(alloc, tools_val);
+        }
+
+        if (p.object.get(wire.secrets_map)) |sm_val| {
+            if (sm_val == .object) policy.secrets_map = sm_val;
+        }
+
+        if (p.object.get(wire.context)) |ctx_val| {
+            if (ctx_val == .object) {
+                if (ctx_val.object.get(wire.tool_window)) |tw| {
+                    if (tw == .integer and tw.integer >= 0)
+                        policy.context.tool_window = @intCast(tw.integer);
+                }
+                if (ctx_val.object.get(wire.memory_checkpoint_every)) |mce| {
+                    if (mce == .integer and mce.integer > 0)
+                        policy.context.memory_checkpoint_every = @intCast(mce.integer);
+                }
+                if (ctx_val.object.get(wire.stage_chunk_threshold)) |sct| {
+                    policy.context.stage_chunk_threshold = switch (sct) {
+                        .float => |f| @floatCast(f),
+                        .integer => |i| @floatFromInt(i),
+                        else => policy.context.stage_chunk_threshold,
+                    };
+                }
+                if (json.getStr(ctx_val, wire.model)) |m| policy.context.model = m;
+                if (ctx_val.object.get(wire.context_cap_tokens)) |cct| {
+                    if (cct == .integer and cct.integer >= 0)
+                        policy.context.context_cap_tokens = @intCast(cct.integer);
+                }
+            }
+        }
+
+        return policy;
+    }
 };
