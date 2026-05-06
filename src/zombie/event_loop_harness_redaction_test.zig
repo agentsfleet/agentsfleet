@@ -318,8 +318,7 @@ test "test_github_token_redacted_at_sandbox_boundary" {
     try std.testing.expect(!run.recorder.contains(SYNTHETIC_GITHUB_TOKEN));
 }
 
-fn driveRunWithBothSecrets(alloc: Allocator, embed_github_in_args: bool) !RedactionRun {
-    _ = embed_github_in_args;
+fn driveRunWithBothSecrets(alloc: Allocator) !RedactionRun {
     var harness = try Harness.start(alloc, .{ .binary = .stub });
     errdefer harness.deinit();
 
@@ -364,7 +363,7 @@ test "test_multi_secret_redaction_neither_leaks" {
     // placeholder is not expected to appear; the assertion is the
     // weaker "neither raw value appears", which catches a regression
     // where adding a second secret to the list breaks the loop.
-    var run = try driveRunWithBothSecrets(ALLOC, false);
+    var run = try driveRunWithBothSecrets(ALLOC);
     defer run.deinit();
     try std.testing.expect(!run.recorder.contains(SYNTHETIC_SECRET));
     try std.testing.expect(!run.recorder.contains(SYNTHETIC_GITHUB_TOKEN));
