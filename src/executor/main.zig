@@ -156,6 +156,7 @@ test {
     _ = @import("runtime/policy_http_request_test.zig");
     _ = @import("runner_progress.zig");
     _ = @import("runner_progress_test.zig");
+    _ = @import("runner_progress_redact_test.zig");
     _ = @import("handler.zig");
     _ = @import("handler_create_execution_test.zig");
     _ = @import("lease.zig");
