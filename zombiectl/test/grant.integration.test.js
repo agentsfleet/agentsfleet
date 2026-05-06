@@ -1,50 +1,16 @@
 import { describe, test, expect } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
-import { saveCredentials, saveWorkspaces } from "../src/lib/state.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
 const WS_ID = "ws_grant_test";
 const ZOMBIE_ID = "zmb_grant_test";
-
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
-    read: () => data,
-  };
-}
-
-async function withAuthedStateDir(fn) {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-grant-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
-  try {
-    await saveCredentials({
-      token: "header.payload.sig",
-      saved_at: Date.now(),
-      session_id: "sess_grant",
-      api_url: null,
-    });
-    await saveWorkspaces({
-      current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "test-ws", created_at: Date.now() }],
-    });
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
+const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_grant" }, fn);
 
 describe("grant (integration grant) commands", () => {
   test("`grant list --zombie <id>` GETs the grants for the zombie and prints the table", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/integration-grants`]:
           () => jsonResponse(200, {
@@ -79,7 +45,7 @@ describe("grant (integration grant) commands", () => {
   });
 
   test("`grant delete --zombie <id> <grant_id>` DELETEs the grant and prints the revocation note", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`DELETE /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/integration-grants/grant_1`]:
           () => jsonResponse(204, {}),

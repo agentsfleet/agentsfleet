@@ -21,51 +21,15 @@ import { describe, test, expect } from "bun:test";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
-import { saveCredentials, saveWorkspaces } from "../src/lib/state.js";
+import { saveWorkspaces } from "../src/lib/state.js";
+import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
 const WS_ID = "ws_failure_test";
 const ZOMBIE_ID = "zmb_failure_test";
-
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
-    read: () => data,
-  };
-}
-
-async function withFreshStateDir(fn) {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-fail-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
-  try {
-    return await fn(dir);
-  } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
-
-async function withAuthedStateDir(fn) {
-  return withFreshStateDir(async (dir) => {
-    await saveCredentials({
-      token: "header.payload.sig",
-      saved_at: Date.now(),
-      session_id: "sess_fail",
-      api_url: null,
-    });
-    await saveWorkspaces({
-      current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "test-ws", created_at: Date.now() }],
-    });
-    return await fn(dir);
-  });
-}
+const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fail" }, fn);
 
 function errorEnvelope(code, message, requestId = "req_fail_test") {
   return { error: { code, message }, request_id: requestId };
@@ -97,7 +61,7 @@ describe("failure modes — login surface", () => {
 
 describe("failure modes — workspace surface", () => {
   test("workspace add returning UZ-WORKSPACE-002 (paused, 402) blocks the user with a billing-shaped error", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       // Start the customer in a logged-in but workspace-less state so the
       // failed `workspace add` is the moment they hit the paused error.
       await saveWorkspaces({ current_workspace_id: null, items: [] });
@@ -122,7 +86,7 @@ describe("failure modes — workspace surface", () => {
 
 describe("failure modes — install surface (local + server)", () => {
   test("install --from /nonexistent/path errors locally with ERR_PATH_NOT_FOUND (no fetch)", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       // Mock with empty routes — any HTTP attempt becomes a 404 and the test
       // catches an unexpected outbound call. The CLI must fail before fetch.
       await withMockApi({}, async (apiUrl, calls) => {
@@ -140,7 +104,7 @@ describe("failure modes — install surface (local + server)", () => {
   });
 
   test("install --from <dir-without-SKILL.md> errors locally with ERR_SKILL_MISSING", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-empty-skill-"));
       try {
         await withMockApi({}, async (apiUrl, calls) => {
@@ -161,7 +125,7 @@ describe("failure modes — install surface (local + server)", () => {
   });
 
   test("install hitting UZ-ZMB-006 (name conflict, 409) surfaces clearly without writing any local state", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-skill-bundle-"));
       try {
         await fs.writeFile(path.join(tmpDir, "SKILL.md"),
@@ -193,7 +157,7 @@ describe("failure modes — install surface (local + server)", () => {
 
 describe("failure modes — runtime / observability surface", () => {
   test("install succeeds, but logs subsequently surface a runner failure event with UZ-EXEC-013 (the 'nullclaw errored out' shape)", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-skill-runner-"));
       try {
         await fs.writeFile(path.join(tmpDir, "SKILL.md"),
@@ -265,7 +229,7 @@ describe("failure modes — runtime / observability surface", () => {
   });
 
   test("logs fetched with an expired token returns UZ-AUTH-003 / 401 — user knows to re-login", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
           () => jsonResponse(401,
@@ -289,14 +253,17 @@ describe("failure modes — runtime / observability surface", () => {
 });
 
 describe("failure modes — infra / server-down surface", () => {
-  test("any command hitting UZ-INTERNAL-001 (DB unavailable, 503) surfaces the code with status preserved", async () => {
-    await withAuthedStateDir(async () => {
-      // Workspace list does NOT call the API (it reads workspaces.json), so
-      // exercise via doctor's /healthz check — the canonical first probe a
-      // user runs when something feels off.
+  test("doctor with /healthz returning UZ-INTERNAL-001 (DB unavailable, 503) renders [FAIL] server_reachable + the message and exits 1", async () => {
+    await authedScope(async () => {
+      // Pin both probes:
+      //   /healthz → 503 with UZ-INTERNAL-001 (the failure under test)
+      //   workspace probe → 200 (so it's not a confounding second failure)
+      // doctor returns 0 iff every check passes (core-ops.js:84,105). With one
+      // failed check, it deterministically returns 1 — pinned strictly here.
       const routes = {
         "GET /healthz": () => jsonResponse(503,
           errorEnvelope("UZ-INTERNAL-001", "Database unavailable")),
+        [`GET /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(200, { items: [] }),
       };
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
@@ -305,13 +272,15 @@ describe("failure modes — infra / server-down surface", () => {
           ["doctor"],
           { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
         );
-        // doctor's design is to gather all checks and report; a 503 on
-        // /healthz is rendered as a failed check, not a hard CLI exit. The
-        // contract under test is: the UZ-INTERNAL-001 code + message
-        // appears in operator-readable output, not buried.
-        expect([0, 1]).toContain(code);
-        const text = `${out.read()}\n${err.read()}`;
-        expect(text.toLowerCase()).toMatch(/database unavailable|unexpected payload/i);
+        expect(code).toBe(1);
+        const text = out.read();
+        // The structured failure renders as a concrete "[FAIL] server_reachable"
+        // line plus the indented detail carrying the upstream error message.
+        expect(text).toContain("[FAIL] server_reachable");
+        expect(text).toContain("Database unavailable");
+        // Closing summary names the failure ratio explicitly so operators
+        // can grep for it in CI logs.
+        expect(text).toMatch(/2\/3 checks passed/);
       });
     });
   });

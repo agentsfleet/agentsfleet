@@ -291,7 +291,12 @@ export async function runCli(argv, io = {}) {
         typeof err.message === "string" &&
         err.message.toLowerCase().includes("fetch failed");
       if (isNetworkFailure) {
-        const apiUrl = ctx?.apiUrl || global.apiUrl || env.ZOMBIE_API_URL || DEFAULT_API_URL;
+        // ctx.apiUrl is the fully-resolved value when the failure happens
+        // post-ctx-construction (the common case). If the throw beat ctx
+        // construction, fall back to global.apiUrl (already captures
+        // ZOMBIE_API_URL / API_URL via parseGlobalArgs); DEFAULT_API_URL
+        // is the floor. The previous chain had a redundant env leg.
+        const apiUrl = ctx?.apiUrl || global.apiUrl || DEFAULT_API_URL;
         const message = `cannot reach usezombie API at ${apiUrl} — check that the service is running and ZOMBIE_API_URL is correct`;
         if (global.json) {
           printJson(stderr, { error: { code: "API_UNREACHABLE", message } });

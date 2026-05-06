@@ -1,50 +1,16 @@
 import { describe, test, expect } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
-import { saveCredentials, saveWorkspaces } from "../src/lib/state.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
 const WS_ID = "ws_agent_test";
 const ZOMBIE_ID = "zmb_agent_test";
-
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
-    read: () => data,
-  };
-}
-
-async function withAuthedStateDir(fn) {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-agent-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
-  try {
-    await saveCredentials({
-      token: "header.payload.sig",
-      saved_at: Date.now(),
-      session_id: "sess_agent",
-      api_url: null,
-    });
-    await saveWorkspaces({
-      current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "test-ws", created_at: Date.now() }],
-    });
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
+const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_agent" }, fn);
 
 describe("agent (external API key) commands", () => {
   test("`agent add` POSTs the new key and prints the raw value exactly once (shown-once contract)", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       let postBody = null;
       const routes = {
         [`POST /v1/workspaces/${WS_ID}/agent-keys`]: async (_req, _url, body) => {
@@ -88,7 +54,7 @@ describe("agent (external API key) commands", () => {
   });
 
   test("`agent list` GETs the workspace's external agent keys and prints a table", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/agent-keys`]: () => jsonResponse(200, {
           items: [
@@ -119,7 +85,7 @@ describe("agent (external API key) commands", () => {
   });
 
   test("`agent delete <id>` DELETEs the key and prints invalidation confirmation", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`DELETE /v1/workspaces/${WS_ID}/agent-keys/agent_to_delete`]:
           () => jsonResponse(204, {}),

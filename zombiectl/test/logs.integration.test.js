@@ -1,50 +1,16 @@
 import { describe, test, expect } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
-import { saveCredentials, saveWorkspaces } from "../src/lib/state.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
 const WS_ID = "ws_logs_test";
 const ZOMBIE_ID = "zmb_logs_test";
-
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
-    read: () => data,
-  };
-}
-
-async function withAuthedStateDir(fn) {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-logs-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
-  try {
-    await saveCredentials({
-      token: "header.payload.sig",
-      saved_at: Date.now(),
-      session_id: "sess_logs",
-      api_url: null,
-    });
-    await saveWorkspaces({
-      current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "test-ws", created_at: Date.now() }],
-    });
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
+const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_logs" }, fn);
 
 describe("logs (paginated event tail)", () => {
   test("`logs <zombie_id>` with no events prints the empty-state message and exits 0", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
@@ -68,7 +34,7 @@ describe("logs (paginated event tail)", () => {
   });
 
   test("`logs <zombie_id>` with events prints one row per event with timestamp + actor + summary", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
           () => jsonResponse(200, {
@@ -105,7 +71,7 @@ describe("logs (paginated event tail)", () => {
   });
 
   test("`logs` with no zombie_id exits 2 with a missing-argument error", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       // No mock routes — the CLI's argument validation must fire before any
       // outbound fetch, otherwise the test traps an unexpected request.
       await withMockApi({}, async (apiUrl, calls) => {

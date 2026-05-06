@@ -1,1 +1,1 @@
-/Users/kishore/Projects/dotfiles/docs/LIFECYCLE_PATTERNS.md
+../../dotfiles/docs/LIFECYCLE_PATTERNS.md

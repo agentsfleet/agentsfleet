@@ -7,6 +7,10 @@
 // `routes` maps "METHOD /path" → handler(req, url, body) returning Response.
 // `calls` is shared with the test as an ordered log of every request that
 // hit the mock — a fully-typed side-effect ledger you can assert against.
+//
+// See helpers-cli-state.js for the matching ZOMBIE_STATE_DIR scope helper
+// and the documented serial-execution assumption that lets these tests
+// share `process.env` mutations safely under `bun test`.
 
 export async function withMockApi(routes, fn) {
   const calls = [];

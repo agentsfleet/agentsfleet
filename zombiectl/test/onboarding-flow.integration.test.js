@@ -1,35 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import fs from "node:fs/promises";
-import os from "node:os";
 import path from "node:path";
-import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
 import { loadCredentials, loadWorkspaces } from "../src/lib/state.js";
+import { bufferStream, withFreshStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
-
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
-    read: () => data,
-  };
-}
-
-async function withFreshStateDir(fn) {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-onboard-"));
-  // Important: don't pre-create files inside `dir` — the "fresh customer"
-  // scenario asserts the CLI itself bootstraps ~/.config/zombiectl/.
-  process.env.ZOMBIE_STATE_DIR = dir;
-  try {
-    return await fn(dir);
-  } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
 
 const completeLoginRoutes = (token = "fake-jwt-token") => ({
   "POST /v1/auth/sessions": () => jsonResponse(201, {

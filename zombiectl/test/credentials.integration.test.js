@@ -1,49 +1,15 @@
 import { describe, test, expect } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
-import { saveCredentials, saveWorkspaces } from "../src/lib/state.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
 const WS_ID = "ws_cred_test";
-
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
-    read: () => data,
-  };
-}
-
-async function withAuthedStateDir(fn) {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-cred-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
-  try {
-    await saveCredentials({
-      token: "header.payload.sig",
-      saved_at: Date.now(),
-      session_id: "sess_cred",
-      api_url: null,
-    });
-    await saveWorkspaces({
-      current_workspace_id: WS_ID,
-      items: [{ workspace_id: WS_ID, name: "test-ws", created_at: Date.now() }],
-    });
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
-}
+const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_cred" }, fn);
 
 describe("credential commands", () => {
   test("`credential add` with no existing credential GETs list (empty), POSTs the secret, prints stored", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       let postBody = null;
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/credentials`]: () => jsonResponse(200, { credentials: [] }),
@@ -75,7 +41,7 @@ describe("credential commands", () => {
   });
 
   test("`credential add` skips silently when the name already exists (default upsert guard)", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/credentials`]: () => jsonResponse(200, {
           credentials: [{ name: "github", created_at: 1700000000000 }],
@@ -99,7 +65,7 @@ describe("credential commands", () => {
   });
 
   test("`credential add --force` skips the preflight GET and POSTs immediately as overwritten", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       let postBody = null;
       const routes = {
         // No GET handler — if --force trips the preflight, this becomes a 404
@@ -126,7 +92,7 @@ describe("credential commands", () => {
   });
 
   test("`credential list` GETs the vault and prints names without secret bytes", async () => {
-    await withAuthedStateDir(async () => {
+    await authedScope(async () => {
       const routes = {
         [`GET /v1/workspaces/${WS_ID}/credentials`]: () => jsonResponse(200, {
           credentials: [

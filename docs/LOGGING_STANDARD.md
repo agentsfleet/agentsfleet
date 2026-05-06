@@ -1,1 +1,1 @@
-/Users/kishore/Projects/dotfiles/docs/LOGGING_STANDARD.md
+../../dotfiles/docs/LOGGING_STANDARD.md
