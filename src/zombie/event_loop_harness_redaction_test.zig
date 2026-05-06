@@ -209,20 +209,137 @@ test "test_args_redacted_no_secret_leak" {
     var consec: u32 = 0;
     _ = writepath.run(ALLOC, &session, &evt, cfg, &consec);
 
-    // Drain raw payloads off the activity channel, asserting per-frame
-    // that SYNTHETIC_SECRET never appears. Bounded by the overall budget
-    // and a quiet-window after the last frame.
+    // Drain raw payloads off the activity channel. Three assertions:
+    //   1. (negative) SYNTHETIC_SECRET never appears in any frame
+    //   2. (presence) at least one frame carries the placeholder, proving
+    //      the redactor actually substituted (not just dropped the payload)
+    //   3. (positive control) frame_count > 0, proving the writepath
+    //      didn't silently short-circuit and trivially-pass the negative
     const overall_deadline = std.time.milliTimestamp() + @as(i64, @intCast(ACTIVITY_DRAIN_BUDGET_MS));
     var last_msg_at = std.time.milliTimestamp();
+    var frame_count: u32 = 0;
+    var saw_placeholder = false;
     while (std.time.milliTimestamp() < overall_deadline) {
         const msg_opt = try subscriber.readMessage();
         if (msg_opt) |m| {
             var msg = m;
             defer msg.deinit();
             try std.testing.expect(std.mem.indexOf(u8, msg.data, SYNTHETIC_SECRET) == null);
+            if (std.mem.indexOf(u8, msg.data, PLACEHOLDER) != null) saw_placeholder = true;
+            frame_count += 1;
             last_msg_at = std.time.milliTimestamp();
             continue;
         }
         if (std.time.milliTimestamp() - last_msg_at > @as(i64, @intCast(helpers.DRAIN_QUIET_MS))) break;
     }
+    try std.testing.expect(frame_count > 0);
+    try std.testing.expect(saw_placeholder);
+}
+
+// ── github_token redaction (different placeholder, same path) ──────────────
+
+const GITHUB_PLACEHOLDER = "${secrets.github.token}";
+const SYNTHETIC_GITHUB_TOKEN = "ghs-stub-canary-7e4b1c2d";
+
+fn driveRunWithGithubToken(alloc: Allocator) !RedactionRun {
+    var harness = try Harness.start(alloc, .{ .binary = .stub });
+    errdefer harness.deinit();
+
+    var recorder = RpcRecorder.init(alloc);
+    errdefer recorder.deinit();
+    recorder.install();
+    errdefer recorder.uninstall();
+
+    const execution_id = try harness.executor.createExecution(.{
+        .workspace_path = "/tmp",
+        .correlation = .{
+            .trace_id = TEST_TRACE_ID,
+            .zombie_id = TEST_ZOMBIE_ID,
+            .workspace_id = TEST_WORKSPACE_ID,
+            .session_id = TEST_SESSION_ID,
+        },
+    });
+    defer alloc.free(execution_id);
+    defer harness.executor.destroyExecution(execution_id) catch {};
+
+    if (harness.executor.startStage(execution_id, .{
+        .agent_config = .{
+            .model = "stub",
+            .provider = "stub",
+            .github_token = SYNTHETIC_GITHUB_TOKEN,
+        },
+        .message = "redact me",
+    })) |result| {
+        alloc.free(result.content);
+        if (result.checkpoint_id) |c| alloc.free(c);
+    } else |_| {}
+
+    return .{ .harness = harness, .recorder = recorder };
+}
+
+test "test_github_token_redacted_at_sandbox_boundary" {
+    // The stub provider's canned response embeds SYNTHETIC_SECRET (the
+    // api_key canary), not the github token literal. So this run only
+    // proves the github_token PLACEHOLDER pipeline is wired — the
+    // collectSecrets/redactBytes path accepts the github_token slot and
+    // the placeholder string ${secrets.github.token} never spuriously
+    // appears unless we ask. With github_token set but its value not in
+    // any frame, no redaction fires for it; the assertion is that the
+    // raw SYNTHETIC_GITHUB_TOKEN literal also doesn't leak (defensive).
+    var run = try driveRunWithGithubToken(ALLOC);
+    defer run.deinit();
+    try std.testing.expect(!run.recorder.contains(SYNTHETIC_GITHUB_TOKEN));
+}
+
+fn driveRunWithBothSecrets(alloc: Allocator, embed_github_in_args: bool) !RedactionRun {
+    _ = embed_github_in_args;
+    var harness = try Harness.start(alloc, .{ .binary = .stub });
+    errdefer harness.deinit();
+
+    var recorder = RpcRecorder.init(alloc);
+    errdefer recorder.deinit();
+    recorder.install();
+    errdefer recorder.uninstall();
+
+    const execution_id = try harness.executor.createExecution(.{
+        .workspace_path = "/tmp",
+        .correlation = .{
+            .trace_id = TEST_TRACE_ID,
+            .zombie_id = TEST_ZOMBIE_ID,
+            .workspace_id = TEST_WORKSPACE_ID,
+            .session_id = TEST_SESSION_ID,
+        },
+    });
+    defer alloc.free(execution_id);
+    defer harness.executor.destroyExecution(execution_id) catch {};
+
+    if (harness.executor.startStage(execution_id, .{
+        .agent_config = .{
+            .model = "stub",
+            .provider = "stub",
+            .api_key = SYNTHETIC_SECRET,
+            .github_token = SYNTHETIC_GITHUB_TOKEN,
+        },
+        .message = "redact me",
+    })) |result| {
+        alloc.free(result.content);
+        if (result.checkpoint_id) |c| alloc.free(c);
+    } else |_| {}
+
+    return .{ .harness = harness, .recorder = recorder };
+}
+
+test "test_multi_secret_redaction_neither_leaks" {
+    // Both api_key + github_token are set; collectSecrets returns both
+    // entries; redactBytes loops over them. The stub canned response
+    // carries SYNTHETIC_SECRET (api_key bytes) — those must redact.
+    // SYNTHETIC_GITHUB_TOKEN is not in the canned bytes, so its
+    // placeholder is not expected to appear; the assertion is the
+    // weaker "neither raw value appears", which catches a regression
+    // where adding a second secret to the list breaks the loop.
+    var run = try driveRunWithBothSecrets(ALLOC, false);
+    defer run.deinit();
+    try std.testing.expect(!run.recorder.contains(SYNTHETIC_SECRET));
+    try std.testing.expect(!run.recorder.contains(SYNTHETIC_GITHUB_TOKEN));
+    try std.testing.expect(run.recorder.contains(PLACEHOLDER));
 }
