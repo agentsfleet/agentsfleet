@@ -76,8 +76,17 @@ zombiectl doctor
 |------|------|
 | Credentials | `~/.config/zombiectl/credentials.json` |
 | Workspaces | `~/.config/zombiectl/workspaces.json` |
+| Preferences | `~/.config/zombiectl/preferences.json` |
 
 Override the config directory with `ZOMBIE_STATE_DIR`.
+
+## Telemetry
+
+zombiectl can report anonymized usage metrics to help improve the CLI. The first interactive `zombiectl login` asks for consent and stores your decision in `preferences.json`. Subsequent runs honor that choice without re-prompting.
+
+- Override at any time with the `ZOMBIE_POSTHOG_ENABLED` environment variable: `false` disables, `true` enables. The environment variable always wins over the stored preference.
+- Forget the stored decision (to be re-prompted on next login) by removing the file: `rm ~/.config/zombiectl/preferences.json`.
+- `--json` and `--no-input` sessions skip the prompt and default to off, leaving the file untouched so a later interactive run still asks.
 
 ## Links
 

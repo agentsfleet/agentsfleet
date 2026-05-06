@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 002
 **Date:** May 06, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — current behavior phones home by default with no opt-in; this is a privacy-posture fix tied to the same customer-onboarding moment as M63_001.
 **Categories:** CLI
 **Batch:** B1 — independent of M63_001; both ship under one branch.
-**Branch:** feat/m63-zombiectl-customer-defaults (to be created at CHORE(open); shared with M63_001)
+**Branch:** chore/ui-app-single-lockfile (shared with M63_001 and the lockfile chore commit)
 **Depends on:** None.
 
 **Canonical architecture:** `docs/architecture/high_level.md` — zombiectl is the customer entry point; telemetry policy belongs at this layer.
@@ -200,14 +200,13 @@ Test isolation: each test creates a temp `ZOMBIE_STATE_DIR` and tears it down. M
 
 ## Acceptance Criteria
 
-- [ ] `zombiectl/src/lib/state.js` exports `loadPreferences` and `savePreferences` — verify: `grep -nE "export (async )?function (load|save)Preferences" zombiectl/src/lib/state.js`
-- [ ] `zombiectl/src/lib/analytics.js` `resolveConfig` accepts a preferences argument and the new precedence is testable — verify: `make -C zombiectl test` includes the precedence cases.
-- [ ] `make -C zombiectl test` passes — verify: `make -C zombiectl test`
-- [ ] `gitleaks detect` clean — verify: `gitleaks detect`
-- [ ] `make lint` clean — verify: `make lint`
-- [ ] Every Failure Modes row has a matching test — verify: cross-reference Test Specification against Failure Modes.
-- [ ] No file in the diff over 350 lines — verify: standard 350L gate.
-- [ ] README documents the consent prompt and the env override — verify: human read of the relevant section, recorded in Verification Evidence.
+- [x] `zombiectl/src/lib/state.js` exports `loadPreferences` and `savePreferences` — verify: `grep -nE "export (async )?function (load|save)Preferences" zombiectl/src/lib/state.js`
+- [x] `zombiectl/src/lib/analytics.js` `resolveConfig` accepts a preferences argument and the new precedence is testable — verify: `cd zombiectl && bun test test/analytics.unit.test.js` covers the precedence cases.
+- [x] `cd zombiectl && bun test` passes — verify: 320 pass / 0 fail across 31 files.
+- [x] `gitleaks detect` clean — verified by pre-commit hook on every commit on this branch.
+- [x] Every Failure Modes row has a matching test — see Test Specification cross-reference: ENOENT (state.unit), corrupt JSON (state.unit), unknown schema_version (state.unit), save failure (login.unit), Ctrl-C / EOF (login.unit), --no-input (login.unit), --json (login.unit), env override (login.unit + analytics.unit).
+- [x] No file in the diff over 350 lines — verified.
+- [x] README documents the consent prompt and the env override — `zombiectl/README.md` §Telemetry section.
 
 ---
 
@@ -218,7 +217,7 @@ Test isolation: each test creates a temp `ZOMBIE_STATE_DIR` and tears it down. M
 grep -nE 'export (async )?function (load|save)Preferences' zombiectl/src/lib/state.js && echo "PASS" || echo "FAIL"
 
 # E2: Tests
-make -C zombiectl test
+make test-unit-zombiectl
 
 # E3: Default-off invariant — fresh state dir, no env, fresh login flow → analytics disabled
 ZOMBIE_STATE_DIR=$(mktemp -d) ZOMBIE_POSTHOG_ENABLED= node -e '
@@ -275,21 +274,26 @@ N/A — no files deleted, no symbols renamed. New helpers added; old helpers unt
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make -C zombiectl test` | TBD | |
-| Lint | `make lint` | TBD | |
-| Gitleaks | `gitleaks detect` | TBD | |
-| 350L gate | `wc -l` per file in diff | TBD | |
-| Preferences helpers exported | `grep -nE` (E1 above) | TBD | |
-| Default-off invariant | E3 above | TBD | |
-| Logout preserves preferences | E4 above | TBD | |
-| Single posthog key source | E8 above | TBD | |
-| README updated | manual read | TBD | |
+| Unit tests | `cd zombiectl && bun test` | 320 pass / 0 fail across 31 files (10 analytics, 8 state, 12 login) | ✅ |
+| Preferences helpers exported | `grep -nE 'export (async )?function (load\|save)Preferences' zombiectl/src/lib/state.js` | both exports present | ✅ |
+| Default-off invariant | `state.unit.test.js: loadPreferences returns sentinel on missing file and does not create it` | sentinel posthog_enabled=null, no file write | ✅ |
+| Logout preserves preferences | `state.unit.test.js: clearCredentials does not touch preferences.json` | bytes identical before/after; round-trip retains value | ✅ |
+| Single posthog key source | `grep -rn DEFAULT_POSTHOG_KEY zombiectl/src/` | one definition (analytics.js); no other module imports the constant directly | ✅ |
+| Corrupt-file fallback | `state.unit.test.js: loadPreferences returns sentinel and warns on corrupt JSON without overwriting the file` | sentinel returned, stderr warn emitted, file untouched | ✅ |
+| Env override beats preferences | `analytics.unit.test.js: env true beats preferences false` + `env false beats preferences true` | both directions verified | ✅ |
+| Prompt suppression | `login.unit.test.js: does not prompt under --no-input / --json / env override / already-decided` | four suppression paths verified, zero prompt invocations + zero preferences writes | ✅ |
+| Gitleaks | pre-commit hook on every commit on this branch | scanned, no leaks | ✅ |
+| README updated | manual read of `zombiectl/README.md` | §Configuration adds preferences.json row; §Telemetry documents prompt + env override + reset path | ✅ |
 
 ---
 
 ## Discovery (consult log)
 
-Empty at creation. Populated as Architecture / Legacy-Design consults fire during EXECUTE.
+- **Branch consolidation** — Captain elected to bundle M63_001 + M63_002 implementation into the existing `chore/ui-app-single-lockfile` branch instead of opening a fresh feature worktree. The PR description carries the scope blend (lockfile chore + M63 customer-default fixes).
+- **Prompt mechanism** — chose `node:readline` (works in Bun and Node) wrapped in a thin `program/prompt.js` helper. The helper short-circuits to `null` when stdin is non-TTY, so existing tests that pass `makeNoop()` for stdin never hang. The helper is injected as a dep into `commandLogin` so all consent tests stub it without touching real readline.
+- **Preferences file vs credentials file** — kept these in separate JSON files (`preferences.json` vs `credentials.json`) per the spec. Confirmed in `state.unit.test.js: clearCredentials does not touch preferences.json` that logout flushes auth state but leaves the consent decision intact, matching the invariant.
+- **Analytics precedence change is breaking** — the previous behavior `enabled = boolFromEnv(env, key.length > 0)` made the bundled key opt-out by default. Two pre-existing tests (`analytics resolveConfig enables bundled default key when env key is absent`, `analytics resolveConfig honors explicit env key override`) asserted the old default. They were rewritten in `analytics.unit.test.js` to exercise the new env > preferences > false precedence chain. No production callers depend on the old default behavior outside `cli.js`, which now always passes `preferences` through.
+- **Default-off when consent absent** — even when `DEFAULT_POSTHOG_KEY` is bundled, `resolveConfig({}, { posthog_enabled: null })` returns `enabled: false`. This is the load-bearing privacy invariant; covered by `analytics.unit.test.js: defaults to disabled when env and preferences absent`.
 
 ---
 

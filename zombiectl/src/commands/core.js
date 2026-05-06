@@ -13,6 +13,9 @@ function createCoreHandlers(ctx, workspaces, deps) {
     printSection = () => {},
     request,
     saveCredentials,
+    loadPreferences = async () => ({ posthog_enabled: false, decided_at: 0, schema_version: 1 }),
+    savePreferences = async () => {},
+    promptYesNo = async () => null,
     ui,
     writeLine,
     apiHeaders,
@@ -26,6 +29,32 @@ function createCoreHandlers(ctx, workspaces, deps) {
     ui,
     writeLine,
   });
+
+  async function maybePromptForTelemetryConsent() {
+    if (ctx.jsonMode || ctx.noInput) return;
+    const envValue = ctx.env?.ZOMBIE_POSTHOG_ENABLED;
+    if (envValue != null && envValue !== "") return;
+    const prefs = ctx.preferences && typeof ctx.preferences.posthog_enabled !== "undefined"
+      ? ctx.preferences
+      : await loadPreferences({ stderr: ctx.stderr });
+    if (prefs.posthog_enabled !== null) return;
+
+    const decision = await promptYesNo(
+      ctx.stdin,
+      ctx.stdout,
+      "zombiectl reports anonymous usage metrics to help us improve. Enable? [Y/n] ",
+      { defaultYes: true },
+    );
+    if (decision === null) return;
+    try {
+      const decidedAt = Date.now();
+      await savePreferences({ posthog_enabled: decision, decided_at: decidedAt });
+      ctx.preferences = { schema_version: 1, posthog_enabled: decision, decided_at: decidedAt };
+    } catch (err) {
+      const detail = err && (err.code || err.message) ? (err.code || err.message) : String(err);
+      writeLine(ctx.stderr, ui.dim(`zombiectl: could not save telemetry preference (${detail})`));
+    }
+  }
 
   async function commandLogin(args) {
     const { options } = parseFlags(args);
@@ -83,6 +112,8 @@ function createCoreHandlers(ctx, workspaces, deps) {
             api_url: ctx.apiUrl,
           };
           await saveCredentials(saved);
+
+          await maybePromptForTelemetryConsent();
 
           const result = {
             status: "complete",

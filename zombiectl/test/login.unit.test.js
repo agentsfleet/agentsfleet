@@ -113,3 +113,183 @@ describe("commandLogin", () => {
     expect(browserOpened).toBe(false);
   });
 });
+
+function makeConsentDeps({ promptResponse = true, recordedSave } = {}) {
+  return {
+    request: async (_ctx, reqPath) => {
+      if (reqPath === "/v1/auth/sessions") {
+        return { session_id: "sess_consent", login_url: "https://login.test" };
+      }
+      return { status: "complete", token: "tok_consent" };
+    },
+    loadPreferences: async () => ({ schema_version: 1, posthog_enabled: null, decided_at: null }),
+    savePreferences: async (next) => {
+      if (recordedSave) recordedSave.value = next;
+    },
+    promptYesNo: async () => promptResponse,
+  };
+}
+
+describe("commandLogin telemetry consent prompt", () => {
+  test("prompts on first interactive login and persists yes", async () => {
+    const recorded = { value: null };
+    let promptCalls = 0;
+    const deps = makeDeps({
+      ...makeConsentDeps({ promptResponse: true, recordedSave: recorded }),
+      promptYesNo: async (_stdin, _stdout, msg) => {
+        promptCalls++;
+        expect(msg).toContain("anonymous usage metrics");
+        return true;
+      },
+    });
+    const ctx = {
+      stdout: makeNoop(), stderr: makeNoop(),
+      jsonMode: false, noOpen: true, noInput: false,
+      env: {},
+      preferences: { posthog_enabled: null },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    const code = await core.commandLogin([]);
+    expect(code).toBe(0);
+    expect(promptCalls).toBe(1);
+    expect(recorded.value).not.toBeNull();
+    expect(recorded.value.posthog_enabled).toBe(true);
+  });
+
+  test("persists no when user declines", async () => {
+    const recorded = { value: null };
+    const deps = makeDeps(makeConsentDeps({ promptResponse: false, recordedSave: recorded }));
+    const ctx = {
+      stdout: makeNoop(), stderr: makeNoop(),
+      jsonMode: false, noOpen: true, noInput: false,
+      env: {},
+      preferences: { posthog_enabled: null },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    await core.commandLogin([]);
+    expect(recorded.value.posthog_enabled).toBe(false);
+  });
+
+  test("does not prompt when preferences already decided", async () => {
+    const recorded = { value: null };
+    let promptCalls = 0;
+    const deps = makeDeps({
+      ...makeConsentDeps({ recordedSave: recorded }),
+      promptYesNo: async () => { promptCalls++; return true; },
+    });
+    const ctx = {
+      stdout: makeNoop(), stderr: makeNoop(),
+      jsonMode: false, noOpen: true, noInput: false,
+      env: {},
+      preferences: { posthog_enabled: true, decided_at: 1, schema_version: 1 },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    await core.commandLogin([]);
+    expect(promptCalls).toBe(0);
+    expect(recorded.value).toBeNull();
+  });
+
+  test("does not prompt under --no-input", async () => {
+    const recorded = { value: null };
+    let promptCalls = 0;
+    const deps = makeDeps({
+      ...makeConsentDeps({ recordedSave: recorded }),
+      promptYesNo: async () => { promptCalls++; return true; },
+    });
+    const ctx = {
+      stdout: makeNoop(), stderr: makeNoop(),
+      jsonMode: false, noOpen: true, noInput: true,
+      env: {},
+      preferences: { posthog_enabled: null },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    await core.commandLogin([]);
+    expect(promptCalls).toBe(0);
+    expect(recorded.value).toBeNull();
+  });
+
+  test("does not prompt under --json", async () => {
+    const recorded = { value: null };
+    let promptCalls = 0;
+    const deps = makeDeps({
+      ...makeConsentDeps({ recordedSave: recorded }),
+      promptYesNo: async () => { promptCalls++; return true; },
+    });
+    const ctx = {
+      stdout: makeNoop(), stderr: makeNoop(),
+      jsonMode: true, noOpen: true, noInput: false,
+      env: {},
+      preferences: { posthog_enabled: null },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    await core.commandLogin([]);
+    expect(promptCalls).toBe(0);
+    expect(recorded.value).toBeNull();
+  });
+
+  test("does not prompt when ZOMBIE_POSTHOG_ENABLED env override present", async () => {
+    const recorded = { value: null };
+    let promptCalls = 0;
+    const deps = makeDeps({
+      ...makeConsentDeps({ recordedSave: recorded }),
+      promptYesNo: async () => { promptCalls++; return true; },
+    });
+    const ctx = {
+      stdout: makeNoop(), stderr: makeNoop(),
+      jsonMode: false, noOpen: true, noInput: false,
+      env: { ZOMBIE_POSTHOG_ENABLED: "false" },
+      preferences: { posthog_enabled: null },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    await core.commandLogin([]);
+    expect(promptCalls).toBe(0);
+    expect(recorded.value).toBeNull();
+  });
+
+  test("prompt returning null (Ctrl-C / non-TTY) does not write preferences", async () => {
+    const recorded = { value: null };
+    const deps = makeDeps({
+      ...makeConsentDeps({ recordedSave: recorded }),
+      promptYesNo: async () => null,
+    });
+    const ctx = {
+      stdout: makeNoop(), stderr: makeNoop(),
+      jsonMode: false, noOpen: true, noInput: false,
+      env: {},
+      preferences: { posthog_enabled: null },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    const code = await core.commandLogin([]);
+    expect(code).toBe(0);
+    expect(recorded.value).toBeNull();
+  });
+
+  test("save failure surfaces stderr warning but login still succeeds", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps({
+      request: async (_ctx, reqPath) => {
+        if (reqPath === "/v1/auth/sessions") {
+          return { session_id: "sess_save_fail", login_url: "https://login.test" };
+        }
+        return { status: "complete", token: "tok_save_fail" };
+      },
+      loadPreferences: async () => ({ posthog_enabled: null }),
+      savePreferences: async () => {
+        const e = new Error("permission denied");
+        e.code = "EACCES";
+        throw e;
+      },
+      promptYesNo: async () => true,
+    });
+    const ctx = {
+      stdout: makeNoop(), stderr: err.stream,
+      jsonMode: false, noOpen: true, noInput: false,
+      env: {},
+      preferences: { posthog_enabled: null },
+    };
+    const core = createCoreHandlers(ctx, { current_workspace_id: null, items: [] }, deps);
+    const code = await core.commandLogin([]);
+    expect(code).toBe(0);
+    expect(err.read()).toContain("could not save telemetry preference");
+  });
+});
