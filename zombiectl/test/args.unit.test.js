@@ -45,6 +45,17 @@ test("normalizeApiUrl strips trailing slashes but keeps core URL", () => {
   assert.equal(normalizeApiUrl("http://localhost:3000"), "http://localhost:3000");
 });
 
+test("normalizeApiUrl strips trailing slash on the production default host", () => {
+  assert.equal(normalizeApiUrl("https://api.usezombie.com/"), "https://api.usezombie.com");
+  assert.equal(normalizeApiUrl("https://api.usezombie.com//"), "https://api.usezombie.com");
+});
+
+test("normalizeApiUrl falls back to the production default for nullish or empty input", () => {
+  assert.equal(normalizeApiUrl(null), "https://api.usezombie.com");
+  assert.equal(normalizeApiUrl(undefined), "https://api.usezombie.com");
+  assert.equal(normalizeApiUrl(""), "https://api.usezombie.com");
+});
+
 test("parseGlobalArgs prioritizes --api over env and forwards remaining args", () => {
   const env = { ZOMBIE_API_URL: "https://env.example" };
   const out = parseGlobalArgs(["--api", "https://flag.example/", "doctor"], env);
@@ -52,12 +63,68 @@ test("parseGlobalArgs prioritizes --api over env and forwards remaining args", (
   assert.deepEqual(out.rest, ["doctor"]);
 });
 
-test("parseGlobalArgs falls back through env chain and defaults", () => {
-  const outApiUrl = parseGlobalArgs(["doctor"], { API_URL: "https://api-url.example" });
-  assert.equal(outApiUrl.global.apiUrl, "https://api-url.example");
+test("parseGlobalArgs falls back to API_URL when ZOMBIE_API_URL is unset", () => {
+  const out = parseGlobalArgs(["doctor"], { API_URL: "https://api-url.example" });
+  assert.equal(out.global.apiUrl, "https://api-url.example");
+});
 
-  const outDefault = parseGlobalArgs(["doctor"], {});
-  assert.equal(outDefault.global.apiUrl, "http://localhost:3000");
+test("parseGlobalArgs returns null apiUrl when no flag and no env vars are set", () => {
+  // null is the contract — it tells cli.js to consult creds.api_url before
+  // falling to DEFAULT_API_URL. The default-is-production claim is asserted
+  // at the integration layer in api-url-resolution.integration.test.js.
+  const out = parseGlobalArgs(["doctor"], {});
+  assert.equal(out.global.apiUrl, null);
+});
+
+test("parseGlobalArgs uses ZOMBIE_API_URL when no flag is provided", () => {
+  const out = parseGlobalArgs(["doctor"], { ZOMBIE_API_URL: "https://zombie-env.example" });
+  assert.equal(out.global.apiUrl, "https://zombie-env.example");
+});
+
+test("parseGlobalArgs prefers ZOMBIE_API_URL over API_URL when both env vars are set", () => {
+  const out = parseGlobalArgs(["doctor"], {
+    ZOMBIE_API_URL: "https://zombie-env.example",
+    API_URL: "https://api-url.example",
+  });
+  assert.equal(out.global.apiUrl, "https://zombie-env.example");
+});
+
+test("parseGlobalArgs falls through empty ZOMBIE_API_URL to API_URL or null", () => {
+  const outFallthroughToApiUrl = parseGlobalArgs(["doctor"], {
+    ZOMBIE_API_URL: "",
+    API_URL: "https://api-url.example",
+  });
+  assert.equal(outFallthroughToApiUrl.global.apiUrl, "https://api-url.example");
+
+  const outFallthroughToNull = parseGlobalArgs(["doctor"], { ZOMBIE_API_URL: "" });
+  assert.equal(outFallthroughToNull.global.apiUrl, null);
+});
+
+test("parseGlobalArgs precedence matrix across flag, ZOMBIE_API_URL, API_URL (8 combinations)", () => {
+  // Walks every combination of (--api flag, ZOMBIE_API_URL, API_URL) being
+  // set or unset. parseGlobalArgs is the parse-layer half of the precedence
+  // chain — creds.api_url is consumed downstream in cli.js:76. The default
+  // is consulted only at cli.js:76 (parseGlobalArgs returns null when
+  // nothing explicit is set).
+  const FLAG = "https://flag.example";
+  const ZENV = "https://zombie-env.example";
+  const AENV = "https://api-url-env.example";
+
+  const cases = [
+    { argv: ["--api", FLAG, "doctor"], env: { ZOMBIE_API_URL: ZENV, API_URL: AENV }, expected: FLAG, label: "flag + zenv + aenv" },
+    { argv: ["--api", FLAG, "doctor"], env: { ZOMBIE_API_URL: ZENV },                expected: FLAG, label: "flag + zenv" },
+    { argv: ["--api", FLAG, "doctor"], env: { API_URL: AENV },                       expected: FLAG, label: "flag + aenv" },
+    { argv: ["--api", FLAG, "doctor"], env: {},                                      expected: FLAG, label: "flag alone" },
+    { argv: ["doctor"],                env: { ZOMBIE_API_URL: ZENV, API_URL: AENV }, expected: ZENV, label: "zenv + aenv" },
+    { argv: ["doctor"],                env: { ZOMBIE_API_URL: ZENV },                expected: ZENV, label: "zenv alone" },
+    { argv: ["doctor"],                env: { API_URL: AENV },                       expected: AENV, label: "aenv alone" },
+    { argv: ["doctor"],                env: {},                                      expected: null, label: "nothing set" },
+  ];
+
+  for (const c of cases) {
+    const out = parseGlobalArgs(c.argv, c.env);
+    assert.equal(out.global.apiUrl, c.expected, `case: ${c.label}`);
+  }
 });
 
 test("parseGlobalArgs sets global boolean options and leaves command argv intact", () => {

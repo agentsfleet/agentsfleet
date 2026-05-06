@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = "http://localhost:3000";
+const DEFAULT_API_URL = "https://api.usezombie.com";
 
 function normalizeApiUrl(url) {
   return String(url || DEFAULT_API_URL).replace(/\/+$/, "");
@@ -75,8 +75,13 @@ function parseGlobalArgs(argv, env = process.env) {
     }
   }
 
+  // Only the explicit precedence legs (flag, env vars) are resolved here;
+  // `null` signals "nothing explicit set" so cli.js can fall back through
+  // creds.api_url before landing on DEFAULT_API_URL. Pre-empting the default
+  // here would short-circuit creds.api_url in cli.js:76's `||` chain.
+  const explicitApiUrl = options.api || env.ZOMBIE_API_URL || env.API_URL || null;
   const derived = {
-    apiUrl: normalizeApiUrl(options.api || env.ZOMBIE_API_URL || env.API_URL || DEFAULT_API_URL),
+    apiUrl: explicitApiUrl ? normalizeApiUrl(explicitApiUrl) : null,
     json: options.json,
     noInput: options.noInput,
     noOpen: options.noOpen,

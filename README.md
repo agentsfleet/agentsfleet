@@ -49,6 +49,16 @@ make lint
 make doctor
 ```
 
+`zombiectl` defaults to `https://api.usezombie.com` so customers don't have to configure anything. To point it at the local backend (or any other environment) during development:
+
+| Scope | How |
+|---|---|
+| One command | `zombiectl --api http://localhost:3000 <command>` |
+| Whole shell session | `export ZOMBIE_API_URL=http://localhost:3000` in your rc (`.zshrc` / `.bashrc`) |
+| Sticky per-install | `zombiectl login --api http://localhost:3000` — persists into `~/.config/zombiectl/credentials.json` |
+
+Precedence (highest first): `--api` flag → `ZOMBIE_API_URL` env → `API_URL` env → saved `credentials.json` → default.
+
 ## Repos
 
 | Repo | What it is |

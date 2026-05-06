@@ -1,0 +1,1 @@
+../../dotfiles/docs/LIFECYCLE_PATTERNS.md
