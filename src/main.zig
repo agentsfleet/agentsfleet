@@ -9,6 +9,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const obs = @import("observability/logging.zig");
 const otel_logs = @import("observability/otel_logs.zig");
 
 const cli_commands = @import("cli/commands.zig");
@@ -86,7 +87,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
     config_load.applyEnvSources(alloc) catch |err| {
-        std.debug.print("fatal: failed loading env sources: {}\n", .{err});
+        obs.fatalStderr("fatal: failed loading env sources: {}\n", .{err});
         std.process.exit(1);
     };
     initRuntimeLogLevel(alloc);
@@ -102,7 +103,7 @@ pub fn main() !void {
             // Fail loudly so a stale script invoking a removed subcommand
             // doesn't silently start the HTTP server.
             const bad = if (argv.len > 1) argv[1] else "";
-            std.debug.print(
+            obs.fatalStderr(
                 "zombied: unknown subcommand: {s}\n" ++
                     "usage: zombied [serve|worker|doctor|migrate]\n",
                 .{bad},

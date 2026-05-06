@@ -37,6 +37,23 @@ pub fn logWarnErr(
     std.log.scoped(scope).warn(fmt ++ " err={s}", args ++ .{@errorName(err)});
 }
 
+/// Write a fatal startup message to stderr without going through the
+/// logger. Use ONLY when the logger is not yet initialized — env-load
+/// failure, config validation errors, unknown-subcommand at argv parse,
+/// and any other operator-facing fatal that fires before
+/// `initRuntimeLogLevel` runs.
+///
+/// Falls back silently on bufPrint or write failure (we are already
+/// exiting). Caps the formatted message at 2 KiB; truncation is acceptable
+/// since startup messages are short and the operator sees stdout/stderr
+/// directly.
+pub fn fatalStderr(comptime fmt: []const u8, args: anytype) void {
+    var buf: [2048]u8 = undefined;
+    const line = std.fmt.bufPrint(&buf, fmt, args) catch return;
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll(line) catch {};
+}
+
 test "logging helpers accept scoped error context" {
     const err_fn = logErr;
     const warn_fn = logWarnErr;

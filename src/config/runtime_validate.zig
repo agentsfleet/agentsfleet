@@ -8,6 +8,7 @@
 const std = @import("std");
 const oidc = @import("../auth/oidc.zig");
 const runtime_types = @import("runtime_types.zig");
+const obs = @import("../observability/logging.zig");
 
 const ValidationError = runtime_types.ValidationError;
 
@@ -20,17 +21,17 @@ pub fn isHexString(s: []const u8) bool {
 
 pub fn printValidationError(err: ValidationError) void {
     switch (err) {
-        ValidationError.OidcRequired => std.debug.print("fatal: OIDC is required — set OIDC_JWKS_URL, OIDC_ISSUER, OIDC_AUDIENCE\n", .{}),
-        ValidationError.MissingOidcJwksUrl => std.debug.print("fatal: OIDC_JWKS_URL is required and must be non-empty\n", .{}),
-        ValidationError.InvalidOidcProvider => std.debug.print("fatal: OIDC_PROVIDER is invalid (supported: {s})\n", .{oidc.supportedProviderList()}),
-        ValidationError.MissingEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
-        ValidationError.InvalidEncryptionMasterKey => std.debug.print("fatal: ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{}),
-        ValidationError.InvalidPort => std.debug.print("fatal: invalid PORT value\n", .{}),
-        ValidationError.InvalidApiHttpThreads => std.debug.print("fatal: invalid API_HTTP_THREADS value\n", .{}),
-        ValidationError.InvalidApiHttpWorkers => std.debug.print("fatal: invalid API_HTTP_WORKERS value\n", .{}),
-        ValidationError.InvalidApiMaxClients => std.debug.print("fatal: invalid API_MAX_CLIENTS value\n", .{}),
-        ValidationError.InvalidApiMaxInFlightRequests => std.debug.print("fatal: invalid API_MAX_IN_FLIGHT_REQUESTS value\n", .{}),
-        ValidationError.InvalidReadyMaxQueueDepth => std.debug.print("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),
-        ValidationError.InvalidReadyMaxQueueAgeMs => std.debug.print("fatal: invalid READY_MAX_QUEUE_AGE_MS value\n", .{}),
+        ValidationError.OidcRequired => obs.fatalStderr("fatal: OIDC is required — set OIDC_JWKS_URL, OIDC_ISSUER, OIDC_AUDIENCE\n", .{}),
+        ValidationError.MissingOidcJwksUrl => obs.fatalStderr("fatal: OIDC_JWKS_URL is required and must be non-empty\n", .{}),
+        ValidationError.InvalidOidcProvider => obs.fatalStderr("fatal: OIDC_PROVIDER is invalid (supported: {s})\n", .{oidc.supportedProviderList()}),
+        ValidationError.MissingEncryptionMasterKey => obs.fatalStderr("fatal: ENCRYPTION_MASTER_KEY not set\n", .{}),
+        ValidationError.InvalidEncryptionMasterKey => obs.fatalStderr("fatal: ENCRYPTION_MASTER_KEY must be 64 hex chars\n", .{}),
+        ValidationError.InvalidPort => obs.fatalStderr("fatal: invalid PORT value\n", .{}),
+        ValidationError.InvalidApiHttpThreads => obs.fatalStderr("fatal: invalid API_HTTP_THREADS value\n", .{}),
+        ValidationError.InvalidApiHttpWorkers => obs.fatalStderr("fatal: invalid API_HTTP_WORKERS value\n", .{}),
+        ValidationError.InvalidApiMaxClients => obs.fatalStderr("fatal: invalid API_MAX_CLIENTS value\n", .{}),
+        ValidationError.InvalidApiMaxInFlightRequests => obs.fatalStderr("fatal: invalid API_MAX_IN_FLIGHT_REQUESTS value\n", .{}),
+        ValidationError.InvalidReadyMaxQueueDepth => obs.fatalStderr("fatal: invalid READY_MAX_QUEUE_DEPTH value\n", .{}),
+        ValidationError.InvalidReadyMaxQueueAgeMs => obs.fatalStderr("fatal: invalid READY_MAX_QUEUE_AGE_MS value\n", .{}),
     }
 }
