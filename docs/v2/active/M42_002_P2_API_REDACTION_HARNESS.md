@@ -38,12 +38,11 @@ A test that asserts redaction therefore needs:
   - placeholder bytes appear in the captured RPC stream (`recorder.contains("${secrets.llm.api_key}")`)
   - resolved secret bytes do **not** appear (`!recorder.contains(SYNTHETIC_SECRET)`)
   - no PUBLISH frame on `zombie:{id}:activity` contains the resolved bytes
-- `src/zombie/test_production_executor.zig` — fixture mirroring `test_executor_harness.zig` but for the stub-provider binary (separate file: the spawn target and its build-option gating differ, and we want to avoid muddling the harness fixture with two execution modes).
-
 ### Files to modify
 
-- `build.zig` — add `executor_provider_stub` build option (default `false`); produce a third executor binary `zombied-executor-stub` when set. Production `zombied-executor` and harness `zombied-executor-harness` builds remain unaffected.
+- `build.zig` — add `executor_provider_stub` build option (default `false`); produce a third executor binary `zombied-executor-stub` when set. Production `zombied-executor` and harness `zombied-executor-harness` builds remain unaffected. `zig build test` depends on the stub install step.
 - `src/executor/runner.zig` — at comptime, when `build_options.executor_provider_stub` is true, swap the provider for `test_stub_provider`. No env-var read; the binary identity is the gate. When the flag is false the stub module is not imported at all (mirrors the existing `executor_harness` pattern).
+- `src/zombie/test_executor_harness.zig` — parameterise over a `BinaryTarget` enum (`.harness` default, `.stub`) rather than introducing a parallel fixture file. Same spawn skeleton, same socket polling, same teardown — only the default binary path, env-var override name, and presence-of-script-file branch differ. Avoids ~150 LOC of near-duplicate spawn plumbing the previous draft would have produced.
 
 ### Files NOT to modify
 
