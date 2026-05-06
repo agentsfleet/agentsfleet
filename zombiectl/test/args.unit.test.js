@@ -57,7 +57,7 @@ test("parseGlobalArgs falls back through env chain and defaults", () => {
   assert.equal(outApiUrl.global.apiUrl, "https://api-url.example");
 
   const outDefault = parseGlobalArgs(["doctor"], {});
-  assert.equal(outDefault.global.apiUrl, "http://localhost:3000");
+  assert.equal(outDefault.global.apiUrl, "https://api.usezombie.com");
 });
 
 test("parseGlobalArgs sets global boolean options and leaves command argv intact", () => {

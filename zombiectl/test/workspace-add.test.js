@@ -39,7 +39,7 @@ test("workspace add does not persist local state when API create fails", async (
     const err = bufferStream();
 
     const fetchImpl = async (url, options) => {
-      assert.equal(url, "http://localhost:3000/v1/workspaces");
+      assert.equal(url, "https://api.usezombie.com/v1/workspaces");
       assert.equal(options.method, "POST");
       return {
         ok: false,

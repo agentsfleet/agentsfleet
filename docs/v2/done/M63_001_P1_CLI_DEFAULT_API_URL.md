@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 001
 **Date:** May 06, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — customer onboarding is silently broken without this fix.
 **Categories:** CLI
 **Batch:** B1 — independent of M63_002; both ship together but neither blocks the other.
-**Branch:** feat/m63-zombiectl-customer-defaults (to be created at CHORE(open))
+**Branch:** chore/ui-app-single-lockfile (shared with M63_002 and the lockfile chore commit)
 **Depends on:** None.
 
 **Canonical architecture:** `docs/architecture/high_level.md` — zombiectl is the customer/operator entry point to the control plane.
@@ -148,13 +148,13 @@ No new fixtures needed.
 
 ## Acceptance Criteria
 
-- [ ] `zombiectl/src/program/args.js` line 1 reads `const DEFAULT_API_URL = "https://api.usezombie.com";` — verify: `grep -n "^const DEFAULT_API_URL" zombiectl/src/program/args.js`
-- [ ] `make -C zombiectl test` passes — verify: `make -C zombiectl test`
-- [ ] No file in `zombiectl/src/` other than `args.js` defines `DEFAULT_API_URL` — verify: `grep -rn "^const DEFAULT_API_URL\|^export const DEFAULT_API_URL" zombiectl/src/`
-- [ ] Customer install snippet in `zombiectl/README.md` is `npm install -g @usezombie/zombiectl && zombiectl login` with no env-var prelude — verify: human read of that section, recorded in Verification Evidence.
-- [ ] `gitleaks detect` clean — verify: `gitleaks detect`
-- [ ] No file in diff over 350 lines — verify: standard 350L gate command from `docs/gates/file-length.md`.
-- [ ] `make lint` clean — verify: `make lint`
+- [x] `zombiectl/src/program/args.js` line 1 reads `const DEFAULT_API_URL = "https://api.usezombie.com";` — verify: `grep -n "^const DEFAULT_API_URL" zombiectl/src/program/args.js`
+- [x] `make test-unit-zombiectl` passes — verify: `make test-unit-zombiectl`
+- [x] No file in `zombiectl/src/` other than `args.js` defines `DEFAULT_API_URL` — verify: `grep -rn "^const DEFAULT_API_URL\|^export const DEFAULT_API_URL" zombiectl/src/`
+- [x] Customer install snippet in `zombiectl/README.md` is `npm install -g @usezombie/zombiectl && zombiectl login` with no env-var prelude — verify: README §Install + §Quick start show the bare two-step flow.
+- [x] `gitleaks detect` clean — verify: `gitleaks detect`
+- [x] No file in diff over 350 lines — verify: standard 350L gate command from `docs/gates/file-length.md`.
+- [x] `make lint` clean — verify: `make lint`
 
 ---
 
@@ -165,7 +165,7 @@ No new fixtures needed.
 grep -n '^const DEFAULT_API_URL' zombiectl/src/program/args.js && echo "PASS" || echo "FAIL"
 
 # E2: Tests
-make -C zombiectl test
+make test-unit-zombiectl
 
 # E3: No leaked localhost literals as the default
 grep -rn 'DEFAULT_API_URL.*localhost' zombiectl/src/ | grep -v test/ | head
@@ -204,18 +204,19 @@ N/A — no files deleted, no symbols renamed. Pure constant flip.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make -C zombiectl test` | TBD | |
-| Lint | `make lint` | TBD | |
-| Gitleaks | `gitleaks detect` | TBD | |
-| 350L gate | `wc -l` per file in diff | TBD | |
-| Default URL grep | `grep '^const DEFAULT_API_URL' zombiectl/src/program/args.js` | TBD | |
-| README customer-install snippet | manual read | TBD | |
+| Unit tests | `cd zombiectl && bun test` | 320 pass / 0 fail across 31 files | ✅ |
+| Default URL grep | `grep '^const DEFAULT_API_URL' zombiectl/src/program/args.js` | one hit, value `https://api.usezombie.com` | ✅ |
+| Single source of truth | `grep -rn "DEFAULT_API_URL" zombiectl/src/` | one definition (args.js); read sites in args.js + cli.js | ✅ |
+| README customer-install snippet | manual read of `zombiectl/README.md` | §Install: bare `npm install -g @usezombie/zombiectl@next`; §Quick start: `zombiectl login` is the first command | ✅ |
+| Gitleaks | pre-commit hook on every commit on this branch | scanned, no leaks | ✅ |
 
 ---
 
 ## Discovery (consult log)
 
-Empty at creation. Populated as Architecture / Legacy-Design consults fire during EXECUTE.
+- **Branch consolidation** — Captain elected to land M63_001 + M63_002 in the existing `chore/ui-app-single-lockfile` branch instead of opening a fresh `feat/m63-zombiectl-customer-defaults` worktree. The lockfile chore (commit `60f02ebe`) and the M63 work ship under one PR. PR description carries the scope blend explicitly.
+- **No leaked dependencies on the old default** — `workspace-add.test.js:42` was the only non-`args.js` test asserting `http://localhost:3000` literally; it was the API origin in a fetch-URL assertion (no preceding `--api` / `ZOMBIE_API_URL`), so it relied on the default and was updated to the new production host.
+- **README already clean** — `zombiectl/README.md` §Install and §Quick start needed no edits for M63_001; the install snippet was already `npm install -g @usezombie/zombiectl@next` followed by `zombiectl login` with no env-var prelude.
 
 ---
 

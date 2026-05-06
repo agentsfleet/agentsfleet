@@ -1,4 +1,4 @@
-const DEFAULT_API_URL = "http://localhost:3000";
+const DEFAULT_API_URL = "https://api.usezombie.com";
 
 function normalizeApiUrl(url) {
   return String(url || DEFAULT_API_URL).replace(/\/+$/, "");
