@@ -37,7 +37,10 @@ export async function commandAgentAdd(ctx, parsed, deps) {
 
   writeLine(ctx.stdout, ui.ok(`External agent added: ${res.agent_id}`));
   writeLine(ctx.stdout);
-  writeLine(ctx.stdout, ui.bold("API Key (shown once — store securely):"));
+  // ui.warn highlights "store this now, you can't get it back" semantically.
+  // Was previously ui.bold which doesn't exist on the theme — the call threw
+  // TypeError and crashed the non-JSON path.
+  writeLine(ctx.stdout, ui.warn("API Key (shown once — store securely):"));
   writeLine(ctx.stdout, `  ${res.key}`);
   writeLine(ctx.stdout);
   writeLine(ctx.stdout, ui.dim("Use as: Authorization: Bearer <key>"));
