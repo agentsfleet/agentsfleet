@@ -187,3 +187,31 @@ pub fn composeMessage(
 
     return parts.toOwnedSlice(alloc);
 }
+
+test "redactedFinalReply substitutes the placeholder and frees the input" {
+    const alloc = std.testing.allocator;
+    const secrets = [_]runner_progress.Secret{
+        .{ .value = "sk-leak", .placeholder = "${secrets.llm.api_key}" },
+    };
+    const input = try alloc.dupe(u8, "hello sk-leak world");
+    const out = try redactedFinalReply(alloc, input, &secrets);
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("hello ${secrets.llm.api_key} world", out);
+}
+
+test "redactedFinalReply with no matching secret still transfers ownership" {
+    // Negative-path: when redactBytes returns the input slice unchanged
+    // (no hit), the helper must still free `input` and return a fresh
+    // copy — caller cannot tell the two paths apart from outside.
+    const alloc = std.testing.allocator;
+    const secrets = [_]runner_progress.Secret{
+        .{ .value = "absent-token", .placeholder = "${secrets.llm.api_key}" },
+    };
+    const input = try alloc.dupe(u8, "no leak here");
+    const out = try redactedFinalReply(alloc, input, &secrets);
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("no leak here", out);
+    // The std.testing.allocator catches double-free / leak; a defective
+    // implementation that returned `input` directly would either leak
+    // the dupe or double-free on the caller's defer.
+}

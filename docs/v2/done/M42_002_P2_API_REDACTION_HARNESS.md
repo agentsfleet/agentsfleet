@@ -4,7 +4,7 @@
 **Milestone:** M42
 **Workstream:** 002
 **Date:** Apr 28, 2026: 09:35 PM
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m42-002-redaction-harness
 **Priority:** P2 — invariant is currently protected by code review; mechanical regression gate is desirable but not launch-blocking.
 **Categories:** API
