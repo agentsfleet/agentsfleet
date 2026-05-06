@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 002
 **Date:** May 06, 2026
-**Status:** PENDING
-**Priority:** P1 — current behavior phones home by default with no opt-in; this is a privacy-posture fix tied to the same customer-onboarding moment as M63_001.
+**Status:** DEFERRED — see Discovery for rationale.
+**Priority:** P1 — was tied to onboarding privacy posture; reduced to N/A by the bundled-key being a placeholder.
 **Categories:** CLI
-**Batch:** B1 — independent of M63_001; both ship under one branch.
-**Branch:** feat/m63-zombiectl-customer-defaults (to be created at CHORE(open); shared with M63_001)
+**Batch:** B1 — was bundled with M63_001; M63_001 shipped, this workstream did not.
+**Branch:** N/A — implementation was attempted on `chore/ui-app-single-lockfile` (commit `fe748ee9`) and reverted in commit `68c2891d` after design re-review.
 **Depends on:** None.
 
 **Canonical architecture:** `docs/architecture/high_level.md` — zombiectl is the customer entry point; telemetry policy belongs at this layer.
@@ -289,7 +289,13 @@ N/A — no files deleted, no symbols renamed. New helpers added; old helpers unt
 
 ## Discovery (consult log)
 
-Empty at creation. Populated as Architecture / Legacy-Design consults fire during EXECUTE.
+- **Implementation attempted and reverted.** The full design (preferences.json + first-login prompt + analytics precedence change + 20 new test cases) was implemented in commit `fe748ee9` on `chore/ui-app-single-lockfile` and verified green (320 / 320 tests, lint clean, gitleaks clean). It was reverted in commit `68c2891d` before merge after the design call below.
+- **Captain's deferral call (May 06, 2026).** Two grounds:
+  1. **The bundled `DEFAULT_POSTHOG_KEY` is a placeholder, not a valid PostHog project key.** Events emitted to it land nowhere meaningful — there is no actual ingest, no actual tracking. The premise that customers were "phoning home by default" doesn't hold in practice, even though the code path looked like they were. The privacy hole is theoretical, not real.
+  2. **A first-run consent prompt is friction at the customer's most-fragile onboarding moment** (right after a successful login). Industry comparison reinforced this: Claude Code, Amp, and Codex all default telemetry on with no first-run prompt; their telemetry endpoints are first-party (the same vendor the customer already trusted with prompts/auth/code), so the consent posture is defensible without an explicit prompt.
+- **Decision.** No prompt. No `preferences.json`. No analytics-precedence change. No README opt-out documentation either — there is nothing to opt out of when the bundled key is a placeholder.
+- **Reactivation conditions.** This spec should be revisited if any of the following changes: (a) `DEFAULT_POSTHOG_KEY` is replaced with a valid project key and tracking actually goes live; (b) telemetry is routed to a third-party SaaS the customer hasn't already agreed to via the usezombie product; (c) Captain decides on opt-in tracking at onboarding for any other reason. At that point the implementation lives in commit `fe748ee9` as a starting point — the code, tests, and infrastructure can be cherry-picked back rather than re-derived.
+- **What this spec leaves behind in the repo:** nothing. M63_001 (the default-API-URL flip) ships and is independently complete. The lockfile chore ships in the same PR. M63_002 source-of-truth is this DEFERRED spec; no production code depends on it.
 
 ---
 
