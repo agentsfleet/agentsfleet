@@ -21,7 +21,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
-
+const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -31,8 +31,9 @@ const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("../../../zombie/event_envelope.zig");
 const normalizer = @import("../../../zombie/webhook/normalizer/github.zig");
+const filter = @import("github_filter.zig");
 
-const log = std.log.scoped(.http_webhook_github);
+const log = logging.scoped(.http_webhook_github);
 
 const Hx = hx_mod.Hx;
 
@@ -43,11 +44,6 @@ const PROVIDER_DEDUP_NAMESPACE = "gh";
 const GITHUB_DEDUP_TTL_SECONDS: u32 = 72 * 60 * 60;
 const HEADER_EVENT = "x-github-event";
 const HEADER_DELIVERY = "x-github-delivery";
-const EVENT_WORKFLOW_RUN = "workflow_run";
-const ACTION_COMPLETED = "completed";
-const CONCLUSION_FAILURE = "failure";
-
-const FilterDecision = struct { ingest: bool, reason: []const u8 };
 
 pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) void {
     // Pre-read fence: reject oversized payloads before httpz buffers them.
@@ -80,18 +76,27 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         return;
     };
 
-    if (!std.mem.eql(u8, event, EVENT_WORKFLOW_RUN)) {
+    if (!std.mem.eql(u8, event, filter.EVENT_WORKFLOW_RUN)) {
         // 200 OK + diagnostic body (not 204) so the `ignored` reason survives
         // CDNs / HTTP/2 proxies that may strip or reject 204+body per
         // RFC 9110 §6.4.5. GitHub's webhook delivery dashboard renders this
         // body when an operator inspects "Recent Deliveries".
-        log.info("github_webhook.ignored_event zombie_id={s} delivery={s} event={s}", .{ zombie_id, delivery, event });
+        log.info("ignored_event", .{
+            .zombie_id = zombie_id,
+            .delivery = delivery,
+            .event = event,
+        });
         hx.ok(.ok, .{ .ignored = event });
         return;
     }
 
     var zombie = fetchZombieById(hx.ctx.pool, hx.alloc, zombie_id) catch |err| {
-        log.err("github_webhook.db_error zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });
+        log.err("db_error", .{
+            .error_code = ec.ERR_INTERNAL_DB_QUERY,
+            .zombie_id = zombie_id,
+            .err = @errorName(err),
+            .req_id = hx.req_id,
+        });
         common.internalDbError(hx.res, hx.req_id);
         return;
     } orelse {
@@ -108,29 +113,47 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
 
     // Single parse — filter + normalize share the root on the accepted path.
     const parsed = std.json.parseFromSlice(std.json.Value, hx.alloc, body, .{}) catch |err| {
-        log.warn("github_webhook.parse_failed zombie_id={s} delivery={s} err={s}", .{ zombie_id, delivery, @errorName(err) });
+        log.warn("parse_failed", .{
+            .error_code = ec.ERR_WEBHOOK_MALFORMED,
+            .zombie_id = zombie_id,
+            .delivery = delivery,
+            .err = @errorName(err),
+        });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
     };
     defer parsed.deinit();
     const root: ?std.json.ObjectMap = switch (parsed.value) { .object => |o| o, else => null };
-    const decision = if (root) |r| filterParsedRoot(r) else null;
+    const decision = if (root) |r| filter.filterParsedRoot(r) else null;
     if (decision == null) {
-        log.warn("github_webhook.malformed_payload zombie_id={s} delivery={s}", .{ zombie_id, delivery });
+        log.warn("malformed_payload", .{
+            .error_code = ec.ERR_WEBHOOK_MALFORMED,
+            .zombie_id = zombie_id,
+            .delivery = delivery,
+        });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
     }
     if (!decision.?.ingest) {
-        log.info("github_webhook.filter_ignored zombie_id={s} delivery={s} reason={s}", .{ zombie_id, delivery, decision.?.reason });
+        log.info("filter_ignored", .{
+            .zombie_id = zombie_id,
+            .delivery = delivery,
+            .reason = decision.?.reason,
+        });
         hx.ok(.ok, .{ .ignored = decision.?.reason });
         return;
     }
 
-    // Dedupe AFTER validation+filter — see file header + spec A8 for why.
+    // Dedupe AFTER validation+filter — see file header for why.
     if (!claimDeliveryKey(hx, zombie_id, delivery)) return;
 
     const request_json = normalizer.normalizeFromValue(hx.alloc, root.?, std.time.timestamp()) catch |err| {
-        log.err("github_webhook.normalize_failed zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });
+        log.err("normalize_failed", .{
+            .error_code = ec.ERR_WEBHOOK_MALFORMED,
+            .zombie_id = zombie_id,
+            .err = @errorName(err),
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return;
     };
@@ -146,14 +169,23 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
         .created_at = std.time.milliTimestamp(),
     };
     const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
-        log.err("github_webhook.enqueue_failed zombie_id={s} delivery={s} err={s}", .{ zombie_id, delivery, @errorName(err) });
+        log.err("enqueue_failed", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .zombie_id = zombie_id,
+            .delivery = delivery,
+            .err = @errorName(err),
+        });
         common.internalOperationError(hx.res, "Failed to enqueue event", hx.req_id);
         return;
     };
     defer hx.ctx.alloc.free(new_event_id);
 
     recordAccepted(hx.ctx.telemetry, zombie.workspace_id, zombie_id, delivery);
-    log.info("github_webhook.accepted zombie_id={s} delivery={s} stream_event_id={s}", .{ zombie_id, delivery, new_event_id });
+    log.info("accepted", .{
+        .zombie_id = zombie_id,
+        .delivery = delivery,
+        .stream_event_id = new_event_id,
+    });
     hx.ok(.accepted, .{ .status = ec.STATUS_ACCEPTED, .event_id = new_event_id });
 }
 
@@ -164,51 +196,21 @@ fn claimDeliveryKey(hx: Hx, zombie_id: []const u8, delivery: []const u8) bool {
         return false;
     };
     const is_new = hx.ctx.queue.setNx(key, "1", GITHUB_DEDUP_TTL_SECONDS) catch |err| {
-        log.err("github_webhook.dedup_error zombie_id={s} delivery={s} err={s}", .{ zombie_id, delivery, @errorName(err) });
+        log.err("dedup_error", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .zombie_id = zombie_id,
+            .delivery = delivery,
+            .err = @errorName(err),
+        });
         common.internalOperationError(hx.res, "Idempotency check failed", hx.req_id);
         return false;
     };
     if (!is_new) {
-        log.debug("github_webhook.duplicate zombie_id={s} delivery={s}", .{ zombie_id, delivery });
+        log.debug("duplicate", .{ .zombie_id = zombie_id, .delivery = delivery });
         hx.ok(.ok, .{ .deduped = true });
         return false;
     }
     return true;
-}
-
-fn filterParsedRoot(root: std.json.ObjectMap) ?FilterDecision {
-    const action = stringField(root.get("action")) orelse "";
-    if (!std.mem.eql(u8, action, ACTION_COMPLETED)) {
-        return .{ .ingest = false, .reason = "non_completed_action" };
-    }
-    const wr = switch (root.get("workflow_run") orelse return null) {
-        .object => |o| o,
-        else => return null,
-    };
-    const conclusion = stringField(wr.get("conclusion")) orelse "";
-    if (!std.mem.eql(u8, conclusion, CONCLUSION_FAILURE)) {
-        return .{ .ingest = false, .reason = "non_failure_conclusion" };
-    }
-    const repo_ok = if (root.get("repository")) |v| v == .object else false;
-    if (!repo_ok) return .{ .ingest = false, .reason = "missing_repository" };
-    return .{ .ingest = true, .reason = "" };
-}
-
-fn filterAction(alloc: std.mem.Allocator, body: []const u8) ?FilterDecision {
-    const parsed = std.json.parseFromSlice(std.json.Value, alloc, body, .{}) catch return null;
-    defer parsed.deinit();
-    return switch (parsed.value) {
-        .object => |o| filterParsedRoot(o),
-        else => null,
-    };
-}
-
-fn stringField(v: ?std.json.Value) ?[]const u8 {
-    const val = v orelse return null;
-    return switch (val) {
-        .string => |s| s,
-        else => null,
-    };
 }
 
 const ZombieRow = struct {
@@ -252,93 +254,20 @@ fn recordAccepted(
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
-// Integration tests that exercise the full HTTP → middleware → Redis → XADD
-// path live in webhook_http_integration_test.zig (TRACKED SKIP today, wires
-// up once the harness gains Redis support). The unit tests below cover the
-// pieces that don't need a live request.
+// Filter logic + its tests live in `github_filter.zig` (sibling). Integration
+// tests that exercise the full HTTP → middleware → Redis → XADD path live in
+// webhook_http_integration_test.zig. The handler-level pin below covers
+// constants the filter doesn't own.
 
 const testing = std.testing;
 
-test "filterAction: completed + failure + repository → ingest" {
-    const body =
-        \\{"action":"completed","workflow_run":{"conclusion":"failure"},"repository":{"full_name":"o/r"}}
-    ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-    try testing.expect(got.ingest);
-}
-
-test "filterAction: completed + failure but missing repository → ignore missing_repository" {
-    const body =
-        \\{"action":"completed","workflow_run":{"conclusion":"failure"}}
-    ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-    try testing.expect(!got.ingest);
-    try testing.expectEqualStrings("missing_repository", got.reason);
-}
-
-test "filterAction: in_progress action → ignore non_completed_action" {
-    const body =
-        \\{"action":"in_progress","workflow_run":{"conclusion":null}}
-    ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-    try testing.expect(!got.ingest);
-    try testing.expectEqualStrings("non_completed_action", got.reason);
-}
-
-test "filterAction: missing action → ignore non_completed_action" {
-    const body =
-        \\{"workflow_run":{"conclusion":"failure"}}
-    ;
-    const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-    try testing.expect(!got.ingest);
-    try testing.expectEqualStrings("non_completed_action", got.reason);
-}
-
-test "filterAction: missing workflow_run → null" {
-    const body =
-        \\{"action":"completed"}
-    ;
-    try testing.expect(filterAction(testing.allocator, body) == null);
-}
-
-test "filterAction: malformed JSON → null" {
-    try testing.expect(filterAction(testing.allocator, "not json") == null);
-}
-
-test "filterAction: non-object root → null" {
-    try testing.expect(filterAction(testing.allocator, "[1,2,3]") == null);
-}
-
-test "filterAction: parameterized non-failure conclusions" {
-    const cases = [_][]const u8{
-        \\{"action":"completed","workflow_run":{"conclusion":"success"}}
-        ,
-        \\{"action":"completed","workflow_run":{"conclusion":"neutral"}}
-        ,
-        \\{"action":"completed","workflow_run":{"conclusion":"skipped"}}
-        ,
-        \\{"action":"completed","workflow_run":{"conclusion":"timed_out"}}
-        ,
-        \\{"action":"completed","workflow_run":{"conclusion":"action_required"}}
-        ,
-    };
-    for (cases) |body| {
-        const got = filterAction(testing.allocator, body) orelse return error.TestUnexpectedNull;
-        try testing.expect(!got.ingest);
-        try testing.expectEqualStrings("non_failure_conclusion", got.reason);
-    }
-}
-
-test "constants pin" {
+test "handler constants pin" {
     try testing.expectEqual(@as(usize, 1024 * 1024), MAX_BODY_BYTES);
     try testing.expectEqual(@as(u32, 72 * 60 * 60), GITHUB_DEDUP_TTL_SECONDS);
     try testing.expectEqualStrings("webhook:github", ACTOR);
     try testing.expectEqualStrings("gh", PROVIDER_DEDUP_NAMESPACE);
     try testing.expectEqualStrings("x-github-event", HEADER_EVENT);
     try testing.expectEqualStrings("x-github-delivery", HEADER_DELIVERY);
-    try testing.expectEqualStrings("workflow_run", EVENT_WORKFLOW_RUN);
-    try testing.expectEqualStrings("completed", ACTION_COMPLETED);
-    try testing.expectEqualStrings("failure", CONCLUSION_FAILURE);
     // Worst-case dedupe key: "webhook:dedup:" (14) + UUIDv7 (36) + ":gh:" (4)
     // + delivery UUID (36) = 90 bytes. The 256-byte buffer is comfortable.
     var key_buf: [256]u8 = undefined;
