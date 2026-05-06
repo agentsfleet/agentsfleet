@@ -16,7 +16,7 @@ const worker_state_mod = @import("worker/state.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const control_stream = @import("../zombie/control_stream.zig");
 
-const log = std.log.scoped(.worker);
+const log = logging.scoped(.worker);
 
 var shutdown_requested = std.atomic.Value(bool).init(false);
 
@@ -55,21 +55,22 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer preflight.deinitOtelLogs();
     preflight.initOtelTraces(alloc);
     defer preflight.deinitOtelTraces();
-    log.info("startup.worker status=start", .{});
+    log.info("startup.worker_start", .{});
 
-    log.info("startup.env_check status=start", .{});
+    log.info("startup.env_check_start", .{});
     env_vars.enforceFromEnvWithMode(alloc, .worker) catch |err| {
+        const env_code = error_codes.ERR_STARTUP_ENV_CHECK;
         switch (err) {
-            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=DATABASE_URL_WORKER not set", .{}),
-            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_WORKER not set", .{}),
-            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_WORKER must use rediss://", .{}),
-            else => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err={s}", .{@errorName(err)}),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER must use rediss://" }),
+            else => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = @errorName(err) }),
         }
         std.process.exit(1);
     };
-    log.info("startup.env_check status=ok", .{});
+    log.info("startup.env_check_ok", .{});
 
-    log.info("startup.config_load status=start", .{});
+    log.info("startup.config_load_start", .{});
     var worker_cfg = worker_config.Config.load(alloc) catch |err| {
         switch (err) {
             worker_config.ValidationError.InvalidDrainTimeoutMs,
@@ -79,34 +80,34 @@ pub fn run(alloc: std.mem.Allocator) !void {
             worker_config.ValidationError.InvalidExecutorCpuLimitPercent,
             => {
                 worker_config.printValidationError(@errorCast(err));
-                log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});
+                log.err("startup.config_load_failed", .{ .error_code = "UZ-STARTUP-002", .err = @errorName(err) });
             },
         }
         std.process.exit(1);
     };
     defer worker_cfg.deinit();
-    log.info("startup.config_load status=ok", .{});
+    log.info("startup.config_load_ok", .{});
 
     var tel = preflight.initTelemetry(alloc);
     defer tel.deinit(alloc);
 
     var exec_client: ?executor_client.ExecutorClient = null;
     if (worker_cfg.executor_socket_path) |path| {
-        log.info("startup.executor_mode status=enabled socket={s}", .{path});
+        log.info("startup.executor_mode_enabled", .{ .socket = path });
         var ec = executor_client.ExecutorClient.init(alloc, path);
         ec.connect() catch |err| {
-            log.err("startup.executor_connect status=fail error_code={s} socket={s} err={s}", .{
-                error_codes.ERR_EXEC_STARTUP_POSTURE,
-                path,
-                @errorName(err),
+            log.err("startup.executor_connect_failed", .{
+                .error_code = error_codes.ERR_EXEC_STARTUP_POSTURE,
+                .socket = path,
+                .err = @errorName(err),
             });
             tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = "worker", .phase = "executor_connect", .reason = @errorName(err), .error_code = error_codes.ERR_EXEC_STARTUP_POSTURE });
             std.process.exit(1);
         };
         exec_client = ec;
-        log.info("startup.executor_connect status=ok socket={s}", .{path});
+        log.info("startup.executor_connect_ok", .{ .socket = path });
     } else {
-        log.info("startup.executor_mode status=direct hint=set_EXECUTOR_SOCKET_PATH_to_enable", .{});
+        log.info("startup.executor_mode_direct", .{ .hint = "set_EXECUTOR_SOCKET_PATH_to_enable" });
     }
     defer if (exec_client) |*ec| ec.close();
 
@@ -146,13 +147,19 @@ pub fn run(alloc: std.mem.Allocator) !void {
     event_thread = try std.Thread.spawn(.{}, events_bus.runThread, .{&event_bus});
 
     var watcher_redis = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-        log.err("startup.watcher_redis_connect status=fail error_code={s} err={s}", .{ error_codes.ERR_STARTUP_REDIS_CONNECT, @errorName(err) });
+        log.err("startup.watcher_redis_connect_failed", .{
+            .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
+            .err = @errorName(err),
+        });
         std.process.exit(1);
     };
     defer watcher_redis.deinit();
 
     control_stream.ensureControlGroup(&watcher_redis) catch |err| {
-        log.err("startup.control_group_ensure status=fail error_code={s} err={s}", .{ error_codes.ERR_STARTUP_REDIS_CONNECT, @errorName(err) });
+        log.err("startup.control_group_ensure_failed", .{
+            .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
+            .err = @errorName(err),
+        });
         std.process.exit(1);
     };
 
@@ -189,7 +196,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     // watcher's spawnZombieThread no-ops if the zombie is already mapped
     // (covers the case where `zombie_created` is still in the stream backlog).
     const zombie_ids: [][]const u8 = worker_zombie.listActiveZombieIds(worker_pool, alloc) catch |err| blk: {
-        log.warn("worker.zombie_discovery_failed err={s} hint=no_zombies_will_run", .{@errorName(err)});
+        log.warn("worker.zombie_discovery_failed", .{ .err = @errorName(err), .hint = "no_zombies_will_run" });
         break :blk &.{};
     };
     defer {
@@ -198,11 +205,11 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
     for (zombie_ids) |zombie_id| {
         watcher.spawnZombieThread(zombie_id) catch |err| {
-            log.err("worker.bootstrap_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+            log.err("worker.bootstrap_spawn_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
         };
     }
     if (zombie_ids.len > 0)
-        log.info("worker.bootstrap_zombies count={d}", .{zombie_ids.len});
+        log.info("worker.bootstrap_zombies", .{ .count = zombie_ids.len });
 
     var watcher_thread = try std.Thread.spawn(.{}, worker_watcher.Watcher.run, .{&watcher});
     watcher_thread.join();

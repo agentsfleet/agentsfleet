@@ -30,8 +30,8 @@ const poll_mod = @import("worker_watcher_poll.zig");
 const executor_client = @import("../executor/client.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const error_codes = @import("../errors/error_registry.zig");
-
-const log = std.log.scoped(.worker_watcher);
+const logging = @import("log");
+const log = logging.scoped(.worker_watcher);
 
 /// Reconcile sweep cadence. Watcher walks core.zombies every Nth tick
 /// (≈ N × 5s = 30s @ N=6) and spawns missing threads — covering orphans
@@ -125,7 +125,7 @@ pub const Watcher = struct {
         try runtime_mod.sweepExitedLocked(self.alloc, &self.runtimes, &self.threads);
 
         if (self.runtimes.contains(zombie_id)) {
-            log.debug("watcher.spawn_skipped reason=already_running zombie_id={s}", .{zombie_id});
+            log.debug("watcher.spawn_skipped", .{ .reason = "already_running", .zombie_id = zombie_id });
             return;
         }
 
@@ -177,7 +177,7 @@ pub const Watcher = struct {
         self.runtimes.putAssumeCapacity(id_for_runtimes, runtime);
         self.threads.putAssumeCapacity(id_for_threads, thread);
 
-        log.info("watcher.spawned zombie_id={s}", .{zombie_id});
+        log.info("watcher.spawned", .{ .zombie_id = zombie_id });
     }
 
     /// Main XREADGROUP loop. Returns when shutdown_requested fires or the
@@ -186,22 +186,22 @@ pub const Watcher = struct {
     /// sweep so a zombie row whose install-time XADD failed gets picked up
     /// without waiting for the next worker restart.
     pub fn run(self: *Watcher) void {
-        log.info("watcher.start consumer={s}", .{self.cfg.consumer_name});
+        log.info("watcher.start", .{ .consumer = self.cfg.consumer_name });
         var ticks_since_reconcile: u32 = 0;
         while (self.shouldKeepRunning()) {
             poll_mod.pollOnce(self) catch |err| {
-                log.err("watcher.poll_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{@errorName(err)});
+                log.err("watcher.poll_failed", .{ .err = @errorName(err), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
                 std.Thread.sleep(100 * std.time.ns_per_ms);
             };
             ticks_since_reconcile += 1;
             if (ticks_since_reconcile >= reconcile_every_ticks) {
                 self.reconcileTick() catch |err| {
-                    log.warn("watcher.reconcile_fail err={s}", .{@errorName(err)});
+                    log.warn("watcher.reconcile_failed", .{ .err = @errorName(err) });
                 };
                 ticks_since_reconcile = 0;
             }
         }
-        log.info("watcher.stop consumer={s}", .{self.cfg.consumer_name});
+        log.info("watcher.stop", .{ .consumer = self.cfg.consumer_name });
     }
 
     /// Periodic two-direction sweep against PG state.
@@ -228,7 +228,7 @@ pub const Watcher = struct {
         }
         for (ids) |zombie_id| {
             self.spawnZombieThread(zombie_id) catch |err| {
-                log.warn("watcher.reconcile_spawn_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+                log.warn("watcher.reconcile_spawn_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
             };
         }
     }
@@ -312,14 +312,14 @@ pub const Watcher = struct {
 
     fn cancelZombie(self: *Watcher, zombie_id: []const u8) void {
         if (!self.tryMarkCancel(zombie_id)) {
-            log.debug("watcher.cancel_skip reason=not_local_or_exited zombie_id={s}", .{zombie_id});
+            log.debug("watcher.cancel_skip", .{ .reason = "not_local_or_exited", .zombie_id = zombie_id });
             return;
         }
-        log.info("watcher.cancel_set zombie_id={s}", .{zombie_id});
+        log.info("watcher.cancel_set", .{ .zombie_id = zombie_id });
 
         if (self.cfg.executor) |exec| {
             exec.cancelExecution(zombie_id) catch |err| {
-                log.warn("watcher.executor_cancel_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+                log.warn("watcher.executor_cancel_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
             };
         }
     }
@@ -328,9 +328,9 @@ pub const Watcher = struct {
         const started = self.cfg.worker_state.startDrain();
         const r = reason orelse "control";
         if (started) {
-            log.info("watcher.drain_started reason={s}", .{r});
+            log.info("watcher.drain_started", .{ .reason = r });
         } else {
-            log.debug("watcher.drain_already_in_progress reason={s}", .{r});
+            log.debug("watcher.drain_already_in_progress", .{ .reason = r });
         }
     }
 

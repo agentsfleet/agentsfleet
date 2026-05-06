@@ -1,8 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const posthog = @import("posthog");
+const logging = @import("log");
 
-const obs_log = std.log.scoped(.telemetry);
+const log = logging.scoped(.telemetry);
 
 // ── Utility ─────────────────────────────────────────────────────────
 
@@ -73,7 +74,7 @@ pub const ProdBackend = struct {
             .event = @tagName(E.kind),
             .properties = &props,
         }) catch |err| {
-            obs_log.warn("posthog.capture_fail event={s} err={s}", .{ @tagName(E.kind), @errorName(err) });
+            log.warn("posthog.capture_failed", .{ .event = @tagName(E.kind), .err = @errorName(err) });
         };
     }
 };

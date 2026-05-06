@@ -5,8 +5,9 @@ const oidc_auth = @import("../auth/oidc.zig");
 const env_vars = @import("../config/env_vars.zig");
 const queue_redis = @import("../queue/redis.zig");
 const common = @import("common.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.zombied);
+const log = logging.scoped(.zombied);
 
 const OutputFormat = enum {
     text,
@@ -154,7 +155,7 @@ fn renderJson(stdout: *std.Io.Writer, results: []const CheckResult, overall_ok: 
 
 pub fn run(alloc: std.mem.Allocator) !void {
     // Allocator contract: callers must provide an arena-style allocator; CheckResult.detail slices are retained until renderText/renderJson completes.
-    log.info("doctor.start status=start", .{});
+    log.info("doctor.start", .{});
     var ok = true;
     var stdout_buf: [8192]u8 = undefined;
     var stdout_w = std.fs.File.stdout().writer(&stdout_buf);
@@ -205,33 +206,33 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     db_check: {
-        log.info("doctor.db_connect role=api status=start", .{});
+        log.info("doctor.db_connect_start", .{ .role = "api" });
         const pool = db.initFromEnvForRole(alloc, .api) catch |err| {
-            log.err("doctor.db_connect role=api status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.db_connect_failed", .{ .role = "api", .err = @errorName(err) });
             try appendCheck(alloc, &results, "db_api_config", false, "DATABASE_URL_API not set/invalid", &ok);
             break :db_check;
         };
         pool.deinit();
-        log.info("doctor.db_connect role=api status=ok", .{});
+        log.info("doctor.db_connect_ok", .{ .role = "api" });
         try appendCheck(alloc, &results, "db_api_config", true, "API database config", &ok);
     }
 
     worker_db_check: {
-        log.info("doctor.db_connect role=worker status=start", .{});
+        log.info("doctor.db_connect_start", .{ .role = "worker" });
         const pool = db.initFromEnvForRole(alloc, .worker) catch |err| {
-            log.err("doctor.db_connect role=worker status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.db_connect_failed", .{ .role = "worker", .err = @errorName(err) });
             try appendCheck(alloc, &results, "db_worker_config", false, "DATABASE_URL_WORKER not set/invalid", &ok);
             break :worker_db_check;
         };
         pool.deinit();
-        log.info("doctor.db_connect role=worker status=ok", .{});
+        log.info("doctor.db_connect_ok", .{ .role = "worker" });
         try appendCheck(alloc, &results, "db_worker_config", true, "Worker database config", &ok);
     }
 
     if (options.schema_gate) schema_gate_check: {
-        log.info("doctor.schema_gate status=start", .{});
+        log.info("doctor.schema_gate_start", .{});
         const pool = db.initFromEnvForRole(alloc, .migrator) catch |err| {
-            log.err("doctor.schema_gate status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.schema_gate_failed", .{ .stage = "connect", .err = @errorName(err) });
             try appendCheck(alloc, &results, "schema_gate_config", false, "DATABASE_URL_MIGRATOR not set/invalid", &ok);
             break :schema_gate_check;
         };
@@ -239,7 +240,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
         const migrations = common.canonicalMigrations();
         const state = db.inspectMigrationState(pool, &migrations) catch |err| {
-            log.err("doctor.schema_gate status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.schema_gate_failed", .{ .stage = "inspect", .err = @errorName(err) });
             try appendCheck(alloc, &results, "schema_gate_state", false, "Unable to inspect migration state", &ok);
             break :schema_gate_check;
         };
@@ -258,7 +259,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
             break :schema_gate_check;
         };
 
-        log.info("doctor.schema_gate status=ok expected={d} applied={d}", .{ state.expected_versions, state.applied_versions });
+        log.info("doctor.schema_gate_ok", .{ .expected = state.expected_versions, .applied = state.applied_versions });
         try appendFmtCheck(
             alloc,
             &results,
@@ -271,9 +272,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     redis_api_check: {
-        log.info("doctor.redis_connect role=api status=start", .{});
+        log.info("doctor.redis_connect_start", .{ .role = "api" });
         var client = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
-            log.err("doctor.redis_connect role=api status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.redis_connect_failed", .{ .role = "api", .err = @errorName(err) });
             try appendCheck(alloc, &results, "redis_api_config", false, "REDIS_URL_API not set/invalid", &ok);
             break :redis_api_check;
         };
@@ -294,14 +295,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 break :redis_api_check;
             }
         }
-        log.info("doctor.redis_connect role=api status=ok", .{});
+        log.info("doctor.redis_connect_ok", .{ .role = "api" });
         try appendCheck(alloc, &results, "redis_api_ready_acl", true, "Redis API readiness + ACL identity", &ok);
     }
 
     redis_worker_check: {
-        log.info("doctor.redis_connect role=worker status=start", .{});
+        log.info("doctor.redis_connect_start", .{ .role = "worker" });
         var client = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-            log.err("doctor.redis_connect role=worker status=fail err={s}", .{@errorName(err)});
+            log.err("doctor.redis_connect_failed", .{ .role = "worker", .err = @errorName(err) });
             try appendCheck(alloc, &results, "redis_worker_config", false, "REDIS_URL_WORKER not set/invalid", &ok);
             break :redis_worker_check;
         };
@@ -322,7 +323,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 break :redis_worker_check;
             }
         }
-        log.info("doctor.redis_connect role=worker status=ok", .{});
+        log.info("doctor.redis_connect_ok", .{ .role = "worker" });
         try appendCheck(alloc, &results, "redis_worker_ready_acl", true, "Redis worker readiness + ACL identity", &ok);
     }
 
@@ -392,9 +393,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
     try stdout.flush();
     if (ok) {
-        log.info("doctor.finish status=ok", .{});
+        log.info("doctor.finish_ok", .{});
     } else {
-        log.err("doctor.finish status=fail", .{});
+        log.err("doctor.finish_failed", .{});
     }
     if (!ok) std.process.exit(1);
 }

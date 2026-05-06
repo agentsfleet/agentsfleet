@@ -16,12 +16,13 @@ const vault = @import("../state/vault.zig");
 const credential_key = @import("../zombie/credential_key.zig");
 const webhook_verify = @import("../zombie/webhook_verify.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
+const logging = @import("log");
 
 const LookupResult = auth_mw.webhook_sig_mod.LookupResult;
 const SignatureScheme = auth_mw.webhook_sig_mod.SignatureScheme;
 const SvixLookupResult = auth_mw.svix_signature_mod.SvixLookupResult;
 
-const log = std.log.scoped(.webhook_sig_lookup);
+const log = logging.scoped(.webhook_sig_lookup);
 
 const WEBHOOK_SECRET_FIELD = "webhook_secret";
 
@@ -79,7 +80,7 @@ pub fn lookupSvix(
     defer alloc.free(secret_ref);
 
     const secret = crypto_store.load(alloc, conn, row_data.workspace_id, secret_ref) catch |err| {
-        log.err("vault_load_failed svix secret_ref={s} err={s}", .{ secret_ref, @errorName(err) });
+        log.err("svix.vault_load_failed", .{ .secret_ref = secret_ref, .err = @errorName(err) });
         return .{ .secret = null };
     };
     return .{ .secret = secret };
@@ -180,7 +181,7 @@ fn loadWebhookSecret(
     key_name: []const u8,
 ) ?[]const u8 {
     var parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| {
-        log.warn("webhook_credential_load_failed workspace_id={s} key={s} err={s}", .{ workspace_id, key_name, @errorName(err) });
+        log.warn("webhook_credential_load_failed", .{ .workspace_id = workspace_id, .key = key_name, .err = @errorName(err) });
         return null;
     };
     defer parsed.deinit();
@@ -190,7 +191,7 @@ fn loadWebhookSecret(
         else => return null,
     };
     const val = obj.get(WEBHOOK_SECRET_FIELD) orelse {
-        log.warn("webhook_credential_missing_field workspace_id={s} key={s}", .{ workspace_id, key_name });
+        log.warn("webhook_credential_missing_field", .{ .workspace_id = workspace_id, .key = key_name });
         return null;
     };
     const secret = switch (val) {

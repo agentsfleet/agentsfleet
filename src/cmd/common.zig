@@ -1,6 +1,7 @@
 const db = @import("../db/pool.zig");
 const std = @import("std");
-const log = std.log.scoped(.zombied);
+const logging = @import("log");
+const log = logging.scoped(.zombied);
 
 pub const MigrationGuardError = error{
     InvalidMigrateOnStart,
@@ -79,7 +80,7 @@ pub fn enforceServeMigrationSafety(
     switch (decision) {
         .allow_without_running => return,
         .run_required => {
-            log.warn("startup.migration_auto_apply status=start reason=MIGRATE_ON_START enabled", .{});
+            log.warn("startup.migration_auto_apply_start", .{ .reason = "MIGRATE_ON_START enabled" });
             try db.runMigrations(pool, &migrations);
 
             const post = try db.inspectMigrationState(pool, &migrations);

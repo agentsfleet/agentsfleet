@@ -7,12 +7,9 @@
 
 const std = @import("std");
 const metrics = @import("metrics.zig");
-const logging = @import("log");
 const otel_logs = @import("otel_logs.zig");
 const trace = @import("trace.zig");
 const StringBuilder = @import("../util/strings/string_builder.zig");
-
-const log = std.log.scoped(.otel_traces);
 
 const OTLP_TRACES_PATH = "/v1/traces";
 const BUFFER_CAPACITY: usize = 1024;
