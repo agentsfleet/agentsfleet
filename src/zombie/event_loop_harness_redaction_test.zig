@@ -265,8 +265,8 @@ test "test_args_redacted_no_secret_leak" {
 
 // ── github_token redaction (different placeholder, same path) ──────────────
 
-const GITHUB_PLACEHOLDER = "${secrets.github.token}";
-const SYNTHETIC_GITHUB_TOKEN = "ghs-stub-canary-7e4b1c2d";
+const SYNTHETIC_GITHUB_TOKEN = canary.SYNTHETIC_GITHUB_TOKEN;
+const GITHUB_PLACEHOLDER = canary.GITHUB_PLACEHOLDER;
 
 fn driveRunWithGithubToken(alloc: Allocator) !RedactionRun {
     var harness = try Harness.start(alloc, .{ .binary = .stub });
@@ -305,17 +305,19 @@ fn driveRunWithGithubToken(alloc: Allocator) !RedactionRun {
 }
 
 test "test_github_token_redacted_at_sandbox_boundary" {
-    // The stub provider's canned response embeds SYNTHETIC_SECRET (the
-    // api_key canary), not the github token literal. So this run only
-    // proves the github_token PLACEHOLDER pipeline is wired — the
-    // collectSecrets/redactBytes path accepts the github_token slot and
-    // the placeholder string ${secrets.github.token} never spuriously
-    // appears unless we ask. With github_token set but its value not in
-    // any frame, no redaction fires for it; the assertion is that the
-    // raw SYNTHETIC_GITHUB_TOKEN literal also doesn't leak (defensive).
+    // The stub's canned content + tool args carry both SYNTHETIC_SECRET
+    // (api_key) and SYNTHETIC_GITHUB_TOKEN literally. This run configures
+    // ONLY github_token in agent_config — collectSecrets returns one
+    // active entry (github), the redactor scrubs the github bytes, and
+    // the api_key bytes ride through untouched (its slot is empty).
     var run = try driveRunWithGithubToken(ALLOC);
     defer run.deinit();
+    // Github bytes scrubbed and replaced with the placeholder.
     try std.testing.expect(!run.recorder.contains(SYNTHETIC_GITHUB_TOKEN));
+    try std.testing.expect(run.recorder.contains(GITHUB_PLACEHOLDER));
+    // api_key was not configured, so its bytes pass through verbatim —
+    // a positive control proving the redactor only scrubs configured slots.
+    try std.testing.expect(run.recorder.contains(SYNTHETIC_SECRET));
 }
 
 fn driveRunWithBothSecrets(alloc: Allocator) !RedactionRun {
@@ -356,16 +358,16 @@ fn driveRunWithBothSecrets(alloc: Allocator) !RedactionRun {
 }
 
 test "test_multi_secret_redaction_neither_leaks" {
-    // Both api_key + github_token are set; collectSecrets returns both
-    // entries; redactBytes loops over them. The stub canned response
-    // carries SYNTHETIC_SECRET (api_key bytes) — those must redact.
-    // SYNTHETIC_GITHUB_TOKEN is not in the canned bytes, so its
-    // placeholder is not expected to appear; the assertion is the
-    // weaker "neither raw value appears", which catches a regression
-    // where adding a second secret to the list breaks the loop.
+    // Both api_key + github_token configured; the stub's canned response
+    // embeds both raw canaries in content + tool args. collectSecrets
+    // returns two active entries; redactBytes must scrub BOTH on every
+    // outbound frame. Catches a regression where a redactor loop only
+    // scrubs the first entry, or where a new secret slot bypasses the
+    // adapter wiring.
     var run = try driveRunWithBothSecrets(ALLOC);
     defer run.deinit();
     try std.testing.expect(!run.recorder.contains(SYNTHETIC_SECRET));
     try std.testing.expect(!run.recorder.contains(SYNTHETIC_GITHUB_TOKEN));
     try std.testing.expect(run.recorder.contains(PLACEHOLDER));
+    try std.testing.expect(run.recorder.contains(GITHUB_PLACEHOLDER));
 }

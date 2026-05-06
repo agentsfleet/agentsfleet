@@ -30,11 +30,18 @@ const TokenUsage = providers.TokenUsage;
 
 const canary = @import("redaction_canary.zig");
 pub const SYNTHETIC_SECRET = canary.SYNTHETIC_SECRET;
+pub const SYNTHETIC_GITHUB_TOKEN = canary.SYNTHETIC_GITHUB_TOKEN;
 
 const CANNED_TOOL_NAME = "stub_canary_tool";
 const CANNED_TOOL_CALL_ID = "call_stub_001";
-const CONTENT_TEMPLATE = "Calling tool with token=" ++ SYNTHETIC_SECRET;
-const ARGS_TEMPLATE = "{\"token\":\"" ++ SYNTHETIC_SECRET ++ "\"}";
+// Both canaries are embedded in BOTH content (chunk path) and tool args
+// (tool_use path) so each redactor branch has bytes to scrub on every
+// run. When a test only configures one of the two secrets, the other
+// canary intentionally rides through un-redacted (collectSecrets short-
+// circuits on empty values) — tests assert presence/absence per
+// configured slot, never on the unconfigured one.
+const CONTENT_TEMPLATE = "Calling tool with api_key=" ++ SYNTHETIC_SECRET ++ " github_token=" ++ SYNTHETIC_GITHUB_TOKEN;
+const ARGS_TEMPLATE = "{\"api_key\":\"" ++ SYNTHETIC_SECRET ++ "\",\"github_token\":\"" ++ SYNTHETIC_GITHUB_TOKEN ++ "\"}";
 
 pub const StubProvider = struct {
     allocator: std.mem.Allocator,
