@@ -38,8 +38,9 @@ test("workspace add does not persist local state when API create fails", async (
     const out = bufferStream();
     const err = bufferStream();
 
+    const apiOrigin = "https://api.test";
     const fetchImpl = async (url, options) => {
-      assert.equal(url, "https://api.usezombie.com/v1/workspaces");
+      assert.equal(url, `${apiOrigin}/v1/workspaces`);
       assert.equal(options.method, "POST");
       return {
         ok: false,
@@ -53,7 +54,7 @@ test("workspace add does not persist local state when API create fails", async (
     };
 
     const code = await runCli(["workspace", "add", "acme-prod"], {
-      env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig", BROWSER: "false" },
+      env: { ...process.env, ZOMBIE_API_URL: apiOrigin, ZOMBIE_TOKEN: "header.payload.sig", BROWSER: "false" },
       stdout: out.stream,
       stderr: err.stream,
       fetchImpl,

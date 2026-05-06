@@ -60,6 +60,19 @@ test("parseGlobalArgs falls back through env chain and defaults", () => {
   assert.equal(outDefault.global.apiUrl, "https://api.usezombie.com");
 });
 
+test("parseGlobalArgs uses ZOMBIE_API_URL when no flag is provided", () => {
+  const out = parseGlobalArgs(["doctor"], { ZOMBIE_API_URL: "https://zombie-env.example" });
+  assert.equal(out.global.apiUrl, "https://zombie-env.example");
+});
+
+test("parseGlobalArgs prefers ZOMBIE_API_URL over API_URL when both env vars are set", () => {
+  const out = parseGlobalArgs(["doctor"], {
+    ZOMBIE_API_URL: "https://zombie-env.example",
+    API_URL: "https://api-url.example",
+  });
+  assert.equal(out.global.apiUrl, "https://zombie-env.example");
+});
+
 test("parseGlobalArgs sets global boolean options and leaves command argv intact", () => {
   const out = parseGlobalArgs(["--json", "--no-input", "--no-open", "run", "status", "run_1"], {});
   assert.equal(out.global.json, true);
