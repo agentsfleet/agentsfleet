@@ -10,6 +10,7 @@ const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
+const logging = @import("log");
 
 pub const Mode = @import("tenant_provider.zig").Mode;
 pub const ResolvedProvider = @import("tenant_provider.zig").ResolvedProvider;
@@ -17,7 +18,7 @@ pub const ResolveError = @import("tenant_provider.zig").ResolveError;
 pub const PLATFORM_DEFAULT_MODEL = @import("tenant_provider.zig").PLATFORM_DEFAULT_MODEL;
 pub const PLATFORM_DEFAULT_CAP_TOKENS = @import("tenant_provider.zig").PLATFORM_DEFAULT_CAP_TOKENS;
 
-const log = std.log.scoped(.tenant_provider_resolver);
+const log = logging.scoped(.tenant_provider_resolver);
 
 pub const ProviderRow = struct {
     mode: Mode,
@@ -71,7 +72,7 @@ pub fn loadProviderRow(
     const row = (try q.next()) orelse return null;
     const mode_label = try row.get([]const u8, 0);
     const mode = parseMode(mode_label) orelse {
-        log.warn("tenant_provider.bad_mode tenant_id={s} mode={s}", .{ tenant_id, mode_label });
+        log.warn("bad_mode", .{ .tenant_id = tenant_id, .mode = mode_label });
         return ResolveError.CredentialDataMalformed;
     };
     const provider = try alloc.dupe(u8, try row.get([]const u8, 1));
@@ -122,7 +123,7 @@ pub fn loadActivePlatformKey(alloc: std.mem.Allocator, conn: *pg.Conn) !Platform
 /// Multi-workspace tenants point BYOK credentials at the first signup-time
 /// workspace; v3 may add an explicit `vault_workspace_id` column to
 /// tenant_providers so users can pin a different workspace.
-pub fn resolvePrimaryWorkspace(
+fn resolvePrimaryWorkspace(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,
@@ -150,11 +151,11 @@ pub fn probeByokCredential(
 
     var parsed = vault.loadJson(alloc, conn, ws_id, credential_ref) catch |err| switch (err) {
         error.NotFound => return ResolveError.CredentialMissing,
-        vault.Error.MalformedPlaintext => return ResolveError.CredentialDataMalformed,
         else => return err,
     };
     defer parsed.deinit();
 
+    if (parsed.value != .object) return ResolveError.CredentialDataMalformed;
     const provider_v = parsed.value.object.get("provider") orelse return ResolveError.CredentialDataMalformed;
     const api_key_v = parsed.value.object.get("api_key") orelse return ResolveError.CredentialDataMalformed;
     const model_v = parsed.value.object.get("model") orelse return ResolveError.CredentialDataMalformed;
@@ -172,7 +173,7 @@ pub fn probeByokCredential(
     return .{ .provider = provider, .api_key = api_key, .model = model };
 }
 
-pub fn loadVaultApiKey(
+fn loadVaultApiKey(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     workspace_id: []const u8,
@@ -180,11 +181,11 @@ pub fn loadVaultApiKey(
 ) ![]u8 {
     var parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| switch (err) {
         error.NotFound => return ResolveError.PlatformKeyMissing,
-        vault.Error.MalformedPlaintext => return ResolveError.PlatformKeyMissing,
         else => return err,
     };
     defer parsed.deinit();
 
+    if (parsed.value != .object) return ResolveError.PlatformKeyMissing;
     const api_key_v = parsed.value.object.get("api_key") orelse return ResolveError.PlatformKeyMissing;
     if (api_key_v != .string or api_key_v.string.len == 0) return ResolveError.PlatformKeyMissing;
     return alloc.dupe(u8, api_key_v.string);

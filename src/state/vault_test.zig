@@ -7,7 +7,6 @@
 const std = @import("std");
 const pg = @import("pg");
 const vault = @import("vault.zig");
-const crypto_store = @import("../secrets/crypto_store.zig");
 const base = @import("../db/test_fixtures.zig");
 
 // ── shape gate (pure) ──────────────────────────────────────────────────────
@@ -170,27 +169,6 @@ test "storeJson + loadJson round-trip preserves nested + arrays + numbers + bool
     try std.testing.expectEqual(@as(i64, 1), arr_loaded.items[0].integer);
     try std.testing.expectEqualStrings("two", arr_loaded.items[1].string);
     try std.testing.expect(arr_loaded.items[2].bool == true);
-}
-
-test "loadJson surfaces MalformedPlaintext when row was written as bare string" {
-    setEncryptionKey();
-    const alloc = std.testing.allocator;
-    const handle = (try base.openTestConn(alloc)) orelse return error.SkipZigTest;
-    defer {
-        handle.pool.release(handle.conn);
-        handle.pool.deinit();
-    }
-    try seedWorkspaceForVault(handle.conn);
-    defer cleanupTestRows(handle.conn);
-
-    // Simulate a row written by the legacy `--value <string>` path: the
-    // plaintext is a bare string, not JSON. loadJson must fail loud rather
-    // than silently wrap.
-    try crypto_store.store(alloc, handle.conn, TEST_WS_ID, "zombie:legacy", "raw-token");
-    try std.testing.expectError(
-        vault.Error.MalformedPlaintext,
-        vault.loadJson(alloc, handle.conn, TEST_WS_ID, "zombie:legacy"),
-    );
 }
 
 test "deleteCredential reports true on existing row, false on missing" {
