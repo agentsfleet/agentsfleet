@@ -133,7 +133,11 @@ _test-integration-full: _reset-test-db
 	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
 	REDIS_URL_API="$$redis_tls_test_url" \
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
-	zig build test
+	zig build test && \
+	echo "→ [zombied] Running executor-side unit tests (redactor contract, runner_progress lifecycle)..." && \
+	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	zig build test-executor --summary all 2>&1 | tee /dev/stderr | grep -q "passed"
 	@echo "✓ [zombied] Full integration suite passed"
 
 test-integration-db: _test-integration-db  ## Run real DB-backed integration suite only
