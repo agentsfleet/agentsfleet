@@ -10,6 +10,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -19,7 +20,7 @@ const telemetry_mod = @import("../../../observability/telemetry.zig");
 const metrics_counters = @import("../../../observability/metrics_counters.zig");
 const EventEnvelope = @import("../../../zombie/event_envelope.zig");
 
-const log = std.log.scoped(.http_webhook);
+const log = logging.scoped(.http_webhook);
 
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
@@ -65,19 +66,31 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
 
 fn parseBody(hx: Hx, req: *httpz.Request, zombie_id: []const u8) ?WebhookPayload {
     const body = req.body() orelse {
-        log.warn("webhook.no_body zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
+        log.warn("no_body", .{
+            .error_code = ec.ERR_WEBHOOK_MALFORMED,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_BODY_REQUIRED);
         return null;
     };
     if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return null;
     const parsed = std.json.parseFromSlice(WebhookPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
-        log.warn("webhook.malformed_json zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
+        log.warn("malformed_json", .{
+            .error_code = ec.ERR_WEBHOOK_MALFORMED,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MALFORMED_JSON);
         return null;
     };
     const payload = parsed.value;
     if (payload.event_id.len == 0 or payload.type.len == 0) {
-        log.warn("webhook.missing_fields zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
+        log.warn("missing_fields", .{
+            .error_code = ec.ERR_WEBHOOK_MALFORMED,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_WEBHOOK_MALFORMED, ec.MSG_MISSING_FIELDS);
         parsed.deinit();
         return null;
@@ -92,12 +105,17 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payl
         return false;
     };
     const is_new = hx.ctx.queue.setNx(dedup_key, "1", ec.DEDUP_TTL_SECONDS) catch |err| {
-        log.err("webhook.redis_dedup_error zombie_id={s} event_id={s} err={s}", .{ zombie_id, payload.event_id, @errorName(err) });
+        log.err("redis_dedup_error", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .zombie_id = zombie_id,
+            .event_id = payload.event_id,
+            .err = @errorName(err),
+        });
         common.internalOperationError(hx.res, "Idempotency check failed", hx.req_id);
         return false;
     };
     if (!is_new) {
-        log.debug("webhook.duplicate zombie_id={s} event_id={s}", .{ zombie_id, payload.event_id });
+        log.debug("duplicate", .{ .zombie_id = zombie_id, .event_id = payload.event_id });
         hx.ok(.ok, .{ .status = ec.STATUS_DUPLICATE });
         return false;
     }
@@ -119,12 +137,22 @@ fn dedupAndEnqueue(hx: Hx, zombie_id: []const u8, workspace_id: []const u8, payl
         .created_at = std.time.milliTimestamp(),
     };
     const new_event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
-        log.err("webhook.enqueue_failed zombie_id={s} sender_event_id={s} err={s}", .{ zombie_id, payload.event_id, @errorName(err) });
+        log.err("enqueue_failed", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .zombie_id = zombie_id,
+            .sender_event_id = payload.event_id,
+            .err = @errorName(err),
+        });
         common.internalOperationError(hx.res, "Failed to enqueue event", hx.req_id);
         return false;
     };
     defer hx.ctx.alloc.free(new_event_id);
-    log.info("webhook.enqueued zombie_id={s} stream_event_id={s} sender_event_id={s} actor={s}", .{ zombie_id, new_event_id, payload.event_id, actor });
+    log.info("enqueued", .{
+        .zombie_id = zombie_id,
+        .stream_event_id = new_event_id,
+        .sender_event_id = payload.event_id,
+        .actor = actor,
+    });
     return true;
 }
 
@@ -134,11 +162,20 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
     const payload = parseBody(hx, req, zombie_id) orelse return;
 
     var zombie = fetchZombieById(hx.ctx.pool, hx.alloc, zombie_id) catch |err| {
-        log.err("webhook.db_error zombie_id={s} err={s} req_id={s}", .{ zombie_id, @errorName(err), hx.req_id });
+        log.err("db_error", .{
+            .error_code = ec.ERR_INTERNAL_DB_QUERY,
+            .zombie_id = zombie_id,
+            .err = @errorName(err),
+            .req_id = hx.req_id,
+        });
         common.internalDbError(hx.res, hx.req_id);
         return;
     } orelse {
-        log.warn("webhook.not_found zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
+        log.warn("not_found", .{
+            .error_code = ec.ERR_WEBHOOK_NO_ZOMBIE,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_WEBHOOK_NO_ZOMBIE, ec.MSG_ZOMBIE_NOT_FOUND);
         return;
     };
@@ -148,7 +185,12 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
 
     const status = zombie_config.ZombieStatus.fromSlice(zombie.status) orelse .stopped;
     if (!status.isRunnable()) {
-        log.warn("webhook.zombie_not_active zombie_id={s} status={s} req_id={s}", .{ zombie_id, zombie.status, hx.req_id });
+        log.warn("zombie_not_active", .{
+            .error_code = ec.ERR_WEBHOOK_ZOMBIE_PAUSED,
+            .zombie_id = zombie_id,
+            .status = zombie.status,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_WEBHOOK_ZOMBIE_PAUSED, ec.MSG_ZOMBIE_NOT_ACTIVE);
         return;
     }
@@ -158,7 +200,11 @@ pub fn innerReceiveWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const u8) v
 
     recordWebhookAccepted(hx.ctx.telemetry, zombie.workspace_id, zombie_id, payload.event_id, source_label);
 
-    log.info("webhook.accepted zombie_id={s} event_id={s} type={s}", .{ zombie_id, payload.event_id, payload.type });
+    log.info("accepted", .{
+        .zombie_id = zombie_id,
+        .event_id = payload.event_id,
+        .type = payload.type,
+    });
     hx.ok(.accepted, .{ .status = ec.STATUS_ACCEPTED, .event_id = payload.event_id });
 }
 

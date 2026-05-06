@@ -2,12 +2,13 @@
 //! a Redis connection into subscriber-only mode — no other commands allowed).
 
 const std = @import("std");
+const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
 const redis_types = @import("redis_types.zig");
 
-const log = std.log.scoped(.redis_pubsub);
+const log = logging.scoped(.redis_pubsub);
 
 /// Read timeout for pub/sub subscriber socket (ms). Must fire before the
 /// 30-second proxy idle timeout so the heartbeat loop can emit `: heartbeat`.
@@ -60,7 +61,7 @@ pub const Subscriber = struct {
             try redis_protocol.ensureSimpleOk(resp);
         }
 
-        log.info("redis_pubsub.connected host={s} port={d} tls={}", .{ cfg.host, cfg.port, cfg.use_tls });
+        log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
         return sub;
     }
 
@@ -76,7 +77,7 @@ pub const Subscriber = struct {
         // Set SO_RCVTIMEO after subscription confirmation so readMessage()
         // returns periodically, allowing the heartbeat loop to fire.
         self.setReadTimeout(PUBSUB_READ_TIMEOUT_MS);
-        log.debug("redis_pubsub.subscribed channel={s}", .{channel});
+        log.debug("subscribed", .{ .channel = channel });
     }
 
     /// Set SO_RCVTIMEO on the underlying socket so reads time out after `ms` milliseconds.
@@ -90,7 +91,7 @@ pub const Subscriber = struct {
             .usec = @intCast((ms % 1000) * 1000),
         };
         std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| {
-            log.warn("redis_pubsub.setsockopt_fail err={s}", .{@errorName(err)});
+            log.warn("setsockopt_failed", .{ .err = @errorName(err) });
         };
     }
 
@@ -111,7 +112,7 @@ pub const Subscriber = struct {
             //
             // Any other error type is unexpected and propagated.
             if (err == error.ReadFailed or err == error.EndOfStream) return null;
-            log.warn("redis_pubsub.read_fatal err={s}", .{@errorName(err)});
+            log.warn("read_fatal", .{ .err = @errorName(err) });
             return err;
         };
         defer resp.deinit(self.alloc);

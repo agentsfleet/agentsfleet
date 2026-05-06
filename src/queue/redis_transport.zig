@@ -1,7 +1,9 @@
 const std = @import("std");
+const logging = @import("log");
 const redis_config = @import("redis_config.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
-const log = std.log.scoped(.redis_queue);
+const log = logging.scoped(.redis_queue);
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const PlainTransport = struct {
@@ -17,7 +19,7 @@ pub const PlainTransport = struct {
         const write_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(write_buffer);
 
-        log.debug("redis.transport_connected mode=plain", .{});
+        log.debug("transport_connected", .{ .mode = "plain" });
 
         return .{
             .stream = stream,
@@ -98,10 +100,10 @@ const TlsTransport = struct {
                 .allow_truncation_attacks = false,
             },
         ) catch |err| {
-            log.err("redis.tls_handshake_fail host={s}", .{host});
+            log.err("tls_handshake_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .host = host });
             return err;
         };
-        log.debug("redis.transport_connected mode=tls host={s}", .{host});
+        log.debug("transport_connected", .{ .mode = "tls", .host = host });
     }
 
     pub fn deinit(self: *TlsTransport, alloc: std.mem.Allocator) void {

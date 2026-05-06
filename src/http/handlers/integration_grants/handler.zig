@@ -1,8 +1,9 @@
-//! M9_001 §2.0 — Integration Grant request handler (zombie auth).
+//! Integration Grant request handler (zombie auth).
 //! POST /v1/zombies/{id}/integration-requests → handleRequestGrant
 //! Workspace-auth operations (list/revoke) are in integration_grants_workspace.zig.
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -13,7 +14,7 @@ const id_format = @import("../../../types/id_format.zig");
 const grant_notifier = @import("../../../zombie/notifications/grant_notifier.zig");
 const api_key = @import("../../../auth/api_key.zig");
 
-const log = std.log.scoped(.integration_grants);
+const log = logging.scoped(.integration_grants);
 
 pub const Context = common.Context;
 
@@ -57,10 +58,10 @@ fn zombieFromSession(alloc: std.mem.Allocator, conn: *pg.Conn, token: []const u8
     defer q.deinit();
     const row_opt = q.next() catch return null;
     const row = row_opt orelse return null;
-    const zombie_id    = row.get([]u8, 0) catch return null;
+    const zombie_id = row.get([]u8, 0) catch return null;
     const workspace_id = row.get([]u8, 1) catch return null;
     return .{
-        .zombie_id    = alloc.dupe(u8, zombie_id)    catch return null,
+        .zombie_id = alloc.dupe(u8, zombie_id) catch return null,
         .workspace_id = alloc.dupe(u8, workspace_id) catch return null,
     };
 }
@@ -77,8 +78,8 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     defer q.deinit();
     const row_opt = q.next() catch return null;
     const row = row_opt orelse return null;
-    const stored_hash  = row.get([]u8, 0) catch return null;
-    const zombie_id    = row.get([]u8, 1) catch return null;
+    const stored_hash = row.get([]u8, 0) catch return null;
+    const zombie_id = row.get([]u8, 1) catch return null;
     const workspace_id = row.get([]u8, 2) catch return null;
     if (!api_key.constantTimeEql(computed_hash, stored_hash)) return null;
 
@@ -88,7 +89,7 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     , .{ std.time.milliTimestamp(), computed_hash }) catch {};
 
     return .{
-        .zombie_id    = alloc.dupe(u8, zombie_id)    catch return null,
+        .zombie_id = alloc.dupe(u8, zombie_id) catch return null,
         .workspace_id = alloc.dupe(u8, workspace_id) catch return null,
     };
 }
@@ -136,8 +137,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     defer hx.ctx.pool.release(conn);
 
     const caller = authenticateZombie(hx.alloc, conn, req) orelse {
-        hx.fail(ec.ERR_APIKEY_INVALID,
-            "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer zmb_xxx");
+        hx.fail(ec.ERR_APIKEY_INVALID, "Invalid API key or session. Use: Authorization: Session {uuid} or Authorization: Bearer zmb_xxx");
         return;
     };
 
@@ -146,7 +146,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         return;
     }
 
-    // M24_001: defence in depth — verify zombie's workspace matches the path workspace_id.
+    // Defence in depth — verify zombie's workspace matches the path workspace_id.
     if (!std.mem.eql(u8, caller.workspace_id, workspace_id)) {
         hx.fail(ec.ERR_FORBIDDEN, "Workspace identity mismatch: zombie does not belong to path workspace_id");
         return;
@@ -187,22 +187,22 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     defer existing_q.deinit();
 
     if (existing_q.next() catch null) |existing_row| {
-        const existing_id  = existing_row.get([]u8, 0) catch "";
-        const existing_st  = existing_row.get([]u8, 1) catch "unknown";
-        const existing_at  = existing_row.get(i64, 2) catch 0;
+        const existing_id = existing_row.get([]u8, 0) catch "";
+        const existing_st = existing_row.get([]u8, 1) catch "unknown";
+        const existing_at = existing_row.get(i64, 2) catch 0;
 
         const is_terminal = std.mem.eql(u8, existing_st, "revoked") or
-                            std.mem.eql(u8, existing_st, "denied");
+            std.mem.eql(u8, existing_st, "denied");
         if (!is_terminal) {
             // pending or approved — idempotent return.
-            log.info("grant.already_exists zombie_id={s} service={s} status={s}", .{ zombie_id, body.service, existing_st });
+            log.info("already_exists", .{ .zombie_id = zombie_id, .service = body.service, .status = existing_st });
             hx.ok(.ok, .{
-                .grant_id     = hx.alloc.dupe(u8, existing_id) catch existing_id,
-                .zombie_id    = zombie_id,
-                .service      = body.service,
-                .status       = hx.alloc.dupe(u8, existing_st) catch existing_st,
+                .grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id,
+                .zombie_id = zombie_id,
+                .service = body.service,
+                .status = hx.alloc.dupe(u8, existing_st) catch existing_st,
                 .requested_at = existing_at,
-                .message      = "Grant already exists for this service.",
+                .message = "Grant already exists for this service.",
             });
             return;
         }
@@ -218,7 +218,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             common.internalDbError(hx.res, hx.req_id);
             return;
         };
-        log.info("grant.re_requested zombie_id={s} service={s} grant_id={s}", .{ zombie_id, body.service, existing_id });
+        log.info("re_requested", .{ .zombie_id = zombie_id, .service = body.service, .grant_id = existing_id });
 
         // Notify for the re-request using the existing grant_id.
         const existing_grant_id = hx.alloc.dupe(u8, existing_id) catch existing_id;
@@ -233,17 +233,23 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
             zombie_name_reopen = hx.alloc.dupe(u8, raw) catch zombie_id;
         }
         grant_notifier.notifyGrantRequest(
-            hx.ctx.pool, hx.ctx.queue, hx.alloc,
-            zombie_id, caller.workspace_id,
-            existing_grant_id, zombie_name_reopen, body.service, body.reason,
+            hx.ctx.pool,
+            hx.ctx.queue,
+            hx.alloc,
+            zombie_id,
+            caller.workspace_id,
+            existing_grant_id,
+            zombie_name_reopen,
+            body.service,
+            body.reason,
         );
         hx.ok(.created, .{
-            .grant_id     = existing_grant_id,
-            .zombie_id    = zombie_id,
-            .service      = body.service,
-            .status       = STATUS_PENDING,
+            .grant_id = existing_grant_id,
+            .zombie_id = zombie_id,
+            .service = body.service,
+            .status = STATUS_PENDING,
             .requested_at = now_ms_reopen,
-            .message      = "Grant re-requested. Awaiting workspace owner approval.",
+            .message = "Grant re-requested. Awaiting workspace owner approval.",
         });
         return;
     }
@@ -263,7 +269,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         return;
     };
 
-    log.info("grant.requested zombie_id={s} service={s} grant_id={s}", .{ zombie_id, body.service, grant_id });
+    log.info("requested", .{ .zombie_id = zombie_id, .service = body.service, .grant_id = grant_id });
 
     // Fetch zombie name for notification; falls back to zombie_id on any error.
     var zombie_name: []const u8 = zombie_id;
@@ -278,18 +284,23 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
     }
 
     grant_notifier.notifyGrantRequest(
-        hx.ctx.pool, hx.ctx.queue, hx.alloc,
-        zombie_id, caller.workspace_id,
-        grant_id, zombie_name, body.service, body.reason,
+        hx.ctx.pool,
+        hx.ctx.queue,
+        hx.alloc,
+        zombie_id,
+        caller.workspace_id,
+        grant_id,
+        zombie_name,
+        body.service,
+        body.reason,
     );
 
     hx.ok(.created, .{
-        .grant_id     = grant_id,
-        .zombie_id    = zombie_id,
-        .service      = body.service,
-        .status       = "pending",
+        .grant_id = grant_id,
+        .zombie_id = zombie_id,
+        .service = body.service,
+        .status = "pending",
         .requested_at = now_ms,
-        .message      = "Grant request submitted. Awaiting workspace owner approval via Slack, Discord, or dashboard.",
+        .message = "Grant request submitted. Awaiting workspace owner approval via Slack, Discord, or dashboard.",
     });
 }
-

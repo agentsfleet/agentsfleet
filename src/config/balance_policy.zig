@@ -2,8 +2,9 @@
 //! tenant whose `billing.tenant_billing.balance_cents` has hit zero.
 
 const std = @import("std");
+const logging = @import("log");
 
-const log = std.log.scoped(.balance_policy);
+const log = logging.scoped(.balance_policy);
 
 const ENV_VAR_NAME = "BALANCE_EXHAUSTED_POLICY";
 
@@ -40,7 +41,7 @@ pub fn parse(raw: []const u8) ?Policy {
 pub fn resolve(raw: ?[]const u8) Policy {
     const s = raw orelse return DEFAULT;
     return parse(s) orelse {
-        log.warn("balance_policy.unknown_value observed=\"{s}\" defaulting={s}", .{ s, DEFAULT.label() });
+        log.warn("unknown_value", .{ .observed = s, .defaulting = DEFAULT.label() });
         return DEFAULT;
     };
 }
@@ -52,7 +53,7 @@ pub fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
     const raw = std.process.getEnvVarOwned(alloc, ENV_VAR_NAME) catch |err| switch (err) {
         error.EnvironmentVariableNotFound => return resolve(null),
         else => {
-            log.warn("balance_policy.env_read_err err={s} defaulting={s}", .{ @errorName(err), DEFAULT.label() });
+            log.warn("env_read_failed", .{ .err = @errorName(err), .defaulting = DEFAULT.label() });
             return DEFAULT;
         },
     };

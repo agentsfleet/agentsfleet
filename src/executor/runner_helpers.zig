@@ -2,6 +2,7 @@
 //! Split from runner.zig to keep that file under the 350-line RULE FLL limit.
 
 const std = @import("std");
+const logging = @import("log");
 const nullclaw = @import("nullclaw");
 const build_options = @import("build_options");
 
@@ -15,7 +16,8 @@ const context_budget = @import("context_budget.zig");
 const stub_gate = @import("stub_provider_gate.zig");
 const runner_progress = @import("runner_progress.zig");
 
-const log = std.log.scoped(.executor_runner);
+const log = logging.scoped(.executor_runner);
+const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
 
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
@@ -53,7 +55,7 @@ pub const ProviderBundle = struct {
         self.stub = stub_gate.Module.StubProvider.init(alloc);
         if (build_options.executor_provider_stub) return self.stub.provider();
         self.inner = providers.runtime_bundle.RuntimeProviderBundle.init(alloc, cfg) catch {
-            log.err("executor.runner.provider_init_failed error_code=UZ-EXEC-012", .{});
+            log.err("provider_init_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
             return error.AgentInitFailed;
         };
         return self.inner.?.provider();
@@ -78,7 +80,7 @@ pub fn applyAgentConfig(cfg: *Config, ac: std.json.Value) void {
     // The agent receives it as part of the composed message from composeMessage().
 }
 
-/// Inject an LLM API key into NullClaw Config for cfg.default_provider (M16_003 §1.4).
+/// Inject an LLM API key into NullClaw Config for cfg.default_provider.
 ///
 /// Strategy:
 /// 1. Scan cfg.providers for an entry matching cfg.default_provider.
@@ -142,7 +144,7 @@ pub fn buildToolsFromSpec(
 
     const result = try tool_bridge.buildTools(alloc, spec, workspace_path, cfg, policy);
     for (result.skipped) |name| {
-        log.warn("executor.runner.tool_skipped name={s}", .{name});
+        log.warn("tool_skipped", .{ .name = name });
         alloc.free(name);
     }
     alloc.free(result.skipped);

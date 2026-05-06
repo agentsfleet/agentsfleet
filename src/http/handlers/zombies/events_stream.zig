@@ -24,6 +24,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -33,7 +34,7 @@ const id_format = @import("../../../types/id_format.zig");
 const redis_subscriber = @import("../../../queue/redis_subscriber.zig");
 const redis_types = @import("../../../queue/redis_types.zig");
 
-const log = std.log.scoped(.http_zombie_events_stream);
+const log = logging.scoped(.http_zombie_events_stream);
 
 const Hx = hx_mod.Hx;
 
@@ -59,7 +60,7 @@ pub fn innerEventsStream(
     if (!authorize(hx, workspace_id, zombie_id)) return;
 
     var subscriber = redis_subscriber.connectFromEnv(hx.alloc, redis_types.RedisRole.api) catch |err| {
-        log.err("subscriber.connect_fail err={s}", .{@errorName(err)});
+        log.err("subscriber_connect_failed", .{ .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -72,13 +73,13 @@ pub fn innerEventsStream(
     };
 
     subscriber.subscribe(channel) catch |err| {
-        log.err("subscriber.subscribe_fail channel={s} err={s}", .{ channel, @errorName(err) });
+        log.err("subscriber_subscribe_failed", .{ .channel = channel, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
 
     const stream = hx.res.startEventStreamSync() catch |err| {
-        log.warn("sse.start_fail err={s}", .{@errorName(err)});
+        log.warn("sse_start_failed", .{ .err = @errorName(err) });
         return;
     };
 
@@ -86,7 +87,7 @@ pub fn innerEventsStream(
         // Most "errors" here are client disconnects mid-write (broken pipe).
         // Log at debug — the operator-visible event is the connection close,
         // not the inner write error.
-        log.debug("sse.stream_loop_exit err={s}", .{@errorName(err)});
+        log.debug("sse_stream_loop_exit", .{ .err = @errorName(err) });
     };
 
     subscriber.unsubscribe(channel);

@@ -7,7 +7,7 @@
 //! `${secrets.<name>.<field>}`.
 //!
 //! Pairs with `resolveFirstCredential` in `event_loop_helpers.zig`, which
-//! is the legacy single-string path being phased out.
+//! resolves one credential value for agent config.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -16,8 +16,9 @@ const Allocator = std.mem.Allocator;
 const error_codes = @import("../errors/error_registry.zig");
 const vault = @import("../state/vault.zig");
 const credential_key = @import("credential_key.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.zombie_event_loop);
+const log = logging.scoped(.zombie_event_loop);
 
 pub const ResolvedSecret = struct {
     name: []const u8, // duped, owned by caller
@@ -50,8 +51,8 @@ pub fn resolveSecretsMap(
         const parsed = vault.loadJson(alloc, conn, workspace_id, key_name) catch |err| {
             if (err == error.NotFound) {
                 log.warn(
-                    "zombie_event_loop.credential_not_found workspace_id={s} name={s} error_code=" ++ error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING,
-                    .{ workspace_id, name },
+                    "credential_not_found",
+                    .{ .workspace_id = workspace_id, .name = name, .error_code = error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING },
                 );
                 return error.CredentialNotFound;
             }

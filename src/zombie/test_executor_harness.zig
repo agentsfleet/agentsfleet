@@ -19,8 +19,9 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 
 const executor_client = @import("../executor/client.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.test_executor_harness);
+const log = logging.scoped(.test_executor_harness);
 
 const Harness = @This();
 
@@ -141,12 +142,12 @@ fn resolveBinaryPath(alloc: Allocator, target: BinaryTarget) ![]u8 {
             break :blk true;
         };
         if (exists) return override;
-        log.warn("harness.bin_override_missing path={s}", .{override});
+        log.warn("bin_override_missing", .{ .path = override });
         alloc.free(override);
     } else |_| {}
 
     _ = std.fs.cwd().statFile(default_path) catch {
-        log.warn("harness.binary_not_found path={s} (run `zig build` to install)", .{default_path});
+        log.warn("binary_not_found", .{ .path = default_path, .hint = "run zig build to install" });
         return error.SkipZigTest;
     };
     return alloc.dupe(u8, default_path);

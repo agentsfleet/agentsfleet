@@ -12,13 +12,14 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
+const logging = @import("log");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const approval_gate = @import("../../../zombie/approval_gate.zig");
 const resolver = @import("../../../zombie/approval_gate_resolver.zig");
 
-const log = std.log.scoped(.http_approval);
+const log = logging.scoped(.http_approval);
 
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
@@ -66,7 +67,11 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
         .outcome = gate_status,
         .by = resolver.SLACK_WEBHOOK,
     }) catch {
-        log.err("approval.resolve_fail zombie_id={s} action_id={s}", .{ zombie_id, payload.action_id });
+        log.err("resolve_fail", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .zombie_id = zombie_id,
+            .action_id = payload.action_id,
+        });
         common.internalOperationError(hx.res, "Failed to resolve approval", hx.req_id);
         return;
     };
@@ -82,11 +87,16 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
     }
 
     switch (outcome) {
-        .resolved => log.info("approval.resolved zombie_id={s} action_id={s} decision={s}", .{
-            zombie_id, payload.action_id, decision_str,
+        .resolved => log.info("resolved", .{
+            .zombie_id = zombie_id,
+            .action_id = payload.action_id,
+            .decision = decision_str,
         }),
-        .already_resolved => |r| log.info("approval.already_resolved zombie_id={s} action_id={s} prior_outcome={s} prior_by={s}", .{
-            zombie_id, payload.action_id, r.outcome.toSlice(), r.resolved_by,
+        .already_resolved => |r| log.info("already_resolved", .{
+            .zombie_id = zombie_id,
+            .action_id = payload.action_id,
+            .prior_outcome = r.outcome.toSlice(),
+            .prior_by = r.resolved_by,
         }),
         .not_found => unreachable,
     }
@@ -105,19 +115,29 @@ const RawApprovalPayload = struct {
 
 fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
     const body = req.body() orelse {
-        log.warn("approval.no_body req_id={s}", .{hx.req_id});
+        log.warn("no_body", .{
+            .error_code = ec.ERR_APPROVAL_PARSE_FAILED,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY);
         return null;
     };
     if (!common.checkBodySize(req, hx.res, body, hx.req_id)) return null;
     const parsed = std.json.parseFromSlice(RawApprovalPayload, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch |err| {
-        log.warn("approval.malformed_json req_id={s} err={s}", .{ hx.req_id, @errorName(err) });
+        log.warn("malformed_json", .{
+            .error_code = ec.ERR_APPROVAL_PARSE_FAILED,
+            .req_id = hx.req_id,
+            .err = @errorName(err),
+        });
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY);
         return null;
     };
     const raw = parsed.value;
     if (raw.action_id.len == 0 or raw.decision.len == 0) {
-        log.warn("approval.missing_fields req_id={s}", .{hx.req_id});
+        log.warn("missing_fields", .{
+            .error_code = ec.ERR_APPROVAL_PARSE_FAILED,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_BODY);
         return null;
     }
@@ -126,7 +146,11 @@ fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
     else if (std.mem.eql(u8, raw.decision, ec.GATE_DECISION_DENY))
         .deny
     else {
-        log.warn("approval.invalid_decision req_id={s} decision={s}", .{ hx.req_id, raw.decision });
+        log.warn("invalid_decision", .{
+            .error_code = ec.ERR_APPROVAL_PARSE_FAILED,
+            .req_id = hx.req_id,
+            .decision = raw.decision,
+        });
         hx.fail(ec.ERR_APPROVAL_PARSE_FAILED, ec.MSG_APPROVAL_INVALID_DECISION);
         return null;
     };
@@ -140,7 +164,10 @@ fn parseApprovalBody(hx: Hx, req: *httpz.Request) ?ApprovalPayload {
 fn verifyRequestSignature(hx: Hx, req: *httpz.Request) bool {
     const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "APPROVAL_SIGNING_SECRET") catch {
         // No signing secret configured — reject (fail-closed, no insecure fallback)
-        log.warn("approval.no_signing_secret_configured req_id={s}", .{hx.req_id});
+        log.warn("no_signing_secret_configured", .{
+            .error_code = ec.ERR_APPROVAL_INVALID_SIGNATURE,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, "Signing secret not configured");
         return false;
     };
@@ -163,7 +190,12 @@ fn verifyRequestSignature(hx: Hx, req: *httpz.Request) bool {
     };
     const now_s = @divTrunc(std.time.milliTimestamp(), 1000);
     if (@abs(now_s - ts) > SIGNATURE_MAX_AGE_S) {
-        log.warn("approval.timestamp_too_old ts={d} now={d} req_id={s}", .{ ts, now_s, hx.req_id });
+        log.warn("timestamp_too_old", .{
+            .error_code = ec.ERR_APPROVAL_INVALID_SIGNATURE,
+            .ts = ts,
+            .now = now_s,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, "Timestamp too old");
         return false;
     }

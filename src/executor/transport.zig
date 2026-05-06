@@ -4,11 +4,12 @@
 //! incoming frames to a handler callback. Worker-to-executor is 1:1 in v1.
 
 const std = @import("std");
+const logging = @import("log");
 const builtin = @import("builtin");
 const protocol = @import("protocol.zig");
 const pc = @import("progress_callbacks.zig");
 
-const log = std.log.scoped(.executor_transport);
+const log = logging.scoped(.executor_transport);
 
 pub const ConnectionError = error{
     SocketBindFailed,
@@ -129,7 +130,7 @@ pub const Server = struct {
 
         self.listener = sock;
         self.running.store(true, .release);
-        log.info("executor.server_bound path={s}", .{self.socket_path});
+        log.info("server_bound", .{ .path = self.socket_path });
     }
 
     pub fn serve(self: *Server) void {
@@ -153,7 +154,7 @@ pub const Server = struct {
 
             const conn = std.posix.accept(listener, null, null, 0) catch |err| {
                 if (!self.running.load(.acquire)) break;
-                log.warn("executor.accept_failed err={s}", .{@errorName(err)});
+                log.warn("accept_failed", .{ .err = @errorName(err) });
                 continue;
             };
 
@@ -164,7 +165,7 @@ pub const Server = struct {
 
     fn handleConnection(self: *Server, conn: std.posix.socket_t) void {
         exchangeHello(self.alloc, conn) catch |err| {
-            log.warn("executor.rpc_version_mismatch peer=client err={s}", .{@errorName(err)});
+            log.warn("rpc_version_mismatch", .{ .peer = "client", .err = @errorName(err) });
             return;
         };
 
@@ -183,20 +184,20 @@ pub const Server = struct {
             const frame = protocol.readFrameFromFd(self.alloc, conn) catch |err| {
                 switch (err) {
                     error.ConnectionClosed => {},
-                    else => log.warn("executor.read_failed err={s}", .{@errorName(err)}),
+                    else => log.warn("read_failed", .{ .err = @errorName(err) }),
                 }
                 break;
             };
             defer self.alloc.free(frame);
 
             const response = self.handler(self.alloc, frame, conn) catch |err| {
-                log.err("executor.handler_failed err={s}", .{@errorName(err)});
+                log.err("handler_failed", .{ .err = @errorName(err) });
                 break;
             };
             defer self.alloc.free(response);
 
             protocol.writeFrameToFd(conn, response) catch |err| {
-                log.warn("executor.write_failed err={s}", .{@errorName(err)});
+                log.warn("write_failed", .{ .err = @errorName(err) });
                 break;
             };
         }
@@ -239,7 +240,7 @@ pub const Client = struct {
         };
 
         exchangeHello(self.alloc, sock) catch |err| {
-            log.warn("executor.rpc_version_mismatch peer=server err={s}", .{@errorName(err)});
+            log.warn("rpc_version_mismatch", .{ .peer = "server", .err = @errorName(err) });
             return err;
         };
 
@@ -291,7 +292,7 @@ pub const Client = struct {
                 defer self.alloc.free(frame);
                 defer parsed.deinit();
                 const decoded = pc.decodeProgressFromValue(parsed.value) catch |err| {
-                    log.warn("executor.progress_decode_failed err={s}", .{@errorName(err)});
+                    log.warn("progress_decode_failed", .{ .err = @errorName(err) });
                     continue;
                 };
                 emitter.emit(decoded.frame);

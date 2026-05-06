@@ -2,11 +2,12 @@
 // Runs BEFORE gate evaluation as a fast-path circuit breaker against runaway loops.
 
 const std = @import("std");
+const logging = @import("log");
 const queue_redis = @import("../queue/redis_client.zig");
 const ec = @import("../errors/error_registry.zig");
 const config_gates = @import("config_gates.zig");
 
-const log = std.log.scoped(.approval_gate_anomaly);
+const log = logging.scoped(.approval_gate_anomaly);
 
 pub const AnomalyResult = enum { normal, auto_kill };
 
@@ -27,12 +28,16 @@ pub fn checkAnomaly(
             // Redis unavailable — fail open for anomaly detection (the approval
             // gate itself fails closed; only the speculative anomaly check is
             // permissive on Redis outage).
-            log.warn("approval_gate.anomaly_redis_fail zombie_id={s}", .{zombie_id});
+            log.warn("redis_fail", .{ .zombie_id = zombie_id });
             return .normal;
         };
         if (count >= rule.threshold_count) {
-            log.err("approval_gate.anomaly_auto_kill zombie_id={s} tool={s} action={s} count={d} threshold={d}", .{
-                zombie_id, tool, action, count, rule.threshold_count,
+            log.err("auto_kill", .{
+                .zombie_id = zombie_id,
+                .tool = tool,
+                .action = action,
+                .count = count,
+                .threshold = rule.threshold_count,
             });
             return .auto_kill;
         }
@@ -73,4 +78,3 @@ fn incrAnomalyCounter(
         else => error.RedisCommandError,
     };
 }
-

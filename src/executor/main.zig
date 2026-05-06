@@ -6,9 +6,10 @@
 //! Landlock + cgroups v2).
 //!
 //! The worker no longer assumes dangerous agent execution lives in its
-//! own process boundary (§3.3).
+//! own process boundary.
 
 const std = @import("std");
+const logging = @import("log");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 const transport = @import("transport.zig");
@@ -21,7 +22,7 @@ const landlock = @import("landlock.zig");
 const cgroup = @import("cgroup.zig");
 const network = @import("network.zig");
 
-const log = std.log.scoped(.sandbox_executor);
+const log = logging.scoped(.sandbox_executor);
 
 const DEFAULT_SOCKET_PATH = "/run/zombie/executor.sock";
 const DEFAULT_LEASE_TIMEOUT_MS: u64 = 30_000;
@@ -54,24 +55,17 @@ pub fn main() !void {
         if (v_u64 > 0 and v_u64 <= std.math.maxInt(u32)) {
             const v: u32 = @intCast(v_u64);
             transport.setHelloVersionOverride(v);
-            log.warn("startup.rpc_version_override version={d} (test-only harness path)", .{v});
+            log.warn("rpc_version_override", .{ .version = v, .path = "test_harness" });
         }
     }
 
-    log.info("startup.executor socket={s} lease_timeout_ms={d} network_policy={s}", .{
-        socket_path,
-        lease_timeout_ms,
-        @tagName(net_policy),
-    });
+    log.info("executor_started", .{ .socket = socket_path, .lease_timeout_ms = lease_timeout_ms, .network_policy = @tagName(net_policy) });
 
     // Report host backend capabilities.
     if (builtin.os.tag == .linux) {
-        log.info("startup.capabilities landlock={} cgroups_v2={}", .{
-            landlock.isAvailable(),
-            cgroup.isAvailable(),
-        });
+        log.info("capabilities_detected", .{ .landlock = landlock.isAvailable(), .cgroups_v2 = cgroup.isAvailable() });
     } else {
-        log.warn("startup.non_linux host_backend=degraded", .{});
+        log.warn("host_backend_degraded", .{ .host = "non_linux" });
     }
 
     var store = SessionStore.init(alloc);
@@ -99,7 +93,7 @@ pub fn main() !void {
 
     var server = transport.Server.init(alloc, socket_path, frame_handler.handle);
     server.bind() catch |err| {
-        log.err("startup.bind_failed path={s} err={s}", .{ socket_path, @errorName(err) });
+        log.err("bind_failed", .{ .path = socket_path, .err = @errorName(err) });
         std.process.exit(1);
     };
     defer server.stop();
@@ -128,12 +122,12 @@ pub fn main() !void {
         std.posix.sigaction(std.posix.SIG.INT, &act, null);
     }
 
-    log.info("executor.serving socket={s}", .{socket_path});
+    log.info("serving", .{ .socket = socket_path });
     server.serve();
 
     lease_manager.stop();
     lease_thread.join();
-    log.info("executor.shutdown", .{});
+    log.info("shutdown", .{});
 }
 
 fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default: u64) u64 {

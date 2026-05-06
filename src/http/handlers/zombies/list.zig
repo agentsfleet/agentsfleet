@@ -7,6 +7,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -15,7 +16,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const keyset_cursor = @import("../../../zombie/keyset_cursor.zig");
 
-const log = std.log.scoped(.zombie_api);
+const log = logging.scoped(.zombie_api);
 
 const Hx = hx_mod.Hx;
 
@@ -48,7 +49,7 @@ pub fn innerListZombies(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
             hx.fail(ec.ERR_INVALID_REQUEST, "Invalid cursor format");
             return;
         }
-        log.err("zombie.list_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
+        log.err("list_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

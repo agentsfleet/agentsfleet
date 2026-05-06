@@ -12,8 +12,9 @@ const redis_client = @import("../queue/redis_client.zig");
 const redis_protocol = @import("../queue/redis_protocol.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const parser = @import("control_stream_parse.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.control_stream);
+const log = logging.scoped(.control_stream);
 
 pub const stream_key = "zombie:control";
 pub const consumer_group = "zombie_workers";
@@ -100,7 +101,7 @@ pub const Decoded = struct {
 
 /// Idempotent per-zombie `XGROUP CREATE MKSTREAM zombie:{id}:events` with
 /// BUSYGROUP-as-success. Called from `innerCreateZombie` (install path) AND
-/// `worker_watcher.spawnZombieThread` (bootstrap self-heal: orphan rows from
+/// `worker_watcher.spawnZombieThread` (startup self-heal: rows from
 /// a failed install-time XADD recover at next worker boot, no reconcile job).
 pub fn ensureZombieEventsGroup(client: *redis_client.Client, zombie_id: []const u8) !void {
     var key_buf: [128]u8 = undefined;
@@ -111,7 +112,7 @@ pub fn ensureZombieEventsGroup(client: *redis_client.Client, zombie_id: []const 
         .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.ZombieEventsGroupCreateFailed,
         .err => |msg| {
             if (std.mem.indexOf(u8, msg, "BUSYGROUP") != null) return;
-            log.err("zombie_events.group_create_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{msg});
+            log.err("zombie_events_group_create_fail", .{ .err = msg, .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ZombieEventsGroupCreateFailed;
         },
         else => return error.ZombieEventsGroupCreateFailed,
@@ -132,7 +133,7 @@ pub fn ensureControlGroup(client: *redis_client.Client) !void {
         .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.ControlGroupCreateFailed,
         .err => |msg| {
             if (std.mem.indexOf(u8, msg, "BUSYGROUP") != null) return;
-            log.err("control.group_create_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{msg});
+            log.err("group_create_fail", .{ .err = msg, .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ControlGroupCreateFailed;
         },
         else => return error.ControlGroupCreateFailed,
@@ -166,7 +167,7 @@ pub fn publish(client: *redis_client.Client, msg: ControlMessage) !void {
 
     var revision_buf: [24]u8 = undefined;
     n = appendVariantFields(&argv, n, msg, &revision_buf) catch |err| {
-        log.err("control.publish_encode_fail type={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{tag.toSlice()});
+        log.err("publish_encode_fail", .{ .type = tag.toSlice(), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
         return err;
     };
 
@@ -176,15 +177,15 @@ pub fn publish(client: *redis_client.Client, msg: ControlMessage) !void {
     defer resp.deinit(client.alloc);
     switch (resp) {
         .bulk => |v| if (v == null) {
-            log.err("control.xadd_fail type={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{tag.toSlice()});
+            log.err("xadd_fail", .{ .type = tag.toSlice(), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ControlXaddFailed;
         },
         else => {
-            log.err("control.xadd_fail type={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{tag.toSlice()});
+            log.err("xadd_fail", .{ .type = tag.toSlice(), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ControlXaddFailed;
         },
     }
-    log.debug("control.xadd type={s}", .{tag.toSlice()});
+    log.debug("xadd", .{ .type = tag.toSlice() });
 }
 
 fn appendVariantFields(

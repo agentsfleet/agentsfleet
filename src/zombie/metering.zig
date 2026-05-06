@@ -5,12 +5,12 @@
 //! before the executor starts. Each debit pairs with a telemetry-row INSERT
 //! inside one transaction. After execution, the stage telemetry row is
 //! updated with the executor's reported token counts and wall_ms — the
-//! debit cents stay at the conservative pre-execution estimate; v3 may
-//! reconcile.
+//! debit cents stay at the conservative pre-execution estimate; later
+//! reconciliation can adjust it if the product needs that.
 //!
 //! Replay safety. The telemetry table has UNIQUE (event_id, charge_type) +
 //! ON CONFLICT DO NOTHING; same event id replayed produces zero extra rows.
-//! Debit idempotency is best-effort under the pre-alpha contract — without
+//! Debit idempotency is best-effort before GA; without
 //! an audit table, a worker crash between debit and INSERT can produce a
 //! debited-but-unrecorded charge. Acceptable until Stripe wires in.
 //!
@@ -21,6 +21,7 @@
 //! and stays charged on a stage-side exhaust.
 
 const std = @import("std");
+const logging = @import("log");
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
@@ -31,7 +32,7 @@ const otel_traces = @import("../observability/otel_traces.zig");
 const trace = @import("../observability/trace.zig");
 const balance_policy = @import("../config/balance_policy.zig");
 
-const log = std.log.scoped(.zombie_metering);
+const log = logging.scoped(.zombie_metering);
 
 /// Per-event context shared by the gate, both debits, and post-execution
 /// telemetry. Posture and model come from the resolver; everything else
@@ -65,8 +66,8 @@ pub const DebitOutcome = union(enum) {
 ///
 /// Policy `continue`/`warn` short-circuits to true: those modes deliberately
 /// allow the event through and emit warning telemetry instead of blocking.
-/// v2.0 default policy is `stop`; non-stop modes are kept for the policy
-/// hooks already wired in M11_006.
+/// Default policy is `stop`; non-stop modes are kept for the existing policy
+/// hooks.
 ///
 /// Any DB failure returns true (fail-open) so the gate never turns into an
 /// availability incident.
@@ -81,13 +82,13 @@ pub fn balanceCoversEstimate(
     if (policy != .stop) return true;
 
     const conn = pool.acquire() catch |err| {
-        log.warn("gate.acquire_fail tenant_id={s} err={s}", .{ tenant_id, @errorName(err) });
+        log.warn("gate_acquire_fail", .{ .tenant_id = tenant_id, .err = @errorName(err) });
         return true;
     };
     defer pool.release(conn);
 
     const billing = (tenant_billing.getBilling(conn, alloc, tenant_id) catch |err| {
-        log.warn("gate.billing_load_fail tenant_id={s} err={s}", .{ tenant_id, @errorName(err) });
+        log.warn("gate_billing_load_fail", .{ .tenant_id = tenant_id, .err = @errorName(err) });
         return true;
     }) orelse return true;
     defer alloc.free(@constCast(billing.plan_tier));
@@ -155,11 +156,11 @@ pub fn recordStageActuals(
 ) void {
     _ = alloc;
     if (epoch_wall_time_ms <= 0) {
-        log.warn("metering.skip_actuals reason=non_positive_epoch zombie_id={s}", .{ctx.zombie_id});
+        log.warn("skip_actuals", .{ .reason = "non_positive_epoch", .zombie_id = ctx.zombie_id });
         return;
     }
     const conn = pool.acquire() catch |err| {
-        log.warn("metering.actuals_acquire_fail zombie_id={s} err={s}", .{ ctx.zombie_id, @errorName(err) });
+        log.warn("actuals_acquire_fail", .{ .zombie_id = ctx.zombie_id, .err = @errorName(err) });
         return;
     };
     defer pool.release(conn);
@@ -168,7 +169,7 @@ pub fn recordStageActuals(
     const out_capped: i64 = @intCast(@min(token_count_output, @as(u64, @intCast(std.math.maxInt(i64)))));
     const wall_capped: i64 = @intCast(@min(wall_ms, @as(u64, @intCast(std.math.maxInt(i64)))));
     zombie_telemetry_store.updateStageTokens(conn, ctx.event_id, in_capped, out_capped, wall_capped) catch |err| {
-        log.warn("metering.stage_update_fail zombie_id={s} event_id={s} err={s}", .{ ctx.zombie_id, ctx.event_id, @errorName(err) });
+        log.warn("stage_update_fail", .{ .zombie_id = ctx.zombie_id, .event_id = ctx.event_id, .err = @errorName(err) });
     };
 
     const total_tokens: u64 = token_count_input + token_count_output;
@@ -201,13 +202,13 @@ fn debitAndInsert(
     policy: balance_policy.Policy,
 ) DebitOutcome {
     const conn = pool.acquire() catch |err| {
-        log.warn("metering.acquire_fail zombie_id={s} err={s}", .{ ctx.zombie_id, @errorName(err) });
+        log.warn("acquire_fail", .{ .zombie_id = ctx.zombie_id, .err = @errorName(err) });
         return .{ .db_error = {} };
     };
     defer pool.release(conn);
 
     _ = conn.exec("BEGIN", .{}) catch |err| {
-        log.warn("metering.begin_fail zombie_id={s} err={s}", .{ ctx.zombie_id, @errorName(err) });
+        log.warn("begin_fail", .{ .zombie_id = ctx.zombie_id, .err = @errorName(err) });
         return .{ .db_error = {} };
     };
     var tx_open = true;
@@ -219,7 +220,7 @@ fn debitAndInsert(
         _ = tenant_billing.debit(conn, tenant_id, cents) catch |err| switch (err) {
             error.CreditExhausted => {
                 _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
-                    log.warn("metering.mark_exhausted_fail zombie_id={s} tenant_id={s} err={s}", .{ ctx.zombie_id, tenant_id, @errorName(mark_err) });
+                    log.warn("mark_exhausted_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
                 };
                 _ = conn.exec("COMMIT", .{}) catch {};
                 tx_open = false;
@@ -229,13 +230,18 @@ fn debitAndInsert(
             error.TenantBillingMissing => {
                 conn.rollback() catch {};
                 tx_open = false;
-                log.err("metering.missing_tenant_billing zombie_id={s} tenant_id={s} workspace_id={s} — tenant_billing.insertStarterGrant was never called for this tenant", .{ ctx.zombie_id, tenant_id, ctx.workspace_id });
+                log.err("missing_tenant_billing", .{
+                    .zombie_id = ctx.zombie_id,
+                    .tenant_id = tenant_id,
+                    .workspace_id = ctx.workspace_id,
+                    .msg = "starter grant was never inserted for this tenant",
+                });
                 return .{ .missing_tenant_billing = {} };
             },
             else => {
                 conn.rollback() catch {};
                 tx_open = false;
-                log.warn("metering.debit_fail zombie_id={s} tenant_id={s} err={s}", .{ ctx.zombie_id, tenant_id, @errorName(err) });
+                log.warn("debit_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(err) });
                 return .{ .db_error = {} };
             },
         };
@@ -257,17 +263,17 @@ fn debitAndInsert(
     }) catch |err| {
         conn.rollback() catch {};
         tx_open = false;
-        log.warn("metering.telemetry_insert_fail zombie_id={s} event_id={s} charge_type={s} err={s}", .{ ctx.zombie_id, ctx.event_id, charge_type.label(), @errorName(err) });
+        log.warn("telemetry_insert_fail", .{ .zombie_id = ctx.zombie_id, .event_id = ctx.event_id, .charge_type = charge_type.label(), .err = @errorName(err) });
         return .{ .db_error = {} };
     };
 
     _ = conn.exec("COMMIT", .{}) catch |err| {
-        log.warn("metering.commit_fail zombie_id={s} err={s}", .{ ctx.zombie_id, @errorName(err) });
+        log.warn("commit_fail", .{ .zombie_id = ctx.zombie_id, .err = @errorName(err) });
         return .{ .db_error = {} };
     };
     tx_open = false;
 
-    log.debug("metering.{s}_debit tenant_id={s} event_id={s} cents={d}", .{ charge_type.label(), tenant_id, ctx.event_id, cents });
+    log.debug("debit", .{ .charge_type = charge_type.label(), .tenant_id = tenant_id, .event_id = ctx.event_id, .cents = cents });
     return .{ .deducted = cents };
 }
 
@@ -278,12 +284,12 @@ fn onExhaustedDebit(
     cents: i64,
     policy: balance_policy.Policy,
 ) void {
-    log.info("metering.exhausted zombie_id={s} tenant_id={s} charge_type={s} cents_attempted={d} policy={s}", .{
-        zombie_id,
-        tenant_id,
-        charge_type.label(),
-        cents,
-        policy.label(),
+    log.info("exhausted", .{
+        .zombie_id = zombie_id,
+        .tenant_id = tenant_id,
+        .charge_type = charge_type.label(),
+        .cents_attempted = cents,
+        .policy = policy.label(),
     });
 }
 

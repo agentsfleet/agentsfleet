@@ -4,10 +4,11 @@
 //! duration or RFC 3339 timestamp.
 //!
 //! `since=` and `cursor=` are mutually exclusive — supplying both is a
-//! 400 with `since_and_cursor_mutually_exclusive` per spec §4.
+//! 400 with `since_and_cursor_mutually_exclusive`.
 
 const std = @import("std");
 const httpz = @import("httpz");
+const logging = @import("log");
 
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -15,7 +16,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const events_store = @import("../../../state/zombie_events_store.zig");
 
-const log = std.log.scoped(.http_zombie_events);
+const log = logging.scoped(.http_zombie_events);
 
 const LIMIT_DEFAULT: u32 = 50;
 const LIMIT_MAX: u32 = 200;
@@ -60,7 +61,7 @@ pub fn innerListEvents(
             hx.fail(ec.ERR_INVALID_REQUEST, "invalid cursor");
             return;
         }
-        log.err("listForZombie failed err={s}", .{@errorName(err)});
+        log.err("list_failed", .{ .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

@@ -27,6 +27,7 @@
 //! security guarantee; instance_id is the logical isolation within that role.
 
 const std = @import("std");
+const logging = @import("log");
 const nullclaw = @import("nullclaw");
 const memory_mod = nullclaw.memory;
 const registry = memory_mod.registry;
@@ -34,7 +35,7 @@ const registry = memory_mod.registry;
 const types = @import("types.zig");
 const MemoryBackendConfig = types.MemoryBackendConfig;
 
-const log = std.log.scoped(.executor_zombie_memory);
+const log = logging.scoped(.executor_zombie_memory);
 
 /// Build a NullClaw MemoryRuntime for a zombie with per-zombie row isolation.
 ///
@@ -51,14 +52,14 @@ pub fn initRuntime(
     workspace_path: []const u8,
 ) ?memory_mod.MemoryRuntime {
     const desc = memory_mod.findBackend("postgres") orelse {
-        log.warn("zombie_memory.backend_disabled: postgres not enabled in this build", .{});
+        log.warn("backend_disabled", .{ .backend = "postgres" });
         return null;
     };
 
     // dupeZ the connection string. PostgresMemory.init() passes it to libpq
     // (which copies it internally), so we can free url_z after init.
     const url_z = alloc.dupeZ(u8, cfg.connection) catch {
-        log.warn("zombie_memory.oom: failed to allocate connection string", .{});
+        log.warn("connection_string_alloc_failed", .{ .err = "OutOfMemory" });
         return null;
     };
     defer alloc.free(url_z);
@@ -77,11 +78,11 @@ pub fn initRuntime(
     };
 
     const instance = desc.create(alloc, backend_cfg) catch |err| {
-        log.warn("zombie_memory.connect_failed err={s} namespace={s}", .{ @errorName(err), cfg.namespace });
+        log.warn("connect_failed", .{ .err = @errorName(err), .namespace = cfg.namespace });
         return null;
     };
 
-    log.info("zombie_memory.ready namespace={s}", .{cfg.namespace});
+    log.info("ready", .{ .namespace = cfg.namespace });
 
     // Minimal MemoryRuntime for postgres_keyword: no search engine, no vector
     // store, no response cache. Fields with struct-level defaults (null, .on,

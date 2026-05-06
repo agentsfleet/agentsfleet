@@ -12,6 +12,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -19,7 +20,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const queue_redis = @import("../../../queue/redis.zig");
 const grants = @import("../integration_grants/handler.zig");
 
-const log = std.log.scoped(.grant_approval_webhook);
+const log = logging.scoped(.grant_approval_webhook);
 
 const STATUS_PENDING = grants.GrantStatus.pending.toSlice();
 const STATUS_APPROVED = grants.GrantStatus.approved.toSlice();
@@ -112,12 +113,21 @@ fn applyDecision(
 
 pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const u8) void {
     const raw_body = req.body() orelse {
-        log.warn("grant_approval.no_body zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
+        log.warn("no_body", .{
+            .error_code = ec.ERR_INVALID_REQUEST,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_INVALID_REQUEST, "Request body required");
         return;
     };
     const parsed = std.json.parseFromSlice(GrantApprovalBody, hx.alloc, raw_body, .{}) catch |err| {
-        log.warn("grant_approval.malformed_json zombie_id={s} req_id={s} err={s}", .{ zombie_id, hx.req_id, @errorName(err) });
+        log.warn("malformed_json", .{
+            .error_code = ec.ERR_INVALID_REQUEST,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+            .err = @errorName(err),
+        });
         hx.fail(ec.ERR_INVALID_REQUEST, "Malformed JSON body");
         return;
     };
@@ -125,19 +135,32 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
     const body = parsed.value;
 
     if (body.grant_id.len == 0) {
-        log.warn("grant_approval.missing_grant_id zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
+        log.warn("missing_grant_id", .{
+            .error_code = ec.ERR_INVALID_REQUEST,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_INVALID_REQUEST, "grant_id required");
         return;
     }
     if (body.nonce.len == 0) {
-        log.warn("grant_approval.missing_nonce zombie_id={s} req_id={s}", .{ zombie_id, hx.req_id });
+        log.warn("missing_nonce", .{
+            .error_code = ec.ERR_INVALID_REQUEST,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+        });
         hx.fail(ec.ERR_INVALID_REQUEST, "nonce required");
         return;
     }
     const is_approved = std.mem.eql(u8, body.decision, "approved");
     const is_denied   = std.mem.eql(u8, body.decision, "denied");
     if (!is_approved and !is_denied) {
-        log.warn("grant_approval.invalid_decision zombie_id={s} req_id={s} decision={s}", .{ zombie_id, hx.req_id, body.decision });
+        log.warn("invalid_decision", .{
+            .error_code = ec.ERR_INVALID_REQUEST,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+            .decision = body.decision,
+        });
         hx.fail(ec.ERR_INVALID_REQUEST, "decision must be 'approved' or 'denied'");
         return;
     }
@@ -146,7 +169,12 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
     // verifyAndConsumeNonce uses a Lua script that only deletes the nonce on match,
     // so a wrong nonce leaves the key intact for the legitimate Slack button.
     if (!verifyAndConsumeNonce(hx.ctx.queue, body.grant_id, body.nonce)) {
-        log.warn("grant_approval.nonce_invalid zombie_id={s} req_id={s} grant_id={s}", .{ zombie_id, hx.req_id, body.grant_id });
+        log.warn("nonce_invalid", .{
+            .error_code = ec.ERR_INVALID_REQUEST,
+            .zombie_id = zombie_id,
+            .req_id = hx.req_id,
+            .grant_id = body.grant_id,
+        });
         hx.fail(ec.ERR_INVALID_REQUEST, "Invalid or expired approval nonce");
         return;
     }
@@ -163,8 +191,12 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
     const workspace_id = fetchWorkspaceId(hx.ctx.pool, hx.alloc, zombie_id);
     const event_type: []const u8 = if (is_approved) "grant.approved" else "grant.denied";
 
-    log.info("grant_approval.{s} zombie_id={s} workspace_id={s} grant_id={s} event_type={s}", .{
-        body.decision, zombie_id, workspace_id, body.grant_id, event_type,
+    log.info("decision_recorded", .{
+        .zombie_id = zombie_id,
+        .workspace_id = workspace_id,
+        .grant_id = body.grant_id,
+        .decision = body.decision,
+        .event_type = event_type,
     });
 
     hx.ok(.ok, .{

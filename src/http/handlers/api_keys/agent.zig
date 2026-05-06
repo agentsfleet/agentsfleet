@@ -1,4 +1,4 @@
-//! M28_002 §0 — Workspace agent-key management (renamed from external_agents.zig).
+//! Workspace agent-key management.
 //! POST   /v1/workspaces/{ws}/agent-keys            → innerCreateAgentKey
 //! GET    /v1/workspaces/{ws}/agent-keys            → innerListAgentKeys
 //! DELETE /v1/workspaces/{ws}/agent-keys/{agent_id} → innerDeleteAgentKey
@@ -7,6 +7,7 @@
 //! Only the SHA-256 hash of the key is stored. The raw key is shown once at creation.
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -16,7 +17,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const api_key = @import("../../../auth/api_key.zig");
 
-const log = std.log.scoped(.agent_keys);
+const log = logging.scoped(.agent_keys);
 
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
@@ -126,19 +127,21 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
         return;
     };
 
-    log.info("agent_key.created agent_id={s} workspace_id={s} zombie_id={s}", .{
-        agent_id, workspace_id, body.zombie_id,
+    log.info("created", .{
+        .agent_id = agent_id,
+        .workspace_id = workspace_id,
+        .zombie_id = body.zombie_id,
     });
 
     // Return the raw key once — callers must store it; it cannot be retrieved again.
     hx.ok(.created, .{
-        .agent_id    = agent_id,
+        .agent_id = agent_id,
         .workspace_id = workspace_id,
-        .zombie_id   = body.zombie_id,
-        .name        = body.name,
-        .key         = raw_key, // shown once — store securely
-        .created_at  = now_ms,
-        .message     = "Store this key securely. It will not be shown again.",
+        .zombie_id = body.zombie_id,
+        .name = body.name,
+        .key = raw_key, // shown once — store securely
+        .created_at = now_ms,
+        .message = "Store this key securely. It will not be shown again.",
     });
 }
 
@@ -180,18 +183,18 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
 
     var agents: std.ArrayListUnmanaged(AgentRow) = .{};
     while (q.next() catch null) |row| {
-        const agent_id    = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
-        const zombie_id   = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
-        const name        = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
+        const agent_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
+        const zombie_id = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
+        const name = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
         const description = hx.alloc.dupe(u8, row.get([]u8, 3) catch continue) catch continue;
-        const created_at  = row.get(i64, 4) catch continue;
-        const last_used   = row.get(i64, 5) catch null;
+        const created_at = row.get(i64, 4) catch continue;
+        const last_used = row.get(i64, 5) catch null;
         agents.append(hx.alloc, .{
-            .agent_id    = agent_id,
-            .zombie_id   = zombie_id,
-            .name        = name,
+            .agent_id = agent_id,
+            .zombie_id = zombie_id,
+            .name = name,
             .description = description,
-            .created_at  = created_at,
+            .created_at = created_at,
             .last_used_at = last_used,
         }) catch {};
     }
@@ -230,6 +233,6 @@ pub fn innerDeleteAgentKey(hx: Hx, workspace_id: []const u8, agent_id: []const u
         return;
     }
 
-    log.info("agent_key.deleted agent_id={s} workspace_id={s}", .{ agent_id, workspace_id });
+    log.info("deleted", .{ .agent_id = agent_id, .workspace_id = workspace_id });
     hx.noContent();
 }

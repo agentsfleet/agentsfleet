@@ -14,8 +14,6 @@ const id_format = @import("../types/id_format.zig");
 const tenant_provider = @import("tenant_provider.zig");
 const cursor_mod = @import("zombie_telemetry_cursor.zig");
 
-const log = std.log.scoped(.zombie_telemetry_store);
-
 pub const ChargeType = enum {
     receive,
     stage,

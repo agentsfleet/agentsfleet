@@ -10,6 +10,7 @@
 //! reference.
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
 
@@ -26,7 +27,7 @@ pub const innerListApiKeys = api_keys_list.innerListApiKeys;
 pub const sortClauseFor = api_keys_list.sortClauseFor;
 
 const Hx = hx_mod.Hx;
-const log = std.log.scoped(.api_keys);
+const log = logging.scoped(.api_keys);
 
 pub const KEY_PREFIX = tenant_api_key.TENANT_KEY_PREFIX; // "zmb_t_"
 pub const KEY_RANDOM_BYTES: usize = 32;
@@ -136,8 +137,11 @@ fn performCreate(
         return error.DbError;
     };
 
-    log.info("api_key.created tenant_id={s} actor_user_id={s} api_key_id={s} key_name={s}", .{
-        tenant_id, user_id, id, body.key_name,
+    log.info("created", .{
+        .tenant_id = tenant_id,
+        .actor_user_id = user_id,
+        .api_key_id = id,
+        .key_name = body.key_name,
     });
 
     hx.ok(.created, .{
@@ -201,8 +205,10 @@ fn applyRevoke(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, user_id: []const u
     const id = hx.alloc.dupe(u8, row.?.get([]u8, 0) catch "") catch "";
     const revoked_at = row.?.get(i64, 1) catch 0;
 
-    log.info("api_key.revoked tenant_id={s} actor_user_id={s} api_key_id={s}", .{
-        tenant_id, user_id, id,
+    log.info("revoked", .{
+        .tenant_id = tenant_id,
+        .actor_user_id = user_id,
+        .api_key_id = id,
     });
 
     hx.ok(.ok, .{ .id = id, .active = false, .revoked_at = revoked_at });
@@ -253,8 +259,10 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
         return;
     }
 
-    log.info("api_key.deleted tenant_id={s} actor_user_id={s} api_key_id={s}", .{
-        tenant_id, user_id, key_id,
+    log.info("deleted", .{
+        .tenant_id = tenant_id,
+        .actor_user_id = user_id,
+        .api_key_id = key_id,
     });
     hx.noContent();
 }

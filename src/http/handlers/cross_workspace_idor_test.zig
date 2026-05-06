@@ -108,7 +108,7 @@ fn serverThread(srv: *TestServer) void {
     srv.server.listen() catch |e| {
         const code: u8 = if (e == error.AddressInUse) LISTEN_ADDRESS_IN_USE else LISTEN_OTHER_ERR;
         srv.listen_status.store(code, .seq_cst);
-        std.log.warn("idor test server listen failed: {s}", .{@errorName(e)});
+        std.log.warn("idor listen failed error_code=UZ-TEST-001 err={s}", .{@errorName(e)});
     };
 }
 

@@ -235,7 +235,7 @@ test "writeFields renders enum values via @tagName" {
 test "scoped logger compiles for every level (smoke)" {
     // Smoke: ensure the comptime instantiation produces struct types
     // wired to std.log for each level. Avoids actually calling the
-    // levels — Zig's test harness treats a `std.log.err` call during
+    // levels — Zig's test harness treats an error-level log call during
     // a test as a test failure.
     const Log = scoped(.test_smoke);
     _ = @TypeOf(Log.info);

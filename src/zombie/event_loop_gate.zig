@@ -1,4 +1,4 @@
-// M4_001: Approval gate integration for the event loop.
+// Approval gate integration for the event loop.
 //
 // Checks anomaly counters and gate policy before tool execution.
 // If approval is required, blocks until human responds or timeout.
@@ -14,8 +14,9 @@ const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const event_loop = @import("event_loop.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.zombie_event_loop_gate);
+const log = logging.scoped(.zombie_event_loop_gate);
 
 const BlockReason = enum { approval_denied, timeout, unavailable };
 const AutoKillTrigger = enum { anomaly, policy };
@@ -116,7 +117,7 @@ fn handleApprovalFlow(
         detail,
         "", // callback_url resolved at delivery time by the notification provider
     ) catch |err| {
-        log.warn("approval_gate.slack_msg_build_fail err={s}", .{@errorName(err)});
+        log.warn("slack_msg_build_fail", .{ .err = @errorName(err) });
         return .{ .blocked = .unavailable };
     };
     defer alloc.free(slack_msg);
@@ -157,15 +158,13 @@ fn handleApprovalFlow(
     };
 }
 
-/// Best-effort gate-event log. Pre-M42 wrote to core.activity_events; that
-/// table is gone with M42's streaming substrate. Until M42's processEvent
-/// rewrite wires PUBLISHes onto zombie:{id}:activity for gate transitions,
-/// this is a structured log line — durable record lands in core.zombie_events
-/// via the worker's terminal UPDATE.
+/// Best-effort gate-event log. Gate transitions currently emit structured
+/// logs; durable terminal state lands in core.zombie_events via the worker's
+/// terminal UPDATE.
 fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *event_loop.ZombieSession, event_type: []const u8, detail: []const u8) void {
     _ = pool;
     _ = alloc;
-    log.info("zombie_event_loop_gate.event zombie_id={s} workspace_id={s} type={s} detail={s}", .{ session.zombie_id, session.workspace_id, event_type, detail });
+    log.info("gate_event", .{ .zombie_id = session.zombie_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });
 }
 
 fn pauseZombie(pool: *pg.Pool, zombie_id: []const u8) void {
@@ -191,7 +190,7 @@ fn storeNotificationPayload(redis: *queue_redis.Client, zombie_id: []const u8, a
         zombie_id, action_id,
     }) catch return;
     redis.setEx(key, payload, error_codes.GATE_PENDING_TTL_SECONDS) catch |err| {
-        log.warn("approval_gate.notify_store_fail err={s}", .{@errorName(err)});
+        log.warn("notify_store_fail", .{ .err = @errorName(err) });
     };
 }
 

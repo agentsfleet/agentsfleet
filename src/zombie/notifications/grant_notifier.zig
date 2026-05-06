@@ -1,17 +1,18 @@
-//! M9_001 §4.0 — Grant request notification fan-out.
-//! Stores Slack Block Kit payload in Redis for the notification provider (M8 plugin).
+//! Grant request notification fan-out.
+//! Stores Slack Block Kit payload in Redis for the notification provider.
 //! Always logs a dashboard notification via activity_stream regardless of provider.
 //!
 //! Redis key: grant:notify:{zombie_id}:{grant_id}
 //! TTL: 7200s (2 hours — same as gate pending TTL)
-//! Consumer: M8 Slack/Discord plugin reads and POSTs to workspace channels.
+//! Consumer: Slack/Discord plugin reads and POSTs to workspace channels.
 
 const std = @import("std");
+const logging = @import("log");
 const pg = @import("pg");
 const queue_redis = @import("../../queue/redis.zig");
 const approval_slack = @import("../approval_gate_slack.zig");
 
-const log = std.log.scoped(.grant_notifier);
+const log = logging.scoped(.grant_notifier);
 
 const GRANT_NOTIFY_TTL_SECONDS: u32 = 7200;
 const GRANT_NOTIFY_KEY_PREFIX = "grant:notify:";
@@ -37,8 +38,9 @@ fn storeNonceToRedis(
         GRANT_NONCE_KEY_PREFIX, grant_id,
     }) catch return;
     queue.setEx(key, nonce, GRANT_NOTIFY_TTL_SECONDS) catch |err| {
-        log.warn("grant_notifier.nonce_fail grant_id={s} err={s}", .{
-            grant_id, @errorName(err),
+        log.warn("nonce_fail", .{
+            .grant_id = grant_id,
+            .err = @errorName(err),
         });
     };
 }
@@ -60,8 +62,7 @@ fn buildGrantSlackMessage(
     errdefer buf.deinit(alloc);
     const w = buf.writer(alloc);
 
-    const header = try std.fmt.allocPrint(alloc,
-        "\u{1F510} *{s}* is requesting *{s}* access", .{ zombie_name, service });
+    const header = try std.fmt.allocPrint(alloc, "\u{1F510} *{s}* is requesting *{s}* access", .{ zombie_name, service });
     defer alloc.free(header);
     const reason_text = try std.fmt.allocPrint(alloc, "Reason: \"{s}\"\n\nScopes: Full access (*)", .{reason});
     defer alloc.free(reason_text);
@@ -109,8 +110,10 @@ fn storeToRedis(
         GRANT_NOTIFY_KEY_PREFIX, zombie_id, grant_id,
     }) catch return;
     queue.setEx(key, payload, GRANT_NOTIFY_TTL_SECONDS) catch |err| {
-        log.warn("grant_notifier.redis_fail zombie_id={s} grant_id={s} err={s}", .{
-            zombie_id, grant_id, @errorName(err),
+        log.warn("redis_fail", .{
+            .zombie_id = zombie_id,
+            .grant_id = grant_id,
+            .err = @errorName(err),
         });
     };
 }
@@ -127,7 +130,7 @@ fn logDashboard(
 ) void {
     _ = pool;
     _ = alloc;
-    log.info("grant_notifier.requested zombie_id={s} workspace_id={s} service={s} grant_id={s}", .{ zombie_id, workspace_id, service, grant_id });
+    log.info("requested", .{ .zombie_id = zombie_id, .workspace_id = workspace_id, .service = service, .grant_id = grant_id });
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────
@@ -152,7 +155,7 @@ pub fn notifyGrantRequest(
     storeNonceToRedis(queue, grant_id, nonce);
 
     const slack_msg = buildGrantSlackMessage(alloc, zombie_name, service, reason, grant_id, nonce) catch |err| {
-        log.warn("grant_notifier.build_fail err={s}", .{@errorName(err)});
+        log.warn("build_fail", .{ .err = @errorName(err) });
         logDashboard(pool, alloc, zombie_id, workspace_id, grant_id, service);
         return;
     };
@@ -161,8 +164,10 @@ pub fn notifyGrantRequest(
     storeToRedis(queue, zombie_id, grant_id, slack_msg);
     logDashboard(pool, alloc, zombie_id, workspace_id, grant_id, service);
 
-    log.info("grant_notifier.sent zombie_id={s} service={s} grant_id={s}", .{
-        zombie_id, service, grant_id,
+    log.info("sent", .{
+        .zombie_id = zombie_id,
+        .service = service,
+        .grant_id = grant_id,
     });
 }
 

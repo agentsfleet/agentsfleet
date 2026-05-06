@@ -1,20 +1,21 @@
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const error_codes = @import("../../../errors/error_registry.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 
-const log = std.log.scoped(.http);
+const log = logging.scoped(.http);
 
 pub const Context = common.Context;
 
 // none policy — login endpoint, no bearer auth required.
 pub fn innerCreateAuthSession(hx: hx_mod.Hx) void {
-    log.debug("auth.session_create req_id={s}", .{hx.req_id});
+    log.debug("auth_session_create", .{ .req_id = hx.req_id });
 
     const session_id = hx.ctx.auth_sessions.create() catch {
-        log.err("auth.session_create_fail error_code=UZ-AUTH-008 err=too_many_pending_sessions req_id={s}", .{hx.req_id});
+        log.err("auth_session_create_failed", .{ .error_code = error_codes.ERR_SESSION_LIMIT, .err = "too_many_pending_sessions", .req_id = hx.req_id });
         hx.fail(error_codes.ERR_SESSION_LIMIT, "Too many pending sessions");
         return;
     };
@@ -24,7 +25,7 @@ pub fn innerCreateAuthSession(hx: hx_mod.Hx) void {
         return;
     };
 
-    log.info("auth.session_created session_id={s} req_id={s}", .{ session_id, hx.req_id });
+    log.info("auth_session_created", .{ .session_id = session_id, .req_id = hx.req_id });
     hx.ok(.created, .{
         .session_id = session_id,
         .login_url = login_url,
@@ -40,12 +41,12 @@ pub fn innerPollAuthSession(hx: hx_mod.Hx, session_id: []const u8) void {
         .complete => "complete",
         .expired => "expired",
     };
-    log.debug("auth.session_poll session_id={s} status={s}", .{ session_id, status_str });
+    log.debug("auth_session_poll", .{ .session_id = session_id, .status = status_str });
     hx.ok(.ok, .{ .status = status_str, .token = result.token });
 }
 
 pub fn innerPatchAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []const u8) void {
-    log.debug("auth.session_patch session_id={s} req_id={s}", .{ session_id, hx.req_id });
+    log.debug("auth_session_patch", .{ .session_id = session_id, .req_id = hx.req_id });
 
     const body = req.body() orelse {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "Request body required");
@@ -73,18 +74,18 @@ pub fn innerPatchAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []c
     }
 
     hx.ctx.auth_sessions.complete(session_id, parsed.value.token) catch |err| {
-        log.err("auth.session_patch_fail err={s} session_id={s} req_id={s}", .{ @errorName(err), session_id, hx.req_id });
         const code: []const u8 = switch (err) {
             error.SessionNotFound => error_codes.ERR_SESSION_NOT_FOUND,
             error.SessionExpired => error_codes.ERR_SESSION_EXPIRED,
             error.SessionAlreadyComplete => error_codes.ERR_SESSION_ALREADY_COMPLETE,
             else => error_codes.ERR_INTERNAL_OPERATION_FAILED,
         };
+        log.err("auth_session_patch_failed", .{ .error_code = code, .err = @errorName(err), .session_id = session_id, .req_id = hx.req_id });
         hx.fail(code, @errorName(err));
         return;
     };
 
-    log.info("auth.session_completed session_id={s} req_id={s}", .{ session_id, hx.req_id });
+    log.info("auth_session_completed", .{ .session_id = session_id, .req_id = hx.req_id });
     hx.ctx.telemetry.capture(telemetry_mod.AuthLoginCompleted, .{ .distinct_id = telemetry_mod.distinctIdOrSystem(hx.principal.user_id orelse ""), .session_id = session_id, .request_id = hx.req_id });
     // Mirror the GET poll response symmetry: {status, token}. The depositor
     // gets back exactly what a subsequent poll would return.
@@ -94,4 +95,3 @@ pub fn innerPatchAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []c
         .request_id = hx.req_id,
     });
 }
-

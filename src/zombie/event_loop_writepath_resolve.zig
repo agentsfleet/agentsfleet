@@ -9,6 +9,7 @@ const redis_zombie = @import("../queue/redis_zombie.zig");
 const event_loop_gate = @import("event_loop_gate.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
+const logging = @import("log");
 
 const types = @import("event_loop_types.zig");
 const ZombieSession = types.ZombieSession;
@@ -16,7 +17,7 @@ const EventLoopConfig = types.EventLoopConfig;
 
 const rows = @import("event_loop_writepath_rows.zig");
 
-const log = std.log.scoped(.zombie_event_loop);
+const log = logging.scoped(.zombie_event_loop);
 
 pub const ResolveOutcome = union(enum) {
     /// Caller takes ownership of both fields and must free tenant_id with
@@ -35,30 +36,30 @@ pub fn resolveTenantAndProvider(
     event_id: []const u8,
 ) ResolveOutcome {
     const conn = cfg.pool.acquire() catch |err| {
-        log.warn("zombie_event_loop.resolve_acquire_fail zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+        log.warn("resolve_acquire_fail", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
         return .{ .transient_err = {} };
     };
     defer cfg.pool.release(conn);
 
     const tenant_id = tenant_billing.resolveTenantFromWorkspace(conn, alloc, session.workspace_id) catch |err| {
-        log.err("zombie_event_loop.tenant_lookup_fail zombie_id={s} workspace_id={s} err={s}", .{ session.zombie_id, session.workspace_id, @errorName(err) });
+        log.err("tenant_lookup_fail", .{ .zombie_id = session.zombie_id, .workspace_id = session.workspace_id, .err = @errorName(err) });
         return .{ .transient_err = {} };
     };
     errdefer alloc.free(tenant_id);
 
     const resolved = tenant_provider.resolveActiveProvider(alloc, conn, tenant_id) catch |err| switch (err) {
         tenant_provider.ResolveError.CredentialMissing => {
-            log.warn("zombie_event_loop.byok_credential_missing zombie_id={s} tenant_id={s} event_id={s}", .{ session.zombie_id, tenant_id, event_id });
+            log.warn("byok_credential_missing", .{ .zombie_id = session.zombie_id, .tenant_id = tenant_id, .event_id = event_id });
             alloc.free(tenant_id);
             return .{ .dead_letter = rows.LABEL_PROVIDER_CREDENTIAL_MISSING };
         },
         tenant_provider.ResolveError.CredentialDataMalformed => {
-            log.warn("zombie_event_loop.byok_credential_malformed zombie_id={s} tenant_id={s} event_id={s}", .{ session.zombie_id, tenant_id, event_id });
+            log.warn("byok_credential_malformed", .{ .zombie_id = session.zombie_id, .tenant_id = tenant_id, .event_id = event_id });
             alloc.free(tenant_id);
             return .{ .dead_letter = rows.LABEL_PROVIDER_CREDENTIAL_MALFORMED };
         },
         else => {
-            log.err("zombie_event_loop.resolve_provider_fail zombie_id={s} tenant_id={s} err={s}", .{ session.zombie_id, tenant_id, @errorName(err) });
+            log.err("resolve_provider_fail", .{ .zombie_id = session.zombie_id, .tenant_id = tenant_id, .err = @errorName(err) });
             alloc.free(tenant_id);
             return .{ .transient_err = {} };
         },

@@ -1,8 +1,10 @@
 //! Minimal in-process event bus for decoupled operational event emission.
-//! M3 scope: bounded queue + background log sink, no persistence/replay yet.
+//! Bounded queue + background log sink, no persistence/replay yet.
 
 const std = @import("std");
-const log = std.log.scoped(.event_bus);
+const logging = @import("log");
+
+const log = logging.scoped(.event_bus);
 
 const CAPACITY: usize = 1024;
 const KIND_MAX: usize = 32;
@@ -115,15 +117,10 @@ pub const Bus = struct {
     pub fn run(self: *Bus) void {
         while (self.waitNext()) |next| {
             if (next.dropped > 0) {
-                log.warn("event.dropped count={d}", .{next.dropped});
+                log.warn("dropped", .{ .count = next.dropped });
             }
             const run_id = if (next.event.runIdSlice().len == 0) "-" else next.event.runIdSlice();
-            log.info("event.emitted ts_ms={d} kind={s} run_id={s} detail={s}", .{
-                next.event.ts_ms,
-                next.event.kindSlice(),
-                run_id,
-                next.event.detailSlice(),
-            });
+            log.info("emitted", .{ .ts_ms = next.event.ts_ms, .kind = next.event.kindSlice(), .run_id = run_id, .detail = next.event.detailSlice() });
         }
     }
 };

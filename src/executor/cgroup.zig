@@ -1,4 +1,4 @@
-//! cgroups v2 resource governance for the host backend (§4.3).
+//! cgroups v2 resource governance for the host backend.
 //!
 //! Creates a transient cgroup scope for each execution to enforce:
 //! - memory.max: hard memory limit
@@ -10,11 +10,12 @@
 //! Linux-only; no-ops on other platforms.
 
 const std = @import("std");
+const logging = @import("log");
 const builtin = @import("builtin");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
 
-const log = std.log.scoped(.executor_cgroup);
+const log = logging.scoped(.executor_cgroup);
 
 const CGROUP_BASE = "/sys/fs/cgroup/zombie.executor";
 
@@ -46,14 +47,14 @@ pub const CgroupScope = struct {
         // Ensure base directory exists.
         std.fs.makeDirAbsolute(CGROUP_BASE) catch |err| {
             if (err != error.PathAlreadyExists) {
-                log.err("cgroup.base_create_failed path={s} err={s}", .{ CGROUP_BASE, @errorName(err) });
+                log.err("base_create_failed", .{ .path = CGROUP_BASE, .err = @errorName(err) });
                 return CgroupError.CgroupCreateFailed;
             }
         };
 
         // Create scope directory.
         std.fs.makeDirAbsolute(path) catch |err| {
-            log.err("cgroup.scope_create_failed path={s} err={s}", .{ path, @errorName(err) });
+            log.err("scope_create_failed", .{ .path = path, .err = @errorName(err) });
             return CgroupError.CgroupCreateFailed;
         };
 
@@ -68,11 +69,7 @@ pub const CgroupScope = struct {
         const quota = (limits.cpu_limit_percent * period) / 100;
         try scope.writeCpuMax(quota, period);
 
-        log.info("cgroup.created path={s} memory_mb={d} cpu_pct={d}", .{
-            path,
-            limits.memory_limit_mb,
-            limits.cpu_limit_percent,
-        });
+        log.info("created", .{ .path = path, .memory_mb = limits.memory_limit_mb, .cpu_pct = limits.cpu_limit_percent });
 
         return scope;
     }
@@ -180,10 +177,10 @@ pub const CgroupScope = struct {
 
         // Remove the cgroup directory (must be empty of processes first).
         std.fs.deleteTreeAbsolute(self.path) catch |err| {
-            log.warn("cgroup.cleanup_failed path={s} err={s}", .{ self.path, @errorName(err) });
+            log.warn("cleanup_failed", .{ .path = self.path, .err = @errorName(err) });
         };
 
-        log.info("cgroup.destroyed path={s} peak_bytes={d} cpu_throttled_ms={d}", .{ self.path, peak, result.cpu_throttled_ms });
+        log.info("destroyed", .{ .path = self.path, .peak_bytes = peak, .cpu_throttled_ms = result.cpu_throttled_ms });
         self.alloc.free(self.path);
         return result;
     }

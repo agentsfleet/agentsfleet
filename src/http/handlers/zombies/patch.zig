@@ -23,6 +23,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -34,7 +35,7 @@ const queue_redis = @import("../../../queue/redis_client.zig");
 const control_stream = @import("../../../zombie/control_stream.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
-const log = std.log.scoped(.zombie_api);
+const log = logging.scoped(.zombie_api);
 const API_ACTOR = "api";
 
 const Hx = hx_mod.Hx;
@@ -97,14 +98,14 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
     }
 
     const revision_opt = patchZombieOnConn(conn, workspace_id, zombie_id, body) catch |err| {
-        log.err("zombie.patch_db_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
+        log.err("patch_db_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
     if (revision_opt == null) {
         const result = classifyMiss(conn, workspace_id, zombie_id) catch |err| {
-            log.err("zombie.patch_classify_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
+            log.err("patch_classify_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id });
             common.internalDbError(hx.res, hx.req_id);
             return;
         };
@@ -121,18 +122,18 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
         // PG row already reflects the new status. Watcher's reconcile loop
         // (≈30s) heals control-plane drift if the publish failed.
         log.warn(
-            "zombie.status_publish_failed err={s} zombie_id={s} status={s} req_id={s} hint=row_updated_reconcile_will_apply",
-            .{ @errorName(err), zombie_id, s, hx.req_id },
+            "status_publish_failed",
+            .{ .err = @errorName(err), .zombie_id = zombie_id, .status = s, .req_id = hx.req_id, .hint = "row_updated_reconcile_will_apply" },
         );
     };
     if (body.config_json != null) publishConfigChange(hx.ctx.queue, zombie_id, revision) catch |err| {
         log.warn(
-            "zombie.patch_publish_failed err={s} zombie_id={s} revision={d} req_id={s} hint=row_updated_worker_blind",
-            .{ @errorName(err), zombie_id, revision, hx.req_id },
+            "patch_publish_failed",
+            .{ .err = @errorName(err), .zombie_id = zombie_id, .revision = revision, .req_id = hx.req_id, .hint = "row_updated_worker_blind" },
         );
     };
 
-    log.info("zombie.patched id={s} workspace={s} revision={d} status_set={?s}", .{ zombie_id, workspace_id, revision, body.status });
+    log.info("patched", .{ .id = zombie_id, .workspace = workspace_id, .revision = revision, .status_set = body.status });
     if (body.status) |s| {
         hx.ok(.ok, .{
             .zombie_id = zombie_id,

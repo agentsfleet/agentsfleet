@@ -21,8 +21,9 @@ const tenant_billing = @import("tenant_billing.zig");
 const heroku_names = @import("heroku_names.zig");
 const store = @import("signup_bootstrap_store.zig");
 const metrics = @import("../observability/metrics_counters.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.state);
+const log = logging.scoped(.state);
 
 /// Per-tenant uniqueness + a freshly created tenant makes collisions
 /// practically impossible; cap is a guard against a buggy generator.
@@ -89,7 +90,7 @@ pub fn bootstrapPersonalAccount(
     return bootstrapTransaction(conn, alloc, params, defaultHerokuNameGen) catch |err| {
         if (err == error.PG and isUniqueViolation(conn)) {
             if (try store.findExistingByOidcSubject(conn, alloc, params.oidc_subject)) |existing| {
-                log.info("signup.replay_after_race oidc_subject={s}", .{params.oidc_subject});
+                log.info("signup_replay_after_race", .{ .oidc_subject = params.oidc_subject });
                 return replayExisting(params.oidc_subject, existing);
             }
         }
@@ -98,7 +99,7 @@ pub fn bootstrapPersonalAccount(
 }
 
 fn replayExisting(oidc_subject: []const u8, existing: store.ExistingAccount) Bootstrap {
-    log.info("signup.replay oidc_subject={s} workspace={s}", .{ oidc_subject, existing.workspace_id });
+    log.info("signup_replay", .{ .oidc_subject = oidc_subject, .workspace = existing.workspace_id });
     metrics.incSignupReplayed();
     return .{
         .user_id = existing.user_id,
@@ -177,7 +178,7 @@ pub fn bootstrapTransaction(
     _ = try conn.exec("COMMIT", .{});
     tx_open = false;
 
-    log.info("signup.bootstrapped user={s} tenant={s} workspace={s} workspace_name={s}", .{ user_id, tenant_id, workspace_id, workspace_name });
+    log.info("signup_bootstrapped", .{ .user = user_id, .tenant = tenant_id, .workspace = workspace_id, .workspace_name = workspace_name });
     metrics.incSignupBootstrapped();
 
     return .{
@@ -217,7 +218,7 @@ pub fn pickUniqueWorkspaceName(
         if (inserted) return candidate;
 
         alloc.free(candidate);
-        log.warn("signup.name_collision tenant={s} attempt={d}", .{ tenant_id, attempt + 1 });
+        log.warn("signup_name_collision", .{ .tenant = tenant_id, .attempt = attempt + 1 });
     }
     return BootstrapError.WorkspaceNameCollisionExhausted;
 }

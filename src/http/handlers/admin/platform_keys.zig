@@ -5,6 +5,7 @@
 //! one, drop the playbook reference.
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -12,7 +13,7 @@ const error_codes = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const hx_mod = @import("../hx.zig");
 
-const log = std.log.scoped(.http);
+const log = logging.scoped(.http);
 
 pub const Context = common.Context;
 
@@ -95,7 +96,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         return;
     };
 
-    log.info("admin.platform_key_upserted provider={s} source_workspace_id={s}", .{ input.provider, input.source_workspace_id });
+    log.info("admin_platform_key_upserted", .{ .provider = input.provider, .source_workspace_id = input.source_workspace_id });
 
     hx.ok(.ok, .{
         .provider = input.provider,
@@ -104,7 +105,6 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
         .request_id = hx.req_id,
     });
 }
-
 
 // ── DELETE /v1/admin/platform-keys/{provider} ────────────────────────────────
 // Deactivate the platform default for a provider (sets active = false).
@@ -132,7 +132,7 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
         return;
     };
 
-    log.info("admin.platform_key_deactivated provider={s}", .{provider});
+    log.info("admin_platform_key_deactivated", .{ .provider = provider });
 
     hx.ok(.ok, .{
         .provider = provider,
@@ -140,7 +140,6 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
         .request_id = hx.req_id,
     });
 }
-
 
 // ── GET /v1/admin/platform-keys ──────────────────────────────────────────────
 // List all platform key rows (active and inactive). Never returns key material.
@@ -168,7 +167,7 @@ pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
 
     while (true) {
         const maybe_row = q.next() catch |e| {
-            log.err("admin.platform_keys_row_error err={s}", .{@errorName(e)});
+            log.err("admin_platform_keys_row_error", .{ .error_code = error_codes.ERR_INTERNAL_DB_QUERY, .err = @errorName(e) });
             break;
         };
         const row = maybe_row orelse break;
@@ -189,4 +188,3 @@ pub fn innerGetAdminPlatformKeys(hx: hx_mod.Hx, req: *httpz.Request) void {
         .request_id = hx.req_id,
     });
 }
-

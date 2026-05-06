@@ -1,11 +1,12 @@
-//! M41 §7 worker-side continuation orchestrator. Splits the count +
-//! classify + enqueue/force_stop helpers out of `event_loop_writepath.zig`
-//! to keep both files under the 350-line cap. The pure decision logic
-//! lives in `continuation.zig` (no DB/Redis); this file is the wire-up
-//! that calls Postgres for the per-chain continuation count and Redis
-//! for the synthetic-event XADD.
+//! Worker-side continuation orchestrator. Splits the count + classify +
+//! enqueue/force_stop helpers out of `event_loop_writepath.zig` to keep both
+//! files under the 350-line cap. The pure decision logic lives in
+//! `continuation.zig` (no DB/Redis); this file is the wire-up that calls
+//! Postgres for the per-chain continuation count and Redis for the
+//! synthetic-event XADD.
 
 const std = @import("std");
+const logging = @import("log");
 const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
@@ -20,23 +21,21 @@ const event_loop_types = @import("event_loop_types.zig");
 const ZombieSession = event_loop_types.ZombieSession;
 const EventLoopConfig = event_loop_types.EventLoopConfig;
 
-const log = std.log.scoped(.zombie_event_loop);
+const log = logging.scoped(.zombie_event_loop);
 
 /// failure_label written to the originating event row when the
-/// continuation chain hits its per-chain cap (§7 / Invariant 4).
+/// continuation chain hits its per-chain cap.
 /// Operator-facing; surfaces in `zombiectl events`, the dashboard
 /// Events tab, and the activity stream's terminal `event_complete`
 /// frame. Notification today is silent — the label is observability
-/// only; an active escalation channel (Slack post, M47 inbox surface,
-/// per-zombie webhook) is a follow-up scope item.
+/// only; an active escalation channel is a follow-up scope item.
 pub const LABEL_CHUNK_CHAIN_ESCALATE_HUMAN = "chunk_chain_escalate_human";
 
 /// Count continuation events in the chain ending at `event_id`. Walks
 /// `resumes_event_id` recursively. The current event's row is included
 /// in the count when its own `event_type='continuation'` — i.e., if
-/// stage N just finished and N is itself a continuation, the chain
-/// already carries N continuations and the next would be N+1. Spec §7
-/// step 1.
+/// stage N just finished and N is itself a continuation, the chain already
+/// carries N continuations and the next would be N+1.
 fn countPriorContinuationsForChain(
     pool: *pg.Pool,
     zombie_id: []const u8,
@@ -77,7 +76,7 @@ fn markChunkChainEscalate(
     event: *const redis_zombie.ZombieEvent,
 ) void {
     const conn = pool.acquire() catch |err| {
-        log.warn("zombie_event_loop.escalate_acquire_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
+        log.warn("escalate_acquire_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
         return;
     };
     defer pool.release(conn);
@@ -92,7 +91,7 @@ fn markChunkChainEscalate(
         LABEL_CHUNK_CHAIN_ESCALATE_HUMAN,
         now_ms,
     }) catch |err| {
-        log.warn("zombie_event_loop.escalate_update_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
+        log.warn("escalate_update_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
     };
 }
 
@@ -126,12 +125,15 @@ fn enqueueContinuationEvent(
 
     const new_event_id = try redis.xaddZombieEvent(envelope);
     defer alloc.free(new_event_id);
-    log.info("zombie_event_loop.continuation_enqueued zombie_id={s} parent={s} new={s} checkpoint_id={s}", .{
-        session.zombie_id, event.event_id, new_event_id, checkpoint_id,
+    log.info("continuation_enqueued", .{
+        .zombie_id = session.zombie_id,
+        .parent = event.event_id,
+        .new = new_event_id,
+        .checkpoint_id = checkpoint_id,
     });
 }
 
-/// §7 orchestrator: classify the finished stage and act on the verdict.
+/// Classify the finished stage and act on the verdict.
 /// Called after `markTerminal` so the originating row already reflects
 /// `agent_error` status; force-stop only adds `failure_label`.
 pub fn run(
@@ -146,7 +148,7 @@ pub fn run(
     if (checkpoint_id.len == 0) return;
 
     const prior_count = countPriorContinuationsForChain(cfg.pool, session.zombie_id, event.event_id) catch |err| {
-        log.warn("zombie_event_loop.continuation_count_fail zombie_id={s} event_id={s} err={s}", .{ session.zombie_id, event.event_id, @errorName(err) });
+        log.warn("continuation_count_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .err = @errorName(err) });
         // Fail-safe: when we can't read the count, treat as already-at-cap
         // so we never extend a chain we can't measure. Operator sees the
         // escalate-human label and steps in.
@@ -158,15 +160,19 @@ pub fn run(
     switch (verdict) {
         .no_continuation => {},
         .force_stop => |s| {
-            log.warn("zombie_event_loop.chunk_chain_escalate_human zombie_id={s} event_id={s} prior_count={d}", .{
-                session.zombie_id, event.event_id, s.prior_continuation_count,
+            log.warn("chunk_chain_escalate_human", .{
+                .zombie_id = session.zombie_id,
+                .event_id = event.event_id,
+                .prior_count = s.prior_continuation_count,
             });
             markChunkChainEscalate(cfg.pool, session, event);
         },
         .enqueue => |e| {
             enqueueContinuationEvent(alloc, cfg.redis, session, event, e.checkpoint_id) catch |err| {
-                log.err("zombie_event_loop.continuation_enqueue_fail zombie_id={s} parent={s} err={s}", .{
-                    session.zombie_id, event.event_id, @errorName(err),
+                log.err("continuation_enqueue_fail", .{
+                    .zombie_id = session.zombie_id,
+                    .parent = event.event_id,
+                    .err = @errorName(err),
                 });
                 // Mirror the count-fail failsafe: no XADD means no
                 // recovery, so surface an escalate-human label rather

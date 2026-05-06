@@ -2,14 +2,15 @@
 //!
 //! Runs a background thread that periodically checks for sessions with
 //! expired leases. When a worker disappears (crashes, network partition),
-//! the executor cancels and cleans up orphaned sessions (§2.3).
+//! the executor cancels and cleans up orphaned sessions.
 
 const std = @import("std");
+const logging = @import("log");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const executor_metrics = @import("executor_metrics.zig");
 
-const log = std.log.scoped(.executor_lease);
+const log = logging.scoped(.executor_lease);
 
 /// How often the lease manager scans for expired sessions.
 ///
@@ -32,7 +33,7 @@ pub const LeaseManager = struct {
 
     pub fn run(self: *LeaseManager) void {
         self.running.store(true, .release);
-        log.info("lease_manager.started interval_ms={d}", .{REAP_INTERVAL_MS});
+        log.info("manager_started", .{ .interval_ms = REAP_INTERVAL_MS });
 
         while (self.running.load(.acquire)) {
             std.Thread.sleep(REAP_INTERVAL_MS * std.time.ns_per_ms);
@@ -40,7 +41,7 @@ pub const LeaseManager = struct {
 
             const reaped = self.store.reapExpired();
             if (reaped > 0) {
-                log.warn("lease_manager.reaped_expired count={d}", .{reaped});
+                log.warn("expired_reaped", .{ .count = reaped });
             }
         }
     }
