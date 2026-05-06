@@ -9,6 +9,7 @@ test "hint returns actionable text for known startup codes" {
 }
 
 test "hint returns UNKNOWN hint for unregistered codes" {
+    // audit-error-codes: intentional-fake
     const h = ec.hint("UZ-NONEXISTENT-999");
     try std.testing.expectEqualStrings(ec.UNKNOWN.hint, h);
 }
