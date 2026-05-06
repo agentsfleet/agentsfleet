@@ -199,13 +199,10 @@ fn executeInner(
         }
     }
 
-    // 2. Build provider.
-    var runtime_provider = providers.runtime_bundle.RuntimeProviderBundle.init(alloc, &cfg) catch {
-        log.err("executor.runner.provider_init_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_INIT});
-        return RunnerError.AgentInitFailed;
-    };
-    defer runtime_provider.deinit();
-    const provider_i = runtime_provider.provider();
+    // 2. Build provider (real LLM bundle, or stub in zombied-executor-stub).
+    var provider_bundle: runner_helpers.ProviderBundle = .{};
+    defer provider_bundle.deinit();
+    const provider_i = provider_bundle.acquire(alloc, &cfg) catch return RunnerError.AgentInitFailed;
 
     // 3. Build tools from spec (or allTools as fallback).
     const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {
@@ -292,12 +289,12 @@ fn executeInner(
     };
     defer if (composed.ptr != message.ptr) alloc.free(composed);
 
-    // 8. Run agent.
+    // 8. Run agent + redact terminal reply (see runner_helpers).
     const response = agent.runSingle(composed) catch {
         log.err("executor.runner.agent_run_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_RUN});
         return RunnerError.AgentRunFailed;
     };
-    const owned = alloc.dupe(u8, response) catch return RunnerError.AgentRunFailed;
+    const owned = runner_helpers.redactedFinalReply(alloc, response, &secrets_list) catch return RunnerError.AgentRunFailed;
 
     return .{
         .content = owned,

@@ -1,17 +1,18 @@
-// Test fixture: spawns `zombied-executor-harness` as a child process and
-// exposes a connected ExecutorClient for worker-side integration tests.
+// Test fixture: spawns an executor child process and exposes a connected
+// ExecutorClient for worker-side integration tests. Targets either
+// `zombied-executor-harness` (default — comptime-gated to runner_harness.zig
+// for scripted frame emission) or `zombied-executor-stub` (production
+// NullClaw pipeline with the LLM provider swapped for a canned-response
+// stub — used by redaction-harness tests that need the real observer +
+// redactor adapter chain to fire).
 //
-// Usage:
+// Usage (harness target, default):
 //   var harness = try Harness.start(alloc, .{ .script_json = my_script });
-//   defer harness.deinit();
-//   const cfg = EventLoopConfig{ .executor = &harness.executor, ... };
-//   _ = writepath.run(alloc, &session, &evt, cfg, &consec);
+// Usage (stub target):
+//   var harness = try Harness.start(alloc, .{ .binary = .stub });
 //
-// The harness binary's runner branch is comptime-gated to runner_harness.zig
-// (see docs/architecture/ §9 streaming substrate notes). When the script
-// file references frames, the harness emits them via the production
-// ProgressWriter — same wire shape, real socket round-trip — so the worker's
-// streaming reader exercises the genuine code path.
+// `script_json` is only honoured for the harness target; the stub binary
+// has no scripted-frame mechanism and ignores it.
 
 const std = @import("std");
 const builtin = @import("builtin");
@@ -23,20 +24,30 @@ const log = std.log.scoped(.test_executor_harness);
 
 const Harness = @This();
 
-const DEFAULT_BIN_PATH = "zig-out/bin/zombied-executor-harness";
+pub const BinaryTarget = enum {
+    /// `zombied-executor-harness` — runner_harness.zig path, scripted frames.
+    harness,
+    /// `zombied-executor-stub` — production NullClaw pipeline with stub provider.
+    stub,
+};
+
 const SOCKET_POLL_INTERVAL_MS: u64 = 25;
 const SOCKET_POLL_BUDGET_MS: u64 = 3_000;
 
 alloc: Allocator,
 child: std.process.Child,
 socket_path: []u8,
-script_path: []u8,
+script_path: ?[]u8,
 executor: executor_client.ExecutorClient,
 connected: bool,
 
 pub const Options = struct {
+    /// Which executor binary to spawn. Default is the scripted harness;
+    /// redaction-harness tests use `.stub`.
+    binary: BinaryTarget = .harness,
     /// Pre-stringified harness script JSON. See runner_harness.zig docs for
     /// shape. Pass an empty slice for an empty-script run (no frames, exit_ok).
+    /// Ignored when `binary == .stub`.
     script_json: []const u8 = "",
     /// Optional: override the rpc_version the harness advertises in its
     /// HELLO frame. Forwarded as EXECUTOR_HARNESS_RPC_VERSION. Used by the
@@ -48,17 +59,31 @@ pub const Options = struct {
     auto_connect: bool = true,
 };
 
+fn defaultBinPath(target: BinaryTarget) []const u8 {
+    return switch (target) {
+        .harness => "zig-out/bin/zombied-executor-harness",
+        .stub => "zig-out/bin/zombied-executor-stub",
+    };
+}
+
+fn binEnvVar(target: BinaryTarget) []const u8 {
+    return switch (target) {
+        .harness => "EXECUTOR_HARNESS_BIN",
+        .stub => "EXECUTOR_STUB_BIN",
+    };
+}
+
 pub fn start(alloc: Allocator, opts: Options) !Harness {
     if (builtin.os.tag == .windows) return error.SkipZigTest;
-    const bin_path = try resolveBinaryPath(alloc);
+    const bin_path = try resolveBinaryPath(alloc, opts.binary);
     defer alloc.free(bin_path);
 
-    const paths = try uniquePaths(alloc);
+    const paths = try uniquePaths(alloc, opts.binary);
     errdefer alloc.free(paths.socket_path);
-    errdefer alloc.free(paths.script_path);
+    errdefer if (paths.script_path) |p| alloc.free(p);
 
-    try writeFile(paths.script_path, opts.script_json);
-    errdefer std.fs.deleteFileAbsolute(paths.script_path) catch {};
+    if (paths.script_path) |p| try writeFile(p, opts.script_json);
+    errdefer if (paths.script_path) |p| std.fs.deleteFileAbsolute(p) catch {};
 
     var child = try spawnChild(alloc, bin_path, paths, opts);
     errdefer terminateChild(&child);
@@ -92,9 +117,9 @@ pub fn deinit(self: *Harness) void {
     if (self.connected) self.executor.close();
     terminateChild(&self.child);
     std.fs.deleteFileAbsolute(self.socket_path) catch {};
-    std.fs.deleteFileAbsolute(self.script_path) catch {};
+    if (self.script_path) |p| std.fs.deleteFileAbsolute(p) catch {};
     self.alloc.free(self.socket_path);
-    self.alloc.free(self.script_path);
+    if (self.script_path) |p| self.alloc.free(p);
 }
 
 /// Convenience accessor: pointer to the connected `ExecutorClient`. Worker
@@ -105,10 +130,12 @@ pub fn executorPtr(self: *Harness) *executor_client.ExecutorClient {
 
 // ── Internals ───────────────────────────────────────────────────────────────
 
-const PathPair = struct { socket_path: []u8, script_path: []u8 };
+const PathPair = struct { socket_path: []u8, script_path: ?[]u8 };
 
-fn resolveBinaryPath(alloc: Allocator) ![]u8 {
-    if (std.process.getEnvVarOwned(alloc, "EXECUTOR_HARNESS_BIN")) |override| {
+fn resolveBinaryPath(alloc: Allocator, target: BinaryTarget) ![]u8 {
+    const env_var = binEnvVar(target);
+    const default_path = defaultBinPath(target);
+    if (std.process.getEnvVarOwned(alloc, env_var)) |override| {
         const exists = blk: {
             _ = std.fs.cwd().statFile(override) catch break :blk false;
             break :blk true;
@@ -118,14 +145,14 @@ fn resolveBinaryPath(alloc: Allocator) ![]u8 {
         alloc.free(override);
     } else |_| {}
 
-    _ = std.fs.cwd().statFile(DEFAULT_BIN_PATH) catch {
-        log.warn("harness.binary_not_found path={s} (run `zig build` to install)", .{DEFAULT_BIN_PATH});
+    _ = std.fs.cwd().statFile(default_path) catch {
+        log.warn("harness.binary_not_found path={s} (run `zig build` to install)", .{default_path});
         return error.SkipZigTest;
     };
-    return alloc.dupe(u8, DEFAULT_BIN_PATH);
+    return alloc.dupe(u8, default_path);
 }
 
-fn uniquePaths(alloc: Allocator) !PathPair {
+fn uniquePaths(alloc: Allocator, target: BinaryTarget) !PathPair {
     var seed_buf: [8]u8 = undefined;
     std.crypto.random.bytes(&seed_buf);
     var hex_buf: [16]u8 = undefined;
@@ -137,7 +164,10 @@ fn uniquePaths(alloc: Allocator) !PathPair {
     const tag: []const u8 = hex_buf[0..];
     const socket_path = try std.fmt.allocPrint(alloc, "/tmp/zmb-harness-{s}.sock", .{tag});
     errdefer alloc.free(socket_path);
-    const script_path = try std.fmt.allocPrint(alloc, "/tmp/zmb-harness-{s}.json", .{tag});
+    const script_path: ?[]u8 = switch (target) {
+        .harness => try std.fmt.allocPrint(alloc, "/tmp/zmb-harness-{s}.json", .{tag}),
+        .stub => null,
+    };
     return .{ .socket_path = socket_path, .script_path = script_path };
 }
 
@@ -156,7 +186,7 @@ fn spawnChild(
     var env_map = try std.process.getEnvMap(alloc);
     errdefer env_map.deinit();
     try env_map.put("EXECUTOR_SOCKET_PATH", paths.socket_path);
-    try env_map.put("EXECUTOR_HARNESS_SCRIPT", paths.script_path);
+    if (paths.script_path) |p| try env_map.put("EXECUTOR_HARNESS_SCRIPT", p);
     if (opts.rpc_version) |v| {
         var ver_buf: [16]u8 = undefined;
         const s = std.fmt.bufPrint(&ver_buf, "{d}", .{v}) catch unreachable;

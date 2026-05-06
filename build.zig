@@ -155,9 +155,20 @@ pub fn build(b: *std.Build) void {
 
     const exec_opts_prod = b.addOptions();
     exec_opts_prod.addOption(bool, "executor_harness", false);
+    exec_opts_prod.addOption(bool, "executor_provider_stub", false);
 
     const exec_opts_harness = b.addOptions();
     exec_opts_harness.addOption(bool, "executor_harness", true);
+    exec_opts_harness.addOption(bool, "executor_provider_stub", false);
+
+    // `zombied-executor-stub` (test fixture for wire-level redaction):
+    // production NullClaw pipeline (observer + redactor adapter all live)
+    // but with the LLM provider swapped for a canned-response stub. Used
+    // by integration tests asserting that resolved secrets never leak onto
+    // RPC frames or Redis pub/sub. See test_stub_provider.zig.
+    const exec_opts_stub = b.addOptions();
+    exec_opts_stub.addOption(bool, "executor_harness", false);
+    exec_opts_stub.addOption(bool, "executor_provider_stub", true);
 
     const executor_exe = b.addExecutable(.{
         .name = "zombied-executor",
@@ -193,6 +204,22 @@ pub fn build(b: *std.Build) void {
 
     const install_executor_harness = b.addInstallArtifact(executor_harness_exe, .{});
     b.getInstallStep().dependOn(&install_executor_harness.step);
+
+    const executor_stub_exe = b.addExecutable(.{
+        .name = "zombied-executor-stub",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/executor/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "build_options", .module = exec_opts_stub.createModule() },
+            },
+        }),
+    });
+
+    const install_executor_stub = b.addInstallArtifact(executor_stub_exe, .{});
+    b.getInstallStep().dependOn(&install_executor_stub.step);
 
     // ── Executor test step ───────────────────────────────────────────────────
     const executor_tests = b.addTest(.{
@@ -238,9 +265,12 @@ pub fn build(b: *std.Build) void {
     // Worker-side integration tests spawn `zombied-executor-harness` as a
     // child process for deterministic frame emission; depend on its install
     // step so `zig build test` produces the binary at the canonical
-    // `zig-out/bin/` path that the harness fixture probes.
+    // `zig-out/bin/` path that the harness fixture probes. The stub binary
+    // (`zombied-executor-stub`) is required by redaction-harness tests via
+    // the same fixture (binary = .stub).
     const run_tests = b.addRunArtifact(tests);
     run_tests.step.dependOn(&install_executor_harness.step);
+    run_tests.step.dependOn(&install_executor_stub.step);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 
     // ── test-auth (M18_002 §1.3) ─────────────────────────────────────────────

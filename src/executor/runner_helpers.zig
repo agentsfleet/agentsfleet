@@ -3,15 +3,62 @@
 
 const std = @import("std");
 const nullclaw = @import("nullclaw");
+const build_options = @import("build_options");
 
 const Config = nullclaw.config.Config;
 const tools_mod = nullclaw.tools;
+const providers = nullclaw.providers;
 
 const json = @import("json_helpers.zig");
 const tool_bridge = @import("tool_bridge.zig");
 const context_budget = @import("context_budget.zig");
+const stub_gate = @import("stub_provider_gate.zig");
+const runner_progress = @import("runner_progress.zig");
 
 const log = std.log.scoped(.executor_runner);
+
+/// Take ownership of NullClaw's composeFinalReply buffer, redact every
+/// known secret value, and return a freshly-allocated, redacted copy.
+/// The terminal StageResponse content rides the same RPC channel as
+/// progress frames; the redactor must scrub it identically before the
+/// bytes leave the executor process.
+pub fn redactedFinalReply(
+    alloc: std.mem.Allocator,
+    response: []const u8,
+    secrets: []const runner_progress.Secret,
+) ![]const u8 {
+    defer alloc.free(response);
+    const redacted = runner_progress.redactBytes(alloc, response, secrets) catch response;
+    defer if (redacted.ptr != response.ptr) alloc.free(redacted);
+    return alloc.dupe(u8, redacted);
+}
+
+/// Holds the runtime LLM provider bundle for the agent loop. In the stub
+/// binary `inner` stays null and `stub` carries the canned-response provider;
+/// in production/harness `inner` owns the real `RuntimeProviderBundle`.
+/// Caller defers `deinit()` to release the optional.
+pub const ProviderBundle = struct {
+    inner: ?providers.runtime_bundle.RuntimeProviderBundle = null,
+    stub: stub_gate.Module.StubProvider = undefined,
+
+    pub fn deinit(self: *@This()) void {
+        if (self.inner) |*rp| rp.deinit();
+    }
+
+    pub fn acquire(
+        self: *@This(),
+        alloc: std.mem.Allocator,
+        cfg: *Config,
+    ) error{AgentInitFailed}!providers.Provider {
+        self.stub = stub_gate.Module.StubProvider.init(alloc);
+        if (build_options.executor_provider_stub) return self.stub.provider();
+        self.inner = providers.runtime_bundle.RuntimeProviderBundle.init(alloc, cfg) catch {
+            log.err("executor.runner.provider_init_failed error_code=UZ-EXEC-012", .{});
+            return error.AgentInitFailed;
+        };
+        return self.inner.?.provider();
+    }
+};
 
 /// Apply agent_config JSON overrides to the NullClaw Config.
 /// Only overrides fields that are present in the JSON object.
@@ -139,4 +186,32 @@ pub fn composeMessage(
     }
 
     return parts.toOwnedSlice(alloc);
+}
+
+test "redactedFinalReply substitutes the placeholder and frees the input" {
+    const alloc = std.testing.allocator;
+    const secrets = [_]runner_progress.Secret{
+        .{ .value = "sk-leak", .placeholder = "${secrets.llm.api_key}" },
+    };
+    const input = try alloc.dupe(u8, "hello sk-leak world");
+    const out = try redactedFinalReply(alloc, input, &secrets);
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("hello ${secrets.llm.api_key} world", out);
+}
+
+test "redactedFinalReply with no matching secret still transfers ownership" {
+    // Negative-path: when redactBytes returns the input slice unchanged
+    // (no hit), the helper must still free `input` and return a fresh
+    // copy — caller cannot tell the two paths apart from outside.
+    const alloc = std.testing.allocator;
+    const secrets = [_]runner_progress.Secret{
+        .{ .value = "absent-token", .placeholder = "${secrets.llm.api_key}" },
+    };
+    const input = try alloc.dupe(u8, "no leak here");
+    const out = try redactedFinalReply(alloc, input, &secrets);
+    defer alloc.free(out);
+    try std.testing.expectEqualStrings("no leak here", out);
+    // The std.testing.allocator catches double-free / leak; a defective
+    // implementation that returned `input` directly would either leak
+    // the dupe or double-free on the caller's defer.
 }

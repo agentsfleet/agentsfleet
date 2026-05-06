@@ -2,11 +2,16 @@
 # Pre-push: comprehensive verification before anything leaves the machine.
 #
 # Always runs:
-#   - make test                  (tier 1 — Zig unit + zombiectl + website + app)
+#   - make test                       (tier 1 — Zig unit + zombiectl + website + app)
 #
 # Conditional on Zig changes since upstream (or main, on first push):
-#   - make test-integration      (tier 2 — real Postgres + Redis)
-#   - make memleak               (allocator leak gate; valgrind on Linux CI)
+#   - make test-integration-stub      (tier 2a — executor-side stub-binary contract; fast)
+#   - make test-integration           (tier 2b — worker integration vs real Postgres + Redis)
+#   - make memleak                    (allocator leak gate; valgrind on Linux CI)
+#
+# Stub-contract first: it's seconds-fast and fails on a redactor regression
+# without paying for postgres/redis startup. test-integration is the heavy
+# pass that follows.
 #
 # Bypass for emergencies: `git push --no-verify` (discouraged per AGENTS.md).
 set -euo pipefail
@@ -29,6 +34,8 @@ fi
 pushed_zig="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null | grep -E '\.zig$' || true)"
 
 if [ -n "$pushed_zig" ]; then
+  echo "pre-push: make test-integration-stub (Zig changed since $upstream_ref)"
+  make test-integration-stub
   echo "pre-push: make test-integration (Zig changed since $upstream_ref)"
   make test-integration
   echo "pre-push: make memleak (Zig changed since $upstream_ref)"

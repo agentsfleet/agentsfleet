@@ -95,9 +95,7 @@ Decision points that block auto-execution:
 
 After all four M61_* specs land, the production-only `@import` closure under `src/` must contain zero un-exempt files. The walk: starting from `src/main.zig` and `src/executor/main.zig`, transitively follow `@import("...")` edges **after stripping every `test "..." { ... }` / `test { ... }` block**, then list any `*.zig` under `src/` outside the closure (excluding `vendor/`, `third_party/`, `.zig-cache/`, `*_test.zig`, `test_*.zig`, `*_harness*.zig`, `*fixture*.zig`, `src/zbench_*.zig`, `src/auth/tests.zig`).
 
-A Python codification (`scripts/audit-orphan-prod.py`) was authored during M61_001 EXECUTE and removed in the same PR — codecov/patch flagged the script as untested (0% diff coverage, 90% target), and a CI gate would hard-fail until M61_002 lands and clears the remaining 11 entries. The last M61_* spec to land owns shipping a tested codification (`audit-orphan-prod.py` + `audit-orphan-prod.test.py`) wired into `make lint` or CI.
-
-Until then run the eval by hand or via a one-shot Python invocation matching the algorithm above.
+Run the eval by hand or via a one-shot Python invocation matching the algorithm above when a future audit pass is needed. Tested codification of the script as a `make lint` gate is **out of scope for this inventory** — the surviving completion signal is the four M61_001..004 sweeps having actually deleted the files they listed (verified at M42_002-era close).
 
 ---
 

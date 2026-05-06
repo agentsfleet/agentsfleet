@@ -217,8 +217,10 @@ fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
     const self = Adapter.fromPtr(ctx);
     if (chunk.is_final) return;
     if (chunk.delta.len == 0) return;
+    const redacted = redactBytes(self.alloc, chunk.delta, self.secrets) catch chunk.delta;
+    defer if (redacted.ptr != chunk.delta.ptr) self.alloc.free(redacted);
     const frame = progress_callbacks.ProgressFrame{
-        .agent_response_chunk = .{ .text = chunk.delta },
+        .agent_response_chunk = .{ .text = redacted },
     };
     self.writer.write(frame);
 }
@@ -231,7 +233,7 @@ fn streamCallbackThunk(ctx: *anyopaque, chunk: providers.StreamChunk) void {
 /// returned bytes may not be valid JSON — preserving the secret leak
 /// boundary takes precedence over JSON well-formedness on the live
 /// tail; the durable record already redacts upstream.
-fn redactBytes(alloc: Allocator, raw: []const u8, secrets: []const Secret) ![]const u8 {
+pub fn redactBytes(alloc: Allocator, raw: []const u8, secrets: []const Secret) ![]const u8 {
     if (secrets.len == 0) return raw;
     var any_hit = false;
     for (secrets) |s| {

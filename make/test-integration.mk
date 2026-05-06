@@ -2,7 +2,7 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-integration-db test-integration-redis _test-integration-zombied _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-stub test-integration-db test-integration-redis _test-integration-zombied _test-integration-stub _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
 TEST_DATABASE_URL_LOCAL ?= postgres://usezombie:usezombie@localhost:5432/usezombiedb
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:usezombie@localhost:6379
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
@@ -136,9 +136,26 @@ _test-integration-full: _reset-test-db
 	zig build test
 	@echo "✓ [zombied] Full integration suite passed"
 
+# Stub-binary contract suite. Runs the executor-side unit tests
+# (zig build test-executor) which include the redactor contract table
+# pinning the byte-level invariants the `zombied-executor-stub` binary's
+# canned-response provider depends on. No Postgres / Redis needed —
+# pure-process tests, runs in seconds. Carved out from `test-integration`
+# so CI can run it as a parallel job and pre-push can fail fast on a
+# contract regression without spinning up the full integration infra.
+_test-integration-stub:
+	@echo "→ [zombied] Running stub-binary contract suite (executor-side unit tests)..."
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build test-executor --summary all 2>&1 | tee /dev/stderr | grep -q "passed"
+	@echo "✓ [zombied] Stub-binary contract suite passed"
+
 test-integration-db: _test-integration-db  ## Run real DB-backed integration suite only
 
 test-integration-redis: _test-integration-redis  ## Run Redis-backed integration suite only
 
-test-integration: _test-integration-full  ## Run all integration tests once against real DB + Redis
+test-integration: _test-integration-full  ## Run worker integration tests against real DB + Redis
 	@echo "✓ [zombied] All integration tests passed"
+
+test-integration-stub: _test-integration-stub  ## Run stub-binary contract tests (executor-side; no DB/Redis)

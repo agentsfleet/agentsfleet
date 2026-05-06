@@ -12,6 +12,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Stub-binary contract suite — executor-side unit tests including the
+  # redactor contract table. No Postgres / Redis needed; runs in seconds.
+  # Carved out so a redactor regression fails fast in its own job, parallel
+  # to the heavy worker integration suite.
+  test-integration-stub:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - name: Install OpenSSL dev headers
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
+      - name: Run stub-binary contract suite
+        run: make test-integration-stub
+
   test-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10
