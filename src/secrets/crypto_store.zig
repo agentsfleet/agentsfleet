@@ -6,6 +6,7 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.secrets);
@@ -101,7 +102,7 @@ pub fn load(
             .workspace_id = workspace_id,
             .key_name = key_name,
             .kek_version = kek_version,
-            .error_code = "UZ-INTERNAL-003",
+            .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
         });
         return cp.SecretError.UnsupportedKekVersion;
     }
@@ -125,7 +126,7 @@ pub fn load(
         log.err("decrypt_failed", .{
             .workspace_id = workspace_id,
             .key_name = key_name,
-            .error_code = "UZ-INTERNAL-003",
+            .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
         });
         return err;
     };

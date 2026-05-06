@@ -4,7 +4,7 @@
 **Milestone:** M62
 **Workstream:** 001
 **Date:** May 06, 2026: 11:00 AM
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m62-001-observability
 **Priority:** P1 — observability discipline gates production debuggability; non-blocking for current launch but blocking for confident incident response.
 **Categories:** Observability, Internal
@@ -76,7 +76,7 @@ Three related-but-separate audits the Captain surfaced after M42_002 landed. Eac
 
 ### Files NOT to modify
 
-- The redaction adapter (`src/executor/runner_progress.zig`) — its discipline is the model, not the target. M42_002 already brought it to spec.
+(None — earlier draft carved out `src/executor/runner_progress.zig` because M42_002 had brought its **redaction discipline** to spec, but the M62 logging migration is orthogonal to redaction. The 4 logging edits in this file touch only `log.info` calls and the named-module import — not `redactBytes`, args substitution, or the chunk path that M42_002's tests gate. Carve-out removed; file migrated.)
 
 ## Open questions (resolve in PLAN, not deferred)
 

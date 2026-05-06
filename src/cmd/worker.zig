@@ -80,7 +80,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
             worker_config.ValidationError.InvalidExecutorCpuLimitPercent,
             => {
                 worker_config.printValidationError(@errorCast(err));
-                log.err("startup.config_load_failed", .{ .error_code = "UZ-STARTUP-002", .err = @errorName(err) });
+                log.err("startup.config_load_failed", .{ .error_code = error_codes.ERR_STARTUP_CONFIG_LOAD, .err = @errorName(err) });
             },
         }
         std.process.exit(1);

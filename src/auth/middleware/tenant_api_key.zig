@@ -30,10 +30,8 @@ pub const AuthCtx = auth_ctx.AuthCtx;
 
 pub const TENANT_KEY_PREFIX = "zmb_t_";
 
-// src/auth/ is portable — cannot import from src/errors/. Duplicated here;
-// a cross-layer parity test (already in place for the other middleware
-// error-code strings) keeps them in sync.
-const ERR_APIKEY_REVOKED: []const u8 = "UZ-APIKEY-004";
+const registry = @import("../../errors/error_registry.zig");
+const ERR_APIKEY_REVOKED = registry.ERR_APIKEY_REVOKED;
 
 const log = logging.scoped(.api_keys);
 

@@ -6,6 +6,7 @@ const std = @import("std");
 const posthog = @import("posthog");
 
 const db = @import("../db/pool.zig");
+const error_codes = @import("../errors/error_registry.zig");
 const logging = @import("log");
 const otel_logs = @import("../observability/otel_logs.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
@@ -110,7 +111,7 @@ pub fn connectDbPool(alloc: std.mem.Allocator, role: db.DbRole) !*db.Pool {
     const pool = db.initFromEnvForRole(alloc, role) catch |err| {
         log.err("startup.db_connect_failed", .{
             .role = @tagName(role),
-            .error_code = "UZ-STARTUP-003",
+            .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
             .err = @errorName(err),
         });
         return err;
@@ -126,7 +127,7 @@ pub fn connectDbPool(alloc: std.mem.Allocator, role: db.DbRole) !*db.Pool {
 pub fn checkMigrations(pool: *db.Pool, migrate_on_start: bool) anyerror!void {
     log.info("startup.migration_check_start", .{});
     common.enforceServeMigrationSafety(pool, migrate_on_start) catch |err| {
-        const mc_code = "UZ-STARTUP-005";
+        const mc_code = error_codes.ERR_STARTUP_MIGRATION_CHECK;
         switch (err) {
             common.MigrationGuardError.MigrationPending => log.err("startup.migration_check_failed", .{
                 .error_code = mc_code,
@@ -161,7 +162,7 @@ pub fn checkMigrations(pool: *db.Pool, migrate_on_start: bool) anyerror!void {
 pub fn parseMigrateOnStart(alloc: std.mem.Allocator) !bool {
     return common.migrateOnStartEnabledFromEnv(alloc) catch |err| {
         log.err("startup.migration_check_failed", .{
-            .error_code = "UZ-STARTUP-005",
+            .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK,
             .reason = "invalid_MIGRATE_ON_START",
             .err = @errorName(err),
         });
