@@ -3,15 +3,45 @@
 
 const std = @import("std");
 const nullclaw = @import("nullclaw");
+const build_options = @import("build_options");
 
 const Config = nullclaw.config.Config;
 const tools_mod = nullclaw.tools;
+const providers = nullclaw.providers;
 
 const json = @import("json_helpers.zig");
 const tool_bridge = @import("tool_bridge.zig");
 const context_budget = @import("context_budget.zig");
+const stub_gate = @import("stub_provider_gate.zig");
 
 const log = std.log.scoped(.executor_runner);
+
+/// Holds the runtime LLM provider bundle for the agent loop. In the stub
+/// binary `inner` stays null and `stub` carries the canned-response provider;
+/// in production/harness `inner` owns the real `RuntimeProviderBundle`.
+/// Caller defers `deinit()` to release the optional.
+pub const ProviderBundle = struct {
+    inner: ?providers.runtime_bundle.RuntimeProviderBundle = null,
+    stub: stub_gate.Module.StubProvider = undefined,
+
+    pub fn deinit(self: *@This()) void {
+        if (self.inner) |*rp| rp.deinit();
+    }
+
+    pub fn acquire(
+        self: *@This(),
+        alloc: std.mem.Allocator,
+        cfg: *Config,
+    ) error{AgentInitFailed}!providers.Provider {
+        self.stub = stub_gate.Module.StubProvider.init(alloc);
+        if (build_options.executor_provider_stub) return self.stub.provider();
+        self.inner = providers.runtime_bundle.RuntimeProviderBundle.init(alloc, cfg) catch {
+            log.err("executor.runner.provider_init_failed error_code=UZ-EXEC-012", .{});
+            return error.AgentInitFailed;
+        };
+        return self.inner.?.provider();
+    }
+};
 
 /// Apply agent_config JSON overrides to the NullClaw Config.
 /// Only overrides fields that are present in the JSON object.
