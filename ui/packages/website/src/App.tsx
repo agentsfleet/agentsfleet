@@ -125,7 +125,7 @@ export default function App() {
             >
               <span className="header-mission-control-label">Try usezombie</span>
               <span className="header-mission-control-icon" aria-hidden="true">
-                <AnimatedIcon trigger="parent-hover" animation="drop"><ZombieHandIcon size={18} /></AnimatedIcon>
+                <AnimatedIcon trigger="parent-hover" animation="drop-overflow"><ZombieHandIcon size={18} /></AnimatedIcon>
               </span>
             </a>
           </Button>

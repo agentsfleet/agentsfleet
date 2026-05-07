@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 005
 **Date:** May 07, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — marketing polish on the primary signup CTA; visible on every marketing page render.
 **Categories:** DESIGN_SYSTEM, WEBSITE
 **Batch:** B1 — independent of M63_004 (CLI resilience); UI-only diff with no server contract.

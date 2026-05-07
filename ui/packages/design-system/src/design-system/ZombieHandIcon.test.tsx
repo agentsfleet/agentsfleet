@@ -42,4 +42,30 @@ describe("ZombieHandIcon", () => {
     const paths = container.querySelectorAll("path");
     expect(paths.length).toBeGreaterThanOrEqual(5);
   });
+
+  it("paints the palm + finger + thumb paths with the per-instance gradient", () => {
+    const { container } = render(<ZombieHandIcon />);
+    const grad = container.querySelector("linearGradient");
+    expect(grad).not.toBeNull();
+    expect(grad!.id).toMatch(/^z-hand-grad-/);
+    const stops = grad!.querySelectorAll("stop");
+    expect(stops.length).toBe(2);
+    expect(stops[0].getAttribute("stop-color")).toContain("--z-orange");
+    expect(stops[1].getAttribute("stop-color")).toContain("--z-cyan");
+    // 6 hand paths use the gradient: palm + 4 fingers + thumb.
+    const filled = container.querySelectorAll(`path[fill="url(#${grad!.id})"]`);
+    expect(filled.length).toBe(6);
+  });
+
+  it("uses a unique gradient id per instance so two icons on the same page don't collide", () => {
+    const { container } = render(
+      <>
+        <ZombieHandIcon />
+        <ZombieHandIcon />
+      </>,
+    );
+    const grads = container.querySelectorAll("linearGradient");
+    expect(grads.length).toBe(2);
+    expect(grads[0].id).not.toBe(grads[1].id);
+  });
 });
