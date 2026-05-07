@@ -186,7 +186,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id_hex = json.getStr(p, wire.execution_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
         const exec_id = types.parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
@@ -265,7 +265,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id_hex = json.getStr(p, wire.execution_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
         const exec_id = types.parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
@@ -279,7 +279,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id_hex = json.getStr(p, wire.execution_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
         const exec_id = types.parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
@@ -295,7 +295,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id_hex = json.getStr(p, wire.execution_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
         const exec_id = types.parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
         const session = self.store.remove(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
@@ -310,7 +310,7 @@ pub const Handler = struct {
         const p = params orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_params);
         if (p != .object) return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.params_not_object);
 
-        const exec_id_hex = json.getStr(p, "execution_id") orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
+        const exec_id_hex = json.getStr(p, wire.execution_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.missing_execution_id);
         const exec_id = types.parseExecutionId(exec_id_hex) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.invalid_params, Msg.invalid_execution_id);
 
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
