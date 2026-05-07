@@ -158,5 +158,10 @@
   /* Animation utilities — keyframes defined in tokens.css. */
   --animate-wave: z-icon-wave 700ms ease-in-out;
   --animate-wiggle: z-icon-wiggle 700ms ease-in-out;
-  --animate-drop: z-icon-drop 420ms cubic-bezier(0.32, 0.72, 0, 1);
+  /* `backwards` fill: hold the 0% keyframe state (opacity 0, translateY -16)
+   * until the animation fires. Without it, an always-visible glyph (no
+   * parent opacity wrapper) flashes at its resting state for one frame
+   * before the keyframe takes over. wave + wiggle don't animate opacity
+   * so they don't share this exposure. */
+  --animate-drop: z-icon-drop 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
 }
