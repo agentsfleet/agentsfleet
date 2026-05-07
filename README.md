@@ -20,7 +20,7 @@
 
 > **Early Access Preview** — APIs, CLI, and behavior may change before GA.
 
-Your deploy fails at 3am. Zombie wakes on the GitHub webhook, walks your CD logs + hosting + data-plane, posts the diagnosis to Slack with line-numbered evidence — every action recorded in a replayable event log. markdown is the only thing you write.
+Your deploy fails at 3am. Zombie wakes on the GitHub webhook, walks your CD logs + hosting + data-plane, posts the diagnosis to Slack with line-numbered evidence — every action recorded in a replayable event log. Markdown is the only thing you write.
 
 ## What it does
 
