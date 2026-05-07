@@ -201,12 +201,12 @@ pub const Handler = struct {
 
         const hex = types.executionIdHex(exec_id);
 
-        const agent_config = json.getObjectParam(p, "agent_config");
-        const tools_spec = json.getArrayParam(p, "tools");
-        const message = json.getStr(p, "message");
-        const context = json.getObjectParam(p, "context");
+        const agent_config = json.getObjectParam(p, wire.agent_config);
+        const tools_spec = json.getArrayParam(p, wire.tools);
+        const message = json.getStr(p, wire.message);
+        const context = json.getObjectParam(p, wire.context);
 
-        const model_name = if (agent_config) |ac| json.getStr(ac, "model") orelse "default" else "default";
+        const model_name = if (agent_config) |ac| json.getStr(ac, wire.model) orelse "default" else "default";
         log.info("runner_start", .{
             .execution_id = &hex,
             .zombie_id = session.correlation.zombie_id,
