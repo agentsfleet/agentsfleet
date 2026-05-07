@@ -4,9 +4,8 @@ import { DOCS_QUICKSTART_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 export default function Hero() {
   const heading = {
-    badge: "Always-on operational runtime · Markdown-defined",
-    line1: "Operational knowledge isn't executable.",
-    line2: "When a deploy fails, teams guess.",
+    badge: "Always-on event-driven runtime · Markdown-defined",
+    line1: "Agents that wake on every event.",
   };
 
   return (
@@ -17,14 +16,12 @@ export default function Hero() {
 
           <h1 className="hero-headline">
             <span className="hero-line1">{heading.line1}</span>
-            <span className="hero-line2">{heading.line2}</span>
           </h1>
 
           <p className="hero-kicker">
-            Your deploy fails at 3am. Zombie wakes on the GitHub webhook, walks your
-            CD logs + hosting + data-plane, posts the diagnosis to Slack with
-            line-numbered evidence — every action recorded in a replayable event log.
-            Markdown is the only thing you write.
+            A webhook wakes the Zombie Agent. It reads your logs, finds the
+            cause, and posts the fix to Slack — every action on a replayable
+            event log. You write only Markdown.
           </p>
 
           <div className="hero-cta-row">
@@ -35,7 +32,7 @@ export default function Hero() {
                   trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
                 }}
               >
-                Install platform-ops
+                Start an Agent
               </a>
             </Button>
             <Button asChild variant="double-border" className="hero-cta-secondary">
@@ -43,7 +40,7 @@ export default function Hero() {
                 to="/pricing"
                 onClick={() => trackNavigationClicked({ source: "hero_secondary_pricing", surface: "hero", target: "pricing" })}
               >
-                See pricing
+                $5 starter credit &rarr;
               </Link>
             </Button>
           </div>
@@ -56,7 +53,7 @@ export default function Hero() {
             <p className="hero-command-note">
               Then run /usezombie-install-platform-ops in Claude Code, Amp, Codex CLI, or OpenCode.
               <br />
-              <strong>$5 starter credit</strong> per workspace — no card required.
+              <strong>$5 starter credit</strong> &mdash; no card required.
             </p>
           </div>
         </div>

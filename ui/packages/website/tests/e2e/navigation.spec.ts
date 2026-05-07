@@ -137,7 +137,7 @@ test.describe("Mode toggle — multi-step cycles", () => {
     selected = expectModeToggle("humans");
     await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
     await expect(page.getByTestId("mode-agents")).toHaveAttribute("aria-selected", selected.agents);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Operational knowledge isn't executable");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Agents that wake on every event");
   });
 
   test("pricing → home → agents updates URLs and selection state", async ({ page }) => {
@@ -169,7 +169,7 @@ test.describe("Mode toggle — multi-step cycles", () => {
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: "Home" }).click();
     await expect(page).toHaveURL(/^http:\/\/[^/]+\/$/);
     await expect(page.getByTestId("mode-humans")).toHaveAttribute("aria-selected", selected.humans);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Operational knowledge isn't executable");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Agents that wake on every event");
   });
 });
 

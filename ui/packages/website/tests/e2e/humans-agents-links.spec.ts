@@ -38,7 +38,7 @@ test.describe("Humans vs Agents link coverage", () => {
   test("Humans page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
     await expectMode(page, "humans");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Operational knowledge isn't executable");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("Agents that wake on every event");
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: "Pricing" }).click();
@@ -53,7 +53,7 @@ test.describe("Humans vs Agents link coverage", () => {
 
     await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.usezombie.com");
 
-    await expect(page.getByRole("link", { name: /install platform-ops/i }).first()).toHaveAttribute(
+    await expect(page.getByRole("link", { name: /start an agent/i }).first()).toHaveAttribute(
       "href",
       /docs\.usezombie\.com\/quickstart/
     );
@@ -83,7 +83,7 @@ test.describe("Humans vs Agents link coverage", () => {
 
     await expect(nav.getByRole("link", { name: "Docs" })).toHaveAttribute("href", "https://docs.usezombie.com");
 
-    await expect(page.locator('a[href="https://docs.usezombie.com/quickstart"]').filter({ hasText: "Install platform-ops" })).toHaveCount(1);
+    await expect(page.locator('a[href="https://docs.usezombie.com/quickstart"]').filter({ hasText: "Start an Agent" })).toHaveCount(1);
     await expect(page.locator('a[href="https://docs.usezombie.com"]').filter({ hasText: "Read the docs" })).toHaveCount(1);
     await expect(page.locator("a").filter({ hasText: "Setup your personal dashboard" })).toHaveAttribute(
       "href",
