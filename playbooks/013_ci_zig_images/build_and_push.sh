@@ -173,7 +173,15 @@ while [ $# -gt 0 ]; do
     --image)       IMAGE="$2"; shift 2 ;;
     --no-push)     PUSH=0; shift ;;
     -h|--help)     usage 0 ;;
-    *) fatal "unknown argument: $1" ;;
+    *)
+      # `fetch-shas <version>` accepts the version as a positional arg
+      # (the documented form). For other subcommands, unknown args fail loudly.
+      if [ "$SUBCOMMAND" = "fetch-shas" ] && [ -z "$ZIG_VERSION_OVERRIDE" ]; then
+        ZIG_VERSION_OVERRIDE="$1"; shift
+      else
+        fatal "unknown argument: $1"
+      fi
+      ;;
   esac
 done
 
