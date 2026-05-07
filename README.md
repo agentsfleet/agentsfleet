@@ -6,7 +6,7 @@
   <img src="assets/logo-dark.svg" width="200" alt="usezombie" />
 </picture>
 
-**A durable, markdown-defined runtime that owns one operational outcome.** Open source · BYOK · hosted on `api.usezombie.com`.
+**Always-on operational runtime that wakes on your events, runs against a durable replayable log, and posts evidenced answers — not chats.** Markdown-defined. Hosted on `api.usezombie.com`.
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Coverage](https://codecov.io/gh/usezombie/usezombie/flags/apps/graph/badge.svg)](https://codecov.io/gh/usezombie/usezombie/flags/apps)
@@ -20,21 +20,24 @@
 
 > **Early Access Preview** — APIs, CLI, and behavior may change before GA.
 
+Your deploy fails at 3am. Zombie wakes on the GitHub webhook, walks your CD logs + hosting + data-plane, posts the diagnosis to Slack with line-numbered evidence — every action recorded in a replayable event log. Markdown is the only thing you write.
+
 ## What it does
 
-A **Zombie** is a long-lived runtime that owns one operational outcome end-to-end. v2 ships one zombie: **`platform-ops`** — wakes on a GitHub Actions deploy-failure webhook, gathers evidence (CD logs, hosting provider, data-plane health), and posts an evidenced diagnosis to Slack. The same zombie is reachable via `zombiectl steer {id}` for manual investigation.
+A **Zombie** is a long-lived runtime that owns one operational outcome end-to-end. Not request-response. Not a graph DSL. A daemon for an outcome.
+
+v2 ships one zombie: **`platform-ops`** — wakes on a GitHub Actions deploy-failure webhook, gathers evidence (CD logs, hosting provider, data-plane health), and posts an evidenced diagnosis to Slack. The same zombie is reachable via `zombiectl steer {id}` for manual investigation.
 
 You don't code the zombie. You write `SKILL.md` in plain English; install it with `/usezombie-install-platform-ops` (Claude Code, Amp, Codex CLI, or OpenCode); the runtime handles the sandbox, credential injection, audit trail, budget caps, and approval gates.
 
-## Pillars
+## Why this shape
 
-- **OSS** — read the code that holds your credentials.
-- **BYOK** — your LLM key (Anthropic, OpenAI, Together, Groq…), your inference cost.
-- **Markdown-defined** — `SKILL.md` + `TRIGGER.md` as configuration; iterate prose, not control flow.
-- **Sandboxed** — bwrap + landlock + cgroups; network deny-by-default.
-- **Durable** — every event lands in `core.zombie_events` with actor provenance; resumable from checkpoint.
+- **Always-on, event-driven** — triggers on webhooks (CI, monitoring, custom), not on a chat box. Designed for the enterprise pattern: billions of events, narrow ownership per zombie.
+- **Markdown-defined** — `SKILL.md` + `TRIGGER.md` are the configuration. Iterate the prose; the runtime owns control flow, durability, and isolation.
+- **Replayable** — every event lands in `core.zombie_events` with actor provenance. Resume from checkpoint, audit any past run, replay against a new SKILL revision.
+- **Sandboxed by default** — bwrap + landlock + cgroups; network deny-by-default. The OSS source IS the audit — read what holds your credentials.
 
-Self-host arrives in v3. v2 is hosted-only on `api.usezombie.com` via Clerk OAuth.
+BYOK is supported (Anthropic, OpenAI, Together, Groq…). Self-host arrives in v3. v2 is hosted-only on `api.usezombie.com` via Clerk OAuth, with a $5 starter credit per workspace — no card required.
 
 ## Local development
 

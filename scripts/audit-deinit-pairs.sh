@@ -84,7 +84,7 @@ CLEANUP_RE='pub fn (deinit|close|release|destroy|shutdown|dispose|free)\('
 # Heap-pointer return on init signature: `) *T` or `) !*T` or returning *Self.
 HEAP_RETURN_RE='\)[[:space:]]*!?\*([A-Z@]|Self\b)'
 # Allocation patterns inside init body.
-ALLOC_RE='\.(alloc|create|dupe|dupeZ|initCapacity|allocPrint|allocSentinel|reAlloc|realloc)\(|std\.fs\.(File|cwd\(\))\.(open|create)|Thread\.spawn|\.allocator\(\)|ArrayList\(.*\)\.init|HashMap\(.*\)\.init'
+ALLOC_RE='\.(alloc|create|dupe|dupeZ|initCapacity|allocPrint|allocSentinel|reAlloc|realloc)\(|std\.fs\.(File|cwd\(\))\.(open|create)|Thread\.spawn|\.allocator\(\)|ArrayList(Unmanaged)?\(.*\)\.init|HashMap(Unmanaged)?\(.*\)\.init|StringHashMap(Unmanaged)?\(.*\)\.init'
 
 # ---------------------------------------------------------------------------
 # 2. Per-init evaluation. Each `pub fn init` is checked individually:

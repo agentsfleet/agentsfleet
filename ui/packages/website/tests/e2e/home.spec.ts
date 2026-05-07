@@ -7,15 +7,19 @@ test.describe("Home page", () => {
 
   test("renders hero heading", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toContainText("Operational knowledge isn't executable.");
-    await expect(h1).toContainText("When a deploy fails, teams guess.");
+    await expect(h1).toContainText("Agents that wake on every event.");
   });
 
   test("renders hero CTAs", async ({ page }) => {
-    const install = page.getByRole("link", { name: /install platform-ops/i }).first();
+    const install = page.getByRole("link", { name: /start an agent/i }).first();
     await expect(install).toBeVisible();
     await expect(install).toHaveAttribute("href", /docs\.usezombie\.com\/quickstart/);
     await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
+    // Offer-led secondary CTA pulls toward the $5 starter credit on /pricing.
+    await expect(page.getByRole("link", { name: /\$5 starter credit/i }).first()).toHaveAttribute(
+      "href",
+      /\/pricing/,
+    );
   });
 
   test("renders bootstrap terminal command", async ({ page }) => {
@@ -24,47 +28,72 @@ test.describe("Home page", () => {
   });
 
   test("renders top header actions in humans mode", async ({ page }) => {
-    await expect(page.locator("header").getByRole("link", { name: "Mission Control", exact: true })).toBeVisible();
-    await expect(page.locator("header").getByRole("link", { name: "Install platform-ops" })).toHaveCount(0);
+    await expect(page.locator("header").getByRole("link", { name: "Try usezombie", exact: true })).toBeVisible();
+    await expect(page.locator("header").getByRole("link", { name: /start an agent/i })).toHaveCount(0);
   });
 
-  test("Mission Control button applies hover style", async ({ page }) => {
-    const mission = page.locator("header").getByRole("link", { name: "Mission Control", exact: true });
+  test("Try usezombie button is a gradient pill that lifts on hover", async ({ page }) => {
+    const mission = page.locator("header").getByRole("link", { name: "Try usezombie", exact: true });
     await expect(mission).toBeVisible();
+
+    // The CTA is the only fully-coloured element in the header strip — the
+    // brand orange→cyan gradient is the visual anchor.
+    const baseBackground = await mission.evaluate(
+      (el) => window.getComputedStyle(el).backgroundImage,
+    );
+    expect(baseBackground).toMatch(/linear-gradient/);
 
     const before = await mission.evaluate((el) => {
       const style = window.getComputedStyle(el);
-      return {
-        borderColor: style.borderColor,
-        boxShadow: style.boxShadow,
-      };
+      return { boxShadow: style.boxShadow, transform: style.transform };
     });
 
     await mission.hover();
 
-    // The ghost Button variant transitions border-color/box-shadow over
-    // ~150ms (see Button.tsx `transition-[...] ease-fast`). Reading
-    // computed style immediately after hover() catches the interpolation
-    // mid-flight and yields the pre-hover value. Poll until the transition
-    // has settled on the actual hover state.
+    // Hover deepens the shadow and lifts by 1px. Gradient + brightness filter
+    // also shift, but transitions in jsdom-less browsers settle within ~250ms
+    // — poll until the box-shadow has changed from the resting state.
     await expect
       .poll(
         async () =>
           mission.evaluate((el) => {
             const style = window.getComputedStyle(el);
-            return {
-              borderColor: style.borderColor,
-              boxShadow: style.boxShadow,
-            };
+            return { boxShadow: style.boxShadow, transform: style.transform };
           }),
         { timeout: 2000, intervals: [50, 100, 200] },
       )
       .toMatchObject({
-        borderColor: expect.not.stringMatching(
-          new RegExp(`^${before.borderColor.replace(/[()]/g, "\\$&")}$`),
+        boxShadow: expect.not.stringMatching(
+          new RegExp(`^${before.boxShadow.replace(/[()]/g, "\\$&")}$`),
         ),
-        boxShadow: expect.not.stringMatching(/^none$/),
+        transform: expect.not.stringMatching(/^none$/),
       });
+  });
+
+  test("Try usezombie zombie-hand icon fades in on hover", async ({ page }) => {
+    const mission = page.locator("header").getByRole("link", { name: "Try usezombie", exact: true });
+    const iconSlot = mission.locator(".header-mission-control-icon");
+
+    // Resting: opacity 0 — the hand is hidden until the user telegraphs
+    // intent. Reading immediately is fine because the resting state has
+    // no transition delay.
+    const restingOpacity = await iconSlot.evaluate(
+      (el) => Number(window.getComputedStyle(el).opacity),
+    );
+    expect(restingOpacity).toBeLessThan(0.1);
+
+    await mission.hover();
+
+    // Hover: the slot fades to opacity 1 and the inner glyph plays the
+    // `animate-drop` keyframe (translateY -16 → 0). Poll until the slot
+    // opacity has settled.
+    await expect
+      .poll(
+        async () =>
+          iconSlot.evaluate((el) => Number(window.getComputedStyle(el).opacity)),
+        { timeout: 2000, intervals: [50, 100, 200] },
+      )
+      .toBeGreaterThan(0.9);
   });
 
   test("renders feature flow rows", async ({ page }) => {
@@ -83,7 +112,7 @@ test.describe("Home page", () => {
   test("renders final install block actions", async ({ page }) => {
     await expect(page.getByRole("heading", { level: 2, name: "Install zombiectl, then run /usezombie-install-platform-ops" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Read the docs" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Install platform-ops" }).last()).toHaveAttribute(
+    await expect(page.getByRole("link", { name: /start an agent/i }).last()).toHaveAttribute(
       "href",
       /docs\.usezombie\.com\/quickstart/
     );

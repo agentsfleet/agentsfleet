@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1.7
+#
+# Debian trixie-slim + Zig + valgrind for the memleak lane.
+# Trixie is required because trixie's valgrind groks Zig 0.15's DWARF;
+# bookworm's valgrind misreads frames and the gate is unreliable.
+# amd64 only — the memleak lane runs exclusively on x86_64 GitHub runners.
+
+FROM mirror.gcr.io/library/debian:trixie-slim
+
+ARG ZIG_VERSION
+ARG ZIG_SHA256_X86_64_LINUX
+
+RUN test -n "$ZIG_VERSION" && test -n "$ZIG_SHA256_X86_64_LINUX"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      valgrind \
+      git \
+      curl \
+      wget \
+      xz-utils \
+      ca-certificates \
+      make \
+      gpg \
+      libssl-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    tarball="zig-x86_64-linux-${ZIG_VERSION}.tar.xz"; \
+    for url in \
+      "https://pkg.machengine.org/zig/${tarball}" \
+      "https://zigmirror.hryx.net/zig/${tarball}" \
+      "https://ziglang.org/download/${ZIG_VERSION}/${tarball}" ; do \
+      echo "  fetching $url" ; \
+      if wget -q "$url" -O /tmp/zig.tar.xz \
+         && echo "${ZIG_SHA256_X86_64_LINUX}  /tmp/zig.tar.xz" | sha256sum -c - >/dev/null 2>&1 ; then \
+        echo "  ✓ verified from $url" ; break ; \
+      fi ; \
+      rm -f /tmp/zig.tar.xz ; \
+    done; \
+    test -f /tmp/zig.tar.xz || { echo "FAIL: zig ${ZIG_VERSION} download failed from every mirror"; exit 1; }; \
+    mkdir -p /opt ; \
+    (cd /opt && tar xf /tmp/zig.tar.xz) ; \
+    mv "/opt/zig-x86_64-linux-${ZIG_VERSION}" /opt/zig ; \
+    rm /tmp/zig.tar.xz ; \
+    /opt/zig/zig version
+
+ENV PATH=/opt/zig:$PATH
+
+LABEL org.opencontainers.image.title="usezombie ci-zig-debian-trixie" \
+      org.opencontainers.image.description="Debian trixie-slim + Zig + valgrind for the usezombie memleak lane" \
+      org.opencontainers.image.source="https://github.com/usezombie/usezombie"

@@ -63,4 +63,56 @@ describe("AnimatedIcon", () => {
     const { container } = render(<AnimatedIcon className="extra">x</AnimatedIcon>);
     expect((container.firstChild as HTMLElement).className).toContain("extra");
   });
+
+  it("drop animation maps to animate-drop with parent-hover trigger", () => {
+    const { container } = render(
+      <AnimatedIcon trigger="parent-hover" animation="drop">
+        x
+      </AnimatedIcon>,
+    );
+    const glyph = container.querySelector("[data-animated-glyph]") as HTMLElement;
+    expect(glyph.className).toContain("group-hover:animate-drop");
+    expect(glyph.className).toContain("group-focus-visible:animate-drop");
+  });
+
+  it("drop animation can fire unconditionally with trigger=always", () => {
+    const { container } = render(
+      <AnimatedIcon trigger="always" animation="drop">
+        x
+      </AnimatedIcon>,
+    );
+    const glyph = container.querySelector("[data-animated-glyph]") as HTMLElement;
+    expect(glyph.className).toContain("animate-drop");
+    expect(glyph.className).not.toContain("hover:animate-drop");
+  });
+
+  it("drop animation with self-hover trigger uses hover:/focus-visible: variants", () => {
+    const { container } = render(
+      <AnimatedIcon trigger="self-hover" animation="drop">
+        x
+      </AnimatedIcon>,
+    );
+    const glyph = container.querySelector("[data-animated-glyph]") as HTMLElement;
+    expect(glyph.className).toContain("hover:animate-drop");
+    expect(glyph.className).toContain("focus-visible:animate-drop");
+    // self-hover must not also emit the parent-hover utilities — those are
+    // mutually exclusive and would double-fire if both were present.
+    expect(glyph.className).not.toContain("group-hover:animate-drop");
+  });
+
+  it("[data-animated-glyph] is present so prefers-reduced-motion CSS can disable any animation", () => {
+    // The reduced-motion guard in tokens.css matches `[data-animated-glyph]`
+    // and resets `animation: none`. Pin the attribute hook on every animation
+    // — losing it silently strips the a11y safety net.
+    for (const animation of ["wave", "wiggle", "drop"] as const) {
+      const { container, unmount } = render(
+        <AnimatedIcon trigger="always" animation={animation}>
+          x
+        </AnimatedIcon>,
+      );
+      const glyph = container.querySelector("[data-animated-glyph]");
+      expect(glyph, `missing data-animated-glyph for animation=${animation}`).not.toBeNull();
+      unmount();
+    }
+  });
 });

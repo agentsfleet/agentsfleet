@@ -7,11 +7,7 @@
 //! not false-positive on coincidental byte sequences in JSON noise.
 
 pub const SYNTHETIC_SECRET = "ZMBSTUB-redaction-canary-9c8f4e1a2d";
-pub const SYNTHETIC_GITHUB_TOKEN = "ZMBSTUB-github-canary-7e4b1c2d8a";
 
 /// Placeholder the redactor substitutes for `agent_config.api_key` bytes.
 /// Mirrors `collectSecrets` in `runner.zig` — keep these two in lock-step.
 pub const PLACEHOLDER = "${secrets.llm.api_key}";
-
-/// Placeholder for `agent_config.github_token` bytes.
-pub const GITHUB_PLACEHOLDER = "${secrets.github.token}";

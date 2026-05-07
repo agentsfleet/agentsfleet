@@ -44,22 +44,11 @@ jobs:
     needs: check-credentials
     runs-on: ubuntu-latest
     container:
-      image: mirror.gcr.io/library/alpine:3.21
+      # Pre-baked: alpine:3.21 + Zig 0.15.2 + apk deps + x86_64-linux-gnu OpenSSL
+      # static-link symlinks. Multi-arch image; linux/amd64 selected on x86_64 runner.
+      image: ghcr.io/usezombie/ci-zig-alpine:0.15.2
     steps:
-      - name: Install build dependencies
-        run: |
-          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz tar
-          mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu
-          ln -sf /usr/lib/libssl.a /usr/lib/x86_64-linux-gnu/libssl.a
-          ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a
-          ln -sf /usr/include/openssl /usr/include/x86_64-linux-gnu/openssl
-
       - uses: actions/checkout@v6
-
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-          use-cache: false
 
       - name: Build linux/amd64 binaries
         run: |

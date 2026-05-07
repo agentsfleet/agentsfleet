@@ -73,11 +73,13 @@ fn zombiedLog(
     const line = if (logging.isPretty())
         logging.formatPretty(&line_buf, ts, level, scope_str, msg)
     else
-        std.fmt.bufPrint(
-            &line_buf,
-            "ts_ms={d} level={s} scope={s} msg={f}\n",
-            .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
-        ) catch return;
+        // `msg` already arrives as a properly-quoted logfmt body
+        // (`event=<n> key=value …`) from `logging.scoped(.x).<level>`.
+        // The envelope helper splices it as top-level keys (matches
+        // LOGGING_STANDARD §3 line 41) and scrubs any raw `\n` / `\r`
+        // in the body so a stray newline in a field value can't split
+        // the record into two envelope-less lines.
+        logging.writeLogfmtEnvelope(&line_buf, ts, level_str, scope_str, msg);
     const stderr = std.fs.File.stderr();
     stderr.writeAll(line) catch {};
 

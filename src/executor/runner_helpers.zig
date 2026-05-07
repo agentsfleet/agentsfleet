@@ -11,13 +11,15 @@ const tools_mod = nullclaw.tools;
 const providers = nullclaw.providers;
 
 const json = @import("json_helpers.zig");
+const wire = @import("wire.zig");
 const tool_bridge = @import("tool_bridge.zig");
 const context_budget = @import("context_budget.zig");
 const stub_gate = @import("stub_provider_gate.zig");
 const runner_progress = @import("runner_progress.zig");
+const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.executor_runner);
-const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
+const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
 
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
@@ -69,13 +71,13 @@ pub const ProviderBundle = struct {
 /// temperature (convenience alias), max_tokens (convenience alias).
 pub fn applyAgentConfig(cfg: *Config, ac: std.json.Value) void {
     if (ac != .object) return;
-    if (json.getStr(ac, "model")) |model| cfg.default_model = model;
-    if (json.getStr(ac, "provider")) |prov| cfg.default_provider = prov;
-    if (json.getFloat(ac, "temperature")) |t| {
+    if (json.getStr(ac, wire.model)) |model| cfg.default_model = model;
+    if (json.getStr(ac, wire.provider)) |prov| cfg.default_provider = prov;
+    if (json.getFloat(ac, wire.temperature)) |t| {
         cfg.default_temperature = t;
         cfg.temperature = t;
     }
-    if (json.getInt(ac, "max_tokens")) |mt| cfg.max_tokens = @intCast(mt);
+    if (json.getInt(ac, wire.max_tokens)) |mt| cfg.max_tokens = @intCast(mt);
     // system_prompt is not a Config field — it's passed via the message.
     // The agent receives it as part of the composed message from composeMessage().
 }

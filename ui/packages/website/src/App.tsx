@@ -71,7 +71,7 @@ export default function App() {
           <Link className="brand" to="/">
             usezombie
           </Link>
-          <span className="badge">open source · markdown-defined</span>
+          <span className="badge">always-on · event-driven · markdown-defined</span>
         </div>
 
         <div className="mode-switch" role="tablist" aria-label="Mode switch" data-testid="mode-switch">
@@ -123,9 +123,9 @@ export default function App() {
               aria-hidden={!isHumansMode}
               tabIndex={isHumansMode ? undefined : -1}
             >
-              <span>Mission Control</span>
+              <span className="header-mission-control-label">Try usezombie</span>
               <span className="header-mission-control-icon" aria-hidden="true">
-                <AnimatedIcon trigger="parent-hover" animation="wiggle"><ZombieHandIcon size={18} /></AnimatedIcon>
+                <AnimatedIcon trigger="parent-hover" animation="drop"><ZombieHandIcon size={18} /></AnimatedIcon>
               </span>
             </a>
           </Button>

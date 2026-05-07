@@ -26,35 +26,53 @@ describe("Hero", () => {
     analytics.trackSignupStarted.mockReset();
   });
 
-  it("renders h1 with both headline lines", () => {
+  it("renders h1 with the single-line punchy claim", () => {
     const { container } = renderHero();
     const h1 = container.querySelector("h1");
-    expect(h1).toHaveTextContent(/operational knowledge isn't executable/i);
-    expect(h1).toHaveTextContent(/when a deploy fails, teams guess/i);
+    expect(h1).toHaveTextContent(/agents that wake on every event/i);
   });
 
   it("shows the human badge text", () => {
     renderHero();
-    expect(screen.getByText(/durable agent runtime/i)).toBeInTheDocument();
+    expect(screen.getByText(/always-on event-driven runtime/i)).toBeInTheDocument();
+  });
+
+  it("renders the $5 starter credit hook in the command-card note", () => {
+    renderHero();
+    // "$5 starter credit" now appears twice — in the secondary CTA and in the
+    // note's <strong> emphasis. Both are intentional; assert both, then pin
+    // the no-card-required tail to the note.
+    const matches = screen.getAllByText(/\$5 starter credit/i);
+    expect(matches.length).toBeGreaterThanOrEqual(2);
+    expect(matches.some((m) => m.tagName === "STRONG")).toBe(true);
+    expect(screen.getByText(/no card required/i)).toBeInTheDocument();
   });
 
   it("renders the primary CTA linking to docs quickstart", () => {
     const { container } = renderHero();
     const cta = Array.from(container.querySelectorAll("a")).find((link) =>
-      link.textContent?.match(/install platform-ops/i),
+      link.textContent?.match(/start an agent/i),
     );
     expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
   });
 
-  it("renders the pricing CTA", () => {
+  it("renders the offer-led pricing CTA pointing at /pricing", () => {
     const { container } = renderHero();
-    const cta = Array.from(container.querySelectorAll("a")).find((link) => link.textContent?.match(/see pricing/i));
+    const cta = Array.from(container.querySelectorAll("a")).find((link) =>
+      link.textContent?.match(/\$5 starter credit/i),
+    );
     expect(cta).toHaveAttribute("href", "/pricing");
+  });
+
+  it("kicker carries the always-on event-driven story (webhook → Zombie Agent → event log)", () => {
+    renderHero();
+    expect(screen.getByText(/webhook wakes the zombie agent/i)).toBeInTheDocument();
+    expect(screen.getByText(/replayable event log/i)).toBeInTheDocument();
   });
 
   it("tracks clicks on the primary CTA", () => {
     renderHero();
-    fireEvent.click(screen.getByRole("link", { name: /install platform-ops/i }));
+    fireEvent.click(screen.getByRole("link", { name: /start an agent/i }));
     expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
       source: "hero_primary",
       surface: "hero",
@@ -64,7 +82,7 @@ describe("Hero", () => {
 
   it("tracks clicks on the pricing CTA", () => {
     renderHero();
-    fireEvent.click(screen.getByRole("link", { name: /see pricing/i }));
+    fireEvent.click(screen.getByRole("link", { name: /\$5 starter credit/i }));
     expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
       source: "hero_secondary_pricing",
       surface: "hero",

@@ -110,6 +110,7 @@ fn serverThread(srv: *TestServer) void {
     srv.server.listen() catch |e| {
         const code: u8 = if (e == error.AddressInUse) LISTEN_ADDRESS_IN_USE else LISTEN_OTHER_ERR;
         srv.listen_status.store(code, .seq_cst);
+        // audit-error-codes: intentional-fake
         log.warn("listen_failed", .{ .error_code = "UZ-TEST-001", .err = @errorName(e) });
     };
 }

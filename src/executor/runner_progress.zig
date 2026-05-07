@@ -284,12 +284,12 @@ test "redactBytes handles multiple distinct secrets in one pass" {
     const alloc = std.testing.allocator;
     const secrets = [_]Secret{
         .{ .value = "sk-abc", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = "ghp-xyz", .placeholder = "${secrets.github.token}" },
+        .{ .value = "tok-xyz", .placeholder = "${secrets.example.token}" },
     };
-    const result = try redactBytes(alloc, "{\"a\":\"sk-abc\",\"b\":\"ghp-xyz\"}", &secrets);
+    const result = try redactBytes(alloc, "{\"a\":\"sk-abc\",\"b\":\"tok-xyz\"}", &secrets);
     defer alloc.free(result);
     try std.testing.expectEqualStrings(
-        "{\"a\":\"${secrets.llm.api_key}\",\"b\":\"${secrets.github.token}\"}",
+        "{\"a\":\"${secrets.llm.api_key}\",\"b\":\"${secrets.example.token}\"}",
         result,
     );
 }
