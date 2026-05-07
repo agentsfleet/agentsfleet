@@ -22,7 +22,8 @@ describe("Home", () => {
 
   it("renders the hero kicker description", () => {
     renderHome();
-    expect(screen.getByText(/markdown-defined agents/i)).toBeInTheDocument();
+    expect(screen.getByText(/your deploy fails at 3am/i)).toBeInTheDocument();
+    expect(screen.getByText(/replayable event log/i)).toBeInTheDocument();
   });
 
   it("renders primary docs CTA with quickstart link", () => {

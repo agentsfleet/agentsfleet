@@ -35,7 +35,13 @@ describe("Hero", () => {
 
   it("shows the human badge text", () => {
     renderHero();
-    expect(screen.getByText(/durable agent runtime/i)).toBeInTheDocument();
+    expect(screen.getByText(/always-on operational runtime/i)).toBeInTheDocument();
+  });
+
+  it("renders the $5 starter credit hook in the command-card note", () => {
+    renderHero();
+    expect(screen.getByText(/\$5 starter credit/i)).toBeInTheDocument();
+    expect(screen.getByText(/no card required/i)).toBeInTheDocument();
   });
 
   it("renders the primary CTA linking to docs quickstart", () => {

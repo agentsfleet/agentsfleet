@@ -4,7 +4,7 @@ import { DOCS_QUICKSTART_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 export default function Hero() {
   const heading = {
-    badge: "Durable agent runtime · BYOK · Open source",
+    badge: "Always-on operational runtime · Markdown-defined",
     line1: "Operational knowledge isn't executable.",
     line2: "When a deploy fails, teams guess.",
   };
@@ -21,9 +21,10 @@ export default function Hero() {
           </h1>
 
           <p className="hero-kicker">
-            usezombie turns runbooks into markdown-defined agents. Write <code>SKILL.md</code> +
-            {" "}<code>TRIGGER.md</code>; when CI fails, an agent wakes, gathers evidence, and
-            posts a diagnosis to Slack. Open source. BYOK.
+            Your deploy fails at 3am. Zombie wakes on the GitHub webhook, walks your
+            CD logs + hosting + data-plane, posts the diagnosis to Slack with
+            line-numbered evidence — every action recorded in a replayable event log.
+            Markdown is the only thing you write.
           </p>
 
           <div className="hero-cta-row">
@@ -54,6 +55,8 @@ export default function Hero() {
             </Terminal>
             <p className="hero-command-note">
               Then run /usezombie-install-platform-ops in Claude Code, Amp, Codex CLI, or OpenCode.
+              <br />
+              <strong>$5 starter credit</strong> per workspace — no card required.
             </p>
           </div>
         </div>
