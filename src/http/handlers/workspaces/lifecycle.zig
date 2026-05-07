@@ -41,8 +41,8 @@ fn tenantExists(conn: anytype, tenant_id: []const u8) bool {
 fn insertWorkspaceRow(conn: anytype, workspace_id: []const u8, tenant_id: []const u8, name: ?[]const u8, created_by: ?[]const u8, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO workspaces
-        \\  (workspace_id, tenant_id, name, paused, created_by, version, created_at, updated_at)
-        \\VALUES ($1, $2, $3, false, $4, 1, $5, $5)
+        \\  (workspace_id, tenant_id, name, created_by, created_at)
+        \\VALUES ($1, $2, $3, $4, $5)
     , .{ workspace_id, tenant_id, name, created_by, now_ms });
 }
 

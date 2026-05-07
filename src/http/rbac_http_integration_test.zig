@@ -59,26 +59,10 @@ fn setupSeedData(conn: *pg.Conn) !void {
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO workspaces
-        \\  (workspace_id, tenant_id, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'main', false, 1, $3, $3)
+        \\  (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now_ms });
-    _ = try conn.exec(
-        \\INSERT INTO workspace_entitlements
-        \\  (entitlement_id, workspace_id, plan_tier, max_stages, max_distinct_skills,
-        \\   allow_custom_skills, enable_agent_scoring, agent_scoring_weights_json, scoring_context_max_tokens, created_at, updated_at)
-        \\VALUES ('0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f71', $1, 'SCALE', 8, 16,
-        \\        true, false, '{"completion":0.4,"error_rate":0.3,"latency":0.2,"resource":0.1}', 2048, $2, $2)
-        \\ON CONFLICT (workspace_id) DO UPDATE
-        \\SET plan_tier = EXCLUDED.plan_tier,
-        \\    max_stages = EXCLUDED.max_stages,
-        \\    max_distinct_skills = EXCLUDED.max_distinct_skills,
-        \\    allow_custom_skills = EXCLUDED.allow_custom_skills,
-        \\    enable_agent_scoring = EXCLUDED.enable_agent_scoring,
-        \\    agent_scoring_weights_json = EXCLUDED.agent_scoring_weights_json,
-        \\    scoring_context_max_tokens = EXCLUDED.scoring_context_max_tokens,
-        \\    updated_at = EXCLUDED.updated_at
-    , .{ TEST_WORKSPACE_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
         \\  (tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)

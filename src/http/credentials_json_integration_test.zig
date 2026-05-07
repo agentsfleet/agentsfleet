@@ -60,8 +60,8 @@ fn setupSeedData(conn: *pg.Conn) !void {
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'main', false, 1, $3, $3)
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WS_ID, TEST_TENANT_ID, now_ms });
 }

@@ -1,13 +1,13 @@
--- M1_001 §6.2: Zombie session CHECKPOINT BOOKMARK table.
+-- Zombie session CHECKPOINT BOOKMARK table.
 -- One row per Zombie — upserted after each event delivery.
 -- context_json: conversation resume cursor — serialized as {last_event_id, last_response}.
---   NOTE: This is NOT agent memory. Agent memory lives in the dedicated `memory` database
---   (see M14_001). Writing full conversation history or memory tool outputs here is not
+--   NOTE: This is NOT agent memory. Agent memory lives in the dedicated `memory`
+--   schema. Writing full conversation history or memory tool outputs here is not
 --   what this column is for.
 -- checkpoint_at: millis timestamp of last successful checkpoint.
 -- On crash + restart, worker reads this row to resume from the last event cursor.
 --
--- M23_001: execution_id + execution_started_at track the active executor session.
+-- execution_id + execution_started_at track the active executor session.
 -- Set by the worker at createExecution, cleared at destroyExecution and on claim (crash recovery).
 -- NULL means the zombie is idle. Non-NULL means it is actively executing an event.
 
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS core.zombie_sessions (
     checkpoint_at        BIGINT NOT NULL,
     created_at           BIGINT NOT NULL,
     updated_at           BIGINT NOT NULL,
-    -- M23_001: active execution tracking (NULL = idle)
+    -- Active execution tracking (NULL = idle)
     execution_id         TEXT   NULL,
     execution_started_at BIGINT NULL,
     CONSTRAINT uq_zombie_sessions_zombie UNIQUE (zombie_id)

@@ -12,11 +12,6 @@ pub fn generateActivityEventId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }
 
-// Workspace-level provider integration record ID
-pub fn generateIntegrationId(alloc: std.mem.Allocator) ![]const u8 {
-    return allocUuidV7(alloc);
-}
-
 pub fn generateVaultSecretId(alloc: std.mem.Allocator) ![]const u8 {
     return allocUuidV7(alloc);
 }

@@ -42,8 +42,8 @@ pub fn insertZombie(
         .{ fx.tenant_id, now_ms },
     );
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'main', false, 1, $3, $3)
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3)
     , .{ fx.workspace_id, fx.tenant_id, now_ms });
     _ = try conn.exec(
         \\INSERT INTO core.zombies

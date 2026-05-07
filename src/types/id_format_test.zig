@@ -16,10 +16,6 @@ test "generators produce uuidv7-shaped ids that pass their validators" {
     defer alloc.free(activity_id);
     try std.testing.expect(id.isUuidV7(activity_id));
 
-    const integration_id = try id.generateIntegrationId(alloc);
-    defer alloc.free(integration_id);
-    try std.testing.expect(id.isUuidV7(integration_id));
-
     const vault_id = try id.generateVaultSecretId(alloc);
     defer alloc.free(vault_id);
     try std.testing.expect(id.isUuidV7(vault_id));
@@ -46,7 +42,6 @@ test "all live id generators produce valid uuidv7" {
         id.generateWorkspaceId,
         id.generateZombieId,
         id.generateActivityEventId,
-        id.generateIntegrationId,
         id.generateVaultSecretId,
         id.generatePlatformLlmKeyId,
     }) |gen| {
@@ -78,7 +73,6 @@ test "version nibble and variant bits are correctly set across all live generato
         id.generateWorkspaceId,
         id.generateZombieId,
         id.generateActivityEventId,
-        id.generateIntegrationId,
         id.generateVaultSecretId,
         id.generatePlatformLlmKeyId,
     }) |gen| {
@@ -101,11 +95,8 @@ test "ids from different generators are distinct" {
     defer alloc.free(b);
     const c = try id.generateActivityEventId(alloc);
     defer alloc.free(c);
-    const d = try id.generateIntegrationId(alloc);
-    defer alloc.free(d);
     try std.testing.expect(!std.mem.eql(u8, a, b));
     try std.testing.expect(!std.mem.eql(u8, b, c));
-    try std.testing.expect(!std.mem.eql(u8, c, d));
 }
 
 test "all hex chars are lowercase" {

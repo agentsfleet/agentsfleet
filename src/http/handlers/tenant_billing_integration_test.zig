@@ -54,8 +54,8 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'main', false, 1, $3, $3)
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, tenant_id, now_ms });
     // activity_events.zombie_id carries a NOT NULL FK to core.zombies —

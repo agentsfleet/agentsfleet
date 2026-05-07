@@ -1,6 +1,5 @@
 pub const core_foundation_sql = @embedFile("001_core_foundation.sql");
 pub const vault_sql = @embedFile("002_vault_schema.sql");
-pub const workspace_entitlements_sql = @embedFile("004_workspace_entitlements.sql");
 pub const agent_failure_analysis_context_sql = @embedFile("005_agent_failure_analysis_and_context_injection.sql");
 pub const platform_llm_keys_sql = @embedFile("006_platform_llm_keys.sql");
 pub const core_zombies_sql = @embedFile("007_core_zombies.sql");
@@ -8,7 +7,6 @@ pub const core_zombie_sessions_sql = @embedFile("008_core_zombie_sessions.sql");
 pub const core_zombie_approval_gates_sql = @embedFile("009_core_zombie_approval_gates.sql");
 pub const core_integration_grants_sql = @embedFile("010_core_integration_grants.sql");
 pub const core_agent_keys_sql = @embedFile("011_core_agent_keys.sql");
-pub const workspace_integrations_sql = @embedFile("012_workspace_integrations.sql");
 pub const memory_entries_sql = @embedFile("013_memory_entries.sql");
 pub const zombie_execution_telemetry_sql = @embedFile("014_zombie_execution_telemetry.sql");
 pub const api_keys_sql = @embedFile("015_api_keys.sql");

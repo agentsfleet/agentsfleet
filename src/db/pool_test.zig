@@ -342,7 +342,7 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
             \\SELECT 1
             \\FROM information_schema.tables
             \\WHERE table_schema = 'public'
-            \\  AND table_name IN ('tenants', 'workspaces', 'runs', 'workspace_entitlements')
+            \\  AND table_name IN ('tenants', 'workspaces', 'runs')
             \\LIMIT 1
         , .{}));
         defer q.deinit();

@@ -223,8 +223,8 @@ test "pickUniqueWorkspaceName: retries past an existing (tenant_id, name) collis
     , .{COLLISION_TENANT_ID});
     _ = try db_ctx.conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, name, default_branch, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, 'preserve-me-042', 'main', 0, 0)
+        \\  (workspace_id, tenant_id, name, created_at)
+        \\VALUES ($1::uuid, $2::uuid, 'preserve-me-042', 0)
     , .{ COLLISION_WORKSPACE_EXISTING, COLLISION_TENANT_ID });
 
     collision_gen_state = 0;

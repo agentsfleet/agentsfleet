@@ -39,8 +39,8 @@ fn seedTenant(conn: *pg.Conn, now_ms: i64) !void {
 
 fn seedWorkspace(conn: *pg.Conn, ws_id: []const u8, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'main', false, 1, $3, $3) ON CONFLICT (workspace_id) DO NOTHING
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
     , .{ ws_id, TEST_TENANT_ID, now_ms });
 }
 

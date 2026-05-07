@@ -16,12 +16,11 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [19]db.Migration {
+pub fn canonicalMigrations() [17]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
         .{ .version = 2, .sql = schema.vault_sql },
-        .{ .version = 4, .sql = schema.workspace_entitlements_sql },
         .{ .version = 5, .sql = schema.agent_failure_analysis_context_sql },
         .{ .version = 6, .sql = schema.platform_llm_keys_sql },
         .{ .version = 7, .sql = schema.core_zombies_sql },
@@ -29,7 +28,6 @@ pub fn canonicalMigrations() [19]db.Migration {
         .{ .version = 9, .sql = schema.core_zombie_approval_gates_sql },
         .{ .version = 10, .sql = schema.core_integration_grants_sql },
         .{ .version = 11, .sql = schema.core_agent_keys_sql },
-        .{ .version = 12, .sql = schema.workspace_integrations_sql },
         .{ .version = 13, .sql = schema.memory_entries_sql },
         .{ .version = 14, .sql = schema.zombie_execution_telemetry_sql },
         .{ .version = 15, .sql = schema.api_keys_sql },
@@ -187,17 +185,9 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 20 and entitlements carry scoring config" {
+test "canonical schema bootstrap: last version is 20" {
     const migrations = canonicalMigrations();
     try std.testing.expectEqual(@as(i32, 20), migrations[migrations.len - 1].version);
-
-    var entitlements_sql: ?[]const u8 = null;
-    for (migrations) |m| {
-        if (m.version == 4) entitlements_sql = m.sql;
-    }
-    const ent = entitlements_sql orelse return error.TestExpectedEqual;
-    try std.testing.expect(std.mem.containsAtLeast(u8, ent, 1, "enable_agent_scoring BOOLEAN NOT NULL"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, ent, 1, "agent_scoring_weights_json TEXT NOT NULL"));
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {
