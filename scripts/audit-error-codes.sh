@@ -101,6 +101,9 @@ if [[ ${#USED_PATHS[@]} -eq 0 ]]; then
 fi
 
 used_codes=$(awk '
+  # Reset per-file so a trailing intentional-fake marker in the previous
+  # file cannot carry skip_next=1 into the first line of the next file.
+  FNR == 1 { skip_next = 0 }
   # Skip the line carrying the marker AND the next non-blank line (the
   # marker sits on the comment line above the code line in Zig style).
   /audit-error-codes: intentional-fake/ { skip_next = 1; next }
