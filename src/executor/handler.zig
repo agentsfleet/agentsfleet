@@ -45,6 +45,26 @@ const Msg = struct {
     const content_escape_failed: []const u8 = "Content escape failed";
 };
 
+/// Comptime-built JSON-RPC response templates. Wire-field names route
+/// through `wire.*` so a rename in `wire.zig` propagates to both writer
+/// (client.zig) and responder (handler.zig) sides — RULE UFS at the
+/// protocol level. Envelope keys (`id`, `result`) remain literals
+/// because they're JSON-RPC structural, not executor-protocol fields.
+const Fmt = struct {
+    const create_response: []const u8 =
+        "{{\"id\":{d},\"result\":{{\"" ++ wire.execution_id ++ "\":\"{s}\"}}}}";
+    const start_stage_response: []const u8 =
+        "{{\"id\":{d},\"result\":{{\"" ++ wire.content ++ "\":\"{s}\",\"" ++
+        wire.token_count ++ "\":{d},\"" ++ wire.wall_seconds ++ "\":{d},\"" ++
+        wire.exit_ok ++ "\":true,\"" ++ wire.memory_peak_bytes ++ "\":{d},\"" ++
+        wire.cpu_throttled_ms ++ "\":{d}}}}}";
+    const get_usage_response: []const u8 =
+        "{{\"id\":{d},\"result\":{{\"" ++ wire.token_count ++ "\":{d},\"" ++
+        wire.wall_seconds ++ "\":{d},\"" ++ wire.exit_ok ++ "\":{s},\"" ++
+        wire.memory_peak_bytes ++ "\":{d},\"" ++ wire.cpu_throttled_ms ++ "\":{d},\"" ++
+        wire.memory_limit_bytes ++ "\":{d}}}}}";
+};
+
 pub const Handler = struct {
     store: *SessionStore,
     lease_timeout_ms: u64,
@@ -171,9 +191,7 @@ pub const Handler = struct {
         const hex = types.executionIdHex(session_ptr.execution_id);
         log.info("create_execution", .{ .execution_id = &hex, .zombie_id = correlation.zombie_id });
 
-        return std.fmt.allocPrint(alloc,
-            \\{{"id":{d},"result":{{"execution_id":"{s}"}}}}
-        , .{ id, &hex });
+        return std.fmt.allocPrint(alloc, Fmt.create_response, .{ id, &hex });
     }
 
     fn handleStartStage(
@@ -256,9 +274,14 @@ pub const Handler = struct {
         };
         defer alloc.free(escaped_content);
 
-        return std.fmt.allocPrint(alloc,
-            \\{{"id":{d},"result":{{"content":"{s}","token_count":{d},"wall_seconds":{d},"exit_ok":true,"memory_peak_bytes":{d},"cpu_throttled_ms":{d}}}}}
-        , .{ id, escaped_content, result.token_count, result.wall_seconds, result.memory_peak_bytes, result.cpu_throttled_ms });
+        return std.fmt.allocPrint(alloc, Fmt.start_stage_response, .{
+            id,
+            escaped_content,
+            result.token_count,
+            result.wall_seconds,
+            result.memory_peak_bytes,
+            result.cpu_throttled_ms,
+        });
     }
 
     fn handleCancelExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
@@ -286,9 +309,15 @@ pub const Handler = struct {
         const usage = session.getUsage();
         const res_ctx = session.getResourceContext();
 
-        return std.fmt.allocPrint(alloc,
-            \\{{"id":{d},"result":{{"token_count":{d},"wall_seconds":{d},"exit_ok":{s},"memory_peak_bytes":{d},"cpu_throttled_ms":{d},"memory_limit_bytes":{d}}}}}
-        , .{ id, usage.token_count, usage.wall_seconds, if (usage.exit_ok) "true" else "false", usage.memory_peak_bytes, usage.cpu_throttled_ms, res_ctx.memory_limit_bytes });
+        return std.fmt.allocPrint(alloc, Fmt.get_usage_response, .{
+            id,
+            usage.token_count,
+            usage.wall_seconds,
+            if (usage.exit_ok) "true" else "false",
+            usage.memory_peak_bytes,
+            usage.cpu_throttled_ms,
+            res_ctx.memory_limit_bytes,
+        });
     }
 
     fn handleDestroyExecution(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {

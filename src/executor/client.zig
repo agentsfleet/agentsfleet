@@ -14,15 +14,17 @@ const executor_metrics = @import("executor_metrics.zig");
 const client_errors = @import("client_errors.zig");
 const wire = @import("wire.zig");
 
-// Error codes mirror src/errors/error_registry.zig but are duplicated here
-// because the executor binary tree forbids imports outside src/executor/.
-const ERR_EXEC_TRANSPORT_LOSS = "UZ-EXEC-006";
-const ERR_EXEC_STARTUP_POSTURE = "UZ-EXEC-009";
+// Error-code constants are pub-re-exported from client_errors.zig so the
+// transport-catch arms (UZ-EXEC-006) and the rpc-error arms (UZ-EXEC-003/
+// 004/005/007/010/011 via `errorCodeForRpcCode`) share the same source.
+const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
+const ERR_EXEC_STARTUP_POSTURE: []const u8 = "UZ-EXEC-009";
 
 const log = logging.scoped(.executor_client);
 
 const ClientError = client_errors.ClientError;
 pub const classifyError = client_errors.classifyError;
+const errorCodeForRpcCode = client_errors.errorCodeForRpcCode;
 
 pub const ExecutorClient = struct {
     transport_client: transport.Client,
@@ -120,7 +122,7 @@ pub const ExecutorClient = struct {
         defer resp.deinit();
 
         if (resp.rpc_error) |err| {
-            log.err("create_execution_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .code = err.code, .msg = err.message });
+            log.err("create_execution_failed", .{ .error_code = errorCodeForRpcCode(err.code), .code = err.code, .msg = err.message });
             return ClientError.ExecutionFailed;
         }
 
@@ -232,7 +234,7 @@ pub const ExecutorClient = struct {
         defer resp.deinit();
 
         if (resp.rpc_error) |err| {
-            log.err("start_stage_failed", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .code = err.code, .msg = err.message });
+            log.err("start_stage_failed", .{ .error_code = errorCodeForRpcCode(err.code), .code = err.code, .msg = err.message });
             return .{
                 .content = "",
                 .token_count = 0,
