@@ -73,10 +73,15 @@ fn zombiedLog(
     const line = if (logging.isPretty())
         logging.formatPretty(&line_buf, ts, level, scope_str, msg)
     else
+        // `msg` already arrives as a properly-quoted logfmt body
+        // (`event=<n> key=value …`) from `logging.scoped(.x).<level>`.
+        // Splice it as top-level keys instead of re-encoding inside
+        // `msg="…"` — that matches LOGGING_STANDARD §3 line 41 and
+        // keeps Loki/LogQL queries one-pass over the record.
         std.fmt.bufPrint(
             &line_buf,
-            "ts_ms={d} level={s} scope={s} msg={f}\n",
-            .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
+            "ts_ms={d} level={s} scope={s} {s}\n",
+            .{ ts, level_str, scope_str, msg },
         ) catch return;
     const stderr = std.fs.File.stderr();
     stderr.writeAll(line) catch {};
