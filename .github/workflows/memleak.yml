@@ -15,17 +15,11 @@ jobs:
   memleak:
     runs-on: ubuntu-latest
     container:
-      image: mirror.gcr.io/library/debian:trixie-slim
+      # Pre-baked: trixie-slim + Zig + valgrind. Trixie's valgrind groks
+      # Zig 0.15 DWARF; bookworm's misreads frames.
+      image: ghcr.io/usezombie/ci-zig-debian-trixie:0.15.2
       options: --security-opt seccomp=unconfined
     steps:
-      - name: Install valgrind and toolchain deps
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            valgrind git curl xz-utils ca-certificates make gpg libssl-dev
       - uses: actions/checkout@v6
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
       - name: Run memleak gate
         run: make memleak

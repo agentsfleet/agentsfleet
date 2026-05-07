@@ -19,13 +19,10 @@ jobs:
   test-integration-stub:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    container:
+      image: ghcr.io/usezombie/ci-zig-ubuntu:0.15.2
     steps:
       - uses: actions/checkout@v6
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-      - name: Install OpenSSL dev headers
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
       - name: Run stub-binary contract suite
         run: make test-integration-stub
 

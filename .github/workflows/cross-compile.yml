@@ -40,21 +40,12 @@ jobs:
     if: inputs.skip_build != 'true'
     runs-on: ubuntu-latest
     container:
-      image: mirror.gcr.io/library/alpine:3.21
+      # Pre-baked: alpine:3.21 + Zig + apk deps + x86_64-linux-gnu OpenSSL
+      # static-link symlinks already in place. Multi-arch image; the linux/amd64
+      # variant is auto-selected on the x86_64 runner.
+      image: ghcr.io/usezombie/ci-zig-alpine:0.15.2
     steps:
-      - name: Install build dependencies
-        run: |
-          apk add --no-cache git openssl-dev openssl-libs-static ca-certificates xz binutils tar
-          mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu
-          ln -sf /usr/lib/libssl.a    /usr/lib/x86_64-linux-gnu/libssl.a
-          ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a
-          ln -sf /usr/include/openssl /usr/include/x86_64-linux-gnu/openssl
-
       - uses: actions/checkout@v6
-
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
 
       - name: Compile zombied + zombied-executor (x86_64-linux)
         # Retry on transient GitHub CDN 5xx when fetching transitive zig deps.
@@ -104,48 +95,21 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Build aarch64-linux inside Alpine (musl-native static OpenSSL)
+        # Pre-baked image: ci-zig-alpine multi-arch manifest carries linux/arm64,
+        # so docker pulls the arm64 variant (no QEMU emulation needed on the
+        # native ubuntu-24.04-arm runner). Image already has openssl-libs-static,
+        # the aarch64-linux-gnu symlinks, and Zig 0.15.2 in /opt/zig on $PATH.
         run: |
           mkdir -p "$GITHUB_WORKSPACE/zig-out/bin"
           docker run --rm \
             --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE:/src:ro" \
             -v "$GITHUB_WORKSPACE/zig-out:/zig-out" \
-            mirror.gcr.io/library/alpine:3.21 \
+            ghcr.io/usezombie/ci-zig-alpine:0.15.2 \
             sh -c '
               set -e
-              apk add --no-cache openssl-dev openssl-libs-static ca-certificates xz wget binutils >/dev/null 2>&1
-              mkdir -p /usr/lib/aarch64-linux-gnu /usr/include/aarch64-linux-gnu
-              ln -sf /usr/lib/libssl.a    /usr/lib/aarch64-linux-gnu/libssl.a
-              ln -sf /usr/lib/libcrypto.a /usr/lib/aarch64-linux-gnu/libcrypto.a
-              ln -sf /usr/include/openssl /usr/include/aarch64-linux-gnu/openssl
               cp -a /src/. /build
               cd /build
-              echo "  fetching zig 0.15.2 for aarch64 (mach → hryx → ziglang fallback)..."
-              # M62_001: prefer pkg.machengine.org (Cloudflare R2 anycast,
-              # well-maintained by Mach team) — ziglang.org/download has
-              # had recurring CI hangs. SHA256 verification stays
-              # identical regardless of mirror; checksum is the trust
-              # anchor, not the URL.
-              for url in \
-                https://pkg.machengine.org/zig/zig-aarch64-linux-0.15.2.tar.xz \
-                https://zigmirror.hryx.net/zig/zig-aarch64-linux-0.15.2.tar.xz \
-                https://ziglang.org/download/0.15.2/zig-aarch64-linux-0.15.2.tar.xz \
-              ; do
-                echo "    trying $url"
-                if wget -q "$url" -O /tmp/zig.tar.xz; then
-                  if echo "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f  /tmp/zig.tar.xz" | sha256sum -c - >/dev/null 2>&1; then
-                    echo "    ✓ downloaded + verified from $url"
-                    break
-                  else
-                    echo "    ✗ checksum mismatch from $url; trying next"
-                    rm -f /tmp/zig.tar.xz
-                  fi
-                fi
-              done
-              [ -f /tmp/zig.tar.xz ] || { echo "FAIL: zig 0.15.2 download failed from every mirror"; exit 1; }
-              echo "958ed7d1e00d0ea76590d27666efbf7a932281b3d7ba0c6b01b0ff26498f667f  /tmp/zig.tar.xz" | sha256sum -c -
-              (cd /tmp && tar xf zig.tar.xz)
-              export PATH="/tmp/zig-aarch64-linux-0.15.2:$PATH"
               echo "  compiling zombied + zombied-executor (aarch64-linux)..."
               # Retry zig build up to 3x — transitive deps declared in
               # vendor/httpz/build.zig.zon are fetched from github.com
