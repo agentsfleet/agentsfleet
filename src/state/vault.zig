@@ -81,7 +81,12 @@ pub fn loadJson(
     const plaintext = try crypto_store.load(alloc, conn, workspace_id, key_name);
     defer alloc.free(plaintext);
 
-    return std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{});
+    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{});
+    if (parsed.value != .object) {
+        parsed.deinit();
+        return Error.NotAnObject;
+    }
+    return parsed;
 }
 
 /// Hard-delete the row at (workspace_id, key_name). Idempotent: `true` if a

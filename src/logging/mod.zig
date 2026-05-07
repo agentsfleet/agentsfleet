@@ -109,7 +109,10 @@ fn writeValue(w: anytype, value: anytype) !void {
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
         .int, .comptime_int => try w.print("{d}", .{value}),
-        .float, .comptime_float => try w.print("{e}", .{value}),
+        // Decimal (not scientific) for floats — operator dashboards / LogQL
+        // queries scrape `ratio=0\.\d+` patterns and the previous `{e}`
+        // emitted `7.56e-1` which silently broke them.
+        .float, .comptime_float => try w.print("{d}", .{value}),
         .bool => try w.writeAll(if (value) "true" else "false"),
         .pointer => |p| {
             if (p.size == .slice and p.child == u8) {

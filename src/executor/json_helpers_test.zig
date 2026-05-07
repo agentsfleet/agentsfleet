@@ -105,6 +105,25 @@ test "strArray returns empty for non-array input" {
     try std.testing.expectEqual(@as(usize, 0), out.len);
 }
 
+test "strArray cleans up partial allocations on OutOfMemory" {
+    // Trip the ArrayList's first backing-store allocation. errdefer
+    // out.deinit(alloc) fires (no-op since the list is still empty)
+    // and OutOfMemory bubbles to the caller. With fail_index=0 plus a
+    // non-empty array, no element can be appended so the error path is
+    // forced. Any partial-buffer leak would panic via the testing
+    // allocator at the end of the test.
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    const alloc = failing.allocator();
+
+    var arr: std.json.Array = .init(std.testing.allocator);
+    defer arr.deinit();
+    try arr.append(.{ .string = "a" });
+    try arr.append(.{ .string = "b" });
+
+    const result = strArray(alloc, .{ .array = arr });
+    try std.testing.expectError(error.OutOfMemory, result);
+}
+
 test "strArray drops non-string elements silently" {
     const alloc = std.testing.allocator;
     var arr: std.json.Array = .init(alloc);

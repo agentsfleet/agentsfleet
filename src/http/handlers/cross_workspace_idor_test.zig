@@ -26,6 +26,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const logging = @import("log");
 const auth_sessions = @import("../../auth/sessions.zig");
 const oidc = @import("../../auth/oidc.zig");
 const queue_redis = @import("../../queue/redis.zig");
@@ -105,10 +106,11 @@ const TestServer = struct {
 };
 
 fn serverThread(srv: *TestServer) void {
+    const log = logging.scoped(.idor_test);
     srv.server.listen() catch |e| {
         const code: u8 = if (e == error.AddressInUse) LISTEN_ADDRESS_IN_USE else LISTEN_OTHER_ERR;
         srv.listen_status.store(code, .seq_cst);
-        std.log.warn("idor listen failed error_code=UZ-TEST-001 err={s}", .{@errorName(e)});
+        log.warn("listen_failed", .{ .error_code = "UZ-TEST-001", .err = @errorName(e) });
     };
 }
 
