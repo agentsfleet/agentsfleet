@@ -114,12 +114,14 @@ Both events consent-gated through the existing telemetry helper — when consent
 
 `runCommand({ name, retry, instrument, errorMap, handler })` does five things:
 1. Records `cli_command_started` with the command name (already in cli.js).
-2. Invokes `handler(ctx)`; on success records `cli_command_finished` and returns its exit code.
+2. Constructs the per-invocation `CliContext` carrying `retryConfig` (see propagation note below) + the existing fields (`apiUrl`, `token`, `jsonMode`, `analyticsClient`, etc.) and invokes `handler(ctx)`; on success records `cli_command_finished` and returns its exit code.
 3. On `ApiError`: optionally remaps via `errorMap[err.code]` to a friendlier code/message; prints via the existing `printApiError`; emits `cli_error` with the (possibly remapped) code.
 4. On `TypeError("fetch failed")`: emits `API_UNREACHABLE` exactly as cli.js does today; same stderr line.
 5. On unknown: emits `UNEXPECTED`.
 
 The wrapper centralizes what cli.js inlines today; handler code stops needing to import `ApiError`, `printApiError`, or analytics helpers.
+
+**`runCommand.retry` propagation.** The retry config is carried on `CliContext.retryConfig` (single carrier, no env mutation). The existing `request()` helper in `program/http-client.js` reads `ctx.retryConfig` and forwards it to `apiRequestWithRetry({ retry: ctx.retryConfig })`. So `runCommand({ retry: false })` sets `ctx.retryConfig = { maxAttempts: 1 }` for the handler's scope; `runCommand({ retry: { maxAttempts: 5 } })` sets it to that object; default (`undefined`) lets `apiRequestWithRetry` apply its own default of 3. `apiRequest`/`apiRequestWithRetry`/`streamFetch` signatures stay unchanged — only `request()` (the handler-facing helper) reads the new context field. `ZOMBIE_NO_RETRY=1` still wins as the global escape hatch and short-circuits inside `apiRequestWithRetry` regardless of `ctx.retryConfig`.
 
 **Implementation default:** keep the wrapper synchronous-friendly (returns a Promise) and do not change the `process.exit` semantics — exit codes flow up through `cli.js` exactly as they do now.
 
@@ -141,10 +143,23 @@ apiRequestWithRetry(url: string, options: ApiRequestOptions & {
 runCommand<T = number>({
   name: string;                                  // command name for analytics
   handler: (ctx: CliContext) => Promise<T>;     // the actual command body
-  retry?: boolean | { maxAttempts: number };    // default: { maxAttempts: 3 }
+  retry?: boolean | { maxAttempts: number };    // default: undefined (lets apiRequestWithRetry apply its own default of 3)
   instrument?: boolean;                          // default: true (consent-gated)
   errorMap?: Record<string, { code: string; message: string }>;
 }): Promise<number>                              // exit code
+
+// CliContext carries the resolved retry config so request() can forward
+// it to apiRequestWithRetry without changing apiRequest's signature.
+type CliContext = {
+  apiUrl: string;
+  token?: string;
+  jsonMode: boolean;
+  analyticsClient?: AnalyticsClient;
+  // null means "use apiRequestWithRetry's default"; { maxAttempts: 1 } is
+  // how runCommand({ retry: false }) collapses retries for this command.
+  retryConfig: { maxAttempts: number; baseDelayMs?: number; capDelayMs?: number } | null;
+  // …existing fields preserved.
+};
 
 // zombiectl/src/lib/cli-analytics.js — additive
 trackHttpRequest(client, distinctId, info: HttpRequestInfo): void
@@ -196,6 +211,8 @@ Public consumer signatures (`request`, `streamFetch`, `apiRequest`, `ApiError`, 
 | `run_command_emits_started_finished` | Successful handler → analytics receives `cli_command_started` then `cli_command_finished` with the same correlation id. |
 | `run_command_errormap_remaps_code` | `errorMap = { UZ-VALIDATION-001: { code: "WORKSPACE_NAME_INVALID", message: "..." } }` → printed line uses the remapped values; analytics event uses the remapped code. |
 | `run_command_unknown_throw_surfaces_unexpected` | Handler throws `Error("kaboom")` → exit 1, JSON-mode payload uses `code=UNEXPECTED`. |
+| `run_command_retry_false_collapses_to_one_attempt` | `runCommand({ retry: false, handler })` populates `ctx.retryConfig = { maxAttempts: 1 }`; handler's `request()` call hits a 503; one fetch is issued, no retry events, ApiError surfaces. Pins the propagation contract. |
+| `run_command_retry_object_propagates_max_attempts` | `runCommand({ retry: { maxAttempts: 5 }, handler })` populates `ctx.retryConfig.maxAttempts === 5`; five fetch calls are issued against a sustained 503 fixture before the ApiError surfaces. |
 | `run_command_api_unreachable_passthrough` | Handler throws `TypeError("fetch failed")` → stderr line matches the existing `API_UNREACHABLE` template character-for-character. |
 
 Regression set: every existing zombiectl unit test continues to pass — the migration to `runCommand` must not change exit codes or printed lines for any current command.

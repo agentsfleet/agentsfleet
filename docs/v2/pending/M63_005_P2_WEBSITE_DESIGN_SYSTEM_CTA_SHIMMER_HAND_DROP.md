@@ -92,7 +92,9 @@ Add a `<defs><linearGradient id={…}>` to `ZombieHandIcon` with two stops (`var
 
 ### §3 — Drop-overflow on hover
 
-Define `z-icon-drop-overflow` as the existing `z-icon-drop` keyframe extended: same start (translateY(-110%) opacity 0), same easing (`cubic-bezier(0.32, 0.72, 0, 1)`), but the end frame translates to `translateY(200%)` (well past the button's natural bottom) at opacity 0.4 — leaving the hand partly visible below the pill. The settle is held with `forwards` so the hand stays parked there until the hover ends; on hover-out the animation reverses (`backwards` again, restoring the hand to its slot).
+Define `z-icon-drop-overflow` as the existing `z-icon-drop` keyframe extended: same start (translateY(-110%) opacity 0), same easing (`cubic-bezier(0.32, 0.72, 0, 1)`), but the end frame translates to `translateY(200%)` (well past the button's natural bottom) at opacity 0.45 — leaving the hand partly visible below the pill. The settle is held with `forwards` so the hand stays parked there until the hover ends.
+
+**Hover-out is a snap-back, not a smooth reverse.** When the hover/focus class detaches, the animation class detaches with it; the element returns to its resting state in the same frame. We deliberately do not run a mirrored reverse keyframe — Tailwind's hover utility already removes the class on `pointerleave`, so a "smooth reverse" would require either a separate hover-out keyframe wired by JS or a CSS `transition` on transform/opacity that fights the animation curve. Both add complexity without earning real polish (the hand had already drifted past the pill bottom at low opacity; the snap reads as the cue ending, not as a missed reversal). Tests assert the resting state on `pointerleave` — not a smooth motion path.
 
 `.header-mission-control` and `.header-mission-control-icon` get `overflow: visible` so the dropped hand isn't clipped. The hand's z-index stays below the label so the gradient pill text is never occluded.
 
@@ -137,15 +139,16 @@ Adding `"drop-overflow"` to the union is the new export surface. Consumers that 
 
 | Test | Asserts |
 |------|---------|
-| `cta_shimmer_attaches_animation` | `.header-mission-control` has `animation-name: z-cta-shimmer` and a finite duration. |
-| `cta_shimmer_pauses_on_hover` | After programmatic `:hover`, computed `animation-play-state` resolves to `paused`. |
-| `cta_shimmer_static_under_reduced_motion` | Under emulated `prefers-reduced-motion: reduce`, computed animation is `none` and the static fallback gradient is visible. |
+| `cta_shimmer_class_wired` (unit, JSDOM) | The CTA element has the class hook the shimmer rule binds to (`header-mission-control`); JSDOM does not parse external stylesheets so this is the only enforceable class-presence claim at unit level. The actual `animation-name`/`animation-duration` are pinned by the Playwright test below. |
+| `cta_shimmer_animation_runs_in_browser` (Playwright) | On a real Chromium page render, computed `animation-name` is `z-cta-shimmer` and `animation-duration` is non-zero on `.header-mission-control`. |
+| `cta_shimmer_pauses_on_hover` (Playwright) | After hovering the CTA in Chromium, computed `animation-play-state` resolves to `paused`. |
+| `cta_shimmer_static_under_reduced_motion` (Playwright) | With `prefers-reduced-motion: reduce` (`page.emulateMedia({ reducedMotion: 'reduce' })`), computed `animation-name` is `none` and the static fallback `linear-gradient(135deg, ...)` background is applied. |
 | `hand_gradient_fill_paints_paths` | The palm + each finger + thumb path's `fill` attribute resolves to `url(#…)` referencing a `<linearGradient>` with two stops (orange 0%, cyan 100%). |
 | `hand_gradient_id_unique_across_renders` | Mounting two `ZombieHandIcon` instances yields two `<linearGradient>` defs with different ids. |
 | `animated_icon_drop_overflow_class` | `<AnimatedIcon animation="drop-overflow">` produces a class that maps to `--animate-drop-overflow`. |
 | `cta_drop_overflow_clears_button_bottom` | Playwright: hover the CTA, assert the hand SVG's bounding rect's `top` is below `.header-mission-control`'s `bottom` after the animation settles. |
 | `cta_drop_overflow_partially_visible` | Playwright: post-settle, the hand has computed `opacity > 0` and is in the viewport (not clipped to zero). |
-| `cta_drop_overflow_reverses_on_hover_out` | Playwright: hover-then-leave, the hand returns to the slot within the animation duration. |
+| `cta_drop_overflow_snaps_back_on_hover_out` | Playwright: hover the CTA, wait for settle, dispatch `pointerleave`, then on the next animation frame assert the hand SVG's bounding rect matches the resting position (snap-back, not smooth reverse — see §3). |
 | `app_cta_uses_drop_overflow` | Unit: `App.test.tsx` finds the CTA AnimatedIcon and asserts `animation === "drop-overflow"`. |
 
 Regression: existing CTA tests (`header-mission-control` rendering, `Try usezombie` label visibility, focus-visible outline, mobile collapse) must keep passing.
