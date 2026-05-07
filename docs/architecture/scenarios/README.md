@@ -8,7 +8,7 @@ All three scenarios follow the same persona — **John Doe** — across his jour
 |---|---|---|
 | [`01_default_install.md`](./01_default_install.md) | Cold install on platform-managed (Fireworks + Kimi K2.6) | Wedge demo: zero to first webhook diagnosis in <10 min. Doctor returns the synth-default `tenant_provider` block; install-skill writes resolved values into frontmatter. |
 | [`02_byok.md`](./02_byok.md) | Switches to BYOK (Fireworks + Kimi 2.6) | Tenant-scoped provider flip; cap resolves into `tenant_providers` at `tenant provider set` time; worker overlays sentinels at trigger time; api_key never leaves the resolver-to-executor path. |
-| [`03_balance_gate.md`](./03_balance_gate.md) | $10 credit grant drains across both postures, then exhausts | Credit pool drains under both postures; same gate code path; posture-dependent receive + stage deductions; gate trips at zero with a dashboard-pointer UX. |
+| [`03_balance_gate.md`](./03_balance_gate.md) | $5 credit grant drains across both postures, then exhausts | Credit pool drains under both postures; same gate code path; posture-dependent receive + stage deductions; gate trips at zero with a dashboard-pointer UX. |
 
 ## Cross-cutting decisions these scenarios encode
 

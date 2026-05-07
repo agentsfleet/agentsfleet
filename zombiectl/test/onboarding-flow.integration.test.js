@@ -7,6 +7,10 @@ import { loadCredentials, loadWorkspaces } from "../src/lib/state.js";
 import { bufferStream, withFreshStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
+const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+const DEFAULT_WORKSPACE_ID = "ws_signup_default";
+const DEFAULT_WORKSPACE_NAME = "jolly-harbor-482";
+
 const completeLoginRoutes = (token = "fake-jwt-token") => ({
   "POST /v1/auth/sessions": () => jsonResponse(201, {
     session_id: "sess_onboard",
@@ -46,6 +50,94 @@ describe("first-time user onboarding", () => {
         // Outbound call ledger: POST then ≥1 GET poll.
         expect(calls[0]).toMatchObject({ method: "POST", path: "/v1/auth/sessions" });
         expect(calls[1]).toMatchObject({ method: "GET", path: "/v1/auth/sessions/sess_onboard" });
+      });
+    });
+  });
+
+  test("login from a fresh state dir selects the signup-created workspace", async () => {
+    await withFreshStateDir(async () => {
+      const routes = {
+        ...completeLoginRoutes("jwt_with_workspace"),
+        [`GET ${TENANT_WORKSPACES_PATH}`]: (_req) => jsonResponse(200, {
+          items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, repo_url: null, created_at: 1234 }],
+          total: 1,
+        }),
+      };
+      await withMockApi(routes, async (apiUrl, calls) => {
+        const out = bufferStream();
+        const err = bufferStream();
+        const code = await runCli(
+          ["login", "--no-open", "--no-input", "--timeout-sec", "5", "--poll-ms", "50"],
+          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        expect(out.read()).toContain("login complete");
+
+        const workspaces = await loadWorkspaces();
+        expect(workspaces.current_workspace_id).toBe(DEFAULT_WORKSPACE_ID);
+        expect(workspaces.items).toEqual([
+          { workspace_id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, repo_url: null, created_at: 1234 },
+        ]);
+        const workspaceFetch = calls.find((call) => call.path === TENANT_WORKSPACES_PATH);
+        expect(workspaceFetch.headers.authorization).toBe("Bearer jwt_with_workspace");
+      });
+    });
+  });
+
+  test("login on a fresh state dir leaves doctor green end-to-end", async () => {
+    await withFreshStateDir(async () => {
+      const routes = {
+        ...completeLoginRoutes("jwt_doctor_e2e"),
+        [`GET ${TENANT_WORKSPACES_PATH}`]: (_req) => jsonResponse(200, {
+          items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, repo_url: null, created_at: 1234 }],
+          total: 1,
+        }),
+        "GET /healthz": () => jsonResponse(200, { status: "ok" }),
+        [`GET /v1/workspaces/${DEFAULT_WORKSPACE_ID}/zombies`]: () => jsonResponse(200, { items: [], total: 0 }),
+      };
+      await withMockApi(routes, async (apiUrl) => {
+        const env = { ZOMBIE_API_URL: apiUrl };
+        const loginCode = await runCli(
+          ["login", "--no-open", "--no-input", "--timeout-sec", "5", "--poll-ms", "50"],
+          { stdout: bufferStream().stream, stderr: bufferStream().stream, env },
+        );
+        expect(loginCode).toBe(0);
+
+        const out = bufferStream();
+        const err = bufferStream();
+        const doctorCode = await runCli(["doctor", "--json"], {
+          stdout: out.stream, stderr: err.stream, env,
+        });
+        expect(doctorCode).toBe(0);
+        const report = JSON.parse(out.read());
+        expect(report.ok).toBe(true);
+        const wsCheck = report.checks.find((c) => c.name === "workspace_selected");
+        expect(wsCheck).toMatchObject({ ok: true, detail: DEFAULT_WORKSPACE_ID });
+        const bindingCheck = report.checks.find((c) => c.name === "workspace_binding_valid");
+        expect(bindingCheck.ok).toBe(true);
+      });
+    });
+  });
+
+  test("login on a fresh state dir does not break when the tenant workspace list is unavailable", async () => {
+    await withFreshStateDir(async () => {
+      // No GET /v1/tenants/me/workspaces route — the mock will 404 and the
+      // hydration step must swallow the failure so login still succeeds and
+      // credentials are persisted.
+      await withMockApi(completeLoginRoutes("jwt_resilient"), async (apiUrl) => {
+        const out = bufferStream();
+        const code = await runCli(
+          ["login", "--no-open", "--no-input", "--timeout-sec", "5", "--poll-ms", "50"],
+          { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
+        );
+        expect(code).toBe(0);
+        expect(out.read()).toContain("login complete");
+
+        const creds = await loadCredentials();
+        expect(creds.token).toBe("jwt_resilient");
+        const workspaces = await loadWorkspaces();
+        expect(workspaces.current_workspace_id).toBeNull();
+        expect(workspaces.items).toEqual([]);
       });
     });
   });

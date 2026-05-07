@@ -2,6 +2,50 @@ import { createCoreOpsHandlers } from "./core-ops.js";
 import { commandWorkspace as commandWorkspaceModule } from "./workspace.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 
+const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+
+function normalizeTenantWorkspace(item, fallbackCreatedAt) {
+  if (!item || typeof item !== "object") return null;
+  const workspaceId = typeof item.workspace_id === "string"
+    ? item.workspace_id
+    : typeof item.id === "string"
+      ? item.id
+      : null;
+  if (!workspaceId) return null;
+  return {
+    workspace_id: workspaceId,
+    name: typeof item.name === "string" ? item.name : null,
+    repo_url: typeof item.repo_url === "string" ? item.repo_url : null,
+    created_at: Number.isFinite(item.created_at) ? item.created_at : fallbackCreatedAt,
+  };
+}
+
+async function hydrateWorkspacesAfterLogin(ctx, workspaces, deps) {
+  const { apiHeaders, request, saveWorkspaces } = deps;
+  let response = null;
+  try {
+    response = await request(ctx, TENANT_WORKSPACES_PATH, {
+      method: "GET",
+      headers: apiHeaders(ctx),
+    });
+  } catch {
+    return null;
+  }
+  const fallbackCreatedAt = Date.now();
+  const items = (Array.isArray(response?.items) ? response.items : [])
+    .map((item) => normalizeTenantWorkspace(item, fallbackCreatedAt))
+    .filter(Boolean);
+  if (items.length === 0) return null;
+
+  const existingCurrent = items.find((item) => item.workspace_id === workspaces.current_workspace_id);
+  const current = existingCurrent?.workspace_id ?? items[0].workspace_id;
+  const next = { current_workspace_id: current, items };
+  workspaces.current_workspace_id = next.current_workspace_id;
+  workspaces.items = next.items;
+  await saveWorkspaces(next);
+  return next;
+}
+
 function createCoreHandlers(ctx, workspaces, deps) {
   const {
     clearCredentials,
@@ -13,6 +57,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
     printSection = () => {},
     request,
     saveCredentials,
+    saveWorkspaces,
     ui,
     writeLine,
     apiHeaders,
@@ -83,6 +128,12 @@ function createCoreHandlers(ctx, workspaces, deps) {
             api_url: ctx.apiUrl,
           };
           await saveCredentials(saved);
+          ctx.token = last.token;
+          await hydrateWorkspacesAfterLogin(ctx, workspaces, {
+            apiHeaders,
+            request,
+            saveWorkspaces,
+          });
 
           const result = {
             status: "complete",
