@@ -127,7 +127,7 @@ export default function Agents() {
         title="Install Zombiectl"
         command="npm install -g @usezombie/zombiectl"
         actions={[
-          { label: "Install platform-ops", to: DOCS_QUICKSTART_URL, variant: "default" },
+          { label: "Start an Agent", to: DOCS_QUICKSTART_URL, variant: "default" },
           { label: "Read the docs", to: DOCS_URL, variant: "ghost" },
           { label: "Setup your personal dashboard", to: APP_BASE_URL, variant: "double-border" },
         ]}

@@ -17,7 +17,7 @@ test.describe("Agents page (/agents)", () => {
   });
 
   test("renders install block action buttons", async ({ page }) => {
-    await expect(page.getByRole("link", { name: "Install platform-ops" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /start an agent/i })).toBeVisible();
     await expect(page.getByRole("link", { name: "Read the docs" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Setup your personal dashboard" })).toBeVisible();
   });

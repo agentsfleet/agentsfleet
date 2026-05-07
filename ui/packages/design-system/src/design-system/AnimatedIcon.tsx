@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { cn } from "../utils";
 
-type Animation = "wave" | "wiggle";
+type Animation = "wave" | "wiggle" | "drop";
 type Trigger = "self-hover" | "parent-hover" | "always";
 
 type AnimatedIconProps = {
@@ -24,6 +24,7 @@ type AnimatedIconProps = {
 const animateClass: Record<Animation, string> = {
   wave: "animate-wave",
   wiggle: "animate-wiggle",
+  drop: "animate-drop",
 };
 
 function triggerClass(trigger: Trigger, animation: Animation): string {

@@ -50,7 +50,7 @@ export default function Home() {
           command="npm install -g @usezombie/zombiectl"
           actions={[
             { label: "Read the docs", to: DOCS_URL, variant: "ghost" },
-            { label: "Install platform-ops", to: DOCS_QUICKSTART_URL, variant: "double-border" },
+            { label: "Start an Agent", to: DOCS_QUICKSTART_URL, variant: "double-border" },
           ]}
         />
       </div>

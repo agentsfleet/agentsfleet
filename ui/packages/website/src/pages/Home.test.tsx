@@ -13,22 +13,21 @@ function renderHome() {
 }
 
 describe("Home", () => {
-  it("renders the hero headline with two lines", () => {
+  it("renders the hero headline as a single punchy claim", () => {
     renderHome();
     const h1 = screen.getByRole("heading", { level: 1 });
-    expect(h1).toHaveTextContent(/operational knowledge isn't executable/i);
-    expect(h1).toHaveTextContent(/when a deploy fails, teams guess/i);
+    expect(h1).toHaveTextContent(/agents that wake on every event/i);
   });
 
   it("renders the hero kicker description", () => {
     renderHome();
-    expect(screen.getByText(/your deploy fails at 3am/i)).toBeInTheDocument();
+    expect(screen.getByText(/webhook wakes the zombie agent/i)).toBeInTheDocument();
     expect(screen.getByText(/replayable event log/i)).toBeInTheDocument();
   });
 
   it("renders primary docs CTA with quickstart link", () => {
     renderHome();
-    const ctas = screen.getAllByRole("link", { name: /install platform-ops/i });
+    const ctas = screen.getAllByRole("link", { name: /start an agent/i });
     expect(ctas.length).toBeGreaterThanOrEqual(1);
     expect(ctas[0]).toHaveAttribute("href", DOCS_QUICKSTART_URL);
   });
