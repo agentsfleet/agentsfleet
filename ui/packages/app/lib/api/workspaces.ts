@@ -3,7 +3,6 @@ import { request } from "./client";
 export type TenantWorkspace = {
   id: string;
   name: string | null;
-  repo_url: string | null;
   created_at: number;
 };
 

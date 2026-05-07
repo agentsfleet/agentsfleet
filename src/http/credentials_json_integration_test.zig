@@ -22,7 +22,6 @@ const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WS_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const TEST_REPO_URL = "https://github.com/test/credentials_json";
 
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
@@ -61,10 +60,10 @@ fn setupSeedData(conn: *pg.Conn) !void {
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, $3, 'main', false, 1, $4, $4)
+        \\INSERT INTO workspaces (workspace_id, tenant_id, default_branch, paused, version, created_at, updated_at)
+        \\VALUES ($1, $2, 'main', false, 1, $3, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
-    , .{ TEST_WS_ID, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
+    , .{ TEST_WS_ID, TEST_TENANT_ID, now_ms });
 }
 
 fn cleanupRows(conn: *pg.Conn) void {

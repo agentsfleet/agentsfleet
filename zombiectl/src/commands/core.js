@@ -15,7 +15,6 @@ function normalizeTenantWorkspace(item, fallbackCreatedAt) {
   return {
     workspace_id: workspaceId,
     name: typeof item.name === "string" ? item.name : null,
-    repo_url: typeof item.repo_url === "string" ? item.repo_url : null,
     created_at: Number.isFinite(item.created_at) ? item.created_at : fallbackCreatedAt,
   };
 }

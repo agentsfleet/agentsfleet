@@ -74,8 +74,8 @@ test("workspace use <id> writes current_workspace_id to state", async () => {
     await saveWorkspaces({
       current_workspace_id: "ws_a",
       items: [
-        { workspace_id: "ws_a", repo_url: "https://example.com/a", default_branch: "main", created_at: 1 },
-        { workspace_id: "ws_b", repo_url: "https://example.com/b", default_branch: "main", created_at: 2 },
+        { workspace_id: "ws_a", created_at: 1 },
+        { workspace_id: "ws_b", created_at: 2 },
       ],
     });
     const out = bufferStream();
@@ -96,7 +96,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "ws_a",
-      items: [{ workspace_id: "ws_a", repo_url: "r", default_branch: "main", created_at: 1 }],
+      items: [{ workspace_id: "ws_a", created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -116,7 +116,7 @@ test("workspace use --json emits {active: <id>}", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: null,
-      items: [{ workspace_id: "ws_a", repo_url: "r", default_branch: "main", created_at: 1 }],
+      items: [{ workspace_id: "ws_a", created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -224,7 +224,7 @@ test("zombie list calls the paginated endpoint and prints rows", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "ws_a",
-      items: [{ workspace_id: "ws_a", repo_url: "r", default_branch: "main", created_at: 1 }],
+      items: [{ workspace_id: "ws_a", created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -265,7 +265,7 @@ test("zombie list --json returns the raw envelope incl. cursor", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "ws_a",
-      items: [{ workspace_id: "ws_a", repo_url: "r", default_branch: "main", created_at: 1 }],
+      items: [{ workspace_id: "ws_a", created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -291,8 +291,8 @@ test("zombie list honors --workspace-id override over current_workspace_id", asy
     await saveWorkspaces({
       current_workspace_id: "ws_a",
       items: [
-        { workspace_id: "ws_a", repo_url: "r", default_branch: "main", created_at: 1 },
-        { workspace_id: "ws_b", repo_url: "r2", default_branch: "main", created_at: 2 },
+        { workspace_id: "ws_a", created_at: 1 },
+        { workspace_id: "ws_b", created_at: 2 },
       ],
     });
     const out = bufferStream();

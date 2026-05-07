@@ -98,7 +98,7 @@ describe("commandLogin", () => {
     expect(seenPaths).toContain(TENANT_WORKSPACES_PATH);
     expect(savedWorkspaces.current_workspace_id).toBe(DEFAULT_WORKSPACE_ID);
     expect(savedWorkspaces.items).toEqual([
-      { workspace_id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, repo_url: null, created_at: 1234 },
+      { workspace_id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, created_at: 1234 },
     ]);
   });
 
@@ -128,8 +128,8 @@ describe("commandLogin", () => {
   test("hydration preserves a pre-existing current_workspace_id when the server returns it", async () => {
     let saved = null;
     const items = [
-      { id: "ws_one", name: "one", repo_url: null, created_at: 100 },
-      { id: "ws_two", name: "two", repo_url: null, created_at: 200 },
+      { id: "ws_one", name: "one", created_at: 100 },
+      { id: "ws_two", name: "two", created_at: 200 },
     ];
     const deps = makeDeps({
       request: async (_ctx, reqPath) => {

@@ -29,7 +29,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 1. `zombiectl/src/commands/core.js` — `commandLogin` after `saveCredentials` is the new hydration insertion point.
 2. `zombiectl/src/commands/core-ops.js` — `commandDoctor` reads `workspaces.current_workspace_id`; this is the visible symptom of a missing local workspace selection.
 3. `zombiectl/src/lib/state.js` — `loadWorkspaces` / `saveWorkspaces` shape (`{current_workspace_id, items:[{workspace_id, name, ...}]}`).
-4. `src/http/handlers/tenant_workspaces.zig` — server side. Returns `{items:[{id, name, repo_url, created_at}], total}`. The CLI must accept `id` (server) and store as `workspace_id` (local convention).
+4. `src/http/handlers/tenant_workspaces.zig` — server side. Returns `{items:[{id, name, created_at}], total}`. The CLI must accept `id` (server) and store as `workspace_id` (local convention). (Initial draft of this spec mentioned a `repo_url` field on the response — it was a legacy column on `core.workspaces` and got removed in the same PR; see follow-up commit.)
 5. `src/state/signup_bootstrap.zig` — proof a default workspace already exists at signup time (lines 140-176 — single transaction creates tenant/user/membership/workspace/billing).
 6. `src/state/tenant_billing.zig` — `STARTER_GRANT_CENTS = 500`. Source of truth for the doc fix.
 
@@ -49,7 +49,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - Do NOT re-issue `GET /v1/tenants/me/workspaces` on every command. Hydration belongs in `commandLogin` (one-shot) — every other command keeps reading the persisted `workspaces.json`.
 - Do NOT block the `login` exit code on hydration failure. Login returns 0 if credentials persisted; hydration is best-effort. The user can still run `workspace add` if the server was unreachable for the workspace list.
 - Do NOT rewrite `done/` historical specs to reflect the $5 grant — they are immutable historical record. Only live architecture docs flip.
-- Do NOT thread `repo_url` into `workspace add`'s local-cache shape just for symmetry. Hydrate path keeps the field; legacy `workspace add` path stays minimal — the file format is a tagged union, not a schema.
+- Do NOT keep `repo_url` on the workspace response or local cache shape. The column was a leftover from the days when workspace creation was 1:1 with a GitHub repo; the binding step has long since moved out of creation. Removed from schema, handler struct/query, fixtures, CLI normalizer, and UI types in the same PR.
 
 ---
 
@@ -88,7 +88,7 @@ Insert `await hydrateWorkspacesAfterLogin(ctx, workspaces, deps)` after `await s
 The helper:
 
 - Calls `GET /v1/tenants/me/workspaces`, returns `null` on any thrown error.
-- Filters response items through `normalizeTenantWorkspace` — accepts either `id` (server shape) or `workspace_id` (defensive); preserves `name`, `repo_url`, `created_at` (with `Date.now()` fallback only if the server omits it).
+- Filters response items through `normalizeTenantWorkspace` — accepts either `id` (server shape) or `workspace_id` (defensive); preserves `name` and `created_at` (with `Date.now()` fallback only if the server omits `created_at`).
 - Picks `current_workspace_id` = the existing local selection if it appears in the server response, else `items[0].workspace_id`.
 - No-op if `items.length === 0` (no save). Empty list means signup is mid-flight or tenant context is broken; the customer's `workspace add` path stays as documented recovery.
 
@@ -117,7 +117,7 @@ Two `docs/architecture/billing_and_byok.md` prose lines (§3 and §4 paragraphs)
 
 ## Interfaces
 
-No new public interface. The CLI continues to consume `GET /v1/tenants/me/workspaces` (existing `tenant_workspaces.zig` handler, no body shape change). Persisted `workspaces.json` keeps its schema; hydration entries gain `repo_url` (nullable) but readers tolerate the extra field today (see `commandWorkspace`).
+The CLI consumes `GET /v1/tenants/me/workspaces`. Same handler, but the response item shape contracted in this PR — `{id, name, created_at}` (was `{id, name, repo_url, created_at}` before; `repo_url` retired with the column). Persisted `workspaces.json` keeps its existing `{workspace_id, name, created_at}` shape; the OpenAPI spec at `public/openapi/paths/tenant-workspaces.yaml` is in agreement with the handler post-change.
 
 ---
 

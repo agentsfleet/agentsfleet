@@ -43,8 +43,8 @@ describe("commandWorkspace", () => {
       printTable: (_s, _cols, rows) => { tableRows = rows; },
     });
     const items = [
-      { workspace_id: WS_ID, repo_url: "https://github.com/acme/repo" },
-      { workspace_id: WS_ID_2, repo_url: "https://github.com/acme/other" },
+      { workspace_id: WS_ID },
+      { workspace_id: WS_ID_2 },
     ];
     const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: WS_ID, items };
@@ -74,7 +74,7 @@ describe("commandWorkspace", () => {
     const deps = makeDeps({
       saveWorkspaces: async (ws) => { savedWs = ws; },
     });
-    const items = [{ workspace_id: WS_ID, repo_url: "https://github.com/acme/repo" }];
+    const items = [{ workspace_id: WS_ID }];
     const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: WS_ID, items: [...items] };
     const core = createCoreHandlers(ctx, workspaces, deps);
@@ -89,8 +89,8 @@ describe("commandWorkspace", () => {
       saveWorkspaces: async (ws) => { savedWs = ws; },
     });
     const items = [
-      { workspace_id: WS_ID, repo_url: "https://github.com/acme/repo" },
-      { workspace_id: WS_ID_2, repo_url: "https://github.com/acme/other" },
+      { workspace_id: WS_ID },
+      { workspace_id: WS_ID_2 },
     ];
     const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: WS_ID, items: [...items] };

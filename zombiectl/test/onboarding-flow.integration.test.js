@@ -59,7 +59,7 @@ describe("first-time user onboarding", () => {
       const routes = {
         ...completeLoginRoutes("jwt_with_workspace"),
         [`GET ${TENANT_WORKSPACES_PATH}`]: (_req) => jsonResponse(200, {
-          items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, repo_url: null, created_at: 1234 }],
+          items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, created_at: 1234 }],
           total: 1,
         }),
       };
@@ -76,7 +76,7 @@ describe("first-time user onboarding", () => {
         const workspaces = await loadWorkspaces();
         expect(workspaces.current_workspace_id).toBe(DEFAULT_WORKSPACE_ID);
         expect(workspaces.items).toEqual([
-          { workspace_id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, repo_url: null, created_at: 1234 },
+          { workspace_id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, created_at: 1234 },
         ]);
         const workspaceFetch = calls.find((call) => call.path === TENANT_WORKSPACES_PATH);
         expect(workspaceFetch.headers.authorization).toBe("Bearer jwt_with_workspace");
@@ -89,7 +89,7 @@ describe("first-time user onboarding", () => {
       const routes = {
         ...completeLoginRoutes("jwt_doctor_e2e"),
         [`GET ${TENANT_WORKSPACES_PATH}`]: (_req) => jsonResponse(200, {
-          items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, repo_url: null, created_at: 1234 }],
+          items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, created_at: 1234 }],
           total: 1,
         }),
         "GET /healthz": () => jsonResponse(200, { status: "ok" }),

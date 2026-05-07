@@ -27,11 +27,10 @@ CREATE TABLE IF NOT EXISTS core.workspaces (
     -- name; uniqueness is enforced per-tenant via the partial index below, so
     -- signup bootstrap can rely on ON CONFLICT for collision retry.
     name                      TEXT,
-    -- repo_url + default_branch were required when workspace creation was
-    -- 1:1 with a GitHub repo. The binding step is moving out of creation;
-    -- new workspaces leave both NULL until a repo is attached. Existing
-    -- fixtures and signup_bootstrap may still write them.
-    repo_url                  TEXT,
+    -- default_branch was required when workspace creation was 1:1 with a
+    -- GitHub repo. The binding step is moving out of creation; new
+    -- workspaces leave it NULL until a repo is attached. Fixtures still
+    -- INSERT NULL for parity.
     default_branch            TEXT,
     paused                    BOOLEAN NOT NULL DEFAULT FALSE,
     paused_reason             TEXT,
