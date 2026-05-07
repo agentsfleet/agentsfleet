@@ -21,28 +21,27 @@ function normalizeTenantWorkspace(item, fallbackCreatedAt) {
 
 async function hydrateWorkspacesAfterLogin(ctx, workspaces, deps) {
   const { apiHeaders, request, saveWorkspaces } = deps;
-  let response = null;
   try {
-    response = await request(ctx, TENANT_WORKSPACES_PATH, {
+    const response = await request(ctx, TENANT_WORKSPACES_PATH, {
       method: "GET",
       headers: apiHeaders(ctx),
     });
+    const fallbackCreatedAt = Date.now();
+    const items = (Array.isArray(response?.items) ? response.items : [])
+      .map((item) => normalizeTenantWorkspace(item, fallbackCreatedAt))
+      .filter(Boolean);
+    if (items.length === 0) return null;
+
+    const existingCurrent = items.find((item) => item.workspace_id === workspaces.current_workspace_id);
+    const current = existingCurrent?.workspace_id ?? items[0].workspace_id;
+    const next = { current_workspace_id: current, items };
+    workspaces.current_workspace_id = next.current_workspace_id;
+    workspaces.items = next.items;
+    await saveWorkspaces(next);
+    return next;
   } catch {
     return null;
   }
-  const fallbackCreatedAt = Date.now();
-  const items = (Array.isArray(response?.items) ? response.items : [])
-    .map((item) => normalizeTenantWorkspace(item, fallbackCreatedAt))
-    .filter(Boolean);
-  if (items.length === 0) return null;
-
-  const existingCurrent = items.find((item) => item.workspace_id === workspaces.current_workspace_id);
-  const current = existingCurrent?.workspace_id ?? items[0].workspace_id;
-  const next = { current_workspace_id: current, items };
-  workspaces.current_workspace_id = next.current_workspace_id;
-  workspaces.items = next.items;
-  await saveWorkspaces(next);
-  return next;
 }
 
 function createCoreHandlers(ctx, workspaces, deps) {

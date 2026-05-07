@@ -181,6 +181,38 @@ describe("commandLogin", () => {
     expect(workspaces.current_workspace_id).toBeNull();
   });
 
+  test("successful login exits 0 when saveWorkspaces throws (disk full / permissions)", async () => {
+    let savedToken = null;
+    const deps = makeDeps({
+      request: async (_ctx, reqPath) => {
+        if (reqPath === "/v1/auth/sessions") {
+          return { session_id: "sess_disk_full", login_url: "https://login.test" };
+        }
+        if (reqPath === "/v1/auth/sessions/sess_disk_full") {
+          return { status: "complete", token: LOGIN_TOKEN };
+        }
+        if (reqPath === TENANT_WORKSPACES_PATH) {
+          return {
+            items: [
+              { workspace_id: "01HXXXXXXXXXXXXXXXXXXXXXXX", name: "default", created_at: 1_700_000_000_000 },
+            ],
+          };
+        }
+        throw new Error(`unexpected path: ${reqPath}`);
+      },
+      saveCredentials: async (creds) => { savedToken = creds.token; },
+      saveWorkspaces: async () => { throw new Error("ENOSPC: no space left on device"); },
+    });
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, noOpen: true, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+
+    const code = await core.commandLogin([]);
+
+    expect(code).toBe(0);
+    expect(savedToken).toBe(LOGIN_TOKEN);
+  });
+
   test("expired session returns 1", async () => {
     const err = makeBufferStream();
     const deps = makeDeps({
