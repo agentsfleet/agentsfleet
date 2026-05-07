@@ -13,7 +13,11 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const logging = @import("log");
 const crypto_store = @import("../secrets/crypto_store.zig");
+const error_codes = @import("../errors/error_registry.zig");
+
+const log = logging.scoped(.vault);
 
 pub const Error = error{
     /// Caller passed a non-object JSON value (string/array/number/bool/null).
@@ -81,7 +85,20 @@ pub fn loadJson(
     const plaintext = try crypto_store.load(alloc, conn, workspace_id, key_name);
     defer alloc.free(plaintext);
 
-    const parsed = try std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{});
+    const parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch |err| {
+        // AEAD + validateObject make this unreachable for rows written via
+        // storeJson. storeJsonPlaintext skips the shape gate by design, so a
+        // malformed caller can still land bytes here. Surface workspace +
+        // key context so the operator can pinpoint the corrupt row instead
+        // of staring at a bare error.InvalidCharacter.
+        log.err("vault_load_parse_failed", .{
+            .workspace_id = workspace_id,
+            .key_name = key_name,
+            .err = @errorName(err),
+            .error_code = error_codes.ERR_VAULT_DATA_INVALID,
+        });
+        return err;
+    };
     if (parsed.value != .object) {
         parsed.deinit();
         return Error.NotAnObject;

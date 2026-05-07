@@ -9,10 +9,8 @@ const std = @import("std");
 const PrettyMode = enum { off, on };
 
 var pretty_mode: PrettyMode = .off;
-var pretty_initialized: bool = false;
 
 pub fn initPrettyMode(alloc: std.mem.Allocator) void {
-    pretty_initialized = true;
     if (std.process.getEnvVarOwned(alloc, "ZOMBIE_LOG_PRETTY")) |val| {
         defer alloc.free(val);
         if (std.mem.eql(u8, val, "1") or std.mem.eql(u8, val, "true")) {

@@ -57,6 +57,41 @@ pub inline fn scoped(comptime scope: @TypeOf(.enum_literal)) type {
     };
 }
 
+// Reserved tail marker. On overflow we still emit the partial line plus
+// this suffix so operators see *that* truncation happened — `error_code=`
+// fields silently dropped past the 4 KiB cap would otherwise be invisible.
+const TRUNCATION_MARKER = " truncated=true";
+
+/// Build the logfmt body (`event=<name>` + serialized fields) into `buf`.
+/// On overflow appends `TRUNCATION_MARKER` at the tail so operators can
+/// see the line was capped instead of fields silently disappearing past
+/// 4 KiB. `buf` must be at least `TRUNCATION_MARKER.len` bytes long.
+fn buildLogfmtLine(
+    buf: []u8,
+    comptime event: []const u8,
+    fields: anytype,
+) []const u8 {
+    var fbs = std.io.fixedBufferStream(buf[0 .. buf.len - TRUNCATION_MARKER.len]);
+    const w = fbs.writer();
+
+    var truncated = false;
+    w.writeAll("event=" ++ event) catch {
+        truncated = true;
+    };
+    if (!truncated) {
+        writeFields(w, fields) catch {
+            truncated = true;
+        };
+    }
+
+    var written_len = fbs.getWritten().len;
+    if (truncated) {
+        @memcpy(buf[written_len..][0..TRUNCATION_MARKER.len], TRUNCATION_MARKER);
+        written_len += TRUNCATION_MARKER.len;
+    }
+    return buf[0..written_len];
+}
+
 fn emit(
     comptime level: std.log.Level,
     comptime scope: @TypeOf(.enum_literal),
@@ -64,13 +99,7 @@ fn emit(
     fields: anytype,
 ) void {
     var buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    const w = fbs.writer();
-
-    w.writeAll("event=" ++ event) catch return;
-    writeFields(w, fields) catch {};
-
-    const msg = fbs.getWritten();
+    const msg = buildLogfmtLine(&buf, event, fields);
     const log = std.log.scoped(scope);
     switch (level) {
         .err => log.err("{s}", .{msg}),
@@ -233,6 +262,23 @@ test "writeFields renders enum values via @tagName" {
     var fbs = std.io.fixedBufferStream(&buf);
     try writeFields(fbs.writer(), .{ .color = Color.green });
     try std.testing.expectEqualStrings(" color=green", fbs.getWritten());
+}
+
+test "buildLogfmtLine fits within budget — no truncation marker" {
+    var buf: [256]u8 = undefined;
+    const msg = buildLogfmtLine(&buf, "small_event", .{ .tool = "bash", .ok = true });
+    try std.testing.expectEqualStrings("event=small_event tool=bash ok=true", msg);
+    try std.testing.expect(std.mem.indexOf(u8, msg, "truncated=true") == null);
+}
+
+test "buildLogfmtLine appends truncation marker on overflow" {
+    // 64-byte buffer minus 15-byte marker leaves ~49 bytes for content.
+    // A long string field forces writeFields to fail and trips the marker.
+    var buf: [64]u8 = undefined;
+    const long_payload: []const u8 = "x" ** 200;
+    const msg = buildLogfmtLine(&buf, "ev", .{ .big = long_payload });
+    try std.testing.expect(std.mem.endsWith(u8, msg, " truncated=true"));
+    try std.testing.expect(msg.len <= buf.len);
 }
 
 test "scoped logger compiles for every level (smoke)" {

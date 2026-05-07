@@ -102,6 +102,10 @@ fn clearMigrationFailure(conn: *Conn, version: i32) void {
 /// table in sync when migrations are removed (pre-v2.0 teardown — RULE SCH).
 /// Safe to run on every migrate: a fresh DB with no orphan rows is a no-op.
 fn reapOrphanedMigrationRows(conn: *Conn, migrations: []const Migration) !void {
+    // Empty list → `DELETE … WHERE version NOT IN ()` is a Postgres syntax
+    // error (sqlstate 42601). A no-migrations boot has nothing to reap.
+    if (migrations.len == 0) return;
+
     const allocator = std.heap.page_allocator;
     var buf = std.ArrayList(u8){};
     defer buf.deinit(allocator);
