@@ -94,7 +94,9 @@ Wraps `apiRequest`. Classification keys off:
 - HTTP 5xx with `Retry-After: 0` → fatal (server explicitly says don't retry).
 - Server `error_code` matching `UZ-*-RETRY-*` (forward-compat) → retryable regardless of status.
 
-Backoff: 250ms → 1s → 2s, each delay jittered ±20%. Max 3 attempts. `ZOMBIE_NO_RETRY=1` collapses to 1 attempt.
+Backoff: 250ms → 1s → 2s, each computed delay jittered ±20%. Max 3 attempts. `ZOMBIE_NO_RETRY=1` collapses to 1 attempt.
+
+**`Retry-After` handling.** When the server returns `429` (or any retryable status) with a `Retry-After: N` header, `N * 1000` ms is the **floor** for the next backoff — never undershoot the server's ask. Jitter on Retry-After is one-sided positive (`+0..20%`) so the client never schedules sooner than the server requested but still spreads a herd over the next bucket. So `Retry-After: 5` yields a delay in `[5000, 6000]` ms.
 
 **Implementation default:** plain `setTimeout` over a Promise; no third-party retry lib. The agent picks the jitter formula from existing patterns in the project (or a clean Math.random equivalent).
 
@@ -185,7 +187,7 @@ Public consumer signatures (`request`, `streamFetch`, `apiRequest`, `ApiError`, 
 | `retry_on_503_recovers_silently` | First fetch 503, second 200 → wrapper resolves with the 200 body; exactly one `cli_http_retry` event; one terminal `cli_http_request` event with `attempt=2`, `retry_count=1`. |
 | `retry_exhausted_surfaces_apierror` | Three 503s → throws `ApiError` with `code=HTTP_503`; three fetch calls; two `cli_http_retry` events; one terminal `cli_http_request` event with `attempt=3`, `retry_count=2`. |
 | `no_retry_on_400` | One 400 with `UZ-VALIDATION-001` → throws immediately, one fetch call, zero retry events. |
-| `honor_retry_after_seconds` | 429 with `Retry-After: 5` → first backoff is ≥4500ms (jitter floor for 5s). |
+| `honor_retry_after_seconds` | 429 with `Retry-After: 5` → first backoff is in `[5000, 6000]` ms (server-mandated floor + one-sided positive jitter; never undershoots the header). |
 | `network_failure_retried` | First call throws `TypeError("fetch failed")`, second succeeds → wrapper resolves; one retry event with `reason=network`. |
 | `zombie_no_retry_env_collapses_to_single_attempt` | `ZOMBIE_NO_RETRY=1` + 503 first → throws after one attempt; zero retry events. |
 | `invalid_max_attempts_rejected` | `apiRequestWithRetry(url, { retry: { maxAttempts: 11 } })` throws synchronously (or rejects on the first microtask) with a config error before any fetch is issued. Same for `maxAttempts: 0` and negative values. |
