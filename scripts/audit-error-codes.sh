@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # audit-error-codes.sh — orphan + dead code detection against the canonical
-# error registry at src/errors/error_registry.zig.
+# error registry at src/errors/error_registry.zig, plus a raw-literal check
+# enforcing that UZ-<CAT>-<NNN> strings only appear in registry/allowlist
+# files (every other call site must reference the registry symbol).
 #
 # Gate body: docs/gates/error-registry.md
 # Fires in: make lint (after audit-spec-template, before audit-logging).
@@ -11,18 +13,35 @@
 #                  the registry itself) plus zombiectl/src/** (any extension)
 #   - ORPHAN    — USED but not DECLARED  (BLOCKING)
 #   - DEAD      — DECLARED but not USED  (INFORMATIONAL)
+#   - RAW LEAK  — UZ-<CAT>-<NNN> string literal in a source file outside
+#                  the registry/allowlist (BLOCKING — RULE UFS at the error
+#                  surface; non-allowlisted call sites must use a registry
+#                  symbol, never duplicate the literal).
 #
-# Tests INCLUDED — same code-registry rules apply to test code. A test
-# referencing a fake code (e.g. UZ-FAKE-999) for negative-path testing
-# must annotate the line: `// audit-error-codes: intentional-fake` and
-# the audit will skip it.
+# Raw-literal allowlist (files where UZ-* literals are legitimate):
+#   - src/errors/**                         (canonical registry + entry tables)
+#   - src/executor/client_errors.zig        (executor crate's own mirror file
+#                                            — see file header for build-module
+#                                            isolation rationale; deliberate
+#                                            duplication, all other executor
+#                                            sources import from there)
+#   - **/*_test.zig                         (tests)
+#   - src/zbench_fixtures.zig               (benchmark fixture seeds)
+#   - src/http/test_harness.zig             (HTTP test harness)
+#   - lines starting with `//`              (comments)
+#   - lines annotated `// audit-error-codes: intentional-fake`
+#
+# Tests INCLUDED for orphan detection — same code-registry rules apply to
+# test code. A test referencing a fake code (e.g. UZ-FAKE-999) for
+# negative-path testing must annotate the line:
+# `// audit-error-codes: intentional-fake` and the audit will skip it.
 #
 # Modes:
 #   --staged   diff-scope: only files in `git diff --cached` are checked
 #              for new orphan refs (registry checked unconditionally)
 #   --all      (default) full repo scan
 #
-# Exits 0 clean, 1 on orphans (DEAD findings never block).
+# Exits 0 clean, 1 on orphans or raw leaks (DEAD findings never block).
 
 set -euo pipefail
 
@@ -139,11 +158,46 @@ if [[ "$MODE" = "--all" || "$MODE" = "all" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
+# 4.5. Raw-literal check.
+#      Any "UZ-…" string literal outside the allowlist (and not inside a
+#      `//` comment or annotated with `audit-error-codes: intentional-fake`)
+#      is a violation: the call site must reference a registry symbol.
+#
+#      Multi-segment codes (e.g. `UZ-OBS-OTEL-LOG-001`) are caught too,
+#      even though the orphan/dead detection above uses a stricter
+#       2-segment pattern. We don't want a "UZ-X-Y-NNN" code reintroduced
+#      via a local const that the orphan pass silently ignores.
+# ---------------------------------------------------------------------------
+raw_leaks=$(awk '
+  FNR == 1 { skip_next = 0 }
+  # Skip the line carrying the marker AND the next non-blank line.
+  /audit-error-codes: intentional-fake/ { skip_next = 1; next }
+  /^[[:space:]]*\/\// { next }
+  /^[[:space:]]*$/ { next }
+  skip_next { skip_next = 0; next }
+  # Match any "UZ-XXX(-YYY)*-NNN" string literal.
+  /"UZ-[A-Z][A-Z0-9-]*-[0-9]+"/ {
+    print FILENAME ":" FNR ":" $0;
+  }
+' $(printf '%s\n' "${USED_PATHS[@]}" | grep -vE \
+    '^src/errors/|/_?test_harness\.zig$|_test\.zig$|^src/executor/client_errors\.zig$|^src/zbench_fixtures\.zig$|^zombiectl/src/constants/error-codes\.js$' \
+    || true) 2>/dev/null || true)
+
+if [[ -n "$raw_leaks" ]]; then
+  fail "raw UZ-* literals found outside the registry allowlist (must reference a registry symbol):"
+  printf '%s\n' "$raw_leaks" | head -20 | sed 's/^/        /' >&2
+  raw_count=$(printf '%s\n' "$raw_leaks" | wc -l | tr -d ' ')
+  if [[ "$raw_count" -gt 20 ]]; then
+    printf "        ... and %d more\n" "$((raw_count - 20))" >&2
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 # 5. Verdict.
 # ---------------------------------------------------------------------------
 ok "registry: $declared_count declared, $used_count used"
 if [[ $FAIL -ne 0 ]]; then
-  printf "\n🔴 ERROR REGISTRY GATE: orphans found. Add to %s in same commit.\n" "$REGISTRY" >&2
+  printf "\n🔴 ERROR REGISTRY GATE: violations found. Reference the registry symbol (e.g. \`error_codes.ERR_X\` or \`client_errors.ERR_X\` for the executor crate) instead of duplicating the literal.\n" >&2
   exit 1
 fi
 ok "ERROR REGISTRY GATE: clean"

@@ -18,7 +18,7 @@ const wire = @import("wire.zig");
 // transport-catch arms (UZ-EXEC-006) and the rpc-error arms (UZ-EXEC-003/
 // 004/005/007/010/011 via `errorCodeForRpcCode`) share the same source.
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
-const ERR_EXEC_STARTUP_POSTURE: []const u8 = "UZ-EXEC-009";
+const ERR_EXEC_STARTUP_POSTURE = client_errors.ERR_EXEC_STARTUP_POSTURE;
 
 const log = logging.scoped(.executor_client);
 

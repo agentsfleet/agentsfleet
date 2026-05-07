@@ -23,13 +23,12 @@ const tools_mod = nullclaw.tools;
 const Config = nullclaw.config.Config;
 const builders = @import("tool_builders.zig");
 const context_budget = @import("context_budget.zig");
+const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.tool_bridge);
 
-// Duplicated from src/errors/error_registry.zig — executor cannot cross the binary
-// boundary to import from src/errors/.
-const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
-const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
+const ERR_TOOL_UNKNOWN = client_errors.ERR_TOOL_UNKNOWN;
+const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 

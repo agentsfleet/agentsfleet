@@ -43,17 +43,14 @@ const runner_harness = @import("runner_harness.zig");
 const runner_observer = @import("runner_observer.zig");
 const progress_writer_mod = @import("progress_writer.zig");
 const context_budget = @import("context_budget.zig");
+const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.executor_runner);
 
-// Runner-specific error codes and docs base URL.
-// Canonical source: src/errors/error_registry.zig (ERR_EXEC_RUNNER_*, ERROR_DOCS_BASE).
-// Duplicated here because the executor binary is a separate build module —
-// it cannot import files outside src/executor/.
 const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";
-const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
-const ERR_EXEC_RUNNER_AGENT_RUN = "UZ-EXEC-013";
-const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
+const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
+const ERR_EXEC_RUNNER_AGENT_RUN = client_errors.ERR_EXEC_RUNNER_AGENT_RUN;
+const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 
 pub const RunnerError = error{
     InvalidConfig,
@@ -309,8 +306,8 @@ pub fn incFailureMetric(failure: types.FailureClass) void {
 pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
     return switch (failure) {
         .startup_posture => ERR_EXEC_RUNNER_AGENT_INIT,
-        .timeout_kill => "UZ-EXEC-003",
-        .oom_kill => "UZ-EXEC-004",
+        .timeout_kill => client_errors.ERR_EXEC_TIMEOUT_KILL,
+        .oom_kill => client_errors.ERR_EXEC_OOM_KILL,
         .executor_crash => ERR_EXEC_RUNNER_AGENT_RUN,
         else => ERR_EXEC_RUNNER_AGENT_RUN,
     };

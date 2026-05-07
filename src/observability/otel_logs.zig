@@ -15,9 +15,6 @@ const FLUSH_INTERVAL_MS: u64 = 5_000;
 const FLUSH_BATCH_SIZE: usize = 50;
 const SHUTDOWN_DRAIN_TIMEOUT_MS: u64 = 5_000;
 
-const ERR_OTEL_LOG_EXPORT_FAILED = "UZ-OBS-OTEL-LOG-001";
-const ERR_OTEL_LOG_CONNECT_FAILED = "UZ-OBS-OTEL-LOG-002";
-
 pub const GrafanaOtlpConfig = struct {
     endpoint: []const u8,
     instance_id: []const u8,

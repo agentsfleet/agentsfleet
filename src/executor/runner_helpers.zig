@@ -16,9 +16,10 @@ const tool_bridge = @import("tool_bridge.zig");
 const context_budget = @import("context_budget.zig");
 const stub_gate = @import("stub_provider_gate.zig");
 const runner_progress = @import("runner_progress.zig");
+const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.executor_runner);
-const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
+const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
 
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
