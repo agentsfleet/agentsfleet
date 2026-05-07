@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 004
 **Date:** May 07, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE (auth-critical surface; broader command migration deferred per "Out of Scope")
 **Priority:** P1 — first network blip currently surfaces as a hard error to the user; CLI resilience is on the operator hot path.
 **Categories:** CLI, OBS
 **Batch:** B1 — independent of M63_005 (website polish); both can ship in parallel.
