@@ -37,7 +37,6 @@ pub const system_prompt = "system_prompt";
 pub const temperature = "temperature";
 pub const max_tokens = "max_tokens";
 pub const api_key = "api_key";
-pub const github_token = "github_token";
 pub const message = "message";
 
 // ── Response shape ──────────────────────────────────────────────────────

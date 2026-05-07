@@ -36,7 +36,6 @@ const wire = @import("wire.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const tool_bridge = @import("tool_bridge.zig");
-const runner_credentials = @import("runner_credentials.zig");
 const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -154,20 +153,13 @@ fn executeInner(
     // Apply agent_config overrides (model, temperature, max_tokens, api_key).
     if (agent_config) |ac| {
         applyAgentConfig(&cfg, ac);
-        // M16_003 §1.4: inject api_key from RPC payload into NullClaw Config.
-        // This ensures the executor never reads ANTHROPIC_API_KEY (or any other
-        // provider key) from the process environment.
+        // Inject api_key from RPC payload into NullClaw Config so the
+        // executor never reads ANTHROPIC_API_KEY (or any other provider
+        // key) from the process environment.
         if (json.getStr(ac, wire.api_key)) |key| {
             injectProviderApiKey(&cfg, key) catch {
                 log.err("api_key_inject_failed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG });
                 return RunnerError.InvalidConfig;
-            };
-        }
-        if (json.getStr(ac, wire.github_token)) |token| {
-            runner_credentials.prepareGitCredential(alloc, workspace_path, token) catch |err| {
-                log.warn("git_cred_configure_failed", .{ .err = @errorName(err) });
-                // Non-fatal: git operations will fail at push time if token is needed
-                // but missing. The worker re-requests before PR creation (§2.3).
             };
         }
     }
@@ -287,14 +279,12 @@ pub const composeMessage = runner_helpers.composeMessage;
 /// stack-storage; the adapter borrows it for the duration of the run.
 /// Secrets with empty values are still returned but the redactor
 /// short-circuits on `value.len == 0`.
-fn collectSecrets(agent_config: ?std.json.Value) [2]runner_progress.Secret {
+fn collectSecrets(agent_config: ?std.json.Value) [1]runner_progress.Secret {
     const ac = agent_config orelse return .{
         .{ .value = "", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = "", .placeholder = "${secrets.github.token}" },
     };
     return .{
         .{ .value = json.getStr(ac, wire.api_key) orelse "", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = json.getStr(ac, wire.github_token) orelse "", .placeholder = "${secrets.github.token}" },
     };
 }
 
