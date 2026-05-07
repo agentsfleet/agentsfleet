@@ -65,6 +65,7 @@ RUN set -eux; \
     case "$TARGETARCH" in \
       amd64) zig_arch=x86_64;  zig_sha="$ZIG_SHA256_X86_64_LINUX" ;; \
       arm64) zig_arch=aarch64; zig_sha="$ZIG_SHA256_AARCH64_LINUX" ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
     esac; \
     tarball="zig-${zig_arch}-linux-${ZIG_VERSION}.tar.xz"; \
     for url in \

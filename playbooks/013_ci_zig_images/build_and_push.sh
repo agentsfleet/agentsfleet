@@ -114,6 +114,9 @@ build_selected() {
 
 cmd_build() {
   load_versions
+  # Apply --zig-version override AFTER sourcing versions.env, otherwise the
+  # source overwrites the override and the resulting image is mistagged.
+  [ -n "${ZIG_VERSION_OVERRIDE:-}" ] && ZIG_VERSION="$ZIG_VERSION_OVERRIDE"
   ensure_buildx
   [ "${PUSH:-1}" -eq 1 ] && ensure_ghcr_login
   build_selected
@@ -177,15 +180,7 @@ done
 [ -z "$SUBCOMMAND" ] && SUBCOMMAND="build"
 
 case "$SUBCOMMAND" in
-  build)
-    if [ -n "$ZIG_VERSION_OVERRIDE" ]; then
-      load_versions
-      ZIG_VERSION="$ZIG_VERSION_OVERRIDE"
-      cmd_build
-    else
-      cmd_build
-    fi
-    ;;
+  build)      cmd_build ;;
   fetch-shas) cmd_fetch_shas "$ZIG_VERSION_OVERRIDE" ;;
   help)       usage 0 ;;
   *)          fatal "unknown subcommand: $SUBCOMMAND" ;;
