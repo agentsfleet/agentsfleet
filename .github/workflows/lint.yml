@@ -14,15 +14,12 @@ concurrency:
 jobs:
   lint-zig:
     runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/usezombie/ci-zig-ubuntu:0.15.2
     env:
       ZLINT_VERSION: v0.7.9
     steps:
       - uses: actions/checkout@v6
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-      - name: Install OpenSSL dev headers
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libssl-dev
       - name: Install ZLint
         run: |
           mkdir -p "$RUNNER_TEMP/bin"

@@ -16,7 +16,7 @@ The three images this playbook publishes are:
 | `ghcr.io/usezombie/ci-zig-debian-trixie`      | amd64             | `memleak.yml`                                                                                        |
 | `ghcr.io/usezombie/ci-zig-ubuntu`             | amd64             | `test.yml`, `bench.yml`, `lint.yml` (lint-zig), `qa.yml`, `qa-smoke.yml`, `test-integration.yml`     |
 
-> **Out of scope for this branch:** rewriting the workflow YAMLs to consume these images. CI/CD edits are gated on explicit ask. The workflow swap is a follow-up branch landing after the images are smoke-verified in GHCR.
+**Status:** images are live in GHCR (public) and every Zig-using workflow has been rewritten to consume them. The Zig + OpenSSL toolchain is no longer fetched per-job — every CI lane that needs Zig pulls the relevant `ci-zig-*` image and runs `make` directly.
 
 ---
 
@@ -190,10 +190,9 @@ Subsequent pushes inherit visibility; this is one-click per image.
 
 ---
 
-## Follow-up branch
+## Lanes still on `mlugg/setup-zig`
 
-Once the three tags exist in GHCR and smoke-verify passes, a follow-up branch
-will rewrite the workflow YAMLs to consume them — replacing the
-`mlugg/setup-zig@v2 + apt/apk install` pairs with a single `container:` line.
-That branch is not landed here because CLAUDE.md gates `.github/workflows/**`
-edits on explicit human ask.
+Two lanes intentionally retain `mlugg/setup-zig`:
+
+- **`test-integration.yml` → `test-integration`** — runs `docker compose up -d postgres redis` and `docker compose exec`. Doing that from inside a container needs `/var/run/docker.sock` mounted plus host-path-aware compose config. The bare-runner + `mlugg` path is not in the original "containers hang" failure mode, so left as-is.
+- **macOS lanes** in `cross-compile.yml` and `release.yml` — Apple does not allow macOS in containers; `mlugg/setup-zig` works fine on the macOS runner network and is unaffected by the Linux-CDN hangs.
