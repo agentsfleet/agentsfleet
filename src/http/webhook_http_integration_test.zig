@@ -325,6 +325,11 @@ test "B1: happy path — 202; dedup key set with ~72h TTL; XLEN += 1" {
     var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
     requireRedis(s.h) catch return error.SkipZigTest;
+    // Pre-clean stale state from any previously-aborted run; the deferred
+    // post-clean only fires on this test's own exit, so a crash in an
+    // earlier session can leave dedup keys / stream entries that flake the
+    // next assertion. Idempotent: DEL on a missing key is a Redis no-op.
+    cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b1"});
     defer cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b1"});
 
     const before = try xlen(s.h, alloc, s.fx.zombie_id);
@@ -344,6 +349,7 @@ test "B2: replay same X-GitHub-Delivery → first 202, second 200 deduped; XLEN 
     var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
     requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b2"});
     defer cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b2"});
 
     const before = try xlen(s.h, alloc, s.fx.zombie_id);
@@ -365,6 +371,7 @@ test "B3: 5 concurrent POSTs same delivery → exactly one 202; XLEN += 1" {
     var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
     requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b3"});
     defer cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b3"});
 
     const N = 5;
@@ -427,6 +434,7 @@ test "B4: credential_name override resolves to alternate vault key → 202" {
             h.releaseConn(c);
         }
     }
+    cleanupRedis(h, alloc, fx.zombie_id, &.{"del_b4"});
     defer cleanupRedis(h, alloc, fx.zombie_id, &.{"del_b4"});
 
     const url = try std.fmt.allocPrint(alloc, "/v1/webhooks/{s}/github", .{fx.zombie_id});
@@ -448,6 +456,7 @@ test "B5: filter-rejected delivery does NOT claim dedup slot — replay with val
     var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
     requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b5"});
     defer cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b5"});
 
     // First POST: filter-rejected (success conclusion). Must NOT claim slot.
@@ -476,6 +485,7 @@ test "B6: TTL on accepted dedup key falls within 5s of 72h" {
     var s = Setup.init(alloc, "active") catch |err| return skipOrErr(err);
     defer s.deinit(alloc);
     requireRedis(s.h) catch return error.SkipZigTest;
+    cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b6"});
     defer cleanupRedis(s.h, alloc, s.fx.zombie_id, &.{"del_b6"});
 
     const r = try postSigned(alloc, &s, "workflow_run", "del_b6", FAILURE_BODY);
