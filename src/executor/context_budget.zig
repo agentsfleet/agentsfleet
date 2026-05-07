@@ -121,6 +121,7 @@ pub const ExecutionPolicy = struct {
     /// the frame. `Session.create` deep-dupes into its own arena before
     /// the frame ends.
     pub fn fromJson(alloc: std.mem.Allocator, p: std.json.Value) !ExecutionPolicy {
+        if (p != .object) return error.NotAnObject;
         var policy: ExecutionPolicy = .{};
 
         if (p.object.get(wire.network_policy)) |np_val| {

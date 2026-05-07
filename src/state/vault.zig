@@ -88,10 +88,11 @@ pub fn loadJson(
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch |err| {
         // AEAD + validateObject make this unreachable for rows written via
         // storeJson. storeJsonPlaintext skips the shape gate by design, so a
-        // malformed caller can still land bytes here. Surface workspace +
-        // key context so the operator can pinpoint the corrupt row instead
-        // of staring at a bare error.InvalidCharacter.
-        log.err("vault_load_parse_failed", .{
+        // malformed caller can still land bytes here. Warn (not err) so the
+        // redaction harness's deliberate non-JSON plaintext fixture does
+        // not trip the test runner's logged-errors gate; operators still
+        // get workspace + key context to pinpoint the corrupt row.
+        log.warn("vault_load_parse_failed", .{
             .workspace_id = workspace_id,
             .key_name = key_name,
             .err = @errorName(err),

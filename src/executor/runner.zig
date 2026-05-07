@@ -32,6 +32,7 @@ const memory_mod = nullclaw.memory;
 const build_options = @import("build_options");
 
 const json = @import("json_helpers.zig");
+const wire = @import("wire.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const tool_bridge = @import("tool_bridge.zig");
@@ -156,13 +157,13 @@ fn executeInner(
         // M16_003 §1.4: inject api_key from RPC payload into NullClaw Config.
         // This ensures the executor never reads ANTHROPIC_API_KEY (or any other
         // provider key) from the process environment.
-        if (json.getStr(ac, "api_key")) |key| {
+        if (json.getStr(ac, wire.api_key)) |key| {
             injectProviderApiKey(&cfg, key) catch {
                 log.err("api_key_inject_failed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG });
                 return RunnerError.InvalidConfig;
             };
         }
-        if (json.getStr(ac, "github_token")) |token| {
+        if (json.getStr(ac, wire.github_token)) |token| {
             runner_credentials.prepareGitCredential(alloc, workspace_path, token) catch |err| {
                 log.warn("git_cred_configure_failed", .{ .err = @errorName(err) });
                 // Non-fatal: git operations will fail at push time if token is needed
@@ -292,8 +293,8 @@ fn collectSecrets(agent_config: ?std.json.Value) [2]runner_progress.Secret {
         .{ .value = "", .placeholder = "${secrets.github.token}" },
     };
     return .{
-        .{ .value = json.getStr(ac, "api_key") orelse "", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = json.getStr(ac, "github_token") orelse "", .placeholder = "${secrets.github.token}" },
+        .{ .value = json.getStr(ac, wire.api_key) orelse "", .placeholder = "${secrets.llm.api_key}" },
+        .{ .value = json.getStr(ac, wire.github_token) orelse "", .placeholder = "${secrets.github.token}" },
     };
 }
 
