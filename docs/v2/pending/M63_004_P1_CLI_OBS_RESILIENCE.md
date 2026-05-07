@@ -100,7 +100,9 @@ Backoff: 250ms → 1s → 2s, each delay jittered ±20%. Max 3 attempts. `ZOMBIE
 
 ### §2 — Per-attempt span events
 
-Add `cli_http_request` (one per terminal attempt — success or fatal) carrying `url`, `method`, `status`, `duration_ms`, `attempt` (1..N), `retry_count`. Add `cli_http_retry` (one per retried attempt before backoff) carrying `url`, `method`, `status`, `attempt`, `reason` (`network`|`timeout`|`5xx`|`429`|`server_marked_retryable`).
+Add `cli_http_request` (one per terminal attempt — success or fatal) carrying `url`, `method`, `status`, `duration_ms`, `attempt` (1..N), `retry_count`. Add `cli_http_retry` (one per failed-and-will-retry attempt, fired before the backoff sleep) carrying `url`, `method`, `status`, `attempt`, `reason` (`network`|`timeout`|`5xx`|`429`|`server_marked_retryable`).
+
+**`retry_count` semantics:** count of `cli_http_retry` events fired during this request. Equivalently, `attempt - 1` on the terminal event. So one fetch that succeeds first try → `attempt=1`, `retry_count=0`, zero retry events. Three fetches that all 503 → `attempt=3`, `retry_count=2`, two retry events. Pinning `retry_count = attempt - 1` lets the analytics pipeline read either field interchangeably.
 
 Both events consent-gated through the existing telemetry helper — when consent is denied, the events do not fire and the retry behavior is unchanged.
 
@@ -126,6 +128,9 @@ The wrapper centralizes what cli.js inlines today; handler code stops needing to
 ```ts
 // zombiectl/src/lib/http.js
 apiRequestWithRetry(url: string, options: ApiRequestOptions & {
+  // maxAttempts: 1..10 inclusive. Default 3. Values <1 or >10 throw
+  // synchronously before any fetch is issued — out-of-range retry caps
+  // are a misconfiguration, not a runtime decision.
   retry?: { maxAttempts?: number; baseDelayMs?: number; capDelayMs?: number };
   onAttempt?: (info: { attempt: number; status?: number; durationMs: number; retryReason?: RetryReason }) => void;
 }): Promise<unknown>
@@ -152,8 +157,8 @@ Public consumer signatures (`request`, `streamFetch`, `apiRequest`, `ApiError`, 
 
 | Mode | Cause | Handling |
 |------|-------|----------|
-| Server returns 503 once, 200 second time | Transient backend blip | Retry with backoff; user sees success; one `cli_http_retry` + one `cli_http_request` event fire. |
-| Server returns 503 three times | Sustained outage | Three retries exhausted → ApiError surfaces with `code=HTTP_503`; user sees the existing error line; one `cli_http_request` event fires with `attempt=3`, `retry_count=3`. |
+| Server returns 503 once, 200 second time | Transient backend blip | Retry with backoff; user sees success; one `cli_http_retry` event + one `cli_http_request` (terminal) event fire with `attempt=2`, `retry_count=1`. |
+| Server returns 503 three times | Sustained outage | Three fetches, two retries (one before each backoff). ApiError surfaces with `code=HTTP_503`; user sees the existing error line; two `cli_http_retry` events + one terminal `cli_http_request` fire with `attempt=3`, `retry_count=2`. |
 | Server returns 400 with UZ-VALIDATION-001 | Caller bug | No retry; `printApiError` prints exactly today's line; one `cli_http_request` event fires with `attempt=1`, `retry_count=0`. |
 | Server returns 429 with `Retry-After: 5` | Rate-limited | Honor the header (override the default 250ms backoff for the first retry); proceed normally. |
 | Network failure (DNS, connection refused) | Local network down | Retry policy applies; if exhausted, surfaces as `API_UNREACHABLE` (cli.js's existing line, unchanged). |
@@ -177,12 +182,13 @@ Public consumer signatures (`request`, `streamFetch`, `apiRequest`, `ApiError`, 
 
 | Test | Asserts |
 |------|---------|
-| `retry_on_503_recovers_silently` | First fetch returns 503, second returns 200 → wrapper resolves with the 200 body; one retry event, one terminal request event. |
-| `retry_exhausted_surfaces_apierror` | Three 503s → throws `ApiError` with `code=HTTP_503`; three fetch calls; `attempt=3, retry_count=3` on the terminal event. |
+| `retry_on_503_recovers_silently` | First fetch 503, second 200 → wrapper resolves with the 200 body; exactly one `cli_http_retry` event; one terminal `cli_http_request` event with `attempt=2`, `retry_count=1`. |
+| `retry_exhausted_surfaces_apierror` | Three 503s → throws `ApiError` with `code=HTTP_503`; three fetch calls; two `cli_http_retry` events; one terminal `cli_http_request` event with `attempt=3`, `retry_count=2`. |
 | `no_retry_on_400` | One 400 with `UZ-VALIDATION-001` → throws immediately, one fetch call, zero retry events. |
 | `honor_retry_after_seconds` | 429 with `Retry-After: 5` → first backoff is ≥4500ms (jitter floor for 5s). |
 | `network_failure_retried` | First call throws `TypeError("fetch failed")`, second succeeds → wrapper resolves; one retry event with `reason=network`. |
 | `zombie_no_retry_env_collapses_to_single_attempt` | `ZOMBIE_NO_RETRY=1` + 503 first → throws after one attempt; zero retry events. |
+| `invalid_max_attempts_rejected` | `apiRequestWithRetry(url, { retry: { maxAttempts: 11 } })` throws synchronously (or rejects on the first microtask) with a config error before any fetch is issued. Same for `maxAttempts: 0` and negative values. |
 | `consent_denied_emits_zero_http_events` | Consent denied + 503-then-200 retry → wrapper resolves but no `cli_http_*` events fire. |
 | `error_matrix_pins_stderr_lines` | Matrix over (200, 400, 401, 403, 404, 408, 429, 500, 503, network) × (json mode on/off) → asserts exact stderr line + exit code per cell. |
 | `run_command_emits_started_finished` | Successful handler → analytics receives `cli_command_started` then `cli_command_finished` with the same correlation id. |
