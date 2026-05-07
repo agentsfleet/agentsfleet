@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
+const logging = @import("log");
 
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -13,7 +14,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const approval_gate_db = @import("../../../zombie/approval_gate_db.zig");
 
-const log = std.log.scoped(.http_approvals_detail);
+const log = logging.scoped(.http_approvals_detail);
 
 pub fn innerGetApproval(
     hx: hx_mod.Hx,
@@ -47,7 +48,11 @@ pub fn innerGetApproval(
     }
 
     const maybe_row = approval_gate_db.getByGateId(hx.ctx.pool, hx.alloc, gate_id, workspace_id) catch |err| {
-        log.err("approvals.detail_failed err={s} gate_id={s}", .{ @errorName(err), gate_id });
+        log.err("detail_failed", .{
+            .error_code = ec.ERR_INTERNAL_DB_QUERY,
+            .err = @errorName(err),
+            .gate_id = gate_id,
+        });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

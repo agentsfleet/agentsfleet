@@ -23,16 +23,17 @@ alloc: std.mem.Allocator,
 /// never abort agent execution.
 pub fn write(self: *const ProgressWriter, frame: progress_callbacks.ProgressFrame) void {
     const payload = progress_callbacks.encodeProgress(self.alloc, self.request_id, frame) catch |err| {
-        log.debug("progress_writer.encode_failed err={s}", .{@errorName(err)});
+        log.debug("encode_failed", .{ .err = @errorName(err) });
         return;
     };
     defer self.alloc.free(payload);
     protocol.writeFrameToFd(self.fd, payload) catch |err| {
-        log.debug("progress_writer.write_failed err={s}", .{@errorName(err)});
+        log.debug("write_failed", .{ .err = @errorName(err) });
     };
 }
 
 const std = @import("std");
+const logging = @import("log");
 const progress_callbacks = @import("progress_callbacks.zig");
 const protocol = @import("protocol.zig");
-const log = std.log.scoped(.progress_writer);
+const log = logging.scoped(.progress_writer);

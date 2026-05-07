@@ -7,6 +7,7 @@
 //! set by `authorizeWorkspaceAndSetTenantContext`).
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 
 const common = @import("../common.zig");
@@ -15,7 +16,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const events_store = @import("../../../state/zombie_events_store.zig");
 
-const log = std.log.scoped(.http_workspace_events);
+const log = logging.scoped(.http_workspace_events);
 
 const LIMIT_DEFAULT: u32 = 50;
 const LIMIT_MAX: u32 = 200;
@@ -62,7 +63,7 @@ pub fn innerListWorkspaceEvents(
             hx.fail(ec.ERR_INVALID_REQUEST, "invalid cursor");
             return;
         }
-        log.err("listForWorkspace failed err={s}", .{@errorName(err)});
+        log.err("list_for_workspace_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };

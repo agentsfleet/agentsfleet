@@ -9,6 +9,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const logging = @import("log");
 const otel_logs = @import("observability/otel_logs.zig");
 
 const cli_commands = @import("cli/commands.zig");
@@ -18,7 +19,7 @@ const cmd_doctor = @import("cmd/doctor.zig");
 const cmd_migrate = @import("cmd/migrate.zig");
 const config_load = @import("config/load.zig");
 
-const log = std.log.scoped(.zombied);
+const log = logging.scoped(.zombied);
 
 var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode == .Debug) std.log.Level.debug else std.log.Level.info));
 
@@ -69,11 +70,14 @@ fn zombiedLog(
     var msg_buf: [4096]u8 = undefined;
     const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch return;
     var line_buf: [8192]u8 = undefined;
-    const line = std.fmt.bufPrint(
-        &line_buf,
-        "ts_ms={d} level={s} scope={s} msg={f}\n",
-        .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
-    ) catch return;
+    const line = if (logging.isPretty())
+        logging.formatPretty(&line_buf, ts, level, scope_str, msg)
+    else
+        std.fmt.bufPrint(
+            &line_buf,
+            "ts_ms={d} level={s} scope={s} msg={f}\n",
+            .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
+        ) catch return;
     const stderr = std.fs.File.stderr();
     stderr.writeAll(line) catch {};
 
@@ -86,10 +90,11 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
     config_load.applyEnvSources(alloc) catch |err| {
-        std.debug.print("fatal: failed loading env sources: {}\n", .{err});
+        logging.fatalStderr("fatal: failed loading env sources: {}\n", .{err});
         std.process.exit(1);
     };
     initRuntimeLogLevel(alloc);
+    logging.initPrettyMode(alloc);
 
     if (builtin.mode == .Debug) {
         log.warn("startup.debug_build hint=not_for_production", .{});
@@ -102,7 +107,7 @@ pub fn main() !void {
             // Fail loudly so a stale script invoking a removed subcommand
             // doesn't silently start the HTTP server.
             const bad = if (argv.len > 1) argv[1] else "";
-            std.debug.print(
+            logging.fatalStderr(
                 "zombied: unknown subcommand: {s}\n" ++
                     "usage: zombied [serve|worker|doctor|migrate]\n",
                 .{bad},

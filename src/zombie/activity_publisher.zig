@@ -41,11 +41,11 @@ fn buildChannel(buf: []u8, zombie_id: []const u8) ![]const u8 {
 fn publishRaw(client: *Client, zombie_id: []const u8, payload: []const u8) void {
     var channel_buf: [128]u8 = undefined;
     const channel = buildChannel(&channel_buf, zombie_id) catch |err| {
-        log.debug("activity.channel_format_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+        log.debug("channel_format_fail", .{ .zombie_id = zombie_id, .err = @errorName(err) });
         return;
     };
     client.publish(channel, payload) catch |err| {
-        log.debug("activity.publish_fail zombie_id={s} err={s}", .{ zombie_id, @errorName(err) });
+        log.debug("publish_fail", .{ .zombie_id = zombie_id, .err = @errorName(err) });
     };
 }
 
@@ -58,7 +58,7 @@ fn encodeAndPublish(
 ) void {
     scratch.clearRetainingCapacity();
     std.json.Stringify.value(payload, .{}, &scratch.writer) catch |err| {
-        log.debug("activity.encode_fail kind={s} err={s}", .{ kind, @errorName(err) });
+        log.debug("encode_fail", .{ .kind = kind, .err = @errorName(err) });
         return;
     };
     publishRaw(client, zombie_id, scratch.written());
@@ -93,7 +93,7 @@ pub fn publishToolCallStarted(
     // upstream of the encode; tool_call_started fires once per tool
     // invocation, not per token, so the per-call alloc is acceptable.
     var parsed = std.json.parseFromSlice(std.json.Value, alloc, args_redacted_json, .{}) catch |err| {
-        log.debug("activity.args_parse_fail err={s}", .{@errorName(err)});
+        log.debug("args_parse_fail", .{ .err = @errorName(err) });
         return;
     };
     defer parsed.deinit();
@@ -168,4 +168,6 @@ pub fn publishEventComplete(
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Client = @import("../queue/redis_client.zig").Client;
-const log = std.log.scoped(.activity_publisher);
+const logging = @import("log");
+
+const log = logging.scoped(.activity_publisher);

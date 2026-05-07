@@ -18,8 +18,9 @@ const queue_redis = @import("../queue/redis_client.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const approval_gate = @import("approval_gate.zig");
 const resolver = @import("approval_gate_resolver.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.approval_gate_sweeper);
+const log = logging.scoped(.approval_gate_sweeper);
 
 const PENDING_STATUS = approval_gate.GateStatus.pending.toSlice();
 
@@ -36,14 +37,14 @@ pub fn run(
     alloc: Allocator,
     shutdown: *std.atomic.Value(bool),
 ) void {
-    log.info("approval_gate_sweeper.started interval_s={d} batch_limit={d}", .{ SCAN_INTERVAL_NS / std.time.ns_per_s, BATCH_LIMIT });
+    log.info("started", .{ .interval_s = SCAN_INTERVAL_NS / std.time.ns_per_s, .batch_limit = BATCH_LIMIT });
     while (!shutdown.load(.acquire)) {
         sweepOnce(pool, redis, alloc) catch |err| {
-            log.warn("approval_gate_sweeper.sweep_failed err={s}", .{@errorName(err)});
+            log.warn("sweep_failed", .{ .err = @errorName(err) });
         };
         sleepInterruptible(shutdown, SCAN_INTERVAL_NS);
     }
-    log.info("approval_gate_sweeper.shutdown", .{});
+    log.info("shutdown", .{});
 }
 
 fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void {
@@ -52,7 +53,7 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
 
     if (expired.len == 0) return;
 
-    log.info("approval_gate_sweeper.expired_batch count={d}", .{expired.len});
+    log.info("expired_batch", .{ .count = expired.len });
     for (expired) |action_id| {
         var outcome = approval_gate.resolve(pool, redis, alloc, .{
             .action_id = action_id,
@@ -60,7 +61,7 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
             .by = RESOLVER,
             .reason = "auto-timeout",
         }) catch |err| {
-            log.warn("approval_gate_sweeper.resolve_failed action_id={s} err={s}", .{ action_id, @errorName(err) });
+            log.warn("resolve_failed", .{ .action_id = action_id, .err = @errorName(err) });
             continue;
         };
         defer switch (outcome) {
@@ -69,9 +70,9 @@ fn sweepOnce(pool: *pg.Pool, redis: *queue_redis.Client, alloc: Allocator) !void
             .not_found => {},
         };
         switch (outcome) {
-            .resolved => log.info("approval_gate_sweeper.timed_out action_id={s}", .{action_id}),
-            .already_resolved => |r| log.debug("approval_gate_sweeper.race_lost action_id={s} winning_outcome={s} winning_by={s}", .{ action_id, r.outcome.toSlice(), r.resolved_by }),
-            .not_found => log.debug("approval_gate_sweeper.row_disappeared action_id={s}", .{action_id}),
+            .resolved => log.info("timed_out", .{ .action_id = action_id }),
+            .already_resolved => |r| log.debug("race_lost", .{ .action_id = action_id, .winning_outcome = r.outcome.toSlice(), .winning_by = r.resolved_by }),
+            .not_found => log.debug("row_disappeared", .{ .action_id = action_id }),
         }
     }
 }

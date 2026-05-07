@@ -15,11 +15,11 @@ const event_loop = @import("../zombie/event_loop.zig");
 const executor_client = @import("../executor/client.zig");
 const zombie_config = @import("../zombie/config.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const obs_log = @import("../observability/logging.zig");
+const logging = @import("log");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const worker_state_mod = @import("worker/state.zig");
 
-const log = std.log.scoped(.zombie_worker);
+const log = logging.scoped(.zombie_worker);
 
 pub const ZombieWorkerConfig = struct {
     pool: *pg.Pool,
@@ -50,7 +50,7 @@ pub const ZombieWorkerConfig = struct {
 /// Connects to Redis, claims the Zombie, and enters the event loop.
 /// Returns when the running flag is set to false (shutdown) or on fatal error.
 pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void {
-    log.info("zombie_worker.start zombie_id={s}", .{cfg.zombie_id});
+    log.info("zombie_worker.start", .{ .zombie_id = cfg.zombie_id });
 
     var redis = connectRedis(alloc) orelse return;
     defer redis.deinit();
@@ -64,14 +64,14 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
     defer session.deinit(alloc);
 
     const exec_ref = cfg.executor orelse {
-        log.err("zombie_worker.no_executor zombie_id={s} error_code={s}", .{ cfg.zombie_id, error_codes.ERR_EXEC_STARTUP_POSTURE });
+        log.err("zombie_worker.no_executor", .{ .zombie_id = cfg.zombie_id, .error_code = error_codes.ERR_EXEC_STARTUP_POSTURE });
         return;
     };
 
     // shutdown_requested=true means stop; event loop expects running=true to continue.
     var running = std.atomic.Value(bool).init(true);
     const watcher = std.Thread.spawn(.{}, watchShutdown, .{ cfg.shutdown_requested, cfg.cancel_flag, cfg.worker_state, &running }) catch {
-        log.err("zombie_worker.watcher_spawn_fail zombie_id={s}", .{cfg.zombie_id});
+        log.err("zombie_worker.watcher_spawn_failed", .{ .zombie_id = cfg.zombie_id });
         return;
     };
     defer {
@@ -90,15 +90,15 @@ pub fn zombieWorkerLoop(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) void 
         .reload_pending = cfg.reload_pending,
         .balance_policy = cfg.balance_policy,
     });
-    log.info("zombie_worker.stopped zombie_id={s}", .{cfg.zombie_id});
+    log.info("zombie_worker.stopped", .{ .zombie_id = cfg.zombie_id });
 }
 
 fn claimOrReturn(alloc: std.mem.Allocator, cfg: ZombieWorkerConfig) ?event_loop.ZombieSession {
     const session = event_loop.claimZombie(alloc, cfg.zombie_id, cfg.pool) catch |err| {
-        obs_log.logErrWithHint(.zombie_worker, err, error_codes.ERR_ZOMBIE_CLAIM_FAILED, "zombie_worker.claim_fail zombie_id={s}", .{cfg.zombie_id});
+        log.err("zombie_worker.claim_failed", .{ .zombie_id = cfg.zombie_id, .error_code = error_codes.ERR_ZOMBIE_CLAIM_FAILED, .err = @errorName(err) });
         return null;
     };
-    log.info("zombie_worker.claimed zombie_id={s} name={s}", .{ cfg.zombie_id, session.config.name });
+    log.info("zombie_worker.claimed", .{ .zombie_id = cfg.zombie_id, .name = session.config.name });
     return session;
 }
 
@@ -200,13 +200,10 @@ fn watchShutdown(
 
 fn connectRedis(alloc: std.mem.Allocator) ?queue_redis.Client {
     return queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-        obs_log.logErrWithHint(
-            .zombie_worker,
-            err,
-            error_codes.ERR_STARTUP_REDIS_CONNECT,
-            "zombie_worker.redis_unavailable",
-            .{},
-        );
+        log.err("zombie_worker.redis_unavailable", .{
+            .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
+            .err = @errorName(err),
+        });
         return null;
     };
 }

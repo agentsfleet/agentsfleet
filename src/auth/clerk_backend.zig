@@ -15,8 +15,9 @@
 //! operator can repair publicMetadata via the Clerk Dashboard.
 
 const std = @import("std");
+const logging = @import("log");
 
-const log = std.log.scoped(.clerk_backend);
+const log = logging.scoped(.clerk_backend);
 
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
 const API_BASE = "https://api.clerk.com/v1";
@@ -149,7 +150,7 @@ fn freeFetchJob(job: *FetchJob) void {
 fn fetchWorker(job: *FetchJob) void {
     defer freeFetchJob(job);
     runFetchBlocking(std.heap.c_allocator, job.url, job.auth_header, job.payload) catch |err| {
-        log.warn("clerk_backend.fetch_failed err={s} url={s}", .{ @errorName(err), job.url });
+        log.warn("fetch_failed", .{ .err = @errorName(err), .url = job.url });
     };
 }
 
@@ -178,7 +179,7 @@ fn postMetadataMerge(
     errdefer freeFetchJob(job);
 
     const thread = std.Thread.spawn(.{}, fetchWorker, .{job}) catch |err| {
-        log.warn("clerk_backend.thread_spawn_fail err={s}", .{@errorName(err)});
+        log.warn("thread_spawn_failed", .{ .err = @errorName(err) });
         return PatchError.RequestFailed;
     };
     thread.detach();
@@ -249,7 +250,7 @@ pub fn mapStatus(status: u16, url: []const u8) PatchError!void {
     if (status >= 200 and status < 300) return;
     if (status == 401 or status == 403) return PatchError.Unauthorized;
     if (status == 404) return PatchError.NotFound;
-    log.warn("clerk_backend.unexpected_status status={d} url={s}", .{ status, url });
+    log.warn("unexpected_status", .{ .status = status, .url = url });
     return PatchError.UnexpectedStatus;
 }
 

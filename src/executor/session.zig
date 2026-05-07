@@ -10,10 +10,11 @@
 //!     defer sess.destroy();
 
 const std = @import("std");
+const logging = @import("log");
 const types = @import("types.zig");
 const context_budget = @import("context_budget.zig");
 
-const log = std.log.scoped(.executor_session);
+const log = logging.scoped(.executor_session);
 
 const Session = @This();
 
@@ -93,7 +94,7 @@ pub fn create(
 pub fn cancel(self: *Session) void {
     self.cancelled.store(true, .release);
     const hex = types.executionIdHex(self.execution_id);
-    log.info("session.cancelled execution_id={s}", .{&hex});
+    log.info("cancelled", .{ .execution_id = &hex });
 }
 
 pub fn isCancelled(self: *const Session) bool {
@@ -139,7 +140,7 @@ pub fn getResourceContext(self: *const Session) ResourceContext {
 
 pub fn destroy(self: *Session) void {
     const hex = types.executionIdHex(self.execution_id);
-    log.info("session.destroyed execution_id={s} stages={d} tokens={d}", .{ &hex, self.stages_executed, self.total_tokens });
+    log.info("destroyed", .{ .execution_id = &hex, .stages = self.stages_executed, .tokens = self.total_tokens });
     self.arena.deinit();
 }
 

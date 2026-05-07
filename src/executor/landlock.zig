@@ -1,4 +1,4 @@
-//! Landlock filesystem policy enforcement for the host backend (§4.2).
+//! Landlock filesystem policy enforcement for the host backend.
 //!
 //! Applies a Landlock ruleset to restrict filesystem access:
 //! - Workspace directory: read + write
@@ -9,10 +9,11 @@
 //! Linux-only; no-ops on other platforms.
 
 const std = @import("std");
+const logging = @import("log");
 const builtin = @import("builtin");
 const executor_metrics = @import("executor_metrics.zig");
 
-const log = std.log.scoped(.executor_landlock);
+const log = logging.scoped(.executor_landlock);
 
 // Landlock syscall numbers (same on x86_64 and aarch64).
 const SYS_landlock_create_ruleset: usize = 444;
@@ -158,7 +159,7 @@ fn applyPolicy(workspace_path: []const u8) LandlockError!void {
     );
     if (restrict_result != 0) return LandlockError.RestrictSelfFailed;
 
-    log.info("landlock.applied workspace={s}", .{workspace_path});
+    log.info("applied", .{ .workspace = workspace_path });
 }
 
 fn addPathRule(ruleset_fd: i32, path: []const u8, access: u64) LandlockError!void {

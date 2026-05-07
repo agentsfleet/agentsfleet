@@ -557,6 +557,20 @@ test "integration: runMigrations reap is a no-op when all applied rows are canon
     _ = db_ctx.conn.exec("DROP TABLE IF EXISTS public.test_reap_noop_b", .{}) catch {};
 }
 
+test "integration: runMigrations succeeds on empty migrations list (no SQL syntax error)" {
+    // Regression: pre-fix the reap helper built `DELETE … WHERE version NOT
+    // IN ()` which Postgres rejects with sqlstate 42601 (`syntax error at
+    // or near ")"`). An empty migrations slice must early-return cleanly.
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const empty: []const pool_mod.Migration = &[_]pool_mod.Migration{};
+    try pool_mod.runMigrations(db_ctx.pool, empty);
+}
+
 test "integration: readonly roles cannot read vault.secrets" {
     if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
     const alloc = std.testing.allocator;

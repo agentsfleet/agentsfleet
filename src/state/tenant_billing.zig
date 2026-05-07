@@ -4,8 +4,9 @@ const error_codes = @import("../errors/error_registry.zig");
 const store = @import("tenant_billing_store.zig");
 const tenant_provider = @import("tenant_provider.zig");
 const model_rate_cache = @import("model_rate_cache.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.state);
+const log = logging.scoped(.state);
 
 /// One-time grant inserted at tenant creation. Funds the first ~166 platform-
 /// managed events (3¢ each) or ~500 BYOK events (1¢ each).
@@ -73,7 +74,7 @@ pub fn provision(
     grant_source: []const u8,
 ) !void {
     try store.insertIfAbsent(conn, tenant_id, plan_tier, plan_sku, balance_cents, grant_source);
-    log.info("tenant_billing.provisioned tenant_id={s} balance_cents={d} source={s}", .{ tenant_id, balance_cents, grant_source });
+    log.info("tenant_billing_provisioned", .{ .tenant_id = tenant_id, .balance_cents = balance_cents, .source = grant_source });
 }
 
 /// Insert the one-time $5 starter grant for a new tenant. Called from the

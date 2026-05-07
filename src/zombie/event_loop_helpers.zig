@@ -20,13 +20,14 @@ const executor_transport = @import("../executor/transport.zig");
 const context_budget = @import("../executor/context_budget.zig");
 const event_loop_context_resolve = @import("event_loop_context_resolve.zig");
 const id_format = @import("../types/id_format.zig");
+const logging = @import("log");
 
 const types = @import("event_loop_types.zig");
 const event_loop_secrets = @import("event_loop_secrets.zig");
 const ZombieSession = types.ZombieSession;
 const EventLoopConfig = types.EventLoopConfig;
 
-const log = std.log.scoped(.zombie_event_loop);
+const log = logging.scoped(.zombie_event_loop);
 
 /// Iterate session.config.credentials and return the first successfully
 /// resolved value from vault.secrets. Credentials are plain names (e.g. "agentmail").
@@ -37,7 +38,7 @@ pub fn resolveFirstCredential(alloc: Allocator, pool: *pg.Pool, session: *Zombie
     return error.CredentialNotFound;
 }
 
-/// M2_001: Resolve a zombie credential from vault.secrets via crypto_store.
+/// Resolve a zombie credential from vault.secrets via crypto_store.
 /// Key naming: "zombie:{name}" in vault.secrets. Returns decrypted value.
 fn resolveCredential(alloc: Allocator, pool: *pg.Pool, workspace_id: []const u8, name: []const u8) ![]const u8 {
     const key_name = try std.fmt.allocPrint(alloc, "zombie:{s}", .{name});
@@ -46,7 +47,7 @@ fn resolveCredential(alloc: Allocator, pool: *pg.Pool, workspace_id: []const u8,
     const conn = try pool.acquire();
     defer pool.release(conn);
     return crypto_store.load(alloc, conn, workspace_id, key_name) catch |err| {
-        log.warn("zombie_event_loop.credential_not_found workspace_id={s} name={s} error_code=" ++ error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING, .{ workspace_id, name });
+        log.warn("credential_not_found", .{ .workspace_id = workspace_id, .name = name, .error_code = error_codes.ERR_ZOMBIE_CREDENTIAL_MISSING });
         return err;
     };
 }
@@ -113,12 +114,12 @@ pub fn sleepWithBackoff(cfg: EventLoopConfig, consecutive_errors: u32) void {
     }
 }
 
-// M15_002: exit_status label values for PostHog ZombieCompleted events.
+// exit_status label values for PostHog ZombieCompleted events.
 const EXIT_PROCESSED = "processed";
 const EXIT_AGENT_ERROR = "agent_error";
 const EXIT_DELIVER_ERROR = "deliver_error";
 
-/// M15_002: delivery bookkeeping — activity log + Prometheus + PostHog.
+/// Delivery bookkeeping — activity log + Prometheus + PostHog.
 /// Called from event_loop.processEvent after deliverEvent resolves.
 pub fn logDeliveryResult(
     cfg: EventLoopConfig,
@@ -131,8 +132,8 @@ pub fn logDeliveryResult(
     _ = alloc;
     const ok = stage_result.failure == null;
     if (ok) {
-        log.info("zombie_event_loop.delivered zombie_id={s} event_id={s} tokens={d} wall_s={d}", .{
-            session.zombie_id, event.event_id, stage_result.token_count, stage_result.wall_seconds,
+        log.info("delivered", .{
+            .zombie_id = session.zombie_id, .event_id = event.event_id, .tokens = stage_result.token_count, .wall_s = stage_result.wall_seconds,
         });
         metrics_counters.incZombiesCompleted();
         metrics_counters.addZombieTokens(stage_result.token_count);
@@ -140,8 +141,8 @@ pub fn logDeliveryResult(
         metrics_counters.observeZombieExecutionSeconds(wall_ms);
     } else {
         const label = stage_result.failure.?.label();
-        log.warn("zombie_event_loop.agent_failure zombie_id={s} event_id={s} failure={s}", .{
-            session.zombie_id, event.event_id, label,
+        log.warn("agent_failure", .{
+            .zombie_id = session.zombie_id, .event_id = event.event_id, .failure = label,
         });
         metrics_counters.incZombiesFailed();
     }
@@ -161,7 +162,7 @@ pub fn logDeliveryResult(
     }
 }
 
-/// M15_002: deliver-path failure (before stage_result is available).
+/// Deliver-path failure (before stage_result is available).
 pub fn recordDeliverError(cfg: EventLoopConfig, session: *ZombieSession, event_id: []const u8) void {
     metrics_counters.incZombiesFailed();
     if (cfg.telemetry) |tel| {
@@ -177,7 +178,7 @@ pub fn recordDeliverError(cfg: EventLoopConfig, session: *ZombieSession, event_i
     }
 }
 
-// ── M23_001: Execution tracking ──────────────────────────────────────────────
+// ── Execution tracking ───────────────────────────────────────────────────────
 
 /// Set active execution in session and DB. Non-fatal — tracking is observability only.
 /// Called immediately after createExecution succeeds.
@@ -262,7 +263,7 @@ pub fn executeInSandbox(
             }
             secrets_obj_alive = true;
         } else |err| {
-            log.warn("zombie_event_loop.secrets_resolve_failed zombie_id={s} err={s}", .{ session.zombie_id, @errorName(err) });
+            log.warn("secrets_resolve_failed", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
         }
     }
     const secrets_map: ?std.json.Value = if (secrets_obj_alive) .{ .object = secrets_obj } else null;
@@ -271,12 +272,12 @@ pub fn executeInSandbox(
         session.config.context,
         session.config.model,
     );
-    log.info("zombie_event_loop.context_budget_resolved zombie_id={s} tool_window={d} memory_checkpoint_every={d} stage_chunk_threshold={d:.2} context_cap_tokens={d}", .{
-        session.zombie_id,
-        ctx_budget.tool_window,
-        ctx_budget.memory_checkpoint_every,
-        ctx_budget.stage_chunk_threshold,
-        ctx_budget.context_cap_tokens,
+    log.info("context_budget_resolved", .{
+        .zombie_id = session.zombie_id,
+        .tool_window = ctx_budget.tool_window,
+        .memory_checkpoint_every = ctx_budget.memory_checkpoint_every,
+        .stage_chunk_threshold = ctx_budget.stage_chunk_threshold,
+        .context_cap_tokens = ctx_budget.context_cap_tokens,
     });
 
     const execution_id = cfg.executor.createExecution(.{
@@ -292,7 +293,7 @@ pub fn executeInSandbox(
         // network_policy / tools remain default empty — slice 3 wires
         // per-zombie network allowlist + tool filter from frontmatter.
     }) catch |err| {
-        log.err("zombie_event_loop.exec_create_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_SESSION_CREATE_FAILED, .{ session.zombie_id, event.event_id });
+        log.err("exec_create_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .error_code = error_codes.ERR_EXEC_SESSION_CREATE_FAILED });
         return err;
     };
     // clearExecutionActive defer runs BEFORE this (LIFO), so DB is cleared before socket is closed.
@@ -301,7 +302,7 @@ pub fn executeInSandbox(
         alloc.free(execution_id);
     }
 
-    // M23_001: track execution in session + DB so the steer API can read it.
+    // Track execution in session + DB so the steer API can read it.
     setExecutionActive(alloc, session, execution_id, cfg.pool);
     defer clearExecutionActive(alloc, session, cfg.pool);
 
@@ -333,7 +334,7 @@ pub fn executeInSandbox(
         .message = message_text,
         .context = context_val,
     }, emitter) catch |err| {
-        log.err("zombie_event_loop.stage_fail zombie_id={s} event_id={s} error_code=" ++ error_codes.ERR_EXEC_STAGE_START_FAILED, .{ session.zombie_id, event.event_id });
+        log.err("stage_fail", .{ .zombie_id = session.zombie_id, .event_id = event.event_id, .error_code = error_codes.ERR_EXEC_STAGE_START_FAILED });
         return err;
     };
 }

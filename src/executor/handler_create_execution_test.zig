@@ -36,15 +36,6 @@ fn parseCreateExecParams(alloc: std.mem.Allocator) !std.json.Parsed(std.json.Val
     return std.json.parseFromSlice(std.json.Value, alloc, params_json, .{});
 }
 
-fn parseExecutionIdHex(hex: []const u8) ?types.ExecutionId {
-    if (hex.len != 32) return null;
-    var id: types.ExecutionId = undefined;
-    for (0..16) |i| {
-        id[i] = std.fmt.parseInt(u8, hex[i * 2 .. i * 2 + 2], 16) catch return null;
-    }
-    return id;
-}
-
 test "CreateExecution stores network_policy.allow on the session" {
     const alloc = std.testing.allocator;
     var store = SessionStore.init(alloc);
@@ -65,7 +56,7 @@ test "CreateExecution stores network_policy.allow on the session" {
     try std.testing.expect(resp.rpc_error == null);
 
     const exec_id_hex = resp.result.?.object.get("execution_id").?.string;
-    const exec_id = parseExecutionIdHex(exec_id_hex) orelse return error.TestUnexpectedResult;
+    const exec_id = types.parseExecutionId(exec_id_hex) orelse return error.TestUnexpectedResult;
     const session = store.get(exec_id) orelse return error.TestUnexpectedResult;
 
     try std.testing.expectEqual(@as(usize, 2), session.policy.network_policy.allow.len);
@@ -90,7 +81,7 @@ test "CreateExecution stores tools allowlist on the session" {
     var resp = try protocol.parseResponse(alloc, resp_json);
     defer resp.deinit();
 
-    const exec_id = parseExecutionIdHex(resp.result.?.object.get("execution_id").?.string).?;
+    const exec_id = types.parseExecutionId(resp.result.?.object.get("execution_id").?.string).?;
     const session = store.get(exec_id).?;
 
     try std.testing.expectEqual(@as(usize, 2), session.policy.tools.len);
@@ -115,7 +106,7 @@ test "CreateExecution stores secrets_map JSON tree on the session" {
     var resp = try protocol.parseResponse(alloc, resp_json);
     defer resp.deinit();
 
-    const exec_id = parseExecutionIdHex(resp.result.?.object.get("execution_id").?.string).?;
+    const exec_id = types.parseExecutionId(resp.result.?.object.get("execution_id").?.string).?;
     const session = store.get(exec_id).?;
 
     const sm = session.policy.secrets_map.?;
@@ -142,7 +133,7 @@ test "CreateExecution stores context budget on the session" {
     var resp = try protocol.parseResponse(alloc, resp_json);
     defer resp.deinit();
 
-    const exec_id = parseExecutionIdHex(resp.result.?.object.get("execution_id").?.string).?;
+    const exec_id = types.parseExecutionId(resp.result.?.object.get("execution_id").?.string).?;
     const session = store.get(exec_id).?;
 
     try std.testing.expectEqual(@as(u32, 30), session.policy.context.tool_window);
@@ -169,7 +160,7 @@ test "CreateExecution with no policy fields uses defaults" {
     var resp = try protocol.parseResponse(alloc, resp_json);
     defer resp.deinit();
 
-    const exec_id = parseExecutionIdHex(resp.result.?.object.get("execution_id").?.string).?;
+    const exec_id = types.parseExecutionId(resp.result.?.object.get("execution_id").?.string).?;
     const session = store.get(exec_id).?;
 
     try std.testing.expectEqual(@as(usize, 0), session.policy.network_policy.allow.len);

@@ -6,13 +6,14 @@ const std = @import("std");
 const posthog = @import("posthog");
 
 const db = @import("../db/pool.zig");
-const obs_log = @import("../observability/logging.zig");
+const error_codes = @import("../errors/error_registry.zig");
+const logging = @import("log");
 const otel_logs = @import("../observability/otel_logs.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const common = @import("common.zig");
 
-const log = std.log.scoped(.preflight);
+const log = logging.scoped(.preflight);
 
 // ---------------------------------------------------------------------------
 // PostHog client
@@ -40,7 +41,7 @@ pub fn initPostHog(alloc: std.mem.Allocator) PostHogResult {
         .flush_at = 20,
         .max_retries = 3,
     }) catch |err| {
-        obs_log.logWarnErr(.preflight, err, "startup.posthog_init status=fail reason=analytics_disabled", .{});
+        log.warn("startup.posthog_init_failed", .{ .err = @errorName(err), .reason = "analytics_disabled" });
         alloc.free(api_key.?);
         return .{ .client = null, .api_key_owned = null };
     };
@@ -74,7 +75,7 @@ pub fn initTelemetry(alloc: std.mem.Allocator) TelemetryResult {
 pub fn initOtelLogs(alloc: std.mem.Allocator) void {
     if (otel_logs.configFromEnv(alloc)) |cfg| {
         otel_logs.install(cfg);
-        log.info("startup.otel_logs status=ok", .{});
+        log.info("startup.otel_logs_ok", .{});
     }
 }
 
@@ -91,7 +92,7 @@ pub fn deinitOtelLogs() void {
 pub fn initOtelTraces(alloc: std.mem.Allocator) void {
     if (otel_logs.configFromEnv(alloc)) |cfg| {
         otel_traces.install(cfg);
-        log.info("startup.otel_traces status=ok", .{});
+        log.info("startup.otel_traces_ok", .{});
     }
 }
 
@@ -106,12 +107,16 @@ pub fn deinitOtelTraces() void {
 // ---------------------------------------------------------------------------
 
 pub fn connectDbPool(alloc: std.mem.Allocator, role: db.DbRole) !*db.Pool {
-    log.info("startup.db_connect role={s} status=start", .{@tagName(role)});
+    log.info("startup.db_connect_start", .{ .role = @tagName(role) });
     const pool = db.initFromEnvForRole(alloc, role) catch |err| {
-        log.err("startup.db_connect role={s} status=fail error_code=UZ-STARTUP-003 err={s}", .{ @tagName(role), @errorName(err) });
+        log.err("startup.db_connect_failed", .{
+            .role = @tagName(role),
+            .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
+            .err = @errorName(err),
+        });
         return err;
     };
-    log.info("startup.db_connect role={s} status=ok", .{@tagName(role)});
+    log.info("startup.db_connect_ok", .{ .role = @tagName(role) });
     return pool;
 }
 
@@ -120,35 +125,47 @@ pub fn connectDbPool(alloc: std.mem.Allocator, role: db.DbRole) !*db.Pool {
 // ---------------------------------------------------------------------------
 
 pub fn checkMigrations(pool: *db.Pool, migrate_on_start: bool) anyerror!void {
-    log.info("startup.migration_check status=start", .{});
+    log.info("startup.migration_check_start", .{});
     common.enforceServeMigrationSafety(pool, migrate_on_start) catch |err| {
+        const mc_code = error_codes.ERR_STARTUP_MIGRATION_CHECK;
         switch (err) {
-            common.MigrationGuardError.MigrationPending => log.err(
-                "startup.migration_check status=fail error_code=UZ-STARTUP-005 err=pending_migrations hint=run zombied migrate or set MIGRATE_ON_START=1",
-                .{},
-            ),
-            common.MigrationGuardError.MigrationFailed => log.err(
-                "startup.migration_check status=fail error_code=UZ-STARTUP-005 err=migration_failure_state hint=inspect schema_migration_failures then rerun zombied migrate",
-                .{},
-            ),
-            common.MigrationGuardError.MigrationSchemaAhead => log.err(
-                "startup.migration_check status=fail error_code=UZ-STARTUP-005 err=schema_ahead hint=deploy matching binary",
-                .{},
-            ),
-            common.MigrationGuardError.MigrationLockUnavailable => log.err(
-                "startup.migration_check status=fail error_code=UZ-STARTUP-005 err=migration_lock_unavailable hint=another node is migrating",
-                .{},
-            ),
-            else => log.err("startup.migration_check status=fail error_code=UZ-STARTUP-005 err={s}", .{@errorName(err)}),
+            common.MigrationGuardError.MigrationPending => log.err("startup.migration_check_failed", .{
+                .error_code = mc_code,
+                .reason = "pending_migrations",
+                .hint = "run zombied migrate or set MIGRATE_ON_START=1",
+            }),
+            common.MigrationGuardError.MigrationFailed => log.err("startup.migration_check_failed", .{
+                .error_code = mc_code,
+                .reason = "migration_failure_state",
+                .hint = "inspect schema_migration_failures then rerun zombied migrate",
+            }),
+            common.MigrationGuardError.MigrationSchemaAhead => log.err("startup.migration_check_failed", .{
+                .error_code = mc_code,
+                .reason = "schema_ahead",
+                .hint = "deploy matching binary",
+            }),
+            common.MigrationGuardError.MigrationLockUnavailable => log.err("startup.migration_check_failed", .{
+                .error_code = mc_code,
+                .reason = "migration_lock_unavailable",
+                .hint = "another node is migrating",
+            }),
+            else => log.err("startup.migration_check_failed", .{
+                .error_code = mc_code,
+                .err = @errorName(err),
+            }),
         }
         return err;
     };
-    log.info("startup.migration_check status=ok", .{});
+    log.info("startup.migration_check_ok", .{});
 }
 
 pub fn parseMigrateOnStart(alloc: std.mem.Allocator) !bool {
     return common.migrateOnStartEnabledFromEnv(alloc) catch |err| {
-        log.err("startup.migration_check status=fail error_code=UZ-STARTUP-005 err=invalid_MIGRATE_ON_START err_detail={s}", .{@errorName(err)});
+        log.err("startup.migration_check_failed", .{
+            .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK,
+            .reason = "invalid_MIGRATE_ON_START",
+            .err = @errorName(err),
+        });
         return err;
     };
 }

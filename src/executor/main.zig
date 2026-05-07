@@ -6,9 +6,10 @@
 //! Landlock + cgroups v2).
 //!
 //! The worker no longer assumes dangerous agent execution lives in its
-//! own process boundary (§3.3).
+//! own process boundary.
 
 const std = @import("std");
+const logging = @import("log");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
 const transport = @import("transport.zig");
@@ -21,7 +22,74 @@ const landlock = @import("landlock.zig");
 const cgroup = @import("cgroup.zig");
 const network = @import("network.zig");
 
-const log = std.log.scoped(.sandbox_executor);
+const log = logging.scoped(.sandbox_executor);
+
+var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode == .Debug) std.log.Level.debug else std.log.Level.info));
+
+// pub: consumed by std at comptime via @import("root").std_options.
+// Mirrors src/main.zig's zombiedLog so the executor binary's logs are
+// logfmt-shaped (`ts_ms=… level=… scope=… msg=…`) and parseable by the
+// same aggregator pipeline as the worker. Without this, std falls back
+// to defaultLog ("[scope] (level): msg") and `error_code=UZ-…` alerts
+// silently drop executor lines.
+//
+// No OTLP dual-write here — the executor sidecar is local-only; the
+// worker's logFn is the single OTEL emitter.
+pub const std_options: std.Options = .{
+    .log_level = .debug,
+    .logFn = executorLog,
+};
+
+fn parseLogLevel(level_raw: []const u8) ?std.log.Level {
+    if (std.ascii.eqlIgnoreCase(level_raw, "debug")) return .debug;
+    if (std.ascii.eqlIgnoreCase(level_raw, "info")) return .info;
+    if (std.ascii.eqlIgnoreCase(level_raw, "warn") or std.ascii.eqlIgnoreCase(level_raw, "warning")) return .warn;
+    if (std.ascii.eqlIgnoreCase(level_raw, "err") or std.ascii.eqlIgnoreCase(level_raw, "error")) return .err;
+    return null;
+}
+
+fn initRuntimeLogLevel(alloc: std.mem.Allocator) void {
+    const level_raw = std.process.getEnvVarOwned(alloc, "LOG_LEVEL") catch return;
+    defer alloc.free(level_raw);
+    if (parseLogLevel(level_raw)) |lvl| {
+        runtime_log_level.store(@intFromEnum(lvl), .release);
+    }
+}
+
+fn shouldLog(level: std.log.Level) bool {
+    const configured: std.log.Level = @enumFromInt(runtime_log_level.load(.acquire));
+    return @intFromEnum(level) <= @intFromEnum(configured);
+}
+
+fn executorLog(
+    comptime level: std.log.Level,
+    comptime scope: @TypeOf(.enum_literal),
+    comptime fmt: []const u8,
+    args: anytype,
+) void {
+    if (!shouldLog(level)) return;
+    const level_str = comptime switch (level) {
+        .err => "err",
+        .warn => "warn",
+        .info => "info",
+        .debug => "debug",
+    };
+    const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
+    const ts = std.time.milliTimestamp();
+    var msg_buf: [4096]u8 = undefined;
+    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch return;
+    var line_buf: [8192]u8 = undefined;
+    const line = if (logging.isPretty())
+        logging.formatPretty(&line_buf, ts, level, scope_str, msg)
+    else
+        std.fmt.bufPrint(
+            &line_buf,
+            "ts_ms={d} level={s} scope={s} msg={f}\n",
+            .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
+        ) catch return;
+    const stderr = std.fs.File.stderr();
+    stderr.writeAll(line) catch {};
+}
 
 const DEFAULT_SOCKET_PATH = "/run/zombie/executor.sock";
 const DEFAULT_LEASE_TIMEOUT_MS: u64 = 30_000;
@@ -37,6 +105,9 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{ .thread_safe = true }){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
+
+    initRuntimeLogLevel(alloc);
+    logging.initPrettyMode(alloc);
 
     // getEnvVarOwned returns a fresh allocation; the default branch borrows a
     // const literal. Track ownership so the env-set path doesn't leak at
@@ -54,24 +125,17 @@ pub fn main() !void {
         if (v_u64 > 0 and v_u64 <= std.math.maxInt(u32)) {
             const v: u32 = @intCast(v_u64);
             transport.setHelloVersionOverride(v);
-            log.warn("startup.rpc_version_override version={d} (test-only harness path)", .{v});
+            log.warn("rpc_version_override", .{ .version = v, .path = "test_harness" });
         }
     }
 
-    log.info("startup.executor socket={s} lease_timeout_ms={d} network_policy={s}", .{
-        socket_path,
-        lease_timeout_ms,
-        @tagName(net_policy),
-    });
+    log.info("executor_started", .{ .socket = socket_path, .lease_timeout_ms = lease_timeout_ms, .network_policy = @tagName(net_policy) });
 
     // Report host backend capabilities.
     if (builtin.os.tag == .linux) {
-        log.info("startup.capabilities landlock={} cgroups_v2={}", .{
-            landlock.isAvailable(),
-            cgroup.isAvailable(),
-        });
+        log.info("capabilities_detected", .{ .landlock = landlock.isAvailable(), .cgroups_v2 = cgroup.isAvailable() });
     } else {
-        log.warn("startup.non_linux host_backend=degraded", .{});
+        log.warn("host_backend_degraded", .{ .host = "non_linux" });
     }
 
     var store = SessionStore.init(alloc);
@@ -99,7 +163,7 @@ pub fn main() !void {
 
     var server = transport.Server.init(alloc, socket_path, frame_handler.handle);
     server.bind() catch |err| {
-        log.err("startup.bind_failed path={s} err={s}", .{ socket_path, @errorName(err) });
+        log.err("bind_failed", .{ .path = socket_path, .err = @errorName(err) });
         std.process.exit(1);
     };
     defer server.stop();
@@ -128,12 +192,12 @@ pub fn main() !void {
         std.posix.sigaction(std.posix.SIG.INT, &act, null);
     }
 
-    log.info("executor.serving socket={s}", .{socket_path});
+    log.info("serving", .{ .socket = socket_path });
     server.serve();
 
     lease_manager.stop();
     lease_thread.join();
-    log.info("executor.shutdown", .{});
+    log.info("shutdown", .{});
 }
 
 fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default: u64) u64 {

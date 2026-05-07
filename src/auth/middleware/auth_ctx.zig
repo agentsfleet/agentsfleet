@@ -11,6 +11,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const principal_mod = @import("../principal.zig");
+const errors = @import("errors.zig");
 
 pub const AuthPrincipal = principal_mod.AuthPrincipal;
 
@@ -78,10 +79,10 @@ test "AuthCtx.fail forwards code/detail/req_id to host writer" {
         .write_error = testWriteError,
     };
 
-    ctx.fail("UZ-AUTH-001", "Invalid or missing token");
+    ctx.fail(errors.ERR_FORBIDDEN, "Invalid or missing token");
 
     try testing.expectEqual(@as(usize, 1), test_write_count);
-    try testing.expectEqualStrings("UZ-AUTH-001", test_last_code);
+    try testing.expectEqualStrings(errors.ERR_FORBIDDEN, test_last_code);
     try testing.expectEqualStrings("Invalid or missing token", test_last_detail);
     try testing.expectEqualStrings("req_abcdef012345", test_last_req_id);
 }

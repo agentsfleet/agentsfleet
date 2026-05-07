@@ -6,11 +6,13 @@
 //! must stay in lockstep with `zombie/event_envelope.zig::encodeForXAdd`.
 
 const std = @import("std");
+const logging = @import("log");
 const queue_consts = @import("constants.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_client = @import("redis_client.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
-const log = std.log.scoped(.redis_zombie);
+const log = logging.scoped(.redis_zombie);
 
 /// ZombieEvent fields decoded from a `zombie:{id}:events` stream message.
 ///
@@ -112,15 +114,15 @@ pub fn xackZombie(client: *redis_client.Client, zombie_id: []const u8, event_id:
     defer resp.deinit(client.alloc);
     switch (resp) {
         .integer => |v| if (v < 0) {
-            log.err("redis.xack_zombie_fail zombie_id={s} event_id={s}", .{ zombie_id, event_id });
+            log.err("xack_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = zombie_id, .event_id = event_id });
             return error.RedisXackFailed;
         },
         else => {
-            log.err("redis.xack_zombie_fail zombie_id={s} event_id={s}", .{ zombie_id, event_id });
+            log.err("xack_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = zombie_id, .event_id = event_id });
             return error.RedisXackFailed;
         },
     }
-    log.debug("redis.xack_zombie zombie_id={s} event_id={s}", .{ zombie_id, event_id });
+    log.debug("xack_succeeded", .{ .zombie_id = zombie_id, .event_id = event_id });
 }
 
 // ── Decoders ─────────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
+const logging = @import("log");
 
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -14,7 +15,7 @@ const id_format = @import("../../../types/id_format.zig");
 const approval_gate_db = @import("../../../zombie/approval_gate_db.zig");
 const keyset_cursor = @import("../../../zombie/keyset_cursor.zig");
 
-const log = std.log.scoped(.http_approvals_list);
+const log = logging.scoped(.http_approvals_list);
 
 const LIMIT_DEFAULT: u32 = 50;
 const LIMIT_MAX: u32 = 200;
@@ -63,14 +64,14 @@ pub fn innerListApprovals(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []co
     };
 
     var result = approval_gate_db.listPending(hx.ctx.pool, hx.alloc, filter, cursor, limit) catch |err| {
-        log.err("approvals.list_failed err={s} workspace_id={s}", .{ @errorName(err), workspace_id });
+        log.err("list_failed", .{ .err = @errorName(err), .workspace_id = workspace_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
     defer result.deinit(hx.alloc);
 
     writeResponse(hx, result.items, limit) catch |err| {
-        log.err("approvals.list_response_failed err={s}", .{@errorName(err)});
+        log.err("list_response_failed", .{ .err = @errorName(err) });
         common.internalDbError(hx.res, hx.req_id);
     };
 }

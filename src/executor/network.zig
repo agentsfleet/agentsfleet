@@ -1,4 +1,4 @@
-//! Network policy enforcement for the host backend (M16_003 §3).
+//! Network policy enforcement for the host backend.
 //!
 //! Two policies:
 //!   deny_all          — isolate the network namespace (--unshare-net via bwrap).
@@ -8,14 +8,15 @@
 //!                       Bare-metal deploy sets EXECUTOR_NETWORK_POLICY=registry_allowlist.
 //!
 //! Allowlist hostnames are compile-time constants in executor_network_policy.zig.
-//! Full TCP-layer enforcement (nftables) is Phase 2 — out of scope here.
+//! Full TCP-layer enforcement with nftables is outside this batch.
 
 const std = @import("std");
+const logging = @import("log");
 const builtin = @import("builtin");
 
 const policy_config = @import("executor_network_policy.zig");
 
-const log = std.log.scoped(.executor_network);
+const log = logging.scoped(.executor_network);
 
 pub const PolicyMode = enum {
     /// No network access (default). Uses --unshare-net via bubblewrap.
@@ -60,14 +61,11 @@ pub fn appendBwrapNetworkArgs(
         },
         .registry_allowlist => {
             // --share-net keeps the host network namespace so package managers
-            // can reach public registries. Phase 2 will add nftables rules
+            // can reach public registries. A later nftables pass will add rules
             // to restrict egress to REGISTRY_ALLOWLIST only.
             try argv.append(alloc, "--share-net");
             for (policy_config.REGISTRY_ALLOWLIST) |host| {
-                log.debug(
-                    "network.allowlist host={s} execution_id={s}",
-                    .{ host, execution_id },
-                );
+                log.debug("allowlist_host", .{ .host = host, .execution_id = execution_id });
             }
         },
     }
@@ -143,9 +141,7 @@ test "isNetworkNamespaceAvailable returns false on non-linux" {
     try std.testing.expect(!isNetworkNamespaceAvailable());
 }
 
-// ── T9 — Parameterized policyFromSlice ────────────────────────────────────────
-
-test "policyFromSlice parameterized — all variants and edge inputs" {
+test "policyFromSlice covers all variants and edge inputs" {
     const Case = struct { input: []const u8, want: PolicyMode };
     const cases = [_]Case{
         // Happy path — exact and case variants
@@ -168,8 +164,6 @@ test "policyFromSlice parameterized — all variants and edge inputs" {
     }
 }
 
-// ── T2 — Edge cases ───────────────────────────────────────────────────────────
-
 test "appendBwrapNetworkArgs with deny_all ignores execution_id content" {
     // Empty execution_id should still produce no args under deny_all.
     const alloc = std.testing.allocator;
@@ -188,8 +182,6 @@ test "appendBwrapNetworkArgs with registry_allowlist accepts empty execution_id"
     try std.testing.expectEqualStrings("--share-net", argv.items[0]);
 }
 
-// ── T10 — Enum shape / constants ──────────────────────────────────────────────
-
 test "PolicyMode enum has exactly two variants" {
     // Guards against accidental addition of a third policy that bypasses the
     // deny_all default enforcement.
@@ -204,10 +196,8 @@ test "NetworkConfig default policy is deny_all" {
     try std.testing.expect(cfg.policy != .registry_allowlist);
 }
 
-// ── T11 — Memory safety ───────────────────────────────────────────────────────
-
 test "appendBwrapNetworkArgs with registry_allowlist does not leak across multiple calls" {
-    // std.testing.allocator panics on leak — this covers T11 automatically.
+    // std.testing.allocator panics on leak.
     const alloc = std.testing.allocator;
     for (0..10) |i| {
         var argv = std.ArrayList([]const u8){};
@@ -220,12 +210,11 @@ test "appendBwrapNetworkArgs with registry_allowlist does not leak across multip
     }
 }
 
-// ── T8 — OWASP Agent Security: network policy fail-closed ────────────────────
-
-// T8.1 — policyFromSlice with injection-like values falls back to deny_all.
+// OWASP Agent Security: network policy fail-closed.
+// policyFromSlice with injection-like values falls back to deny_all.
 // Guards against env var injection that attempts to widen the network policy.
 // All variants below must resolve to deny_all (fail-closed).
-test "T8: policyFromSlice with injection-like values fails closed to deny_all (M16_003 §3)" {
+test "policyFromSlice with injection-like values fails closed to deny_all" {
     const cases = [_][]const u8{
         "registry_allowlist\x00extra", // null byte suffix after valid prefix
         "registry_allowlist\ndenied", // newline injection
@@ -240,9 +229,9 @@ test "T8: policyFromSlice with injection-like values fails closed to deny_all (M
     }
 }
 
-// T8.2 — appendBwrapNetworkArgs with deny_all adds zero args regardless of execution_id content.
+// appendBwrapNetworkArgs with deny_all adds zero args regardless of execution_id content.
 // Guards against an execution_id that contains --share-net being interpreted as a flag.
-test "T8: appendBwrapNetworkArgs deny_all ignores execution_id containing flag-like content" {
+test "appendBwrapNetworkArgs deny_all ignores execution_id containing flag-like content" {
     const alloc = std.testing.allocator;
     var argv = std.ArrayList([]const u8){};
     defer argv.deinit(alloc);
@@ -251,9 +240,9 @@ test "T8: appendBwrapNetworkArgs deny_all ignores execution_id containing flag-l
     try std.testing.expectEqual(@as(usize, 0), argv.items.len);
 }
 
-// T8.3 — registry_allowlist adds exactly one arg (--share-net), never more.
+// registry_allowlist adds exactly one arg (--share-net), never more.
 // Guards against a future regression where execution_id content triggers extra args.
-test "T8: appendBwrapNetworkArgs registry_allowlist adds exactly one arg regardless of execution_id" {
+test "appendBwrapNetworkArgs registry_allowlist adds exactly one arg regardless of execution_id" {
     const alloc = std.testing.allocator;
     const exec_ids = [_][]const u8{
         "--share-net",

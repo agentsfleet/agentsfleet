@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
+const logging = @import("log");
 
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -17,7 +18,7 @@ const approval_gate_db = @import("../../../zombie/approval_gate_db.zig");
 const resolver = @import("../../../zombie/approval_gate_resolver.zig");
 const error_registry = @import("../../../errors/error_registry.zig");
 
-const log = std.log.scoped(.http_approvals_resolve);
+const log = logging.scoped(.http_approvals_resolve);
 
 const REASON_MAX = 4096;
 
@@ -68,7 +69,7 @@ pub fn innerResolveApproval(
     // resolve core uses to wake the worker). Also enforces workspace scope
     // and gives us a 404 path that doesn't reveal cross-workspace existence.
     const maybe_row = approval_gate_db.getByGateId(hx.ctx.pool, hx.alloc, gate_id, workspace_id) catch |err| {
-        log.err("approvals.resolve_lookup_failed err={s} gate_id={s}", .{ @errorName(err), gate_id });
+        log.err("resolve_lookup_failed", .{ .err = @errorName(err), .gate_id = gate_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -95,7 +96,7 @@ pub fn innerResolveApproval(
         .by = by,
         .reason = reason,
     }) catch |err| {
-        log.err("approvals.resolve_failed err={s} gate_id={s}", .{ @errorName(err), gate_id });
+        log.err("resolve_failed", .{ .err = @errorName(err), .gate_id = gate_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -108,7 +109,7 @@ pub fn innerResolveApproval(
     switch (outcome) {
         .not_found => hx.fail(ec.ERR_APPROVAL_NOT_FOUND, ec.MSG_APPROVAL_NOT_FOUND),
         .resolved => |r| {
-            log.info("approvals.resolved gate_id={s} outcome={s} by={s}", .{ gate_id, r.outcome.toSlice(), r.resolved_by });
+            log.info("resolved", .{ .gate_id = gate_id, .outcome = r.outcome.toSlice(), .by = r.resolved_by });
             hx.ok(.ok, .{
                 .gate_id = r.gate_id,
                 .action_id = r.action_id,

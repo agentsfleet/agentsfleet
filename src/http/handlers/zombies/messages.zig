@@ -13,13 +13,14 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const EventEnvelope = @import("../../../zombie/event_envelope.zig");
 
-const log = std.log.scoped(.zombie_messages);
+const log = logging.scoped(.zombie_messages);
 
 const Hx = hx_mod.Hx;
 
@@ -95,13 +96,13 @@ pub fn innerZombieMessagesPost(hx: Hx, req: *httpz.Request, workspace_id: []cons
     };
 
     const event_id = hx.ctx.queue.xaddZombieEvent(envelope) catch |err| {
-        log.warn("zombie_messages.xadd_failed zombie_id={s} actor={s} err={s}", .{ zombie_id, actor, @errorName(err) });
+        log.warn("xadd_failed", .{ .zombie_id = zombie_id, .actor = actor, .err = @errorName(err) });
         common.internalOperationError(hx.res, "failed to enqueue chat event", hx.req_id);
         return;
     };
     defer hx.ctx.alloc.free(event_id);
 
-    log.info("zombie_messages.posted zombie_id={s} event_id={s} actor={s}", .{ zombie_id, event_id, actor });
+    log.info("posted", .{ .zombie_id = zombie_id, .event_id = event_id, .actor = actor });
     hx.ok(.accepted, .{
         .status = "accepted",
         .event_id = event_id,

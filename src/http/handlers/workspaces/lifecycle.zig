@@ -1,7 +1,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
-const obs_log = @import("../../../observability/logging.zig");
+const logging = @import("log");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const error_codes = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
@@ -15,7 +15,7 @@ const hx_mod = @import("../hx.zig");
 /// burn through this many random `<adj>-<noun>-<3digit>` candidates.
 const MAX_NAME_ATTEMPTS: u8 = 8;
 
-const log = std.log.scoped(.http);
+const log = logging.scoped(.http);
 
 fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
     return id_format.generateWorkspaceId(alloc);
@@ -98,7 +98,7 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     const name_raw = parsed.value.name orelse "";
     const name_trimmed = std.mem.trim(u8, name_raw, " \t\r\n");
     const name: ?[]const u8 = if (name_trimmed.len == 0) null else name_trimmed;
-    // M11_006: every authenticated principal MUST carry tenant_id. The
+    // Every authenticated principal MUST carry tenant_id. The
     // signup webhook writes it back to Clerk publicMetadata after
     // `bootstrapPersonalAccount`; a null tenant_id here means either an
     // unprovisioned Clerk session (reject — caller should refresh and
@@ -110,7 +110,10 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
 
     const conn = hx.ctx.pool.acquire() catch {
-        log.err("workspace.db_acquire_fail error_code=UZ-INTERNAL-001 op=create_workspace", .{});
+        log.err("workspace_db_acquire_fail", .{
+            .error_code = error_codes.ERR_INTERNAL_DB_UNAVAILABLE,
+            .op = "create_workspace",
+        });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -135,7 +138,11 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
     };
     const final_name = insertAndProvision(conn, hx, workspace_id, tenant_id, name, now_ms) orelse return;
 
-    log.info("workspace.created workspace_id={s} tenant_id={s} name={s}", .{ workspace_id, tenant_id, final_name });
+    log.info("workspace_created", .{
+        .workspace_id = workspace_id,
+        .tenant_id = tenant_id,
+        .name = final_name,
+    });
     hx.ctx.telemetry.capture(telemetry_mod.WorkspaceCreated, .{ .distinct_id = hx.principal.user_id orelse "", .workspace_id = workspace_id, .tenant_id = tenant_id, .request_id = hx.req_id });
 
     hx.ok(.created, .{
@@ -144,5 +151,4 @@ pub fn innerCreateWorkspace(hx: hx_mod.Hx, req: *httpz.Request) void {
         .request_id = hx.req_id,
     });
 }
-
 

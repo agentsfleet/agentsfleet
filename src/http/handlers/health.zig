@@ -2,13 +2,15 @@ const std = @import("std");
 const httpz = @import("httpz");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const metrics = @import("../../observability/metrics.zig");
-const obs_log = @import("../../observability/logging.zig");
+const logging = @import("log");
 const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const build_options = @import("build_options");
 
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
+
+const log = logging.scoped(.http);
 
 // M10_001: QueueHealth struct and queueHealth() removed — they queried the
 // dropped `runs` table for SPEC_QUEUED count. Zombie uses Redis streams,
@@ -30,7 +32,7 @@ fn databaseHealthy(ctx: *Context) bool {
 
 fn queueHealthy(ctx: *Context) bool {
     ctx.queue.readyCheck() catch |err| {
-        obs_log.logWarnErr(.http, err, "readyz: redis queue check failed", .{});
+        log.warn("readyz.redis_check_failed", .{ .err = @errorName(err) });
         return false;
     };
     return true;

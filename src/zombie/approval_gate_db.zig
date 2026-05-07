@@ -14,8 +14,9 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 const id_format = @import("../types/id_format.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const logging = @import("log");
 
-const log = std.log.scoped(.approval_gate_db);
+const log = logging.scoped(.approval_gate_db);
 
 const reads = @import("approval_gate_db_reads.zig");
 const GateStatus = @import("approval_gate.zig").GateStatus;
@@ -79,7 +80,7 @@ pub fn recordGatePending(
     detail: ActionDetail,
 ) void {
     insertPendingRow(pool, alloc, zombie_id, workspace_id, action_id, detail) catch |err| {
-        log.err("approval_gate.record_pending_fail err={s} action_id={s}", .{ @errorName(err), action_id });
+        log.err("record_pending_fail", .{ .err = @errorName(err), .action_id = action_id });
     };
 }
 
@@ -102,7 +103,7 @@ pub fn resolveGateDecision(
         .reason = detail,
     };
     var outcome = args.atomic(pool, sink_alloc) catch |err| {
-        log.err("approval_gate.resolve_fail err={s} action_id={s}", .{ @errorName(err), action_id });
+        log.err("resolve_fail", .{ .err = @errorName(err), .action_id = action_id });
         return;
     };
     outcome.deinit(sink_alloc);

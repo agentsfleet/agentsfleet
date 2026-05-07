@@ -12,7 +12,9 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const auth_adapter = @import("handlers/auth/adapter.zig");
 const route_table = @import("route_table.zig");
 const hx_mod = @import("handlers/hx.zig");
-const log = std.log.scoped(.http);
+const logging = @import("log");
+
+const log = logging.scoped(.http);
 
 const ServerConfig = struct {
     port: u16 = 3000,
@@ -26,10 +28,10 @@ const ServerConfig = struct {
 
 /// httpz handler struct — carries Context and owns dispatch.
 ///
-/// M18_002 C.2: `registry` is a pointer to the boot-time `MiddlewareRegistry`
-/// allocated in `src/cmd/serve.zig`. The registry must outlive the server
-/// (both live in the `run()` stack frame). All threads share this read-only
-/// pointer — no mutex needed because registry is immutable after `initChains()`.
+/// `registry` is a pointer to the boot-time `MiddlewareRegistry` allocated in
+/// `src/cmd/serve.zig`. The registry must outlive the server (both live in the
+/// `run()` stack frame). All threads share this read-only pointer — no mutex
+/// needed because registry is immutable after `initChains()`.
 const App = struct {
     ctx: *handler.Context,
     registry: *auth_mw.MiddlewareRegistry,
@@ -80,7 +82,7 @@ pub const Server = struct {
 
     /// Block until stop() is called from another thread.
     pub fn listen(self: *Server) !void {
-        log.info("http.listening interface={s} port={d}", .{ self.cfg.interface, self.cfg.port });
+        log.info("listening", .{ .interface = self.cfg.interface, .port = self.cfg.port });
         try self.inner.listen();
     }
 
@@ -139,8 +141,7 @@ fn emitRequestSpan(tctx: common.TraceContext, path: []const u8, start_ns: u64) v
 fn dispatchMatchedRoute(ctx: *handler.Context, registry: *auth_mw.MiddlewareRegistry, req: *httpz.Request, res: *httpz.Response, path: []const u8) bool {
     const matched = router.match(path, req.method) orelse return false;
 
-    // M18_002 Batch D: route_table.specFor covers all Route variants.
-    // The legacy switch is removed — all routes are handled here.
+    // route_table.specFor covers all Route variants.
     if (route_table.specFor(matched, registry)) |spec| {
         var arena = std.heap.ArenaAllocator.init(ctx.alloc);
         defer arena.deinit();
@@ -251,7 +252,7 @@ test "ServerConfig defaults are stable — full struct check" {
 // the no-listen unwind path and pre-listen stop().
 
 test "Server.init then deinit without listen does not leak" {
-    // T11 — std.testing.allocator asserts no leaks at test exit.
+    // std.testing.allocator asserts no leaks at test exit.
     // Catches any future refactor that allocates in init() but only frees in
     // a path conditional on listen() having been called.
     const alloc = std.testing.allocator;

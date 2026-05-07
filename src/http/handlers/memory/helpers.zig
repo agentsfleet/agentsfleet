@@ -1,7 +1,8 @@
-// M14_001: Shared helpers for memory HTTP handlers.
+// Shared helpers for memory HTTP handlers.
 // Split from memory_http.zig for RULE FLL (350-line gate).
 
 const std = @import("std");
+const logging = @import("log");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -9,7 +10,7 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 
-const log = std.log.scoped(.memory_http_helpers);
+const log = logging.scoped(.memory_http_helpers);
 
 pub const Hx = hx_mod.Hx;
 
@@ -89,7 +90,11 @@ pub fn setMemoryRole(conn: *pg.Conn) bool {
 /// log.err so operators can see pool poisoning in logs before the pool reaps it.
 pub fn resetRole(conn: *pg.Conn) void {
     _ = conn.exec("RESET ROLE", .{}) catch |err| {
-        log.err("memory_http.reset_role_failed err={s} hint=connection_will_be_discarded_by_pool", .{@errorName(err)});
+        log.err("reset_role_failed", .{
+            .error_code = ec.ERR_INTERNAL_DB_QUERY,
+            .err = @errorName(err),
+            .hint = "connection_will_be_discarded_by_pool",
+        });
     };
 }
 
@@ -98,7 +103,9 @@ pub fn resetRole(conn: *pg.Conn) void {
 pub fn escapeLikePattern(alloc: std.mem.Allocator, input: []const u8) error{OutOfMemory}![]const u8 {
     // Count metacharacters to size the output buffer.
     var extra: usize = 0;
-    for (input) |c| if (c == '%' or c == '_' or c == '\\') { extra += 1; };
+    for (input) |c| if (c == '%' or c == '_' or c == '\\') {
+        extra += 1;
+    };
     const out = try alloc.alloc(u8, input.len + extra);
     var i: usize = 0;
     for (input) |c| {
@@ -139,19 +146,19 @@ pub fn collectEntries(
         const row = q.next() catch break :collect;
         const r = row orelse break :collect;
         const key = alloc.dupe(u8, r.get([]const u8, 0) catch continue) catch {
-            log.warn("memory_http.collect_truncated reason=oom_key collected={d}", .{entries.items.len});
+            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_key", .collected = entries.items.len });
             break :collect;
         };
         const content = alloc.dupe(u8, r.get([]const u8, 1) catch continue) catch {
-            log.warn("memory_http.collect_truncated reason=oom_content collected={d}", .{entries.items.len});
+            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_content", .collected = entries.items.len });
             break :collect;
         };
         const category = alloc.dupe(u8, r.get([]const u8, 2) catch continue) catch {
-            log.warn("memory_http.collect_truncated reason=oom_category collected={d}", .{entries.items.len});
+            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_category", .collected = entries.items.len });
             break :collect;
         };
         const updated_at = alloc.dupe(u8, r.get([]const u8, 3) catch continue) catch {
-            log.warn("memory_http.collect_truncated reason=oom_updated_at collected={d}", .{entries.items.len});
+            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_updated_at", .collected = entries.items.len });
             break :collect;
         };
         entries.append(alloc, .{
@@ -160,7 +167,7 @@ pub fn collectEntries(
             .category = category,
             .updated_at = updated_at,
         }) catch {
-            log.warn("memory_http.collect_truncated reason=oom_append collected={d}", .{entries.items.len});
+            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_append", .collected = entries.items.len });
             break :collect;
         };
     }

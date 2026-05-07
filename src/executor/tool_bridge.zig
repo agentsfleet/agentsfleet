@@ -17,17 +17,19 @@
 //! NOT import anything from src/zombie/, src/pipeline/, or src/main.zig.
 
 const std = @import("std");
+const logging = @import("log");
 const nullclaw = @import("nullclaw");
 const tools_mod = nullclaw.tools;
 const Config = nullclaw.config.Config;
 const builders = @import("tool_builders.zig");
 const context_budget = @import("context_budget.zig");
 
-const log = std.log.scoped(.tool_bridge);
+const log = logging.scoped(.tool_bridge);
 
 // Duplicated from src/errors/error_registry.zig — executor cannot cross the binary
 // boundary to import from src/errors/.
 const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
+const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,7 +40,7 @@ const ERR_TOOL_UNKNOWN = "UZ-TOOL-005";
 /// (currently only http_request) construct the policy-aware variant
 /// and capture the borrow. `null` keeps the plain NullClaw behaviour
 /// for callers that don't have a session yet (e.g. unit tests, the
-/// register-only fallback path before §3 lands everywhere).
+/// register-only fallback path before policy-aware execution lands everywhere).
 pub const BuildCtx = struct {
     alloc: std.mem.Allocator,
     workspace_path: []const u8,
@@ -177,14 +179,14 @@ pub fn buildTools(
         if (!jsonGetBoolDefault(item, "enabled", true)) continue;
 
         const entry = resolve(tool_name) orelse {
-            log.warn("tool_bridge.unknown_tool error_code={s} name={s}", .{ ERR_TOOL_UNKNOWN, tool_name });
+            log.warn("unknown_tool", .{ .error_code = ERR_TOOL_UNKNOWN, .name = tool_name });
             const duped = try alloc.dupe(u8, tool_name);
             try skipped.append(alloc, duped);
             continue;
         };
 
         const t = entry.buildFn(ctx) catch |err| {
-            log.err("tool_bridge.build_failed name={s} err={s}", .{ tool_name, @errorName(err) });
+            log.err("build_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT, .name = tool_name, .err = @errorName(err) });
             continue;
         };
         list.append(alloc, t) catch |err| {

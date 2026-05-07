@@ -3,6 +3,7 @@
 //! DELETE /v1/workspaces/{ws}/zombies/{id}/integration-grants/{gid}  → innerRevokeGrant (bearer policy)
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -10,13 +11,11 @@ const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 
-const log = std.log.scoped(.integration_grants);
+const log = logging.scoped(.integration_grants);
 
 pub const Context = common.Context;
 
-// M24_001: getZombieWorkspaceId lived here pre-M24 and was duplicated into
-// zombie_activity_api for the IDOR guard. It now lives in common.zig so all
-// workspace-scoped zombie routes share one implementation.
+// Workspace-scoped zombie routes share common.getZombieWorkspaceId.
 
 // ── innerListGrants ────────────────────────────────────────────────────────
 // GET /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants
@@ -43,7 +42,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
-    // M24_001: verify zombie belongs to the path workspace (don't leak existence
+    // Verify zombie belongs to the path workspace (don't leak existence
     // of zombies in other workspaces — return 404, not 403).
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
@@ -67,21 +66,21 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
 
     var grants: std.ArrayListUnmanaged(GrantRow) = .{};
     while (q.next() catch null) |row| {
-        const grant_id    = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
-        const service     = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
-        const status      = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
+        const grant_id = hx.alloc.dupe(u8, row.get([]u8, 0) catch continue) catch continue;
+        const service = hx.alloc.dupe(u8, row.get([]u8, 1) catch continue) catch continue;
+        const status = hx.alloc.dupe(u8, row.get([]u8, 2) catch continue) catch continue;
         const requested_at = row.get(i64, 3) catch continue;
-        const approved_at  = row.get(i64, 4) catch null;
-        const revoked_at   = row.get(i64, 5) catch null;
-        const reason      = hx.alloc.dupe(u8, row.get([]u8, 6) catch continue) catch continue;
+        const approved_at = row.get(i64, 4) catch null;
+        const revoked_at = row.get(i64, 5) catch null;
+        const reason = hx.alloc.dupe(u8, row.get([]u8, 6) catch continue) catch continue;
         grants.append(hx.alloc, .{
-            .grant_id     = grant_id,
-            .service      = service,
-            .status       = status,
+            .grant_id = grant_id,
+            .service = service,
+            .status = status,
             .requested_at = requested_at,
-            .approved_at  = approved_at,
-            .revoked_at   = revoked_at,
-            .reason       = reason,
+            .approved_at = approved_at,
+            .revoked_at = revoked_at,
+            .reason = reason,
         }) catch {};
     }
 
@@ -103,7 +102,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
         hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
         return;
     }
-    // M24_001: verify zombie belongs to the path workspace.
+    // Verify zombie belongs to the path workspace.
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
         hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
         return;
@@ -137,7 +136,7 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
         return;
     }
 
-    log.info("grant.revoked zombie_id={s} grant_id={s}", .{ zombie_id, grant_id });
+    log.info("revoked", .{ .zombie_id = zombie_id, .grant_id = grant_id });
     hx.noContent();
 }
 
@@ -219,7 +218,8 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
 
     // Grant status must still be 'pending' — SQL defence blocked the revoke.
     var check_q = PgQuery.from(try conn.query(
-        "SELECT status FROM core.integration_grants WHERE grant_id = $1", .{grant_id},
+        "SELECT status FROM core.integration_grants WHERE grant_id = $1",
+        .{grant_id},
     ));
     defer check_q.deinit();
     const row = (try check_q.next()) orelse return error.TestUnexpectedResult;

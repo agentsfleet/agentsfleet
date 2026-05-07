@@ -2,7 +2,10 @@
 //! No pg or id_format dependencies — safe to import anywhere.
 
 const std = @import("std");
-const log = std.log.scoped(.secrets);
+const logging = @import("log");
+const error_codes = @import("../errors/error_registry.zig");
+
+const log = logging.scoped(.secrets);
 
 pub const AesGcm = std.crypto.aead.aes_gcm.Aes256Gcm;
 pub const KEY_LEN = AesGcm.key_length; // 32
@@ -32,7 +35,7 @@ pub const EncryptedBlob = struct {
 /// Load the 32-byte KEK from `ENCRYPTION_MASTER_KEY` env var (64 hex chars).
 pub fn loadKek(alloc: std.mem.Allocator) ![KEY_LEN]u8 {
     const hex = std.process.getEnvVarOwned(alloc, "ENCRYPTION_MASTER_KEY") catch {
-        log.err("secret.kek_env_not_set error_code=UZ-INTERNAL-003", .{});
+        log.err("kek_env_not_set", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
         return SecretError.MissingMasterKey;
     };
     defer alloc.free(hex);

@@ -14,6 +14,7 @@
 //!        configured" from "explicitly reset".
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 
@@ -25,7 +26,7 @@ const model_rate_cache = @import("../../state/model_rate_cache.zig");
 
 const Hx = hx_mod.Hx;
 
-const log = std.log.scoped(.http_tenant_provider);
+const log = logging.scoped(.http_tenant_provider);
 
 const PutInput = struct {
     mode: []const u8,
@@ -49,7 +50,7 @@ pub fn innerGetTenantProvider(hx: Hx, req: *httpz.Request) void {
     defer hx.ctx.pool.release(conn);
 
     const view = readProviderView(hx.alloc, conn, tenant_id) catch |err| {
-        log.err("get_tenant_provider tenant_id={s} err={s}", .{ tenant_id, @errorName(err) });
+        log.err("get_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -119,12 +120,12 @@ pub fn innerDeleteTenantProvider(hx: Hx, req: *httpz.Request) void {
 fn applyPlatform(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8) void {
     tenant_provider.upsertPlatform(hx.alloc, conn, tenant_id) catch |err| switch (err) {
         tenant_provider.ResolveError.PlatformKeyMissing => {
-            log.err("put_tenant_provider.platform_missing tenant_id={s}", .{tenant_id});
+            log.err("platform_missing", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
             common.internalOperationError(hx.res, "Platform LLM key not configured — operator action required", hx.req_id);
             return;
         },
         else => {
-            log.err("put_tenant_provider.platform_failed tenant_id={s} err={s}", .{ tenant_id, @errorName(err) });
+            log.err("platform_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
             common.internalDbUnavailable(hx.res, hx.req_id);
             return;
         },
@@ -154,12 +155,12 @@ fn applyByok(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: Pu
             return;
         },
         tenant_provider.ResolveError.TenantHasNoWorkspace => {
-            log.err("put_tenant_provider.no_workspace tenant_id={s}", .{tenant_id});
+            log.err("no_workspace", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
             common.internalOperationError(hx.res, "Tenant has no primary workspace — bootstrap invariant violated", hx.req_id);
             return;
         },
         else => {
-            log.err("put_tenant_provider.probe_failed tenant_id={s} err={s}", .{ tenant_id, @errorName(err) });
+            log.err("probe_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
             common.internalDbUnavailable(hx.res, hx.req_id);
             return;
         },
@@ -174,7 +175,7 @@ fn applyByok(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: Pu
     };
 
     tenant_provider.upsertByok(hx.alloc, conn, tenant_id, credential_ref, effective_model, cache_entry.context_cap_tokens) catch |err| {
-        log.err("put_tenant_provider.upsert_failed tenant_id={s} err={s}", .{ tenant_id, @errorName(err) });
+        log.err("upsert_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };

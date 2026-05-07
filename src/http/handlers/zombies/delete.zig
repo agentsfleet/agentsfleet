@@ -19,6 +19,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
@@ -29,7 +30,7 @@ const zombie_config = @import("../../../zombie/config.zig");
 const queue_redis = @import("../../../queue/redis_client.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
-const log = std.log.scoped(.zombie_api);
+const log = logging.scoped(.zombie_api);
 const API_ACTOR = "api";
 
 const Hx = hx_mod.Hx;
@@ -59,7 +60,7 @@ pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, workspace_id: []const u8, zo
     defer access.deinit(hx.alloc);
 
     const outcome = purgeZombieOnConn(conn, workspace_id, zombie_id) catch |err| {
-        log.err("zombie.delete_failed err={s} zombie_id={s} req_id={s}", .{ @errorName(err), zombie_id, hx.req_id });
+        log.err("delete_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -71,11 +72,11 @@ pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, workspace_id: []const u8, zo
             // worker XREADGROUP will see the empty stream and move on.
             cleanupRedisStream(hx.ctx.queue, zombie_id) catch |err| {
                 log.warn(
-                    "zombie.delete_redis_cleanup_failed err={s} zombie_id={s} req_id={s} hint=pg_row_purged_stream_orphaned_until_ttl",
-                    .{ @errorName(err), zombie_id, hx.req_id },
+                    "delete_redis_cleanup_failed",
+                    .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id, .hint = "pg_row_purged_stream_orphaned_until_ttl" },
                 );
             };
-            log.info("zombie.purged id={s} workspace={s} actor={s}", .{ zombie_id, workspace_id, actor });
+            log.info("purged", .{ .id = zombie_id, .workspace = workspace_id, .actor = actor });
             hx.res.status = 204;
         },
         .not_killed => hx.fail(ec.ERR_ZOMBIE_ALREADY_TERMINAL, "Zombie must be killed before delete (PATCH status=killed first)"),

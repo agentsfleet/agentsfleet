@@ -4,7 +4,7 @@
 //! 350-line cap. The wiring is small (frontmatter overrides → executor
 //! struct → auto-defaults) but it's load-bearing — every event-loop turn
 //! goes through it — and folding it into a separate file lets the
-//! `applyContextDefaults` invariant tests stay close to the resolution
+//! `ContextBudget.applyDefaults` invariant tests stay close to the resolution
 //! logic that depends on them.
 
 const std = @import("std");
@@ -41,7 +41,7 @@ comptime {
 
 /// Build a fully-resolved `ContextBudget` from the zombie's parsed config.
 /// Frontmatter overrides win; absent / zero fields fall through to
-/// `applyContextDefaults`. `model` is opaque pass-through.
+/// `ContextBudget.applyDefaults`. `model` is opaque pass-through.
 pub fn resolveContextBudget(
     config_ctx: ?config_types.ZombieContextBudget,
     config_model: ?[]const u8,
@@ -58,7 +58,7 @@ pub fn resolveContextBudget(
     // must not free this. If ContextBudget ever gains a destructor, this
     // assignment becomes unsafe and needs alloc.dupe.
     if (config_model) |m| ctx.model = m;
-    context_budget.applyContextDefaults(&ctx);
+    ctx.applyDefaults();
     return ctx;
 }
 

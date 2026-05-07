@@ -108,6 +108,27 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/crypto/hmac_sig.zig"),
     });
 
+    // ── Logging module ───────────────────────────────────────────────────────
+    // Shared `log.scoped` API + pretty-printer + fatalStderr per
+    // docs/LOGGING_STANDARD.md. Importable from every binary AND from
+    // src/auth/ + src/executor/ (which would otherwise be portability
+    // islands forbidden from reaching across `src/`). Module-named import
+    // makes the boundary clean — auth/executor still cannot import
+    // arbitrary cross-layer code, just the canonical logging surface.
+    //
+    // Lives at src/logging/ — a peer of src/observability/ — because it's
+    // strictly the structured-log facility. Wider observability concerns
+    // (OTel exporters, metrics, traces) live under src/observability/ and
+    // import this module.
+    //
+    // No domain dependencies (no error_registry import). Callers that
+    // need to embed an error_code field in a log record pass it as a
+    // struct field (`.{ .error_code = error_codes.ERR_X, ... }`), keeping
+    // logging/ pure of business knowledge.
+    const log_mod = b.createModule(.{
+        .root_source_file = b.path("src/logging/mod.zig"),
+    });
+
     // ── usezombie executable ───────────────────────────────────────────────────
     const exe = b.addExecutable(.{
         .name = "zombied",
@@ -123,6 +144,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "schema", .module = schema_mod },
                 .{ .name = "build_options", .module = build_opts.createModule() },
                 .{ .name = "hmac_sig", .module = hmac_sig_mod },
+                .{ .name = "log", .module = log_mod },
                 .{ .name = "yaml", .module = yaml_mod },
             },
         }),
@@ -178,6 +200,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "log", .module = log_mod },
                 .{ .name = "build_options", .module = exec_opts_prod.createModule() },
             },
         }),
@@ -197,6 +220,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "log", .module = log_mod },
                 .{ .name = "build_options", .module = exec_opts_harness.createModule() },
             },
         }),
@@ -213,6 +237,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "log", .module = log_mod },
                 .{ .name = "build_options", .module = exec_opts_stub.createModule() },
             },
         }),
@@ -230,6 +255,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = "log", .module = log_mod },
                 .{ .name = "build_options", .module = exec_opts_prod.createModule() },
             },
         }),
@@ -257,6 +283,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = "schema", .module = schema_mod },
                 .{ .name = "build_options", .module = build_opts.createModule() },
                 .{ .name = "hmac_sig", .module = hmac_sig_mod },
+                .{ .name = "log", .module = log_mod },
                 .{ .name = "yaml", .module = yaml_mod },
             },
         }),
@@ -287,10 +314,15 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "httpz", .module = httpz_mod },
                 .{ .name = "hmac_sig", .module = hmac_sig_mod },
+                .{ .name = "log", .module = log_mod },
             },
         }),
         .filters = test_filters,
     });
+    // src/auth/ now imports the named "log" module so it can use obs.scoped
+    // without breaking the portability gate (the gate forbids reaching into
+    // src/observability/ via relative paths, but named modules are
+    // first-class deps that don't violate the layer boundary).
     b.step("test-auth", "Run src/auth/** tests in isolation (portability gate)")
         .dependOn(&b.addRunArtifact(test_auth).step);
 
@@ -313,6 +345,7 @@ pub fn build(b: *std.Build) void {
                 .imports = &.{
                     .{ .name = "zbench", .module = zbench_mod },
                     .{ .name = "hmac_sig", .module = hmac_sig_mod },
+                .{ .name = "log", .module = log_mod },
                 },
             }),
         });

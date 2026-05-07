@@ -15,6 +15,7 @@
 // RULE NSQ: schema-qualified SQL (memory.memory_entries / core.zombies).
 
 const std = @import("std");
+const logging = @import("log");
 const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
@@ -26,7 +27,7 @@ const h = @import("helpers.zig");
 const Hx = h.Hx;
 const MemoryEntry = h.MemoryEntry;
 
-const log = std.log.scoped(.memory_http);
+const log = logging.scoped(.memory_http);
 pub const Context = common.Context;
 
 // ── Store ─────────────────────────────────────────────────────────────────
@@ -93,7 +94,7 @@ pub fn innerStoreMemory(
         \\      category = EXCLUDED.category,
         \\      updated_at = EXCLUDED.updated_at
     , .{ entry_id, b.key, b.content, b.category, instance_id, ts }) catch {
-        log.warn("memory_store.failed zombie_id={s} key={s}", .{ zombie_id, b.key });
+        log.warn("store_failed", .{ .error_code = ec.ERR_MEM_UNAVAILABLE, .zombie_id = zombie_id, .key = b.key });
         hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory store failed");
         return;
     };

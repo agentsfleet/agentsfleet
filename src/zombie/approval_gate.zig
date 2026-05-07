@@ -18,8 +18,9 @@ const config_gates = @import("config_gates.zig");
 
 const approval_gate_db = @import("approval_gate_db.zig");
 const approval_gate_anomaly = @import("approval_gate_anomaly.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.approval_gate);
+const log = logging.scoped(.approval_gate);
 
 pub const GateDecision = enum { auto_approve, requires_approval, auto_kill };
 
@@ -117,7 +118,7 @@ fn evaluateCondition(condition: []const u8, context: ?std.json.Value) bool {
     }
 
     // Invalid condition — treat as match (safe default: gate fires).
-    log.warn("approval_gate.invalid_condition condition={s}", .{condition});
+    log.warn("invalid_condition", .{ .condition = condition });
     return true;
 }
 
@@ -175,8 +176,8 @@ pub fn requestApproval(
 
     try redis.setEx(pending_key, detail_json, ec.GATE_PENDING_TTL_SECONDS);
 
-    log.info("approval_gate.requested zombie_id={s} action_id={s} tool={s} action={s}", .{
-        zombie_id, action_id, detail.tool, detail.action,
+    log.info("requested", .{
+        .zombie_id = zombie_id, .action_id = action_id, .tool = detail.tool, .action = detail.action,
     });
 
     return action_id;
@@ -201,12 +202,12 @@ pub fn waitForDecision(
     while (true) {
         const elapsed = @as(u64, @intCast(std.time.milliTimestamp())) -| start_ms;
         if (elapsed >= timeout_ms) {
-            log.info("approval_gate.timeout action_id={s} elapsed_ms={d}", .{ action_id, elapsed });
+            log.info("timeout", .{ .action_id = action_id, .elapsed_ms = elapsed });
             return .timed_out;
         }
 
         const decision = getDecision(redis, response_key) catch {
-            log.warn("approval_gate.redis_poll_fail action_id={s}", .{action_id});
+            log.warn("redis_poll_fail", .{ .action_id = action_id });
             return .timed_out;
         };
         if (decision) |d| return d;
@@ -241,7 +242,7 @@ pub fn resolveApproval(
     });
     try redis.setEx(response_key, decision, ec.GATE_PENDING_TTL_SECONDS);
 
-    log.info("approval_gate.resolved action_id={s} decision={s}", .{ action_id, decision });
+    log.info("resolved", .{ .action_id = action_id, .decision = decision });
 }
 
 // ── Channel-agnostic resolve core ──────────────────────────────────────
@@ -260,7 +261,7 @@ pub const ResolveArgs = approval_gate_db.ResolveArgs;
 /// Single dedup point for gate resolution. Called by:
 ///   - dashboard handler (`/approvals/{gate_id}:approve|:deny`)
 ///   - Slack interactive callback (`/webhooks/{zombie_id}/approval`)
-///   - Slack legacy interactions handler
+///   - Slack interactions handler
 ///   - approval_gate_sweeper (auto-timeout)
 ///
 /// Atomicity: the DB UPDATE precondition `WHERE status='pending'` plus the
@@ -283,7 +284,7 @@ pub fn resolve(
     return switch (db_outcome) {
         .resolved => |row| blk: {
             resolveApproval(redis, args.action_id, decisionString(args.outcome)) catch |err| {
-                log.warn("approval_gate.resolve_redis_fail action_id={s} err={s}", .{ args.action_id, @errorName(err) });
+                log.warn("resolve_redis_fail", .{ .action_id = args.action_id, .err = @errorName(err) });
             };
             break :blk .{ .resolved = row };
         },

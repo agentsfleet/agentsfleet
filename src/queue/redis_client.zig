@@ -39,7 +39,7 @@ pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
         }
     }
 
-    log.info("redis.connected host={s} port={d} tls={}", .{ cfg.host, cfg.port, cfg.use_tls });
+    log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
     return client;
 }
 
@@ -54,7 +54,7 @@ pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
         .integer => {},
         else => return error.RedisPublishFailed,
     }
-    log.debug("redis.publish channel={s} data_len={d}", .{ channel, data.len });
+    log.debug("publish", .{ .channel = channel, .data_len = data.len });
 }
 
 /// SET key value EX ttl_seconds — used for cancellation signals.
@@ -145,23 +145,23 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
 
     const id_str = switch (resp) {
         .bulk => |v| v orelse {
-            log.err("redis.xadd_zombie_event_fail zombie_id={s} actor={s}", .{ envelope.zombie_id, envelope.actor });
+            log.err("xadd_zombie_event_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
         else => {
-            log.err("redis.xadd_zombie_event_fail zombie_id={s} actor={s}", .{ envelope.zombie_id, envelope.actor });
+            log.err("xadd_zombie_event_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
     };
     const owned_id = try self.alloc.dupe(u8, id_str);
-    log.debug("redis.xadd_zombie_event zombie_id={s} event_id={s} actor={s} type={s}", .{ envelope.zombie_id, owned_id, envelope.actor, envelope.event_type.toSlice() });
+    log.debug("xadd_zombie_event", .{ .zombie_id = envelope.zombie_id, .event_id = owned_id, .actor = envelope.actor, .type = envelope.event_type.toSlice() });
     return owned_id;
 }
 
 pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
     var value = try self.commandAllowError(argv);
     if (value == .err) {
-        log.err("redis.command_error cmd={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{if (argv.len > 0) argv[0] else "unknown"});
+        log.err("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
         value.deinit(self.alloc);
         return error.RedisCommandError;
     }
@@ -198,6 +198,7 @@ pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
 }
 
 const std = @import("std");
+const logging = @import("log");
 const queue_consts = @import("constants.zig");
 const redis_types = @import("redis_types.zig");
 const redis_config = @import("redis_config.zig");
@@ -205,4 +206,4 @@ const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const EventEnvelope = @import("../zombie/event_envelope.zig");
-const log = std.log.scoped(.redis_queue);
+const log = logging.scoped(.redis_queue);

@@ -9,8 +9,9 @@
 //! runner.zig or handler.zig required.
 
 const std = @import("std");
+const logging = @import("log");
 
-const log = std.log.scoped(.runner_credentials);
+const log = logging.scoped(.runner_credentials);
 
 /// Write git credentials into the workspace so git push/pull can authenticate.
 ///
@@ -60,5 +61,5 @@ pub fn prepareGitCredential(
     try git_config_file.seekFromEnd(0);
     try git_config_file.writeAll(cred_section);
 
-    log.debug("runner_credentials.git_configured workspace={s}", .{workspace_path});
+    log.debug("git_configured", .{ .workspace = workspace_path });
 }

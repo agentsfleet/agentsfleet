@@ -59,7 +59,7 @@ fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Subscriber {
         try redis_protocol.ensureSimpleOk(auth);
     }
 
-    log.debug("redis.subscriber_connected host={s} port={d} tls={}", .{ cfg.host, cfg.port, cfg.use_tls });
+    log.debug("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
     return sub;
 }
 
@@ -139,8 +139,9 @@ fn expectSubscribeAck(value: redis_protocol.RespValue, channel: []const u8) !voi
 }
 
 const std = @import("std");
+const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
 const redis_types = @import("redis_types.zig");
-const log = std.log.scoped(.redis_subscriber);
+const log = logging.scoped(.redis_subscriber);

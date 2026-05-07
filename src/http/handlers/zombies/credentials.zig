@@ -7,6 +7,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -16,7 +17,7 @@ const vault = @import("../../../state/vault.zig");
 const credential_key = @import("../../../zombie/credential_key.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
-const log = std.log.scoped(.zombie_credentials_api);
+const log = logging.scoped(.zombie_credentials_api);
 const API_ACTOR = "api";
 
 pub const Context = common.Context;
@@ -75,13 +76,13 @@ pub fn innerStoreCredential(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
             return;
         },
         else => {
-            log.err("credential.store_failed err={s} name={s} req_id={s}", .{ @errorName(err), cred.name, hx.req_id });
+            log.err("store_failed", .{ .err = @errorName(err), .name = cred.name, .req_id = hx.req_id });
             common.internalDbError(hx.res, hx.req_id);
             return;
         },
     };
 
-    log.info("credential.stored name={s} workspace={s}", .{ cred.name, workspace_id });
+    log.info("stored", .{ .name = cred.name, .workspace = workspace_id });
     hx.ok(.created, .{ .name = cred.name });
 }
 
@@ -148,11 +149,11 @@ pub fn innerDeleteCredential(
     defer hx.alloc.free(key_name);
 
     const removed = vault.deleteCredential(conn, workspace_id, key_name) catch |err| {
-        log.err("credential.delete_failed err={s} name={s} req_id={s}", .{ @errorName(err), credential_name, hx.req_id });
+        log.err("delete_failed", .{ .err = @errorName(err), .name = credential_name, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
-    log.info("credential.deleted name={s} workspace={s} removed={}", .{ credential_name, workspace_id, removed });
+    log.info("deleted", .{ .name = credential_name, .workspace = workspace_id, .removed = removed });
     hx.res.status = 204;
 }
 
@@ -179,7 +180,7 @@ pub fn innerListCredentials(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []
     defer access.deinit(hx.alloc);
 
     const creds = fetchCredentialListOnConn(conn, hx.alloc, workspace_id) catch |err| {
-        log.err("credential.list_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
+        log.err("list_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -222,4 +223,3 @@ fn fetchCredentialListOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, workspace
     }
     return rows.toOwnedSlice(alloc);
 }
-

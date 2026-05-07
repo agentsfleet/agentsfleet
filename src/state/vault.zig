@@ -13,19 +13,17 @@
 
 const std = @import("std");
 const pg = @import("pg");
+const logging = @import("log");
 const crypto_store = @import("../secrets/crypto_store.zig");
+const error_codes = @import("../errors/error_registry.zig");
 
-const log = std.log.scoped(.vault);
+const log = logging.scoped(.vault);
 
 pub const Error = error{
     /// Caller passed a non-object JSON value (string/array/number/bool/null).
     NotAnObject,
     /// Caller passed `{}` — operator forgot to populate fields.
     EmptyObject,
-    /// Decryption succeeded but the plaintext was not parseable JSON, or
-    /// parsed to a non-object value. Surfaces only on rows that bypassed
-    /// `storeJson` (e.g. legacy `--value` rows or DB corruption).
-    MalformedPlaintext,
 };
 
 /// Encrypt and persist `value` as the canonical-stringified JSON object for
@@ -74,9 +72,10 @@ pub fn storeJsonPlaintext(
 ///
 /// Returns `std.json.Parsed(std.json.Value)`; the caller MUST call `.deinit()`
 /// on the returned handle to free the parser arena. The wrapped `value` is
-/// guaranteed to be `.object` — `storeJson` rejects everything else, and any
-/// non-object plaintext discovered at load time surfaces as
-/// `Error.MalformedPlaintext` rather than a silent success.
+/// guaranteed to be `.object` — every writer routes through `storeJson` /
+/// `storeJsonPlaintext`, both of which run `validateObject` (directly or via
+/// the caller's pre-flight) before the AES-GCM envelope, and the AEAD tag
+/// rejects any tampered ciphertext at decrypt time.
 pub fn loadJson(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
@@ -86,19 +85,24 @@ pub fn loadJson(
     const plaintext = try crypto_store.load(alloc, conn, workspace_id, key_name);
     defer alloc.free(plaintext);
 
-    // Log at warn (not err) so the negative-path test that deliberately
-    // writes a non-JSON plaintext does not trip the "logged errors" test
-    // gate. Operators still see the line; it just doesn't break CI.
     const parsed = std.json.parseFromSlice(std.json.Value, alloc, plaintext, .{}) catch |err| {
-        log.warn("vault.malformed_plaintext workspace_id={s} key_name={s} parse_err={s}", .{
-            workspace_id, key_name, @errorName(err),
+        // AEAD + validateObject make this unreachable for rows written via
+        // storeJson. storeJsonPlaintext skips the shape gate by design, so a
+        // malformed caller can still land bytes here. Warn (not err) so the
+        // redaction harness's deliberate non-JSON plaintext fixture does
+        // not trip the test runner's logged-errors gate; operators still
+        // get workspace + key context to pinpoint the corrupt row.
+        log.warn("vault_load_parse_failed", .{
+            .workspace_id = workspace_id,
+            .key_name = key_name,
+            .err = @errorName(err),
+            .error_code = error_codes.ERR_VAULT_DATA_INVALID,
         });
-        return Error.MalformedPlaintext;
+        return err;
     };
     if (parsed.value != .object) {
         parsed.deinit();
-        log.warn("vault.malformed_plaintext_not_object workspace_id={s} key_name={s}", .{ workspace_id, key_name });
-        return Error.MalformedPlaintext;
+        return Error.NotAnObject;
     }
     return parsed;
 }

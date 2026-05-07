@@ -3,8 +3,9 @@
 const std = @import("std");
 const jwks = @import("jwks.zig");
 const rbac = @import("rbac.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.auth);
+const log = logging.scoped(.auth);
 
 pub const IdentityClaims = struct {
     tenant_id: ?[]u8,
@@ -50,9 +51,9 @@ pub fn extractClerkClaims(alloc: std.mem.Allocator, claims_json: []const u8) !Cl
 
     const tenant_id = getClerkTenantId(parsed.value.object);
     const org_id = getClerkOrgId(parsed.value.object);
-    log.debug("auth.clerk_claims tenant_id={s} org_id={s}", .{
-        if (tenant_id) |v| v else "missing",
-        if (org_id) |v| v else "missing",
+    log.debug("clerk_claims_extracted", .{
+        .tenant_id = if (tenant_id) |v| v else "missing",
+        .org_id = if (org_id) |v| v else "missing",
     });
 
     return duplicateClaims(alloc, .{
@@ -73,9 +74,9 @@ pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !C
 
     const tenant_id = getCustomTenantId(parsed.value.object);
     const org_id = getCustomOrgId(parsed.value.object);
-    log.debug("auth.custom_claims tenant_id={s} org_id={s}", .{
-        if (tenant_id) |v| v else "missing",
-        if (org_id) |v| v else "missing",
+    log.debug("custom_claims_extracted", .{
+        .tenant_id = if (tenant_id) |v| v else "missing",
+        .org_id = if (org_id) |v| v else "missing",
     });
 
     return duplicateClaims(alloc, .{

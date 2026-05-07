@@ -20,6 +20,7 @@
 //!     <- ExecutionResult
 
 const std = @import("std");
+const logging = @import("log");
 const nullclaw = @import("nullclaw");
 
 const Config = nullclaw.config.Config;
@@ -27,11 +28,11 @@ const Agent = nullclaw.agent.Agent;
 const providers = nullclaw.providers;
 const tools_mod = nullclaw.tools;
 const memory_mod = nullclaw.memory;
-const observability = nullclaw.observability;
 
 const build_options = @import("build_options");
 
 const json = @import("json_helpers.zig");
+const wire = @import("wire.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const tool_bridge = @import("tool_bridge.zig");
@@ -40,10 +41,11 @@ const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
 const runner_harness = @import("runner_harness.zig");
+const runner_observer = @import("runner_observer.zig");
 const progress_writer_mod = @import("progress_writer.zig");
 const context_budget = @import("context_budget.zig");
 
-const log = std.log.scoped(.executor_runner);
+const log = logging.scoped(.executor_runner);
 
 // Runner-specific error codes and docs base URL.
 // Canonical source: src/errors/error_registry.zig (ERR_EXEC_RUNNER_*, ERROR_DOCS_BASE).
@@ -60,36 +62,6 @@ pub const RunnerError = error{
     AgentRunFailed,
     Timeout,
     OutOfMemory,
-};
-
-/// Observer runtime for NullClaw — selects backend from env.
-const ObserverRuntime = struct {
-    backend: ObserverBackend,
-    noop: observability.NoopObserver = .{},
-    log_observer: observability.LogObserver = .{},
-    verbose_observer: observability.VerboseObserver = .{},
-
-    const ObserverBackend = enum { log_backend, noop, verbose };
-
-    fn init(alloc: std.mem.Allocator) ObserverRuntime {
-        const raw = std.process.getEnvVarOwned(alloc, "NULLCLAW_OBSERVER") catch return .{ .backend = .log_backend };
-        defer alloc.free(raw);
-        const backend: ObserverBackend = if (std.ascii.eqlIgnoreCase(raw, "noop"))
-            .noop
-        else if (std.ascii.eqlIgnoreCase(raw, "verbose"))
-            .verbose
-        else
-            .log_backend;
-        return .{ .backend = backend };
-    }
-
-    fn observer(self: *ObserverRuntime) observability.Observer {
-        return switch (self.backend) {
-            .log_backend => self.log_observer.observer(),
-            .noop => self.noop.observer(),
-            .verbose => self.verbose_observer.observer(),
-        };
-    }
 };
 
 /// Execute a NullClaw agent from RPC parameters.
@@ -118,7 +90,7 @@ pub fn execute(
     }
 
     const msg = message orelse {
-        log.err("executor.runner.invalid_config error_code={s} reason=missing_message", .{ERR_EXEC_RUNNER_INVALID_CONFIG});
+        log.err("invalid_config", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .reason = "missing_message" });
         executor_metrics.incStagesFailed();
         return .{ .content = "", .exit_ok = false, .failure = .startup_posture };
     };
@@ -132,8 +104,10 @@ pub fn execute(
         executor_metrics.observeAgentDurationSeconds(elapsed);
         const failure = mapError(err);
         incFailureMetric(failure);
-        log.err("executor.runner.failed error_code={s} err={s} wall_seconds={d}", .{
-            errorCodeForFailure(failure), @errorName(err), elapsed,
+        log.err("failed", .{
+            .error_code = errorCodeForFailure(failure),
+            .err = @errorName(err),
+            .wall_seconds = elapsed,
         });
         return .{ .content = "", .wall_seconds = elapsed, .exit_ok = false, .failure = failure };
     };
@@ -143,7 +117,7 @@ pub fn execute(
     executor_metrics.addAgentTokens(result.token_count);
     executor_metrics.observeAgentDurationSeconds(elapsed);
 
-    log.info("executor.runner.done exit_ok=true tokens={d} wall_seconds={d}", .{ result.token_count, elapsed });
+    log.info("done", .{ .exit_ok = true, .tokens = result.token_count, .wall_seconds = elapsed });
 
     return .{
         .content = result.content,
@@ -171,7 +145,7 @@ fn executeInner(
 ) !InnerResult {
     // 1. Build config from env defaults + agent_config overrides.
     var cfg = Config.load(alloc) catch {
-        log.err("executor.runner.config_load_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_INIT});
+        log.err("config_load_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
         return RunnerError.AgentInitFailed;
     };
     defer cfg.deinit();
@@ -183,16 +157,15 @@ fn executeInner(
         // M16_003 §1.4: inject api_key from RPC payload into NullClaw Config.
         // This ensures the executor never reads ANTHROPIC_API_KEY (or any other
         // provider key) from the process environment.
-        if (json.getStr(ac, "api_key")) |key| {
+        if (json.getStr(ac, wire.api_key)) |key| {
             injectProviderApiKey(&cfg, key) catch {
-                log.err("executor.runner.api_key_inject_failed error_code={s}", .{ERR_EXEC_RUNNER_INVALID_CONFIG});
+                log.err("api_key_inject_failed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG });
                 return RunnerError.InvalidConfig;
             };
         }
-        // M16_003 §2: configure git credentials in workspace for github_token.
-        if (json.getStr(ac, "github_token")) |token| {
+        if (json.getStr(ac, wire.github_token)) |token| {
             runner_credentials.prepareGitCredential(alloc, workspace_path, token) catch |err| {
-                log.warn("executor.runner.git_cred_configure_failed err={s}", .{@errorName(err)});
+                log.warn("git_cred_configure_failed", .{ .err = @errorName(err) });
                 // Non-fatal: git operations will fail at push time if token is needed
                 // but missing. The worker re-requests before PR creation (§2.3).
             };
@@ -206,7 +179,7 @@ fn executeInner(
 
     // 3. Build tools from spec (or allTools as fallback).
     const tools = buildToolsFromSpec(alloc, workspace_path, tools_spec, &cfg, policy) catch {
-        log.err("executor.runner.tool_build_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_INIT});
+        log.err("tool_build_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
         return RunnerError.AgentInitFailed;
     };
     defer tools_mod.deinitTools(alloc, tools);
@@ -232,7 +205,7 @@ fn executeInner(
                     .namespace = mem_ns,
                 };
                 mem_cfg.validate() catch |err| {
-                    log.warn("executor.runner.memory_config_invalid err={s} falling_back=ephemeral", .{@errorName(err)});
+                    log.warn("memory_config_invalid", .{ .err = @errorName(err), .falling_back = "ephemeral" });
                     break :blk memory_mod.initRuntime(alloc, &cfg.memory, workspace_path);
                 };
                 break :blk zombie_memory.initRuntime(alloc, &mem_cfg, workspace_path);
@@ -249,7 +222,7 @@ fn executeInner(
     // ProgressFrame notifications on the StartStage RPC. Otherwise fall
     // back to the noop / log / verbose backend (default for non-streaming
     // call sites and tests).
-    var obs_runtime = ObserverRuntime.init(alloc);
+    var obs_runtime = runner_observer.init(alloc);
     var secrets_list = collectSecrets(agent_config);
     var adapter: runner_progress.Adapter = undefined;
     const checkpoint_every: u32 = if (policy) |p| p.context.memory_checkpoint_every else 0;
@@ -271,7 +244,7 @@ fn executeInner(
 
     // 6. Create agent.
     var agent = Agent.fromConfig(alloc, &cfg, provider_i, tools, mem_opt, obs) catch {
-        log.err("executor.runner.agent_init_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_INIT});
+        log.err("agent_init_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_INIT });
         return RunnerError.AgentInitFailed;
     };
     defer agent.deinit();
@@ -284,14 +257,14 @@ fn executeInner(
 
     // 7. Compose message with context fields.
     const composed = composeMessage(alloc, message, context) catch {
-        log.err("executor.runner.message_compose_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_RUN});
+        log.err("message_compose_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_RUN });
         return RunnerError.AgentRunFailed;
     };
     defer if (composed.ptr != message.ptr) alloc.free(composed);
 
     // 8. Run agent + redact terminal reply (see runner_helpers).
     const response = agent.runSingle(composed) catch {
-        log.err("executor.runner.agent_run_failed error_code={s}", .{ERR_EXEC_RUNNER_AGENT_RUN});
+        log.err("agent_run_failed", .{ .error_code = ERR_EXEC_RUNNER_AGENT_RUN });
         return RunnerError.AgentRunFailed;
     };
     const owned = runner_helpers.redactedFinalReply(alloc, response, &secrets_list) catch return RunnerError.AgentRunFailed;
@@ -320,8 +293,8 @@ fn collectSecrets(agent_config: ?std.json.Value) [2]runner_progress.Secret {
         .{ .value = "", .placeholder = "${secrets.github.token}" },
     };
     return .{
-        .{ .value = json.getStr(ac, "api_key") orelse "", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = json.getStr(ac, "github_token") orelse "", .placeholder = "${secrets.github.token}" },
+        .{ .value = json.getStr(ac, wire.api_key) orelse "", .placeholder = "${secrets.llm.api_key}" },
+        .{ .value = json.getStr(ac, wire.github_token) orelse "", .placeholder = "${secrets.github.token}" },
     };
 }
 

@@ -11,7 +11,7 @@ const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key_lookup = @import("api_key_lookup.zig");
 const metrics = @import("../observability/metrics.zig");
-const obs_log = @import("../observability/logging.zig");
+const logging = @import("log");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const preflight = @import("preflight.zig");
 const common = @import("common.zig");
@@ -22,7 +22,7 @@ const approval_gate_sweeper = @import("../zombie/approval_gate_sweeper.zig");
 const serve_webhook_lookup = @import("serve_webhook_lookup.zig");
 const model_rate_cache = @import("../state/model_rate_cache.zig");
 
-const log = std.log.scoped(.zombied);
+const log = logging.scoped(.zombied);
 
 var shutdown_requested = std.atomic.Value(bool).init(false);
 /// Published by run() before listen() begins; signalWatcher reads this to call stop().
@@ -61,34 +61,35 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer preflight.deinitOtelLogs();
     preflight.initOtelTraces(alloc);
     defer preflight.deinitOtelTraces();
-    log.info("startup.serve status=start", .{});
+    log.info("startup.serve_start", .{});
 
     const serve_port_override = parseServeArgOverrides() catch |err| {
         switch (err) {
-            serve_args.ServeArgError.InvalidServeArgument => log.err("startup.args_parse status=fail reason=invalid_argument", .{}),
-            serve_args.ServeArgError.MissingPortValue => log.err("startup.args_parse status=fail reason=missing_port_value", .{}),
-            serve_args.ServeArgError.InvalidPortValue => log.err("startup.args_parse status=fail reason=invalid_port_value", .{}),
+            serve_args.ServeArgError.InvalidServeArgument => log.err("startup.args_parse_failed", .{ .reason = "invalid_argument" }),
+            serve_args.ServeArgError.MissingPortValue => log.err("startup.args_parse_failed", .{ .reason = "missing_port_value" }),
+            serve_args.ServeArgError.InvalidPortValue => log.err("startup.args_parse_failed", .{ .reason = "invalid_port_value" }),
         }
         std.process.exit(2);
     };
 
-    log.info("startup.env_check status=start", .{});
+    log.info("startup.env_check_start", .{});
     env_vars.enforceFromEnv(alloc) catch |err| {
+        const env_code = error_codes.ERR_STARTUP_ENV_CHECK;
         switch (err) {
-            env_vars.EnvVarsErrors.MissingDatabaseUrlApi => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=DATABASE_URL_API not set", .{}),
-            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=DATABASE_URL_WORKER not set", .{}),
-            env_vars.EnvVarsErrors.MissingRedisUrlApi => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_API not set", .{}),
-            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_WORKER not set", .{}),
-            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=DATABASE_URL_API and DATABASE_URL_WORKER must differ", .{}),
-            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_API and REDIS_URL_WORKER must differ", .{}),
-            env_vars.EnvVarsErrors.RedisApiTlsRequired => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_API must use rediss://", .{}),
-            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check status=fail error_code=" ++ error_codes.ERR_STARTUP_ENV_CHECK ++ " err=REDIS_URL_WORKER must use rediss://", .{}),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlApi => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_API not set" }),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.MissingRedisUrlApi => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_API not set" }),
+            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_API and DATABASE_URL_WORKER must differ" }),
+            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_API and REDIS_URL_WORKER must differ" }),
+            env_vars.EnvVarsErrors.RedisApiTlsRequired => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_API must use rediss://" }),
+            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER must use rediss://" }),
         }
         std.process.exit(1);
     };
-    log.info("startup.env_check status=ok", .{});
+    log.info("startup.env_check_ok", .{});
 
-    log.info("startup.config_load status=start", .{});
+    log.info("startup.config_load_start", .{});
     var serve_cfg = runtime_config.ServeConfig.load(alloc) catch |err| {
         switch (err) {
             runtime_config.ValidationError.OidcRequired,
@@ -105,9 +106,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
             runtime_config.ValidationError.InvalidReadyMaxQueueAgeMs,
             => {
                 runtime_config.ServeConfig.printValidationError(@errorCast(err));
-                log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)});
+                log.err("startup.config_load_failed", .{ .error_code = error_codes.ERR_STARTUP_CONFIG_LOAD, .err = @errorName(err) });
             },
-            else => log.err("startup.config_load status=fail error_code=UZ-STARTUP-002 err={s}", .{@errorName(err)}),
+            else => log.err("startup.config_load_failed", .{ .error_code = error_codes.ERR_STARTUP_CONFIG_LOAD, .err = @errorName(err) }),
         }
         std.process.exit(1);
     };
@@ -115,36 +116,40 @@ pub fn run(alloc: std.mem.Allocator) !void {
     if (serve_port_override) |override| {
         serve_cfg.port = override;
     }
-    log.info("startup.config_load status=ok", .{});
+    log.info("startup.config_load_ok", .{});
 
     const api_pool = preflight.connectDbPool(alloc, .api) catch std.process.exit(1);
     defer api_pool.deinit();
 
-    log.info("startup.redis_connect role=api status=start", .{});
+    log.info("startup.redis_connect_start", .{ .role = "api" });
     var api_queue = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
-        log.err("startup.redis_connect role=api status=fail error_code=" ++ error_codes.ERR_STARTUP_REDIS_CONNECT ++ " err={s}", .{@errorName(err)});
+        log.err("startup.redis_connect_failed", .{
+            .role = "api",
+            .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
+            .err = @errorName(err),
+        });
         std.process.exit(1);
     };
     defer api_queue.deinit();
-    log.info("startup.redis_connect role=api status=ok", .{});
+    log.info("startup.redis_connect_ok", .{ .role = "api" });
 
     const migrate_on_start = preflight.parseMigrateOnStart(alloc) catch std.process.exit(1);
     preflight.checkMigrations(api_pool, migrate_on_start) catch std.process.exit(1);
 
-    log.info("startup.model_rate_cache status=start", .{});
+    log.info("startup.model_rate_cache_start", .{});
     {
         const cache_conn = api_pool.acquire() catch |err| {
-            log.err("startup.model_rate_cache status=fail err={s}", .{@errorName(err)});
+            log.err("startup.model_rate_cache_failed", .{ .err = @errorName(err) });
             std.process.exit(1);
         };
         defer api_pool.release(cache_conn);
         model_rate_cache.populate(alloc, cache_conn) catch |err| {
-            log.err("startup.model_rate_cache status=fail err={s}", .{@errorName(err)});
+            log.err("startup.model_rate_cache_failed", .{ .err = @errorName(err) });
             std.process.exit(1);
         };
     }
     defer model_rate_cache.deinit();
-    log.info("startup.model_rate_cache status=ok", .{});
+    log.info("startup.model_rate_cache_ok", .{});
 
     var sessions = auth_sessions.SessionStore.init(alloc);
     defer sessions.deinit();
@@ -169,7 +174,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     ctx.telemetry = tel.ptr();
 
     if (serve_cfg.oidc_enabled) {
-        log.info("startup.oidc_init status=start provider={s}", .{@tagName(serve_cfg.oidc_provider)});
+        log.info("startup.oidc_init_start", .{ .provider = @tagName(serve_cfg.oidc_provider) });
     }
     var oidc = if (serve_cfg.oidc_enabled) oidc_auth.Verifier.init(alloc, .{
         .provider = serve_cfg.oidc_provider,
@@ -180,7 +185,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer if (oidc) |*v| v.deinit();
     if (oidc) |*v| {
         ctx.oidc = v;
-        log.info("startup.oidc_init status=ok", .{});
+        log.info("startup.oidc_init_ok", .{});
     }
 
     // M18_002 C.2: Build the middleware registry at boot.
@@ -227,7 +232,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     registry.initChains();
     registry.setWebhookSig(webhook_sig_mw.middleware());
     registry.setSvixSig(svix_mw.middleware());
-    log.info("startup.middleware_registry status=ok", .{});
+    log.info("startup.middleware_registry_ok", .{});
 
     shutdown_requested.store(false, .release);
     preflight.installSignalHandlers(onSignal);
@@ -250,9 +255,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
     event_thread = try std.Thread.spawn(.{}, events_bus.runThread, .{&event_bus});
     approval_sweeper_thread = try std.Thread.spawn(.{}, approval_gate_sweeper.run, .{ api_pool, &api_queue, alloc, &shutdown_requested });
 
-    log.info("http.server_starting port={d} api_threads={d} api_workers={d} api_max_clients={d} api_max_in_flight={d}", .{
-        serve_cfg.port, serve_cfg.api_http_threads, serve_cfg.api_http_workers,
-        serve_cfg.api_max_clients, serve_cfg.api_max_in_flight_requests,
+    log.info("http.server_starting", .{
+        .port = serve_cfg.port,
+        .api_threads = serve_cfg.api_http_threads,
+        .api_workers = serve_cfg.api_http_workers,
+        .api_max_clients = serve_cfg.api_max_clients,
+        .api_max_in_flight = serve_cfg.api_max_in_flight_requests,
     });
     ctx.telemetry.capture(telemetry_mod.ServerStarted, .{ .port = serve_cfg.port });
     const srv = http_server.Server.init(&ctx, &registry, .{
@@ -261,7 +269,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .workers = serve_cfg.api_http_workers,
         .max_clients = @intCast(serve_cfg.api_max_clients),
     }) catch |err| {
-        obs_log.logErr(.zombied, err, "http.server_init status=fail", .{});
+        log.err("http.server_init_failed", .{ .err = @errorName(err) });
         return err;
     };
     defer srv.deinit();
@@ -269,7 +277,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer active_server.store(null, .release);
 
     srv.listen() catch |err| {
-        obs_log.logErr(.zombied, err, "http.server_exit status=fail", .{});
+        log.err("http.server_exit_failed", .{ .err = @errorName(err) });
     };
 
     shutdown_requested.store(true, .release);

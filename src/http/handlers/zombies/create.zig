@@ -15,6 +15,7 @@
 const std = @import("std");
 const httpz = @import("httpz");
 const pg = @import("pg");
+const logging = @import("log");
 
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -24,7 +25,7 @@ const zombie_config = @import("../../../zombie/config.zig");
 const queue_redis = @import("../../../queue/redis_client.zig");
 const control_stream = @import("../../../zombie/control_stream.zig");
 
-const log = std.log.scoped(.zombie_api);
+const log = logging.scoped(.zombie_api);
 
 const Hx = hx_mod.Hx;
 
@@ -122,30 +123,30 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
             hx.fail(ec.ERR_ZOMBIE_NAME_EXISTS, ec.MSG_ZOMBIE_NAME_EXISTS);
             return;
         }
-        log.err("zombie.create_failed err={s} req_id={s}", .{ @errorName(err), hx.req_id });
+        log.err("create_failed", .{ .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
     publishInstallSignals(hx.ctx.queue, zombie_id, workspace_id) catch |err| {
         log.err(
-            "zombie.create_publish_failed err={s} zombie_id={s} req_id={s} hint=rolling_back_pg_row",
-            .{ @errorName(err), zombie_id, hx.req_id },
+            "create_publish_failed",
+            .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id, .hint = "rolling_back_pg_row" },
         );
         // Roll back the PG row so the caller can retry cleanly without leaving
         // an orphan behind. If the rollback also fails (rare — PG flapping in
         // the same handler), the watcher's reconcile sweep is the safety net.
         deleteZombieRow(conn, workspace_id, zombie_id) catch |rollback_err| {
             log.err(
-                "zombie.create_rollback_failed err={s} zombie_id={s} req_id={s} hint=row_orphaned_reconcile_will_heal",
-                .{ @errorName(rollback_err), zombie_id, hx.req_id },
+                "create_rollback_failed",
+                .{ .err = @errorName(rollback_err), .zombie_id = zombie_id, .req_id = hx.req_id, .hint = "row_orphaned_reconcile_will_heal" },
             );
         };
         common.internalOperationError(hx.res, "control-stream publish failed; install rolled back", hx.req_id);
         return;
     };
 
-    log.info("zombie.created id={s} name={s} workspace={s}", .{ zombie_id, parsed.config.name, workspace_id });
+    log.info("created", .{ .id = zombie_id, .name = parsed.config.name, .workspace = workspace_id });
     hx.ok(.created, .{
         .zombie_id = zombie_id,
         .name = parsed.config.name,
@@ -205,8 +206,8 @@ fn publishInstallSignals(redis: *queue_redis.Client, zombie_id: []const u8, work
         publishOnce(redis, zombie_id, workspace_id) catch |err| {
             const sleep_ms = installBackoffMs(attempt) orelse return err;
             log.warn(
-                "zombie.create_publish_retry attempt={d} err={s} zombie_id={s} sleep_ms={d}",
-                .{ attempt + 1, @errorName(err), zombie_id, sleep_ms },
+                "create_publish_retry",
+                .{ .attempt = attempt + 1, .err = @errorName(err), .zombie_id = zombie_id, .sleep_ms = sleep_ms },
             );
             std.Thread.sleep(@as(u64, sleep_ms) * std.time.ns_per_ms);
             continue;

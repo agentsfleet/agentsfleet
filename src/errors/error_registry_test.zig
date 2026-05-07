@@ -293,6 +293,7 @@ test "ErrorMapping struct has 3 fields (err, code, message)" {
 
 test "validateErrorTable accepts valid single-entry table" {
     const table = [_]reg.ErrorMapping{
+        // audit-error-codes: intentional-fake
         .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "test message" },
     };
     // comptime validation — if it compiles, it passes
@@ -303,8 +304,11 @@ test "validateErrorTable accepts valid single-entry table" {
 
 test "validateErrorTable accepts valid multi-entry table" {
     const table = [_]reg.ErrorMapping{
+        // audit-error-codes: intentional-fake
         .{ .err = error.OutOfMemory, .code = "UZ-TEST-001", .message = "oom" },
+        // audit-error-codes: intentional-fake
         .{ .err = error.Overflow, .code = "UZ-TEST-002", .message = "overflow" },
+        // audit-error-codes: intentional-fake
         .{ .err = error.InvalidCharacter, .code = "UZ-TEST-003", .message = "bad char" },
     };
     comptime {

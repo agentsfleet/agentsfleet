@@ -4,11 +4,29 @@
 **Milestone:** M62
 **Workstream:** 001
 **Date:** May 06, 2026: 11:00 AM
-**Status:** PENDING
+**Status:** DONE
+**Branch:** feat/m62-001-observability
 **Priority:** P1 — observability discipline gates production debuggability; non-blocking for current launch but blocking for confident incident response.
 **Categories:** Observability, Internal
 **Batch:** —
-**Depends on:** M42_002 (redaction harness — landed; redaction itself is one form of structured-output discipline). Independent of M42_003 (pub/sub-failure non-blocking) and M42_006 (adversarial-zombie test harness).
+**Depends on:** M42_002 (redaction harness — landed; redaction itself is one form of structured-output discipline). Independent of M42_003 (pub/sub-failure non-blocking) and M42_006 (adversarial-zombie test harness). Absorbs M42_008 (logging-call-site tail).
+
+<!--
+SPEC AUTHORING RULES (load-bearing — do not delete):
+- No time/effort/hour/day estimates anywhere in this spec.
+- No effort columns, complexity ratings, percentage-complete, implementation dates.
+- Priority (P0/P1/P2) is the only sizing signal. Use Dependencies for sequencing.
+- If a section below contradicts these rules, the rule wins — delete the section.
+- See docs/TEMPLATE.md "Prohibited" for canonical list.
+-->
+
+## Bundled scope amendments (CHORE-open delta from original draft)
+
+1. **Full fix-pass, no top-50 cap.** Every audit-flagged violation across `src/**` + `zombiectl/**` is fixed in this milestone. M42_008 dissolves into M62_001.
+2. **Four gates, not three.** Adds **SPEC TEMPLATE GATE** alongside LOGGING, LIFECYCLE, ERROR REGISTRY — catches drift like the "Estimated effort" section that originally appeared in this very spec.
+3. **CI Zig-mirror swap bundled.** Two Docker `wget` blocks (`cross-compile.yml`, `release.yml`) move to `pkg.machengine.org` with a fallback chain; `actions/cache` for the Alpine zig tarball + `~/.cache/zig` global package cache; pin `mlugg/setup-zig@v2` to a specific patch tag.
+4. **Architecture cross-links.** `docs/architecture/README.md` gains a Conventions section linking the two new standards docs alongside `ZIG_RULES.md`, `BUN_RULES.md`, `REST_API_DESIGN_GUIDELINES.md`, `AUTH.md`. Bidirectional back-links from each standards doc.
+5. **No effort estimates.** The original `## Estimated effort` section was a TEMPLATE.md violation and has been removed. SPEC TEMPLATE GATE prevents recurrence.
 
 ## Why this is its own workstream
 
@@ -53,12 +71,12 @@ Three related-but-separate audits the Captain surfaced after M42_002 landed. Eac
 - `AGENTS_INVARIANCE.md` (symlink → dotfiles) — three new questions, one per gate, asking whether the gate output appeared on the most recent edit.
 - `Makefile` — wire the three new audit scripts into `make lint`. Order: lint → audit-logging → audit-error-codes → audit-deinit-pairs.
 - `src/observability/logging.zig` — extend the scoped-log helpers to take a struct of structured fields rather than positional `{s} {d}` placeholders. The struct serializes to `key=value` pairs at info-level, JSON at warn/err. (Optional in this milestone if the gate gates on the wire format; mandatory if the convention requires it.)
-- Touched files across `src/**/*.zig` — fix every violation the new gates flag. Slice budget; cap at the top 50 highest-volume callers, defer the long tail to M42_008.
+- Touched files across `src/**/*.zig` — fix **every** violation the new gates flag. No cap. M42_008 absorbed into this milestone.
 - `zombiectl/src/**` — every error-surface call site emits `{code: "UZ-XXX-NNN", message, hint?}` JSON when `--json` is set; human format `error UZ-XXX-NNN: <message>` otherwise. Today's surfaces are inconsistent.
 
 ### Files NOT to modify
 
-- The redaction adapter (`src/executor/runner_progress.zig`) — its discipline is the model, not the target. M42_002 already brought it to spec.
+(None — earlier draft carved out `src/executor/runner_progress.zig` because M42_002 had brought its **redaction discipline** to spec, but the M62 logging migration is orthogonal to redaction. The 4 logging edits in this file touch only `log.info` calls and the named-module import — not `redactBytes`, args substitution, or the chunk path that M42_002's tests gate. Carve-out removed; file migrated.)
 
 ## Open questions (resolve in PLAN, not deferred)
 
@@ -84,18 +102,6 @@ Three related-but-separate audits the Captain surfaced after M42_002 landed. Eac
 | `audit-error-codes.sh detects dead code in registry` | A registry entry never referenced anywhere is flagged; gate is informational, not blocking, on the dead-code finding (deletion may be deferred). |
 | `audit-deinit-pairs.sh detects init without deinit` | A fixture struct with `pub fn init` but no `pub fn deinit` is flagged. |
 | End-to-end `make lint` pass on a clean tree | Existing usezombie tree passes, after the fix-pass cleans the top-50 violators. |
-
-## Estimated effort
-
-10–14 h split into slices:
-- ~2 h survey of Bun + ours, write the standards docs.
-- ~2 h three audit scripts + their unit tests.
-- ~3 h fix-pass on the top 50 logging-call-site violators.
-- ~2 h fix-pass on error-code orphans/dead codes.
-- ~1 h fix-pass on init/deinit pair gaps.
-- ~2 h gate wiring (Makefile, AGENTS.md gate body, AGENTS_INVARIANCE.md questions).
-- ~1 h `zombiectl` JSON-error structuring.
-- ~1 h CHORE(close), changelog, PR.
 
 ## Why now / why later
 

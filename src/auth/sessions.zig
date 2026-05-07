@@ -3,8 +3,9 @@
 //! Used by the CLI login polling flow.
 
 const std = @import("std");
+const logging = @import("log");
 
-const log = std.log.scoped(.auth);
+const log = logging.scoped(.auth);
 
 const SessionStatus = enum {
     pending,
@@ -69,7 +70,7 @@ pub const SessionStore = struct {
             .created_at_ms = std.time.milliTimestamp(),
         });
 
-        log.info("session created id={s}", .{&session_id});
+        log.info("session_created", .{ .id = &session_id });
         return key;
     }
 
@@ -78,15 +79,15 @@ pub const SessionStore = struct {
         defer self.mutex.unlock();
 
         const entry = self.sessions.get(session_id) orelse {
-            log.debug("poll miss id={s}", .{session_id});
+            log.debug("session_poll_miss", .{ .id = session_id });
             return .{ .status = .expired, .token = null };
         };
         const now = std.time.milliTimestamp();
         if (now - entry.created_at_ms > ttl_ms) {
-            log.debug("poll expired id={s}", .{session_id});
+            log.debug("session_poll_expired", .{ .id = session_id });
             return .{ .status = .expired, .token = null };
         }
-        log.debug("poll status={s} id={s}", .{ @tagName(entry.status), session_id });
+        log.debug("session_poll_status", .{ .status = @tagName(entry.status), .id = session_id });
         return .{ .status = entry.status, .token = entry.token };
     }
 
@@ -101,7 +102,7 @@ pub const SessionStore = struct {
 
         entry.token = try self.alloc.dupe(u8, token);
         entry.status = .complete;
-        log.info("session complete id={s}", .{session_id});
+        log.info("session_completed", .{ .id = session_id });
     }
 
     fn evictExpiredLocked(self: *SessionStore) void {
@@ -117,7 +118,7 @@ pub const SessionStore = struct {
         }
 
         if (to_remove.items.len > 0) {
-            log.debug("evicting expired sessions count={d}", .{to_remove.items.len});
+            log.debug("session_eviction", .{ .count = to_remove.items.len });
         }
 
         for (to_remove.items) |key| {

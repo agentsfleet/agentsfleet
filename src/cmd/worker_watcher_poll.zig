@@ -23,8 +23,9 @@ const watcher_mod = @import("worker_watcher.zig");
 const control_stream = @import("../zombie/control_stream.zig");
 const redis_protocol = @import("../queue/redis_protocol.zig");
 const error_codes = @import("../errors/error_registry.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.worker_watcher);
+const log = logging.scoped(.worker_watcher);
 
 const block_ms = "5000";
 const batch_count = "16";
@@ -33,7 +34,7 @@ const batch_count = "16";
 /// `Watcher.run` once per loop iteration.
 pub fn pollOnce(watcher: *watcher_mod.Watcher) !void {
     pollWithId(watcher, "0", false) catch |err| {
-        log.warn("watcher.pel_drain_fail err={s}", .{@errorName(err)});
+        log.warn("watcher.pel_drain_failed", .{ .err = @errorName(err) });
     };
     try pollWithId(watcher, ">", true);
 }
@@ -75,7 +76,10 @@ fn pollWithId(watcher: *watcher_mod.Watcher, last_id: []const u8, blocking: bool
     };
     for (entries) |*entry_val| {
         watcher.processEntry(entry_val.*) catch |err| {
-            log.err("watcher.entry_fail err={s} error_code=" ++ error_codes.ERR_INTERNAL_OPERATION_FAILED, .{@errorName(err)});
+            log.err("watcher.entry_failed", .{
+                .err = @errorName(err),
+                .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
+            });
         };
     }
 }

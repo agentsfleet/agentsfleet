@@ -90,7 +90,7 @@ pub const ZombieNetwork = struct {
 };
 
 /// Frontmatter knobs from `x-usezombie.context`. Zero means "auto" — the
-/// executor's `applyContextDefaults` substitutes `DEFAULT_*` constants.
+/// executor's `ContextBudget.applyDefaults` substitutes `DEFAULT_*` constants.
 /// Mirrors the wire-shape of `executor/context_budget.zig:ContextBudget`
 /// minus the opaque `model` (which lives one level up at `x-usezombie.model`).
 pub const ZombieContextBudget = struct {

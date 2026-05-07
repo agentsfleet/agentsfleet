@@ -15,6 +15,7 @@
 //! escape into a ProgressFrame.
 
 const std = @import("std");
+const logging = @import("log");
 const Allocator = std.mem.Allocator;
 const observability = @import("nullclaw").observability;
 const providers = @import("nullclaw").providers;
@@ -22,7 +23,7 @@ const providers = @import("nullclaw").providers;
 const progress_writer_mod = @import("progress_writer.zig");
 const progress_callbacks = @import("progress_callbacks.zig");
 
-const log = std.log.scoped(.runner_progress);
+const log = logging.scoped(.runner_progress);
 
 /// One known secret value + the placeholder string the runner will
 /// substitute when it appears in a tool argument. Caller-owned;
@@ -151,10 +152,10 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                 self.tool_call_count % self.memory_checkpoint_every == 0)
             {
                 self.nudges_emitted += 1;
-                log.info("runner_progress.memory_checkpoint_due tool_count={d} every={d} nudges_emitted={d}", .{
-                    self.tool_call_count,
-                    self.memory_checkpoint_every,
-                    self.nudges_emitted,
+                log.info("memory_checkpoint_due", .{
+                    .tool_count = self.tool_call_count,
+                    .every = self.memory_checkpoint_every,
+                    .nudges_emitted = self.nudges_emitted,
                 });
             }
             // L2 window: once the cumulative count crosses the window
@@ -165,10 +166,10 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
             // anything from the conversation itself.
             if (self.tool_window > 0 and self.tool_call_count > self.tool_window) {
                 self.window_exceeded_logs += 1;
-                log.info("runner_progress.tool_window_exceeded tool_count={d} window={d} excess={d}", .{
-                    self.tool_call_count,
-                    self.tool_window,
-                    self.tool_call_count - self.tool_window,
+                log.info("tool_window_exceeded", .{
+                    .tool_count = self.tool_call_count,
+                    .window = self.tool_window,
+                    .excess = self.tool_call_count - self.tool_window,
                 });
             }
         },
@@ -187,12 +188,12 @@ fn observerRecordEvent(ptr: *anyopaque, event: *const observability.ObserverEven
                 const ratio: f32 = @as(f32, @floatFromInt(prompt)) / @as(f32, @floatFromInt(self.context_cap_tokens));
                 if (ratio >= self.stage_chunk_threshold) {
                     self.chunk_threshold_logs += 1;
-                    log.info("runner_progress.chunk_threshold_breached prompt_tokens={d} cap_tokens={d} ratio={d:.3} threshold={d:.3} logs_emitted={d}", .{
-                        prompt,
-                        self.context_cap_tokens,
-                        ratio,
-                        self.stage_chunk_threshold,
-                        self.chunk_threshold_logs,
+                    log.info("chunk_threshold_breached", .{
+                        .prompt_tokens = prompt,
+                        .cap_tokens = self.context_cap_tokens,
+                        .ratio = ratio,
+                        .threshold = self.stage_chunk_threshold,
+                        .logs_emitted = self.chunk_threshold_logs,
                     });
                 }
             }

@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
+const logging = @import("log");
 
 const hx_mod = @import("../hx.zig");
 const common = @import("../common.zig");
@@ -27,12 +28,12 @@ const metrics = @import("../../../observability/metrics_counters.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const clerk_backend = @import("../../../auth/clerk_backend.zig");
 
-/// M11_006: default role written to Clerk publicMetadata on signup.
+/// Default role written to Clerk publicMetadata on signup.
 /// Admin promotion is a manual one-line edit in the Clerk Dashboard
 /// (`role: "admin"`); the webhook never writes admin.
 const DEFAULT_SIGNUP_ROLE = "operator";
 
-const log = std.log.scoped(.clerk_webhook);
+const log = logging.scoped(.clerk_webhook);
 
 const Hx = hx_mod.Hx;
 
@@ -112,7 +113,7 @@ pub fn innerClerkWebhook(hx: Hx, req: *httpz.Request) void {
     // Only user.created is in scope. Other event types (user.updated,
     // user.deleted) are ignored with 200 so Clerk stops retrying.
     if (!std.mem.eql(u8, event.type, "user.created")) {
-        log.info("clerk.event_ignored type={s} req_id={s}", .{ event.type, hx.req_id });
+        log.info("event_ignored", .{ .type = event.type, .req_id = hx.req_id });
         hx.ok(.ok, .{ .status = "ignored", .type = event.type });
         return;
     }
@@ -130,19 +131,30 @@ pub fn innerClerkWebhook(hx: Hx, req: *httpz.Request) void {
 // ── Response helpers ──────────────────────────────────────────────────────
 
 fn rejectBadSig(hx: Hx, detail: []const u8) void {
-    log.warn("clerk.bad_sig detail=\"{s}\" req_id={s}", .{ detail, hx.req_id });
+    log.warn("bad_sig", .{
+        .error_code = ec.ERR_WEBHOOK_SIG_INVALID,
+        .detail = detail,
+        .req_id = hx.req_id,
+    });
     metrics.incSignupFailed(.bad_sig);
     hx.fail(ec.ERR_WEBHOOK_SIG_INVALID, detail);
 }
 
 fn rejectStaleTs(hx: Hx) void {
-    log.warn("clerk.stale_ts req_id={s}", .{hx.req_id});
+    log.warn("stale_ts", .{
+        .error_code = ec.ERR_WEBHOOK_TIMESTAMP_STALE,
+        .req_id = hx.req_id,
+    });
     metrics.incSignupFailed(.stale_ts);
     hx.fail(ec.ERR_WEBHOOK_TIMESTAMP_STALE, "Clerk webhook timestamp outside freshness window");
 }
 
 fn rejectMissingEmail(hx: Hx, detail: []const u8) void {
-    log.warn("clerk.bad_request detail=\"{s}\" req_id={s}", .{ detail, hx.req_id });
+    log.warn("bad_request", .{
+        .error_code = ec.ERR_INVALID_REQUEST,
+        .detail = detail,
+        .req_id = hx.req_id,
+    });
     metrics.incSignupFailed(.missing_email);
     hx.fail(ec.ERR_INVALID_REQUEST, detail);
 }
@@ -158,13 +170,19 @@ fn readSecret(hx: Hx) ?[]u8 {
     // alerting on /v1/webhooks/clerk — the log line is supporting context, not
     // the primary alert.
     const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "CLERK_WEBHOOK_SECRET") catch {
-        log.warn("clerk.secret_missing req_id={s}", .{hx.req_id});
+        log.warn("secret_missing", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .req_id = hx.req_id,
+        });
         common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET not configured", hx.req_id);
         return null;
     };
     if (secret.len == 0) {
         std.heap.page_allocator.free(secret);
-        log.warn("clerk.secret_empty req_id={s}", .{hx.req_id});
+        log.warn("secret_empty", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .req_id = hx.req_id,
+        });
         common.internalOperationError(hx.res, "CLERK_WEBHOOK_SECRET is empty", hx.req_id);
         return null;
     }
@@ -206,7 +224,10 @@ fn trimOrNull(s: ?[]const u8) ?[]const u8 {
 
 fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_name: ?[]const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
-        log.warn("clerk.pool_acquire_failed req_id={s}", .{hx.req_id});
+        log.warn("pool_acquire_failed", .{
+            .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE,
+            .req_id = hx.req_id,
+        });
         metrics.incSignupFailed(.pool_unavailable);
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -222,14 +243,19 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
             .display_name = display_name,
         },
     ) catch |err| {
-        log.warn("clerk.bootstrap_failed oidc={s} err={s} req_id={s}", .{ oidc_subject, @errorName(err), hx.req_id });
+        log.warn("bootstrap_failed", .{
+            .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+            .oidc = oidc_subject,
+            .err = @errorName(err),
+            .req_id = hx.req_id,
+        });
         metrics.incSignupFailed(.db_error);
         common.internalOperationError(hx.res, "Signup bootstrap failed", hx.req_id);
         return;
     };
     defer bootstrap.deinit(hx.alloc);
 
-    // M11_006 dim 1.7: write tenant_id + default role back to Clerk
+    // Write tenant_id + default role back to Clerk
     // publicMetadata so the user's next session JWT carries both. The DB
     // row is already provisioned — the writeback is best-effort; an
     // upstream outage logs + metrics-increments but does not fail signup.
@@ -246,8 +272,14 @@ fn runBootstrap(hx: Hx, oidc_subject: []const u8, email: []const u8, display_nam
 fn writePublicMetadata(hx: Hx, oidc_subject: []const u8, tenant_id: []const u8) void {
     clerk_backend.patchUserPublicMetadata(hx.alloc, oidc_subject, tenant_id, DEFAULT_SIGNUP_ROLE) catch |err| {
         log.warn(
-            "clerk.metadata_writeback_failed err={s} oidc={s} tenant={s} req_id={s}",
-            .{ @errorName(err), oidc_subject, tenant_id, hx.req_id },
+            "metadata_writeback_failed",
+            .{
+                .error_code = ec.ERR_INTERNAL_OPERATION_FAILED,
+                .err = @errorName(err),
+                .oidc = oidc_subject,
+                .tenant = tenant_id,
+                .req_id = hx.req_id,
+            },
         );
         metrics.incSignupFailed(.metadata_writeback);
         // Do not fail the webhook — the DB row exists; the user's first

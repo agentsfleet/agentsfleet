@@ -28,11 +28,12 @@
 //! an empty success without emitting anything.
 
 const std = @import("std");
+const logging = @import("log");
 const types = @import("types.zig");
 const progress_callbacks = @import("progress_callbacks.zig");
 const progress_writer_mod = @import("progress_writer.zig");
 
-const log = std.log.scoped(.executor_runner_harness);
+const log = logging.scoped(.executor_runner_harness);
 
 const SCRIPT_ENV_VAR = "EXECUTOR_HARNESS_SCRIPT";
 const MAX_SCRIPT_BYTES: usize = 1 * 1024 * 1024;
@@ -51,7 +52,7 @@ pub fn execute(
     _ = tools_spec;
     _ = context;
 
-    log.info("harness.execute message_len={d}", .{if (message) |m| m.len else 0});
+    log.info("execute", .{ .message_len = if (message) |m| m.len else 0 });
 
     const script_path = std.process.getEnvVarOwned(alloc, SCRIPT_ENV_VAR) catch {
         // No script set — emit nothing, return empty success. Lets the
@@ -61,7 +62,7 @@ pub fn execute(
     defer alloc.free(script_path);
 
     return runScript(alloc, script_path, progress) catch |err| blk: {
-        log.warn("harness.script_failed err={s}", .{@errorName(err)});
+        log.warn("script_failed", .{ .err = @errorName(err) });
         break :blk .{ .content = "", .exit_ok = false, .failure = .startup_posture };
     };
 }

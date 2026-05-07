@@ -6,8 +6,10 @@ const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const id_format = @import("../types/id_format.zig");
 const cp = @import("crypto_primitives.zig");
+const error_codes = @import("../errors/error_registry.zig");
+const logging = @import("log");
 
-const log = std.log.scoped(.secrets);
+const log = logging.scoped(.secrets);
 
 const KEY_LEN = cp.KEY_LEN;
 const NONCE_LEN = cp.NONCE_LEN;
@@ -60,7 +62,7 @@ pub fn store(
         encrypted_payload.tag[0..],
         now_ms,
     });
-    log.info("secret.stored workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+    log.info("stored", .{ .workspace_id = workspace_id, .key_name = key_name });
 }
 
 /// Load and decrypt a secret from vault.secrets.
@@ -80,7 +82,7 @@ pub fn load(
     const row = try result.next() orelse {
         // Not-found is a normal control-flow path — caller decides whether to treat
         // it as an error. Log at debug so it doesn't trip "logged errors" test gates.
-        log.debug("secret.not_found workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+        log.debug("not_found", .{ .workspace_id = workspace_id, .key_name = key_name });
         return cp.SecretError.NotFound;
     };
 
@@ -96,7 +98,12 @@ pub fn load(
     // key and surface as DecryptFailed. Fail loud instead.
     const kek_version = try row.get(i32, 6);
     if (kek_version != 1) {
-        log.err("secret.unsupported_kek_version workspace_id={s} key_name={s} kek_version={d} error_code=UZ-INTERNAL-003", .{ workspace_id, key_name, kek_version });
+        log.err("unsupported_kek_version", .{
+            .workspace_id = workspace_id,
+            .key_name = key_name,
+            .kek_version = kek_version,
+            .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
+        });
         return cp.SecretError.UnsupportedKekVersion;
     }
 
@@ -116,10 +123,14 @@ pub fn load(
 
     const dek = try cp.toFixed(KEY_LEN, dek_plain);
     const plaintext_result = cp.decrypt(alloc, &payload_nonce, ciphertext_copy, &payload_tag, &dek) catch |err| {
-        log.err("secret.decrypt_fail workspace_id={s} key_name={s} error_code=UZ-INTERNAL-003", .{ workspace_id, key_name });
+        log.err("decrypt_failed", .{
+            .workspace_id = workspace_id,
+            .key_name = key_name,
+            .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED,
+        });
         return err;
     };
-    log.info("secret.retrieved workspace_id={s} key_name={s}", .{ workspace_id, key_name });
+    log.info("retrieved", .{ .workspace_id = workspace_id, .key_name = key_name });
     return plaintext_result;
 }
 

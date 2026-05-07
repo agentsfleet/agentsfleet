@@ -23,8 +23,6 @@ pub const SinceError = filter_mod.SinceError;
 pub const globToLike = filter_mod.globToLike;
 const parseCursor = filter_mod.parseCursor;
 
-const log = std.log.scoped(.zombie_events_store);
-
 // SELECT list shared across every branch. Trailing newline matters —
 // the concatenated suffix begins with WHERE/ORDER BY (PG syntax error
 // 42601 if glued straight onto `core.zombie_events`).

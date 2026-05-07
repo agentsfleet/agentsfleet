@@ -4,6 +4,7 @@
 //! Uses raw posix read/write for socket I/O (Zig 0.15 compatible).
 
 const std = @import("std");
+const types = @import("types.zig");
 
 /// RPC method names — the executor API surface (§2.1).
 pub const Method = struct {
@@ -38,6 +39,20 @@ pub const ErrorCode = struct {
     pub const landlock_denied: i32 = -6;
     pub const resource_killed: i32 = -7;
 };
+
+/// Map a FailureClass to its JSON-RPC error code.
+pub fn failureToRpcError(failure: ?types.FailureClass) i32 {
+    const f = failure orelse return ErrorCode.execution_failed;
+    return switch (f) {
+        .timeout_kill => ErrorCode.timeout_killed,
+        .oom_kill => ErrorCode.oom_killed,
+        .policy_deny => ErrorCode.policy_denied,
+        .lease_expired => ErrorCode.lease_expired,
+        .landlock_deny => ErrorCode.landlock_denied,
+        .resource_kill => ErrorCode.resource_killed,
+        else => ErrorCode.execution_failed,
+    };
+}
 
 pub const MAX_FRAME_SIZE: u32 = 16 * 1024 * 1024; // 16 MiB
 
