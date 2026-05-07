@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1.7
+#
+# Ubuntu 24.04 + Zig — host-runner replacement for unit/bench/qa/lint-zig
+# lanes that today run bare on ubuntu-latest with mlugg/setup-zig. Includes
+# docker-cli so it can also drive `docker compose` against a mounted
+# /var/run/docker.sock from the test-integration lane (alternative is to
+# convert that lane to GHA `services:` and skip docker-cli).
+# amd64 only.
+
+FROM mirror.gcr.io/library/ubuntu:24.04
+
+ARG ZIG_VERSION
+ARG ZIG_SHA256_X86_64_LINUX
+
+RUN test -n "$ZIG_VERSION" && test -n "$ZIG_SHA256_X86_64_LINUX"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+      libssl-dev \
+      git \
+      curl \
+      wget \
+      xz-utils \
+      ca-certificates \
+      make \
+      python3 \
+      build-essential \
+      docker.io \
+      gnupg \
+ && rm -rf /var/lib/apt/lists/*
+
+RUN set -eux; \
+    tarball="zig-x86_64-linux-${ZIG_VERSION}.tar.xz"; \
+    for url in \
+      "https://pkg.machengine.org/zig/${tarball}" \
+      "https://zigmirror.hryx.net/zig/${tarball}" \
+      "https://ziglang.org/download/${ZIG_VERSION}/${tarball}" ; do \
+      echo "  fetching $url" ; \
+      if wget -q "$url" -O /tmp/zig.tar.xz \
+         && echo "${ZIG_SHA256_X86_64_LINUX}  /tmp/zig.tar.xz" | sha256sum -c - >/dev/null 2>&1 ; then \
+        echo "  ✓ verified from $url" ; break ; \
+      fi ; \
+      rm -f /tmp/zig.tar.xz ; \
+    done; \
+    test -f /tmp/zig.tar.xz || { echo "FAIL: zig ${ZIG_VERSION} download failed from every mirror"; exit 1; }; \
+    mkdir -p /opt ; \
+    (cd /opt && tar xf /tmp/zig.tar.xz) ; \
+    mv "/opt/zig-x86_64-linux-${ZIG_VERSION}" /opt/zig ; \
+    rm /tmp/zig.tar.xz ; \
+    /opt/zig/zig version
+
+ENV PATH=/opt/zig:$PATH
+
+LABEL org.opencontainers.image.title="usezombie ci-zig-ubuntu" \
+      org.opencontainers.image.description="Ubuntu 24.04 + Zig — host-runner replacement for usezombie unit/bench/qa/lint-zig lanes" \
+      org.opencontainers.image.source="https://github.com/usezombie/usezombie"
