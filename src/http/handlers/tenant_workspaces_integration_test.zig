@@ -11,7 +11,6 @@ const TestHarness = harness_mod.TestHarness;
 
 const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
-const TEST_REPO_URL = "https://github.com/usezombie/m27-tenant-ws-test";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
 const TEST_JWKS =
@@ -40,9 +39,9 @@ fn seedTenant(conn: *pg.Conn, now_ms: i64) !void {
 
 fn seedWorkspace(conn: *pg.Conn, ws_id: []const u8, now_ms: i64) !void {
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, $3, 'main', false, 1, $4, $4) ON CONFLICT (workspace_id) DO NOTHING
-    , .{ ws_id, TEST_TENANT_ID, TEST_REPO_URL, now_ms });
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3) ON CONFLICT (workspace_id) DO NOTHING
+    , .{ ws_id, TEST_TENANT_ID, now_ms });
 }
 
 test "integration: tenant workspaces — auth, list, scoping" {

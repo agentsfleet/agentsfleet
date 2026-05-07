@@ -1,4 +1,4 @@
--- M28_002 §1: Tenant API keys — multi-key, rotatable, self-service admin tokens.
+-- Tenant API keys — multi-key, rotatable, self-service admin tokens.
 -- One row per minted zmb_t_ key. key_hash = SHA-256(raw_key) as bytea.
 -- Raw key returned once at POST /v1/api-keys; never retrievable thereafter.
 -- last_used_at is provisioned NULL and stays NULL until the async-stamping

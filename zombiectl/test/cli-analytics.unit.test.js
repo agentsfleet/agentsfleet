@@ -75,12 +75,22 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
       const stdout = bufferStream();
       const stderr = bufferStream();
       let pollCount = 0;
-      const fetchImpl = async (_url, options = {}) => {
+      const fetchImpl = async (url, options = {}) => {
         if (options.method === "POST") {
           return {
             ok: true,
             status: 201,
             text: async () => JSON.stringify({ session_id: "sess_analytics", login_url: "https://login.test" }),
+          };
+        }
+        // After login completes the CLI hydrates the local workspace list
+        // via GET /v1/tenants/me/workspaces — return an empty list so this
+        // test stays focused on analytics events, not workspace shape.
+        if (typeof url === "string" && url.endsWith("/v1/tenants/me/workspaces")) {
+          return {
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ items: [], total: 0 }),
           };
         }
         pollCount += 1;

@@ -12,7 +12,7 @@ describe("listTenantWorkspaces", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        items: [{ id: "ws_1", name: "alpha", repo_url: null, created_at: 100 }],
+        items: [{ id: "ws_1", name: "alpha", created_at: 100 }],
         total: 1,
       }),
     });

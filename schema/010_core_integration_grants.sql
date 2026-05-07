@@ -1,14 +1,11 @@
--- M9_001: Integration grants for zombie-to-service authorization.
--- A zombie must have an approved grant for a service before usezombie
--- will inject credentials for it. Zombie-initiated, human-approved.
--- scopes: v2 defaults to ["*"]. Expandable to per-channel/per-action
--- without schema change (TEXT[] column).
+-- Integration grants for zombie-to-service authorization. A zombie must
+-- have an approved grant for a service before usezombie will inject
+-- credentials for it. Zombie-initiated, human-approved.
 
 CREATE TABLE IF NOT EXISTS core.integration_grants (
     grant_id        TEXT    NOT NULL PRIMARY KEY,
     zombie_id       UUID    NOT NULL REFERENCES core.zombies(id) ON DELETE CASCADE,
     service         TEXT    NOT NULL,
-    scopes          TEXT[]  NOT NULL DEFAULT ARRAY['*'],
     status          TEXT    NOT NULL DEFAULT 'pending',
     requested_at    BIGINT  NOT NULL,
     requested_reason TEXT   NOT NULL,

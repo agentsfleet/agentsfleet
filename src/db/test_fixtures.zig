@@ -39,15 +39,15 @@ pub fn seedTenant(conn: *pg.Conn) !void {
 pub fn seedWorkspace(conn: *pg.Conn, workspace_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, repo_url, default_branch, created_at, updated_at)
-        \\VALUES ($1, $2, 'https://github.com/scrooge-mcduck/duckburg-monorepo.git', 'main', 0, 0)
+        \\  (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, 0)
         \\ON CONFLICT DO NOTHING
     , .{ workspace_id, TEST_TENANT_ID });
 }
 
-/// Delete workspace. CASCADE removes:
-///   workspace_credit_state, workspace_credit_audit, workspace_billing_state,
-///   workspace_billing_audit, usage_ledger, workspace_entitlements.
+/// Delete workspace. CASCADE removes everything that FKs `core.workspaces` —
+/// vault.secrets, integration_grants, agent_keys, memory_entries, zombies,
+/// and downstream telemetry / event rows.
 pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
         "DELETE FROM core.workspaces WHERE workspace_id = $1::uuid",
@@ -76,8 +76,8 @@ pub fn seedTenantById(conn: *pg.Conn, tenant_id: []const u8, name: []const u8) !
 pub fn seedWorkspaceWithTenant(conn: *pg.Conn, workspace_id: []const u8, tenant_id: []const u8) !void {
     _ = try conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, repo_url, default_branch, created_at, updated_at)
-        \\VALUES ($1, $2, 'https://github.com/scrooge-mcduck/duckburg-monorepo.git', 'main', 0, 0)
+        \\  (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, 0)
         \\ON CONFLICT DO NOTHING
     , .{ workspace_id, tenant_id });
 }
@@ -99,8 +99,8 @@ pub fn seedWorkspaceWithCreator(
     // conflict makes the seed idempotent in the "latest seed wins" sense.
     _ = try conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, name, repo_url, default_branch, created_by, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, NULL, '', 'main', $3, 0, 0)
+        \\  (workspace_id, tenant_id, name, created_by, created_at)
+        \\VALUES ($1::uuid, $2::uuid, NULL, $3, 0)
         \\ON CONFLICT (workspace_id) DO UPDATE SET created_by = EXCLUDED.created_by
     , .{ workspace_id, tenant_id, created_by });
 }

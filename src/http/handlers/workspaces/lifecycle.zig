@@ -37,12 +37,12 @@ fn tenantExists(conn: anytype, tenant_id: []const u8) bool {
 
 /// INSERT workspace row. Billing rolls up to the tenant, so new workspaces
 /// inherit the tenant balance — no per-workspace credit provisioning here.
-/// `repo_url` is left NULL at creation; binding to a repo is a separate step.
+/// Repo binding is a separate step; new workspaces have no repo at creation.
 fn insertWorkspaceRow(conn: anytype, workspace_id: []const u8, tenant_id: []const u8, name: ?[]const u8, created_by: ?[]const u8, now_ms: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO workspaces
-        \\  (workspace_id, tenant_id, name, paused, created_by, version, created_at, updated_at)
-        \\VALUES ($1, $2, $3, false, $4, 1, $5, $5)
+        \\  (workspace_id, tenant_id, name, created_by, created_at)
+        \\VALUES ($1, $2, $3, $4, $5)
     , .{ workspace_id, tenant_id, name, created_by, now_ms });
 }
 

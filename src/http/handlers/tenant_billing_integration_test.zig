@@ -54,8 +54,8 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ tenant_id, now_ms });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'https://github.com/usezombie/m11-006', 'main', false, 1, $3, $3)
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, tenant_id, now_ms });
     // activity_events.zombie_id carries a NOT NULL FK to core.zombies —
@@ -274,7 +274,7 @@ test "integration(m11_006): POST /v1/workspaces with a JWT lacking tenant_id ret
     // Signed with the same test RSA key used elsewhere in the suite.
     const TOKEN_NO_TENANT = "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX20xMV8wMDYiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsicm9sZSI6Im9wZXJhdG9yIn19.placeholder-signature-will-fail-jwks-so-401-matches-UZ-AUTH";
 
-    const r = try (try (try h.post("/v1/workspaces").json("{\"repo_url\":\"https://github.com/x/y\"}")).bearer(TOKEN_NO_TENANT)).send();
+    const r = try (try (try h.post("/v1/workspaces").json("{}")).bearer(TOKEN_NO_TENANT)).send();
     defer r.deinit();
     // A malformed-signature token already yields 401 from the JWT path,
     // before we reach the handler. The stricter post-M11_006 behavior is

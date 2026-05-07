@@ -27,21 +27,8 @@ CREATE TABLE IF NOT EXISTS core.workspaces (
     -- name; uniqueness is enforced per-tenant via the partial index below, so
     -- signup bootstrap can rely on ON CONFLICT for collision retry.
     name                      TEXT,
-    -- repo_url + default_branch were required when workspace creation was
-    -- 1:1 with a GitHub repo. The binding step is moving out of creation;
-    -- new workspaces leave both NULL until a repo is attached. Existing
-    -- fixtures and signup_bootstrap may still write them.
-    repo_url                  TEXT,
-    default_branch            TEXT,
-    paused                    BOOLEAN NOT NULL DEFAULT FALSE,
-    paused_reason             TEXT,
     created_by                TEXT,
-    version                   BIGINT NOT NULL DEFAULT 1,
-    -- M17_001 §2.1: monthly token budget (tokens per calendar month)
-    -- Canonical constant: src/types/defaults.zig#DEFAULT_WORKSPACE_MONTHLY_TOKEN_BUDGET
-    monthly_token_budget      BIGINT NOT NULL DEFAULT 10000000,
-    created_at                BIGINT NOT NULL,
-    updated_at                BIGINT NOT NULL
+    created_at                BIGINT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_workspaces_tenant ON core.workspaces(tenant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_workspaces_tenant_name

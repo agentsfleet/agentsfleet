@@ -1,4 +1,4 @@
--- M28_002 §0: Renamed from core.external_agents → core.agent_keys.
+-- Renamed from core.external_agents → core.agent_keys.
 -- Purpose unchanged: workspace-scoped agent keys for Path B callers
 -- (LangGraph, CrewAI, Composio). Each external agent gets a companion
 -- zombie record so the full integration grant system applies identically

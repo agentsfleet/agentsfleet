@@ -1,6 +1,5 @@
--- M14_001: Zombie agent memory — schema, role, table DDL, and grants.
+-- Zombie agent memory — schema, role, table DDL, and grants.
 -- Survives workspace destruction. Isolated from core.* via the memory_runtime role.
--- See docs/v2/active/M14_001_PERSISTENT_ZOMBIE_MEMORY.md.
 -- Confused-deputy mitigation per RULE CTX: memory lives behind a process boundary
 -- (Postgres role with no grants on core.*), NOT a shared filesystem.
 --

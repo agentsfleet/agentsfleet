@@ -74,8 +74,8 @@ fn seedTestData(conn: *pg.Conn) !void {
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now });
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, repo_url, default_branch, paused, version, created_at, updated_at)
-        \\VALUES ($1, $2, 'https://github.com/test/sse', 'main', false, 1, $3, $3)
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
     inline for (.{ ZOMBIE_LATENCY, ZOMBIE_RECONNECT, ZOMBIE_SEQUENCE }, .{ "sse-latency", "sse-reconnect", "sse-sequence" }) |zid, name| {

@@ -40,7 +40,6 @@ pub fn innerListTenantWorkspaces(hx: Hx, req: *httpz.Request) void {
 const WorkspaceRow = struct {
     id: []const u8,
     name: ?[]const u8,
-    repo_url: ?[]const u8,
     created_at: i64,
 };
 
@@ -50,7 +49,7 @@ const WorkspaceRow = struct {
 const MAX_TENANT_WORKSPACES: u32 = 200;
 
 const LIST_WORKSPACES_SQL = std.fmt.comptimePrint(
-    "SELECT workspace_id::text, name, repo_url, created_at " ++
+    "SELECT workspace_id::text, name, created_at " ++
         "FROM core.workspaces WHERE tenant_id = $1::uuid " ++
         "ORDER BY created_at ASC, workspace_id ASC LIMIT {d}",
     .{MAX_TENANT_WORKSPACES},
@@ -65,7 +64,6 @@ fn fetchWorkspacesOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []
         for (rows.items) |r| {
             alloc.free(r.id);
             if (r.name) |n| alloc.free(n);
-            if (r.repo_url) |u| alloc.free(u);
         }
         rows.deinit(alloc);
     }
@@ -75,14 +73,10 @@ fn fetchWorkspacesOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []
         const name_raw = row.get(?[]const u8, 1) catch null;
         const name: ?[]const u8 = if (name_raw) |n| try alloc.dupe(u8, n) else null;
         errdefer if (name) |n| alloc.free(n);
-        const url_raw = row.get(?[]const u8, 2) catch null;
-        const repo_url: ?[]const u8 = if (url_raw) |u| try alloc.dupe(u8, u) else null;
-        errdefer if (repo_url) |u| alloc.free(u);
         try rows.append(alloc, .{
             .id = id,
             .name = name,
-            .repo_url = repo_url,
-            .created_at = try row.get(i64, 3),
+            .created_at = try row.get(i64, 2),
         });
     }
     return rows.toOwnedSlice(alloc);

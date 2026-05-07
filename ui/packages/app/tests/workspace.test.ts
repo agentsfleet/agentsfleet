@@ -34,7 +34,6 @@ describe("lib/workspace resolveActiveWorkspace", () => {
         items: ids.map((id, i) => ({
           id,
           name: `ws-${i}`,
-          repo_url: null,
           created_at: i,
         })),
         total: ids.length,

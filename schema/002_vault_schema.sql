@@ -33,7 +33,7 @@ GRANT ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro, me
 -- Runtime roles: data access only
 GRANT USAGE ON SCHEMA core, agent, billing, vault, audit TO api_runtime, worker_runtime;
 
--- M10_001: Pipeline v1 removed. Grants to dropped tables removed:
+-- Pipeline v1 removed. Grants to dropped tables removed:
 -- core.specs, core.runs, core.run_transitions, core.artifacts,
 -- core.workspace_memories, core.policy_events, billing.usage_ledger.
 GRANT SELECT, INSERT, UPDATE, DELETE ON

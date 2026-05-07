@@ -31,7 +31,7 @@ Every tenant has exactly one balance: `core.tenant_billing.balance_cents`. The g
 
 ### 2.1 The starter grant
 
-Each new tenant receives a **one-time starter grant of 1000 cents (USD $10)** at tenant-create time. The grant is inserted into `tenant_billing.balance_cents` synchronously when the tenant row is created. There is no replenish; the $10 is a one-time onboarding allowance, not a recurring stipend.
+Each new tenant receives a **one-time starter grant of 500 cents (USD $5)** at tenant-create time. The grant is inserted into `tenant_billing.balance_cents` synchronously when the tenant row is created. There is no replenish; the $5 is a one-time onboarding allowance, not a recurring stipend. Source of truth: `STARTER_GRANT_CENTS` in `src/state/tenant_billing.zig`.
 
 At platform rates the grant covers roughly three hundred typical Kimi K2.6 events (model retail rate × tokens + 1¢ overhead + 1¢ receive ≈ 3¢/event for an 800/1040-token diagnosis). At BYOK rates the grant covers roughly one thousand events (flat 1¢ stage, 0¢ receive). The exact ratio depends on per-model pricing in §10.
 
@@ -158,7 +158,7 @@ compute_stage_charge(.byok, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
 Total event cost: 0¢ + 1¢ = 1¢
 ```
 
-Same $10 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~300 typical events on his $10 grant; under BYOK he gets ~1000 events. The 3× runway extension is what he buys by paying Fireworks directly for the tokens (his Fireworks bill, separate from his usezombie balance).
+Same $5 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~150 typical events on his $5 grant; under BYOK he gets ~500 events. The 3× runway extension is what he buys by paying Fireworks directly for the tokens (his Fireworks bill, separate from his usezombie balance).
 
 ---
 

@@ -122,8 +122,8 @@ pub fn insertMembership(
 pub fn tryInsertWorkspace(conn: *pg.Conn, row: WorkspaceRow) !bool {
     const affected = try conn.exec(
         \\INSERT INTO core.workspaces
-        \\  (workspace_id, tenant_id, name, created_by, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $5)
+        \\  (workspace_id, tenant_id, name, created_by, created_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, $4, $5)
         \\ON CONFLICT (tenant_id, name) WHERE name IS NOT NULL DO NOTHING
     , .{ row.workspace_id, row.tenant_id, row.name, row.created_by, row.now_ms });
     return (affected orelse 0) > 0;
