@@ -51,6 +51,25 @@ fail() { printf "FAIL: %s\n" "$*" >&2; FAIL=1; }
 ok()   { printf "OK:   %s\n" "$*"; }
 note() { printf "INFO: %s\n" "$*"; INFO_COUNT=$((INFO_COUNT + 1)); }
 
+# Test-file carve-out — skip Zig test sources from every detection
+# pass. Test code legitimately exercises log emits (deliberate err
+# paths, logger smoke tests) and uses raw std.log to keep tests
+# self-contained; the migration discipline applies to production
+# source. Returns 0 (skip) for test paths, 1 (scan) otherwise.
+is_test_zig() {
+  case "$1" in
+    *_test.zig) return 0 ;;
+    *_test_harness.zig) return 0 ;;
+    *_test_helper.zig) return 0 ;;
+    */tests/*) return 0 ;;
+  esac
+  case "$(basename "$1")" in
+    test_harness.zig) return 0 ;;
+    test_helper.zig) return 0 ;;
+  esac
+  return 1
+}
+
 # ---------------------------------------------------------------------------
 # 1. Gather files in scope.
 # ---------------------------------------------------------------------------
@@ -79,15 +98,7 @@ fi
 debug_print_hits=0
 for f in "${FILES[@]}"; do
   [[ "$f" == *.zig ]] || continue
-  # File-level test exclusions: *_test.zig, test_harness.zig,
-  # *_test_harness.zig, test_helper.zig, *_test_helper.zig, anything
-  # under tests/.
-  [[ "$f" == *_test.zig ]] && continue
-  [[ "$(basename "$f")" == test_harness.zig ]] && continue
-  [[ "$f" == *_test_harness.zig ]] && continue
-  [[ "$(basename "$f")" == test_helper.zig ]] && continue
-  [[ "$f" == *_test_helper.zig ]] && continue
-  [[ "$f" == */tests/* ]] && continue
+  is_test_zig "$f" && continue
 
   # Scan with awk so we can skip lines inside `test "..."` blocks
   # (inline tests in non-_test.zig files — common in some modules).
@@ -128,6 +139,7 @@ done
 scoped_hits=0
 for f in "${FILES[@]}"; do
   [[ "$f" == *.zig ]] || continue
+  is_test_zig "$f" && continue
   case "$f" in
     src/logging/*) continue ;;
   esac
@@ -146,6 +158,7 @@ done
 missing_code_hits=0
 for f in "${FILES[@]}"; do
   [[ "$f" == *.zig ]] || continue
+  is_test_zig "$f" && continue
   while IFS= read -r line; do
     [[ -z "$line" ]] && continue
     ln="${line%%:*}"

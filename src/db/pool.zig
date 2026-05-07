@@ -10,6 +10,7 @@ const pg = @import("pg");
 const logging = @import("log");
 const error_codes = @import("../errors/error_registry.zig");
 const pool_migrations = @import("pool_migrations.zig");
+const pool_types = @import("pool_types.zig");
 
 const log = logging.scoped(.db);
 
@@ -41,20 +42,8 @@ pub const Config = struct {
     timeout_ms: u32 = 10_000,
 };
 
-pub const Migration = struct {
-    version: i32,
-    sql: []const u8,
-};
-
-pub const MigrationState = struct {
-    expected_versions: u32,
-    applied_versions: u32,
-    latest_expected_version: i32,
-    latest_applied_version: i32,
-    has_failed_migrations: bool,
-    lock_available: bool,
-    has_newer_schema_version: bool,
-};
+pub const Migration = pool_types.Migration;
+pub const MigrationState = pool_types.MigrationState;
 
 pub const inspectMigrationState = pool_migrations.inspectMigrationState;
 pub const runMigrations = pool_migrations.runMigrations;

@@ -14,9 +14,9 @@ const log = logging.scoped(.db_migrate);
 const Conn = pg.Conn;
 const Pool = pg.Pool;
 
-/// Re-exported here so the migration runner is self-contained at its API surface.
-/// Authoritative declarations live in pool.zig.
-const types = @import("pool.zig");
+/// Authoritative declarations live in `pool_types.zig` (the leaf module
+/// that breaks the pool.zig ↔ pool_migrations.zig import cycle).
+const types = @import("pool_types.zig");
 const Migration = types.Migration;
 const MigrationState = types.MigrationState;
 
