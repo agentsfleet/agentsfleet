@@ -1,10 +1,11 @@
 import { describe, it, expect } from "vitest";
 
-// Spec §6 marketing tests required by docs/v2/active/M51_001 Test Specification:
-// - test_marketing_hero_pillars_match: Hero.tsx must contain "Durable", "BYOK",
-//   "markdown-defined" — the architecture §0 three pillars.
-// - test_marketing_install_command_npm: 0 hits on `usezombie.sh/install.sh`
-//   (the dead curl-pipe-bash path) and ≥1 hit on `npm install -g @usezombie/zombiectl`.
+// Hero.tsx must surface the three architecture pillars: always-on framing,
+// markdown-defined nature, and the replayable event log. The earlier "Durable
+// / BYOK / markdown-defined" trio was promoted out as the framing shifted
+// toward the always-on event-driven story; BYOK is now a feature paragraph,
+// not a hero pillar. The install-command rules are unchanged: zero hits on
+// the dead `usezombie.sh/install.sh` curl-pipe path, ≥1 hit on the npm path.
 //
 // Test names follow RULE TST-NAM (no milestone IDs in test names). Uses Vite
 // import.meta.glob to stay browser-friendly in the vitest jsdom env.
@@ -27,15 +28,15 @@ const allMarketingSources = import.meta.glob<string>(
 );
 
 describe("marketing hero — three architecture pillars present", () => {
-  it("Hero.tsx contains 'Durable', 'BYOK', and 'markdown-defined'", () => {
+  it("Hero.tsx contains 'Always-on', 'Markdown-defined', and 'event log'", () => {
     const heroFiles = Object.values(heroSource);
     expect(heroFiles, "Hero.tsx not found by import.meta.glob").toHaveLength(1);
     const body = heroFiles[0];
-    expect(body, "Hero.tsx missing pillar token: Durable").toMatch(/Durable/);
-    expect(body, "Hero.tsx missing pillar token: BYOK").toMatch(/BYOK/);
-    expect(body, "Hero.tsx missing pillar token: markdown-defined").toMatch(
-      /markdown-defined/,
+    expect(body, "Hero.tsx missing pillar token: Always-on").toMatch(/Always-on/);
+    expect(body, "Hero.tsx missing pillar token: Markdown-defined").toMatch(
+      /Markdown-defined/,
     );
+    expect(body, "Hero.tsx missing pillar token: event log").toMatch(/event log/);
   });
 });
 
