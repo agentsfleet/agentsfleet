@@ -167,7 +167,7 @@ fn writeValue(w: anytype, value: anytype) !void {
 }
 
 fn writeStringValue(w: anytype, s: []const u8) !void {
-    const needs_quote = std.mem.indexOfAny(u8, s, " \t\"=") != null;
+    const needs_quote = std.mem.indexOfAny(u8, s, " \t\n\r\"=") != null;
     if (!needs_quote) {
         try w.writeAll(s);
         return;
