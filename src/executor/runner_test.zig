@@ -471,3 +471,50 @@ test "T7: incFailureMetric for all failure classes" {
 }
 
 // T9 and T8 OWASP security tests are in runner_security_test.zig.
+
+// ── collectSecrets — wire-extraction wiring guard ────────────────────────
+//
+// These tests pin the contract between `agent_config` JSON and the
+// Adapter's borrowed `secrets: []const Secret` slice. If a new
+// credential slot is added to `wire.zig` and extracted in
+// `collectSecrets`, extend the table below — the existing
+// `${secrets.llm.api_key}` placeholder invariant survives, plus the
+// new slot is asserted alongside.
+//
+// Catches the regression class the removed
+// `event_loop_harness_redaction_test_*github_token_redacted*` tests
+// previously guarded: a future second slot extracted by the wire
+// schema but never plumbed into collectSecrets's return value.
+
+test "collectSecrets returns canonical placeholder when agent_config is null" {
+    const secrets = runner.collectSecrets(null);
+    try std.testing.expectEqual(@as(usize, 1), secrets.len);
+    try std.testing.expectEqualStrings("", secrets[0].value);
+    try std.testing.expectEqualStrings("${secrets.llm.api_key}", secrets[0].placeholder);
+}
+
+test "collectSecrets extracts api_key from agent_config and pairs the canonical placeholder" {
+    const alloc = std.testing.allocator;
+    var ac = std.json.ObjectMap.init(alloc);
+    defer ac.deinit();
+    try ac.put("api_key", .{ .string = "sk-canary-1234" });
+    const secrets = runner.collectSecrets(.{ .object = ac });
+    try std.testing.expectEqual(@as(usize, 1), secrets.len);
+    try std.testing.expectEqualStrings("sk-canary-1234", secrets[0].value);
+    try std.testing.expectEqualStrings("${secrets.llm.api_key}", secrets[0].placeholder);
+}
+
+test "collectSecrets short-circuits empty value when api_key is absent from agent_config" {
+    // Adapter contract: empty `value` is fine — redactor short-circuits
+    // on `value.len == 0` so unconfigured slots are zero-cost. Catches
+    // a regression where an unset field would propagate `null` or fail
+    // to populate the placeholder.
+    const alloc = std.testing.allocator;
+    var ac = std.json.ObjectMap.init(alloc);
+    defer ac.deinit();
+    try ac.put("model", .{ .string = "claude-sonnet-4-6" });
+    const secrets = runner.collectSecrets(.{ .object = ac });
+    try std.testing.expectEqual(@as(usize, 1), secrets.len);
+    try std.testing.expectEqualStrings("", secrets[0].value);
+    try std.testing.expectEqualStrings("${secrets.llm.api_key}", secrets[0].placeholder);
+}

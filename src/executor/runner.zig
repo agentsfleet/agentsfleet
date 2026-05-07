@@ -36,7 +36,6 @@ const wire = @import("wire.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const tool_bridge = @import("tool_bridge.zig");
-const runner_credentials = @import("runner_credentials.zig");
 const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -44,17 +43,14 @@ const runner_harness = @import("runner_harness.zig");
 const runner_observer = @import("runner_observer.zig");
 const progress_writer_mod = @import("progress_writer.zig");
 const context_budget = @import("context_budget.zig");
+const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.executor_runner);
 
-// Runner-specific error codes and docs base URL.
-// Canonical source: src/errors/error_registry.zig (ERR_EXEC_RUNNER_*, ERROR_DOCS_BASE).
-// Duplicated here because the executor binary is a separate build module —
-// it cannot import files outside src/executor/.
 const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";
-const ERR_EXEC_RUNNER_AGENT_INIT = "UZ-EXEC-012";
-const ERR_EXEC_RUNNER_AGENT_RUN = "UZ-EXEC-013";
-const ERR_EXEC_RUNNER_INVALID_CONFIG = "UZ-EXEC-014";
+const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
+const ERR_EXEC_RUNNER_AGENT_RUN = client_errors.ERR_EXEC_RUNNER_AGENT_RUN;
+const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 
 pub const RunnerError = error{
     InvalidConfig,
@@ -154,20 +150,13 @@ fn executeInner(
     // Apply agent_config overrides (model, temperature, max_tokens, api_key).
     if (agent_config) |ac| {
         applyAgentConfig(&cfg, ac);
-        // M16_003 §1.4: inject api_key from RPC payload into NullClaw Config.
-        // This ensures the executor never reads ANTHROPIC_API_KEY (or any other
-        // provider key) from the process environment.
+        // Inject api_key from RPC payload into NullClaw Config so the
+        // executor never reads ANTHROPIC_API_KEY (or any other provider
+        // key) from the process environment.
         if (json.getStr(ac, wire.api_key)) |key| {
             injectProviderApiKey(&cfg, key) catch {
                 log.err("api_key_inject_failed", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG });
                 return RunnerError.InvalidConfig;
-            };
-        }
-        if (json.getStr(ac, wire.github_token)) |token| {
-            runner_credentials.prepareGitCredential(alloc, workspace_path, token) catch |err| {
-                log.warn("git_cred_configure_failed", .{ .err = @errorName(err) });
-                // Non-fatal: git operations will fail at push time if token is needed
-                // but missing. The worker re-requests before PR creation (§2.3).
             };
         }
     }
@@ -191,13 +180,8 @@ fn executeInner(
     // NullClaw's default ephemeral workspace SQLite.
     var mem_rt: ?memory_mod.MemoryRuntime = blk: {
         if (agent_config) |ac| {
-            // NOTE: these JSON field names ("memory_connection", "memory_namespace") are
-            // the API contract between the dispatch layer and the executor. If they are
-            // ever renamed in the RPC schema, this silently falls back to ephemeral SQLite
-            // with no error. Tracked in M14_005 — validate field presence explicitly when
-            // the zombiectl config surface is added.
-            const mem_conn = json.getStr(ac, "memory_connection") orelse "";
-            const mem_ns = json.getStr(ac, "memory_namespace") orelse "";
+            const mem_conn = json.getStr(ac, wire.memory_connection) orelse "";
+            const mem_ns = json.getStr(ac, wire.memory_namespace) orelse "";
             if (mem_conn.len > 0 and mem_ns.len > 0) {
                 const mem_cfg = types.MemoryBackendConfig{
                     .backend = "postgres",
@@ -287,14 +271,18 @@ pub const composeMessage = runner_helpers.composeMessage;
 /// stack-storage; the adapter borrows it for the duration of the run.
 /// Secrets with empty values are still returned but the redactor
 /// short-circuits on `value.len == 0`.
-fn collectSecrets(agent_config: ?std.json.Value) [2]runner_progress.Secret {
+///
+/// Adding a new credential slot here (e.g. an installation token) is
+/// a two-step change: add the wire constant in `wire.zig`, extract it
+/// here, and extend the array length. `collectSecrets` is `pub` so the
+/// extraction shape is unit-testable from `runner_test.zig` —
+/// reviewers should add a row to those tests for every new slot.
+pub fn collectSecrets(agent_config: ?std.json.Value) [1]runner_progress.Secret {
     const ac = agent_config orelse return .{
         .{ .value = "", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = "", .placeholder = "${secrets.github.token}" },
     };
     return .{
         .{ .value = json.getStr(ac, wire.api_key) orelse "", .placeholder = "${secrets.llm.api_key}" },
-        .{ .value = json.getStr(ac, wire.github_token) orelse "", .placeholder = "${secrets.github.token}" },
     };
 }
 
@@ -324,8 +312,8 @@ pub fn incFailureMetric(failure: types.FailureClass) void {
 pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
     return switch (failure) {
         .startup_posture => ERR_EXEC_RUNNER_AGENT_INIT,
-        .timeout_kill => "UZ-EXEC-003",
-        .oom_kill => "UZ-EXEC-004",
+        .timeout_kill => client_errors.ERR_EXEC_TIMEOUT_KILL,
+        .oom_kill => client_errors.ERR_EXEC_OOM_KILL,
         .executor_crash => ERR_EXEC_RUNNER_AGENT_RUN,
         else => ERR_EXEC_RUNNER_AGENT_RUN,
     };

@@ -18,7 +18,7 @@ const wire = @import("wire.zig");
 // transport-catch arms (UZ-EXEC-006) and the rpc-error arms (UZ-EXEC-003/
 // 004/005/007/010/011 via `errorCodeForRpcCode`) share the same source.
 const ERR_EXEC_TRANSPORT_LOSS = client_errors.ERR_EXEC_TRANSPORT_LOSS;
-const ERR_EXEC_STARTUP_POSTURE: []const u8 = "UZ-EXEC-009";
+const ERR_EXEC_STARTUP_POSTURE = client_errors.ERR_EXEC_STARTUP_POSTURE;
 
 const log = logging.scoped(.executor_client);
 
@@ -168,9 +168,6 @@ pub const ExecutorClient = struct {
         /// LLM provider API key fetched from vault.secrets per workspace.
         /// Injected into NullClaw Config by the executor runner — never read from environ.
         api_key: []const u8 = "",
-        /// GitHub App installation token for branch push and PR creation.
-        /// Per-run, held in worker memory only, never persisted.
-        github_token: []const u8 = "",
     };
 
     /// Full StartStage payload carrying agent execution context.
@@ -219,8 +216,6 @@ pub const ExecutorClient = struct {
         try ac.object.put(wire.max_tokens, .{ .integer = @intCast(payload.agent_config.max_tokens) });
         if (payload.agent_config.api_key.len > 0)
             try ac.object.put(wire.api_key, .{ .string = payload.agent_config.api_key });
-        if (payload.agent_config.github_token.len > 0)
-            try ac.object.put(wire.github_token, .{ .string = payload.agent_config.github_token });
         try params.object.put(wire.agent_config, ac);
 
         if (payload.tools) |t| try params.object.put(wire.tools, t);

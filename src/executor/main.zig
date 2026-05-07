@@ -28,10 +28,10 @@ var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode 
 
 // pub: consumed by std at comptime via @import("root").std_options.
 // Mirrors src/main.zig's zombiedLog so the executor binary's logs are
-// logfmt-shaped (`ts_ms=… level=… scope=… msg=…`) and parseable by the
-// same aggregator pipeline as the worker. Without this, std falls back
-// to defaultLog ("[scope] (level): msg") and `error_code=UZ-…` alerts
-// silently drop executor lines.
+// logfmt-shaped (`ts_ms=… level=… scope=… event=… key=value …`) and
+// parseable by the same aggregator pipeline as the worker. Without
+// this, std falls back to defaultLog (`<level>(<scope>): msg`) and
+// `error_code=UZ-…` alerts silently drop executor lines.
 //
 // No OTLP dual-write here — the executor sidecar is local-only; the
 // worker's logFn is the single OTEL emitter.
@@ -82,11 +82,10 @@ fn executorLog(
     const line = if (logging.isPretty())
         logging.formatPretty(&line_buf, ts, level, scope_str, msg)
     else
-        std.fmt.bufPrint(
-            &line_buf,
-            "ts_ms={d} level={s} scope={s} msg={f}\n",
-            .{ ts, level_str, scope_str, std.json.fmt(msg, .{}) },
-        ) catch return;
+        // Shared envelope helper splices the body and scrubs any raw
+        // `\n` / `\r`. See logging.writeLogfmtEnvelope for the
+        // newline-injection defense rationale.
+        logging.writeLogfmtEnvelope(&line_buf, ts, level_str, scope_str, msg);
     const stderr = std.fs.File.stderr();
     stderr.writeAll(line) catch {};
 }
