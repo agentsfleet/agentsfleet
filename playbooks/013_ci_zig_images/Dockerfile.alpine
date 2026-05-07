@@ -1,0 +1,93 @@
+# syntax=docker/dockerfile:1.7
+#
+# Multi-arch Alpine + Zig base for CI cross-compile lanes.
+# Mirrors the apk install + symlink dance from
+# .github/workflows/cross-compile.yml so that lane becomes a pure
+#   container: image: ghcr.io/usezombie/ci-zig-alpine:<tag>
+# step with no per-job network fetch.
+#
+# Build:
+#   docker buildx build \
+#     --platform linux/amd64,linux/arm64 \
+#     --build-arg ZIG_VERSION=0.15.2 \
+#     --build-arg ZIG_SHA256_X86_64_LINUX=... \
+#     --build-arg ZIG_SHA256_AARCH64_LINUX=... \
+#     -f Dockerfile.alpine \
+#     -t ghcr.io/usezombie/ci-zig-alpine:0.15.2 \
+#     --push .
+
+FROM mirror.gcr.io/library/alpine:3.21
+
+ARG ZIG_VERSION
+ARG ZIG_SHA256_X86_64_LINUX
+ARG ZIG_SHA256_AARCH64_LINUX
+ARG TARGETARCH
+
+RUN test -n "$ZIG_VERSION" \
+ && test -n "$ZIG_SHA256_X86_64_LINUX" \
+ && test -n "$ZIG_SHA256_AARCH64_LINUX" \
+ && test -n "$TARGETARCH"
+
+RUN apk add --no-cache \
+    git \
+    openssl-dev \
+    openssl-libs-static \
+    ca-certificates \
+    xz \
+    binutils \
+    tar \
+    wget \
+    make \
+    bash
+
+# OpenSSL static-link symlinks. The arch-specific GNU triple paths are what
+# the build.zig static-link helper looks for; without these, zig build fails
+# with "could not find libssl.a" even though Alpine's openssl-libs-static is
+# installed.
+RUN if [ "$TARGETARCH" = "amd64" ]; then \
+      mkdir -p /usr/lib/x86_64-linux-gnu /usr/include/x86_64-linux-gnu \
+   && ln -sf /usr/lib/libssl.a    /usr/lib/x86_64-linux-gnu/libssl.a \
+   && ln -sf /usr/lib/libcrypto.a /usr/lib/x86_64-linux-gnu/libcrypto.a \
+   && ln -sf /usr/include/openssl /usr/include/x86_64-linux-gnu/openssl ; \
+    elif [ "$TARGETARCH" = "arm64" ]; then \
+      mkdir -p /usr/lib/aarch64-linux-gnu /usr/include/aarch64-linux-gnu \
+   && ln -sf /usr/lib/libssl.a    /usr/lib/aarch64-linux-gnu/libssl.a \
+   && ln -sf /usr/lib/libcrypto.a /usr/lib/aarch64-linux-gnu/libcrypto.a \
+   && ln -sf /usr/include/openssl /usr/include/aarch64-linux-gnu/openssl ; \
+    else \
+      echo "unsupported TARGETARCH=$TARGETARCH" >&2 ; exit 1 ; \
+    fi
+
+# Mach mirror first (Cloudflare R2 anycast — the recurring ziglang.org/download
+# CI hangs do not affect this path), then hryx, then ziglang as fallbacks.
+# The SHA256 is the trust anchor: the URL choice is purely about reachability.
+RUN set -eux; \
+    case "$TARGETARCH" in \
+      amd64) zig_arch=x86_64;  zig_sha="$ZIG_SHA256_X86_64_LINUX" ;; \
+      arm64) zig_arch=aarch64; zig_sha="$ZIG_SHA256_AARCH64_LINUX" ;; \
+      *) echo "unsupported TARGETARCH=$TARGETARCH" >&2; exit 1 ;; \
+    esac; \
+    tarball="zig-${zig_arch}-linux-${ZIG_VERSION}.tar.xz"; \
+    for url in \
+      "https://pkg.machengine.org/zig/${tarball}" \
+      "https://zigmirror.hryx.net/zig/${tarball}" \
+      "https://ziglang.org/download/${ZIG_VERSION}/${tarball}" ; do \
+      echo "  fetching $url" ; \
+      if wget -q "$url" -O /tmp/zig.tar.xz \
+         && echo "${zig_sha}  /tmp/zig.tar.xz" | sha256sum -c - >/dev/null 2>&1 ; then \
+        echo "  ✓ verified from $url" ; break ; \
+      fi ; \
+      rm -f /tmp/zig.tar.xz ; \
+    done; \
+    test -f /tmp/zig.tar.xz || { echo "FAIL: zig ${ZIG_VERSION} download failed from every mirror"; exit 1; }; \
+    mkdir -p /opt ; \
+    (cd /opt && tar xf /tmp/zig.tar.xz) ; \
+    mv "/opt/zig-${zig_arch}-linux-${ZIG_VERSION}" /opt/zig ; \
+    rm /tmp/zig.tar.xz ; \
+    /opt/zig/zig version
+
+ENV PATH=/opt/zig:$PATH
+
+LABEL org.opencontainers.image.title="usezombie ci-zig-alpine" \
+      org.opencontainers.image.description="Alpine 3.21 + Zig + static OpenSSL ready for usezombie CI cross-compile lanes" \
+      org.opencontainers.image.source="https://github.com/usezombie/usezombie"
