@@ -271,7 +271,13 @@ pub const composeMessage = runner_helpers.composeMessage;
 /// stack-storage; the adapter borrows it for the duration of the run.
 /// Secrets with empty values are still returned but the redactor
 /// short-circuits on `value.len == 0`.
-fn collectSecrets(agent_config: ?std.json.Value) [1]runner_progress.Secret {
+///
+/// Adding a new credential slot here (e.g. an installation token) is
+/// a two-step change: add the wire constant in `wire.zig`, extract it
+/// here, and extend the array length. `collectSecrets` is `pub` so the
+/// extraction shape is unit-testable from `runner_test.zig` —
+/// reviewers should add a row to those tests for every new slot.
+pub fn collectSecrets(agent_config: ?std.json.Value) [1]runner_progress.Secret {
     const ac = agent_config orelse return .{
         .{ .value = "", .placeholder = "${secrets.llm.api_key}" },
     };

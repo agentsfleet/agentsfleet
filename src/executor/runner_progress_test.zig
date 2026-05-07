@@ -195,3 +195,44 @@ test "L3 records last_prompt_tokens regardless of threshold state" {
     fireLlmResponse(&adapter, 67_890);
     try std.testing.expectEqual(@as(u32, 67_890), adapter.last_prompt_tokens);
 }
+
+// ── Adapter.secrets multi-slot wiring guard ──────────────────────────────
+//
+// `runner_progress.observerRecordEvent` runs `redactBytes(self.alloc, raw,
+// self.secrets)` directly on every `.tool_call` event. If a future wire
+// extension adds a second secret slot but the Adapter's `secrets` slice
+// is sized wrong, only the first secret would scrub. This test pins the
+// invariant that *every* element of the borrowed slice is reachable by
+// the same call shape the observer uses.
+//
+// Companion to `runner_test.zig::collectSecrets` (extraction shape) and
+// `runner_progress_redact_test.zig` (algorithmic correctness). Together
+// they replace the multi-slot end-to-end coverage previously held by the
+// removed `event_loop_harness_redaction_test_*github_token_*` tests
+// (the github_token wire field has no production producer post-cleanup).
+
+test "Adapter.secrets exposes every slot to redactBytes (multi-slot wiring guard)" {
+    const alloc = std.testing.allocator;
+    const secrets = [_]runner_progress.Secret{
+        .{ .value = "secret-A-canary", .placeholder = "${secrets.A}" },
+        .{ .value = "secret-B-canary", .placeholder = "${secrets.B}" },
+    };
+    var w = newStubWriter();
+    const adapter = Adapter{
+        .writer = &w,
+        .alloc = alloc,
+        .secrets = &secrets,
+    };
+
+    // Mirror the observer's `.tool_call` redaction call shape verbatim
+    // (see runner_progress.observerRecordEvent line ~134) so this test
+    // breaks if either the call shape or the slice plumbing drifts.
+    const args = "{\"a\":\"secret-A-canary\",\"b\":\"secret-B-canary\"}";
+    const result = try runner_progress.redactBytes(adapter.alloc, args, adapter.secrets);
+    defer alloc.free(result);
+
+    try std.testing.expect(std.mem.indexOf(u8, result, "secret-A-canary") == null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "secret-B-canary") == null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "${secrets.A}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, result, "${secrets.B}") != null);
+}

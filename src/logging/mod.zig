@@ -187,6 +187,13 @@ fn writeStringValue(w: anytype, s: []const u8) !void {
 }
 
 // ---------------------------------------------------------------------------
+// Section 2 — Envelope builder (re-export from envelope.zig).
+// ---------------------------------------------------------------------------
+
+const envelope = @import("envelope.zig");
+pub const writeLogfmtEnvelope = envelope.writeLogfmtEnvelope;
+
+// ---------------------------------------------------------------------------
 // Section 3 — Pretty-printer (re-exports from pretty.zig).
 // ---------------------------------------------------------------------------
 
@@ -219,6 +226,12 @@ pub fn fatalStderr(comptime fmt: []const u8, args: anytype) void {
 // ---------------------------------------------------------------------------
 // Section 5 — Tests.
 // ---------------------------------------------------------------------------
+
+test {
+    // Ensure tests in sibling files are reachable through the test runner.
+    _ = @import("envelope.zig");
+    _ = @import("pretty.zig");
+}
 
 test "fatalStderr is callable (compile check)" {
     _ = @TypeOf(fatalStderr);
