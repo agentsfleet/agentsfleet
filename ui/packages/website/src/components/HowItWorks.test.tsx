@@ -12,7 +12,7 @@ describe("HowItWorks", () => {
 
   it("renders the eyebrow", () => {
     render(<HowItWorks />);
-    expect(screen.getByText("How it works")).toBeInTheDocument();
+    expect(screen.getByText(/how it works/i)).toBeInTheDocument();
   });
 
   it("renders all three steps", () => {
@@ -20,6 +20,13 @@ describe("HowItWorks", () => {
     expect(screen.getByText("A trigger arrives")).toBeInTheDocument();
     expect(screen.getByText("The agent gathers evidence")).toBeInTheDocument();
     expect(screen.getByText("Diagnosis posts; the run is auditable")).toBeInTheDocument();
+  });
+
+  it("renders mono numbered eyebrows", () => {
+    render(<HowItWorks />);
+    expect(screen.getByText("01")).toBeInTheDocument();
+    expect(screen.getByText("02")).toBeInTheDocument();
+    expect(screen.getByText("03")).toBeInTheDocument();
   });
 
   it("renders step descriptions", () => {

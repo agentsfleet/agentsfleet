@@ -18,8 +18,6 @@ export { default as Terminal } from "./Terminal";
 export { default as Grid } from "./Grid";
 export { default as Section } from "./Section";
 export { default as InstallBlock } from "./InstallBlock";
-export { default as AnimatedIcon } from "./AnimatedIcon";
-export { default as ZombieHandIcon } from "./ZombieHandIcon";
 export { WakePulse, type WakePulseProps } from "./WakePulse";
 export {
   Badge,

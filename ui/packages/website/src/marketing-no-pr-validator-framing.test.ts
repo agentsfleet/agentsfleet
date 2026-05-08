@@ -30,7 +30,7 @@ const sources = import.meta.glob<string>(
     "/src/**/*.{ts,tsx,js,jsx}",
     "!/src/**/*.test.{ts,tsx}",
     "!/src/**/*.spec.{ts,tsx}",
-    "!/src/marketing-no-legacy-pr-framing.test.ts",
+    "!/src/marketing-no-pr-validator-framing.test.ts",
   ],
   { eager: true, query: "?raw", import: "default" },
 );

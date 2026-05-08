@@ -1,14 +1,13 @@
 import { describe, it, expect } from "vitest";
 
-// Hero.tsx must surface the three architecture pillars: always-on framing,
-// markdown-defined nature, and the replayable event log. The earlier "Durable
-// / BYOK / markdown-defined" trio was promoted out as the framing shifted
-// toward the always-on event-driven story; BYOK is now a feature paragraph,
-// not a hero pillar. The install-command rules are unchanged: zero hits on
-// the dead `usezombie.sh/install.sh` curl-pipe path, ≥1 hit on the npm path.
-//
-// Test names follow RULE TST-NAM (no milestone IDs in test names). Uses Vite
-// import.meta.glob to stay browser-friendly in the vitest jsdom env.
+/*
+ * Hero.tsx surfaces the W2 design language: the LIVE pulse eyebrow,
+ * the operational-restraint voice ("the daemon already knows why"),
+ * and the replayable-log architecture pillar.
+ *
+ * Test names follow RULE TST-NAM (no milestone IDs in test names).
+ * Uses Vite import.meta.glob to stay browser-friendly in jsdom.
+ */
 
 const heroSource = import.meta.glob<string>("/src/components/Hero.tsx", {
   eager: true,
@@ -21,22 +20,21 @@ const allMarketingSources = import.meta.glob<string>(
     "/src/**/*.{ts,tsx,js,jsx}",
     "!/src/**/*.test.{ts,tsx}",
     "!/src/**/*.spec.{ts,tsx}",
-    "!/src/marketing-no-legacy-pr-framing.test.ts",
     "!/src/marketing-spec.test.ts",
   ],
   { eager: true, query: "?raw", import: "default" },
 );
 
-describe("marketing hero — three architecture pillars present", () => {
-  it("Hero.tsx contains 'Always-on', 'Markdown-defined', and 'event log'", () => {
+describe("marketing hero — W2 architecture pillars present", () => {
+  it("Hero.tsx contains 'wake.on.event', 'long-lived runtime', and 'replayable log'", () => {
     const heroFiles = Object.values(heroSource);
     expect(heroFiles, "Hero.tsx not found by import.meta.glob").toHaveLength(1);
     const body = heroFiles[0];
-    expect(body, "Hero.tsx missing pillar token: Always-on").toMatch(/Always-on/);
-    expect(body, "Hero.tsx missing pillar token: Markdown-defined").toMatch(
-      /Markdown-defined/,
+    expect(body, "Hero.tsx missing pillar token: wake.on.event").toMatch(/wake\.on\.event/);
+    expect(body, "Hero.tsx missing pillar token: long-lived runtime").toMatch(
+      /long-lived runtime/,
     );
-    expect(body, "Hero.tsx missing pillar token: event log").toMatch(/event log/);
+    expect(body, "Hero.tsx missing pillar token: replayable log").toMatch(/replayable log/);
   });
 });
 

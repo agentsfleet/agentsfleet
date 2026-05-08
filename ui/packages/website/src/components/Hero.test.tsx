@@ -26,53 +26,46 @@ describe("Hero", () => {
     analytics.trackSignupStarted.mockReset();
   });
 
-  it("renders h1 with the single-line punchy claim", () => {
+  it("renders the two-line mono headline", () => {
     const { container } = renderHero();
     const h1 = container.querySelector("h1");
-    expect(h1).toHaveTextContent(/agents that wake on every event/i);
+    expect(h1).not.toBeNull();
+    expect(h1).toHaveTextContent(/your deploy failed/i);
+    expect(h1).toHaveTextContent(/the daemon already knows why/i);
+    expect(h1!.className).toContain("font-mono");
   });
 
-  it("shows the human badge text", () => {
+  it("renders the LIVE eyebrow with a WakePulse data-live=true mark", () => {
     renderHero();
-    expect(screen.getByText(/always-on event-driven runtime/i)).toBeInTheDocument();
+    const eyebrow = screen.getByTestId("hero-eyebrow");
+    expect(eyebrow.textContent).toMatch(/LIVE — wake\.on\.event/i);
+    const pulse = eyebrow.querySelector("[data-live=\"true\"]");
+    expect(pulse).not.toBeNull();
   });
 
-  it("renders the $5 starter credit hook in the command-card note", () => {
+  it("renders the lede paragraph in the spec voice", () => {
     renderHero();
-    // "$5 starter credit" now appears twice — in the secondary CTA and in the
-    // note's <strong> emphasis. Both are intentional; assert both, then pin
-    // the no-card-required tail to the note.
-    const matches = screen.getAllByText(/\$5 starter credit/i);
-    expect(matches.length).toBeGreaterThanOrEqual(2);
-    expect(matches.some((m) => m.tagName === "STRONG")).toBe(true);
-    expect(screen.getByText(/no card required/i)).toBeInTheDocument();
+    expect(screen.getByText(/long-lived runtime that owns one operational outcome/i)).toBeInTheDocument();
+    expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
   });
 
-  it("renders the primary CTA linking to docs quickstart", () => {
-    const { container } = renderHero();
-    const cta = Array.from(container.querySelectorAll("a")).find((link) =>
-      link.textContent?.match(/start an agent/i),
-    );
+  it("renders the primary CTA pointing at the docs quickstart", () => {
+    renderHero();
+    const cta = screen.getByTestId("hero-cta-primary");
     expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
+    expect(cta.textContent).toMatch(/install in claude code/i);
   });
 
-  it("renders the offer-led pricing CTA pointing at /pricing", () => {
-    const { container } = renderHero();
-    const cta = Array.from(container.querySelectorAll("a")).find((link) =>
-      link.textContent?.match(/\$5 starter credit/i),
-    );
-    expect(cta).toHaveAttribute("href", "/pricing");
-  });
-
-  it("kicker carries the always-on event-driven story (webhook → Zombie Agent → event log)", () => {
+  it("renders the secondary CTA pointing at /agents", () => {
     renderHero();
-    expect(screen.getByText(/webhook wakes the zombie agent/i)).toBeInTheDocument();
-    expect(screen.getByText(/replayable event log/i)).toBeInTheDocument();
+    const cta = screen.getByTestId("hero-cta-secondary");
+    expect(cta).toHaveAttribute("href", "/agents");
+    expect(cta.textContent).toMatch(/view a real wake/i);
   });
 
   it("tracks clicks on the primary CTA", () => {
     renderHero();
-    fireEvent.click(screen.getByRole("link", { name: /start an agent/i }));
+    fireEvent.click(screen.getByTestId("hero-cta-primary"));
     expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
       source: "hero_primary",
       surface: "hero",
@@ -80,36 +73,27 @@ describe("Hero", () => {
     });
   });
 
-  it("tracks clicks on the pricing CTA", () => {
+  it("tracks clicks on the secondary CTA", () => {
     renderHero();
-    fireEvent.click(screen.getByRole("link", { name: /\$5 starter credit/i }));
+    fireEvent.click(screen.getByTestId("hero-cta-secondary"));
     expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
-      source: "hero_secondary_pricing",
+      source: "hero_secondary_replay",
       surface: "hero",
-      target: "pricing",
+      target: "agents",
     });
   });
 
-  it("renders the terminal with quick start label", () => {
+  it("renders the install transcript Terminal", () => {
     renderHero();
-    expect(screen.getByLabelText(/quick start command/i)).toBeInTheDocument();
+    expect(screen.getByTestId("hero-cli")).toBeInTheDocument();
+    expect(screen.getByLabelText(/install platform-ops via claude code/i)).toBeInTheDocument();
   });
 
-  it("renders copy button on terminal", () => {
-    renderHero();
-    expect(screen.getByTestId("copy-btn")).toBeInTheDocument();
-  });
-
-  it("renders the data-command attribute on the terminal", () => {
-    renderHero();
-    const terminal = screen.getByLabelText(/quick start command/i);
-    expect(terminal).toHaveAttribute("data-command", "npm install -g @usezombie/zombiectl");
-  });
-
-  it("does not render the removed proof cards", () => {
-    renderHero();
-    expect(screen.queryByText("Validated PRs")).not.toBeInTheDocument();
-    expect(screen.queryByText("Direct model billing")).not.toBeInTheDocument();
-    expect(screen.queryByText("Measurable run quality")).not.toBeInTheDocument();
+  it("does not render orange-era hero scaffolding", () => {
+    const { container } = renderHero();
+    expect(container.querySelector(".hero-illustration")).toBeNull();
+    expect(container.querySelector(".hero-proof-grid")).toBeNull();
+    expect(container.querySelector(".hero-cta-primary")).toBeNull();
+    expect(container.querySelector(".hero-headline")).toBeNull();
   });
 });

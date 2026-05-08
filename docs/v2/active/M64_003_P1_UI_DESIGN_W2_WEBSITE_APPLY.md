@@ -31,7 +31,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 2. `~/.gstack/projects/usezombie/designs/design-system-20260508-0831/preview.html` — Mockup A is the marketing-hero canonical reference (top-bar + brand-mark pulse, hero eyebrow with WakePulse, mono headline, mono CLI demo block, dot-grid bg). Implementation is a direct evolution, not a different system.
 3. `ui/packages/design-system/src/tokens.css` + `theme.css` — W1 surface; tokens we consume. tokens.css already self-hosts `@fontsource/commit-mono` + `@fontsource-variable/instrument-sans` via `@import`, so removing `@fontsource-variable/geist*` from `website/package.json` is safe — fonts arrive transitively when website imports `@usezombie/design-system/tokens.css` (which it already does).
 4. `ui/packages/design-system/src/index.ts` — primitives the rebuild consumes (`Button`, `Card`, `Badge`, `InstallBlock`, `Terminal`, `Section`, `Grid`, `WakePulse`). UI Component Substitution Gate forbids raw `<section>`/`<button>`/`<input>` when a primitive exists.
-5. `ui/packages/website/src/styles.css` — current 1866-line legacy file with 372 dead `var(--z-*)` references. Wholesale-rewritten (not migrated) to ~400L driven only by Layer 0/1 tokens + Tailwind utilities + design-system primitives.
+5. `ui/packages/website/src/styles.css` — current 1866-line pre-W1 file with 372 dead `var(--z-*)` references. Wholesale-rewritten (not migrated) to ~400L driven only by Layer 0/1 tokens + Tailwind utilities + design-system primitives.
 6. The W1 spec at `docs/v2/done/M64_002_P0_UI_DESIGN_W1_TOKEN_SWAP.md` — for the patterns the design-system package now exposes and the rules under "Applicable Rules" we inherit.
 
 ---
@@ -118,7 +118,7 @@ No `.cta`, `.feature-section`, `.pricing-card`, `.hero-proof-card`, `.pricing-le
 
 App.tsx renders the top-bar with: brand-mark `<WakePulse live={true} size={12} />`, "usezombie" wordmark in Commit Mono 500, primary nav (Home, Agents, Pricing, Docs) in Commit Mono 12px muted, single primary `<Button>` "→ install" CTA on the right. Drops:
 - The existing centred `.site-shell::before`/`::after` blob decorations (deleted from CSS).
-- The legacy `.mode-switch` pill (mode toggle not part of Mockup A — defer until DESIGN_SYSTEM.md commits to a UI affordance).
+- The M51-era `.mode-switch` pill (mode toggle not part of Mockup A — defer until DESIGN_SYSTEM.md commits to a UI affordance).
 - The `<AnimatedIcon><ZombieHandIcon /></AnimatedIcon>` Mission Control button hover treatment. Mockup A's topbar ships a plain "→ install" Button. Net effect: zero `ZombieHandIcon` / `AnimatedIcon` imports in website source after rebuild. Both primitives stay in design-system because W3 (app) still imports them.
 
 **Implementation default:** dark is canonical; no in-page light/dark toggle. `[data-theme="light"]` works (via OS preference) but is not driven from the UI in this spec.
@@ -150,7 +150,7 @@ The hero gets the dot-grid background applied at the `body` level via `styles.cs
 
 ### §8 — Privacy + Terms typography sweep
 
-`Privacy.tsx` + `Terms.tsx`: replace the legacy `.legal-page` class chrome with semantic `<article>` (or design-system primitive if `Section` accepts the role) + Instrument Sans body via Tailwind `font-sans`. Headings get Commit Mono via `font-mono`. No layout rebuild — these stay single-column ~68ch measure per spec §Layout.
+`Privacy.tsx` + `Terms.tsx`: replace the orange-era `.legal-page` class chrome with semantic `<article>` (or design-system primitive if `Section` accepts the role) + Instrument Sans body via Tailwind `font-sans`. Headings get Commit Mono via `font-mono`. No layout rebuild — these stay single-column ~68ch measure per spec §Layout.
 
 ### §9 — Test alignment
 
@@ -183,7 +183,7 @@ The `<InstallBlock>` consumer call from `Home.tsx` survives unchanged (W1 ships 
 | Mode | Cause | Handling |
 |------|-------|----------|
 | Geist still loads | Browser cache or a missed import | `grep -rn -i geist ui/packages/website/` returns zero non-historical hits; CI verified by `bun pm ls` step. |
-| `--z-*` ref leaks back | Author copy-pastes legacy snippet | `grep -rn 'var(--z-' ui/packages/website/src/` returns zero hits — verified at HARNESS VERIFY. |
+| `--z-*` ref leaks back | Author copy-pastes pre-W1 snippet | `grep -rn 'var(--z-' ui/packages/website/src/` returns zero hits — verified at HARNESS VERIFY. |
 | `--pulse` used decoratively | Author drops it on a non-live element | Pre-PR grep: every `var(--pulse)` / `#5EEAD4` is on a `live`-data-driven element OR is the brand-mark in topbar. RULE: surfaced if violated. |
 | Buttons go pill again | `rounded-full` survives a copy-paste | `grep -rn 'rounded-full\|border-radius: 9999' ui/packages/website/src/` returns zero hits. |
 | Aurora gradient sneaks in | Author mistakes the dot-grid for permission-to-decorate | `grep -rn 'linear-gradient\|radial-gradient' ui/packages/website/src/` audited — every hit must be the dot-grid radial OR a single-stop overlay; aurora multi-stop forbidden. |
@@ -288,7 +288,7 @@ gitleaks detect --redact 2>&1 | tail -3
 | `ZombieHandIcon` / `AnimatedIcon` in website | `grep -rn 'ZombieHandIcon\|AnimatedIcon' ui/packages/website/src/` | 0 matches in non-fixture (DesignSystemGallery may still import for the gallery surface — gated separately) |
 | `--z-*` (any) | `grep -rn 'var(--z-' ui/packages/website/src/` | 0 matches |
 | `Geist` font ref | `grep -rn -i geist ui/packages/website/ --include="*.ts" --include="*.tsx" --include="*.css" --include="*.json"` | 0 matches |
-| `.cta` / `.feature-section` / `.pricing-card` / `.scanline` / `.particle-field` legacy classes | `grep -rn '"\(cta\|feature-section\|pricing-card\|scanline\|particle-field\)' ui/packages/website/src/` | 0 matches |
+| `.cta` / `.feature-section` / `.pricing-card` / `.scanline` / `.particle-field` pre-W1 classes | `grep -rn '"\(cta\|feature-section\|pricing-card\|scanline\|particle-field\)' ui/packages/website/src/` | 0 matches |
 | Animated keyframes (`z-cta-shimmer`, `z-glow-pulse`, `z-grid-shift`, `z-float-up`, `z-drift`, `z-rise-in`) | `grep -rn 'z-cta-shimmer\|z-glow-pulse\|z-grid-shift\|z-float-up\|z-drift\|z-rise-in' ui/packages/website/src/` | 0 matches |
 
 ---

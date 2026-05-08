@@ -16,8 +16,6 @@ export {
   Grid,
   Section,
   InstallBlock,
-  AnimatedIcon,
-  ZombieHandIcon,
   WakePulse,
   type WakePulseProps,
   Badge,

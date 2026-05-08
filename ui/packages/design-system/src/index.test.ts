@@ -14,8 +14,7 @@ describe("design-system public exports", () => {
     expect(DesignSystem.Grid).toBeDefined();
     expect(DesignSystem.Section).toBeDefined();
     expect(DesignSystem.InstallBlock).toBeDefined();
-    expect(DesignSystem.AnimatedIcon).toBeDefined();
-    expect(DesignSystem.ZombieHandIcon).toBeDefined();
+    expect(DesignSystem.WakePulse).toBeDefined();
   });
 
   it("exports utilities and variant helpers", () => {

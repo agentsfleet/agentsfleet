@@ -94,8 +94,8 @@ describe("website analytics", () => {
   });
 
   it("captures agent-safe CTA navigation events", async () => {
-    ctaOnClick("Read quickstart")?.();
-    ctaOnClick("View pricing")?.();
+    ctaOnClick("→ read quickstart")?.();
+    ctaOnClick("view pricing")?.();
     await flushAnalyticsForTests();
 
     expect(mockedPosthog.capture).toHaveBeenCalledWith(
@@ -168,7 +168,7 @@ describe("website analytics", () => {
       host: "https://us.i.posthog.com",
     };
 
-    ctaOnClick("Read quickstart")?.();
+    ctaOnClick("→ read quickstart")?.();
     await flushAnalyticsForTests();
 
     expect(mockedPosthog.init).not.toHaveBeenCalled();

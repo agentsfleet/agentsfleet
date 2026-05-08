@@ -10,8 +10,6 @@ import {
   Grid,
   Section,
   InstallBlock,
-  AnimatedIcon,
-  ZombieHandIcon,
   Badge,
   Input,
   Separator,
@@ -266,22 +264,6 @@ export default function DesignSystemGallery() {
         <Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} />
       </Section>
 
-      <Section>
-        <h2>AnimatedIcon</h2>
-        <div className="flex flex-wrap items-center gap-lg">
-          <AnimatedIcon animation="wave" trigger="always" label="always-wave">
-            <ZombieHandIcon size={24} />
-          </AnimatedIcon>
-          <AnimatedIcon animation="wiggle" trigger="self-hover" label="self-hover-wiggle">
-            <ZombieHandIcon size={24} />
-          </AnimatedIcon>
-          <span className="group">
-            parent-hover <AnimatedIcon animation="wave" trigger="parent-hover" label="parent-hover-wave">
-              <ZombieHandIcon size={24} />
-            </AnimatedIcon>
-          </span>
-        </div>
-      </Section>
     </Section>
   );
 }

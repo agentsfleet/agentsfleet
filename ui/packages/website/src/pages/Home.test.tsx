@@ -13,23 +13,24 @@ function renderHome() {
 }
 
 describe("Home", () => {
-  it("renders the hero headline as a single punchy claim", () => {
+  it("renders the hero headline (two-line spec voice)", () => {
     renderHome();
     const h1 = screen.getByRole("heading", { level: 1 });
-    expect(h1).toHaveTextContent(/agents that wake on every event/i);
+    expect(h1).toHaveTextContent(/your deploy failed/i);
+    expect(h1).toHaveTextContent(/the daemon already knows why/i);
   });
 
-  it("renders the hero kicker description", () => {
+  it("renders the hero lede in spec voice", () => {
     renderHome();
-    expect(screen.getByText(/webhook wakes the zombie agent/i)).toBeInTheDocument();
-    expect(screen.getByText(/replayable event log/i)).toBeInTheDocument();
+    expect(screen.getByText(/long-lived runtime that owns one operational outcome/i)).toBeInTheDocument();
+    expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
   });
 
-  it("renders primary docs CTA with quickstart link", () => {
+  it("renders primary install CTA pointing at the docs quickstart", () => {
     renderHome();
-    const ctas = screen.getAllByRole("link", { name: /start an agent/i });
-    expect(ctas.length).toBeGreaterThanOrEqual(1);
-    expect(ctas[0]).toHaveAttribute("href", DOCS_QUICKSTART_URL);
+    const cta = screen.getByTestId("hero-cta-primary");
+    expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
+    expect(cta.textContent).toMatch(/install in claude code/i);
   });
 
   it("does not render Talk to us CTA", () => {
@@ -37,9 +38,9 @@ describe("Home", () => {
     expect(screen.queryByRole("link", { name: /talk to us/i })).not.toBeInTheDocument();
   });
 
-  it("renders the hero terminal quickstart command", () => {
+  it("renders the hero install transcript Terminal", () => {
     renderHome();
-    expect(screen.getByLabelText(/quick start command/i)).toHaveTextContent("npm install -g @usezombie/zombiectl");
+    expect(screen.getByLabelText(/install platform-ops via claude code/i)).toBeInTheDocument();
   });
 
   it("renders feature flow rows including Mission Control", () => {
