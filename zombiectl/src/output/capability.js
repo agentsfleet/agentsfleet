@@ -1,6 +1,7 @@
 // Terminal color-capability detection. Independent of every other output
 // helper so tests can exercise it in isolation. Decision order is fixed:
-// --json → NO_COLOR → !isTTY → FORCE_COLOR → TERM/COLORTERM.
+// NO_COLOR → FORCE_COLOR → !isTTY → COLORTERM/TERM. JSON-mode short-
+// circuit lives in the command branching, not in the detector.
 //
 // Returns one of: "none" (plain ASCII), "basic16" (8/16-color ANSI),
 // "xterm256" (256-color). Helpers in palette.js gate every escape on this.
@@ -51,8 +52,11 @@ export function isTty(stream = process.stdout) {
 // and none modes. Callers route through palette.js, not directly.
 export function noteBasic16IfFirst(stream = process.stderr) {
   if (warnedBasic16) return;
-  warnedBasic16 = true;
+  // Validate the stream BEFORE flipping the flag — otherwise a non-TTY
+  // first caller would consume the once-per-process budget without
+  // emitting anything, and real TTY callers later would stay silent.
   if (!stream || stream.isTTY !== true) return;
+  warnedBasic16 = true;
   stream.write("note: terminal advertises <256 colors; using basic palette\n");
 }
 

@@ -10,7 +10,7 @@ function printJson(stream, value) {
   writeLine(stream, JSON.stringify(value, null, 2));
 }
 
-function writeError(ctx, code, message, opts) {
+function writeError(ctx, code, message, opts = {}) {
   const pj = opts.printJson || printJson;
   const wl = opts.writeLine || writeLine;
   const u = opts.ui || { err: (s) => s };
