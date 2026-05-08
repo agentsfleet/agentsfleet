@@ -55,7 +55,7 @@ export async function commandZombie(ctx, args, workspaces, deps) {
 // ── install ──────────────────────────────────────────────────────────────
 
 async function commandInstall(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, printJson, writeLine, writeError } = deps;
+  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const parsed = parseFlags(args);
   const fromPath = parsed.options.from;
 
@@ -124,7 +124,7 @@ async function commandInstall(ctx, args, workspaces, deps) {
     return 0;
   }
 
-  writeLine(ctx.stdout, `🎉 ${displayName} is live.`);
+  writeLine(ctx.stdout, ui.ok(`${displayName} is live.`));
   if (res.zombie_id) {
     writeLine(ctx.stdout, `  Zombie ID: ${res.zombie_id}`);
   }
