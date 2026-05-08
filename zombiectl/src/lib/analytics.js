@@ -15,7 +15,9 @@ function boolFromEnv(value, fallback) {
 function resolveConfig(env = process.env) {
   const key = env.ZOMBIE_POSTHOG_KEY || DEFAULT_POSTHOG_KEY;
   const host = env.ZOMBIE_POSTHOG_HOST || DEFAULT_POSTHOG_HOST;
-  const enabled = boolFromEnv(env.ZOMBIE_POSTHOG_ENABLED, key.length > 0);
+  // Default off. Only DISABLE_TELEMETRY=0|false|off|no opts in.
+  const disabled = boolFromEnv(env.DISABLE_TELEMETRY, true);
+  const enabled = !disabled && key.length > 0;
   return { key, host, enabled };
 }
 

@@ -1,18 +1,14 @@
-// error-matrix.unit.test.js — covers M63_004 Test Spec
-// `error_matrix_pins_stderr_lines`. Walks the status × error_code ×
-// json-mode matrix through runCommand and asserts the (code, message,
-// exit_code, analytics event_code) tuple.
-//
-// We test the WRAPPER's stable surface (exit code + writeError payload
-// + analytics event) — not the literal stderr formatting, which is
-// owned by printApiError and locked separately by analytics tests.
-// The wrapper is the new boundary; pinning its outputs pins the
-// per-handler invariants.
+// error-matrix.unit.test.js — walks the status × error_code × json-mode
+// matrix through runCommand and asserts the (exit code, rendered code,
+// analytics error_code) tuple. The wrapper renders directly to
+// stderr via writeLine/printJson; we capture both.
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { ApiError } from "../src/lib/http.js";
 import { runCommand } from "../src/lib/run-command.js";
+
+const STDERR_STUB = { write: () => {} };
 
 const CASES = [
   // [status, errorCode, expectedPrintedCode, expectedAnalyticsCode, errCtor]
@@ -35,15 +31,18 @@ for (const c of CASES) {
   for (const jsonMode of JSON_MODES) {
     test(`error matrix: ${c.name} (json_mode=${jsonMode})`, async () => {
       const events = [];
-      let written = null;
+      const lines = [];
+      const jsonPayloads = [];
       const trackCliEvent = (_, __, event, props) => events.push({ event, props });
-      const writeError = (info) => { written = info; };
+      const writeLine = (_stream, line = "") => lines.push(line);
+      const printJson = (_stream, value) => jsonPayloads.push(value);
+      const ui = { err: (s) => s };
 
       const code = await runCommand({
         name: "matrix",
         handler: c.handler,
-        ctx: { jsonMode, apiUrl: "http://api.example.com" },
-        deps: { trackCliEvent, writeError },
+        ctx: { stderr: STDERR_STUB, jsonMode, apiUrl: "http://api.example.com" },
+        deps: { trackCliEvent, writeLine, printJson, ui },
       });
 
       assert.equal(code, c.expectExit, `exit code for ${c.name}`);
@@ -52,7 +51,16 @@ for (const c of CASES) {
       assert.equal(last.props.json_mode, String(jsonMode));
       if (c.expectCode != null) {
         assert.equal(last.props.error_code, c.expectCode, `analytics error_code for ${c.name}`);
-        assert.equal(written.code, c.expectCode, `printed code for ${c.name}`);
+        if (jsonMode) {
+          assert.equal(jsonPayloads.length, 1, `json payload count for ${c.name}`);
+          assert.equal(jsonPayloads[0].error.code, c.expectCode, `json error.code for ${c.name}`);
+        } else {
+          // Human mode: ApiError → "error: <code> <message>"; plain → bare message.
+          const found = lines.some((l) => l.includes(c.expectCode));
+          if (c.expectCode.startsWith("UZ-") || c.expectCode === "TIMEOUT" || c.expectCode === "RATE_LIMITED" || c.expectCode.startsWith("HTTP_")) {
+            assert.ok(found, `expected human-mode line containing ${c.expectCode} in ${c.name}, got ${JSON.stringify(lines)}`);
+          }
+        }
       }
     });
   }

@@ -1,6 +1,13 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
+import { AUTH_PRESET, WORKSPACE_PRESET, compose } from "../lib/error-map-presets.js";
+
+// Covers workspace add/list/use/show/delete/credentials. Auth codes
+// because every sub-command is authenticated; workspace codes because
+// `workspace add` can surface paused/free-limit, `workspace use` /
+// `delete` can surface not-found.
+export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET);
 
 export async function commandWorkspace(ctx, workspaces, args, deps) {
   const {

@@ -9,6 +9,12 @@ import {
   commandTenantProviderDelete,
 } from "./tenant_provider.js";
 import { writeError } from "../program/io.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+
+// Tenant provider posture and billing snapshot. Auth-only at the CLI
+// surface; provider-side validation codes are not yet keyed here and
+// fall through to bare server messages.
+export const errorMap = compose(AUTH_PRESET);
 
 export async function commandTenant(ctx, args, _workspaces, deps) {
   const { parseFlags, ui, writeLine } = deps;

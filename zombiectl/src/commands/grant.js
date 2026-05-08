@@ -5,6 +5,21 @@
 
 import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.js";
 import { writeError } from "../program/io.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+
+// Grant list/delete is authenticated. UZ-GRANT-003 ("grant revoked")
+// is surfaced to the zombie at execute-time, not to the CLI; the CLI
+// surface mostly hits validation + auth.
+export const errorMap = compose(AUTH_PRESET, {
+  "UZ-GRANT-001": {
+    code: "GRANT_NOT_FOUND",
+    message: "Grant not found — check `zombiectl grant list --zombie <id>`.",
+  },
+  "UZ-GRANT-002": {
+    code: "GRANT_INVALID",
+    message: "Grant request is invalid — check the service name and scope.",
+  },
+});
 
 export async function commandGrant(ctx, args, workspaces, deps) {
   const { parseFlags, request, apiHeaders, ui, printJson, printTable, writeLine } = deps;

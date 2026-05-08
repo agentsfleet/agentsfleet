@@ -8,6 +8,17 @@
 // includes `next_cursor` so callers can paginate.
 
 import { writeError } from "../program/io.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+
+// Billing show hits /v1/tenants/me/billing (GET) + charges (GET).
+// Auth-only surface; the server propagates UZ-BILLING-* internally
+// but the CLI's read endpoint surfaces them as plain server messages.
+export const errorMap = compose(AUTH_PRESET, {
+  "UZ-BILLING-001": {
+    code: "BILLING_UNAVAILABLE",
+    message: "Billing data is temporarily unavailable — try again shortly.",
+  },
+});
 
 const BILLING_PATH = "/v1/tenants/me/billing";
 const CHARGES_PATH = "/v1/tenants/me/billing/charges";

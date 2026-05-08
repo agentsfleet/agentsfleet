@@ -1,6 +1,26 @@
 import { wsZombiesPath } from "../lib/api-paths.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
+
+// Doctor hits /healthz (no auth) and the workspace zombies list (auth).
+// UZ-INTERNAL-001 (DB unavailable) is the headline failure surfaced by
+// failure-modes.integration.test.js. AUTH_PRESET covers the
+// authenticated leg.
+export const doctorErrorMap = compose(AUTH_PRESET, {
+  "UZ-INTERNAL-001": {
+    code: "SERVER_INTERNAL",
+    message: "Database unavailable — the API is degraded; try again shortly.",
+  },
+  "UZ-INTERNAL-002": {
+    code: "SERVER_INTERNAL",
+    message: "Server internal error — the API is degraded; try again shortly.",
+  },
+  "UZ-INTERNAL-003": {
+    code: "SERVER_INTERNAL",
+    message: "Server internal error — the API is degraded; try again shortly.",
+  },
+});
 
 function createCoreOpsHandlers(ctx, workspaces, deps) {
   const {

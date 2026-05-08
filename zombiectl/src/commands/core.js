@@ -1,8 +1,18 @@
 import { createCoreOpsHandlers } from "./core-ops.js";
 import { commandWorkspace as commandWorkspaceModule } from "./workspace.js";
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+
+// Login covers session creation + polling. UZ-AUTH-004..008 are the
+// hot path; the rest of AUTH_PRESET is included because login can also
+// surface generic auth failures during the post-login workspace
+// hydration GET. RULE EMS — once these messages ship they become a
+// stable surface; failure-modes integration tests pin the substrings.
+export const loginErrorMap = compose(AUTH_PRESET);
+
+export const logoutErrorMap = compose(AUTH_PRESET);
 
 function normalizeTenantWorkspace(item, fallbackCreatedAt) {
   if (!item || typeof item !== "object") return null;

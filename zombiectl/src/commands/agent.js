@@ -6,6 +6,14 @@
 
 import { commandAgentAdd, commandAgentList, commandAgentDelete } from "./agent_external.js";
 import { writeError } from "../program/io.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+
+// Agent commands hit /v1/workspaces/{ws}/agent-keys (POST/GET/DELETE).
+// Server-side these can surface validation, conflict on duplicate
+// names, and not-found on delete. The codes are not yet stabilized in
+// OpenAPI for this surface, so we lean on AUTH_PRESET for now and
+// expand as the audit (§4) flags missing entries.
+export const errorMap = compose(AUTH_PRESET);
 
 export async function commandAgent(ctx, args, _workspaces, deps) {
   const { parseFlags, ui, writeLine } = deps;
