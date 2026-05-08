@@ -1,63 +1,44 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { AuthUserButton } from "@/lib/auth/client";
-import { trackNavigationClicked } from "@/lib/analytics/posthog";
-import WorkspaceSwitcher from "./WorkspaceSwitcher";
-import { setActiveWorkspace } from "@/app/(dashboard)/actions";
-import type { TenantWorkspace } from "@/lib/api/workspaces";
 import {
   LayoutDashboardIcon,
   ActivityIcon,
   SettingsIcon,
   BookOpenIcon,
-  ZapIcon,
   SkullIcon,
   KeyRoundIcon,
   CheckCircle2Icon,
+  MenuIcon,
 } from "lucide-react";
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogTrigger,
+  WakePulse,
+} from "@usezombie/design-system";
+import { AuthUserButton } from "@/lib/auth/client";
+import { trackNavigationClicked } from "@/lib/analytics/posthog";
+import { setActiveWorkspace } from "@/app/(dashboard)/actions";
+import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
+import type { TenantWorkspace } from "@/lib/api/workspaces";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 const NAV = [
-  {
-    label: "Dashboard",
-    href: "/",
-    icon: LayoutDashboardIcon,
-  },
-  {
-    label: "Zombies",
-    href: "/zombies",
-    icon: SkullIcon,
-  },
-  {
-    label: "Credentials",
-    href: "/credentials",
-    icon: KeyRoundIcon,
-  },
-  {
-    label: "Approvals",
-    href: "/approvals",
-    icon: CheckCircle2Icon,
-  },
-  {
-    label: "Events",
-    href: "/events",
-    icon: ActivityIcon,
-  },
+  { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
+  { label: "Zombies", href: "/zombies", icon: SkullIcon },
+  { label: "Credentials", href: "/credentials", icon: KeyRoundIcon },
+  { label: "Approvals", href: "/approvals", icon: CheckCircle2Icon },
+  { label: "Events", href: "/events", icon: ActivityIcon },
 ];
 
 const BOTTOM_NAV = [
-  {
-    label: "Docs",
-    href: "https://docs.usezombie.com",
-    icon: BookOpenIcon,
-    external: true,
-  },
-  {
-    label: "Settings",
-    href: "/settings",
-    icon: SettingsIcon,
-  },
+  { label: "Docs", href: "https://docs.usezombie.com", icon: BookOpenIcon, external: true },
+  { label: "Settings", href: "/settings", icon: SettingsIcon },
 ];
 
 type ShellProps = {
@@ -66,25 +47,35 @@ type ShellProps = {
   activeWorkspaceId?: string | null;
 };
 
-export default function Shell({ children, workspaces = [], activeWorkspaceId = null }: ShellProps) {
+export default function Shell({
+  children,
+  workspaces = [],
+  activeWorkspaceId = null,
+}: ShellProps) {
   const pathname = usePathname();
 
-  function isActive(href: string) {
-    if (href === "/") return pathname === "/";
-    return pathname.startsWith(href);
-  }
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : pathname.startsWith(href);
 
   return (
-    <div className="mc-shell">
-      {/* Header */}
-      <header className="mc-header">
-        <Link href="/" className="mc-brand">
-          <ZapIcon size={16} className="mc-brand-icon" />
+    <div className="grid min-h-screen md:grid-cols-[240px_1fr] grid-rows-[56px_1fr]">
+      <header className="col-span-full sticky top-0 z-40 flex items-center gap-4 px-4 md:px-6 border-b border-border bg-background/85 backdrop-blur">
+        <MobileNav isActive={isActive} />
+
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 font-mono text-sm font-medium tracking-tight text-foreground no-underline"
+          aria-label="usezombie home"
+        >
+          <WakePulse
+            live
+            className="inline-block w-3 h-3 rounded-full bg-pulse"
+            aria-hidden="true"
+          />
           <span>usezombie</span>
-          <span className="mc-brand-tag">Mission Control</span>
         </Link>
 
-        <div style={{ flex: 1 }} />
+        <div className="flex-1" />
 
         <WorkspaceSwitcher
           workspaces={workspaces}
@@ -92,122 +83,175 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
           onSwitch={setActiveWorkspace}
         />
 
-        <nav className="mc-header-nav">
+        <nav className="hidden md:flex items-center gap-4">
           <a
             href="https://docs.usezombie.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="mc-header-link"
-            onClick={() => trackNavigationClicked({ source: "app_header_docs", surface: "app_header", target: "docs" })}
+            className="font-mono text-[12px] text-muted-foreground transition-colors duration-[50ms] hover:text-foreground no-underline"
+            onClick={() =>
+              trackNavigationClicked({
+                source: "app_header_docs",
+                surface: "app_header",
+                target: "docs",
+              })
+            }
           >
-            Docs
+            docs
           </a>
           <a
             href="https://usezombie.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="mc-header-link"
-            onClick={() => trackNavigationClicked({ source: "app_header_marketing", surface: "app_header", target: "marketing_site" })}
+            className="font-mono text-[12px] text-muted-foreground transition-colors duration-[50ms] hover:text-foreground no-underline"
+            onClick={() =>
+              trackNavigationClicked({
+                source: "app_header_marketing",
+                surface: "app_header",
+                target: "marketing_site",
+              })
+            }
           >
             usezombie.com
           </a>
         </nav>
 
-        <AuthUserButton
-          appearance={{
-            variables: {
-              colorPrimary: "var(--pulse)",
-              colorBackground: "var(--surface-1)",
-              colorText: "var(--text)",
-              borderRadius: "8px",
-            },
-          }}
-        />
+        <AuthUserButton appearance={AUTH_APPEARANCE} />
       </header>
 
-      {/* Sidebar */}
-      <aside className="mc-sidebar">
-        <div className="mc-nav-section">
-          <div className="mc-nav-label">Navigation</div>
-          {NAV.map(({ label, href, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={`mc-nav-item${isActive(href) ? " active" : ""}`}
-              onClick={() =>
-                trackNavigationClicked({
-                  source: `app_sidebar_${href === "/" ? "root" : href.replaceAll("/", "_").replace(/^_+/, "")}`,
-                  surface: "app_sidebar",
-                  target: href,
-                })
-              }
-            >
-              <Icon size={15} />
-              {label}
-            </Link>
-          ))}
-        </div>
+      <aside className="hidden md:flex flex-col bg-muted border-r border-border sticky top-14 h-[calc(100vh-56px)] overflow-y-auto py-4">
+        <SidebarNav isActive={isActive} onNavigate={() => {}} />
+      </aside>
 
-        <div className="mc-nav-section" style={{ marginTop: "auto" }}>
-          <div className="mc-nav-label">More</div>
+      <main className="p-6 md:p-8 overflow-auto">{children}</main>
+    </div>
+  );
+}
+
+function MobileNav({ isActive }: { isActive: (href: string) => boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          aria-label="Open navigation"
+          variant="ghost"
+          size="icon"
+          className="md:hidden -ml-2"
+        >
+          <MenuIcon size={18} />
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-xs">
+        <DialogTitle className="sr-only">Navigation</DialogTitle>
+        <SidebarNav isActive={isActive} onNavigate={() => setOpen(false)} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+type NavProps = {
+  isActive: (href: string) => boolean;
+  onNavigate: () => void;
+};
+
+function SidebarNav({ isActive, onNavigate }: NavProps) {
+  return (
+    <div className="flex flex-col h-full">
+      <NavGroup label="Operations">
+        {NAV.map(({ label, href, icon: Icon }) => (
+          <NavItem
+            key={href}
+            href={href}
+            label={label}
+            Icon={Icon}
+            active={isActive(href)}
+            onClick={() => {
+              onNavigate();
+              trackNavigationClicked({
+                source: `app_sidebar_${href === "/" ? "root" : href.replaceAll("/", "_").replace(/^_+/, "")}`,
+                surface: "app_sidebar",
+                target: href,
+              });
+            }}
+          />
+        ))}
+      </NavGroup>
+
+      <div className="mt-auto">
+        <NavGroup label="More">
           {BOTTOM_NAV.map(({ label, href, icon: Icon, external }) => (
-            <a
+            <NavItem
               key={href}
               href={href}
-              className="mc-nav-item"
-              {...(external ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-              onClick={() =>
+              label={label}
+              Icon={Icon}
+              external={external}
+              active={external ? false : isActive(href)}
+              onClick={() => {
+                onNavigate();
                 trackNavigationClicked({
                   source: `app_sidebar_more_${label.toLowerCase().replace(/\s+/g, "_")}`,
                   surface: "app_sidebar_more",
                   target: href,
-                })
-              }
-            >
-              <Icon size={15} />
-              {label}
-            </a>
+                });
+              }}
+            />
           ))}
-        </div>
-      </aside>
-
-      {/* Main content */}
-      <main className="mc-content">{children}</main>
-
-      <style>{`
-        .mc-brand {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          text-decoration: none;
-          font-weight: 700;
-          font-size: 1rem;
-          letter-spacing: 0.02em;
-        }
-        .mc-brand-icon { color: var(--pulse); }
-        .mc-brand-tag {
-          font-family: var(--ff-mono);
-          font-size: 0.68rem;
-          color: var(--evidence);
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-          padding: 0.15rem 0.45rem;
-          border: 1px solid color-mix(in srgb, var(--evidence) 20%, transparent);
-          border-radius: 9999px;
-        }
-        .mc-header-nav {
-          display: flex;
-          gap: 1rem;
-          margin-right: 1rem;
-        }
-        .mc-header-link {
-          font-size: 0.82rem;
-          color: var(--text-muted);
-          text-decoration: none;
-          transition: color 0.15s;
-        }
-        .mc-header-link:hover { color: var(--text); }
-      `}</style>
+        </NavGroup>
+      </div>
     </div>
+  );
+}
+
+function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="px-3 mb-6">
+      <div className="font-mono text-[0.68rem] uppercase tracking-[0.1em] text-muted-foreground px-2 mb-2">
+        {label}
+      </div>
+      <div className="flex flex-col gap-0.5">{children}</div>
+    </div>
+  );
+}
+
+type NavItemProps = {
+  href: string;
+  label: string;
+  Icon: React.ComponentType<{ size?: number }>;
+  active?: boolean;
+  external?: boolean;
+  onClick?: () => void;
+};
+
+const NAV_ITEM_CLASSES =
+  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-[12px] text-muted-foreground no-underline transition-colors duration-[50ms] hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground";
+
+function NavItem({ href, label, Icon, active, external, onClick }: NavItemProps) {
+  if (external) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={NAV_ITEM_CLASSES}
+        onClick={onClick}
+      >
+        <Icon size={15} />
+        {label}
+      </a>
+    );
+  }
+  return (
+    <Link
+      href={href}
+      data-active={active ? "true" : undefined}
+      className={NAV_ITEM_CLASSES}
+      onClick={onClick}
+    >
+      <Icon size={15} />
+      {label}
+    </Link>
   );
 }

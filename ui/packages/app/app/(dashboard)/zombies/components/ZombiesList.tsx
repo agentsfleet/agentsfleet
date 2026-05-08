@@ -2,15 +2,25 @@
 
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
-import { Alert, Button, Input, List, ListItem } from "@usezombie/design-system";
+import { Alert, Button, Input, List, ListItem, Time, WakePulse } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
-import { listZombies, type Zombie } from "@/lib/api/zombies";
+import { listZombies, ZOMBIE_STATUS, type Zombie } from "@/lib/api/zombies";
 
 type Props = {
   workspaceId: string;
   initialZombies: Zombie[];
   initialCursor: string | null;
 };
+
+const PULSE_CAP = 5;
+
+type LiveState = "live" | "parked" | "failed";
+
+function liveStateOf(status: string): LiveState {
+  if (status === ZOMBIE_STATUS.ACTIVE) return "live";
+  if (status === ZOMBIE_STATUS.KILLED || status === ZOMBIE_STATUS.ERRORED) return "failed";
+  return "parked";
+}
 
 export default function ZombiesList({
   workspaceId,
@@ -36,6 +46,26 @@ export default function ZombiesList({
     );
   }, [zombies, deferredQuery]);
 
+  // Pulse currency cap: only the first N live rows in render order pulse.
+  // Beyond the cap we render a static glow + the header consolidation count.
+  const liveTotal = useMemo(
+    () => filtered.filter((z) => liveStateOf(z.status) === "live").length,
+    [filtered],
+  );
+  const cappedLiveIds = useMemo(() => {
+    const ids = new Set<string>();
+    let n = 0;
+    for (const z of filtered) {
+      if (n >= PULSE_CAP) break;
+      if (liveStateOf(z.status) === "live") {
+        ids.add(z.id);
+        n++;
+      }
+    }
+    return ids;
+  }, [filtered]);
+  const overCap = liveTotal > PULSE_CAP;
+
   function loadMore() {
     if (!cursor) return;
     setError(null);
@@ -58,14 +88,28 @@ export default function ZombiesList({
 
   return (
     <>
-      <div className="mb-4">
+      <div className="mb-4 flex items-center gap-3">
         <Input
           type="search"
           placeholder="Search loaded zombies by name, status, or id…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
           aria-label="Search zombies"
+          className="flex-1"
         />
+        {liveTotal > 0 ? (
+          <span
+            className="font-mono text-xs uppercase tracking-wide text-muted-foreground inline-flex items-center gap-2"
+            aria-label={`${liveTotal} live`}
+          >
+            <WakePulse
+              live
+              className="inline-block w-2 h-2 rounded-full bg-pulse"
+              aria-hidden="true"
+            />
+            {liveTotal} live{overCap ? ` · capped at ${PULSE_CAP}` : ""}
+          </span>
+        ) : null}
       </div>
 
       {filtered.length === 0 ? (
@@ -73,26 +117,10 @@ export default function ZombiesList({
           No zombies match &ldquo;{deferredQuery}&rdquo; in the loaded set.
         </p>
       ) : (
-        <List
-          variant="plain"
-          className="divide-y divide-border rounded-lg border border-border space-y-0"
-        >
+        <List variant="plain" className="divide-y divide-border rounded-md border border-border space-y-0">
           {filtered.map((z) => (
-            <ListItem key={z.id}>
-              <Link
-                href={`/zombies/${z.id}`}
-                className="flex items-center justify-between px-4 py-3 hover:bg-muted/40"
-              >
-                <div>
-                  <div className="font-medium">{z.name}</div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">
-                    {z.status}
-                  </div>
-                </div>
-                <div className="font-mono text-xs text-muted-foreground">
-                  {z.id}
-                </div>
-              </Link>
+            <ListItem key={z.id} className="p-0">
+              <ZombieRow zombie={z} pulses={cappedLiveIds.has(z.id)} />
             </ListItem>
           ))}
         </List>
@@ -118,3 +146,54 @@ export default function ZombiesList({
     </>
   );
 }
+
+type ZombieRowProps = { zombie: Zombie; pulses: boolean };
+
+function ZombieRow({ zombie: z, pulses }: ZombieRowProps) {
+  const state = liveStateOf(z.status);
+  return (
+    <Link
+      href={`/zombies/${z.id}`}
+      className="grid grid-cols-12 gap-3 items-center px-4 py-3 transition-colors duration-[50ms] hover:bg-muted"
+      data-state={state}
+    >
+      <div className="col-span-1 flex justify-start" aria-hidden="true">
+        <StateDot state={state} pulses={pulses} />
+      </div>
+      <div className="col-span-7 sm:col-span-5 min-w-0">
+        <div className="font-medium truncate">{z.name}</div>
+        <div className="font-mono text-[0.68rem] uppercase tracking-wide text-muted-foreground">
+          {z.status}
+        </div>
+      </div>
+      <div className="hidden sm:block sm:col-span-3 font-mono text-xs text-muted-foreground tabular-nums truncate">
+        {z.id}
+      </div>
+      <div className="col-span-4 sm:col-span-3 font-mono text-xs text-muted-foreground tabular-nums text-right">
+        <Time value={new Date(z.updated_at ?? z.created_at)} format="relative" tooltip={false} />
+      </div>
+    </Link>
+  );
+}
+
+type StateDotProps = { state: LiveState; pulses: boolean };
+
+function StateDot({ state, pulses }: StateDotProps) {
+  if (state === "live") {
+    return (
+      <WakePulse
+        live={pulses}
+        className={
+          pulses
+            ? "inline-block w-2 h-2 rounded-full bg-pulse"
+            : "inline-block w-2 h-2 rounded-full bg-pulse shadow-[0_0_0_3px_var(--pulse-glow)] opacity-70"
+        }
+      />
+    );
+  }
+  if (state === "failed") {
+    return <span className="inline-block w-2 h-2 rounded-full bg-destructive" />;
+  }
+  return <span className="inline-block w-2 h-2 rounded-full bg-muted-foreground" />;
+}
+

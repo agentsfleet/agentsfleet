@@ -36,7 +36,7 @@ export default function WorkspaceSwitcher({ workspaces, activeId, onSwitch }: Pr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center gap-[0.4rem] px-[0.7rem] py-[0.35rem] mr-3 rounded-full border border-[color:var(--border)] bg-transparent text-[color:var(--text)] text-[0.82rem] cursor-pointer transition-[border-color,background-color] duration-150 enabled:hover:border-[color:var(--pulse)] enabled:hover:bg-[color:var(--pulse-glow)] disabled:opacity-60 disabled:cursor-wait"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-transparent text-foreground font-mono text-[12px] cursor-pointer transition-colors duration-[50ms] enabled:hover:bg-muted disabled:opacity-60 disabled:cursor-wait"
         aria-label="Select workspace"
         disabled={pending}
       >

@@ -1,7 +1,7 @@
 import { getServerToken } from "@/lib/auth/server";
 import { notFound, redirect } from "next/navigation";
-import { Badge, PageHeader, PageTitle, Section, SectionLabel } from "@usezombie/design-system";
-import { getZombie } from "@/lib/api/zombies";
+import { Badge, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@usezombie/design-system";
+import { getZombie, ZOMBIE_STATUS } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { listZombieEvents } from "@/lib/api/events";
 import { listApprovals } from "@/lib/api/approvals";
@@ -47,7 +47,14 @@ export default async function ZombieDetailPage({
       <PageHeader>
         <div className="flex items-center gap-3">
           <PageTitle>{zombie.name}</PageTitle>
-          <span className="text-xs uppercase tracking-wide text-muted-foreground">
+          <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wide text-muted-foreground" data-state={zombie.status}>
+            {zombie.status === ZOMBIE_STATUS.ACTIVE ? (
+              <WakePulse
+                live
+                className="inline-block w-2 h-2 rounded-full bg-pulse"
+                aria-hidden="true"
+              />
+            ) : null}
             {zombie.status}
           </span>
           {billing?.is_exhausted ? (

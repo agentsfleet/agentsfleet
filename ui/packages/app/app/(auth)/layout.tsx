@@ -1,40 +1,19 @@
+import { WakePulse } from "@usezombie/design-system";
+
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="auth-shell">
-      <div className="auth-brand">
-        <span className="auth-logo">usezombie</span>
-        <span className="auth-tag">Mission Control</span>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-8 bg-background p-6">
+      <div className="flex items-center gap-2">
+        <WakePulse
+          live
+          className="inline-block w-3 h-3 rounded-full bg-pulse"
+          aria-hidden="true"
+        />
+        <span className="font-mono text-sm font-medium tracking-tight text-foreground">
+          usezombie
+        </span>
       </div>
       {children}
-      <style>{`
-        .auth-shell {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          gap: 2rem;
-          background: var(--bg);
-        }
-        .auth-brand {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 0.25rem;
-        }
-        .auth-logo {
-          font-size: 1.5rem;
-          font-weight: 700;
-          letter-spacing: 0.03em;
-        }
-        .auth-tag {
-          font-family: var(--ff-mono);
-          font-size: 0.72rem;
-          color: var(--evidence);
-          text-transform: uppercase;
-          letter-spacing: 0.08em;
-        }
-      `}</style>
     </div>
   );
 }

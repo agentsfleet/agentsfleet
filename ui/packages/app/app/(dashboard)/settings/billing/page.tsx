@@ -32,7 +32,7 @@ export default async function BillingSettingsPage() {
     listTenantBillingCharges(token, { limit: 50 }).catch(() => ({
       items: [],
       next_cursor: null,
-    }) as Awaited<ReturnType<typeof listTenantBillingCharges>>),
+    })),
   ]);
 
   const events = groupChargesByEvent(chargesResp.items);

@@ -12,7 +12,12 @@ export default function DsButtonRscPage() {
     <main>
       <h1>DS Button — RSC fixture</h1>
       <Button variant="default">Hello</Button>
+      {/* Dev fixture — a raw <a> is the load-bearing thing being tested
+       * (Button asChild + RSC). Next's no-html-link-for-pages would force
+       * <Link>, but that defeats the test (which checks the asChild
+       * contract still holds with a non-Link child). */}
       <Button asChild variant="outline">
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a href="/">Home</a>
       </Button>
     </main>

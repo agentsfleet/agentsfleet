@@ -22,7 +22,7 @@ export default function TriggerPanel({ zombieId }: Props) {
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-md border border-border bg-card p-4">
       <Tabs defaultValue="webhook">
         <TabsList aria-label="Trigger mode">
           <TabsTrigger value="webhook">Webhook (event-driven)</TabsTrigger>
@@ -30,9 +30,9 @@ export default function TriggerPanel({ zombieId }: Props) {
         </TabsList>
 
         <TabsContent value="webhook">
-          <label className="mb-1 block text-xs uppercase tracking-wide text-muted-foreground">
+          <span className="mb-1 block font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
             Webhook URL
-          </label>
+          </span>
           <div className="flex items-center gap-2">
             <code
               data-testid="webhook-url"
@@ -42,7 +42,7 @@ export default function TriggerPanel({ zombieId }: Props) {
             </code>
             <Button
               type="button"
-              onClick={onCopy}
+              onClick={() => { void onCopy(); }}
               variant="ghost"
               size="sm"
               aria-label="Copy webhook URL"

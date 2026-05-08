@@ -60,8 +60,8 @@ function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
 }
 
 function resolveConfig(env: Record<string, string | undefined>) {
-  const key = env.NEXT_PUBLIC_POSTHOG_KEY || "";
-  const host = env.NEXT_PUBLIC_POSTHOG_HOST || POSTHOG_DEFAULT_HOST;
+  const key = env.NEXT_PUBLIC_POSTHOG_KEY ?? "";
+  const host = env.NEXT_PUBLIC_POSTHOG_HOST ?? POSTHOG_DEFAULT_HOST;
   const enabled = boolFromEnv(env.NEXT_PUBLIC_POSTHOG_ENABLED, key.length > 0);
   return { key, host, enabled };
 }

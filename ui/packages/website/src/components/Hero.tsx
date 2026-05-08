@@ -78,6 +78,7 @@ export default function Hero() {
         <Terminal
           label="install platform-ops via Claude Code"
           data-testid="hero-cli"
+          copyable
           className="max-w-[860px]"
         >
           {`$ claude /usezombie-install-platform-ops

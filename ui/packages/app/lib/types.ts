@@ -10,6 +10,9 @@ export type ApiError = {
 
 // ── Zombies ──
 
+// `status` is typed as the loose `string` because the wire format may carry
+// values the front-end doesn't recognise (forward-compat). Consumers should
+// narrow with `ZOMBIE_STATUS` from `lib/api/zombies` before branching.
 export type Zombie = {
   id: string;
   name: string;

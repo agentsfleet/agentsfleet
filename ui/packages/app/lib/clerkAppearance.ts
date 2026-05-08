@@ -4,11 +4,13 @@
  *   --surface-1   cards
  *   --surface-2   inputs / elevated chrome
  *   --text*       text primary / muted / subtle
- *   --pulse       primary CTA fill (currency — Clerk's primary action
- *                 IS the live signal: "you're about to wake the
- *                 platform's session")
+ *   --pulse       primary CTA fill ONLY (currency rule — the primary
+ *                 action button is the system's "wake" affordance).
+ *                 Footer links, resend-code links, edit buttons use
+ *                 muted text — they are navigation, not live signals.
  *   --bg          contrast text on the pulse fill
  *   --border*     dividers + outlines
+ *   --error       error states. Failed != live; never --pulse.
  * No box-shadow on chrome (spec: borders preferred over shadows).
  * No gradient on the footer (spec: no decorative gradients on chrome).
  */
@@ -65,16 +67,18 @@ export const AUTH_APPEARANCE = {
       color: "var(--text-muted)",
     },
     footerActionLink: {
-      color: "var(--pulse)",
+      color: "var(--text)",
+      textDecoration: "underline",
+      textDecorationColor: "var(--border)",
     },
     identityPreviewText: {
       color: "var(--text)",
     },
     identityPreviewEditButton: {
-      color: "var(--pulse)",
+      color: "var(--text-muted)",
     },
     formResendCodeLink: {
-      color: "var(--pulse)",
+      color: "var(--text-muted)",
     },
     formFieldSuccessText: {
       color: "var(--success)",

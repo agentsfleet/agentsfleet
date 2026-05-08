@@ -33,7 +33,7 @@ export default function ZombieConfig({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-md border border-border bg-card p-4">
       <p className="mb-4 text-sm text-muted-foreground">
         Rename, pause, and resume become available once the backend adds{" "}
         <code className="font-mono text-xs">PATCH</code> /{" "}

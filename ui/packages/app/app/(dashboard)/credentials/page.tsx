@@ -43,7 +43,7 @@ export default async function CredentialsPage() {
       <PageHeader>
         <PageTitle>Credentials</PageTitle>
       </PageHeader>
-      <p className="mb-6 text-sm text-zinc-500">
+      <p className="mb-6 text-sm text-muted-foreground">
         Each credential is a JSON object stored in the vault, envelope-encrypted at rest.
         Reference fields from a zombie&apos;s tool calls as
         {" "}<code>{"${secrets.<name>.<field>}"}</code>.
@@ -51,7 +51,7 @@ export default async function CredentialsPage() {
       <div className="grid gap-8 md:grid-cols-2">
         <Section asChild>
           <section aria-label="Stored credentials">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Stored credentials
             </h2>
             <CredentialsList workspaceId={workspace.id} credentials={credentials} />
@@ -59,7 +59,7 @@ export default async function CredentialsPage() {
         </Section>
         <Section asChild>
           <section aria-label="Add a credential">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
               Add a credential
             </h2>
             <AddCredentialForm workspaceId={workspace.id} />
