@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 004
 **Date:** May 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — the authenticated dashboard is the canonical screenshot. Every demo, doc image, social post, and onboarding video starts here. The wake-pulse signature only earns its memorable thing when the dashboard actually pulses on live signals — until W3 lands the brand promise is unrealised.
 **Categories:** UI
 **Batch:** B3 — depends on W1 (M64_002) DONE; runs after W2 (M64_003) but does not depend on its merge. Stacks on the same `feat/m64-002-design-w1` branch as the bundled milestone PR #308.
