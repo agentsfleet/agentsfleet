@@ -9,7 +9,7 @@ import {
 const items: { q: string; a: ReactNode }[] = [
   {
     q: "What is usezombie?",
-    a: "A durable runtime for one operational outcome. The platform-ops agent wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via `zombiectl steer` for manual investigation.",
+    a: "A durable runtime for one operational outcome. The platform-ops agent wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via zombiectl steer for manual investigation.",
   },
   {
     q: "What does BYOK mean?",
@@ -25,7 +25,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "Which agent hosts work for the install skill?",
-    a: "Claude Code, Amp, Codex CLI, and OpenCode — same skill, same prompts in every host. Run `npm install -g @usezombie/zombiectl`, then `/usezombie-install-platform-ops` inside any of them.",
+    a: "Claude Code, Amp, Codex CLI, and OpenCode — same skill, same prompts in every host. Run npm install -g @usezombie/zombiectl, then /usezombie-install-platform-ops inside any of them.",
   },
   {
     q: "What if my agent hits the model's context window?",
@@ -34,15 +34,17 @@ const items: { q: string; a: ReactNode }[] = [
         It doesn&apos;t lose the thread. usezombie keeps long incidents coherent through three layers
         working together. The runtime watches three signals — a <strong>tool-result window</strong>,{" "}
         <strong>memory checkpoints</strong>, and a <strong>stage-chunk threshold</strong> — and the
-        agent responds by compacting tool results into durable memory via <code>memory_store</code>,
-        ending the stage at safe boundaries, and re-entering on a continuation chain (capped at 10)
-        for the next stage. Underneath, the agent loop runs its own rolling-summary compaction once
-        message count or token budget crosses a built-in threshold. Net: a 40-tool-call deploy
-        investigation stays reasoned through to a Slack diagnosis, not a context-overflow loop.{" "}
+        agent responds by compacting tool results into durable memory via{" "}
+        <code className="font-mono">memory_store</code>, ending the stage at safe boundaries, and
+        re-entering on a continuation chain (capped at 10) for the next stage. Underneath, the agent
+        loop runs its own rolling-summary compaction once message count or token budget crosses a
+        built-in threshold. Net: a 40-tool-call deploy investigation stays reasoned through to a
+        Slack diagnosis, not a context-overflow loop.{" "}
         <a
           href="https://docs.usezombie.com/concepts/context-lifecycle"
           target="_blank"
           rel="noreferrer"
+          className="text-pulse hover:border-b hover:border-pulse"
         >
           Read more in the context lifecycle docs
         </a>
@@ -54,27 +56,40 @@ const items: { q: string; a: ReactNode }[] = [
 
 export default function FAQ() {
   return (
-    <div className="section-gap">
-      <p className="eyebrow">FAQ</p>
-      <h2>Common questions</h2>
-      <div style={{ maxWidth: "640px" }}>
+    <section className="site-section" data-testid="faq">
+      <div className="wrap flex flex-col gap-8 max-w-[720px]">
+        <div className="flex flex-col gap-3">
+          <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted m-0">
+            FAQ
+          </p>
+          <h2 className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.15] tracking-[-0.02em] text-text font-medium m-0">
+            Common questions
+          </h2>
+        </div>
         <Accordion type="single" collapsible>
           {items.map((item, i) => (
             <AccordionItem
               key={i}
               value={`q-${i}`}
               data-testid={`faq-item-${i}`}
+              className="border-b border-border"
             >
-              <AccordionTrigger data-testid={`faq-trigger-${i}`}>
+              <AccordionTrigger
+                data-testid={`faq-trigger-${i}`}
+                className="font-mono text-[14px] py-4 text-text"
+              >
                 {item.q}
               </AccordionTrigger>
-              <AccordionContent data-testid={`faq-answer-${i}`}>
+              <AccordionContent
+                data-testid={`faq-answer-${i}`}
+                className="font-sans text-[14px] leading-[1.65] text-text-muted pb-4"
+              >
                 {item.a}
               </AccordionContent>
             </AccordionItem>
           ))}
         </Accordion>
       </div>
-    </div>
+    </section>
   );
 }
