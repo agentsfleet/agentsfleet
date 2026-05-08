@@ -152,7 +152,7 @@ describe("PALETTE_INTERNALS — design-system invariants pinned", () => {
   });
 
   test("basic16 codes are valid SGR ints", () => {
-    for (const [token, code] of Object.entries(PALETTE_INTERNALS.BASIC_16)) {
+    for (const code of Object.values(PALETTE_INTERNALS.BASIC_16)) {
       expect(code).toMatch(/^[0-9]{1,2}$/);
     }
   });

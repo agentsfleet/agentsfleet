@@ -71,17 +71,21 @@ describe("no inline ANSI escapes outside palette.js", () => {
 
 describe("decorative-ASCII teardown", () => {
   test("no zombie face emoji in src/", () => {
+    const offenders = [];
     for (const path of walk(SRC_DIR)) {
       const { text, path: rel } = readSource(path);
-      expect(text).not.toContain("\u{1F9DF}"); // 🧟
+      if (text.includes("\u{1F9DF}")) offenders.push(rel); // 🧟
     }
+    expect(offenders).toEqual([]);
   });
 
   test("no party emoji in src/", () => {
+    const offenders = [];
     for (const path of walk(SRC_DIR)) {
       const { text, path: rel } = readSource(path);
-      expect(text).not.toContain("\u{1F389}"); // 🎉
+      if (text.includes("\u{1F389}")) offenders.push(rel); // 🎉
     }
+    expect(offenders).toEqual([]);
   });
 
   test("no box-drawing borders in src/program/banner.js", () => {
