@@ -1,7 +1,18 @@
 import { Link } from "react-router-dom";
-import { Button, Terminal, WakePulse } from "@usezombie/design-system";
+import { Button, LogLine, Terminal, WakePulse } from "@usezombie/design-system";
 import { DOCS_QUICKSTART_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
+
+// Plain-text payload for the clipboard. Visible terminal renders
+// each line through <LogLine severity=...> so the prompt, debug
+// breadcrumbs, and success markers each carry their token-driven
+// colour per `preview.html` §03 — copy still hands the user a
+// straight-from-the-terminal transcript with no escape codes.
+const HERO_INSTALL_TRANSCRIPT = `$ claude /usezombie-install-platform-ops
+› fetching SKILL.md from registry...
+✓ installed platform-ops (SKILL.md · TRIGGER.md · 2 secrets injected via vault)
+✓ webhook registered github.com/your-org/your-repo
+› awaiting first event...`;
 
 /*
  * Marketing hero — Mockup A canonical shape (DESIGN_SYSTEM.md preview.html).
@@ -79,13 +90,18 @@ export default function Hero() {
           label="install platform-ops via Claude Code"
           data-testid="hero-cli"
           copyable
+          copyText={HERO_INSTALL_TRANSCRIPT}
           className="max-w-[860px]"
         >
-          {`$ claude /usezombie-install-platform-ops
-› fetching SKILL.md from registry...
-✓ installed platform-ops (SKILL.md · TRIGGER.md · 2 secrets injected via vault)
-✓ webhook registered github.com/your-org/your-repo
-› awaiting first event...`}
+          {/* Severity-coloured transcript per `preview.html` §03 logs
+            * specimen. Prompt + breadcrumbs read as muted; success
+            * markers (✓) carry the success token; the terminal stays
+            * monochrome elsewhere. */}
+          <LogLine severity="debug">$ claude /usezombie-install-platform-ops</LogLine>
+          <LogLine severity="debug">› fetching SKILL.md from registry...</LogLine>
+          <LogLine severity="done">✓ installed platform-ops (SKILL.md · TRIGGER.md · 2 secrets injected via vault)</LogLine>
+          <LogLine severity="done">✓ webhook registered github.com/your-org/your-repo</LogLine>
+          <LogLine severity="debug">› awaiting first event...</LogLine>
         </Terminal>
       </div>
     </section>

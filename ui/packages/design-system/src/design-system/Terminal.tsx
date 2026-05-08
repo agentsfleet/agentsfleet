@@ -16,6 +16,15 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
   label?: string;
   green?: boolean;
   copyable?: boolean;
+  /**
+   * Plain-text payload for the clipboard. Required when `copyable` is
+   * true and `children` is JSX (e.g. severity-coloured `<LogLine>`
+   * blocks). When `children` is a string and `copyText` is unset, the
+   * string itself is copied. When `copyable=true` but neither a string
+   * child nor `copyText` is provided, the copy button is hidden — a
+   * silent no-op affordance is worse than no affordance.
+   */
+  copyText?: string;
   children: ReactNode;
 };
 
@@ -32,7 +41,7 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
  * --text (text-foreground) for the body. The `green` variant flips
  * the body border to success-green for "success"-flavoured demos.
  */
-export default function Terminal({ label, green, copyable, children, className, ...rest }: Props) {
+export default function Terminal({ label, green, copyable, copyText, children, className, ...rest }: Props) {
   const id = useId();
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -47,14 +56,24 @@ export default function Terminal({ label, green, copyable, children, className, 
     [],
   );
 
+  // Resolve the clipboard payload: explicit `copyText` wins, otherwise
+  // fall back to the children iff they're already a flat string. The
+  // copy button only renders when one of these resolves to a non-empty
+  // string (see render below) — no silent no-op affordances.
+  const resolvedCopyText =
+    typeof copyText === "string" && copyText.length > 0
+      ? copyText
+      : typeof children === "string"
+        ? children
+        : "";
+
   const handleCopy = useCallback(() => {
-    const text = typeof children === "string" ? children : "";
     // Clipboard access can reject (denied permission, non-secure context,
     // sandboxed iframe). Catch the rejection so the user-facing failure
     // path is silent rather than an unhandled promise rejection in the
     // console — the absence of the "Copied" flash is the visible signal.
     navigator.clipboard
-      .writeText(text)
+      .writeText(resolvedCopyText)
       .then(() => {
         setCopied(true);
         if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
@@ -63,7 +82,7 @@ export default function Terminal({ label, green, copyable, children, className, 
       .catch(() => {
         /* clipboard denied — leave button in resting state */
       });
-  }, [children]);
+  }, [resolvedCopyText]);
 
   return (
     <div
@@ -98,13 +117,13 @@ export default function Terminal({ label, green, copyable, children, className, 
             {label}
           </span>
         )}
-        {copyable && typeof children === "string" && (
-          // Copy button only renders when there's a flat string to
-          // copy. JSX children (e.g. mixed-color <LogLine> blocks)
-          // can't round-trip through clipboard.writeText(string), so
-          // showing the affordance would be a silent no-op. Callers
-          // wanting to copy rich content should pre-flatten and
-          // pass the plain-text version.
+        {copyable && resolvedCopyText.length > 0 && (
+          // Copy button renders only when we have a non-empty string
+          // to put on the clipboard — either the children themselves
+          // (string mode) or the explicit `copyText` override
+          // (JSX-children mode, e.g. severity-coloured <LogLine>
+          // blocks). When neither is present, hide the affordance —
+          // a silent no-op button is worse than no button.
           <Button
             type="button"
             variant={copied ? "outline" : "secondary"}
