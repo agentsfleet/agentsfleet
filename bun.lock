@@ -108,8 +108,6 @@
       "name": "usezombie-website",
       "version": "0.1.0",
       "dependencies": {
-        "@fontsource-variable/geist": "^5.2.8",
-        "@fontsource-variable/geist-mono": "^5.2.7",
         "@usezombie/design-system": "workspace:*",
         "motion": "^12.38.0",
         "posthog-js": "1.369.3",
