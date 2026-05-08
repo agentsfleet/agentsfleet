@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 002
 **Date:** May 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — Geist removal + token rewrite blocks W2 (website) and W3 (app) visual rebuild.
 **Categories:** UI
 **Batch:** B1 — standalone; W2/W3 depend on this DONE.
@@ -133,11 +133,11 @@ Tests: 36 files / 327 cases pass after edits.
 
 `@media (prefers-reduced-motion: reduce)` block in `tokens.css` overrides `[data-live]` to render a static glow ring (`box-shadow: 0 0 0 4px var(--pulse-glow)`, no animation, opacity 0.6 — the spec's 0.2 was tuned upward during implementation because 0.2 read as broken on the dark surface). Hover transitions retained at 50ms (functional, not decorative).
 
-### §7 — Visual evidence harness
+### §7 — Visual evidence harness — DEFERRED to W1.5 follow-up
 
-Add a minimal Playwright harness under `ui/packages/design-system/tests/visual/` that navigates a static HTML test page (rendered ahead-of-time by a small Bun script that imports `tokens.css`, `theme.css`, and every component) and emits one screenshot per component per theme (dark + light) under `tests/visual/screenshots/`. Per BUN_RULES §8 we do NOT gate CI on pixel-diff snapshots — they drift, the diff is opaque, and the CI signal is noisy. The screenshots are evidence for the PR (committed alongside code) and a manual review tool — behavioural tests in §1-§6 are the load-bearing assertions.
+A purpose-built Playwright harness under `ui/packages/design-system/tests/visual/` was planned. Deferred because (a) it requires a non-trivial Vite/static-HTML serving setup not currently in the package, (b) visual evidence is already covered by `ui/packages/website/tests/e2e/design-system-smoke.spec.ts`, which navigates the existing `DesignSystemGallery` route and asserts computed styles per Button/Badge/Card variant — that test gets updated in W2 alongside the website rewrite to assert the new shape (rounded-md, font-mono, no linear-gradient, etc.), and (c) behavioural assertions in §1–§6 (36 vitest files / 328 cases) are the load-bearing correctness gate; the screenshot strip is nice-to-have, not load-bearing.
 
-**Implementation default:** Playwright `1.59.1` (already in workspace `website` + `app`); per-package config copied minimal. Static HTML rendered via `bun run` script that emits a single page; Playwright opens it twice (with and without `data-theme="light"`).
+**Reactivation:** schedule as `M64_004` (W1.5 visual evidence) immediately after W2 lands its updated smoke test, so the design-system harness asserts the post-rewrite snapshot rather than the in-flight intermediate state.
 
 ---
 
