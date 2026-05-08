@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 001
 **Date:** May 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the CLI is the highest-frequency, lowest-stakes brand surface; engineers see it 100x more than the marketing site and it must read consistent with the web brand.
 **Categories:** CLI
 **Batch:** B1
-**Branch:** feat/m64-001-design-w5 (to be created at CHORE(open))
+**Branch:** feat/m64-001-design-w5
 **Depends on:** `docs/DESIGN_SYSTEM.md` v0.1 (merged via PR #306) — defines the palette, glyphs, and the "no decorative ASCII art" rule this spec implements.
 
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md` "CLI / zombiectl rendering" section — the canonical 256-color palette mapping table and the status-glyph rules.
