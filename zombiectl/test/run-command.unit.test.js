@@ -84,7 +84,7 @@ test("runCommand: ApiError in jsonMode prints structured envelope", async () => 
   }]);
 });
 
-test("runCommand: errorMap remaps ApiError code/message in render + analytics", async () => {
+test("runCommand: errorMap remaps message in render and code in analytics; server UZ-* stays in stderr", async () => {
   const { events, trackCliEvent } = captureEvents();
   const w = captureWriter();
   const code = await runCommand({
@@ -97,7 +97,11 @@ test("runCommand: errorMap remaps ApiError code/message in render + analytics", 
     deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
   });
   assert.equal(code, 1);
-  assert.equal(w.lines[0], "error: WORKSPACE_NAME_INVALID Pick a different name.");
+  // Stderr keeps the server code (UZ-*) for support workflows; the
+  // message is the friendly remapped text.
+  assert.equal(w.lines[0], "error: UZ-VAL-001 Pick a different name.");
+  // Analytics records the friendly bucket so dashboards aggregate
+  // across server code renames.
   assert.equal(events.at(-1).props.error_code, "WORKSPACE_NAME_INVALID");
 });
 

@@ -149,10 +149,16 @@ export async function runCommand(opts) {
   } catch (err) {
     if (err instanceof ApiError) {
       const remap = errorMap[err.code];
-      const finalCode = remap?.code ?? err.code ?? "API_ERROR";
+      // Server's UZ-* code stays in stderr/JSON output so support and
+      // grep workflows still match. The friendly remap.code is the
+      // analytics dimension (cli_error.error_code) — that lets us
+      // bucket events without leaking churn from server-side code
+      // renames into the operator-facing surface.
+      const displayCode = err.code ?? "API_ERROR";
+      const analyticsCode = remap?.code ?? err.code ?? "API_ERROR";
       const finalMessage = remap?.message ?? err.message;
-      emitCliError(renderOpts, finalCode);
-      renderApi(renderOpts, finalCode, finalMessage, err);
+      emitCliError(renderOpts, analyticsCode);
+      renderApi(renderOpts, displayCode, finalMessage, err);
       return 1;
     }
 

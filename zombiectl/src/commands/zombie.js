@@ -16,6 +16,36 @@ import { commandCredential } from "./zombie_credential.js";
 import { commandList } from "./zombie_list.js";
 import { commandEvents } from "./zombie_events.js";
 import { commandSteer } from "./zombie_steer.js";
+import {
+  AUTH_PRESET,
+  WORKSPACE_PRESET,
+  ZOMBIE_PRESET,
+  compose,
+} from "../lib/error-map-presets.js";
+
+// Single map shared by every `zombie.*` route. The dispatcher in
+// commandZombie routes to install/list/status/kill/stop/resume/delete/
+// logs/steer/events/credential — all hit the same workspace + zombie
+// auth path, so the union map is the right grain. Vault and execution
+// codes go in here too because credential and events surface them.
+export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
+  "UZ-VAULT-001": {
+    code: "CREDENTIAL_INVALID",
+    message: "Credential JSON is invalid — must be a non-empty object ≤ 4 KiB.",
+  },
+  "UZ-CRED-001": {
+    code: "CREDENTIAL_NOT_FOUND",
+    message: "Credential not found in this workspace.",
+  },
+  "UZ-CRED-003": {
+    code: "CREDENTIAL_NAME_INVALID",
+    message: "Credential name is invalid — use lowercase letters, digits, and dashes.",
+  },
+  "UZ-EXEC-013": {
+    code: "ZOMBIE_RUNNER_FAILED",
+    message: "Zombie runner exited with an error — see `zombiectl logs <zombie_id>` for details.",
+  },
+});
 
 export async function commandZombie(ctx, args, workspaces, deps) {
   const action = args[0];

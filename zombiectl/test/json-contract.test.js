@@ -95,7 +95,11 @@ describe("M30 §1 — route inventory matches command registry", () => {
       expect(handlers[key]).toBeDefined();
       expect(handlers[key].name).toBe(key);
       expect(handlers[key].handler).toBe(sentinel);
-      expect(handlers[key].errorMap).toEqual({});
+      // errorMap is populated from each command's exported map (M63_006 §2).
+      // The sentinel test only cares that the registry wires the
+      // sentinel handler under the right key — the map can be the real
+      // one from src/commands/*.js. M63_006 §4's audit verifies coverage.
+      expect(typeof handlers[key].errorMap).toBe("object");
     }
   });
 
