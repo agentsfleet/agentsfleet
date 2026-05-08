@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 001
 **Date:** May 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the CLI is the highest-frequency, lowest-stakes brand surface; engineers see it 100x more than the marketing site and it must read consistent with the web brand.
 **Categories:** CLI
 **Batch:** B1

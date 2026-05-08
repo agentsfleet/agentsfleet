@@ -1,4 +1,4 @@
-zombiectl v0.33.1
+zombiectl v0.34.0
 
 autonomous agent platform
 
