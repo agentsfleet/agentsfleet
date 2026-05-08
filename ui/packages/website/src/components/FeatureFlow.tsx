@@ -1,4 +1,4 @@
-import { Card } from "@usezombie/design-system";
+import { Card, List, ListItem } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 type FeatureFlowItem = {
@@ -89,16 +89,16 @@ export default function FeatureFlow() {
                 <p className="font-sans text-[15px] leading-[1.6] text-text-muted m-0">
                   {item.description}
                 </p>
-                <ul className="list-none p-0 m-0 flex flex-col gap-2">
+                <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">
                   {item.bullets.map((bullet) => (
-                    <li
+                    <ListItem
                       key={bullet}
                       className="font-mono text-[13px] text-text-muted before:content-['↳'] before:mr-2 before:text-text-subtle"
                     >
                       {bullet}
-                    </li>
+                    </ListItem>
                   ))}
-                </ul>
+                </List>
                 <a
                   href={item.ctaHref}
                   className="font-mono text-[13px] text-pulse hover:underline"

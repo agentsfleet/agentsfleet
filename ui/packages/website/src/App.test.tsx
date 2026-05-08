@@ -68,6 +68,17 @@ describe("App", () => {
     );
   });
 
+  it("clicking the header docs link fires trackNavigationClicked with header_nav_docs source", () => {
+    renderApp();
+    const nav = screen.getByRole("navigation", { name: /primary/i });
+    fireEvent.click(within(nav).getByRole("link", { name: /docs/i }));
+    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
+      source: "header_nav_docs",
+      surface: "header",
+      target: "docs",
+    });
+  });
+
   it("renders home hero by default", () => {
     renderApp("/");
     expect(screen.getByTestId("hero")).toBeInTheDocument();

@@ -1,0 +1,9 @@
+# Coverage knobs for `bun test --coverage`. Floor matches the
+# 95% bar shared with `ui/packages/{app,website}` — every product
+# in the monorepo answers to the same gate.
+[test]
+coverage = true
+coverageThreshold = { line = 0.95, function = 0.95 }
+coverageReporter = ["text", "lcov"]
+coverageDir = "coverage"
+coverageSkipTestFiles = true

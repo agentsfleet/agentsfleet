@@ -1,3 +1,5 @@
+import { List, ListItem } from "@usezombie/design-system";
+
 /*
  * Terms — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
  * docs: ~68ch measure, Commit Mono headings, Instrument Sans body.
@@ -30,20 +32,20 @@ export default function Terms() {
       </p>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">3. Your responsibilities</h2>
-      <ul className="list-disc pl-6 text-text-muted space-y-2 m-0">
-        <li>You are responsible for your LLM API keys and any costs incurred with your providers.</li>
-        <li>You must not use the Service to generate malicious code, violate third-party rights, or circumvent security controls.</li>
-        <li>You are responsible for the content of specifications submitted to the pipeline.</li>
-        <li>You must maintain the security of your authentication credentials.</li>
-      </ul>
+      <List className="pl-6 text-text-muted m-0">
+        <ListItem>You are responsible for your LLM API keys and any costs incurred with your providers.</ListItem>
+        <ListItem>You must not use the Service to generate malicious code, violate third-party rights, or circumvent security controls.</ListItem>
+        <ListItem>You are responsible for the content of specifications submitted to the pipeline.</ListItem>
+        <ListItem>You must maintain the security of your authentication credentials.</ListItem>
+      </List>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">4. Billing</h2>
-      <ul className="list-disc pl-6 text-text-muted space-y-2 m-0">
-        <li>usezombie charges for agent compute time (per second of wall-clock time).</li>
-        <li>A one-time workspace activation fee of $5 applies to each new workspace.</li>
-        <li>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</li>
-        <li>Billing cycles are monthly. Invoices are issued at the start of each billing period.</li>
-      </ul>
+      <List className="pl-6 text-text-muted m-0">
+        <ListItem>usezombie charges for agent compute time (per second of wall-clock time).</ListItem>
+        <ListItem>A one-time workspace activation fee of $5 applies to each new workspace.</ListItem>
+        <ListItem>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</ListItem>
+        <ListItem>Billing cycles are monthly. Invoices are issued at the start of each billing period.</ListItem>
+      </List>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">5. Intellectual property</h2>
       <p className="text-text-muted m-0">

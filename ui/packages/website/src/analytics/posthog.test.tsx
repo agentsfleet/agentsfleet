@@ -17,6 +17,8 @@ import {
   trackLeadCaptureOpened,
   trackLeadCaptureSubmitted,
   trackSignupStarted,
+  trackSignupCompleted,
+  EVENT_SIGNUP_COMPLETED,
 } from "./posthog";
 
 function walkElements(node: React.ReactNode, visit: (element: React.ReactElement<Record<string, unknown>>) => void): void {
@@ -91,6 +93,26 @@ describe("website analytics", () => {
     );
     const props = mockedPosthog.capture.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(props.email).toBeUndefined();
+  });
+
+  it("emits signup_completed with the same allowlist + path enrichment as signup_started", async () => {
+    trackSignupCompleted({
+      source: "auth_callback",
+      surface: "auth_redirect",
+      mode: "humans",
+    });
+    await flushAnalyticsForTests();
+
+    expect(mockedPosthog.capture).toHaveBeenCalledWith(
+      EVENT_SIGNUP_COMPLETED,
+      expect.objectContaining({
+        source: "auth_callback",
+        surface: "auth_redirect",
+        mode: "humans",
+      }),
+    );
+    const props = mockedPosthog.capture.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(props.path).toBeDefined();
   });
 
   it("captures agent-safe CTA navigation events", async () => {

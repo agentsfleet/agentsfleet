@@ -1,4 +1,5 @@
 import { Link } from "react-router-dom";
+import { List, ListItem } from "@usezombie/design-system";
 import { DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 
 const BRAND_NAME = "usezombie";
@@ -30,28 +31,28 @@ export default function Footer() {
 
         <div>
           <h4 className={COL_LABEL}>product</h4>
-          <ul className="list-none p-0 m-0 flex flex-col gap-2">
-            <li><Link to="/" className={COL_LINK}>features</Link></li>
-            <li><Link to="/pricing" className={COL_LINK}>pricing</Link></li>
-            <li><a href={DOCS_URL} target="_blank" rel="noopener noreferrer" className={COL_LINK}>docs</a></li>
-            <li><Link to="/agents" className={COL_LINK}>agents</Link></li>
-          </ul>
+          <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">
+            <ListItem><Link to="/" className={COL_LINK}>features</Link></ListItem>
+            <ListItem><Link to="/pricing" className={COL_LINK}>pricing</Link></ListItem>
+            <ListItem><a href={DOCS_URL} target="_blank" rel="noopener noreferrer" className={COL_LINK}>docs</a></ListItem>
+            <ListItem><Link to="/agents" className={COL_LINK}>agents</Link></ListItem>
+          </List>
         </div>
 
         <div>
           <h4 className={COL_LABEL}>community</h4>
-          <ul className="list-none p-0 m-0 flex flex-col gap-2">
-            <li><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className={COL_LINK}>github</a></li>
-            <li><a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className={COL_LINK}>discord</a></li>
-          </ul>
+          <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">
+            <ListItem><a href={GITHUB_URL} target="_blank" rel="noopener noreferrer" className={COL_LINK}>github</a></ListItem>
+            <ListItem><a href={DISCORD_URL} target="_blank" rel="noopener noreferrer" className={COL_LINK}>discord</a></ListItem>
+          </List>
         </div>
 
         <div>
           <h4 className={COL_LABEL}>legal</h4>
-          <ul className="list-none p-0 m-0 flex flex-col gap-2">
-            <li><Link to="/privacy" className={COL_LINK}>privacy</Link></li>
-            <li><Link to="/terms" className={COL_LINK}>terms</Link></li>
-          </ul>
+          <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">
+            <ListItem><Link to="/privacy" className={COL_LINK}>privacy</Link></ListItem>
+            <ListItem><Link to="/terms" className={COL_LINK}>terms</Link></ListItem>
+          </List>
         </div>
       </div>
 

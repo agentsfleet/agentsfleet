@@ -27,10 +27,10 @@ export default defineConfig({
         "src/pages/DesignSystemGallery.tsx",
       ],
       thresholds: {
-        statements: 85,
+        statements: 95,
         branches: 85,
-        functions: 85,
-        lines: 85,
+        functions: 95,
+        lines: 95,
       },
     },
   },
