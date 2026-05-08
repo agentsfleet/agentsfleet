@@ -22,7 +22,7 @@ import {
   saveCredentials,
   saveWorkspaces,
 } from "./lib/state.js";
-import { ApiError, apiHeaders, printApiError, request } from "./program/http-client.js";
+import { apiHeaders, request } from "./program/http-client.js";
 import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
 import { printHelp, printJson, writeError, writeLine } from "./program/io.js";
@@ -275,43 +275,23 @@ export async function runCli(argv, io = {}) {
     });
     return 2;
   } catch (err) {
-    const errorCode = err instanceof ApiError ? err.code || "API_ERROR" : "UNEXPECTED";
+    // Safety net for errors that escape runCommand — i.e., throws
+    // from outside the dispatch path (route lookup, registry build,
+    // ctx finalization, queued-event drain). runCommand owns
+    // ApiError / fetch-failed / unknown for handler bodies; reaching
+    // this catch means something blew up before or after dispatch.
     cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
       command: route?.key || command || "unknown",
-      error_code: errorCode,
+      error_code: "UNEXPECTED",
       exit_code: "1",
       ...getCliAnalyticsContext(ctx),
     });
-    try {
-      const isNetworkFailure =
-        err instanceof TypeError &&
-        typeof err.message === "string" &&
-        err.message.toLowerCase().includes("fetch failed");
-      if (isNetworkFailure) {
-        // ctx.apiUrl is the fully-resolved value when the failure happens
-        // post-ctx-construction (the common case). If the throw beat ctx
-        // construction, fall back to global.apiUrl (already captures
-        // ZOMBIE_API_URL / API_URL via parseGlobalArgs); DEFAULT_API_URL
-        // is the floor. The previous chain had a redundant env leg.
-        const apiUrl = ctx?.apiUrl || global.apiUrl || DEFAULT_API_URL;
-        const message = `cannot reach usezombie API at ${apiUrl} — check that the service is running and ZOMBIE_API_URL is correct`;
-        if (global.json) {
-          printJson(stderr, { error: { code: "API_UNREACHABLE", message } });
-        } else {
-          writeLine(stderr, ui.err(message));
-        }
-        return 1;
-      }
-      printApiError(stderr, err, global.json, printJson, writeLine);
-      return 1;
-    } catch {
-      if (global.json) {
-        printJson(stderr, { error: { code: "UNEXPECTED", message: String(err) } });
-      } else {
-        writeLine(stderr, `error: ${String(err)}`);
-      }
-      return 1;
+    if (global.json) {
+      printJson(stderr, { error: { code: "UNEXPECTED", message: String(err?.message ?? err) } });
+    } else {
+      writeLine(stderr, ui.err(`error: ${String(err?.message ?? err)}`));
     }
+    return 1;
   } finally {
     await cliAnalytics.shutdownCliAnalytics(analyticsClient);
   }
