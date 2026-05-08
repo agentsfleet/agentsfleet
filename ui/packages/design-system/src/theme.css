@@ -142,6 +142,9 @@
   --spacing-5xl: var(--sp-5xl);
   --spacing-6xl: var(--sp-6xl);
 
-  /* Motion easing — forward Layer 0 --easing-snap to Tailwind --ease-snap. */
+  /* Motion — forward Layer 0 --easing-snap / --duration-snap to Tailwind's
+   * --ease-* / --duration-* theme namespaces. Components compose the two:
+   * `transition-colors duration-snap ease-snap`. */
   --ease-snap: var(--easing-snap);
+  --duration-snap: var(--duration-snap);
 }

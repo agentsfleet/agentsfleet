@@ -116,7 +116,7 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
         <AuthUserButton
           appearance={{
             variables: {
-              colorPrimary: "var(--z-orange)",
+              colorPrimary: "var(--pulse)",
               colorBackground: "#0f1520",
               colorText: "#e8f2ff",
               borderRadius: "8px",
@@ -184,16 +184,16 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
           font-size: 1rem;
           letter-spacing: 0.02em;
         }
-        .mc-brand-icon { color: var(--z-orange); }
+        .mc-brand-icon { color: var(--pulse); }
         .mc-brand-tag {
-          font-family: var(--z-font-mono);
+          font-family: var(--ff-mono);
           font-size: 0.68rem;
-          color: var(--z-amber);
+          color: var(--evidence);
           text-transform: uppercase;
           letter-spacing: 0.08em;
           padding: 0.15rem 0.45rem;
           border: 1px solid rgba(255, 190, 46, 0.2);
-          border-radius: var(--z-radius-pill);
+          border-radius: 9999px;
         }
         .mc-header-nav {
           display: flex;
@@ -202,11 +202,11 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
         }
         .mc-header-link {
           font-size: 0.82rem;
-          color: var(--z-text-muted);
+          color: var(--text-muted);
           text-decoration: none;
           transition: color 0.15s;
         }
-        .mc-header-link:hover { color: var(--z-text-primary); }
+        .mc-header-link:hover { color: var(--text); }
       `}</style>
     </div>
   );

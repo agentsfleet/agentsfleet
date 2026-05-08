@@ -12,7 +12,7 @@ import { cn } from "../utils";
 const cardVariants = cva(
   [
     "relative rounded-md border border-border bg-card p-2xl",
-    "transition-colors ease-snap",
+    "transition-colors duration-snap ease-snap",
     "hover:border-border-strong",
   ].join(" "),
   {

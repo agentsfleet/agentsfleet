@@ -57,7 +57,7 @@ export default function Terminal({ label, green, copyable, children, className, 
           className={cn(
             "absolute top-[0.6rem] right-[0.6rem] cursor-pointer whitespace-nowrap",
             "rounded-sm border px-md py-1 font-mono text-label bg-secondary",
-            "transition-colors ease-snap",
+            "transition-colors duration-snap ease-snap",
             copied
               ? "border-success text-success"
               : "border-border text-muted-foreground hover:border-border-strong hover:text-foreground",

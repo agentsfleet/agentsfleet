@@ -143,8 +143,13 @@ describe("app components", () => {
   it("exports stable auth appearance tokens", async () => {
     const { AUTH_APPEARANCE } = await import("../lib/clerkAppearance");
 
-    expect(AUTH_APPEARANCE.variables.colorPrimary).toBe("var(--z-orange)");
-    expect(AUTH_APPEARANCE.elements.formButtonPrimary.color).toBe("var(--z-text-inverse)");
-    expect(AUTH_APPEARANCE.elements.footer.background).toContain("linear-gradient");
+    // Operational Restraint (M64_002): Clerk's primary action IS the live
+    // signal, so colorPrimary maps to --pulse; foreground sits on the
+    // near-black --bg for contrast. Footer is flat surface-1 over a top
+    // border (no gradient — spec forbids decorative gradients on chrome).
+    expect(AUTH_APPEARANCE.variables.colorPrimary).toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.formButtonPrimary.color).toBe("var(--bg)");
+    expect(AUTH_APPEARANCE.elements.footer.backgroundColor).toBe("var(--surface-1)");
+    expect(AUTH_APPEARANCE.elements.footer).not.toHaveProperty("background");
   });
 });
