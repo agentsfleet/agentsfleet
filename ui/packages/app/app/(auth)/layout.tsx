@@ -14,7 +14,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           align-items: center;
           justify-content: center;
           gap: 2rem;
-          background: var(--z-bg-0);
+          background: var(--bg);
         }
         .auth-brand {
           display: flex;
@@ -28,9 +28,9 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
           letter-spacing: 0.03em;
         }
         .auth-tag {
-          font-family: var(--z-font-mono);
+          font-family: var(--ff-mono);
           font-size: 0.72rem;
-          color: var(--z-amber);
+          color: var(--evidence);
           text-transform: uppercase;
           letter-spacing: 0.08em;
         }

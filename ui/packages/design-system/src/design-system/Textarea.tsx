@@ -19,7 +19,7 @@ export function Textarea({ className, ref, ...props }: TextareaProps) {
         "placeholder:text-muted-foreground",
         "focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-strong",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        "transition-colors ease-snap",
+        "transition-colors duration-snap ease-snap",
         className,
       )}
       {...props}
