@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 002
 **Date:** May 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — Geist removal + token rewrite blocks W2 (website) and W3 (app) visual rebuild.
 **Categories:** UI
 **Batch:** B1 — standalone; W2/W3 depend on this DONE.
-**Branch:** feat/m64-002-design-w1 (to be created at CHORE(open))
+**Branch:** feat/m64-002-design-w1
 **Depends on:** PR #306 (`docs/DESIGN_SYSTEM.md` landed on main)
 
 **Canonical architecture:** `docs/DESIGN_SYSTEM.md` is the source of truth for every visual / typographic / motion decision in `ui/packages/design-system`.
