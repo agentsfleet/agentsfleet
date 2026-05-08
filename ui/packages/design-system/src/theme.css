@@ -109,6 +109,16 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
 
+  /* Text-color utility bridges. The website + design-system source
+   * uses `text-text`, `text-text-muted`, `text-text-subtle` against
+   * the Layer 0 `--text*` tokens directly (parallel to the
+   * --foreground / --muted-foreground semantic surface). Without
+   * the bridge here the utilities don't compile and consumers fall
+   * back to inherited body colour. */
+  --color-text: var(--text);
+  --color-text-muted: var(--text-muted);
+  --color-text-subtle: var(--text-subtle);
+
   /* Text scale — extras beyond Tailwind's defaults; consumers can write
    * `text-display-xl`, `text-eyebrow`, `text-mono`, etc. */
   --text-display-xl: var(--fs-display-xl);
