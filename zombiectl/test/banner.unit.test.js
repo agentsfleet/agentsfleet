@@ -1,5 +1,5 @@
 /**
- * Unit tests for src/program/banner.js — printBanner and printPreReleaseWarning.
+ * Unit tests for src/program/banner.js — printVersion and printPreReleaseWarning.
  *
  * Coverage tiers addressed:
  *   T1  Happy path
@@ -8,7 +8,7 @@
  *   T4  Output fidelity (actual rendered text and ANSI correctness)
  *   T5  Concurrency — N/A (pure write functions, no shared state)
  *   T6  Integration via runCli ttyOnly flag
- *   T7  Regression guards (email, date, version constants pinned)
+ *   T7  Regression guards (email, version constants, design-system invariants pinned)
  *   T8  Security — N/A (no user input, no secret handling)
  *   T9  DRY — shared helpers from helpers.js
  *   T10 Constants / magic values flagged
@@ -19,12 +19,12 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { makeBufferStream } from "./helpers.js";
-import { printBanner, printPreReleaseWarning } from "../src/program/banner.js";
+import { printVersion, printPreReleaseWarning } from "../src/program/banner.js";
 import { runCli, VERSION } from "../src/cli.js";
 
 // ── T9: helpers — no magic, no copy-paste ─────────────────────────────────────
 
-/** Simulate a TTY stderr by setting isTTY = true on the underlying stream. */
+/** Simulate a TTY stream by setting isTTY = true on the underlying writable. */
 function makeTtyBufferStream() {
   const b = makeBufferStream();
   b.stream.isTTY = true;
@@ -37,15 +37,25 @@ function stripAnsi(str) {
 }
 
 // ── T10: constants guard — pin strings that appear in both code paths ─────────
-// If either of these breaks, update the source AND the tests together.
 const CONTACT_EMAIL = "nkishore@megam.io";
 const PRE_RELEASE_TAG = "[PRE-RELEASE]";
+
+// Decorative-ASCII teardown — these MUST NOT appear in the version banner
+// (per docs/DESIGN_SYSTEM.md "no decorative ASCII art"). Regression guards.
+const FORBIDDEN_BANNER_CHARS = [
+  "\u{1F9DF}", // 🧟 zombie face
+  "╭",    // ╭ box top-left
+  "╮",    // ╮ box top-right
+  "╰",    // ╰ box bottom-left
+  "╯",    // ╯ box bottom-right
+  "│",    // │ box vertical
+];
 
 // ── printPreReleaseWarning ─────────────────────────────────────────────────────
 
 describe("printPreReleaseWarning — T1: happy path", () => {
   test("default opts writes non-empty output (color mode)", () => {
-    const out = makeBufferStream();
+    const out = makeTtyBufferStream();
     printPreReleaseWarning(out.stream, {});
     expect(out.read().length).toBeGreaterThan(0);
   });
@@ -69,52 +79,8 @@ describe("printPreReleaseWarning — T1: happy path", () => {
   });
 });
 
-describe("printPreReleaseWarning — T2: edge cases", () => {
-  test("no opts argument uses defaults (color mode)", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream);
-    expect(out.read().length).toBeGreaterThan(0);
-  });
-
-  test("empty opts object uses defaults (color mode)", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(out.read().length).toBeGreaterThan(0);
-  });
-
-  test("noColor=false produces colored output (same as default)", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: false });
-    expect(out.read()).toMatch(/\x1b\[/);
-  });
-
-  test("jsonMode=false + noColor=false produces colored output", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { jsonMode: false, noColor: false });
-    expect(out.read()).toMatch(/\x1b\[/);
-  });
-
-  test("ttyOnly=true suppresses even when noColor=false", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { ttyOnly: true, noColor: false });
-    expect(out.read()).toBe("");
-  });
-
-  test("jsonMode=true takes priority over noColor=true (both suppress-eligible)", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { jsonMode: true, noColor: true });
-    expect(out.read()).toBe("");
-  });
-
-  test("ttyOnly=true + jsonMode=true both result in empty output", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { ttyOnly: true, jsonMode: true });
-    expect(out.read()).toBe("");
-  });
-});
-
-describe("printPreReleaseWarning — T3: suppression (negative) paths", () => {
-  test("jsonMode suppresses output regardless of noColor value", () => {
+describe("printPreReleaseWarning — T3: suppression paths", () => {
+  test("jsonMode suppresses regardless of noColor", () => {
     for (const noColor of [true, false]) {
       const out = makeBufferStream();
       printPreReleaseWarning(out.stream, { jsonMode: true, noColor });
@@ -122,7 +88,7 @@ describe("printPreReleaseWarning — T3: suppression (negative) paths", () => {
     }
   });
 
-  test("ttyOnly suppresses output regardless of noColor value", () => {
+  test("ttyOnly suppresses regardless of noColor", () => {
     for (const noColor of [true, false]) {
       const out = makeBufferStream();
       printPreReleaseWarning(out.stream, { ttyOnly: true, noColor });
@@ -131,191 +97,121 @@ describe("printPreReleaseWarning — T3: suppression (negative) paths", () => {
   });
 });
 
-describe("printPreReleaseWarning — T4: output fidelity (color mode)", () => {
-  test("color output contains ANSI escape codes", () => {
-    const out = makeBufferStream();
+describe("printPreReleaseWarning — T4: fidelity (color mode)", () => {
+  test("color output contains warning glyph and email", () => {
+    const out = makeTtyBufferStream();
     printPreReleaseWarning(out.stream, {});
-    expect(out.read()).toMatch(/\x1b\[/);
+    const txt = out.read();
+    expect(txt).toContain("⚠");
+    expect(stripAnsi(txt)).toContain(CONTACT_EMAIL);
+    expect(stripAnsi(txt)).toContain("Pre-release build");
   });
 
-  test("color output contains contact email", () => {
+  test("noColor output: plain ASCII, [PRE-RELEASE] tag, contact email", () => {
     const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(stripAnsi(out.read())).toContain(CONTACT_EMAIL);
-  });
-
-  test("color output contains warning symbol", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(out.read()).toContain("⚠");
-  });
-
-  test("color output starts with a newline", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(out.read()).toMatch(/^\n/);
-  });
-
-  test("color output ends with double newline", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(out.read()).toMatch(/\n\n$/);
-  });
-
-  test("color output mentions 'Pre-release build'", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, {});
-    expect(stripAnsi(out.read())).toContain("Pre-release build");
+    printPreReleaseWarning(out.stream, { noColor: true });
+    const txt = out.read();
+    expect(txt).not.toMatch(/\x1b\[/);
+    expect(txt).toContain(PRE_RELEASE_TAG);
+    expect(txt).toContain(CONTACT_EMAIL);
+    expect(txt).toMatch(/^\n/);
+    expect(txt).toMatch(/\n\n$/);
   });
 });
 
-describe("printPreReleaseWarning — T4: output fidelity (noColor mode)", () => {
-  test("noColor output contains no ANSI escape codes", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).not.toMatch(/\x1b\[/);
+// ── printVersion (the new replacement for printBanner) ────────────────────────
+
+describe("printVersion — T1: happy path", () => {
+  test("color mode writes a single-line version string", () => {
+    const out = makeTtyBufferStream();
+    printVersion(out.stream, VERSION, {});
+    const lines = out.read().split("\n").filter((l) => l !== "");
+    expect(lines.length).toBe(1);
+    expect(stripAnsi(lines[0])).toContain(`zombiectl`);
+    expect(stripAnsi(lines[0])).toContain(`v${VERSION}`);
   });
 
-  test("noColor output contains contact email", () => {
+  test("noColor mode writes the exact plain version line", () => {
     const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toContain(CONTACT_EMAIL);
-  });
-
-  test("noColor output contains [PRE-RELEASE] tag", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toContain(PRE_RELEASE_TAG);
-  });
-
-  test("noColor output starts with newline", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toMatch(/^\n/);
-  });
-
-  test("noColor output ends with double newline", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toMatch(/\n\n$/);
-  });
-});
-
-describe("printPreReleaseWarning — T7: regression guards", () => {
-  test("contact email is nkishore@megam.io — pin against accidental change", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toContain("nkishore@megam.io");
-  });
-
-  test("plain [PRE-RELEASE] tag present in noColor output — regression guard", () => {
-    const out = makeBufferStream();
-    printPreReleaseWarning(out.stream, { noColor: true });
-    expect(out.read()).toContain("[PRE-RELEASE]");
-  });
-
-  test("contact email same in both color and noColor paths — not diverged", () => {
-    const color = makeBufferStream();
-    const plain = makeBufferStream();
-    printPreReleaseWarning(color.stream, {});
-    printPreReleaseWarning(plain.stream, { noColor: true });
-    expect(stripAnsi(color.read())).toContain(CONTACT_EMAIL);
-    expect(plain.read()).toContain(CONTACT_EMAIL);
-  });
-
-});
-
-// ── printBanner ────────────────────────────────────────────────────────────────
-
-describe("printBanner — T1: happy path", () => {
-  test("color mode writes version to stream", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, {});
-    expect(stripAnsi(out.read())).toContain(`zombiectl v${VERSION}`);
-  });
-
-  test("noColor mode writes plain version line", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, { noColor: true });
+    printVersion(out.stream, VERSION, { noColor: true });
     expect(out.read()).toBe(`zombiectl v${VERSION}\n`);
   });
 
   test("jsonMode suppresses all output", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, VERSION, { jsonMode: true });
+    printVersion(out.stream, VERSION, { jsonMode: true });
     expect(out.read()).toBe("");
   });
 });
 
-describe("printBanner — T2: edge cases", () => {
-  test("empty version string still writes", () => {
+describe("printVersion — T2: edge cases", () => {
+  test("empty version still writes", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "", { noColor: true });
+    printVersion(out.stream, "", { noColor: true });
     expect(out.read()).toBe("zombiectl v\n");
   });
 
-  test("semver pre-release version string preserved", () => {
+  test("semver pre-release version preserved", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, "1.2.3-beta.1", { noColor: true });
+    printVersion(out.stream, "1.2.3-beta.1", { noColor: true });
     expect(out.read()).toContain("1.2.3-beta.1");
   });
 
-  test("no opts argument uses defaults (color mode)", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, "0.3.1");
-    expect(out.read().length).toBeGreaterThan(0);
-  });
+  test("no opts argument uses defaults (TTY → color, non-TTY → plain)", () => {
+    const tty = makeTtyBufferStream();
+    printVersion(tty.stream, "0.3.1");
+    expect(tty.read().length).toBeGreaterThan(0);
 
-  test("empty opts uses defaults (color mode)", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, {});
-    expect(out.read().length).toBeGreaterThan(0);
+    const plain = makeBufferStream();
+    printVersion(plain.stream, "0.3.1");
+    expect(plain.read().length).toBeGreaterThan(0);
   });
 });
 
-describe("printBanner — T4: output fidelity", () => {
-  test("color mode output contains ANSI escape codes", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, {});
-    expect(out.read()).toMatch(/\x1b\[/);
+describe("printVersion — T7: design-system regression guards", () => {
+  test("color mode output contains no decorative ASCII art", () => {
+    const out = makeTtyBufferStream();
+    printVersion(out.stream, VERSION, {});
+    const txt = out.read();
+    for (const ch of FORBIDDEN_BANNER_CHARS) {
+      expect(txt).not.toContain(ch);
+    }
   });
 
-  test("color mode output contains box-drawing character", () => {
+  test("noColor mode output contains no decorative ASCII art", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, VERSION, {});
-    expect(out.read()).toContain("\u2500"); // ─ horizontal bar
+    printVersion(out.stream, VERSION, { noColor: true });
+    const txt = out.read();
+    for (const ch of FORBIDDEN_BANNER_CHARS) {
+      expect(txt).not.toContain(ch);
+    }
   });
 
-  test("color mode output contains tagline 'autonomous agent cli'", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, {});
-    expect(stripAnsi(out.read())).toContain("autonomous agent cli");
+  test("color mode output contains pulse-cyan dot glyph", () => {
+    const out = makeTtyBufferStream();
+    printVersion(out.stream, VERSION, {});
+    expect(out.read()).toContain("●");
   });
 
-  test("noColor mode output contains no ANSI codes", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, { noColor: true });
-    expect(out.read()).not.toMatch(/\x1b\[/);
+  test("color mode includes the 256-color pulse-cyan code (79)", () => {
+    const out = makeTtyBufferStream();
+    printVersion(out.stream, VERSION, {});
+    expect(out.read()).toContain("38;5;79");
   });
 
-  test("noColor mode output is exactly 'zombiectl v{version}\\n'", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, { noColor: true });
-    expect(out.read()).toBe(`zombiectl v${VERSION}\n`);
-  });
-});
-
-describe("printBanner — T7: regression guards", () => {
-  test("noColor plain format pinned — regression guard", () => {
-    const out = makeBufferStream();
-    printBanner(out.stream, VERSION, { noColor: true });
-    expect(out.read()).toBe(`zombiectl v${VERSION}\n`);
+  test("does not advertise itself as 'autonomous agent cli'", () => {
+    // The previous banner printed an "autonomous agent cli" subtitle. The
+    // design system retired the subtitle; --version is one line.
+    const out = makeTtyBufferStream();
+    printVersion(out.stream, VERSION, {});
+    expect(stripAnsi(out.read())).not.toContain("autonomous agent cli");
   });
 
-  test("color mode contains zombie emoji 🧟", () => {
+  test("noColor output is exactly one line", () => {
     const out = makeBufferStream();
-    printBanner(out.stream, VERSION, {});
-    expect(out.read()).toContain("\u{1F9DF}");
+    printVersion(out.stream, VERSION, { noColor: true });
+    const lines = out.read().split("\n").filter((l) => l !== "");
+    expect(lines.length).toBe(1);
   });
 });
 
@@ -337,7 +233,7 @@ describe("VERSION — T7 + T12: constant matches package.json", () => {
 describe("ttyOnly flag — T6: integration via runCli", () => {
   test("pre-release warning shown when stderr is a TTY", async () => {
     const out = makeBufferStream();
-    const err = makeTtyBufferStream(); // isTTY = true
+    const err = makeTtyBufferStream();
     const code = await runCli(["--version"], {
       stdout: out.stream,
       stderr: err.stream,
@@ -349,14 +245,14 @@ describe("ttyOnly flag — T6: integration via runCli", () => {
 
   test("pre-release warning suppressed when stderr is not a TTY", async () => {
     const out = makeBufferStream();
-    const err = makeBufferStream(); // isTTY is undefined → non-TTY
+    const err = makeBufferStream();
     const code = await runCli(["--version"], {
       stdout: out.stream,
       stderr: err.stream,
       env: { NO_COLOR: "1" },
     });
     expect(code).toBe(0);
-    expect(err.read()).toBe(""); // clean — no banner, no errors
+    expect(err.read()).toBe("");
   });
 
   test("pre-release warning suppressed in --json mode even on TTY stderr", async () => {
@@ -371,15 +267,13 @@ describe("ttyOnly flag — T6: integration via runCli", () => {
     expect(err.read()).toBe("");
   });
 
-  test("--version stdout unaffected by ttyOnly flag (output always correct)", async () => {
-    // Non-TTY path
+  test("--version stdout matches in TTY and non-TTY paths", async () => {
     const out1 = makeBufferStream();
     await runCli(["--version"], {
       stdout: out1.stream,
       stderr: makeBufferStream().stream,
       env: { NO_COLOR: "1" },
     });
-    // TTY path
     const out2 = makeBufferStream();
     await runCli(["--version"], {
       stdout: out2.stream,

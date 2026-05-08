@@ -84,7 +84,8 @@ test("install --from: happy path prints 'is live' from server-returned name", as
   );
   assert.equal(code, 0);
   const out = stdout.lines.join("");
-  assert.ok(out.includes("🎉 test-zombie is live."), `expected 'is live' line:\n${out}`);
+  assert.ok(out.includes("test-zombie is live."), `expected 'is live' line:\n${out}`);
+  assert.ok(!out.includes("🎉"), `no party emoji per design system:\n${out}`);
   assert.ok(out.includes("Zombie ID: zom_01abc"), `expected zombie ID line:\n${out}`);
 });
 
@@ -107,7 +108,7 @@ test("install --from: server-returned name wins over directory basename", async 
   );
   assert.equal(code, 0);
   const out = stdout.lines.join("");
-  assert.ok(out.includes("🎉 frontmatter-name is live."), `server name should win:\n${out}`);
+  assert.ok(out.includes("frontmatter-name is live."), `server name should win:\n${out}`);
   assert.ok(!out.includes("directory-basename"), `basename must not appear when server returned a name:\n${out}`);
 });
 
@@ -124,7 +125,7 @@ test("install --from: server omits name → CLI falls back to directory basename
   );
   assert.equal(code, 0);
   const out = stdout.lines.join("");
-  assert.ok(out.includes("🎉 fallback-zombie is live."), `expected basename fallback:\n${out}`);
+  assert.ok(out.includes("fallback-zombie is live."), `expected basename fallback:\n${out}`);
 });
 
 test("install --from: missing directory exits 1 with ERR_PATH_NOT_FOUND", async () => {

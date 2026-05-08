@@ -1,27 +1,25 @@
-/**
- * CLI banner for --help and --version output.
- */
+// CLI version line and pre-release notice. Per docs/DESIGN_SYSTEM.md
+// "no decorative ASCII art": no emoji, no box-drawing border, no
+// banner. The version line is one line — a pulse-cyan dot, the name,
+// the version. Pre-release stays a one-liner with a functional ⚠ glyph.
 
-export function printBanner(stream, version, opts = {}) {
-  const noColor = opts.noColor || false;
-  const jsonMode = opts.jsonMode || false;
+import { palette, glyph } from "../output/index.js";
 
-  if (jsonMode) return;
+export function printVersion(stream, version, opts = {}) {
+  if (opts.jsonMode) return;
 
-  const label = `  zombiectl v${version}   `;
+  const envNoColor = typeof process !== "undefined" && process.env && process.env.NO_COLOR
+    ? process.env.NO_COLOR.length > 0
+    : false;
+  const noColor = Boolean(opts.noColor) || envNoColor;
 
   if (noColor) {
     stream.write(`zombiectl v${version}\n`);
     return;
   }
 
-  const c = (code, s) => `\u001b[${code}m${s}\u001b[0m`;
-  const bar = "\u2500".repeat(label.length);
-
-  stream.write(`    ${c("1;38;5;208", `\u256D${bar}\u256E`)}\n`);
-  stream.write(` \u{1F9DF} ${c("1;38;5;208", "\u2502")}${c("1;37", label)}${c("1;38;5;208", "\u2502")}\n`);
-  stream.write(`    ${c("1;38;5;208", `\u2570${bar}\u256F`)}\n`);
-  stream.write(`    ${c("2", "  autonomous agent cli")}\n`);
+  const dot = glyph.live({ stream }).render();
+  stream.write(`${dot} ${palette.text("zombiectl")} ${palette.subtle(`v${version}`, { stream })}\n`);
 }
 
 export function printPreReleaseWarning(stream, opts = {}) {
@@ -38,7 +36,8 @@ export function printPreReleaseWarning(stream, opts = {}) {
     return;
   }
 
-  const c = (code, s) => `\u001b[${code}m${s}\u001b[0m`;
-  stream.write(`\n  ${c("1;33", "⚠  Pre-release build")} — not for production use.\n`);
-  stream.write(`     Early access testing only. Contact ${c("1;37", "nkishore@megam.io")} to get access.\n\n`);
+  const warnGlyph = glyph.warn({ stream }).render();
+  const tag = `${warnGlyph} ${palette.warn("Pre-release build", { stream })}`;
+  stream.write(`\n  ${tag} — not for production use.\n`);
+  stream.write(`     Early access testing only. Contact ${palette.text("nkishore@megam.io")} to get access.\n\n`);
 }
