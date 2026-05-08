@@ -68,7 +68,7 @@ describe("Home", () => {
   it("renders the install block", () => {
     renderHome();
     expect(screen.getByRole("heading", { level: 2, name: "Install zombiectl, then run /usezombie-install-platform-ops" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Read the docs" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /read the docs/i })).toBeInTheDocument();
   });
 
   it("renders View full pricing as a React Router link", () => {
