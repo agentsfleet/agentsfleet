@@ -1,90 +1,64 @@
 /*
- * @usezombie/design-system — Semantic theme bridge (Layer 1 + Layer 2)
+ * @usezombie/design-system — semantic theme bridge (Layer 1 + Layer 2)
  *
- * Consumed by ui/packages/app and ui/packages/website so both surfaces
- * share the same semantic-token → Tailwind utility mapping.
+ * Layer 0 (tokens.css) — palette + spacing + typography primitives.
+ * Layer 1 (:root)      — semantic names mapping to Layer 0 (--background,
+ *                        --primary, --card, …). One indirection so a
+ *                        product surface change (re-pointing --primary)
+ *                        stays a single-line edit.
+ * Layer 2 (@theme inline) — exposes the semantic names + scales to
+ *                        Tailwind v4 as utilities (bg-primary,
+ *                        text-foreground, border-border, ring-ring,
+ *                        rounded-md, p-xl, font-mono, …).
+ * Layer 3 (components) — only consume Layer 2 utilities through
+ *                        className. Zero var(--bg) arbitrary values
+ *                        in component files.
  *
- *   Layer 0 (tokens.css)   — palette + spacing + typography primitives (--z-*)
- *   Layer 1 (:root, .dark) — semantic names bridging to Layer 0 (--primary, --card, ...)
- *   Layer 2 (@theme inline)— exposes the semantic names to Tailwind v4 as utilities
- *                            (bg-primary, text-success, border-border, ...)
- *   Layer 3 (components)   — only consume Layer 2 utilities via className.
- *                            Zero var(--z-*) arbitrary values in component files.
- *
- * Adding a new semantic color is a three-line change: one :root line,
- * one .dark line, one @theme inline line.
- *
- * Matches the shadcn + Tailwind v4 canonical pattern (assistant-ui,
- * openhive, shadcn/ui v4 reference app).
+ * Dark is the brand default. Light mode is opt-in via
+ * `[data-theme="light"]` on a parent (typically <html> or <body>); the
+ * Layer 0 tokens swap automatically so most components do not need a
+ * `light:` modifier. The `light:` Tailwind variant below is exposed for
+ * the rare case where a component needs different SHAPE in light mode.
  */
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant light (&:is([data-theme="light"] *));
 
 :root {
-  --background: var(--z-bg-0);
-  --foreground: var(--z-text-primary);
-  --card: var(--z-surface-0);
-  --card-foreground: var(--z-text-primary);
-  --popover: var(--z-surface-1);
-  --popover-foreground: var(--z-text-primary);
-  --primary: var(--z-orange);
-  --primary-foreground: var(--z-text-inverse);
-  --secondary: var(--z-surface-1);
-  --secondary-foreground: var(--z-text-primary);
-  --muted: var(--z-surface-1);
-  --muted-foreground: var(--z-text-muted);
-  --accent: var(--z-surface-2);
-  --accent-foreground: var(--z-text-primary);
-  --destructive: var(--z-red);
-  --destructive-foreground: var(--z-text-primary);
-  --success: var(--z-green);
-  --success-foreground: var(--z-text-inverse);
-  --warning: var(--z-amber);
-  --warning-foreground: var(--z-text-inverse);
-  --info: var(--z-cyan);
-  --info-foreground: var(--z-text-inverse);
-  --border: var(--z-border);
-  --input: var(--z-border);
-  --ring: var(--z-orange);
-  --radius: 0.5rem;
+  /* Surfaces */
+  --background: var(--bg);
+  --foreground: var(--text);
+  --card: var(--surface-1);
+  --card-foreground: var(--text);
+  --popover: var(--surface-2);
+  --popover-foreground: var(--text);
+  --muted: var(--surface-2);
+  --muted-foreground: var(--text-muted);
+  --accent: var(--surface-3);
+  --accent-foreground: var(--text);
+  --secondary: var(--surface-2);
+  --secondary-foreground: var(--text);
 
-  --primary-bright: var(--z-orange-bright);
-  --primary-glow: var(--z-glow-orange);
-  --primary-glow-strong: var(--z-glow-strong);
-}
+  /* Primary surface = the pulse. Currency rule applies; consumers wrap
+   * in <WakePulse> or focus rings, not decorative chrome. */
+  --primary: var(--pulse);
+  --primary-foreground: var(--bg);
 
-.dark {
-  --background: var(--z-bg-0);
-  --foreground: var(--z-text-primary);
-  --card: var(--z-surface-0);
-  --card-foreground: var(--z-text-primary);
-  --popover: var(--z-surface-1);
-  --popover-foreground: var(--z-text-primary);
-  --primary: var(--z-orange);
-  --primary-foreground: var(--z-text-inverse);
-  --secondary: var(--z-surface-1);
-  --secondary-foreground: var(--z-text-primary);
-  --muted: var(--z-surface-1);
-  --muted-foreground: var(--z-text-muted);
-  --accent: var(--z-surface-2);
-  --accent-foreground: var(--z-text-primary);
-  --destructive: var(--z-red);
-  --destructive-foreground: var(--z-text-primary);
-  --success: var(--z-green);
-  --success-foreground: var(--z-text-inverse);
-  --warning: var(--z-amber);
-  --warning-foreground: var(--z-text-inverse);
-  --info: var(--z-cyan);
-  --info-foreground: var(--z-text-inverse);
-  --border: var(--z-border);
-  --input: var(--z-border);
-  --ring: var(--z-orange);
-  --primary-bright: var(--z-orange-bright);
-  --primary-glow: var(--z-glow-orange);
-  --primary-glow-strong: var(--z-glow-strong);
+  /* Status (named to match the Layer 0 hex; --warn vs --warning kept as
+   * the spec dictates --warn so reserve --warning as the Tailwind alias
+   * via @theme inline below). */
+  --destructive: var(--error);
+  --destructive-foreground: var(--bg);
+
+  /* Inputs / focus */
+  --input: var(--border);
+  --ring: var(--pulse);
+
+  /* Radius — single source so consumers can override radius per surface */
+  --radius: var(--r-md);
 }
 
 @theme inline {
+  /* Color surface — the Tailwind utility names. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -101,68 +75,71 @@
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+
+  /* Status — bare-name for `text-success`, `bg-warn`, `text-error`,
+   * `text-info`, `text-evidence`. The spec uses --warn (not --warning);
+   * mirror in the utility name so prose and class strings agree. */
   --color-success: var(--success);
-  --color-success-foreground: var(--success-foreground);
-  --color-warning: var(--warning);
-  --color-warning-foreground: var(--warning-foreground);
+  --color-warn: var(--warn);
+  --color-error: var(--error);
   --color-info: var(--info);
-  --color-info-foreground: var(--info-foreground);
-  --color-primary-bright: var(--primary-bright);
-  --color-primary-glow: var(--primary-glow);
-  --color-primary-glow-strong: var(--primary-glow-strong);
+  --color-evidence: var(--evidence);
+
+  /* The pulse — exposed for the WakePulse primitive and focus rings.
+   * Avoid using `bg-pulse` in component chrome; it dilutes the currency. */
+  --color-pulse: var(--pulse);
+  --color-pulse-dim: var(--pulse-dim);
+  --color-pulse-glow: var(--pulse-glow);
+
+  /* Borders + inputs + ring */
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --radius-sm: calc(var(--radius) - 2px);
-  --radius-md: var(--radius);
-  --radius-lg: calc(var(--radius) + 4px);
-  --radius-xl: calc(var(--radius) + 8px);
-  --font-sans: var(--z-font-sans);
-  --font-mono: var(--z-font-mono);
 
-  /* Brand-surface + effect colors — bridged so components write
-   * `border-border-active`, `bg-terminal`, `shadow-card` etc. instead of
-   * reaching into Layer 0 via var(). */
-  --color-border-active: var(--z-border-active);
-  --color-border-strong: var(--z-border-strong);
-  --color-surface-terminal: var(--z-surface-terminal);
-  --color-glow-green: var(--z-glow-green);
-  --color-glow-orange: var(--z-glow-orange);
-  --color-glow-strong: var(--z-glow-strong);
+  /* Text scale — extras beyond Tailwind's defaults; consumers can write
+   * `text-display-xl`, `text-eyebrow`, `text-mono`, etc. */
+  --text-display-xl: var(--fs-display-xl);
+  --text-display-lg: var(--fs-display-lg);
+  --text-display-md: var(--fs-display-md);
+  --text-heading: var(--fs-heading);
+  --text-eyebrow: var(--fs-eyebrow);
+  --text-body-lg: var(--fs-body-lg);
+  --text-body: var(--fs-body);
+  --text-body-sm: var(--fs-body-sm);
+  --text-label: var(--fs-label);
+  --text-mono: var(--fs-mono);
 
-  /* Spacing scale — Tailwind utilities: p-xs/sm/md/lg/xl/2xl/3xl/4xl/5xl,
-   * gap-*, m-*, px-*, etc. */
-  --spacing-xs: var(--z-space-xs);
-  --spacing-sm: var(--z-space-sm);
-  --spacing-md: var(--z-space-md);
-  --spacing-lg: var(--z-space-lg);
-  --spacing-xl: var(--z-space-xl);
-  --spacing-2xl: var(--z-space-2xl);
-  --spacing-3xl: var(--z-space-3xl);
-  --spacing-4xl: var(--z-space-4xl);
-  --spacing-5xl: var(--z-space-5xl);
+  /* Tracking */
+  --tracking-display-xl: var(--tracking-display-xl);
+  --tracking-display-lg: var(--tracking-display-lg);
+  --tracking-display-md: var(--tracking-display-md);
+  --tracking-eyebrow: var(--tracking-eyebrow);
+  --tracking-label: var(--tracking-label);
 
-  /* Shadow scale — shadow-card / shadow-cta / shadow-subtle. */
-  --shadow-card: var(--z-shadow-card);
-  --shadow-cta: var(--z-shadow-cta);
-  --shadow-subtle: var(--z-shadow-subtle);
-  --shadow-floating: var(--z-shadow-floating);
+  /* Radius */
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
 
-  /* Motion easing — transition-timing-function via ease-*-z. */
-  --ease-fast: var(--z-ease-fast);
-  --ease-default: var(--z-ease-default);
+  /* Fonts */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 
-  /* Pill radius on top of the existing --radius-sm/md/lg/xl. */
-  --radius-pill: var(--z-radius-pill);
+  /* Spacing — Layer 0 tokens are already in the Tailwind-readable name
+   * shape (`--spacing-*`); re-export so `p-xs/sm/md/lg/xl/2xl/3xl/4xl/5xl/6xl`
+   * resolve through the inline theme. */
+  --spacing-xs: var(--spacing-xs);
+  --spacing-sm: var(--spacing-sm);
+  --spacing-md: var(--spacing-md);
+  --spacing-lg: var(--spacing-lg);
+  --spacing-xl: var(--spacing-xl);
+  --spacing-2xl: var(--spacing-2xl);
+  --spacing-3xl: var(--spacing-3xl);
+  --spacing-4xl: var(--spacing-4xl);
+  --spacing-5xl: var(--spacing-5xl);
+  --spacing-6xl: var(--spacing-6xl);
 
-  /* Animation utilities — keyframes defined in tokens.css. */
-  --animate-wave: z-icon-wave 700ms ease-in-out;
-  --animate-wiggle: z-icon-wiggle 700ms ease-in-out;
-  /* `backwards` fill: hold the 0% keyframe state (opacity 0, translateY -16)
-   * until the animation fires. Without it, an always-visible glyph (no
-   * parent opacity wrapper) flashes at its resting state for one frame
-   * before the keyframe takes over. wave + wiggle don't animate opacity
-   * so they don't share this exposure. */
-  --animate-drop: z-icon-drop 420ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
-  --animate-drop-overflow: z-icon-drop-overflow 1100ms cubic-bezier(0.32, 0.72, 0, 1) both;
+  /* Motion easing — `transition-timing-function` via `ease-snap`. */
+  --ease-snap: var(--ease-snap);
 }

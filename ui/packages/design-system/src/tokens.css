@@ -1,236 +1,152 @@
 /*
- * usezombie Design Tokens
- * Shared across website + Mission Control (future).
- * Import this file first in any app entry point.
+ * usezombie design tokens — Layer 0
+ *
+ * Operational Restraint. Source of truth: docs/DESIGN_SYSTEM.md.
+ * Dark is the brand's primary surface. Light mode mirrors via
+ * [data-theme="light"] for full parity. The single bioluminescent
+ * --pulse accent is currency: only on live signals (running zombies,
+ * LIVE badges, focus rings, primary CTAs). Decoration level: minimal.
  */
 
+/* Fonts ship via fontsource — woff2 emitted from node_modules by the
+ * consumer's bundler, no Google Fonts CDN runtime call. OFL-1.1 both. */
+@import "@fontsource/commit-mono/400.css";
+@import "@fontsource/commit-mono/500.css";
+@import "@fontsource/commit-mono/600.css";
+@import "@fontsource/commit-mono/700.css";
+@import "@fontsource-variable/instrument-sans";
+
 :root {
-  /* ── Palette ── */
-  --z-bg-0: #05080d;
-  --z-bg-1: #0b1018;
-  --z-surface-0: #0f1520;
-  --z-surface-1: #161e2b;
-  --z-surface-2: #1c2636;
+  /* ── Surfaces (dark — brand primary) ── */
+  --bg: #0a0d0e;
+  --surface-1: #11161a;
+  --surface-2: #181e22;
+  --surface-3: #1f262c;
 
-  --z-text-primary: #e8f2ff;
-  --z-text-muted: #8b97a8;
-  --z-text-dim: #5a6577;
-  --z-text-primary-strong: rgba(232, 242, 255, 0.98);
-  --z-text-primary-soft: rgba(232, 242, 255, 0.9);
-  --z-text-muted-soft: rgba(139, 151, 168, 0.78);
-  --z-text-inverse: #111111;
+  /* ── Borders ── */
+  --border: #23292e;
+  --border-strong: #2e373e;
 
-  --z-orange: #d96b2b;
-  --z-orange-bright: #e78a3c;
-  --z-amber: #c99232;
-  --z-cyan: #5ed4ec;
-  --z-green: #39ff85;
-  --z-red: #ff4d6a;
+  /* ── Text ── */
+  --text: #e6eaec;
+  --text-muted: #8b9398;
+  --text-subtle: #5c6469;
 
-  --z-border: #1a2533;
-  --z-border-active: rgba(169, 86, 32, 0.3);
-  --z-border-strong: rgba(232, 242, 255, 0.14);
-  --z-border-accent: rgba(231, 138, 60, 0.28);
-  --z-border-accent-strong: rgba(231, 138, 60, 0.4);
-  --z-border-accent-stronger: rgba(231, 138, 60, 0.5);
+  /* ── The pulse — currency, never decoration ── */
+  --pulse: #5eead4;
+  --pulse-dim: #2dd4bf;
+  --pulse-glow: rgba(94, 234, 212, 0.35);
 
-  --z-glow-orange: rgba(217, 107, 43, 0.14);
-  --z-glow-strong: rgba(217, 107, 43, 0.26);
-  --z-glow-green: rgba(57, 255, 133, 0.15);
-  --z-accent-surface: rgba(217, 107, 43, 0.08);
-  --z-accent-surface-strong: rgba(217, 107, 43, 0.14);
-  --z-accent-surface-soft: rgba(217, 107, 43, 0.12);
-  --z-accent-surface-faint: rgba(217, 107, 43, 0.05);
-  --z-accent-surface-glow: rgba(217, 107, 43, 0.02);
-  --z-accent-hover-surface: rgba(217, 107, 43, 0.08);
-  --z-surface-panel: rgba(11, 16, 24, 0.9);
-  --z-surface-panel-strong: rgba(11, 16, 24, 0.96);
-  --z-surface-panel-soft: rgba(15, 21, 32, 0.82);
-  --z-surface-inset: rgba(5, 8, 13, 0.95);
-  --z-surface-sheen: rgba(255, 255, 255, 0.03);
-  --z-surface-sheen-soft: rgba(255, 255, 255, 0.02);
-  --z-surface-sheen-faint: rgba(255, 255, 255, 0.012);
-  --z-surface-terminal: #060a10;
-  --z-surface-cyan-tint: rgba(110, 231, 255, 0.06);
-  --z-surface-cyan-halo: rgba(110, 231, 255, 0.12);
-  --z-surface-amber-tint: rgba(255, 190, 46, 0.07);
-  --z-surface-orange-tint: rgba(255, 140, 66, 0.1);
-  --z-surface-orange-tint-strong: rgba(255, 140, 66, 0.11);
-  --z-surface-orange-halo: rgba(255, 140, 66, 0.18);
-  --z-rail-orange-start: rgba(255, 140, 66, 0.15);
-  --z-rail-orange-mid: rgba(255, 140, 66, 0.7);
-  --z-rail-orange-end: rgba(255, 140, 66, 0.2);
-  --z-border-amber: rgba(255, 190, 46, 0.2);
-  --z-border-muted-soft: rgba(26, 37, 51, 0.5);
-  --z-green-scanline: rgba(57, 255, 133, 0.015);
-  --z-focus-ring: rgba(231, 138, 60, 0.45);
-  --z-danger-soft: #ffbfaa;
-  --z-shadow-deep-soft: rgba(0, 0, 0, 0.35);
-  --z-shadow-deep: rgba(0, 0, 0, 0.4);
-  --z-shadow-deep-strong: rgba(0, 0, 0, 0.5);
-  --z-shadow-card-accent: rgba(217, 107, 43, 0.18);
-  --z-icon-zombie-wrist-fill: #6f4b46;
-  --z-icon-zombie-fill: #c1a091;
-  --z-icon-zombie-line: #4f302c;
-  --z-icon-zombie-nail: #ead9cc;
-  --z-illustration-bucket-start: #8892a0;
-  --z-illustration-bucket-end: #5f6977;
-  --z-illustration-skin-start: #66a093;
-  --z-illustration-skin-end: #4f7b71;
-  --z-illustration-halo: rgba(255, 140, 66, 0.1);
-  --z-illustration-strap: #aeb7c4;
-  --z-illustration-eye: #111111;
-  --z-illustration-mouth: #1a2420;
-  --z-illustration-arm: #55786f;
+  /* ── Status (use sparingly, only for actual status) ── */
+  --success: #34d399;
+  --warn: #f59e0b;
+  --error: #f87171;
+  --info: #60a5fa;
+  --evidence: #fbbf24;
+
+  /* ── Radius (small + hierarchical; no pill-radius on buttons) ── */
+  --r-sm: 2px;
+  --r-md: 4px;
+  --r-lg: 6px;
 
   /* ── Typography ── */
-  --z-font-sans: "Geist Variable", system-ui, -apple-system, sans-serif;
-  --z-font-mono: "Geist Mono Variable", ui-monospace, "Cascadia Code", monospace;
+  --font-mono: "Commit Mono", ui-monospace, "Cascadia Code", monospace;
+  --font-sans: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
 
-  --z-text-xs: 0.72rem;
-  --z-text-sm: 0.82rem;
-  --z-text-base: 0.92rem;
-  --z-text-md: 1rem;
-  --z-text-lg: 1.125rem;
-  --z-text-xl: 1.25rem;
-  --z-text-2xl: 1.35rem;
-  --z-text-3xl: clamp(1.5rem, 4vw, 2.2rem);
-  --z-text-hero: clamp(2.2rem, 5.5vw, 4rem);
+  /* Type scale (px in /* */ comments). Tailwind utilities (text-display-xl
+   * etc.) bridge to these in theme.css. */
+  --fs-display-xl: 4rem;        /* 64 — marketing hero only */
+  --fs-display-lg: 2.5rem;      /* 40 — section heads */
+  --fs-display-md: 1.75rem;     /* 28 — stat values */
+  --fs-heading: 1.125rem;       /* 18 — page titles */
+  --fs-eyebrow: 0.75rem;        /* 12 — section labels */
+  --fs-body-lg: 1.125rem;       /* 18 — long-form lede */
+  --fs-body: 0.9375rem;         /* 15 — default body */
+  --fs-body-sm: 0.8125rem;      /* 13 — secondary body */
+  --fs-label: 0.6875rem;        /* 11 — form labels */
+  --fs-mono: 0.8125rem;         /* 13 — code, logs, data */
 
-  /* ── Spacing ── */
-  --z-space-xs: 0.25rem;
-  --z-space-sm: 0.5rem;
-  --z-space-md: 0.75rem;
-  --z-space-lg: 1rem;
-  --z-space-xl: 1.25rem;
-  --z-space-2xl: 1.5rem;
-  --z-space-3xl: 2rem;
-  --z-space-4xl: 3rem;
-  --z-space-5xl: 4rem;
+  /* Letter-spacing for display + eyebrow + label scales. */
+  --tracking-display-xl: -0.025em;
+  --tracking-display-lg: -0.02em;
+  --tracking-display-md: -0.015em;
+  --tracking-eyebrow: 0.08em;
+  --tracking-label: 0.08em;
 
-  /* ── Radii ── */
-  --z-radius-sm: 8px;
-  --z-radius-md: 10px;
-  --z-radius-lg: 12px;
-  --z-radius-pill: 999px;
+  /* ── Spacing (4px base — engineers want density) ── */
+  --spacing-xs: 0.125rem;       /* 2 */
+  --spacing-sm: 0.25rem;        /* 4 — base unit */
+  --spacing-md: 0.5rem;         /* 8 */
+  --spacing-lg: 0.75rem;        /* 12 */
+  --spacing-xl: 1rem;           /* 16 */
+  --spacing-2xl: 1.5rem;        /* 24 */
+  --spacing-3xl: 2rem;          /* 32 */
+  --spacing-4xl: 3rem;          /* 48 */
+  --spacing-5xl: 4rem;          /* 64 */
+  --spacing-6xl: 6rem;          /* 96 — section vertical rhythm */
 
-  /* ── Shadows ── */
-  --z-shadow-card: 0 0 32px var(--z-glow-orange);
-  --z-shadow-card-strong: 0 20px 60px rgba(0, 0, 0, 0.36);
-  --z-shadow-cta: 0 0 24px var(--z-glow-strong);
-  --z-shadow-subtle: 0 0 16px var(--z-glow-orange);
-  --z-shadow-floating: 0 18px 48px rgba(0, 0, 0, 0.32);
-
-  /* ── Transitions ── */
-  --z-ease-default: 0.2s ease;
-  --z-ease-fast: 0.15s ease;
+  /* ── Motion (snap; no overshoot) ── */
+  --ease-snap: 50ms ease-out;
 
   /* ── Layout ── */
-  --z-max-width: 1120px;
-  --z-content-width: min(var(--z-max-width), 92vw);
+  --max-width: 1280px;
+  --measure: 720px;             /* ~68ch single-column docs measure */
 
   /* ── Z-index ── */
-  --z-layer-bg: 0;
-  --z-layer-content: 1;
-  --z-layer-overlay: 10;
-  --z-layer-modal: 100;
+  --layer-bg: 0;
+  --layer-content: 1;
+  --layer-overlay: 10;
+  --layer-modal: 100;
 }
 
-/* ── Animated background particles ── */
-@keyframes z-float-up {
+[data-theme="light"] {
+  /* Polite afterthought, not the brand's first impression. Warm
+   * parchment over pure white reinforces "evidenced document" feel.
+   * Pulse desaturates ~15%. */
+  --bg: #f8f6f1;
+  --surface-1: #f1eee6;
+  --surface-2: #e9e5da;
+  --surface-3: #dfdacb;
+  --border: #d4cdb9;
+  --border-strong: #b7ae96;
+  --text: #1a1d1e;
+  --text-muted: #5a625f;
+  --text-subtle: #8a918a;
+  --pulse: #14b8a6;
+  --pulse-dim: #0d9488;
+  --pulse-glow: rgba(20, 184, 166, 0.3);
+}
+
+/* ── The wake pulse — the only signature animation in the system ──
+ *
+ * Fires on `[data-live]`. Only the <WakePulse live={true}> primitive
+ * sets that attribute; consumers cannot accidentally pulse non-live
+ * entities. Stops the instant live flips false (attribute removed →
+ * no rule matches → no animation). 2.4s ease-in-out infinite per
+ * docs/DESIGN_SYSTEM.md §Motion. */
+@keyframes wake-pulse {
   0% {
-    transform: translateY(0) scale(1);
-    opacity: 0;
-  }
-  10% {
-    opacity: 0.6;
-  }
-  90% {
-    opacity: 0.6;
-  }
-  100% {
-    transform: translateY(-100vh) scale(0.5);
-    opacity: 0;
-  }
-}
-
-@keyframes z-drift {
-  0%, 100% {
-    transform: translateX(0) translateY(0);
-  }
-  25% {
-    transform: translateX(30px) translateY(-15px);
+    box-shadow: 0 0 0 0 var(--pulse-glow);
   }
   50% {
-    transform: translateX(-20px) translateY(-30px);
-  }
-  75% {
-    transform: translateX(15px) translateY(-10px);
-  }
-}
-
-@keyframes z-glow-pulse {
-  0%, 100% {
-    opacity: 0.08;
-  }
-  50% {
-    opacity: 0.15;
-  }
-}
-
-@keyframes z-grid-shift {
-  0% {
-    background-position: 0 0;
+    box-shadow: 0 0 0 10px transparent;
   }
   100% {
-    background-position: 24px 24px;
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
-/* ── AnimatedIcon keyframes — exposed to Tailwind as animate-wave /
- *    animate-wiggle via @theme inline in theme.css. The component
- *    selectors live in AnimatedIcon.tsx as utility classes. ── */
-@keyframes z-icon-wave {
-  0%   { transform: rotate(0deg); }
-  20%  { transform: rotate(14deg); }
-  40%  { transform: rotate(-8deg); }
-  60%  { transform: rotate(14deg); }
-  80%  { transform: rotate(-4deg); }
-  100% { transform: rotate(0deg); }
+[data-live] {
+  animation: wake-pulse 2.4s ease-in-out infinite;
 }
 
-@keyframes z-icon-wiggle {
-  0%   { transform: rotate(0deg) translate3d(0, 0, 0) scale(1); }
-  22%  { transform: rotate(11deg) translate3d(1px, -1px, 0) scale(1.03); }
-  46%  { transform: rotate(-7deg) translate3d(-1px, 1px, 0) scale(0.98); }
-  72%  { transform: rotate(9deg) translate3d(1px, -2px, 0) scale(1.04); }
-  100% { transform: rotate(0deg) translate3d(0, 0, 0) scale(1); }
-}
-
-/* Drop-in: glyph falls from above with a soft settle. Mirrors the
- * /agents page beam fall-from-top, scaled down for an inline icon. */
-@keyframes z-icon-drop {
-  0%   { transform: translate3d(0, -16px, 0) rotate(-12deg) scale(0.85); opacity: 0; }
-  60%  { transform: translate3d(0, 2px, 0)   rotate(4deg)   scale(1.04); opacity: 1; }
-  85%  { transform: translate3d(0, -1px, 0)  rotate(-2deg)  scale(0.99); opacity: 1; }
-  100% { transform: translate3d(0, 0, 0)     rotate(0deg)   scale(1);    opacity: 1; }
-}
-
-/* Drop-overflow: like z-icon-drop but the glyph keeps falling past the
- * parent's natural bottom and parks ~200% of its own height below,
- * partly visible. Lets a small inline icon mimic the /agents falling
- * beams when a parent wants the motion to escape the pill. The parent
- * must run overflow:visible — clipped ancestors will hide the trail. */
-@keyframes z-icon-drop-overflow {
-  0%   { transform: translate3d(0, -16px, 0) rotate(-12deg) scale(0.85); opacity: 0; }
-  35%  { transform: translate3d(0, 2px, 0)   rotate(4deg)   scale(1.04); opacity: 1; }
-  55%  { transform: translate3d(0, 0, 0)     rotate(0deg)   scale(1);    opacity: 1; }
-  100% { transform: translate3d(0, 200%, 0)  rotate(8deg)   scale(0.95); opacity: 0.45; }
-}
-
+/* Reduced motion: a static glow ring at low opacity. The metaphor (it
+ * wakes) survives without violating the user's preference. Hover
+ * transitions stay at 50ms — functional, not decorative. */
 @media (prefers-reduced-motion: reduce) {
-  [data-animated-glyph] {
-    animation: none !important;
-    transform: none !important;
+  [data-live] {
+    animation: none;
+    box-shadow: 0 0 0 4px var(--pulse-glow);
+    opacity: 0.6;
   }
 }

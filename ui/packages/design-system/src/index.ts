@@ -18,6 +18,8 @@ export {
   InstallBlock,
   AnimatedIcon,
   ZombieHandIcon,
+  WakePulse,
+  type WakePulseProps,
   Badge,
   badgeVariants,
   type BadgeProps,

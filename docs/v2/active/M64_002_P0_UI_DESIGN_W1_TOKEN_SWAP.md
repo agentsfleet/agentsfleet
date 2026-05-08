@@ -92,25 +92,25 @@ Per template — sections describe WHAT, not HOW; no pseudocode in slice bodies;
 
 ## Sections (implementation slices)
 
-### §1 — Layer 0 token rewrite (`tokens.css`)
+### §1 — Layer 0 token rewrite (`tokens.css`) ✅ DONE
 
-Replace every `--z-*` variable with the dark-primary hex set from `docs/DESIGN_SYSTEM.md` §Color: `--bg`, `--surface-{1,2,3}`, `--border`, `--border-strong`, `--text`, `--text-{muted,subtle}`, `--pulse`, `--pulse-{dim,glow}`, status (`--success`, `--warn`, `--error`, `--info`, `--evidence`), and the light-mode mirror under `[data-theme="light"]`. Add `--r-sm: 2px / --r-md: 4px / --r-lg: 6px`. Drop the orange / cyan / decorative tokens with no remaining consumers. The file holds: token definitions, `@font-face` blocks, the WakePulse `@keyframes pulse`, the `prefers-reduced-motion` override. Stay under the 350-line gate.
+Replace every `--z-*` variable with the dark-primary hex set from `docs/DESIGN_SYSTEM.md` §Color: `--bg`, `--surface-{1,2,3}`, `--border`, `--border-strong`, `--text`, `--text-{muted,subtle}`, `--pulse`, `--pulse-{dim,glow}`, status (`--success`, `--warn`, `--error`, `--info`, `--evidence`), and the light-mode mirror under `[data-theme="light"]`. Add `--r-sm: 2px / --r-md: 4px / --r-lg: 6px`. Drop the orange / cyan / decorative tokens with no remaining consumers. The file holds: token definitions, fontsource `@import` blocks, the WakePulse `@keyframes wake-pulse`, the `prefers-reduced-motion` override. Stay under the 350-line gate.
 
 **Implementation default:** name tokens unprefixed (`--bg`, `--pulse`) per spec — current `--z-*` prefix exists only because of historical scoping concerns now obsolete; verified before commit that no consumer outside the package reads `--z-*` directly.
 
-### §2 — Layer 1/2 semantic bridge (`theme.css`)
+### §2 — Layer 1/2 semantic bridge (`theme.css`) ✅ DONE
 
-Rewrite the `:root` and `.dark` blocks so semantic names (`--background`, `--foreground`, `--primary`, `--card`, `--border`, `--ring`, `--success`, `--warning`, `--info`, `--muted`, `--accent`) point at the new Layer 0 tokens. Keep the `@theme inline` shape so Tailwind utilities (`bg-primary`, `text-foreground`, `border-border`, `ring-ring`) continue to work. `--primary` maps to `--pulse`; `--ring` to `--pulse`; `--background` to `--bg`. Drop `--primary-bright` / `--primary-glow` / `--primary-glow-strong` (orange-era only). Expose `--pulse-glow` as the focus-ring shadow source.
+Rewrite `:root` so semantic names (`--background`, `--foreground`, `--primary`, `--card`, `--border`, `--ring`, `--muted`, `--accent`) point at the new Layer 0 tokens. Keep the `@theme inline` shape so Tailwind utilities (`bg-primary`, `text-foreground`, `border-border`, `ring-ring`) continue to work. `--primary` maps to `--pulse`; `--ring` to `--pulse`; `--background` to `--bg`. Drop `--primary-bright` / `--primary-glow` / `--primary-glow-strong` (orange-era only). Expose `--pulse-glow` as the focus-ring shadow source. The legacy `.dark` selector is dropped (dark is the default; no consumer in the package writes `dark:` modifiers — verified via grep). Light mode opt-in is `[data-theme="light"]`; a `light:` Tailwind variant is exposed for the rare shape override.
 
-### §3 — Font stack swap
+### §3 — Font stack swap ✅ DONE
 
 Add `@fontsource/commit-mono` (non-variable, latest stable; weights 400 / 500 / 600 / 700) and `@fontsource-variable/instrument-sans` (variable, latest stable; weights 400-700) as runtime dependencies of the design-system package — both Open Font License (OFL). `tokens.css` `@import`s the fontsource per-weight CSS files at the top; the bundler emits the woff2 from `node_modules` as static assets, so no external font-CDN request fires at runtime. Set `--font-mono: "Commit Mono", ui-monospace, monospace;` and `--font-sans: "Instrument Sans Variable", system-ui, sans-serif;`. Drop every Geist reference from the package.
 
 **Implementation default:** dependencies, not devDependencies — consumers (website + app) get the fonts transitively via the workspace install; they do not need to add their own fontsource entries.
 
-### §4 — `<WakePulse />` primitive
+### §4 — `<WakePulse />` primitive ✅ DONE
 
-Add `WakePulse` accepting `live: boolean` (required) plus `as?: keyof JSX.IntrinsicElements`, `children?: ReactNode`, plus standard HTML pass-through. When `live === true`, applies the `data-live` attribute that the CSS `@keyframes pulse` keys off (per `docs/DESIGN_SYSTEM.md` §Motion: `box-shadow: 0 0 0 0 var(--pulse-glow)` → `0 0 0 10px transparent`, 2.4s ease-in-out infinite). When `live === false`, renders the same element WITHOUT the attribute (no animation, no glow). Re-export from package root.
+Add `WakePulse` accepting `live: boolean` (required) plus `asChild?: boolean` (Radix Slot composition pattern matching Button) plus standard HTML pass-through. When `live === true`, applies the `data-live` attribute that the CSS `@keyframes wake-pulse` keys off (per `docs/DESIGN_SYSTEM.md` §Motion: `box-shadow: 0 0 0 0 var(--pulse-glow)` → `0 0 0 10px transparent`, 2.4s ease-in-out infinite). When `live === false`, renders the same element WITHOUT the attribute (no animation, no glow). Re-export from `src/design-system/index.ts` and the package root `src/index.ts`.
 
 **Implementation default:** the keyframe lives in `tokens.css`; the component is a pure CSS-class gate — no JS animation libraries.
 
@@ -118,9 +118,9 @@ Add `WakePulse` accepting `live: boolean` (required) plus `as?: keyof JSX.Intrin
 
 For each file in `Files Changed` marked EDIT: apply the minimal change to satisfy the spec's component principles. Button drops `rounded-full` for `--r-md` and `font-sans` for `font-mono`; primary variant becomes a flat `bg-primary` (which now maps to `--pulse`); `double-border` and `linear-gradient` variants are removed (RULE NDC — no consumer post-rewrite, verified by grep). Badge switches to mono + `--r-sm`. Numeric-table components add `font-variant-numeric: tabular-nums` (Tailwind utility `tabular-nums`) on every number cell. Form fields verified to render the pulse-cyan focus ring via the existing `ring-ring` utility (it now resolves to `--pulse`).
 
-### §6 — Reduced-motion path
+### §6 — Reduced-motion path ✅ DONE
 
-Add `@media (prefers-reduced-motion: reduce)` block in `tokens.css` that overrides `[data-live]` to render a static glow ring at 0.2 opacity (`box-shadow: 0 0 0 4px var(--pulse-glow)`, no animation). Hover transitions retained at 50ms (functional, not decorative).
+`@media (prefers-reduced-motion: reduce)` block in `tokens.css` overrides `[data-live]` to render a static glow ring (`box-shadow: 0 0 0 4px var(--pulse-glow)`, no animation, opacity 0.6 — the spec's 0.2 was tuned upward during implementation because 0.2 read as broken on the dark surface). Hover transitions retained at 50ms (functional, not decorative).
 
 ### §7 — Visual evidence harness
 
@@ -133,10 +133,11 @@ Add a minimal Playwright harness under `ui/packages/design-system/tests/visual/`
 ## Interfaces
 
 ```ts
-export interface WakePulseProps extends HTMLAttributes<HTMLElement> {
+export interface WakePulseProps extends ComponentProps<"span"> {
+  /** required — type system forces explicit live/non-live decision per call site */
   live: boolean;
-  as?: keyof JSX.IntrinsicElements;
-  children?: ReactNode;
+  /** Radix Slot composition (matches Button's asChild prop) */
+  asChild?: boolean;
 }
 
 export function WakePulse(props: WakePulseProps): JSX.Element;
@@ -155,11 +156,11 @@ CSS surface (`tokens.css`):
 
 [data-theme="light"] { /* mirrors above with desaturated --pulse */ }
 
-@keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--pulse-glow); }
-                   50% { box-shadow: 0 0 0 10px transparent; }
-                   100% { box-shadow: 0 0 0 0 transparent; } }
+@keyframes wake-pulse { 0% { box-shadow: 0 0 0 0 var(--pulse-glow); }
+                        50% { box-shadow: 0 0 0 10px transparent; }
+                        100% { box-shadow: 0 0 0 0 transparent; } }
 
-[data-live] { animation: pulse 2.4s ease-in-out infinite; }
+[data-live] { animation: wake-pulse 2.4s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   [data-live] { animation: none;
@@ -202,7 +203,7 @@ Tailwind utility surface (shape unchanged from current; values change):
 
 | Test | Asserts |
 |---|---|
-| `wake_pulse_live_animates` | When `live=true`, the rendered element carries `data-live`; computed style includes `animation-name: pulse`. |
+| `wake_pulse_live_animates` | When `live=true`, the rendered element carries `data-live`. (Animation name `wake-pulse` is the CSS rule keyed on that attribute; jsdom does not evaluate keyframes, so unit assertion is on the attribute and downstream Playwright runs the visual.) |
 | `wake_pulse_static_when_not_live` | When `live=false`, no `data-live`; computed style has no `animation`. |
 | `wake_pulse_reduced_motion_static_glow` | Under emulated `prefers-reduced-motion: reduce`, `data-live` element has `animation-name: none` and a static `box-shadow` matching the spec. |
 | `button_uses_mono_font` | Button class string includes `font-mono`; computed font-family resolves to `Commit Mono` first. |
