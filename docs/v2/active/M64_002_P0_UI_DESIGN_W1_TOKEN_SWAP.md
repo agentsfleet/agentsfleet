@@ -61,7 +61,7 @@ Per template — sections describe WHAT, not HOW; no pseudocode in slice bodies;
 
 **Problem:** The package's Layer 0 palette today is orange + cyan accents on `--z-bg-0:#05080d`, with `Geist Variable` / `Geist Mono Variable` as the font family. PR #306 landed the new Operational Restraint spec which mandates a dark cool-charcoal palette, a single bioluminescent `--pulse:#5EEAD4` accent treated as currency (live signals only), and Commit Mono + Instrument Sans as the type stack. Nothing has been rewritten yet; W2 (website) and W3 (app) cannot adopt the new tokens without this Layer 0/1/2 rewrite first.
 
-**Solution summary:** Rewrite Layer 0 (`tokens.css`) against the spec hex set; remap Layer 1/2 (`theme.css`) so Tailwind utility names (`bg-primary`, `text-foreground`, `border-border`, etc.) point at the new tokens — most components keep working without per-file edits. Self-host Commit Mono (OFL) and add `@fontsource-variable/instrument-sans` (also OFL). Add `WakePulse` as the only signature motion primitive. Edit components only where the spec's principles mandate a specific shape change (Button rounding/font/gradient, Badge mono + smaller radius, numeric components `tabular-nums`). Lock the result in with Playwright dark+light snapshot tests.
+**Solution summary:** Rewrite Layer 0 (`tokens.css`) against the spec hex set; remap Layer 1/2 (`theme.css`) so Tailwind utility names (`bg-primary`, `text-foreground`, `border-border`, etc.) point at the new tokens — most components keep working without per-file edits. Add `@fontsource/commit-mono` (non-variable, weights 400/500/600/700) and `@fontsource-variable/instrument-sans` (variable, weights 400-700) — both Open Font License (OFL). Fontsource ships the woff2 in `node_modules` and the consumer bundler emits them as static assets; this counts as self-hosting (no Google Fonts external request, no CDN dependency). Add `WakePulse` as the only signature motion primitive. Edit components only where the spec's principles mandate a specific shape change (Button rounding/font/gradient, Badge mono + smaller radius, numeric components `tabular-nums`). Behavioural assertions cover token consumption, class strings, `prefers-reduced-motion` path; Playwright takes a screenshot strip per component (dark + light) and attaches the images to the PR for human visual review (per BUN_RULES §8 we do NOT gate CI on pixel-diff snapshots — they drift; behavioural tests are load-bearing).
 
 ---
 
@@ -69,10 +69,8 @@ Per template — sections describe WHAT, not HOW; no pseudocode in slice bodies;
 
 | File | Action | Why |
 |---|---|---|
-| `ui/packages/design-system/src/tokens.css` | REWRITE | Layer 0 — replace orange/cyan/Geist palette with the spec hex set + Commit Mono / Instrument Sans `@font-face` declarations + WakePulse keyframe + reduced-motion media block. |
+| `ui/packages/design-system/src/tokens.css` | REWRITE | Layer 0 — replace orange/cyan/Geist palette with the spec hex set + `@import` of fontsource CSS for Commit Mono + Instrument Sans + WakePulse keyframe + reduced-motion media block. |
 | `ui/packages/design-system/src/theme.css` | REWRITE | Layer 1/2 — remap `--primary` / `--background` / etc. to the new Layer 0 tokens; light-mode block; drop unused decorative tokens. |
-| `ui/packages/design-system/src/assets/fonts/commit-mono/*.woff2` | CREATE | Self-host Commit Mono weights 400 / 500 / 600 / 700 (OFL). |
-| `ui/packages/design-system/src/assets/fonts/commit-mono/OFL.txt` | CREATE | License attribution. |
 | `ui/packages/design-system/src/design-system/WakePulse.tsx` | CREATE | Signature motion primitive; `live: boolean` gate; reduced-motion path. |
 | `ui/packages/design-system/src/design-system/WakePulse.test.tsx` | CREATE | Live / static / reduced-motion behavioural coverage. |
 | `ui/packages/design-system/src/design-system/Button.tsx` | EDIT | Drop `rounded-full` / gradient / `double-border` variant; mono font; spec sizes; flat `bg-primary` (now `--pulse`). |
@@ -83,7 +81,7 @@ Per template — sections describe WHAT, not HOW; no pseudocode in slice bodies;
 | `ui/packages/design-system/src/design-system/{Input,Textarea,Select}.tsx` | EDIT (verify) | Mono input value; pulse-cyan focus ring via `--pulse-glow`. |
 | `ui/packages/design-system/src/design-system/index.ts` | EDIT | Export `WakePulse`, `WakePulseProps`. |
 | `ui/packages/design-system/src/index.ts` | EDIT | Re-export `WakePulse`, `WakePulseProps`. |
-| `ui/packages/design-system/package.json` | EDIT | Add `@fontsource-variable/instrument-sans`. |
+| `ui/packages/design-system/package.json` | EDIT | Add `@fontsource/commit-mono` + `@fontsource-variable/instrument-sans` as dependencies (transitive to website + app via workspace). |
 | `ui/packages/design-system/src/design-system/*.test.tsx` (existing) | EDIT | Update assertions where shape / class names changed; preserve coverage. |
 | `ui/packages/design-system/tests/visual/*.spec.ts` | CREATE | Playwright snapshot harness covering every component in dark + light. |
 | `ui/packages/design-system/playwright.config.ts` | CREATE | Per-package Playwright config (workspace's existing config lives in website/app). |
@@ -106,9 +104,9 @@ Rewrite the `:root` and `.dark` blocks so semantic names (`--background`, `--for
 
 ### §3 — Font stack swap
 
-Self-host Commit Mono (OFL) under `src/assets/fonts/commit-mono/` with `@font-face` declarations in `tokens.css` (weights 400, 500, 600, 700). Add `@fontsource-variable/instrument-sans` to `package.json` devDependencies; consumers import via `import "@fontsource-variable/instrument-sans"` from their entry — design-system itself only declares the family. Set `--font-mono: "Commit Mono", ui-monospace, monospace;` and `--font-sans: "Instrument Sans Variable", system-ui, sans-serif;`. Drop every Geist reference from the package.
+Add `@fontsource/commit-mono` (non-variable, latest stable; weights 400 / 500 / 600 / 700) and `@fontsource-variable/instrument-sans` (variable, latest stable; weights 400-700) as runtime dependencies of the design-system package — both Open Font License (OFL). `tokens.css` `@import`s the fontsource per-weight CSS files at the top; the bundler emits the woff2 from `node_modules` as static assets, so no external font-CDN request fires at runtime. Set `--font-mono: "Commit Mono", ui-monospace, monospace;` and `--font-sans: "Instrument Sans Variable", system-ui, sans-serif;`. Drop every Geist reference from the package.
 
-**Implementation default:** Commit Mono v1.143 (latest stable available at https://commitmono.com); fetch `.woff2` directly per the OFL. License file copied to `src/assets/fonts/commit-mono/OFL.txt`.
+**Implementation default:** dependencies, not devDependencies — consumers (website + app) get the fonts transitively via the workspace install; they do not need to add their own fontsource entries.
 
 ### §4 — `<WakePulse />` primitive
 
@@ -124,11 +122,11 @@ For each file in `Files Changed` marked EDIT: apply the minimal change to satisf
 
 Add `@media (prefers-reduced-motion: reduce)` block in `tokens.css` that overrides `[data-live]` to render a static glow ring at 0.2 opacity (`box-shadow: 0 0 0 4px var(--pulse-glow)`, no animation). Hover transitions retained at 50ms (functional, not decorative).
 
-### §7 — Visual regression harness
+### §7 — Visual evidence harness
 
-Add a Playwright snapshot suite under `ui/packages/design-system/tests/visual/`. Entry: a single Vite-mounted test page that renders every component twice (dark + light). The suite asserts pixel-stable snapshots, attaches them to the PR, and runs in CI.
+Add a minimal Playwright harness under `ui/packages/design-system/tests/visual/` that navigates a static HTML test page (rendered ahead-of-time by a small Bun script that imports `tokens.css`, `theme.css`, and every component) and emits one screenshot per component per theme (dark + light) under `tests/visual/screenshots/`. Per BUN_RULES §8 we do NOT gate CI on pixel-diff snapshots — they drift, the diff is opaque, and the CI signal is noisy. The screenshots are evidence for the PR (committed alongside code) and a manual review tool — behavioural tests in §1-§6 are the load-bearing assertions.
 
-**Implementation default:** Playwright's existing version (`1.59.1`) already pinned in workspace `website` + `app`; baseline images committed under `tests/visual/__snapshots__/`.
+**Implementation default:** Playwright `1.59.1` (already in workspace `website` + `app`); per-package config copied minimal. Static HTML rendered via `bun run` script that emits a single page; Playwright opens it twice (with and without `data-theme="light"`).
 
 ---
 
