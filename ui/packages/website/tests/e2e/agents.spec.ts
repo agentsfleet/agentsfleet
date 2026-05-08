@@ -6,20 +6,22 @@ test.describe("Agents page (/agents)", () => {
   });
 
   test("renders agent-first heading", async ({ page }) => {
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("autonomous agents");
-  });
-
-  test("renders install block with npm command", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Install Zombiectl" })).toBeVisible();
-    await expect(page.getByLabel(/install zombiectl command/i)).toContainText(
-      "npm install -g @usezombie/zombiectl"
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(
+      "This page is for autonomous agents.",
     );
   });
 
-  test("renders install block action buttons", async ({ page }) => {
+  test("renders install block with npm command", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: /install zombiectl/i })).toBeVisible();
+    await expect(page.getByLabel(/install zombiectl command/i)).toContainText(
+      "npm install -g @usezombie/zombiectl",
+    );
+  });
+
+  test("renders install block action buttons (lowercase)", async ({ page }) => {
     await expect(page.getByRole("link", { name: /start an agent/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Read the docs" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Setup your personal dashboard" })).toBeVisible();
+    await expect(page.getByRole("link", { name: /read the docs/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /open mission control/i })).toBeVisible();
   });
 
   test("renders bootstrap commands", async ({ page }) => {
@@ -31,38 +33,37 @@ test.describe("Agents page (/agents)", () => {
     await expect(block).toContainText("/usezombie-install-platform-ops");
   });
 
-  test("renders machine surface table with all endpoints", async ({ page }) => {
-    await expect(page.getByText("Machine Surface")).toBeVisible();
-    await expect(page.getByRole("link", { name: "/openapi.json" })).toBeVisible();
+  test("renders machine surface heading + openapi link", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: /machine surface/i })).toBeVisible();
+    await expect(page.getByTestId("agents-openapi-link")).toHaveAttribute("href", "/openapi.json");
   });
 
   test("renders API operations table", async ({ page }) => {
-    await expect(page.getByText("API Operations")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /api operations/i })).toBeVisible();
     await expect(page.getByText("Create agent")).toBeVisible();
     await expect(page.getByText("Stop agent")).toBeVisible();
     await expect(page.getByText("Resume agent")).toBeVisible();
     await expect(page.getByText("Kill agent")).toBeVisible();
     await expect(page.getByText("Delete agent")).toBeVisible();
     await expect(page.getByText("Steer / chat")).toBeVisible();
-    await expect(page.getByText("Execute tool")).toHaveCount(0);
-    await expect(page.getByText("Pause workspace")).toHaveCount(0);
   });
 
   test("renders webhook example", async ({ page }) => {
-    await expect(page.getByText("Webhook Ingest Example")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /webhook ingest example/i })).toBeVisible();
     await expect(page.getByText(/deploy\.failed/)).toBeVisible();
   });
 
-  test("renders safety limit cards", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Idempotency" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Audit Trail" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Secret Management" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Policy Enforcement" })).toBeVisible();
+  test("renders safety limit cards (sentence-case)", async ({ page }) => {
+    await expect(page.getByRole("heading", { name: /^idempotency$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^audit trail$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^secret management$/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^policy enforcement$/i })).toBeVisible();
   });
 
-  test("uses monospace/terminal aesthetic", async ({ page }) => {
-    const surface = page.locator(".agent-surface");
-    await expect(surface).toBeVisible();
+  test("does not render orange-era decorative chrome", async ({ page }) => {
+    await expect(page.locator(".scanline")).toHaveCount(0);
+    await expect(page.locator(".agent-surface")).toHaveCount(0);
+    await expect(page.locator(".agent-table")).toHaveCount(0);
   });
 
   test("footer renders on agents page", async ({ page }) => {

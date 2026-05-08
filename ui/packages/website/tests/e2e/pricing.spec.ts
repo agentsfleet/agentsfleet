@@ -6,7 +6,9 @@ test.describe("Pricing page", () => {
   });
 
   test("renders pricing heading", async ({ page }) => {
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("Start free. Upgrade when you need stronger control.");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(
+      "Start free. Upgrade when you need stronger control.",
+    );
   });
 
   test("renders current pricing tiers", async ({ page }) => {
@@ -14,9 +16,11 @@ test.describe("Pricing page", () => {
     await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
   });
 
-  test("pricing page highlights the direct-upgrade tier", async ({ page }) => {
-    await expect(page.getByText("Upgrade when ready")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Scale", exact: true, level: 2 })).toBeVisible();
+  test("highlights the upgrade tier with a pulse-bordered card", async ({ page }) => {
+    await expect(page.getByText(/^upgrade when ready$/)).toBeVisible();
+    const scaleCard = page.getByTestId("pricing-card-scale");
+    await expect(scaleCard).toHaveAttribute("data-featured", "true");
+    await expect(scaleCard).toHaveClass(/border-pulse/);
   });
 
   test("Hobby tier lists no-expiry credit", async ({ page }) => {
@@ -51,15 +55,17 @@ test.describe("Pricing page", () => {
     await expect(page.getByTestId("faq-answer-0")).not.toBeVisible();
   });
 
-  test("Start free CTA links to mission control", async ({ page }) => {
+  test("Hobby start CTA links to mission control", async ({ page }) => {
     const cta = page.getByRole("link", { name: /start free/i }).first();
     await expect(cta).toHaveAttribute("href", "https://app.dev.usezombie.com");
   });
 
-  test("paid tier exposes an app upgrade action", async ({ page }) => {
-    const cta = page.getByRole("link", { name: "Upgrade in app" });
+  test("Scale tier exposes an app upgrade action", async ({ page }) => {
+    const cta = page.getByRole("link", { name: /upgrade in app/i });
     await expect(cta).toBeVisible();
-    await expect(page.getByText(/operator-visible upgrade path after free credit exhaustion/i)).toBeVisible();
+    await expect(
+      page.getByText(/operator-visible upgrade path after free credit exhaustion/i),
+    ).toBeVisible();
   });
 
   test("footer renders on pricing page", async ({ page }) => {
