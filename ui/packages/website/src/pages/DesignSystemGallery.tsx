@@ -192,7 +192,7 @@ export default function DesignSystemGallery() {
       <Section>
         <h2>Dialog</h2>
         <Dialog>
-          <DialogTrigger data-testid="dialog-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+          <DialogTrigger data-testid="dialog-trigger" className="border border-border rounded-md px-4 py-2 text-sm">
             Open dialog
           </DialogTrigger>
           <DialogContent data-testid="dialog-content">
@@ -213,7 +213,7 @@ export default function DesignSystemGallery() {
       <Section>
         <h2>DropdownMenu</h2>
         <DropdownMenu>
-          <DropdownMenuTrigger data-testid="dropdown-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+          <DropdownMenuTrigger data-testid="dropdown-trigger" className="border border-border rounded-md px-4 py-2 text-sm">
             Open menu
           </DropdownMenuTrigger>
           <DropdownMenuContent data-testid="dropdown-content">
@@ -231,7 +231,7 @@ export default function DesignSystemGallery() {
         <h2>Tooltip</h2>
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger data-testid="tooltip-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+            <TooltipTrigger data-testid="tooltip-trigger" className="border border-border rounded-md px-4 py-2 text-sm">
               Hover me
             </TooltipTrigger>
             <TooltipContent data-testid="tooltip-content">Ship it</TooltipContent>
