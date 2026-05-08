@@ -18,30 +18,6 @@
  * jsdelivr CDN. The shared --z-font-mono token in tokens.css references
  * "Geist Mono Variable" which the fontsource package provides. */
 
-/* ── Legacy aliases ──
- * The website's pre-W1 styles still reference --neon-*, --terminal-green,
- * --glow-*, etc. Those names are not part of the new Layer 0 (tokens.css)
- * so they're kept here as page-local aliases. The four names that DO
- * collide with new tokens (--surface-1, --text-muted, --font-sans,
- * --font-mono) were removed in M64_002 W1 — re-defining them here
- * shadowed the design-system values and broke bg-card / text-muted-foreground
- * rendering inside Dialog / DropdownMenu / Tooltip. W2 will rip out the
- * remaining --z-*-dependent rules in this file. */
-:root {
-  --bg-0: var(--z-bg-0);
-  --bg-1: var(--z-bg-1);
-  --surface-0: var(--z-surface-0);
-  --text-primary: var(--z-text-primary);
-  --neon-orange: var(--z-orange);
-  --neon-orange-bright: var(--z-orange-bright);
-  --neon-amber: var(--z-amber);
-  --neon-cyan: var(--z-cyan);
-  --terminal-green: var(--z-green);
-  --border-subtle: var(--z-border);
-  --glow-orange: var(--z-glow-orange);
-  --glow-strong: var(--z-glow-strong);
-}
-
 * {
   box-sizing: border-box;
 }
