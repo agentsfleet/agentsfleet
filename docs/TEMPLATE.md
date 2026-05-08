@@ -1,1 +1,1 @@
-../../dotfiles/docs/TEMPLATE.md
+/Users/kishore/Projects/dotfiles/docs/TEMPLATE.md
