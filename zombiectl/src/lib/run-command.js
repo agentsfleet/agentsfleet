@@ -74,8 +74,12 @@ function renderPlain(opts, code, message) {
     printJson(stderr, { error: { code, message } });
     return;
   }
+  // Mirror cli.js's outer safety net + renderApi: human mode keeps
+  // the `error: ` prefix so operators see the visual signal in
+  // --no-color and CI environments. Coloring (when ui is present)
+  // wraps the full prefixed line.
   const colorize = ui && typeof ui.err === "function" ? ui.err : (s) => s;
-  writeLine(stderr, colorize(message));
+  writeLine(stderr, colorize(`error: ${message}`));
 }
 
 export async function runCommand(opts) {

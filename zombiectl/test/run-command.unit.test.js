@@ -115,7 +115,7 @@ test("runCommand: TypeError('fetch failed') → API_UNREACHABLE, exit 1", async 
     deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
   });
   assert.equal(code, 1);
-  assert.match(w.lines[0], /cannot reach usezombie API at http:\/\/api\.example\.com/);
+  assert.match(w.lines[0], /^error: cannot reach usezombie API at http:\/\/api\.example\.com/);
   assert.equal(events.at(-1).props.error_code, "API_UNREACHABLE");
 });
 
@@ -129,7 +129,7 @@ test("runCommand: unknown throw → UNEXPECTED, exit 1, no double-throw", async 
     deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
   });
   assert.equal(code, 1);
-  assert.equal(w.lines[0], "kaboom");
+  assert.equal(w.lines[0], "error: kaboom");
   assert.equal(events.at(-1).props.error_code, "UNEXPECTED");
 });
 

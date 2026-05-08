@@ -219,7 +219,6 @@ export async function runCli(argv, io = {}) {
           analyticsClient,
           distinctId,
           trackCliEvent: cliAnalytics.trackCliEvent,
-          writeError,
           printJson,
           writeLine,
           ui,
