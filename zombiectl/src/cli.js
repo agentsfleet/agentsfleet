@@ -4,6 +4,7 @@ import {
   drainCliAnalyticsEvents,
   getCliAnalyticsContext,
 } from "./lib/analytics.js";
+import { runCommand } from "./lib/run-command.js";
 import { findRoute } from "./program/routes.js";
 import { registerProgramCommands } from "./program/command-registry.js";
 import { commandAgent as commandAgentModule } from "./commands/agent.js";
@@ -206,25 +207,28 @@ export async function runCli(argv, io = {}) {
 
   try {
     if (route && handlers[route.key]) {
-      cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_command_started", {
-        command: route.key,
-        json_mode: String(ctx.jsonMode),
+      const entry = handlers[route.key];
+      const exitCode = await runCommand({
+        name: entry.name,
+        errorMap: entry.errorMap,
+        ctx,
+        deps: {
+          analyticsClient,
+          distinctId,
+          trackCliEvent: cliAnalytics.trackCliEvent,
+          writeError,
+          printJson,
+          writeLine,
+          ui,
+        },
+        handler: () => entry.handler(args),
       });
 
-      const exitCode = await handlers[route.key](args);
       const analyticsContext = getCliAnalyticsContext(ctx);
       let eventDistinctId = distinctId;
       if (exitCode === 0 && route.key === "login") {
         const latestCreds = await loadCredentials();
         eventDistinctId = extractDistinctIdFromToken(latestCreds.token) || distinctId;
-      }
-      cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_command_finished", {
-        command: route.key,
-        exit_code: String(exitCode),
-        ...analyticsContext,
-      });
-
-      if (exitCode === 0 && route.key === "login") {
         cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
           command: route.key,
           ...analyticsContext,
@@ -241,13 +245,6 @@ export async function runCli(argv, io = {}) {
           command: route.key,
           ...analyticsContext,
           ...queuedEvent.properties,
-        });
-      }
-      if (exitCode !== 0) {
-        cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-          command: route.key,
-          exit_code: String(exitCode),
-          ...analyticsContext,
         });
       }
       return exitCode;

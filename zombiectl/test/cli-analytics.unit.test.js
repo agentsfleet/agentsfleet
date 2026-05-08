@@ -119,15 +119,15 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
       ]);
       assert.deepEqual(events[0], {
         client: analyticsClient,
-        distinctId: null,
+        distinctId: "anonymous",
         event: "cli_command_started",
         properties: { command: "login", json_mode: "false" },
       });
       assert.deepEqual(events[1], {
         client: analyticsClient,
-        distinctId: null,
+        distinctId: "anonymous",
         event: "cli_command_finished",
-        properties: { command: "login", exit_code: "0", session_id: "sess_analytics" },
+        properties: { command: "login", json_mode: "false", exit_code: "0", session_id: "sess_analytics" },
       });
       assert.deepEqual(events[2], {
         client: analyticsClient,
@@ -199,6 +199,7 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         event: "cli_command_finished",
         properties: {
           command: "workspace",
+          json_mode: "false",
           exit_code: "0",
           workspace_id: "ws_123456789abc",
         },

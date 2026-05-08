@@ -14,6 +14,17 @@ function captureEvents() {
   return { events, trackCliEvent };
 }
 
+function captureWriter() {
+  const lines = [];
+  const jsonPayloads = [];
+  const writeLine = (_stream, line = "") => lines.push(line);
+  const printJson = (_stream, value) => jsonPayloads.push(value);
+  const ui = { err: (s) => s };
+  return { lines, jsonPayloads, writeLine, printJson, ui };
+}
+
+const STDERR_STUB = { write: () => {} };
+
 test("runCommand: success path emits started → finished, returns handler exit code", async () => {
   const { events, trackCliEvent } = captureEvents();
   const code = await runCommand({
@@ -41,69 +52,80 @@ test("runCommand: handler returning non-number normalizes to exit 0", async () =
   assert.equal(events.at(-1).event, "cli_command_finished");
 });
 
-test("runCommand: ApiError prints, emits cli_error, returns 1", async () => {
+test("runCommand: ApiError prints `error: <code> <message>` + request_id, emits cli_error, returns 1", async () => {
   const { events, trackCliEvent } = captureEvents();
-  let written = null;
+  const w = captureWriter();
   const code = await runCommand({
     name: "boom",
     handler: async () => { throw new ApiError("nope", { status: 400, code: "UZ-VAL-001", requestId: "r1" }); },
-    ctx: {},
-    deps: { trackCliEvent, writeError: (info) => { written = info; } },
+    ctx: { stderr: STDERR_STUB, jsonMode: false },
+    deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
   });
   assert.equal(code, 1);
   const last = events.at(-1);
   assert.equal(last.event, "cli_error");
   assert.equal(last.props.error_code, "UZ-VAL-001");
-  assert.equal(written.code, "UZ-VAL-001");
-  assert.equal(written.message, "nope");
-  assert.equal(written.requestId, "r1");
+  assert.deepEqual(w.lines, ["error: UZ-VAL-001 nope", "request_id: r1"]);
 });
 
-test("runCommand: errorMap remaps ApiError code/message in print + analytics", async () => {
+test("runCommand: ApiError in jsonMode prints structured envelope", async () => {
+  const { trackCliEvent } = captureEvents();
+  const w = captureWriter();
+  const code = await runCommand({
+    name: "boom",
+    handler: async () => { throw new ApiError("nope", { status: 404, code: "UZ-WS-404", requestId: "r2" }); },
+    ctx: { stderr: STDERR_STUB, jsonMode: true },
+    deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
+  });
+  assert.equal(code, 1);
+  assert.equal(w.lines.length, 0);
+  assert.deepEqual(w.jsonPayloads, [{
+    error: { code: "UZ-WS-404", message: "nope", status: 404, request_id: "r2" },
+  }]);
+});
+
+test("runCommand: errorMap remaps ApiError code/message in render + analytics", async () => {
   const { events, trackCliEvent } = captureEvents();
-  let written = null;
+  const w = captureWriter();
   const code = await runCommand({
     name: "boom",
     handler: async () => { throw new ApiError("raw msg", { status: 400, code: "UZ-VAL-001" }); },
     errorMap: {
       "UZ-VAL-001": { code: "WORKSPACE_NAME_INVALID", message: "Pick a different name." },
     },
-    ctx: {},
-    deps: { trackCliEvent, writeError: (info) => { written = info; } },
+    ctx: { stderr: STDERR_STUB, jsonMode: false },
+    deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
   });
   assert.equal(code, 1);
-  assert.equal(written.code, "WORKSPACE_NAME_INVALID");
-  assert.equal(written.message, "Pick a different name.");
+  assert.equal(w.lines[0], "error: WORKSPACE_NAME_INVALID Pick a different name.");
   assert.equal(events.at(-1).props.error_code, "WORKSPACE_NAME_INVALID");
 });
 
 test("runCommand: TypeError('fetch failed') → API_UNREACHABLE, exit 1", async () => {
   const { events, trackCliEvent } = captureEvents();
-  let written = null;
+  const w = captureWriter();
   const code = await runCommand({
     name: "doctor",
     handler: async () => { throw new TypeError("fetch failed"); },
-    ctx: { apiUrl: "http://api.example.com" },
-    deps: { trackCliEvent, writeError: (info) => { written = info; } },
+    ctx: { stderr: STDERR_STUB, jsonMode: false, apiUrl: "http://api.example.com" },
+    deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
   });
   assert.equal(code, 1);
-  assert.equal(written.code, "API_UNREACHABLE");
-  assert.match(written.message, /cannot reach usezombie API at http:\/\/api\.example\.com/);
+  assert.match(w.lines[0], /cannot reach usezombie API at http:\/\/api\.example\.com/);
   assert.equal(events.at(-1).props.error_code, "API_UNREACHABLE");
 });
 
 test("runCommand: unknown throw → UNEXPECTED, exit 1, no double-throw", async () => {
   const { events, trackCliEvent } = captureEvents();
-  let written = null;
+  const w = captureWriter();
   const code = await runCommand({
     name: "kaboom",
     handler: async () => { throw new Error("kaboom"); },
-    ctx: {},
-    deps: { trackCliEvent, writeError: (info) => { written = info; } },
+    ctx: { stderr: STDERR_STUB, jsonMode: false },
+    deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
   });
   assert.equal(code, 1);
-  assert.equal(written.code, "UNEXPECTED");
-  assert.equal(written.message, "kaboom");
+  assert.equal(w.lines[0], "kaboom");
   assert.equal(events.at(-1).props.error_code, "UNEXPECTED");
 });
 

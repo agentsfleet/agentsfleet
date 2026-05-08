@@ -1,13 +1,13 @@
 // run-command.js — generic per-command boundary for zombiectl handlers.
-// Owns the catch block currently inlined in cli.js's top-level: ApiError
-// formatting, fetch-failed → API_UNREACHABLE, unknown → UNEXPECTED, and
-// the cli_command_started / cli_command_finished / cli_error analytics
-// triplet. Per spec M63_004 §3 (docs/v2/active/M63_004_P1_CLI_OBS_RESILIENCE.md).
+// Owns ApiError formatting (matching printApiError's
+// `error: <code> <message>` + `request_id:` shape), fetch-failed →
+// API_UNREACHABLE, unknown → UNEXPECTED, and the
+// cli_command_started / cli_command_finished / cli_error analytics
+// triplet.
 //
-// Handlers opt in by wrapping their body in runCommand({ ... }). The
-// existing cli.js top-level catch stays in place as the safety net for
-// any command that hasn't migrated yet — the wrapper is additive, not a
-// replacement.
+// Rendering is self-contained: the wrapper writes directly to
+// ctx.stderr via deps.printJson / deps.writeLine / deps.ui, so callers
+// don't need to pre-wire io.js's positional writeError.
 
 import { ApiError } from "./http.js";
 import {
@@ -28,12 +28,54 @@ function isFetchFailed(err) {
 
 function resolveRetryConfig(retry) {
   // retry: undefined → caller (apiRequestWithRetry) picks the default.
-  // retry: true → same as undefined (defer to apiRequestWithRetry default).
+  // retry: true → same as undefined.
   // retry: false → collapse to 1 attempt for the handler's scope.
   // retry: { maxAttempts: N } → propagate verbatim.
   if (retry === undefined || retry === true) return null;
   if (retry === false) return { maxAttempts: 1 };
   return retry;
+}
+
+function emitCliError(opts, errorCode) {
+  if (!opts.instrument) return;
+  opts.trackEvent(opts.analyticsClient, opts.distinctId, "cli_error", {
+    ...opts.buildProps(),
+    error_code: errorCode,
+    exit_code: "1",
+  });
+}
+
+function renderApi(opts, code, message, err) {
+  const { handlerCtx, printJson, writeLine } = opts;
+  const stderr = handlerCtx.stderr;
+  if (!stderr || typeof writeLine !== "function") return;
+  if (handlerCtx.jsonMode) {
+    if (typeof printJson !== "function") return;
+    printJson(stderr, {
+      error: {
+        code,
+        message,
+        status: err.status ?? null,
+        request_id: err.requestId ?? null,
+      },
+    });
+    return;
+  }
+  writeLine(stderr, `error: ${code} ${message}`);
+  if (err.requestId) writeLine(stderr, `request_id: ${err.requestId}`);
+}
+
+function renderPlain(opts, code, message) {
+  const { handlerCtx, printJson, writeLine, ui } = opts;
+  const stderr = handlerCtx.stderr;
+  if (!stderr || typeof writeLine !== "function") return;
+  if (handlerCtx.jsonMode) {
+    if (typeof printJson !== "function") return;
+    printJson(stderr, { error: { code, message } });
+    return;
+  }
+  const colorize = ui && typeof ui.err === "function" ? ui.err : (s) => s;
+  writeLine(stderr, colorize(message));
 }
 
 export async function runCommand(opts) {
@@ -53,38 +95,53 @@ export async function runCommand(opts) {
     throw new TypeError("runCommand: name must be a non-empty string");
   }
 
-  // Build a per-invocation context with the retry config carried as a
-  // single field. request() reads ctx.retryConfig and forwards it to
-  // apiRequestWithRetry; signatures of apiRequest/apiRequestWithRetry
-  // stay unchanged. ZOMBIE_NO_RETRY=1 still wins inside the HTTP layer.
-  const handlerCtx = {
-    ...(ctx || {}),
-    retryConfig: resolveRetryConfig(retry),
-  };
+  // Mutate the caller's ctx in place rather than copying. Handlers
+  // already share this object via closure (see cli.js's registry
+  // lambdas) — copying would mean retryConfig propagation and
+  // setCliAnalyticsContext mutations during the handler don't round-
+  // trip into the wrapper's post-handler events.
+  const handlerCtx = ctx ?? {};
+  handlerCtx.retryConfig = resolveRetryConfig(retry);
 
   const analyticsClient = deps.analyticsClient ?? handlerCtx.analyticsClient ?? null;
   const distinctId = deps.distinctId ?? handlerCtx.distinctId ?? "anonymous";
   const trackEvent = deps.trackCliEvent ?? trackCliEvent;
-  const writeError = deps.writeError;
   const printJson = deps.printJson;
   const writeLine = deps.writeLine;
   const ui = deps.ui;
 
-  const baseProps = {
+  // Re-evaluated for every event so handlers that call
+  // setCliAnalyticsContext during execution have their additions
+  // visible on cli_command_finished and cli_error (matching the
+  // pre-migration cli.js behavior of spreading analyticsContext
+  // post-handler).
+  const buildProps = () => ({
     command: name,
     json_mode: String(handlerCtx.jsonMode ?? false),
     ...getCliAnalyticsContext(handlerCtx),
+  });
+
+  const renderOpts = {
+    handlerCtx,
+    printJson,
+    writeLine,
+    ui,
+    instrument,
+    trackEvent,
+    analyticsClient,
+    distinctId,
+    buildProps,
   };
 
   if (instrument) {
-    trackEvent(analyticsClient, distinctId, "cli_command_started", baseProps);
+    trackEvent(analyticsClient, distinctId, "cli_command_started", buildProps());
   }
 
   try {
     const exitCode = await handler(handlerCtx);
     if (instrument) {
       trackEvent(analyticsClient, distinctId, "cli_command_finished", {
-        ...baseProps,
+        ...buildProps(),
         exit_code: String(exitCode ?? 0),
       });
     }
@@ -94,65 +151,21 @@ export async function runCommand(opts) {
       const remap = errorMap[err.code];
       const finalCode = remap?.code ?? err.code ?? "API_ERROR";
       const finalMessage = remap?.message ?? err.message;
-      if (instrument) {
-        trackEvent(analyticsClient, distinctId, "cli_error", {
-          ...baseProps,
-          error_code: finalCode,
-          exit_code: "1",
-        });
-      }
-      if (typeof writeError === "function") {
-        writeError({
-          ctx: handlerCtx,
-          code: finalCode,
-          message: finalMessage,
-          requestId: err.requestId,
-          status: err.status,
-          deps: { printJson, writeLine, ui },
-        });
-      }
+      emitCliError(renderOpts, finalCode);
+      renderApi(renderOpts, finalCode, finalMessage, err);
       return 1;
     }
 
     if (isFetchFailed(err)) {
-      if (instrument) {
-        trackEvent(analyticsClient, distinctId, "cli_error", {
-          ...baseProps,
-          error_code: API_UNREACHABLE_CODE,
-          exit_code: "1",
-        });
-      }
-      if (typeof writeError === "function") {
-        writeError({
-          ctx: handlerCtx,
-          code: API_UNREACHABLE_CODE,
-          message: `cannot reach usezombie API at ${handlerCtx.apiUrl}`,
-          deps: { printJson, writeLine, ui },
-        });
-      }
+      const message = `cannot reach usezombie API at ${handlerCtx.apiUrl}`;
+      emitCliError(renderOpts, API_UNREACHABLE_CODE);
+      renderPlain(renderOpts, API_UNREACHABLE_CODE, message);
       return 1;
     }
 
-    // Unknown — propagate UNEXPECTED so cli.js's outer safety net does
-    // not double-report. We still emit the analytics event before
-    // re-throwing so the outer catch can log without duplicating.
-    if (instrument) {
-      trackEvent(analyticsClient, distinctId, "cli_error", {
-        ...baseProps,
-        error_code: UNEXPECTED_CODE,
-        exit_code: "1",
-      });
-    }
-    if (typeof writeError === "function") {
-      writeError({
-        ctx: handlerCtx,
-        code: UNEXPECTED_CODE,
-        message: String(err?.message ?? err),
-        deps: { printJson, writeLine, ui },
-      });
-      return 1;
-    }
-    throw err;
+    emitCliError(renderOpts, UNEXPECTED_CODE);
+    renderPlain(renderOpts, UNEXPECTED_CODE, String(err?.message ?? err));
+    return 1;
   }
 }
 

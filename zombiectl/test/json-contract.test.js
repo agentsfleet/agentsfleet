@@ -92,7 +92,10 @@ describe("M30 §1 — route inventory matches command registry", () => {
       zombieCredential: sentinel,
     });
     for (const { key } of expectedRoutes) {
-      expect(handlers[key]).toBe(sentinel);
+      expect(handlers[key]).toBeDefined();
+      expect(handlers[key].name).toBe(key);
+      expect(handlers[key].handler).toBe(sentinel);
+      expect(handlers[key].errorMap).toEqual({});
     }
   });
 
