@@ -10,14 +10,27 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { runCli } from "../src/cli.js";
+import { runCli, VERSION } from "../src/cli.js";
 import { makeBufferStream } from "./helpers.js";
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const GOLDEN_DIR = join(TEST_DIR, "golden");
 
+// Pin the version that lived in the fixture when it was captured. The
+// fixture itself is rewritten in lockstep with VERSION via the regenerate
+// recipe below; the substitution here lets `make sync-version` ship a
+// VERSION bump without immediately breaking this test on the same diff.
+const FIXTURE_VERSION = "0.34.0";
+
 function golden(name) {
-  return readFileSync(join(GOLDEN_DIR, name), "utf8");
+  const raw = readFileSync(join(GOLDEN_DIR, name), "utf8");
+  // Substitute `zombiectl vX.Y.Z` with the current VERSION so a
+  // version-only bump (no rendering changes) doesn't break the byte-exact
+  // assertion. Anchored to the literal banner prefix so unrelated text
+  // that happens to contain "v0.34.0" elsewhere is left alone. If
+  // FIXTURE_VERSION drifts from what's actually in the fixture file, the
+  // regeneration recipe at the bottom catches it.
+  return raw.replaceAll(`zombiectl v${FIXTURE_VERSION}`, `zombiectl v${VERSION}`);
 }
 
 describe("golden — --version under NO_COLOR is byte-exact", () => {
@@ -65,5 +78,8 @@ describe("golden — --help under NO_COLOR is byte-exact", () => {
 });
 
 // To regenerate: NO_COLOR=1 node zombiectl/bin/zombiectl.js --help \
-//   > zombiectl/test/golden/help-no-color.txt
-// then verify the diff is intentional + commit.
+//   > zombiectl/test/golden/help-no-color.txt && \
+//   NO_COLOR=1 node zombiectl/bin/zombiectl.js --version \
+//   > zombiectl/test/golden/version-no-color.txt
+// Then bump FIXTURE_VERSION above to match the current VERSION,
+// verify the diff is intentional, and commit.
