@@ -49,12 +49,15 @@
   --r-md: 4px;
   --r-lg: 6px;
 
-  /* ── Typography ── */
-  --font-mono: "Commit Mono", ui-monospace, "Cascadia Code", monospace;
-  --font-sans: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
+  /* ── Typography ──
+   * Layer 0 names use --ff-* (font-family) so they don't collide with
+   * Tailwind's --font-* theme namespace; theme.css forwards them via
+   * @theme inline { --font-{sans,mono}: var(--ff-{sans,mono}); }. */
+  --ff-mono: "Commit Mono", ui-monospace, "Cascadia Code", monospace;
+  --ff-sans: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
 
-  /* Type scale (px in /* */ comments). Tailwind utilities (text-display-xl
-   * etc.) bridge to these in theme.css. */
+  /* Type scale (px values in trailing comments). Tailwind utilities
+   * `text-display-xl` etc. bridge through theme.css @theme inline. */
   --fs-display-xl: 4rem;        /* 64 — marketing hero only */
   --fs-display-lg: 2.5rem;      /* 40 — section heads */
   --fs-display-md: 1.75rem;     /* 28 — stat values */
@@ -73,20 +76,24 @@
   --tracking-eyebrow: 0.08em;
   --tracking-label: 0.08em;
 
-  /* ── Spacing (4px base — engineers want density) ── */
-  --spacing-xs: 0.125rem;       /* 2 */
-  --spacing-sm: 0.25rem;        /* 4 — base unit */
-  --spacing-md: 0.5rem;         /* 8 */
-  --spacing-lg: 0.75rem;        /* 12 */
-  --spacing-xl: 1rem;           /* 16 */
-  --spacing-2xl: 1.5rem;        /* 24 */
-  --spacing-3xl: 2rem;          /* 32 */
-  --spacing-4xl: 3rem;          /* 48 */
-  --spacing-5xl: 4rem;          /* 64 */
-  --spacing-6xl: 6rem;          /* 96 — section vertical rhythm */
+  /* ── Spacing (4px base — engineers want density) ──
+   * Layer 0 names use --sp-* so they don't collide with Tailwind's
+   * --spacing-* theme namespace; theme.css forwards them via @theme
+   * inline { --spacing-{xs,sm,…}: var(--sp-{xs,sm,…}); }. */
+  --sp-xs: 0.125rem;       /* 2 */
+  --sp-sm: 0.25rem;        /* 4 — base unit */
+  --sp-md: 0.5rem;         /* 8 */
+  --sp-lg: 0.75rem;        /* 12 */
+  --sp-xl: 1rem;           /* 16 */
+  --sp-2xl: 1.5rem;        /* 24 */
+  --sp-3xl: 2rem;          /* 32 */
+  --sp-4xl: 3rem;          /* 48 */
+  --sp-5xl: 4rem;          /* 64 */
+  --sp-6xl: 6rem;          /* 96 — section vertical rhythm */
 
-  /* ── Motion (snap; no overshoot) ── */
-  --ease-snap: 50ms ease-out;
+  /* ── Motion (snap; no overshoot) ──
+   * --easing-snap so it doesn't collide with Tailwind's --ease-* theme. */
+  --easing-snap: 50ms ease-out;
 
   /* ── Layout ── */
   --max-width: 1280px;

@@ -125,24 +125,23 @@
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);
 
-  /* Fonts */
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-mono);
+  /* Fonts — forward Layer 0 --ff-* to Tailwind --font-* utilities. */
+  --font-sans: var(--ff-sans);
+  --font-mono: var(--ff-mono);
 
-  /* Spacing — Layer 0 tokens are already in the Tailwind-readable name
-   * shape (`--spacing-*`); re-export so `p-xs/sm/md/lg/xl/2xl/3xl/4xl/5xl/6xl`
-   * resolve through the inline theme. */
-  --spacing-xs: var(--spacing-xs);
-  --spacing-sm: var(--spacing-sm);
-  --spacing-md: var(--spacing-md);
-  --spacing-lg: var(--spacing-lg);
-  --spacing-xl: var(--spacing-xl);
-  --spacing-2xl: var(--spacing-2xl);
-  --spacing-3xl: var(--spacing-3xl);
-  --spacing-4xl: var(--spacing-4xl);
-  --spacing-5xl: var(--spacing-5xl);
-  --spacing-6xl: var(--spacing-6xl);
+  /* Spacing — forward Layer 0 --sp-* to Tailwind --spacing-* utilities
+   * (`p-xs / sm / md / lg / xl / 2xl / 3xl / 4xl / 5xl / 6xl`). */
+  --spacing-xs: var(--sp-xs);
+  --spacing-sm: var(--sp-sm);
+  --spacing-md: var(--sp-md);
+  --spacing-lg: var(--sp-lg);
+  --spacing-xl: var(--sp-xl);
+  --spacing-2xl: var(--sp-2xl);
+  --spacing-3xl: var(--sp-3xl);
+  --spacing-4xl: var(--sp-4xl);
+  --spacing-5xl: var(--sp-5xl);
+  --spacing-6xl: var(--sp-6xl);
 
-  /* Motion easing — `transition-timing-function` via `ease-snap`. */
-  --ease-snap: var(--ease-snap);
+  /* Motion easing — forward Layer 0 --easing-snap to Tailwind --ease-snap. */
+  --ease-snap: var(--easing-snap);
 }

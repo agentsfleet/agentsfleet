@@ -15,7 +15,7 @@ describe("Terminal", () => {
     const pre = container.querySelector("pre");
     expect(pre?.className).toContain("text-foreground");
     expect(pre?.className).toContain("border-border");
-    expect(pre?.className).toContain("bg-bg");
+    expect(pre?.className).toContain("bg-background");
     expect(pre?.className).toContain("font-mono");
   });
 

@@ -33,7 +33,7 @@ export default function Terminal({ label, green, copyable, children, className, 
       <pre
         className={cn(
           "m-0 overflow-auto rounded-md border px-xl py-lg text-mono font-mono",
-          "bg-bg",
+          "bg-background",
           green ? "border-success text-success" : "border-border text-foreground",
           copyable && "pr-[5.5rem]",
         )}
