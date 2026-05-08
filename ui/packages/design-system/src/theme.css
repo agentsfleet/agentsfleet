@@ -78,9 +78,12 @@
 
   /* Status — bare-name for `text-success`, `bg-warn`, `text-error`,
    * `text-info`, `text-evidence`. The spec uses --warn (not --warning);
-   * mirror in the utility name so prose and class strings agree. */
+   * mirror in the utility name so prose and class strings agree.
+   * `--color-warning` is also exposed (Tailwind convention) and
+   * resolves to the same Layer 0 token. */
   --color-success: var(--success);
   --color-warn: var(--warn);
+  --color-warning: var(--warn);
   --color-error: var(--error);
   --color-info: var(--info);
   --color-evidence: var(--evidence);

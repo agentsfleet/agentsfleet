@@ -11,14 +11,14 @@ import { cn } from "../utils";
 
 const cardVariants = cva(
   [
-    "relative rounded-lg border border-border bg-card p-6",
-    "transition-[border-color,box-shadow] duration-200 ease-out",
-    "hover:border-border-active hover:shadow-card",
+    "relative rounded-md border border-border bg-card p-2xl",
+    "transition-colors ease-snap",
+    "hover:border-border-strong",
   ].join(" "),
   {
     variants: {
       featured: {
-        true: "border-primary shadow-card",
+        true: "border-primary",
         false: "",
       },
     },
@@ -58,9 +58,9 @@ export function Card({
         <span
           aria-hidden="true"
           className={cn(
-            "absolute -top-2.5 left-6 rounded-full px-2.5 py-0.5",
-            "bg-[linear-gradient(120deg,var(--primary),var(--primary-bright))]",
-            "text-[0.7rem] font-bold uppercase tracking-wider text-primary-foreground",
+            "absolute -top-2.5 left-6 rounded-sm px-2 py-0.5",
+            "bg-primary text-primary-foreground",
+            "font-mono text-label font-medium uppercase tracking-label",
           )}
         >
           {badgeLabel ?? "Popular"}
@@ -77,7 +77,11 @@ export function CardHeader({ className, ref, ...props }: ComponentProps<"div">) 
 
 export function CardTitle({ className, ref, ...props }: ComponentProps<"div">) {
   return (
-    <div ref={ref} className={cn("font-semibold leading-none tracking-tight", className)} {...props} />
+    <div
+      ref={ref}
+      className={cn("font-mono font-medium text-heading leading-none", className)}
+      {...props}
+    />
   );
 }
 

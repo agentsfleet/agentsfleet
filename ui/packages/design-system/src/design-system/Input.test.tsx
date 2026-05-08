@@ -24,17 +24,18 @@ describe("Input", () => {
   it("applies base semantic utilities", () => {
     render(<Input data-testid="i" />);
     const cls = screen.getByTestId("i").className;
-    expect(cls).toContain("border-input");
-    expect(cls).toContain("bg-muted");
+    expect(cls).toContain("border-border");
+    expect(cls).toContain("bg-secondary");
     expect(cls).toContain("text-foreground");
-    expect(cls).toContain("rounded-lg");
+    expect(cls).toContain("rounded-md");
+    expect(cls).toContain("font-mono");
   });
 
   it("applies focus ring and disabled styles", () => {
     render(<Input data-testid="i" />);
     const cls = screen.getByTestId("i").className;
     expect(cls).toContain("focus:ring-ring");
-    expect(cls).toContain("focus:border-primary");
+    expect(cls).toContain("focus:border-border-strong");
     expect(cls).toContain("disabled:opacity-50");
   });
 
@@ -47,7 +48,7 @@ describe("Input", () => {
     render(<Input className="extra" data-testid="i" />);
     const cls = screen.getByTestId("i").className;
     expect(cls).toContain("extra");
-    expect(cls).toContain("rounded-lg");
+    expect(cls).toContain("rounded-md");
   });
 
   it("fires onChange handlers and supports controlled usage", () => {
@@ -73,6 +74,6 @@ describe("Input", () => {
     const html = renderToStaticMarkup(<Input placeholder="Email" />);
     expect(html).toMatch(/^<input /);
     expect(html).toContain('placeholder="Email"');
-    expect(html).toContain("bg-muted");
+    expect(html).toContain("bg-secondary");
   });
 });

@@ -11,11 +11,13 @@ describe("Button", () => {
     expect(btn).toHaveAttribute("type", "button");
   });
 
-  it("applies the default variant when no variant prop is passed", () => {
+  it("applies the default variant — flat pulse fill, no gradient", () => {
     render(<Button>Go</Button>);
     const btn = screen.getByRole("button");
+    expect(btn.className).toContain("bg-primary");
     expect(btn.className).toContain("text-primary-foreground");
-    expect(btn.className).toContain("linear-gradient");
+    expect(btn.className).not.toContain("linear-gradient");
+    expect(btn.className).not.toContain("rounded-full");
   });
 
   it("applies the destructive variant", () => {
@@ -26,7 +28,7 @@ describe("Button", () => {
   it("applies the outline variant", () => {
     render(<Button variant="outline">Outline</Button>);
     const cls = screen.getByRole("button").className;
-    expect(cls).toContain("border-border");
+    expect(cls).toContain("border-border-strong");
     expect(cls).toContain("bg-transparent");
   });
 
@@ -35,26 +37,42 @@ describe("Button", () => {
     expect(screen.getByRole("button").className).toContain("bg-secondary");
   });
 
-  it("applies the ghost variant", () => {
+  it("applies the ghost variant — muted text, transparent fill", () => {
     render(<Button variant="ghost">Ghost</Button>);
-    expect(screen.getByRole("button").className).toContain("bg-transparent");
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("bg-transparent");
+    expect(cls).toContain("text-muted-foreground");
   });
 
-  it("applies the link variant", () => {
+  it("applies the link variant — pulse text, underline-on-hover", () => {
     render(<Button variant="link">Link</Button>);
     const cls = screen.getByRole("button").className;
     expect(cls).toContain("underline-offset-4");
-    expect(cls).toContain("text-info");
+    expect(cls).toContain("text-pulse");
   });
 
-  it("applies the double-border variant", () => {
-    render(<Button variant="double-border">Double</Button>);
-    expect(screen.getByRole("button").className).toMatch(/border-2\s.*border-primary/);
+  it("applies the double-border variant — 2px primary outline, no shadow", () => {
+    render(<Button variant="double-border">Setup</Button>);
+    const cls = screen.getByRole("button").className;
+    expect(cls).toContain("border-2");
+    expect(cls).toContain("border-primary");
+    expect(cls).toContain("bg-transparent");
+    expect(cls).not.toContain("shadow-");
   });
 
-  it("default size has min-h-11", () => {
+  it("uses --r-md radius (no pill-radius on chrome)", () => {
     render(<Button>X</Button>);
-    expect(screen.getByRole("button").className).toContain("min-h-11");
+    expect(screen.getByRole("button").className).toContain("rounded-md");
+  });
+
+  it("uses font-mono on chrome", () => {
+    render(<Button>X</Button>);
+    expect(screen.getByRole("button").className).toContain("font-mono");
+  });
+
+  it("default size has h-10 (40px) per spec component principles", () => {
+    render(<Button>X</Button>);
+    expect(screen.getByRole("button").className).toContain("h-10");
   });
 
   it("sm size has h-8", () => {
@@ -67,11 +85,11 @@ describe("Button", () => {
     expect(screen.getByRole("button").className).toContain("h-12");
   });
 
-  it("icon size is square", () => {
+  it("icon size is 36px square (spec max for icon-only)", () => {
     render(<Button size="icon" aria-label="settings">⚙</Button>);
     const cls = screen.getByRole("button").className;
-    expect(cls).toContain("h-10");
-    expect(cls).toContain("w-10");
+    expect(cls).toContain("h-9");
+    expect(cls).toContain("w-9");
   });
 
   it("merges a custom className via cn", () => {
@@ -117,7 +135,7 @@ describe("Button", () => {
     expect(link.tagName).toBe("A");
     expect(link).toHaveAttribute("href", "/docs");
     expect(link.className).toContain("bg-transparent");
-    expect(link.className).toContain("border-border");
+    expect(link.className).toContain("text-muted-foreground");
   });
 
   it("asChild does NOT apply type=button to the cloned child", () => {
@@ -153,8 +171,9 @@ describe("buttonVariants / buttonClassName", () => {
   it("buttonClassName returns the full class string for a variant", () => {
     const cls = buttonClassName("default");
     expect(cls).toContain("text-primary-foreground");
-    expect(cls).toContain("rounded-full");
+    expect(cls).toContain("rounded-md");
     expect(cls).toContain("inline-flex");
+    expect(cls).toContain("font-mono");
   });
 
   it("buttonClassName defaults to the default variant + default size", () => {

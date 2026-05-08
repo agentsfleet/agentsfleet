@@ -40,7 +40,7 @@ describe("Badge", () => {
   it("always applies base pill shape + typography utilities", () => {
     const { container } = render(<Badge>X</Badge>);
     const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("rounded-full");
+    expect(cls).toContain("rounded-sm");
     expect(cls).toContain("font-mono");
     expect(cls).toContain("uppercase");
   });
@@ -49,7 +49,7 @@ describe("Badge", () => {
     const { container } = render(<Badge className="my-badge">X</Badge>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("my-badge");
-    expect(cls).toContain("rounded-full");
+    expect(cls).toContain("rounded-sm");
   });
 
   it("forwards arbitrary props (data-testid)", () => {
@@ -66,7 +66,7 @@ describe("Badge", () => {
   it("SSR renders <div> markup with badge classes", () => {
     const html = renderToStaticMarkup(<Badge variant="orange">SSR</Badge>);
     expect(html).toMatch(/^<div /);
-    expect(html).toContain("rounded-full");
+    expect(html).toContain("rounded-sm");
     expect(html).toContain("text-primary");
   });
 });

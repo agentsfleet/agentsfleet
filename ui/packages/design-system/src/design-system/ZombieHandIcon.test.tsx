@@ -50,8 +50,8 @@ describe("ZombieHandIcon", () => {
     expect(grad!.id).toMatch(/^z-hand-grad-/);
     const stops = grad!.querySelectorAll("stop");
     expect(stops.length).toBe(2);
-    expect(stops[0].getAttribute("stop-color")).toContain("--z-orange");
-    expect(stops[1].getAttribute("stop-color")).toContain("--z-cyan");
+    expect(stops[0].getAttribute("stop-color")).toContain("--pulse-dim");
+    expect(stops[1].getAttribute("stop-color")).toContain("--pulse");
     // 6 hand paths use the gradient: palm + 4 fingers + thumb.
     const filled = container.querySelectorAll(`path[fill="url(#${grad!.id})"]`);
     expect(filled.length).toBe(6);

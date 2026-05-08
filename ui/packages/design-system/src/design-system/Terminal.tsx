@@ -12,7 +12,9 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
 
 /*
  * Terminal — monospace code block with optional copy affordance.
- * Cyan text by default; green variant for "success"-flavored demos.
+ * Operational mono on the deepest surface; green variant for
+ * "success"-flavored demos. Per spec, --pulse is reserved for live
+ * signals — Terminal text uses --text (text-foreground), not --pulse.
  */
 export default function Terminal({ label, green, copyable, children, className, ...rest }: Props) {
   const id = useId();
@@ -30,11 +32,9 @@ export default function Terminal({ label, green, copyable, children, className, 
     <div className={cn("relative", className)} {...rest}>
       <pre
         className={cn(
-          "m-0 overflow-auto rounded-md border px-[1.1rem] py-[0.95rem] text-[0.88rem]",
-          "bg-surface-terminal",
-          green
-            ? "border-glow-green text-success"
-            : "border-border text-info",
+          "m-0 overflow-auto rounded-md border px-xl py-lg text-mono font-mono",
+          "bg-bg",
+          green ? "border-success text-success" : "border-border text-foreground",
           copyable && "pr-[5.5rem]",
         )}
         aria-label={label}
@@ -56,11 +56,11 @@ export default function Terminal({ label, green, copyable, children, className, 
           data-testid="copy-btn"
           className={cn(
             "absolute top-[0.6rem] right-[0.6rem] cursor-pointer whitespace-nowrap",
-            "rounded-sm border px-[0.7rem] py-1 font-mono text-xs bg-secondary",
-            "transition-[color,border-color] duration-150",
+            "rounded-sm border px-md py-1 font-mono text-label bg-secondary",
+            "transition-colors ease-snap",
             copied
               ? "border-success text-success"
-              : "border-border text-muted-foreground hover:border-primary hover:text-foreground",
+              : "border-border text-muted-foreground hover:border-border-strong hover:text-foreground",
           )}
         >
           {copied ? "✓ Copied" : "Copy"}

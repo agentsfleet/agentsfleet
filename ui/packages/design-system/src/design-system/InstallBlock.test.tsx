@@ -42,10 +42,12 @@ describe("InstallBlock", () => {
     renderBlock();
     const ghost = screen.getByRole("link", { name: "Read the docs" });
     expect(ghost.className).toContain("bg-transparent");
-    expect(ghost.className).toContain("border-border");
+    expect(ghost.className).toContain("text-muted-foreground");
 
     const double = screen.getByRole("link", { name: "Setup dashboard" });
-    expect(double.className).toMatch(/border-2\s.*border-primary/);
+    expect(double.className).toContain("border-2");
+    expect(double.className).toContain("border-primary");
+    expect(double.className).toContain("bg-transparent");
   });
 
   it("primary action uses the default primary variant", () => {
@@ -59,7 +61,7 @@ describe("InstallBlock", () => {
     const { container } = renderBlock();
     const root = container.firstElementChild as HTMLElement | null;
     expect(root?.className).toContain("border");
-    expect(root?.className).toContain("rounded-lg");
+    expect(root?.className).toContain("rounded-md");
   });
 
   it("renders actions in a flex-wrap container with one anchor per action", () => {

@@ -5,7 +5,7 @@ import { cn } from "../utils";
 type Action = {
   label: string;
   to: string;
-  variant?: "default" | "ghost" | "double-border";
+  variant?: "default" | "ghost" | "outline" | "double-border";
   external?: boolean;
 };
 
@@ -26,7 +26,7 @@ export default function InstallBlock({ title, command, actions, className }: Pro
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card p-3xl",
+        "rounded-md border border-border bg-card p-3xl",
         className,
       )}
     >

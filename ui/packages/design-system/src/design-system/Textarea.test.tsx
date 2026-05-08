@@ -13,26 +13,27 @@ describe("Textarea", () => {
   it("applies base semantic utilities matching Input", () => {
     render(<Textarea data-testid="t" />);
     const cls = screen.getByTestId("t").className;
-    expect(cls).toContain("border-input");
-    expect(cls).toContain("bg-muted");
+    expect(cls).toContain("border-border");
+    expect(cls).toContain("bg-secondary");
     expect(cls).toContain("text-foreground");
-    expect(cls).toContain("rounded-lg");
+    expect(cls).toContain("rounded-md");
     expect(cls).toContain("min-h-20");
+    expect(cls).toContain("font-mono");
   });
 
   it("applies focus ring and disabled styles", () => {
     render(<Textarea data-testid="t" />);
     const cls = screen.getByTestId("t").className;
     expect(cls).toContain("focus:ring-ring");
-    expect(cls).toContain("focus:border-primary");
+    expect(cls).toContain("focus:border-border-strong");
     expect(cls).toContain("disabled:opacity-50");
   });
 
   it("merges a custom className", () => {
-    render(<Textarea className="font-mono" data-testid="t" />);
+    render(<Textarea className="extra" data-testid="t" />);
     const cls = screen.getByTestId("t").className;
-    expect(cls).toContain("font-mono");
-    expect(cls).toContain("rounded-lg");
+    expect(cls).toContain("extra");
+    expect(cls).toContain("rounded-md");
   });
 
   it("forwards rows attribute", () => {
@@ -62,6 +63,6 @@ describe("Textarea", () => {
     const html = renderToStaticMarkup(<Textarea placeholder="Body" />);
     expect(html).toMatch(/^<textarea /);
     expect(html).toContain('placeholder="Body"');
-    expect(html).toContain("bg-muted");
+    expect(html).toContain("bg-secondary");
   });
 });

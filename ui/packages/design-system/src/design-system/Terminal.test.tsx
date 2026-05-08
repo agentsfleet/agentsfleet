@@ -10,11 +10,13 @@ describe("Terminal", () => {
     expect(pre?.textContent).toContain("echo hi");
   });
 
-  it("uses info-colored border/text by default", () => {
+  it("uses operational mono on the deepest surface by default", () => {
     const { container } = render(<Terminal>x</Terminal>);
     const pre = container.querySelector("pre");
-    expect(pre?.className).toContain("text-info");
+    expect(pre?.className).toContain("text-foreground");
     expect(pre?.className).toContain("border-border");
+    expect(pre?.className).toContain("bg-bg");
+    expect(pre?.className).toContain("font-mono");
   });
 
   it("switches to success colors with green=true", () => {

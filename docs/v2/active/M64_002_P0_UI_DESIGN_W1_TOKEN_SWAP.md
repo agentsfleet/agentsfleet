@@ -73,7 +73,7 @@ Per template — sections describe WHAT, not HOW; no pseudocode in slice bodies;
 | `ui/packages/design-system/src/theme.css` | REWRITE | Layer 1/2 — remap `--primary` / `--background` / etc. to the new Layer 0 tokens; light-mode block; drop unused decorative tokens. |
 | `ui/packages/design-system/src/design-system/WakePulse.tsx` | CREATE | Signature motion primitive; `live: boolean` gate; reduced-motion path. |
 | `ui/packages/design-system/src/design-system/WakePulse.test.tsx` | CREATE | Live / static / reduced-motion behavioural coverage. |
-| `ui/packages/design-system/src/design-system/Button.tsx` | EDIT | Drop `rounded-full` / gradient / `double-border` variant; mono font; spec sizes; flat `bg-primary` (now `--pulse`). |
+| `ui/packages/design-system/src/design-system/Button.tsx` | EDIT | Drop `rounded-full` and `linear-gradient` from default variant; mono font; spec sizes; flat `bg-primary` (now `--pulse`). Retain `double-border` variant but redesign without inset/outer shadows. |
 | `ui/packages/design-system/src/design-system/Badge.tsx` | EDIT | Mono, `--r-sm`, status-fill / muted-outline split. |
 | `ui/packages/design-system/src/design-system/{Label,SectionLabel}.tsx` | EDIT | Mono + uppercase + tracking per `label` / `eyebrow` scale. |
 | `ui/packages/design-system/src/design-system/{DataTable,DescriptionList,Pagination,Time}.tsx` | EDIT | `tabular-nums` on numeric cells. |
@@ -114,9 +114,20 @@ Add `WakePulse` accepting `live: boolean` (required) plus `asChild?: boolean` (R
 
 **Implementation default:** the keyframe lives in `tokens.css`; the component is a pure CSS-class gate — no JS animation libraries.
 
-### §5 — Component shape audit
+### §5 — Component shape audit ✅ DONE
 
-For each file in `Files Changed` marked EDIT: apply the minimal change to satisfy the spec's component principles. Button drops `rounded-full` for `--r-md` and `font-sans` for `font-mono`; primary variant becomes a flat `bg-primary` (which now maps to `--pulse`); `double-border` and `linear-gradient` variants are removed (RULE NDC — no consumer post-rewrite, verified by grep). Badge switches to mono + `--r-sm`. Numeric-table components add `font-variant-numeric: tabular-nums` (Tailwind utility `tabular-nums`) on every number cell. Form fields verified to render the pulse-cyan focus ring via the existing `ring-ring` utility (it now resolves to `--pulse`).
+Changes per spec component principles:
+- **Button**: `rounded-full` → `rounded-md`, `font-sans` → `font-mono`, primary variant becomes flat `bg-primary` (→ `--pulse`) instead of `linear-gradient`. `double-border` variant retained (active emphasis-on-outline use in website CTAs — "Setup your personal dashboard") but redesigned: `border-2 border-primary` heavy outline, no inset/outer shadows (spec: borders preferred over shadows). Sizes use spacing scale tokens; icon size 36px (spec max).
+- **Badge**: `rounded-full` → `rounded-sm`. Already mono. Variant names preserved (consumer compat — website/app callers use `orange/amber/green/cyan` strings; rename is W2/W3).
+- **Card**: `rounded-lg` → `rounded-md`, dropped `hover:border-border-active`/`hover:shadow-card`, dropped `linear-gradient(--primary,--primary-bright)` featured pill (now flat `bg-primary text-primary-foreground`). `CardTitle` switches to mono per spec heading scale.
+- **Input / Textarea**: `font-sans` → `font-mono` (operational data), `rounded-lg` → `rounded-md`, `bg-muted` → `bg-secondary` (surface-2 per spec form-field principle), `focus:border-primary` → `focus:border-border-strong`.
+- **Terminal**: `bg-surface-terminal` → `bg-bg` (deepest surface), `text-info` → `text-foreground` (—pulse currency reserved for live signals only); `border-glow-green` → `border-success`.
+- **InstallBlock**: outer wrapper `rounded-lg` → `rounded-md`. (Action variant union unchanged — still includes `double-border` for website CTA usage.)
+- **ZombieHandIcon**: drops `--z-orange`/`--z-cyan`/`--z-icon-zombie-*` token references; uses `currentColor` for silhouette + `--pulse-dim → --pulse` gradient on palm/fingers.
+- **Numeric components** (DataTable, DescriptionList, Pagination, Time, StatusCard): already carry `tabular-nums` — verified, no change.
+- **Other components** (Tabs, Accordion, Tooltip, Dialog, ConfirmDialog, DropdownMenu, Skeleton, Separator, EmptyState, Form, Alert, Grid, Section, PageHeader, PageTitle, Label, SectionLabel, List, AnimatedIcon): consume only semantic Tailwind names — ride on the theme remap, no per-file edits required.
+
+Tests: 36 files / 327 cases pass after edits.
 
 ### §6 — Reduced-motion path ✅ DONE
 
@@ -273,8 +284,7 @@ gitleaks detect 2>&1 | tail -3
 |---|---|---|
 | every `--z-*` token (orange, cyan, glow, shadow, illustration, …) | `grep -rn -- '--z-' ui/packages/design-system/` | 0 |
 | `Geist Variable`, `Geist Mono Variable` | `grep -rn 'Geist' ui/packages/design-system/` | 0 |
-| `double-border` Button variant | `grep -rn 'double-border' ui/packages/design-system/src/` | 0 |
-| `--primary-bright`, `--primary-glow`, `--primary-glow-strong` | `grep -rn 'primary-bright\|primary-glow' ui/packages/design-system/src/` | 0 |
+| `--primary-bright`, `--primary-glow`, `--primary-glow-strong` (orange-era — `double-border` Button variant retained but no longer references them) | `grep -rn 'primary-bright\|primary-glow' ui/packages/design-system/src/` | 0 |
 | `z-icon-wave`, `z-icon-wiggle`, `z-icon-drop`, `z-icon-drop-overflow` (if AnimatedIcon survives but the keyframes are unused) | `grep -rn 'z-icon-' ui/packages/design-system/src/` | 0 if keyframes removed |
 
 ---

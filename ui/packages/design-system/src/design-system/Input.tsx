@@ -15,12 +15,12 @@ export function Input({ className, type, ref, ...props }: InputProps) {
       ref={ref}
       type={type}
       className={cn(
-        "flex h-10 w-full rounded-lg border border-input bg-muted",
-        "px-3 py-2 text-sm text-foreground font-sans",
+        "flex h-10 w-full rounded-md border border-border bg-secondary",
+        "px-lg py-md text-body-sm text-foreground font-mono",
         "placeholder:text-muted-foreground",
-        "focus:outline-none focus:ring-1 focus:ring-ring focus:border-primary",
+        "focus:outline-none focus:ring-2 focus:ring-ring focus:border-border-strong",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        "transition-[border-color,box-shadow] duration-150",
+        "transition-colors ease-snap",
         className,
       )}
       {...props}

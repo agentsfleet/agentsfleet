@@ -3,14 +3,16 @@ import { type ComponentProps } from "react";
 import { cn } from "../utils";
 
 /*
- * Badge — pill label with semantic status variants. RSC-safe, React 19
- * ref-as-prop. Variants map to Layer 2 semantic tokens via Tailwind v4
- * opacity modifiers, so a theme-level color change propagates automatically.
+ * Badge — flat status label. Mono, --r-sm radius (spec §Component
+ * principles: status badges get colored fills; informational badges
+ * get muted outlines). RSC-safe, React 19 ref-as-prop. Variants map
+ * to Layer 2 semantic tokens via Tailwind v4 opacity modifiers, so
+ * a theme-level colour change propagates automatically.
  */
 export const badgeVariants = cva(
   [
-    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5",
-    "font-mono text-[0.7rem] font-medium uppercase tracking-wider transition-colors",
+    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5",
+    "font-mono text-label font-medium uppercase tracking-label transition-colors",
   ].join(" "),
   {
     variants: {
