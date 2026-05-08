@@ -1,13 +1,17 @@
-import { type ComponentProps } from "react";
+import { type ComponentProps, useId } from "react";
 
 type Props = {
   size?: number;
 } & ComponentProps<"svg">;
 
 export default function ZombieHandIcon({ size = 20, ...rest }: Props) {
+  // Per-instance gradient id keeps multiple icons on one page from
+  // sharing a <linearGradient> def — without this, browsers honor the
+  // first defs and the second icon paints flat.
+  const gradientId = `z-hand-grad-${useId()}`;
+  const handFill = `url(#${gradientId})`;
   const colors = {
     wristFill: "var(--z-icon-zombie-wrist-fill)",
-    handFill: "var(--z-icon-zombie-fill)",
     line: "var(--z-icon-zombie-line)",
     nailFill: "var(--z-icon-zombie-nail)",
   };
@@ -22,7 +26,14 @@ export default function ZombieHandIcon({ size = 20, ...rest }: Props) {
       aria-hidden="true"
       {...rest}
     >
-      {/* Wrist / forearm */}
+      <defs>
+        <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="var(--z-orange)" />
+          <stop offset="100%" stopColor="var(--z-cyan)" />
+        </linearGradient>
+      </defs>
+      {/* Wrist / forearm — token-driven so the silhouette stays
+       * readable against any container background. */}
       <path
         d="M21 59c-3 0-5-2-5-5V41c0-2 1-3 3-3h20c2 0 3 1 3 3v13c0 3-2 5-5 5z"
         fill={colors.wristFill}
@@ -32,42 +43,42 @@ export default function ZombieHandIcon({ size = 20, ...rest }: Props) {
       {/* Palm */}
       <path
         d="M19 41c-1-3-1-7 1-10l2-5c1-2 3-3 5-3h10c3 0 5 1 6 4l2 5c1 3 1 6 0 9l-1 3H20z"
-        fill={colors.handFill}
+        fill={handFill}
         stroke={colors.line}
         strokeWidth="1.2"
       />
       {/* Index finger */}
       <path
         d="M21 25V15c0-3 2-5 4-5s4 2 4 5v13l-2 6h-4l-2-5z"
-        fill={colors.handFill}
+        fill={handFill}
         stroke={colors.line}
         strokeWidth="1.2"
       />
       {/* Middle finger */}
       <path
         d="M28 23V11c0-3 2-5 4-5s4 2 4 5v14l-2 7h-4l-2-6z"
-        fill={colors.handFill}
+        fill={handFill}
         stroke={colors.line}
         strokeWidth="1.2"
       />
       {/* Ring finger */}
       <path
         d="M36 26l1-11c0-3 2-5 4-5s4 2 4 5l-1 12-3 6h-3l-2-5z"
-        fill={colors.handFill}
+        fill={handFill}
         stroke={colors.line}
         strokeWidth="1.2"
       />
       {/* Pinky finger */}
       <path
         d="M44 31l2-8c1-2 2-4 4-4c2 0 3 2 3 4l-2 9-3 4h-3l-1-4z"
-        fill={colors.handFill}
+        fill={handFill}
         stroke={colors.line}
         strokeWidth="1.2"
       />
       {/* Thumb */}
       <path
         d="M20 39l-7-4c-2-1-3-3-2-5c1-2 4-2 6 0l6 4-1 5z"
-        fill={colors.handFill}
+        fill={handFill}
         stroke={colors.line}
         strokeWidth="1.2"
       />

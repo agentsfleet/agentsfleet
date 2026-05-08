@@ -216,6 +216,18 @@
   100% { transform: translate3d(0, 0, 0)     rotate(0deg)   scale(1);    opacity: 1; }
 }
 
+/* Drop-overflow: like z-icon-drop but the glyph keeps falling past the
+ * parent's natural bottom and parks ~200% of its own height below,
+ * partly visible. Lets a small inline icon mimic the /agents falling
+ * beams when a parent wants the motion to escape the pill. The parent
+ * must run overflow:visible — clipped ancestors will hide the trail. */
+@keyframes z-icon-drop-overflow {
+  0%   { transform: translate3d(0, -16px, 0) rotate(-12deg) scale(0.85); opacity: 0; }
+  35%  { transform: translate3d(0, 2px, 0)   rotate(4deg)   scale(1.04); opacity: 1; }
+  55%  { transform: translate3d(0, 0, 0)     rotate(0deg)   scale(1);    opacity: 1; }
+  100% { transform: translate3d(0, 200%, 0)  rotate(8deg)   scale(0.95); opacity: 0.45; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-animated-glyph] {
     animation: none !important;

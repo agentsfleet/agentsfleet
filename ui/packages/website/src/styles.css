@@ -281,15 +281,28 @@ a {
 }
 
 /* Mission Control is the only fully-coloured CTA in the header strip —
- * brand orange→cyan gradient, dark charcoal label (#0b0b10) for AA
- * contrast on the orange end of the gradient, no border. The icon slot
- * is always present; the hand drops in from above on hover
- * (animate-drop via AnimatedIcon). */
+ * brand orange→amber→cyan→amber→orange shimmer (panned via the
+ * z-cta-shimmer keyframe), dark charcoal label (#0b0b10) for AA
+ * contrast on the orange-most frame, no border. The icon slot is
+ * always present; the hand drops past the pill on hover via
+ * animate-drop-overflow. The pill itself runs overflow:visible so the
+ * dropped hand is not clipped to the button bounds. */
 .header-mission-control {
-  background: linear-gradient(135deg, var(--z-orange) 0%, var(--z-cyan) 100%);
+  background-image: linear-gradient(
+    90deg,
+    var(--z-orange) 0%,
+    var(--z-amber) 25%,
+    var(--z-cyan) 50%,
+    var(--z-amber) 75%,
+    var(--z-orange) 100%
+  );
+  background-size: 600% 100%;
+  background-position: 0% 50%;
   color: #0b0b10;
   border: 0;
   box-shadow: var(--z-shadow-subtle);
+  overflow: visible;
+  animation: z-cta-shimmer 6s linear infinite;
   transition: box-shadow var(--z-ease-default), transform var(--z-ease-default), filter var(--z-ease-default);
 }
 
@@ -297,6 +310,20 @@ a {
   box-shadow: var(--z-shadow-cta);
   transform: translateY(-1px);
   filter: brightness(1.06);
+  animation-play-state: paused;
+}
+
+@keyframes z-cta-shimmer {
+  from { background-position: 0% 50%; }
+  to   { background-position: -600% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-mission-control {
+    animation: none;
+    background-image: linear-gradient(135deg, var(--z-orange) 0%, var(--z-cyan) 100%);
+    background-size: auto;
+  }
 }
 
 .header-mission-control-label {

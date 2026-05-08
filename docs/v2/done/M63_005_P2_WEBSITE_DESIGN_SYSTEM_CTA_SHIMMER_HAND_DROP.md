@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 005
 **Date:** May 07, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — marketing polish on the primary signup CTA; visible on every marketing page render.
 **Categories:** DESIGN_SYSTEM, WEBSITE
 **Batch:** B1 — independent of M63_004 (CLI resilience); UI-only diff with no server contract.
-**Branch:** feat/m63-005-cta-shimmer-hand-drop (to be created at CHORE(open))
+**Branch:** feat/m63-005-cta-shimmer-hand-drop
 **Depends on:** None.
 
 **Canonical architecture:** N/A — pure presentation layer; no architectural surface touched.

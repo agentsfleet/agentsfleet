@@ -59,6 +59,32 @@ export function trackCliEvent(client, distinctId, event, properties = {}) {
   }
 }
 
+// Per-HTTP-request span emitted on every terminal attempt (success or
+// fatal). retry_count = attempt - 1 (count of cli_http_retry events
+// fired during this request), per M63_004 §2.
+export function trackHttpRequest(client, distinctId, info = {}) {
+  trackCliEvent(client, distinctId, "cli_http_request", {
+    url: info.url,
+    method: info.method,
+    status: info.status,
+    duration_ms: info.duration_ms,
+    attempt: info.attempt,
+    retry_count: info.retry_count,
+  });
+}
+
+// Fired once per failed-and-will-retry attempt, before the backoff
+// sleep. reason ∈ {network|timeout|5xx|429|server_marked_retryable}.
+export function trackHttpRetry(client, distinctId, info = {}) {
+  trackCliEvent(client, distinctId, "cli_http_retry", {
+    url: info.url,
+    method: info.method,
+    status: info.status,
+    attempt: info.attempt,
+    reason: info.reason,
+  });
+}
+
 export function setCliAnalyticsContext(ctx, properties = {}) {
   if (!ctx) return;
   const current = ctx.analyticsContext || {};
@@ -110,5 +136,7 @@ export const cliAnalyticsInternals = {
 export const cliAnalytics = {
   createCliAnalytics,
   trackCliEvent,
+  trackHttpRequest,
+  trackHttpRetry,
   shutdownCliAnalytics,
 };

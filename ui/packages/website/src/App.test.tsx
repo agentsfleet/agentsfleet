@@ -48,20 +48,22 @@ describe("App", () => {
     expect(screen.getByText("always-on · event-driven · markdown-defined")).toBeInTheDocument();
   });
 
-  it("'Try usezombie' header CTA carries the gradient pill class + drop-in hand", () => {
+  it("'Try usezombie' header CTA carries the gradient pill class + drop-overflow hand", () => {
     const { container } = renderApp("/");
     const link = within(screen.getByRole("banner")).getByRole("link", { name: /try usezombie/i });
     // The gradient pill is the only fully-coloured header CTA — class name is the
-    // anchor for that visual treatment.
+    // anchor for the shimmer + overflow visual treatment.
     expect(link.className).toMatch(/header-mission-control/);
-    // Hand drops in via AnimatedIcon animation="drop"; in jsdom we assert the
-    // utility class chain that produces the hover/focus animate-drop trigger.
+    // Hand drops past the pill bottom via AnimatedIcon animation="drop-overflow";
+    // in jsdom we assert the utility class chain that produces the hover/focus
+    // animate-drop-overflow trigger. Pin both group- variants — losing either
+    // strips the focus-keyboard path.
     const glyph = container.querySelector(
       ".header-mission-control [data-animated-glyph]",
     ) as HTMLElement | null;
     expect(glyph).not.toBeNull();
-    expect(glyph!.className).toContain("group-hover:animate-drop");
-    expect(glyph!.className).toContain("group-focus-visible:animate-drop");
+    expect(glyph!.className).toContain("group-hover:animate-drop-overflow");
+    expect(glyph!.className).toContain("group-focus-visible:animate-drop-overflow");
   });
 
   it("renders the mode switch", () => {

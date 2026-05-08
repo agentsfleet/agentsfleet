@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import { cn } from "../utils";
 
-type Animation = "wave" | "wiggle" | "drop";
+type Animation = "wave" | "wiggle" | "drop" | "drop-overflow";
 type Trigger = "self-hover" | "parent-hover" | "always";
 
 type AnimatedIconProps = {
@@ -19,12 +19,16 @@ type AnimatedIconProps = {
  * give an ancestor `className="group"` and its hover/focus will drive
  * the animation. prefers-reduced-motion: reduce in tokens.css neutralizes
  * the animation via [data-animated-glyph].
+ *
+ * "drop-overflow" extends "drop" by parking the glyph below the parent
+ * — the parent must run overflow:visible or the trail clips.
  */
 
 const animateClass: Record<Animation, string> = {
   wave: "animate-wave",
   wiggle: "animate-wiggle",
   drop: "animate-drop",
+  "drop-overflow": "animate-drop-overflow",
 };
 
 function triggerClass(trigger: Trigger, animation: Animation): string {

@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 004
 **Date:** May 07, 2026
-**Status:** PENDING
+**Status:** DONE (auth-critical surface; broader command migration deferred per "Out of Scope")
 **Priority:** P1 — first network blip currently surfaces as a hard error to the user; CLI resilience is on the operator hot path.
 **Categories:** CLI, OBS
 **Batch:** B1 — independent of M63_005 (website polish); both can ship in parallel.
-**Branch:** feat/m63-004-cli-resilience (to be created at CHORE(open))
+**Branch:** feat/m63-005-cta-shimmer-hand-drop (bundled with M63_005 implementation per Captain direction; PR #305 carries both).
 **Depends on:** None.
 
 **Canonical architecture:** `zombiectl` is the customer/operator entry point to the control plane; resilience here is the difference between "service blipped" and "user has to retry by hand".
