@@ -23,7 +23,9 @@ export function printVersion(stream, version, opts = {}) {
 }
 
 export function printPreReleaseWarning(stream, opts = {}) {
-  const noColor = opts.noColor || false;
+  const env = opts.env ?? (typeof process !== "undefined" ? process.env : {});
+  const envNoColor = env && env.NO_COLOR ? env.NO_COLOR.length > 0 : false;
+  const noColor = Boolean(opts.noColor) || envNoColor;
   const jsonMode = opts.jsonMode || false;
   const ttyOnly = opts.ttyOnly || false;
 
@@ -36,7 +38,7 @@ export function printPreReleaseWarning(stream, opts = {}) {
     return;
   }
 
-  const styleOpts = { stream, env: opts.env };
+  const styleOpts = { stream, env };
   const warnGlyph = glyph.warn(styleOpts).render();
   const tag = `${warnGlyph} ${palette.warn("Pre-release build", styleOpts)}`;
   stream.write(`\n  ${tag} — not for production use.\n`);
