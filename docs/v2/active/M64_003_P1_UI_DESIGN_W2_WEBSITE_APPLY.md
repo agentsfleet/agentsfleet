@@ -68,7 +68,7 @@ N/A — spec authoring complete; the implementing agent (this same session) read
 | File | Action | Why |
 |------|--------|-----|
 | `ui/packages/website/package.json` | EDIT | Remove `@fontsource-variable/geist` + `@fontsource-variable/geist-mono` deps. Fonts arrive transitively via design-system's tokens.css `@import`. |
-| `ui/packages/website/src/styles.css` | REWRITE | 1866L → ~400L. Defines top-bar, page rhythm, dot-grid hero bg only. Zero `var(--z-*)`. Zero `linear-gradient` outside the spec-approved single-stop dot-grid. Zero `border-radius: 9999px`. |
+| `ui/packages/website/src/styles.css` | REWRITE | 1866L → ~80-120L (Tailwind/shadcn utility-first). Keeps only what utilities can't express: dot-grid `body` bg, `@keyframes pulse` re-export, `prefers-reduced-motion` overrides, `[data-theme="light"]` mirror, `.wrap` page-shell width, top-bar sticky shell. All page chrome (`.mc-header`, `.feature-section`, `.pricing-card`, `.cta`, `.hero-proof-card`, `.scanline`, `.particle-field`, etc.) collapses into utility classes on the JSX. Zero `var(--z-*)`. Zero `linear-gradient` outside the dot-grid radial. Zero `border-radius: 9999px`. |
 | `ui/packages/website/src/App.tsx` | EDIT | Top-bar gets `<WakePulse live>` brand-mark + design-system `<Button>` nav; site-shell drops the orange-era `::before` / `::after` blob decorations (deleted from CSS). |
 | `ui/packages/website/src/pages/Home.tsx` | REBUILD | Mockup A shape: eyebrow + LIVE pulse → mono headline → lede → CTA pair → mono CLI block → features grid → CTA. |
 | `ui/packages/website/src/pages/Pricing.tsx` | REBUILD | Mono pricing-card chrome, no gradient pill featured-card border, lead-form rebuilt with design-system Input/Button/Card. |
@@ -76,14 +76,15 @@ N/A — spec authoring complete; the implementing agent (this same session) read
 | `ui/packages/website/src/pages/Privacy.tsx` | EDIT | Typography sweep — body text uses Instrument Sans (default), section heads Commit Mono. No layout rebuild. |
 | `ui/packages/website/src/pages/Terms.tsx` | EDIT | Same typography sweep. |
 | `ui/packages/website/src/components/Hero.tsx` | REBUILD | Mockup A hero. Eyebrow + WakePulse live indicator, mono `<h1>` with two-line break, body lede in Instrument Sans, two-button CTA row (primary + ghost), inline `<Terminal>` showing the install transcript. |
-| `ui/packages/website/src/components/HeroIllustration.tsx` | DELETE | Orange-era illustration (zombie mark inside multi-stop radial-gradient panel). Mockup A replaces with CLI block. RULE NDC. |
+| `ui/packages/website/src/components/HeroIllustration.tsx` | DELETE | Zero importers (audited). Orange-era illustration (zombie mark inside multi-stop radial-gradient panel). Mockup A replaces with CLI block. RULE NDC. |
 | `ui/packages/website/src/components/FeatureFlow.tsx` | REBUILD | Mockup-A grid-2 evidence/code rows. Mono code block, no orange-rail decoration. |
 | `ui/packages/website/src/components/FeatureSection.tsx` | REBUILD | Mono number eyebrow + mono title + sans body. Borders > shadows. No orange rail. |
 | `ui/packages/website/src/components/HowItWorks.tsx` | REBUILD | 3-step mono cards, no counter pseudo-element decoration, no hover orange glow. |
 | `ui/packages/website/src/components/Footer.tsx` | EDIT | Token swap + Commit Mono nav labels. |
 | `ui/packages/website/src/components/CTABlock.tsx` | REBUILD | Mono headline + sans lede + button pair. No animated shimmer pill. |
 | `ui/packages/website/src/components/FAQ.tsx` | EDIT | Token swap + chevron transition uses `--motion-duration-snap`/`--easing-snap`. |
-| `ui/packages/website/src/components/ProviderStrip.tsx` | EDIT | Token swap; mono labels. |
+| `ui/packages/website/src/components/ProviderStrip.tsx` | DELETE | Zero importers (audited). Provider strip pattern not in Mockup A; if a future spec needs it, rebuild from scratch. RULE NDC. |
+| `ui/packages/website/src/components/ProviderStrip.test.tsx` | DELETE | Component deleted. |
 | `ui/packages/website/tests/e2e/design-system-smoke.spec.ts` | EDIT | Update assertions to new shape (mono `<h1>` family, no linear-gradient on CTAs, dot-grid bg present, brand-mark animation-name `pulse`). |
 | `ui/packages/website/src/components/CTABlock.test.tsx` / `FAQ.test.tsx` / `FeatureSection.test.tsx` / `Footer.test.tsx` / `Hero.test.tsx` / `HowItWorks.test.tsx` / `ProviderStrip.test.tsx` | EDIT | Re-align unit-test class-string assertions to rebuilt component shape. |
 | `ui/packages/website/src/components/HeroIllustration.test.tsx` | DELETE | Component deleted. |
@@ -115,7 +116,10 @@ No `.cta`, `.feature-section`, `.pricing-card`, `.hero-proof-card`, `.pricing-le
 
 ### §3 — App.tsx + top-bar
 
-App.tsx renders the top-bar with: brand-mark `<WakePulse live={true} size={12} />`, "usezombie" wordmark in Commit Mono 500, primary nav (Home, Agents, Pricing, Docs) in Commit Mono 12px muted, single primary `<Button>` "→ install" CTA on the right. Drops the existing centred `.site-shell::before`/`::after` blob decorations and the legacy `.mode-switch` pill (mode toggle is not part of Mockup A — defer until DESIGN_SYSTEM.md commits to a light/dark surface toggle).
+App.tsx renders the top-bar with: brand-mark `<WakePulse live={true} size={12} />`, "usezombie" wordmark in Commit Mono 500, primary nav (Home, Agents, Pricing, Docs) in Commit Mono 12px muted, single primary `<Button>` "→ install" CTA on the right. Drops:
+- The existing centred `.site-shell::before`/`::after` blob decorations (deleted from CSS).
+- The legacy `.mode-switch` pill (mode toggle not part of Mockup A — defer until DESIGN_SYSTEM.md commits to a UI affordance).
+- The `<AnimatedIcon><ZombieHandIcon /></AnimatedIcon>` Mission Control button hover treatment. Mockup A's topbar ships a plain "→ install" Button. Net effect: zero `ZombieHandIcon` / `AnimatedIcon` imports in website source after rebuild. Both primitives stay in design-system because W3 (app) still imports them.
 
 **Implementation default:** dark is canonical; no in-page light/dark toggle. `[data-theme="light"]` works (via OS preference) but is not driven from the UI in this spec.
 
@@ -272,12 +276,16 @@ gitleaks detect --redact 2>&1 | tail -3
 |----------------|----------------|
 | `ui/packages/website/src/components/HeroIllustration.tsx` | `test ! -f ui/packages/website/src/components/HeroIllustration.tsx` |
 | `ui/packages/website/src/components/HeroIllustration.test.tsx` | `test ! -f ui/packages/website/src/components/HeroIllustration.test.tsx` |
+| `ui/packages/website/src/components/ProviderStrip.tsx` | `test ! -f ui/packages/website/src/components/ProviderStrip.tsx` |
+| `ui/packages/website/src/components/ProviderStrip.test.tsx` | `test ! -f ui/packages/website/src/components/ProviderStrip.test.tsx` |
 
 **2. Orphaned references:**
 
 | Deleted symbol or import | Grep command | Expected |
 |--------------------------|--------------|----------|
 | `HeroIllustration` import | `grep -rn 'HeroIllustration' ui/packages/website/src/` | 0 matches |
+| `ProviderStrip` import | `grep -rn 'ProviderStrip' ui/packages/website/src/` | 0 matches |
+| `ZombieHandIcon` / `AnimatedIcon` in website | `grep -rn 'ZombieHandIcon\|AnimatedIcon' ui/packages/website/src/` | 0 matches in non-fixture (DesignSystemGallery may still import for the gallery surface — gated separately) |
 | `--z-*` (any) | `grep -rn 'var(--z-' ui/packages/website/src/` | 0 matches |
 | `Geist` font ref | `grep -rn -i geist ui/packages/website/ --include="*.ts" --include="*.tsx" --include="*.css" --include="*.json"` | 0 matches |
 | `.cta` / `.feature-section` / `.pricing-card` / `.scanline` / `.particle-field` legacy classes | `grep -rn '"\(cta\|feature-section\|pricing-card\|scanline\|particle-field\)' ui/packages/website/src/` | 0 matches |
