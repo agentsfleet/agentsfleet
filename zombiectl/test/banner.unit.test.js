@@ -194,8 +194,10 @@ describe("printVersion — T7: design-system regression guards", () => {
   });
 
   test("color mode includes the 256-color pulse-cyan code (79)", () => {
+    // Pin TERM so capability detection deterministically returns xterm256
+    // regardless of CI environment (where TERM may be missing or 'dumb').
     const out = makeTtyBufferStream();
-    printVersion(out.stream, VERSION, {});
+    printVersion(out.stream, VERSION, { env: { TERM: "xterm-256color" } });
     expect(out.read()).toContain("38;5;79");
   });
 

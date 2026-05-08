@@ -43,7 +43,10 @@ export async function runCli(argv, io = {}) {
   const fetchImpl = io.fetchImpl || globalThis.fetch;
 
   const { global, rest } = parseGlobalArgs(argv, env);
-  const noColor = Boolean(env.NO_COLOR === "1" || env.NO_COLOR === "true");
+  // no-color.org spec — any non-empty NO_COLOR disables color. Aligns
+  // with capability.detectColorMode and printHelp. (Was previously a
+  // narrow "1"|"true" check that diverged from the spec.)
+  const noColor = Boolean(env.NO_COLOR && env.NO_COLOR.length > 0);
 
   printPreReleaseWarning(stderr, { noColor, jsonMode: global.json, ttyOnly: !stderr.isTTY });
 

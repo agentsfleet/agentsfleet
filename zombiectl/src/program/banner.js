@@ -8,9 +8,8 @@ import { palette, glyph } from "../output/index.js";
 export function printVersion(stream, version, opts = {}) {
   if (opts.jsonMode) return;
 
-  const envNoColor = typeof process !== "undefined" && process.env && process.env.NO_COLOR
-    ? process.env.NO_COLOR.length > 0
-    : false;
+  const env = opts.env ?? (typeof process !== "undefined" ? process.env : {});
+  const envNoColor = env && env.NO_COLOR ? env.NO_COLOR.length > 0 : false;
   const noColor = Boolean(opts.noColor) || envNoColor;
 
   if (noColor) {
@@ -18,8 +17,9 @@ export function printVersion(stream, version, opts = {}) {
     return;
   }
 
-  const dot = glyph.live({ stream }).render();
-  stream.write(`${dot} ${palette.text("zombiectl")} ${palette.subtle(`v${version}`, { stream })}\n`);
+  const styleOpts = { stream, env };
+  const dot = glyph.live(styleOpts).render();
+  stream.write(`${dot} ${palette.text("zombiectl")} ${palette.subtle(`v${version}`, styleOpts)}\n`);
 }
 
 export function printPreReleaseWarning(stream, opts = {}) {
@@ -36,8 +36,9 @@ export function printPreReleaseWarning(stream, opts = {}) {
     return;
   }
 
-  const warnGlyph = glyph.warn({ stream }).render();
-  const tag = `${warnGlyph} ${palette.warn("Pre-release build", { stream })}`;
+  const styleOpts = { stream, env: opts.env };
+  const warnGlyph = glyph.warn(styleOpts).render();
+  const tag = `${warnGlyph} ${palette.warn("Pre-release build", styleOpts)}`;
   stream.write(`\n  ${tag} — not for production use.\n`);
   stream.write(`     Early access testing only. Contact ${palette.text("nkishore@megam.io")} to get access.\n\n`);
 }
