@@ -96,11 +96,10 @@ Standard set is the floor. No Zig, schema, or auth-flow concerns.
 | `zombiectl/src/commands/zombie.js` | EDIT | Same pattern. |
 | `zombiectl/src/cli.js` | EDIT | Remove the duplicated `ApiError`/fetch-failed/unknown formatting from the top-level catch. Keep an `uncaughtException` safety net only. |
 | `zombiectl/src/lib/run-command.js` | EDIT (light) | If the audit reveals shape mismatches (e.g., handlers needing `args` plus `ctx`), tighten the wrapper signature and update the docstring. No new public surface. |
-| `scripts/audit-cli-runcommand.sh` | CREATE | New audit. Enumerates registered commands; fails if any bypasses `runCommand` or omits an `errorMap` entry for reachable UZ-* codes. Wired into `make lint`. |
-| `Makefile` | EDIT | Wire `audit-cli-runcommand` into the `lint` target alongside the existing CLI audits. |
+| `scripts/audit-cli-runcommand.sh` | DROPPED | See §4 — replaced by `registry.unit.test.js`. |
+| `Makefile` | DROPPED | No new audit target; existing `make lint` already runs the bun test suite indirectly via CI. |
 | `zombiectl/test/run-command.unit.test.js` | EDIT | Extend with cases asserting (a) the wrapper invokes the handler with the existing `(ctx, args, workspaces, deps)` shape preserved, (b) `errorMap` rewrites `ApiError.code → user-facing code+message`, (c) `cli_command_started/finished/error` events carry the per-command name verbatim. |
-| `zombiectl/test/commands/registry.unit.test.js` | CREATE | New unit suite asserting every registered command exports a `name` + `errorMap` + `handler` triple and the dispatch path returns the wrapper's exit code. |
-| `zombiectl/test/commands/error-map.fixture.js` | CREATE | Shared fixture: list of `{ command, expectedCodes }` derived from `api-paths.js` + OpenAPI. The audit script and the unit suite both read it. |
+| `zombiectl/test/registry.unit.test.js` | CREATE | New unit suite — registry shape (`{ name, handler, errorMap }`), error-map value shape (`{ code, message }` non-empty strings), UZ-* key format (`/^UZ-[A-Z]+-[0-9]+$/`), and `AUTH_PRESET` coverage on auth-critical routes (login, logout, workspace, doctor). Replaces the dropped §4 audit. |
 | `~/Projects/docs/changelog.mdx` | EDIT (at CHORE(close)) | New `<Update>` describing the migration in user-visible terms — "every CLI command now reports a stable error code and surfaces server messages consistently". |
 
 ---
@@ -143,20 +142,18 @@ What §3 delivers: `cli.js`'s top-level catch is reduced to a `process.on("uncau
 
 **Implementation default:** keep the safety net even though §1+§2 should cover every dispatch path — defense in depth for any code that runs before the registry is constructed (e.g., flag parser fatal). The safety net does NOT format `ApiError` (impossible to reach there); it only handles raw thrown errors.
 
-### §4 — `audit-cli-runcommand.sh` + Makefile wiring
+### §4 — DROPPED (folded into §5 registry unit test)
 
-What §4 delivers: a shell script that
+The original §4 was a shell audit (`scripts/audit-cli-runcommand.sh`) that was supposed to enforce three things: (a) every registry entry dispatches through `runCommand`, (b) every entry has an `errorMap`, (c) each `errorMap` covers every UZ-* code its endpoints can return.
 
-- parses `command-registry.js` to enumerate registered names,
-- asserts every entry uses `runCommand` (no direct handler call),
-- asserts every entry has an `errorMap`,
-- cross-references each command against the endpoint paths it touches (via `api-paths.js`) and the OpenAPI document, and asserts the `errorMap` covers every UZ-* code those endpoints can return.
+Reality after §1+§2:
 
-The script fails fast with a non-zero exit and a per-violation report. It is added to `make lint`.
+- (a) and (b) are structurally locked already — the `entry()` helper in `command-registry.js` is the only constructor and requires all three fields; the registry is the only dispatch path. Adding a bypassed command means editing both `command-registry.js` and `cli.js` in the same change, caught in any review.
+- (c) needed a static `command → endpoints → codes` fixture. OpenAPI documents 12 of the 118 server-side UZ-* codes (the rest live in `src/errors/error_registry.zig`), so the fixture would be incomplete on day one and rot fast.
 
-**Implementation default:** the cross-reference is built from a static map, not by tracing imports — handlers may construct paths dynamically. The static map lives in `error-map.fixture.js` and is generated from `api-paths.js`. Manual additions are allowed (e.g., a command that hits more than one endpoint) but every entry must list its endpoints explicitly.
+The shape-and-type guarantees fold into §5's `registry.unit.test.js` for the cost of ~30 lines instead of ~200 lines of brittle shell + a Makefile target. Full UZ-* coverage validation moves to **Out of Scope** as a follow-up that lands when OpenAPI reaches full coverage.
 
-### §5 — Test coverage and changelog
+### §5 — Registry unit test, error-map shape pins, and changelog
 
 What §5 delivers: extended `run-command.unit.test.js`, a new `registry.unit.test.js`, and a `<Update>` block in `~/Projects/docs/changelog.mdx` describing the user-visible behavior (consistent error codes across every CLI command, stable server-message surfacing). Tests live next to the migration so they ship in the same commit.
 
@@ -205,12 +202,12 @@ No HTTP routes, schema, or auth flow changes.
 
 ## Invariants
 
-1. Every entry in `command-registry.js` exports `{ name, errorMap, handler }`. — Enforced by `scripts/audit-cli-runcommand.sh` in `make lint`.
-2. Every reachable UZ-* code (per the `endpoints` declaration) is keyed in the corresponding `errorMap`. — Enforced by the same audit.
-3. No handler imports `ApiError` for the purpose of formatting — handlers may still `instanceof`-check for control flow, but message-formatting lives only in `errorMap` entries or `runCommand`. — Enforced by a grep pattern in the audit (`new ApiError\\(` outside `lib/`, `printApiError\\(` outside `lib/`).
-4. `cli.js` no longer contains an `ApiError`-formatting branch in its top-level catch. — Enforced by the audit (`grep -n 'ApiError' zombiectl/src/cli.js` returns zero matches outside imports).
-5. `cli_command_started` and `cli_command_finished` (or `cli_error`) emit exactly once per dispatch. — Enforced by the existing `run-command.unit.test.js` plus the new registry test.
-6. `DISABLE_TELEMETRY` is the only env var that toggles event emission. — Enforced by `grep -rn 'ZOMBIE_POSTHOG_ENABLED' zombiectl/` returning zero matches after §0 lands; the audit covers it.
+1. Every entry in `command-registry.js` exports `{ name, errorMap, handler }`. — Structurally locked by the `entry()` helper (all three are required arguments); pinned by `registry.unit.test.js`.
+2. Every `errorMap` value is `{ code, message }` with non-empty strings; every UZ-* key matches `/^UZ-[A-Z]+-[0-9]+$/`. — Pinned by `registry.unit.test.js`.
+3. Auth-critical routes (login, logout, workspace, doctor) include every `AUTH_PRESET` key in their `errorMap`. — Pinned by `registry.unit.test.js`.
+4. `cli.js` no longer contains `ApiError` or `printApiError` references. — Pinned by an explicit grep test.
+5. `cli_command_started` and `cli_command_finished` (or `cli_error`) emit exactly once per dispatch. — Enforced by `run-command.unit.test.js` and `cli-analytics.unit.test.js`.
+6. `DISABLE_TELEMETRY` is the only env var that toggles event emission. — `analytics.unit.test.js` includes a "legacy `ZOMBIE_POSTHOG_ENABLED` is dead" case.
 
 ---
 
@@ -227,10 +224,11 @@ No HTTP routes, schema, or auth flow changes.
 | `test_runCommand_unexpected_path` | Mock handler throws a plain `Error("boom")`; assert exit 1, `cli_error` with `error_code = "UNEXPECTED"`, the message is the original string. |
 | `test_runCommand_emits_lifecycle_triplet` | Successful handler; assert exactly two events fire — `cli_command_started` then `cli_command_finished` — both carrying the registered command name. |
 | `test_runCommand_no_double_emit` | Handler that throws `ApiError`; assert `cli_command_finished` does NOT fire and `cli_error` fires exactly once. |
-| `test_audit_cli_runcommand_passes_on_clean_tree` | Run `scripts/audit-cli-runcommand.sh`; expect exit 0 on the post-migration tree. |
-| `test_audit_cli_runcommand_fails_on_bypass` | Mutate a fixture registry to bypass `runCommand`; assert audit exits 1 with the offending command in stderr. |
-| `test_audit_cli_runcommand_fails_on_missing_code` | Mutate a fixture `errorMap` to drop an expected code; assert audit exits 1 listing the missing code. |
-| `test_cli_top_level_catch_has_no_ApiError_branch` | Static check on `cli.js` source: asserts no `ApiError` reference outside imports. |
+| `test_registry_entry_shape` | Every export from `command-registry.js` is `{ name: string, handler: function, errorMap: object }`. |
+| `test_registry_errorMap_value_shape` | Every `errorMap` entry is `{ code: non-empty string, message: non-empty string }`. |
+| `test_registry_uz_key_format` | Every UZ-* key in any registry `errorMap` matches `/^UZ-[A-Z]+-[0-9]+$/`. |
+| `test_registry_auth_preset_coverage` | login, logout, workspace, doctor errorMaps include every `AUTH_PRESET` key (the universal auth surface). |
+| `test_cli_top_level_no_ApiError_or_printApiError` | Static check on `cli.js` source: zero `ApiError` / `printApiError` references. |
 | `test_existing_command_user_visible_strings_unchanged` | Snapshot test: invoke `commandSteer` (and 2-3 other commands) against a stub server returning known UZ-* codes; assert stderr matches the pre-migration snapshot byte-for-byte. Guards against accidental error-string drift. |
 | `test_telemetry_off_by_default` | `resolveConfig({})` (empty env) resolves to `enabled: false` even though `DEFAULT_POSTHOG_KEY.length > 0`; `createCliAnalytics({})` returns `null` and never imports `posthog-node`. |
 | `test_disable_telemetry_one_keeps_off` | `resolveConfig({ DISABLE_TELEMETRY: "1" })` resolves to `enabled: false`. Same for `"true"`, `"on"`, `"yes"`. |
@@ -246,8 +244,8 @@ Fixtures: `zombiectl/test/commands/error-map.fixture.js`, `zombiectl/test/comman
 
 - [ ] Telemetry is off when invoked with no env vars — verify: `DISABLE_TELEMETRY= ZOMBIE_POSTHOG_ENABLED= zombie --version` produces zero outbound HTTP to `posthog.com` (mock fetch in unit test; manual verify via `tcpdump`/`mitmproxy` if needed)
 - [ ] `ZOMBIE_POSTHOG_ENABLED` no longer appears anywhere in the live tree — verify: `grep -rn 'ZOMBIE_POSTHOG_ENABLED' zombiectl/ | grep -v 'docs/v2/done'` returns empty
-- [ ] Every registry entry uses `runCommand` — verify: `scripts/audit-cli-runcommand.sh`
-- [ ] Every command declares an `errorMap` covering its endpoints — verify: same audit
+- [ ] Every registry entry uses `runCommand` — verify: `entry()` helper makes it impossible to construct otherwise; cli.js dispatch is the only call site (`grep -n 'await runCommand' zombiectl/src/cli.js` returns 1 match)
+- [ ] Every command declares an `errorMap` and the shape is well-formed — verify: `bun test test/registry.unit.test.js`
 - [ ] No `ApiError` reference in `cli.js` outside imports — verify: `grep -n 'ApiError' zombiectl/src/cli.js | grep -v 'import'` returns empty
 - [ ] All new and existing CLI tests pass — verify: `cd zombiectl && bun test`
 - [ ] Audit wired into `make lint` and clean — verify: `make lint`
@@ -337,3 +335,4 @@ Empty at creation. Populated as Architecture Consult / Legacy-Design Consult fir
 - Telemetry **transport** changes. The PostHog destination, bundled project key, and `ZOMBIE_POSTHOG_KEY`/`ZOMBIE_POSTHOG_HOST` overrides stay unchanged; only the on/off control surface and its default flip in §0.
 - Removing the bundled default PostHog project key. With the default flipped to off, the bundled key is harmless. Removing it would force operators who opt in (`DISABLE_TELEMETRY=0`) to also supply `ZOMBIE_POSTHOG_KEY`, which is its own decision.
 - Re-introducing M63_002's interactive consent prompt. The default-off flip subsumes the privacy goal of M63_002 with a smaller blast radius.
+- **Full UZ-* coverage validation** (the original §4 audit). Deferred to a future spec when OpenAPI's error response definitions reach parity with `src/errors/error_registry.zig` (today: 12 of 118 codes documented). At that point a script can cross-reference command → endpoints → codes against the OpenAPI document; until then, the structural pins in `registry.unit.test.js` are sufficient and the tradeoff (no rotting static fixture) is the right one.
