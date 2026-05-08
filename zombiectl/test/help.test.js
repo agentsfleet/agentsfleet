@@ -85,6 +85,36 @@ describe("help output", () => {
     expect(output).toContain("--no-input");
     expect(output).toContain("--version");
   });
+
+  test("--help output stays within 80 columns wide", async () => {
+    // The CLI is the highest-frequency, lowest-stakes brand surface.
+    // Help text must not assume a wide terminal — wraps fit ≤80 cols.
+    const out = bufferStream();
+    const err = bufferStream();
+    await runCli(["--help"], {
+      stdout: out.stream,
+      stderr: err.stream,
+      env: { ...process.env, NO_COLOR: "1" },
+    });
+    const overflow = out.read()
+      .split("\n")
+      .filter((line) => line.length > 80);
+    expect(overflow).toEqual([]);
+  });
+
+  test("--help output contains no decorative emoji or box-drawing chars", async () => {
+    const out = bufferStream();
+    const err = bufferStream();
+    await runCli(["--help"], {
+      stdout: out.stream,
+      stderr: err.stream,
+      env: { ...process.env, NO_COLOR: "1" },
+    });
+    const output = out.read();
+    expect(output).not.toContain("🧟");
+    expect(output).not.toContain("🎉");
+    expect(output).not.toMatch(/[╭╮╯╰│]/);
+  });
 });
 
 describe("version output", () => {

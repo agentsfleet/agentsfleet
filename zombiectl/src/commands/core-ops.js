@@ -26,6 +26,7 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
   const {
     apiHeaders,
     printJson,
+    printSection,
     request,
     ui,
     writeLine,
@@ -107,8 +108,7 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
     if (ctx.jsonMode) {
       printJson(ctx.stdout, report);
     } else {
-      writeLine(ctx.stdout, ui.head("zombiectl doctor"));
-      writeLine(ctx.stdout);
+      printSection(ctx.stdout, "zombiectl doctor");
       for (const c of checks) {
         const tag = c.ok ? "[OK]" : "[FAIL]";
         const line = `${tag} ${c.name}`;
