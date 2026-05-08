@@ -23,7 +23,7 @@ export default function App() {
       <ScrollRestoration />
 
       <header className="topbar">
-        <div className="wrap topbar-inner">
+        <div className="wrap flex items-center justify-between py-4">
           <Link
             to="/"
             className="flex items-center gap-3 font-mono text-[15px] font-medium tracking-[-0.01em] text-text"

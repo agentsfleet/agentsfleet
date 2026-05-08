@@ -71,17 +71,7 @@ a {
   text-decoration: none;
 }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
+/* `.sr-only` ships in Tailwind v4 base utilities; no custom rule needed. */
 
 /* Page-shell width — DESIGN_SYSTEM.md §Layout: max content width 1280px,
  * 32px gutter at base, tighter on mobile via Tailwind responsive utility
@@ -109,12 +99,8 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
-.topbar-inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-block: 16px;
-}
+/* `.topbar-inner` was a one-callsite helper; inlined as utilities at the
+ * single JSX site (App.tsx) — `flex items-center justify-between py-4`. */
 
 /* Section vertical rhythm — Mockup A: 96px section padding on desktop,
  * border-top hairline between sections (skip first-of-type). Tighter on
