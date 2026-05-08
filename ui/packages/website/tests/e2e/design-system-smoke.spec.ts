@@ -351,22 +351,6 @@ test.describe("Pagination — computed styles", () => {
   });
 });
 
-test.describe("AnimatedIcon — computed styles", () => {
-  // Operational Restraint (M64_002): the new motion spec is
-  // "functional or absent" — wave / wiggle / drop keyframes were
-  // dropped from theme.css, so the `animate-wave` class string still
-  // emits but resolves to no CSS rule. AnimatedIcon's animation prop
-  // is now an inert pass-through; W2 redesigns or removes the
-  // component when the website hero is rebuilt.
-  test("AnimatedIcon renders inertly — no decorative motion", async ({ page }) => {
-    const glyph = page
-      .locator('[aria-label="always-wave"] [data-animated-glyph]')
-      .first();
-    const name = await glyph.evaluate((el) => getComputedStyle(el).animationName);
-    expect(name).toBe("none");
-  });
-});
-
 test.describe("Accessibility", () => {
   test("gallery content has zero axe violations", async ({ page }) => {
     // Scope to the gallery content — site shell (header/footer) heading order

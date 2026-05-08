@@ -295,7 +295,11 @@ gitleaks detect --redact 2>&1 | tail -3
 
 ## Discovery (consult log)
 
-Empty at creation. Populated as Legacy-Design / Architecture consults fire during implementation.
+- **Marketing-display typography primitives.** DESIGN_SYSTEM.md §Typography defines a hero scale (`display-xl: 64/1.0/-2.5%`, `display-lg: 40/1.1/-2%`, `display-md: 28/1.15/-1.5%`) but design-system ships no primitive for any of them — only `<PageTitle>` (`text-xl ≈ 20px`, dashboard-sized). W2 lands raw `<h1>`/`<h2>` + utility classes (`clamp(40px,7vw,72px)`, etc.) for the marketing-display headings; `<PageTitle>` continues to own dashboard-sized H1 in `ui/packages/app/`. **Follow-up spec:** add `<DisplayTitle>` / `<DisplayHeading>` / `<DisplaySubhead>` to design-system that consume the spec's display-xl / display-lg / display-md sizes; backfill website's marketing surfaces. The UI Substitution Gate body documents this exception so the gate doesn't fire spuriously on marketing-display headings.
+- **UI Substitution Gate scope.** The gate previously triggered only on `ui/packages/app/`; W2 extends it to `ui/packages/website/` so the same primitive-first standard applies to both packages.
+- **Decorative motion cleanup (W1 surface).** AnimatedIcon + ZombieHandIcon + the gallery's AnimatedIcon showcase were retained by the W1 spec but violate the new spec §Motion budget ("one signature animation, everything else functional or absent"). They had zero non-fixture consumers post-W2. Bundled the removal into this PR with explicit user authorization rather than deferring to a separate spec. ~946 LOC of decorative motion code (`domain/animated-terminal.tsx`, `background-beams-with-collision.tsx`, etc.) deleted alongside.
+
+Other consults fire here as they happen during implementation.
 
 ---
 
