@@ -269,7 +269,7 @@ test("runCli honors analytics opt-out with bundled key", async () => {
 
     cliAnalytics.createCliAnalytics = async (env) => {
       createCalls += 1;
-      assert.equal(env.ZOMBIE_POSTHOG_ENABLED, "false");
+      assert.equal(env.DISABLE_TELEMETRY, "1");
       return null;
     };
     cliAnalytics.trackCliEvent = (client) => {
@@ -284,7 +284,7 @@ test("runCli honors analytics opt-out with bundled key", async () => {
     const stderr = bufferStream();
 
     const code = await runCli(["runx"], {
-      env: { ...process.env, NO_COLOR: "1", ZOMBIE_POSTHOG_ENABLED: "false" },
+      env: { ...process.env, NO_COLOR: "1", DISABLE_TELEMETRY: "1" },
       stdout: stdout.stream,
       stderr: stderr.stream,
     });
