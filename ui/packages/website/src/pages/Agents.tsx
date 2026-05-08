@@ -119,8 +119,8 @@ export default function Agents() {
           <h2 className="font-mono text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em] font-medium text-text m-0">
             API operations
           </h2>
-          <Card className="overflow-hidden p-0">
-            <table className="w-full font-mono text-[13px] tabular-nums">
+          <Card className="p-0 overflow-x-auto">
+            <table className="w-full min-w-[640px] font-mono text-[13px] tabular-nums">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-4 font-medium text-text-muted uppercase tracking-[0.06em] text-[11px]">action</th>
