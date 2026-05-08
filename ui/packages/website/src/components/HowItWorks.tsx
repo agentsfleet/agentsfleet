@@ -40,7 +40,7 @@ export default function HowItWorks() {
         <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
           {steps.map((step) => (
             <Card key={step.n} className="flex flex-col gap-3" data-testid={`how-step-${step.n}`}>
-              <span className="font-mono text-[12px] uppercase tracking-[0.08em] text-pulse">
+              <span className="font-mono text-[12px] uppercase tracking-[0.08em] text-text-subtle">
                 {step.n}
               </span>
               <h3 className="font-mono text-[16px] leading-[1.3] tracking-[-0.01em] text-text font-medium m-0">

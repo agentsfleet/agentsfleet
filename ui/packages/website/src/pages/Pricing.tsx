@@ -155,7 +155,7 @@ export default function Pricing() {
                 {tier.highlights.map((point) => (
                   <ListItem
                     key={point}
-                    className="font-mono text-[13px] leading-[1.5] text-text-muted before:content-['✓'] before:mr-2 before:text-pulse"
+                    className="font-mono text-[13px] leading-[1.5] text-text-muted before:content-['✓'] before:mr-2 before:text-success"
                   >
                     {point}
                   </ListItem>
