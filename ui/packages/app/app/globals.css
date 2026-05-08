@@ -85,7 +85,7 @@ code, pre, kbd {
   gap: 1rem;
   padding: 0 1.5rem;
   border-bottom: 1px solid var(--border);
-  background: rgba(5, 8, 13, 0.85);
+  background: rgb(10 13 14 / 0.85);
   backdrop-filter: blur(12px);
   position: sticky;
   top: 0;
@@ -145,7 +145,7 @@ code, pre, kbd {
 }
 
 .mc-nav-item.active {
-  background: rgba(217, 107, 43, 0.12);
+  background: color-mix(in srgb, var(--pulse) 12%, transparent);
   color: var(--pulse);
 }
 

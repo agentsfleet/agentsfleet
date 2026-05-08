@@ -114,11 +114,11 @@
   --text-mono: var(--fs-mono);
 
   /* Tracking */
-  --tracking-display-xl: var(--tracking-display-xl);
-  --tracking-display-lg: var(--tracking-display-lg);
-  --tracking-display-md: var(--tracking-display-md);
-  --tracking-eyebrow: var(--tracking-eyebrow);
-  --tracking-label: var(--tracking-label);
+  --tracking-display-xl: var(--letter-spacing-display-xl);
+  --tracking-display-lg: var(--letter-spacing-display-lg);
+  --tracking-display-md: var(--letter-spacing-display-md);
+  --tracking-eyebrow: var(--letter-spacing-eyebrow);
+  --tracking-label: var(--letter-spacing-label);
 
   /* Radius */
   --radius-sm: var(--r-sm);
@@ -146,5 +146,5 @@
    * --ease-* / --duration-* theme namespaces. Components compose the two:
    * `transition-colors duration-snap ease-snap`. */
   --ease-snap: var(--easing-snap);
-  --duration-snap: var(--duration-snap);
+  --duration-snap: var(--motion-duration-snap);
 }

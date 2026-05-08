@@ -117,8 +117,8 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
           appearance={{
             variables: {
               colorPrimary: "var(--pulse)",
-              colorBackground: "#0f1520",
-              colorText: "#e8f2ff",
+              colorBackground: "var(--surface-1)",
+              colorText: "var(--text)",
               borderRadius: "8px",
             },
           }}

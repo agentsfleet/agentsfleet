@@ -70,11 +70,11 @@
   --fs-mono: 0.8125rem;         /* 13 — code, logs, data */
 
   /* Letter-spacing for display + eyebrow + label scales. */
-  --tracking-display-xl: -0.025em;
-  --tracking-display-lg: -0.02em;
-  --tracking-display-md: -0.015em;
-  --tracking-eyebrow: 0.08em;
-  --tracking-label: 0.08em;
+  --letter-spacing-display-xl: -0.025em;
+  --letter-spacing-display-lg: -0.02em;
+  --letter-spacing-display-md: -0.015em;
+  --letter-spacing-eyebrow: 0.08em;
+  --letter-spacing-label: 0.08em;
 
   /* ── Spacing (4px base — engineers want density) ──
    * Layer 0 names use --sp-* so they don't collide with Tailwind's
@@ -93,14 +93,14 @@
 
   /* ── Motion (snap; no overshoot) ──
    * Easing and duration are SEPARATE tokens. --easing-snap holds only an
-   * <easing-function>; --duration-snap holds only a <time>. Storing the
+   * <easing-function>; --motion-duration-snap holds only a <time>. Storing the
    * full transition shorthand in --easing-snap would make
    * `transition-timing-function: var(--ease-snap)` invalid CSS (the
    * browser silently discards the rule and falls back to the default
    * `ease` over 150ms, which is exactly what we don't want). Components
    * use `duration-snap ease-snap` together. */
   --easing-snap: ease-out;
-  --duration-snap: 50ms;
+  --motion-duration-snap: 50ms;
 
   /* ── Layout ── */
   --max-width: 1280px;
