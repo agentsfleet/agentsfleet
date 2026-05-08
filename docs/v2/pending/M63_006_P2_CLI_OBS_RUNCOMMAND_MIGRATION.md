@@ -22,7 +22,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Branch:** feat/m63-006-runcommand-migration (to be created at CHORE(open)).
 **Depends on:** M63_004_P1_CLI_OBS_RESILIENCE — `runCommand`, `apiRequestWithRetry`, `trackHttpRequest/Retry` already exist; this spec consumes them.
 
-**Canonical architecture:** `zombiectl` is the customer/operator entry point. M63_004 introduced the resilience layer; M63_006 finishes the rollout so every command shares one error-handling, telemetry, and exit-code boundary.
+**Canonical architecture:** `zombiectl` is the customer/operator entry point. M63_004 introduced the resilience layer; M63_006 finishes the rollout so every command shares one error-handling, telemetry, and exit-code boundary. Bundled in this workstream is a privacy-posture correction: today's default sends every CLI invocation to PostHog (the bundled project key makes `enabled = (key.length > 0)` resolve to true unless the user explicitly opts out via `ZOMBIE_POSTHOG_ENABLED=0`). M63_002 attempted to fix this with a consent prompt and was deferred (`docs/v2/done/M63_002_P1_CLI_TELEMETRY_CONSENT.md`). M63_006 takes the simpler path: flip the default to off and rename the flag.
 
 ---
 
@@ -64,7 +64,7 @@ Standard set is the floor. No Zig, schema, or auth-flow concerns.
 
 ## Overview
 
-**Goal (testable):** Every command registered in `zombiectl/src/program/command-registry.js` dispatches through `runCommand({ name, errorMap, handler })`; the inline catch in `cli.js` collapses to a thin safety net (or is removed entirely); a new audit script `scripts/audit-cli-runcommand.sh` fails CI when any registered command bypasses the wrapper or omits an `errorMap` entry for the UZ-* codes its endpoints can return.
+**Goal (testable):** (a) Telemetry is **off by default** — `zombiectl` invoked with no env vars produces zero PostHog events, and the only on-switch is `DISABLE_TELEMETRY=0` (the renamed env var; `ZOMBIE_POSTHOG_ENABLED` is removed in this commit per RULE NLG); (b) every command registered in `zombiectl/src/program/command-registry.js` dispatches through `runCommand({ name, errorMap, handler })`; the inline catch in `cli.js` collapses to a thin safety net; a new audit script `scripts/audit-cli-runcommand.sh` fails CI when any registered command bypasses the wrapper or omits an `errorMap` entry for the UZ-* codes its endpoints can return.
 
 **Problem (operator-visible):** Today, error messages drift across commands — `commandSteer` formats an `ApiError` one way, `commandBillingShow` another, and a third command silently exits with the bare server message because no one wrote a per-code translation. Per-command analytics props (`exit_code`, `error_code`, command-specific `target` IDs) are missing because the catch lives in `cli.js` where the command name is the only handle. New commands added since M63_004 reproduce the old shape because there is no compiler/audit signal that `runCommand` exists.
 
@@ -76,6 +76,9 @@ Standard set is the floor. No Zig, schema, or auth-flow concerns.
 
 | File | Action | Why |
 |------|--------|-----|
+| `zombiectl/src/lib/analytics.js` | EDIT | §0. Rename env var `ZOMBIE_POSTHOG_ENABLED` → `DISABLE_TELEMETRY` with inverted semantics. Flip default: telemetry off when neither the env var nor an explicit opt-in is present. `ZOMBIE_POSTHOG_KEY` / `ZOMBIE_POSTHOG_HOST` (transport overrides) stay unchanged. |
+| `zombiectl/test/analytics.unit.test.js` | EDIT | §0. Update existing assertions from `ZOMBIE_POSTHOG_ENABLED` to `DISABLE_TELEMETRY`; add cases for the new default-off behavior and `DISABLE_TELEMETRY=0` opt-in. |
+| `zombiectl/test/cli-analytics.unit.test.js` | EDIT | §0. Same env-var rename in the higher-level smoke test. |
 | `zombiectl/src/program/command-registry.js` | EDIT | Dispatch every registered command through `runCommand`. Inject `errorMap` and `name` per registration. Single choke point for the migration. |
 | `zombiectl/src/commands/agent.js` | EDIT | Convert exported `commandAgent` to `{ name, errorMap, handler }` shape; remove inline `try/catch` for `ApiError` formatting. |
 | `zombiectl/src/commands/agent_external.js` | EDIT | Same pattern; three sub-commands (add/list/delete) each get an `errorMap`. |
@@ -103,6 +106,20 @@ Standard set is the floor. No Zig, schema, or auth-flow concerns.
 ---
 
 ## Sections (implementation slices)
+
+### §0 — Telemetry default off + flag rename (lands first on the branch)
+
+What §0 delivers: `zombiectl` no longer emits PostHog events on a fresh install. The single env-var control surface is `DISABLE_TELEMETRY`; absent or `=1` keeps telemetry off; `DISABLE_TELEMETRY=0` opts in and wakes the existing transport. The legacy `ZOMBIE_POSTHOG_ENABLED` is removed in the same commit (RULE NLG — pre-v2.0.0, no compat shim, single-PR cutover).
+
+`resolveConfig` becomes:
+
+- Read `env.DISABLE_TELEMETRY`. Treat `1`/`true`/`on`/`yes` (or absent) as disabled. Treat `0`/`false`/`off`/`no` as opt-in.
+- When disabled, return `{ enabled: false }` — `createCliAnalytics` exits without importing `posthog-node` and returns `null`, so the rest of the CLI sees a null client and the existing `trackCliEvent` early-returns are no-ops.
+- When opt-in, the rest of the existing transport stays — `ZOMBIE_POSTHOG_KEY` and `ZOMBIE_POSTHOG_HOST` overrides keep their meaning; the bundled default key is still the fallback so the Captain's project receives events from operators who explicitly opt in.
+
+**Implementation default:** keep the bundled default key. Removing it is its own decision and is out of scope here. With telemetry off by default, the bundled key only matters when an operator explicitly sets `DISABLE_TELEMETRY=0`.
+
+§0 lands as the first commit on `feat/m63-006-runcommand-migration` so subsequent commits in §1-§5 can rely on the new env-var name in tests and audits without juggling two surfaces.
 
 ### §1 — Registry-driven dispatch
 
@@ -193,6 +210,7 @@ No HTTP routes, schema, or auth flow changes.
 3. No handler imports `ApiError` for the purpose of formatting — handlers may still `instanceof`-check for control flow, but message-formatting lives only in `errorMap` entries or `runCommand`. — Enforced by a grep pattern in the audit (`new ApiError\\(` outside `lib/`, `printApiError\\(` outside `lib/`).
 4. `cli.js` no longer contains an `ApiError`-formatting branch in its top-level catch. — Enforced by the audit (`grep -n 'ApiError' zombiectl/src/cli.js` returns zero matches outside imports).
 5. `cli_command_started` and `cli_command_finished` (or `cli_error`) emit exactly once per dispatch. — Enforced by the existing `run-command.unit.test.js` plus the new registry test.
+6. `DISABLE_TELEMETRY` is the only env var that toggles event emission. — Enforced by `grep -rn 'ZOMBIE_POSTHOG_ENABLED' zombiectl/` returning zero matches after §0 lands; the audit covers it.
 
 ---
 
@@ -214,6 +232,11 @@ No HTTP routes, schema, or auth flow changes.
 | `test_audit_cli_runcommand_fails_on_missing_code` | Mutate a fixture `errorMap` to drop an expected code; assert audit exits 1 listing the missing code. |
 | `test_cli_top_level_catch_has_no_ApiError_branch` | Static check on `cli.js` source: asserts no `ApiError` reference outside imports. |
 | `test_existing_command_user_visible_strings_unchanged` | Snapshot test: invoke `commandSteer` (and 2-3 other commands) against a stub server returning known UZ-* codes; assert stderr matches the pre-migration snapshot byte-for-byte. Guards against accidental error-string drift. |
+| `test_telemetry_off_by_default` | `resolveConfig({})` (empty env) resolves to `enabled: false` even though `DEFAULT_POSTHOG_KEY.length > 0`; `createCliAnalytics({})` returns `null` and never imports `posthog-node`. |
+| `test_disable_telemetry_one_keeps_off` | `resolveConfig({ DISABLE_TELEMETRY: "1" })` resolves to `enabled: false`. Same for `"true"`, `"on"`, `"yes"`. |
+| `test_disable_telemetry_zero_opts_in` | `resolveConfig({ DISABLE_TELEMETRY: "0" })` resolves to `enabled: true`; `createCliAnalytics({ DISABLE_TELEMETRY: "0" })` returns a non-null client. Same for `"false"`, `"off"`, `"no"`. |
+| `test_zombie_posthog_enabled_no_longer_recognized` | `resolveConfig({ ZOMBIE_POSTHOG_ENABLED: "true" })` resolves to `enabled: false` — the renamed flag is the only on-switch; the legacy name is dead. |
+| `test_no_legacy_env_var_in_tree` | `grep -rn 'ZOMBIE_POSTHOG_ENABLED' zombiectl/ | grep -v 'docs/v2/done'` returns zero matches after the migration commit lands. |
 
 Fixtures: `zombiectl/test/commands/error-map.fixture.js`, `zombiectl/test/commands/snapshots/{command}.txt`. Fixture names carry no milestone IDs (RULE TST-NAM).
 
@@ -221,6 +244,8 @@ Fixtures: `zombiectl/test/commands/error-map.fixture.js`, `zombiectl/test/comman
 
 ## Acceptance Criteria
 
+- [ ] Telemetry is off when invoked with no env vars — verify: `DISABLE_TELEMETRY= ZOMBIE_POSTHOG_ENABLED= zombie --version` produces zero outbound HTTP to `posthog.com` (mock fetch in unit test; manual verify via `tcpdump`/`mitmproxy` if needed)
+- [ ] `ZOMBIE_POSTHOG_ENABLED` no longer appears anywhere in the live tree — verify: `grep -rn 'ZOMBIE_POSTHOG_ENABLED' zombiectl/ | grep -v 'docs/v2/done'` returns empty
 - [ ] Every registry entry uses `runCommand` — verify: `scripts/audit-cli-runcommand.sh`
 - [ ] Every command declares an `errorMap` covering its endpoints — verify: same audit
 - [ ] No `ApiError` reference in `cli.js` outside imports — verify: `grep -n 'ApiError' zombiectl/src/cli.js | grep -v 'import'` returns empty
@@ -309,4 +334,6 @@ Empty at creation. Populated as Architecture Consult / Legacy-Design Consult fir
 - Per-step `try/catch` removal inside long poll loops (login pairing, browser-launch). Those keep their per-step recovery and only their outer dispatch goes through `runCommand`.
 - Adding new UZ-* error codes server-side. The `errorMap` mirrors what already exists; new codes are introduced by their own spec and added to the maps as part of that change.
 - `streamFetch` / SSE retry policy. SSE has different semantics; today's behavior carries forward unchanged. A future spec may revisit if SSE failures become a hot path.
-- Telemetry destination changes. Today the CLI emits to PostHog (`us.i.posthog.com`) with the baked-in default project key; this spec reuses that transport unchanged.
+- Telemetry **transport** changes. The PostHog destination, bundled project key, and `ZOMBIE_POSTHOG_KEY`/`ZOMBIE_POSTHOG_HOST` overrides stay unchanged; only the on/off control surface and its default flip in §0.
+- Removing the bundled default PostHog project key. With the default flipped to off, the bundled key is harmless. Removing it would force operators who opt in (`DISABLE_TELEMETRY=0`) to also supply `ZOMBIE_POSTHOG_KEY`, which is its own decision.
+- Re-introducing M63_002's interactive consent prompt. The default-off flip subsumes the privacy goal of M63_002 with a smaller blast radius.
