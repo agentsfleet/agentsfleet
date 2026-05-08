@@ -134,13 +134,6 @@ a {
   }
 }
 
-/* Routes fade in instantly — DESIGN_SYSTEM.md §Motion: page transitions
- * are instant, not animated. Kept the class so route-changes can attach
- * but with no animation. */
-.route-fade {
-  animation: none;
-}
-
 @media (prefers-reduced-motion: reduce) {
   /* Wake-pulse degrades to a static ring per DESIGN_SYSTEM.md §Motion
    * §"prefers-reduced-motion: reduce". The design-system already handles
