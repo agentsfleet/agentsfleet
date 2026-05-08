@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 003
 **Date:** May 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — marketing surface is the highest-taste touchpoint; ships in PR #308 alongside W1 so `main` never receives a broken intermediate state.
 **Categories:** UI
 **Batch:** B2 — depends on W1 (M64_002) DONE; runs after W1's token + font surface lands.
