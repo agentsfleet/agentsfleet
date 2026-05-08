@@ -11,7 +11,7 @@ import { commandGrant as commandGrantModule } from "./commands/grant.js";
 import { commandTenant as commandTenantModule } from "./commands/tenant.js";
 import { commandBilling as commandBillingModule } from "./commands/billing.js";
 import { commandZombie as commandZombieModule } from "./commands/zombie.js";
-import { ui, printKeyValue, printSection, printTable } from "./ui-theme.js";
+import { ui, printKeyValue, printSection, printTable } from "./output/index.js";
 import { createSpinner } from "./ui-progress.js";
 import {
   clearCredentials,
@@ -25,12 +25,12 @@ import { ApiError, apiHeaders, printApiError, request } from "./program/http-cli
 import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
 import { printHelp, printJson, writeError, writeLine } from "./program/io.js";
-import { printBanner, printPreReleaseWarning } from "./program/banner.js";
+import { printVersion, printPreReleaseWarning } from "./program/banner.js";
 import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { createCoreHandlers } from "./commands/core.js";
 
-export const VERSION = "0.33.1";
+export const VERSION = "0.34.0";
 
 export { parseGlobalArgs };
 
@@ -43,7 +43,10 @@ export async function runCli(argv, io = {}) {
   const fetchImpl = io.fetchImpl || globalThis.fetch;
 
   const { global, rest } = parseGlobalArgs(argv, env);
-  const noColor = Boolean(env.NO_COLOR === "1" || env.NO_COLOR === "true");
+  // no-color.org spec — any non-empty NO_COLOR disables color. Aligns
+  // with capability.detectColorMode and printHelp. (Was previously a
+  // narrow "1"|"true" check that diverged from the spec.)
+  const noColor = Boolean(env.NO_COLOR && env.NO_COLOR.length > 0);
 
   printPreReleaseWarning(stderr, { noColor, jsonMode: global.json, ttyOnly: !stderr.isTTY });
 
@@ -51,7 +54,7 @@ export async function runCli(argv, io = {}) {
     if (global.json) {
       printJson(stdout, { version: VERSION });
     } else {
-      printBanner(stdout, VERSION, { noColor, jsonMode: false });
+      printVersion(stdout, VERSION, { noColor, jsonMode: false });
     }
     return 0;
   }

@@ -65,6 +65,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
     apiHeaders,
     parseFlags,
     printJson,
+    printSection,
     request,
     ui,
     writeLine,
