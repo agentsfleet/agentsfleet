@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 006
 **Date:** May 08, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — `runCommand` shipped in M63_004 but no handler imports it; the catch logic still lives inline in `cli.js`. The wrapper is dead code until commands migrate.
 **Categories:** CLI, OBS
 **Batch:** B1 — independent of any other in-flight workstream. No external dependencies.
-**Branch:** feat/m63-006-runcommand-migration (to be created at CHORE(open)).
+**Branch:** feat/m63-006-runcommand-migration
 **Depends on:** M63_004_P1_CLI_OBS_RESILIENCE — `runCommand`, `apiRequestWithRetry`, `trackHttpRequest/Retry` already exist; this spec consumes them.
 
 **Canonical architecture:** `zombiectl` is the customer/operator entry point. M63_004 introduced the resilience layer; M63_006 finishes the rollout so every command shares one error-handling, telemetry, and exit-code boundary. Bundled in this workstream is a privacy-posture correction: today's default sends every CLI invocation to PostHog (the bundled project key makes `enabled = (key.length > 0)` resolve to true unless the user explicitly opts out via `ZOMBIE_POSTHOG_ENABLED=0`). M63_002 attempted to fix this with a consent prompt and was deferred (`docs/v2/done/M63_002_P1_CLI_TELEMETRY_CONSENT.md`). M63_006 takes the simpler path: flip the default to off and rename the flag.
