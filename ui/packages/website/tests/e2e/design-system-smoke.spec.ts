@@ -356,7 +356,7 @@ test.describe("Accessibility", () => {
     // Scope to the gallery content — site shell (header/footer) heading order
     // is not part of the design-system contract, audited in its own spec.
     const results = await new AxeBuilder({ page })
-      .include(".site-main")
+      .include("main")
       .disableRules(["color-contrast"]) // brand palette; audited separately
       .analyze();
     expect(results.violations).toEqual([]);

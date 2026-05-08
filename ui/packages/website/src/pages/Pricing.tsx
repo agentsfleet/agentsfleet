@@ -2,7 +2,6 @@ import FAQ from "../components/FAQ";
 import { Badge, Button, Card, List, ListItem } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupCompleted, trackLeadCaptureClicked } from "../analytics/posthog";
-import { MODE_HUMANS } from "../constants/mode";
 
 type Tier = {
   name: string;
@@ -134,7 +133,7 @@ export default function Pricing() {
                       : trackSignupCompleted({
                           source: tier.ctaSource,
                           surface: "pricing",
-                          mode: MODE_HUMANS,
+                          mode: "humans",
                         })
                   }
                 >
