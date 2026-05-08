@@ -1,62 +1,91 @@
 import { Link } from "react-router-dom";
-import { Button, Terminal } from "@usezombie/design-system";
+import { Button, Terminal, WakePulse } from "@usezombie/design-system";
 import { DOCS_QUICKSTART_URL } from "../config";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
+
+/*
+ * Marketing hero — Mockup A canonical shape (DESIGN_SYSTEM.md preview.html).
+ *
+ *   eyebrow:  <WakePulse live> + LIVE label (mono, uppercase)
+ *   headline: mono, two-line, "memorable thing" voice
+ *   lede:     sans body, max 640px
+ *   ctas:     primary install + default replay
+ *   cli:      inline <Terminal> showing the install transcript
+ *
+ * No decorative hero illustration, proof grid, or animated gradient — the
+ * dot-grid background (in styles.css) plus the eyebrow pulse carry all
+ * visual life on this surface. --pulse currency rule honoured: it appears
+ * exactly once on this page, on the live eyebrow indicator.
+ */
 export default function Hero() {
-  const heading = {
-    badge: "Always-on event-driven runtime · Markdown-defined",
-    line1: "Agents that wake on every event.",
-  };
-
   return (
-    <section className="hero" aria-label="Hero">
-      <div className="hero-inner hero-inner--humans">
-        <div className="hero-copy">
-          <p className="hero-badge">{heading.badge}</p>
+    <section className="site-section" aria-label="Hero" data-testid="hero">
+      <div className="wrap flex flex-col gap-8">
+        <p
+          className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.1em] text-pulse"
+          data-testid="hero-eyebrow"
+        >
+          <WakePulse
+            live
+            aria-hidden="true"
+            className="inline-block size-[6px] rounded-full bg-pulse"
+          />
+          LIVE — wake.on.event
+        </p>
 
-          <h1 className="hero-headline">
-            <span className="hero-line1">{heading.line1}</span>
-          </h1>
+        <h1
+          className="font-mono text-[clamp(40px,7vw,72px)] leading-[1.05] tracking-[-0.025em] font-medium text-text"
+          data-testid="hero-headline"
+        >
+          Your deploy failed.
+          <br />
+          The daemon already knows why.
+        </h1>
 
-          <p className="hero-kicker">
-            A webhook wakes the Zombie Agent. It reads your logs, finds the
-            cause, and posts the fix to Slack — every action on a replayable
-            event log. You write only Markdown.
-          </p>
+        <p className="font-sans text-[18px] leading-[1.5] text-text-muted max-w-[640px]">
+          A long-lived runtime that owns one operational outcome end to end.
+          Wakes on your events. Runs against a durable, replayable log. Posts
+          evidenced answers — never chats.
+        </p>
 
-          <div className="hero-cta-row">
-            <Button asChild className="hero-cta-primary">
-              <a
-                href={DOCS_QUICKSTART_URL}
-                onClick={() => {
-                  trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
-                }}
-              >
-                Start an Agent
-              </a>
-            </Button>
-            <Button asChild variant="double-border" className="hero-cta-secondary">
-              <Link
-                to="/pricing"
-                onClick={() => trackNavigationClicked({ source: "hero_secondary_pricing", surface: "hero", target: "pricing" })}
-              >
-                $5 starter credit &rarr;
-              </Link>
-            </Button>
-          </div>
-
-          <div className="hero-command-card">
-            <p className="hero-command-label">Quick start command</p>
-            <Terminal label="Quick start command" copyable>
-              {"npm install -g @usezombie/zombiectl"}
-            </Terminal>
-            <p className="hero-command-note">
-              Then run /usezombie-install-platform-ops in Claude Code, Amp, Codex CLI, or OpenCode.
-              <br />
-              <strong>$5 starter credit</strong> &mdash; no card required.
-            </p>
-          </div>
+        <div className="flex flex-wrap gap-3 items-center">
+          <Button asChild data-testid="hero-cta-primary">
+            <a
+              href={DOCS_QUICKSTART_URL}
+              onClick={() =>
+                trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" })
+              }
+            >
+              → install in Claude Code
+            </a>
+          </Button>
+          <Button asChild variant="ghost" data-testid="hero-cta-secondary">
+            <Link
+              to="/agents"
+              onClick={() =>
+                trackNavigationClicked({
+                  source: "hero_secondary_replay",
+                  surface: "hero",
+                  target: "agents",
+                })
+              }
+            >
+              view a real wake (replay)
+            </Link>
+          </Button>
         </div>
+
+        <Terminal
+          label="install platform-ops via Claude Code"
+          data-testid="hero-cli"
+          className="max-w-[860px]"
+        >
+          {`$ claude /usezombie-install-platform-ops
+› fetching SKILL.md from registry...
+✓ installed platform-ops (SKILL.md · TRIGGER.md · 2 secrets injected via vault)
+✓ webhook registered github.com/your-org/your-repo
+› awaiting first event...`}
+        </Terminal>
       </div>
     </section>
   );
