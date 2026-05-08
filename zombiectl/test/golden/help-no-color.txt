@@ -1,0 +1,61 @@
+zombiectl v0.33.1
+
+autonomous agent platform
+
+USAGE
+  zombiectl [--api URL] [--json] <command> [args] [flags]
+
+USER COMMANDS
+  login [--timeout-sec N] [--poll-ms N] [--no-open]
+  logout
+  workspace add [<name>]
+  workspace list
+  workspace use <workspace_id>
+  workspace show [--workspace-id ID]
+  workspace credentials
+  workspace delete <workspace_id>
+  doctor
+
+AGENT COMMANDS
+  agent add                   Mint an agent API key for the workspace
+  agent list                  List agent API keys
+  agent delete <key_id>       Revoke an agent API key
+
+GRANT COMMANDS
+  grant list                  List integration grants in the workspace
+  grant delete <grant_id>     Revoke an integration grant
+
+TENANT COMMANDS
+  tenant provider show        Show the BYOK provider config
+  tenant provider add --credential <n>  Use a BYOK credential
+  tenant provider delete      Reset to the platform default
+
+BILLING COMMANDS
+  billing show                Plan, balance, and usage snapshot
+
+ZOMBIE COMMANDS
+  install --from <path>       Register a zombie from <path>
+  list [--cursor C] [--limit N]  List zombies (paginated)
+  status [<zombie_id>]        Show zombie status
+  stop <zombie_id>            Halt the session (resumable)
+  resume <zombie_id>          Resume from stopped
+  kill <zombie_id>            Mark terminal (irreversible)
+  delete <zombie_id>          Hard-delete (kill first)
+  logs <zombie_id>            Tail zombie activity
+  events <zombie_id> [opts]   Page through historical events
+  steer <zombie_id> "<msg>"   Send a message; stream response
+  credential add|show|list|delete  Workspace credential vault
+
+GLOBAL FLAGS
+  --api URL                   API base URL
+  --json                      Machine-readable JSON output
+  --no-input                  Disable interactive prompts
+  --no-open                   Skip auto-opening browser
+  --version                   Show version
+  --help, -h                  Show this help
+
+ENVIRONMENT VARIABLES
+  ZOMBIE_API_URL              API base URL (overridden by --api)
+  ZOMBIE_TOKEN                Auth token (overridden by login)
+  ZOMBIE_API_KEY              API key for service auth
+  NO_COLOR                    Any non-empty value disables color

@@ -18,13 +18,18 @@ export function resetCapabilityWarning() {
 }
 
 export function detectColorMode(env = process.env, stream = process.stdout) {
+  // NO_COLOR is the highest-priority disable per no-color.org.
   if (env.NO_COLOR && env.NO_COLOR.length > 0) return MODE_NONE;
-  if (stream && stream.isTTY !== true) return MODE_NONE;
 
+  // FORCE_COLOR is the highest-priority enable, overriding !isTTY for
+  // CI / piped-to-pretty-printer / explicit-test scenarios.
   const force = env.FORCE_COLOR;
   if (force === "0") return MODE_NONE;
   if (force === "1") return MODE_BASIC16;
   if (force === "2" || force === "3") return MODE_XTERM256;
+
+  // No FORCE_COLOR override → !isTTY means plain output.
+  if (stream && stream.isTTY !== true) return MODE_NONE;
 
   if (env.COLORTERM === "truecolor" || env.COLORTERM === "24bit") return MODE_XTERM256;
 
