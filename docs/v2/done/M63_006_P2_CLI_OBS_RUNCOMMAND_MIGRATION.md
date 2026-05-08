@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M63
 **Workstream:** 006
 **Date:** May 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — `runCommand` shipped in M63_004 but no handler imports it; the catch logic still lives inline in `cli.js`. The wrapper is dead code until commands migrate.
 **Categories:** CLI, OBS
 **Batch:** B1 — independent of any other in-flight workstream. No external dependencies.
