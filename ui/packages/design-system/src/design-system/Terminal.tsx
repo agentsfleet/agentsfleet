@@ -1,6 +1,14 @@
 "use client";
 
-import { type ComponentProps, type ReactNode, useId, useState, useCallback } from "react";
+import {
+  type ComponentProps,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useCallback,
+} from "react";
 import { cn } from "../utils";
 import { Button } from "./Button";
 
@@ -27,13 +35,34 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
 export default function Terminal({ label, green, copyable, children, className, ...rest }: Props) {
   const id = useId();
   const [copied, setCopied] = useState(false);
+  const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Clear any in-flight reset timer if the component unmounts mid-flash —
+  // otherwise a Copy click followed by a fast unmount fires `setCopied`
+  // on a dead component (React warning + memory hold on the closure).
+  useEffect(
+    () => () => {
+      if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+    },
+    [],
+  );
 
   const handleCopy = useCallback(() => {
     const text = typeof children === "string" ? children : "";
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
+    // Clipboard access can reject (denied permission, non-secure context,
+    // sandboxed iframe). Catch the rejection so the user-facing failure
+    // path is silent rather than an unhandled promise rejection in the
+    // console — the absence of the "Copied" flash is the visible signal.
+    navigator.clipboard
+      .writeText(text)
+      .then(() => {
+        setCopied(true);
+        if (resetTimerRef.current) clearTimeout(resetTimerRef.current);
+        resetTimerRef.current = setTimeout(() => setCopied(false), 2000);
+      })
+      .catch(() => {
+        /* clipboard denied — leave button in resting state */
+      });
   }, [children]);
 
   return (
@@ -69,7 +98,13 @@ export default function Terminal({ label, green, copyable, children, className, 
             {label}
           </span>
         )}
-        {copyable && (
+        {copyable && typeof children === "string" && (
+          // Copy button only renders when there's a flat string to
+          // copy. JSX children (e.g. mixed-color <LogLine> blocks)
+          // can't round-trip through clipboard.writeText(string), so
+          // showing the affordance would be a silent no-op. Callers
+          // wanting to copy rich content should pre-flatten and
+          // pass the plain-text version.
           <Button
             type="button"
             variant={copied ? "outline" : "secondary"}

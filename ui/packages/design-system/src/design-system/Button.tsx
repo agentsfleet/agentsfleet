@@ -48,9 +48,14 @@ export const buttonVariants = cva(
         // through `asChild` wrappers since the website's
         // `a { color: inherit }` reset would otherwise win the cascade.
         default:
-          "border-pulse bg-pulse text-on-pulse font-medium hover:bg-pulse-dim hover:border-pulse-dim [&_a]:text-on-pulse [&_a]:no-underline [&_a:hover]:text-on-pulse",
+          "border-pulse bg-pulse text-on-pulse hover:bg-pulse-dim hover:border-pulse-dim [&_a]:text-on-pulse [&_a]:no-underline [&_a:hover]:text-on-pulse",
+        // Destructive — saturated red fill. Same theme-fixed dark text
+        // story as the primary variant: `--destructive-foreground`
+        // resolves to `var(--bg)` which swaps to parchment in light
+        // mode → invisible white-ish text on red. `text-on-pulse`
+        // (theme-fixed `#0a0d0e`) holds dark in both modes.
         destructive:
-          "border-transparent bg-destructive text-destructive-foreground hover:opacity-90",
+          "border-transparent bg-destructive text-on-pulse hover:opacity-90 [&_a]:text-on-pulse [&_a]:no-underline",
         outline:
           "border-border-strong bg-transparent text-foreground hover:bg-muted",
         // Secondary CTA. Mirrors `.btn` in the canonical preview:
@@ -69,8 +74,11 @@ export const buttonVariants = cva(
           "border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-card [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-foreground",
         link:
           "border-transparent bg-transparent text-pulse underline-offset-4 hover:underline min-h-0 p-0 h-auto",
+        // Double-border — heavy mint border on transparent fill. Hover
+        // fills mint and demotes the text to the theme-fixed dark token
+        // (same swap-safe story as `default` and `destructive`).
         "double-border":
-          "border-2 border-primary bg-transparent text-foreground hover:bg-primary hover:text-primary-foreground",
+          "border-2 border-primary bg-transparent text-foreground hover:bg-primary hover:text-on-pulse [&_a]:text-foreground [&_a]:no-underline [&_a:hover]:text-on-pulse",
       },
       size: {
         default: "h-10 px-xl py-lg text-body-sm",
