@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 007 (this spec) — sequenced as design-system **W4** (W1 token swap → W2 website apply → W3 app apply → **W4 docs apply** → W5 zombiectl already shipped)
 **Date:** May 08, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — docs are read-often but lower-stakes-per-edit than the app or marketing site. Quality matters; timing flexibility is higher than W3. P2 not P3 because the docs and the dashboard share a top-nav workspace switcher conceptually — visual divergence between the two surfaces is jarring once a developer signs in.
 **Categories:** DOCS · UI
 **Batch:** B5 — depends on M64_002 (W1) merged. Independent of W2/W3; consumes only W1.

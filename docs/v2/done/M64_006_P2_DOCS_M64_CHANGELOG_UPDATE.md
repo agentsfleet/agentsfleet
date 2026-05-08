@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 006
 **Date:** May 08, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — the changelog entry is shipped-feature evidence; lands AFTER the underlying work (W1+W2+W3+W4) so the prose matches what's deployed. P2 because the user-facing docs site already auto-deploys on changelog merge; no engineering blocker waiting on this.
 **Categories:** DOCS
 **Batch:** B5 — depends on M64_002 (W1), M64_003 (W2), M64_004 (W3), M64_007 (W4) all merged AND M64_005 (e2e harness) verifying the dashboard against `api-dev`. The changelog entry's claims must reflect verified shipped behaviour, not aspirational prose.

@@ -30,7 +30,7 @@ async function assertFooterLinks(page: Page) {
 test.describe("Cross-page link coverage", () => {
   test("Home page exposes expected internal and external links", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText("The daemon already knows why.");
+    await expect(page.getByRole("heading", { level: 1 })).toContainText("The agent already knows why.");
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: /^pricing$/i }).click();

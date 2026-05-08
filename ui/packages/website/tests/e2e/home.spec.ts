@@ -8,7 +8,7 @@ test.describe("Home page", () => {
   test("renders hero heading (Mockup A two-line)", async ({ page }) => {
     const h1 = page.getByRole("heading", { level: 1 });
     await expect(h1).toContainText("Your deploy failed.");
-    await expect(h1).toContainText("The daemon already knows why.");
+    await expect(h1).toContainText("The agent already knows why.");
   });
 
   test("hero LIVE eyebrow renders a WakePulse data-live element", async ({ page }) => {

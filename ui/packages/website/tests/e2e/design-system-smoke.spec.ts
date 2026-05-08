@@ -119,10 +119,19 @@ test.describe("Card — computed styles", () => {
 });
 
 test.describe("Terminal — computed styles", () => {
-  // Terminal's text/bg utilities land on the inner <pre>, so we query that.
+  // Text/foreground utilities land on the inner <pre>; background +
+  // border land on the outer wrapper <div> (the terminal-window
+  // chrome introduced post-Operational-Restraint). Colour-related
+  // queries use the <pre>; structural queries (border, background)
+  // use the wrapper.
   async function terminalPreStyle(page: Page, testid: string, prop: string) {
     return page
       .locator(`[data-testid="${testid}"] pre`)
+      .evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
+  }
+  async function terminalWrapperStyle(page: Page, testid: string, prop: string) {
+    return page
+      .locator(`[data-testid="${testid}"]`)
       .evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
   }
 
@@ -139,7 +148,9 @@ test.describe("Terminal — computed styles", () => {
   });
 
   test("terminal has surface-terminal background", async ({ page }) => {
-    const bg = await terminalPreStyle(page, "terminal-default", "background-color");
+    // Background lives on the outer wrapper now (bg-surface-deep).
+    // The <pre> is transparent so it inherits the wrapper colour.
+    const bg = await terminalWrapperStyle(page, "terminal-default", "background-color");
     expect(bg).not.toBe("rgba(0, 0, 0, 0)");
   });
 });
