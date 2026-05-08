@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 
 /*
  * Hero.tsx surfaces the W2 design language: the LIVE pulse eyebrow,
- * the operational-restraint voice ("the daemon already knows why"),
+ * the operational-restraint voice ("the agent already knows why"),
  * and the replayable-log architecture pillar.
  *
  * Test names follow RULE TST-NAM (no milestone IDs in test names).

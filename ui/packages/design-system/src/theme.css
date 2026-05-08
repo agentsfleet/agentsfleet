@@ -93,6 +93,15 @@
   --color-pulse: var(--pulse);
   --color-pulse-dim: var(--pulse-dim);
   --color-pulse-glow: var(--pulse-glow);
+  /* `text-on-pulse` — theme-fixed dark text for content layered on
+   * a pulse-coloured surface (primary CTAs, brand-mark labels). Stays
+   * dark in light mode too; see tokens.css `--on-pulse`. */
+  --color-on-pulse: var(--on-pulse);
+
+  /* `bg-surface-deep` — one shade below --bg; for terminal/log/CLI
+   * chrome where the body reads as "lower than the page itself".
+   * Mirrors `.cli` in the canonical preview. */
+  --color-surface-deep: var(--surface-deep);
 
   /* Borders + inputs + ring */
   --color-border: var(--border);

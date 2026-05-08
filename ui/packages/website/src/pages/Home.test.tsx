@@ -17,7 +17,7 @@ describe("Home", () => {
     renderHome();
     const h1 = screen.getByRole("heading", { level: 1 });
     expect(h1).toHaveTextContent(/your deploy failed/i);
-    expect(h1).toHaveTextContent(/the daemon already knows why/i);
+    expect(h1).toHaveTextContent(/the agent already knows why/i);
   });
 
   it("renders the hero lede in spec voice", () => {

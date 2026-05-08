@@ -14,8 +14,8 @@ describe("Button", () => {
   it("applies the default variant — flat pulse fill, no gradient", () => {
     render(<Button>Go</Button>);
     const btn = screen.getByRole("button");
-    expect(btn.className).toContain("bg-primary");
-    expect(btn.className).toContain("text-primary-foreground");
+    expect(btn.className).toContain("bg-pulse");
+    expect(btn.className).toContain("text-on-pulse");
     expect(btn.className).not.toContain("linear-gradient");
     expect(btn.className).not.toContain("rounded-full");
   });
@@ -151,7 +151,7 @@ describe("Button", () => {
     const html = renderToStaticMarkup(<Button>Hello</Button>);
     expect(html).toMatch(/^<button /);
     expect(html).toContain("Hello");
-    expect(html).toContain("text-primary-foreground");
+    expect(html).toContain("text-on-pulse");
   });
 
   it("SSR renders an <a> when asChild is used with a link child", () => {
@@ -162,7 +162,7 @@ describe("Button", () => {
     );
     expect(html).toMatch(/^<a /);
     expect(html).toContain('href="/x"');
-    expect(html).toContain("text-primary-foreground");
+    expect(html).toContain("text-on-pulse");
     expect(html).not.toContain("type=");
   });
 });
@@ -170,7 +170,7 @@ describe("Button", () => {
 describe("buttonVariants / buttonClassName", () => {
   it("buttonClassName returns the full class string for a variant", () => {
     const cls = buttonClassName("default");
-    expect(cls).toContain("text-primary-foreground");
+    expect(cls).toContain("text-on-pulse");
     expect(cls).toContain("rounded-md");
     expect(cls).toContain("inline-flex");
     expect(cls).toContain("font-mono");

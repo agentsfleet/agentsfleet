@@ -69,8 +69,8 @@ export default function Terms() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">8. Contact</h2>
       <p className="text-text-muted m-0">
         For questions about these terms, contact{" "}
-        <a href="mailto:legal@usezombie.com" className="text-pulse hover:underline">
-          legal@usezombie.com
+        <a href="mailto:usezombie@agentmail.to" className="text-pulse hover:underline">
+          usezombie@agentmail.to
         </a>
         .
       </p>

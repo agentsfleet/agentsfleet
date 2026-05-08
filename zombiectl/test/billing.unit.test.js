@@ -164,7 +164,7 @@ test("billing show: text mode prints formatted balance and footer pointer", asyn
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
   await commandBilling(ctx, ["show"], null, deps);
   const out = stdout.read();
-  assert.match(out, /Tenant balance:    \$4\.71 \(471¢\)/);
+  assert.match(out, /Tenant balance: {4}\$4\.71 \(471¢\)/);
   assert.match(out, /No billable events recorded yet\./);
   assert.match(out, /Out of credits\? See https:\/\/app\.usezombie\.com\/settings\/billing/);
 });

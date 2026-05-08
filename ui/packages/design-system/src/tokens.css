@@ -17,7 +17,12 @@
 @import "@fontsource-variable/instrument-sans";
 
 :root {
-  /* ── Surfaces (dark — brand primary) ── */
+  /* ── Surfaces (dark — brand primary) ──
+   * --surface-deep is one shade below --bg and reserved for code-block
+   * / terminal / log-viewer chrome where the body should read as
+   * "lower than the page itself". Mirrors `.cli` background in the
+   * canonical preview (line 195: `background: #06090A`). */
+  --surface-deep: #06090a;
   --bg: #0a0d0e;
   --surface-1: #11161a;
   --surface-2: #181e22;
@@ -36,6 +41,12 @@
   --pulse: #5eead4;
   --pulse-dim: #2dd4bf;
   --pulse-glow: rgba(94, 234, 212, 0.35);
+  /* Foreground for content layered on a pulse-coloured surface
+   * (primary CTAs, the brand-mark). Theme-fixed: stays dark in both
+   * dark and light modes so the contrast against the always-mint
+   * background never inverts. Per the canonical preview at
+   * ~/.gstack/projects/usezombie/designs/design-system-20260508-0831/preview.html. */
+  --on-pulse: #0a0d0e;
 
   /* ── Status (use sparingly, only for actual status) ── */
   --success: #34d399;
@@ -53,7 +64,13 @@
    * Layer 0 names use --ff-* (font-family) so they don't collide with
    * Tailwind's --font-* theme namespace; theme.css forwards them via
    * @theme inline { --font-{sans,mono}: var(--ff-{sans,mono}); }. */
-  --ff-mono: "Commit Mono", ui-monospace, "Cascadia Code", monospace;
+  /* Mono fallback stack — Commit Mono is the brand face (self-hosted
+   * via @fontsource above). JetBrains Mono is the broadly-cached
+   * fallback for fringe environments where the woff2 fails to load
+   * (rare with self-hosting, but a free hedge). ui-monospace +
+   * Cascadia Code carry the chain into native OS faces; final
+   * `monospace` keyword guarantees a mono fallback always exists. */
+  --ff-mono: "Commit Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
   --ff-sans: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
 
   /* Type scale (px values in trailing comments). Tailwind utilities
@@ -117,6 +134,7 @@
   /* Polite afterthought, not the brand's first impression. Warm
    * parchment over pure white reinforces "evidenced document" feel.
    * Pulse desaturates ~15%. */
+  --surface-deep: #efece5;
   --bg: #f8f6f1;
   --surface-1: #f1eee6;
   --surface-2: #e9e5da;
@@ -129,6 +147,8 @@
   --pulse: #14b8a6;
   --pulse-dim: #0d9488;
   --pulse-glow: rgba(20, 184, 166, 0.3);
+  /* --on-pulse stays dark in light mode too — see comment above. */
+  --on-pulse: #0a0d0e;
 }
 
 /* ── The wake pulse — the only signature animation in the system ──

@@ -78,8 +78,8 @@ export default function Privacy() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">7. Contact</h2>
       <p className="text-text-muted m-0">
         For privacy inquiries, contact{" "}
-        <a href="mailto:privacy@usezombie.com" className="text-pulse hover:underline">
-          privacy@usezombie.com
+        <a href="mailto:usezombie@agentmail.to" className="text-pulse hover:underline">
+          usezombie@agentmail.to
         </a>
         .
       </p>

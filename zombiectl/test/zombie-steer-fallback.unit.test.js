@@ -92,22 +92,10 @@ test("commandSteer SSE → poll fallback finds terminal status", async () => {
   expect(code).toBe(0);
 });
 
-test("commandSteer SSE → poll fallback times out → exit 1", async () => {
-  // Knock the fallback timeout down by patching the module timer. Easier
-  // to drive deterministically: have request return no items and let the
-  // poll loop spin one iteration; we verify exit=1 by way of a non-
-  // matching event_id.
-  const deps = STUB_DEPS({
-    streamGet: async () => { throw new Error("disconnect"); },
-    request: async (_ctx, url) => {
-      if (url.includes("/messages")) return { event_id: "1700000000000-0" };
-      return { items: [] };
-    },
-  });
-  // The fallback runs to its 60s deadline by default; we don't have time
-  // for that. Instead, drive the AbortController-like behaviour by
-  // awaiting only one poll cycle: the test asserts the path executed
-  // (request called twice → messages + events poll).
+test("commandSteer SSE → poll fallback hits a non-processed terminal status → exit 1", async () => {
+  // Drive the SSE→poll fallback path: streamGet throws, then the poll
+  // loop's first iteration matches a row whose status is terminal
+  // but not "processed" (agent_error). Exit 1.
   let requestCalls = 0;
   const tracker = {
     streamGet: async () => { throw new Error("disconnect"); },

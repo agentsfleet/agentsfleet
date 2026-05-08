@@ -30,9 +30,9 @@ describe("Privacy", () => {
 
   it("renders contact email link", () => {
     render(<Privacy />);
-    expect(screen.getByRole("link", { name: /privacy@usezombie\.com/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /usezombie@agentmail\.to/i })).toHaveAttribute(
       "href",
-      "mailto:privacy@usezombie.com"
+      "mailto:usezombie@agentmail.to"
     );
   });
 });

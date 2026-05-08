@@ -39,16 +39,34 @@ export const buttonVariants = cva(
   {
     variants: {
       variant: {
+        // Primary CTA. Per `docs/DESIGN_SYSTEM.md` + the canonical preview
+        // at `~/.gstack/projects/usezombie/designs/design-system-20260508-0831/preview.html`,
+        // the primary button is mint background + theme-fixed dark text
+        // (`--on-pulse`). The text token does NOT swap with theme — the
+        // mint background is the same in dark + light, so the foreground
+        // must also be the same. The `[&_a]` selectors force the colour
+        // through `asChild` wrappers since the website's
+        // `a { color: inherit }` reset would otherwise win the cascade.
         default:
-          "border-transparent bg-primary text-primary-foreground hover:bg-pulse-dim",
+          "border-pulse bg-pulse text-on-pulse font-medium hover:bg-pulse-dim hover:border-pulse-dim [&_a]:text-on-pulse [&_a]:no-underline [&_a:hover]:text-on-pulse",
         destructive:
           "border-transparent bg-destructive text-destructive-foreground hover:opacity-90",
         outline:
           "border-border-strong bg-transparent text-foreground hover:bg-muted",
+        // Secondary CTA. Mirrors `.btn` in the canonical preview:
+        // surface-2 background, --text foreground, border-strong.
+        // Hover surfaces to surface-3 + text-subtle border (the
+        // chrome breathes one tier when interactive).
         secondary:
-          "border-transparent bg-secondary text-secondary-foreground hover:bg-accent",
+          "border-border-strong bg-secondary text-foreground hover:bg-accent hover:border-text-subtle [&_a]:text-foreground [&_a]:no-underline",
+        // Ghost — transparent chrome, muted text. Matches `.btn-ghost`
+        // in the preview: hover swaps to --surface-1 + foreground text.
+        // Note `bg-card` resolves to --surface-1 (Layer 1 alias) — the
+        // production theme exposes `--card: var(--surface-1)`. Using
+        // `bg-card` over `bg-muted` (--surface-2) lifts ghost hover one
+        // tier shallower per the preview reference.
         ghost:
-          "border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted",
+          "border-transparent bg-transparent text-muted-foreground hover:text-foreground hover:bg-card [&_a]:text-muted-foreground [&_a]:no-underline [&_a:hover]:text-foreground",
         link:
           "border-transparent bg-transparent text-pulse underline-offset-4 hover:underline min-h-0 p-0 h-auto",
         "double-border":

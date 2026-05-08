@@ -15,6 +15,13 @@ export {
   type CardProps,
 } from "./Card";
 export { default as Terminal } from "./Terminal";
+export {
+  LogLine,
+  LogToken,
+  type LogLineProps,
+  type LogTokenProps,
+  type LogSeverity,
+} from "./LogLine";
 export { default as Grid } from "./Grid";
 export { default as Section } from "./Section";
 export { default as InstallBlock } from "./InstallBlock";

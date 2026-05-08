@@ -172,7 +172,9 @@ export default function Pricing() {
               when to move up
             </p>
             <h2 className="font-mono text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em] font-medium text-text m-0">
-              Start on Hobby. Move to Scale when agents become shared infrastructure.
+              <span className="whitespace-nowrap">Start on Hobby.</span>{" "}
+              <span className="whitespace-nowrap">Move to Scale</span> when agents
+              become shared infrastructure.
             </h2>
           </div>
           <p className="font-sans text-[15px] leading-[1.6] text-text-muted m-0">

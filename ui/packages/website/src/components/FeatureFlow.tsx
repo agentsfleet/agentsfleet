@@ -1,4 +1,4 @@
-import { Card, List, ListItem } from "@usezombie/design-system";
+import { Card, List, ListItem, Terminal } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 type FeatureFlowItem = {
@@ -9,6 +9,12 @@ type FeatureFlowItem = {
   ctaLabel: string;
   ctaHref: string;
   panel: ReadonlyArray<string>;
+  // Panels that are real shell commands (single line, copy-pasteable)
+  // render as a <Terminal copyable> with a copy button. Multi-line
+  // narrative panels (event traces, mission-control snippets) stay
+  // as static <Card>s — copy-paste of those bytes is not the user
+  // intent.
+  copyable?: boolean;
 };
 
 const items: FeatureFlowItem[] = [
@@ -24,6 +30,7 @@ const items: FeatureFlowItem[] = [
     ctaLabel: "install guide",
     ctaHref: DOCS_QUICKSTART_URL,
     panel: ["$ npm install -g @usezombie/zombiectl"],
+    copyable: true,
   },
   {
     id: "trace",
@@ -79,9 +86,15 @@ export default function FeatureFlow() {
               className={`grid gap-8 items-center grid-cols-1 lg:grid-cols-2 ${reversed ? "lg:[&>*:first-child]:order-2" : ""}`}
               data-testid={`feature-flow-${item.id}`}
             >
-              <Card className="font-mono text-[13px] leading-[1.7] text-text-muted whitespace-pre-line">
-                {item.panel.join("\n")}
-              </Card>
+              {item.copyable ? (
+                <Terminal label={`${item.title} command`} copyable>
+                  {item.panel.join("\n")}
+                </Terminal>
+              ) : (
+                <Card className="font-mono text-[13px] leading-[1.7] text-text-muted whitespace-pre-line">
+                  {item.panel.join("\n")}
+                </Card>
+              )}
               <div className="flex flex-col gap-4">
                 <h3 className="font-mono text-[clamp(20px,2.5vw,28px)] leading-[1.2] tracking-[-0.015em] text-text font-medium m-0">
                   {item.title}

@@ -39,7 +39,7 @@ export default function Hero() {
         >
           Your deploy failed.
           <br />
-          The daemon already knows why.
+          The agent already knows why.
         </h1>
 
         <p className="font-sans text-[18px] leading-[1.5] text-text-muted max-w-[640px]">

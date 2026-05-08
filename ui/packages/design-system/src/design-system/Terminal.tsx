@@ -2,6 +2,7 @@
 
 import { type ComponentProps, type ReactNode, useId, useState, useCallback } from "react";
 import { cn } from "../utils";
+import { Button } from "./Button";
 
 type Props = Omit<ComponentProps<"div">, "children"> & {
   label?: string;
@@ -11,10 +12,17 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
 };
 
 /*
- * Terminal — monospace code block with optional copy affordance.
- * Operational mono on the deepest surface; green variant for
- * "success"-flavored demos. Per spec, --pulse is reserved for live
- * signals — Terminal text uses --text (text-foreground), not --pulse.
+ * Terminal — monospace code block rendered as a recognisable terminal
+ * window: a chrome strip across the top (three muted-dot affordances
+ * on the left, optional label centred in the chrome, copy button on
+ * the right), then the mono body underneath. Per DESIGN_SYSTEM.md
+ * "Operational Restraint": borders > shadows, no traffic-light
+ * red/yellow/green decoration — the dots use muted/subtle/border
+ * tokens so the chrome reads as terminal but never as macOS skin.
+ *
+ * --pulse is currency, reserved for live signals; Terminal text uses
+ * --text (text-foreground) for the body. The `green` variant flips
+ * the body border to success-green for "success"-flavoured demos.
  */
 export default function Terminal({ label, green, copyable, children, className, ...rest }: Props) {
   const id = useId();
@@ -29,13 +37,59 @@ export default function Terminal({ label, green, copyable, children, className, 
   }, [children]);
 
   return (
-    <div className={cn("relative", className)} {...rest}>
+    <div
+      className={cn(
+        // `bg-surface-deep` is one shade below the page --bg per
+        // `.cli` in the canonical preview — terminal chrome reads
+        // as "lower than the page itself". Mirrored across light
+        // mode by the matching token in tokens.css.
+        "overflow-hidden rounded-md border bg-surface-deep",
+        green ? "border-success" : "border-border",
+        className,
+      )}
+      {...rest}
+    >
+      {/* Chrome strip — the visual cue that this is a terminal window. */}
+      <div
+        className={cn(
+          "flex items-center gap-2 px-md py-sm",
+          "border-b bg-muted/30",
+          green ? "border-success" : "border-border",
+        )}
+      >
+        {/* Three restraint-mode dots. Muted tokens, not macOS traffic
+         * lights. Read as "terminal window chrome" without the skin. */}
+        <span className="flex items-center gap-1.5" aria-hidden="true">
+          <span className="size-2.5 rounded-full bg-border-strong" />
+          <span className="size-2.5 rounded-full bg-muted-foreground/50" />
+          <span className="size-2.5 rounded-full bg-muted-foreground/30" />
+        </span>
+        {label && (
+          <span className="flex-1 text-center font-mono text-label text-muted-foreground truncate">
+            {label}
+          </span>
+        )}
+        {copyable && (
+          <Button
+            type="button"
+            variant={copied ? "outline" : "secondary"}
+            size="sm"
+            onClick={handleCopy}
+            aria-label={copied ? "Copied!" : "Copy command"}
+            data-testid="copy-btn"
+            className={cn(
+              "ml-auto h-auto py-0.5 text-label font-mono",
+              copied && "border-success text-success",
+            )}
+          >
+            {copied ? "✓ Copied" : "Copy"}
+          </Button>
+        )}
+      </div>
       <pre
         className={cn(
-          "m-0 overflow-auto rounded-md border px-xl py-lg text-mono font-mono",
-          "bg-background",
-          green ? "border-success text-success" : "border-border text-foreground",
-          copyable && "pr-[5.5rem]",
+          "m-0 overflow-auto px-xl py-lg text-mono font-mono",
+          green ? "text-success" : "text-foreground",
         )}
         aria-label={label}
         aria-describedby={label ? undefined : id}
@@ -48,24 +102,6 @@ export default function Terminal({ label, green, copyable, children, className, 
           </span>
         )}
       </pre>
-      {copyable && (
-        <button
-          type="button"
-          onClick={handleCopy}
-          aria-label={copied ? "Copied!" : "Copy command"}
-          data-testid="copy-btn"
-          className={cn(
-            "absolute top-[0.6rem] right-[0.6rem] cursor-pointer whitespace-nowrap",
-            "rounded-sm border px-md py-1 font-mono text-label bg-secondary",
-            "transition-colors duration-snap ease-snap",
-            copied
-              ? "border-success text-success"
-              : "border-border text-muted-foreground hover:border-border-strong hover:text-foreground",
-          )}
-        >
-          {copied ? "✓ Copied" : "Copy"}
-        </button>
-      )}
     </div>
   );
 }

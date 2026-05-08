@@ -52,7 +52,7 @@ export function formatKeyValue(rows, opts) {
     const label = palette.subtle(String(key).padEnd(width), opts);
     return `  ${label}${sep}${value}`;
   });
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")  }\n`;
 }
 
 function renderHeader(columns, widths, opts) {
@@ -78,12 +78,12 @@ function renderHorizontal(columns, rows, opts) {
     if (c.align) return c.align;
     return isAllNumeric(rows.map((r) => r[c.key] ?? "")) ? "right" : "left";
   });
-  const widths = columns.map((c, i) =>
+  const widths = columns.map((c) =>
     Math.max(c.label.length, ...rows.map((r) => String(r[c.key] ?? "").length))
   );
   const lines = [renderHeader(columns, widths, opts), renderRule(widths, opts)];
   for (const row of rows) lines.push(renderRow(columns, widths, row, alignments));
-  return lines.join("\n") + "\n";
+  return `${lines.join("\n")  }\n`;
 }
 
 // Below NARROW_THRESHOLD columns, fall back to a vertical key:value
@@ -99,11 +99,11 @@ function renderVertical(columns, rows, opts) {
     });
     return lines.join("\n");
   });
-  return blocks.join("\n\n") + "\n";
+  return `${blocks.join("\n\n")  }\n`;
 }
 
 export function formatTable(columns, rows, opts) {
-  if (rows.length === 0) return palette.subtle("(none)", opts) + "\n";
+  if (rows.length === 0) return `${palette.subtle("(none)", opts)  }\n`;
   return resolveWidth(opts) < NARROW_THRESHOLD
     ? renderVertical(columns, rows, opts)
     : renderHorizontal(columns, rows, opts);

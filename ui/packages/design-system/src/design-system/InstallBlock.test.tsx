@@ -53,7 +53,7 @@ describe("InstallBlock", () => {
   it("primary action uses the default primary variant", () => {
     renderBlock();
     const primary = screen.getByRole("link", { name: "Install now" });
-    expect(primary.className).toContain("text-primary-foreground");
+    expect(primary.className).toContain("text-on-pulse");
     expect(primary.className).not.toContain("bg-transparent");
   });
 

@@ -31,7 +31,7 @@ describe("Hero", () => {
     const h1 = container.querySelector("h1");
     expect(h1).not.toBeNull();
     expect(h1).toHaveTextContent(/your deploy failed/i);
-    expect(h1).toHaveTextContent(/the daemon already knows why/i);
+    expect(h1).toHaveTextContent(/the agent already knows why/i);
     expect(h1!.className).toContain("font-mono");
   });
 

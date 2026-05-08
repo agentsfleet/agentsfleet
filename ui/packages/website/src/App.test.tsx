@@ -83,7 +83,7 @@ describe("App", () => {
     renderApp("/");
     expect(screen.getByTestId("hero")).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { level: 1, name: /the daemon already knows why/i }),
+      screen.getByRole("heading", { level: 1, name: /the agent already knows why/i }),
     ).toBeInTheDocument();
   });
 

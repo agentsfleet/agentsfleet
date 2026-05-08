@@ -114,7 +114,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
     }
 
     const deadline = Date.now() + Math.max(1, timeoutSec) * 1000;
-    let last = { status: "pending", token: null };
+    let last;
     const spinner = createSpinner({
       enabled: !ctx.jsonMode && Boolean(ctx.stderr.isTTY),
       stream: ctx.stderr,
@@ -137,6 +137,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
             api_url: ctx.apiUrl,
           };
           await saveCredentials(saved);
+          // eslint-disable-next-line require-atomic-updates -- single-threaded CLI; ctx is request-scoped, not shared across concurrent callers
           ctx.token = last.token;
           await hydrateWorkspacesAfterLogin(ctx, workspaces, {
             apiHeaders,
