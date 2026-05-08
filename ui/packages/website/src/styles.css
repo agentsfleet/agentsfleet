@@ -18,14 +18,20 @@
  * jsdelivr CDN. The shared --z-font-mono token in tokens.css references
  * "Geist Mono Variable" which the fontsource package provides. */
 
-/* ── Legacy aliases (bridge to z- tokens) ── */
+/* ── Legacy aliases ──
+ * The website's pre-W1 styles still reference --neon-*, --terminal-green,
+ * --glow-*, etc. Those names are not part of the new Layer 0 (tokens.css)
+ * so they're kept here as page-local aliases. The four names that DO
+ * collide with new tokens (--surface-1, --text-muted, --font-sans,
+ * --font-mono) were removed in M64_002 W1 — re-defining them here
+ * shadowed the design-system values and broke bg-card / text-muted-foreground
+ * rendering inside Dialog / DropdownMenu / Tooltip. W2 will rip out the
+ * remaining --z-*-dependent rules in this file. */
 :root {
   --bg-0: var(--z-bg-0);
   --bg-1: var(--z-bg-1);
   --surface-0: var(--z-surface-0);
-  --surface-1: var(--z-surface-1);
   --text-primary: var(--z-text-primary);
-  --text-muted: var(--z-text-muted);
   --neon-orange: var(--z-orange);
   --neon-orange-bright: var(--z-orange-bright);
   --neon-amber: var(--z-amber);
@@ -34,8 +40,6 @@
   --border-subtle: var(--z-border);
   --glow-orange: var(--z-glow-orange);
   --glow-strong: var(--z-glow-strong);
-  --font-sans: var(--z-font-sans);
-  --font-mono: var(--z-font-mono);
 }
 
 * {
@@ -508,7 +512,7 @@ h3 {
 
 .grid {
   display: grid;
-  gap: var(--z-space-lg);
+  gap: var(--sp-lg);
 }
 
 .grid.two {

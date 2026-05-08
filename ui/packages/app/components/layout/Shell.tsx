@@ -192,7 +192,7 @@ export default function Shell({ children, workspaces = [], activeWorkspaceId = n
           text-transform: uppercase;
           letter-spacing: 0.08em;
           padding: 0.15rem 0.45rem;
-          border: 1px solid rgba(255, 190, 46, 0.2);
+          border: 1px solid color-mix(in srgb, var(--evidence) 20%, transparent);
           border-radius: 9999px;
         }
         .mc-header-nav {
