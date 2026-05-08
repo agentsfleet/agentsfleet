@@ -22,7 +22,19 @@ const CLI_JS_PATH = path.resolve(HERE, "../src/cli.js");
 
 const UZ_KEY = /^UZ-[A-Z]+-[0-9]+$/;
 
-const AUTH_CRITICAL_ROUTES = ["login", "logout", "workspace", "doctor"];
+// Every registered route is behind auth (login is route-guard-exempt
+// but can still surface UZ-AUTH-004 / 005 / 006 from the auth service
+// itself), so every route's errorMap should carry AUTH_PRESET. New
+// commands registered without it would silently fall through to bare
+// server messages on auth failure — this assertion catches that
+// regression.
+const AUTH_REQUIRING_ROUTES = [
+  "login", "logout", "workspace", "doctor",
+  "agent", "grant", "tenant", "billing",
+  "zombie.install", "zombie.list", "zombie.status", "zombie.kill",
+  "zombie.stop", "zombie.resume", "zombie.delete", "zombie.logs",
+  "zombie.steer", "zombie.events", "zombie.credential",
+];
 
 function buildHandlers() {
   const stub = () => 0;
@@ -97,16 +109,26 @@ describe("M63_006 — registry invariants", () => {
     expect(violations).toEqual([]);
   });
 
-  test("auth-critical routes include every AUTH_PRESET key", () => {
+  test("every authenticated route includes every AUTH_PRESET key", () => {
     const authKeys = Object.keys(AUTH_PRESET);
     const gaps = [];
-    for (const route of AUTH_CRITICAL_ROUTES) {
+    for (const route of AUTH_REQUIRING_ROUTES) {
       const map = handlers[route]?.errorMap || {};
       for (const code of authKeys) {
         if (!(code in map)) gaps.push(`${route} missing ${code}`);
       }
     }
     expect(gaps).toEqual([]);
+  });
+
+  test("AUTH_REQUIRING_ROUTES list stays in sync with the registered route set", () => {
+    // If a new route is added to command-registry.js, it must also be
+    // added (or explicitly removed if auth-exempt) here. Catches the
+    // "new command registered without auth preset" regression
+    // greptile flagged on PR #309.
+    const registered = Object.keys(handlers).sort();
+    const declared = [...AUTH_REQUIRING_ROUTES].sort();
+    expect(declared).toEqual(registered);
   });
 });
 
