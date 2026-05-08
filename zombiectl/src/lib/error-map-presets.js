@@ -1,8 +1,8 @@
 // error-map-presets — shared UZ-* → user-facing { code, message } maps.
 // Per-command errorMaps in zombiectl/src/commands/*.js compose presets
-// with command-specific entries. The audit (scripts/audit-cli-runcommand.sh)
-// reads each command's exported errorMap and asserts coverage of the
-// codes its endpoints can return.
+// with command-specific entries. The registry unit test
+// (zombiectl/test/registry.unit.test.js) pins the shape, UZ-* key
+// format, and AUTH_PRESET coverage on auth-critical routes.
 //
 // Stable surface: once a code → message lands here, treat the message
 // string as a public string (RULE EMS). Refactors must keep the
