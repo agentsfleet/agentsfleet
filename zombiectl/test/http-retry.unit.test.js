@@ -221,6 +221,32 @@ test("apiRequestWithRetry: backoff delay falls within ±20% jitter band on 250ms
   assert.equal(sleeps[0], 250);
 });
 
+test("apiRequestWithRetry: 429 with Retry-After: 5 floors backoff at 5000ms with one-sided positive jitter", async () => {
+  const sleeps = [];
+  const sleepImpl = async (ms) => { sleeps.push(ms); };
+  // randomFn returns 1 → max jitter (+20%) → 5000 + 1000 = 6000
+  const r429 = makeResponse({
+    status: 429,
+    body: { error: { code: "RATE_LIMITED" } },
+    headers: { "retry-after": "5" },
+  });
+  const { fetchImpl } = makeFetch([r429, makeResponse({ body: { ok: true } })]);
+
+  await apiRequestWithRetry("http://x", {
+    fetchImpl,
+    sleepImpl,
+    randomFn: () => 1,
+    env: {},
+    retry: { maxAttempts: 3, baseDelayMs: 250, capDelayMs: 2000 },
+  });
+
+  // Floor is 5000; one-sided positive jitter +0..20% → [5000, 6000].
+  // With randomFn()=1, expect 5000 + 5000*0.2*1 = 6000.
+  assert.equal(sleeps.length, 1);
+  assert.ok(sleeps[0] >= 5000, `delay ${sleeps[0]} must be >= 5000 (server floor)`);
+  assert.ok(sleeps[0] <= 6000, `delay ${sleeps[0]} must be <= 6000 (server floor + 20%)`);
+});
+
 test("apiRequestWithRetry: backoff caps at capDelayMs even after exponential growth", async () => {
   const sleeps = [];
   const sleepImpl = async (ms) => { sleeps.push(ms); };

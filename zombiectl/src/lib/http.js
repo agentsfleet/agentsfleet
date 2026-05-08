@@ -13,6 +13,11 @@ export class ApiError extends Error {
     this.code = details.code;
     this.requestId = details.requestId;
     this.body = details.body;
+    // retryAfterMs is captured at the apiRequest boundary (where the
+    // Response object is in scope). null when the header was absent or
+    // unparseable. apiRequestWithRetry reads this directly so the
+    // 429/Retry-After floor doesn't depend on body shape.
+    this.retryAfterMs = details.retryAfterMs ?? null;
   }
 }
 
@@ -52,10 +57,10 @@ function backoffDelay({ attempt, baseDelayMs, capDelayMs, retryAfterMs, randomFn
   return Math.max(0, base + jitter);
 }
 
-function parseRetryAfterHeaderMs(headerVal) {
+function parseRetryAfterHeaderValue(headerVal) {
   if (!headerVal) return null;
   const n = Number(headerVal);
-  if (Number.isFinite(n)) return n * 1000;
+  if (Number.isFinite(n) && n >= 0) return n * 1000;
   // HTTP-date form is rare for our APIs; fall back to ignoring.
   return null;
 }
@@ -109,7 +114,7 @@ export async function apiRequestWithRetry(url, options = {}) {
         if (typeof onRetry === "function") {
           onRetry({ attempt, status, durationMs, reason });
         }
-        const retryAfterMs = err instanceof ApiError ? parseRetryAfterHeaderMs(err.body?.headers?.["retry-after"]) : null;
+        const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;
         const delay = backoffDelay({ attempt, baseDelayMs, capDelayMs, retryAfterMs, randomFn });
         await sleep(delay);
         lastErr = err;
@@ -157,11 +162,16 @@ export async function apiRequest(url, options = {}) {
       const errorCode = json?.error?.code || `HTTP_${res.status}`;
       const requestId = json?.error?.request_id ?? json?.request_id ?? null;
       const message = json?.error?.message || res.statusText || "request failed";
+      // Capture Retry-After at the boundary where res.headers is still
+      // in scope; ApiError.body intentionally carries only the parsed
+      // payload, so the header lives on a dedicated field.
+      const retryAfterMs = parseRetryAfterHeaderValue(res.headers?.get?.("retry-after"));
       throw new ApiError(message, {
         status: res.status,
         code: errorCode,
         requestId,
         body: json ?? text,
+        retryAfterMs,
       });
     }
 
