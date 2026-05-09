@@ -20,7 +20,11 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points: ${RATES_DISPLAY.event} per event receipt and ${RATES_DISPLAY.stage} per stage execution — every wake-up and every reasoning step is line-itemed. Inference cost is yours via BYOK; usezombie marks up zero.`,
+    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points per event: ${RATES_DISPLAY.event} on receipt (after the balance gate passes), then ${RATES_DISPLAY.stage} before each stage the agent runs — every wake-up and every reasoning step is line-itemed. A typical 3-stage incident is ${RATES_DISPLAY.event} + 3 × ${RATES_DISPLAY.stage} = $0.31. Inference cost is yours via BYOK; usezombie marks up zero.`,
+  },
+  {
+    q: "Does platform-managed inference cost more per stage?",
+    a: `Same headline rate today. Platform-managed stage cost is structured as ${RATES_DISPLAY.stage} overhead plus a token component, but the pre-execution charge uses a 100/100-token floor estimate that rounds to 0¢ against every current model rate — so both postures bill ${RATES_DISPLAY.stage} per stage in practice. Token-level reconciliation (heavy stages truing up against actual usage) lands when Stripe wires in. Until then: BYOK pays ${RATES_DISPLAY.stage} flat per stage and your provider bills the inference; platform-managed pays ${RATES_DISPLAY.stage} flat per stage and we bill the inference at provider rates with zero markup.`,
   },
   {
     q: "What does 'extras provisioned per workspace' mean?",

@@ -8,8 +8,6 @@ const logging = @import("log");
 
 const log = logging.scoped(.state);
 
-/// One-time grant inserted at tenant creation. Funds the first ~166 platform-
-/// managed events (3¢ each) or ~500 BYOK events (1¢ each).
 pub const STARTER_GRANT_CENTS: i64 = 500;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 
