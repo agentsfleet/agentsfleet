@@ -12,6 +12,18 @@ const uc1 = @import("../db/test_fixtures_uc1.zig");
 
 const ALLOC = std.testing.allocator;
 
+// ── Rate constants pinned (regression) ─────────────────────────────────────
+// Mirror this with ui/packages/website/src/lib/rates.test.ts. Bumping a
+// rate fails both suites and forces a conscious cross-stack update.
+
+test "rates pinned: receive platform 1¢ / byok 0¢ · stage overhead 10¢ both · starter grant 500¢" {
+    try std.testing.expectEqual(@as(i64, 1), tenant_billing.RECEIVE_PLATFORM_CENTS);
+    try std.testing.expectEqual(@as(i64, 0), tenant_billing.RECEIVE_BYOK_CENTS);
+    try std.testing.expectEqual(@as(i64, 10), tenant_billing.STAGE_OVERHEAD_PLATFORM_CENTS);
+    try std.testing.expectEqual(@as(i64, 10), tenant_billing.STAGE_OVERHEAD_BYOK_CENTS);
+    try std.testing.expectEqual(@as(i64, 500), tenant_billing.STARTER_GRANT_CENTS);
+}
+
 // ── Credit-pool cost functions ──────────────────────────────────────────────
 
 test "computeReceiveCharge: platform charges 1¢, byok charges 0¢" {
