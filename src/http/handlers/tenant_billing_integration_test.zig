@@ -150,8 +150,8 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
 
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, plan_tier, plan_sku, balance_cents, grant_source, created_at, updated_at)
-        \\VALUES ($1, 'free', 'free_default', 1000, 'm11_006_test', $2, $2)
+        \\  (tenant_id, balance_cents, grant_source, created_at, updated_at)
+        \\VALUES ($1, 1000, 'billing_handler_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\SET balance_cents = EXCLUDED.balance_cents,
         \\    balance_exhausted_at = NULL,
@@ -181,8 +181,8 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
 
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, plan_tier, plan_sku, balance_cents, grant_source, balance_exhausted_at, created_at, updated_at)
-        \\VALUES ($1, 'free', 'free_default', 0, 'm11_006_test', $2, $2, $2)
+        \\  (tenant_id, balance_cents, grant_source, balance_exhausted_at, created_at, updated_at)
+        \\VALUES ($1, 0, 'billing_handler_test', $2, $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
         \\SET balance_cents = 0,
         \\    balance_exhausted_at = EXCLUDED.balance_exhausted_at,

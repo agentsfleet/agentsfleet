@@ -67,12 +67,10 @@ test.describe("Home page", () => {
     );
   });
 
-  test("topbar Pricing link navigates to /pricing", async ({ page }) => {
+  test("topbar Pricing link scrolls to inline pricing section", async ({ page }) => {
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /pricing/i }).click();
-    await expect(page).toHaveURL(/\/pricing/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "Start free. Upgrade when you need stronger control.",
-    );
+    await expect(page).toHaveURL(/\/#pricing$/);
+    await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
 
   test("footer is present with canonical Discord URL", async ({ page }) => {

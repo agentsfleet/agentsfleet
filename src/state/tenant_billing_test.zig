@@ -60,18 +60,6 @@ test "computeStageCharge: platform charges overhead + token math from cache" {
     try std.testing.expectEqual(@as(i64, 1 + 300 + 1500), big);
 }
 
-test "PlanTier parse: case-insensitive; unknown defaults to free" {
-    try std.testing.expectEqual(tenant_billing.PlanTier.scale, tenant_billing.PlanTier.parse("scale"));
-    try std.testing.expectEqual(tenant_billing.PlanTier.scale, tenant_billing.PlanTier.parse("SCALE"));
-    try std.testing.expectEqual(tenant_billing.PlanTier.free, tenant_billing.PlanTier.parse("free"));
-    try std.testing.expectEqual(tenant_billing.PlanTier.free, tenant_billing.PlanTier.parse("bogus"));
-}
-
-test "PlanTier.label round-trips" {
-    try std.testing.expectEqualStrings("free", tenant_billing.PlanTier.free.label());
-    try std.testing.expectEqualStrings("scale", tenant_billing.PlanTier.scale.label());
-}
-
 test "provision inserts one row and replay is a no-op" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -85,11 +73,7 @@ test "provision inserts one row and replay is a no-op" {
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqualStrings("free", row.plan_tier);
-    try std.testing.expectEqualStrings("free_default", row.plan_sku);
     try std.testing.expectEqual(@as(i64, 500), row.balance_cents);
     try std.testing.expectEqualStrings("bootstrap_starter_grant", row.grant_source);
 }
@@ -111,8 +95,6 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     try std.testing.expectError(error.CreditExhausted, tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 10_000));
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 495), row.balance_cents);
 }
@@ -159,8 +141,6 @@ test "clearExhausted + debit together: replenishment path resets the stop gate" 
     // one-way door" follow-up when admin credit lands without a matching
     // debit.
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expect(row.exhausted_at_ms == null);
 }
@@ -182,8 +162,6 @@ test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
     try std.testing.expectEqual(@as(i64, 495), after.balance_cents);
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expect(row.exhausted_at_ms == null);
 }
@@ -201,8 +179,6 @@ test "markExhausted: first call transitions, second call is a no-op" {
     // Fresh row: exhausted_at is NULL.
     {
         const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.plan_tier));
-        defer ALLOC.free(@constCast(row.plan_sku));
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expect(row.exhausted_at_ms == null);
     }
@@ -211,8 +187,6 @@ test "markExhausted: first call transitions, second call is a no-op" {
     try std.testing.expect(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID));
     const first_ts = blk: {
         const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.plan_tier));
-        defer ALLOC.free(@constCast(row.plan_sku));
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expect(row.exhausted_at_ms != null);
         break :blk row.exhausted_at_ms.?;
@@ -222,8 +196,6 @@ test "markExhausted: first call transitions, second call is a no-op" {
     try std.testing.expect(!(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID)));
     {
         const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.plan_tier));
-        defer ALLOC.free(@constCast(row.plan_sku));
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expectEqual(first_ts, row.exhausted_at_ms.?);
     }

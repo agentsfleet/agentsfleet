@@ -1,4 +1,4 @@
-import { Card, InstallBlock, Terminal } from "@usezombie/design-system";
+import { Card, DisplayLG, DisplayXL, InstallBlock, SectionLabel, Terminal } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 const jsonLd = {
@@ -56,12 +56,8 @@ export default function Agents() {
     <div data-testid="agents-page">
       <section className="site-section">
         <div className="wrap flex flex-col gap-6">
-          <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-text-muted m-0">
-            agent surface
-          </p>
-          <h1 className="font-mono text-[clamp(40px,6vw,64px)] leading-[1.05] tracking-[-0.025em] font-medium text-text m-0">
-            This page is for autonomous agents.
-          </h1>
+          <SectionLabel className="mb-0">agent surface</SectionLabel>
+          <DisplayXL>This page is for autonomous agents.</DisplayXL>
           <p className="font-sans text-[18px] leading-[1.5] text-text-muted m-0 max-w-[640px]">
             Use <code className="font-mono">/openapi.json</code> as canonical surface. Docs are
             secondary.
@@ -71,9 +67,9 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <h2 className="font-mono text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em] font-medium text-text m-0">
+          <DisplayLG className="text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em]">
             Bootstrap
-          </h2>
+          </DisplayLG>
           <Terminal label="Bootstrap commands" copyable className="max-w-[860px]">
             {bootstrapScript}
           </Terminal>
@@ -96,9 +92,9 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <h2 className="font-mono text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em] font-medium text-text m-0">
+          <DisplayLG className="text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em]">
             Machine surface
-          </h2>
+          </DisplayLG>
           <Card className="font-mono text-[13px]">
             <a
               href="/openapi.json"
@@ -116,9 +112,9 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <h2 className="font-mono text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em] font-medium text-text m-0">
+          <DisplayLG className="text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em]">
             API operations
-          </h2>
+          </DisplayLG>
           <Card className="p-0 overflow-x-auto">
             <table className="w-full min-w-[640px] font-mono text-[13px] tabular-nums">
               <thead>
@@ -149,9 +145,9 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <h2 className="font-mono text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em] font-medium text-text m-0">
+          <DisplayLG className="text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em]">
             Webhook ingest example
-          </h2>
+          </DisplayLG>
           <p className="font-sans text-[15px] leading-[1.6] text-text-muted m-0 max-w-[720px]">
             Configure an agent&apos;s trigger and POST inbound events to{" "}
             <code className="font-mono">/v1/webhooks/:zombie_id</code>. Every inbound webhook must
@@ -165,9 +161,9 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <h2 className="font-mono text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em] font-medium text-text m-0">
+          <DisplayLG className="text-[clamp(24px,3vw,32px)] leading-[1.2] tracking-[-0.015em]">
             Safety limits
-          </h2>
+          </DisplayLG>
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
             {safetyLimits.map((limit) => (
               <Card key={limit.title} className="flex flex-col gap-2">

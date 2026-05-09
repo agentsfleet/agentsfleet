@@ -91,8 +91,6 @@ pub fn balanceCoversEstimate(
         log.warn("gate_billing_load_fail", .{ .tenant_id = tenant_id, .err = @errorName(err) });
         return true;
     }) orelse return true;
-    defer alloc.free(@constCast(billing.plan_tier));
-    defer alloc.free(@constCast(billing.plan_sku));
     defer alloc.free(@constCast(billing.grant_source));
 
     const receive = tenant_billing.computeReceiveCharge(posture);

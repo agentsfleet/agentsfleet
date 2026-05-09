@@ -1,4 +1,4 @@
-import { List, ListItem } from "@usezombie/design-system";
+import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
 
 /*
  * Privacy — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
@@ -10,12 +10,8 @@ export default function Privacy() {
       data-testid="privacy-page"
       className="wrap site-section flex flex-col gap-6 max-w-[68ch] font-sans text-[15px] leading-[1.7] text-text"
     >
-      <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-text-muted m-0">
-        legal
-      </p>
-      <h1 className="font-mono text-[clamp(36px,5vw,52px)] leading-[1.05] tracking-[-0.025em] font-medium text-text m-0">
-        Privacy Policy
-      </h1>
+      <SectionLabel className="mb-0">legal</SectionLabel>
+      <DisplayXL className="text-[clamp(36px,5vw,52px)]">Privacy Policy</DisplayXL>
       <p className="font-mono text-[12px] text-text-muted m-0">Last updated: May 5, 2026</p>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">1. Information we collect</h2>

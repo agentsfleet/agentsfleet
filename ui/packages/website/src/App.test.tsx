@@ -87,13 +87,6 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders pricing page at /pricing", async () => {
-    renderApp("/pricing");
-    expect(
-      await screen.findByRole("heading", { level: 1 }),
-    ).toBeInTheDocument();
-  });
-
   it("renders agents page at /agents", async () => {
     renderApp("/agents");
     expect(

@@ -101,8 +101,8 @@ pub const ENTRIES = [_]Entry{
         "Workspace not found. Verify the workspace ID."),
     e("UZ-WORKSPACE-002", .payment_required, "Workspace paused",
         "Workspace is paused due to billing. Update payment method."),
-    e("UZ-WORKSPACE-003", .payment_required, "Workspace free limit reached",
-        "Free tier workspace limit reached. Upgrade your plan."),
+    e("UZ-WORKSPACE-003", .payment_required, "Credit pool exhausted",
+        "Tenant credit pool exhausted. Top up your balance to resume execution."),
     // ── BILLING ──────────────────────────────────────────────────────────────
     e("UZ-BILLING-001", .bad_request, "Invalid subscription ID",
         "The subscription ID is invalid or malformed."),

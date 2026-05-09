@@ -26,7 +26,7 @@ describe("Footer", () => {
     renderFooter();
     expect(screen.getByText(/^product$/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /^features$/i })).toHaveAttribute("href", "/");
-    expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/pricing");
+    expect(screen.getByRole("link", { name: /^pricing$/i })).toHaveAttribute("href", "/#pricing");
     expect(screen.getByRole("link", { name: /^docs$/i })).toHaveAttribute("href", "https://docs.usezombie.com");
     expect(screen.getByRole("link", { name: /^agents$/i })).toHaveAttribute("href", "/agents");
   });

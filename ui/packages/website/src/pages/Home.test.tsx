@@ -71,8 +71,15 @@ describe("Home", () => {
     expect(screen.getByRole("link", { name: /read the docs/i })).toBeInTheDocument();
   });
 
-  it("renders View full pricing as a React Router link", () => {
+  it("embeds the Pricing block below How it works", () => {
     renderHome();
-    expect(screen.getByRole("link", { name: /view full pricing/i })).toHaveAttribute("href", "/pricing");
+    expect(screen.getByTestId("pricing-block")).toBeInTheDocument();
+    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent("$0.001");
+    expect(screen.getByTestId("pricing-rate-stage")).toHaveTextContent("$0.10");
+  });
+
+  it("does not render a view-full-pricing link (pricing is inline)", () => {
+    renderHome();
+    expect(screen.queryByRole("link", { name: /view full pricing/i })).not.toBeInTheDocument();
   });
 });

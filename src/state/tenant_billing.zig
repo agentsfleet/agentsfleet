@@ -12,11 +12,9 @@ const log = logging.scoped(.state);
 /// managed events (3¢ each) or ~500 BYOK events (1¢ each).
 pub const STARTER_GRANT_CENTS: i64 = 500;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
-const STARTER_GRANT_PLAN_TIER = "free";
-const STARTER_GRANT_PLAN_SKU = "free_default";
 
-// Credit-pool cost model. No plan-tier branching in the cost functions —
-// plans only show up at credit-grant time as different starting balances.
+// Credit-pool cost model. Single rate, no tier branching — every tenant
+// pays $0.001 per event receipt and $0.10 per stage execution.
 pub const Posture = tenant_provider.Mode;
 
 /// Receive-side per-event drain. Charged once per event after the balance
@@ -37,26 +35,7 @@ pub const STAGE_OVERHEAD_BYOK_CENTS: i64 = 1;
 pub const ESTIMATE_FLOOR_INPUT_TOKENS: u32 = 100;
 pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: u32 = 100;
 
-pub const PlanTier = enum {
-    free,
-    scale,
-
-    pub fn label(self: PlanTier) []const u8 {
-        return switch (self) {
-            .free => "free",
-            .scale => "scale",
-        };
-    }
-
-    pub fn parse(raw: []const u8) PlanTier {
-        if (std.ascii.eqlIgnoreCase(raw, "scale")) return .scale;
-        return .free;
-    }
-};
-
 pub const Billing = struct {
-    plan_tier: []const u8,
-    plan_sku: []const u8,
     balance_cents: i64,
     grant_source: []const u8,
     updated_at_ms: i64,
@@ -68,12 +47,10 @@ pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
 pub fn provision(
     conn: *pg.Conn,
     tenant_id: []const u8,
-    plan_tier: []const u8,
-    plan_sku: []const u8,
     balance_cents: i64,
     grant_source: []const u8,
 ) !void {
-    try store.insertIfAbsent(conn, tenant_id, plan_tier, plan_sku, balance_cents, grant_source);
+    try store.insertIfAbsent(conn, tenant_id, balance_cents, grant_source);
     log.info("tenant_billing_provisioned", .{ .tenant_id = tenant_id, .balance_cents = balance_cents, .source = grant_source });
 }
 
@@ -81,7 +58,7 @@ pub fn provision(
 /// tenant-create transaction in signup_bootstrap. Idempotent via the
 /// underlying ON CONFLICT DO NOTHING.
 pub fn insertStarterGrant(conn: *pg.Conn, tenant_id: []const u8) !void {
-    return provision(conn, tenant_id, STARTER_GRANT_PLAN_TIER, STARTER_GRANT_PLAN_SKU, STARTER_GRANT_CENTS, BOOTSTRAP_GRANT_SOURCE);
+    return provision(conn, tenant_id, STARTER_GRANT_CENTS, BOOTSTRAP_GRANT_SOURCE);
 }
 
 /// Receive-side per-event charge. Posture-only; no token math.
@@ -139,7 +116,7 @@ pub fn clearExhausted(conn: *pg.Conn, tenant_id: []const u8) !bool {
     return store.clearExhausted(conn, tenant_id);
 }
 
-/// Caller owns all slice fields (plan_tier, plan_sku, grant_source).
+/// Caller owns the grant_source slice.
 pub fn getBilling(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -147,8 +124,6 @@ pub fn getBilling(
 ) !?Billing {
     const row = (try store.loadByTenant(conn, alloc, tenant_id)) orelse return null;
     return .{
-        .plan_tier = row.plan_tier,
-        .plan_sku = row.plan_sku,
         .balance_cents = row.balance_cents,
         .grant_source = row.grant_source,
         .updated_at_ms = row.updated_at_ms,

@@ -478,7 +478,7 @@ describe("placeholder pages", () => {
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
     getServerTokenMock.mockResolvedValue("token_billing");
     getTenantBillingMock.mockResolvedValue({
-      plan_tier: "free", plan_sku: "starter", balance_cents: 471,
+      balance_cents: 471,
       updated_at: 1, is_exhausted: false, exhausted_at: null,
     });
     listTenantBillingChargesMock.mockResolvedValue({
@@ -505,7 +505,7 @@ describe("placeholder pages", () => {
   it("billing settings page tolerates a /charges 5xx by falling back to empty events", async () => {
     getServerTokenMock.mockResolvedValue("token_billing");
     getTenantBillingMock.mockResolvedValue({
-      plan_tier: "free", plan_sku: "starter", balance_cents: 0,
+      balance_cents: 0,
       updated_at: 1, is_exhausted: true, exhausted_at: 2,
     });
     listTenantBillingChargesMock.mockRejectedValue(new Error("503"));

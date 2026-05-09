@@ -284,8 +284,6 @@ describe("lib/api/tenant_billing", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        plan_tier: "free",
-        plan_sku: "free_default",
         balance_cents: 1000,
         updated_at: 1713700000000,
         is_exhausted: false,
@@ -373,8 +371,6 @@ describe("exhaustion components", () => {
     const { container } = render(
       React.createElement(ExhaustionBanner, {
         billing: {
-          plan_tier: "free",
-          plan_sku: "free_default",
           balance_cents: 500,
           updated_at: 0,
           is_exhausted: false,
@@ -392,8 +388,6 @@ describe("exhaustion components", () => {
     render(
       React.createElement(ExhaustionBanner, {
         billing: {
-          plan_tier: "free",
-          plan_sku: "free_default",
           balance_cents: 0,
           updated_at: 1713700000000,
           is_exhausted: true,
@@ -415,8 +409,6 @@ describe("exhaustion components", () => {
     render(
       React.createElement(ExhaustionBanner, {
         billing: {
-          plan_tier: "free",
-          plan_sku: "free_default",
           balance_cents: 0,
           updated_at: 0,
           is_exhausted: true,
@@ -433,8 +425,6 @@ describe("exhaustion components", () => {
 // ── Zombies route — page, loading, detail, new ─────────────────────────────
 
 type BillingSnapshot = {
-  plan_tier: string;
-  plan_sku: string;
   balance_cents: number;
   updated_at: number;
   is_exhausted: boolean;
@@ -443,8 +433,6 @@ type BillingSnapshot = {
 
 describe("zombies routes", () => {
   const happyBilling: BillingSnapshot = {
-    plan_tier: "free",
-    plan_sku: "free_default",
     balance_cents: 1000,
     updated_at: 0,
     is_exhausted: false,
