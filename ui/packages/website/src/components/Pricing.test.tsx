@@ -3,7 +3,7 @@ import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const analytics = vi.hoisted(() => ({
-  trackSignupCompleted: vi.fn(),
+  trackSignupStarted: vi.fn(),
 }));
 
 vi.mock("../analytics/posthog", async () => {
@@ -12,7 +12,7 @@ vi.mock("../analytics/posthog", async () => {
   );
   return {
     ...actual,
-    trackSignupCompleted: analytics.trackSignupCompleted,
+    trackSignupStarted: analytics.trackSignupStarted,
   };
 });
 
@@ -28,7 +28,7 @@ function renderPricing() {
 
 describe("Pricing component", () => {
   beforeEach(() => {
-    analytics.trackSignupCompleted.mockReset();
+    analytics.trackSignupStarted.mockReset();
   });
 
   it("renders the rate line with $0.01 per event and $0.10 per stage", () => {
@@ -132,10 +132,10 @@ describe("Pricing component", () => {
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
   });
 
-  it("install CTA fires trackSignupCompleted with pricing_install source", () => {
+  it("install CTA fires trackSignupStarted (NOT signupCompleted — funnel hygiene) with pricing_install source", () => {
     renderPricing();
     fireEvent.click(screen.getByTestId("pricing-install-cta"));
-    expect(analytics.trackSignupCompleted).toHaveBeenCalledWith({
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
       source: "pricing_install",
       surface: "pricing",
       mode: "humans",

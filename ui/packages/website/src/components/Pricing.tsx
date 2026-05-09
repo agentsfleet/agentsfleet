@@ -1,6 +1,6 @@
 import { Badge, Button, Card, List, ListItem, SectionLabel } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
-import { trackSignupCompleted } from "../analytics/posthog";
+import { trackSignupStarted } from "../analytics/posthog";
 import { RATES_DISPLAY, WORKED_EXAMPLE } from "../lib/rates";
 
 type FlowCell = { id: string; label: string; price: string; sub: string };
@@ -79,7 +79,7 @@ export default function Pricing() {
               href={APP_BASE_URL}
               data-testid="pricing-install-cta"
               onClick={() =>
-                trackSignupCompleted({
+                trackSignupStarted({
                   source: "pricing_install",
                   surface: "pricing",
                   mode: "humans",
