@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
 
 const analytics = vi.hoisted(() => ({
   trackNavigationClicked: vi.fn(),
@@ -111,5 +111,60 @@ describe("App", () => {
   it("renders footer on all routes", () => {
     renderApp("/");
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();
+  });
+
+  describe("hash anchor scroll", () => {
+    let scrollIntoViewSpy: ReturnType<typeof vi.fn>;
+    let rafSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      scrollIntoViewSpy = vi.fn();
+      // jsdom doesn't implement scrollIntoView; install a spy on the prototype.
+      Element.prototype.scrollIntoView =
+        scrollIntoViewSpy as unknown as Element["scrollIntoView"];
+      // Run requestAnimationFrame callbacks synchronously so the effect
+      // fires inside the test rather than after teardown.
+      rafSpy = vi
+        .spyOn(window, "requestAnimationFrame")
+        .mockImplementation((cb: FrameRequestCallback) => {
+          cb(0);
+          return 0;
+        });
+    });
+
+    afterEach(() => {
+      rafSpy.mockRestore();
+    });
+
+    it("scrolls #pricing into view when arriving directly at /#pricing", () => {
+      renderApp("/#pricing");
+      const pricingBlock = screen.getByTestId("pricing-block");
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      // The element scrolled into view IS the #pricing section
+      // (not some other id we happen to render).
+      expect(scrollIntoViewSpy.mock.instances[0]).toBe(pricingBlock);
+    });
+
+    it("scrolls #pricing into view when /pricing redirects to /#pricing (greptile fix)", () => {
+      // Bug-fix coverage: <Navigate to="/#pricing"> via the /pricing route
+      // must end up scrolling, not just updating the URL bar. Without
+      // useScrollToHash this assertion failed and the bookmarked
+      // /pricing URL stranded the user at the top of Home.
+      renderApp("/pricing");
+      const pricingBlock = screen.getByTestId("pricing-block");
+      expect(scrollIntoViewSpy).toHaveBeenCalled();
+      expect(scrollIntoViewSpy.mock.instances.at(-1)).toBe(pricingBlock);
+    });
+
+    it("does not call scrollIntoView when location has no hash", () => {
+      renderApp("/");
+      expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+    });
+
+    it("does not crash when the hash targets an id that is not in the DOM", () => {
+      renderApp("/#does-not-exist");
+      // Hook should bail silently — no scroll, no throw.
+      expect(scrollIntoViewSpy).not.toHaveBeenCalled();
+    });
   });
 });
