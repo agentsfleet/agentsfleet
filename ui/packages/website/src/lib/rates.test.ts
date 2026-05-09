@@ -20,6 +20,19 @@ function formatCents(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+describe("rates pinned (regression — mirror src/state/tenant_billing_test.zig)", () => {
+  // Bumping a rate fails both this test and the Zig sibling test
+  // ("rates pinned" in tenant_billing_test.zig). Cross-stack update is the
+  // intent: the Zig server is the authority, this file is the marketing
+  // mirror, and a divergence between them mis-bills users vs. what the
+  // site quotes. No silent drift.
+  it("event = 1¢, stage = 10¢, starterCredit = 500¢", () => {
+    expect(RATES_CENTS.event).toBe(1);
+    expect(RATES_CENTS.stage).toBe(10);
+    expect(RATES_CENTS.starterCredit).toBe(500);
+  });
+});
+
 describe("RATES_DISPLAY mirrors RATES_CENTS", () => {
   it("should render RATES_CENTS.event as RATES_DISPLAY.event", () => {
     expect(RATES_DISPLAY.event).toBe(formatCents(RATES_CENTS.event));
