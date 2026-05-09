@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Link, NavLink, Route, Routes, ScrollRestoration } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react-router-dom";
 import { Button, WakePulse } from "@usezombie/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
@@ -77,6 +77,10 @@ export default function App() {
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<Home />} />
+            {/* /pricing was deleted in favor of the inline /#pricing section.
+             * Preserve the old URL for external links + indexed pages with a
+             * client-side redirect to the anchor. */}
+            <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/agents" element={<Agents />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />

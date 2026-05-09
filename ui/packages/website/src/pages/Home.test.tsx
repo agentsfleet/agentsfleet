@@ -74,7 +74,7 @@ describe("Home", () => {
   it("embeds the Pricing block below How it works", () => {
     renderHome();
     expect(screen.getByTestId("pricing-block")).toBeInTheDocument();
-    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent("$0.001");
+    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent("$0.01");
     expect(screen.getByTestId("pricing-rate-stage")).toHaveTextContent("$0.10");
   });
 

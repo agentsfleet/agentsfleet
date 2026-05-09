@@ -69,8 +69,8 @@
     "format": "Bearer <api_key>"
   },
   "revenue": {
-    "model": "BYOK + agent-second compute billing",
-    "description": "Users supply their own LLM API keys. usezombie bills per agent-second. Never stores LLM costs."
+    "model": "BYOK + per-event + per-stage credit-pool metering",
+    "description": "Users supply their own LLM API keys. usezombie meters hosted execution against a credit pool: $0.01 per event receipt and $0.10 per stage execution. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {
     "safe": ["list_zombie_events", "stream_zombie_events"],

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { RATES_DISPLAY } from "../lib/rates";
 import {
   Accordion,
   AccordionItem,
@@ -19,7 +20,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: "Hosted execution. Runs are metered against a credit pool with a $5 starter grant that never expires. Two debit points: $0.001 per event receipt and $0.10 per stage execution — every wake-up and every reasoning step is line-itemed. Inference cost is yours via BYOK; usezombie marks up zero.",
+    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points: ${RATES_DISPLAY.event} per event receipt and ${RATES_DISPLAY.stage} per stage execution — every wake-up and every reasoning step is line-itemed. Inference cost is yours via BYOK; usezombie marks up zero.`,
   },
   {
     q: "What does 'extras provisioned per workspace' mean?",

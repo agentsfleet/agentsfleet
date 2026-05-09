@@ -19,7 +19,7 @@ export default function Privacy() {
       <List className="pl-6 text-text-muted m-0">
         <ListItem><strong className="text-text font-medium">Account information</strong> — email address and authentication credentials managed by our identity provider (Clerk).</ListItem>
         <ListItem><strong className="text-text font-medium">Workspace metadata</strong> — repository URLs, workspace configuration, run history, and transition logs.</ListItem>
-        <ListItem><strong className="text-text font-medium">Usage telemetry</strong> — agent compute time, API call counts, and error rates for billing and reliability.</ListItem>
+        <ListItem><strong className="text-text font-medium">Usage telemetry</strong> — event receipts, stage executions, API call counts, and error rates for credit-pool metering and reliability.</ListItem>
       </List>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">2. Information we do not collect</h2>
@@ -32,7 +32,7 @@ export default function Privacy() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">3. How we use your information</h2>
       <List className="pl-6 text-text-muted m-0">
         <ListItem>Authenticate and authorize access to your workspaces.</ListItem>
-        <ListItem>Calculate billing based on agent compute time (wall-clock seconds).</ListItem>
+        <ListItem>Meter hosted execution against your credit pool: one debit on event receipt, one debit per stage execution.</ListItem>
         <ListItem>Monitor service health and investigate operational issues.</ListItem>
         <ListItem>Send transactional notifications (run completions, failures, billing).</ListItem>
       </List>

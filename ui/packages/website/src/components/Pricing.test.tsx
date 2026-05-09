@@ -31,9 +31,9 @@ describe("Pricing component", () => {
     analytics.trackSignupCompleted.mockReset();
   });
 
-  it("renders the rate line with $0.001 per event and $0.10 per stage", () => {
+  it("renders the rate line with $0.01 per event and $0.10 per stage", () => {
     renderPricing();
-    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent("$0.001");
+    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent("$0.01");
     expect(screen.getByTestId("pricing-rate-stage")).toHaveTextContent("$0.10");
     const line = screen.getByTestId("pricing-rate-line");
     expect(line).toHaveTextContent(/per event receipt/i);
@@ -45,12 +45,12 @@ describe("Pricing component", () => {
     expect(screen.getByText(/\$5 starter credit, never expires/i)).toBeInTheDocument();
   });
 
-  it("renders the worked example: 100 × \\$0.001 + 300 × \\$0.10 = $30.10", () => {
+  it("renders the worked example: 100 × $0.01 + 300 × $0.10 = $31.00", () => {
     renderPricing();
     const ex = screen.getByTestId("pricing-worked-example");
-    expect(ex).toHaveTextContent(/100 × \$0\.001/);
+    expect(ex).toHaveTextContent(/100 × \$0\.01/);
     expect(ex).toHaveTextContent(/300 × \$0\.10/);
-    expect(ex).toHaveTextContent(/\$30\.10/);
+    expect(ex).toHaveTextContent(/\$31\.00/);
   });
 
   it("renders the BYOK provider list with no markup", () => {
@@ -58,8 +58,25 @@ describe("Pricing component", () => {
     expect(
       screen.getByText(/BYOK on Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot/i),
     ).toBeInTheDocument();
-    expect(screen.getByText(/never marks up tokens/i)).toBeInTheDocument();
+    expect(screen.getByText(/never marks up inference/i)).toBeInTheDocument();
     expect(screen.getByText(/usezombie marks up zero on inference/i)).toBeInTheDocument();
+  });
+
+  it("explains what a stage is in plain language", () => {
+    renderPricing();
+    const card = screen.getByTestId("pricing-rate-card");
+    expect(card.textContent).toMatch(/stage is one reasoning step/i);
+    expect(card.textContent).toMatch(/most diagnoses resolve in 1.{0,3}5 stages/i);
+  });
+
+  it("renders the design-partner waiver note for early access", () => {
+    renderPricing();
+    const note = screen.getByTestId("pricing-design-partner-note");
+    expect(note).toHaveTextContent(/design partners run free/i);
+    expect(note.querySelector("a")).toHaveAttribute(
+      "href",
+      expect.stringContaining("hello@usezombie.com"),
+    );
   });
 
   it("renders the billing flow diagram with one event + three stage cells", () => {
@@ -69,7 +86,7 @@ describe("Pricing component", () => {
     const billed = screen.getByTestId("pricing-flow-billed");
     const cells = billed.querySelectorAll('[data-testid^="pricing-flow-cell-"]');
     expect(cells).toHaveLength(4);
-    expect(screen.getByTestId("pricing-flow-cell-event")).toHaveTextContent(/\$0\.001/);
+    expect(screen.getByTestId("pricing-flow-cell-event")).toHaveTextContent(/\$0\.01/);
     expect(screen.getByTestId("pricing-flow-cell-stage-1")).toHaveTextContent(/\$0\.10/);
     expect(screen.getByTestId("pricing-flow-cell-stage-2")).toHaveTextContent(/\$0\.10/);
     expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent(/\$0\.10/);

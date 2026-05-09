@@ -1,14 +1,15 @@
 import { Badge, Button, Card, List, ListItem, SectionLabel } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupCompleted } from "../analytics/posthog";
+import { RATES_DISPLAY, WORKED_EXAMPLE } from "../lib/rates";
 
 type FlowCell = { id: string; label: string; price: string; sub: string };
 
 const BILLED_FLOW: FlowCell[] = [
-  { id: "event", label: "event", price: "$0.001", sub: "webhook · cron · steer" },
-  { id: "stage-1", label: "stage 1", price: "$0.10", sub: "reason · act" },
-  { id: "stage-2", label: "stage 2", price: "$0.10", sub: "reason · act" },
-  { id: "stage-n", label: "stage N", price: "$0.10", sub: "until resolved" },
+  { id: "event", label: "event", price: RATES_DISPLAY.event, sub: "webhook · cron · steer" },
+  { id: "stage-1", label: "stage 1", price: RATES_DISPLAY.stage, sub: "reason · act" },
+  { id: "stage-2", label: "stage 2", price: RATES_DISPLAY.stage, sub: "reason · act" },
+  { id: "stage-n", label: "stage N", price: RATES_DISPLAY.stage, sub: "until resolved" },
 ];
 
 const EXTRAS: string[] = [
@@ -25,20 +26,39 @@ export default function Pricing() {
       <div className="wrap flex flex-col gap-10">
         <Card data-testid="pricing-rate-card" className="flex flex-col gap-5">
           <div className="flex flex-col gap-3">
-            <Badge className="self-start font-mono">$5 starter credit, never expires</Badge>
+            <Badge className="self-start font-mono">
+              → try free · {RATES_DISPLAY.starterCredit} starter credit, never expires
+            </Badge>
             <p
               data-testid="pricing-rate-line"
               className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.1] tracking-[-0.02em] font-medium text-text m-0 tabular-nums"
             >
-              <span data-testid="pricing-rate-event">$0.001</span>{" "}
+              <span data-testid="pricing-rate-event">{RATES_DISPLAY.event}</span>{" "}
               <span className="font-sans text-text-muted text-[18px] align-middle">per event receipt</span>
               <span className="text-text-subtle"> · </span>
-              <span data-testid="pricing-rate-stage">$0.10</span>{" "}
+              <span data-testid="pricing-rate-stage">{RATES_DISPLAY.stage}</span>{" "}
               <span className="font-sans text-text-muted text-[18px] align-middle">per stage execution</span>
             </p>
             <p className="font-sans text-[15px] leading-[1.6] text-text-muted m-0 max-w-[640px]">
-              BYOK on Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot. Pay your provider
-              directly — usezombie never marks up tokens.
+              A <span className="text-text">stage</span> is one reasoning step — the agent gathers
+              evidence, decides, or acts once, then either stops or continues into the next stage.
+              Most diagnoses resolve in 1–5 stages. BYOK on Anthropic, OpenAI, Fireworks,
+              Together, Groq, Moonshot — your provider bills you for tokens directly; usezombie
+              never marks up inference.
+            </p>
+            <p
+              data-testid="pricing-design-partner-note"
+              className="font-sans text-[13px] leading-[1.55] text-pulse m-0 max-w-[640px]"
+            >
+              Early-access design partners run free — every charge waived while we calibrate the
+              model with you. Email{" "}
+              <a
+                href="mailto:hello@usezombie.com?subject=Design%20partner"
+                className="underline hover:text-text"
+              >
+                hello@usezombie.com
+              </a>{" "}
+              to enroll.
             </p>
           </div>
 
@@ -46,9 +66,12 @@ export default function Pricing() {
             data-testid="pricing-worked-example"
             className="font-mono text-[14px] leading-[1.6] text-text-muted m-0 border-l-2 border-border pl-4"
           >
-            100 events with 3 stages each = 100 × $0.001 + 300 × $0.10 ={" "}
-            <span className="text-text">$30.10</span>. Your $5 starter credit covers ~16 events at
-            this shape.
+            {WORKED_EXAMPLE.events} events with {WORKED_EXAMPLE.stagesPerEvent} stages each ={" "}
+            {WORKED_EXAMPLE.events} × {RATES_DISPLAY.event} +{" "}
+            {WORKED_EXAMPLE.events * WORKED_EXAMPLE.stagesPerEvent} × {RATES_DISPLAY.stage} ={" "}
+            <span className="text-text">{WORKED_EXAMPLE.total}</span>. Your{" "}
+            {RATES_DISPLAY.starterCredit} starter credit covers ~{WORKED_EXAMPLE.starterCoversEvents}{" "}
+            events at this shape.
           </p>
 
           <Button asChild>

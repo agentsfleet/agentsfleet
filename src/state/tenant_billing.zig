@@ -14,7 +14,8 @@ pub const STARTER_GRANT_CENTS: i64 = 500;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 
 // Credit-pool cost model. Single rate, no tier branching — every tenant
-// pays $0.001 per event receipt and $0.10 per stage execution.
+// pays $0.01 per event receipt and $0.10 per stage execution platform fee.
+// BYOK adds the user's direct token cost on top, billed by their provider.
 pub const Posture = tenant_provider.Mode;
 
 /// Receive-side per-event drain. Charged once per event after the balance
@@ -23,11 +24,12 @@ pub const Posture = tenant_provider.Mode;
 pub const RECEIVE_PLATFORM_CENTS: i64 = 1;
 pub const RECEIVE_BYOK_CENTS: i64 = 0;
 
-/// Stage-side flat overhead. Charged once per event before the executor
-/// runs, on top of the model-rate-based token charge under platform-managed.
-/// BYOK pays this flat charge only — token cost is on the user's account.
-pub const STAGE_OVERHEAD_PLATFORM_CENTS: i64 = 1;
-pub const STAGE_OVERHEAD_BYOK_CENTS: i64 = 1;
+/// Stage-side platform fee, $0.10. Charged once per stage execution before
+/// the executor runs. Platform-managed adds the model-rate-based token
+/// charge on top; BYOK pays this fee only and the user's provider bills
+/// the token cost directly.
+pub const STAGE_OVERHEAD_PLATFORM_CENTS: i64 = 10;
+pub const STAGE_OVERHEAD_BYOK_CENTS: i64 = 10;
 
 /// Conservative estimate floors used by the gate-time stage-cost projection
 /// (the executor doesn't know real token counts yet). The actual cost is

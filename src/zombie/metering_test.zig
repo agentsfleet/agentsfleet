@@ -83,8 +83,8 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
     try uc1.seed(db_ctx.conn, WS_GATE_BLOCK);
     defer uc1.teardown(db_ctx.conn, WS_GATE_BLOCK);
 
-    // BYOK: receive=0¢, stage=1¢ overhead (no token math under BYOK).
-    // est_total = 1¢. Balance = 0¢ < 1¢ → blocked.
+    // BYOK: receive=0¢, stage=10¢ overhead (no token math under BYOK).
+    // est_total = 10¢. Balance = 0¢ < 10¢ → blocked.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_block");
 
     try std.testing.expect(!metering.balanceCoversEstimate(
@@ -208,7 +208,7 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
     defer uc1.teardown(db_ctx.conn, WS_RECEIVE_EXHAUST);
     defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_EXHAUST}) catch {};
 
-    // Provision at 0¢ — stage debit (1¢ overhead) must exhaust.
+    // Provision at 0¢ — stage debit (10¢ overhead) must exhaust.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_exhaust");
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a03";
