@@ -10,6 +10,17 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 # M64_005: Authenticated e2e harness + W3 polish
 
+> **DESIGN AMENDMENT (May 09, 2026 — post-M65_001):** the `plan_tier` carry-over
+> work scoped here is **dropped**. M65_001 ripped `PlanTier` (Hobby/Scale) out
+> of the entire stack — schema, Zig billing facade, OpenAPI, UI, marketing site
+> — in favour of a single per-event + per-stage rate plus a one-time starter
+> credit. The acceptance criteria below that reference rendering a
+> `plan_tier` badge on `BillingBalanceCard`, surfacing the field in
+> `lib/api/tenant_billing.ts`, or asserting it in `settings-billing.spec.ts`
+> are now obsolete and should NOT be implemented. The remaining e2e-harness
+> + W3-polish scope (Clerk admin-API JWT mounting, `/sign-up` → `/zombies/[id]`
+> drive, function-coverage gap) is unaffected and still in scope.
+
 **Prototype:** v2.0.0
 **Milestone:** M64
 **Workstream:** 005

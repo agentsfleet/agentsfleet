@@ -5,7 +5,7 @@
     description: >
       Returns the tenant-scoped billing row created at signup. The single row
       carries the credit-pool balance shared across every workspace the tenant
-      owns. Single-rate metering: $0.001 per event receipt, $0.10 per stage
+      owns. Single-rate metering: $0.01 per event receipt, $0.10 per stage
       execution. Debited by the worker as zombie runs complete.
     tags:
     - Billing
