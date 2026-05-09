@@ -4,8 +4,9 @@
     summary: Tenant billing snapshot
     description: >
       Returns the tenant-scoped billing row created at signup. The single row
-      carries the plan tier, SKU, and free-credit balance shared across every
-      workspace the tenant owns. Debited by the worker as zombie runs complete.
+      carries the credit-pool balance shared across every workspace the tenant
+      owns. Single-rate metering: $0.001 per event receipt, $0.10 per stage
+      execution. Debited by the worker as zombie runs complete.
     tags:
     - Billing
     responses:
@@ -16,23 +17,15 @@
             schema:
               type: object
               required:
-              - plan_tier
-              - plan_sku
               - balance_cents
               - updated_at
               - is_exhausted
               - exhausted_at
               properties:
-                plan_tier:
-                  type: string
-                  description: Plan tier (free, scale)
-                plan_sku:
-                  type: string
-                  description: Plan SKU identifier
                 balance_cents:
                   type: integer
                   format: int64
-                  description: Remaining free-credit balance in cents
+                  description: Remaining credit-pool balance in cents.
                 updated_at:
                   type: integer
                   format: int64

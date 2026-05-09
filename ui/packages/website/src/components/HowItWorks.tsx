@@ -1,4 +1,4 @@
-import { Card } from "@usezombie/design-system";
+import { Card, DisplayLG, SectionLabel } from "@usezombie/design-system";
 
 const steps = [
   {
@@ -30,12 +30,10 @@ export default function HowItWorks() {
     <section className="site-section" aria-label="How it works" data-testid="how-it-works">
       <div className="wrap flex flex-col gap-8">
         <div className="flex flex-col gap-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted m-0">
-            How it works
-          </p>
-          <h2 className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.15] tracking-[-0.02em] text-text font-medium m-0 max-w-[640px]">
+          <SectionLabel className="mb-0">How it works</SectionLabel>
+          <DisplayLG className="max-w-[640px]">
             From trigger to evidenced diagnosis, durably.
-          </h2>
+          </DisplayLG>
         </div>
         <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
           {steps.map((step) => (

@@ -12,7 +12,7 @@ async function assertFooterLinks(page: Page) {
 
   const internalFooterLinks: InternalLinkCase[] = [
     { label: /^features$/i, href: "/" },
-    { label: /^pricing$/i, href: "/pricing" },
+    { label: /^pricing$/i, href: "/#pricing" },
     { label: /^agents$/i, href: "/agents" },
     { label: /^privacy$/i, href: "/privacy" },
     { label: /^terms$/i, href: "/terms" },
@@ -34,7 +34,7 @@ test.describe("Cross-page link coverage", () => {
 
     const nav = page.getByRole("navigation", { name: /primary/i });
     await nav.getByRole("link", { name: /^pricing$/i }).click();
-    await expect(page).toHaveURL(/\/pricing$/);
+    await expect(page).toHaveURL(/\/#pricing$/);
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
 
@@ -70,7 +70,7 @@ test.describe("Cross-page link coverage", () => {
     await expect(page).toHaveURL(/\/agents$/);
 
     await nav.getByRole("link", { name: /^pricing$/i }).click();
-    await expect(page).toHaveURL(/\/pricing$/);
+    await expect(page).toHaveURL(/\/#pricing$/);
     await page.goto("/agents");
     await expect(page).toHaveURL(/\/agents$/);
 

@@ -63,7 +63,7 @@ test "balanceCoversEstimate: returns true under non-stop policies regardless of 
 
     // Provision at 0¢ — balance is empty, but non-stop policies must let
     // the event through.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, "free", "free.v1", 0, "test_continue");
+    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_continue");
 
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
@@ -85,7 +85,7 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
 
     // BYOK: receive=0¢, stage=1¢ overhead (no token math under BYOK).
     // est_total = 1¢. Balance = 0¢ < 1¢ → blocked.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, "free", "free.v1", 0, "test_block");
+    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_block");
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
@@ -144,8 +144,6 @@ test "debitReceive BYOK: 0¢ charge writes telemetry row, balance unchanged" {
 
     // Balance unchanged (BYOK receive = 0¢).
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 500), row.balance_cents);
 
@@ -186,8 +184,6 @@ test "debitStage BYOK: 1¢ flat overhead drains balance and writes stage telemet
     }
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 499), row.balance_cents); // 500 - 1¢ stage overhead
 
@@ -213,7 +209,7 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
     defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_EXHAUST}) catch {};
 
     // Provision at 0¢ — stage debit (1¢ overhead) must exhaust.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, "free", "free.v1", 0, "test_exhaust");
+    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_exhaust");
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a03";
     const result = metering.debitStage(
@@ -230,8 +226,6 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
 
     // Balance unchanged at 0¢.
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 0), row.balance_cents);
     // exhausted_at must be stamped on the first failed debit so the stop

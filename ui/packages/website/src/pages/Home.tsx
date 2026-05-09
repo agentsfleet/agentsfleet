@@ -1,11 +1,11 @@
-import { Link } from "react-router-dom";
 import Hero from "../components/Hero";
 import FeatureSection from "../components/FeatureSection";
 import FeatureFlow from "../components/FeatureFlow";
 import HowItWorks from "../components/HowItWorks";
+import Pricing from "../components/Pricing";
 import CTABlock from "../components/CTABlock";
 import FAQ from "../components/FAQ";
-import { Button, InstallBlock } from "@usezombie/design-system";
+import { DisplayLG, InstallBlock, SectionLabel } from "@usezombie/design-system";
 import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 const features = [
@@ -42,12 +42,10 @@ export default function Home() {
       <section className="site-section" aria-label="Core capabilities">
         <div className="wrap flex flex-col gap-8">
           <div className="flex flex-col gap-3">
-            <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted m-0">
-              core capabilities
-            </p>
-            <h2 className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.15] tracking-[-0.02em] font-medium text-text m-0 max-w-[760px]">
+            <SectionLabel className="mb-0">core capabilities</SectionLabel>
+            <DisplayLG className="max-w-[760px]">
               A long-lived runtime that owns the outcome until it&apos;s resolved or blocked.
-            </h2>
+            </DisplayLG>
           </div>
           <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
             {features.map((f) => (
@@ -64,6 +62,8 @@ export default function Home() {
 
       <HowItWorks />
 
+      <Pricing />
+
       <section className="site-section">
         <div className="wrap">
           <InstallBlock
@@ -74,11 +74,6 @@ export default function Home() {
               { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },
             ]}
           />
-          <div className="mt-6">
-            <Button asChild variant="ghost">
-              <Link to="/pricing">view full pricing</Link>
-            </Button>
-          </div>
         </div>
       </section>
 

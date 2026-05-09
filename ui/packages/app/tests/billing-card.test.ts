@@ -8,8 +8,6 @@ import BillingBalanceCard from "@/app/(dashboard)/settings/billing/components/Bi
 import type { TenantBilling } from "@/lib/types";
 
 const HEALTHY: TenantBilling = {
-  plan_tier: "free",
-  plan_sku: "starter",
   balance_cents: 471,
   updated_at: 1,
   is_exhausted: false,

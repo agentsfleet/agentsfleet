@@ -44,8 +44,6 @@ export type ZombieListResponse = {
 // server's `*_at_ms` fields (src/state/tenant_billing_store.zig). Pass them
 // straight to `new Date(n)`; never multiply by 1000.
 export type TenantBilling = {
-  plan_tier: string;
-  plan_sku: string;
   balance_cents: number;
   updated_at: number;
   is_exhausted: boolean;

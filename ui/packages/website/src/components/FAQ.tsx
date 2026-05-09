@@ -4,6 +4,8 @@ import {
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
+  DisplayLG,
+  SectionLabel,
 } from "@usezombie/design-system";
 
 const items: { q: string; a: ReactNode }[] = [
@@ -17,7 +19,11 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: "Hosted execution. Runs are metered against a credit pool with a $5 starter grant that never expires; the two debit points are event receipt and per-stage execution. Inference cost is yours via BYOK.",
+    a: "Hosted execution. Runs are metered against a credit pool with a $5 starter grant that never expires. Two debit points: $0.001 per event receipt and $0.10 per stage execution — every wake-up and every reasoning step is line-itemed. Inference cost is yours via BYOK; usezombie marks up zero.",
+  },
+  {
+    q: "What does 'extras provisioned per workspace' mean?",
+    a: "Operational features — multi-workspace, approval gating, workspace-scoped credentials and webhooks, higher concurrency, longer per-stage windows, priority support — turn on per workspace as you scale, not as paywalled tier upgrades. Need bigger caps? Ask; we lift them.",
   },
   {
     q: "Can I self-host?",
@@ -59,12 +65,8 @@ export default function FAQ() {
     <section className="site-section" data-testid="faq">
       <div className="wrap flex flex-col gap-8 max-w-[720px]">
         <div className="flex flex-col gap-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted m-0">
-            FAQ
-          </p>
-          <h2 className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.15] tracking-[-0.02em] text-text font-medium m-0">
-            Common questions
-          </h2>
+          <SectionLabel className="mb-0">FAQ</SectionLabel>
+          <DisplayLG>Common questions</DisplayLG>
         </div>
         <Accordion type="single" collapsible>
           {items.map((item, i) => (

@@ -16,13 +16,11 @@ test.describe("Footer navigation", () => {
     );
   });
 
-  test("footer pricing link navigates to /pricing", async ({ page }) => {
+  test("footer pricing link navigates to home pricing anchor", async ({ page }) => {
     await page.goto("/agents");
     await page.getByRole("contentinfo").getByRole("link", { name: /^pricing$/i }).click();
-    await expect(page).toHaveURL(/\/pricing/);
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "Start free. Upgrade when you need stronger control.",
-    );
+    await expect(page).toHaveURL(/\/#pricing$/);
+    await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
 
   test("footer features link navigates to /", async ({ page }) => {
@@ -69,11 +67,9 @@ test.describe("Direct URL navigation", () => {
     );
   });
 
-  test("direct nav to /pricing renders the pricing heading", async ({ page }) => {
-    await page.goto("/pricing");
-    await expect(page.getByRole("heading", { level: 1 })).toContainText(
-      "Start free. Upgrade when you need stronger control.",
-    );
+  test("direct nav to /#pricing scrolls to inline pricing section", async ({ page }) => {
+    await page.goto("/#pricing");
+    await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
 
   test("direct nav to /privacy renders the privacy heading", async ({ page }) => {
@@ -88,16 +84,11 @@ test.describe("Direct URL navigation", () => {
 });
 
 test.describe("SPA routing — no full page reloads", () => {
-  test("topbar pricing navigates without reload", async ({ page }) => {
+  test("topbar pricing anchor scrolls to inline section", async ({ page }) => {
     await page.goto("/");
-    const navEvents: string[] = [];
-    page.on("framenavigated", (frame) => {
-      if (frame === page.mainFrame()) navEvents.push(frame.url());
-    });
-
     await page.getByRole("navigation", { name: /primary/i }).getByRole("link", { name: /^pricing$/i }).click();
-    await expect(page).toHaveURL(/\/pricing/);
-    expect(navEvents.length).toBeLessThanOrEqual(1);
+    await expect(page).toHaveURL(/\/#pricing$/);
+    await expect(page.getByTestId("pricing-block")).toBeVisible();
   });
 
   test("footer agents link is a real anchor (React Router Link)", async ({ page }) => {
@@ -106,10 +97,10 @@ test.describe("SPA routing — no full page reloads", () => {
     await expect(agentsLink).toHaveAttribute("href", "/agents");
   });
 
-  test("footer pricing link is a real anchor (React Router Link)", async ({ page }) => {
+  test("footer pricing link points at home anchor", async ({ page }) => {
     await page.goto("/");
     const pricingLink = page.getByRole("contentinfo").getByRole("link", { name: /^pricing$/i });
-    await expect(pricingLink).toHaveAttribute("href", "/pricing");
+    await expect(pricingLink).toHaveAttribute("href", "/#pricing");
   });
 });
 

@@ -117,6 +117,7 @@ export {
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { PageTitle, type PageTitleProps } from "./PageTitle";
 export { SectionLabel, type SectionLabelProps } from "./SectionLabel";
+export { DisplayXL, DisplayLG, type DisplayXLProps, type DisplayLGProps } from "./Display";
 export {
   DataTable,
   type DataTableColumn,
