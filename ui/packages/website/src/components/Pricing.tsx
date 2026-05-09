@@ -6,7 +6,7 @@ import { RATES_DISPLAY, WORKED_EXAMPLE } from "../lib/rates";
 type FlowCell = { id: string; label: string; price: string; sub: string };
 
 const BILLED_FLOW: FlowCell[] = [
-  { id: "event", label: "event", price: RATES_DISPLAY.event, sub: "webhook · cron · steer" },
+  { id: "event", label: "event", price: RATES_DISPLAY.eventPlatform, sub: "webhook · cron · steer" },
   { id: "stage-1", label: "stage 1", price: RATES_DISPLAY.stage, sub: "reason · act" },
   { id: "stage-2", label: "stage 2", price: RATES_DISPLAY.stage, sub: "reason · act" },
   { id: "stage-n", label: "stage N", price: RATES_DISPLAY.stage, sub: "until resolved" },
@@ -33,7 +33,7 @@ export default function Pricing() {
               data-testid="pricing-rate-line"
               className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.1] tracking-[-0.02em] font-medium text-text m-0 tabular-nums"
             >
-              <span data-testid="pricing-rate-event">{RATES_DISPLAY.event}</span>{" "}
+              <span data-testid="pricing-rate-event">{RATES_DISPLAY.eventPlatform}</span>{" "}
               <span className="font-sans text-text-muted text-[18px] align-middle">per event receipt</span>
               <span className="text-text-subtle"> · </span>
               <span data-testid="pricing-rate-stage">{RATES_DISPLAY.stage}</span>{" "}
@@ -67,7 +67,7 @@ export default function Pricing() {
             className="font-mono text-[14px] leading-[1.6] text-text-muted m-0 border-l-2 border-border pl-4"
           >
             {WORKED_EXAMPLE.events} events with {WORKED_EXAMPLE.stagesPerEvent} stages each ={" "}
-            {WORKED_EXAMPLE.events} × {RATES_DISPLAY.event} +{" "}
+            {WORKED_EXAMPLE.events} × {RATES_DISPLAY.eventPlatform} +{" "}
             {WORKED_EXAMPLE.events * WORKED_EXAMPLE.stagesPerEvent} × {RATES_DISPLAY.stage} ={" "}
             <span className="text-text">{WORKED_EXAMPLE.total}</span>. Your{" "}
             {RATES_DISPLAY.starterCredit} starter credit covers ~{WORKED_EXAMPLE.starterCoversEvents}{" "}

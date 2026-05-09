@@ -20,7 +20,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points per event: ${RATES_DISPLAY.event} on receipt (after the balance gate passes), then ${RATES_DISPLAY.stage} before each stage the agent runs — every wake-up and every reasoning step is line-itemed. A typical 3-stage incident is ${RATES_DISPLAY.event} + 3 × ${RATES_DISPLAY.stage} = $0.31. Inference cost is yours via BYOK; usezombie marks up zero.`,
+    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points per event: ${RATES_DISPLAY.eventPlatform} on receipt (after the balance gate passes), then ${RATES_DISPLAY.stage} before each stage the agent runs — every wake-up and every reasoning step is line-itemed. A typical 3-stage incident is ${RATES_DISPLAY.eventPlatform} + 3 × ${RATES_DISPLAY.stage} = $0.31. Inference cost is yours via BYOK; usezombie marks up zero.`,
   },
   {
     q: "Does platform-managed inference cost more per stage?",

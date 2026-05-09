@@ -26,16 +26,21 @@ describe("rates pinned (regression — mirror src/state/tenant_billing_test.zig)
   // intent: the Zig server is the authority, this file is the marketing
   // mirror, and a divergence between them mis-bills users vs. what the
   // site quotes. No silent drift.
-  it("event = 1¢, stage = 10¢, starterCredit = 500¢", () => {
-    expect(RATES_CENTS.event).toBe(1);
+  it("eventPlatform = 1¢, eventByok = 0¢, stage = 10¢, starterCredit = 500¢", () => {
+    expect(RATES_CENTS.eventPlatform).toBe(1);
+    expect(RATES_CENTS.eventByok).toBe(0);
     expect(RATES_CENTS.stage).toBe(10);
     expect(RATES_CENTS.starterCredit).toBe(500);
   });
 });
 
 describe("RATES_DISPLAY mirrors RATES_CENTS", () => {
-  it("should render RATES_CENTS.event as RATES_DISPLAY.event", () => {
-    expect(RATES_DISPLAY.event).toBe(formatCents(RATES_CENTS.event));
+  it("should render RATES_CENTS.eventPlatform as RATES_DISPLAY.eventPlatform", () => {
+    expect(RATES_DISPLAY.eventPlatform).toBe(formatCents(RATES_CENTS.eventPlatform));
+  });
+
+  it("should render RATES_CENTS.eventByok as RATES_DISPLAY.eventByok", () => {
+    expect(RATES_DISPLAY.eventByok).toBe(formatCents(RATES_CENTS.eventByok));
   });
 
   it("should render RATES_CENTS.stage as RATES_DISPLAY.stage", () => {
@@ -48,21 +53,25 @@ describe("RATES_DISPLAY mirrors RATES_CENTS", () => {
 });
 
 describe("RATES_CENTS boundary invariants", () => {
-  it("should expose every rate as a positive integer number of cents", () => {
+  it("should expose every rate as a non-negative integer number of cents", () => {
     for (const [key, value] of Object.entries(RATES_CENTS)) {
       expect.soft(Number.isInteger(value), `${key} not integer: ${value}`).toBe(true);
-      expect.soft(value, `${key} not positive: ${value}`).toBeGreaterThan(0);
+      expect.soft(value, `${key} negative: ${value}`).toBeGreaterThanOrEqual(0);
       expect.soft(Number.isFinite(value), `${key} not finite: ${value}`).toBe(true);
     }
   });
 
-  it("should keep stage strictly more expensive than event (rate ladder invariant)", () => {
-    expect(RATES_CENTS.stage).toBeGreaterThan(RATES_CENTS.event);
+  it("should keep stage strictly more expensive than the platform event rate (rate ladder invariant)", () => {
+    expect(RATES_CENTS.stage).toBeGreaterThan(RATES_CENTS.eventPlatform);
   });
 
-  it("should grant a starter credit large enough to cover at least one event+stage cycle", () => {
+  it("should price BYOK no higher than platform at receive (BYOK saves money invariant)", () => {
+    expect(RATES_CENTS.eventByok).toBeLessThanOrEqual(RATES_CENTS.eventPlatform);
+  });
+
+  it("should grant a starter credit large enough to cover at least one platform event+stage cycle", () => {
     expect(RATES_CENTS.starterCredit).toBeGreaterThanOrEqual(
-      RATES_CENTS.event + RATES_CENTS.stage,
+      RATES_CENTS.eventPlatform + RATES_CENTS.stage,
     );
   });
 });
@@ -73,10 +82,10 @@ function parseDollarString(str: string): number {
   return Math.round(parseFloat(match[1]) * 100);
 }
 
-describe("WORKED_EXAMPLE matches the displayed math", () => {
-  it("should report total = events × event + events × stagesPerEvent × stage", () => {
+describe("WORKED_EXAMPLE matches the displayed math (platform rate, the conservative number)", () => {
+  it("should report total = events × eventPlatform + events × stagesPerEvent × stage", () => {
     const expectedCents =
-      WORKED_EXAMPLE.events * RATES_CENTS.event +
+      WORKED_EXAMPLE.events * RATES_CENTS.eventPlatform +
       WORKED_EXAMPLE.events * WORKED_EXAMPLE.stagesPerEvent * RATES_CENTS.stage;
     // Compare numeric value, not format — RATES_DISPLAY ships `$5` while
     // WORKED_EXAMPLE.total ships `$31.00`, both valid presentation choices.
@@ -85,7 +94,7 @@ describe("WORKED_EXAMPLE matches the displayed math", () => {
 
   it("should report starterCoversEvents as floor(starterCredit / per-event cycle cost)", () => {
     const perEventCents =
-      RATES_CENTS.event + WORKED_EXAMPLE.stagesPerEvent * RATES_CENTS.stage;
+      RATES_CENTS.eventPlatform + WORKED_EXAMPLE.stagesPerEvent * RATES_CENTS.stage;
     const expected = Math.floor(RATES_CENTS.starterCredit / perEventCents);
     expect(WORKED_EXAMPLE.starterCoversEvents).toBe(expected);
   });
@@ -100,7 +109,8 @@ describe("WORKED_EXAMPLE matches the displayed math", () => {
 
 describe("RATES_DISPLAY format contract (shipped to OpenAPI / schema / smoke selectors)", () => {
   it.each([
-    ["event", RATES_DISPLAY.event],
+    ["eventPlatform", RATES_DISPLAY.eventPlatform],
+    ["eventByok", RATES_DISPLAY.eventByok],
     ["stage", RATES_DISPLAY.stage],
     ["starterCredit", RATES_DISPLAY.starterCredit],
   ])("should format %s as a leading-$ amount with no whitespace", (_key, str) => {

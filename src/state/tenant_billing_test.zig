@@ -17,28 +17,28 @@ const ALLOC = std.testing.allocator;
 // rate fails both suites and forces a conscious cross-stack update.
 
 test "rates pinned: receive platform 1¢ / byok 0¢ · stage overhead 10¢ · starter grant 500¢" {
-    try std.testing.expectEqual(@as(i64, 1), tenant_billing.RECEIVE_PLATFORM_CENTS);
-    try std.testing.expectEqual(@as(i64, 0), tenant_billing.RECEIVE_BYOK_CENTS);
-    try std.testing.expectEqual(@as(i64, 10), tenant_billing.STAGE_OVERHEAD_CENTS);
-    try std.testing.expectEqual(@as(i64, 500), tenant_billing.STARTER_GRANT_CENTS);
+    try std.testing.expectEqual(@as(i64, 1), tenant_billing.EVENT_PLATFORM_CENTS);
+    try std.testing.expectEqual(@as(i64, 0), tenant_billing.EVENT_BYOK_CENTS);
+    try std.testing.expectEqual(@as(i64, 10), tenant_billing.STAGE_CENTS);
+    try std.testing.expectEqual(@as(i64, 500), tenant_billing.STARTER_CREDIT_CENTS);
 }
 
 // ── Credit-pool cost functions ──────────────────────────────────────────────
 
 test "computeReceiveCharge: platform charges 1¢, byok charges 0¢" {
-    try std.testing.expectEqual(tenant_billing.RECEIVE_PLATFORM_CENTS, tenant_billing.computeReceiveCharge(.platform));
-    try std.testing.expectEqual(tenant_billing.RECEIVE_BYOK_CENTS, tenant_billing.computeReceiveCharge(.byok));
+    try std.testing.expectEqual(tenant_billing.EVENT_PLATFORM_CENTS, tenant_billing.computeReceiveCharge(.platform));
+    try std.testing.expectEqual(tenant_billing.EVENT_BYOK_CENTS, tenant_billing.computeReceiveCharge(.byok));
     try std.testing.expectEqual(@as(i64, 1), tenant_billing.computeReceiveCharge(.platform));
     try std.testing.expectEqual(@as(i64, 0), tenant_billing.computeReceiveCharge(.byok));
 }
 
 test "computeStageCharge: byok returns flat overhead independent of tokens or model" {
     try std.testing.expectEqual(
-        tenant_billing.STAGE_OVERHEAD_CENTS,
+        tenant_billing.STAGE_CENTS,
         tenant_billing.computeStageCharge(.byok, "any-model", 0, 0),
     );
     try std.testing.expectEqual(
-        tenant_billing.STAGE_OVERHEAD_CENTS,
+        tenant_billing.STAGE_CENTS,
         tenant_billing.computeStageCharge(.byok, "claude-opus-4-7", 1_000_000, 1_000_000),
     );
     // BYOK does not consult the rate cache, so a model not in the catalogue
@@ -61,7 +61,7 @@ test "computeStageCharge: platform charges overhead + token math from cache" {
     // Sonnet rates: input 300/Mtok, output 1500/Mtok (per schema/019 seed).
     // 800 input → 800*300/1_000_000 = 0¢ (truncated)
     // 1000 output → 1000*1500/1_000_000 = 1¢ (truncated)
-    // Plus STAGE_OVERHEAD_CENTS = 10¢
+    // Plus STAGE_CENTS = 10¢
     const cents = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", 800, 1000);
     try std.testing.expectEqual(@as(i64, 10 + 0 + 1), cents);
 
