@@ -185,7 +185,11 @@ test "debitStage BYOK: 1¢ flat overhead drains balance and writes stage telemet
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 499), row.balance_cents); // 500 - 1¢ stage overhead
+    // 500 starter cents - STAGE_OVERHEAD_BYOK_CENTS (10¢ stage platform fee).
+    try std.testing.expectEqual(
+        @as(i64, 500) - tenant_billing.STAGE_OVERHEAD_BYOK_CENTS,
+        row.balance_cents,
+    );
 
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT charge_type, token_count_input, token_count_output, wall_ms
