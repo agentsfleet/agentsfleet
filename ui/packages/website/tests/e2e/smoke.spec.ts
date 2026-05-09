@@ -15,7 +15,7 @@ test.describe("Smoke", () => {
   test("pricing section renders inline on home", async ({ page }) => {
     await page.goto("/#pricing");
     await expect(page.getByTestId("pricing-block")).toBeVisible();
-    await expect(page.getByTestId("pricing-rate-event")).toHaveText("$0.001");
+    await expect(page.getByTestId("pricing-rate-event")).toHaveText("$0.01");
     await expect(page.getByTestId("pricing-rate-stage")).toHaveText("$0.10");
   });
 
