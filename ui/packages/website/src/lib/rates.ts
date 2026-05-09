@@ -4,7 +4,7 @@
  * Server-side authority lives in src/state/tenant_billing.zig (the Zig
  * constants RECEIVE_PLATFORM_CENTS, STAGE_OVERHEAD_PLATFORM_CENTS,
  * STARTER_GRANT_CENTS). When those change, update the values here in
- * lockstep — there is no automatic sync today (rates API is M65_002 work).
+ * lockstep — there is no automatic sync today.
  *
  * Callers: components/Pricing.tsx, pages/Terms.tsx, components/FAQ.tsx.
  * Display strings are pre-formatted to keep callers from re-deriving the
