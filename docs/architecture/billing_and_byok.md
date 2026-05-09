@@ -99,8 +99,7 @@ The numbers are illustrative — see §10's caveat about pricing controversy. Th
 ### 4.2 Stage charge
 
 ```zig
-const STAGE_OVERHEAD_PLATFORM_CENTS: u32 = 1;   // executor RPC + sandbox + plumbing
-const STAGE_OVERHEAD_BYOK_CENTS:     u32 = 1;   // same overhead, charged flat under BYOK
+const STAGE_OVERHEAD_CENTS: u32 = 10;   // executor RPC + sandbox + plumbing; flat across postures
 
 pub fn compute_stage_charge(
     posture:       Posture,
@@ -113,14 +112,14 @@ pub fn compute_stage_charge(
             const rate = lookup_model_rate(model) orelse @panic("unknown model");
             const in_cents  = (rate.input_cents_per_mtok  * input_tokens)  / 1_000_000;
             const out_cents = (rate.output_cents_per_mtok * output_tokens) / 1_000_000;
-            break :blk STAGE_OVERHEAD_PLATFORM_CENTS + in_cents + out_cents;
+            break :blk STAGE_OVERHEAD_CENTS + in_cents + out_cents;
         },
-        .byok => STAGE_OVERHEAD_BYOK_CENTS,
+        .byok => STAGE_OVERHEAD_CENTS,
     };
 }
 ```
 
-Under platform: a fixed overhead (1¢) plus token cost driven by the per-model rates from the model-caps endpoint (§10). Under BYOK: just the overhead — flat 1¢ per stage, regardless of model or token count, because we did not pay for the tokens.
+Under platform: a fixed overhead (10¢) plus token cost driven by the per-model rates from the model-caps endpoint (§10). Under BYOK: just the overhead — flat 10¢ per stage, regardless of model or token count, because we did not pay for the tokens.
 
 `lookup_model_rate` reads from a process-local cache populated on API server start (and refreshed when the model-caps endpoint updates). The model-caps endpoint is the single source of truth; the API server caches it to keep `compute_stage_charge` synchronous and free of network calls in the hot path.
 
@@ -140,9 +139,9 @@ compute_stage_charge(.platform, "accounts/fireworks/models/kimi-k2.6", 800, 1040
   // illustrative values: { input: 300, output: 1500 } cents per million
   in_cents  = (rate.input  × 800)  / 1_000_000 = 0¢ (rounds to 0; under 1¢)
   out_cents = (rate.output × 1040) / 1_000_000 = 1¢
-  = STAGE_OVERHEAD_PLATFORM (1¢) + 0¢ + 1¢ = 2¢
+  = STAGE_OVERHEAD (10¢) + 0¢ + 1¢ = 11¢
 
-Total event cost: 1¢ + 2¢ = 3¢
+Total event cost: 1¢ + 11¢ = 12¢
 ```
 
 ### 4.4 Worked example — John under BYOK, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
@@ -153,12 +152,12 @@ compute_receive_charge(.byok)
 
 compute_stage_charge(.byok, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
   posture is BYOK → no rate lookup, no token math
-  = STAGE_OVERHEAD_BYOK (1¢)
+  = STAGE_OVERHEAD (10¢)
 
-Total event cost: 0¢ + 1¢ = 1¢
+Total event cost: 0¢ + 10¢ = 10¢
 ```
 
-Same $5 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~150 typical events on his $5 grant; under BYOK he gets ~500 events. The 3× runway extension is what he buys by paying Fireworks directly for the tokens (his Fireworks bill, separate from his usezombie balance).
+Same $5 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~41 typical events on his $5 grant (12¢ each); under BYOK he gets 50 events (10¢ each). Worth more once token costs are non-trivial: the platform overhead stays at 10¢ but the per-token cents stack on top.
 
 ---
 

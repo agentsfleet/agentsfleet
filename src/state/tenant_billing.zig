@@ -26,8 +26,7 @@ pub const RECEIVE_BYOK_CENTS: i64 = 0;
 /// the executor runs. Platform-managed adds the model-rate-based token
 /// charge on top; BYOK pays this fee only and the user's provider bills
 /// the token cost directly.
-pub const STAGE_OVERHEAD_PLATFORM_CENTS: i64 = 10;
-pub const STAGE_OVERHEAD_BYOK_CENTS: i64 = 10;
+pub const STAGE_OVERHEAD_CENTS: i64 = 10;
 
 /// Conservative estimate floors used by the gate-time stage-cost projection
 /// (the executor doesn't know real token counts yet). The actual cost is
@@ -87,9 +86,9 @@ pub fn computeStageCharge(
                 std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
             const in_cents = @divTrunc(rate.input_cents_per_mtok * @as(i64, input_tokens), 1_000_000);
             const out_cents = @divTrunc(rate.output_cents_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk STAGE_OVERHEAD_PLATFORM_CENTS + in_cents + out_cents;
+            break :blk STAGE_OVERHEAD_CENTS + in_cents + out_cents;
         },
-        .byok => STAGE_OVERHEAD_BYOK_CENTS,
+        .byok => STAGE_OVERHEAD_CENTS,
     };
 }
 
