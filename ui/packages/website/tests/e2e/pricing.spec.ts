@@ -20,7 +20,11 @@ test.describe("Pricing page", () => {
     await expect(page.getByText(/^upgrade when ready$/)).toBeVisible();
     const scaleCard = page.getByTestId("pricing-card-scale");
     await expect(scaleCard).toHaveAttribute("data-featured", "true");
-    await expect(scaleCard).toHaveClass(/border-pulse/);
+    // Card's `featured` variant emits `border-primary` (= var(--pulse));
+    // the page also adds `hover:border-primary` so the accent survives
+    // the base `hover:border-border-strong` override.
+    await expect(scaleCard).toHaveClass(/border-primary/);
+    await expect(scaleCard).toHaveClass(/hover:border-primary/);
   });
 
   test("Hobby tier lists no-expiry credit", async ({ page }) => {
