@@ -31,7 +31,7 @@ Every tenant has exactly one balance: `core.tenant_billing.balance_cents`. The g
 
 ### 2.1 The starter grant
 
-Each new tenant receives a **one-time starter grant of 500 cents (USD $5)** at tenant-create time. The grant is inserted into `tenant_billing.balance_cents` synchronously when the tenant row is created. There is no replenish; the $5 is a one-time onboarding allowance, not a recurring stipend. Source of truth: `STARTER_GRANT_CENTS` in `src/state/tenant_billing.zig`.
+Each new tenant receives a **one-time starter credit of 500 cents (USD $5)** at tenant-create time. The credit is inserted into `tenant_billing.balance_cents` synchronously when the tenant row is created. There is no replenish; the $5 is a one-time onboarding allowance, not a recurring stipend. Source of truth: `STARTER_CREDIT_CENTS` in `src/state/tenant_billing.zig`.
 
 At platform rates the grant covers roughly three hundred typical Kimi K2.6 events (model retail rate × tokens + 1¢ overhead + 1¢ receive ≈ 3¢/event for an 800/1040-token diagnosis). At BYOK rates the grant covers roughly one thousand events (flat 1¢ stage, 0¢ receive). The exact ratio depends on per-model pricing in §10.
 
@@ -81,13 +81,13 @@ Two events for John, taken at different points in his journey, drive the worked 
 ```zig
 pub const Posture = enum { platform, byok };
 
-const RECEIVE_PLATFORM_CENTS: u32 = 1;   // platform-managed event ingest
-const RECEIVE_BYOK_CENTS:     u32 = 0;   // BYOK ingest folded into stage overhead
+const EVENT_PLATFORM_CENTS: u32 = 1;   // platform-managed event ingest
+const EVENT_BYOK_CENTS:     u32 = 0;   // BYOK ingest folded into stage overhead
 
 pub fn compute_receive_charge(posture: Posture) u32 {
     return switch (posture) {
-        .platform => RECEIVE_PLATFORM_CENTS,
-        .byok     => RECEIVE_BYOK_CENTS,
+        .platform => EVENT_PLATFORM_CENTS,
+        .byok     => EVENT_BYOK_CENTS,
     };
 }
 ```
@@ -99,7 +99,7 @@ The numbers are illustrative — see §10's caveat about pricing controversy. Th
 ### 4.2 Stage charge
 
 ```zig
-const STAGE_OVERHEAD_CENTS: u32 = 10;   // executor RPC + sandbox + plumbing; flat across postures
+const STAGE_CENTS: u32 = 10;   // executor RPC + sandbox + plumbing; flat across postures
 
 pub fn compute_stage_charge(
     posture:       Posture,
@@ -112,9 +112,9 @@ pub fn compute_stage_charge(
             const rate = lookup_model_rate(model) orelse @panic("unknown model");
             const in_cents  = (rate.input_cents_per_mtok  * input_tokens)  / 1_000_000;
             const out_cents = (rate.output_cents_per_mtok * output_tokens) / 1_000_000;
-            break :blk STAGE_OVERHEAD_CENTS + in_cents + out_cents;
+            break :blk STAGE_CENTS + in_cents + out_cents;
         },
-        .byok => STAGE_OVERHEAD_CENTS,
+        .byok => STAGE_CENTS,
     };
 }
 ```
@@ -139,7 +139,7 @@ compute_stage_charge(.platform, "accounts/fireworks/models/kimi-k2.6", 800, 1040
   // illustrative values: { input: 300, output: 1500 } cents per million
   in_cents  = (rate.input  × 800)  / 1_000_000 = 0¢ (rounds to 0; under 1¢)
   out_cents = (rate.output × 1040) / 1_000_000 = 1¢
-  = STAGE_OVERHEAD (10¢) + 0¢ + 1¢ = 11¢
+  = STAGE (10¢) + 0¢ + 1¢ = 11¢
 
 Total event cost: 1¢ + 11¢ = 12¢
 ```
@@ -152,7 +152,7 @@ compute_receive_charge(.byok)
 
 compute_stage_charge(.byok, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
   posture is BYOK → no rate lookup, no token math
-  = STAGE_OVERHEAD (10¢)
+  = STAGE (10¢)
 
 Total event cost: 0¢ + 10¢ = 10¢
 ```

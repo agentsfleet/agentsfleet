@@ -8,7 +8,7 @@ const logging = @import("log");
 
 const log = logging.scoped(.state);
 
-pub const STARTER_GRANT_CENTS: i64 = 500;
+pub const STARTER_CREDIT_CENTS: i64 = 500;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 
 // Credit-pool cost model. Single rate, no tier branching — every tenant
@@ -19,14 +19,14 @@ pub const Posture = tenant_provider.Mode;
 /// Receive-side per-event drain. Charged once per event after the balance
 /// gate passes. BYOK is free at receive (the user's own provider account
 /// pays for the LLM call); platform-managed pays a flat 1¢ overhead.
-pub const RECEIVE_PLATFORM_CENTS: i64 = 1;
-pub const RECEIVE_BYOK_CENTS: i64 = 0;
+pub const EVENT_PLATFORM_CENTS: i64 = 1;
+pub const EVENT_BYOK_CENTS: i64 = 0;
 
 /// Stage-side platform fee, $0.10. Charged once per stage execution before
 /// the executor runs. Platform-managed adds the model-rate-based token
 /// charge on top; BYOK pays this fee only and the user's provider bills
 /// the token cost directly.
-pub const STAGE_OVERHEAD_CENTS: i64 = 10;
+pub const STAGE_CENTS: i64 = 10;
 
 /// Conservative estimate floors used by the gate-time stage-cost projection
 /// (the executor doesn't know real token counts yet). The actual cost is
@@ -57,14 +57,14 @@ pub fn provision(
 /// tenant-create transaction in signup_bootstrap. Idempotent via the
 /// underlying ON CONFLICT DO NOTHING.
 pub fn insertStarterGrant(conn: *pg.Conn, tenant_id: []const u8) !void {
-    return provision(conn, tenant_id, STARTER_GRANT_CENTS, BOOTSTRAP_GRANT_SOURCE);
+    return provision(conn, tenant_id, STARTER_CREDIT_CENTS, BOOTSTRAP_GRANT_SOURCE);
 }
 
 /// Receive-side per-event charge. Posture-only; no token math.
 pub fn computeReceiveCharge(posture: Posture) i64 {
     return switch (posture) {
-        .platform => RECEIVE_PLATFORM_CENTS,
-        .byok => RECEIVE_BYOK_CENTS,
+        .platform => EVENT_PLATFORM_CENTS,
+        .byok => EVENT_BYOK_CENTS,
     };
 }
 
@@ -86,9 +86,9 @@ pub fn computeStageCharge(
                 std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
             const in_cents = @divTrunc(rate.input_cents_per_mtok * @as(i64, input_tokens), 1_000_000);
             const out_cents = @divTrunc(rate.output_cents_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk STAGE_OVERHEAD_CENTS + in_cents + out_cents;
+            break :blk STAGE_CENTS + in_cents + out_cents;
         },
-        .byok => STAGE_OVERHEAD_CENTS,
+        .byok => STAGE_CENTS,
     };
 }
 

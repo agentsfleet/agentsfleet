@@ -138,7 +138,7 @@ test "debitReceive BYOK: 0¢ charge writes telemetry row, balance unchanged" {
         .stop,
     );
     switch (result) {
-        .deducted => |c| try std.testing.expectEqual(tenant_billing.RECEIVE_BYOK_CENTS, c),
+        .deducted => |c| try std.testing.expectEqual(tenant_billing.EVENT_BYOK_CENTS, c),
         else => return error.TestExpectedEqual,
     }
 
@@ -179,15 +179,15 @@ test "debitStage BYOK: 1¢ flat overhead drains balance and writes stage telemet
         .stop,
     );
     switch (result) {
-        .deducted => |c| try std.testing.expectEqual(tenant_billing.STAGE_OVERHEAD_CENTS, c),
+        .deducted => |c| try std.testing.expectEqual(tenant_billing.STAGE_CENTS, c),
         else => return error.TestExpectedEqual,
     }
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
-    // 500 starter cents - STAGE_OVERHEAD_CENTS (10¢ stage platform fee).
+    // 500 starter cents - STAGE_CENTS (10¢ stage platform fee).
     try std.testing.expectEqual(
-        @as(i64, 500) - tenant_billing.STAGE_OVERHEAD_CENTS,
+        @as(i64, 500) - tenant_billing.STAGE_CENTS,
         row.balance_cents,
     );
 
@@ -283,7 +283,7 @@ test "recordStageActuals: updates stage row tokens and wall_ms, leaves cents unt
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;
     // credit_deducted_cents: pre-execution estimate is the charge of record.
-    try std.testing.expectEqual(tenant_billing.STAGE_OVERHEAD_CENTS, try r.get(i64, 0));
+    try std.testing.expectEqual(tenant_billing.STAGE_CENTS, try r.get(i64, 0));
     try std.testing.expectEqual(@as(?i64, 100), try r.get(?i64, 1));
     try std.testing.expectEqual(@as(?i64, 540), try r.get(?i64, 2));
     try std.testing.expectEqual(@as(?i64, 12_500), try r.get(?i64, 3));

@@ -38,7 +38,7 @@ export default function Terms() {
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">4. Billing</h2>
       <List className="pl-6 text-text-muted m-0">
-        <ListItem>usezombie charges {RATES_DISPLAY.event} per event receipt and {RATES_DISPLAY.stage} per stage execution. Each new account receives a {RATES_DISPLAY.starterCredit} starter credit that never expires.</ListItem>
+        <ListItem>usezombie charges {RATES_DISPLAY.eventPlatform} per event receipt and {RATES_DISPLAY.stage} per stage execution. Each new account receives a {RATES_DISPLAY.starterCredit} starter credit that never expires.</ListItem>
         <ListItem>Hosted execution is metered against a credit pool. Debits fire on event receipt and on each stage execution.</ListItem>
         <ListItem>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</ListItem>
         <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via Mission Control.</ListItem>
