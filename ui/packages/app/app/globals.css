@@ -1,63 +1,35 @@
-/* Self-hosted Geist via Vercel's @fontsource-variable/geist — drops the
- * googleapis CDN request that used to block first paint on every page. */
-@import "@fontsource-variable/geist";
-@import "@fontsource-variable/geist-mono";
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@usezombie/design-system/tokens.css";
 @import "@usezombie/design-system/theme.css";
 
-/* Register the sibling design-system package so Tailwind scans its TSX for
- * utility classes. Without this, shared Button/Card/etc ship unstyled. */
+/* Tailwind scans the sibling design-system package for utility classes used
+ * in shared primitives. Without this, Button/Card/etc. ship unstyled. */
 @source "../../../design-system/src/**/*.{ts,tsx}";
 
-/*
- * usezombie Mission Control — Global Styles
- *
- * The four-layer token pyramid now lives in the shared package:
- *   Layer 0 — @usezombie/design-system/tokens.css   — palette primitives (--z-*)
- *   Layer 1 — @usezombie/design-system/theme.css    — semantic bridge (--primary, ...)
- *   Layer 2 — @usezombie/design-system/theme.css    — @theme inline for Tailwind utilities
- *   Layer 3 — components/**                         — consume only Layer 2 utilities
- *
- * Both ui/packages/app and ui/packages/website inherit Layers 0-2 from the
- * package — zero drift. App-specific overrides (dashboard shell, status
- * badges, pipeline visualization) stay here.
- */
-
-/* Mission Control shell layout vars (not color tokens — kept app-local). */
-:root {
-  --sidebar-width: 240px;
-  --header-height: 56px;
-  --content-max: 1200px;
-}
-
-/* ── Base ── */
 * { box-sizing: border-box; }
 
 html, body { margin: 0; min-height: 100%; }
 
 body {
-  font-family: var(--z-font-sans);
-  background: var(--z-bg-0);
-  color: var(--z-text-primary);
+  font-family: var(--ff-sans);
+  background: var(--bg);
+  color: var(--text);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  /* No dot-grid on the app body — DESIGN_SYSTEM.md §Aesthetic permits the
+   * dot-grid on the marketing hero only. The app surface stays flat. */
 }
 
 a { color: inherit; }
 
-code, pre, kbd {
-  font-family: var(--z-font-mono);
-}
+code, pre, kbd { font-family: var(--ff-mono); }
 
-/* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--z-bg-0); }
-::-webkit-scrollbar-thumb { background: var(--z-border); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--z-text-dim); }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
 
-/* ── Utilities ── */
 .sr-only {
   position: absolute;
   width: 1px;
@@ -70,86 +42,15 @@ code, pre, kbd {
   border-width: 0;
 }
 
-/* ── Dashboard Shell ── */
-.mc-shell {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
-  grid-template-rows: var(--header-height) 1fr;
-  min-height: 100vh;
+/* prefers-reduced-motion — wake-pulse becomes a static glow; everything else
+ * is functional or absent per spec §Motion, so no other overrides needed. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
-
-.mc-header {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0 1.5rem;
-  border-bottom: 1px solid var(--z-border);
-  background: rgba(5, 8, 13, 0.85);
-  backdrop-filter: blur(12px);
-  position: sticky;
-  top: 0;
-  z-index: 40;
-}
-
-.mc-sidebar {
-  border-right: 1px solid var(--z-border);
-  padding: 1rem 0;
-  overflow-y: auto;
-  position: sticky;
-  top: var(--header-height);
-  height: calc(100vh - var(--header-height));
-}
-
-.mc-content {
-  padding: 2rem;
-  overflow: auto;
-}
-
-/* ── Sidebar navigation ── */
-.mc-nav-section {
-  padding: 0 0.75rem;
-  margin-bottom: 1.5rem;
-}
-
-.mc-nav-label {
-  font-family: var(--z-font-mono);
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--z-text-dim);
-  padding: 0 0.5rem;
-  margin-bottom: 0.4rem;
-}
-
-.mc-nav-item {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--z-radius-md);
-  color: var(--z-text-muted);
-  text-decoration: none;
-  font-size: 0.875rem;
-  transition: background 0.15s, color 0.15s;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  width: 100%;
-  text-align: left;
-}
-
-.mc-nav-item:hover {
-  background: var(--z-surface-1);
-  color: var(--z-text-primary);
-}
-
-.mc-nav-item.active {
-  background: rgba(217, 107, 43, 0.12);
-  color: var(--z-orange);
-}
-
-/* Repeated dashboard layout patterns live in @usezombie/design-system as
- * React components (PageHeader, PageTitle, SectionLabel). No parallel
- * CSS vocabulary in this file.
- */

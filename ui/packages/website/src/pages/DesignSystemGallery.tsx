@@ -10,8 +10,6 @@ import {
   Grid,
   Section,
   InstallBlock,
-  AnimatedIcon,
-  ZombieHandIcon,
   Badge,
   Input,
   Separator,
@@ -194,7 +192,7 @@ export default function DesignSystemGallery() {
       <Section>
         <h2>Dialog</h2>
         <Dialog>
-          <DialogTrigger data-testid="dialog-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+          <DialogTrigger data-testid="dialog-trigger" className="border border-border rounded-md px-4 py-2 text-sm">
             Open dialog
           </DialogTrigger>
           <DialogContent data-testid="dialog-content">
@@ -215,7 +213,7 @@ export default function DesignSystemGallery() {
       <Section>
         <h2>DropdownMenu</h2>
         <DropdownMenu>
-          <DropdownMenuTrigger data-testid="dropdown-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+          <DropdownMenuTrigger data-testid="dropdown-trigger" className="border border-border rounded-md px-4 py-2 text-sm">
             Open menu
           </DropdownMenuTrigger>
           <DropdownMenuContent data-testid="dropdown-content">
@@ -233,7 +231,7 @@ export default function DesignSystemGallery() {
         <h2>Tooltip</h2>
         <TooltipProvider>
           <Tooltip>
-            <TooltipTrigger data-testid="tooltip-trigger" className="border border-border rounded-full px-4 py-2 text-sm">
+            <TooltipTrigger data-testid="tooltip-trigger" className="border border-border rounded-md px-4 py-2 text-sm">
               Hover me
             </TooltipTrigger>
             <TooltipContent data-testid="tooltip-content">Ship it</TooltipContent>
@@ -266,22 +264,6 @@ export default function DesignSystemGallery() {
         <Pagination kind="page" page={2} pageSize={20} total={87} onPageChange={() => {}} />
       </Section>
 
-      <Section>
-        <h2>AnimatedIcon</h2>
-        <div className="flex flex-wrap items-center gap-lg">
-          <AnimatedIcon animation="wave" trigger="always" label="always-wave">
-            <ZombieHandIcon size={24} />
-          </AnimatedIcon>
-          <AnimatedIcon animation="wiggle" trigger="self-hover" label="self-hover-wiggle">
-            <ZombieHandIcon size={24} />
-          </AnimatedIcon>
-          <span className="group">
-            parent-hover <AnimatedIcon animation="wave" trigger="parent-hover" label="parent-hover-wave">
-              <ZombieHandIcon size={24} />
-            </AnimatedIcon>
-          </span>
-        </div>
-      </Section>
     </Section>
   );
 }

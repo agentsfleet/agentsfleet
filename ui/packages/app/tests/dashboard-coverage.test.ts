@@ -71,6 +71,13 @@ vi.mock("@/lib/api/zombies", () => ({
   getZombie: vi.fn(),
   installZombie: vi.fn(),
   deleteZombie: vi.fn(),
+  ZOMBIE_STATUS: {
+    ACTIVE: "active",
+    PAUSED: "paused",
+    STOPPED: "stopped",
+    KILLED: "killed",
+    ERRORED: "errored",
+  },
 }));
 
 const listTenantBillingChargesMock = vi.fn();
@@ -658,8 +665,8 @@ describe("KillSwitch component", () => {
 
 describe("ZombiesList component", () => {
   const baseZombies = [
-    { id: "zom_1", name: "alpha-bot", status: "active", created_at: "2026-04-22T00:00:00Z" },
-    { id: "zom_2", name: "beta-bot", status: "paused", created_at: "2026-04-22T00:00:01Z" },
+    { id: "zom_1", name: "alpha-bot", status: "active", created_at: 1745280000000, updated_at: 1745280000000 },
+    { id: "zom_2", name: "beta-bot", status: "paused", created_at: 1745280001000, updated_at: 1745280001000 },
   ];
 
   async function renderList(props: {
@@ -741,6 +748,57 @@ describe("ZombiesList component", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
     );
+  });
+
+  it("wake-pulse fires only on active rows (data-live attribute)", async () => {
+    await renderList({
+      initialZombies: [
+        { id: "zom_1", name: "alpha-bot", status: "active", created_at: 1745280000000, updated_at: 1745280000000 },
+        { id: "zom_2", name: "beta-bot", status: "paused", created_at: 1745280001000, updated_at: 1745280001000 },
+        { id: "zom_3", name: "gamma-bot", status: "killed", created_at: 1745280002000, updated_at: 1745280002000 },
+      ],
+    });
+    const liveRow = screen.getByRole("link", { name: /alpha-bot/i });
+    const parkedRow = screen.getByRole("link", { name: /beta-bot/i });
+    const failedRow = screen.getByRole("link", { name: /gamma-bot/i });
+    expect(liveRow.getAttribute("data-state")).toBe("live");
+    expect(parkedRow.getAttribute("data-state")).toBe("parked");
+    expect(failedRow.getAttribute("data-state")).toBe("failed");
+    expect(liveRow.querySelector("[data-live]")).toBeTruthy();
+    expect(parkedRow.querySelector("[data-live]")).toBeFalsy();
+    expect(failedRow.querySelector("[data-live]")).toBeFalsy();
+  });
+
+  it("wake-pulse cap: only first 5 live rows in render order pulse; rest static", async () => {
+    const sixLive = Array.from({ length: 6 }, (_, i) => ({
+      id: `zom_${i + 1}`,
+      name: `live-${i + 1}`,
+      status: "active",
+      created_at: 1745280000000 + i,
+      updated_at: 1745280000000 + i,
+    }));
+    await renderList({ initialZombies: sixLive });
+    const rows = screen.getAllByRole("link", { name: /live-/i });
+    expect(rows).toHaveLength(6);
+    const livePulses = rows.filter((r) => r.querySelector("[data-live]"));
+    expect(livePulses).toHaveLength(5);
+    // Header consolidation count is shown.
+    expect(screen.getByLabelText(/6 live/i)).toBeTruthy();
+  });
+
+  it("status dot palette: live, parked, failed via data-state", async () => {
+    await renderList({
+      initialZombies: [
+        { id: "zom_1", name: "alpha", status: "active", created_at: 1745280000000, updated_at: 1745280000000 },
+        { id: "zom_2", name: "beta", status: "paused", created_at: 1745280001000, updated_at: 1745280001000 },
+        { id: "zom_3", name: "gamma", status: "killed", created_at: 1745280002000, updated_at: 1745280002000 },
+        { id: "zom_4", name: "delta", status: "errored", created_at: 1745280003000, updated_at: 1745280003000 },
+      ],
+    });
+    expect(screen.getByRole("link", { name: /alpha/ }).getAttribute("data-state")).toBe("live");
+    expect(screen.getByRole("link", { name: /beta/ }).getAttribute("data-state")).toBe("parked");
+    expect(screen.getByRole("link", { name: /gamma/ }).getAttribute("data-state")).toBe("failed");
+    expect(screen.getByRole("link", { name: /delta/ }).getAttribute("data-state")).toBe("failed");
   });
 });
 

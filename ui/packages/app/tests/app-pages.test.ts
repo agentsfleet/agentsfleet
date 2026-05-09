@@ -46,6 +46,7 @@ vi.mock("lucide-react", () => ({
   ShieldIcon: () => React.createElement("svg", { "data-icon": "ShieldIcon" }),
   KeyRoundIcon: () => React.createElement("svg", { "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: () => React.createElement("svg", { "data-icon": "CheckCircle2Icon" }),
+  MenuIcon: () => React.createElement("svg", { "data-icon": "MenuIcon" }),
 }));
 
 vi.mock("@/lib/workspace", () => ({
@@ -75,7 +76,8 @@ describe("app layouts and pages", () => {
     expect(rootMarkup).toContain("root child");
     expect(dashboardMarkup).toContain("dash child");
     expect(authMarkup).toContain("usezombie");
-    expect(authMarkup).toContain("Mission Control");
+    // Auth shell carries the brand-mark wake-pulse — the brand is always alive.
+    expect(authMarkup).toContain("data-live");
   });
 
   it("dashboard entry page renders page header when authenticated", async () => {

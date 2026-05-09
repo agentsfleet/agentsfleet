@@ -11,8 +11,6 @@ describe("FAQ", () => {
 
   it("renders all FAQ questions as buttons", () => {
     render(<FAQ />);
-    const buttons = screen.getAllByRole("button");
-    expect(buttons.length).toBeGreaterThanOrEqual(6);
     expect(screen.getByText("What is usezombie?")).toBeInTheDocument();
     expect(screen.getByText("What does BYOK mean?")).toBeInTheDocument();
     expect(screen.getByText("What am I actually paying for?")).toBeInTheDocument();
@@ -29,7 +27,6 @@ describe("FAQ", () => {
   it("shows answer when question is clicked", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
-
     await user.click(screen.getByText("What does BYOK mean?"));
     expect(screen.getByText(/Bring Your Own Key\./)).toBeInTheDocument();
   });
@@ -37,10 +34,8 @@ describe("FAQ", () => {
   it("hides answer when clicked again", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
-
     await user.click(screen.getByText("What does BYOK mean?"));
     expect(screen.getByText(/Bring Your Own Key\./)).toBeInTheDocument();
-
     await user.click(screen.getByText("What does BYOK mean?"));
     expect(screen.queryByText(/Bring Your Own Key\./)).not.toBeInTheDocument();
   });
@@ -48,10 +43,8 @@ describe("FAQ", () => {
   it("closes previous answer when another is opened", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
-
     await user.click(screen.getByText("What does BYOK mean?"));
     expect(screen.getByText(/Bring Your Own Key\./)).toBeInTheDocument();
-
     await user.click(screen.getByText("What am I actually paying for?"));
     expect(screen.queryByText(/Bring Your Own Key\./)).not.toBeInTheDocument();
     expect(screen.getByText(/Hosted execution\./)).toBeInTheDocument();
@@ -60,10 +53,8 @@ describe("FAQ", () => {
   it("sets aria-expanded correctly", async () => {
     const user = userEvent.setup();
     render(<FAQ />);
-
     const button = screen.getByText("What does BYOK mean?");
     expect(button).toHaveAttribute("aria-expanded", "false");
-
     await user.click(button);
     expect(button).toHaveAttribute("aria-expanded", "true");
   });

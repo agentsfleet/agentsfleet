@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  usezombie brand-mark with the wake-pulse glow ring.
+
+  Same disc as usezombie-mark.svg with the pulse-glow halo rendered
+  as a soft radial gradient — a static representation of the live
+  wake-pulse animation that runs on the live website / app. Use this
+  variant when the mark is rendered larger than ~32px and a static
+  context (favicon, docs hero, social card) calls for the glow cue.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="usezombie">
+  <title>usezombie</title>
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#5EEAD4" stop-opacity="0.55" />
+      <stop offset="40%" stop-color="#5EEAD4" stop-opacity="0.18" />
+      <stop offset="100%" stop-color="#5EEAD4" stop-opacity="0" />
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="#0A0D0E" />
+  <circle cx="256" cy="256" r="220" fill="url(#glow)" />
+  <circle cx="256" cy="256" r="120" fill="#5EEAD4" />
+</svg>

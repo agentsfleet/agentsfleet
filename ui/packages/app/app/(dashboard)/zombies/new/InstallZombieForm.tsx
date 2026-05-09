@@ -83,7 +83,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-xl space-y-4">
+      <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="max-w-xl space-y-4">
         <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
           Power-user install. Prefer{" "}
           <code className="font-mono">zombiectl install --from</code>, which

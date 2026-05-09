@@ -32,7 +32,16 @@ jobs:
         run: bun install --frozen-lockfile
         working-directory: zombiectl
       - name: Test zombiectl
-        run: make test-unit-zombiectl
+        run: bun run test:coverage
+        working-directory: zombiectl
+      - name: Upload zombiectl coverage
+        uses: codecov/codecov-action@v6
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          slug: usezombie/usezombie
+          flags: zombiectl
+          files: zombiectl/coverage/lcov.info
+          fail_ci_if_error: false
 
   test-website:
     runs-on: ubuntu-latest

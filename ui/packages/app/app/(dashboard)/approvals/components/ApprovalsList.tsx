@@ -69,7 +69,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
   const hasLoadedMore = useRef(false);
   useEffect(() => {
     let alive = true;
-    const id = setInterval(async () => {
+    const tick = async () => {
       if (hasLoadedMore.current) return;
       const token = await getToken();
       if (!token || !alive) return;
@@ -84,7 +84,8 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       } catch {
         // Transient — leave the existing list rendered until the next tick.
       }
-    }, POLL_MS);
+    };
+    const id = setInterval(() => { void tick(); }, POLL_MS);
     return () => {
       alive = false;
       clearInterval(id);

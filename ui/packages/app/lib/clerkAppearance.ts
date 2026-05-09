@@ -1,82 +1,97 @@
+/*
+ * Clerk widget theming for sign-in / sign-up. Tokens map to the
+ * Operational Restraint design system (docs/DESIGN_SYSTEM.md):
+ *   --surface-1   cards
+ *   --surface-2   inputs / elevated chrome
+ *   --text*       text primary / muted / subtle
+ *   --pulse       primary CTA fill ONLY (currency rule — the primary
+ *                 action button is the system's "wake" affordance).
+ *                 Footer links, resend-code links, edit buttons use
+ *                 muted text — they are navigation, not live signals.
+ *   --bg          contrast text on the pulse fill
+ *   --border*     dividers + outlines
+ *   --error       error states. Failed != live; never --pulse.
+ * No box-shadow on chrome (spec: borders preferred over shadows).
+ * No gradient on the footer (spec: no decorative gradients on chrome).
+ */
 export const AUTH_APPEARANCE = {
   variables: {
-    colorBackground: "var(--z-surface-0)",
-    colorInputBackground: "var(--z-surface-1)",
-    colorInputText: "var(--z-text-primary)",
-    colorText: "var(--z-text-primary)",
-    colorTextSecondary: "var(--z-text-muted)",
-    colorPrimary: "var(--z-orange)",
-    colorDanger: "var(--z-red)",
-    borderRadius: "var(--z-radius-sm)",
-    fontFamily: "var(--z-font-sans)",
+    colorBackground: "var(--surface-1)",
+    colorInputBackground: "var(--surface-2)",
+    colorInputText: "var(--text)",
+    colorText: "var(--text)",
+    colorTextSecondary: "var(--text-muted)",
+    colorPrimary: "var(--pulse)",
+    colorDanger: "var(--error)",
+    borderRadius: "var(--r-sm)",
+    fontFamily: "var(--ff-sans)",
   },
   elements: {
     cardBox: {
-      backgroundColor: "var(--z-surface-0)",
-      border: "1px solid var(--z-border)",
-      boxShadow: "0 18px 48px rgba(0, 0, 0, 0.32)",
+      backgroundColor: "var(--surface-1)",
+      border: "1px solid var(--border)",
     },
     headerTitle: {
-      color: "var(--z-text-primary)",
+      color: "var(--text)",
     },
     headerSubtitle: {
-      color: "var(--z-text-muted)",
+      color: "var(--text-muted)",
     },
     socialButtonsBlockButton: {
-      backgroundColor: "var(--z-surface-1)",
-      border: "1px solid var(--z-border)",
-      color: "var(--z-text-primary)",
+      backgroundColor: "var(--surface-2)",
+      border: "1px solid var(--border)",
+      color: "var(--text)",
     },
     socialButtonsBlockButtonText: {
-      color: "var(--z-text-primary)",
+      color: "var(--text)",
     },
     dividerLine: {
-      backgroundColor: "var(--z-border)",
+      backgroundColor: "var(--border)",
     },
     dividerText: {
-      color: "var(--z-text-dim)",
+      color: "var(--text-subtle)",
     },
     formFieldLabel: {
-      color: "var(--z-text-primary)",
+      color: "var(--text)",
     },
     formFieldInput: {
-      backgroundColor: "var(--z-surface-1)",
-      borderColor: "var(--z-border)",
-      color: "var(--z-text-primary)",
+      backgroundColor: "var(--surface-2)",
+      borderColor: "var(--border)",
+      color: "var(--text)",
     },
     formButtonPrimary: {
-      backgroundColor: "var(--z-orange)",
-      color: "var(--z-text-inverse)",
-      boxShadow: "0 0 24px var(--z-glow-strong)",
+      backgroundColor: "var(--pulse)",
+      color: "var(--bg)",
     },
     footerActionText: {
-      color: "var(--z-text-muted)",
+      color: "var(--text-muted)",
     },
     footerActionLink: {
-      color: "var(--z-orange-bright)",
+      color: "var(--text)",
+      textDecoration: "underline",
+      textDecorationColor: "var(--border)",
     },
     identityPreviewText: {
-      color: "var(--z-text-primary)",
+      color: "var(--text)",
     },
     identityPreviewEditButton: {
-      color: "var(--z-orange-bright)",
+      color: "var(--text-muted)",
     },
     formResendCodeLink: {
-      color: "var(--z-orange-bright)",
+      color: "var(--text-muted)",
     },
     formFieldSuccessText: {
-      color: "var(--z-green)",
+      color: "var(--success)",
     },
     formFieldErrorText: {
-      color: "var(--z-red)",
+      color: "var(--error)",
     },
     alertText: {
-      color: "var(--z-red)",
+      color: "var(--error)",
     },
     footer: {
-      background:
-        "linear-gradient(180deg, rgba(15, 21, 32, 0.94) 0%, rgba(11, 16, 24, 0.98) 100%)",
-      borderTop: "1px solid rgba(26, 37, 51, 0.5)",
+      backgroundColor: "var(--surface-1)",
+      borderTop: "1px solid var(--border)",
     },
   },
 } as const;

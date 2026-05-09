@@ -49,7 +49,7 @@ const schema = z.object({
         });
         return;
       }
-      if (Object.keys(parsed as Record<string, unknown>).length === 0) {
+      if (Object.keys(parsed).length === 0) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: "Object must have at least one field",
@@ -92,7 +92,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="space-y-4">
         <FormField
           control={form.control}
           name="name"
@@ -135,9 +135,9 @@ export default function AddCredentialForm({ workspaceId }: Props) {
             </FormItem>
           )}
         />
-        {apiError && <p className="text-sm text-red-600">{apiError}</p>}
+        {apiError ? <p className="text-sm text-red-600">{apiError}</p> : null}
         <Button type="submit" disabled={pending}>
-          {pending && <Loader2Icon size={14} className="mr-2 animate-spin" />}
+          {pending ? <Loader2Icon size={14} className="mr-2 animate-spin" /> : null}
           Store credential
         </Button>
       </form>

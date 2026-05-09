@@ -1,6 +1,8 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { render, screen, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({
   trackAppEvent: vi.fn(),
@@ -55,6 +57,7 @@ vi.mock("lucide-react", () => ({
   ShieldIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ShieldIcon" }),
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
+  MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
 }));
 
 type ClickableElement = React.ReactElement<{ children?: React.ReactNode; onClick?: (...args: unknown[]) => unknown }>;
@@ -102,7 +105,11 @@ describe("app components", () => {
     renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div", null, "root")));
 
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
-    expect(renderToStaticMarkup(React.createElement(React.Fragment, null, shellTree))).toContain("Mission Control");
+    // Brand-mark + wordmark are the new topbar shape; the legacy
+    // "Mission Control" badge was removed for Operational Restraint.
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, shellTree));
+    expect(markup).toContain("usezombie");
+    expect(markup).toContain("data-live");
   });
 
   it("identifies the current clerk user once loaded", async () => {
@@ -143,8 +150,80 @@ describe("app components", () => {
   it("exports stable auth appearance tokens", async () => {
     const { AUTH_APPEARANCE } = await import("../lib/clerkAppearance");
 
-    expect(AUTH_APPEARANCE.variables.colorPrimary).toBe("var(--z-orange)");
-    expect(AUTH_APPEARANCE.elements.formButtonPrimary.color).toBe("var(--z-text-inverse)");
-    expect(AUTH_APPEARANCE.elements.footer.background).toContain("linear-gradient");
+    // Clerk's primary CTA is the live signal — colorPrimary maps to --pulse;
+    // foreground sits on near-black --bg for contrast. Footer flat surface-1
+    // over a top border (spec forbids decorative gradients on chrome). Footer
+    // links and identity-edit affordances are muted text, NOT --pulse — the
+    // currency rule reserves --pulse for the primary CTA only.
+    expect(AUTH_APPEARANCE.variables.colorPrimary).toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.formButtonPrimary.color).toBe("var(--bg)");
+    expect(AUTH_APPEARANCE.elements.formButtonPrimary.backgroundColor).toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.footer.backgroundColor).toBe("var(--surface-1)");
+    expect(AUTH_APPEARANCE.elements.footer).not.toHaveProperty("background");
+    // Footer / link affordances stay muted (currency-rule guard).
+    expect(AUTH_APPEARANCE.elements.footerActionLink.color).not.toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.identityPreviewEditButton.color).not.toBe("var(--pulse)");
+    expect(AUTH_APPEARANCE.elements.formResendCodeLink.color).not.toBe("var(--pulse)");
+  });
+
+  it("renders Shell with brand-mark wake-pulse + sidebar nav (no Mission Control branding)", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/zombies");
+    const tree = Shell({ children: React.createElement("div", null, "content") });
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    // Brand-mark always-alive contract.
+    expect(markup).toContain("data-live");
+    expect(markup).toContain("usezombie");
+    // No legacy "Mission Control" tag.
+    expect(markup).not.toContain("Mission Control");
+    // Sidebar nav rendered with all 5 operational routes + 2 in More.
+    expect(markup).toContain("Dashboard");
+    expect(markup).toContain("Zombies");
+    expect(markup).toContain("Credentials");
+    expect(markup).toContain("Approvals");
+    expect(markup).toContain("Events");
+    expect(markup).toContain("Settings");
+  });
+
+  it("Shell sidebar marks the active route via data-active attribute", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/zombies");
+    const tree = Shell({ children: React.createElement("div") });
+    const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, tree));
+    // The active link gets data-active="true" — the sidebar's surface-3 fill
+    // is driven from this attribute (no coloured bar per spec).
+    expect(markup).toMatch(/data-active="true"[^>]*>\s*<svg[^>]*data-icon="SkullIcon"/);
+  });
+
+  it("Shell mobile-nav: hamburger button is present (md:hidden)", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    render(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
+    // The mobile hamburger renders as a Button with aria-label="Open navigation".
+    // It exists in the DOM at all viewports; CSS hides it ≥md.
+    const hamburger = screen.getByRole("button", { name: /open navigation/i });
+    expect(hamburger).toBeTruthy();
+    expect(hamburger.className).toContain("md:hidden");
+    cleanup();
+  });
+
+  it("Shell mobile-nav: clicking hamburger opens the dialog with sidebar nav", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
+    const hamburger = screen.getByRole("button", { name: /open navigation/i });
+    await user.click(hamburger);
+    // Dialog renders the SidebarNav which carries the same 5 operational
+    // links. The dialog itself is keyed by an accessible "Navigation" title.
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toBeTruthy();
+    expect(dialog.textContent).toContain("Dashboard");
+    expect(dialog.textContent).toContain("Zombies");
+    cleanup();
   });
 });

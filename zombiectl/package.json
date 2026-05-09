@@ -27,6 +27,9 @@
   },
   "scripts": {
     "test": "node ./scripts/run-tests.mjs",
+    "test:coverage": "bun test --coverage",
+    "lint": "eslint src bin test scripts eslint.config.js",
+    "lint:fix": "eslint src bin test scripts eslint.config.js --fix",
     "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js",
     "prepublishOnly": "node ./scripts/prepublish.mjs",
     "postinstall": "node ./scripts/postinstall.mjs"
@@ -34,5 +37,13 @@
   "dependencies": {
     "posthog-node": "^5.28.11"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "@eslint/js": "10",
+    "eslint": "10",
+    "eslint-plugin-import-x": "4",
+    "eslint-plugin-n": "18",
+    "eslint-plugin-promise": "7",
+    "globals": "17"
+  }
 }

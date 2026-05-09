@@ -61,17 +61,28 @@ export async function installZombie(
   );
 }
 
-// PATCH /v1/workspaces/{ws}/zombies/{id}
-// Drives the zombie status FSM. `paused` is gate-only — the API never lets
-// callers set it. Throws ApiError UZ-ZMB-010 on 409 (transition not allowed
-// from current state, e.g. resume on an active zombie) and UZ-ZMB-009 on
-// 404 (zombie missing or already-killed tombstone).
-export type ZombieStatus = "active" | "stopped" | "killed";
+// Every zombie status the API can return. Source of truth — every consumer
+// that switches/compares against a status value reads from this const.
+export const ZOMBIE_STATUS = {
+  ACTIVE: "active",
+  PAUSED: "paused",
+  STOPPED: "stopped",
+  KILLED: "killed",
+  ERRORED: "errored",
+} as const;
+export type ZombieStatus = typeof ZOMBIE_STATUS[keyof typeof ZOMBIE_STATUS];
+
+// Subset PATCH /v1/workspaces/{ws}/zombies/{id} accepts. `paused` and
+// `errored` are gate-set states — the API never lets callers transition to
+// them. Throws ApiError UZ-ZMB-010 on 409 (transition not allowed from
+// current state, e.g. resume on an active zombie) and UZ-ZMB-009 on 404
+// (zombie missing or already-killed tombstone).
+export type ZombieStatusSettable = "active" | "stopped" | "killed";
 
 export async function setZombieStatus(
   workspaceId: string,
   zombieId: string,
-  status: ZombieStatus,
+  status: ZombieStatusSettable,
   token: string,
 ): Promise<Zombie> {
   return request<Zombie>(

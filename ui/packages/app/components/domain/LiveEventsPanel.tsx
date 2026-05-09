@@ -91,7 +91,7 @@ export function LiveEventsPanel({
         idCounter.current += 1;
         const id = `${idCounter.current}`;
         setFrames((prev) => {
-          const next = [...prev, { id, frame: parsed as LiveFrame }];
+          const next = [...prev, { id, frame: parsed }];
           return next.length > bufferSize ? next.slice(-bufferSize) : next;
         });
       };

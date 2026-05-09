@@ -1,4 +1,4 @@
-import { Card } from "@usezombie/design-system";
+import { Card, List, ListItem, Terminal } from "@usezombie/design-system";
 import { APP_BASE_URL, DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
 
 type FeatureFlowItem = {
@@ -8,7 +8,13 @@ type FeatureFlowItem = {
   bullets: string[];
   ctaLabel: string;
   ctaHref: string;
-  panel: "install" | "trace" | "mission";
+  panel: ReadonlyArray<string>;
+  // Panels that are real shell commands (single line, copy-pasteable)
+  // render as a <Terminal copyable> with a copy button. Multi-line
+  // narrative panels (event traces, mission-control snippets) stay
+  // as static <Card>s — copy-paste of those bytes is not the user
+  // intent.
+  copyable?: boolean;
 };
 
 const items: FeatureFlowItem[] = [
@@ -21,9 +27,10 @@ const items: FeatureFlowItem[] = [
       "Detects fly.toml, GitHub Actions, monorepos",
       "Idempotent re-runs",
     ],
-    ctaLabel: "Install guide",
+    ctaLabel: "install guide",
     ctaHref: DOCS_QUICKSTART_URL,
-    panel: "install",
+    panel: ["$ npm install -g @usezombie/zombiectl"],
+    copyable: true,
   },
   {
     id: "trace",
@@ -34,9 +41,14 @@ const items: FeatureFlowItem[] = [
       "actor = webhook | cron | steer | continuation",
       "Stage chunking carries reasoning past the model's context cap",
     ],
-    ctaLabel: "Read docs",
+    ctaLabel: "read docs",
     ctaHref: DOCS_URL,
-    panel: "trace",
+    panel: [
+      "zombie_id: zmb_2041",
+      "event:     workflow_run.failed",
+      "status:    notified",
+      "slack:     #platform-ops",
+    ],
   },
   {
     id: "mission",
@@ -45,77 +57,72 @@ const items: FeatureFlowItem[] = [
       "Approvals, budgets, BYOK provider, kill switch — one dashboard. Approve from Slack or the web.",
     bullets: [
       "Daily + monthly dollar caps, trip-blocked at the gate",
-      "`zombiectl kill` checkpoints state; nothing lost",
+      "zombiectl kill checkpoints state; nothing lost",
     ],
-    ctaLabel: "Open Mission Control",
+    ctaLabel: "open mission control",
     ctaHref: APP_BASE_URL,
-    panel: "mission",
+    panel: [
+      "agents     12",
+      "approvals   3",
+      "credits  $7.40",
+    ],
   },
 ];
 
-function Panel({ kind }: { kind: FeatureFlowItem["panel"] }) {
-  if (kind === "install") {
-    return (
-      <div className="feature-flow-panel-shell">
-        <p className="feature-flow-code">$ npm install -g @usezombie/zombiectl</p>
-      </div>
-    );
-  }
-
-  if (kind === "trace") {
-    return (
-      <div className="feature-flow-panel-shell">
-        <p className="feature-flow-code">
-          zombie_id: zmb_2041
-          <br />
-          event: workflow_run.failed
-          <br />
-          status: notified
-          <br />
-          slack: #platform-ops
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="feature-flow-panel-shell feature-flow-mission-grid" aria-hidden="true">
-      <span>Agents</span>
-      <span>12</span>
-      <span>Approvals</span>
-      <span>3</span>
-      <span>Credits</span>
-      <span>$7.40</span>
-    </div>
-  );
-}
-
+/*
+ * FeatureFlow — 3 alternating evidence rows. Each row pairs a mono code
+ * panel with a sans copy column. No orange rail decoration; borders carry
+ * the elevation. Reverses on odd rows for visual rhythm only.
+ */
 export default function FeatureFlow() {
   return (
-    <section className="section-gap feature-flow-wrap" aria-label="Feature flow">
-      {items.map((item, index) => (
-        <Card
-          key={item.id}
-          asChild
-          className="!bg-transparent !border-0 !rounded-none !p-0 hover:!shadow-none"
-        >
-        <article className={`feature-flow-row ${index % 2 === 1 ? "reverse" : ""}`}>
-          <Panel kind={item.panel} />
-          <div className="feature-flow-copy">
-            <h3>{item.title}</h3>
-            <p>{item.description}</p>
-            <ul>
-              {item.bullets.map((bullet) => (
-                <li key={bullet}>{bullet}</li>
-              ))}
-            </ul>
-            <a className="cta ghost feature-flow-cta" href={item.ctaHref}>
-              {item.ctaLabel} &rarr;
-            </a>
-          </div>
-        </article>
-        </Card>
-      ))}
+    <section className="site-section" aria-label="Feature flow" data-testid="feature-flow">
+      <div className="wrap flex flex-col gap-16">
+        {items.map((item, index) => {
+          const reversed = index % 2 === 1;
+          return (
+            <article
+              key={item.id}
+              className={`grid gap-8 items-center grid-cols-1 lg:grid-cols-2 ${reversed ? "lg:[&>*:first-child]:order-2" : ""}`}
+              data-testid={`feature-flow-${item.id}`}
+            >
+              {item.copyable ? (
+                <Terminal label={`${item.title} command`} copyable>
+                  {item.panel.join("\n")}
+                </Terminal>
+              ) : (
+                <Card className="font-mono text-[13px] leading-[1.7] text-text-muted whitespace-pre-line">
+                  {item.panel.join("\n")}
+                </Card>
+              )}
+              <div className="flex flex-col gap-4">
+                <h3 className="font-mono text-[clamp(20px,2.5vw,28px)] leading-[1.2] tracking-[-0.015em] text-text font-medium m-0">
+                  {item.title}
+                </h3>
+                <p className="font-sans text-[15px] leading-[1.6] text-text-muted m-0">
+                  {item.description}
+                </p>
+                <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">
+                  {item.bullets.map((bullet) => (
+                    <ListItem
+                      key={bullet}
+                      className="font-mono text-[13px] text-text-muted before:content-['↳'] before:mr-2 before:text-text-subtle"
+                    >
+                      {bullet}
+                    </ListItem>
+                  ))}
+                </List>
+                <a
+                  href={item.ctaHref}
+                  className="font-mono text-[13px] text-pulse hover:underline"
+                >
+                  {item.ctaLabel} →
+                </a>
+              </div>
+            </article>
+          );
+        })}
+      </div>
     </section>
   );
 }

@@ -100,6 +100,115 @@ describe("commandWorkspace", () => {
     expect(savedWs.current_workspace_id).toBe(WS_ID_2);
   });
 
+  test("list jsonMode prints structured payload", async () => {
+    let printed = null;
+    const deps = makeDeps({
+      printJson: (_s, v) => { printed = v; },
+    });
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: true, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [{ workspace_id: WS_ID }] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["list"]);
+    expect(code).toBe(0);
+    expect(printed.current_workspace_id).toBe(WS_ID);
+    expect(printed.workspaces).toHaveLength(1);
+  });
+
+  test("use without id reports USAGE_ERROR", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["use"]);
+    expect(code).toBe(2);
+    expect(err.read()).toContain("workspace use requires");
+  });
+
+  test("use with malformed id reports VALIDATION_ERROR", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["use", "not-a-uuid"]);
+    expect(code).toBe(2);
+    // ValidateRequiredId returns "must be a uuid v7"-style message.
+    const msg = err.read();
+    expect(msg.length).toBeGreaterThan(0);
+  });
+
+  test("use with unknown valid id reports UNKNOWN_WORKSPACE", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["use", WS_ID]);
+    expect(code).toBe(2);
+    expect(err.read()).toContain("not in your local list");
+  });
+
+  test("use with known id activates workspace and persists", async () => {
+    let saved = null;
+    const deps = makeDeps({
+      saveWorkspaces: async (ws) => { saved = ws; },
+    });
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: null, items: [{ workspace_id: WS_ID, name: "main" }] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["use", WS_ID]);
+    expect(code).toBe(0);
+    expect(saved.current_workspace_id).toBe(WS_ID);
+  });
+
+  test("show without active workspace reports NO_WORKSPACE", async () => {
+    const err = makeBufferStream();
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: err.stream, jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["show"]);
+    expect(code).toBe(2);
+    expect(err.read()).toContain("no active workspace");
+  });
+
+  test("show jsonMode renders detail payload for active workspace", async () => {
+    let printed;
+    const deps = makeDeps({
+      printJson: (_s, v) => { printed = v; },
+    });
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: true, env: {} };
+    const workspaces = { current_workspace_id: WS_ID, items: [{ workspace_id: WS_ID, name: "main" }] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["show"]);
+    expect(code).toBe(0);
+    expect(printed.workspace_id).toBe(WS_ID);
+    expect(printed.active).toBe(true);
+  });
+
+  test("credentials placeholder action returns 0", async () => {
+    const deps = makeDeps();
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["credentials"]);
+    expect(code).toBe(0);
+  });
+
+  test("credentials jsonMode emits the placeholder payload", async () => {
+    let printed;
+    const deps = makeDeps({
+      printJson: (_s, v) => { printed = v; },
+    });
+    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: true, env: {} };
+    const workspaces = { current_workspace_id: null, items: [] };
+    const core = createCoreHandlers(ctx, workspaces, deps);
+    const code = await core.commandWorkspace(["credentials"]);
+    expect(code).toBe(0);
+    expect(printed?.status).toBe("placeholder");
+  });
+
   test("delete without id returns error", async () => {
     const err = makeBufferStream();
     const deps = makeDeps();

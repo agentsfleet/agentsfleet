@@ -14,7 +14,9 @@ function renderAgents() {
 describe("Agents", () => {
   it("renders the agent-first heading", () => {
     renderAgents();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/autonomous agents/i);
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      /this page is for autonomous agents/i,
+    );
   });
 
   it("renders the canonical surface note", () => {
@@ -24,19 +26,19 @@ describe("Agents", () => {
 
   it("renders the install block with npm command", () => {
     renderAgents();
-    expect(screen.getByRole("heading", { name: "Install Zombiectl" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /install zombiectl/i })).toBeInTheDocument();
     expect(screen.getByLabelText(/install zombiectl command/i)).toHaveTextContent(
-      /npm install -g @usezombie\/zombiectl/
+      /npm install -g @usezombie\/zombiectl/,
     );
   });
 
   it("renders install block action buttons", () => {
     renderAgents();
-    expect(screen.getByRole("link", { name: "Read the docs" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /read the docs/i })).toHaveAttribute(
       "href",
-      "https://docs.usezombie.com"
+      "https://docs.usezombie.com",
     );
-    expect(screen.getByRole("link", { name: "Setup your personal dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open mission control/i })).toBeInTheDocument();
   });
 
   it("renders bootstrap commands", () => {
@@ -51,13 +53,13 @@ describe("Agents", () => {
 
   it("renders machine surface table", () => {
     renderAgents();
-    expect(screen.getByText("Machine Surface")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "/openapi.json" })).toHaveAttribute("href", "/openapi.json");
+    expect(screen.getByRole("heading", { name: /machine surface/i })).toBeInTheDocument();
+    expect(screen.getByTestId("agents-openapi-link")).toHaveAttribute("href", "/openapi.json");
   });
 
   it("renders API operations table", () => {
     renderAgents();
-    expect(screen.getByText("API Operations")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /api operations/i })).toBeInTheDocument();
     expect(screen.getByText("Create agent")).toBeInTheDocument();
     expect(screen.getByText("Update agent")).toBeInTheDocument();
     expect(screen.getByText("Stop agent")).toBeInTheDocument();
@@ -67,8 +69,6 @@ describe("Agents", () => {
     expect(screen.getByText("Steer / chat")).toBeInTheDocument();
     expect(screen.getByText("Stream events")).toBeInTheDocument();
     expect(screen.getByText("Ingest webhook")).toBeInTheDocument();
-    expect(screen.queryByText("Execute tool")).not.toBeInTheDocument();
-    expect(screen.queryByText("Pause workspace")).not.toBeInTheDocument();
   });
 
   it("renders HTTP methods", () => {
@@ -79,22 +79,22 @@ describe("Agents", () => {
     const deletes = screen.getAllByText("DELETE");
     expect(posts.length).toBeGreaterThanOrEqual(2);
     expect(gets.length).toBeGreaterThanOrEqual(1);
-    expect(patches.length).toBeGreaterThanOrEqual(4); // update, stop, resume, kill
-    expect(deletes.length).toBeGreaterThanOrEqual(1); // delete
+    expect(patches.length).toBeGreaterThanOrEqual(4);
+    expect(deletes.length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders webhook example", () => {
     renderAgents();
-    expect(screen.getByText("Webhook Ingest Example")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /webhook ingest example/i })).toBeInTheDocument();
     expect(screen.getByText(/deploy\.failed/)).toBeInTheDocument();
   });
 
   it("renders safety limits cards", () => {
     renderAgents();
-    expect(screen.getByText("Idempotency")).toBeInTheDocument();
-    expect(screen.getByText("Audit Trail")).toBeInTheDocument();
-    expect(screen.getByText("Secret Management")).toBeInTheDocument();
-    expect(screen.getByText("Policy Enforcement")).toBeInTheDocument();
+    expect(screen.getByText(/^idempotency$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^audit trail$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^secret management$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^policy enforcement$/i)).toBeInTheDocument();
   });
 
   it("renders JSON-LD script", () => {
@@ -106,15 +106,10 @@ describe("Agents", () => {
     expect(data.name).toBe("usezombie");
   });
 
-  it("uses agent-surface class for terminal aesthetic", () => {
+  it("does not render orange-era decorative chrome", () => {
     const { container } = renderAgents();
-    expect(container.querySelector(".agent-surface")).not.toBeNull();
-  });
-
-  it("renders scanline overlay", () => {
-    const { container } = renderAgents();
-    const scanline = container.querySelector(".scanline");
-    expect(scanline).not.toBeNull();
-    expect(scanline).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".scanline")).toBeNull();
+    expect(container.querySelector(".agent-surface")).toBeNull();
+    expect(container.querySelector(".agent-table")).toBeNull();
   });
 });

@@ -21,7 +21,7 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
 
   if (credentials.length === 0) {
     return (
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-muted-foreground">
         No credentials stored yet. Add one using the form on the right.
       </p>
     );
@@ -52,7 +52,7 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
         <div key={c.name} className="flex items-center justify-between p-3">
           <div>
             <div className="font-mono text-sm">{c.name}</div>
-            <div className="text-xs text-zinc-500">{c.created_at}</div>
+            <div className="font-mono text-xs tabular-nums text-muted-foreground">{c.created_at}</div>
           </div>
           <Button
             type="button"

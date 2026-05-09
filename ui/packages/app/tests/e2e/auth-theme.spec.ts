@@ -1,9 +1,16 @@
 import { test, expect, type Locator } from "@playwright/test";
 
-const DARK_SURFACE = "rgb(15, 21, 32)";
-const ELEVATED_SURFACE = "rgb(22, 30, 43)";
-const PRIMARY_TEXT = "rgb(232, 242, 255)";
-const MUTED_TEXT = "rgb(139, 151, 168)";
+// Operational Restraint design tokens (M64_002). Hex sources live in
+// ui/packages/design-system/src/tokens.css; rgb() values below are the
+// browser-computed forms of those hex codes.
+//   --surface-1 #11161a → rgb(17, 22, 26)  — cards, sidebars
+//   --surface-2 #181e22 → rgb(24, 30, 34)  — inputs, mockup chrome
+//   --text      #e6eaec → rgb(230, 234, 236)
+//   --text-muted #8b9398 → rgb(139, 147, 152)
+const DARK_SURFACE = "rgb(17, 22, 26)";
+const ELEVATED_SURFACE = "rgb(24, 30, 34)";
+const PRIMARY_TEXT = "rgb(230, 234, 236)";
+const MUTED_TEXT = "rgb(139, 147, 152)";
 const BASE_URL = process.env.BASE_URL ?? "http://localhost:3000";
 const EXPECTED_HOSTNAME = new URL(BASE_URL).hostname;
 
@@ -51,7 +58,8 @@ test.describe("Auth theming", () => {
 
     const body = page.locator("body");
     await expect(body).toContainText(/usezombie|Zombies|Dashboard/);
-    await expect(await getCss(body, "background-color")).toBe("rgb(5, 8, 13)");
+    // --bg #0a0d0e (Operational Restraint) → rgb(10, 13, 14)
+    await expect(await getCss(body, "background-color")).toBe("rgb(10, 13, 14)");
   });
 
   test("mobile auth keeps the dark card treatment", async ({ page, isMobile }) => {

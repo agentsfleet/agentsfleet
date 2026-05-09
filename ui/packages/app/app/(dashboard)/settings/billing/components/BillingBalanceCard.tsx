@@ -76,7 +76,13 @@ function PurchaseCreditsButton() {
               the trigger keyboard-reachable; cursor-not-allowed lives
               on the wrapper because the disabled button blocks its
               own pointer events. */}
+          {/* Disabled-button-with-tooltip a11y workaround: a disabled
+           * <Button> can't receive focus, so a non-interactive span wrapper
+           * carries the focus + describedby. jsx-a11y/no-noninteractive-
+           * tabindex flags this; the wrapper is the recommended ARIA
+           * pattern for keyboard-reachable disabled affordances. */}
           <span
+            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             tabIndex={0}
             aria-describedby="purchase-credits-tooltip"
             className="inline-block cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"

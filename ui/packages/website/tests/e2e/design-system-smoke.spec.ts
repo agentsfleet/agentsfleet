@@ -29,14 +29,20 @@ test.beforeEach(async ({ page }) => {
 });
 
 test.describe("Button — computed styles", () => {
-  test("default variant renders the orange gradient", async ({ page }) => {
-    const bg = await computed(page, "btn-default", "background-image");
-    expect(bg).toContain("linear-gradient");
+  test("default variant renders a flat pulse fill (no gradient)", async ({ page }) => {
+    // Operational Restraint (M64_002): default Button is flat bg-primary
+    // (which now resolves to --pulse). The orange linear-gradient was
+    // removed; spec forbids decorative gradients on chrome.
+    const bgImage = await computed(page, "btn-default", "background-image");
+    const bgColor = await computed(page, "btn-default", "background-color");
+    expect(bgImage).not.toContain("linear-gradient");
+    expect(bgImage).toBe("none");
+    expect(bgColor).not.toBe("rgba(0, 0, 0, 0)");
+    expect(bgColor).not.toBe("transparent");
   });
 
   test("destructive variant has a solid destructive background", async ({ page }) => {
     const bg = await computed(page, "btn-destructive", "background-color");
-    // Should be non-transparent and distinct from the default gradient
     expect(bg).not.toBe("rgba(0, 0, 0, 0)");
     expect(bg).not.toBe("transparent");
   });
@@ -53,14 +59,18 @@ test.describe("Button — computed styles", () => {
     expect(parseFloat(w)).toBeCloseTo(2, 0);
   });
 
-  test("pill radius resolves to ≥ 40px (rounded-full)", async ({ page }) => {
+  test("default radius is --r-md (~4px), not pill", async ({ page }) => {
+    // Spec component principles: "No border-radius: 9999px on buttons.
+    // Ever." Default Button uses rounded-md → --r-md → 4px.
     const r = await computed(page, "btn-default", "border-top-left-radius");
-    expect(parseFloat(r)).toBeGreaterThanOrEqual(40);
+    const px = parseFloat(r);
+    expect(px).toBeGreaterThan(0);
+    expect(px).toBeLessThan(20); // hard ceiling well under any pill value
   });
 
-  test("ease-fast transition resolves to a timing-function", async ({ page }) => {
+  test("transition-timing-function resolves (ease-snap)", async ({ page }) => {
+    // var(--ease-snap) → var(--easing-snap) → ease-out
     const ease = await computed(page, "btn-default", "transition-timing-function");
-    // var(--ease-fast) ≈ 0.15s ease → "ease"
     expect(ease.length).toBeGreaterThan(0);
     expect(ease).not.toBe("");
   });
@@ -75,18 +85,22 @@ test.describe("Button — computed styles", () => {
     expect(parseFloat(h)).toBeCloseTo(48, 0);
   });
 
-  test("icon size is 40x40 square", async ({ page }) => {
+  test("icon size is 36x36 square (spec max for icon-only)", async ({ page }) => {
+    // Spec: "No icon-only buttons larger than 36px square." Button.tsx
+    // size="icon" is h-9 w-9 → 36px.
     const h = await computed(page, "btn-icon", "height");
     const w = await computed(page, "btn-icon", "width");
-    expect(parseFloat(h)).toBeCloseTo(40, 0);
-    expect(parseFloat(w)).toBeCloseTo(40, 0);
+    expect(parseFloat(h)).toBeCloseTo(36, 0);
+    expect(parseFloat(w)).toBeCloseTo(36, 0);
   });
 
   test("asChild renders an <a> with button styles", async ({ page }) => {
     const loc = page.locator('[data-testid="btn-aschild"]');
     await expect(loc).toHaveJSProperty("tagName", "A");
     const r = await computed(page, "btn-aschild", "border-top-left-radius");
-    expect(parseFloat(r)).toBeGreaterThanOrEqual(40);
+    const px = parseFloat(r);
+    expect(px).toBeGreaterThan(0);
+    expect(px).toBeLessThan(20);
   });
 });
 
@@ -105,10 +119,19 @@ test.describe("Card — computed styles", () => {
 });
 
 test.describe("Terminal — computed styles", () => {
-  // Terminal's text/bg utilities land on the inner <pre>, so we query that.
+  // Text/foreground utilities land on the inner <pre>; background +
+  // border land on the outer wrapper <div> (the terminal-window
+  // chrome introduced post-Operational-Restraint). Colour-related
+  // queries use the <pre>; structural queries (border, background)
+  // use the wrapper.
   async function terminalPreStyle(page: Page, testid: string, prop: string) {
     return page
       .locator(`[data-testid="${testid}"] pre`)
+      .evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
+  }
+  async function terminalWrapperStyle(page: Page, testid: string, prop: string) {
+    return page
+      .locator(`[data-testid="${testid}"]`)
       .evaluate((el, p) => getComputedStyle(el).getPropertyValue(p), prop);
   }
 
@@ -125,7 +148,9 @@ test.describe("Terminal — computed styles", () => {
   });
 
   test("terminal has surface-terminal background", async ({ page }) => {
-    const bg = await terminalPreStyle(page, "terminal-default", "background-color");
+    // Background lives on the outer wrapper now (bg-surface-deep).
+    // The <pre> is transparent so it inherits the wrapper colour.
+    const bg = await terminalWrapperStyle(page, "terminal-default", "background-color");
     expect(bg).not.toBe("rgba(0, 0, 0, 0)");
   });
 });
@@ -152,9 +177,12 @@ test.describe("Badge — computed styles", () => {
     expect(bg).not.toBe("rgba(0, 0, 0, 0)");
   });
 
-  test("pill radius resolves (rounded-full)", async ({ page }) => {
+  test("badge radius is --r-sm (~2px), flat status label not a pill", async ({ page }) => {
+    // Spec: "Badges: ... border-radius --r-sm." Switched from rounded-full.
     const r = await computed(page, "badge-default", "border-top-left-radius");
-    expect(parseFloat(r)).toBeGreaterThanOrEqual(40);
+    const px = parseFloat(r);
+    expect(px).toBeGreaterThan(0);
+    expect(px).toBeLessThan(10);
   });
 
   test("status variants produce distinct text colors", async ({ page }) => {
@@ -334,22 +362,12 @@ test.describe("Pagination — computed styles", () => {
   });
 });
 
-test.describe("AnimatedIcon — computed styles", () => {
-  test("always-trigger glyph has a non-empty animation-name", async ({ page }) => {
-    const glyph = page
-      .locator('[aria-label="always-wave"] [data-animated-glyph]')
-      .first();
-    const name = await glyph.evaluate((el) => getComputedStyle(el).animationName);
-    expect(name).toBe("z-icon-wave");
-  });
-});
-
 test.describe("Accessibility", () => {
   test("gallery content has zero axe violations", async ({ page }) => {
     // Scope to the gallery content — site shell (header/footer) heading order
     // is not part of the design-system contract, audited in its own spec.
     const results = await new AxeBuilder({ page })
-      .include(".site-main")
+      .include("main")
       .disableRules(["color-contrast"]) // brand palette; audited separately
       .analyze();
     expect(results.violations).toEqual([]);

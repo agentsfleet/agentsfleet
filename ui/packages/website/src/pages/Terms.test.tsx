@@ -31,9 +31,9 @@ describe("Terms", () => {
 
   it("renders contact email link", () => {
     render(<Terms />);
-    expect(screen.getByRole("link", { name: /legal@usezombie\.com/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: /usezombie@agentmail\.to/i })).toHaveAttribute(
       "href",
-      "mailto:legal@usezombie.com"
+      "mailto:usezombie@agentmail.to"
     );
   });
 });

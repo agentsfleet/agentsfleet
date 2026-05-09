@@ -14,7 +14,9 @@ function renderCtaBlock() {
 describe("CTABlock", () => {
   it("renders the heading", () => {
     renderCtaBlock();
-    expect(screen.getByRole("heading", { level: 2, name: /building agents on usezombie\?/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { level: 2, name: /building agents on usezombie\?/i }),
+    ).toBeInTheDocument();
   });
 
   it("renders the description", () => {

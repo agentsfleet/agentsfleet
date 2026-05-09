@@ -4,9 +4,9 @@ import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { useClientToken } from "@/lib/auth/client";
 import { Button, ConfirmDialog } from "@usezombie/design-system";
-import { setZombieStatus } from "@/lib/api/zombies";
+import { setZombieStatus, ZOMBIE_STATUS } from "@/lib/api/zombies";
 import { ApiError } from "@/lib/api/errors";
-import type { Zombie, ZombieStatus } from "@/lib/api/zombies";
+import type { Zombie, ZombieStatusSettable } from "@/lib/api/zombies";
 
 interface KillSwitchProps {
   workspaceId: string;
@@ -14,7 +14,7 @@ interface KillSwitchProps {
 }
 
 interface ActionConfig {
-  target: ZombieStatus;
+  target: ZombieStatusSettable;
   buttonLabel: string;
   variant: "outline" | "destructive";
   dialogTitle: string;
@@ -69,7 +69,7 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
   }
 
   const stopAction: ActionConfig = {
-    target: "stopped",
+    target: ZOMBIE_STATUS.STOPPED,
     buttonLabel: "Stop",
     variant: "destructive",
     dialogTitle: "Stop this zombie?",
@@ -78,19 +78,19 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
     intent: "destructive",
   };
   const resumeAction: ActionConfig = {
-    target: "active",
+    target: ZOMBIE_STATUS.ACTIVE,
     buttonLabel: "Resume",
     variant: "outline",
     dialogTitle: "Resume this zombie?",
     dialogDescription:
-      optimisticStatus === "paused"
+      optimisticStatus === ZOMBIE_STATUS.PAUSED
         ? "This zombie was auto-paused by the platform. Resuming returns it to active execution — investigate the trigger first."
         : "Return this zombie to active execution.",
     confirmLabel: "Resume",
     intent: "default",
   };
   const killAction: ActionConfig = {
-    target: "killed",
+    target: ZOMBIE_STATUS.KILLED,
     buttonLabel: "Kill",
     variant: "destructive",
     dialogTitle: "Kill this zombie permanently?",
@@ -102,12 +102,12 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
 
   const actions: ActionConfig[] = (() => {
     switch (optimisticStatus) {
-      case "active":
+      case ZOMBIE_STATUS.ACTIVE:
         return [stopAction, killAction];
-      case "paused":
-      case "stopped":
+      case ZOMBIE_STATUS.PAUSED:
+      case ZOMBIE_STATUS.STOPPED:
         return [resumeAction, killAction];
-      case "killed":
+      case ZOMBIE_STATUS.KILLED:
       default:
         return [];
     }

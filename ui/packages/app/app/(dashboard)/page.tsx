@@ -1,8 +1,8 @@
 import { Suspense } from "react";
 import { getServerToken } from "@/lib/auth/server";
 import { redirect } from "next/navigation";
-import { PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@usezombie/design-system";
-import { listZombies } from "@/lib/api/zombies";
+import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@usezombie/design-system";
+import { listZombies, ZOMBIE_STATUS } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
 import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
@@ -27,15 +27,24 @@ export async function StatusTiles() {
     getTenantBilling(token).catch(() => null),
   ]);
 
-  const active = zombies.filter((z) => z.status === "active").length;
-  const paused = zombies.filter((z) => z.status === "paused").length;
-  const stopped = zombies.filter((z) => z.status === "stopped").length;
+  const active = zombies.filter((z) => z.status === ZOMBIE_STATUS.ACTIVE).length;
+  const paused = zombies.filter((z) => z.status === ZOMBIE_STATUS.PAUSED).length;
+  const stopped = zombies.filter((z) => z.status === ZOMBIE_STATUS.STOPPED).length;
+
+  if (zombies.length === 0) {
+    return (
+      <>
+        <ExhaustionBanner billing={billing} />
+        <FirstInstallCard balanceCents={billing?.balance_cents ?? null} />
+      </>
+    );
+  }
 
   return (
     <>
       <ExhaustionBanner billing={billing} />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mb-6">
-        <StatusCard label="Active" count={active} variant="success" />
+        <StatusCard label="Live" count={active} variant="success" sublabel={active > 0 ? "wake on event" : undefined} />
         <StatusCard label="Paused" count={paused} variant="warning" />
         <StatusCard label="Stopped" count={stopped} variant="default" />
         <StatusCard
@@ -45,6 +54,30 @@ export async function StatusTiles() {
         />
       </div>
     </>
+  );
+}
+
+function FirstInstallCard({ balanceCents }: { balanceCents: number | null }) {
+  const credits = balanceCents != null ? Math.floor(balanceCents / 100) : null;
+  return (
+    <Section asChild>
+      <section aria-label="Install your first zombie" className="mb-8">
+        <SectionLabel>First wake</SectionLabel>
+        <p className="mt-1 mb-6 max-w-prose text-sm text-muted-foreground">
+          {credits != null && credits > 0
+            ? `$${credits} of free credit is sitting in your balance, waiting on a wake. Install a zombie from your terminal and trigger one.`
+            : "Install a zombie from your terminal — point it at a SKILL.md and a TRIGGER.md, and it'll wake on the matching event."}
+        </p>
+        <InstallBlock
+          title="Install your first zombie"
+          command="zombiectl install --from ./platform-ops"
+          actions={[
+            { label: "Read the docs", to: "https://docs.usezombie.com/quickstart", variant: "default", external: true },
+            { label: "Or paste SKILL.md manually", to: "/zombies/new", variant: "ghost" },
+          ]}
+        />
+      </section>
+    </Section>
   );
 }
 

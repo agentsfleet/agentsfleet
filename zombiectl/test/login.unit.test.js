@@ -42,13 +42,13 @@ function makeDeps(overrides = {}) {
 describe("commandLogin", () => {
   test("successful login flow", async () => {
     const out = makeBufferStream();
-    let pollCount = 0;
+    let _pollCount = 0;
     const deps = makeDeps({
       request: async (_ctx, reqPath) => {
         if (reqPath === "/v1/auth/sessions") {
           return { session_id: "sess_1", login_url: "https://login.test" };
         }
-        pollCount++;
+        _pollCount++;
         return { status: "complete", token: LOGIN_TOKEN };
       },
       saveCredentials: async (creds) => {

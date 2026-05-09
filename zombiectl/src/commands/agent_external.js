@@ -44,7 +44,7 @@ export async function commandAgentAdd(ctx, parsed, deps) {
   writeLine(ctx.stdout, `  ${res.key}`);
   writeLine(ctx.stdout);
   writeLine(ctx.stdout, ui.dim("Use as: Authorization: Bearer <key>"));
-  writeLine(ctx.stdout, ui.dim("Authenticated zombie: " + zombieId));
+  writeLine(ctx.stdout, ui.dim(`Authenticated zombie: ${  zombieId}`));
 
   if (printTable) {
     writeLine(ctx.stdout);

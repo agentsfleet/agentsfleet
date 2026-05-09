@@ -15,13 +15,13 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const TEST_DIR = dirname(fileURLToPath(import.meta.url));
-const PKG_ROOT = dirname(TEST_DIR);
-
 import { commandZombie } from "../src/commands/zombie.js";
 import { findRoute } from "../src/program/routes.js";
 import { parseFlags } from "../src/program/args.js";
 import { makeNoop, ui, WS_ID } from "./helpers.js";
+
+const TEST_DIR = dirname(fileURLToPath(import.meta.url));
+const PKG_ROOT = dirname(TEST_DIR);
 
 function makeStdout() {
   const lines = [];
