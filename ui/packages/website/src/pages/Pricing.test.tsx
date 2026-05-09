@@ -109,7 +109,11 @@ describe("Pricing", () => {
     const scale = screen.getByTestId("pricing-card-scale");
     expect(hobby.getAttribute("data-featured")).toBeNull();
     expect(scale.getAttribute("data-featured")).toBe("true");
-    expect(scale.className).toMatch(/border-pulse/);
+    // Card's `featured` variant emits `border-primary` (= var(--pulse));
+    // page-level adds `hover:border-primary` so the accent survives the
+    // base hover-border-strong override. Both classes prove the wiring.
+    expect(scale.className).toMatch(/border-primary/);
+    expect(scale.className).toMatch(/hover:border-primary/);
   });
 
   it("CTA links both point to APP_BASE_URL", () => {

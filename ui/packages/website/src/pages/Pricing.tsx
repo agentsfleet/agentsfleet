@@ -94,9 +94,10 @@ export default function Pricing() {
           {tiers.map((tier) => (
             <Card
               key={tier.name}
+              featured={tier.featured}
               data-testid={`pricing-card-${tier.name.toLowerCase()}`}
               data-featured={tier.featured ? "true" : undefined}
-              className={`flex flex-col gap-6 ${tier.featured ? "border-pulse" : ""}`}
+              className={`flex flex-col gap-6 ${tier.featured ? "hover:border-primary" : ""}`}
             >
               <div className="flex flex-col gap-3">
                 <Badge className="self-start font-mono">
