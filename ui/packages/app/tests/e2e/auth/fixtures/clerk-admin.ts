@@ -95,3 +95,12 @@ export async function provisionFixture(spec: FixtureUserSpec): Promise<MintedFix
   const jwt = await mintSessionJwt(user.id);
   return { key: spec.key, email: spec.email, clerkUserId: user.id, sessionJwt: jwt };
 }
+
+export async function findUserIdByEmail(email: string): Promise<string | null> {
+  const user = await findUserByEmail(email);
+  return user?.id ?? null;
+}
+
+export async function deleteUser(userId: string): Promise<void> {
+  await clerkRequest<{ deleted: boolean }>("DELETE", `/users/${userId}`);
+}
