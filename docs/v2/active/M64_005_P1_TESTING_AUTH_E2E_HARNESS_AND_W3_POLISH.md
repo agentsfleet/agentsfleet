@@ -51,7 +51,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Categories:** TESTING
 **Batch:** B4 — depends on M64_004 (W3) merged. Fixture pool consumes the dashboard surface as it shipped; nothing earlier is gated on it.
 **Branch:** feat/m64-005-auth-e2e
-**Depends on:** M64_004 DONE, `@clerk/testing` available on npm registry, the canonical Clerk DEV secret key in 1Password (`op://ZMB_CD_DEV/clerk-dev/secret-key`) — same item already provisioned by `playbooks/002_preflight/02_credentials.sh` and consumed by `playbooks/012_usezombie_admin_bootstrap`. There is no separate "testing" Clerk credential; the secret key IS the backend-API token.
+**Depends on:** M64_004 DONE; `@clerk/testing` available on npm registry; the canonical Clerk DEV credentials in 1Password — `op://ZMB_CD_DEV/clerk-dev/secret-key` (backend-API token used by `@clerk/testing` to mint session JWTs) and `op://ZMB_CD_DEV/clerk-dev/webhook-secret` (Svix signing key used by the bootstrap step to mint a valid `user.created` payload signature). Both are provisioned by `playbooks/002_preflight/02_credentials.sh`. There is no separate "testing" Clerk credential; the secret key IS the backend-API token.
 
 **Canonical architecture:** `docs/AUTH.md` — token-minting and principal flow doc; the e2e harness mounts JWTs via Clerk's admin API and never touches the `/sign-in` interactive flow except in one signup-only spec.
 
@@ -104,7 +104,7 @@ N/A — spec authoring complete; the implementing agent reads sections below as 
 | `ui/packages/app/tests/e2e/fixtures/seed.ts` | NEW | Idempotent fixture seeding against `api-dev` — creates test zombies/credentials/workspaces tagged with `x-test-fixture: true` for cleanup discrimination. |
 | `ui/packages/app/tests/e2e/fixtures/teardown.ts` | NEW | Per-spec cleanup; deletes every row carrying the fixture-discrimination header. |
 | `ui/packages/app/tests/e2e/global-setup.ts` | NEW | Pre-suite warm of fixture pool (2 fixture users created if missing, JWTs minted, base zombies cleared). |
-| `ui/packages/app/tests/e2e/signup.spec.ts` | NEW | Real Clerk signup with `+clerk_test` alias → land on dashboard → assert zero-state visible + balance shows $5. The only spec that exercises the interactive sign-in flow. |
+| `ui/packages/app/tests/e2e/signup.spec.ts` | NEW | Real Clerk signup with the `+clerk_test` alias on `mailinator.com` (e.g. `signup-fixture+clerk_test@mailinator.com`). Mailinator is a public no-auth burner inbox — no real delivery happens because Clerk short-circuits OTP on the `+clerk_test` alias when the DEV instance has test mode enabled. Land on dashboard → assert zero-state visible + balance shows $5. The only spec that exercises the interactive sign-in flow. (A dedicated test-domain like `signup@test.usezombie.com` is a future polish, not a blocker.) |
 | `ui/packages/app/tests/e2e/install-zombie-cli.spec.ts` | NEW (canonical) | Spawn `zombiectl install` via Playwright child-process API against `api-dev`, with the fixture user's session JWT bound to `ZOMBIECTL_TOKEN`. Within N seconds, reload `/zombies` → assert row appears with `data-state="live"` + animated `<WakePulse live>`. This is the real user install path; UI-driven install is intentionally absent (the dashboard hands users a CLI command, not a button). |
 | `ui/packages/app/tests/e2e/install-zombie-seed.spec.ts` | NEW (sanity) | Signed-in fixture user POSTs `/v1/workspaces/{ws}/zombies` via API helper → reload `/zombies` → assert row appears. Validates the seed helper itself; consumed as setup by `lifecycle`, `kill`, `multi-zombie`, `multi-workspace`, `events`, `logs-detail`. |
 | `ui/packages/app/tests/e2e/lifecycle.spec.ts` | NEW | Stop button → ConfirmDialog → confirm → row dot turns muted (`data-state="parked"`) → dashboard stat row updates Live count. |
@@ -118,7 +118,7 @@ N/A — spec authoring complete; the implementing agent reads sections below as 
 | `ui/packages/design-system/src/design-system/RadioGroup.test.tsx` | NEW | Primitive contract tests — keyboard arrow nav, `data-state` attribute, controlled vs uncontrolled. |
 | `ui/packages/design-system/src/index.ts` | EDIT | Export `RadioGroup` + `RadioGroupItem` + types. |
 | `ui/packages/app/app/(dashboard)/settings/provider/components/ModeRadio.tsx` | REBUILD | Consume the new `<RadioGroup>` primitive; drop raw `<input type="radio">`. |
-| `ui/packages/website/vite.config.ts` | EDIT (Workstream-C) | Coverage thresholds locked at 95% (already lifted in W3 cut; this spec verifies and prevents regression). |
+| `ui/packages/website/vite.config.ts` | EDIT (Workstream-D) | Coverage thresholds locked at 95% (already lifted in W3 cut; this spec verifies and prevents regression). |
 | `zombiectl/test/cli-dispatch.unit.test.js` | NEW (Workstream-D) | Cover `cli.js` route-dispatch arrow handlers — currently 50% function coverage. Targets: every `route.key` entry in the `handlers` map invoked once with mock deps. |
 | `zombiectl/test/zombie-steer-fallback.unit.test.js` | NEW (Workstream-D) | Cover `zombie_steer.js` poll-fallback + `eventIdToSince` + `isTerminal` + `buildBearer` — currently 60% function coverage. |
 | `zombiectl/test/workspace-helpers.unit.test.js` | NEW (Workstream-D) | Cover `workspace.js` lines 89-92, 118-119, 123-124, 199-200 (the four uncovered branches). |
@@ -142,7 +142,7 @@ Two fixture users, each owning their own tenant:
 
 JWTs minted at suite start via Clerk's backend API using the canonical Clerk DEV secret key (env: `CLERK_SECRET_KEY`, sourced from `op://ZMB_CD_DEV/clerk-dev/secret-key`). Per-spec cleanup hook deletes every zombie/credential/event row tagged with the `x-test-fixture: true` header.
 
-**Signup-bootstrap step (mandatory).** Admin-API JWT mounting bypasses Clerk's signup webhook, so the fixture user has a JWT but no tenant row by default. After mint, `global-setup.ts` POSTs the canonical tenant-bootstrap endpoint (same path the Clerk webhook hits in production) so each fixture user has: a tenant row, a default workspace, and the $5 starter credit. Idempotent — safe to re-run on every suite start. Without this step, `install-zombie-cli` succeeds at the API auth layer but the dashboard renders no workspace or balance, producing misleading red tests.
+**Signup-bootstrap step (mandatory).** Admin-API JWT mounting bypasses Clerk's signup webhook, so the fixture user has a JWT but no tenant row by default. After mint, `global-setup.ts` POSTs `/v1/webhooks/clerk` with a Svix-signed `user.created` payload — the same path Clerk hits in production. The Svix signature is computed locally using `op://ZMB_CD_DEV/clerk-dev/webhook-secret`; the handler at `src/http/handlers/webhooks/clerk.zig` verifies the signature and writes the tenant row, default workspace, and $5 starter credit. The integration test at `src/http/handlers/webhooks/clerk_integration_test.zig:119` is the reference shape for the payload + headers. Idempotent — replaying the same `user.created` returns `created:false` with no new rows (see `clerk_integration_test.zig:348`). Without this step, `install-zombie-cli` succeeds at the API auth layer but the dashboard renders no workspace or balance, producing misleading red tests.
 
 ### Workstream C — e2e specs (the nine in Files Changed)
 
@@ -175,7 +175,7 @@ W3 set the floor at 93% for zombiectl (organic baseline post-test additions). Th
 
 | Test | Asserts |
 |------|---------|
-| signup.spec.ts | Real Clerk signup with `+clerk_test` alias → dashboard → zero-state `<FirstInstallCard>` visible → balance shows $5 |
+| signup.spec.ts | Real Clerk signup with `signup-fixture+clerk_test@mailinator.com` (or equivalent mailinator alias) → dashboard → zero-state `<FirstInstallCard>` visible → balance shows $5 |
 | install-zombie-cli.spec.ts | `zombiectl install` spawned with fixture user's token → `/zombies` reload → row visible with `data-state="live"` + `<WakePulse live>` |
 | install-zombie-seed.spec.ts | API-driven create (seed-helper sanity) → `/zombies` reload → row visible |
 | lifecycle.spec.ts | Stop → ConfirmDialog confirm → `data-state="parked"` → dashboard stat-row Live count decremented by 1 |
@@ -225,5 +225,7 @@ W3 set the floor at 93% for zombiectl (organic baseline post-test additions). Th
 ## Implementation Notes
 
 - The `@clerk/testing` integration consumes Clerk's DEV secret key as `CLERK_SECRET_KEY`. Resolve at suite start via `op read 'op://ZMB_CD_DEV/clerk-dev/secret-key'`; never paste inline. Same vault item is consumed by `playbooks/012_usezombie_admin_bootstrap` (lines 119–125), which mints session JWTs through Clerk's backend API the same way — pattern is already established.
+- The bootstrap step in `global-setup.ts` POSTs `/v1/webhooks/clerk` with a Svix-signed `user.created` payload. Compute the signature locally using `op read 'op://ZMB_CD_DEV/clerk-dev/webhook-secret'`; never paste inline. The reference payload + headers are in `src/http/handlers/webhooks/clerk_integration_test.zig:82` (happy-path) and `:348` (replay idempotency).
+- Clerk DEV instance must have **test mode** enabled in the dashboard for `+clerk_test` aliases to bypass OTP in `signup.spec.ts`. Verify in PLAN before WS-C lands the spec.
 - `globalSetup` should warm the fixture pool but NOT clear it across runs — the per-spec teardown handles row-level cleanup. Pool warming is idempotent.
 - The `cli.js` dispatch coverage gap is an architectural smell, not just a test gap. If the implementing agent finds a clean refactor (split route table into a registry module) while writing the test, that's preferred over force-covering the existing arrow handlers.
