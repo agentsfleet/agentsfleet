@@ -1,0 +1,57 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "react", "react-perf", "import"],
+  "env": {
+    "browser": true,
+    "node": true,
+    "es2024": true
+  },
+  "settings": {
+    "react": {
+      "version": "19"
+    }
+  },
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "const-comparisons": "error",
+    "no-cond-assign": "error",
+    "no-const-assign": "error",
+    "no-debugger": "error",
+    "no-dupe-class-members": "error",
+    "no-dupe-keys": "error",
+    "no-empty-pattern": "error",
+    "import/no-duplicates": "error",
+    "react/rules-of-hooks": "error",
+    "react/exhaustive-deps": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/prefer-as-const": "error",
+    "no-control-regex": "off",
+    "no-useless-escape": "off",
+    "no-this-alias": "off",
+    "triple-slash-reference": "off",
+    "no-new-array": "off",
+    "no-thenable": "off",
+    "no-unsafe-finally": "off",
+    "no-extra-boolean-cast": "off",
+    "no-throw-literal": "off"
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "playwright-report/**",
+    "playwright-results/**",
+    "coverage/**"
+  ],
+  "overrides": [
+    {
+      "files": ["tests/**", "bench/**", "playwright.config.ts"],
+      "rules": {
+        "no-shadow-restricted-names": "off",
+        "no-empty-file": "off",
+        "no-unnecessary-await": "off",
+        "no-unused-vars": "off"
+      }
+    }
+  ]
+}

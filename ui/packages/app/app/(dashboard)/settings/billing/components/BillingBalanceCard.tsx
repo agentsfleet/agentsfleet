@@ -82,7 +82,7 @@ function PurchaseCreditsButton() {
            * tabindex flags this; the wrapper is the recommended ARIA
            * pattern for keyboard-reachable disabled affordances. */}
           <span
-            // eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex
+            // oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex
             tabIndex={0}
             aria-describedby="purchase-credits-tooltip"
             className="inline-block cursor-not-allowed rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
