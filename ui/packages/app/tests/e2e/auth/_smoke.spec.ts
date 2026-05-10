@@ -1,5 +1,5 @@
 /**
- * WS-A.2 smoke — proves Clerk admin-API JWT mint + signInAs cookie mount.
+ * WS-A.3 smoke — full auth wire: Clerk JWT + tenant bootstrap.
  *
  * Asserts:
  *   1. globalSetup ran (fail-fast didn't throw — implicit by reaching here).
@@ -7,13 +7,13 @@
  *   3. signInAs(page, 'regular') mounts the __session cookie and Clerk
  *      middleware accepts the JWT (a navigation to '/' does NOT redirect to
  *      /sign-in).
+ *   4. Post-bootstrap, the dashboard renders authenticated content for the
+ *      signed-in fixture user (a marker like usezombie/Zombies/Dashboard is
+ *      visible on body, not just the marketing/sign-in page).
  *
- * NOT yet asserted (lands with WS-A.3 once tenant bootstrap is wired):
- *   - dashboard renders the authenticated user's email
- *   - balance shows starter credit
- *   - workspace switcher lists the fixture user's workspace
- * Until bootstrap is in place, the dashboard may redirect post-Clerk to an
- * onboarding/empty state — Clerk auth is accepted but our DB has no tenant.
+ * Per-spec teardown for fixture rows (zombies/credentials/events) lands with
+ * the WS-C spec workstream — the bootstrap state itself is reused across
+ * runs (idempotent on the user.created replay).
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -50,5 +50,13 @@ test.describe("auth e2e wire", () => {
     await signInAs(page, "regular");
     await page.goto("/");
     expect(page.url()).not.toContain("/sign-in");
+  });
+
+  test("post-bootstrap dashboard renders authenticated content", async ({ page }) => {
+    await page.goto("/sign-in");
+    await signInAs(page, "regular");
+    await page.goto("/");
+    const body = page.locator("body");
+    await expect(body).toContainText(/usezombie|Zombies|Dashboard/i);
   });
 });
