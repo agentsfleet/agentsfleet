@@ -1,21 +1,40 @@
 /**
  * Authenticated e2e harness — global setup.
  *
- * Runs once per suite before any auth spec. Responsibility (this commit):
- *   Fail fast if any required env var is missing, with a copy-paste recipe
- *   in the error body. Safety re: which environment we point at lives in the
- *   workflow that sets these vars — code does not second-guess it.
+ * Runs once per suite before any auth spec. Responsibilities:
+ *   1. Fail fast if any required env var is missing, with a copy-paste op-read
+ *      recipe in the error body.
+ *   2. Provision two fixture users in Clerk (idempotent on email) and mint a
+ *      session JWT for each. Cache the minted JWTs to .fixture-jwts.json so
+ *      signInAs(page, key) can mount the cookie without re-minting per spec.
  *
- * Future commits add: fixture-user JWT mint via Clerk admin API, Svix-signed
- * bootstrap POST to /v1/webhooks/clerk so each fixture user has a tenant +
- * default workspace + $5 starter credit before any spec runs.
+ * Tenant-bootstrap (Svix-signed POST /v1/webhooks/clerk so each fixture user
+ * has a tenant + default workspace + starter credit) lands in WS-A.3.
  */
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { provisionFixture, type FixtureUserSpec, type MintedFixture } from "./fixtures/clerk-admin";
 
 const REQUIRED_ENV = [
   "NEXT_PUBLIC_API_URL",
   "CLERK_SECRET_KEY",
   "CLERK_WEBHOOK_SECRET",
 ] as const;
+
+const FIXTURE_USERS: FixtureUserSpec[] = [
+  {
+    key: "regular",
+    email: "regular-fixture@mailinator.com",
+    password: "RegularFixture!2026-stable",
+  },
+  {
+    key: "admin",
+    email: "admin-fixture@mailinator.com",
+    password: "AdminFixture!2026-stable",
+  },
+];
+
+const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
 function failLoud(missing: string): never {
   throw new Error(
@@ -27,11 +46,25 @@ function failLoud(missing: string): never {
   );
 }
 
+function writeCache(fixtures: MintedFixture[]): void {
+  const cache: Record<string, Omit<MintedFixture, "key">> = {};
+  for (const f of fixtures) {
+    cache[f.key] = { email: f.email, clerkUserId: f.clerkUserId, sessionJwt: f.sessionJwt };
+  }
+  fs.writeFileSync(JWT_CACHE_PATH, JSON.stringify(cache, null, 2), { mode: 0o600 });
+}
+
 export default async function globalSetup(): Promise<void> {
   for (const key of REQUIRED_ENV) {
     if (!process.env[key]) failLoud(key);
   }
+  const fixtures: MintedFixture[] = [];
+  for (const spec of FIXTURE_USERS) {
+    fixtures.push(await provisionFixture(spec));
+  }
+  writeCache(fixtures);
   console.log(
-    `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); fixture warm deferred to WS-A.2`,
+    `[e2e:auth] env present (api=${process.env.NEXT_PUBLIC_API_URL}); ` +
+      `${fixtures.length} fixture JWTs cached to ${JWT_CACHE_PATH}`,
   );
 }
