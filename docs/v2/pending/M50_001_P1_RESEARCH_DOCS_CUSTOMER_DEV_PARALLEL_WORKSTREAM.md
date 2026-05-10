@@ -55,6 +55,7 @@ This workstream produces artifacts, not code. No source files change.
 | `~/.gstack/projects/usezombie/customer-dev/cold-dm-list.md` | NEW | The 15 named operators: handle, company, persona match, shared connection (if any), outreach status |
 | `~/.gstack/projects/usezombie/customer-dev/demo-asset-v1.mp4` (or `.gif`) | NEW (Week 2) | 60-second async demo of Customer Zero's existing flow. Rough is fine. |
 | `~/.gstack/projects/usezombie/customer-dev/outreach-templates.md` | NEW | Cold-DM v1 + follow-up + "demo ready" templates. Iterated weekly. |
+| `~/.gstack/projects/usezombie/customer-dev/x-founder-journey.md` | NEW | X draft about the startup journey, producing pull requests, using Greptile, and the event-driven debugging thought that points back to UseZombie. |
 | `~/.gstack/projects/usezombie/customer-dev/call-notes/{date}-{handle}.md` | NEW (per call) | Notes from each operator conversation: their workflow today, their current pain, their interest level, the next ask |
 | `docs/nostromo/LOG_{date}_M50_CUSTOMER_DEV.md` | NEW (Friday weekly) | Ripley's Log entry: this week's outreach count, conversations, conversion to Day-35 install slot, blockers |
 | `docs/architecture/` | NO EDIT here | M51's cross-reference pass picks up persona learnings post-launch |
@@ -104,6 +105,12 @@ Record a 60-second screen recording (or animated GIF, or 5-screenshot PDF — wh
 Embed in outreach-templates.md as the asset DM'd to operators who reply "yes, send the demo."
 
 > **Implementation default:** if recording the manual flow is hard, do a Loom of the existing platform-ops sample running locally, even if substrate is incomplete. Operator pattern-matches on "this is the shape" not "this works end-to-end today." Be honest in the DM about what's working vs aspirational.
+
+### §3A — X founder-journey post as discovery asset
+
+Draft one X post or short thread that explains the founder journey in plain language: starting up, using pull requests as the visible unit of product progress, and using Greptile as the review loop that keeps fast changes honest. The post should name the move out of stealth mode: UseZombie is being launched at `usezombie.com`, and the product is now concrete enough to show operators instead of only describing it. The UseZombie insertion is the operational thought from the public site: deploy failures, reviews, failed runs, and production events are signals that should wake a long-lived runtime, collect evidence, and return an evidenced diagnosis instead of becoming another manual debugging session.
+
+This is not a launch announcement. It is a credibility artifact for operator discovery. The post should make the reader understand why event-driven debugging matters before it asks them to care about the product name.
 
 ### §4 — Week 3-5: Weekly cadence
 
@@ -208,6 +215,7 @@ This workstream's tests are observational, not automated. The Friday Ripley's Lo
 - **Paid customer-development** (consultants, user-research firms, recruited interviews via UserInterviews.com) — author-driven cold outreach only in v1. Paid CD is a fallback if Day-50 fails.
 - **Conference presence / sponsorships** — distribution play, not customer-discovery.
 - **Content marketing** (blog posts, technical articles) — separate workstream; M51 owns the docs.usezombie.com positioning content.
+- **Content marketing calendar** — M50 allows one X founder-journey post only as an outreach asset. Repeated posts, blog series, launch essays, and docs.usezombie.com positioning remain outside this workstream.
 - **Sales pipeline / CRM tooling** — 15 names in a markdown file is the right tool for this stage. Don't graduate to HubSpot / Salesforce.
 - **Public attribution of operators without consent** — operator privacy stays opt-in, always.
 - **Anything that pulls founder time above 3 hours/week** — substrate work is the day job; this workstream is the parallel discovery channel.
