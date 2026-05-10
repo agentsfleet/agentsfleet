@@ -51,8 +51,11 @@ test.describe("signup", () => {
 
     await page.goto("/sign-up");
 
-    await page.getByLabel(/email address/i).fill(email);
-    await page.getByLabel(/password/i).fill(PASSWORD);
+    // Exact label match: Clerk renders a "Show password" toggle button next to
+    // the input that also carries an aria-label containing "password", so a
+    // loose /password/i match is a strict-mode violation.
+    await page.getByLabel("Email address", { exact: true }).fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
     await page.getByRole("button", { name: /continue|sign up/i }).first().click();
 
     await page.waitForURL((url) => !url.toString().includes("/sign-up"), { timeout: 30_000 });

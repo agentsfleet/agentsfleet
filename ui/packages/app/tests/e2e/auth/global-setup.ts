@@ -23,6 +23,12 @@ import {
 } from "./fixtures/clerk-admin";
 import { bootstrapTenant } from "./fixtures/bootstrap";
 import { FIXTURE_KEY } from "./fixtures/constants";
+import { loadWorktreeEnv } from "./fixtures/env-loader";
+
+// Defensive: playwright.auth.config.ts loads worktree-root .env, but
+// globalSetup is the actual fail-fast point for missing creds and should
+// re-load idempotently in case it's invoked outside the standard config.
+loadWorktreeEnv();
 
 const REQUIRED_ENV = [
   "NEXT_PUBLIC_API_URL",
