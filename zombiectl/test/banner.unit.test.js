@@ -39,6 +39,7 @@ function stripAnsi(str) {
 // ── T10: constants guard — pin strings that appear in both code paths ─────────
 const CONTACT_EMAIL = "nkishore@megam.io";
 const PRE_RELEASE_TAG = "[PRE-RELEASE]";
+const COLOR_ENV = { TERM: "xterm-256color" };
 
 // Decorative-ASCII teardown — these MUST NOT appear in the version banner
 // (per docs/DESIGN_SYSTEM.md "no decorative ASCII art"). Regression guards.
@@ -100,7 +101,7 @@ describe("printPreReleaseWarning — T3: suppression paths", () => {
 describe("printPreReleaseWarning — T4: fidelity (color mode)", () => {
   test("color output contains warning glyph and email", () => {
     const out = makeTtyBufferStream();
-    printPreReleaseWarning(out.stream, {});
+    printPreReleaseWarning(out.stream, { env: COLOR_ENV });
     const txt = out.read();
     expect(txt).toContain("⚠");
     expect(stripAnsi(txt)).toContain(CONTACT_EMAIL);
@@ -189,7 +190,7 @@ describe("printVersion — T7: design-system regression guards", () => {
 
   test("color mode output contains pulse-cyan dot glyph", () => {
     const out = makeTtyBufferStream();
-    printVersion(out.stream, VERSION, {});
+    printVersion(out.stream, VERSION, { env: COLOR_ENV });
     expect(out.read()).toContain("●");
   });
 
@@ -197,7 +198,7 @@ describe("printVersion — T7: design-system regression guards", () => {
     // Pin TERM so capability detection deterministically returns xterm256
     // regardless of CI environment (where TERM may be missing or 'dumb').
     const out = makeTtyBufferStream();
-    printVersion(out.stream, VERSION, { env: { TERM: "xterm-256color" } });
+    printVersion(out.stream, VERSION, { env: COLOR_ENV });
     expect(out.read()).toContain("38;5;79");
   });
 
