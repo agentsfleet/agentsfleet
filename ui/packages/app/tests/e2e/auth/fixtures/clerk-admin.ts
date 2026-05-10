@@ -87,15 +87,32 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
  * `getToken({ template: "api" })`). Default session tokens omit
  * publicMetadata, which means zombied responds 403 UZ-AUTH-001
  * ("Tenant context required"). The api template embeds tenant_id + role.
+ *
+ * Default Clerk session-token TTL is 60s; the e2e suite can take longer than
+ * that. expires_in_seconds bumps it to one hour so a full suite run does not
+ * trip UZ-AUTH-003 ("Token expired") mid-test.
  */
 export async function mintSessionJwt(userId: string): Promise<string> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
   const token = await clerkRequest<ClerkSessionToken>(
     "POST",
-    `/sessions/${session.id}/tokens/api`,
+    `/sessions/${session.id}/tokens/api?expires_in_seconds=3600`,
     {},
   );
   return token.jwt;
+}
+
+/**
+ * Mints a single-use sign-in token for the user. Used by signInAs to drive
+ * Clerk's `strategy: "ticket"` sign-in flow which bypasses MFA — tickets are
+ * admin-authorized so Clerk does not require a second factor.
+ */
+export async function mintSignInToken(userId: string): Promise<string> {
+  const resp = await clerkRequest<{ token: string }>("POST", "/sign_in_tokens", {
+    user_id: userId,
+    expires_in_seconds: 600,
+  });
+  return resp.token;
 }
 
 export interface ProvisionedUser {

@@ -14,9 +14,9 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 import { clerk } from "@clerk/testing/playwright";
-import type { MintedFixture } from "./clerk-admin";
+import { mintSignInToken, type MintedFixture } from "./clerk-admin";
 
 export type FixtureKey = MintedFixture["key"];
 
@@ -41,15 +41,19 @@ export async function signInAs(page: Page, key: FixtureKey): Promise<void> {
   if (!entry) {
     throw new Error(`No fixture entry for key '${key}'. Available: ${Object.keys(cache).join(", ")}`);
   }
+  // Mint a fresh sign-in token (admin-issued, MFA-bypassing). Clerk DEV may
+  // require 2FA on password sign-in; ticket strategy is the supported path
+  // for non-interactive test sign-in.
+  const ticket = await mintSignInToken(entry.clerkUserId);
+
   await page.goto("/sign-in");
   await clerk.signIn({
     page,
-    signInParams: {
-      strategy: "password",
-      identifier: entry.email,
-      password: entry.password,
-    },
+    signInParams: { strategy: "ticket", ticket },
   });
+  // Middleware redirects to /sign-in if no session, so reaching anything else
+  // means auth landed. expect.not.toHaveURL has built-in retry/wait.
+  await expect(page).not.toHaveURL(/\/sign-in/, { timeout: 15_000 });
 }
 
 export function fixtureEmail(key: FixtureKey): string {
