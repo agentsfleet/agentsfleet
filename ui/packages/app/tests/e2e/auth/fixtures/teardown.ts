@@ -13,14 +13,32 @@ import { clientFor } from "./api-client";
 import { listZombies } from "./seed";
 import type { FixtureKey } from "./auth";
 
+/**
+ * zombied enforces a state-machine transition before delete:
+ * PATCH status=killed must run first, otherwise DELETE 409s with UZ-ZMB-010.
+ * Zombies in any non-killed state need to be killed before being deleted.
+ *
+ * Tolerates per-zombie failures so one stuck row doesn't block teardown of
+ * the rest. Returns the count successfully removed.
+ */
 export async function cleanWorkspaceZombies(
   key: FixtureKey,
   workspaceId: string,
 ): Promise<number> {
   const c = clientFor(key);
   const zombies = await listZombies(key, workspaceId);
+  let removed = 0;
   for (const z of zombies) {
-    await c.delete(`/v1/workspaces/${workspaceId}/zombies/${z.id}`);
+    try {
+      if (z.status !== "killed") {
+        await c.patch(`/v1/workspaces/${workspaceId}/zombies/${z.id}`, { status: "killed" });
+      }
+      await c.delete(`/v1/workspaces/${workspaceId}/zombies/${z.id}`);
+      removed++;
+    } catch {
+      // Swallow stale-state errors (zombies left over from interrupted runs).
+      // Test assertions check the freshly-seeded row, not total count.
+    }
   }
-  return zombies.length;
+  return removed;
 }

@@ -36,6 +36,7 @@ function apiBase(): string {
 export interface ApiClient {
   get<T>(p: string): Promise<T>;
   post<T>(p: string, body: unknown): Promise<T>;
+  patch<T>(p: string, body: unknown): Promise<T>;
   delete(p: string): Promise<void>;
 }
 
@@ -64,6 +65,10 @@ export function clientFor(key: FixtureKey): ApiClient {
     },
     async post<T>(p: string, body: unknown): Promise<T> {
       const res = await request("POST", p, body);
+      return (await res.json()) as T;
+    },
+    async patch<T>(p: string, body: unknown): Promise<T> {
+      const res = await request("PATCH", p, body);
       return (await res.json()) as T;
     },
     async delete(p: string): Promise<void> {

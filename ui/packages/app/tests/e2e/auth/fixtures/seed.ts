@@ -19,6 +19,7 @@ export interface Workspace {
 export interface Zombie {
   id: string;
   name: string;
+  status?: string;
 }
 
 interface ListResp<T> {
@@ -36,15 +37,49 @@ export async function getDefaultWorkspaceId(key: FixtureKey): Promise<string> {
 }
 
 function triggerMd(name: string): string {
-  return `---\nname: ${name}\ntrigger: schedule\n---\n# ${name}\n\nFixture trigger for e2e tests.\n`;
+  // Minimum valid shape for create_zombie. Mirrors
+  // samples/fixtures/frontmatter/bundles/name_mismatch/TRIGGER.md.
+  return [
+    "---",
+    `name: ${name}`,
+    "",
+    "x-usezombie:",
+    "  trigger:",
+    "    type: api",
+    "  tools:",
+    "    - agentmail",
+    "  budget:",
+    "    daily_dollars: 1.0",
+    "---",
+    "",
+  ].join("\n");
 }
 
 function skillMd(name: string): string {
-  return `# ${name}\n\nFixture skill body for e2e tests. Echoes inputs; no side effects.\n`;
+  // SKILL.md frontmatter requires name (kebab), description, version (semver).
+  // Mirrors samples/fixtures/frontmatter/bundles/name_mismatch/SKILL.md.
+  return [
+    "---",
+    `name: ${name}`,
+    "description: Fixture skill body for e2e tests; echoes inputs, no side effects.",
+    "version: 0.1.0",
+    "---",
+    "",
+    `# ${name}`,
+    "",
+    "Body for fixture zombie used by e2e harness.",
+    "",
+  ].join("\n");
 }
 
 export interface SeedZombieOpts {
   name: string;
+}
+
+interface CreateZombieResp {
+  zombie_id: string;
+  name: string;
+  status: string;
 }
 
 export async function seedZombie(
@@ -53,10 +88,13 @@ export async function seedZombie(
   opts: SeedZombieOpts,
 ): Promise<Zombie> {
   const c = clientFor(key);
-  return c.post<Zombie>(`/v1/workspaces/${workspaceId}/zombies`, {
+  // create_zombie returns `zombie_id`; list_zombies items have `id`. Normalize
+  // to the listing shape so callers can compare against listZombies output.
+  const resp = await c.post<CreateZombieResp>(`/v1/workspaces/${workspaceId}/zombies`, {
     trigger_markdown: triggerMd(opts.name),
     source_markdown: skillMd(opts.name),
   });
+  return { id: resp.zombie_id, name: resp.name };
 }
 
 export async function listZombies(key: FixtureKey, workspaceId: string): Promise<Zombie[]> {
