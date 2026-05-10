@@ -14,6 +14,8 @@ coverage/
 playwright-report/
 playwright-results/
 playwright-tests/
+playwright-auth-report/
+playwright-auth-results/
 test-results/
 blob-report/
 .playwright-mcp/
