@@ -92,12 +92,12 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
 
-    // 500¢ starter grant covers a 1¢ BYOK event under stop policy.
+    // 500¢ starter grant covers a 1¢ self-managed event under stop policy.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         alloc,
         TEST_TENANT_ID,
-        .byok,
+        .self_managed,
         "any-model",
         .stop,
     ));
@@ -108,7 +108,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         db_ctx.pool,
         alloc,
         TEST_TENANT_ID,
-        .byok,
+        .self_managed,
         "any-model",
         .stop,
     ));
@@ -118,7 +118,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         db_ctx.pool,
         alloc,
         TEST_TENANT_ID,
-        .byok,
+        .self_managed,
         "any-model",
         .warn,
     ));
@@ -126,7 +126,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         db_ctx.pool,
         alloc,
         TEST_TENANT_ID,
-        .byok,
+        .self_managed,
         "any-model",
         .@"continue",
     ));
@@ -150,10 +150,10 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=false,
 
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, balance_cents, grant_source, created_at, updated_at)
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1, 1000, 'billing_handler_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
-        \\SET balance_cents = EXCLUDED.balance_cents,
+        \\SET balance_nanos = EXCLUDED.balance_nanos,
         \\    balance_exhausted_at = NULL,
         \\    updated_at = EXCLUDED.updated_at
     , .{ TOKEN_TENANT_ID, now_ms });
@@ -181,10 +181,10 @@ test "integration(m11_006): GET /v1/tenants/me/billing emits is_exhausted=true +
 
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, balance_cents, grant_source, balance_exhausted_at, created_at, updated_at)
+        \\  (tenant_id, balance_nanos, grant_source, balance_exhausted_at, created_at, updated_at)
         \\VALUES ($1, 0, 'billing_handler_test', $2, $2, $2)
         \\ON CONFLICT (tenant_id) DO UPDATE
-        \\SET balance_cents = 0,
+        \\SET balance_nanos = 0,
         \\    balance_exhausted_at = EXCLUDED.balance_exhausted_at,
         \\    updated_at = EXCLUDED.updated_at
     , .{ TOKEN_TENANT_ID, now_ms });

@@ -196,8 +196,8 @@ pub const ENTRIES = [_]Entry{
     e("UZ-VAULT-002", .bad_request, "Credential data too large",
         "Stringified credential data exceeds 4KB. Compose the secret from fewer or shorter fields."),
     // ── PROVIDER (PUT /v1/tenants/me/provider) ───────────────────────────────
-    e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=byok",
-        "PUT body must include `credential_ref` naming a vault credential when `mode` is byok."),
+    e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=self_managed",
+        "PUT body must include `credential_ref` naming a vault credential when `mode` is self_managed."),
     e("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault",
         "The named credential_ref has no vault row in the tenant's primary workspace. " ++
         "Run `zombiectl credential set <name> --data @-` to create it."),
@@ -207,6 +207,9 @@ pub const ENTRIES = [_]Entry{
     e("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue",
         "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
         "or request the catalogue be extended."),
+    e("UZ-PROVIDER-005", .bad_request, "Provider mode 'byok' was renamed to 'self_managed'",
+        "Pre-M66 callers sending mode=\"byok\" are rejected. Update the request body to mode=\"self_managed\" " ++
+        "and update any CLI invocation to use --self-managed in place of --byok."),
     // ── GATE ─────────────────────────────────────────────────────────────────
     e("UZ-GATE-001", .internal_server_error, "Gate command failed",
         "A gate command (make lint/test/build) failed. Check the gate results for stdout/stderr output."),

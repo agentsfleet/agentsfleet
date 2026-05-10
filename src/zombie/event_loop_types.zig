@@ -81,7 +81,7 @@ pub const EventLoopConfig = struct {
     workspace_path: []const u8 = "/tmp/zombie",
     /// M15_002: optional telemetry for PostHog `zombie_completed` events.
     telemetry: ?*telemetry_mod.Telemetry = null,
-    /// M11_006: behavior when a tenant's `balance_cents` has been exhausted.
+    /// M11_006: behavior when a tenant's `balance_nanos` has been exhausted.
     /// `stop` short-circuits delivery pre-claim; `warn`/`continue` allow the
     /// run and differ only in activity-event emission.
     balance_policy: balance_policy_mod.Policy = balance_policy_mod.DEFAULT,

@@ -90,11 +90,17 @@ pub fn innerPutTenantProvider(hx: Hx, req: *httpz.Request) void {
         applyPlatform(hx, conn, tenant_id);
         return;
     }
-    if (std.mem.eql(u8, input.mode, "byok")) {
-        applyByok(hx, conn, tenant_id, input);
+    if (std.mem.eql(u8, input.mode, "self_managed")) {
+        applySelfManaged(hx, conn, tenant_id, input);
         return;
     }
-    hx.fail(ec.ERR_INVALID_REQUEST, "mode must be 'platform' or 'byok'");
+    // Pre-M66 callers sending the legacy "byok" value get a clean 4xx
+    // naming the replacement — RULE NLG, no silent alias.
+    if (std.mem.eql(u8, input.mode, "byok")) {
+        hx.fail(ec.ERR_PROVIDER_MODE_RENAMED, "mode 'byok' was renamed to 'self_managed' in M66");
+        return;
+    }
+    hx.fail(ec.ERR_INVALID_REQUEST, "mode must be 'platform' or 'self_managed'");
 }
 
 // ── DELETE ──────────────────────────────────────────────────────────────────
@@ -139,13 +145,13 @@ fn applyPlatform(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8) void 
     hx.ok(.ok, view);
 }
 
-fn applyByok(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: PutInput) void {
+fn applySelfManaged(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: PutInput) void {
     const credential_ref = input.credential_ref orelse {
         hx.fail(ec.ERR_PROVIDER_CREDENTIAL_REF_REQUIRED, "credential_ref required when mode=byok");
         return;
     };
 
-    var probed = tenant_provider.probeByok(hx.alloc, conn, tenant_id, credential_ref) catch |err| switch (err) {
+    var probed = tenant_provider.probeSelfManaged(hx.alloc, conn, tenant_id, credential_ref) catch |err| switch (err) {
         tenant_provider.ResolveError.CredentialMissing => {
             hx.fail(ec.ERR_PROVIDER_CREDENTIAL_NOT_FOUND, "credential row not found in vault");
             return;
@@ -174,7 +180,7 @@ fn applyByok(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: Pu
         return;
     };
 
-    tenant_provider.upsertByok(hx.alloc, conn, tenant_id, credential_ref, effective_model, cache_entry.context_cap_tokens) catch |err| {
+    tenant_provider.upsertSelfManaged(hx.alloc, conn, tenant_id, credential_ref, effective_model, cache_entry.context_cap_tokens) catch |err| {
         log.err("upsert_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;

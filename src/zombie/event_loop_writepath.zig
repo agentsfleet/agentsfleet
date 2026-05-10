@@ -137,7 +137,7 @@ fn finalize(
 /// Drive a single event through the write path under the credit-pool model:
 ///
 ///   1. INSERT zombie_events status=received
-///   2. Resolve tenant + provider (dead-letter on user-fixable BYOK error)
+///   2. Resolve tenant + provider (dead-letter on user-fixable self-managed error)
 ///   3. Balance gate (estimate = receive + stage at floor tokens)
 ///   4. RECEIVE debit + telemetry (transactional)
 ///   5. Approval gate

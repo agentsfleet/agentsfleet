@@ -4,7 +4,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 const BillingRow = struct {
-    balance_cents: i64,
+    balance_nanos: i64,
     grant_source: []u8,
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
@@ -17,19 +17,19 @@ const BillingRow = struct {
 pub fn insertIfAbsent(
     conn: *pg.Conn,
     tenant_id: []const u8,
-    balance_cents: i64,
+    balance_nanos: i64,
     grant_source: []const u8,
 ) !void {
     const now_ms = std.time.milliTimestamp();
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, balance_cents, grant_source, created_at, updated_at)
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, $2, $3, $4, $4)
         \\ON CONFLICT (tenant_id) DO NOTHING
-    , .{ tenant_id, balance_cents, grant_source, now_ms });
+    , .{ tenant_id, balance_nanos, grant_source, now_ms });
 }
 
-pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
+pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
 
 /// Atomic conditional debit. Returns the post-debit balance, or a typed
 /// error distinguishing "tenant has no billing row" from "row exists but
@@ -42,22 +42,22 @@ pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
 ///
 /// The primary UPDATE is still a single atomic statement; the EXISTS probe
 /// only fires on the 0-row path, so the happy path stays one round-trip.
-pub fn debit(conn: *pg.Conn, tenant_id: []const u8, cents: i64) !DebitResult {
-    if (cents < 0) return error.InvalidDebit;
+pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
+    if (nanos < 0) return error.InvalidDebit;
     const now_ms = std.time.milliTimestamp();
     // A successful debit clears `balance_exhausted_at` — the only path
-    // there is a prior top-up moving balance_cents above zero. Keeping
+    // there is a prior top-up moving balance_nanos above zero. Keeping
     // this in the same UPDATE keeps the transition atomic so the `stop`
     // gate can never see "positive balance AND exhausted_at set".
     var q = PgQuery.from(try conn.query(
         \\UPDATE billing.tenant_billing
-        \\SET balance_cents = balance_cents - $2,
+        \\SET balance_nanos = balance_nanos - $2,
         \\    balance_exhausted_at = NULL,
         \\    updated_at = $3
         \\WHERE tenant_id = $1::uuid
-        \\  AND balance_cents >= $2
-        \\RETURNING balance_cents, updated_at
-    , .{ tenant_id, cents, now_ms }));
+        \\  AND balance_nanos >= $2
+        \\RETURNING balance_nanos, updated_at
+    , .{ tenant_id, nanos, now_ms }));
     defer q.deinit();
     const row = (try q.next()) orelse {
         if (!try rowExists(conn, tenant_id)) return error.TenantBillingMissing;
@@ -65,7 +65,7 @@ pub fn debit(conn: *pg.Conn, tenant_id: []const u8, cents: i64) !DebitResult {
     };
     const bal = try row.get(i64, 0);
     const ts = try row.get(i64, 1);
-    return .{ .balance_cents = bal, .updated_at_ms = ts };
+    return .{ .balance_nanos = bal, .updated_at_ms = ts };
 }
 
 fn rowExists(conn: *pg.Conn, tenant_id: []const u8) !bool {
@@ -82,7 +82,7 @@ pub fn loadByTenant(
     tenant_id: []const u8,
 ) !?BillingRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT balance_cents, grant_source, updated_at, balance_exhausted_at
+        \\SELECT balance_nanos, grant_source, updated_at, balance_exhausted_at
         \\FROM billing.tenant_billing
         \\WHERE tenant_id = $1::uuid
         \\LIMIT 1
@@ -95,7 +95,7 @@ pub fn loadByTenant(
     const ts = try row.get(i64, 2);
     const exhausted_at_ms = try row.get(?i64, 3);
     return .{
-        .balance_cents = bal,
+        .balance_nanos = bal,
         .grant_source = grant_source,
         .updated_at_ms = ts,
         .exhausted_at_ms = exhausted_at_ms,

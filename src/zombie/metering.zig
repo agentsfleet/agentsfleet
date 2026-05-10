@@ -100,7 +100,7 @@ pub fn balanceCoversEstimate(
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
     );
-    return billing.balance_cents >= (receive + stage);
+    return billing.balance_nanos >= (receive + stage);
 }
 
 /// Charge `computeReceiveCharge(ctx.posture)` and INSERT a `receive`
@@ -253,7 +253,7 @@ fn debitAndInsert(
         .charge_type = charge_type,
         .posture = ctx.posture,
         .model = ctx.model,
-        .credit_deducted_cents = cents,
+        .credit_deducted_nanos = cents,
         .token_count_input = null,
         .token_count_output = null,
         .wall_ms = null,

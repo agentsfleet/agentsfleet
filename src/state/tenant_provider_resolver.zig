@@ -94,7 +94,7 @@ pub fn loadProviderRow(
 
 fn parseMode(label: []const u8) ?Mode {
     if (std.mem.eql(u8, label, "platform")) return .platform;
-    if (std.mem.eql(u8, label, "byok")) return .byok;
+    if (std.mem.eql(u8, label, "self_managed")) return .self_managed;
     return null;
 }
 
@@ -120,7 +120,7 @@ pub fn loadActivePlatformKey(alloc: std.mem.Allocator, conn: *pg.Conn) !Platform
 
 /// Bridge tenant_id → primary workspace_id using the same earliest-named-
 /// workspace pattern signup_bootstrap_store uses for OIDC re-bootstrap.
-/// Multi-workspace tenants point BYOK credentials at the first signup-time
+/// Multi-workspace tenants point self-managed credentials at the first signup-time
 /// workspace; v3 may add an explicit `vault_workspace_id` column to
 /// tenant_providers so users can pin a different workspace.
 fn resolvePrimaryWorkspace(
@@ -140,7 +140,7 @@ fn resolvePrimaryWorkspace(
     return alloc.dupe(u8, try row.get([]const u8, 0));
 }
 
-pub fn probeByokCredential(
+pub fn probeSelfManagedCredential(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,
@@ -223,14 +223,14 @@ pub fn resolvePlatformDefault(
     };
 }
 
-pub fn resolveByok(
+pub fn resolveSelfManaged(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,
     row: ProviderRow,
 ) (ResolveError || anyerror)!ResolvedProvider {
     const credential_ref = row.credential_ref orelse return ResolveError.CredentialDataMalformed;
-    var cred = try probeByokCredential(alloc, conn, tenant_id, credential_ref);
+    var cred = try probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
     defer cred.deinit(alloc);
 
     const provider = try alloc.dupe(u8, cred.provider);
@@ -244,7 +244,7 @@ pub fn resolveByok(
     errdefer alloc.free(model);
 
     return .{
-        .mode = .byok,
+        .mode = .self_managed,
         .provider = provider,
         .api_key = api_key,
         .model = model,

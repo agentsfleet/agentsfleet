@@ -1,7 +1,7 @@
 //! GET /_um/<key>/model-caps.json — public, unauthenticated model→cap catalogue.
 //!
 //! Both the install-skill (platform-managed posture) and `zombiectl provider set`
-//! (BYOK posture) call this endpoint exactly once at provisioning time and pin
+//! (self-managed posture) call this endpoint exactly once at provisioning time and pin
 //! the cap into the right place. The runtime never reads it on the hot path.
 //!
 //! The cryptic path-key prefix is for opportunistic-crawler deflection, not
@@ -15,11 +15,11 @@
 //! column — tenants pick provider via a user-named credential body and
 //! `tenant provider set --credential <name>`.
 //!
-//! Per-token rates (input_cents_per_mtok / output_cents_per_mtok) accompany
-//! each cap row. Rates are charged only under platform-managed posture; BYOK
+//! Per-token rates (input_nanos_per_mtok / output_nanos_per_mtok) accompany
+//! each cap row. Rates are charged only under platform-managed posture; self-managed
 //! pays a flat overhead and is billed by the tenant's own provider account.
-//! Models that are BYOK-only at the platform tier carry zero rates; those
-//! zeros never enter the cost path because BYOK uses the flat overhead.
+//! Models that are self-managed-only at the platform tier carry zero rates; those
+//! zeros never enter the cost path because self-managed uses the flat overhead.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -43,8 +43,8 @@ pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/model-caps.json"
 const ModelCap = struct {
     id: []const u8,
     context_cap_tokens: i32,
-    input_cents_per_mtok: i32,
-    output_cents_per_mtok: i32,
+    input_nanos_per_mtok: i32,
+    output_nanos_per_mtok: i32,
 };
 
 const ResponseBody = struct {
@@ -55,7 +55,7 @@ const ResponseBody = struct {
 /// SELECT clause shared by both list-all and filter-by-model paths.
 const SELECT_ALL =
     \\SELECT model_id, context_cap_tokens,
-    \\       input_cents_per_mtok, output_cents_per_mtok,
+    \\       input_nanos_per_mtok, output_nanos_per_mtok,
     \\       updated_at_ms
     \\  FROM core.model_caps
     \\ ORDER BY model_id
@@ -63,7 +63,7 @@ const SELECT_ALL =
 
 const SELECT_ONE =
     \\SELECT model_id, context_cap_tokens,
-    \\       input_cents_per_mtok, output_cents_per_mtok,
+    \\       input_nanos_per_mtok, output_nanos_per_mtok,
     \\       updated_at_ms
     \\  FROM core.model_caps
     \\ WHERE model_id = $1
@@ -144,8 +144,8 @@ fn appendRow(
     try models.append(alloc, .{
         .id = id,
         .context_cap_tokens = cap,
-        .input_cents_per_mtok = in_rate,
-        .output_cents_per_mtok = out_rate,
+        .input_nanos_per_mtok = in_rate,
+        .output_nanos_per_mtok = out_rate,
     });
     if (updated > max_updated_ms.*) max_updated_ms.* = updated;
 }

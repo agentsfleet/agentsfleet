@@ -34,7 +34,7 @@ pub const ContextBudget = struct {
     model: []const u8 = "",
     /// Hard cap on input tokens for the resolved model. Populated by
     /// M49 (install-skill) into the zombie's frontmatter, or left at 0
-    /// for BYOK flows where the customer sets it on their credential.
+    /// for self-managed flows where the customer sets it on their credential.
     /// Slice §6 decides the fallback when this is 0.
     context_cap_tokens: u32 = 0,
 
@@ -42,7 +42,7 @@ pub const ContextBudget = struct {
     /// in place. Non-zero fields are operator overrides and left alone.
     /// `model` and `context_cap_tokens` are upstream-populated and don't
     /// participate in auto-defaulting here — `model` is opaque to this
-    /// binary, `context_cap_tokens=0` is the install-skill / BYOK signal
+    /// binary, `context_cap_tokens=0` is the install-skill / self-managed signal
     /// that L3 short-circuits (capabilities.md §4 escape clause).
     pub fn applyDefaults(self: *ContextBudget) void {
         if (self.tool_window == 0) self.tool_window = DEFAULT_TOOL_WINDOW;

@@ -1538,13 +1538,13 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "balance_cents",
+                    "balance_nanos",
                     "updated_at",
                     "is_exhausted",
                     "exhausted_at"
                   ],
                   "properties": {
-                    "balance_cents": {
+                    "balance_nanos": {
                       "type": "integer",
                       "format": "int64",
                       "description": "Remaining credit-pool balance in cents."
@@ -1637,7 +1637,7 @@
                           "charge_type",
                           "posture",
                           "model",
-                          "credit_deducted_cents",
+                          "credit_deducted_nanos",
                           "recorded_at"
                         ],
                         "properties": {
@@ -1667,13 +1667,13 @@
                             "type": "string",
                             "enum": [
                               "platform",
-                              "byok"
+                              "self_managed"
                             ]
                           },
                           "model": {
                             "type": "string"
                           },
-                          "credit_deducted_cents": {
+                          "credit_deducted_nanos": {
                             "type": "integer",
                             "format": "int64"
                           },
@@ -1818,7 +1818,7 @@
                     "type": "string",
                     "enum": [
                       "platform",
-                      "byok"
+                      "self_managed"
                     ]
                   },
                   "credential_ref": {
@@ -3906,7 +3906,7 @@
             "type": "string",
             "enum": [
               "platform",
-              "byok"
+              "self_managed"
             ]
           },
           "provider": {

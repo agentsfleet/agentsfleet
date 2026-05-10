@@ -17,12 +17,12 @@
             schema:
               type: object
               required:
-              - balance_cents
+              - balance_nanos
               - updated_at
               - is_exhausted
               - exhausted_at
               properties:
-                balance_cents:
+                balance_nanos:
                   type: integer
                   format: int64
                   description: Remaining credit-pool balance in cents.
@@ -101,7 +101,7 @@
                     - charge_type
                     - posture
                     - model
-                    - credit_deducted_cents
+                    - credit_deducted_nanos
                     - recorded_at
                     properties:
                       id:                    { type: string }
@@ -112,7 +112,7 @@
                       charge_type:           { type: string, enum: [receive, stage] }
                       posture:               { type: string, enum: [platform, byok] }
                       model:                 { type: string }
-                      credit_deducted_cents: { type: integer, format: int64 }
+                      credit_deducted_nanos: { type: integer, format: int64 }
                       token_count_input:     { type: integer, format: int64, nullable: true }
                       token_count_output:    { type: integer, format: int64, nullable: true }
                       wall_ms:               { type: integer, format: int64, nullable: true }

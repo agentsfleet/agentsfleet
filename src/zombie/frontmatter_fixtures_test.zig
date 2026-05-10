@@ -145,7 +145,7 @@ test "fixture bundles/platform_ops_installed_byok — sentinel model/cap parses 
     defer alloc.free(md);
     var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
     defer cfg.deinit(alloc);
-    // Empty-string model becomes null (BYOK overlay sentinel); cap stays 0.
+    // Empty-string model becomes null (self-managed overlay sentinel); cap stays 0.
     try std.testing.expect(cfg.model == null);
     try std.testing.expectEqual(@as(u32, 0), cfg.context.?.context_cap_tokens);
 }

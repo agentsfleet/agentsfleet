@@ -78,7 +78,7 @@ fn seedWorkspace(conn: *pg.Conn, now_ms: i64) !void {
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now_ms });
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, balance_cents, grant_source, created_at, updated_at)
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1, 1000, 'dash_test', $2, $2)
         \\ON CONFLICT (tenant_id) DO NOTHING
     , .{ TEST_TENANT_ID, now_ms });
