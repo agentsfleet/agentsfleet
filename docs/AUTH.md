@@ -13,7 +13,7 @@ There are exactly two payload shapes inside that header:
 | `<jwt>` (Clerk-signed)   | Clerk Frontend API    | JWKS verify + `aud` check + claims | CLI · UI            |
 | `zmb_t_<random>`         | Backend (per-tenant)  | DB hash lookup                     | Service-to-service  |
 
-Cookies **never reach the Zig backend**. The Clerk `__session` cookie lives on `clerk.dev.usezombie.com` (Clerk's Frontend API domain). The browser's same-origin policy means it only attaches that cookie on requests *to Clerk*, never on requests to `api-dev.usezombie.com` or to the Next.js dashboard host.
+Cookies **never reach the Zig backend**. The Clerk `__session` cookie lives on the dashboard's own host (`app.usezombie.com`) — written by the Clerk SDK on the page after sign-in. Same-origin policy means it only attaches on requests back to the dashboard, never to `api-dev.usezombie.com`. See *The two tokens at a glance* below for the full picture.
 
 The middleware that gates almost every route is `bearer_or_api_key` (`src/auth/middleware/bearer_or_api_key.zig`). It parses the `Bearer …` prefix, then routes by sub-prefix:
 
@@ -40,6 +40,8 @@ When Sarah uses `app.usezombie.com`, two distinct Clerk-issued JSON Web Tokens (
 The existence of two tokens is the documented Clerk recipe for **frontend on one origin + backend on another origin** — the two-token pattern. The single-token alternative ("root domain", where one cookie spans `app.*` and `api.*`) requires shared-root-domain Clerk config and zombied reading cookies; not how usezombie is wired today.
 
 In Clerk's terms, the existence of two tokens reflects two different verifier requirements: `clerkMiddleware()` needs the `sid` (session id) claim to call Clerk's session-introspection API; zombied needs the `aud=api.usezombie.com` claim to enforce that the token wasn't minted for a different service. Per Clerk's own docs, custom JWT templates **cannot** include `sid`, and default session tokens do not include a service-specific `aud`. One token, both requirements is therefore not a configuration we can hit from a JWT template alone — hence two.
+
+> **Naming bridge to the Mermaid diagrams below.** The diagrams predate this Token A / Token B framing. They use `<clerk-jwt>` for the cookie token (Token A) and `<user-jwt>` for the api-template Bearer (Token B). Same things, older labels.
 
 ---
 
@@ -75,7 +77,7 @@ sequenceDiagram
     alt user not signed in yet
         Next->>Browser: 302 /sign-in
         Browser->>Clerk: GET /sign-in (Clerk-hosted)<br/>+ GitHub OAuth round-trip
-        Clerk-->>Browser: Set-Cookie: __session=<clerk-jwt><br/>(domain=clerk.dev.usezombie.com)
+        Clerk-->>Browser: Set-Cookie: __session=<clerk-jwt><br/>(domain=app.dev.usezombie.com)
     end
 
     Browser->>Next: page render<br/>"Approve CLI login?"
@@ -124,16 +126,16 @@ The browser holds the Clerk `__session` cookie. It uses Clerk's SDK to convert t
 
 ```mermaid
 flowchart LR
-    Browser["Browser<br/>(stores __session<br/>scoped to clerk.dev.usezombie.com)"]
+    Browser["Browser<br/>(stores __session<br/>scoped to app.dev.usezombie.com)"]
 
-    Browser -- "every request to clerk.dev.usezombie.com<br/>(automatic; same-domain)" --> Clerk["Clerk FAPI<br/>clerk.dev.usezombie.com"]
-    Browser -- "no cookie<br/>(different domain)" --> Next["Next.js<br/>app.dev.usezombie.com"]
-    Browser -- "no cookie<br/>(different domain)" --> API["Zig backend<br/>api-dev.usezombie.com"]
+    Browser -- "automatic — same origin<br/>(clerkMiddleware reads here)" --> Next["Next.js<br/>app.dev.usezombie.com"]
+    Browser -- "Clerk SDK reads cookie via JS,<br/>POSTs to FAPI w/ publishable key" --> Clerk["Clerk FAPI<br/>clerk.dev.usezombie.com"]
+    Browser -- "no cookie<br/>(different origin)" --> API["Zig backend<br/>api-dev.usezombie.com"]
 
     Clerk -. "JWKS public keys" .-> API
 ```
 
-The Zig backend never sees the cookie. It only ever validates JWTs signed by the JWKS that Clerk publishes.
+The Zig backend never sees the cookie. It only ever validates Token B (the api-template JWT), signed by Clerk's private key and verified via the JWKS that Clerk publishes.
 
 ### Normal API call
 
@@ -264,17 +266,17 @@ This is why the UI flow has the extra Clerk hop, and why the SSE path uses a Nex
 | `storage` *(future)* | `https://storage.usezombie.com` | hypothetical storage service |
 | `agents` *(future)* | `https://agents.usezombie.com` | hypothetical agent runtime |
 
-Per-template audience isolation = blast-radius containment: a Token-B leak via zombied logs cannot be replayed against `storage-svc` because the `aud` doesn't match. Each microservice strict-checks only its own audience; cross-service replay is structurally prevented by the JWT verifier, not by application logic.
+Per-template audience isolation: a Token-B leak via zombied logs cannot be replayed against `storage-svc` because the `aud` doesn't match. Each microservice strict-checks only its own audience; cross-service replay is structurally prevented by the JWT verifier, not by application logic.
 
 Templates can also be role-gated (e.g. "only users with `metadata.role=admin` can mint the `agents` template") via Clerk dashboard configuration. Adding a new microservice = create a new JWT template in Clerk + add a new strict `OIDC_AUDIENCE` value on that service. No new auth middleware code in zombied (or any sibling service); the existing `bearer_or_api_key.zig` path serves all future Bearer-audience services with config alone.
 
 ---
 
-## Why the three flows converge on Bearer
+## Why all three flows use Bearer
 
-The substrate is deliberately uniform: one credential shape at the wire, one middleware, two payload branches. New principal types (e.g. webhook-bound bots, third-party OAuth apps) plug in by issuing a JWT with the right `aud` or by minting a new prefixed API key — no new auth middleware required.
+The wire shape is deliberately uniform: one credential header, one middleware, two payload branches. New principal types (webhook-bound bots, third-party OAuth apps) plug in by issuing a JWT with the right `aud` or by minting a new prefixed API key — no new auth middleware required.
 
-The cookie complexity is contained inside Clerk and Next.js. The Zig backend stays a stateless JWT/key validator.
+Cookie handling stays inside Clerk and Next.js. The Zig backend is a stateless JWT/key validator.
 
 ---
 
@@ -290,7 +292,7 @@ Three mint paths exist for Token B (the api-template JWT that zombied accepts), 
 
 **Browser-path mints don't touch the secret key.** The publishable key (`pk_test_…` / `pk_live_…`) IS sent — but it's an instance identifier, not a credential. It says "talk to Clerk instance X". Anyone with only the publishable key can do exactly one harmful thing: sign UP to the instance (creating themselves an account on it). They cannot impersonate existing users, mint tokens for other users, or read/modify metadata. Clerk's threat model treats the publishable key the same way Stripe treats `pk_…`: leaking it is non-incident, and it is intentionally inlined into the browser bundle (any `NEXT_PUBLIC_*` env var ships to the client).
 
-**The actual perimeter is `CLERK_SECRET_KEY`** (`sk_test_…` / `sk_live_…`):
+**The credential that needs hard protection is `CLERK_SECRET_KEY`** (`sk_test_…` / `sk_live_…`):
 
 | Surface | How it gets there | Exposure scope |
 |---|---|---|
@@ -302,7 +304,18 @@ Three mint paths exist for Token B (the api-template JWT that zombied accepts), 
 
 `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` IS in the browser bundle by design (the `NEXT_PUBLIC_` prefix means "ship to client"). `CLERK_SECRET_KEY` is NOT — no `NEXT_PUBLIC_` prefix means Next.js never inlines it into client code. An accidental rename to `NEXT_PUBLIC_CLERK_SECRET_KEY` would be a catastrophic incident requiring immediate key rotation.
 
-Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint Token B for any user, modify any user's `publicMetadata` (which controls `tenant_id` + `role`), and impersonate the entire user base. Rotate immediately via Clerk dashboard if leaked, then redeploy every consumer (Vercel + Fly + CI).
+Compromise of `CLERK_SECRET_KEY` is total: anyone holding it can mint Token B for any user, modify any user's `publicMetadata` (which controls `tenant_id` + `role`), and impersonate the entire user base.
+
+### Rotation procedure
+
+Rotation does NOT invalidate existing user JWTs (Clerk signs those with its own private key, fronted by JWKS — the secret key plays no part). It DOES revoke admin-API access for any holder of the old key. So normal-rotation order:
+
+1. Generate the new key in Clerk dashboard. Keep the old key active until step 4.
+2. Update vault — `op item edit ZMB_CD_DEV/clerk-dev secret-key=<new>` (DEV) and `ZMB_CD_PROD/clerk` (PROD). One vault update per environment.
+3. Redeploy consumers in this order: **Vercel** first (Next.js Server Actions + Route Handlers do server-side `getToken({template:"api"})`); **Fly** second (zombied does NOT use the secret directly today, but pick up if the rotated bundle includes other secrets); **CI** last (GitHub Actions secret mirror, used for e2e fixture mint).
+4. Revoke the old key in Clerk dashboard once all consumers report green.
+
+If rotated under suspected compromise, skip the gradual revoke — invalidate the old key immediately at step 1. Users stay signed in (their JWTs remain valid until natural expiry); admin tooling fails until step 3 completes.
 
 ---
 
