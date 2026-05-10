@@ -1,6 +1,14 @@
 const std = @import("std");
 const cb = @import("clerk_backend.zig");
 
+test "metadata endpoint uses PATCH (Clerk rejects POST with 405)" {
+    // Regression guard: zombied silently failed every metadata writeback
+    // because this constant was POST. Clerk's /v1/users/{id}/metadata
+    // requires PATCH; the e2e harness surfaced the bug after seeing 405s
+    // in flyctl logs.
+    try std.testing.expectEqual(std.http.Method.PATCH, cb.METADATA_HTTP_METHOD);
+}
+
 test "renderMetadataPayload: both fields → compact merge body" {
     const alloc = std.testing.allocator;
     const payload = try cb.renderMetadataPayload(alloc, "0195b4ba-8d3a-7f13-8abc-aa0000000001", "operator");
