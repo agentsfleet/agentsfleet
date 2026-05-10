@@ -1667,7 +1667,7 @@
                             "type": "string",
                             "enum": [
                               "platform",
-                              "self_managed"
+                              "byok"
                             ]
                           },
                           "model": {
@@ -1818,7 +1818,7 @@
                     "type": "string",
                     "enum": [
                       "platform",
-                      "self_managed"
+                      "byok"
                     ]
                   },
                   "credential_ref": {
@@ -3906,7 +3906,7 @@
             "type": "string",
             "enum": [
               "platform",
-              "self_managed"
+              "byok"
             ]
           },
           "provider": {

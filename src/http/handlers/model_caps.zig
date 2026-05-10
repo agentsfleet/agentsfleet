@@ -43,8 +43,8 @@ pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/model-caps.json"
 const ModelCap = struct {
     id: []const u8,
     context_cap_tokens: i32,
-    input_nanos_per_mtok: i32,
-    output_nanos_per_mtok: i32,
+    input_nanos_per_mtok: i64,
+    output_nanos_per_mtok: i64,
 };
 
 const ResponseBody = struct {
@@ -138,8 +138,8 @@ fn appendRow(
 ) !void {
     const id = try alloc.dupe(u8, try row.get([]const u8, 0));
     const cap = try row.get(i32, 1);
-    const in_rate = try row.get(i32, 2);
-    const out_rate = try row.get(i32, 3);
+    const in_rate = try row.get(i64, 2);
+    const out_rate = try row.get(i64, 3);
     const updated = try row.get(i64, 4);
     try models.append(alloc, .{
         .id = id,

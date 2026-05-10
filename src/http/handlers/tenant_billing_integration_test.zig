@@ -92,7 +92,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, TEST_TENANT_ID);
 
-    // 500¢ starter grant covers a 1¢ self-managed event under stop policy.
+    // STARTER_CREDIT_NANOS covers a self-managed event under stop policy.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         alloc,
@@ -102,8 +102,8 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         .stop,
     ));
 
-    // Drain the balance to 0¢; stop policy must now block.
-    _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, 500);
+    // Drain the entire starter grant; stop policy must now block.
+    _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
         alloc,

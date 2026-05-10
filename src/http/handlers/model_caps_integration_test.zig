@@ -35,8 +35,10 @@ test "integration(model_caps): GET returns seed catalogue with claude-sonnet-4-6
     try std.testing.expect(r.bodyContains("kimi-k2.6"));
     try std.testing.expect(r.bodyContains("\"context_cap_tokens\":256000"));
     // Per-token rates accompany every row (zero for self-managed-only models).
-    try std.testing.expect(r.bodyContains("\"input_nanos_per_mtok\":300"));
-    try std.testing.expect(r.bodyContains("\"output_nanos_per_mtok\":1500"));
+    // Sonnet rates: $3/Mtok input · $15/Mtok output, expressed in nanos
+    // (1 nano = 1/1B USD; cents → nanos × 10M).
+    try std.testing.expect(r.bodyContains("\"input_nanos_per_mtok\":3000000000"));
+    try std.testing.expect(r.bodyContains("\"output_nanos_per_mtok\":15000000000"));
 }
 
 test "integration(model_caps): GET ?model=<known> returns one row" {
