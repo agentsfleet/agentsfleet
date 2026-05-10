@@ -1,0 +1,55 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/refs/heads/main/npm/oxlint/configuration_schema.json",
+  "plugins": ["import", "node", "promise"],
+  "env": {
+    "node": true,
+    "es2024": true
+  },
+  "globals": {
+    "Bun": "readonly"
+  },
+  "categories": {
+    "correctness": "error"
+  },
+  "rules": {
+    "const-comparisons": "error",
+    "no-cond-assign": "error",
+    "no-const-assign": "error",
+    "no-debugger": "error",
+    "no-dupe-class-members": "error",
+    "no-dupe-keys": "error",
+    "no-empty-pattern": "error",
+    "import/no-duplicates": "error",
+    "promise/catch-or-return": "error",
+    "promise/no-return-wrap": "error",
+    "no-control-regex": "off",
+    "no-useless-escape": "off",
+    "no-this-alias": "off",
+    "triple-slash-reference": "off",
+    "no-new-array": "off",
+    "no-thenable": "off",
+    "no-unsafe-finally": "off",
+    "no-extra-boolean-cast": "off",
+    "no-throw-literal": "off"
+  },
+  "ignorePatterns": [
+    "node_modules/**",
+    "coverage/**",
+    ".tmp/**",
+    "samples/**",
+    "skills/**",
+    "bun.lock"
+  ],
+  "overrides": [
+    {
+      "files": ["test/**", "scripts/**"],
+      "rules": {
+        "no-unused-vars": "off",
+        "no-control-regex": "off",
+        "no-empty": "off",
+        "promise/always-return": "off",
+        "promise/catch-or-return": "off"
+      }
+    }
+  ]
+}

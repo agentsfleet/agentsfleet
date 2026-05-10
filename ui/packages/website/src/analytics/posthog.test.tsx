@@ -76,7 +76,7 @@ describe("website analytics", () => {
       source: "hero_primary",
       surface: "hero",
       mode: "humans",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // oxlint-disable-next-line typescript/no-explicit-any
       email: "should-not-leak@example.com" as any,
     });
     await flushAnalyticsForTests();
@@ -136,7 +136,7 @@ describe("website analytics", () => {
       surface: "pricing_card",
       cta_id: "pricing_scale_notify",
       plan_interest: "Scale",
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // oxlint-disable-next-line typescript/no-explicit-any
       email: "should-not-leak@example.com" as any,
     });
     trackLeadCaptureOpened({

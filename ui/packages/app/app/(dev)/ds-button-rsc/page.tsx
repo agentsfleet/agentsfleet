@@ -17,7 +17,7 @@ export default function DsButtonRscPage() {
        * <Link>, but that defeats the test (which checks the asChild
        * contract still holds with a non-Link child). */}
       <Button asChild variant="outline">
-        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+        {/* oxlint-disable-next-line nextjs/no-html-link-for-pages */}
         <a href="/">Home</a>
       </Button>
     </main>

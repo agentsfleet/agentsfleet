@@ -4,7 +4,7 @@
 **Milestone:** M67
 **Workstream:** 001
 **Date:** May 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — developer tooling migration that removes duplicated ESLint setup from CLI and UI packages.
 **Categories:** CLI, UI
 **Batch:** B1 — independent tooling workstream
@@ -61,16 +61,23 @@
 | `docs/v2/pending/M67_001_P2_CLI_UI_OXLINT_MIGRATION.md` | CREATE | Tracks this tooling migration as one workstream. |
 | `docs/v2/active/M67_001_P2_CLI_UI_OXLINT_MIGRATION.md` | MOVE/EDIT | CHORE(open) lifecycle updates status and branch. |
 | `docs/v2/done/M67_001_P2_CLI_UI_OXLINT_MIGRATION.md` | MOVE/EDIT | CHORE(close) lifecycle records completion. |
+| `make/quality.mk` | EDIT | Developer-facing lint labels switch from ESLint wording to Oxlint wording. |
 | `zombiectl/.oxlintrc.json` | CREATE | Oxlint config for the CLI package. |
 | `zombiectl/eslint.config.js` | DELETE | ESLint config removed after replacement. |
 | `zombiectl/package.json` | EDIT | Lint scripts and dev dependencies switch to Oxlint. |
 | `zombiectl/bun.lock` | EDIT | Package manager lockfile reflects dependency migration. |
+| `zombiectl/src/commands/core.js` | EDIT | Stale ESLint suppression becomes a normal code comment after the tool migration. |
 | `ui/packages/app/.oxlintrc.json` | CREATE | Oxlint config for the dashboard app. |
 | `ui/packages/app/eslint.config.js` | DELETE | ESLint config removed after replacement. |
 | `ui/packages/app/package.json` | EDIT | Lint script and dev dependencies switch to Oxlint. |
+| `ui/packages/app/app/(dev)/ds-button-rsc/page.tsx` | EDIT | Inline lint suppression switches to Oxlint syntax. |
+| `ui/packages/app/app/(dashboard)/events/page.tsx` | EDIT | Import-only cleanup for Oxlint duplicate-import baseline. |
+| `ui/packages/app/app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx` | EDIT | Inline lint suppression switches to Oxlint syntax. |
+| `ui/packages/app/tests/events-components.test.ts` | EDIT | Import-only cleanup for Oxlint duplicate-import baseline. |
 | `ui/packages/website/.oxlintrc.json` | CREATE | Oxlint config for the website package. |
 | `ui/packages/website/eslint.config.js` | DELETE | ESLint config removed after replacement. |
 | `ui/packages/website/package.json` | EDIT | Lint scripts and dev dependencies switch to Oxlint. |
+| `ui/packages/website/src/analytics/posthog.test.tsx` | EDIT | Inline lint suppressions switch to Oxlint syntax. |
 | `ui/packages/design-system/.oxlintrc.json` | CREATE | Oxlint config for shared UI primitives. |
 | `ui/packages/design-system/eslint.config.js` | DELETE | ESLint config removed after replacement. |
 | `ui/packages/design-system/package.json` | EDIT | Lint script and dev dependencies switch to Oxlint. |
@@ -159,4 +166,8 @@ No HTTP API, schema, `zombiectl` user command, or runtime interface changes.
 
 ## Discovery (consult log)
 
-Empty at creation.
+- May 10, 2026: `oxlint@1.63.0` is the current npm release and is the package version used in the migrated package manifests.
+- May 10, 2026: GitHub Actions lint jobs already delegate to `make lint-website` and `make lint-apps`; no workflow edit is needed because the Make targets now run package scripts backed by Oxlint.
+- May 10, 2026: `make lint`, `make lint-apps`, `make lint-website`, and `make lint-ci` pass with Oxlint-backed package lint commands.
+- May 10, 2026: CI-shaped frozen installs pass for `ui/packages/website`, `ui/packages/app`, and `zombiectl`.
+- May 10, 2026: `make test` reaches `test-unit-zombiectl` and fails two banner glyph assertions unrelated to this tooling migration: `printPreReleaseWarning` missing `⚠` and `printVersion` missing `●` in color-mode output.
