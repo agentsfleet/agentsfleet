@@ -156,7 +156,7 @@ test "resolveActiveProvider with explicit platform row returns same shape as syn
 
 // ── resolveActiveProvider — self-managed ────────────────────────────────────────────
 
-test "resolveActiveProvider with byok row returns user provider api_key model" {
+test "resolveActiveProvider with self_managed row returns user provider api_key model" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -186,7 +186,7 @@ test "resolveActiveProvider with byok row returns user provider api_key model" {
     try std.testing.expectEqual(@as(u32, 256_000), rp.context_cap_tokens);
 }
 
-test "resolveActiveProvider returns CredentialMissing when byok credential row absent" {
+test "resolveActiveProvider returns CredentialMissing when self_managed credential row absent" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -198,7 +198,7 @@ test "resolveActiveProvider returns CredentialMissing when byok credential row a
     try seedSelfManagedCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, "account-fireworks-self-managed", TP_TEST_PROVIDER, "fw_USER_abc", "any-model");
     try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "account-fireworks-self-managed", "any-model", 256_000);
 
-    // User deletes the credential while still in mode=byok.
+    // User deletes the credential while still in mode=self_managed.
     _ = try db_ctx.conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ WS_TP_SELF_MANAGED, "account-fireworks-self-managed" });
 
     try std.testing.expectError(

@@ -62,7 +62,7 @@ describe("Home", () => {
     renderHome();
     expect(screen.getByText(/core capabilities/i)).toBeInTheDocument();
     expect(screen.getByText("Markdown-defined")).toBeInTheDocument();
-    expect(screen.getByText("BYOK")).toBeInTheDocument();
+    expect(screen.getByText("Self-managed key")).toBeInTheDocument();
   });
 
   it("renders the install block", () => {

@@ -2,6 +2,7 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NANOS_PER_USD } from "@/lib/types";
 
 // ── auth/server.ts — real module, mock @clerk/nextjs/server ──────────────
 
@@ -121,7 +122,7 @@ describe("dashboard page inner async components", () => {
     }));
     vi.doMock("@/lib/api/tenant_billing", () => ({
       getTenantBilling: overrides.billing ?? vi.fn().mockResolvedValue({
-        balance_cents: 1000, is_exhausted: false, exhausted_at: null,
+        balance_nanos: NANOS_PER_USD, is_exhausted: false, exhausted_at: null,
       }),
     }));
     vi.doMock("@/lib/api/events", () => ({

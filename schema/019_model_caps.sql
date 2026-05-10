@@ -1,7 +1,7 @@
 -- Model → context-window + per-token-rate catalogue. Public, unauthenticated
 -- read served via the cryptic-prefix endpoint (handlers/model_caps.zig). Both
 -- the install-skill (platform-managed posture) and `zombiectl tenant provider
--- set` (BYOK posture) call the endpoint exactly once at provisioning time and
+-- set` (self-managed posture) call the endpoint exactly once at provisioning time and
 -- pin the cap into the right place. The agent runtime never reads this table
 -- directly.
 --
@@ -55,6 +55,6 @@ ON CONFLICT (model_id) DO UPDATE SET
 
 -- api_runtime serves the public read endpoint and the rate-cache populator
 -- at API server boot. No worker access — the worker never queries this table
--- directly; tenant_providers carries the resolved cap under BYOK, frontmatter
+-- directly; tenant_providers carries the resolved cap under self-managed, frontmatter
 -- carries it under platform-managed.
 GRANT SELECT ON core.model_caps TO api_runtime;

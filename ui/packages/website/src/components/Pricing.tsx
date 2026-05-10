@@ -42,7 +42,7 @@ export default function Pricing() {
             <p className="font-sans text-[15px] leading-[1.6] text-text-muted m-0 max-w-[640px]">
               A <span className="text-text">stage</span> is one reasoning step — the agent gathers
               evidence, decides, or acts once, then either stops or continues into the next stage.
-              Most diagnoses resolve in 1–5 stages. BYOK on Anthropic, OpenAI, Fireworks,
+              Most diagnoses resolve in 1–5 stages. Self-managed on Anthropic, OpenAI, Fireworks,
               Together, Groq, Moonshot — your provider bills you for tokens directly; usezombie
               never marks up inference.
             </p>
@@ -124,7 +124,7 @@ export default function Pricing() {
               underneath every stage — not on your usezombie bill
             </SectionLabel>
             <span className="font-mono text-[14px] text-text">
-              LLM call · BYOK · your bill
+              LLM call · Self-managed · your bill
             </span>
             <span className="font-sans text-[12px] leading-[1.5] text-text-muted">
               Anthropic · OpenAI · Fireworks · Together · Groq · Moonshot. Pay your provider

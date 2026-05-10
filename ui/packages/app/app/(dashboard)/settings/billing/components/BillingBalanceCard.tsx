@@ -29,7 +29,7 @@ export type BillingBalanceCardProps = {
  */
 export default function BillingBalanceCard({ billing }: BillingBalanceCardProps) {
   const isExhausted = billing.is_exhausted;
-  const balance = billing.balance_cents ?? 0;
+  const balance = billing.balance_nanos ?? 0;
 
   return (
     <Card className="max-w-2xl animate-in fade-in-0 slide-in-from-top-1 duration-300">

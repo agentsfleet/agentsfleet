@@ -2,7 +2,7 @@
 
 **Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time $10 starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
-> **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time $10 grant. John in this scenario, John in Scenario 02 (after he flips to BYOK), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_byok.md`](../billing_and_byok.md) §2.
+> **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time $10 grant. John in this scenario, John in Scenario 02 (after he flips to self-managed), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.
 
 **Outcome under test:** From cold start (`zombiectl` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
 
@@ -59,15 +59,15 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 
 1. **Doctor preflight.** `zombiectl doctor --json` runs. If the CLI isn't installed, the skill prints the one-line install command and stops. If it's installed but unauthenticated, the skill prints `zombiectl auth login` and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
 2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version."
-3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_opt_in`. The skill never asks about model or BYOK in this scenario — both default to platform-managed.
+3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_opt_in`. The skill never asks about model or self-managed in this scenario — both default to platform-managed.
 4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
    - try `op read 'op://Personal/<name>/api-token'`
    - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
-   then `zombiectl credential set <name> --data @-` per credential (upsert; same surface used for the BYOK credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
+   then `zombiectl credential set <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
 5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
-   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_byok.md`](../billing_and_byok.md) §9 for the endpoint design.
+   The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
 6. **File generation.** The skill writes `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md` substituting variables and the cap. Refuses to overwrite without `--force`.
    ```yaml
    ---
@@ -149,7 +149,7 @@ NullClaw runs the SKILL.md prose against the webhook payload. The agent makes it
 
 Worker:
 - UPDATE `core.zombie_events` (`status='processed'`, `response_text`, `completed_at`).
-- UPDATE `zombie_execution_telemetry` stage row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The cents column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_byok.md`](../billing_and_byok.md) §3).
+- UPDATE `zombie_execution_telemetry` stage row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The cents column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3).
 - UPSERT `core.zombie_sessions` (advance bookmark, clear execution handle).
 - PUBLISH `event_complete`.
 - XACK.
@@ -246,7 +246,7 @@ Context cap tokens:  256000
    zombiectl tenant provider set --credential <name>
 ```
 
-No `core.tenant_providers` row exists for John's tenant; `tenant provider get` reads through the resolver and surfaces the synthesised default, plus an inline pointer at the BYOK setup commands.
+No `core.tenant_providers` row exists for John's tenant; `tenant provider get` reads through the resolver and surfaces the synthesised default, plus an inline pointer at the self-managed setup commands.
 
 ---
 
@@ -261,7 +261,7 @@ No `core.tenant_providers` row exists for John's tenant; `tenant provider get` r
 
 ## 5. What is NOT in this scenario
 
-- No BYOK. See `scenarios/02_byok.md`.
+- No self-managed. See `scenarios/02_self_managed.md`.
 - No balance trip. See `scenarios/03_balance_gate.md`.
 - No customer-facing statuspage / external comms. That's the bastion direction documented in [`../bastion.md`](../bastion.md).
 - No GitHub App for auto-webhook config. Manual step in v2.

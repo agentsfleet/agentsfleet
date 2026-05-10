@@ -11,7 +11,7 @@
 **Branch:** feat/m58-install-contract-alignment (to be created)
 **Depends on:** M57_001 (canonical architecture docs already reconciled to shipped `main` contracts)
 
-**Canonical architecture:** `docs/architecture/user_flow.md` §8.1-§8.7, `docs/architecture/data_flow.md`, and `docs/architecture/billing_and_byok.md`.
+**Canonical architecture:** `docs/architecture/user_flow.md` §8.1-§8.7, `docs/architecture/data_flow.md`, and `docs/architecture/billing_and_provider_keys.md`.
 
 ---
 

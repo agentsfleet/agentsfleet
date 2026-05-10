@@ -541,7 +541,7 @@ No HTTP / DB interfaces — this milestone is docs-only.
 - [ ] Playwright e2e smoke spec passes (`bun run --cwd ui/packages/website test:e2e:smoke`) — string assertions updated to match new copy in the same commit
 
 ### Architecture (`docs/architecture/`, folded from M50)
-- [x] Cross-reference pass complete: every `M{N}` reference verified against `docs/v2/done/` (M41, M45, M46, M47, M48, M49 all confirmed in `done/`; capability descriptions in `capabilities.md` and BYOK references in `billing_and_byok.md` spot-checked against shipped specs)
+- [x] Cross-reference pass complete: every `M{N}` reference verified against `docs/v2/done/` (M41, M45, M46, M47, M48, M49 all confirmed in `done/`; capability descriptions in `capabilities.md` and BYOK references in `billing_and_provider_keys.md` spot-checked against shipped specs)
 - [ ] §14 Ship Reflection populated with real evidence — launch date, first external install, URLs, first real diagnosis (skeleton already at `docs/architecture/ship_reflection.md` with PENDING SHIP markers; this checkbox flips on once the markers come down post-launch)
 - [x] Cold-read smoke test done on `docs/architecture/` (best-effort by implementing agent in absence of fresh-context engineer); doc reads cleanly end-to-end, no clarity fixes required this pass
 - [x] No orphan TODOs / FIXMEs in `docs/architecture/` (verified — only the deliberate PENDING SHIP markers in `ship_reflection.md`)

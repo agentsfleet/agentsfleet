@@ -26,9 +26,9 @@ describe("rates pinned (regression — mirror src/state/tenant_billing_test.zig)
   // intent: the Zig server is the authority, this file is the marketing
   // mirror, and a divergence between them mis-bills users vs. what the
   // site quotes. No silent drift.
-  it("eventPlatform = 1¢, eventByok = 0¢, stage = 10¢, starterCredit = 500¢", () => {
+  it("eventPlatform = 1¢, eventSelfManaged = 0¢, stage = 10¢, starterCredit = 500¢", () => {
     expect(RATES_CENTS.eventPlatform).toBe(1);
-    expect(RATES_CENTS.eventByok).toBe(0);
+    expect(RATES_CENTS.eventSelfManaged).toBe(0);
     expect(RATES_CENTS.stage).toBe(10);
     expect(RATES_CENTS.starterCredit).toBe(500);
   });
@@ -39,8 +39,8 @@ describe("RATES_DISPLAY mirrors RATES_CENTS", () => {
     expect(RATES_DISPLAY.eventPlatform).toBe(formatCents(RATES_CENTS.eventPlatform));
   });
 
-  it("should render RATES_CENTS.eventByok as RATES_DISPLAY.eventByok", () => {
-    expect(RATES_DISPLAY.eventByok).toBe(formatCents(RATES_CENTS.eventByok));
+  it("should render RATES_CENTS.eventSelfManaged as RATES_DISPLAY.eventSelfManaged", () => {
+    expect(RATES_DISPLAY.eventSelfManaged).toBe(formatCents(RATES_CENTS.eventSelfManaged));
   });
 
   it("should render RATES_CENTS.stage as RATES_DISPLAY.stage", () => {
@@ -65,8 +65,8 @@ describe("RATES_CENTS boundary invariants", () => {
     expect(RATES_CENTS.stage).toBeGreaterThan(RATES_CENTS.eventPlatform);
   });
 
-  it("should price BYOK no higher than platform at receive (BYOK saves money invariant)", () => {
-    expect(RATES_CENTS.eventByok).toBeLessThanOrEqual(RATES_CENTS.eventPlatform);
+  it("should price self-managed no higher than platform at receive (self-managed saves money invariant)", () => {
+    expect(RATES_CENTS.eventSelfManaged).toBeLessThanOrEqual(RATES_CENTS.eventPlatform);
   });
 
   it("should grant a starter credit large enough to cover at least one platform event+stage cycle", () => {
@@ -110,7 +110,7 @@ describe("WORKED_EXAMPLE matches the displayed math (platform rate, the conserva
 describe("RATES_DISPLAY format contract (shipped to OpenAPI / schema / smoke selectors)", () => {
   it.each([
     ["eventPlatform", RATES_DISPLAY.eventPlatform],
-    ["eventByok", RATES_DISPLAY.eventByok],
+    ["eventSelfManaged", RATES_DISPLAY.eventSelfManaged],
     ["stage", RATES_DISPLAY.stage],
     ["starterCredit", RATES_DISPLAY.starterCredit],
   ])("should format %s as a leading-$ amount with no whitespace", (_key, str) => {

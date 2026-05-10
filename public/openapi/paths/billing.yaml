@@ -110,7 +110,7 @@
                       zombie_id:             { type: string }
                       event_id:              { type: string }
                       charge_type:           { type: string, enum: [receive, stage] }
-                      posture:               { type: string, enum: [platform, byok] }
+                      posture:               { type: string, enum: [platform, self_managed] }
                       model:                 { type: string }
                       credit_deducted_nanos: { type: integer, format: int64 }
                       token_count_input:     { type: integer, format: int64, nullable: true }

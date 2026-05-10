@@ -1,4 +1,4 @@
-# Billing and Bring-Your-Own-Key
+# Billing and self-managed provider key
 
 > Parent: [`README.md`](./README.md)
 
@@ -6,22 +6,22 @@ How users pay for what they run, and how the runtime stays neutral between two c
 
 This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the executor + worker path, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
-The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in cents; events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Posture (platform vs BYOK) changes the per-event cost, not the structure of the gate.
+The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in cents; events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Posture (platform vs self-managed) changes the per-event cost, not the structure of the gate.
 
 ---
 
 ## 1. The two postures
 
-One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a zombie on the default platform-managed posture, runs for a while, then activates BYOK with his own Fireworks key so he stops paying usezombie for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
+One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a zombie on the default platform-managed posture, runs for a while, then activates self-managed with his own Fireworks key so he stops paying usezombie for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
 
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
 
-- **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** usezombie routes platform-managed inference through the **admin tenant's BYOK credential**. The `usezombie-admin` user (one global account per environment, bootstrapped via [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's BYOK uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At resolution time the worker follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays usezombie a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
-- **Bring Your Own Key (BYOK).** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-byok`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. usezombie's executor uses that key to call the provider's API. The user pays their provider directly for inference; usezombie charges a smaller flat orchestration fee per event with no token markup.
+- **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** usezombie routes platform-managed inference through the **admin tenant's self-managed credential**. The `usezombie-admin` user (one global account per environment, bootstrapped via [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's self-managed uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At resolution time the worker follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays usezombie a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
+- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. usezombie's executor uses that key to call the provider's API. The user pays their provider directly for inference; usezombie charges a smaller flat orchestration fee per event with no token markup.
 
-**Why Fireworks Kimi K2.6 is the v2.0 platform default.** Kimi K2.6 is a strong general-purpose model with a 256K context window at significantly cheaper wholesale than Anthropic Sonnet or OpenAI GPT-class. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so the same code path serves both postures — under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`; under BYOK it dials Fireworks (or any other provider in the catalogue) with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
+**Why Fireworks Kimi K2.6 is the v2.0 platform default.** Kimi K2.6 is a strong general-purpose model with a 256K context window at significantly cheaper wholesale than Anthropic Sonnet or OpenAI GPT-class. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so the same code path serves both postures — under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`; under self-managed it dials Fireworks (or any other provider in the catalogue) with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
 
-The posture flip lives in `core.tenant_providers.mode` (`platform` or `byok`). Switching is a single command (`zombiectl tenant provider set --credential <name>` / `zombiectl tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
+The posture flip lives in `core.tenant_providers.mode` (`platform` or `self_managed`). Switching is a single command (`zombiectl tenant provider set --credential <name>` / `zombiectl tenant provider reset`) or a single dashboard toggle. **Absence of a `tenant_providers` row is equivalent to `mode=platform`** — the resolver synthesises the platform default for tenants who have never explicitly configured a provider. New tenants do not get an eager row; the row appears only when the user touches provider config.
 
 ---
 
@@ -33,7 +33,7 @@ Every tenant has exactly one balance: `core.tenant_billing.balance_cents`. The g
 
 Each new tenant receives a **one-time starter credit of 500 cents (USD $5)** at tenant-create time. The credit is inserted into `tenant_billing.balance_cents` synchronously when the tenant row is created. There is no replenish; the $5 is a one-time onboarding allowance, not a recurring stipend. Source of truth: `STARTER_CREDIT_CENTS` in `src/state/tenant_billing.zig`.
 
-At platform rates the grant covers roughly three hundred typical Kimi K2.6 events (model retail rate × tokens + 1¢ overhead + 1¢ receive ≈ 3¢/event for an 800/1040-token diagnosis). At BYOK rates the grant covers roughly one thousand events (flat 1¢ stage, 0¢ receive). The exact ratio depends on per-model pricing in §10.
+At platform rates the grant covers roughly three hundred typical Kimi K2.6 events (model retail rate × tokens + 1¢ overhead + 1¢ receive ≈ 3¢/event for an 800/1040-token diagnosis). At self-managed rates the grant covers roughly one thousand events (flat 1¢ stage, 0¢ receive). The exact ratio depends on per-model pricing in §10.
 
 ### 2.2 What happens when the starter grant runs out
 
@@ -51,13 +51,13 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
-| 1 | **Receive** | Right after `INSERT zombie_events (status='received')` and the gate passes | `compute_receive_charge(posture)` | Yes — platform receive > BYOK receive |
-| 2 | **Stage** | Right before `executor.startStage` is invoked | `compute_stage_charge(posture, model, in_tok, out_tok)` | Yes — platform is token-based; BYOK is flat |
+| 1 | **Receive** | Right after `INSERT zombie_events (status='received')` and the gate passes | `compute_receive_charge(posture)` | Yes — platform receive > self-managed receive |
+| 2 | **Stage** | Right before `executor.startStage` is invoked | `compute_stage_charge(posture, model, in_tok, out_tok)` | Yes — platform is token-based; self-managed is flat |
 
 Why two points and not one:
 
 - **Receive captures the orchestration cost of accepting the event.** Queue ingest, gate evaluation, telemetry row setup, persistence overhead. Even an event whose stage decides to do nothing useful (zero-tool-call response, agent declines) has cost us this overhead. We deduct for it regardless.
-- **Stage captures the cost of running NullClaw.** Under platform that's token rate × tokens (we paid Anthropic / OpenAI / Fireworks for the tokens). Under BYOK that's flat orchestration overhead (the user paid the provider; we did the executor RPC, the sandbox setup, the StageResult plumbing).
+- **Stage captures the cost of running NullClaw.** Under platform that's token rate × tokens (we paid Anthropic / OpenAI / Fireworks for the tokens). Under self-managed that's flat orchestration overhead (the user paid the provider; we did the executor RPC, the sandbox setup, the StageResult plumbing).
 
 Each debit produces its own row in `core.zombie_execution_telemetry` with a `charge_type` discriminator (`'receive'` or `'stage'`). One event → two telemetry rows. This is auditable: a quarterly question like "what fraction of last month's revenue came from receive overhead vs LLM markup" is a one-line SQL query.
 
@@ -74,25 +74,25 @@ Two functions, both in `src/state/tenant_billing.zig`. Both take `posture`. Neit
 Two events for John, taken at different points in his journey, drive the worked examples below. Both run against Kimi K2.6 — only the posture differs:
 
 - **John on platform-managed.** A typical webhook event under `mode=platform`: 800 input tokens / 1040 output tokens against `accounts/fireworks/models/kimi-k2.6`. usezombie holds the Fireworks key; we pay Fireworks for the tokens and bill John at the retail rate from the model-caps endpoint plus orchestration overhead.
-- **John on BYOK.** Same workload, `mode=byok`: 800 input / 1040 output against `accounts/fireworks/models/kimi-k2.6`. John holds the Fireworks key; he pays Fireworks directly. usezombie bills the flat orchestration overhead, no token markup.
+- **John on self-managed.** Same workload, `mode=self_managed`: 800 input / 1040 output against `accounts/fireworks/models/kimi-k2.6`. John holds the Fireworks key; he pays Fireworks directly. usezombie bills the flat orchestration overhead, no token markup.
 
 ### 4.1 Receive charge
 
 ```zig
-pub const Posture = enum { platform, byok };
+pub const Posture = enum { platform, self_managed };
 
 const EVENT_PLATFORM_CENTS: u32 = 1;   // platform-managed event ingest
-const EVENT_BYOK_CENTS:     u32 = 0;   // BYOK ingest folded into stage overhead
+const EVENT_NANOS:     u32 = 0;   // self-managed ingest folded into stage overhead
 
 pub fn compute_receive_charge(posture: Posture) u32 {
     return switch (posture) {
         .platform => EVENT_PLATFORM_CENTS,
-        .byok     => EVENT_BYOK_CENTS,
+        .self_managed     => EVENT_NANOS,
     };
 }
 ```
 
-Receive is one cent under platform, zero cents under BYOK in v2.0. The asymmetry is deliberate: under BYOK the user is already paying for the LLM elsewhere, and we'd rather take our margin in one transparent place (the stage flat fee) than nickel-and-dime them across two debit points. Under platform we charge the receive cent because the bundled rate already presumes we're pricing the orchestration alongside inference; the receive cent is the separable orchestration share.
+Receive is one cent under platform, zero cents under self-managed in v2.0. The asymmetry is deliberate: under self-managed the user is already paying for the LLM elsewhere, and we'd rather take our margin in one transparent place (the stage flat fee) than nickel-and-dime them across two debit points. Under platform we charge the receive cent because the bundled rate already presumes we're pricing the orchestration alongside inference; the receive cent is the separable orchestration share.
 
 The numbers are illustrative — see §10's caveat about pricing controversy. The function shape is what matters: posture-dependent, plan-independent, plumbed through `processEvent`.
 
@@ -114,12 +114,12 @@ pub fn compute_stage_charge(
             const out_cents = (rate.output_cents_per_mtok * output_tokens) / 1_000_000;
             break :blk STAGE_CENTS + in_cents + out_cents;
         },
-        .byok => STAGE_CENTS,
+        .self_managed => STAGE_CENTS,
     };
 }
 ```
 
-Under platform: a fixed overhead (10¢) plus token cost driven by the per-model rates from the model-caps endpoint (§10). Under BYOK: just the overhead — flat 10¢ per stage, regardless of model or token count, because we did not pay for the tokens.
+Under platform: a fixed overhead (10¢) plus token cost driven by the per-model rates from the model-caps endpoint (§10). Under self-managed: just the overhead — flat 10¢ per stage, regardless of model or token count, because we did not pay for the tokens.
 
 `lookup_model_rate` reads from a process-local cache populated on API server start (and refreshed when the model-caps endpoint updates). The model-caps endpoint is the single source of truth; the API server caches it to keep `compute_stage_charge` synchronous and free of network calls in the hot path.
 
@@ -144,20 +144,20 @@ compute_stage_charge(.platform, "accounts/fireworks/models/kimi-k2.6", 800, 1040
 Total event cost: 1¢ + 11¢ = 12¢
 ```
 
-### 4.4 Worked example — John under BYOK, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
+### 4.4 Worked example — John under self-managed, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
 
 ```
-compute_receive_charge(.byok)
+compute_receive_charge(.self_managed)
   = 0¢
 
-compute_stage_charge(.byok, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
-  posture is BYOK → no rate lookup, no token math
+compute_stage_charge(.self_managed, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
+  posture is self-managed → no rate lookup, no token math
   = STAGE (10¢)
 
 Total event cost: 0¢ + 10¢ = 10¢
 ```
 
-Same $5 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~41 typical events on his $5 grant (12¢ each); under BYOK he gets 50 events (10¢ each). Worth more once token costs are non-trivial: the platform overhead stays at 10¢ but the per-token cents stack on top.
+Same $5 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~41 typical events on his $5 grant (12¢ each); under self-managed he gets 50 events (10¢ each). Worth more once token costs are non-trivial: the platform overhead stays at 10¢ but the per-token cents stack on top.
 
 ---
 
@@ -210,23 +210,23 @@ The reasoning is that a balance-exhausted event is usually evidence the user was
 
 ## 7. Switching posture mid-stream
 
-A user can switch between platform and BYOK at any time. Effects on subsequent billing:
+A user can switch between platform and self-managed at any time. Effects on subsequent billing:
 
-- **Platform → BYOK** (user runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=byok` immediately. The next event's receive + stage debits use the BYOK constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
-- **BYOK → platform** (user stops paying their provider): `zombiectl tenant provider reset` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
+- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=self_managed` immediately. The next event's receive + stage debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
+- **self-managed → platform** (user stops paying their provider): `zombiectl tenant provider reset` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
 - **Mid-event change.** The snapshot taken at claim time wins. Provider posture is resolved exactly once, at gate time, before the receive deduct.
 
-The "in-flight events" question matters because BYOK and platform have different per-event costs. We never want a request that the user started under one posture to bill at another.
+The "in-flight events" question matters because self-managed and platform have different per-event costs. We never want a request that the user started under one posture to bill at another.
 
 The `tenant provider set` PUT validates eagerly on structure (body shape, credential presence, JSON shape, model-caps catalogue membership). It does **not** make a synthetic call to the LLM provider to verify the key works — auth-validity surfaces at the first event as `provider_auth_failed`. The CLI prints a one-line *"Tip: run a test event to verify the key works"* hint after a successful set.
 
 ---
 
-## 8. The BYOK credential and the api_key visibility boundary
+## 8. The self-managed credential and the api_key visibility boundary
 
 ### 8.1 The credential body — user-named, opaque
 
-Vault credentials are opaque JSON objects keyed by name (M45 contract). The BYOK record uses an **user-chosen name**: John picks `account-fireworks-byok`, another user might pick `anthropic-prod` or `openai-team-shared`. The name is whatever makes sense to the user; the schema does not impose a convention.
+Vault credentials are opaque JSON objects keyed by name (M45 contract). The self-managed record uses an **user-chosen name**: John picks `account-fireworks-key`, another user might pick `anthropic-prod` or `openai-team-shared`. The name is whatever makes sense to the user; the schema does not impose a convention.
 
 ```json
 {
@@ -240,13 +240,13 @@ Vault credentials are opaque JSON objects keyed by name (M45 contract). The BYOK
 
 The `tenant_providers` row points at the credential by name through `credential_ref`. Multi-credential tenants are supported (a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `zombiectl tenant provider set --credential <other>`); only one is *active* at a time per tenant.
 
-**Vault scope: workspace-keyed; tenant→workspace bridge.** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the BYOK resolver, the `zombiectl credential set` write path) bridge through `tenant_provider_resolver.resolvePrimaryWorkspace(tenant_id)` which picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** BYOK credentials to the earliest-named workspace; per-workspace credential isolation — and a fully tenant-keyed vault — is post-v2.0 work. Until then, the bridge is the contract.
+**Vault scope: workspace-keyed; tenant→workspace bridge.** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `zombiectl credential set` write path) bridge through `tenant_provider_resolver.resolvePrimaryWorkspace(tenant_id)` which picks the earliest-named workspace owned by the tenant. Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace; per-workspace credential isolation — and a fully tenant-keyed vault — is post-v2.0 work. Until then, the bridge is the contract.
 
 **`context_cap_tokens` is not in the credential body.** The cap is resolved separately, at `tenant provider set` time, from the public model-caps endpoint (§10), and pinned into `tenant_providers.context_cap_tokens`. Splitting the two lets the cap be re-resolved when the model changes without touching the vault.
 
 ### 8.2 The api_key visibility boundary
 
-The api_key — platform OR BYOK — crosses one boundary cleanly. It exists only in places that need to call the provider's API; it never appears in any user-facing surface.
+The api_key — platform OR self-managed — crosses one boundary cleanly. It exists only in places that need to call the provider's API; it never appears in any user-facing surface.
 
 **The api_key MAY exist in:**
 
@@ -262,7 +262,7 @@ The api_key — platform OR BYOK — crosses one boundary cleanly. It exists onl
 - Persisted event rows — `core.zombie_events`, `zombie_execution_telemetry`, anything else under `core.*`.
 - User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
 
-The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, worker logs, executor logs, and HTTP responses for the api_key bytes after a BYOK run is a CI-level invariant (M48 acceptance criteria).
+The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, worker logs, executor logs, and HTTP responses for the api_key bytes after a self-managed run is a CI-level invariant (M48 acceptance criteria).
 
 ---
 
@@ -281,7 +281,7 @@ NullClaw already speaks the OpenAI-compatible wire format. From `nullclaw/src/pr
 | `anthropic` | `https://api.anthropic.com` | Native Anthropic |
 | `openrouter` | `https://openrouter.ai/api/v1` | OpenAI-compatible (multi-provider gateway) |
 
-For Bring Your Own Key with Fireworks + Kimi 2.6 (also known as Kimi K2-Instruct):
+For self-managed provider key with Fireworks + Kimi 2.6 (also known as Kimi K2-Instruct):
 
 ```
 provider: "fireworks"
@@ -297,7 +297,7 @@ The OpenAI-compatible client routes the call to `https://api.fireworks.ai/infere
 The single source of truth for model context caps **and per-model token rates**. Both postures resolve through it:
 
 - **Platform-managed context cap.** The install-skill reads the resolved cap via `zombiectl doctor --json`'s `tenant_provider` block; the platform-side resolver hardcodes the synth-default values for tenants with no `tenant_providers` row.
-- **BYOK context cap.** `zombiectl tenant provider set` calls the endpoint and writes the cap into `core.tenant_providers.context_cap_tokens`.
+- **self-managed context cap.** `zombiectl tenant provider set` calls the endpoint and writes the cap into `core.tenant_providers.context_cap_tokens`.
 - **Per-model token rates.** The API server reads the endpoint at boot and on a periodic refresh; `compute_stage_charge` consults the cached rates.
 
 Endpoint shape (extended in M48 with token-rate columns). **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific cents-per-million figures change as upstream provider pricing moves and the admin-zombie reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
@@ -322,7 +322,7 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
 
 The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-zombie keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider set` validates membership, the API server caches all rates at boot, and the worked examples in §4 use illustrative values only (not pinned to whatever's live).
 
-The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their BYOK credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
+The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their self-managed credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
 
 Properties:
 
@@ -331,7 +331,7 @@ Properties:
 - **Hard-coded in clients.** `zombiectl` and the install-skill embed the URL at build time. Rotation is a coordinated CLI + skill release, on a quarterly cadence or sooner if abuse is detected. Old keys serve `410 Gone` for ~30 days, then `404`.
 - **Cloudflare in front.** `Cache-Control: public, max-age=86400, s-maxage=604800, immutable` per release URL. Per-IP rate limit (one request per second sustained, burst of ten) at the edge.
 - **Implementation roadmap.** v2.0 ships a static JSON file checked into the API repository and served by a route handler. Later, an admin-only zombie owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a pull request with deltas. Humans review and merge. The endpoint stays the same; the data gets fresher.
-- **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_providers` (BYOK) or the synth-default constant (platform). The token-rate cache is refreshed on API boot and on a slow background timer; the hot path never makes a network call.
+- **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_providers` (self-managed) or the synth-default constant (platform). The token-rate cache is refreshed on API boot and on a slow background timer; the hot path never makes a network call.
 
 ---
 
@@ -379,7 +379,7 @@ Tenant balance:    $4.71 (471¢)
 Last 10 events drained credits:
   EVENT_ID            POSTURE  MODEL                        IN_TOK  OUT_TOK  RECEIVE  STAGE  TOTAL
   evt_01HXG2K4…       platform accounts/fireworks/models/kimi-k2.6              800    1040       1¢     2¢     3¢
-  evt_01HXG3M2…       byok     accounts/.../kimi-k2.6         800    1320       0¢     1¢     1¢
+  evt_01HXG3M2…       self_managed accounts/.../kimi-k2.6         800    1320       0¢     1¢     1¢
   …
 ⓘ Out of credits? See https://app.usezombie.com/settings/billing
    Or run zombiectl billing show --json | jq for machine-readable output.
@@ -399,5 +399,5 @@ When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) p
 - **Refund-on-actual-tokens.** v3. Today the conservative estimate at stage-debit time is the charge; reconciling to actual tokens after `StageResult` would add bookkeeping for marginal accuracy gains.
 - **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3 — needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.
-- **Metering BYOK spend for cost reporting.** Users check their provider's dashboard today.
-- **Auto-fallback from BYOK to platform on provider error.** Errors surface to the user; no silent fallback (it would charge them without consent).
+- **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.
+- **Auto-fallback from self-managed to platform on provider error.** Errors surface to the user; no silent fallback (it would charge them without consent).

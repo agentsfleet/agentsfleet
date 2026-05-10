@@ -23,9 +23,9 @@ describe("Privacy", () => {
     expect(screen.getByRole("heading", { name: /contact/i })).toBeInTheDocument();
   });
 
-  it("mentions BYOK model and no key collection", () => {
+  it("mentions self-managed model and no key collection", () => {
     render(<Privacy />);
-    expect(screen.getByText(/BYOK model/i)).toBeInTheDocument();
+    expect(screen.getByText(/self-managed model/i)).toBeInTheDocument();
   });
 
   it("renders contact email link", () => {

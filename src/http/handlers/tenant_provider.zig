@@ -3,11 +3,11 @@
 //! GET    returns the persisted config (no api_key, ever).
 //! PUT    body {mode, credential_ref?, model?} validates eagerly and UPSERTs
 //!        the row. Validation order matches the spec PUT contract:
-//!          1. body shape malformed                  → 400 UZ-REQ-001
-//!          2. mode=byok + credential_ref absent     → 400 UZ-PROVIDER-001
-//!          3. mode=byok + credential row absent     → 400 UZ-PROVIDER-002
-//!          4. mode=byok + JSON shape invalid        → 400 UZ-PROVIDER-003
-//!          5. effective model not in caps catalogue → 400 UZ-PROVIDER-004
+//!          1. body shape malformed                          → 400 UZ-REQ-001
+//!          2. mode=self_managed + credential_ref absent     → 400 UZ-PROVIDER-001
+//!          3. mode=self_managed + credential row absent     → 400 UZ-PROVIDER-002
+//!          4. mode=self_managed + JSON shape invalid        → 400 UZ-PROVIDER-003
+//!          5. effective model not in caps catalogue         → 400 UZ-PROVIDER-004
 //!          6. UPSERT, return 200 with the resolved config
 //! DELETE is equivalent to PUT mode=platform — writes the explicit
 //!        platform-default row so the dashboard can distinguish "never
@@ -94,12 +94,6 @@ pub fn innerPutTenantProvider(hx: Hx, req: *httpz.Request) void {
         applySelfManaged(hx, conn, tenant_id, input);
         return;
     }
-    // Pre-M66 callers sending the legacy "byok" value get a clean 4xx
-    // naming the replacement — RULE NLG, no silent alias.
-    if (std.mem.eql(u8, input.mode, "byok")) {
-        hx.fail(ec.ERR_PROVIDER_MODE_RENAMED, "mode 'byok' was renamed to 'self_managed' in M66");
-        return;
-    }
     hx.fail(ec.ERR_INVALID_REQUEST, "mode must be 'platform' or 'self_managed'");
 }
 
@@ -147,7 +141,7 @@ fn applyPlatform(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8) void 
 
 fn applySelfManaged(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: PutInput) void {
     const credential_ref = input.credential_ref orelse {
-        hx.fail(ec.ERR_PROVIDER_CREDENTIAL_REF_REQUIRED, "credential_ref required when mode=byok");
+        hx.fail(ec.ERR_PROVIDER_CREDENTIAL_REF_REQUIRED, "credential_ref required when mode=self_managed");
         return;
     };
 

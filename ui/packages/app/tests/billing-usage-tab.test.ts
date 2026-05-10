@@ -21,16 +21,17 @@ vi.mock("@/lib/api/tenant_billing", () => ({
 
 import BillingUsageTab from "@/app/(dashboard)/settings/billing/components/BillingUsageTab";
 import type { GroupedEvent } from "@/app/(dashboard)/settings/billing/lib/groupCharges";
+import { CHARGE_TYPE, PROVIDER_MODE } from "@/lib/types";
 
 const SAMPLE: GroupedEvent = {
   event_id: "evt_1",
   zombie_id: "z_1",
-  posture: "platform",
+  posture: PROVIDER_MODE.platform,
   model: "kimi-k2.6",
   recorded_at: 1_000_000,
-  receive_cents: 1,
-  stage_cents: 2,
-  total_cents: 3,
+  receive_nanos: 0,
+  stage_nanos: 1_000_000, // $0.001 platform stage rate
+  total_nanos: 1_000_000,
   token_count_input: 820,
   token_count_output: 1040,
 };
@@ -54,7 +55,7 @@ describe("BillingUsageTab", () => {
     expect(screen.getByText("kimi-k2.6")).toBeTruthy();
     expect(screen.getByText("820")).toBeTruthy();
     expect(screen.getByText("1040")).toBeTruthy();
-    expect(screen.getByText("3¢")).toBeTruthy();
+    expect(screen.getAllByText("$0.001").length).toBeGreaterThan(0);
   });
 
   it("renders em-dash for null token counts (receive-only event)", () => {
@@ -63,12 +64,12 @@ describe("BillingUsageTab", () => {
     expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("uses the cyan badge variant for BYOK posture (visual differentiation)", () => {
-    const byokEvent: GroupedEvent = { ...SAMPLE, posture: "byok" };
+  it("uses the cyan badge variant for self_managed posture (visual differentiation)", () => {
+    const selfManagedEvent: GroupedEvent = { ...SAMPLE, posture: PROVIDER_MODE.self_managed };
     const { container } = render(
-      React.createElement(BillingUsageTab, { initialEvents: [byokEvent], initialCursor: null }),
+      React.createElement(BillingUsageTab, { initialEvents: [selfManagedEvent], initialCursor: null }),
     );
-    expect(container.textContent).toContain("byok");
+    expect(container.textContent).toContain(PROVIDER_MODE.self_managed);
   });
 
   it("hides the Load more button when there is no cursor", () => {
@@ -82,8 +83,8 @@ describe("BillingUsageTab", () => {
     const NEXT: GroupedEvent = { ...SAMPLE, event_id: "evt_2", recorded_at: 999_000 };
     listChargesMock.mockResolvedValue({
       items: [
-        { ...SAMPLE, id: "tel_3", event_id: NEXT.event_id, charge_type: "receive", credit_deducted_cents: 1, recorded_at: NEXT.recorded_at, token_count_input: null, token_count_output: null },
-        { ...SAMPLE, id: "tel_4", event_id: NEXT.event_id, charge_type: "stage",   credit_deducted_cents: 2, recorded_at: NEXT.recorded_at + 1, token_count_input: 100, token_count_output: 200 },
+        { ...SAMPLE, id: "tel_3", event_id: NEXT.event_id, charge_type: CHARGE_TYPE.receive, credit_deducted_nanos: 1, recorded_at: NEXT.recorded_at, token_count_input: null, token_count_output: null },
+        { ...SAMPLE, id: "tel_4", event_id: NEXT.event_id, charge_type: CHARGE_TYPE.stage,   credit_deducted_nanos: 2, recorded_at: NEXT.recorded_at + 1, token_count_input: 100, token_count_output: 200 },
       ],
       next_cursor: null,
     });
@@ -101,8 +102,8 @@ describe("BillingUsageTab", () => {
     listChargesMock.mockResolvedValue({
       // Server returns the SAME event we already have.
       items: [
-        { ...SAMPLE, id: "tel_dup_1", charge_type: "receive", credit_deducted_cents: 1, token_count_input: null, token_count_output: null },
-        { ...SAMPLE, id: "tel_dup_2", charge_type: "stage",   credit_deducted_cents: 2 },
+        { ...SAMPLE, id: "tel_dup_1", charge_type: CHARGE_TYPE.receive, credit_deducted_nanos: 1, token_count_input: null, token_count_output: null },
+        { ...SAMPLE, id: "tel_dup_2", charge_type: CHARGE_TYPE.stage,   credit_deducted_nanos: 2 },
       ],
       next_cursor: null,
     });

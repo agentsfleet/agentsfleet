@@ -1,9 +1,11 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandTenant } from "../src/commands/tenant.js";
+import { PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.js";
 import { makeNoop, makeBufferStream, ui } from "./helpers.js";
 
 const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
+const ONE_CENT_NANOS = NANOS_PER_USD / 100;
 
 function makeDeps({ requestImpl, parseFlagsImpl } = {}) {
   return {
@@ -24,7 +26,7 @@ test("tenant provider show: GETs /v1/tenants/me/provider and exits 0", async () 
   const deps = makeDeps({
     requestImpl: async (_ctx, url, opts) => {
       called = { url, method: opts.method };
-      return { mode: "platform", provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000, credential_ref: null, synthesised_default: true };
+      return { mode: PROVIDER_MODE.platform, provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000, credential_ref: null, synthesised_default: true };
     },
   });
   const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false };
@@ -37,13 +39,13 @@ test("tenant provider show: GETs /v1/tenants/me/provider and exits 0", async () 
 test("tenant provider show: surfaces resolver error to stderr and still tables the response", async () => {
   const stderr = makeBufferStream();
   const deps = makeDeps({
-    requestImpl: async () => ({ mode: "byok", provider: "fireworks", error: "credential_missing", credential_ref: "fw-byok" }),
+    requestImpl: async () => ({ mode: PROVIDER_MODE.self_managed, provider: "fireworks", error: "credential_missing", credential_ref: "fw-key" }),
   });
   const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: false };
   const code = await commandTenant(ctx, ["provider", "show"], null, deps);
   assert.equal(code, 0);
   const errOut = stderr.read();
-  assert.match(errOut, /Credential fw-byok is missing/);
+  assert.match(errOut, /Credential fw-key is missing/);
   assert.match(errOut, /tenant provider delete/);
 });
 
@@ -51,7 +53,7 @@ test("tenant provider show: surfaces resolver error to stderr and still tables t
 test("tenant provider show: --json mode prints raw response and skips warning prose", async () => {
   const stdout = makeBufferStream();
   const stderr = makeBufferStream();
-  const payload = { mode: "byok", error: "credential_missing", credential_ref: "fw-byok" };
+  const payload = { mode: PROVIDER_MODE.self_managed, error: "credential_missing", credential_ref: "fw-key" };
   const deps = makeDeps({ requestImpl: async () => payload });
   const ctx = { stdout: stdout.stream, stderr: stderr.stream, jsonMode: true };
   const code = await commandTenant(ctx, ["provider", "show"], null, deps);
@@ -62,14 +64,14 @@ test("tenant provider show: --json mode prints raw response and skips warning pr
 
 // ── tenant provider add ────────────────────────────────────────────────────
 
-test("tenant provider add: PUTs mode=byok with credential_ref and prints tip", async () => {
+test("tenant provider add: PUTs mode=self_managed with credential_ref and prints tip", async () => {
   let called = null;
   const stdout = makeBufferStream();
   const deps = makeDeps({
-    parseFlagsImpl: (rest) => ({ options: { credential: "fw-byok" }, positionals: rest }),
+    parseFlagsImpl: (rest) => ({ options: { credential: "fw-key" }, positionals: rest }),
     requestImpl: async (_ctx, url, opts) => {
       called = { url, method: opts.method, body: JSON.parse(opts.body) };
-      return { mode: "byok", provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000, credential_ref: "fw-byok" };
+      return { mode: PROVIDER_MODE.self_managed, provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000, credential_ref: "fw-key" };
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
@@ -77,20 +79,20 @@ test("tenant provider add: PUTs mode=byok with credential_ref and prints tip", a
   assert.equal(code, 0);
   assert.equal(called.url, TENANT_PROVIDER_PATH);
   assert.equal(called.method, "PUT");
-  assert.deepEqual(called.body, { mode: "byok", credential_ref: "fw-byok" });
+  assert.deepEqual(called.body, { mode: PROVIDER_MODE.self_managed, credential_ref: "fw-key" });
   assert.match(stdout.read(), /Tip: run a test event to verify the key works against fireworks\./);
 });
 
 test("tenant provider add: --model flag forwards as body.model", async () => {
   let called = null;
   const deps = makeDeps({
-    parseFlagsImpl: () => ({ options: { credential: "fw-byok", model: "accounts/fireworks/models/kimi-k2.6" }, positionals: [] }),
-    requestImpl: async (_ctx, _url, opts) => { called = JSON.parse(opts.body); return { mode: "byok", provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", credential_ref: "fw-byok" }; },
+    parseFlagsImpl: () => ({ options: { credential: "fw-key", model: "accounts/fireworks/models/kimi-k2.6" }, positionals: [] }),
+    requestImpl: async (_ctx, _url, opts) => { called = JSON.parse(opts.body); return { mode: PROVIDER_MODE.self_managed, provider: "fireworks", model: "accounts/fireworks/models/kimi-k2.6", credential_ref: "fw-key" }; },
   });
   const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false };
   const code = await commandTenant(ctx, ["provider", "add"], null, deps);
   assert.equal(code, 0);
-  assert.deepEqual(called, { mode: "byok", credential_ref: "fw-byok", model: "accounts/fireworks/models/kimi-k2.6" });
+  assert.deepEqual(called, { mode: PROVIDER_MODE.self_managed, credential_ref: "fw-key", model: "accounts/fireworks/models/kimi-k2.6" });
 });
 
 test("tenant provider add: missing --credential exits 2 without making a request", async () => {
@@ -114,9 +116,9 @@ test("tenant provider delete: DELETEs and warns on low balance", async () => {
     requestImpl: async (_ctx, url, opts) => {
       calls.push({ url, method: opts.method });
       if (url === TENANT_PROVIDER_PATH) {
-        return { mode: "platform", provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000 };
+        return { mode: PROVIDER_MODE.platform, provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000 };
       }
-      return { balance_cents: 42 };
+      return { balance_nanos: 42 * ONE_CENT_NANOS }; // $0.42 — below threshold
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
@@ -126,15 +128,15 @@ test("tenant provider delete: DELETEs and warns on low balance", async () => {
     `DELETE ${TENANT_PROVIDER_PATH}`,
     `GET /v1/tenants/me/billing`,
   ]);
-  assert.match(stdout.read(), /Tenant balance is low: 42¢/);
+  assert.match(stdout.read(), /Tenant balance is low: \$0\.42/);
 });
 
 test("tenant provider delete: high balance suppresses warning", async () => {
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === TENANT_PROVIDER_PATH) return { mode: "platform", provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000 };
-      return { balance_cents: 999 };
+      if (url === TENANT_PROVIDER_PATH) return { mode: PROVIDER_MODE.platform, provider: "fireworks", model: "kimi-k2.6", context_cap_tokens: 256000 };
+      return { balance_nanos: 999 * ONE_CENT_NANOS }; // $9.99 — above threshold
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
@@ -147,7 +149,7 @@ test("tenant provider delete: billing snapshot failure does not break delete suc
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === TENANT_PROVIDER_PATH) return { mode: "platform", provider: "fireworks", model: "kimi-k2.6" };
+      if (url === TENANT_PROVIDER_PATH) return { mode: PROVIDER_MODE.platform, provider: "fireworks", model: "kimi-k2.6" };
       throw new Error("billing endpoint flaky");
     },
   });
