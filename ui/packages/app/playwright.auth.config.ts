@@ -1,4 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
+import { loadWorktreeEnv } from "./tests/e2e/auth/fixtures/env-loader";
+
+// Load <worktree-root>/.env so CLERK_SECRET_KEY / CLERK_WEBHOOK_SECRET land
+// in process.env before globalSetup runs. Bun auto-loads only this package's
+// .env*, which gives us NEXT_PUBLIC_API_URL but not the Clerk creds.
+loadWorktreeEnv();
 
 const E2E_PORT = process.env.E2E_PORT ?? "3101";
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
