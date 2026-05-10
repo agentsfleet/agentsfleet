@@ -30,7 +30,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 1. **`src/state/tenant_billing.zig`** — current canonical rate constants (`STARTER_CREDIT_CENTS`, `EVENT_PLATFORM_CENTS`, `EVENT_BYOK_CENTS`, `STAGE_CENTS`). **Mirror this:** the constant naming + paired pin-test pattern. **Replace this:** the `_CENTS` suffix becomes `_NANOS` and the BYOK constant collapses into a single `EVENT_NANOS = 0`.
 2. **`ui/packages/website/src/lib/rates.ts`** — TS mirror of the Zig constants with `RATES_CENTS` / `RATES_DISPLAY` shape. **Mirror this:** the named-constant + paired `rates.test.ts` discipline. **Replace this:** drop `eventPlatform` / `eventByok` distinction; collapse to `event` since both modes price events at zero post-M66.
-3. **`~/Projects/docs/snippets/rates.mdx`** — Mintlify-side rate snippet. **Replace these values:** `STARTER_CREDIT = "$5"` (unchanged), `EVENT_RATE = "free"` (was `$0.01`), `STAGE_RATE_PLATFORM = "$0.001"`, `STAGE_RATE_SELF_MANAGED = "$0.0001"` (new key — two stage rates because the gradient between modes is the whole point).
+3. **`~/Projects/docs/snippets/rates.mdx`** — Mintlify-side rate snippet. **Replace these values:** `STARTER_CREDIT = "$5"` (unchanged), `EVENT_RATE = "free"` (was `$0.01`), `STAGE_PLATFORM = "$0.001"`, `STAGE_SELF_MANAGED = "$0.0001"` (new key — two stage rates because the gradient between modes is the whole point). Role names must match Zig/TS exactly — see **Naming convention (cross-tier)** below.
 4. **`docs/architecture/billing_and_byok.md` §0 + §1**" — current two-posture model. **Mirror this:** the architecture-doc convention of explicit posture matrix + §0 vocabulary preamble. **Replace these:** every "BYOK" surface in §1, plus the file rename to `billing_and_provider_keys.md`. Internal historical-note preserves the BYOK lineage.
 5. **`docs/v2/done/M48_001_P1_API_CLI_UI_BYOK_PROVIDER.md`** — original spec that introduced the BYOK posture. **Read this:** to understand the data model, vault path, and `crypto_store.load()` flow that this spec deliberately preserves.
 6. **`docs/v2/done/M51_001_P1_DOCS_SITE_REWRITE_AND_ARCH_CROSSREF.md`** + the `M51 follow-up` changelog entry — establishes the pre-v2.0 pattern for breaking-API removal (HTTP 404, no graceful 410). This spec follows the same posture for the schema-enum rename and CLI-flag rename.
@@ -98,7 +98,7 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 | `docs/architecture/scenarios/02_byok.md` → `docs/architecture/scenarios/02_self_managed.md` | RENAME (`git mv`) | File rename. Body sweep. Update intra-doc links from peer scenarios. |
 | `docs/architecture/{high_level,data_flow,capabilities,office_hours_v2,plan_engg_review_v2}.md`, `docs/architecture/README.md` | EDIT | Sweep BYOK → "self-managed provider keys" in prose. Fix any `[link](billing_and_byok.md)` references. |
 | `README.md` (repo root) | EDIT | "Markdown-defined. BYOK." → "Markdown-defined. Self-managed provider keys." |
-| `ui/packages/website/src/lib/rates.ts` | EDIT | `RATES_CENTS` → `RATES_NANOS`. Drop `eventByok`. Single `event` field. New shape: `{ event: 0, stagePlatform: 1_000_000, stageSelfManaged: 100_000, starterCredit: 5_000_000_000 }`. `RATES_DISPLAY` mirror. |
+| `ui/packages/website/src/lib/rates.ts` | EDIT | Drop `RATES_CENTS` object wrapper. Export named constants matching Zig identifier-for-identifier: `STARTER_CREDIT_NANOS = 5_000_000_000n`, `EVENT_NANOS = 0n`, `STAGE_PLATFORM_NANOS = 1_000_000n`, `STAGE_SELF_MANAGED_NANOS = 100_000n` (BigInt to preserve precision past `Number.MAX_SAFE_INTEGER`). Drop `eventByok` / nested-object shape. Display strings live in a paired `RATES_DISPLAY` map keyed by the same role names (`STARTER_CREDIT`, `EVENT_RATE`, `STAGE_PLATFORM`, `STAGE_SELF_MANAGED`) — see **Naming convention (cross-tier)** below. |
 | `ui/packages/website/src/lib/rates.test.ts` | EDIT | Pin tests for new shape. |
 | `ui/packages/website/src/lib/contact.ts` | CREATE | `export const SUPPORT_EMAIL = "usezombie@agentmail.to";` |
 | `ui/packages/website/src/lib/contact.test.ts` | CREATE | Pin test. |
@@ -119,7 +119,7 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 | `zombiectl/src/lib/api.js` | EDIT | Send `mode: "self_managed"`. |
 | `zombiectl/src/lib/contact.js` + paired test | CREATE | `SUPPORT_EMAIL` constant + pin test. |
 | `zombiectl/README.md` | EDIT | Sweep BYOK references. |
-| `~/Projects/docs/snippets/rates.mdx` | EDIT (paired companion PR) | New shape: `STARTER_CREDIT`, `EVENT_RATE = "free"`, `STAGE_PLATFORM`, `STAGE_SELF_MANAGED`. |
+| `~/Projects/docs/snippets/rates.mdx` | EDIT (paired companion PR) | Display-shape exports keyed identically to Zig/TS role names: `STARTER_CREDIT = "$5"`, `EVENT_RATE = "free"`, `STAGE_PLATFORM = "$0.001"`, `STAGE_SELF_MANAGED = "$0.0001"`. Role-name parity is load-bearing — see **Naming convention (cross-tier)**. |
 | `~/Projects/docs/snippets/contact.mdx` | CREATE (paired companion PR) | `SUPPORT_EMAIL` export. |
 | `~/Projects/docs/{index,concepts,quickstart,zombies/credentials,zombies/overview,zombies/install}.mdx` | EDIT (paired companion PR) | Sweep BYOK in prose. Use `{SUPPORT_EMAIL}` interpolations. New `<Update>` entry in `changelog.mdx` announcing the M66 rate cut + term retirement. |
 | `~/Projects/.github/profile/README.md` | EDIT (separate one-off branch) | Sweep BYOK references. Single literal contact email. |
@@ -137,6 +137,28 @@ Switch the canonical billing unit from cents (`i64`) to **nanos (1/1,000,000,000
 **Why nanos, not micros:** micros (1/1,000,000 USD = 6 decimals) bottom out at $0.000001. Nanos give 3 more decimals of headroom, enough to express $0.000000001 (one billionth) cleanly. `i64` BIGINT holding nanos caps a single tenant balance at ~$9.2 billion (`i64::MAX` = 9.22e18 nanos = ~9.22e9 USD), so the type has no realistic overflow risk.
 
 **Implementation default:** use Postgres native column rename + `ALTER TABLE … ALTER COLUMN balance_cents TYPE BIGINT USING balance_cents * 10000000` then `ALTER COLUMN … RENAME TO balance_nanos`. If the column type stays `BIGINT`, only the `× 10_000_000` UPDATE + RENAME is needed (1¢ = 10M nanos at 1B nanos/USD). The agent confirms PG version supports this on the dev Docker image.
+
+### Naming convention (cross-tier)
+
+**Role names are identical across Zig, TypeScript, and Mintlify snippets.** RULE CTM (cross-tier mirroring) is load-bearing here — a renamed constant in one tier without the others drifts silently and is exactly the kind of bug paired pin tests are designed to catch.
+
+| Role | Zig (`tenant_billing.zig`) | TS (`lib/rates.ts`) | Docs (`snippets/rates.mdx`) |
+|---|---|---|---|
+| Starter credit | `STARTER_CREDIT_NANOS` | `STARTER_CREDIT_NANOS` | `STARTER_CREDIT` |
+| Event charge | `EVENT_NANOS` | `EVENT_NANOS` | `EVENT_RATE` |
+| Stage charge (platform) | `STAGE_PLATFORM_NANOS` | `STAGE_PLATFORM_NANOS` | `STAGE_PLATFORM` |
+| Stage charge (self-managed) | `STAGE_SELF_MANAGED_NANOS` | `STAGE_SELF_MANAGED_NANOS` | `STAGE_SELF_MANAGED` |
+
+**Suffix rule:**
+- `_NANOS` suffix on raw-integer constants (Zig, TS) — the underlying unit. The value is the same `i64`/`bigint` integer in both languages.
+- Bare role name on Mintlify display snippets — the value is the user-facing `$`-formatted string (`"$5"`, `"free"`, `"$0.001"`). The display layer's job is presentation, not unit math.
+
+**Pin tests assert role-name parity in both directions:**
+- `src/state/tenant_billing_test.zig` asserts each Zig constant by name + value.
+- `ui/packages/website/src/lib/rates.test.ts` asserts each TS export by name + value AND asserts the integer values match the Zig-side numbers (hard-coded literal mirror, with a comment pointing back to `tenant_billing.zig`).
+- `~/Projects/docs/snippets/rates.test.mdx` (or equivalent docs-CI check, if introduced this milestone) asserts the four display keys exist and resolve to the expected `$`-strings.
+
+A renamed role triggers test failures in **all three** layers, not just one.
 
 ### §2 — M66 traction rates
 
