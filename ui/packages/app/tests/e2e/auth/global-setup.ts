@@ -14,7 +14,13 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { provisionFixture, type FixtureUserSpec, type MintedFixture } from "./fixtures/clerk-admin";
+import { clerkSetup } from "@clerk/testing/playwright";
+import {
+  attachJwt,
+  provisionUser,
+  type FixtureUserSpec,
+  type MintedFixture,
+} from "./fixtures/clerk-admin";
 import { bootstrapTenant } from "./fixtures/bootstrap";
 
 const REQUIRED_ENV = [
@@ -51,7 +57,12 @@ function failLoud(missing: string): never {
 function writeCache(fixtures: MintedFixture[]): void {
   const cache: Record<string, Omit<MintedFixture, "key">> = {};
   for (const f of fixtures) {
-    cache[f.key] = { email: f.email, clerkUserId: f.clerkUserId, sessionJwt: f.sessionJwt };
+    cache[f.key] = {
+      email: f.email,
+      password: f.password,
+      clerkUserId: f.clerkUserId,
+      sessionJwt: f.sessionJwt,
+    };
   }
   fs.writeFileSync(JWT_CACHE_PATH, JSON.stringify(cache, null, 2), { mode: 0o600 });
 }
@@ -60,12 +71,21 @@ export default async function globalSetup(): Promise<void> {
   for (const key of REQUIRED_ENV) {
     if (!process.env[key]) failLoud(key);
   }
-  const fixtures: MintedFixture[] = [];
-  for (const spec of FIXTURE_USERS) {
-    fixtures.push(await provisionFixture(spec));
+  await clerkSetup();
+  // Three-phase to keep JWT claims fresh:
+  //   1. provisionUser: ensure each Clerk user exists (no JWT yet).
+  //   2. bootstrapTenant: zombied creates tenant + writes tenant_id/role
+  //      back to Clerk publicMetadata.
+  //   3. attachJwt: mint session JWT — now the JWT snapshots the updated
+  //      publicMetadata, so zombied API calls that require tenant context
+  //      succeed.
+  const provisioned = await Promise.all(FIXTURE_USERS.map(provisionUser));
+  for (const user of provisioned) {
+    await bootstrapTenant(user);
   }
-  for (const fixture of fixtures) {
-    await bootstrapTenant(fixture);
+  const fixtures: MintedFixture[] = [];
+  for (const user of provisioned) {
+    fixtures.push(await attachJwt(user));
   }
   writeCache(fixtures);
   console.log(

@@ -20,6 +20,7 @@ export interface FixtureUserSpec {
 export interface MintedFixture {
   key: FixtureUserSpec["key"];
   email: string;
+  password: string;
   clerkUserId: string;
   sessionJwt: string;
 }
@@ -80,20 +81,49 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
   return createUser(spec);
 }
 
-async function mintSessionJwt(userId: string): Promise<string> {
+/**
+ * Mints a session JWT using the `api` Clerk JWT template — the same template
+ * the dashboard uses (see ui/packages/app/app/backend/v1/.../route.ts
+ * `getToken({ template: "api" })`). Default session tokens omit
+ * publicMetadata, which means zombied responds 403 UZ-AUTH-001
+ * ("Tenant context required"). The api template embeds tenant_id + role.
+ */
+export async function mintSessionJwt(userId: string): Promise<string> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
   const token = await clerkRequest<ClerkSessionToken>(
     "POST",
-    `/sessions/${session.id}/tokens`,
+    `/sessions/${session.id}/tokens/api`,
     {},
   );
   return token.jwt;
 }
 
-export async function provisionFixture(spec: FixtureUserSpec): Promise<MintedFixture> {
+export interface ProvisionedUser {
+  key: FixtureUserSpec["key"];
+  email: string;
+  password: string;
+  clerkUserId: string;
+}
+
+/**
+ * Phase 1: ensure the Clerk user exists. Returns identity only — JWT mint is
+ * deferred until AFTER bootstrapTenant has updated publicMetadata, so the
+ * minted JWT carries tenant_id and role claims.
+ */
+export async function provisionUser(spec: FixtureUserSpec): Promise<ProvisionedUser> {
   const user = await ensureUser(spec);
-  const jwt = await mintSessionJwt(user.id);
-  return { key: spec.key, email: spec.email, clerkUserId: user.id, sessionJwt: jwt };
+  return { key: spec.key, email: spec.email, password: spec.password, clerkUserId: user.id };
+}
+
+/**
+ * Phase 3: mint the JWT after bootstrapTenant has updated publicMetadata.
+ * The order matters — the JWT snapshots publicMetadata at mint time; minting
+ * before bootstrap produces a JWT without tenant_id, which zombied rejects
+ * with UZ-AUTH-001 ("Tenant context required").
+ */
+export async function attachJwt(user: ProvisionedUser): Promise<MintedFixture> {
+  const jwt = await mintSessionJwt(user.clerkUserId);
+  return { ...user, sessionJwt: jwt };
 }
 
 export async function findUserIdByEmail(email: string): Promise<string | null> {
