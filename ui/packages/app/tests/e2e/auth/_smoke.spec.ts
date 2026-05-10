@@ -19,6 +19,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
+import { getDefaultWorkspaceId, listZombies, seedZombie } from "./fixtures/seed";
+import { cleanWorkspaceZombies } from "./fixtures/teardown";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
@@ -58,5 +60,23 @@ test.describe("auth e2e wire", () => {
     await page.goto("/");
     const body = page.locator("body");
     await expect(body).toContainText(/usezombie|Zombies|Dashboard/i);
+  });
+
+  test("seed + teardown roundtrip: create, list, delete all in fixture workspace", async () => {
+    const ws = await getDefaultWorkspaceId("regular");
+    await cleanWorkspaceZombies("regular", ws);
+
+    const seeded = await seedZombie("regular", ws, { name: "fixture-roundtrip" });
+    expect(seeded.id).toBeTruthy();
+
+    const after = await listZombies("regular", ws);
+    expect(after.length).toBeGreaterThanOrEqual(1);
+    expect(after.some((z) => z.id === seeded.id)).toBe(true);
+
+    const deleted = await cleanWorkspaceZombies("regular", ws);
+    expect(deleted).toBeGreaterThanOrEqual(1);
+
+    const post = await listZombies("regular", ws);
+    expect(post.length).toBe(0);
   });
 });
