@@ -9,16 +9,18 @@
  * stable, and the SDK pulls in node:crypto-heavy deps we don't need.
  */
 
+import { FixtureKey, JWT_TEMPLATE } from "./constants";
+
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
 export interface FixtureUserSpec {
-  key: "regular" | "admin";
+  key: FixtureKey;
   email: string;
   password: string;
 }
 
 export interface MintedFixture {
-  key: FixtureUserSpec["key"];
+  key: FixtureKey;
   email: string;
   password: string;
   clerkUserId: string;
@@ -96,7 +98,7 @@ export async function mintSessionJwt(userId: string): Promise<string> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
   const token = await clerkRequest<ClerkSessionToken>(
     "POST",
-    `/sessions/${session.id}/tokens/api?expires_in_seconds=3600`,
+    `/sessions/${session.id}/tokens/${JWT_TEMPLATE}?expires_in_seconds=3600`,
     {},
   );
   return token.jwt;
@@ -116,7 +118,7 @@ export async function mintSignInToken(userId: string): Promise<string> {
 }
 
 export interface ProvisionedUser {
-  key: FixtureUserSpec["key"];
+  key: FixtureKey;
   email: string;
   password: string;
   clerkUserId: string;

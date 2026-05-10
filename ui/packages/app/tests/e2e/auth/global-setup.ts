@@ -22,6 +22,7 @@ import {
   type MintedFixture,
 } from "./fixtures/clerk-admin";
 import { bootstrapTenant } from "./fixtures/bootstrap";
+import { FIXTURE_KEY } from "./fixtures/constants";
 
 const REQUIRED_ENV = [
   "NEXT_PUBLIC_API_URL",
@@ -31,12 +32,12 @@ const REQUIRED_ENV = [
 
 const FIXTURE_USERS: FixtureUserSpec[] = [
   {
-    key: "regular",
+    key: FIXTURE_KEY.regular,
     email: "regular-fixture@mailinator.com",
     password: "RegularFixture!2026-stable",
   },
   {
-    key: "admin",
+    key: FIXTURE_KEY.admin,
     email: "admin-fixture@mailinator.com",
     password: "AdminFixture!2026-stable",
   },
