@@ -50,15 +50,15 @@ export default function Pricing() {
               data-testid="pricing-design-partner-note"
               className="font-sans text-[13px] leading-[1.55] text-pulse m-0 max-w-[640px]"
             >
-              Early-access design partners run free — every charge waived while we calibrate the
-              model with you. Email{" "}
+              Stealth-mode testing — APIs and behavior change without long deprecation windows.
+              Want a hand calibrating a zombie or to join as a design partner? Email{" "}
               <a
-                href="mailto:hello@usezombie.com?subject=Design%20partner"
+                href="mailto:usezombie@agentmail.to?subject=Design%20partner"
                 className="underline hover:text-text"
               >
-                hello@usezombie.com
-              </a>{" "}
-              to enroll.
+                usezombie@agentmail.to
+              </a>
+              .
             </p>
           </div>
 
