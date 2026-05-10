@@ -11,7 +11,8 @@
  */
 import { clientFor } from "./api-client";
 import { listZombies } from "./seed";
-import type { FixtureKey } from "./auth";
+import { ZOMBIE_STATUS } from "./constants";
+import type { FixtureKey } from "./constants";
 
 /**
  * zombied enforces a state-machine transition before delete:
@@ -30,8 +31,10 @@ export async function cleanWorkspaceZombies(
   let removed = 0;
   for (const z of zombies) {
     try {
-      if (z.status !== "killed") {
-        await c.patch(`/v1/workspaces/${workspaceId}/zombies/${z.id}`, { status: "killed" });
+      if (z.status !== ZOMBIE_STATUS.killed) {
+        await c.patch(`/v1/workspaces/${workspaceId}/zombies/${z.id}`, {
+          status: ZOMBIE_STATUS.killed,
+        });
       }
       await c.delete(`/v1/workspaces/${workspaceId}/zombies/${z.id}`);
       removed++;

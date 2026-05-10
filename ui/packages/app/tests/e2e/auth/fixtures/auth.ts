@@ -16,9 +16,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import { clerk } from "@clerk/testing/playwright";
-import { mintSignInToken, type MintedFixture } from "./clerk-admin";
+import { mintSignInToken } from "./clerk-admin";
+import type { FixtureKey } from "./constants";
 
-export type FixtureKey = MintedFixture["key"];
+export type { FixtureKey } from "./constants";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 

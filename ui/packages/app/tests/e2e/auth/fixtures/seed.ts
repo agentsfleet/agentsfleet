@@ -9,7 +9,7 @@
  * workspace; no extra discriminator needed today.
  */
 import { clientFor } from "./api-client";
-import type { FixtureKey } from "./auth";
+import type { FixtureKey, ZombieStatus } from "./constants";
 
 export interface Workspace {
   id: string;
@@ -19,7 +19,7 @@ export interface Workspace {
 export interface Zombie {
   id: string;
   name: string;
-  status?: string;
+  status?: ZombieStatus;
 }
 
 interface ListResp<T> {

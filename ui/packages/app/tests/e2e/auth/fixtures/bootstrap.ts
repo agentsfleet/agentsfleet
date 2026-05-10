@@ -14,6 +14,7 @@
  */
 import { newMsgId, signSvix } from "./svix";
 import type { ProvisionedUser } from "./clerk-admin";
+import { FIXTURE_KEY } from "./constants";
 
 interface UserCreatedPayload {
   type: "user.created";
@@ -33,7 +34,7 @@ function buildPayload(fixture: ProvisionedUser): UserCreatedPayload {
       id: fixture.clerkUserId,
       email_addresses: [{ id: "idn_x", email_address: fixture.email }],
       primary_email_address_id: "idn_x",
-      first_name: fixture.key === "admin" ? "Admin" : "Regular",
+      first_name: fixture.key === FIXTURE_KEY.admin ? "Admin" : "Regular",
       last_name: "Fixture",
     },
   };

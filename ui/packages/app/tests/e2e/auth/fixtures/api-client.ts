@@ -7,7 +7,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { FixtureKey } from "./auth";
+import type { FixtureKey } from "./constants";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
