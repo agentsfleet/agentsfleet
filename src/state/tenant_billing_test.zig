@@ -12,28 +12,39 @@ const uc1 = @import("../db/test_fixtures_uc1.zig");
 
 const ALLOC = std.testing.allocator;
 
+// ── Rate constants pinned (regression) ─────────────────────────────────────
+// Mirror this with ui/packages/website/src/lib/rates.test.ts. Bumping a
+// rate fails both suites and forces a conscious cross-stack update.
+
+test "rates pinned: receive platform 1¢ / byok 0¢ · stage overhead 10¢ · starter grant 500¢" {
+    try std.testing.expectEqual(@as(i64, 1), tenant_billing.EVENT_PLATFORM_CENTS);
+    try std.testing.expectEqual(@as(i64, 0), tenant_billing.EVENT_BYOK_CENTS);
+    try std.testing.expectEqual(@as(i64, 10), tenant_billing.STAGE_CENTS);
+    try std.testing.expectEqual(@as(i64, 500), tenant_billing.STARTER_CREDIT_CENTS);
+}
+
 // ── Credit-pool cost functions ──────────────────────────────────────────────
 
 test "computeReceiveCharge: platform charges 1¢, byok charges 0¢" {
-    try std.testing.expectEqual(tenant_billing.RECEIVE_PLATFORM_CENTS, tenant_billing.computeReceiveCharge(.platform));
-    try std.testing.expectEqual(tenant_billing.RECEIVE_BYOK_CENTS, tenant_billing.computeReceiveCharge(.byok));
+    try std.testing.expectEqual(tenant_billing.EVENT_PLATFORM_CENTS, tenant_billing.computeReceiveCharge(.platform));
+    try std.testing.expectEqual(tenant_billing.EVENT_BYOK_CENTS, tenant_billing.computeReceiveCharge(.byok));
     try std.testing.expectEqual(@as(i64, 1), tenant_billing.computeReceiveCharge(.platform));
     try std.testing.expectEqual(@as(i64, 0), tenant_billing.computeReceiveCharge(.byok));
 }
 
 test "computeStageCharge: byok returns flat overhead independent of tokens or model" {
     try std.testing.expectEqual(
-        tenant_billing.STAGE_OVERHEAD_BYOK_CENTS,
+        tenant_billing.STAGE_CENTS,
         tenant_billing.computeStageCharge(.byok, "any-model", 0, 0),
     );
     try std.testing.expectEqual(
-        tenant_billing.STAGE_OVERHEAD_BYOK_CENTS,
+        tenant_billing.STAGE_CENTS,
         tenant_billing.computeStageCharge(.byok, "claude-opus-4-7", 1_000_000, 1_000_000),
     );
     // BYOK does not consult the rate cache, so a model not in the catalogue
     // must NOT panic — only platform mode requires a cached rate.
     try std.testing.expectEqual(
-        @as(i64, 1),
+        @as(i64, 10),
         tenant_billing.computeStageCharge(.byok, "model-not-in-catalogue", 100, 100),
     );
 }
@@ -50,26 +61,14 @@ test "computeStageCharge: platform charges overhead + token math from cache" {
     // Sonnet rates: input 300/Mtok, output 1500/Mtok (per schema/019 seed).
     // 800 input → 800*300/1_000_000 = 0¢ (truncated)
     // 1000 output → 1000*1500/1_000_000 = 1¢ (truncated)
-    // Plus STAGE_OVERHEAD_PLATFORM_CENTS = 1¢
+    // Plus STAGE_CENTS = 10¢
     const cents = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", 800, 1000);
-    try std.testing.expectEqual(@as(i64, 1 + 0 + 1), cents);
+    try std.testing.expectEqual(@as(i64, 10 + 0 + 1), cents);
 
     // Larger token counts: 1_000_000 input @ 300/Mtok = 300¢
     //                      1_000_000 output @ 1500/Mtok = 1500¢
     const big = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", 1_000_000, 1_000_000);
-    try std.testing.expectEqual(@as(i64, 1 + 300 + 1500), big);
-}
-
-test "PlanTier parse: case-insensitive; unknown defaults to free" {
-    try std.testing.expectEqual(tenant_billing.PlanTier.scale, tenant_billing.PlanTier.parse("scale"));
-    try std.testing.expectEqual(tenant_billing.PlanTier.scale, tenant_billing.PlanTier.parse("SCALE"));
-    try std.testing.expectEqual(tenant_billing.PlanTier.free, tenant_billing.PlanTier.parse("free"));
-    try std.testing.expectEqual(tenant_billing.PlanTier.free, tenant_billing.PlanTier.parse("bogus"));
-}
-
-test "PlanTier.label round-trips" {
-    try std.testing.expectEqualStrings("free", tenant_billing.PlanTier.free.label());
-    try std.testing.expectEqualStrings("scale", tenant_billing.PlanTier.scale.label());
+    try std.testing.expectEqual(@as(i64, 10 + 300 + 1500), big);
 }
 
 test "provision inserts one row and replay is a no-op" {
@@ -85,11 +84,7 @@ test "provision inserts one row and replay is a no-op" {
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqualStrings("free", row.plan_tier);
-    try std.testing.expectEqualStrings("free_default", row.plan_sku);
     try std.testing.expectEqual(@as(i64, 500), row.balance_cents);
     try std.testing.expectEqualStrings("bootstrap_starter_grant", row.grant_source);
 }
@@ -111,8 +106,6 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
     try std.testing.expectError(error.CreditExhausted, tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 10_000));
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 495), row.balance_cents);
 }
@@ -159,8 +152,6 @@ test "clearExhausted + debit together: replenishment path resets the stop gate" 
     // one-way door" follow-up when admin credit lands without a matching
     // debit.
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expect(row.exhausted_at_ms == null);
 }
@@ -182,8 +173,6 @@ test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
     try std.testing.expectEqual(@as(i64, 495), after.balance_cents);
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expect(row.exhausted_at_ms == null);
 }
@@ -201,8 +190,6 @@ test "markExhausted: first call transitions, second call is a no-op" {
     // Fresh row: exhausted_at is NULL.
     {
         const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.plan_tier));
-        defer ALLOC.free(@constCast(row.plan_sku));
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expect(row.exhausted_at_ms == null);
     }
@@ -211,8 +198,6 @@ test "markExhausted: first call transitions, second call is a no-op" {
     try std.testing.expect(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID));
     const first_ts = blk: {
         const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.plan_tier));
-        defer ALLOC.free(@constCast(row.plan_sku));
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expect(row.exhausted_at_ms != null);
         break :blk row.exhausted_at_ms.?;
@@ -222,8 +207,6 @@ test "markExhausted: first call transitions, second call is a no-op" {
     try std.testing.expect(!(try tenant_billing.markExhausted(db_ctx.conn, uc1.TENANT_ID)));
     {
         const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(row.plan_tier));
-        defer ALLOC.free(@constCast(row.plan_sku));
         defer ALLOC.free(@constCast(row.grant_source));
         try std.testing.expectEqual(first_ts, row.exhausted_at_ms.?);
     }

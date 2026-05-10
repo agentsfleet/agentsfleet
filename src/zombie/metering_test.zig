@@ -63,7 +63,7 @@ test "balanceCoversEstimate: returns true under non-stop policies regardless of 
 
     // Provision at 0¢ — balance is empty, but non-stop policies must let
     // the event through.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, "free", "free.v1", 0, "test_continue");
+    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_continue");
 
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
@@ -83,9 +83,9 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
     try uc1.seed(db_ctx.conn, WS_GATE_BLOCK);
     defer uc1.teardown(db_ctx.conn, WS_GATE_BLOCK);
 
-    // BYOK: receive=0¢, stage=1¢ overhead (no token math under BYOK).
-    // est_total = 1¢. Balance = 0¢ < 1¢ → blocked.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, "free", "free.v1", 0, "test_block");
+    // BYOK: receive=0¢, stage=10¢ overhead (no token math under BYOK).
+    // est_total = 10¢. Balance = 0¢ < 10¢ → blocked.
+    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_block");
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
@@ -138,14 +138,12 @@ test "debitReceive BYOK: 0¢ charge writes telemetry row, balance unchanged" {
         .stop,
     );
     switch (result) {
-        .deducted => |c| try std.testing.expectEqual(tenant_billing.RECEIVE_BYOK_CENTS, c),
+        .deducted => |c| try std.testing.expectEqual(tenant_billing.EVENT_BYOK_CENTS, c),
         else => return error.TestExpectedEqual,
     }
 
     // Balance unchanged (BYOK receive = 0¢).
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 500), row.balance_cents);
 
@@ -181,15 +179,17 @@ test "debitStage BYOK: 1¢ flat overhead drains balance and writes stage telemet
         .stop,
     );
     switch (result) {
-        .deducted => |c| try std.testing.expectEqual(tenant_billing.STAGE_OVERHEAD_BYOK_CENTS, c),
+        .deducted => |c| try std.testing.expectEqual(tenant_billing.STAGE_CENTS, c),
         else => return error.TestExpectedEqual,
     }
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 499), row.balance_cents); // 500 - 1¢ stage overhead
+    // 500 starter cents - STAGE_CENTS (10¢ stage platform fee).
+    try std.testing.expectEqual(
+        @as(i64, 500) - tenant_billing.STAGE_CENTS,
+        row.balance_cents,
+    );
 
     var q = PgQuery.from(try db_ctx.conn.query(
         \\SELECT charge_type, token_count_input, token_count_output, wall_ms
@@ -212,8 +212,8 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
     defer uc1.teardown(db_ctx.conn, WS_RECEIVE_EXHAUST);
     defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_EXHAUST}) catch {};
 
-    // Provision at 0¢ — stage debit (1¢ overhead) must exhaust.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, "free", "free.v1", 0, "test_exhaust");
+    // Provision at 0¢ — stage debit (10¢ overhead) must exhaust.
+    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_exhaust");
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a03";
     const result = metering.debitStage(
@@ -230,8 +230,6 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
 
     // Balance unchanged at 0¢.
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.plan_tier));
-    defer ALLOC.free(@constCast(row.plan_sku));
     defer ALLOC.free(@constCast(row.grant_source));
     try std.testing.expectEqual(@as(i64, 0), row.balance_cents);
     // exhausted_at must be stamped on the first failed debit so the stop
@@ -285,7 +283,7 @@ test "recordStageActuals: updates stage row tokens and wall_ms, leaves cents unt
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;
     // credit_deducted_cents: pre-execution estimate is the charge of record.
-    try std.testing.expectEqual(tenant_billing.STAGE_OVERHEAD_BYOK_CENTS, try r.get(i64, 0));
+    try std.testing.expectEqual(tenant_billing.STAGE_CENTS, try r.get(i64, 0));
     try std.testing.expectEqual(@as(?i64, 100), try r.get(?i64, 1));
     try std.testing.expectEqual(@as(?i64, 540), try r.get(?i64, 2));
     try std.testing.expectEqual(@as(?i64, 12_500), try r.get(?i64, 3));

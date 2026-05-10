@@ -12,8 +12,7 @@ describe("getTenantBilling", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        plan_tier: "free", plan_sku: "starter", balance_cents: 471,
-        updated_at: 1, is_exhausted: false, exhausted_at: null,
+        balance_cents: 471, updated_at: 1, is_exhausted: false, exhausted_at: null,
       }),
     });
     const { getTenantBilling } = await import("./tenant_billing");

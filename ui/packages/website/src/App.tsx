@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Link, NavLink, Route, Routes, ScrollRestoration } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, ScrollRestoration } from "react-router-dom";
 import { Button, WakePulse } from "@usezombie/design-system";
 import Home from "./pages/Home";
 import Footer from "./components/Footer";
@@ -8,7 +8,6 @@ import { trackNavigationClicked, trackSignupStarted } from "./analytics/posthog"
 
 /* Secondary routes ship as their own chunks so the landing (/) first-load
  * stays lean. Vite code-splits each React.lazy import by default. */
-const Pricing = lazy(() => import("./pages/Pricing"));
 const Agents = lazy(() => import("./pages/Agents"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
@@ -45,9 +44,9 @@ export default function App() {
             <NavLink to="/agents" className={NAV_LINK_CLASS}>
               agents
             </NavLink>
-            <NavLink to="/pricing" className={NAV_LINK_CLASS}>
+            <a href="/#pricing" className={NAV_LINK_CLASS}>
               pricing
-            </NavLink>
+            </a>
             <a
               href={DOCS_URL}
               target="_blank"
@@ -78,7 +77,10 @@ export default function App() {
         <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<Home />} />
-            <Route path="/pricing" element={<Pricing />} />
+            {/* /pricing was deleted in favor of the inline /#pricing section.
+             * Preserve the old URL for external links + indexed pages with a
+             * client-side redirect to the anchor. */}
+            <Route path="/pricing" element={<Navigate to="/#pricing" replace />} />
             <Route path="/agents" element={<Agents />} />
             <Route path="/privacy" element={<Privacy />} />
             <Route path="/terms" element={<Terms />} />

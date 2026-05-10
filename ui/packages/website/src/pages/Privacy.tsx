@@ -1,4 +1,4 @@
-import { List, ListItem } from "@usezombie/design-system";
+import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
 
 /*
  * Privacy — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
@@ -10,12 +10,8 @@ export default function Privacy() {
       data-testid="privacy-page"
       className="wrap site-section flex flex-col gap-6 max-w-[68ch] font-sans text-[15px] leading-[1.7] text-text"
     >
-      <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-text-muted m-0">
-        legal
-      </p>
-      <h1 className="font-mono text-[clamp(36px,5vw,52px)] leading-[1.05] tracking-[-0.025em] font-medium text-text m-0">
-        Privacy Policy
-      </h1>
+      <SectionLabel className="mb-0">legal</SectionLabel>
+      <DisplayXL className="text-[clamp(36px,5vw,52px)]">Privacy Policy</DisplayXL>
       <p className="font-mono text-[12px] text-text-muted m-0">Last updated: May 5, 2026</p>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">1. Information we collect</h2>
@@ -23,7 +19,7 @@ export default function Privacy() {
       <List className="pl-6 text-text-muted m-0">
         <ListItem><strong className="text-text font-medium">Account information</strong> — email address and authentication credentials managed by our identity provider (Clerk).</ListItem>
         <ListItem><strong className="text-text font-medium">Workspace metadata</strong> — repository URLs, workspace configuration, run history, and transition logs.</ListItem>
-        <ListItem><strong className="text-text font-medium">Usage telemetry</strong> — agent compute time, API call counts, and error rates for billing and reliability.</ListItem>
+        <ListItem><strong className="text-text font-medium">Usage telemetry</strong> — event receipts, stage executions, API call counts, and error rates for credit-pool metering and reliability.</ListItem>
       </List>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">2. Information we do not collect</h2>
@@ -36,7 +32,7 @@ export default function Privacy() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">3. How we use your information</h2>
       <List className="pl-6 text-text-muted m-0">
         <ListItem>Authenticate and authorize access to your workspaces.</ListItem>
-        <ListItem>Calculate billing based on agent compute time (wall-clock seconds).</ListItem>
+        <ListItem>Meter hosted execution against your credit pool: one debit on event receipt, one debit per stage execution.</ListItem>
         <ListItem>Monitor service health and investigate operational issues.</ListItem>
         <ListItem>Send transactional notifications (run completions, failures, billing).</ListItem>
       </List>

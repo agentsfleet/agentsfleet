@@ -80,6 +80,19 @@ describe("posthog init contract", () => {
     expect(captured).toHaveLength(0);
   });
 
+  it("falls back to import.meta.env when no global config is present", async () => {
+    // Exercises the `globalCfg?.X ?? import.meta.env.VITE_POSTHOG_X` fallback
+    // chain on every field — without this, the env-fallback branches in
+    // readRuntimeConfig stay uncovered. In jsdom there's no env key set, so
+    // the fall-through resolves to enabled=false and init is skipped, which
+    // is the correct production behavior when neither source is configured.
+    delete (globalThis as { __UZ_ANALYTICS_CONFIG__?: unknown }).__UZ_ANALYTICS_CONFIG__;
+    const mod = await import("./posthog");
+    mod.initAnalytics();
+    await mod.flushAnalyticsForTests();
+    expect(captured).toHaveLength(0);
+  });
+
   it("does not initialize when explicitly disabled despite a valid key", async () => {
     // Closes the failure-path: a privacy-conscious caller setting
     // window.__UZ_ANALYTICS_CONFIG__ = { enabled: false, ... } must keep

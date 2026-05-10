@@ -1,10 +1,8 @@
--- Tenant-scoped billing: one row per tenant carries plan + free-credit balance.
--- Replaces per-workspace billing_state + free_credit (pre-v2.0 teardown).
+-- Tenant-scoped billing: one row per tenant carries the credit-pool balance.
+-- Single-rate metering ($0.01 event receipt + $0.10 stage); no plan tiers.
 
 CREATE TABLE IF NOT EXISTS billing.tenant_billing (
     tenant_id             UUID PRIMARY KEY REFERENCES core.tenants(tenant_id) ON DELETE CASCADE,
-    plan_tier             TEXT   NOT NULL,
-    plan_sku              TEXT   NOT NULL,
     balance_cents         BIGINT NOT NULL CHECK (balance_cents >= 0),
     grant_source          TEXT   NOT NULL,
     balance_exhausted_at  BIGINT NULL,
@@ -12,8 +10,8 @@ CREATE TABLE IF NOT EXISTS billing.tenant_billing (
     updated_at            BIGINT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_tenant_billing_plan
-    ON billing.tenant_billing (plan_tier, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_tenant_billing_updated
+    ON billing.tenant_billing (updated_at DESC);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON billing.tenant_billing TO api_runtime;
 GRANT SELECT, UPDATE                 ON billing.tenant_billing TO worker_runtime;

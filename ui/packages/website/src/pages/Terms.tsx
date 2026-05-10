@@ -1,4 +1,5 @@
-import { List, ListItem } from "@usezombie/design-system";
+import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
+import { RATES_DISPLAY } from "../lib/rates";
 
 /*
  * Terms — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
@@ -10,12 +11,8 @@ export default function Terms() {
       data-testid="terms-page"
       className="wrap site-section flex flex-col gap-6 max-w-[68ch] font-sans text-[15px] leading-[1.7] text-text"
     >
-      <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-text-muted m-0">
-        legal
-      </p>
-      <h1 className="font-mono text-[clamp(36px,5vw,52px)] leading-[1.05] tracking-[-0.025em] font-medium text-text m-0">
-        Terms of Service
-      </h1>
+      <SectionLabel className="mb-0">legal</SectionLabel>
+      <DisplayXL className="text-[clamp(36px,5vw,52px)]">Terms of Service</DisplayXL>
       <p className="font-mono text-[12px] text-text-muted m-0">Last updated: May 4, 2026</p>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">1. Acceptance</h2>
@@ -41,10 +38,10 @@ export default function Terms() {
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">4. Billing</h2>
       <List className="pl-6 text-text-muted m-0">
-        <ListItem>usezombie charges for agent compute time (per second of wall-clock time).</ListItem>
-        <ListItem>A one-time workspace activation fee of $5 applies to each new workspace.</ListItem>
+        <ListItem>usezombie charges {RATES_DISPLAY.eventPlatform} per event receipt and {RATES_DISPLAY.stage} per stage execution. Each new account receives a {RATES_DISPLAY.starterCredit} starter credit that never expires.</ListItem>
+        <ListItem>Hosted execution is metered against a credit pool. Debits fire on event receipt and on each stage execution.</ListItem>
         <ListItem>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</ListItem>
-        <ListItem>Billing cycles are monthly. Invoices are issued at the start of each billing period.</ListItem>
+        <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via Mission Control.</ListItem>
       </List>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">5. Intellectual property</h2>

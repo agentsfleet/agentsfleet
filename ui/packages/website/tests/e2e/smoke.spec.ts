@@ -12,11 +12,11 @@ test.describe("Smoke", () => {
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 
-  test("pricing page loads", async ({ page }) => {
-    await page.goto("/pricing");
-    await expect(page).toHaveURL(/\/pricing$/);
-    await expect(page.getByTestId("pricing-page")).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  test("pricing section renders inline on home", async ({ page }) => {
+    await page.goto("/#pricing");
+    await expect(page.getByTestId("pricing-block")).toBeVisible();
+    await expect(page.getByTestId("pricing-rate-event")).toHaveText("$0.01");
+    await expect(page.getByTestId("pricing-rate-stage")).toHaveText("$0.10");
   });
 
   test("agents page loads", async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe("Smoke", () => {
   });
 
   test("footer renders on all routes", async ({ page }) => {
-    for (const route of ["/", "/pricing", "/agents", "/privacy", "/terms"]) {
+    for (const route of ["/", "/agents", "/privacy", "/terms"]) {
       await page.goto(route);
       await page.waitForLoadState("domcontentloaded");
       await expect(page.getByRole("contentinfo")).toBeVisible({ timeout: 10_000 });

@@ -1,9 +1,12 @@
 import type { ReactNode } from "react";
+import { RATES_DISPLAY } from "../lib/rates";
 import {
   Accordion,
   AccordionItem,
   AccordionTrigger,
   AccordionContent,
+  DisplayLG,
+  SectionLabel,
 } from "@usezombie/design-system";
 
 const items: { q: string; a: ReactNode }[] = [
@@ -17,7 +20,15 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: "Hosted execution. Runs are metered against a credit pool with a $5 starter grant that never expires; the two debit points are event receipt and per-stage execution. Inference cost is yours via BYOK.",
+    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points per event: ${RATES_DISPLAY.eventPlatform} on receipt (after the balance gate passes), then ${RATES_DISPLAY.stage} before each stage the agent runs — every wake-up and every reasoning step is line-itemed. A typical 3-stage incident is ${RATES_DISPLAY.eventPlatform} + 3 × ${RATES_DISPLAY.stage} = $0.31. Inference cost is yours via BYOK; usezombie marks up zero.`,
+  },
+  {
+    q: "Does platform-managed inference cost more per stage?",
+    a: `Same headline rate today. Platform-managed stage cost is structured as ${RATES_DISPLAY.stage} overhead plus a token component, but the pre-execution charge uses a 100/100-token floor estimate that rounds to 0¢ against every current model rate — so both postures bill ${RATES_DISPLAY.stage} per stage in practice. Token-level reconciliation (heavy stages truing up against actual usage) lands when Stripe wires in. Until then: BYOK pays ${RATES_DISPLAY.stage} flat per stage and your provider bills the inference; platform-managed pays ${RATES_DISPLAY.stage} flat per stage and we bill the inference at provider rates with zero markup.`,
+  },
+  {
+    q: "What does 'extras provisioned per workspace' mean?",
+    a: "Operational features — multi-workspace, approval gating, workspace-scoped credentials and webhooks, higher concurrency, longer per-stage windows, priority support — turn on per workspace as you scale, not as paywalled tier upgrades. Need bigger caps? Ask; we lift them.",
   },
   {
     q: "Can I self-host?",
@@ -59,12 +70,8 @@ export default function FAQ() {
     <section className="site-section" data-testid="faq">
       <div className="wrap flex flex-col gap-8 max-w-[720px]">
         <div className="flex flex-col gap-3">
-          <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-text-muted m-0">
-            FAQ
-          </p>
-          <h2 className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.15] tracking-[-0.02em] text-text font-medium m-0">
-            Common questions
-          </h2>
+          <SectionLabel className="mb-0">FAQ</SectionLabel>
+          <DisplayLG>Common questions</DisplayLG>
         </div>
         <Accordion type="single" collapsible>
           {items.map((item, i) => (

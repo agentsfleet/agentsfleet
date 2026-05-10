@@ -42,13 +42,9 @@ pub fn innerGetTenantBilling(hx: Hx, req: *httpz.Request) void {
         hx.fail(ec.ERR_INTERNAL_OPERATION_FAILED, "Tenant billing row missing — bootstrap invariant violated");
         return;
     };
-    defer hx.alloc.free(@constCast(billing.plan_tier));
-    defer hx.alloc.free(@constCast(billing.plan_sku));
     defer hx.alloc.free(@constCast(billing.grant_source));
 
     hx.ok(.ok, .{
-        .plan_tier = billing.plan_tier,
-        .plan_sku = billing.plan_sku,
         .balance_cents = billing.balance_cents,
         .updated_at = billing.updated_at_ms,
         .is_exhausted = billing.exhausted_at_ms != null,
