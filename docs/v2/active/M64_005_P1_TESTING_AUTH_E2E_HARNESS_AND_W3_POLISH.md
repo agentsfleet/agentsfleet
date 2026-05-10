@@ -132,7 +132,7 @@ N/A — spec authoring complete; the implementing agent reads sections below as 
 
 The spine of every authenticated spec. `tests/e2e/fixtures/auth.ts` exports a `signInAs(page, fixtureUserKey)` helper that mounts the session JWT before the page navigates. No interactive sign-in except in `signup.spec.ts`.
 
-**Invariant:** the harness refuses to run if `process.env.NEXT_PUBLIC_API_URL` does not match the `api-dev` allow-list (`https://api-dev.usezombie.com` exact match). Violation → throw at `globalSetup`. This is the safety belt that keeps fixture rows out of staging/prod.
+**Invariant:** environment selection is the workflow's responsibility, not the test code's. The harness fails fast at `globalSetup` if any of `NEXT_PUBLIC_API_URL`, `CLERK_SECRET_KEY`, or `CLERK_WEBHOOK_SECRET` is missing, with a copy-paste op-read recipe in the error body. The auth e2e suite is invoked only by `deploy-dev.yml` (and, in future, any other workflow that explicitly opts in by setting these env vars); existing project workflows already scope target URLs per environment (`deploy-dev.yml` only references `api-dev`; `release.yml` gates prod URLs behind dev-stage success). No runtime allow-list — relying on workflow + Vercel env scoping for the fixture-write/prod boundary.
 
 ### Workstream B — fixture user pool (`api-dev` only)
 
