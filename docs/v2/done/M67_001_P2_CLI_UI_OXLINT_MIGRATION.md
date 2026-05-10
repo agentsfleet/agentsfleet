@@ -67,6 +67,7 @@
 | `zombiectl/package.json` | EDIT | Lint scripts and dev dependencies switch to Oxlint. |
 | `zombiectl/bun.lock` | EDIT | Package manager lockfile reflects dependency migration. |
 | `zombiectl/src/commands/core.js` | EDIT | Stale ESLint suppression becomes a normal code comment after the tool migration. |
+| `zombiectl/test/banner.unit.test.js` | EDIT | Color-mode assertions pin terminal capability so pre-push verification is deterministic. |
 | `ui/packages/app/.oxlintrc.json` | CREATE | Oxlint config for the dashboard app. |
 | `ui/packages/app/eslint.config.js` | DELETE | ESLint config removed after replacement. |
 | `ui/packages/app/package.json` | EDIT | Lint script and dev dependencies switch to Oxlint. |
@@ -170,4 +171,4 @@ No HTTP API, schema, `zombiectl` user command, or runtime interface changes.
 - May 10, 2026: GitHub Actions lint jobs already delegate to `make lint-website` and `make lint-apps`; no workflow edit is needed because the Make targets now run package scripts backed by Oxlint.
 - May 10, 2026: `make lint`, `make lint-apps`, `make lint-website`, and `make lint-ci` pass with Oxlint-backed package lint commands.
 - May 10, 2026: CI-shaped frozen installs pass for `ui/packages/website`, `ui/packages/app`, and `zombiectl`.
-- May 10, 2026: `make test` reaches `test-unit-zombiectl` and fails two banner glyph assertions unrelated to this tooling migration: `printPreReleaseWarning` missing `⚠` and `printVersion` missing `●` in color-mode output.
+- May 10, 2026: `make test` initially reached `test-unit-zombiectl` and failed two banner glyph assertions because the color-mode tests inherited the shell color environment; the tests now pin terminal capability for those assertions.
