@@ -47,19 +47,22 @@ test.describe("auth e2e wire", () => {
     expect(cache.admin?.sessionJwt?.length ?? 0).toBeGreaterThan(20);
   });
 
-  test("signInAs('regular') mounts a session cookie Clerk accepts", async ({ page }) => {
-    await page.goto("/sign-in");
+  test("signInAs('regular') produces an accepted Clerk session", async ({ page }) => {
     await signInAs(page, "regular");
-    await page.goto("/");
-    expect(page.url()).not.toContain("/sign-in");
+    await page.goto("/zombies");
+    await expect(page).toHaveURL(/\/zombies(\?|$)/);
   });
 
-  test("post-bootstrap dashboard renders authenticated content", async ({ page }) => {
-    await page.goto("/sign-in");
+  test("post-bootstrap dashboard renders authenticated content for fixture user", async ({
+    page,
+  }) => {
     await signInAs(page, "regular");
-    await page.goto("/");
-    const body = page.locator("body");
-    await expect(body).toContainText(/usezombie|Zombies|Dashboard/i);
+    await page.goto("/zombies");
+    // /zombies is a protected route — it redirects to /sign-in when unauthenticated.
+    // Reaching it (URL stays) AND seeing the Zombies heading proves the dashboard
+    // rendered as the signed-in fixture user, not the marketing/sign-in page.
+    await expect(page).toHaveURL(/\/zombies(\?|$)/);
+    await expect(page.getByRole("heading", { name: /zombies/i }).first()).toBeVisible();
   });
 
   test("seed + teardown roundtrip: create, list, delete all in fixture workspace", async () => {

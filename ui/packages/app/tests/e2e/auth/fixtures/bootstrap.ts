@@ -13,7 +13,7 @@
  * created:false.
  */
 import { newMsgId, signSvix } from "./svix";
-import type { MintedFixture } from "./clerk-admin";
+import type { ProvisionedUser } from "./clerk-admin";
 
 interface UserCreatedPayload {
   type: "user.created";
@@ -26,7 +26,7 @@ interface UserCreatedPayload {
   };
 }
 
-function buildPayload(fixture: MintedFixture): UserCreatedPayload {
+function buildPayload(fixture: ProvisionedUser): UserCreatedPayload {
   return {
     type: "user.created",
     data: {
@@ -39,7 +39,13 @@ function buildPayload(fixture: MintedFixture): UserCreatedPayload {
   };
 }
 
-export async function bootstrapTenant(fixture: MintedFixture): Promise<void> {
+interface BootstrapResponse {
+  created: boolean;
+  tenant_id: string;
+  workspace_name?: string;
+}
+
+export async function bootstrapTenant(fixture: ProvisionedUser): Promise<BootstrapResponse> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL;
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   if (!apiUrl || !secret) {
@@ -61,4 +67,5 @@ export async function bootstrapTenant(fixture: MintedFixture): Promise<void> {
       `Tenant bootstrap failed for ${fixture.email}: ${res.status} ${res.statusText}\n${detail}`,
     );
   }
+  return (await res.json()) as BootstrapResponse;
 }
