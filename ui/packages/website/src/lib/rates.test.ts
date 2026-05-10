@@ -1,119 +1,89 @@
 import { describe, expect, it } from "vitest";
-import { RATES_CENTS, RATES_DISPLAY, WORKED_EXAMPLE } from "./rates";
+import {
+  EVENT_NANOS,
+  NANOS_PER_USD,
+  RATES_DISPLAY,
+  STAGE_PLATFORM_NANOS,
+  STAGE_SELF_MANAGED_NANOS,
+  STARTER_CREDIT_NANOS,
+} from "./rates";
 
 /*
- * Invariant suite — catches display ↔ cents drift across every surface
- * that hand-types the rate ($/¢): marketing site, OpenAPI description,
- * schema header comments, e2e selectors, internal docs.
+ * Pin tests — catch drift across the three surfaces that hand-type
+ * usezombie rates: src/state/tenant_billing.zig (server authority),
+ * this file (marketing mirror), ~/Projects/docs/snippets/rates.mdx
+ * (Mintlify display snippet). Identifier names are identical across
+ * Zig/TS/JS per the cross-tier parity rule, so a rename in any tier
+ * surfaces here as a compile error rather than silent drift.
  *
- * Bug class this catches: a contributor edits one of those four surfaces
- * (or this file) without updating the matching constant. The previous
- * "$0.001 per event receipt" typo passed unit tests in isolation because
- * Pricing.tsx and the smoke selector both rendered the *same* (wrong)
- * RATES_DISPLAY string — only this invariant binds the displayed string
- * to the underlying integer cents and to the shipped worked-example math.
+ * Bug class: a contributor edits one tier without updating the other
+ * two. The Zig sibling test ("rates pinned" in tenant_billing_test.zig)
+ * locks the server-side numbers; this file locks the TS-side numbers
+ * and the display strings against them.
  */
 
-function formatCents(cents: number): string {
-  if (cents === 0) return "$0";
-  if (cents % 100 === 0) return `$${cents / 100}`;
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
 describe("rates pinned (regression — mirror src/state/tenant_billing_test.zig)", () => {
-  // Bumping a rate fails both this test and the Zig sibling test
-  // ("rates pinned" in tenant_billing_test.zig). Cross-stack update is the
-  // intent: the Zig server is the authority, this file is the marketing
-  // mirror, and a divergence between them mis-bills users vs. what the
-  // site quotes. No silent drift.
-  it("eventPlatform = 1¢, eventSelfManaged = 0¢, stage = 10¢, starterCredit = 500¢", () => {
-    expect(RATES_CENTS.eventPlatform).toBe(1);
-    expect(RATES_CENTS.eventSelfManaged).toBe(0);
-    expect(RATES_CENTS.stage).toBe(10);
-    expect(RATES_CENTS.starterCredit).toBe(500);
+  // Bumping a rate fails this test AND the Zig sibling AND requires a
+  // paired ~/Projects/docs/snippets/rates.mdx PR. The literal IS the
+  // contract here — divergence between tiers mis-bills users vs. what
+  // the site quotes.
+  it("STARTER_CREDIT_NANOS = 5_000_000_000 ($5)", () => {
+    // pin test: literal is the contract
+    expect(STARTER_CREDIT_NANOS).toBe(5_000_000_000n);
+  });
+
+  it("EVENT_NANOS = 0 (free, both postures)", () => {
+    // pin test: literal is the contract
+    expect(EVENT_NANOS).toBe(0n);
+  });
+
+  it("STAGE_PLATFORM_NANOS = 1_000_000 ($0.001)", () => {
+    // pin test: literal is the contract
+    expect(STAGE_PLATFORM_NANOS).toBe(1_000_000n);
+  });
+
+  it("STAGE_SELF_MANAGED_NANOS = 100_000 ($0.0001)", () => {
+    // pin test: literal is the contract
+    expect(STAGE_SELF_MANAGED_NANOS).toBe(100_000n);
+  });
+
+  it("NANOS_PER_USD = 1_000_000_000 (canonical billing unit)", () => {
+    // pin test: literal is the contract
+    expect(NANOS_PER_USD).toBe(1_000_000_000n);
   });
 });
 
-describe("RATES_DISPLAY mirrors RATES_CENTS", () => {
-  it("should render RATES_CENTS.eventPlatform as RATES_DISPLAY.eventPlatform", () => {
-    expect(RATES_DISPLAY.eventPlatform).toBe(formatCents(RATES_CENTS.eventPlatform));
+describe("rate ladder invariants", () => {
+  it("starter credit covers thousands of stages on either posture", () => {
+    expect(STARTER_CREDIT_NANOS / STAGE_PLATFORM_NANOS).toBeGreaterThanOrEqual(1_000n);
+    expect(STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_NANOS).toBeGreaterThanOrEqual(1_000n);
   });
 
-  it("should render RATES_CENTS.eventSelfManaged as RATES_DISPLAY.eventSelfManaged", () => {
-    expect(RATES_DISPLAY.eventSelfManaged).toBe(formatCents(RATES_CENTS.eventSelfManaged));
+  it("self-managed stage is 10× cheaper than platform stage (the gradient is the marketing message)", () => {
+    expect(STAGE_PLATFORM_NANOS).toBe(STAGE_SELF_MANAGED_NANOS * 10n);
   });
 
-  it("should render RATES_CENTS.stage as RATES_DISPLAY.stage", () => {
-    expect(RATES_DISPLAY.stage).toBe(formatCents(RATES_CENTS.stage));
-  });
-
-  it("should render RATES_CENTS.starterCredit as RATES_DISPLAY.starterCredit", () => {
-    expect(RATES_DISPLAY.starterCredit).toBe(formatCents(RATES_CENTS.starterCredit));
-  });
-});
-
-describe("RATES_CENTS boundary invariants", () => {
-  it("should expose every rate as a non-negative integer number of cents", () => {
-    for (const [key, value] of Object.entries(RATES_CENTS)) {
-      expect.soft(Number.isInteger(value), `${key} not integer: ${value}`).toBe(true);
-      expect.soft(value, `${key} negative: ${value}`).toBeGreaterThanOrEqual(0);
-      expect.soft(Number.isFinite(value), `${key} not finite: ${value}`).toBe(true);
-    }
-  });
-
-  it("should keep stage strictly more expensive than the platform event rate (rate ladder invariant)", () => {
-    expect(RATES_CENTS.stage).toBeGreaterThan(RATES_CENTS.eventPlatform);
-  });
-
-  it("should price self-managed no higher than platform at receive (self-managed saves money invariant)", () => {
-    expect(RATES_CENTS.eventSelfManaged).toBeLessThanOrEqual(RATES_CENTS.eventPlatform);
-  });
-
-  it("should grant a starter credit large enough to cover at least one platform event+stage cycle", () => {
-    expect(RATES_CENTS.starterCredit).toBeGreaterThanOrEqual(
-      RATES_CENTS.eventPlatform + RATES_CENTS.stage,
-    );
+  it("event is free; platform stage is the cheapest non-zero charge surface", () => {
+    expect(EVENT_NANOS).toBe(0n);
+    expect(STAGE_PLATFORM_NANOS).toBeGreaterThan(EVENT_NANOS);
+    expect(STAGE_SELF_MANAGED_NANOS).toBeGreaterThan(EVENT_NANOS);
   });
 });
 
-function parseDollarString(str: string): number {
-  const match = str.match(/^\$(\d+(?:\.\d{1,2})?)$/);
-  if (!match) throw new Error(`unparseable dollar string: ${str}`);
-  return Math.round(parseFloat(match[1]) * 100);
-}
-
-describe("WORKED_EXAMPLE matches the displayed math (platform rate, the conservative number)", () => {
-  it("should report total = events × eventPlatform + events × stagesPerEvent × stage", () => {
-    const expectedCents =
-      WORKED_EXAMPLE.events * RATES_CENTS.eventPlatform +
-      WORKED_EXAMPLE.events * WORKED_EXAMPLE.stagesPerEvent * RATES_CENTS.stage;
-    // Compare numeric value, not format — RATES_DISPLAY ships `$5` while
-    // WORKED_EXAMPLE.total ships `$31.00`, both valid presentation choices.
-    expect(parseDollarString(WORKED_EXAMPLE.total)).toBe(expectedCents);
+describe("RATES_DISPLAY format contract (shipped to Mintlify snippet, OpenAPI, smoke selectors)", () => {
+  it("STARTER_CREDIT renders as $5", () => {
+    expect(RATES_DISPLAY.STARTER_CREDIT).toBe("$5");
   });
 
-  it("should report starterCoversEvents as floor(starterCredit / per-event cycle cost)", () => {
-    const perEventCents =
-      RATES_CENTS.eventPlatform + WORKED_EXAMPLE.stagesPerEvent * RATES_CENTS.stage;
-    const expected = Math.floor(RATES_CENTS.starterCredit / perEventCents);
-    expect(WORKED_EXAMPLE.starterCoversEvents).toBe(expected);
+  it("EVENT_RATE renders as free (the rate is conceptually free, not zero-cents)", () => {
+    expect(RATES_DISPLAY.EVENT_RATE).toBe("free");
   });
 
-  it("should keep events and stagesPerEvent as positive integers", () => {
-    expect.soft(Number.isInteger(WORKED_EXAMPLE.events)).toBe(true);
-    expect.soft(WORKED_EXAMPLE.events).toBeGreaterThan(0);
-    expect.soft(Number.isInteger(WORKED_EXAMPLE.stagesPerEvent)).toBe(true);
-    expect.soft(WORKED_EXAMPLE.stagesPerEvent).toBeGreaterThan(0);
+  it("STAGE_PLATFORM renders as $0.001", () => {
+    expect(RATES_DISPLAY.STAGE_PLATFORM).toBe("$0.001");
   });
-});
 
-describe("RATES_DISPLAY format contract (shipped to OpenAPI / schema / smoke selectors)", () => {
-  it.each([
-    ["eventPlatform", RATES_DISPLAY.eventPlatform],
-    ["eventSelfManaged", RATES_DISPLAY.eventSelfManaged],
-    ["stage", RATES_DISPLAY.stage],
-    ["starterCredit", RATES_DISPLAY.starterCredit],
-  ])("should format %s as a leading-$ amount with no whitespace", (_key, str) => {
-    expect(str).toMatch(/^\$\d+(\.\d{2})?$/);
+  it("STAGE_SELF_MANAGED renders as $0.0001", () => {
+    expect(RATES_DISPLAY.STAGE_SELF_MANAGED).toBe("$0.0001");
   });
 });
