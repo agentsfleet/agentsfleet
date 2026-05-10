@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M66
 **Workstream:** 001
 **Date:** May 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — user-facing pricing change + breaking API rename + single canonical contact email; gates the marketing/economics shape for stealth-mode design partners.
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — single workstream, sequential sections.
-**Branch:** feat/m66-001-byok-retirement (created at CHORE(open))
+**Branch:** feat/m66-001-byok-retirement
 **Depends on:** none (M65 marketing rephrase work landed via PRs #310 and #311; this spec supersedes the M65 vocabulary split).
 
 **Canonical architecture:** `docs/architecture/billing_and_byok.md` (renamed to `billing_and_provider_keys.md` by §5 of this spec) §0 vocabulary preamble, §1 two postures, §2 pure-credits.
