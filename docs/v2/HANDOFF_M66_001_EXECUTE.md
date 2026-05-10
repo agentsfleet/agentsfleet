@@ -167,9 +167,14 @@ grep -rn 'hello@usezombie\.com' src/ ui/ zombiectl/ docs/ public/ | wc -l
 grep -rn 'EVENT_BYOK_CENTS\|STAGE_CENTS\|EVENT_PLATFORM_CENTS\|STARTER_CREDIT_CENTS' \
   src/ ui/ zombiectl/ | wc -l   # should be 0 — old constants gone
 
-# Schema enum sanity (against running dev DB)
-psql "$DATABASE_URL" -c "SELECT enum_range(NULL::tenant_provider_mode)"
-# expect: {platform,self_managed}
+# Schema mode value-set sanity (against running dev DB)
+# Note: mode is TEXT, not a Postgres enum — value-set lives in Mode.parse() per RULE STS.
+psql "$DATABASE_URL" -c "\d core.tenant_providers" | grep -E '^ mode\s+\| text\b'
+# expect: one row, " mode | text | not null"
+grep -c '\bbyok\b' schema/*.sql
+# expect: 0
+zig build test 2>&1 | grep -E 'test_mode_parse_(self_managed_succeeds|byok_fails)'
+# expect: both PASS
 ```
 
 Paste the actual command output into the spec's `## Verification Evidence` table during VERIFY — not paraphrased, the real lines.

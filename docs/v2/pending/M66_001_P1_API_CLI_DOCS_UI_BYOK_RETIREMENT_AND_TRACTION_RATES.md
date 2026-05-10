@@ -378,9 +378,13 @@ echo "E8: should be 0"
 grep -rn 'hello@usezombie\.com' src/ ui/ zombiectl/ docs/ public/ | wc -l
 echo "E9: should be 0"
 
-# E10: Schema enum check
-psql "$DATABASE_URL" -c "SELECT enum_range(NULL::tenant_provider_mode)"
-echo "E10: should print {platform,self_managed}"
+# E10: Schema mode value-set check (mode is TEXT — value enforcement lives in Mode.parse())
+psql "$DATABASE_URL" -c "\d core.tenant_providers" | grep -E '^ mode\s+\| text\b'
+echo "E10a: should print one row showing 'mode | text | not null'"
+zig build test 2>&1 | grep -E 'test_mode_parse_(self_managed_succeeds|byok_fails)'
+echo "E10b: both Mode.parse pin tests should be PASS"
+grep -c '\bbyok\b' schema/*.sql
+echo "E10c: should print 0"
 
 # E11: API value rename
 curl -s -X PUT http://localhost:9090/v1/tenants/me/provider \
@@ -466,7 +470,7 @@ Expected entries:
 | 350L gate | `git diff --name-only origin/main \| ...` | | |
 | BYOK term sweep | `grep -rn '\bBYOK\b' ...` | | |
 | `hello@usezombie.com` sweep | `grep -rn 'hello@usezombie\.com' ...` | | |
-| Schema enum | `psql -c "SELECT enum_range(NULL::tenant_provider_mode)"` | | |
+| Schema mode column shape (TEXT, not enum) | `psql -c "\d core.tenant_providers" \| grep -E '^ mode\s+\| text'` + `grep -c '\bbyok\b' schema/*.sql` | | |
 | OpenAPI enum | `jq '.components.schemas.TenantProviderMode.enum' public/openapi.json` | | |
 
 ---
