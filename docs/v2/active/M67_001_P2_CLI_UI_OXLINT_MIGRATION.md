@@ -4,7 +4,7 @@
 **Milestone:** M67
 **Workstream:** 001
 **Date:** May 10, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — developer tooling migration that removes duplicated ESLint setup from CLI and UI packages.
 **Categories:** CLI, UI
 **Batch:** B1 — independent tooling workstream
