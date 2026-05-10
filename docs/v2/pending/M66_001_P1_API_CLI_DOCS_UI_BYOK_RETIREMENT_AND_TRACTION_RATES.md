@@ -9,7 +9,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - See docs/TEMPLATE.md "Prohibited" section above for canonical list.
 -->
 
-# M66_001: BYOK term retirement, nanos unit migration, traction rates, single support email
+# M66_001: BYOK term retirement, nanos unit, traction rates, single support email
 
 **Prototype:** v2.0.0
 **Milestone:** M66
@@ -43,7 +43,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **`docs/greptile-learnings/RULES.md`** — universal repo discipline. Cross-cutting: RULE UFS (string literals → named constants, applies to the new `SUPPORT_EMAIL` constants), RULE CTM (cross-tier mirroring, applies to rate constants pinned across Zig + TS + docs snippet), RULE TST-NAM (no milestone IDs in test names or code bodies).
 - **`docs/ZIG_RULES.md`** — applies to every `.zig` edit in §1, §2, §6: pg-drain lifecycle (line 14-19), Tagged Unions for Result Types, Multi-Step Init errdefer Chain Pattern, Cross-Compile Verification.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — applies when the diff touches `src/http/handlers/tenant_provider.zig` or `public/openapi/**`. §1 URL design, §4 error shapes (clean 4xx with replacement hint), §7 5-place route registration, §8 `Hx` handler interface, §10 pre-PR gates.
-- **`docs/SCHEMA_CONVENTIONS.md`** — applies to the new migration in §1.
+- **`docs/SCHEMA_CONVENTIONS.md`** — applies to the in-place schema edits in §1 and §3 (pre-v2.0 clean-break: edit existing schema files, no `ALTER`, dev DB reseeded via `make down && make up`).
 - **`docs/architecture/billing_and_byok.md`** (renamed to `billing_and_provider_keys.md` by this spec) — §0 vocabulary preamble + §1 two postures. After rename, this doc IS canonical for the runtime two-posture model; the spec keeps it consistent with code in the same diff.
 - **`docs/LOGGING_STANDARD.md`** §3 wire format, §4 severity, §5 error-code embedding — log scope renames `byok_credential_*` → `self_managed_credential_*` must preserve scope-tag conventions.
 - **`docs/AUTH.md`** — credential vault paths are deliberately unchanged; this spec does NOT touch `crypto_store.load()` semantics.
@@ -60,20 +60,20 @@ After this spec lands: (a) `grep -rn '\bBYOK\b' src/ ui/ zombiectl/ public/ docs
 
 ### Problem
 
-"BYOK" is now the wrong term at every surface. M65 split the vocabulary (user-facing prose says "bring your own model"; internal identifiers stay BYOK), and the split is unstable — every code review now has to enforce the layer boundary, and drift will leak the internal term into user copy. Beyond the term, the M66_001 traction rates ($0/event both modes, $0.001/stage platform, $0.0001/stage self-managed) require a unit migration: cents (`i64`) cannot hold $0.0001, and even micros (1/1M USD) bottom out at $0.000001. The canonical billing unit must move to **nanos (1/1,000,000,000 USD = 9 decimal places of precision)**, giving headroom for $0.000001 today and any further sub-cent rate down to $0.000000001 without another unit migration. `i64` BIGINT holding nanos caps a single tenant balance at ~$9.2B, far above any realistic cap. And the support email is split across `hello@usezombie.com` (Pricing.tsx) and `usezombie@agentmail.to` (Privacy/Terms/docs) — every contact surface should resolve to one constant per repo. Finally, the marketing pricing page (`Pricing.tsx`, `FAQ.tsx`, the docs site) still surfaces M65 rates and BYOK provider lists; without a paired update, the M66 rate change ships invisible to users.
+"BYOK" is now the wrong term at every surface. M65 split the vocabulary (user-facing prose says "bring your own model"; internal identifiers stay BYOK), and the split is unstable — every code review now has to enforce the layer boundary, and drift will leak the internal term into user copy. Beyond the term, the M66_001 traction rates ($0/event both modes, $0.001/stage platform, $0.0001/stage self-managed) need a sub-cent-capable billing unit: cents (`i64`) cannot hold $0.0001, and even micros (1/1M USD) bottom out at $0.000001. The canonical billing unit must move to **nanos (1/1,000,000,000 USD = 9 decimal places of precision)**, giving headroom for $0.000001 today and any further sub-cent rate down to $0.000000001 without another unit change. `i64` BIGINT holding nanos caps a single tenant balance at ~$9.2B, far above any realistic cap. And the support email is split across `hello@usezombie.com` (Pricing.tsx) and `usezombie@agentmail.to` (Privacy/Terms/docs) — every contact surface should resolve to one constant per repo. Finally, the marketing pricing page (`Pricing.tsx`, `FAQ.tsx`, the docs site) still surfaces M65 rates and BYOK provider lists; without a paired update, the M66 rate change ships invisible to users.
 
 ### Solution summary
 
 One workstream, six sections:
 
-- **§1** rename the canonical billing unit from cents to nanos across schema (column type + value scaling), Zig constants, paired pin tests.
+- **§1** rename the canonical billing unit from cents to nanos. Pre-v2.0 clean break: edit `schema/017_tenant_billing.sql` in place (column `balance_cents` → `balance_nanos`, CHECK rewritten), no migration file, no `ALTER`. Zig constants + paired pin tests follow.
 - **§2** introduce M66 traction rates: `EVENT_NANOS = 0` (single, both postures), `STAGE_PLATFORM_NANOS = 1_000_000`, `STAGE_SELF_MANAGED_NANOS = 100_000`, `STARTER_CREDIT_NANOS = 5_000_000_000`. Update every consumer.
-- **§3** retire the BYOK term aggressively: schema enum value `'byok'` → `'self_managed'` (PG14 `ALTER TYPE RENAME VALUE` or constraint swap), Zig `Mode.byok` → `Mode.self_managed`, log scope rename, API wire format rename (clean break — no alias), TS `Mode` type, app `ByokFields.tsx` → `ProviderKeyFields.tsx`, CLI `--byok` → `--self-managed`. Architecture docs renamed: `billing_and_byok.md` → `billing_and_provider_keys.md`, `scenarios/02_byok.md` → `scenarios/02_self_managed.md`.
+- **§3** retire the BYOK term aggressively: edit `schema/020_tenant_providers.sql` in place (the `mode` column is already `TEXT` with app-side enforcement per RULE STS — only the comment text changes), Zig `Mode.byok` → `Mode.self_managed`, log scope rename, API wire format rename (clean break — no alias), TS `Mode` type, app `ByokFields.tsx` → `ProviderKeyFields.tsx`, CLI `--byok` → `--self-managed`. Architecture docs renamed: `billing_and_byok.md` → `billing_and_provider_keys.md`, `scenarios/02_byok.md` → `scenarios/02_self_managed.md`.
 - **§4** website pricing surface fix: `Pricing.tsx`, `FAQ.tsx`, `lib/rates.ts` updated for the new rates; introductory-rate framing ("stealth-mode testing rate — will rise post-GA"); platform-vs-self-managed gradient surfaced as the friction-reduction signal.
 - **§5** single canonical `SUPPORT_EMAIL` constant per repo (Zig, website TS, app TS, CLI JS, docs MDX snippet) all asserting `usezombie@agentmail.to`. Paired pin tests. Sweep all `hello@usezombie.com` literals.
 - **§6** documentation currency audit: walk every spec under `docs/v2/done/` and grep-confirm `~/Projects/docs/`, `docs/architecture/`, repo READMEs, and the org-profile README are aligned with what those specs actually shipped. Surface any drift; either fix in this PR (if mechanical) or file as an explicit follow-up spec.
 
-User-visible outcome: the docs site, marketing site, dashboard, and CLI all speak one vocabulary ("self-managed provider key" or "you bring your provider and model"). The pricing page shows two stage rates with an explicit gradient, communicating "platform mode is convenient; self-managed mode is 10× cheaper to scale." Every contact surface points to `usezombie@agentmail.to`. The credit pool is denominated in nanos, leaving room for $0.00001 rates without re-migration.
+User-visible outcome: the docs site, marketing site, dashboard, and CLI all speak one vocabulary ("self-managed provider key" or "you bring your provider and model"). The pricing page shows two stage rates with an explicit gradient, communicating "platform mode is convenient; self-managed mode is 10× cheaper to scale." Every contact surface points to `usezombie@agentmail.to`. The credit pool is denominated in nanos, leaving room for $0.00001 rates without another unit change. Dev DB is wiped + reseeded via `make down && make up` — no migration script, no `ALTER`, per the pre-v2.0 clean-break posture (RULE NLG, Schema Removal Guard pre-v2.0 path).
 
 ---
 
@@ -81,9 +81,8 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 
 | File | Action | Why |
 |---|---|---|
-| `schema/{NNN}_nanos_unit_and_provider_mode_rename.sql` | CREATE | New migration: rename `balance_cents` column → `balance_nanos` (multiply existing rows × 10,000,000 (cents → nanos: 1¢ = 10M nanos)), rename `tenant_provider_mode` enum value `'byok'` → `'self_managed'`. Single transaction. |
-| `schema/embed.zig` | EDIT | Embed the new migration. |
-| `src/cmd/common.zig` | EDIT | Append to migration array. |
+| `schema/017_tenant_billing.sql` | EDIT (in place) | Rename column `balance_cents` → `balance_nanos`. CHECK becomes `balance_nanos >= 0`. Update file-top comment to drop M65 cents prose. **No migration file, no `ALTER`** — pre-v2.0 clean break, dev DB reseeded via `make down && make up`. |
+| `schema/020_tenant_providers.sql` | EDIT (in place) | Update file-top comment: `mode ∈ {platform, byok}` → `mode ∈ {platform, self_managed}`. The `mode` column is already `TEXT` (RULE STS — value enforcement lives in `src/state/tenant_provider.zig`), so no DDL change. Update the operator-query index comment from "list all BYOK tenants" to "list all self-managed tenants". |
 | `src/state/tenant_billing.zig` | EDIT | Constants renamed `_CENTS` → `_NANOS`, value set rebuilt from M66 rate table (not a value-preserving rescale). Drop `EVENT_BYOK_CENTS` and `EVENT_PLATFORM_CENTS` (collapsed into single `EVENT_NANOS = 0`). Drop single `STAGE_CENTS`; add posture-dispatched `STAGE_PLATFORM_NANOS = 1_000_000` and `STAGE_SELF_MANAGED_NANOS = 100_000`. `STARTER_CREDIT_NANOS = 5_000_000_000`. Column type stays `BIGINT` (i64). |
 | `src/state/tenant_billing_test.zig` | EDIT | Pin tests for all new constants. New negative test: parsing legacy `'byok'` string into `Mode` returns `error.UnknownMode`. |
 | `src/state/tenant_provider.zig` | EDIT | `Mode.byok` → `Mode.self_managed`. Update `displayName()`, `parse()`, every match arm. |
@@ -130,13 +129,20 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 
 ## Sections (implementation slices)
 
-### §1 — Micros unit migration
+### §1 — Nanos unit (clean break, pre-v2.0)
 
-Switch the canonical billing unit from cents (`i64`) to **nanos (1/1,000,000,000 USD = 9 decimal places)**. New schema column `balance_nanos` replaces `balance_cents`; existing rows scaled `× 10_000_000` (1¢ = 10,000,000 nanos) in the same migration transaction. Zig constants rename `_CENTS` → `_NANOS`, values rebuilt from the M66 rate table (the old M65 numbers are dropped wholesale, so this isn't a unit-conversion of existing constants — it's a fresh constant set). Paired pin test in `tenant_billing_test.zig`. TS mirror in `lib/rates.ts` follows.
+Switch the canonical billing unit from cents (`i64`) to **nanos (1/1,000,000,000 USD = 9 decimal places)**. Pre-v2.0 RULE NLG + Schema Removal Guard pre-v2.0 path → **edit the existing schema file in place; no migration script; no `ALTER`.**
+
+**Procedure:**
+1. Edit `schema/017_tenant_billing.sql`: rename column declaration `balance_cents BIGINT NOT NULL CHECK (balance_cents >= 0)` → `balance_nanos BIGINT NOT NULL CHECK (balance_nanos >= 0)`. Update the file-top comment to drop M65 cents prose.
+2. Reseed dev DB: `make down && make up` (this re-runs every `schema/*.sql` from a clean Postgres). The Schema Removal Guard pre-v2.0 path is the canonical procedure here — see `docs/gates/schema-removal.md`.
+3. Update Zig constants in `src/state/tenant_billing.zig`: rename `_CENTS` → `_NANOS`, rebuild values from the M66 rate table. Update every reference to `balance_cents` across `src/` to `balance_nanos`.
+4. Update paired pin test in `src/state/tenant_billing_test.zig`.
+5. Update TS mirror `ui/packages/website/src/lib/rates.ts` per the cross-tier naming table.
 
 **Why nanos, not micros:** micros (1/1,000,000 USD = 6 decimals) bottom out at $0.000001. Nanos give 3 more decimals of headroom, enough to express $0.000000001 (one billionth) cleanly. `i64` BIGINT holding nanos caps a single tenant balance at ~$9.2 billion (`i64::MAX` = 9.22e18 nanos = ~9.22e9 USD), so the type has no realistic overflow risk.
 
-**Implementation default:** use Postgres native column rename + `ALTER TABLE … ALTER COLUMN balance_cents TYPE BIGINT USING balance_cents * 10000000` then `ALTER COLUMN … RENAME TO balance_nanos`. If the column type stays `BIGINT`, only the `× 10_000_000` UPDATE + RENAME is needed (1¢ = 10M nanos at 1B nanos/USD). The agent confirms PG version supports this on the dev Docker image.
+**Why no `ALTER`:** pre-v2.0 has no production data to preserve. Adding a migration script just to rescale a column on an empty dev DB would (a) need maintenance for the lifetime of the repo, (b) couple the rate change to migration plumbing that doesn't exist post-v2.0 either (we'd build it once and never use it), and (c) violate RULE NLG by carrying legacy framing into pre-v2.0 code. Edit the schema file, reseed, move on. When v2.0.0 ships, the Schema Removal Guard switches to the migration-required path automatically.
 
 ### Naming convention (cross-tier)
 
@@ -176,7 +182,7 @@ The platform/self-managed gradient is the friction-reducer: on-ramp on platform 
 
 Rename in lockstep across schema, Zig, API wire format, TS, app components, CLI, architecture docs.
 
-**Implementation default:** use `git mv` for file renames to preserve history. PG enum value rename via `ALTER TYPE tenant_provider_mode RENAME VALUE 'byok' TO 'self_managed'` (PG14+). If the column uses a CHECK constraint with string literals instead of a Postgres enum, drop-and-recreate the constraint with the new literal then `UPDATE` existing rows (same transaction).
+**Implementation default:** use `git mv` for file renames to preserve history. **No DDL change for the `mode` column** — `core.tenant_providers.mode` is `TEXT` with app-side enforcement per RULE STS (see `schema/020_tenant_providers.sql:12-14` comment). Value-set drift lives entirely in `src/state/tenant_provider.zig`'s `Mode` enum + `parse()` function. The schema file's only edit is the prose comment switch from `byok` → `self_managed`. Dev DB reseed via `make down && make up`.
 
 **Clean break — no alias:** the API rejects `mode: "byok"` with HTTP 400 + `UZ-PROVIDER-MODE-RENAMED` (replacement hint = `"self_managed"`). The CLI rejects `--byok` with stderr message naming the new flag. Pre-v2.0 RULE NLG forbids legacy scaffolding.
 
@@ -257,14 +263,12 @@ See https://docs.usezombie.com/zombies/credentials.
 | Mode | Cause | Handling | Test |
 |---|---|---|---|
 | Old client sends `mode: "byok"` | Pre-M66 SDK / cached client / curl from a runbook | HTTP 400 + `UZ-PROVIDER-MODE-RENAMED` with `replacement: "self_managed"`. No alias. | `test_provider_mode_byok_returns_400_with_replacement` |
-| Existing tenant rows with `mode = 'byok'` after deploy | Migration didn't run | Migration runs in single transaction with the schema rename; PG14+ `ALTER TYPE RENAME VALUE` is metadata-only. | `test_migration_renames_existing_byok_rows` |
 | TS Mode parser receives `"byok"` from API | Stale client cache / network race during cutover | Strict TypeScript union → parse error → toast. No silent coerce. | `test_mode_parser_rejects_byok` |
 | CLI --byok flag passed | User following old docs / shell history | Stderr error with replacement flag name; non-zero exit. | `test_cli_legacy_byok_flag_emits_error` |
-| Migration on non-PG14 cluster | Older Postgres in some environment | Fall back to (a) add `'self_managed'` value, (b) UPDATE existing rows, (c) DROP `'byok'` value, three transactions. Detected at migration runtime via `SELECT version()` check. | `test_migration_pg14_path_and_pre14_fallback` |
+| Dev DB still holds pre-M66 column shape after pulling this branch | Developer didn't reseed | Pre-v2.0 procedure: `make down && make up` after merge. Schema files are the source of truth; no migration runner. CI starts from clean Postgres so this only affects local dev. | n/a — documented in PR Session Notes; no test (clean-slate is the contract) |
 | Saved Grafana dashboards keyed on `byok_credential_*` log scopes | Log scope rename | Listed in Discovery; saved-search update is a follow-up doc-only change. Not blocking. | n/a — operational |
 | Architecture-doc intra-doc links broken after `git mv` | `[link](billing_and_byok.md)` references in peer docs | DOC READ GATE on `docs/architecture/**` catches unfixed links during execute; sweep listed in §3. | `test_arch_doc_links_resolve` (grep-based) |
 | Frontend `data-testid` rename breaks downstream e2e | Out-of-repo e2e suite depends on `provider-byok-*` IDs | Inventory all references during Discovery; flag any out-of-repo dependency in spec body before CHORE(open). | `test_provider_selector_test_ids_renamed` |
-| Cents → nanos migration overflows | `i64` BIGINT max = 9.22e18 nanos = ~$9.22B per tenant. Even 1 trillion cents (~$10B) ×10M = 1e19 — overflows. | Pre-flight check: `SELECT MAX(balance_cents) FROM core.tenant_billing` must be < 9e11 cents (~$9B) before migration runs. Realistic balances are 4–5 orders of magnitude below this. | `test_migration_no_overflow_at_max_balance` + pre-flight assertion |
 | Pin tests drift between Zig and TS rates | Cross-tier mirror not enforced | Paired pin tests in `tenant_billing_test.zig` and `rates.test.ts` assert the exact same values. CI fails on drift. | `test_rates_pinned_zig` + `test_rates_pinned_ts` |
 
 ---
@@ -274,9 +278,9 @@ See https://docs.usezombie.com/zombies/credentials.
 1. **No surface mentions BYOK except named exemptions.** Enforced by `make lint` step that greps `\bBYOK\b` against `src/`, `ui/`, `zombiectl/`, `public/`, `docs/architecture/` and asserts zero hits. Allowlist file lists the architecture-doc historical-note line and the docs-site changelog archive.
 2. **Both rate constants are pinned identically across Zig + TS.** Enforced by paired test asserting exact i64 values match.
 3. **`SUPPORT_EMAIL` is `usezombie@agentmail.to` everywhere.** Enforced by per-repo pin test asserting the exact string + `make lint` step grepping for `hello@usezombie.com` and asserting zero hits.
-4. **Schema enum has exactly two values: `('platform', 'self_managed')`.** Enforced by integration test querying `pg_enum` on `tenant_provider_mode` after migration.
+4. **`mode` value-set is exactly `{platform, self_managed}` and lives in app code.** `core.tenant_providers.mode` stays `TEXT` (RULE STS — no static-string CHECKs). Enforced by `Mode.parse()` in `src/state/tenant_provider.zig` + the parse-fails-on-byok pin test.
 5. **`Mode.parse("byok")` returns `error.UnknownMode`.** Enforced by Zig pin test.
-6. **API responses always serialize `mode` as `"platform"` or `"self_managed"` — never `"byok"`.** Enforced by integration test on `GET /v1/tenants/me/provider` after migration.
+6. **API responses always serialize `mode` as `"platform"` or `"self_managed"` — never `"byok"`.** Enforced by integration test on `GET /v1/tenants/me/provider`.
 
 ---
 
@@ -291,10 +295,8 @@ See https://docs.usezombie.com/zombies/credentials.
 | `test_compute_stage_charge_dispatches_on_posture` | `.platform` → 1_000_000 nanos, `.self_managed` → 100_000 nanos |
 | `test_mode_parse_self_managed_succeeds` | `Mode.parse("self_managed")` → `.self_managed` |
 | `test_mode_parse_byok_fails` | `Mode.parse("byok")` → `error.UnknownMode` |
-| `test_migration_renames_existing_byok_rows` | After migration, `SELECT mode FROM core.tenant_providers WHERE mode = 'byok'` returns 0 rows; previously-byok rows now show `'self_managed'` |
-| `test_migration_balance_cents_to_nanos_scales` | After migration, every tenant's `balance_nanos` == old `balance_cents` × 10_000_000 |
-| `test_migration_no_overflow_at_max_balance` | Migration on a tenant with the largest pre-migration balance does not overflow `BIGINT` |
-| `test_migration_pg14_path_and_pre14_fallback` | Migration succeeds on PG14+ (single ALTER TYPE) and on PG13 (3-step fallback). Skip on environments unable to test both. |
+| `test_schema_balance_nanos_column_exists` | Integration test: after `make up` from clean, `\d billing.tenant_billing` shows column `balance_nanos BIGINT NOT NULL` (and zero columns named `balance_cents`). |
+| `test_schema_no_byok_in_comments` | grep `\bbyok\b` in `schema/*.sql` returns 0 hits. |
 | `test_provider_mode_byok_returns_400_with_replacement` | `PUT /v1/tenants/me/provider` with `{"mode":"byok"}` → 400 + body `{"code":"UZ-PROVIDER-MODE-RENAMED","replacement":"self_managed"}` |
 | `test_provider_mode_self_managed_accepted` | Same endpoint with `{"mode":"self_managed","credential_ref":"my-key"}` → 200 |
 | `test_provider_mode_response_never_emits_byok` | `GET /v1/tenants/me/provider` after a `self_managed` set → response.mode === "self_managed" |
@@ -429,7 +431,7 @@ echo "E13: should be empty"
 
 Expected entries:
 - Inventory of `provider-byok-*` data-testid usage (out-of-repo e2e dependency check) before §3 begins.
-- Postgres version on dev Docker image confirmed before §1 migration approach is chosen.
+- Confirmation that `make down && make up` is the canonical reseed path on this dev environment (Schema Removal Guard pre-v2.0 procedure), captured before §1 lands.
 - Documentation drift findings from §6 audit; either fixed in PR or filed as follow-up specs.
 
 ---
