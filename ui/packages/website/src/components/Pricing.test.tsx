@@ -69,13 +69,14 @@ describe("Pricing component", () => {
     expect(card.textContent).toMatch(/most diagnoses resolve in 1.{0,3}5 stages/i);
   });
 
-  it("renders the design-partner waiver note for early access", () => {
+  it("renders the stealth-mode banner with design-partner contact", () => {
     renderPricing();
     const note = screen.getByTestId("pricing-design-partner-note");
-    expect(note).toHaveTextContent(/design partners run free/i);
+    expect(note).toHaveTextContent(/stealth-mode testing/i);
+    expect(note).toHaveTextContent(/design partner/i);
     expect(note.querySelector("a")).toHaveAttribute(
       "href",
-      expect.stringContaining("hello@usezombie.com"),
+      expect.stringContaining("usezombie@agentmail.to"),
     );
   });
 
