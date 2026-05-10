@@ -1,5 +1,5 @@
 import { request } from "./client";
-import type { TenantProvider } from "../types";
+import { PROVIDER_MODE, type TenantProvider } from "../types";
 
 // GET/PUT/DELETE /v1/tenants/me/provider — see src/http/handlers/tenant_provider.zig
 // for the wire contract. The api_key is never returned in responses; this
@@ -10,7 +10,7 @@ export async function getTenantProvider(token: string): Promise<TenantProvider> 
   return request<TenantProvider>("/v1/tenants/me/provider", { method: "GET" }, token);
 }
 
-export async function setTenantProviderByok(
+export async function setTenantProviderSelfManaged(
   body: { credential_ref: string; model?: string },
   token: string,
 ): Promise<TenantProvider> {
@@ -18,7 +18,11 @@ export async function setTenantProviderByok(
     "/v1/tenants/me/provider",
     {
       method: "PUT",
-      body: JSON.stringify({ mode: "byok", credential_ref: body.credential_ref, model: body.model }),
+      body: JSON.stringify({
+        mode: PROVIDER_MODE.self_managed,
+        credential_ref: body.credential_ref,
+        model: body.model,
+      }),
     },
     token,
   );

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
+import { NANOS_PER_USD } from "@/lib/types";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
@@ -284,7 +285,7 @@ describe("lib/api/tenant_billing", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        balance_cents: 1000,
+        balance_nanos: NANOS_PER_USD,
         updated_at: 1713700000000,
         is_exhausted: false,
         exhausted_at: null,
@@ -371,7 +372,7 @@ describe("exhaustion components", () => {
     const { container } = render(
       React.createElement(ExhaustionBanner, {
         billing: {
-          balance_cents: 500,
+          balance_nanos: 500_000_000,
           updated_at: 0,
           is_exhausted: false,
           exhausted_at: null,
@@ -388,7 +389,7 @@ describe("exhaustion components", () => {
     render(
       React.createElement(ExhaustionBanner, {
         billing: {
-          balance_cents: 0,
+          balance_nanos: 0,
           updated_at: 1713700000000,
           is_exhausted: true,
           exhausted_at: 1713700400000,
@@ -409,7 +410,7 @@ describe("exhaustion components", () => {
     render(
       React.createElement(ExhaustionBanner, {
         billing: {
-          balance_cents: 0,
+          balance_nanos: 0,
           updated_at: 0,
           is_exhausted: true,
           exhausted_at: null,
@@ -425,7 +426,7 @@ describe("exhaustion components", () => {
 // ── Zombies route — page, loading, detail, new ─────────────────────────────
 
 type BillingSnapshot = {
-  balance_cents: number;
+  balance_nanos: number;
   updated_at: number;
   is_exhausted: boolean;
   exhausted_at: number | null;
@@ -433,7 +434,7 @@ type BillingSnapshot = {
 
 describe("zombies routes", () => {
   const happyBilling: BillingSnapshot = {
-    balance_cents: 1000,
+    balance_nanos: NANOS_PER_USD,
     updated_at: 0,
     is_exhausted: false,
     exhausted_at: null,

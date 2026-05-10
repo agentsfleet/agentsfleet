@@ -69,7 +69,7 @@
     "format": "Bearer <api_key>"
   },
   "revenue": {
-    "model": "BYOK + per-event + per-stage credit-pool metering",
+    "model": "self-managed + per-event + per-stage credit-pool metering",
     "description": "Users supply their own LLM API keys. usezombie meters hosted execution against a credit pool: $0.01 per event receipt and $0.10 per stage execution. New tenants receive a $5 starter credit. Never stores or marks up LLM provider costs."
   },
   "policyClasses": {

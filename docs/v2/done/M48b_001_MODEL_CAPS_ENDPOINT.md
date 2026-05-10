@@ -17,10 +17,10 @@
 
 - **Schema slot landed as `019_model_caps.sql`**, not `020_*` as the original spec said. M41 used the next available slot at the time of the inline ship.
 - All five §4 test cases live in `src/http/handlers/model_caps_integration_test.zig` under the `integration(model_caps): …` naming pattern (RULE TST-NAM clean — no milestone IDs in test names).
-- Architecture cross-refs verified intact in `docs/architecture/billing_and_byok.md §9` and `docs/architecture/scenarios/01_default_free_tier.md`. No new doc work needed.
+- Architecture cross-refs verified intact in `docs/architecture/billing_and_provider_keys.md §9` and `docs/architecture/scenarios/01_default_free_tier.md`. No new doc work needed.
 - No `changelog.mdx` entry: M48b is internal substrate (no user-visible CLI/UI surface; consumers are the still-pending M48 BYOK CLI and M49 install-skill). The user-visible release will land on those milestones' close-outs.
 
-**Canonical architecture:** [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §9 (endpoint shape, rotation, Cloudflare caching) and [`docs/architecture/scenarios/01_default_free_tier.md`](../../architecture/scenarios/01_default_free_tier.md) (consumer: install-skill at install time).
+**Canonical architecture:** [`docs/architecture/billing_and_provider_keys.md`](../../architecture/billing_and_provider_keys.md) §9 (endpoint shape, rotation, Cloudflare caching) and [`docs/architecture/scenarios/01_default_free_tier.md`](../../architecture/scenarios/01_default_free_tier.md) (consumer: install-skill at install time).
 
 ---
 

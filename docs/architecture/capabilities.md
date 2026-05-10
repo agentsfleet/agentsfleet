@@ -41,7 +41,7 @@ These are the tool primitives NullClaw exposes. The zombie's `tools:` allowlist 
 | Event stream + history | Every steer / webhook / cron event lands on `zombie:{id}:events` with actor provenance. `core.zombie_events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub Actions in v1) | The HTTP receiver verifies the hash-based-message-authentication signature, normalises the payload, and writes a synthetic event with `actor=webhook:github`. | Webhook receiver |
 | Credential vault | Stores opaque-JSON-object credentials, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. The tool bridge substitutes at sandbox entry. | Vault + secret resolution |
-| Provider config (BYOK) | Per-tenant posture choice between platform-managed inference and Bring Your Own Key. Tenant-scoped `core.tenant_providers` row carries `mode / provider / model / context_cap_tokens / credential_ref`; the user-named credential pointed to by `credential_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → executor → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_byok.md`](./billing_and_byok.md) §8.2. | Provider resolution path |
+| Provider config (self-managed) | Per-tenant posture choice between platform-managed inference and self-managed provider key. Tenant-scoped `core.tenant_providers` row carries `mode / provider / model / context_cap_tokens / credential_ref`; the user-named credential pointed to by `credential_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → executor → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2. | Provider resolution path |
 | Approval gating | Risky actions block until a human clicks Approve in the dashboard or a Slack DM. The state machine survives worker restarts. | Approval workflow |
 | Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-zombie in `TRIGGER.md`. | Billing gate |
 | Per-stage context lifecycle | Rolling tool-result window, memory-store nudge, stage chunking, and continuation events. See §4. | Context lifecycle |
@@ -60,7 +60,7 @@ x-usezombie:
   model: accounts/fireworks/models/kimi-k2.6   # opaque pass-through; the worker
                                                 # forwards it to the executor's
                                                 # ContextBudget.model. Empty
-                                                # string ("") = BYOK overlay
+                                                # string ("") = self-managed overlay
                                                 # sentinel: the worker resolves
                                                 # the real model from
                                                 # core.tenant_providers at
@@ -74,8 +74,8 @@ x-usezombie:
     context_cap_tokens: 200000     # the active model's context window
                                     # (resolved at install time from the
                                     #  model-caps endpoint — see user_flow.md
-                                    #  §8.7 and billing_and_byok.md). 0 is the
-                                    # BYOK overlay sentinel — same shape as
+                                    #  §8.7 and billing_and_provider_keys.md). 0 is the
+                                    # self-managed overlay sentinel — same shape as
                                     # the empty `model` value above.
 ```
 
@@ -138,7 +138,7 @@ The runtime ships with model-tier-aware defaults the user inherits without any c
 - `memory_checkpoint_every: 5` and `stage_chunk_threshold: 0.75` for every model — checkpoint cadence and chunk-trigger fraction don't meaningfully change with context size.
 - `tool_window: auto` resolves at install time based on the active model's context cap: **30** when the cap is at least one million tokens, **20** for caps between two-hundred-thousand and three-hundred-thousand tokens, **10** for caps at or below two-hundred-thousand tokens.
 
-The model's context cap is **not** baked into the runtime. It's resolved at install time (platform-managed posture) or at provider-set time (Bring Your Own Key posture) from the model-caps endpoint. See [`user_flow.md`](./user_flow.md) §8.7 and [`billing_and_byok.md`](./billing_and_byok.md).
+The model's context cap is **not** baked into the runtime. It's resolved at install time (platform-managed posture) or at provider-set time (self-managed provider key posture) from the model-caps endpoint. See [`user_flow.md`](./user_flow.md) §8.7 and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md).
 
 ### When a user does want to override (rare)
 

@@ -232,7 +232,7 @@ components:
         source_workspace_id:
           type: string
           format: uuid
-          description: Workspace whose BYOK key is used
+          description: Workspace whose self-managed key is used
         active:
           type: boolean
           description: Whether this platform key is active

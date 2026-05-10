@@ -207,9 +207,6 @@ pub const ENTRIES = [_]Entry{
     e("UZ-PROVIDER-004", .bad_request, "Model not in cached caps catalogue",
         "The effective model is not present in core.model_caps. Pick a model from the model-caps endpoint " ++
         "or request the catalogue be extended."),
-    e("UZ-PROVIDER-005", .bad_request, "Provider mode 'byok' was renamed to 'self_managed'",
-        "Pre-M66 callers sending mode=\"byok\" are rejected. Update the request body to mode=\"self_managed\" " ++
-        "and update any CLI invocation to use --self-managed in place of --byok."),
     // ── GATE ─────────────────────────────────────────────────────────────────
     e("UZ-GATE-001", .internal_server_error, "Gate command failed",
         "A gate command (make lint/test/build) failed. Check the gate results for stdout/stderr output."),

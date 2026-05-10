@@ -5,7 +5,7 @@ x-usezombie:
   # Both fields are populated by `/usezombie-install-platform-ops` from the
   # `tenant_provider` block of `zombiectl doctor --json`. Under the platform
   # default they carry resolved values (e.g. Fireworks Kimi K2.6 + 256K cap);
-  # under BYOK they carry the empty-string / zero sentinels and the worker
+  # under self-managed they carry the empty-string / zero sentinels and the worker
   # overlays the real values from `core.tenant_providers` at trigger time.
   model: "{{model}}"
   context:

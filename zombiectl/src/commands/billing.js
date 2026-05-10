@@ -9,6 +9,7 @@
 
 import { writeError } from "../program/io.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { CHARGE_TYPE, formatDollars } from "../constants/billing.js";
 
 // Billing show hits /v1/tenants/me/billing (GET) + charges (GET).
 // Auth-only surface; the server propagates UZ-BILLING-* internally
@@ -83,7 +84,7 @@ export async function commandBillingShow(ctx, parsed, deps) {
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, {
-      balance_cents: billing.balance_cents ?? 0,
+      balance_nanos: billing.balance_nanos ?? 0,
       is_exhausted: Boolean(billing.is_exhausted),
       events,
       next_cursor: nextCursor,
@@ -91,9 +92,8 @@ export async function commandBillingShow(ctx, parsed, deps) {
     return 0;
   }
 
-  const balanceCents = billing.balance_cents ?? 0;
-  const balanceDollars = (balanceCents / 100).toFixed(2);
-  writeLine(ctx.stdout, `Tenant balance:    $${balanceDollars} (${balanceCents}¢)`);
+  const balanceNanos = billing.balance_nanos ?? 0;
+  writeLine(ctx.stdout, `Tenant balance:    ${formatDollars(balanceNanos)}`);
   writeLine(ctx.stdout);
 
   if (events.length === 0) {
@@ -115,9 +115,9 @@ export async function commandBillingShow(ctx, parsed, deps) {
       model: e.model,
       in_tok: e.token_count_input != null ? String(e.token_count_input) : "—",
       out_tok: e.token_count_output != null ? String(e.token_count_output) : "—",
-      receive: `${e.receive_cents}¢`,
-      stage: `${e.stage_cents}¢`,
-      total: `${e.total_cents}¢`,
+      receive: formatDollars(e.receive_nanos),
+      stage: formatDollars(e.stage_nanos),
+      total: formatDollars(e.total_nanos),
     })));
   }
 
@@ -167,18 +167,18 @@ function groupRowsByEvent(rows) {
         posture: r.posture,
         model: r.model,
         recorded_at: r.recorded_at,
-        receive_cents: 0,
-        stage_cents: 0,
+        receive_nanos: 0,
+        stage_nanos: 0,
         token_count_input: null,
         token_count_output: null,
-        total_cents: 0,
+        total_nanos: 0,
       };
       byEvent.set(r.event_id, entry);
     }
-    if (r.charge_type === "receive") {
-      entry.receive_cents = r.credit_deducted_cents ?? 0;
-    } else if (r.charge_type === "stage") {
-      entry.stage_cents = r.credit_deducted_cents ?? 0;
+    if (r.charge_type === CHARGE_TYPE.receive) {
+      entry.receive_nanos = r.credit_deducted_nanos ?? 0;
+    } else if (r.charge_type === CHARGE_TYPE.stage) {
+      entry.stage_nanos = r.credit_deducted_nanos ?? 0;
       entry.token_count_input = r.token_count_input;
       entry.token_count_output = r.token_count_output;
     }
@@ -187,7 +187,7 @@ function groupRowsByEvent(rows) {
     if (r.recorded_at != null && (entry.recorded_at == null || r.recorded_at < entry.recorded_at)) {
       entry.recorded_at = r.recorded_at;
     }
-    entry.total_cents = entry.receive_cents + entry.stage_cents;
+    entry.total_nanos = entry.receive_nanos + entry.stage_nanos;
   }
   return Array.from(byEvent.values()).sort((a, b) => (b.recorded_at ?? 0) - (a.recorded_at ?? 0));
 }

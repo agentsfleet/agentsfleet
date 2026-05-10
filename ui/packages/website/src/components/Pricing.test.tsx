@@ -53,10 +53,10 @@ describe("Pricing component", () => {
     expect(ex).toHaveTextContent(/\$31\.00/);
   });
 
-  it("renders the BYOK provider list with no markup", () => {
+  it("renders the self-managed provider list with no markup", () => {
     renderPricing();
     expect(
-      screen.getByText(/BYOK on Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot/i),
+      screen.getByText(/Self-managed on Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/never marks up inference/i)).toBeInTheDocument();
     expect(screen.getByText(/usezombie marks up zero on inference/i)).toBeInTheDocument();
@@ -93,13 +93,13 @@ describe("Pricing component", () => {
     expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent(/\$0\.10/);
   });
 
-  it("renders the LLM-stratum stating BYOK is on a separate bill", () => {
+  it("renders the LLM-stratum stating self-managed is on a separate bill", () => {
     renderPricing();
     const llm = screen.getByTestId("pricing-flow-llm");
     expect(llm).toBeInTheDocument();
     expect(llm.className).toMatch(/border-dashed/);
     expect(llm).toHaveTextContent(/not on your usezombie bill/i);
-    expect(llm).toHaveTextContent(/BYOK/);
+    expect(llm).toHaveTextContent(/self-managed/i);
     expect(llm).toHaveTextContent(/Anthropic.*OpenAI.*Fireworks.*Together.*Groq.*Moonshot/);
   });
 

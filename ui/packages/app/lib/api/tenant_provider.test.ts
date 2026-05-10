@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "./errors";
+import { PROVIDER_MODE } from "../types";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
@@ -12,7 +13,7 @@ describe("getTenantProvider", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        mode: "platform",
+        mode: PROVIDER_MODE.platform,
         provider: "fireworks",
         model: "kimi-k2.6",
         context_cap_tokens: 256000,
@@ -29,31 +30,31 @@ describe("getTenantProvider", () => {
         headers: expect.objectContaining({ Authorization: "Bearer tok" }),
       }),
     );
-    expect(res.mode).toBe("platform");
+    expect(res.mode).toBe(PROVIDER_MODE.platform);
     expect(res.synthesised_default).toBe(true);
   });
 });
 
-describe("setTenantProviderByok", () => {
-  it("PUTs mode=byok with credential_ref + optional model", async () => {
+describe("setTenantProviderSelfManaged", () => {
+  it("PUTs mode=self_managed with credential_ref + optional model", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 200,
       json: async () => ({
-        mode: "byok",
+        mode: PROVIDER_MODE.self_managed,
         provider: "fireworks",
         model: "kimi-k2.6",
         context_cap_tokens: 256000,
-        credential_ref: "fw-byok",
+        credential_ref: "fw-key",
       }),
     });
-    const { setTenantProviderByok } = await import("./tenant_provider");
-    await setTenantProviderByok({ credential_ref: "fw-byok", model: "kimi-k2.6" }, "tok");
+    const { setTenantProviderSelfManaged } = await import("./tenant_provider");
+    await setTenantProviderSelfManaged({ credential_ref: "fw-key", model: "kimi-k2.6" }, "tok");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init).toMatchObject({ method: "PUT" });
     const body = JSON.parse((init as { body: string }).body);
-    expect(body).toEqual({ mode: "byok", credential_ref: "fw-byok", model: "kimi-k2.6" });
+    expect(body).toEqual({ mode: PROVIDER_MODE.self_managed, credential_ref: "fw-key", model: "kimi-k2.6" });
   });
 
   it("omits model when not provided so backend uses vault default", async () => {
@@ -61,15 +62,15 @@ describe("setTenantProviderByok", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        mode: "byok",
+        mode: PROVIDER_MODE.self_managed,
         provider: "fireworks",
         model: "kimi-k2.6",
         context_cap_tokens: 256000,
-        credential_ref: "fw-byok",
+        credential_ref: "fw-key",
       }),
     });
-    const { setTenantProviderByok } = await import("./tenant_provider");
-    await setTenantProviderByok({ credential_ref: "fw-byok" }, "tok");
+    const { setTenantProviderSelfManaged } = await import("./tenant_provider");
+    await setTenantProviderSelfManaged({ credential_ref: "fw-key" }, "tok");
     const [, init] = fetchMock.mock.calls[0]!;
     const body = JSON.parse((init as { body: string }).body);
     expect(body.model).toBeUndefined();
@@ -81,8 +82,8 @@ describe("setTenantProviderByok", () => {
       status: 400,
       json: async () => ({ error: "credential body missing required fields", code: "credential_data_malformed" }),
     });
-    const { setTenantProviderByok } = await import("./tenant_provider");
-    await expect(setTenantProviderByok({ credential_ref: "junk" }, "tok"))
+    const { setTenantProviderSelfManaged } = await import("./tenant_provider");
+    await expect(setTenantProviderSelfManaged({ credential_ref: "junk" }, "tok"))
       .rejects.toBeInstanceOf(ApiError);
   });
 });
@@ -93,7 +94,7 @@ describe("resetTenantProvider", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        mode: "platform",
+        mode: PROVIDER_MODE.platform,
         provider: "fireworks",
         model: "kimi-k2.6",
         context_cap_tokens: 256000,
@@ -104,6 +105,6 @@ describe("resetTenantProvider", () => {
     const res = await resetTenantProvider("tok");
     const [, init] = fetchMock.mock.calls[0]!;
     expect(init).toMatchObject({ method: "DELETE" });
-    expect(res.mode).toBe("platform");
+    expect(res.mode).toBe(PROVIDER_MODE.platform);
   });
 });

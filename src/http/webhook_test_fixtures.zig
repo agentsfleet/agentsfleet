@@ -2,7 +2,7 @@
 // creates temp tables. All fixtures go through the real schema so the
 // middleware + handler code under test sees production-shaped rows.
 //
-// Cleanup is explicit in the test body (not deferred) — matches byok/rbac
+// Cleanup is explicit in the test body (not deferred) — matches rbac
 // pattern where deferred cleanup leaks connections at pool.deinit.
 
 const std = @import("std");

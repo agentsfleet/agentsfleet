@@ -13,8 +13,8 @@ export const platformOpsDir = resolve(repoRoot, "samples", "platform-ops");
 
 /** Apply `{{key}}` placeholder substitution. Throws on any `{{...}}` left
  * after substitution — the install-skill must produce a fully-substituted
- * file or stop. Empty values are valid (`""` for BYOK model, `0` for
- * BYOK cap), but the placeholder itself must always be replaced. */
+ * file or stop. Empty values are valid (`""` for self-managed model, `0` for
+ * self-managed cap), but the placeholder itself must always be replaced. */
 export function substitute(template, vars) {
   let out = template;
   for (const [k, v] of Object.entries(vars)) {
@@ -47,8 +47,8 @@ export const PLATFORM_DEFAULTS = {
   context_cap_tokens: 256000,
 };
 
-/** The visible BYOK sentinels (worker overlays from tenant_providers). */
-export const BYOK_SENTINELS = {
+/** The visible self-managed sentinels (worker overlays from tenant_providers). */
+export const SELF_MANAGED_SENTINELS = {
   model: "",
   context_cap_tokens: 0,
 };

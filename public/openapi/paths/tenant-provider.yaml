@@ -4,7 +4,7 @@
     summary: Read tenant LLM provider configuration
     description: >
       Returns the tenant's persisted provider config — mode, provider name,
-      model, context cap, and (under BYOK) the user-named credential_ref.
+      model, context cap, and (under self-managed) the user-named credential_ref.
       The api_key is never serialised. Tenants with no row receive a
       synthesised platform default.
     tags:
@@ -23,7 +23,7 @@
     summary: Set tenant LLM provider posture
     description: >
       Eager-validates and UPSERTs the tenant_providers row. Validation
-      order: body shape → credential_ref required (mode=byok) →
+      order: body shape → credential_ref required (mode=self_managed) →
       credential_not_found → credential_data_malformed →
       model_not_in_caps_catalogue → UPSERT. Stored `provider` is read
       from the credential JSON; effective `model` is the body override
@@ -41,11 +41,11 @@
             properties:
               mode:
                 type: string
-                enum: [platform, byok]
+                enum: [platform, self_managed]
               credential_ref:
                 type: string
                 nullable: true
-                description: User-named vault key. Required when mode=byok.
+                description: User-named vault key. Required when mode=self_managed.
               model:
                 type: string
                 nullable: true
@@ -91,7 +91,7 @@ components:
       properties:
         mode:
           type: string
-          enum: [platform, byok]
+          enum: [platform, self_managed]
         provider:
           type: string
         model:

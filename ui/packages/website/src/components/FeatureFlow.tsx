@@ -54,7 +54,7 @@ const items: FeatureFlowItem[] = [
     id: "mission",
     title: "Mission Control",
     description:
-      "Approvals, budgets, BYOK provider, kill switch — one dashboard. Approve from Slack or the web.",
+      "Approvals, budgets, self-managed provider, kill switch — one dashboard. Approve from Slack or the web.",
     bullets: [
       "Daily + monthly dollar caps, trip-blocked at the gate",
       "zombiectl kill checkpoints state; nothing lost",

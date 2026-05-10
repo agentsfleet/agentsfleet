@@ -247,7 +247,7 @@ test "ServerConfig defaults are stable — full struct check" {
 }
 
 // ── Server lifecycle tests ───────────────────────────────────────────────
-// The 3 integration tests (rbac/byok/telemetry) cover init→listen→stop→deinit
+// The integration tests (rbac/tenant_provider/telemetry) cover init→listen→stop→deinit
 // end-to-end. These two unit tests lock contracts those can't reach:
 // the no-listen unwind path and pre-listen stop().
 

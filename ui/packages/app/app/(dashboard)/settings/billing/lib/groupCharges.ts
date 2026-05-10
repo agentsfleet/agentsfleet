@@ -1,4 +1,4 @@
-import type { TenantBillingChargesResponse } from "@/lib/types";
+import { CHARGE_TYPE, NANOS_PER_USD, type TenantBillingChargesResponse } from "@/lib/types";
 
 export type ChargeRow = TenantBillingChargesResponse["items"][number];
 
@@ -8,9 +8,9 @@ export type GroupedEvent = {
   posture: ChargeRow["posture"];
   model: string;
   recorded_at: number;
-  receive_cents: number;
-  stage_cents: number;
-  total_cents: number;
+  receive_nanos: number;
+  stage_nanos: number;
+  total_nanos: number;
   token_count_input: number | null;
   token_count_output: number | null;
 };
@@ -31,18 +31,18 @@ export function groupChargesByEvent(rows: ChargeRow[]): GroupedEvent[] {
         posture: r.posture,
         model: r.model,
         recorded_at: r.recorded_at,
-        receive_cents: 0,
-        stage_cents: 0,
-        total_cents: 0,
+        receive_nanos: 0,
+        stage_nanos: 0,
+        total_nanos: 0,
         token_count_input: null,
         token_count_output: null,
       };
       byEvent.set(r.event_id, entry);
     }
-    if (r.charge_type === "receive") {
-      entry.receive_cents = r.credit_deducted_cents ?? 0;
-    } else if (r.charge_type === "stage") {
-      entry.stage_cents = r.credit_deducted_cents ?? 0;
+    if (r.charge_type === CHARGE_TYPE.receive) {
+      entry.receive_nanos = r.credit_deducted_nanos ?? 0;
+    } else if (r.charge_type === CHARGE_TYPE.stage) {
+      entry.stage_nanos = r.credit_deducted_nanos ?? 0;
       entry.token_count_input = r.token_count_input;
       entry.token_count_output = r.token_count_output;
     }
@@ -56,7 +56,7 @@ export function groupChargesByEvent(rows: ChargeRow[]): GroupedEvent[] {
     if (r.recorded_at != null && (entry.recorded_at == null || r.recorded_at < entry.recorded_at)) {
       entry.recorded_at = r.recorded_at;
     }
-    entry.total_cents = entry.receive_cents + entry.stage_cents;
+    entry.total_nanos = entry.receive_nanos + entry.stage_nanos;
   }
   // Stable secondary sort by event_id keeps order deterministic when two
   // events share a recorded_at (rare but possible at sub-ms precision).
@@ -66,7 +66,16 @@ export function groupChargesByEvent(rows: ChargeRow[]): GroupedEvent[] {
   });
 }
 
-/** Format cents as "$X.XX". */
-export function formatDollars(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+// Two-to-four decimal places — cents granularity, with sub-cent precision
+// when traction rates ($0.001 stage, $0.0001 self-managed) need it.
+const USD_FORMATTER = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 4,
+});
+
+/** Format a nanos amount as a USD string. */
+export function formatDollars(nanos: number): string {
+  return USD_FORMATTER.format(nanos / NANOS_PER_USD);
 }

@@ -16,7 +16,7 @@ const features = [
   },
   {
     number: "02",
-    title: "BYOK",
+    title: "Self-managed key",
     description: "Bring your own LLM key. We never mark up inference.",
   },
   {

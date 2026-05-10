@@ -1,15 +1,15 @@
-# Reference — BYOK handoff
+# Reference — self-managed handoff
 
 The install-skill is platform-managed by default. It never asks the
 user about LLM provider, never holds an LLM API key, never writes to
-`tenant_providers`. That is deliberate — BYOK setup is its own
+`tenant_providers`. That is deliberate — self-managed setup is its own
 operator-deliberate flow, separate from per-repo zombie installation.
 
 This document is the lookup the agent loads when the user asks
 something like "I want to use my own Fireworks key" or "switch this
 zombie to Anthropic".
 
-## What "BYOK" actually means
+## What "self-managed" actually means
 
 Bring Your Own Key. The user provisions their own LLM provider account
 (Anthropic, Fireworks, OpenAI-compatible), stores the API key in the
@@ -17,7 +17,7 @@ workspace vault under a credential name they choose, and tells the
 platform's tenant-provider resolver to route inference through that
 credential instead of the platform-managed default.
 
-Two visible effects after switching to BYOK:
+Two visible effects after switching to self-managed:
 
 - **Billing flips.** Inference cost lands on the user's provider
   account directly (the platform never sees the money). The
@@ -46,15 +46,15 @@ op read 'op://Personal/fireworks-prod/api_key' \
 # 2. Tell the tenant-provider resolver to use that credential.
 zombiectl tenant provider add --credential fw-prod
 
-# 3. Verify the doctor block flipped to BYOK posture.
+# 3. Verify the doctor block flipped to self-managed posture.
 zombiectl doctor --json | jq '.tenant_provider'
-# Expect: { mode: "byok", provider: "fireworks",
+# Expect: { mode: "self_managed", provider: "fireworks",
 #          model: "accounts/fireworks/models/kimi-k2.6",
 #          context_cap_tokens: 256000, credential_ref: "fw-prod" }
 ```
 
 After step 3, every subsequent `/usezombie-install-platform-ops` run
-generates BYOK frontmatter automatically — the install-skill reads
+generates self-managed frontmatter automatically — the install-skill reads
 doctor and branches on `mode`. No flag, no prompt.
 
 ## Why the install-skill stays out of this
@@ -75,7 +75,7 @@ If the install-skill held the LLM API key during the install flow:
 The boundary is: **the install-skill orchestrates `zombiectl`; it
 never holds the secrets that `zombiectl` operates on directly.**
 
-## Switching back from BYOK to platform-managed
+## Switching back from self-managed to platform-managed
 
 ```bash
 zombiectl tenant provider delete
@@ -83,7 +83,7 @@ zombiectl tenant provider delete
 
 Doctor's next call will report `mode: platform`. Re-run the install
 skill on each repo if you want the pinned frontmatter to reflect the
-platform-managed model + cap; otherwise the BYOK sentinels keep
+platform-managed model + cap; otherwise the self-managed sentinels keep
 working (the worker resolves to the platform default at trigger time
 when no `tenant_providers` row exists).
 

@@ -25,7 +25,7 @@ export default function Terms() {
       <p className="text-text-muted m-0">
         usezombie is an agent delivery control plane that processes specification queues into
         validated pull requests. The Service operates on your Git repositories using branch-based
-        state and BYOK (Bring Your Own Keys) model access.
+        state and self-managed (self-managed provider keys) model access.
       </p>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">3. Your responsibilities</h2>

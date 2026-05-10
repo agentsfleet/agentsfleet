@@ -8,7 +8,7 @@
 -- so the dashboard can distinguish "never configured" from
 -- "explicitly reset".
 --
--- Value constraints (mode ∈ {platform, byok}; credential_ref nullability
+-- Value constraints (mode ∈ {platform, self_managed}; credential_ref nullability
 -- tied to mode) are enforced in application code via constants in
 -- src/state/tenant_provider.zig — RULE STS forbids static-string CHECKs.
 
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS core.tenant_providers (
     updated_at         BIGINT  NOT NULL
 );
 
--- Operator query: list all BYOK tenants for support / debugging.
+-- Operator query: list all self-managed-key tenants for support / debugging.
 CREATE INDEX IF NOT EXISTS idx_tenant_providers_mode
     ON core.tenant_providers (mode);
 

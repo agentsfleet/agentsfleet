@@ -3,7 +3,7 @@
     operationId: list_platform_keys
     summary: List platform LLM keys
     description: Lists all configured platform-wide LLM provider keys. These are shared keys that workspaces fall back to
-      when no BYOK key is configured.
+      when no self-managed key is configured.
     tags:
     - Admin
     responses:
@@ -29,7 +29,7 @@
   put:
     operationId: put_platform_key
     summary: Set a platform LLM key
-    description: Configures a platform-wide LLM provider key by referencing a workspace that has a BYOK key stored. The platform
+    description: Configures a platform-wide LLM provider key by referencing a workspace that has a self-managed key stored. The platform
       key proxies through the referenced workspace's credential.
     tags:
     - Admin
@@ -49,7 +49,7 @@
               source_workspace_id:
                 type: string
                 format: uuid
-                description: Workspace whose BYOK key to use as the platform key
+                description: Workspace whose self-managed key to use as the platform key
     responses:
       '200':
         description: Platform key configured
@@ -79,7 +79,7 @@
   delete:
     operationId: delete_platform_key
     summary: Delete a platform LLM key
-    description: Removes a platform-wide LLM provider key. Workspaces without BYOK keys will no longer be able to use this
+    description: Removes a platform-wide LLM provider key. Workspaces without self-managed keys will no longer be able to use this
       provider.
     tags:
     - Admin

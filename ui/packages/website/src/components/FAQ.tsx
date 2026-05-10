@@ -15,16 +15,16 @@ const items: { q: string; a: ReactNode }[] = [
     a: "A durable runtime for one operational outcome. The platform-ops agent wakes on a GitHub Actions deploy failure, gathers evidence from your infrastructure and run logs, and posts an evidenced diagnosis to Slack. Reachable via zombiectl steer for manual investigation.",
   },
   {
-    q: "What does BYOK mean?",
-    a: "Bring Your Own Key. Store your own LLM provider credential — Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot — and the executor resolves it at the tool bridge. usezombie marks up zero on inference; you pay your provider directly.",
+    q: "What does self-managed mean?",
+    a: "self-managed provider key. Store your own LLM provider credential — Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot — and the executor resolves it at the tool bridge. usezombie marks up zero on inference; you pay your provider directly.",
   },
   {
     q: "What am I actually paying for?",
-    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points per event: ${RATES_DISPLAY.eventPlatform} on receipt (after the balance gate passes), then ${RATES_DISPLAY.stage} before each stage the agent runs — every wake-up and every reasoning step is line-itemed. A typical 3-stage incident is ${RATES_DISPLAY.eventPlatform} + 3 × ${RATES_DISPLAY.stage} = $0.31. Inference cost is yours via BYOK; usezombie marks up zero.`,
+    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.starterCredit} starter grant that never expires. Two debit points per event: ${RATES_DISPLAY.eventPlatform} on receipt (after the balance gate passes), then ${RATES_DISPLAY.stage} before each stage the agent runs — every wake-up and every reasoning step is line-itemed. A typical 3-stage incident is ${RATES_DISPLAY.eventPlatform} + 3 × ${RATES_DISPLAY.stage} = $0.31. Inference cost is yours via self-managed key; usezombie marks up zero.`,
   },
   {
     q: "Does platform-managed inference cost more per stage?",
-    a: `Same headline rate today. Platform-managed stage cost is structured as ${RATES_DISPLAY.stage} overhead plus a token component, but the pre-execution charge uses a 100/100-token floor estimate that rounds to 0¢ against every current model rate — so both postures bill ${RATES_DISPLAY.stage} per stage in practice. Token-level reconciliation (heavy stages truing up against actual usage) lands when Stripe wires in. Until then: BYOK pays ${RATES_DISPLAY.stage} flat per stage and your provider bills the inference; platform-managed pays ${RATES_DISPLAY.stage} flat per stage and we bill the inference at provider rates with zero markup.`,
+    a: `Same headline rate today. Platform-managed stage cost is structured as ${RATES_DISPLAY.stage} overhead plus a token component, but the pre-execution charge uses a 100/100-token floor estimate that rounds to 0¢ against every current model rate — so both postures bill ${RATES_DISPLAY.stage} per stage in practice. Token-level reconciliation (heavy stages truing up against actual usage) lands when Stripe wires in. Until then: self-managed pays ${RATES_DISPLAY.stage} flat per stage and your provider bills the inference; platform-managed pays ${RATES_DISPLAY.stage} flat per stage and we bill the inference at provider rates with zero markup.`,
   },
   {
     q: "What does 'extras provisioned per workspace' mean?",

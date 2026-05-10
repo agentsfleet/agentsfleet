@@ -1,13 +1,21 @@
 // Tenant provider configuration: show / add / delete the active LLM
-// posture (platform-managed default vs BYOK with a named credential).
+// posture (platform-managed default vs self-managed key with a named
+// credential).
 //
 // Backed by /v1/tenants/me/provider — see src/http/handlers/tenant_provider.zig
 // for the wire contract. The api_key is never returned in responses; this
 // CLI only ever displays the resolved metadata (mode, provider, model,
 // credential_ref, context_cap_tokens).
 
+import {
+  PROVIDER_MODE,
+  formatDollars,
+  NANOS_PER_USD,
+} from "../constants/billing.js";
+
 const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
-const LOW_BALANCE_THRESHOLD_CENTS = 100; // <$1 left → warn on reset
+// <$1 left → warn on reset.
+const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
 
 // ── tenant provider show ─────────────────────────────────────────────────────
 
@@ -64,7 +72,7 @@ export async function commandTenantProviderAdd(ctx, parsed, deps) {
     return 2;
   }
 
-  const body = { mode: "byok", credential_ref: credentialRef };
+  const body = { mode: PROVIDER_MODE.self_managed, credential_ref: credentialRef };
   if (modelOverride) body.model = modelOverride;
 
   const res = await request(ctx, TENANT_PROVIDER_PATH, {
@@ -78,7 +86,7 @@ export async function commandTenantProviderAdd(ctx, parsed, deps) {
     return 0;
   }
 
-  writeLine(ctx.stdout, ui.ok(`Tenant provider added: mode=byok credential=${credentialRef}`));
+  writeLine(ctx.stdout, ui.ok(`Tenant provider added: mode=${PROVIDER_MODE.self_managed} credential=${credentialRef}`));
   writeLine(ctx.stdout);
   printTable(ctx.stdout, [
     { key: "field", label: "FIELD" },
@@ -126,10 +134,10 @@ export async function commandTenantProviderDelete(ctx, _parsed, deps) {
   // isn't reachable — the reset itself succeeded and that's the headline.
   try {
     const billing = await request(ctx, "/v1/tenants/me/billing", { method: "GET", headers: apiHeaders(ctx) });
-    const balance = typeof billing?.balance_cents === "number" ? billing.balance_cents : null;
-    if (balance !== null && balance < LOW_BALANCE_THRESHOLD_CENTS) {
+    const balance = typeof billing?.balance_nanos === "number" ? billing.balance_nanos : null;
+    if (balance !== null && balance < LOW_BALANCE_THRESHOLD_NANOS) {
       writeLine(ctx.stdout);
-      writeLine(ctx.stdout, ui.err(`⚠ Tenant balance is low: ${balance}¢. Top up via the dashboard before the next event.`));
+      writeLine(ctx.stdout, ui.err(`⚠ Tenant balance is low: ${formatDollars(balance)}. Top up via the dashboard before the next event.`));
     }
   } catch {
     // ignore — informational warning only.

@@ -103,7 +103,7 @@ test("references docs cover the three contracts", () => {
   for (const step of ["1 — doctor", "3 — repo", "5 — webhook", "7 — template", "9 — install", "10 — webhook self-test", "12 — smoke"]) {
     assert.ok(failModes.includes(step), `failure-modes.md missing row for ${step}`);
   }
-  const byok = readFileSync(resolve(skillDir, "references/byok-handoff.md"), "utf8");
+  const selfManagedHandoff = readFileSync(resolve(skillDir, "references/self-managed-handoff.md"), "utf8");
   // Locked invariant: install-skill never holds an LLM api_key.
-  assert.match(byok, /never holds an LLM (api[_ ]?key|API key)/i);
+  assert.match(selfManagedHandoff, /never holds an LLM (api[_ ]?key|API key)/i);
 });

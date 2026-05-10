@@ -26,8 +26,8 @@ GRANT COMMANDS
   grant delete <grant_id>     Revoke an integration grant
 
 TENANT COMMANDS
-  tenant provider show        Show the BYOK provider config
-  tenant provider add --credential <n>  Use a BYOK credential
+  tenant provider show        Show the active provider config
+  tenant provider add --credential <n>  Use a self-managed credential
   tenant provider delete      Reset to the platform default
 
 BILLING COMMANDS

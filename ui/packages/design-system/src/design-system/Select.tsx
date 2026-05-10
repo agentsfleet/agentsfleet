@@ -7,7 +7,7 @@ import { cn } from "../utils";
 /*
  * Select — Radix Select composition with semantic utilities. Mirrors
  * shadcn/ui's compound API (Trigger / Content / Item / Value) so the
- * dashboard's existing select-shaped intent (ByokFields credential
+ * dashboard's existing select-shaped intent (ProviderKeyFields credential
  * picker, future filter dropdowns) stops re-implementing the Tailwind
  * styling for native <select> on every site.
  *

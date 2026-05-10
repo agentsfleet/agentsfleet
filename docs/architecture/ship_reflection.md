@@ -19,7 +19,7 @@ PENDING SHIP. 1–2 paragraphs. Decisions that didn't survive contact with imple
 ## What we deferred
 
 PENDING SHIP. 1 paragraph. Concrete deferral status as of launch:
-- **BYOK provider coverage (M48):** which providers actually shipped, which are stub-only (Together / Groq / Moonshot status as of ship date).
+- **self-managed provider coverage (M48):** which providers actually shipped, which are stub-only (Together / Groq / Moonshot status as of ship date).
 - **Approval inbox (M47):** dashboard inbox status; Slack DM approvals status.
 - **Self-host:** confirmed deferred to v3 (per `high_level.md` §1) — note any v3 prework that *did* land opportunistically.
 - **Install-skill host coverage (M49):** which hosts ship green (Claude Code, Amp, Codex CLI, OpenCode) at launch; any host with a known incompatibility.

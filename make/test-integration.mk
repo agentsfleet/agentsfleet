@@ -38,7 +38,7 @@ _ensure-test-infra:
 	@echo "✓ [infra] postgres + redis ready; Redis CA cert at $(TEST_REDIS_TLS_CA_CERT)"
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
-# state. Needed because several tests in the suite (rbac, byok, event_loop) leave
+# state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
 # fixture rows behind (paused zombies, lingering secrets) that break subsequent runs.
 # Uses the same teardown.sql as the PlanetScale playbook for consistency.
 _reset-test-db: _ensure-test-infra

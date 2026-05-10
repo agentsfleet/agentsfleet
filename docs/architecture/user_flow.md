@@ -12,7 +12,7 @@ The initial user assumption is simple:
 
 The Claude session becomes the place where the user defines, installs, updates, and supervises zombies. The zombie runtime becomes the place where long-lived operational outcomes continue after the chat session ends.
 
-For the full end-to-end install + first-trigger walkthroughs (platform-managed and BYOK), see [`scenarios/`](./scenarios/).
+For the full end-to-end install + first-trigger walkthroughs (platform-managed and self-managed), see [`scenarios/`](./scenarios/).
 
 ## §8.0 The wedge surface: `/usezombie-install-platform-ops` skill
 
@@ -39,10 +39,10 @@ This is a deliberate scope cut, not a gap in the architecture. The runtime is al
 
 Practically, this means:
 
-- v2 launch claim is **OSS + BYOK + markdown-defined**. Not "self-hostable."
+- v2 launch claim is **OSS + self-managed + markdown-defined**. Not "self-hostable."
 - The `/self-host` runbook page does not exist on `docs.usezombie.com` for v2.
 - Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours_v2.md`](./office_hours_v2.md) P1 are v3 customers, not v2.
-- BYOK still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`scenarios/02_byok.md`](./scenarios/02_byok.md).
+- self-managed still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md).
 
 ## §8.1 Authoring the zombie
 
@@ -115,7 +115,7 @@ When a GH Actions deploy fails:
    - INSERT `core.zombie_events` (status='received')
    - balance + approval gates pass
    - resolve credentials from the vault (GitHub PAT, Fly token, Slack bot token)
-   - resolve provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR BYOK key, depending on tenant posture
+   - resolve provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR self-managed key, depending on tenant posture
    - `executor.createExecution` opens a sandbox session with `secrets_map`, `network_policy`, `tools` list, `context` knobs, and provider config
    - `executor.startStage` invokes the NullClaw agent with the message
 5. The zombie's NullClaw agent reasons over the message:
@@ -149,20 +149,20 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 - the user authors and supervises from Claude
 - the zombie executes durably outside that transient chat session
 
-## §8.7 Model and context-cap origin (platform vs. BYOK)
+## §8.7 Model and context-cap origin (platform vs. self-managed)
 
-Two things travel together: the **model** the executor invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and BYOK postures, and the worker's overlay logic is what reconciles them at trigger time.
+Two things travel together: the **model** the executor invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and self-managed postures, and the worker's overlay logic is what reconciles them at trigger time.
 
 The install-skill's job in both postures is the same shape: **call `zombiectl doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `zombiectl auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
 ```
-                     PLATFORM-MANAGED (John Doe)                BYOK (John Doe, post-flip)
+                     PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)
                   ─────────────────────────────────       ─────────────────────────────────
 install-skill →   doctor --json                           doctor --json
                     auth_token_present: true ✓              auth_token_present: true ✓
                     workspace_bound: true   ✓              workspace_bound: true   ✓
                     tenant_provider:                       tenant_provider:
-                      {mode=platform,                        {mode=byok,
+                      {mode=platform,                        {mode=self_managed,
                        model=accounts/fireworks/models/kimi-k2.6,               provider=fireworks,
                        context_cap_tokens=256000}             model=accounts/.../kimi-k2.6,
                   ─ if any auth check fails: print           context_cap_tokens=256000}
@@ -173,17 +173,17 @@ install-skill →   doctor --json                           doctor --json
                     context_cap_tokens: 256000              context_cap_tokens: 0
 
 tenant provider → (nothing — synth-default                → zombiectl tenant provider set
-set                stays in place)                            --credential account-fireworks-byok
+set                stays in place)                            --credential account-fireworks-key
                                                               → API loads vault row
                                                               → API GETs /_um/.../model-caps.json
                                                               → upsert tenant_providers row
-                                                                {mode=byok, provider, model,
+                                                                {mode=self_managed, provider, model,
                                                                  context_cap_tokens, credential_ref}
 
 trigger fires  → processEvent:                            → processEvent:
                    resolveActiveProvider()                    resolveActiveProvider()
                      no row → synth-default                    follows credential_ref to vault
-                   frontmatter has resolved cap →              returns mode=byok + cap + key
+                   frontmatter has resolved cap →              returns mode=self_managed + cap + key
                    use it directly.                          frontmatter sentinels overlay:
                                                                model "" or absent → overlay
                                                                cap 0   or absent → overlay
@@ -196,8 +196,8 @@ L3 stage chunking
                 → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
 ```
 
-**Worker overlay rule (per-field, independent):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under BYOK posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
+**Worker overlay rule (per-field, independent):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
 
 The parser-side companion to this rule landed with M49: `x-usezombie.model` and `x-usezombie.context.*` are now first-class fields on `ZombieConfig`, plumbed through `event_loop_helpers.executeInSandbox` into the executor's `ContextBudget` *before* `applyContextDefaults` substitutes auto-sentinels. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
-Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at `tenant provider set` time (BYOK path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_byok.md`](./billing_and_byok.md) §9 for the endpoint shape and [`scenarios/02_byok.md`](./scenarios/02_byok.md) for the full BYOK walkthrough.
+Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at `tenant provider set` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.

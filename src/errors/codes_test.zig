@@ -38,10 +38,10 @@ test "T8: ERR_CRED_PLATFORM_KEY_MISSING hint names admin endpoint and self-manag
     const mentions_admin = std.mem.indexOf(u8, h, "platform-keys") != null or
         std.mem.indexOf(u8, h, "admin") != null;
     try std.testing.expect(mentions_admin);
-    const mentions_byok = std.mem.indexOf(u8, h, "credentials/llm") != null or
+    const mentions_self_managed = std.mem.indexOf(u8, h, "credentials/llm") != null or
         std.mem.indexOf(u8, h, "self-managed") != null or
         std.mem.indexOf(u8, h, "own key") != null;
-    try std.testing.expect(mentions_byok);
+    try std.testing.expect(mentions_self_managed);
     try std.testing.expect(std.mem.indexOf(u8, h, "sk-ant-") == null);
     try std.testing.expect(std.mem.indexOf(u8, h, "Bearer ") == null);
 }

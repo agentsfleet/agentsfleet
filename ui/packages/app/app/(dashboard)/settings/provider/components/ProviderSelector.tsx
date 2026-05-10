@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { Loader2Icon } from "lucide-react";
 import { Alert, Button } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
-import { resetTenantProvider, setTenantProviderByok } from "@/lib/api/tenant_provider";
+import { resetTenantProvider, setTenantProviderSelfManaged } from "@/lib/api/tenant_provider";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import { PROVIDER_MODE, type ProviderMode } from "@/lib/types";
 import ModeRadio from "./ModeRadio";
-import ByokFields from "./ByokFields";
+import ProviderKeyFields from "./ProviderKeyFields";
 
 type Props = {
   workspaceId: string;
@@ -33,11 +33,11 @@ const MODE_STRATEGIES: Record<ProviderMode, ModeStrategy> = {
     successMsg: "Reset to platform default.",
     run: (token) => resetTenantProvider(token),
   },
-  byok: {
-    submitLabel: "Save BYOK config",
-    successMsg: "Switched to BYOK. Run a test event to verify the key.",
+  self_managed: {
+    submitLabel: "Save self-managed key",
+    successMsg: "Switched to self-managed. Run a test event to verify the key.",
     run: (token, { credentialRef, modelOverride }) =>
-      setTenantProviderByok(
+      setTenantProviderSelfManaged(
         { credential_ref: credentialRef, model: modelOverride.trim() || undefined },
         token,
       ),
@@ -63,10 +63,10 @@ export default function ProviderSelector({
     currentCredentialRef ?? credentials[0]?.name ?? "",
   );
   const [modelOverride, setModelOverride] = useState<string>(
-    currentMode === PROVIDER_MODE.byok ? currentModel : "",
+    currentMode === PROVIDER_MODE.self_managed ? currentModel : "",
   );
 
-  const isByok = mode === PROVIDER_MODE.byok;
+  const isSelfManaged = mode === PROVIDER_MODE.self_managed;
   const noCredentials = credentials.length === 0;
 
   const strategy = MODE_STRATEGIES[mode];
@@ -99,16 +99,16 @@ export default function ProviderSelector({
           description="Zombie credits cover everything. Charged from your tenant balance per event."
         />
         <ModeRadio
-          value={PROVIDER_MODE.byok}
-          checked={isByok}
-          onChange={() => setMode(PROVIDER_MODE.byok)}
-          label="Bring your own key"
+          value={PROVIDER_MODE.self_managed}
+          checked={isSelfManaged}
+          onChange={() => setMode(PROVIDER_MODE.self_managed)}
+          label="Use my own provider key"
           description="Your provider account, your API key. We charge a flat per-event overhead."
         />
       </fieldset>
 
-      {isByok ? (
-        <ByokFields
+      {isSelfManaged ? (
+        <ProviderKeyFields
           workspaceId={workspaceId}
           credentials={credentials}
           credentialRef={credentialRef}
@@ -119,7 +119,7 @@ export default function ProviderSelector({
       ) : null}
 
       <div className="flex items-center gap-3">
-        <Button type="submit" disabled={isPending || (isByok && noCredentials)}>
+        <Button type="submit" disabled={isPending || (isSelfManaged && noCredentials)}>
           {isPending ? <Loader2Icon size={14} className="animate-spin" aria-hidden /> : null}
           {strategy.submitLabel}
         </Button>

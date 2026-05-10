@@ -18,9 +18,9 @@
 - **M45_001** (vault structured credentials) — opaque JSON-object credentials keyed by name; this spec stores BYOK records there.
 
 **Canonical architecture:**
-- [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) — credit-pool billing model, two debit points, `compute_receive_charge` + `compute_stage_charge`, posture transitions, model-caps endpoint with token rates, api_key visibility boundary, read-only dashboard layout.
+- [`docs/architecture/billing_and_provider_keys.md`](../../architecture/billing_and_provider_keys.md) — credit-pool billing model, two debit points, `compute_receive_charge` + `compute_stage_charge`, posture transitions, model-caps endpoint with token rates, api_key visibility boundary, read-only dashboard layout.
 - [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.7 — three-rail diagram (platform vs BYOK origin), worker sentinel overlay.
-- [`docs/architecture/scenarios/01_default_install.md`](../../architecture/scenarios/01_default_install.md), [`02_byok.md`](../../architecture/scenarios/02_byok.md), [`03_balance_gate.md`](../../architecture/scenarios/03_balance_gate.md) — John Doe's end-to-end journey across both postures.
+- [`docs/architecture/scenarios/01_default_install.md`](../../architecture/scenarios/01_default_install.md), [`02_self_managed.md`](../../architecture/scenarios/02_self_managed.md), [`03_balance_gate.md`](../../architecture/scenarios/03_balance_gate.md) — John Doe's end-to-end journey across both postures.
 
 ---
 
@@ -933,7 +933,7 @@ Every test maps back to a scenario or invariant.
 - [ ] **Manual F:** Drain balance to 0¢ → next event blocks; CLI prints `See https://app.usezombie.com/settings/billing`; dashboard shows empty-balance state with disabled Purchase button.
 - [ ] **Audit grep:** BYOK api_key bytes never appear in `core.zombie_events`, `core.zombie_execution_telemetry`, `core.tenant_providers`, worker logs, executor logs, doctor JSON, or any HTTP response body across the full test run.
 - [ ] **Workspace route removal:** `PUT /v1/workspaces/{ws}/credentials/llm` returns 404; `git grep "workspace_llm_credential"` returns 0 hits in non-historical files.
-- [ ] **Architecture cross-reference:** [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) and [`docs/architecture/scenarios/03_balance_gate.md`](../../architecture/scenarios/03_balance_gate.md) reflect the credit-pool model and the M48 contract (already landed in PR #TBD).
+- [ ] **Architecture cross-reference:** [`docs/architecture/billing_and_provider_keys.md`](../../architecture/billing_and_provider_keys.md) and [`docs/architecture/scenarios/03_balance_gate.md`](../../architecture/scenarios/03_balance_gate.md) reflect the credit-pool model and the M48 contract (already landed in PR #TBD).
 - [ ] **Model-caps endpoint:** the public response carries `input_cents_per_mtok` / `output_cents_per_mtok` per model. The API server populates `lookup_model_rate` cache at boot.
 
 ---
@@ -951,5 +951,5 @@ Every test maps back to a scenario or invariant.
 - **Custom OIDC / external vault-backend integrations.** Treat M45's vault as the source of truth.
 - **Synthetic test call to LLM provider on `tenant provider set`.** Lazy auth validation.
 - **Multi-active providers per tenant.** Multi-credential vault storage is supported; only one is active at a time per tenant.
-- **The model-caps endpoint admin tooling and the admin-zombie that maintains it.** Owned by [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §10 and platform infra; this spec consumes the endpoint and adds the token-rate columns to its schema.
+- **The model-caps endpoint admin tooling and the admin-zombie that maintains it.** Owned by [`docs/architecture/billing_and_provider_keys.md`](../../architecture/billing_and_provider_keys.md) §10 and platform infra; this spec consumes the endpoint and adds the token-rate columns to its schema.
 - **Per-workspace soft caps inside a tenant.** v3 — needs a new gate at the workspace level.

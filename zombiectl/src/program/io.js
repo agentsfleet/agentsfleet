@@ -74,8 +74,8 @@ function printHelp(stdout, _ui, opts = {}) {
   helpRow(stdout, "grant delete <grant_id>", "Revoke an integration grant");
   writeLine(stdout);
   writeLine(stdout, head("TENANT COMMANDS"));
-  helpRow(stdout, "tenant provider show", "Show the BYOK provider config");
-  helpRow(stdout, "tenant provider add --credential <n>", "Use a BYOK credential");
+  helpRow(stdout, "tenant provider show", "Show the active provider config");
+  helpRow(stdout, "tenant provider add --credential <n>", "Use a self-managed credential");
   helpRow(stdout, "tenant provider delete", "Reset to the platform default");
   writeLine(stdout);
   writeLine(stdout, head("BILLING COMMANDS"));

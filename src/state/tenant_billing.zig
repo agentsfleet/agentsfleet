@@ -8,8 +8,13 @@ const logging = @import("log");
 
 const log = logging.scoped(.state);
 
-/// $5 starter grant in nanos (1 nano = 1/1,000,000,000 USD; 5 USD = 5e9 nanos).
-pub const STARTER_CREDIT_NANOS: i64 = 5_000_000_000;
+/// Canonical nanos-per-USD conversion factor. 1 USD = 1_000_000_000 nanos
+/// (1 nano = 1/1,000,000,000 USD). Mirrors `NANOS_PER_USD` in
+/// `ui/packages/app/lib/types.ts` and `zombiectl/src/constants/billing.js`.
+pub const NANOS_PER_USD: i64 = 1_000_000_000;
+
+/// $5 starter grant in nanos.
+pub const STARTER_CREDIT_NANOS: i64 = 5 * NANOS_PER_USD;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 
 // Credit-pool cost model — M66 traction rates expressed in nanos.

@@ -1,6 +1,6 @@
 // Test harness — supertest-style fluent API for in-process HTTP integration tests.
 //
-// Goal: replace the duplicated TestServer boilerplate in byok_http_integration_test.zig
+// Goal: replace the duplicated TestServer boilerplate in tenant_provider_http_integration_test.zig
 // and rbac_http_integration_test.zig with one shared module. New integration tests
 // (webhook, dashboard, telemetry, …) consume it directly.
 //
@@ -10,7 +10,7 @@
 //     can plug in only the auth policies it needs.
 //   * Fixtures are inserted through `conn()` accessor and MUST be cleaned up
 //     explicitly in the test body (not via defer) — mirrors the proven
-//     byok/rbac pattern where deferred cleanup leaks connections at pool.deinit.
+//     rbac pattern where deferred cleanup leaks connections at pool.deinit.
 //
 // Shape:
 //   var h = try TestHarness.start(alloc, .{ .configureRegistry = myWireFn });
@@ -360,7 +360,7 @@ pub const Response = struct {
 //
 // Scope: Request builder state + Response assertion helpers. Tests that touch
 // only in-memory state — no server, no DB, no network. `.send()` and
-// `TestHarness.start/deinit` are covered by the integration suites (byok,
+// `TestHarness.start/deinit` are covered by the integration suites (tenant_provider,
 // rbac, telemetry, dashboard, zombie_steer, tenant_api_keys, webhook).
 //
 // Request.init takes *TestHarness but only reads `harness.alloc` unless
