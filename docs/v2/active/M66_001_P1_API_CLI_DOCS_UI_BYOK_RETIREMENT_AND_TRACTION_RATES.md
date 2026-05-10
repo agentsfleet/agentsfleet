@@ -81,7 +81,15 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 
 | File | Action | Why |
 |---|---|---|
+| `schema/014_zombie_execution_telemetry.sql` | EDIT (in place) | Rename column `credit_deducted_cents BIGINT` → `credit_deducted_nanos BIGINT`. Same pre-v2.0 in-place edit as `017`. (See Discovery — original spec missed this.) |
 | `schema/017_tenant_billing.sql` | EDIT (in place) | Rename column `balance_cents` → `balance_nanos`. CHECK becomes `balance_nanos >= 0`. Update file-top comment to drop M65 cents prose. **No migration file, no `ALTER`** — pre-v2.0 clean break, dev DB reseeded via `make down && make up`. |
+| `schema/019_model_caps.sql` | EDIT (in place) | Rename `input_cents_per_mtok INTEGER` → `input_nanos_per_mtok BIGINT`, same for `output_*`. Type widens because `$30/M` tokens in nanos = `3e10`, beyond INT32 max. Update INSERT, ON CONFLICT clause, and any seed VALUES rows in the same file. (See Discovery.) |
+| `src/state/model_rate_cache.zig` | EDIT | Field rename `input_cents_per_mtok` → `input_nanos_per_mtok` (same for output); SQL column rename; cached struct + load() rebuilt. |
+| `src/state/zombie_telemetry_store.zig` (+ `_test.zig`) | EDIT | Field rename `credit_deducted_cents` → `credit_deducted_nanos`; SQL columns; struct fields; insert + load + test fixtures. |
+| `src/http/handlers/model_caps.zig` (+ `_integration_test.zig`) | EDIT | Wire-format rename `input_cents_per_mtok` → `input_nanos_per_mtok` (and output) in JSON serializer + `i32` → `i64` field types + integration-test assertions. (UI consumer in `ui/packages/app/` covered by the §3/§4 sweep.) |
+| `src/zombie/metering.zig` (+ `_test.zig`) | EDIT | Charge-amount field rename `cents` → `nanos` in MeterResult / dispatch; SQL bound params; test fixtures. |
+| `src/zombie/event_loop_writepath_integration_test.zig`, `src/state/signup_bootstrap_test.zig` | EDIT | SQL string updates for `balance_cents` column references. |
+| `src/config/balance_policy.zig`, `src/zombie/event_loop_types.zig` | EDIT (comment-only) | Comment updates from `balance_cents` → `balance_nanos`. |
 | `schema/020_tenant_providers.sql` | EDIT (in place) | Update file-top comment: `mode ∈ {platform, byok}` → `mode ∈ {platform, self_managed}`. The `mode` column is already `TEXT` (RULE STS — value enforcement lives in `src/state/tenant_provider.zig`), so no DDL change. Update the operator-query index comment from "list all BYOK tenants" to "list all self-managed tenants". |
 | `src/state/tenant_billing.zig` | EDIT | Constants renamed `_CENTS` → `_NANOS`, value set rebuilt from M66 rate table (not a value-preserving rescale). Drop `EVENT_BYOK_CENTS` and `EVENT_PLATFORM_CENTS` (collapsed into single `EVENT_NANOS = 0`). Drop single `STAGE_CENTS`; add posture-dispatched `STAGE_PLATFORM_NANOS = 1_000_000` and `STAGE_SELF_MANAGED_NANOS = 100_000`. `STARTER_CREDIT_NANOS = 5_000_000_000`. Column type stays `BIGINT` (i64). |
 | `src/state/tenant_billing_test.zig` | EDIT | Pin tests for all new constants. New negative test: parsing legacy `'byok'` string into `Mode` returns `error.UnknownMode`. |
@@ -435,11 +443,15 @@ echo "E13: should be empty"
 
 ## Discovery (consult log)
 
-(Empty at spec creation — populated as Legacy-Design Consult Guard, Architecture Consult, and other action-triggered guards fire during EXECUTE.)
+**§1 scope expansion (logged at EXECUTE entry, May 10):** the original Files-Changed table listed only `schema/017_tenant_billing.sql` for the cents → nanos unit change. Grep across `schema/` and `src/` surfaced two additional cents-typed schemas that must flip in the same commit to keep "canonical billing unit = nanos" honest:
 
-Expected entries:
+- `schema/014_zombie_execution_telemetry.sql` — `credit_deducted_cents BIGINT` → `credit_deducted_nanos BIGINT`. Consumed by `src/state/zombie_telemetry_store.zig` + tests + `src/zombie/metering.zig`.
+- `schema/019_model_caps.sql` — `input_cents_per_mtok INTEGER`, `output_cents_per_mtok INTEGER` → `input_nanos_per_mtok BIGINT`, `output_nanos_per_mtok BIGINT`. Type widens INTEGER → BIGINT because `$30/M tokens` in nanos = `3e10`, beyond `INT32_MAX` (~2.1e9). Consumed by `src/state/model_rate_cache.zig`, `src/http/handlers/model_caps.zig`, the model_caps integration test, and `src/state/tenant_billing.zig::computeStageCharge`.
+
+Without this expansion, `STAGE_PLATFORM_NANOS + in_cents + out_cents` would mix nanos and cents and produce nonsense charges. Spec body's Files-Changed table is amended in the same commit so the spec stays the source of truth.
+
+Expected further entries:
 - Inventory of `provider-byok-*` data-testid usage (out-of-repo e2e dependency check) before §3 begins.
-- Confirmation that `make down && make up` is the canonical reseed path on this dev environment (Schema Removal Guard pre-v2.0 procedure), captured before §1 lands.
 - Documentation drift findings from §6 audit; either fixed in PR or filed as follow-up specs.
 
 ---
