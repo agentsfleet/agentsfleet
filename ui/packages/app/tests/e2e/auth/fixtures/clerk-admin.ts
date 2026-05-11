@@ -24,7 +24,11 @@ export interface MintedFixture {
   email: string;
   password: string;
   clerkUserId: string;
+  /** `api`-template JWT — Bearer auth on zombied; carries publicMetadata. */
   sessionJwt: string;
+  /** Default (non-template) session JWT — `__session` cookie value;
+   *  carries `sid`/`azp` claims that `clerkMiddleware()` requires. */
+  cookieJwt: string;
 }
 
 interface ClerkUser {
@@ -84,37 +88,40 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
 }
 
 /**
- * Mints a session JWT using the `api` Clerk JWT template — the same template
- * the dashboard uses (see ui/packages/app/app/backend/v1/.../route.ts
- * `getToken({ template: "api" })`). Default session tokens omit
- * publicMetadata, which means zombied responds 403 UZ-AUTH-001
- * ("Tenant context required"). The api template embeds tenant_id + role.
+ * Mints two session JWTs for the same Clerk session:
  *
- * Default Clerk session-token TTL is 60s; the e2e suite can take longer than
- * that. expires_in_seconds bumps it to one hour so a full suite run does not
- * trip UZ-AUTH-003 ("Token expired") mid-test.
+ *   1. **Template (`api`) JWT** — carries `metadata.tenant_id` + `metadata.role`
+ *      from publicMetadata; used as Bearer auth on zombied. Default session
+ *      tokens omit publicMetadata, which lands at 403 UZ-AUTH-001 ("Tenant
+ *      context required").
+ *
+ *   2. **Default JWT** — Clerk's standard session token (no template); carries
+ *      the `sid` and `azp` claims `clerkMiddleware()` needs to validate the
+ *      `__session` cookie. Template tokens omit `sid`, so they cannot be
+ *      mounted as a cookie — the dashboard middleware redirects to /sign-in.
+ *
+ * Both share the same session, so they expire together. Default Clerk session-
+ * token TTL is 60s, far shorter than a full e2e suite — the body's
+ * `expires_in_seconds=3600` lifts it to one hour. Body, not URL: Clerk's
+ * Backend API takes mint params in the JSON body for token endpoints.
  */
-export async function mintSessionJwt(userId: string): Promise<string> {
+export async function mintTokens(
+  userId: string,
+): Promise<{ sessionJwt: string; cookieJwt: string }> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
-  const token = await clerkRequest<ClerkSessionToken>(
-    "POST",
-    `/sessions/${session.id}/tokens/${JWT_TEMPLATE}?expires_in_seconds=3600`,
-    {},
-  );
-  return token.jwt;
-}
-
-/**
- * Mints a single-use sign-in token for the user. Used by signInAs to drive
- * Clerk's `strategy: "ticket"` sign-in flow which bypasses MFA — tickets are
- * admin-authorized so Clerk does not require a second factor.
- */
-export async function mintSignInToken(userId: string): Promise<string> {
-  const resp = await clerkRequest<{ token: string }>("POST", "/sign_in_tokens", {
-    user_id: userId,
-    expires_in_seconds: 600,
-  });
-  return resp.token;
+  const [template, standard] = await Promise.all([
+    clerkRequest<ClerkSessionToken>(
+      "POST",
+      `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
+      { expires_in_seconds: 3600 },
+    ),
+    clerkRequest<ClerkSessionToken>(
+      "POST",
+      `/sessions/${session.id}/tokens`,
+      { expires_in_seconds: 3600 },
+    ),
+  ]);
+  return { sessionJwt: template.jwt, cookieJwt: standard.jwt };
 }
 
 export interface ProvisionedUser {
@@ -135,14 +142,15 @@ export async function provisionUser(spec: FixtureUserSpec): Promise<ProvisionedU
 }
 
 /**
- * Phase 3: mint the JWT after bootstrapTenant has updated publicMetadata.
- * The order matters — the JWT snapshots publicMetadata at mint time; minting
- * before bootstrap produces a JWT without tenant_id, which zombied rejects
- * with UZ-AUTH-001 ("Tenant context required").
+ * Phase 3: mint the session + cookie JWTs after bootstrapTenant has updated
+ * publicMetadata. The order matters — the template JWT snapshots
+ * publicMetadata at mint time; minting before bootstrap produces a JWT
+ * without tenant_id, which zombied rejects with UZ-AUTH-001 ("Tenant context
+ * required").
  */
 export async function attachJwt(user: ProvisionedUser): Promise<MintedFixture> {
-  const jwt = await mintSessionJwt(user.clerkUserId);
-  return { ...user, sessionJwt: jwt };
+  const tokens = await mintTokens(user.clerkUserId);
+  return { ...user, ...tokens };
 }
 
 export async function findUserIdByEmail(email: string): Promise<string | null> {

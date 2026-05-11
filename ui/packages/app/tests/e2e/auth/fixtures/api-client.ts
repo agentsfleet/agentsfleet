@@ -15,6 +15,7 @@ interface JwtEntry {
   email: string;
   clerkUserId: string;
   sessionJwt: string;
+  cookieJwt: string;
 }
 
 function loadEntry(key: FixtureKey): JwtEntry {
