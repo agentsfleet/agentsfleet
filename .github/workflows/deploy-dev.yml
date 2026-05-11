@@ -176,8 +176,8 @@ jobs:
           for i in $(seq 1 12); do
             OUT="$(flyctl machine list --app "${APP}" || true)"
             echo "${OUT}"
-            if echo "${OUT}" | grep -qiE '\b(started|stopped)\b'; then
-              echo "✓ at least one machine is in a settled state (started/stopped) for ${APP}"
+            if echo "${OUT}" | grep -qiE '\bstarted\b'; then
+              echo "✓ at least one machine is in started state for ${APP}"
               exit 0
             fi
             echo "attempt ${i}/12: no settled machine yet; retrying in 5s..."
@@ -345,6 +345,24 @@ jobs:
           else
             echo "  ✓ tunnel is running"
           fi
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+
+      - name: Pre-warm zombied-dev machines
+        # min_machines_running is enforced eventually; auto_start_machines is
+        # a no-op for 6PN ingress (cloudflared bypasses the Fly proxy). Issue
+        # an explicit start to all machines before polling /healthz so the
+        # gate is deterministic instead of waiting on Fly to converge.
+        run: |
+          APP="${{ vars.FLY_APP_DEV }}"
+          echo "Starting all machines for $APP..."
+          MACHINES="$(flyctl machine list --app "$APP" --json 2>/dev/null || echo '[]')"
+          echo "$MACHINES" | jq -r '.[].id' | while read -r MID; do
+            [ -n "$MID" ] || continue
+            echo "  flyctl machine start $MID"
+            flyctl machine start "$MID" --app "$APP" || true
+          done
+          sleep 10
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 

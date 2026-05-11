@@ -15,8 +15,12 @@ primary_region = "iad"
   memory = "512mb"
 
 # No public *.fly.dev domain — all inbound traffic enters via Cloudflare Tunnel
-# (cloudflared-dev → zombied-dev.internal:3000 over Fly 6PN).
-# internal_port keeps the machine alive and lets Fly auto-start on 6PN traffic.
+# (cloudflared-dev → zombied-dev.internal:3000 over Fly 6PN). Note: 6PN
+# traffic bypasses the Fly proxy, so `auto_start_machines = true` does NOT
+# wake stopped machines on inbound requests. CI explicitly pre-warms via
+# `flyctl machine start` in the verify-dev job before polling /healthz.
+# `min_machines_running = 1` keeps at least one machine alive in steady
+# state, but enforcement is eventual; pre-warm is the deterministic gate.
 [http_service]
   internal_port = 3000
   force_https = false
