@@ -162,14 +162,19 @@
   --leading-mono: var(--lh-mono);
   --leading-prose: var(--lh-prose);
 
-  /* Named content widths — `max-w-narrow` / `max-w-measure` / `max-w-form`
-   * / `max-w-wide` / `max-w-content`. Consumers stop writing `max-w-[640px]`
-   * etc. Tailwind v4 reads --container-* as the source of max-width utilities. */
+  /* Named content widths — `max-w-trim` / `max-w-narrow` / `max-w-measure`
+   * / `max-w-form` / `max-w-wide` / `max-w-content` (px), plus
+   * `max-w-tagline` / `max-w-prose` (ch — track the font). Consumers stop
+   * writing `max-w-[640px]` and `max-w-[68ch]`. Tailwind v4 reads
+   * --container-* as the source of max-width utilities. */
+  --container-trim: var(--max-w-trim);
   --container-narrow: var(--max-w-narrow);
   --container-measure: var(--max-w-measure);
   --container-form: var(--max-w-form);
   --container-wide: var(--max-w-wide);
   --container-content: var(--max-w-content);
+  --container-tagline: var(--max-w-tagline);
+  --container-prose: var(--max-w-prose);
 
   /* Radius */
   --radius-sm: var(--r-sm);

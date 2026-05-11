@@ -154,7 +154,7 @@ function ZombieRow({ zombie: z, pulses }: ZombieRowProps) {
   return (
     <Link
       href={`/zombies/${z.id}`}
-      className="grid grid-cols-12 gap-3 items-center px-4 py-3 transition-colors duration-[50ms] hover:bg-muted"
+      className="grid grid-cols-12 gap-3 items-center px-4 py-3 transition-colors duration-snap ease-snap hover:bg-muted"
       data-state={state}
     >
       <div className="col-span-1 flex justify-start" aria-hidden="true">

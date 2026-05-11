@@ -30,7 +30,7 @@ export default function TriggerPanel({ zombieId }: Props) {
         </TabsList>
 
         <TabsContent value="webhook">
-          <span className="mb-1 block font-mono text-[11px] uppercase tracking-wide text-muted-foreground">
+          <span className="mb-1 block font-mono text-label uppercase tracking-label text-muted-foreground">
             Webhook URL
           </span>
           <div className="flex items-center gap-2">

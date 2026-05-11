@@ -147,15 +147,28 @@
 
   /* ── Layout ──
    * `--max-w-*` are the named content widths shared across surfaces.
-   * Forwarded to Tailwind as `--container-{narrow,measure,wide,content}`
-   * which Tailwind exposes as `max-w-narrow` / `max-w-measure` / etc. */
+   * Forwarded to Tailwind as `--container-{narrow,measure,wide,content,…}`
+   * which Tailwind exposes as `max-w-narrow` / `max-w-measure` / etc.
+   *
+   * Two flavors:
+   *   - px-based widths for layout chrome and column rails
+   *   - ch-based widths for prose where measure should track the font
+   *
+   * Per DESIGN_SYSTEM.md §Layout: "Docs: single-column, ~68ch measure
+   * (max-width: 720px at default body size)." `--max-w-measure` (720px)
+   * and `--max-w-prose` (68ch) are intentionally distinct: the px form
+   * locks pixel width; the ch form lets the measure breathe with the
+   * font (handy when consumers swap Commit Mono ↔ Berkeley Mono). */
   --max-width: 1280px;            /* legacy alias of --max-w-content */
   --measure: 720px;               /* legacy alias of --max-w-measure */
+  --max-w-trim: 11.25rem;         /* 180 — chrome chip / truncated label */
   --max-w-narrow: 640px;          /* lede paragraph, CTA copy column */
-  --max-w-measure: 720px;         /* ~68ch single-column docs measure */
+  --max-w-measure: 720px;         /* px form of the single-column measure */
   --max-w-form: 760px;            /* form column / wide section heading */
   --max-w-wide: 860px;            /* terminal block, inline CLI specimen */
   --max-w-content: 1280px;        /* page shell max */
+  --max-w-tagline: 28ch;          /* short brand tagline / footer copy */
+  --max-w-prose: 68ch;            /* ch-based docs measure — tracks the font */
 
   /* ── Z-index ── */
   --layer-bg: 0;

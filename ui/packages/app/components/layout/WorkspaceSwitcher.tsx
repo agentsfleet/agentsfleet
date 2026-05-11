@@ -36,11 +36,11 @@ export default function WorkspaceSwitcher({ workspaces, activeId, onSwitch }: Pr
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-transparent text-foreground font-mono text-[12px] cursor-pointer transition-colors duration-[50ms] enabled:hover:bg-muted disabled:opacity-60 disabled:cursor-wait"
+        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-transparent text-foreground font-mono text-eyebrow cursor-pointer transition-colors duration-snap ease-snap enabled:hover:bg-muted disabled:opacity-60 disabled:cursor-wait"
         aria-label="Select workspace"
         disabled={pending}
       >
-        <span className="max-w-[180px] overflow-hidden text-ellipsis whitespace-nowrap">
+        <span className="max-w-trim overflow-hidden text-ellipsis whitespace-nowrap">
           {activeLabel}
         </span>
         <ChevronDownIcon size={14} aria-hidden="true" />
