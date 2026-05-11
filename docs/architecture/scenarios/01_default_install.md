@@ -151,7 +151,7 @@ NullClaw runs the SKILL.md prose against the webhook payload. The agent makes it
 
 Worker:
 - UPDATE `core.zombie_events` (`status='processed'`, `response_text`, `completed_at`).
-- UPDATE `zombie_execution_telemetry` stage row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The cents column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3).
+- UPDATE `zombie_execution_telemetry` stage row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The `credit_deducted_nanos` column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3).
 - UPSERT `core.zombie_sessions` (advance bookmark, clear execution handle).
 - PUBLISH `event_complete`.
 - XACK.

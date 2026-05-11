@@ -223,7 +223,7 @@ pub fn run(
     switch (metering.debitStage(cfg.pool, alloc, resolved_struct.tenant_id, ctx, cfg.balance_policy)) {
         .deducted => {},
         .exhausted => {
-            // Per design: receive cents are NOT refunded on a stage-side
+            // Per design: receive nanos are NOT refunded on a stage-side
             // exhaust. The receive row stays committed; the event is
             // gate_blocked at the stage step.
             rows.markBlocked(cfg, &scratch, session, event, rows.STATUS_GATE_BLOCKED, rows.LABEL_BALANCE_EXHAUSTED);

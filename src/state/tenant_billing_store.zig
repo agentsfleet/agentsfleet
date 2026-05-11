@@ -37,7 +37,7 @@ pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
 ///
 ///   error.TenantBillingMissing — provision was never called for this tenant.
 ///                                Always a bootstrap invariant bug.
-///   error.CreditExhausted      — row present but balance < cents. Expected
+///   error.CreditExhausted      — row present but balance < nanos. Expected
 ///                                operational outcome on a free-plan tenant.
 ///
 /// The primary UPDATE is still a single atomic statement; the EXISTS probe

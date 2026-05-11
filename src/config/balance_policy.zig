@@ -9,7 +9,7 @@ const log = logging.scoped(.balance_policy);
 const ENV_VAR_NAME = "BALANCE_EXHAUSTED_POLICY";
 
 pub const Policy = enum {
-    /// Log + let the run proceed. Zero cents deducted.
+    /// Log + let the run proceed. Zero nanos deducted.
     @"continue",
     /// Same as `continue` plus a rate-limited activity event. Default.
     warn,
