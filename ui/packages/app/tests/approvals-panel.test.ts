@@ -6,21 +6,21 @@ const WORKSPACE_ID = "ws_panel_001";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const TOKEN = "token_panel";
 
-const { listApprovalsMock, approveApprovalMock, denyApprovalMock, getTokenFn } =
-  vi.hoisted(() => ({
-    listApprovalsMock: vi.fn(),
-    approveApprovalMock: vi.fn(),
-    denyApprovalMock: vi.fn(),
-    getTokenFn: vi.fn(),
-  }));
+const { listApprovalsMock, listApprovalsActionMock } = vi.hoisted(() => ({
+  listApprovalsMock: vi.fn(),
+  listApprovalsActionMock: vi.fn(),
+}));
 
 vi.mock("@/lib/api/approvals", () => ({
   listApprovals: listApprovalsMock,
-  approveApproval: approveApprovalMock,
-  denyApproval: denyApprovalMock,
 }));
-vi.mock("@/lib/auth/client", () => ({
-  useClientToken: () => ({ getToken: getTokenFn }),
+// ApprovalsList (rendered inside the panel) imports its server actions; mock
+// the module so the client-side polling effect doesn't try to call into
+// Clerk's server-side auth() during the test.
+vi.mock("@/app/(dashboard)/approvals/actions", () => ({
+  listApprovalsAction: listApprovalsActionMock,
+  approveApprovalAction: vi.fn(),
+  denyApprovalAction: vi.fn(),
 }));
 vi.mock("next/link", () => ({
   default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
@@ -30,16 +30,17 @@ vi.mock("next/link", () => ({
 import ZombieApprovalsPanel from "@/components/domain/ZombieApprovalsPanel";
 
 beforeEach(() => {
-  getTokenFn.mockResolvedValue(TOKEN);
   listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
+  listApprovalsActionMock.mockResolvedValue({
+    ok: true,
+    data: { items: [], next_cursor: null },
+  });
 });
 
 afterEach(() => {
   cleanup();
   listApprovalsMock.mockReset();
-  approveApprovalMock.mockReset();
-  denyApprovalMock.mockReset();
-  getTokenFn.mockReset();
+  listApprovalsActionMock.mockReset();
 });
 
 describe("ZombieApprovalsPanel — server-side fetch", () => {

@@ -37,7 +37,11 @@ export default function WorkspaceSwitcher({ workspaces, activeId, onSwitch }: Pr
     <DropdownMenu>
       <DropdownMenuTrigger
         className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-border bg-transparent text-foreground font-mono text-eyebrow cursor-pointer transition-colors duration-snap ease-snap enabled:hover:bg-muted disabled:opacity-60 disabled:cursor-wait"
+        // aria-label is the static a11y handle; data-testid is the stable
+        // structural selector for e2e specs (the visible text content is
+        // the active workspace name and changes on every switch).
         aria-label="Select workspace"
+        data-testid="workspace-switcher"
         disabled={pending}
       >
         <span className="max-w-trim overflow-hidden text-ellipsis whitespace-nowrap">

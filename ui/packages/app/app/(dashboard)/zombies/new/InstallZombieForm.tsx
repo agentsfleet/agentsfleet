@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useClientToken } from "@/lib/auth/client";
 import { Loader2Icon } from "lucide-react";
 import {
   Alert,
@@ -20,7 +19,7 @@ import {
   Input,
   Textarea,
 } from "@usezombie/design-system";
-import { installZombie } from "@/lib/api/zombies";
+import { installZombieAction } from "../actions";
 
 type Props = { workspaceId: string };
 
@@ -49,7 +48,6 @@ type FormValues = z.infer<typeof schema>;
 // directly.
 export default function InstallZombieForm({ workspaceId }: Props) {
   const router = useRouter();
-  const { getToken } = useClientToken();
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -61,22 +59,16 @@ export default function InstallZombieForm({ workspaceId }: Props) {
   function onSubmit(values: FormValues) {
     setApiError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setApiError("Not authenticated");
+      const result = await installZombieAction(workspaceId, values);
+      if (result.ok) {
+        router.push(`/zombies/${result.data.zombie_id}`);
+        router.refresh();
         return;
       }
-      try {
-        const created = await installZombie(workspaceId, values, token);
-        router.push(`/zombies/${created.zombie_id}`);
-        router.refresh();
-      } catch (e) {
-        const err = e as Error & { status?: number };
-        if (err.status === 409) {
-          setApiError(`A zombie named "${values.name}" already exists in this workspace`);
-        } else {
-          setApiError(err.message || "Install failed");
-        }
+      if (result.status === 409) {
+        setApiError(`A zombie named "${values.name}" already exists in this workspace`);
+      } else {
+        setApiError(result.error || "Install failed");
       }
     });
   }

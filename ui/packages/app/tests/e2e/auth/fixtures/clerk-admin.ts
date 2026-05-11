@@ -75,17 +75,36 @@ async function findUserByEmail(email: string): Promise<ClerkUser | null> {
 }
 
 async function createUser(spec: FixtureUserSpec): Promise<ClerkUser> {
+  // public_metadata.is_test_fixture lets prod ops dashboards filter these
+  // identities out, and gives a future Clerk webhook handler a hook to
+  // refuse unsafe operations against fixture users.
   return clerkRequest<ClerkUser>("POST", "/users", {
     email_address: [spec.email],
     password: spec.password,
     skip_password_checks: true,
     skip_password_requirement: false,
+    public_metadata: {
+      is_test_fixture: true,
+      owner: "auth-e2e-suite",
+      role: spec.key,
+    },
   });
 }
 
 async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
   const existing = await findUserByEmail(spec.email);
-  if (existing) return existing;
+  if (existing) {
+    // Backfill the metadata tag on pre-existing fixture users (one-time
+    // migration cost when rolling out the tag for the first time).
+    await clerkRequest<ClerkUser>("PATCH", `/users/${existing.id}/metadata`, {
+      public_metadata: {
+        is_test_fixture: true,
+        owner: "auth-e2e-suite",
+        role: spec.key,
+      },
+    }).catch(() => undefined);
+    return existing;
+  }
   return createUser(spec);
 }
 

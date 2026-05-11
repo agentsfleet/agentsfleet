@@ -4,16 +4,27 @@
  * Runs once per suite before any auth spec. Responsibilities:
  *   1. Fail fast if any required env var is missing, with a copy-paste op-read
  *      recipe in the error body.
- *   2. Provision two fixture users in Clerk (idempotent on email) and mint a
- *      session JWT for each.
- *   3. Bootstrap each fixture user's tenant in zombied by Svix-signing a
+ *   2. Resolve fixture identities. Emails come from env vars (op://-resolved
+ *      in CI). Passwords are randomly generated per provision and never
+ *      persisted — the harness mints sessions through Clerk's admin API
+ *      (CLERK_SECRET_KEY-authenticated), not through the user-password flow,
+ *      so a stable password buys nothing and surfaces a real attack vector
+ *      (mailinator inbox is public; any leak of the password = direct PROD
+ *      account access via Clerk's hosted sign-in page).
+ *   3. Provision the fixture users in Clerk (idempotent on email) tagged
+ *      with `is_test_fixture: true` metadata so prod ops dashboards can
+ *      filter them out.
+ *   4. Bootstrap each fixture user's tenant in zombied by Svix-signing a
  *      `user.created` payload and POSTing /v1/webhooks/clerk — same path
  *      Clerk hits in production. Idempotent (replay returns created:false).
- *   4. Cache the minted JWTs to .fixture-jwts.json so signInAs(page, key)
- *      can mount the cookie without re-minting per spec.
+ *   5. Cache the minted JWTs to .fixture-jwts.json so signInAs(page, key)
+ *      can mount the cookie without re-minting per spec. The cache is
+ *      gitignored at the repo root and stays out of Playwright's
+ *      report/results dirs.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as crypto from "node:crypto";
 import { clerkSetup } from "@clerk/testing/playwright";
 import {
   attachJwt,
@@ -36,18 +47,36 @@ const REQUIRED_ENV = [
   "CLERK_WEBHOOK_SECRET",
 ] as const;
 
-const FIXTURE_USERS: FixtureUserSpec[] = [
-  {
-    key: FIXTURE_KEY.regular,
-    email: "regular-fixture@mailinator.com",
-    password: "RegularFixture!2026-stable",
-  },
-  {
-    key: FIXTURE_KEY.admin,
-    email: "admin-fixture@mailinator.com",
-    password: "AdminFixture!2026-stable",
-  },
-];
+// Fixture emails — opt-in env override. The CI workflows resolve these
+// from op:// vault items. Defaults remain the historical mailinator
+// addresses for local DEV runs (where the public-inbox concern is
+// acceptable: local zombied + DEV Clerk + DEV billing balance only).
+const DEFAULT_REGULAR_EMAIL = "regular-fixture@mailinator.com";
+const DEFAULT_ADMIN_EMAIL = "admin-fixture@mailinator.com";
+
+// Random per-create password. The harness never logs in via password;
+// CLERK_SECRET_KEY admin API mints sessions directly. A stable password
+// would only enable an attacker who learns it (via source, leaked logs,
+// public mailinator inbox) to sign in via Clerk's hosted UI. 32 random
+// bytes = 256 bits of entropy.
+function freshPassword(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function fixtureUsers(): FixtureUserSpec[] {
+  return [
+    {
+      key: FIXTURE_KEY.regular,
+      email: process.env.AUTH_E2E_REGULAR_EMAIL ?? DEFAULT_REGULAR_EMAIL,
+      password: freshPassword(),
+    },
+    {
+      key: FIXTURE_KEY.admin,
+      email: process.env.AUTH_E2E_ADMIN_EMAIL ?? DEFAULT_ADMIN_EMAIL,
+      password: freshPassword(),
+    },
+  ];
+}
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
 
@@ -62,11 +91,14 @@ function failLoud(missing: string): never {
 }
 
 function writeCache(fixtures: MintedFixture[]): void {
-  const cache: Record<string, Omit<MintedFixture, "key">> = {};
+  // password is intentionally NOT persisted — it was a per-create random
+  // string used only for Clerk's createUser body, and the harness has no
+  // downstream use for it. Persisting it would re-introduce the attack
+  // surface this rewrite eliminates.
+  const cache: Record<string, Omit<MintedFixture, "key" | "password">> = {};
   for (const f of fixtures) {
     cache[f.key] = {
       email: f.email,
-      password: f.password,
       clerkUserId: f.clerkUserId,
       sessionId: f.sessionId,
       sessionJwt: f.sessionJwt,
@@ -87,12 +119,15 @@ export default async function globalSetup(): Promise<void> {
   await clerkSetup();
   // Three-phase to keep JWT claims fresh:
   //   1. provisionUser: ensure each Clerk user exists (no JWT yet).
+  //      Tags new users with publicMetadata.is_test_fixture=true so
+  //      prod ops can filter them.
   //   2. bootstrapTenant: zombied creates tenant + writes tenant_id/role
   //      back to Clerk publicMetadata.
   //   3. attachJwt: mint session JWT — now the JWT snapshots the updated
   //      publicMetadata, so zombied API calls that require tenant context
   //      succeed.
-  const provisioned = await Promise.all(FIXTURE_USERS.map(provisionUser));
+  const users = fixtureUsers();
+  const provisioned = await Promise.all(users.map(provisionUser));
   for (const user of provisioned) {
     await bootstrapTenant(user);
   }

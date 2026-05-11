@@ -2,11 +2,10 @@
 
 import { useState, useOptimistic, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { useClientToken } from "@/lib/auth/client";
 import { Button, ConfirmDialog } from "@usezombie/design-system";
-import { setZombieStatus, ZOMBIE_STATUS } from "@/lib/api/zombies";
-import { ApiError } from "@/lib/api/errors";
+import { ZOMBIE_STATUS } from "@/lib/api/zombies";
 import type { Zombie, ZombieStatusSettable } from "@/lib/api/zombies";
+import { setZombieStatusAction } from "../../actions";
 
 interface KillSwitchProps {
   workspaceId: string;
@@ -30,7 +29,6 @@ interface ActionConfig {
 //   - `stopped` (op halt)   → Resume + Kill
 //   - `killed` (terminal)   → no actions (DELETE is offered in ZombieConfig)
 export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
-  const { getToken } = useClientToken();
   const router = useRouter();
   const [pendingAction, setPendingAction] = useState<ActionConfig | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -40,31 +38,27 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
   async function handleConfirm() {
     if (!pendingAction) return;
     const action = pendingAction;
-    const token = await getToken();
-    if (!token) return;
     setErrorMessage(null);
 
     startTransition(async () => {
       const previous = optimisticStatus;
       setOptimisticStatus(action.target);
-      try {
-        await setZombieStatus(workspaceId, zombie.id, action.target, token);
+      const result = await setZombieStatusAction(workspaceId, zombie.id, action.target);
+      if (result.ok) {
         setPendingAction(null);
         router.refresh();
-      } catch (err) {
-        setOptimisticStatus(previous);
-        if (err instanceof ApiError && err.status === 409) {
-          // Status changed under us. Refresh picks up the new state.
-          setPendingAction(null);
-          router.refresh();
-        } else {
-          setErrorMessage(
-            err instanceof ApiError
-              ? err.message
-              : `Failed to ${action.confirmLabel.toLowerCase()} zombie. Please try again.`,
-          );
-        }
+        return;
       }
+      setOptimisticStatus(previous);
+      if (result.status === 409) {
+        // Status changed under us. Refresh picks up the new state.
+        setPendingAction(null);
+        router.refresh();
+        return;
+      }
+      setErrorMessage(
+        result.error || `Failed to ${action.confirmLabel.toLowerCase()} zombie. Please try again.`,
+      );
     });
   }
 
