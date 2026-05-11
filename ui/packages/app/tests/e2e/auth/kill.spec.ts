@@ -10,15 +10,15 @@
  * Sister to lifecycle.spec.ts; both exercise the same KillSwitch +
  * ConfirmDialog wiring but with different target statuses. Killing is
  * terminal — the detail page's action panel collapses to a disabled
- * "Killed" indicator afterwards (no Resume / Stop / Kill options).
+ * "Killed" indicator afterwards (no Resume / Stop / Kill options). The
+ * shared interaction lives in fixtures/lifecycle.ts.
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
+import { expectDetailKilled, expectRowState, killZombie } from "./fixtures/lifecycle";
 import { getDefaultWorkspaceId, seedZombie } from "./fixtures/seed";
 import { cleanWorkspaceZombies } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
-
-const ROW_STATE_TIMEOUT_MS = 15_000;
 
 test.describe("kill", () => {
   test("Kill transitions the row's data-state from live to failed (terminal)", async ({
@@ -33,25 +33,13 @@ test.describe("kill", () => {
     await page.goto(`/zombies/${seeded.id}`);
     await expect(page).toHaveURL(new RegExp(`/zombies/${seeded.id}(\\?|$)`));
 
-    await page.getByRole("button", { name: "Kill" }).first().click();
-    const dialog = page.getByRole("alertdialog");
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Kill" }).click();
-
-    // Detail page collapses to the terminal "Killed" indicator once
-    // router.refresh() re-runs the SSR with the new status.
-    await expect(page.getByRole("button", { name: "Killed" })).toBeDisabled({
-      timeout: ROW_STATE_TIMEOUT_MS,
-    });
+    await killZombie(page);
+    await expectDetailKilled(page);
 
     // Dashboard listing: row still appears (list.zig does not filter killed
     // rows) but state dot is `failed`.
     await page.goto("/zombies");
-    const row = page.locator(`a[href="/zombies/${seeded.id}"]`);
-    await expect(row).toBeVisible();
-    await expect(row).toHaveAttribute("data-state", "failed", {
-      timeout: ROW_STATE_TIMEOUT_MS,
-    });
+    await expectRowState(page, seeded.id, "failed");
   });
 
   test.afterEach(async () => {
