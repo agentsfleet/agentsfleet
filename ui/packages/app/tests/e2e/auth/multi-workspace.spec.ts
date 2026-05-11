@@ -32,7 +32,11 @@ test.describe("multi-workspace switcher", () => {
     await page.goto("/zombies");
     await expect(page).toHaveURL(/\/zombies(\?|$)/);
 
-    const switcher = page.getByRole("button", { name: "Select workspace" });
+    // The switcher's visible text is the *active* workspace name (e.g.
+    // "default", "fixture-secondary"), so a getByRole({ name: ... }) match
+    // would shift on every workspace switch. data-testid is the structural
+    // handle that's stable across renders.
+    const switcher = page.getByTestId("workspace-switcher");
     await expect(switcher).toBeVisible();
     const initialLabel = (await switcher.textContent())?.trim();
     expect(initialLabel?.length ?? 0).toBeGreaterThan(0);
