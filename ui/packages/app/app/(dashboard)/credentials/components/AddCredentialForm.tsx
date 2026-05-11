@@ -133,7 +133,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
             </FormItem>
           )}
         />
-        {apiError ? <p className="text-sm text-red-600">{apiError}</p> : null}
+        {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
         <Button type="submit" disabled={pending}>
           {pending ? <Loader2Icon size={14} className="mr-2 animate-spin" /> : null}
           Store credential

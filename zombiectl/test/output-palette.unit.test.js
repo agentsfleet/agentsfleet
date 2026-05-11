@@ -53,9 +53,9 @@ describe("palette — xterm256 mapping pinned to design-system tokens", () => {
     expect(palette.muted("dim", { mode: ColorMode.XTERM256 })).toBe(`${ESC}[38;5;102mdim${ESC}[0m`);
   });
 
-  test("subtle → 256:240", () => {
+  test("subtle → 256:244", () => {
     expect(palette.subtle("subtle", { mode: ColorMode.XTERM256 })).toBe(
-      `${ESC}[38;5;240msubtle${ESC}[0m`,
+      `${ESC}[38;5;244msubtle${ESC}[0m`,
     );
   });
 
@@ -147,7 +147,7 @@ describe("PALETTE_INTERNALS — design-system invariants pinned", () => {
       warn: 214,
       error: 210,
       muted: 102,
-      subtle: 240,
+      subtle: 244,
     });
   });
 

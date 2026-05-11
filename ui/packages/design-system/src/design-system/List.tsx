@@ -15,7 +15,24 @@ import { cn } from "../utils";
  * Default `role="list"` preserves list semantics in Safari VoiceOver,
  * which strips the implicit role from any <ul>/<ol> with list-style:none
  * applied via CSS. Pass an explicit `role` to override.
+ *
+ * `<ListItem bullet="arrow|dot">` renders a leading glyph in
+ * --text-subtle — the canonical bullet treatment from the design
+ * system. Prefer this over the older `before:content-['↳']
+ * before:text-text-subtle` className soup: the variant centralises
+ * the glyph + colour + spacing so a future redesign edits one place,
+ * not every consumer. (DESIGN TOKEN GATE carves out
+ * `before:content-[…]` for legitimate pseudo-element use, so the old
+ * idiom still compiles — choose the variant for hygiene, not because
+ * the gate forces it.)
  */
+
+const BULLET_CHAR = {
+  arrow: "↳",
+  dot: "·",
+} as const;
+
+export type ListItemBullet = keyof typeof BULLET_CHAR;
 
 export const listVariants = cva("space-y-2 text-sm", {
   variants: {
@@ -81,8 +98,32 @@ export function List({
   );
 }
 
-export function ListItem({ className, ref, ...props }: ComponentProps<"li">) {
-  return <li ref={ref} className={cn(className)} {...props} />;
+export interface ListItemProps extends ComponentProps<"li"> {
+  bullet?: ListItemBullet;
+}
+
+export function ListItem({
+  bullet,
+  className,
+  children,
+  ref,
+  ...props
+}: ListItemProps) {
+  if (!bullet) {
+    return (
+      <li ref={ref} className={cn(className)} {...props}>
+        {children}
+      </li>
+    );
+  }
+  return (
+    <li ref={ref} className={cn(className)} {...props}>
+      <span aria-hidden="true" className="text-text-subtle mr-md">
+        {BULLET_CHAR[bullet]}
+      </span>
+      {children}
+    </li>
+  );
 }
 
 export default List;
