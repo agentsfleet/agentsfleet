@@ -4,8 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Alert, Button, Label, Textarea } from "@usezombie/design-system";
 
-import { useClientToken } from "@/lib/auth/client";
-import { approveApproval, denyApproval } from "@/lib/api/approvals";
+import { approveApprovalAction, denyApprovalAction } from "../actions";
 
 type Props = {
   workspaceId: string;
@@ -14,7 +13,6 @@ type Props = {
 
 export default function ResolveButtons({ workspaceId, gateId }: Props) {
   const router = useRouter();
-  const { getToken } = useClientToken();
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -22,26 +20,21 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
   function resolve(decision: "approve" | "deny") {
     setError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setError("Not authenticated");
+      const action = decision === "approve" ? approveApprovalAction : denyApprovalAction;
+      const result = await action(workspaceId, gateId, reason || undefined);
+      if (!result.ok) {
+        setError(result.error || "Resolve failed");
         return;
       }
-      const fn = decision === "approve" ? approveApproval : denyApproval;
-      try {
-        const outcome = await fn(workspaceId, gateId, token, reason || undefined);
-        if (outcome.kind === "already_resolved") {
-          // Refresh the page so the operator sees the terminal-state view
-          // with the canonical resolver attribution.
-          router.refresh();
-          return;
-        }
-        // Success — bounce back to the inbox so they see the fresh queue.
-        router.push("/approvals");
+      if (result.data.kind === "already_resolved") {
+        // Refresh the page so the operator sees the terminal-state view
+        // with the canonical resolver attribution.
         router.refresh();
-      } catch (e) {
-        setError((e as Error).message ?? "Resolve failed");
+        return;
       }
+      // Success — bounce back to the inbox so they see the fresh queue.
+      router.push("/approvals");
+      router.refresh();
     });
   }
 

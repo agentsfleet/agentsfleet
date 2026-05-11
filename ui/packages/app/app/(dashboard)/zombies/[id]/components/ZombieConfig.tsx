@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useClientToken } from "@/lib/auth/client";
 import { Trash2Icon } from "lucide-react";
 import { Button, ConfirmDialog } from "@usezombie/design-system";
-import { deleteZombie } from "@/lib/api/zombies";
+import { deleteZombieAction } from "../../actions";
 
 type Props = {
   workspaceId: string;
@@ -19,15 +18,13 @@ export default function ZombieConfig({
   zombieName,
 }: Props) {
   const router = useRouter();
-  const { getToken } = useClientToken();
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function onConfirm() {
     setError(null);
-    const token = await getToken();
-    if (!token) throw new Error("Not authenticated");
-    await deleteZombie(workspaceId, zombieId, token);
+    const result = await deleteZombieAction(workspaceId, zombieId);
+    if (!result.ok) throw new Error(result.error);
     router.push("/zombies");
     router.refresh();
   }

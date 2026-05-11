@@ -3,8 +3,8 @@
 import { useDeferredValue, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { Alert, Button, Input, List, ListItem, Time, WakePulse } from "@usezombie/design-system";
-import { useClientToken } from "@/lib/auth/client";
-import { listZombies, ZOMBIE_STATUS, type Zombie } from "@/lib/api/zombies";
+import { ZOMBIE_STATUS, type Zombie } from "@/lib/api/zombies";
+import { listZombiesAction } from "../actions";
 
 type Props = {
   workspaceId: string;
@@ -27,7 +27,6 @@ export default function ZombiesList({
   initialZombies,
   initialCursor,
 }: Props) {
-  const { getToken } = useClientToken();
   const [zombies, setZombies] = useState<Zombie[]>(initialZombies);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [query, setQuery] = useState("");
@@ -70,19 +69,13 @@ export default function ZombiesList({
     if (!cursor) return;
     setError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setError("Not authenticated");
+      const result = await listZombiesAction(workspaceId, { cursor });
+      if (!result.ok) {
+        setError(result.error || "Failed to load more");
         return;
       }
-      try {
-        const next = await listZombies(workspaceId, token, { cursor });
-        setZombies((prev) => [...prev, ...next.items]);
-        setCursor(next.cursor);
-      } catch (e) {
-        const err = e as Error;
-        setError(err.message || "Failed to load more");
-      }
+      setZombies((prev) => [...prev, ...result.data.items]);
+      setCursor(result.data.cursor);
     });
   }
 

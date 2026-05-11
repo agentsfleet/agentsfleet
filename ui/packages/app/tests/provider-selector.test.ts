@@ -2,29 +2,22 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
-const TOKEN = "tok_provider_test";
-
 const {
-  getTokenFn,
-  setTenantProviderSelfManagedMock,
-  resetTenantProviderMock,
+  setProviderSelfManagedActionMock,
+  resetProviderActionMock,
   routerRefresh,
 } = vi.hoisted(() => ({
-  getTokenFn: vi.fn(),
-  setTenantProviderSelfManagedMock: vi.fn(),
-  resetTenantProviderMock: vi.fn(),
+  setProviderSelfManagedActionMock: vi.fn(),
+  resetProviderActionMock: vi.fn(),
   routerRefresh: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh }),
 }));
-vi.mock("@/lib/auth/client", () => ({
-  useClientToken: () => ({ getToken: getTokenFn }),
-}));
-vi.mock("@/lib/api/tenant_provider", () => ({
-  setTenantProviderSelfManaged: setTenantProviderSelfManagedMock,
-  resetTenantProvider: resetTenantProviderMock,
+vi.mock("@/app/(dashboard)/settings/provider/actions", () => ({
+  setProviderSelfManagedAction: setProviderSelfManagedActionMock,
+  resetProviderAction: resetProviderActionMock,
 }));
 vi.mock("lucide-react", () => ({
   Loader2Icon: (p: Record<string, unknown>) =>
@@ -40,9 +33,8 @@ const CRED = { name: "fw-key", created_at: "2026-04-30T00:00:00Z" } as const;
 const WORKSPACE_ID = "ws_provider_test";
 
 beforeEach(() => {
-  getTokenFn.mockReset();
-  setTenantProviderSelfManagedMock.mockReset();
-  resetTenantProviderMock.mockReset();
+  setProviderSelfManagedActionMock.mockReset();
+  resetProviderActionMock.mockReset();
   routerRefresh.mockReset();
 });
 afterEach(() => cleanup());
@@ -143,18 +135,20 @@ describe("ProviderSelector", () => {
   };
 
   it("submits self-managed PUT with the picked credential and refreshes the route", async () => {
-    getTokenFn.mockResolvedValue(TOKEN);
-    setTenantProviderSelfManagedMock.mockResolvedValue({ mode: PROVIDER_MODE.self_managed });
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: true,
+      data: { mode: PROVIDER_MODE.self_managed },
+    });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
 
     fireEvent.click(screen.getByRole("radio", { name: /use my own provider key/i }));
     fireEvent.click(screen.getByRole("button", { name: /save self-managed key/i }));
 
-    await waitFor(() => expect(setTenantProviderSelfManagedMock).toHaveBeenCalledTimes(1));
-    expect(setTenantProviderSelfManagedMock).toHaveBeenCalledWith(
-      { credential_ref: CRED.name, model: undefined },
-      TOKEN,
-    );
+    await waitFor(() => expect(setProviderSelfManagedActionMock).toHaveBeenCalledTimes(1));
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({
+      credential_ref: CRED.name,
+      model: undefined,
+    });
     expect(routerRefresh).toHaveBeenCalled();
     await waitFor(() =>
       expect(screen.getByText(/Switched to self-managed\. Run a test event/)).toBeTruthy(),
@@ -162,8 +156,10 @@ describe("ProviderSelector", () => {
   });
 
   it("calls DELETE on reset to platform default", async () => {
-    getTokenFn.mockResolvedValue(TOKEN);
-    resetTenantProviderMock.mockResolvedValue({ mode: PROVIDER_MODE.platform });
+    resetProviderActionMock.mockResolvedValue({
+      ok: true,
+      data: { mode: PROVIDER_MODE.platform },
+    });
     render(
       React.createElement(ProviderSelector, {
         ...defaultProps,
@@ -173,12 +169,15 @@ describe("ProviderSelector", () => {
     );
     fireEvent.click(screen.getByRole("radio", { name: /platform-managed/i }));
     fireEvent.click(screen.getByRole("button", { name: /reset to platform default/i }));
-    await waitFor(() => expect(resetTenantProviderMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(resetProviderActionMock).toHaveBeenCalledTimes(1));
   });
 
   it("surfaces API errors as an alert and does not refresh", async () => {
-    getTokenFn.mockResolvedValue(TOKEN);
-    setTenantProviderSelfManagedMock.mockRejectedValue(new Error("credential_data_malformed"));
+    setProviderSelfManagedActionMock.mockResolvedValue({
+      ok: false,
+      error: "credential_data_malformed",
+      status: 400,
+    });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
     fireEvent.click(screen.getByRole("radio", { name: /use my own provider key/i }));
     fireEvent.click(screen.getByRole("button", { name: /save self-managed key/i }));
@@ -188,19 +187,21 @@ describe("ProviderSelector", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
-  it("returns a 'Not authenticated' alert when getToken resolves null", async () => {
-    getTokenFn.mockResolvedValue(null);
+  it("returns a 'Not authenticated' alert when the server action reports unauth", async () => {
+    resetProviderActionMock.mockResolvedValue({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+    });
     render(React.createElement(ProviderSelector, { ...defaultProps }));
     fireEvent.click(screen.getByRole("button", { name: /reset to platform default/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain("Not authenticated"),
     );
-    expect(resetTenantProviderMock).not.toHaveBeenCalled();
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
   it("blocks self-managed submit when no credential is picked", async () => {
-    getTokenFn.mockResolvedValue(TOKEN);
     render(
       React.createElement(ProviderSelector, {
         ...defaultProps,
@@ -212,6 +213,6 @@ describe("ProviderSelector", () => {
     expect(
       (screen.getByRole("button", { name: /save self-managed key/i }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    expect(setTenantProviderSelfManagedMock).not.toHaveBeenCalled();
+    expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
   });
 });

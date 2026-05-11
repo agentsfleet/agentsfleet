@@ -81,6 +81,47 @@ vi.mock("@/lib/api/zombies", () => ({
   },
 }));
 
+// The dashboard's mutation surface now flows through Server Actions instead
+// of useClientToken. The actions internally call getServerToken + the api
+// helpers above; in unit tests we stub them with thin wrappers that mirror
+// the ActionResult contract while still reusing the api-layer mocks above.
+type ActionResult<T> =
+  | { ok: true; data: T }
+  | { ok: false; error: string; status?: number };
+
+const setZombieStatusActionMock = vi.fn<
+  (ws: string, zid: string, status: string) => Promise<ActionResult<unknown>>
+>(async (ws, zid, status) => {
+  try {
+    return { ok: true, data: await stopZombieMock(ws, zid, status, "tok") };
+  } catch (e) {
+    const err = e as Error & { status?: number };
+    return { ok: false, error: err.message ?? String(e), status: err.status };
+  }
+});
+const listZombiesActionMock = vi.fn<
+  (ws: string, opts?: unknown) => Promise<ActionResult<unknown>>
+>(async (ws, opts) => {
+  try {
+    return { ok: true, data: await listZombiesMock(ws, "tok", opts) };
+  } catch (e) {
+    return { ok: false, error: (e as Error).message ?? String(e) };
+  }
+});
+const deleteZombieActionMock = vi.fn<() => Promise<ActionResult<void>>>(
+  async () => ({ ok: true, data: undefined }),
+);
+const installZombieActionMock = vi.fn<
+  () => Promise<ActionResult<{ zombie_id: string }>>
+>(async () => ({ ok: true, data: { zombie_id: "z_test" } }));
+
+vi.mock("@/app/(dashboard)/zombies/actions", () => ({
+  setZombieStatusAction: setZombieStatusActionMock,
+  listZombiesAction: listZombiesActionMock,
+  deleteZombieAction: deleteZombieActionMock,
+  installZombieAction: installZombieActionMock,
+}));
+
 const listTenantBillingChargesMock = vi.fn();
 vi.mock("@/lib/api/tenant_billing", () => ({
   getTenantBilling: getTenantBillingMock,
@@ -605,12 +646,14 @@ describe("KillSwitch component", () => {
     await user.click(within(dialog).getByRole("button", { name }));
   }
 
-  it("active → Stop happy path: click → confirm → setZombieStatus(stopped) → refresh", async () => {
+  it("active → Stop happy path: click → confirm → setZombieStatusAction(stopped) → refresh", async () => {
     const user = userEvent.setup();
     await renderSwitch("active");
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
-    await waitFor(() => expect(stopZombieMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped", "token_abc"));
+    await waitFor(() =>
+      expect(setZombieStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped"),
+    );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
 
@@ -619,7 +662,9 @@ describe("KillSwitch component", () => {
     await renderSwitch("stopped");
     await user.click(screen.getByRole("button", { name: /^resume$/i }));
     await clickConfirmInDialog(user, /^resume$/i);
-    await waitFor(() => expect(stopZombieMock).toHaveBeenCalledWith("ws_1", "zom_1", "active", "token_abc"));
+    await waitFor(() =>
+      expect(setZombieStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "active"),
+    );
   });
 
   it("active → Kill sends status='killed'", async () => {
@@ -627,7 +672,9 @@ describe("KillSwitch component", () => {
     await renderSwitch("active");
     await user.click(screen.getByRole("button", { name: /^kill$/i }));
     await clickConfirmInDialog(user, /^kill$/i);
-    await waitFor(() => expect(stopZombieMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed", "token_abc"));
+    await waitFor(() =>
+      expect(setZombieStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed"),
+    );
   });
 
   it("409 conflict closes the dialog and refreshes (status changed elsewhere)", async () => {
@@ -650,14 +697,19 @@ describe("KillSwitch component", () => {
     expect(screen.queryByRole("alertdialog")).toBeTruthy();
   });
 
-  it("missing token short-circuits the confirm handler", async () => {
-    getTokenFn.mockResolvedValue(null);
+  it("server action reporting unauth surfaces the error and rolls back the optimistic flip", async () => {
+    setZombieStatusActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+    });
     const user = userEvent.setup();
     await renderSwitch("active");
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
-    // Wait a tick — setZombieStatus must NOT be called.
-    await new Promise((r) => setTimeout(r, 10));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
+    );
     expect(stopZombieMock).not.toHaveBeenCalled();
   });
 });
@@ -727,7 +779,9 @@ describe("ZombiesList component", () => {
     await renderList({ initialCursor: "cursor_1" });
     const btn = screen.getByRole("button", { name: /load more/i });
     await user.click(btn);
-    await waitFor(() => expect(listZombiesMock).toHaveBeenCalledWith("ws_1", "token_abc", { cursor: "cursor_1" }));
+    await waitFor(() =>
+      expect(listZombiesActionMock).toHaveBeenCalledWith("ws_1", { cursor: "cursor_1" }),
+    );
     await waitFor(() => expect(screen.getByText("gamma-bot")).toBeTruthy());
   });
 
@@ -741,8 +795,12 @@ describe("ZombiesList component", () => {
     );
   });
 
-  it("loadMore: missing token surfaces Not authenticated", async () => {
-    getTokenFn.mockResolvedValue(null);
+  it("loadMore: unauthenticated action result surfaces Not authenticated", async () => {
+    listZombiesActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+    });
     const user = userEvent.setup();
     await renderList({ initialCursor: "cursor_1" });
     await user.click(screen.getByRole("button", { name: /load more/i }));

@@ -18,8 +18,7 @@ import {
   Input,
   Textarea,
 } from "@usezombie/design-system";
-import { useClientToken } from "@/lib/auth/client";
-import { createCredential } from "@/lib/api/credentials";
+import { createCredentialAction } from "../actions";
 
 type Props = { workspaceId: string };
 
@@ -61,7 +60,6 @@ type FormValues = z.infer<typeof schema>;
 
 export default function AddCredentialForm({ workspaceId }: Props) {
   const router = useRouter();
-  const { getToken } = useClientToken();
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -73,20 +71,20 @@ export default function AddCredentialForm({ workspaceId }: Props) {
   function onSubmit(values: FormValues) {
     setApiError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setApiError("Not authenticated");
+      let data: Record<string, unknown>;
+      try {
+        data = JSON.parse(values.data_json) as Record<string, unknown>;
+      } catch (e) {
+        setApiError((e as Error).message || "Failed to parse credential JSON");
         return;
       }
-      try {
-        const data = JSON.parse(values.data_json) as Record<string, unknown>;
-        await createCredential(workspaceId, { name: values.name.trim(), data }, token);
-        form.reset({ name: "", data_json: "" });
-        router.refresh();
-      } catch (e) {
-        const err = e as Error & { status?: number };
-        setApiError(err.message || "Failed to store credential");
+      const result = await createCredentialAction(workspaceId, { name: values.name.trim(), data });
+      if (!result.ok) {
+        setApiError(result.error || "Failed to store credential");
+        return;
       }
+      form.reset({ name: "", data_json: "" });
+      router.refresh();
     });
   }
 
