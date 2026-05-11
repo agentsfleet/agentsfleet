@@ -1,17 +1,24 @@
 /**
  * Shared protocol constants for the auth e2e harness.
  *
- * Inline string literals like "running" / "stopped" / "killed" / "regular" /
+ * Inline string literals like "active" / "paused" / "killed" / "regular" /
  * "admin" / "api" sit on cross-module wire boundaries (zombied state machine,
  * Clerk JWT template, fixture-pool keying). Centralising them surfaces a
  * rename as a type error rather than silent drift between seed/teardown/spec
  * code paths (RULE UFS).
+ *
+ * Canonical zombied state values live at
+ * `ui/packages/app/lib/api/zombies.ts:ZOMBIE_STATUS`. The harness mirrors
+ * them (lowercased keys so teardown / specs read naturally; values match
+ * exactly).
  */
 
 export const ZOMBIE_STATUS = {
-  running: "running",
+  active: "active",
+  paused: "paused",
   stopped: "stopped",
   killed: "killed",
+  errored: "errored",
 } as const;
 
 export type ZombieStatus = (typeof ZOMBIE_STATUS)[keyof typeof ZOMBIE_STATUS];
