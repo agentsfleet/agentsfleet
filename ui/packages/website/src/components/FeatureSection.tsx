@@ -13,13 +13,13 @@ type Props = {
 export default function FeatureSection({ number, title, description }: Props) {
   return (
     <Card className="flex flex-col gap-3" data-testid="feature-section">
-      <span className="font-mono text-[12px] uppercase tracking-[0.08em] text-text-subtle">
+      <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
         {number}
       </span>
-      <h3 className="font-mono text-[18px] leading-[1.3] tracking-[-0.01em] text-text font-medium m-0">
+      <h3 className="font-mono text-heading leading-[1.3] text-text font-medium m-0">
         {title}
       </h3>
-      <p className="font-sans text-[15px] leading-[1.55] text-text-muted m-0">
+      <p className="font-sans text-body leading-[1.55] text-text-muted m-0">
         {description}
       </p>
     </Card>

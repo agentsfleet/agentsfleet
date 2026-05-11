@@ -14,7 +14,7 @@ const Terms = lazy(() => import("./pages/Terms"));
 const DesignSystemGallery = lazy(() => import("./pages/DesignSystemGallery"));
 
 const NAV_LINK_CLASS =
-  "font-mono text-[12px] uppercase tracking-[0.06em] text-text-muted hover:text-text transition-colors";
+  "font-mono text-eyebrow uppercase tracking-eyebrow text-text-muted hover:text-text transition-colors";
 
 export default function App() {
   return (
@@ -25,7 +25,7 @@ export default function App() {
         <div className="wrap flex items-center justify-between py-4">
           <Link
             to="/"
-            className="flex items-center gap-3 font-mono text-[15px] font-medium tracking-[-0.01em] text-text"
+            className="flex items-center gap-3 font-mono text-body font-medium text-text"
             data-testid="brand-link"
           >
             <WakePulse

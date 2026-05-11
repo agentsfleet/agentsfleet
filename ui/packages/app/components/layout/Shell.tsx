@@ -208,7 +208,7 @@ function SidebarNav({ isActive, onNavigate }: NavProps) {
 function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-3 mb-6">
-      <div className="font-mono text-[0.68rem] uppercase tracking-[0.1em] text-muted-foreground px-2 mb-2">
+      <div className="font-mono text-label uppercase tracking-label text-muted-foreground px-2 mb-2">
         {label}
       </div>
       <div className="flex flex-col gap-0.5">{children}</div>

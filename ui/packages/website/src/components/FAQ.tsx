@@ -83,13 +83,13 @@ export default function FAQ() {
             >
               <AccordionTrigger
                 data-testid={`faq-trigger-${i}`}
-                className="font-mono text-[14px] py-4 text-text"
+                className="font-mono text-body-sm py-4 text-text"
               >
                 {item.q}
               </AccordionTrigger>
               <AccordionContent
                 data-testid={`faq-answer-${i}`}
-                className="font-sans text-[14px] leading-[1.65] text-text-muted pb-4"
+                className="font-sans text-body-sm leading-[1.65] text-text-muted pb-4"
               >
                 {item.a}
               </AccordionContent>

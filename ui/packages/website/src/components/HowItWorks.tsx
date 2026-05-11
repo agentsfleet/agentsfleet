@@ -38,13 +38,13 @@ export default function HowItWorks() {
         <div className="grid gap-4 grid-cols-[repeat(auto-fit,minmax(260px,1fr))]">
           {steps.map((step) => (
             <Card key={step.n} className="flex flex-col gap-3" data-testid={`how-step-${step.n}`}>
-              <span className="font-mono text-[12px] uppercase tracking-[0.08em] text-text-subtle">
+              <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
                 {step.n}
               </span>
-              <h3 className="font-mono text-[16px] leading-[1.3] tracking-[-0.01em] text-text font-medium m-0">
+              <h3 className="font-mono text-heading leading-[1.3] text-text font-medium m-0">
                 {step.title}
               </h3>
-              <p className="font-sans text-[14px] leading-[1.55] text-text-muted m-0">
+              <p className="font-sans text-body-sm leading-[1.55] text-text-muted m-0">
                 {step.description}
               </p>
             </Card>

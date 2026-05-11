@@ -162,7 +162,7 @@ function ZombieRow({ zombie: z, pulses }: ZombieRowProps) {
       </div>
       <div className="col-span-7 sm:col-span-5 min-w-0">
         <div className="font-medium truncate">{z.name}</div>
-        <div className="font-mono text-[0.68rem] uppercase tracking-wide text-muted-foreground">
+        <div className="font-mono text-label uppercase tracking-label text-muted-foreground">
           {z.status}
         </div>
       </div>

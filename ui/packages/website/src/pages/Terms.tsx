@@ -10,26 +10,26 @@ export default function Terms() {
   return (
     <article
       data-testid="terms-page"
-      className="wrap site-section flex flex-col gap-6 max-w-[68ch] font-sans text-[15px] leading-[1.7] text-text"
+      className="wrap site-section flex flex-col gap-6 max-w-[68ch] font-sans text-body leading-[1.7] text-text"
     >
       <SectionLabel className="mb-0">legal</SectionLabel>
-      <DisplayXL className="text-[clamp(36px,5vw,52px)]">Terms of Service</DisplayXL>
-      <p className="font-mono text-[12px] text-text-muted m-0">Last updated: May 4, 2026</p>
+      <DisplayXL className="text-[clamp(2.5rem,5vw,4rem)]">Terms of Service</DisplayXL>
+      <p className="font-mono text-eyebrow text-text-muted m-0">Last updated: May 4, 2026</p>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">1. Acceptance</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">1. Acceptance</h2>
       <p className="text-text-muted m-0">
         By accessing or using usezombie (&quot;the Service&quot;), you agree to these Terms of Service.
         If you do not agree, do not use the Service.
       </p>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">2. Service description</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">2. Service description</h2>
       <p className="text-text-muted m-0">
         usezombie is an agent delivery control plane that processes specification queues into
         validated pull requests. The Service operates on your Git repositories using branch-based
         state and self-managed (self-managed provider keys) model access.
       </p>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">3. Your responsibilities</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">3. Your responsibilities</h2>
       <List className="pl-6 text-text-muted m-0">
         <ListItem>You are responsible for your LLM API keys and any costs incurred with your providers.</ListItem>
         <ListItem>You must not use the Service to generate malicious code, violate third-party rights, or circumvent security controls.</ListItem>
@@ -37,7 +37,7 @@ export default function Terms() {
         <ListItem>You must maintain the security of your authentication credentials.</ListItem>
       </List>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">4. Billing</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">4. Billing</h2>
       <List className="pl-6 text-text-muted m-0">
         <ListItem>usezombie charges {RATES_DISPLAY.EVENT_RATE} per event receipt and {RATES_DISPLAY.STAGE_PLATFORM} per stage execution on platform default ({RATES_DISPLAY.STAGE_SELF_MANAGED} per stage on self-managed). Each new account receives a {RATES_DISPLAY.STARTER_CREDIT} starter credit that never expires. Stealth-mode testing rate — will rise post-GA.</ListItem>
         <ListItem>Hosted execution is metered against a credit pool. Debits fire before each stage execution; event receipt is currently free.</ListItem>
@@ -45,26 +45,26 @@ export default function Terms() {
         <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via Mission Control.</ListItem>
       </List>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">5. Intellectual property</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">5. Intellectual property</h2>
       <p className="text-text-muted m-0">
         You retain all rights to your source code, specifications, and generated artifacts.
         usezombie claims no ownership over outputs produced by the pipeline.
       </p>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">6. Limitation of liability</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">6. Limitation of liability</h2>
       <p className="text-text-muted m-0">
         usezombie is provided &quot;as is&quot; without warranty. We are not liable for damages arising
         from agent-generated code, pipeline failures, or third-party service outages. Enterprise
         tier customers may negotiate contractual SLAs.
       </p>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">7. Termination</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">7. Termination</h2>
       <p className="text-text-muted m-0">
         Either party may terminate at any time. Upon termination, workspace data is retained
         for 30 days, after which it is permanently deleted.
       </p>
 
-      <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">8. Contact</h2>
+      <h2 className="font-mono text-heading mt-6 mb-0 font-medium">8. Contact</h2>
       <p className="text-text-muted m-0">
         For questions about these terms, contact{" "}
         <a href={`mailto:${SUPPORT_EMAIL}`} className="text-pulse hover:underline">

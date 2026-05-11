@@ -11,7 +11,7 @@ export default function CTABlock() {
     <section className="site-section" data-testid="cta-block">
       <div className="wrap flex flex-col gap-6 max-w-[720px]">
         <DisplayLG>Building agents on usezombie?</DisplayLG>
-        <p className="font-sans text-[16px] leading-[1.6] text-text-muted m-0">
+        <p className="font-sans text-body-lg leading-[1.6] text-text-muted m-0">
           Stable machine surface via OpenAPI 3.1. Webhook ingest, steer, event
           streams, approval grants — the same surfaces the human dashboard uses.
         </p>

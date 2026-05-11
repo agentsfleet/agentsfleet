@@ -5,9 +5,9 @@ import { DISCORD_URL, DOCS_URL, GITHUB_URL } from "../config";
 const BRAND_NAME = "usezombie";
 
 const COL_LABEL =
-  "font-mono text-[11px] uppercase tracking-[0.08em] text-text-muted m-0 mb-3";
+  "font-mono text-label uppercase tracking-label text-text-muted m-0 mb-3";
 const COL_LINK =
-  "font-mono text-[13px] text-text-muted hover:text-text transition-colors";
+  "font-mono text-mono text-text-muted hover:text-text transition-colors";
 
 /*
  * Footer — mono labels, restrained two-row layout. No decorative
@@ -21,10 +21,10 @@ export default function Footer() {
     >
       <div className="wrap grid gap-12 lg:grid-cols-[2fr_1fr_1fr_1fr]">
         <div className="flex flex-col gap-3">
-          <span className="font-mono text-[15px] font-medium tracking-[-0.01em] text-text">
+          <span className="font-mono text-body font-medium text-text">
             {BRAND_NAME}
           </span>
-          <p className="font-sans text-[13px] leading-[1.55] text-text-muted m-0 max-w-[28ch]">
+          <p className="font-sans text-body-sm leading-[1.55] text-text-muted m-0 max-w-[28ch]">
             Durable, markdown-defined agent runtime. self-managed. Open source.
           </p>
         </div>
@@ -57,7 +57,7 @@ export default function Footer() {
       </div>
 
       <div className="wrap mt-12 pt-6 border-t border-border flex flex-wrap justify-between items-center gap-3">
-        <span className="font-mono text-[11px] text-text-subtle">
+        <span className="font-mono text-label text-text-subtle">
           © {new Date().getFullYear()} {BRAND_NAME}. all rights reserved.
         </span>
       </div>
