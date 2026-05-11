@@ -10,7 +10,7 @@ export default function ExhaustionBadge({ exhaustedAt }: Props) {
       role="status"
       aria-label="Balance exhausted"
       title={when ? `Exhausted since ${when}` : "Balance exhausted"}
-      className="inline-flex items-center gap-1 rounded-sm border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide text-destructive"
+      className="inline-flex items-center gap-1 rounded-sm border border-destructive/40 bg-destructive/10 px-2 py-0.5 font-mono text-label uppercase tracking-label text-destructive"
     >
       <AlertTriangleIcon size={12} aria-hidden="true" />
       Balance exhausted

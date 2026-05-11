@@ -33,7 +33,7 @@ export default function Hero() {
     <section className="site-section" aria-label="Hero" data-testid="hero">
       <div className="wrap flex flex-col gap-8">
         <p
-          className="inline-flex items-center gap-2 font-mono text-[12px] uppercase tracking-[0.1em] text-pulse"
+          className="inline-flex items-center gap-2 font-mono text-eyebrow uppercase tracking-eyebrow text-pulse"
           data-testid="hero-eyebrow"
         >
           <WakePulse
@@ -45,7 +45,7 @@ export default function Hero() {
         </p>
 
         <h1
-          className="font-mono text-[clamp(40px,7vw,72px)] leading-[1.05] tracking-[-0.025em] font-medium text-text"
+          className="font-mono text-fluid-hero leading-display-xl tracking-display-xl font-medium text-text"
           data-testid="hero-headline"
         >
           Your deploy failed.
@@ -53,7 +53,7 @@ export default function Hero() {
           The agent already knows why.
         </h1>
 
-        <p className="font-sans text-[18px] leading-[1.5] text-text-muted max-w-[640px]">
+        <p className="font-sans text-body-lg leading-body-lg text-text-muted max-w-narrow">
           A long-lived runtime that owns one operational outcome end to end.
           Wakes on your events. Runs against a durable, replayable log. Posts
           evidenced answers — never chats.
@@ -91,7 +91,7 @@ export default function Hero() {
           data-testid="hero-cli"
           copyable
           copyText={HERO_INSTALL_TRANSCRIPT}
-          className="max-w-[860px]"
+          className="max-w-wide"
         >
           {/* Severity-coloured transcript per `preview.html` §03 logs
             * specimen. Prompt + breadcrumbs read as muted; success

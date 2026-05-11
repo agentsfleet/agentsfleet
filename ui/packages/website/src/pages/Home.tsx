@@ -43,7 +43,7 @@ export default function Home() {
         <div className="wrap flex flex-col gap-8">
           <div className="flex flex-col gap-3">
             <SectionLabel className="mb-0">core capabilities</SectionLabel>
-            <DisplayLG className="max-w-[760px]">
+            <DisplayLG className="max-w-form">
               A long-lived runtime that owns the outcome until it&apos;s resolved or blocked.
             </DisplayLG>
           </div>

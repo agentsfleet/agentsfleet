@@ -136,6 +136,8 @@ export {
   ListItem,
   listVariants,
   type ListProps,
+  type ListItemProps,
+  type ListItemBullet,
   type ListVariant,
   DescriptionList,
   DescriptionTerm,

@@ -1,1 +1,1 @@
-/Users/kishore/Projects/dotfiles/scripts/audit-ufs.sh
+../../dotfiles/scripts/audit-ufs.sh

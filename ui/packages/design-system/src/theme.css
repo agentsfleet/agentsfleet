@@ -132,12 +132,68 @@
   --text-label: var(--fs-label);
   --text-mono: var(--fs-mono);
 
+  /* Fluid display sizes — `text-fluid-hero`, `text-fluid-display-lg`,
+   * `text-fluid-display-md`. Use these on responsive marketing/legal
+   * headings instead of writing an inline clamp(); bounds stay locked
+   * to the type scale. */
+  --text-fluid-hero: var(--fs-fluid-hero);
+  --text-fluid-display-lg: var(--fs-fluid-display-lg);
+  --text-fluid-display-md: var(--fs-fluid-display-md);
+
   /* Tracking */
   --tracking-display-xl: var(--letter-spacing-display-xl);
   --tracking-display-lg: var(--letter-spacing-display-lg);
   --tracking-display-md: var(--letter-spacing-display-md);
   --tracking-eyebrow: var(--letter-spacing-eyebrow);
   --tracking-label: var(--letter-spacing-label);
+
+  /* Line-heights mirror the type scale — `leading-display-xl` ↔
+   * `leading-mono`. `leading-prose` is the long-form override (1.7) used
+   * in legal pages + docs. Forwards --lh-* tokens defined in tokens.css. */
+  --leading-display-xl: var(--lh-display-xl);
+  --leading-display-lg: var(--lh-display-lg);
+  --leading-display-md: var(--lh-display-md);
+  --leading-heading: var(--lh-heading);
+  --leading-eyebrow: var(--lh-eyebrow);
+  --leading-body-lg: var(--lh-body-lg);
+  --leading-body: var(--lh-body);
+  --leading-body-sm: var(--lh-body-sm);
+  --leading-label: var(--lh-label);
+  --leading-mono: var(--lh-mono);
+  --leading-prose: var(--lh-prose);
+
+  /* Named content widths — `max-w-trim` / `max-w-narrow` / `max-w-measure`
+   * / `max-w-form` / `max-w-wide` / `max-w-content` (px), plus
+   * `max-w-tagline` / `max-w-prose` (ch — track the font). Consumers stop
+   * writing `max-w-[640px]` and `max-w-[68ch]`. Tailwind v4 reads
+   * --container-* as the source of max-width utilities. */
+  --container-trim: var(--max-w-trim);
+  --container-narrow: var(--max-w-narrow);
+  --container-measure: var(--max-w-measure);
+  --container-form: var(--max-w-form);
+  --container-wide: var(--max-w-wide);
+  --container-content: var(--max-w-content);
+  --container-tagline: var(--max-w-tagline);
+  --container-prose: var(--max-w-prose);
+
+  /* Min-width forwards — Tailwind v4 reads `--container-*` for `max-w-*`
+   * utilities but uses a SEPARATE `--min-width-*` namespace for `min-w-*`.
+   * Without these forwards `min-w-narrow` etc. silently emit no CSS and
+   * the consumer's min-width constraint vanishes. Mirror the container
+   * set so every named width works as both a max and a min. */
+  --min-width-trim: var(--max-w-trim);
+  --min-width-narrow: var(--max-w-narrow);
+  --min-width-measure: var(--max-w-measure);
+  --min-width-form: var(--max-w-form);
+  --min-width-wide: var(--max-w-wide);
+  --min-width-content: var(--max-w-content);
+  --min-width-tagline: var(--max-w-tagline);
+  --min-width-prose: var(--max-w-prose);
+
+  /* Named grid templates — `grid-cols-footer` etc. Tailwind v4 reads
+   * `--grid-template-columns-{name}` as the source of `grid-cols-{name}`
+   * utilities. Add a row here when a layout earns its second consumer. */
+  --grid-template-columns-footer: var(--grid-footer);
 
   /* Radius */
   --radius-sm: var(--r-sm);

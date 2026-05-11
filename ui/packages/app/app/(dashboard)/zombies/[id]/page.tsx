@@ -47,7 +47,7 @@ export default async function ZombieDetailPage({
       <PageHeader>
         <div className="flex items-center gap-3">
           <PageTitle>{zombie.name}</PageTitle>
-          <span className="inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wide text-muted-foreground" data-state={zombie.status}>
+          <span className="inline-flex items-center gap-2 font-mono text-label uppercase tracking-label text-muted-foreground" data-state={zombie.status}>
             {zombie.status === ZOMBIE_STATUS.ACTIVE ? (
               <WakePulse
                 live

@@ -152,7 +152,7 @@ function FrameLine({ frame }: { frame: LiveFrame }) {
   const variant: BadgeVariant = KIND_VARIANT[frame.kind] ?? "default";
   return (
     <div className="flex items-start gap-2 text-sm">
-      <Badge variant={variant} className="mt-0.5 font-mono text-[10px] uppercase">
+      <Badge variant={variant} className="mt-0.5 font-mono text-label uppercase">
         {frame.kind}
       </Badge>
       <span className="flex-1 truncate font-mono text-xs text-muted-foreground" title={frameSummary(frame)}>

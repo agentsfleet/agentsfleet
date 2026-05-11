@@ -155,6 +155,8 @@ export {
   ListItem,
   listVariants,
   type ListProps,
+  type ListItemProps,
+  type ListItemBullet,
   type ListVariant,
 } from "./List";
 export {

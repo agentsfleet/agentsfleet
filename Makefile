@@ -4,6 +4,7 @@
 
 include make/dev.mk
 include make/quality.mk
+include make/harness.mk
 include make/test.mk
 include make/build.mk
 .DEFAULT_GOAL := help

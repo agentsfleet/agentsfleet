@@ -39,9 +39,9 @@ describe("formatSection — bold default, NEVER pulse", () => {
     expect(out).not.toContain("38;5;79");
   });
 
-  test("rule below the title uses subtle-grey (256:240)", () => {
+  test("rule below the title uses subtle-grey (256:244)", () => {
     const out = formatSection("Hi", STYLED);
-    expect(out).toContain("38;5;240");
+    expect(out).toContain("38;5;244");
   });
 
   test("plain mode: title + rule on consecutive lines, no escapes", () => {

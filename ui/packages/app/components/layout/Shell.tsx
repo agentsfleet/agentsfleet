@@ -88,7 +88,7 @@ export default function Shell({
             href="https://docs.usezombie.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-[12px] text-muted-foreground transition-colors duration-[50ms] hover:text-foreground no-underline"
+            className="font-mono text-eyebrow text-muted-foreground transition-colors duration-snap ease-snap hover:text-foreground no-underline"
             onClick={() =>
               trackNavigationClicked({
                 source: "app_header_docs",
@@ -103,7 +103,7 @@ export default function Shell({
             href="https://usezombie.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="font-mono text-[12px] text-muted-foreground transition-colors duration-[50ms] hover:text-foreground no-underline"
+            className="font-mono text-eyebrow text-muted-foreground transition-colors duration-snap ease-snap hover:text-foreground no-underline"
             onClick={() =>
               trackNavigationClicked({
                 source: "app_header_marketing",
@@ -208,7 +208,7 @@ function SidebarNav({ isActive, onNavigate }: NavProps) {
 function NavGroup({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-3 mb-6">
-      <div className="font-mono text-[0.68rem] uppercase tracking-[0.1em] text-muted-foreground px-2 mb-2">
+      <div className="font-mono text-label uppercase tracking-label text-muted-foreground px-2 mb-2">
         {label}
       </div>
       <div className="flex flex-col gap-0.5">{children}</div>
@@ -226,7 +226,7 @@ type NavItemProps = {
 };
 
 const NAV_ITEM_CLASSES =
-  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-[12px] text-muted-foreground no-underline transition-colors duration-[50ms] hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground";
+  "flex items-center gap-2.5 px-3 py-2 rounded-md font-mono text-eyebrow text-muted-foreground no-underline transition-colors duration-snap ease-snap hover:bg-accent hover:text-foreground data-[active=true]:bg-accent data-[active=true]:text-foreground";
 
 function NavItem({ href, label, Icon, active, external, onClick }: NavItemProps) {
   if (external) {
