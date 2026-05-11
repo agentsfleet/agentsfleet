@@ -300,15 +300,18 @@ pub fn getZombieWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id:
 }
 
 pub fn authorizeWorkspace(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
+    // Schema-qualified — pool sessions opened before MIGRATE_ON_START
+    // applies `ALTER DATABASE SET search_path` retain the pre-migration
+    // default, where bare `FROM workspaces` resolves to nothing.
     var q = PgQuery.from(blk: {
         if (principal.tenant_id) |tenant_id| {
             break :blk conn.query(
-                "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND tenant_id = $2",
+                "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 AND tenant_id = $2",
                 .{ workspace_id, tenant_id },
             ) catch return false;
         }
         break :blk conn.query(
-            "SELECT 1 FROM workspaces WHERE workspace_id = $1",
+            "SELECT 1 FROM core.workspaces WHERE workspace_id = $1",
             .{workspace_id},
         ) catch return false;
     });
@@ -332,7 +335,7 @@ pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
 
 pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
     const tenant_id = principal.tenant_id orelse blk: {
-        var lookup = PgQuery.from(conn.query("SELECT tenant_id FROM workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false);
+        var lookup = PgQuery.from(conn.query("SELECT tenant_id FROM core.workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false);
         defer lookup.deinit();
         const row = (lookup.next() catch return false) orelse return false;
         break :blk row.get([]u8, 0) catch return false;

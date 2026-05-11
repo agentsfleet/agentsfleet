@@ -109,7 +109,7 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     errdefer _ = conn.exec("ROLLBACK", .{}) catch {};
 
     _ = try conn.exec(
-        "DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1 AND zombie_id = $2",
+        "DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1 AND zombie_id = $2",
         .{ workspace_id, zombie_id },
     );
     _ = try conn.exec(

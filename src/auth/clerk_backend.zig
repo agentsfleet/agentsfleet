@@ -1,6 +1,6 @@
 //! Clerk Backend API client — narrow surface for writing back user metadata
 //! during signup bootstrap. Currently only supports the metadata-merge
-//! endpoint (`POST /v1/users/{user_id}/metadata`) because that is the
+//! endpoint (`PATCH /v1/users/{user_id}/metadata`) because that is the
 //! single use case we have: after `signup_bootstrap.bootstrapPersonalAccount`
 //! creates a tenant row, we need the next session JWT to carry the new
 //! `tenant_id` + default `role=operator`. Clerk merges the payload rather
@@ -21,6 +21,12 @@ const log = logging.scoped(.clerk_backend);
 
 pub const SECRET_ENV_VAR = "CLERK_SECRET_KEY";
 const API_BASE = "https://api.clerk.com/v1";
+
+/// HTTP method used for the metadata-merge endpoint. Exposed as a const so
+/// a unit test can assert it without standing up a mock HTTP server. Clerk's
+/// `/v1/users/{id}/metadata` endpoint requires PATCH; an earlier revision
+/// used POST and was silently 405'd until the e2e harness surfaced it.
+pub const METADATA_HTTP_METHOD: std.http.Method = .PATCH;
 
 pub const PatchError = error{
     MissingSecret,
@@ -233,7 +239,7 @@ fn runFetchBlocking(
 
     const result = client.fetch(.{
         .location = .{ .url = url },
-        .method = .POST,
+        .method = METADATA_HTTP_METHOD,
         .payload = payload,
         .extra_headers = &headers,
         .response_writer = &aw.writer,

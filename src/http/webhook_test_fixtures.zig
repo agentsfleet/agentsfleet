@@ -38,11 +38,11 @@ pub fn insertZombie(
     try cleanup(conn, fx);
 
     _ = try conn.exec(
-        "INSERT INTO tenants (tenant_id, name, created_at, updated_at) VALUES ($1, 'webhook-e2e-test', $2, $2)",
+        "INSERT INTO core.tenants (tenant_id, name, created_at, updated_at) VALUES ($1, 'webhook-e2e-test', $2, $2)",
         .{ fx.tenant_id, now_ms },
     );
     _ = try conn.exec(
-        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\INSERT INTO core.workspaces (workspace_id, tenant_id, created_at)
         \\VALUES ($1, $2, $3)
     , .{ fx.workspace_id, fx.tenant_id, now_ms });
     _ = try conn.exec(
@@ -93,8 +93,8 @@ pub fn insertWebhookCredential(
 pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
     _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{fx.zombie_id}) catch {};
     _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch {};
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch {};
+    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch {};
+    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch {};
 }
 
 /// Convenience: build a trigger config JSON for a given source. Optionally
