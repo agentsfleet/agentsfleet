@@ -15,9 +15,15 @@ fi
 echo "pre-commit: gitleaks protect --staged"
 gitleaks protect --staged --redact --verbose --no-banner
 
-# --- conditional make lint ---------------------------------------------------
-# Run the full lint gate only if staged files could affect it. Keeps fast-path
-# commits (docs, specs, memory) from paying the lint cost.
+# --- conditional make harness-verify + make lint -----------------------------
+# Run the gate audits + lint only if staged files could affect them. Keeps
+# fast-path commits (docs, specs, memory) from paying the cost.
+#
+# Order matters: harness-verify is seconds-fast and fails on cheap
+# discipline regressions (UFS, design tokens, error registry, logging,
+# lifecycle, spec template, combined milestone-id / pub / UI audits). It
+# runs first so a token-discipline regression doesn't wait for tsc/oxlint
+# to finish before blocking the commit.
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
 needs_lint=0
@@ -26,14 +32,18 @@ while IFS= read -r f; do
   case "$f" in
     *.zig)                         needs_lint=1 ;;
     apps/*|website/*|*.ts|*.tsx|*.js|*.jsx|*.json) needs_lint=1 ;;
+    ui/packages/*)                 needs_lint=1 ;;
+    scripts/*.sh)                  needs_lint=1 ;;
     .github/workflows/*.yml|.github/workflows/*.yaml) needs_lint=1 ;;
     Makefile|make/*.mk)            needs_lint=1 ;;
   esac
 done <<< "$staged"
 
 if [ "$needs_lint" -eq 1 ]; then
+  echo "pre-commit: make harness-verify"
+  make harness-verify
   echo "pre-commit: make lint"
   make lint
 else
-  echo "pre-commit: no lint-relevant files staged, skipping make lint"
+  echo "pre-commit: no lint-relevant files staged, skipping harness-verify + lint"
 fi
