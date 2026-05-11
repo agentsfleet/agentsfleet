@@ -75,7 +75,7 @@ function printHelp(stdout, _ui, opts = {}) {
   writeLine(stdout);
   writeLine(stdout, head("TENANT COMMANDS"));
   helpRow(stdout, "tenant provider show", "Show the active provider config");
-  helpRow(stdout, "tenant provider add --credential <n>", "Use a self-managed credential");
+  helpRow(stdout, "tenant provider add --credential <name>", "Use a self-managed credential");
   helpRow(stdout, "tenant provider delete", "Reset to the platform default");
   writeLine(stdout);
   writeLine(stdout, head("BILLING COMMANDS"));
@@ -106,6 +106,7 @@ function printHelp(stdout, _ui, opts = {}) {
   helpRow(stdout, "ZOMBIE_API_URL", "API base URL (overridden by --api)");
   helpRow(stdout, "ZOMBIE_TOKEN", "Auth token (overridden by login)");
   helpRow(stdout, "ZOMBIE_API_KEY", "API key for service auth");
+  helpRow(stdout, "ZOMBIE_STATE_DIR", "Directory for local CLI state files");
   helpRow(stdout, "NO_COLOR", "Any non-empty value disables color");
 }
 
