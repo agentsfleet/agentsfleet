@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Categories:** TESTING, SECURITY
 **Batch:** B1 — no parallel workstreams in M65
 **Branch:** TBD — opens at CHORE(open) on the implementation milestone (this spec is the planning gate)
-**Depends on:** M64_006 (auth harness + post-deploy CI gates), the parallel handoff that creates `op://VAULT/e2e-fixtures/{regular,admin}/email` (vault provisioning is a hard prerequisite for the PROD-safe email override)
+**Depends on:** M64_006 (auth harness + post-deploy CI gates); **hard merge-gate:** the parallel handoff that creates `op://VAULT/e2e-fixtures/{regular,admin}/email` AND wires the workflow `env:` blocks to consume them. The implementation PR MUST NOT merge while either fixture email still resolves to a `*@mailinator.com` default in CI — the Acceptance Criteria checkbox below makes this machine-verifiable.
 
 **Canonical architecture:** `docs/AUTH.md` §"Test infrastructure — e2e fixture mint (admin path)" + §"PROD fixture identity carve-out".
 
@@ -32,10 +32,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 2. `docs/v2/done/M64_006_P1_TESTING_AUTH_E2E_CONTINUATION_AND_W3_CARRY_OVER.md` — most recent fixture-harness milestone, especially its Discovery section (events deferral, EventDetail dialog deferral, cross-tenant admin deferral). Several items here graduate into scenarios in this spec.
 3. `ui/packages/app/tests/e2e/auth/fixtures/clerk-admin.ts` — `provisionUser`/`bootstrapTenant`/`attachJwt` 3-phase chain. Any change to the password-hardening posture (WS-A finding) lands here.
 4. `ui/packages/app/tests/e2e/auth/global-setup.ts` — fixture identity resolution + JWT cache write. `freshPassword()`, `is_test_fixture` metadata, and the random-per-create posture all live here.
-5. `ui/packages/app/tests/e2e/auth/install-zombie-cli.spec.ts` and `install-zombie-seed.spec.ts` — the install path the new lifecycle scenarios extend. Scenario 1 (signup flow) MUST drive the CLI bundle path, not the power-user paste form, because that is the documented user flow.
+5. `ui/packages/app/tests/e2e/auth/install-zombie-cli.spec.ts` and `install-zombie-seed.spec.ts` — reference for the install path. The new lifecycle scenarios deliberately do NOT drive the CLI (overlaps `install-zombie-cli.spec.ts`) nor the power-user paste form. Both seed via the API through a new `seedPlatformOpsZombie` helper that reads the same `samples/platform-ops/` bundle the CLI consumes. Rationale lives in WS-C step 6.
 6. `ui/packages/app/app/(dashboard)/zombies/[id]/components/KillSwitch.tsx` — Stop/Resume/Kill state machine UI. Selector inventory for the new scenarios lives there (status `active` → Stop+Kill, `paused`/`stopped` → Resume+Kill, `killed`/`errored` → terminal disabled "Killed" indicator).
 7. `ui/packages/app/app/(dashboard)/zombies/components/ZombiesList.tsx:liveStateOf` — canonical mapping from zombied status to dashboard `data-state` (`active→live`, `killed|errored→failed`, everything else→`parked`). New assertions key on this attribute.
-8. `samples/platform-ops/SKILL.md` + `samples/platform-ops/TRIGGER.md` — the install bundle Scenario 1 ships through `zombiectl install --from`. M37_001 is the canonical spec for this skill.
+8. `samples/platform-ops/SKILL.md` + `samples/platform-ops/TRIGGER.md` — the canonical bundle the new `seedPlatformOpsZombie` helper reads and POSTs to `/v1/workspaces/{ws}/zombies`. Same bundle `zombiectl install --from` would feed, byte-for-byte. M37_001 is the canonical spec for this skill.
 9. `.github/workflows/deploy-dev.yml` (`auth-e2e-dev` job) and `.github/workflows/smoke-post-deploy.yml` (`auth-e2e-prod` job) — the deployment gates the new specs will plug into. Both already wire op:// secrets, Playwright browser cache, and artifact upload of `playwright-auth-report/` only.
 
 ---
@@ -82,7 +82,12 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 | `ui/packages/app/tests/e2e/auth/login-existing-zombie-lifecycle.spec.ts` | CREATE | Scenario 2 — persistent fixture login → seeded zombie → observe → bill → halt. Runs on both DEV and PROD. |
 | `ui/packages/app/tests/e2e/auth/fixtures/seed.ts` | EDIT | Add `seedPlatformOpsZombie(key, ws)` helper that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk (same path Scenario 1's CLI invocation uses) and seeds via the API. Centralised so both scenarios point at the canonical bundle. |
 | `ui/packages/app/tests/e2e/auth/fixtures/lifecycle.ts` | CREATE | Shared selectors + action helpers: `stopZombie(page, id)`, `resumeZombie(page, id)`, `killZombie(page, id)`. Pulls the duplicated KillSwitch + ConfirmDialog wiring out of `lifecycle.spec.ts`/`kill.spec.ts` and the new scenarios. Eliminates the row of literal-duplicates the existing two specs have today (RULE UFS). |
-| `docs/AUTH.md` | EDIT | Update "PROD fixture identity carve-out" with the WS-A finding (PATCH `password_enabled:false` is a silent no-op on Clerk admin API; harness retains random-per-create password posture). Append "Known gaps" subsection enumerating accepted vulnerabilities. |
+| `ui/packages/app/tests/e2e/auth/fixtures/_jwt-cache-location.test.ts` | CREATE | Vitest regression for WS-B #4 — asserts `.fixture-jwts.json` path is outside `playwright-auth-results/` and `playwright-auth-report/`. Runs in `make test`. |
+| `ui/packages/app/tests/e2e/auth/_smoke.spec.ts` | EDIT | WS-B #8 + #9 assertions: (a) resolved `@clerk/nextjs` major equals the pinned constant in `fixtures/constants.ts`; (b) on PROD only, `__clerk_db_jwt` cookie value parses as a real 3-segment JWT; (c) `freshPassword()` output length ≥ 16 chars (regression for Clerk password-policy tightening). |
+| `ui/packages/app/package.json` | EDIT | WS-B #8 — pin `@clerk/nextjs` major (caret pin against the current installed major); record the pinned major as a constant in `fixtures/constants.ts` so the smoke assertion has a single source of truth. |
+| `ui/packages/app/tests/e2e/auth/fixtures/constants.ts` | EDIT | Add `CLERK_NEXTJS_PINNED_MAJOR` constant consumed by the WS-B #8 smoke assertion (RULE UFS — one literal, two readers). |
+| `ui/packages/app/tests/e2e/auth/fixtures/clerk-admin.ts` | EDIT | WS-B #11 — tighten `mintTokens` `expires_in_seconds` from `3600` to a TTL that is 2× the observed p95 suite wall-clock (implementing agent reads most-recent CI timing). Add a `clientFor` expiry-guard that re-mints on detected expiry. |
+| `docs/AUTH.md` | EDIT | Update "PROD fixture identity carve-out" with the WS-A finding (PATCH `password_enabled:false` is a silent no-op on Clerk admin API; harness retains random-per-create password posture). Append "Known gaps" subsection enumerating accepted vulnerabilities + the two Clerk PROD fixture user IDs with the `is_test_fixture` metadata filter query (WS-B #7). |
 
 **Files NOT changed (explicit non-goals on this milestone):**
 
@@ -107,11 +112,13 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 
 **Implementation default:** treat password-disable as a research item, not a deliverable, on the implementation PR. If the implementing agent finds a working endpoint, add it to `clerk-admin.ts` as a fourth phase between `bootstrapTenant` and `attachJwt`; otherwise leave the random-per-create posture in place and record the finding in `docs/AUTH.md`.
 
-**Revert command (idempotent, on the DEV fixture user):**
+**Revert command (idempotent, on the DEV fixture user):** the fixture user ID is not pinned in this spec — resolve at runtime from the email so a future fixture rotation does not invalidate the runbook.
 
 ```bash
 CS=$(op read 'op://ZMB_CD_DEV/clerk-dev/secret-key')
-CLERK_UID=user_3DXBRBhd7RQ3LyR5YijdRJzKTZz  # regular-fixture@mailinator.com in Clerk DEV
+EMAIL=$(op read 'op://VAULT/e2e-fixtures/regular/email' 2>/dev/null || echo 'regular-fixture@mailinator.com')
+CLERK_UID=$(curl -sS -H "Authorization: Bearer $CS" \
+  "https://api.clerk.com/v1/users?email_address=$EMAIL" | jq -r '.[0].id')
 curl -sS -X PATCH -H "Authorization: Bearer $CS" -H 'Content-Type: application/json' \
   -d '{"password_enabled": true}' "https://api.clerk.com/v1/users/$CLERK_UID" | jq '{password_enabled}'
 ```
@@ -251,7 +258,7 @@ export async function expectRowState(
 |------|---------|
 | `signup-platformops-lifecycle.spec.ts → signup → install → observe → bill → halt` | Ephemeral signup lands on `/zombies` empty-state; auto-provisioned workspace visible; `seedPlatformOpsZombie` adds a row with `data-state="live"`; detail page renders `<LiveEventsPanel>` scaffolding; `/settings/billing` shows balance card; Stop → row `parked`; Resume → row `live`; Kill → row `failed` + disabled Killed indicator on detail page. |
 | `login-existing-zombie-lifecycle.spec.ts → persistent fixture → observe → bill → halt` | Persistent `regular` fixture signs in via cookie-mount; pre-seeded `platform-ops` zombie row visible with `data-state="live"`; same observation + lifecycle legs as Scenario 1. |
-| `_smoke.spec.ts → @clerk/nextjs major pin honored` (WS-B #8) | `package.json` `dependencies["@clerk/nextjs"]` matches `^X.Y.Z` shape — fails fast if a future bump changes the major. |
+| `_smoke.spec.ts → @clerk/nextjs major pin honored` (WS-B #8) | The resolved major of `@clerk/nextjs` equals `CLERK_NEXTJS_PINNED_MAJOR` (constant in `fixtures/constants.ts`). Predicate: parse the version from `node_modules/@clerk/nextjs/package.json` (NOT from the root `package.json` range string, which would conflate `^4.x` and `^5.x` if the range starts with `^`), `semver.major(installedVersion)` === `CLERK_NEXTJS_PINNED_MAJOR`. Fails fast if a `bun install` bumps the major against the pin. |
 | `_smoke.spec.ts → fixture password clears Clerk policy` (WS-B #9) | `globalSetup` provisioned both fixture users without error AND `freshPassword()` output length is ≥ 16 chars. |
 | `fixtures/_jwt-cache-location.test.ts → cache stays outside Playwright dirs` (WS-B #4) | `path.resolve(".fixture-jwts.json")` does NOT start with `path.resolve("playwright-auth-results")` OR `path.resolve("playwright-auth-report")`. |
 | `_smoke.spec.ts → __clerk_db_jwt is a real JWT on PROD` (WS-B #8 part 2) | On PROD only: the value placed into `__clerk_db_jwt` cookie has three `.`-separated segments. On DEV: skipped (literal `"fixture-dev-browser"` is accepted). |
@@ -264,6 +271,7 @@ Regression tests: the existing `lifecycle.spec.ts` + `kill.spec.ts` + `events.sp
 
 ## Acceptance Criteria
 
+- [ ] Vault prerequisite met (WS-B #1 `BLOCKED_ON_vault` gate cleared) — verify: `op read 'op://VAULT/e2e-fixtures/regular/email'` AND `op read 'op://VAULT/e2e-fixtures/admin/email'` BOTH return a non-mailinator domain; AND `.github/workflows/deploy-dev.yml` + `.github/workflows/smoke-post-deploy.yml` set `AUTH_E2E_REGULAR_EMAIL` + `AUTH_E2E_ADMIN_EMAIL` from those op:// paths; AND `globalSetup` log line for the most recent CI run contains the non-mailinator emails. If any check fails, the implementation PR MUST NOT merge.
 - [ ] WS-A finding recorded in `docs/AUTH.md` "PROD fixture identity carve-out" — verify: `grep -n "password_enabled.*PATCH" docs/AUTH.md`
 - [ ] WS-B vulnerability table copied (verbatim) into `docs/AUTH.md` "Known gaps" subsection — verify: `grep -c "FIX_THIS_PR\|ACCEPTED_RISK\|DEFERRED" docs/AUTH.md` ≥ 11
 - [ ] `signup-platformops-lifecycle.spec.ts` passes locally (`bun run test:e2e:auth:local`) — verify: paste the green run line
