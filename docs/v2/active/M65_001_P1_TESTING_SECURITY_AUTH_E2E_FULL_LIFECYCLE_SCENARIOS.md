@@ -15,12 +15,12 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M65
 **Workstream:** 001
 **Date:** May 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — The auth harness (M64_005/006) ships eight specs covering individual lifecycle operations against a pre-seeded fixture, but no spec walks a real-user flow end-to-end (signup → install → observe → bill → halt). Captain wants two such flows on every Vercel `usezombie-app` Production deploy and against `api-dev`. The same audit pass surfaces and prices every hardening item the existing harness carries forward.
 **Categories:** TESTING, SECURITY
 **Batch:** B1 — no parallel workstreams in M65
-**Branch:** TBD — opens at CHORE(open) on the implementation milestone (this spec is the planning gate)
-**Depends on:** M64_006 (auth harness + post-deploy CI gates); **hard merge-gate:** the parallel handoff that creates `op://VAULT/e2e-fixtures/{regular,admin}/email` AND wires the workflow `env:` blocks to consume them. The implementation PR MUST NOT merge while either fixture email still resolves to a `*@mailinator.com` default in CI — the Acceptance Criteria checkbox below makes this machine-verifiable.
+**Branch:** `feat/m65-001-auth-e2e-lifecycle-scenarios`
+**Depends on:** M64_006 (auth harness + post-deploy CI gates); **hard merge-gate:** vault items `op://ZMB_CD_DEV/e2e-fixtures-email/{regular,admin}` and `op://ZMB_CD_PROD/e2e-fixtures-email/{regular,admin}` AND wires the workflow `env:` blocks to consume them. The implementation PR MUST NOT merge while either fixture email still resolves to a `*@mailinator.com` default in CI — the Acceptance Criteria checkbox below makes this machine-verifiable.
 
 **Canonical architecture:** `docs/AUTH.md` §"Test infrastructure — e2e fixture mint (admin path)" + §"PROD fixture identity carve-out".
 
@@ -118,7 +118,7 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 
 ```bash
 CS=$(op read 'op://ZMB_CD_DEV/clerk-dev/secret-key')
-EMAIL=$(op read 'op://VAULT/e2e-fixtures/regular/email' 2>/dev/null || echo 'regular-fixture@mailinator.com')
+EMAIL=$(op read 'op://ZMB_CD_DEV/e2e-fixtures-email/regular' 2>/dev/null || echo 'regular-fixture@mailinator.com')
 CLERK_UID=$(curl -sS -H "Authorization: Bearer $CS" \
   "https://api.clerk.com/v1/users?email_address=$EMAIL" | jq -r '.[0].id')
 curl -sS -X PATCH -H "Authorization: Bearer $CS" -H 'Content-Type: application/json' \
@@ -133,7 +133,7 @@ Each row carries severity, current state, proposed fix, where the fix lands. "Se
 
 | # | Vulnerability | Sev | Current state | Proposed fix | Lands in | Disposition |
 |---|---|---|---|---|---|---|
-| 1 | Public mailinator inbox for fixture identity → anyone with the email can request a Clerk password-reset link and claim the account. | S1 | Default to `*@mailinator.com`. `AUTH_E2E_{REGULAR,ADMIN}_EMAIL` env override is wired in `global-setup.ts`; vault items `op://VAULT/e2e-fixtures/{regular,admin}/email` not yet created. | Provision the vault items + flip the workflow `env:` blocks to resolve them. CI job overrides defaults. Local DEV runs keep mailinator (accepted risk: local-only). | Parallel handoff (separate agent) | `BLOCKED_ON_vault-provision` — this spec depends on that handoff. Implementation PR may NOT merge until the vault items exist. |
+| 1 | Public mailinator inbox for fixture identity → anyone with the email can request a Clerk password-reset link and claim the account. | S1 | Vault items provisioned at `op://ZMB_CD_DEV/e2e-fixtures-email/{regular,admin}` (DEV) and `op://ZMB_CD_PROD/e2e-fixtures-email/{regular,admin}` (PROD); workflow `env:` wiring TBD. `AUTH_E2E_{REGULAR,ADMIN}_EMAIL` env override is read in `global-setup.ts`. | Flip the workflow `env:` blocks to resolve the vault items. CI job overrides defaults. Local DEV runs keep mailinator (accepted risk: local-only). | Parallel handoff (separate agent — workflows out of scope this milestone) | `BLOCKED_ON_workflow-wiring` — implementation PR may NOT merge until the workflow `env:` blocks consume the vault items. |
 | 2 | Persistent fixture user has `password_enabled: true`; even with private email (#1), a Clerk hosted sign-in form could be driven by anyone who learns the email + password. | S2 | `freshPassword()` generates 256-bit random per `provisionUser` call and never persists. Compromise requires both the random password (only in process memory during one suite run) AND access to the user-password sign-in flow. | WS-A shows PATCH path is not viable. Implementation PR researches `DELETE /v1/users/{id}/password` or instance-level "passwordless required" config. If neither lands cheaply, accept the current posture. | `clerk-admin.ts` (only if viable endpoint found) | `ACCEPTED_RISK` for this milestone unless a viable endpoint is discovered during implementation. Captain's prior P0 ranking is downgraded based on WS-A. |
 | 3 | `CLERK_WEBHOOK_SECRET` reuse — the harness uses the **production webhook secret** to Svix-sign synthetic `user.created` posts. Anyone with that secret can forge any Clerk webhook against zombied PROD. | S1 | The secret is op://-resolved per environment; the PROD-secret blast radius is bounded by 1Password access, not by the harness. But the harness adds a NEW party who needs the PROD-trust secret (CI service account) — and the secret cannot be rotated without coordinating with the test harness. | Add a backend feature: zombied accepts EITHER `CLERK_WEBHOOK_SECRET` OR a separate `CLERK_WEBHOOK_TEST_SECRET` whose tenant rows are flagged `is_test_fixture: true` and barred from billing real money. Harness in CI uses only the test secret. | New backend milestone (NOT this PR) | `DEFERRED_TO_backend-milestone` — recorded in Discovery for prioritisation. |
 | 4 | `.fixture-jwts.json` (cookieJwt valid ~1h, sessionJwt carries tenant claims) could ride along in an artifact upload. | S2 | File written at `ui/packages/app/.fixture-jwts.json` mode 0600, gitignored at `.gitignore:19`. CI artifact uploads target `ui/packages/app/playwright-auth-report/` (single subdirectory), not the package root. Playwright's `outputDir` is `playwright-auth-results`. The cache file is in NEITHER subdirectory. | Add a one-line guard test that asserts the file path does not match either Playwright-managed directory — catches a future refactor that moves `outputDir` or the cache. | `tests/e2e/auth/fixtures/_jwt-cache-location.test.ts` (vitest, not Playwright — runs in `make test`) | `FIX_THIS_PR` — cheap regression-proof. |
@@ -289,7 +289,7 @@ Regression tests: the existing `lifecycle.spec.ts` + `kill.spec.ts` + `events.sp
 
 ## Acceptance Criteria
 
-- [ ] Vault prerequisite met (WS-B #1 `BLOCKED_ON_vault` gate cleared) — verify: `op read 'op://VAULT/e2e-fixtures/regular/email'` AND `op read 'op://VAULT/e2e-fixtures/admin/email'` BOTH return a non-mailinator domain; AND `.github/workflows/deploy-dev.yml` + `.github/workflows/smoke-post-deploy.yml` set `AUTH_E2E_REGULAR_EMAIL` + `AUTH_E2E_ADMIN_EMAIL` from those op:// paths; AND `globalSetup` log line for the most recent CI run contains the non-mailinator emails. If any check fails, the implementation PR MUST NOT merge.
+- [ ] Vault prerequisite met (WS-B #1 `BLOCKED_ON_workflow-wiring` gate cleared) — verify: `op read 'op://ZMB_CD_DEV/e2e-fixtures-email/regular'` AND `op read 'op://ZMB_CD_DEV/e2e-fixtures-email/admin'` AND the two PROD equivalents under `op://ZMB_CD_PROD/e2e-fixtures-email/{regular,admin}` BOTH return a non-mailinator domain; AND `.github/workflows/deploy-dev.yml` + `.github/workflows/smoke-post-deploy.yml` set `AUTH_E2E_REGULAR_EMAIL` + `AUTH_E2E_ADMIN_EMAIL` from those op:// paths; AND `globalSetup` log line for the most recent CI run contains the non-mailinator emails. If any check fails, the implementation PR MUST NOT merge.
 - [ ] WS-A finding recorded in `docs/AUTH.md` "PROD fixture identity carve-out" — verify: `grep -n "password_enabled.*PATCH" docs/AUTH.md`
 - [ ] WS-B vulnerability table copied (verbatim) into `docs/AUTH.md` "Known gaps" subsection — verify: `grep -c "FIX_THIS_PR\|ACCEPTED_RISK\|DEFERRED" docs/AUTH.md` ≥ 11
 - [ ] `signup-platformops-lifecycle.spec.ts` passes locally (`bun run test:e2e:auth:local`) — verify: paste the green run line
