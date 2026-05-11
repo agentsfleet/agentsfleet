@@ -3,7 +3,7 @@ import {
   formatDollars,
   groupChargesByEvent,
 } from "@/app/(dashboard)/settings/billing/lib/groupCharges";
-import type { TenantBillingChargesResponse } from "@/lib/types";
+import { CHARGE_TYPE, PROVIDER_MODE, type TenantBillingChargesResponse } from "@/lib/types";
 
 type ChargeRow = TenantBillingChargesResponse["items"][number];
 
@@ -13,10 +13,10 @@ const RECEIVE: ChargeRow = {
   workspace_id: "w1",
   zombie_id: "z1",
   event_id: "evt_1",
-  charge_type: "receive",
-  posture: "platform",
+  charge_type: CHARGE_TYPE.receive,
+  posture: PROVIDER_MODE.platform,
   model: "kimi-k2.6",
-  credit_deducted_cents: 1,
+  credit_deducted_nanos: 1,
   token_count_input: null,
   token_count_output: null,
   wall_ms: null,
@@ -25,8 +25,8 @@ const RECEIVE: ChargeRow = {
 const STAGE: ChargeRow = {
   ...RECEIVE,
   id: "tel_2",
-  charge_type: "stage",
-  credit_deducted_cents: 2,
+  charge_type: CHARGE_TYPE.stage,
+  credit_deducted_nanos: 2,
   token_count_input: 820,
   token_count_output: 1040,
   wall_ms: 1500,
@@ -43,9 +43,9 @@ describe("groupChargesByEvent", () => {
     expect(groups).toHaveLength(1);
     const ev = groups[0]!;
     expect(ev.event_id).toBe("evt_1");
-    expect(ev.receive_cents).toBe(1);
-    expect(ev.stage_cents).toBe(2);
-    expect(ev.total_cents).toBe(3);
+    expect(ev.receive_nanos).toBe(1);
+    expect(ev.stage_nanos).toBe(2);
+    expect(ev.total_nanos).toBe(3);
     expect(ev.token_count_input).toBe(820);
     expect(ev.token_count_output).toBe(1040);
   });
@@ -64,16 +64,37 @@ describe("groupChargesByEvent", () => {
   it("handles a stage row with no matching receive (defensive — should never happen)", () => {
     const groups = groupChargesByEvent([STAGE]);
     expect(groups).toHaveLength(1);
-    expect(groups[0]?.receive_cents).toBe(0);
-    expect(groups[0]?.stage_cents).toBe(2);
-    expect(groups[0]?.total_cents).toBe(2);
+    expect(groups[0]?.receive_nanos).toBe(0);
+    expect(groups[0]?.stage_nanos).toBe(2);
+    expect(groups[0]?.total_nanos).toBe(2);
   });
 
-  it("ignores zero/null credit_deducted_cents fallbacks", () => {
-    const zeroRow: ChargeRow = { ...RECEIVE, credit_deducted_cents: 0 };
+  it("ignores zero/null credit_deducted_nanos fallbacks", () => {
+    const zeroRow: ChargeRow = { ...RECEIVE, credit_deducted_nanos: 0 };
     const groups = groupChargesByEvent([zeroRow]);
-    expect(groups[0]?.receive_cents).toBe(0);
-    expect(groups[0]?.total_cents).toBe(0);
+    expect(groups[0]?.receive_nanos).toBe(0);
+    expect(groups[0]?.total_nanos).toBe(0);
+  });
+
+  it("treats null credit_deducted_nanos as 0 on a receive row (`?? 0` fallback)", () => {
+    // Defensive — the API serializes the column as i64 NOT NULL, so a null
+    // here is wire-shape drift, not a legitimate state. The `?? 0` keeps
+    // grouping deterministic instead of propagating NaN into the dashboard.
+    const nullReceive: ChargeRow = {
+      ...RECEIVE,
+      credit_deducted_nanos: null as unknown as ChargeRow["credit_deducted_nanos"],
+    };
+    const groups = groupChargesByEvent([nullReceive]);
+    expect(groups[0]?.receive_nanos).toBe(0);
+  });
+
+  it("treats null credit_deducted_nanos as 0 on a stage row (`?? 0` fallback)", () => {
+    const nullStage: ChargeRow = {
+      ...STAGE,
+      credit_deducted_nanos: null as unknown as ChargeRow["credit_deducted_nanos"],
+    };
+    const groups = groupChargesByEvent([nullStage]);
+    expect(groups[0]?.stage_nanos).toBe(0);
   });
 
   it("skips updating recorded_at when the new row's timestamp is later", () => {
@@ -97,15 +118,22 @@ describe("groupChargesByEvent", () => {
   it("ignores rows with an unknown charge_type (defensive)", () => {
     const weird = { ...RECEIVE, charge_type: "unknown" as ChargeRow["charge_type"] };
     const groups = groupChargesByEvent([weird]);
-    expect(groups[0]?.receive_cents).toBe(0);
-    expect(groups[0]?.stage_cents).toBe(0);
+    expect(groups[0]?.receive_nanos).toBe(0);
+    expect(groups[0]?.stage_nanos).toBe(0);
   });
 });
 
 describe("formatDollars", () => {
-  it("formats 0 cents as $0.00", () => expect(formatDollars(0)).toBe("$0.00"));
-  it("formats 471 cents as $4.71", () => expect(formatDollars(471)).toBe("$4.71"));
-  it("formats 100 cents as $1.00", () => expect(formatDollars(100)).toBe("$1.00"));
-  it("rounds half-cents to 2 decimals", () =>
-    expect(formatDollars(1234)).toBe("$12.34"));
+  // Pin tests for the nanos-based dollar formatter. 1¢ = 10_000_000 nanos.
+  it("formats 0 nanos as $0.00", () => expect(formatDollars(0)).toBe("$0.00"));
+  it("formats 4_710_000_000 nanos as $4.71", () =>
+    expect(formatDollars(4_710_000_000)).toBe("$4.71"));
+  it("formats 1_000_000_000 nanos as $1.00", () =>
+    expect(formatDollars(1_000_000_000)).toBe("$1.00"));
+  it("formats 12_340_000_000 nanos as $12.34", () =>
+    expect(formatDollars(12_340_000_000)).toBe("$12.34"));
+  it("renders sub-cent traction rate $0.001 (1_000_000 nanos)", () =>
+    expect(formatDollars(1_000_000)).toBe("$0.001"));
+  it("renders sub-cent traction rate $0.0001 (100_000 nanos)", () =>
+    expect(formatDollars(100_000)).toBe("$0.0001"));
 });

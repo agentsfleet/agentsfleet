@@ -42,7 +42,7 @@ The primary user is a high-agency operator who owns infrastructure outcomes dire
 - SRE or platform engineer at a small team
 - founder-operator or strong indie engineer
 - teams that cannot or do not want to pipe their entire ops stack into another SaaS
-- teams that value open source, Bring Your Own Key, and prompt-defined behaviour over a heavy workflow builder
+- teams that value open source, self-managed provider key, and prompt-defined behaviour over a heavy workflow builder
 
 The broader category includes AI-infra teams, GPU-cloud operators, regulated mid-market teams, and agentic-operations teams, but the v2 wedge should stay grounded in the small-team operator who feels this pain acutely today.
 
@@ -65,7 +65,7 @@ This wedge matters because it makes the architecture reachable. The markdown-def
 
 These are the conclusions from the office-hours work that should be treated as durable unless a later architecture decision replaces them:
 
-- v2 differentiation is **open source + Bring Your Own Key + markdown-defined behaviour**.
+- v2 differentiation is **open source + self-managed provider key + markdown-defined behaviour**.
 - v2 is **hosted-only** on `api.usezombie.com`; self-host is a later workstream.
 - the flagship workflow is **GitHub Actions deploy-failure response plus manual steer**, not a generic automation platform
 - the same zombie should handle webhook, cron, and manual steer through one reasoning loop
@@ -126,4 +126,4 @@ Do not use this file when you need:
 - current spec or milestone status
 - route-by-route system behaviour
 
-For those, use [`README.md`](./README.md), [`high_level.md`](./high_level.md), [`user_flow.md`](./user_flow.md), [`data_flow.md`](./data_flow.md), [`capabilities.md`](./capabilities.md), and [`billing_and_byok.md`](./billing_and_byok.md).
+For those, use [`README.md`](./README.md), [`high_level.md`](./high_level.md), [`user_flow.md`](./user_flow.md), [`data_flow.md`](./data_flow.md), [`capabilities.md`](./capabilities.md), and [`billing_and_provider_keys.md`](./billing_and_provider_keys.md).

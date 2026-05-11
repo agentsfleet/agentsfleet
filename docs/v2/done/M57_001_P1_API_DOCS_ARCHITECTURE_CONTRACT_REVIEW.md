@@ -22,7 +22,7 @@
 3. `docs/architecture/user_flow.md` — install, trigger, and model-cap origin flow.
 4. `docs/architecture/data_flow.md` — stream, route, table, and worker/executor contracts.
 5. `docs/architecture/capabilities.md` — platform guarantees and context lifecycle.
-6. `docs/architecture/billing_and_byok.md` and `docs/architecture/scenarios/` — billing, BYOK, and end-to-end walkthroughs.
+6. `docs/architecture/billing_and_provider_keys.md` and `docs/architecture/scenarios/` — billing, BYOK, and end-to-end walkthroughs.
 7. `src/http/router.zig`, `src/http/route_manifest.zig`, `src/http/route_matchers.zig`, `src/http/handlers/webhooks/zombie.zig`, `ui/packages/app/lib/api/zombies.ts` — shipped route contracts to compare against the docs.
 8. `docs/greptile-learnings/RULES.md`, `docs/ZIG_RULES.md`, `docs/REST_API_DESIGN_GUIDELINES.md` — rule gates for any API/code edits.
 
@@ -51,10 +51,10 @@
 | `docs/architecture/user_flow.md` | EDIT | Fix install, webhook, credential, and model-cap flow claims found by review. |
 | `docs/architecture/data_flow.md` | EDIT | Fix route, stream, event, gate, and recovery contracts found by review. |
 | `docs/architecture/capabilities.md` | EDIT | Reconcile platform guarantees and context lifecycle claims with shipped code. |
-| `docs/architecture/billing_and_byok.md` | EDIT | Reconcile BYOK scope, balance gate semantics, and safe credential examples. |
+| `docs/architecture/billing_and_provider_keys.md` | EDIT | Reconcile BYOK scope, balance gate semantics, and safe credential examples. |
 | `docs/architecture/scenarios/README.md` | EDIT | Keep scenario summary aligned with corrected contracts. |
 | `docs/architecture/scenarios/01_default_free_tier.md` | EDIT | Fix default install and webhook walkthrough. |
-| `docs/architecture/scenarios/02_byok.md` | EDIT | Fix BYOK walkthrough and tenant/workspace scope wording. |
+| `docs/architecture/scenarios/02_self_managed.md` | EDIT | Fix BYOK walkthrough and tenant/workspace scope wording. |
 | `docs/architecture/scenarios/03_balance_gate_paid.md` | EDIT | Fix balance gate walkthrough if contradictions remain. |
 | `docs/architecture/direction.md` | EDIT | Tighten architectural constants if the review exposes a missing invariant. |
 | `docs/architecture/bastion.md` | EDIT | Fix only if it contradicts current MVP boundaries. |

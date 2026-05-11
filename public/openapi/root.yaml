@@ -41,7 +41,7 @@ tags:
   x-mintlify:
     navigation: Memory
 - name: Credentials
-  description: BYOK (Bring Your Own Key) LLM provider credentials
+  description: self-managed (Bring Your Own Key) LLM provider credentials
   x-mintlify:
     navigation: Credentials
 - name: Admin

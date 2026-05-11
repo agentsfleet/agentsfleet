@@ -8,7 +8,7 @@ import BillingBalanceCard from "@/app/(dashboard)/settings/billing/components/Bi
 import type { TenantBilling } from "@/lib/types";
 
 const HEALTHY: TenantBilling = {
-  balance_cents: 471,
+  balance_nanos: 4_710_000_000,
   updated_at: 1,
   is_exhausted: false,
   exhausted_at: null,
@@ -31,7 +31,7 @@ describe("BillingBalanceCard", () => {
   });
 
   it("surfaces an alert banner when the balance is exhausted", () => {
-    const exhausted: TenantBilling = { ...HEALTHY, balance_cents: 0, is_exhausted: true };
+    const exhausted: TenantBilling = { ...HEALTHY, balance_nanos: 0, is_exhausted: true };
     render(React.createElement(BillingBalanceCard, { billing: exhausted }));
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toMatch(/Balance exhausted/);
@@ -39,7 +39,7 @@ describe("BillingBalanceCard", () => {
   });
 
   it("applies destructive treatment to the balance headline when exhausted", () => {
-    const exhausted: TenantBilling = { ...HEALTHY, balance_cents: 0, is_exhausted: true };
+    const exhausted: TenantBilling = { ...HEALTHY, balance_nanos: 0, is_exhausted: true };
     render(React.createElement(BillingBalanceCard, { billing: exhausted }));
     const headline = screen.getByTestId("balance-headline");
     expect(headline.getAttribute("data-exhausted")).toBe("true");
@@ -61,5 +61,21 @@ describe("BillingBalanceCard", () => {
     // the trigger and hear the "Coming in v2.1" tooltip via aria-describedby.
     expect(trigger.getAttribute("tabindex")).toBe("0");
     expect(trigger.getAttribute("aria-describedby")).toBe("purchase-credits-tooltip");
+  });
+
+  it("falls back to $0.00 when balance_nanos is missing (`?? 0` defensive)", () => {
+    // Defensive — the API schema makes balance_nanos non-null, but the
+    // component still treats a missing field as zero so a partial response
+    // doesn't crash the dashboard or display "NaN".
+    const partial = { ...HEALTHY, balance_nanos: undefined as unknown as number };
+    render(React.createElement(BillingBalanceCard, { billing: partial as TenantBilling }));
+    expect(screen.getByText(/\$0\.00/)).toBeTruthy();
+  });
+
+  it("renders the support email link using SUPPORT_EMAIL when exhausted", () => {
+    const exhausted: TenantBilling = { ...HEALTHY, balance_nanos: 0, is_exhausted: true };
+    render(React.createElement(BillingBalanceCard, { billing: exhausted }));
+    const link = screen.getByRole("link", { name: /support/i }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("mailto:usezombie@agentmail.to");
   });
 });

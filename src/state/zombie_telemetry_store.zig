@@ -32,7 +32,7 @@ pub const ChargeType = enum {
 const TELEMETRY_SELECT =
     \\SELECT id, tenant_id, workspace_id, zombie_id, event_id,
     \\       charge_type, posture, model,
-    \\       credit_deducted_cents,
+    \\       credit_deducted_nanos,
     \\       token_count_input, token_count_output, wall_ms,
     \\       recorded_at
     \\FROM zombie_execution_telemetry
@@ -49,7 +49,7 @@ pub const TelemetryRow = struct {
     charge_type: []u8,
     posture: []u8,
     model: []u8,
-    credit_deducted_cents: i64,
+    credit_deducted_nanos: i64,
     token_count_input: ?i64,
     token_count_output: ?i64,
     wall_ms: ?i64,
@@ -75,7 +75,7 @@ pub const InsertTelemetryParams = struct {
     charge_type: ChargeType,
     posture: tenant_provider.Mode,
     model: []const u8,
-    credit_deducted_cents: i64,
+    credit_deducted_nanos: i64,
     /// NULL on receive rows; set on stage rows post-execution via updateStageTokens.
     token_count_input: ?i64 = null,
     /// NULL on receive rows; set on stage rows post-execution via updateStageTokens.
@@ -99,7 +99,7 @@ pub fn insertTelemetry(
         \\INSERT INTO zombie_execution_telemetry
         \\  (id, tenant_id, workspace_id, zombie_id, event_id,
         \\   charge_type, posture, model,
-        \\   credit_deducted_cents,
+        \\   credit_deducted_nanos,
         \\   token_count_input, token_count_output, wall_ms,
         \\   recorded_at)
         \\VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
@@ -113,7 +113,7 @@ pub fn insertTelemetry(
         params.charge_type.label(),
         params.posture.label(),
         params.model,
-        params.credit_deducted_cents,
+        params.credit_deducted_nanos,
         params.token_count_input,
         params.token_count_output,
         params.wall_ms,
@@ -212,7 +212,7 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
             .charge_type = charge_type_s,
             .posture = posture_s,
             .model = model_s,
-            .credit_deducted_cents = try row.get(i64, 8),
+            .credit_deducted_nanos = try row.get(i64, 8),
             .token_count_input = try row.get(?i64, 9),
             .token_count_output = try row.get(?i64, 10),
             .wall_ms = try row.get(?i64, 11),

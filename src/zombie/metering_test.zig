@@ -24,8 +24,8 @@ fn makeCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightCon
         .workspace_id = workspace_id,
         .zombie_id = "zombie-test",
         .event_id = event_id,
-        .posture = .byok,
-        .model = "any-model-byok-doesnt-need-cache",
+        .posture = .self_managed,
+        .model = "any-model-self-managed-doesnt-need-cache",
     };
 }
 
@@ -69,7 +69,7 @@ test "balanceCoversEstimate: returns true under non-stop policies regardless of 
         db_ctx.pool,
         ALLOC,
         uc1.TENANT_ID,
-        .byok,
+        .self_managed,
         "any-model",
         .@"continue",
     ));
@@ -83,15 +83,15 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
     try uc1.seed(db_ctx.conn, WS_GATE_BLOCK);
     defer uc1.teardown(db_ctx.conn, WS_GATE_BLOCK);
 
-    // BYOK: receive=0¢, stage=10¢ overhead (no token math under BYOK).
-    // est_total = 10¢. Balance = 0¢ < 10¢ → blocked.
+    // self-managed: receive = EVENT_NANOS (0), stage = STAGE_SELF_MANAGED_NANOS.
+    // Balance < est_total → blocked.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_block");
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
         ALLOC,
         uc1.TENANT_ID,
-        .byok,
+        .self_managed,
         "any-model",
         .stop,
     ));
@@ -107,18 +107,18 @@ test "balanceCoversEstimate: passes when stop policy AND balance covers est_tota
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
-    // 500¢ starter grant covers a 1¢ BYOK event.
+    // STARTER_CREDIT_NANOS covers a self-managed event (EVENT_NANOS + STAGE_SELF_MANAGED_NANOS).
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         ALLOC,
         uc1.TENANT_ID,
-        .byok,
+        .self_managed,
         "any-model",
         .stop,
     ));
 }
 
-test "debitReceive BYOK: 0¢ charge writes telemetry row, balance unchanged" {
+test "debitReceive self-managed: EVENT_NANOS=0 charge writes telemetry row, balance unchanged" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -138,28 +138,28 @@ test "debitReceive BYOK: 0¢ charge writes telemetry row, balance unchanged" {
         .stop,
     );
     switch (result) {
-        .deducted => |c| try std.testing.expectEqual(tenant_billing.EVENT_BYOK_CENTS, c),
+        .deducted => |c| try std.testing.expectEqual(tenant_billing.EVENT_NANOS, c),
         else => return error.TestExpectedEqual,
     }
 
-    // Balance unchanged (BYOK receive = 0¢).
+    // Balance unchanged — receive charges EVENT_NANOS (zero) under both postures.
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 500), row.balance_cents);
+    try std.testing.expectEqual(tenant_billing.STARTER_CREDIT_NANOS, row.balance_nanos);
 
     // Telemetry row must exist with charge_type='receive'.
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT charge_type, posture, credit_deducted_cents
+        \\SELECT charge_type, posture, credit_deducted_nanos
         \\FROM zombie_execution_telemetry WHERE event_id = $1
     , .{event_id}));
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;
     try std.testing.expectEqualStrings("receive", try r.get([]const u8, 0));
-    try std.testing.expectEqualStrings("byok", try r.get([]const u8, 1));
-    try std.testing.expectEqual(@as(i64, 0), try r.get(i64, 2));
+    try std.testing.expectEqualStrings("self_managed", try r.get([]const u8, 1));
+    try std.testing.expectEqual(tenant_billing.EVENT_NANOS, try r.get(i64, 2));
 }
 
-test "debitStage BYOK: 1¢ flat overhead drains balance and writes stage telemetry" {
+test "debitStage self-managed: STAGE_SELF_MANAGED_NANOS flat overhead drains balance and writes stage telemetry" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -179,16 +179,16 @@ test "debitStage BYOK: 1¢ flat overhead drains balance and writes stage telemet
         .stop,
     );
     switch (result) {
-        .deducted => |c| try std.testing.expectEqual(tenant_billing.STAGE_CENTS, c),
+        .deducted => |c| try std.testing.expectEqual(tenant_billing.STAGE_SELF_MANAGED_NANOS, c),
         else => return error.TestExpectedEqual,
     }
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
-    // 500 starter cents - STAGE_CENTS (10¢ stage platform fee).
+    // STARTER_CREDIT_NANOS - STAGE_SELF_MANAGED_NANOS (self-managed posture per makeCtx).
     try std.testing.expectEqual(
-        @as(i64, 500) - tenant_billing.STAGE_CENTS,
-        row.balance_cents,
+        tenant_billing.STARTER_CREDIT_NANOS - tenant_billing.STAGE_SELF_MANAGED_NANOS,
+        row.balance_nanos,
     );
 
     var q = PgQuery.from(try db_ctx.conn.query(
@@ -212,7 +212,7 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
     defer uc1.teardown(db_ctx.conn, WS_RECEIVE_EXHAUST);
     defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_EXHAUST}) catch {};
 
-    // Provision at 0¢ — stage debit (10¢ overhead) must exhaust.
+    // Provision at 0 nanos — stage debit (STAGE_SELF_MANAGED_NANOS) must exhaust.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_exhaust");
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a03";
@@ -228,10 +228,10 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
         else => return error.TestExpectedEqual,
     }
 
-    // Balance unchanged at 0¢.
+    // Balance unchanged at 0 nanos.
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 0), row.balance_cents);
+    try std.testing.expectEqual(@as(i64, 0), row.balance_nanos);
     // exhausted_at must be stamped on the first failed debit so the stop
     // gate stays closed for subsequent events until a top-up clears it.
     try std.testing.expect(row.exhausted_at_ms != null);
@@ -245,7 +245,7 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
     try std.testing.expectEqual(@as(i64, 0), try r.get(i64, 0));
 }
 
-test "recordStageActuals: updates stage row tokens and wall_ms, leaves cents untouched" {
+test "recordStageActuals: updates stage row tokens and wall_ms, leaves nanos untouched" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -277,13 +277,13 @@ test "recordStageActuals: updates stage row tokens and wall_ms, leaves cents unt
     );
 
     var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT credit_deducted_cents, token_count_input, token_count_output, wall_ms
+        \\SELECT credit_deducted_nanos, token_count_input, token_count_output, wall_ms
         \\FROM zombie_execution_telemetry WHERE event_id = $1 AND charge_type = 'stage'
     , .{event_id}));
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;
-    // credit_deducted_cents: pre-execution estimate is the charge of record.
-    try std.testing.expectEqual(tenant_billing.STAGE_CENTS, try r.get(i64, 0));
+    // credit_deducted_nanos: pre-execution estimate is the charge of record.
+    try std.testing.expectEqual(tenant_billing.STAGE_SELF_MANAGED_NANOS, try r.get(i64, 0));
     try std.testing.expectEqual(@as(?i64, 100), try r.get(?i64, 1));
     try std.testing.expectEqual(@as(?i64, 540), try r.get(?i64, 2));
     try std.testing.expectEqual(@as(?i64, 12_500), try r.get(?i64, 3));

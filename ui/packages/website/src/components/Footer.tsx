@@ -25,7 +25,7 @@ export default function Footer() {
             {BRAND_NAME}
           </span>
           <p className="font-sans text-[13px] leading-[1.55] text-text-muted m-0 max-w-[28ch]">
-            Durable, markdown-defined agent runtime. BYOK. Open source.
+            Durable, markdown-defined agent runtime. self-managed. Open source.
           </p>
         </div>
 

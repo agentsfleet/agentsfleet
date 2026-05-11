@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SUPPORT_EMAIL } from "../lib/contact";
+import { RATES_DISPLAY } from "../lib/rates";
 
 const analytics = vi.hoisted(() => ({
   trackSignupStarted: vi.fn(),
@@ -31,35 +33,44 @@ describe("Pricing component", () => {
     analytics.trackSignupStarted.mockReset();
   });
 
-  it("renders the rate line with $0.01 per event and $0.10 per stage", () => {
+  it("renders the rate line with EVENT_RATE per event", () => {
     renderPricing();
-    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent("$0.01");
-    expect(screen.getByTestId("pricing-rate-stage")).toHaveTextContent("$0.10");
-    const line = screen.getByTestId("pricing-rate-line");
-    expect(line).toHaveTextContent(/per event receipt/i);
-    expect(line).toHaveTextContent(/per stage execution/i);
+    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent(RATES_DISPLAY.EVENT_RATE);
+    expect(screen.getByTestId("pricing-rate-line")).toHaveTextContent(/per event receipt/i);
   });
 
-  it("renders the $5 starter credit badge", () => {
+  it("renders both stage rates side-by-side with the 10× gradient framing", () => {
     renderPricing();
-    expect(screen.getByText(/\$5 starter credit, never expires/i)).toBeInTheDocument();
+    expect(screen.getByTestId("pricing-rate-stage-platform")).toHaveTextContent(
+      RATES_DISPLAY.STAGE_PLATFORM,
+    );
+    expect(screen.getByTestId("pricing-rate-stage-self-managed")).toHaveTextContent(
+      RATES_DISPLAY.STAGE_SELF_MANAGED,
+    );
+    const rates = screen.getByTestId("pricing-stage-rates");
+    expect(rates).toHaveTextContent(/platform default/i);
+    expect(rates).toHaveTextContent(/self-managed/i);
+    expect(rates).toHaveTextContent(/10× cheaper to scale/i);
   });
 
-  it("renders the worked example: 100 × $0.01 + 300 × $0.10 = $31.00", () => {
+  it("renders the introductory-rate subscript so future ratchets are expected", () => {
     renderPricing();
-    const ex = screen.getByTestId("pricing-worked-example");
-    expect(ex).toHaveTextContent(/100 × \$0\.01/);
-    expect(ex).toHaveTextContent(/300 × \$0\.10/);
-    expect(ex).toHaveTextContent(/\$31\.00/);
+    expect(screen.getByTestId("pricing-introductory-rate-note")).toHaveTextContent(
+      /stealth-mode testing rate — will rise post-GA/i,
+    );
   });
 
-  it("renders the BYOK provider list with no markup", () => {
+  it("renders the STARTER_CREDIT badge", () => {
     renderPricing();
-    expect(
-      screen.getByText(/BYOK on Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot/i),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/never marks up inference/i)).toBeInTheDocument();
-    expect(screen.getByText(/usezombie marks up zero on inference/i)).toBeInTheDocument();
+    const badge = screen.getByText(/starter credit, never expires/i);
+    expect(badge).toHaveTextContent(
+      `${RATES_DISPLAY.STARTER_CREDIT} starter credit, never expires`,
+    );
+  });
+
+  it("does not render the dropped worked-example math line", () => {
+    renderPricing();
+    expect(screen.queryByTestId("pricing-worked-example")).not.toBeInTheDocument();
   });
 
   it("explains what a stage is in plain language", () => {
@@ -69,6 +80,14 @@ describe("Pricing component", () => {
     expect(card.textContent).toMatch(/most diagnoses resolve in 1.{0,3}5 stages/i);
   });
 
+  it("does not surface the BYOK provider list paragraph in the rate card (the diagram below covers it)", () => {
+    renderPricing();
+    const card = screen.getByTestId("pricing-rate-card");
+    expect(card.textContent).not.toMatch(
+      /Self-managed on Anthropic, OpenAI, Fireworks, Together, Groq, Moonshot/i,
+    );
+  });
+
   it("renders the stealth-mode banner with design-partner contact", () => {
     renderPricing();
     const note = screen.getByTestId("pricing-design-partner-note");
@@ -76,30 +95,38 @@ describe("Pricing component", () => {
     expect(note).toHaveTextContent(/design partner/i);
     expect(note.querySelector("a")).toHaveAttribute(
       "href",
-      expect.stringContaining("usezombie@agentmail.to"),
+      expect.stringContaining(SUPPORT_EMAIL),
     );
   });
 
-  it("renders the billing flow diagram with one event + three stage cells", () => {
+  it("renders the billing flow diagram with one event + three stage cells using the new rates", () => {
     renderPricing();
     const flow = screen.getByTestId("pricing-flow");
     expect(flow).toBeInTheDocument();
     const billed = screen.getByTestId("pricing-flow-billed");
     const cells = billed.querySelectorAll('[data-testid^="pricing-flow-cell-"]');
     expect(cells).toHaveLength(4);
-    expect(screen.getByTestId("pricing-flow-cell-event")).toHaveTextContent(/\$0\.01/);
-    expect(screen.getByTestId("pricing-flow-cell-stage-1")).toHaveTextContent(/\$0\.10/);
-    expect(screen.getByTestId("pricing-flow-cell-stage-2")).toHaveTextContent(/\$0\.10/);
-    expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent(/\$0\.10/);
+    expect(screen.getByTestId("pricing-flow-cell-event")).toHaveTextContent(
+      RATES_DISPLAY.EVENT_RATE,
+    );
+    expect(screen.getByTestId("pricing-flow-cell-stage-1")).toHaveTextContent(
+      RATES_DISPLAY.STAGE_PLATFORM,
+    );
+    expect(screen.getByTestId("pricing-flow-cell-stage-2")).toHaveTextContent(
+      RATES_DISPLAY.STAGE_PLATFORM,
+    );
+    expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent(
+      RATES_DISPLAY.STAGE_PLATFORM,
+    );
   });
 
-  it("renders the LLM-stratum stating BYOK is on a separate bill", () => {
+  it("renders the LLM-stratum stating the user's provider keeps a separate bill", () => {
     renderPricing();
     const llm = screen.getByTestId("pricing-flow-llm");
     expect(llm).toBeInTheDocument();
     expect(llm.className).toMatch(/border-dashed/);
     expect(llm).toHaveTextContent(/not on your usezombie bill/i);
-    expect(llm).toHaveTextContent(/BYOK/);
+    expect(llm).toHaveTextContent(/your provider/i);
     expect(llm).toHaveTextContent(/Anthropic.*OpenAI.*Fireworks.*Together.*Groq.*Moonshot/);
   });
 
@@ -131,6 +158,14 @@ describe("Pricing component", () => {
     expect(cta).toHaveAttribute("href", "https://app.dev.usezombie.com");
     expect(cta.textContent).toMatch(/install/i);
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
+  });
+
+  it("install CTA hugs its content (self-start) instead of stretching to card width", () => {
+    renderPricing();
+    const cta = screen.getByTestId("pricing-install-cta");
+    // The Slot composes the Button's classes onto the <a>. self-start
+    // breaks the flex-col Card's default `align-items: stretch`.
+    expect(cta.className).toMatch(/\bself-start\b/);
   });
 
   it("install CTA fires trackSignupStarted (NOT signupCompleted — funnel hygiene) with pricing_install source", () => {

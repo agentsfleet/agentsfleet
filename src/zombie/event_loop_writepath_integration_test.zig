@@ -50,10 +50,10 @@ fn deleteZombieEventsRows(conn: *pg.Conn) void {
 fn provisionEmptyBalance(conn: *pg.Conn) !void {
     _ = try conn.exec(
         \\INSERT INTO billing.tenant_billing
-        \\  (tenant_id, balance_cents, grant_source, created_at, updated_at)
+        \\  (tenant_id, balance_nanos, grant_source, created_at, updated_at)
         \\VALUES ($1::uuid, 0, 'test', 0, 0)
         \\ON CONFLICT (tenant_id) DO UPDATE
-        \\  SET balance_cents = 0,
+        \\  SET balance_nanos = 0,
         \\      balance_exhausted_at = NULL
     , .{base.TEST_TENANT_ID});
 }

@@ -15,8 +15,9 @@ test.describe("Smoke", () => {
   test("pricing section renders inline on home", async ({ page }) => {
     await page.goto("/#pricing");
     await expect(page.getByTestId("pricing-block")).toBeVisible();
-    await expect(page.getByTestId("pricing-rate-event")).toHaveText("$0.01");
-    await expect(page.getByTestId("pricing-rate-stage")).toHaveText("$0.10");
+    await expect(page.getByTestId("pricing-rate-event")).toHaveText("free");
+    await expect(page.getByTestId("pricing-rate-stage-platform")).toHaveText("$0.001");
+    await expect(page.getByTestId("pricing-rate-stage-self-managed")).toHaveText("$0.0001");
   });
 
   test("agents page loads", async ({ page }) => {

@@ -1,4 +1,5 @@
 import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
+import { SUPPORT_EMAIL } from "../lib/contact";
 
 /*
  * Privacy — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
@@ -24,7 +25,7 @@ export default function Privacy() {
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">2. Information we do not collect</h2>
       <List className="pl-6 text-text-muted m-0">
-        <ListItem><strong className="text-text font-medium">LLM API keys</strong> — your keys are stored encrypted and never transmitted to usezombie servers in plaintext. We operate on a BYOK model.</ListItem>
+        <ListItem><strong className="text-text font-medium">LLM API keys</strong> — your keys are stored encrypted and never transmitted to usezombie servers in plaintext. We operate on a self-managed model.</ListItem>
         <ListItem><strong className="text-text font-medium">Source code contents</strong> — usezombie agents operate within your Git repositories via branch-based state. Code is never copied to usezombie infrastructure.</ListItem>
         <ListItem><strong className="text-text font-medium">Model outputs</strong> — generated patches, plans, and validation results remain in your repository as artifacts.</ListItem>
       </List>
@@ -32,7 +33,7 @@ export default function Privacy() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">3. How we use your information</h2>
       <List className="pl-6 text-text-muted m-0">
         <ListItem>Authenticate and authorize access to your workspaces.</ListItem>
-        <ListItem>Meter hosted execution against your credit pool: one debit on event receipt, one debit per stage execution.</ListItem>
+        <ListItem>Meter hosted execution against your credit pool: a debit fires before each stage execution.</ListItem>
         <ListItem>Monitor service health and investigate operational issues.</ListItem>
         <ListItem>Send transactional notifications (run completions, failures, billing).</ListItem>
       </List>
@@ -74,8 +75,8 @@ export default function Privacy() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">7. Contact</h2>
       <p className="text-text-muted m-0">
         For privacy inquiries, contact{" "}
-        <a href="mailto:usezombie@agentmail.to" className="text-pulse hover:underline">
-          usezombie@agentmail.to
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-pulse hover:underline">
+          {SUPPORT_EMAIL}
         </a>
         .
       </p>

@@ -16,7 +16,7 @@ const ALLOC = std.testing.allocator;
 
 const WS_TP_RESOLVE = "0195b4ba-8d3a-7f13-8abc-aa2000000001";
 const WS_TP_UPSERT = "0195b4ba-8d3a-7f13-8abc-aa2000000002";
-const WS_TP_BYOK = "0195b4ba-8d3a-7f13-8abc-aa2000000003";
+const WS_TP_SELF_MANAGED = "0195b4ba-8d3a-7f13-8abc-aa2000000003";
 
 // Provider name scoped to this test file. The platform_llm_keys table has
 // UNIQUE on provider, so tests that share a provider name fight over the
@@ -42,7 +42,7 @@ fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
 }
 
 fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u8, provider: []const u8, api_key: []const u8) !void {
-    // Vault row at (ws_id, provider) — same M45 storage path BYOK uses.
+    // Vault row at (ws_id, provider) — same M45 storage path self-managed uses.
     var obj = std.json.ObjectMap.init(alloc);
     defer obj.deinit();
     try obj.put("provider", .{ .string = provider });
@@ -63,7 +63,7 @@ fn seedPlatformLlmKey(conn: *pg.Conn, alloc: std.mem.Allocator, ws_id: []const u
     , .{ key_id, provider, ws_id, now_ms });
 }
 
-fn seedByokCredential(
+fn seedSelfManagedCredential(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
     ws_id: []const u8,
@@ -85,13 +85,13 @@ fn seedByokCredential(
 
 test "Mode label round-trips for both variants" {
     try std.testing.expectEqualStrings("platform", tenant_provider.Mode.platform.label());
-    try std.testing.expectEqualStrings("byok", tenant_provider.Mode.byok.label());
+    try std.testing.expectEqualStrings("self_managed", tenant_provider.Mode.self_managed.label());
 }
 
 test "ResolvedProvider.deinit completes without leaking" {
     const alloc = std.testing.allocator;
     var rp = tenant_provider.ResolvedProvider{
-        .mode = .byok,
+        .mode = .self_managed,
         .provider = try alloc.dupe(u8, TP_TEST_PROVIDER),
         .api_key = try alloc.dupe(u8, "fw_LIVE_secret_xyz"),
         .model = try alloc.dupe(u8, "accounts/fireworks/models/kimi-k2.6"),
@@ -154,24 +154,24 @@ test "resolveActiveProvider with explicit platform row returns same shape as syn
 // a global `DELETE FROM core.platform_llm_keys` from this test would race
 // with other tests' seedings.
 
-// ── resolveActiveProvider — BYOK ────────────────────────────────────────────
+// ── resolveActiveProvider — self-managed ────────────────────────────────────────────
 
-test "resolveActiveProvider with byok row returns user provider api_key model" {
+test "resolveActiveProvider with self_managed row returns user provider api_key model" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_TP_BYOK);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_BYOK);
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
 
-    try seedByokCredential(db_ctx.conn, ALLOC, WS_TP_BYOK, "account-fireworks-byok", TP_TEST_PROVIDER, "fw_USER_abc", "accounts/fireworks/models/kimi-k2.6");
+    try seedSelfManagedCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, "account-fireworks-self-managed", TP_TEST_PROVIDER, "fw_USER_abc", "accounts/fireworks/models/kimi-k2.6");
 
-    try tenant_provider.upsertByok(
+    try tenant_provider.upsertSelfManaged(
         ALLOC,
         db_ctx.conn,
         uc1.TENANT_ID,
-        "account-fireworks-byok",
+        "account-fireworks-self-managed",
         "accounts/fireworks/models/kimi-k2.6",
         256_000,
     );
@@ -179,27 +179,27 @@ test "resolveActiveProvider with byok row returns user provider api_key model" {
     var rp = try tenant_provider.resolveActiveProvider(ALLOC, db_ctx.conn, uc1.TENANT_ID);
     defer rp.deinit(ALLOC);
 
-    try std.testing.expectEqual(tenant_provider.Mode.byok, rp.mode);
+    try std.testing.expectEqual(tenant_provider.Mode.self_managed, rp.mode);
     try std.testing.expectEqualStrings(TP_TEST_PROVIDER, rp.provider);
     try std.testing.expectEqualStrings("fw_USER_abc", rp.api_key);
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", rp.model);
     try std.testing.expectEqual(@as(u32, 256_000), rp.context_cap_tokens);
 }
 
-test "resolveActiveProvider returns CredentialMissing when byok credential row absent" {
+test "resolveActiveProvider returns CredentialMissing when self_managed credential row absent" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_TP_BYOK);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_BYOK);
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
 
-    try seedByokCredential(db_ctx.conn, ALLOC, WS_TP_BYOK, "account-fireworks-byok", TP_TEST_PROVIDER, "fw_USER_abc", "any-model");
-    try tenant_provider.upsertByok(ALLOC, db_ctx.conn, uc1.TENANT_ID, "account-fireworks-byok", "any-model", 256_000);
+    try seedSelfManagedCredential(db_ctx.conn, ALLOC, WS_TP_SELF_MANAGED, "account-fireworks-self-managed", TP_TEST_PROVIDER, "fw_USER_abc", "any-model");
+    try tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "account-fireworks-self-managed", "any-model", 256_000);
 
-    // User deletes the credential while still in mode=byok.
-    _ = try db_ctx.conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ WS_TP_BYOK, "account-fireworks-byok" });
+    // User deletes the credential while still in mode=self_managed.
+    _ = try db_ctx.conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ WS_TP_SELF_MANAGED, "account-fireworks-self-managed" });
 
     try std.testing.expectError(
         tenant_provider.ResolveError.CredentialMissing,
@@ -213,25 +213,25 @@ test "resolveActiveProvider returns CredentialDataMalformed when JSON lacks api_
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
-    try uc1.seed(db_ctx.conn, WS_TP_BYOK);
-    defer cleanupTeardown(db_ctx.conn, WS_TP_BYOK);
+    try uc1.seed(db_ctx.conn, WS_TP_SELF_MANAGED);
+    defer cleanupTeardown(db_ctx.conn, WS_TP_SELF_MANAGED);
 
-    // Seed a malformed credential first (missing api_key); upsertByok must reject it.
+    // Seed a malformed credential first (missing api_key); upsertSelfManaged must reject it.
     var obj = std.json.ObjectMap.init(ALLOC);
     defer obj.deinit();
     try obj.put("provider", .{ .string = TP_TEST_PROVIDER });
     try obj.put("model", .{ .string = "any-model" });
-    try vault.storeJson(ALLOC, db_ctx.conn, WS_TP_BYOK, "bad-cred", .{ .object = obj });
+    try vault.storeJson(ALLOC, db_ctx.conn, WS_TP_SELF_MANAGED, "bad-cred", .{ .object = obj });
 
     try std.testing.expectError(
         tenant_provider.ResolveError.CredentialDataMalformed,
-        tenant_provider.upsertByok(ALLOC, db_ctx.conn, uc1.TENANT_ID, "bad-cred", "any-model", 256_000),
+        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "bad-cred", "any-model", 256_000),
     );
 }
 
-// ── upsertByok / upsertPlatform ──────────────────────────────────────────
+// ── upsertSelfManaged / upsertPlatform ──────────────────────────────────────────
 
-test "upsertByok with non-existent credential returns CredentialMissing" {
+test "upsertSelfManaged with non-existent credential returns CredentialMissing" {
     setEncryptionKey();
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
@@ -242,7 +242,7 @@ test "upsertByok with non-existent credential returns CredentialMissing" {
 
     try std.testing.expectError(
         tenant_provider.ResolveError.CredentialMissing,
-        tenant_provider.upsertByok(ALLOC, db_ctx.conn, uc1.TENANT_ID, "does-not-exist", "any-model", 256_000),
+        tenant_provider.upsertSelfManaged(ALLOC, db_ctx.conn, uc1.TENANT_ID, "does-not-exist", "any-model", 256_000),
     );
 }
 

@@ -202,7 +202,7 @@ test "parseZombieConfig: x-usezombie.model populates ZombieConfig.model verbatim
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
 }
 
-test "parseZombieConfig: empty x-usezombie.model becomes null (BYOK sentinel)" {
+test "parseZombieConfig: empty x-usezombie.model becomes null (self-managed sentinel)" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{

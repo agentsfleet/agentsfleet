@@ -139,13 +139,13 @@ test "fixture bundles/platform_ops_installed_default — post-substitution TRIGG
     try std.testing.expectEqualStrings("github", cfg.trigger.webhook.source);
 }
 
-test "fixture bundles/platform_ops_installed_byok — sentinel model/cap parses to null/zero" {
+test "fixture bundles/platform_ops_installed_self_managed — sentinel model/cap parses to null/zero" {
     const alloc = std.testing.allocator;
-    const md = try loadFixture(alloc, "bundles/platform_ops_installed_byok/TRIGGER.md");
+    const md = try loadFixture(alloc, "bundles/platform_ops_installed_self_managed/TRIGGER.md");
     defer alloc.free(md);
     var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
     defer cfg.deinit(alloc);
-    // Empty-string model becomes null (BYOK overlay sentinel); cap stays 0.
+    // Empty-string model becomes null (self-managed overlay sentinel); cap stays 0.
     try std.testing.expect(cfg.model == null);
     try std.testing.expectEqual(@as(u32, 0), cfg.context.?.context_cap_tokens);
 }

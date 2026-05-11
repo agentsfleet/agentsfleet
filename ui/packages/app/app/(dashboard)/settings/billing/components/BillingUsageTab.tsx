@@ -12,7 +12,8 @@ import {
 } from "@usezombie/design-system";
 import { useClientToken } from "@/lib/auth/client";
 import { listTenantBillingCharges } from "@/lib/api/tenant_billing";
-import { groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";
+import { PROVIDER_MODE } from "@/lib/types";
+import { formatDollars, groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";
 
 export type BillingUsageTabProps = {
   initialEvents: GroupedEvent[];
@@ -39,18 +40,18 @@ const COLUMNS: DataTableColumn<GroupedEvent>[] = [
     key: "posture",
     header: "Posture",
     cell: (e) => (
-      <Badge variant={e.posture === "byok" ? "cyan" : "default"}>{e.posture}</Badge>
+      <Badge variant={e.posture === PROVIDER_MODE.self_managed ? "cyan" : "default"}>{e.posture}</Badge>
     ),
   },
   { key: "model", header: "Model", cell: (e) => <span className="font-mono text-xs">{e.model}</span>, hideOnMobile: true },
   { key: "in_tok",  header: "In tok",  cell: (e) => e.token_count_input ?? "—", numeric: true, hideOnMobile: true },
   { key: "out_tok", header: "Out tok", cell: (e) => e.token_count_output ?? "—", numeric: true, hideOnMobile: true },
-  { key: "receive", header: "Receive", cell: (e) => `${e.receive_cents}¢`, numeric: true },
-  { key: "stage",   header: "Stage",   cell: (e) => `${e.stage_cents}¢`,   numeric: true },
+  { key: "receive", header: "Receive", cell: (e) => formatDollars(e.receive_nanos), numeric: true },
+  { key: "stage",   header: "Stage",   cell: (e) => formatDollars(e.stage_nanos),   numeric: true },
   {
     key: "total",
     header: "Total",
-    cell: (e) => <span className="font-semibold">{e.total_cents}¢</span>,
+    cell: (e) => <span className="font-semibold">{formatDollars(e.total_nanos)}</span>,
     numeric: true,
   },
 ];

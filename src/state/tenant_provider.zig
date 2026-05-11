@@ -10,7 +10,7 @@
 //! tenant who has explicitly configured a provider; absence of row is the
 //! synthesised platform default. The api_key never lives in this row —
 //! under platform mode the resolver follows core.platform_llm_keys into
-//! the admin tenant's workspace vault; under BYOK it loads the user's
+//! the admin tenant's workspace vault; under self-managed it loads the user's
 //! tenant-primary workspace vault under the user-named credential_ref.
 //! The vault itself is keyed (workspace_id, key_name); the resolver
 //! bridges tenant_id → primary_workspace_id at lookup time via the same
@@ -25,12 +25,12 @@ const resolver = @import("tenant_provider_resolver.zig");
 
 pub const Mode = enum {
     platform,
-    byok,
+    self_managed,
 
     pub fn label(self: Mode) []const u8 {
         return switch (self) {
             .platform => "platform",
-            .byok => "byok",
+            .self_managed => "self_managed",
         };
     }
 };
@@ -65,7 +65,7 @@ pub const ResolvedProvider = struct {
 };
 
 pub const ResolveError = error{
-    /// BYOK row points at a credential_ref that has no vault row.
+    /// self-managed row points at a credential_ref that has no vault row.
     CredentialMissing,
     /// Vault row decrypted but the JSON object is missing required fields
     /// (provider, api_key, model).
@@ -95,10 +95,10 @@ pub fn resolveActiveProvider(
     if (row == null or row.?.mode == .platform) {
         return resolver.resolvePlatformDefault(alloc, conn, row);
     }
-    return resolver.resolveByok(alloc, conn, tenant_id, row.?);
+    return resolver.resolveSelfManaged(alloc, conn, tenant_id, row.?);
 }
 
-/// UPSERT a BYOK row for tenant_id. Validates the credential exists in the
+/// UPSERT a self-managed row for tenant_id. Validates the credential exists in the
 /// tenant's primary workspace vault and that the JSON has the required
 /// shape (provider/api_key/model). Stores the user-supplied model + cap
 /// directly — caller is responsible for resolving them from the model-caps
@@ -107,7 +107,7 @@ pub fn resolveActiveProvider(
 /// Persisted `provider` is read from the validated credential's JSON
 /// payload — not from any caller-supplied parameter — so the row reflects
 /// what the resolver will actually see.
-pub fn upsertByok(
+pub fn upsertSelfManaged(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,
@@ -115,7 +115,7 @@ pub fn upsertByok(
     model: []const u8,
     context_cap_tokens: u32,
 ) (ResolveError || anyerror)!void {
-    var probe = try resolver.probeByokCredential(alloc, conn, tenant_id, credential_ref);
+    var probe = try resolver.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
     defer probe.deinit(alloc);
 
     const now_ms: i64 = std.time.milliTimestamp();
@@ -132,7 +132,7 @@ pub fn upsertByok(
         \\  updated_at         = EXCLUDED.updated_at
     , .{
         tenant_id,
-        Mode.byok.label(),
+        Mode.self_managed.label(),
         probe.provider,
         model,
         @as(i32, @intCast(context_cap_tokens)),
@@ -178,18 +178,18 @@ pub fn upsertPlatform(
 
 pub const ProbedCredential = resolver.ProbedCredential;
 
-/// Probe the tenant's BYOK credential and return the {provider, api_key,
+/// Probe the tenant's self-managed credential and return the {provider, api_key,
 /// model} triplet. Used by the HTTP PUT handler to read the effective
 /// model from the credential before catalogue validation, and by tests.
 /// Caller owns the returned struct and must call .deinit(alloc) — the
 /// api_key bytes are zeroed on free.
-pub fn probeByok(
+pub fn probeSelfManaged(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,
     tenant_id: []const u8,
     credential_ref: []const u8,
 ) (ResolveError || anyerror)!ProbedCredential {
-    return resolver.probeByokCredential(alloc, conn, tenant_id, credential_ref);
+    return resolver.probeSelfManagedCredential(alloc, conn, tenant_id, credential_ref);
 }
 
 test {

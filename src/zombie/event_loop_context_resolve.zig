@@ -85,7 +85,7 @@ test "resolveContextBudget: frontmatter overrides win against auto-defaults" {
     try std.testing.expectEqualStrings("kimi-k2.6", ctx.model);
 }
 
-test "resolveContextBudget: zero-valued frontmatter knobs still default (BYOK sentinel path)" {
+test "resolveContextBudget: zero-valued frontmatter knobs still default (self-managed sentinel path)" {
     const ctx = resolveContextBudget(.{
         .context_cap_tokens = 0,
         .tool_window = 0,

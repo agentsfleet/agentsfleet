@@ -32,16 +32,16 @@ test "T8: credential error hints are actionable and contain no raw secret values
     try std.testing.expect(std.mem.indexOf(u8, anthropic_hint, "Bearer ") == null);
 }
 
-test "T8: ERR_CRED_PLATFORM_KEY_MISSING hint names admin endpoint and BYOK path" {
+test "T8: ERR_CRED_PLATFORM_KEY_MISSING hint names admin endpoint and self-managed path" {
     const h = ec.hint(ec.ERR_CRED_PLATFORM_KEY_MISSING);
     try std.testing.expect(h.len > 0);
     const mentions_admin = std.mem.indexOf(u8, h, "platform-keys") != null or
         std.mem.indexOf(u8, h, "admin") != null;
     try std.testing.expect(mentions_admin);
-    const mentions_byok = std.mem.indexOf(u8, h, "credentials/llm") != null or
-        std.mem.indexOf(u8, h, "BYOK") != null or
+    const mentions_self_managed = std.mem.indexOf(u8, h, "credentials/llm") != null or
+        std.mem.indexOf(u8, h, "self-managed") != null or
         std.mem.indexOf(u8, h, "own key") != null;
-    try std.testing.expect(mentions_byok);
+    try std.testing.expect(mentions_self_managed);
     try std.testing.expect(std.mem.indexOf(u8, h, "sk-ant-") == null);
     try std.testing.expect(std.mem.indexOf(u8, h, "Bearer ") == null);
 }
