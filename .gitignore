@@ -14,8 +14,8 @@ coverage/
 playwright-report/
 playwright-results/
 playwright-tests/
-playwright-auth-report/
-playwright-auth-results/
+playwright-acceptance-report/
+playwright-acceptance-results/
 .fixture-jwts.json
 test-results/
 blob-report/

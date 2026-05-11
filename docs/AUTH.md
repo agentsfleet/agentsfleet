@@ -321,7 +321,7 @@ If rotated under suspected compromise, skip the gradual revoke — invalidate th
 
 ## Test infrastructure — e2e fixture mint (admin path)
 
-The authenticated e2e harness (`ui/packages/app/tests/e2e/auth/`) uses the **admin mint path** to provision two non-interactive fixture users (`regular-fixture@…`, `admin-fixture@…`) without driving Clerk's interactive sign-in form:
+The acceptance e2e harness (`ui/packages/app/tests/e2e/acceptance/`) uses the **admin mint path** to provision two non-interactive fixture users (`regular-fixture@…`, `admin-fixture@…`) without driving Clerk's interactive sign-in form:
 
 ```text
 globalSetup
@@ -346,7 +346,7 @@ The harness mirrors production exactly: `cookieJwt` for cookie validation by `cl
 
 The Svix bootstrap step is the local-only stand-in for Clerk's real outbound webhook: real Clerk cannot reach `localhost:3000`, so the harness signs the same payload Clerk would have sent and POSTs it directly. The signature math is identical to what zombied's `webhook_sig` middleware would verify in production — `webhook_secret` is the shared key, the `user.created` payload shape mirrors `src/http/handlers/webhooks/clerk_integration_test.zig`. zombied cannot tell the difference.
 
-The local-zombied loop runs via `bun run test:e2e:auth:local` (forces `NEXT_PUBLIC_API_URL=http://localhost:3000`); the deployed-zombied loop runs the same harness against `api-dev.usezombie.com` from CI (`auth-e2e-dev` job in `.github/workflows/deploy-dev.yml`). The PROD smoke (`auth-e2e-prod` in `.github/workflows/smoke-post-deploy.yml`) targets `api.usezombie.com` after every Vercel `usezombie-app` Production deploy — see "PROD fixture identity carve-out" below for what gets created in PROD Clerk and the security guarantees around it.
+The local-zombied loop runs via `bun run test:e2e:acceptance:local` (forces `NEXT_PUBLIC_API_URL=http://localhost:3000`); the deployed-zombied loop runs the same harness against `api-dev.usezombie.com` from CI (`acceptance-e2e-dev` job in `.github/workflows/deploy-dev.yml`). The PROD smoke (`acceptance-e2e-prod` in `.github/workflows/smoke-post-deploy.yml`) targets `api.usezombie.com` after every Vercel `usezombie-app` Production deploy — see "PROD fixture identity carve-out" below for what gets created in PROD Clerk and the security guarantees around it.
 
 ### PROD fixture identity carve-out
 
@@ -357,10 +357,10 @@ The PROD harness creates two fixture identities in Clerk PROD on first run, then
 | Email — regular fixture | `op://ZMB_CD_PROD/e2e-fixtures-email/regular` (DEV equivalent: `op://ZMB_CD_DEV/e2e-fixtures-email/regular`; default `regular-fixture@mailinator.com` if neither vault item resolves) | The CI job overrides via `AUTH_E2E_REGULAR_EMAIL`. Switch the vault item to a private-domain alias before enabling PROD runs if the current catch-all inbox is unacceptable. |
 | Email — admin fixture | `op://ZMB_CD_PROD/e2e-fixtures-email/admin` (DEV equivalent: `op://ZMB_CD_DEV/e2e-fixtures-email/admin`; default `admin-fixture@mailinator.com` if neither vault item resolves) | Same override mechanism. |
 | Password | random per `provisionUser()` call (`crypto.randomBytes(32).toString("base64url")`) | **Not persisted.** The harness mints sessions through Clerk's admin API (`POST /v1/sessions/{id}/tokens`, authenticated by `CLERK_SECRET_KEY`); the user-password flow is never used by the harness. A stable password would be a meaningful attack surface (mailinator inbox is publicly readable) — random + discarded eliminates it. |
-| Clerk `publicMetadata` | `{ is_test_fixture: true, owner: "auth-e2e-suite", role: "regular" \| "admin" }` | Tag exists so prod ops dashboards can filter these identities out, and so a future Clerk webhook handler can refuse unsafe operations against fixture users. Backfilled on existing fixtures via `PATCH /users/{id}/metadata` in `ensureUser`. |
+| Clerk `publicMetadata` | `{ is_test_fixture: true, owner: "acceptance-e2e-suite", role: "regular" \| "admin" }` | Tag exists so prod ops dashboards can filter these identities out, and so a future Clerk webhook handler can refuse unsafe operations against fixture users. Backfilled on existing fixtures via `PATCH /users/{id}/metadata` in `ensureUser`. |
 | Tenant in zombied PROD | `core.tenants` row created by the Svix-signed `user.created` POST, same shape as a real signup | The fixture tenant accumulates real `tenant_billing.balance_nanos` (starts at the standard starter credit) and any state created by tests. Per-spec teardown deletes zombies; the tenant itself is reused across runs. |
 | `signup.spec.ts` against PROD | **skipped** (`test.skip(NEXT_PUBLIC_API_URL.includes('api.usezombie.com'))`) | Clerk PROD does not have test mode enabled, so the `+clerk_test@mailinator.com` short-circuit (DEV-only) would fail; running it would either hang on the verification screen or send a real OTP to a publicly-readable mailinator inbox. The DEV gate covers this spec instead. |
-| `.fixture-jwts.json` (cookieJwt cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-auth-report/` so it does not ride out in CI artifact uploads. The cookieJwt is a real Clerk session for ~1h; treat the cache file like a credential. |
+| `.fixture-jwts.json` (cookieJwt cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-acceptance-report/` so it does not ride out in CI artifact uploads. The cookieJwt is a real Clerk session for ~1h; treat the cache file like a credential. |
 
 ### External-state runbook prerequisites
 

@@ -30,13 +30,13 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 1. `docs/AUTH.md` — token model, harness chain, "PROD fixture identity carve-out" section. The vulnerability table below depends on the carve-out invariants holding; if the harness changes the mint path the carve-out must move with it.
 2. `docs/v2/done/M64_006_P1_TESTING_AUTH_E2E_CONTINUATION_AND_W3_CARRY_OVER.md` — most recent fixture-harness milestone, especially its Discovery section (events deferral, EventDetail dialog deferral, cross-tenant admin deferral). Several items here graduate into scenarios in this spec.
-3. `ui/packages/app/tests/e2e/auth/fixtures/clerk-admin.ts` — `provisionUser`/`bootstrapTenant`/`attachJwt` 3-phase chain. Any change to the password-hardening posture (WS-A finding) lands here.
-4. `ui/packages/app/tests/e2e/auth/global-setup.ts` — fixture identity resolution + JWT cache write. `freshPassword()`, `is_test_fixture` metadata, and the random-per-create posture all live here.
-5. `ui/packages/app/tests/e2e/auth/install-zombie-cli.spec.ts` and `install-zombie-seed.spec.ts` — reference for the install path. The new lifecycle scenarios deliberately do NOT drive the CLI (overlaps `install-zombie-cli.spec.ts`) nor the power-user paste form. Both seed via the API through a new `seedPlatformOpsZombie` helper that reads the same `samples/platform-ops/` bundle the CLI consumes. Rationale lives in WS-C step 6.
+3. `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts` — `provisionUser`/`bootstrapTenant`/`attachJwt` 3-phase chain. Any change to the password-hardening posture (WS-A finding) lands here.
+4. `ui/packages/app/tests/e2e/acceptance/global-setup.ts` — fixture identity resolution + JWT cache write. `freshPassword()`, `is_test_fixture` metadata, and the random-per-create posture all live here.
+5. `ui/packages/app/tests/e2e/acceptance/install-zombie-cli.spec.ts` and `install-zombie-seed.spec.ts` — reference for the install path. The new lifecycle scenarios deliberately do NOT drive the CLI (overlaps `install-zombie-cli.spec.ts`) nor the power-user paste form. Both seed via the API through a new `seedPlatformOpsZombie` helper that reads the same `samples/platform-ops/` bundle the CLI consumes. Rationale lives in WS-C step 6.
 6. `ui/packages/app/app/(dashboard)/zombies/[id]/components/KillSwitch.tsx` — Stop/Resume/Kill state machine UI. Selector inventory for the new scenarios lives there (status `active` → Stop+Kill, `paused`/`stopped` → Resume+Kill, `killed`/`errored` → terminal disabled "Killed" indicator).
 7. `ui/packages/app/app/(dashboard)/zombies/components/ZombiesList.tsx:liveStateOf` — canonical mapping from zombied status to dashboard `data-state` (`active→live`, `killed|errored→failed`, everything else→`parked`). New assertions key on this attribute.
 8. `samples/platform-ops/SKILL.md` + `samples/platform-ops/TRIGGER.md` — the canonical bundle the new `seedPlatformOpsZombie` helper reads and POSTs to `/v1/workspaces/{ws}/zombies`. Same bundle `zombiectl install --from` would feed, byte-for-byte. M37_001 is the canonical spec for this skill.
-9. `.github/workflows/deploy-dev.yml` (`auth-e2e-dev` job) and `.github/workflows/smoke-post-deploy.yml` (`auth-e2e-prod` job) — the deployment gates the new specs will plug into. Both already wire op:// secrets, Playwright browser cache, and artifact upload of `playwright-auth-report/` only.
+9. `.github/workflows/deploy-dev.yml` (`acceptance-e2e-dev` job) and `.github/workflows/smoke-post-deploy.yml` (`acceptance-e2e-prod` job) — the deployment gates the new specs will plug into. Both already wire op:// secrets, Playwright browser cache, and artifact upload of `playwright-acceptance-report/` only.
 
 ---
 
@@ -62,7 +62,7 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 
 ## Overview
 
-**Goal (testable):** Two Playwright specs (`signup-platformops-lifecycle.spec.ts`, `login-existing-zombie-lifecycle.spec.ts`) run inside the existing `tests/e2e/auth/` suite, gate `auth-e2e-dev` on every `main` deploy, and gate `auth-e2e-prod` on every Vercel `usezombie-app` Production deploy. Each spec walks a full operator flow — signup OR existing-fixture login → land on the dashboard → install or observe a `platform-ops` zombie → see live events → settings/billing → Stop → Resume → Kill — and the vulnerability audit table is dispositioned: each row has either a same-PR fix or an explicit accepted-risk note with reactivation conditions.
+**Goal (testable):** Two Playwright specs (`signup-platformops-lifecycle.spec.ts`, `login-existing-zombie-lifecycle.spec.ts`) run inside the existing `tests/e2e/acceptance/` suite, gate `acceptance-e2e-dev` on every `main` deploy, and gate `acceptance-e2e-prod` on every Vercel `usezombie-app` Production deploy. Each spec walks a full operator flow — signup OR existing-fixture login → land on the dashboard → install or observe a `platform-ops` zombie → see live events → settings/billing → Stop → Resume → Kill — and the vulnerability audit table is dispositioned: each row has either a same-PR fix or an explicit accepted-risk note with reactivation conditions.
 
 **Problem:**
 
@@ -70,7 +70,7 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 2. The PROD harness creates fixture identities in Clerk PROD with `password_enabled: true` on a public mailinator inbox. WS-A in this spec resolves whether the proposed "disable password" hardening is viable; the parallel handoff resolves the mailinator side.
 3. Captain wants both flows on PROD because the dashboard's first-deploy regressions historically hit signup-derived state (workspace auto-provision, starter credit, empty-state render), not pre-seeded-fixture state.
 
-**Solution summary:** Two new lifecycle specs added under `ui/packages/app/tests/e2e/auth/` reusing the existing fixture chain (`signInAs`, `seedZombie`, `cleanWorkspaceZombies`, `clientFor`). Scenario 1 creates a per-test ephemeral Clerk user (DEV only — skipped on PROD until vault-resolved private aliases exist OR Clerk PROD test mode is enabled). Scenario 2 reuses the persistent `regular` fixture and a freshly-seeded `platform-ops` zombie. Both walk the same observation + lifecycle leg. The vulnerability audit (WS-B) is dispositioned in the spec body; only rows whose fix is in scope for the implementation PR move into Files Changed.
+**Solution summary:** Two new lifecycle specs added under `ui/packages/app/tests/e2e/acceptance/` reusing the existing fixture chain (`signInAs`, `seedZombie`, `cleanWorkspaceZombies`, `clientFor`). Scenario 1 creates a per-test ephemeral Clerk user (DEV only — skipped on PROD until vault-resolved private aliases exist OR Clerk PROD test mode is enabled). Scenario 2 reuses the persistent `regular` fixture and a freshly-seeded `platform-ops` zombie. Both walk the same observation + lifecycle leg. The vulnerability audit (WS-B) is dispositioned in the spec body; only rows whose fix is in scope for the implementation PR move into Files Changed.
 
 ---
 
@@ -78,25 +78,25 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/packages/app/tests/e2e/auth/signup-platformops-lifecycle.spec.ts` | CREATE | Scenario 1 — ephemeral signup → install → observe → bill → halt. DEV-only via `test.skip(isProdApi)` mirror of `signup.spec.ts`. |
-| `ui/packages/app/tests/e2e/auth/login-existing-zombie-lifecycle.spec.ts` | CREATE | Scenario 2 — persistent fixture login → seeded zombie → observe → bill → halt. Runs on both DEV and PROD. |
-| `ui/packages/app/tests/e2e/auth/fixtures/seed.ts` | EDIT | Add `seedPlatformOpsZombie(handle, ws)` helper that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk and seeds via the API. Widen `getDefaultWorkspaceId` + `seedPlatformOpsZombie` to accept the `ClientHandle` union exported from `api-client.ts` so Scenario 1's mid-test-minted JWT can drive the seed (the ephemeral signup user is NOT in `.fixture-jwts.json`). |
-| `ui/packages/app/tests/e2e/auth/fixtures/api-client.ts` | EDIT | Widen `clientFor` to accept `ClientHandle = FixtureKey \| { sessionJwt: string }`. One public entrypoint, one fetch implementation — no duplicated request logic (RULE UFS). String input still loads from the `.fixture-jwts.json` cache; the `{sessionJwt}` variant uses the JWT directly. |
+| `ui/packages/app/tests/e2e/acceptance/signup-platformops-lifecycle.spec.ts` | CREATE | Scenario 1 — ephemeral signup → install → observe → bill → halt. DEV-only via `test.skip(isProdApi)` mirror of `signup.spec.ts`. |
+| `ui/packages/app/tests/e2e/acceptance/login-existing-zombie-lifecycle.spec.ts` | CREATE | Scenario 2 — persistent fixture login → seeded zombie → observe → bill → halt. Runs on both DEV and PROD. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/seed.ts` | EDIT | Add `seedPlatformOpsZombie(handle, ws)` helper that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk and seeds via the API. Widen `getDefaultWorkspaceId` + `seedPlatformOpsZombie` to accept the `ClientHandle` union exported from `api-client.ts` so Scenario 1's mid-test-minted JWT can drive the seed (the ephemeral signup user is NOT in `.fixture-jwts.json`). |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/api-client.ts` | EDIT | Widen `clientFor` to accept `ClientHandle = FixtureKey \| { sessionJwt: string }`. One public entrypoint, one fetch implementation — no duplicated request logic (RULE UFS). String input still loads from the `.fixture-jwts.json` cache; the `{sessionJwt}` variant uses the JWT directly. |
 | existing spec call sites | NO-OP | `getDefaultWorkspaceId(FIXTURE_KEY.regular)` continues to work — `FixtureKey` is part of the `ClientHandle` union, so no migration is required and RULE NLG is satisfied by the single signature. |
-| `ui/packages/app/tests/e2e/auth/fixtures/lifecycle.ts` | CREATE | Shared selectors + action helpers: `stopZombie(page, id)`, `resumeZombie(page, id)`, `killZombie(page, id)`. Pulls the duplicated KillSwitch + ConfirmDialog wiring out of `lifecycle.spec.ts`/`kill.spec.ts` and the new scenarios. Eliminates the row of literal-duplicates the existing two specs have today (RULE UFS). |
-| `ui/packages/app/tests/e2e/auth/fixtures/_jwt-cache-location.test.ts` | CREATE | Vitest regression for WS-B #4 — asserts `.fixture-jwts.json` path is outside `playwright-auth-results/` and `playwright-auth-report/`. Runs in `make test`. |
-| `ui/packages/app/tests/e2e/auth/_smoke.spec.ts` | EDIT | WS-B #8 + #9 assertions: (a) resolved `@clerk/nextjs` major equals the pinned constant in `fixtures/constants.ts`; (b) on PROD only, `__clerk_db_jwt` cookie value parses as a real 3-segment JWT; (c) `freshPassword()` output length ≥ 16 chars (regression for Clerk password-policy tightening). |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/lifecycle.ts` | CREATE | Shared selectors + action helpers: `stopZombie(page, id)`, `resumeZombie(page, id)`, `killZombie(page, id)`. Pulls the duplicated KillSwitch + ConfirmDialog wiring out of `lifecycle.spec.ts`/`kill.spec.ts` and the new scenarios. Eliminates the row of literal-duplicates the existing two specs have today (RULE UFS). |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/_jwt-cache-location.test.ts` | CREATE | Vitest regression for WS-B #4 — asserts `.fixture-jwts.json` path is outside `playwright-acceptance-results/` and `playwright-acceptance-report/`. Runs in `make test`. |
+| `ui/packages/app/tests/e2e/acceptance/_smoke.spec.ts` | EDIT | WS-B #8 + #9 assertions: (a) resolved `@clerk/nextjs` major equals the pinned constant in `fixtures/constants.ts`; (b) on PROD only, `__clerk_db_jwt` cookie value parses as a real 3-segment JWT; (c) `freshPassword()` output length ≥ 16 chars (regression for Clerk password-policy tightening). |
 | `ui/packages/app/package.json` | EDIT | WS-B #8 — pin `@clerk/nextjs` major (caret pin against the current installed major); record the pinned major as a constant in `fixtures/constants.ts` so the smoke assertion has a single source of truth. |
-| `ui/packages/app/tests/e2e/auth/fixtures/constants.ts` | EDIT | Add `CLERK_NEXTJS_PINNED_MAJOR` constant consumed by the WS-B #8 smoke assertion (RULE UFS — one literal, two readers). |
-| `ui/packages/app/tests/e2e/auth/fixtures/clerk-admin.ts` | EDIT | WS-B #11 — tighten `mintTokens` `expires_in_seconds` from `3600` to a TTL that is 2× the observed p95 suite wall-clock (implementing agent reads most-recent CI timing). Add a `clientFor` expiry-guard that re-mints on detected expiry. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/constants.ts` | EDIT | Add `CLERK_NEXTJS_PINNED_MAJOR` constant consumed by the WS-B #8 smoke assertion (RULE UFS — one literal, two readers). |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts` | EDIT | WS-B #11 — tighten `mintTokens` `expires_in_seconds` from `3600` to a TTL that is 2× the observed p95 suite wall-clock (implementing agent reads most-recent CI timing). Add a `clientFor` expiry-guard that re-mints on detected expiry. |
 | `docs/AUTH.md` | EDIT | Update "PROD fixture identity carve-out" with the WS-A finding (PATCH `password_enabled:false` is a silent no-op on Clerk admin API; harness retains random-per-create password posture). Append "Known gaps" subsection enumerating accepted vulnerabilities + the two Clerk PROD fixture user IDs with the `is_test_fixture` metadata filter query (WS-B #7). |
 
 **Files NOT changed (explicit non-goals on this milestone):**
 
-- `.github/workflows/**` — different agent's territory. The new specs auto-run because Playwright globs `tests/e2e/auth/*.spec.ts`.
-- `ui/packages/app/tests/e2e/auth/signup.spec.ts` — keep as-is; Scenario 1 is purely additive.
+- `.github/workflows/**` — different agent's territory. The new specs auto-run because Playwright globs `tests/e2e/acceptance/*.spec.ts`.
+- `ui/packages/app/tests/e2e/acceptance/signup.spec.ts` — keep as-is; Scenario 1 is purely additive.
 - `src/http/handlers/webhooks/clerk.zig` — separate-webhook-test-secret hardening (WS-B #3) is a deferred backend milestone, recorded in Discovery.
-- `ui/packages/app/tests/e2e/auth/global-teardown.ts` — fixture teardown deferred per Captain (M64_006).
+- `ui/packages/app/tests/e2e/acceptance/global-teardown.ts` — fixture teardown deferred per Captain (M64_006).
 
 ---
 
@@ -136,7 +136,7 @@ Each row carries severity, current state, proposed fix, where the fix lands. "Se
 | 1 | Public mailinator inbox for fixture identity → anyone with the email can request a Clerk password-reset link and claim the account. | S1 | Vault items provisioned at `op://ZMB_CD_DEV/e2e-fixtures-email/{regular,admin}` (DEV) and `op://ZMB_CD_PROD/e2e-fixtures-email/{regular,admin}` (PROD); workflow `env:` wiring TBD. `AUTH_E2E_{REGULAR,ADMIN}_EMAIL` env override is read in `global-setup.ts`. | Flip the workflow `env:` blocks to resolve the vault items. CI job overrides defaults. Local DEV runs keep mailinator (accepted risk: local-only). | Parallel handoff (separate agent — workflows out of scope this milestone) | `BLOCKED_ON_workflow-wiring` — implementation PR may NOT merge until the workflow `env:` blocks consume the vault items. |
 | 2 | Persistent fixture user has `password_enabled: true`; even with private email (#1), a Clerk hosted sign-in form could be driven by anyone who learns the email + password. | S2 | `freshPassword()` generates 256-bit random per `provisionUser` call and never persists. Compromise requires both the random password (only in process memory during one suite run) AND access to the user-password sign-in flow. | WS-A shows PATCH path is not viable. Implementation PR researches `DELETE /v1/users/{id}/password` or instance-level "passwordless required" config. If neither lands cheaply, accept the current posture. | `clerk-admin.ts` (only if viable endpoint found) | `ACCEPTED_RISK` for this milestone unless a viable endpoint is discovered during implementation. Captain's prior P0 ranking is downgraded based on WS-A. |
 | 3 | `CLERK_WEBHOOK_SECRET` reuse — the harness uses the **production webhook secret** to Svix-sign synthetic `user.created` posts. Anyone with that secret can forge any Clerk webhook against zombied PROD. | S1 | The secret is op://-resolved per environment; the PROD-secret blast radius is bounded by 1Password access, not by the harness. But the harness adds a NEW party who needs the PROD-trust secret (CI service account) — and the secret cannot be rotated without coordinating with the test harness. | Add a backend feature: zombied accepts EITHER `CLERK_WEBHOOK_SECRET` OR a separate `CLERK_WEBHOOK_TEST_SECRET` whose tenant rows are flagged `is_test_fixture: true` and barred from billing real money. Harness in CI uses only the test secret. | New backend milestone (NOT this PR) | `DEFERRED_TO_backend-milestone` — recorded in Discovery for prioritisation. |
-| 4 | `.fixture-jwts.json` (cookieJwt valid ~1h, sessionJwt carries tenant claims) could ride along in an artifact upload. | S2 | File written at `ui/packages/app/.fixture-jwts.json` mode 0600, gitignored at `.gitignore:19`. CI artifact uploads target `ui/packages/app/playwright-auth-report/` (single subdirectory), not the package root. Playwright's `outputDir` is `playwright-auth-results`. The cache file is in NEITHER subdirectory. | Add a one-line guard test that asserts the file path does not match either Playwright-managed directory — catches a future refactor that moves `outputDir` or the cache. | `tests/e2e/auth/fixtures/_jwt-cache-location.test.ts` (vitest, not Playwright — runs in `make test`) | `FIX_THIS_PR` — cheap regression-proof. |
+| 4 | `.fixture-jwts.json` (cookieJwt valid ~1h, sessionJwt carries tenant claims) could ride along in an artifact upload. | S2 | File written at `ui/packages/app/.fixture-jwts.json` mode 0600, gitignored at `.gitignore:19`. CI artifact uploads target `ui/packages/app/playwright-acceptance-report/` (single subdirectory), not the package root. Playwright's `outputDir` is `playwright-acceptance-results`. The cache file is in NEITHER subdirectory. | Add a one-line guard test that asserts the file path does not match either Playwright-managed directory — catches a future refactor that moves `outputDir` or the cache. | `tests/e2e/acceptance/fixtures/_jwt-cache-location.test.ts` (vitest, not Playwright — runs in `make test`) | `FIX_THIS_PR` — cheap regression-proof. |
 | 5 | Tenant pollution in PROD `core.tenants` — fixture tenants accumulate `tenant_billing.balance_nanos` and any state created by tests forever. | S3 | Per-spec teardown deletes zombies; tenant row reused. No teardown of tenant or billing balance. | None on this milestone — Captain explicitly deferred until the first PROD run accumulates observable state. | N/A | `ACCEPTED_RISK` with reactivation condition: revisit after one calendar quarter of PROD runs OR if `tenant_billing.balance_nanos` for either fixture tenant rises above a threshold the ops dashboard should set. |
 | 6 | No PR-time `auth-e2e` gate — the suite only fires post-merge to `main` and post-deploy to PROD. A breaking auth-flow change lands on `main` before catching. | S3 | `qa.yml` runs unauthenticated smoke on every PR; auth suite is post-merge. | Add a PR-time job; estimate adds a few minutes per PR. | `.github/workflows/qa.yml` (different agent's territory per Captain's constraints) | `DEFERRED` — open question for Captain. This spec surfaces but does not propose. |
 | 7 | First-PROD-deploy provisioned two Clerk PROD identities with no warning gate or operator review. | S2 | Mitigated post-hoc by commit f86d0c35 — identities are tagged `public_metadata.is_test_fixture: true`, passwords are random and unpersisted. Verifying what Clerk PROD ops dashboards show after first run is part of this spec's acceptance criteria. | Document the expected PROD-Clerk users list in `docs/AUTH.md` "PROD fixture identity carve-out" with the actual Clerk user IDs and the metadata tag query that filters them. | `docs/AUTH.md` | `FIX_THIS_PR` (docs-only) — Captain inspects PROD Clerk dashboard, agent records the two user IDs + metadata filter query in AUTH.md. |
@@ -149,7 +149,7 @@ Items #4, #7, #8, #9, #11 are `FIX_THIS_PR`. Everything else is dispositioned wi
 
 ### WS-C — Scenario 1: signup → workspace → install platform-ops → observe → bill → halt
 
-**File:** `ui/packages/app/tests/e2e/auth/signup-platformops-lifecycle.spec.ts`
+**File:** `ui/packages/app/tests/e2e/acceptance/signup-platformops-lifecycle.spec.ts`
 
 **Runs against:** DEV + local. PROD is skipped (`test.skip(isProdApi, …)`) until either (a) Clerk PROD has test mode enabled OR (b) a vault-resolved private-domain alias replaces the `+clerk_test@mailinator.com` pattern. Both are tracked in Discovery.
 
@@ -178,7 +178,7 @@ Items #4, #7, #8, #9, #11 are `FIX_THIS_PR`. Everything else is dispositioned wi
 
 ### WS-D — Scenario 2: login → existing platform-ops zombie → observe → bill → halt
 
-**File:** `ui/packages/app/tests/e2e/auth/login-existing-zombie-lifecycle.spec.ts`
+**File:** `ui/packages/app/tests/e2e/acceptance/login-existing-zombie-lifecycle.spec.ts`
 
 **Runs against:** DEV + local + PROD. No skip — the persistent `regular` fixture is provisioned in both Clerk DEV and Clerk PROD by `globalSetup`.
 
@@ -250,10 +250,10 @@ export async function expectRowState(
 | Clerk PROD test-mode disabled | `424242` OTP rejected when Scenario 1 attempted on PROD | Spec is `test.skip(isProdApi)` — never executes there. |
 | `samples/platform-ops/SKILL.md` moved or renamed | Repo refactor | `seedPlatformOpsZombie` throws with the resolved path in the error; suite fails fast at first test. |
 | Clerk DEV password policy tightens and rejects 32-byte base64url | Future Clerk config change | `globalSetup` fails loudly with the policy error in the body (existing `failLoud` pattern). WS-B item #9 adds a `_smoke` regression. |
-| `.fixture-jwts.json` moved into Playwright's `outputDir`/`playwright-auth-report` by a future refactor | Refactor blast radius | WS-B item #4 vitest test fails — blocks the PR before merge. |
+| `.fixture-jwts.json` moved into Playwright's `outputDir`/`playwright-acceptance-report` by a future refactor | Refactor blast radius | WS-B item #4 vitest test fails — blocks the PR before merge. |
 | Tenant pollution causes billing balance to drift below zero on a fixture | Long-running PROD accumulation | Out of scope (per Captain). When this fires, reactivate the deferred fixture-teardown design. |
 | Resume button absent in step 10 | KillSwitch state-machine drift (zombied returns a new status) | `stopZombie` already asserts `data-state="parked"`. Resume helper waits for the button via `getByRole("button", { name: "Resume" })` with a timeout — fails loud, not silently. |
-| Vercel deploy fires `auth-e2e-prod` before `app.usezombie.com` is hot | Existing Fly pre-warm gap (separate handoff) | Out of scope. Existing M64_006 retry/timeout posture continues. |
+| Vercel deploy fires `acceptance-e2e-prod` before `app.usezombie.com` is hot | Existing Fly pre-warm gap (separate handoff) | Out of scope. Existing M64_006 retry/timeout posture continues. |
 
 ---
 
@@ -274,7 +274,7 @@ export async function expectRowState(
 | `login-existing-zombie-lifecycle.spec.ts → persistent fixture → observe → bill → halt` | Persistent `regular` fixture signs in via cookie-mount; pre-seeded `platform-ops` zombie row visible with `data-state="live"`; same observation + lifecycle legs as Scenario 1. |
 | `_smoke.spec.ts → @clerk/nextjs major pin honored` (WS-B #8) | The resolved major of `@clerk/nextjs` equals `CLERK_NEXTJS_PINNED_MAJOR` (constant in `fixtures/constants.ts`). Predicate: parse the version from `node_modules/@clerk/nextjs/package.json` (NOT from the root `package.json` range string, which would conflate `^4.x` and `^5.x` if the range starts with `^`), `semver.major(installedVersion)` === `CLERK_NEXTJS_PINNED_MAJOR`. Fails fast if a `bun install` bumps the major against the pin. |
 | `_smoke.spec.ts → fixture password clears Clerk policy` (WS-B #9) | `globalSetup` provisioned both fixture users without error AND `freshPassword()` output length is ≥ 16 chars. |
-| `fixtures/_jwt-cache-location.test.ts → cache stays outside Playwright dirs` (WS-B #4) | `path.resolve(".fixture-jwts.json")` does NOT start with `path.resolve("playwright-auth-results")` OR `path.resolve("playwright-auth-report")`. |
+| `fixtures/_jwt-cache-location.test.ts → cache stays outside Playwright dirs` (WS-B #4) | `path.resolve(".fixture-jwts.json")` does NOT start with `path.resolve("playwright-acceptance-results")` OR `path.resolve("playwright-acceptance-report")`. |
 | `_smoke.spec.ts → __clerk_db_jwt is a real JWT on PROD` (WS-B #8 part 2) | On PROD only: the value placed into `__clerk_db_jwt` cookie has three `.`-separated segments. On DEV: skipped (literal `"fixture-dev-browser"` is accepted). |
 
 Negative tests covered by Failure Modes table; no new fixture file (`samples/fixtures/…`) needed.
@@ -288,12 +288,12 @@ Regression tests: the existing `lifecycle.spec.ts` + `kill.spec.ts` + `events.sp
 - [ ] Vault prerequisite met (WS-B #1 `BLOCKED_ON_workflow-wiring` gate cleared) — verify: `op read 'op://ZMB_CD_DEV/e2e-fixtures-email/regular'` AND `op read 'op://ZMB_CD_DEV/e2e-fixtures-email/admin'` AND the two PROD equivalents under `op://ZMB_CD_PROD/e2e-fixtures-email/{regular,admin}` BOTH return a non-mailinator domain; AND `.github/workflows/deploy-dev.yml` + `.github/workflows/smoke-post-deploy.yml` set `AUTH_E2E_REGULAR_EMAIL` + `AUTH_E2E_ADMIN_EMAIL` from those op:// paths; AND `globalSetup` log line for the most recent CI run contains the non-mailinator emails. If any check fails, the implementation PR MUST NOT merge.
 - [ ] WS-A finding recorded in `docs/AUTH.md` "PROD fixture identity carve-out" — verify: `grep -n "password_enabled.*PATCH" docs/AUTH.md`
 - [ ] WS-B vulnerability table copied (verbatim) into `docs/AUTH.md` "Known gaps" subsection — verify: `grep -c "FIX_THIS_PR\|ACCEPTED_RISK\|DEFERRED" docs/AUTH.md` ≥ 11
-- [ ] `signup-platformops-lifecycle.spec.ts` passes locally (`bun run test:e2e:auth:local`) — verify: paste the green run line
-- [ ] `signup-platformops-lifecycle.spec.ts` passes against `api-dev` in `auth-e2e-dev` job — verify: link the GH Actions run URL
-- [ ] `signup-platformops-lifecycle.spec.ts` is skipped against PROD — verify: `bun run test:e2e:auth` against `https://api.usezombie.com` shows the spec as `skipped`
+- [ ] `signup-platformops-lifecycle.spec.ts` passes locally (`bun run test:e2e:acceptance:local`) — verify: paste the green run line
+- [ ] `signup-platformops-lifecycle.spec.ts` passes against `api-dev` in `acceptance-e2e-dev` job — verify: link the GH Actions run URL
+- [ ] `signup-platformops-lifecycle.spec.ts` is skipped against PROD — verify: `bun run test:e2e:acceptance` against `https://api.usezombie.com` shows the spec as `skipped`
 - [ ] `login-existing-zombie-lifecycle.spec.ts` passes locally AND against `api-dev` AND against `api` (PROD) — verify: paste three green run lines / CI URLs
-- [ ] `seedPlatformOpsZombie` reads from `samples/platform-ops/` (worktree-root-relative) — verify: `grep -n "samples/platform-ops" ui/packages/app/tests/e2e/auth/fixtures/seed.ts`
-- [ ] `fixtures/lifecycle.ts` helpers replace duplicated KillSwitch+ConfirmDialog code in `lifecycle.spec.ts` AND `kill.spec.ts` — verify: `grep -c 'getByRole.*alertdialog' ui/packages/app/tests/e2e/auth/{lifecycle,kill}.spec.ts` is 0
+- [ ] `seedPlatformOpsZombie` reads from `samples/platform-ops/` (worktree-root-relative) — verify: `grep -n "samples/platform-ops" ui/packages/app/tests/e2e/acceptance/fixtures/seed.ts`
+- [ ] `fixtures/lifecycle.ts` helpers replace duplicated KillSwitch+ConfirmDialog code in `lifecycle.spec.ts` AND `kill.spec.ts` — verify: `grep -c 'getByRole.*alertdialog' ui/packages/app/tests/e2e/acceptance/{lifecycle,kill}.spec.ts` is 0
 - [ ] WS-B #4 vitest regression passes — verify: `bun run test:coverage` includes `_jwt-cache-location.test.ts`
 - [ ] No file added or modified exceeds 350 lines — verify: `git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l | awk '$1 > 350'`
 - [ ] `gitleaks detect` clean — verify: `gitleaks detect` output
@@ -306,12 +306,12 @@ Regression tests: the existing `lifecycle.spec.ts` + `kill.spec.ts` + `events.sp
 
 ```bash
 # E1: New specs run locally (requires local zombied stack up + DEV op:// creds)
-cd ui/packages/app && bun run test:e2e:auth:local -- \
-  tests/e2e/auth/signup-platformops-lifecycle.spec.ts \
-  tests/e2e/auth/login-existing-zombie-lifecycle.spec.ts
+cd ui/packages/app && bun run test:e2e:acceptance:local -- \
+  tests/e2e/acceptance/signup-platformops-lifecycle.spec.ts \
+  tests/e2e/acceptance/login-existing-zombie-lifecycle.spec.ts
 
 # E2: Existing specs still pass (regression)
-cd ui/packages/app && bun run test:e2e:auth:local
+cd ui/packages/app && bun run test:e2e:acceptance:local
 
 # E3: Vitest regression for JWT cache location
 cd ui/packages/app && bun run test:coverage
@@ -330,7 +330,7 @@ grep -n "PATCH.*password_enabled\|silent no-op" docs/AUTH.md
 grep -c "FIX_THIS_PR\|ACCEPTED_RISK\|DEFERRED" docs/AUTH.md
 
 # E8: Helper consolidation (RULE UFS)
-grep -c 'getByRole.*alertdialog' ui/packages/app/tests/e2e/auth/{lifecycle,kill}.spec.ts
+grep -c 'getByRole.*alertdialog' ui/packages/app/tests/e2e/acceptance/{lifecycle,kill}.spec.ts
 # expect 0:0 — both refactored to use fixtures/lifecycle.ts helpers
 ```
 

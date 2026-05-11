@@ -93,7 +93,7 @@ async function createUser(spec: FixtureUserSpec): Promise<ClerkUser> {
     skip_password_requirement: false,
     public_metadata: {
       is_test_fixture: true,
-      owner: "auth-e2e-suite",
+      owner: "acceptance-e2e-suite",
       role: spec.key,
     },
   });
@@ -107,7 +107,7 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
     await clerkRequest<ClerkUser>("PATCH", `/users/${existing.id}/metadata`, {
       public_metadata: {
         is_test_fixture: true,
-        owner: "auth-e2e-suite",
+        owner: "acceptance-e2e-suite",
         role: spec.key,
       },
     }).catch(() => undefined);

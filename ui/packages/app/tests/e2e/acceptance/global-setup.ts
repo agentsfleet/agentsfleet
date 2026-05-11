@@ -36,7 +36,7 @@ import { bootstrapTenant } from "./fixtures/bootstrap";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
 
-// Defensive: playwright.auth.config.ts loads worktree-root .env, but
+// Defensive: playwright.acceptance.config.ts loads worktree-root .env, but
 // globalSetup is the actual fail-fast point for missing creds and should
 // re-load idempotently in case it's invoked outside the standard config.
 loadWorktreeEnv();

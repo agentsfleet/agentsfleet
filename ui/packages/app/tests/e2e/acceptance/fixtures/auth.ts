@@ -51,7 +51,7 @@ function loadCache(): JwtCache {
 }
 
 function dashboardUrl(): URL {
-  // Mirror playwright.auth.config.ts's BASE_URL so the cookie scope matches
+  // Mirror playwright.acceptance.config.ts's BASE_URL so the cookie scope matches
   // the dev server's host.
   const port = process.env.E2E_PORT ?? "3101";
   const base = process.env.BASE_URL ?? `http://localhost:${port}`;
