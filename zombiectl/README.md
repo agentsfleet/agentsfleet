@@ -4,7 +4,7 @@ The official Command Line Interface (CLI) for [usezombie](https://usezombie.com)
 
 [![Try Free — $5 Credit](https://img.shields.io/badge/usezombie-Try_Free_·_%245_Credit-5EEAD4?style=for-the-badge)](https://usezombie.com)
 [![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.usezombie.com)
-[![npm](https://img.shields.io/npm/v/@usezombie/zombiectl/next?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@usezombie/zombiectl)
+[![npm](https://img.shields.io/npm/v/@usezombie/zombiectl?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@usezombie/zombiectl)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
 Authenticate, manage workspaces, install zombies, tail their events, and operate your usezombie deployment from the terminal.
