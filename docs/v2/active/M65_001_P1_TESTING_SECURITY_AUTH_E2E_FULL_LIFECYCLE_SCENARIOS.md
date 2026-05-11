@@ -80,9 +80,9 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 |------|--------|-----|
 | `ui/packages/app/tests/e2e/auth/signup-platformops-lifecycle.spec.ts` | CREATE | Scenario 1 — ephemeral signup → install → observe → bill → halt. DEV-only via `test.skip(isProdApi)` mirror of `signup.spec.ts`. |
 | `ui/packages/app/tests/e2e/auth/login-existing-zombie-lifecycle.spec.ts` | CREATE | Scenario 2 — persistent fixture login → seeded zombie → observe → bill → halt. Runs on both DEV and PROD. |
-| `ui/packages/app/tests/e2e/auth/fixtures/seed.ts` | EDIT | Add `seedPlatformOpsZombie(auth, ws)` helper that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk and seeds via the API. Widen `getDefaultWorkspaceId` + `seedPlatformOpsZombie` to accept `AuthHandle = { key: FixtureKey } \| { sessionJwt: string }` so Scenario 1's mid-test-minted JWT can drive the seed (the ephemeral signup user is NOT in `.fixture-jwts.json`). |
-| `ui/packages/app/tests/e2e/auth/fixtures/api-client.ts` | EDIT | Add `clientForJwt(sessionJwt)` thin constructor that reuses the existing request implementation. Routes the `{sessionJwt}` variant of `AuthHandle` without duplicating fetch/error logic. Existing `clientFor(key)` remains as the cache-backed default for persistent fixtures. |
-| `ui/packages/app/tests/e2e/auth/{_smoke,lifecycle,kill,multi-zombie,multi-workspace,settings-billing,events,logs-detail,install-zombie-seed,install-zombie-cli}.spec.ts` | EDIT | Migrate `getDefaultWorkspaceId(FIXTURE_KEY.regular)` call sites to `getDefaultWorkspaceId({ key: FIXTURE_KEY.regular })` in the same commit as the signature widening. RULE NLG — no parallel signature, no overload, no compat shim. |
+| `ui/packages/app/tests/e2e/auth/fixtures/seed.ts` | EDIT | Add `seedPlatformOpsZombie(handle, ws)` helper that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk and seeds via the API. Widen `getDefaultWorkspaceId` + `seedPlatformOpsZombie` to accept the `ClientHandle` union exported from `api-client.ts` so Scenario 1's mid-test-minted JWT can drive the seed (the ephemeral signup user is NOT in `.fixture-jwts.json`). |
+| `ui/packages/app/tests/e2e/auth/fixtures/api-client.ts` | EDIT | Widen `clientFor` to accept `ClientHandle = FixtureKey \| { sessionJwt: string }`. One public entrypoint, one fetch implementation — no duplicated request logic (RULE UFS). String input still loads from the `.fixture-jwts.json` cache; the `{sessionJwt}` variant uses the JWT directly. |
+| existing spec call sites | NO-OP | `getDefaultWorkspaceId(FIXTURE_KEY.regular)` continues to work — `FixtureKey` is part of the `ClientHandle` union, so no migration is required and RULE NLG is satisfied by the single signature. |
 | `ui/packages/app/tests/e2e/auth/fixtures/lifecycle.ts` | CREATE | Shared selectors + action helpers: `stopZombie(page, id)`, `resumeZombie(page, id)`, `killZombie(page, id)`. Pulls the duplicated KillSwitch + ConfirmDialog wiring out of `lifecycle.spec.ts`/`kill.spec.ts` and the new scenarios. Eliminates the row of literal-duplicates the existing two specs have today (RULE UFS). |
 | `ui/packages/app/tests/e2e/auth/fixtures/_jwt-cache-location.test.ts` | CREATE | Vitest regression for WS-B #4 — asserts `.fixture-jwts.json` path is outside `playwright-auth-results/` and `playwright-auth-report/`. Runs in `make test`. |
 | `ui/packages/app/tests/e2e/auth/_smoke.spec.ts` | EDIT | WS-B #8 + #9 assertions: (a) resolved `@clerk/nextjs` major equals the pinned constant in `fixtures/constants.ts`; (b) on PROD only, `__clerk_db_jwt` cookie value parses as a real 3-segment JWT; (c) `freshPassword()` output length ≥ 16 chars (regression for Clerk password-policy tightening). |
@@ -215,20 +215,16 @@ No new HTTP endpoints. The two new specs hit existing handlers:
 New TS helpers (signatures the implementation must NOT change without spec amendment):
 
 ```ts
-// fixtures/seed.ts (extension)
+// fixtures/api-client.ts — single exported union, single fetch implementation
+export type ClientHandle = FixtureKey | { sessionJwt: string };
+export function clientFor(handle: ClientHandle): ApiClient;
 
-// Auth handle: either a cached fixture key (Scenario 2 / persistent fixtures)
-// OR a mid-test-minted JWT (Scenario 1 ephemeral signup user, who is NOT in
-// the `.fixture-jwts.json` cache because they were created in-test).
-export type AuthHandle = { key: FixtureKey } | { sessionJwt: string };
-
-// Both helpers accept the union; the extending implementation routes
-// `key`-shaped handles through the existing `clientFor(key)` and
-// `sessionJwt`-shaped handles through a new `clientForJwt(sessionJwt)` thin
-// constructor in `api-client.ts`. No duplicated request logic.
-export async function getDefaultWorkspaceId(auth: AuthHandle): Promise<string>;
+// fixtures/seed.ts (extension) — both helpers re-use the same ClientHandle
+// shape from api-client.ts. String input loads the persistent fixture from
+// `.fixture-jwts.json`; `{ sessionJwt }` input uses a mid-test JWT directly.
+export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<string>;
 export async function seedPlatformOpsZombie(
-  auth: AuthHandle,
+  handle: ClientHandle,
   workspaceId: string,
 ): Promise<Zombie>;
 
@@ -243,7 +239,7 @@ export async function expectRowState(
 ): Promise<void>;
 ```
 
-**Backwards-compatibility shim for the existing callers** (RULE NLG — pre-v2.0.0, no compat layer). The existing `getDefaultWorkspaceId(FIXTURE_KEY.regular)` call sites in `fixtures/seed.ts` and the eight existing specs are migrated **in the same commit** as the signature widening: `getDefaultWorkspaceId(FIXTURE_KEY.regular)` → `getDefaultWorkspaceId({ key: FIXTURE_KEY.regular })`. No overload, no parallel signature.
+**No migration needed at existing callers.** Because `ClientHandle = FixtureKey | { sessionJwt }` includes the bare `FixtureKey` string, every existing `getDefaultWorkspaceId(FIXTURE_KEY.regular)` call continues to typecheck unchanged. RULE NLG is satisfied by the single widened signature — there is no parallel signature, no overload, no compat shim. Scenario 1 uses `getDefaultWorkspaceId({ sessionJwt })` against the mid-test JWT; Scenario 2 (and all existing specs) use the bare-string form against `.fixture-jwts.json`.
 
 ---
 
