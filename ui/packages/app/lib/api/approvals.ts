@@ -4,6 +4,7 @@ import { request } from "./client";
 // verbatim — no shim, no rename. Renders the same shape the dashboard queries.
 
 export type ApprovalStatus = "pending" | "approved" | "denied" | "timed_out" | "auto_killed";
+export type ApprovalStatusValue = ApprovalStatus | (string & {});
 
 export type ApprovalGate = {
   gate_id: string;
@@ -17,7 +18,7 @@ export type ApprovalGate = {
   proposed_action: string;
   evidence: Record<string, unknown>;
   blast_radius: string;
-  status: ApprovalStatus | string;
+  status: ApprovalStatusValue;
   detail: string;
   /** epoch ms */
   requested_at: number;

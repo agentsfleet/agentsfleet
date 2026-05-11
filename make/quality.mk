@@ -22,19 +22,19 @@ _zlint_check:
 	@echo "✓ [zombied] ZLint passed"
 
 _website_lint:
-	@echo "→ [website] Running ESLint + TypeScript check..."
+	@echo "→ [website] Running Oxlint + TypeScript check..."
 	@cd ui/packages/website && bun run lint
 	@cd ui/packages/website && bun run typecheck
 	@echo "✓ [website] Lint passed"
 
 _app_lint:
-	@echo "→ [app] Running ESLint + TypeScript check..."
+	@echo "→ [app] Running Oxlint + TypeScript check..."
 	@cd ui/packages/app && bun run lint
 	@cd ui/packages/app && bun run typecheck
 	@echo "✓ [app] Lint passed"
 
 _design_system_lint:
-	@echo "→ [design-system] Running ESLint + TypeScript check..."
+	@echo "→ [design-system] Running Oxlint + TypeScript check..."
 	@cd ui/packages/design-system && bun run lint
 	@echo "✓ [design-system] Lint passed"
 
@@ -210,7 +210,7 @@ _legacy_symbols_check:
 lint-zig: _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
-lint-website: _website_lint  ## Lint website only (ESLint + tsc)
+lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 
 lint-apps: _app_lint _design_system_lint _zombiectl_lint  ## Lint app, design-system, and zombiectl
 
