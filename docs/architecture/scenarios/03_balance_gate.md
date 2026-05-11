@@ -1,21 +1,23 @@
 # Scenario 03 — The credit pool, John drains under both postures
 
-**Persona — John Doe.** Same user from Scenarios 01 and 02. He installed his platform-ops zombie cold, ran for a couple of weeks on the default platform-managed posture, then brought his own Fireworks key. This scenario watches his $10 starter grant drain over time across both postures and ends with the gate tripping.
+**Persona — John Doe.** Same user from Scenarios 01 and 02. He installed his platform-ops zombie cold, ran for a couple of weeks on the default platform-managed posture, then brought his own Fireworks key. This scenario watches his starter grant drain over time across both postures and ends with the gate tripping.
 
-**Outcome under test:** A tenant whose `core.tenant_billing.balance_cents` reaches zero stops dispatching new events at the gate. Same code path under both postures; only the per-event drain rate differs. The user gets a clear "credits exhausted" UX pointing at the dashboard billing page. There is no Stripe purchase flow in v2.0 — exhausted users contact support for a manual top-up.
+> **Rate snapshot.** The cent-and-token arithmetic below was authored against an earlier rate table (M48 era — $0.01 receive, $0.10 stage, $10 starter). Under M66 stealth-mode rates the grant is $5, receive is $0 in both postures, and stage is posture-dispatched (platform overhead + token cost / flat self-managed fee). The *flow* — gate, two debit points, telemetry rows — is identical to what's shown; only the per-event arithmetic moves. Authoritative current values: see [`billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1 (sources of truth). Treat the numbers in this scenario as illustrative.
+
+**Outcome under test:** A tenant whose `core.tenant_billing.balance_nanos` reaches zero stops dispatching new events at the gate. Same code path under both postures; only the per-event drain rate differs. The user gets a clear "credits exhausted" UX pointing at the dashboard billing page. There is no Stripe purchase flow in v2.0 — exhausted users contact support for a manual top-up.
 
 ```mermaid
 flowchart TD
     Start([XREADGROUP unblocks<br/>with new event]) --> Insert[INSERT zombie_events<br/>status=received]
     Insert --> Resolve[Resolve posture<br/>tenant_provider.resolveActiveProvider]
     Resolve --> Estimate[Estimate event cost<br/>receive + worst-case stage]
-    Estimate --> Gate{balance_cents<br/>≥ estimate?}
+    Estimate --> Gate{balance_nanos<br/>≥ estimate?}
     Gate -->|no| Block[UPDATE status=gate_blocked<br/>failure_label=balance_exhausted<br/>XACK terminal]
-    Gate -->|yes| RDeduct[DEDUCT receive cents<br/>UPDATE balance_cents<br/>INSERT telemetry charge_type=receive]
+    Gate -->|yes| RDeduct[DEDUCT receive cents<br/>UPDATE balance_nanos<br/>INSERT telemetry charge_type=receive]
     RDeduct --> Approve[Approval gate]
     Approve -->|blocked| Wait[gate_blocked until<br/>user resumes]
     Approve -->|pass| Secrets[Resolve secrets_map]
-    Secrets --> SDeduct[DEDUCT stage cents<br/>UPDATE balance_cents<br/>INSERT telemetry charge_type=stage]
+    Secrets --> SDeduct[DEDUCT stage cents<br/>UPDATE balance_nanos<br/>INSERT telemetry charge_type=stage]
     SDeduct --> Exec[executor.createExecution<br/>+ startStage]
     Exec --> Result[StageResult returns<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
     Result --> End([XACK])
@@ -31,8 +33,8 @@ flowchart TD
 John starts with the same balance every new tenant gets:
 
 ```
-SELECT balance_cents FROM core.tenant_billing WHERE tenant_id = $1;
- balance_cents
+SELECT balance_nanos FROM core.tenant_billing WHERE tenant_id = $1;
+ balance_nanos
 ---------------
           1000
 (1 row)
@@ -61,7 +63,7 @@ estimate cost = compute_receive_charge(.platform)
 gate: 1000¢ ≥ 3¢ → pass
 
 DEDUCT RECEIVE
-  UPDATE tenant_billing SET balance_cents = 1000 - 1 = 999
+  UPDATE tenant_billing SET balance_nanos = 1000 - 1 = 999
   INSERT zombie_execution_telemetry
     (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
      charge_type='receive', credit_deducted_cents=1)
@@ -71,7 +73,7 @@ approval gate → pass (no destructive tools in this run)
 resolveSecretsMap → {fly, slack, github}
 
 DEDUCT STAGE
-  UPDATE tenant_billing SET balance_cents = 999 - 2 = 997
+  UPDATE tenant_billing SET balance_nanos = 999 - 2 = 997
   INSERT zombie_execution_telemetry
     (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
      charge_type='stage', credit_deducted_cents=2)
@@ -130,7 +132,7 @@ DEDUCT RECEIVE → 0¢ deducted (self-managed receive is zero in v2.0)
   INSERT telemetry (charge_type='receive', credit_deducted_cents=0)
 
 DEDUCT STAGE → 1¢ deducted
-  UPDATE balance_cents = 150 - 1 = 149
+  UPDATE balance_nanos = 150 - 1 = 149
   INSERT telemetry (charge_type='stage', credit_deducted_cents=1)
 
 executor.startStage with provider_api_key=fw_LIVE_… → outbound to
@@ -302,7 +304,7 @@ In-flight events finish at the snapshot taken at gate time. Both deductions (rec
 
 ### 8.2 Concurrent events on near-zero balance
 
-Two events claim the queue simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance briefly goes negative. We accept the small overshoot rather than serialise all events behind a row lock that would limit throughput. The next event sees `balance_cents < 0`, gate trips, system stabilises.
+Two events claim the queue simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance briefly goes negative. We accept the small overshoot rather than serialise all events behind a row lock that would limit throughput. The next event sees `balance_nanos < 0`, gate trips, system stabilises.
 
 ### 8.3 Posture flip mid-event
 
@@ -328,7 +330,7 @@ Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_lab
 
 - **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement.
 - **Auto Top Up** when balance drops below a threshold. v2.1.
-- **Plan tiers as recurring credit grants.** v2.1+ if onboarding metrics suggest the $10 starter is the wrong knob. Any plan tier ships as a recurring Stripe charge that tops up `balance_cents` — never as a branch inside `compute_charge`.
+- **Plan tiers as recurring credit grants.** v2.1+ if onboarding metrics suggest the $10 starter is the wrong knob. Any plan tier ships as a recurring Stripe charge that tops up `balance_nanos` — never as a branch inside `compute_charge`.
 - **Refund-on-actual-tokens.** v3. Today the conservative estimate is the charge; reconciling to actual tokens adds bookkeeping for marginal accuracy gain.
 - **Per-workspace soft caps inside a tenant.** v3 — needs a new gate at the workspace level.
 - **Volume discounts.** v3, sales-led.

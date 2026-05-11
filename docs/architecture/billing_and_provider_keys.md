@@ -6,7 +6,15 @@ How users pay for what they run, and how the runtime stays neutral between two c
 
 This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the executor + worker path, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
-The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in cents; events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Posture (platform vs self-managed) changes the per-event cost, not the structure of the gate.
+The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **stage** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This is the *shape* — specific dollar amounts move as the rate table tightens or relaxes, so they live in code, not in this doc.
+
+> **Where the live values are.** Specific rates are not pinned in this doc on purpose — they change. The canonical sources, in lockstep:
+>
+> - **Zig (server authority):** `src/state/tenant_billing.zig` — `STARTER_CREDIT_NANOS`, `EVENT_NANOS`, `STAGE_PLATFORM_NANOS`, `STAGE_SELF_MANAGED_NANOS`. Pin tests in `tenant_billing_test.zig` lock the values.
+> - **Marketing display strings:** `~/Projects/docs/snippets/rates.mdx` (Mintlify), mirrored at `ui/packages/website/src/lib/rates.ts` for the on-site Pricing surface.
+> - **Per-model token rates (platform posture):** the public-but-unguessable `model-caps.json` endpoint — see §10.
+>
+> Cross-tier parity rule: identifier names match across Zig/TS/JS so a rate bump is a coordinated PR across all sources, not a silent drift.
 
 ---
 
@@ -27,37 +35,37 @@ The posture flip lives in `core.tenant_providers.mode` (`platform` or `self_mana
 
 ## 2. Pure credits, one-time starter grant
 
-Every tenant has exactly one balance: `core.tenant_billing.balance_cents`. The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_cents = balance_cents - <cents>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
+Every tenant has exactly one balance: `core.tenant_billing.balance_nanos` (`BIGINT NOT NULL CHECK (balance_nanos >= 0)`, holds 9 decimal places of USD precision; i64 caps a single tenant at ~$9.2B, headroom for sub-cent rates without another unit change). The gate compares this column against the estimated event cost. Deductions are SQL `UPDATE … SET balance_nanos = balance_nanos - <nanos>`. There is no second column for "free vs paid," no replenishing bucket, no included-events quota. One number, drains over time, refills only when the user buys credits.
 
 ### 2.1 The starter grant
 
-Each new tenant receives a **one-time starter credit of 500 cents (USD $5)** at tenant-create time. The credit is inserted into `tenant_billing.balance_cents` synchronously when the tenant row is created. There is no replenish; the $5 is a one-time onboarding allowance, not a recurring stipend. Source of truth: `STARTER_CREDIT_CENTS` in `src/state/tenant_billing.zig`.
+Each new tenant receives a **one-time starter credit** at tenant-create time, named `STARTER_CREDIT_NANOS` in `src/state/tenant_billing.zig`. The credit is inserted into `tenant_billing.balance_nanos` synchronously when the tenant row is created. There is no replenish; it's a one-time onboarding allowance, not a recurring stipend. Read the source for the current dollar amount; it sits behind a pin test that fails if it drifts from the Mintlify display snippet.
 
-At platform rates the grant covers roughly three hundred typical Kimi K2.6 events (model retail rate × tokens + 1¢ overhead + 1¢ receive ≈ 3¢/event for an 800/1040-token diagnosis). At self-managed rates the grant covers roughly one thousand events (flat 1¢ stage, 0¢ receive). The exact ratio depends on per-model pricing in §10.
+Under self-managed the grant covers `STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_NANOS` stages flat. Under platform default the math depends on the model the tenant runs against, because the stage charge layers a per-token component on top of the flat platform overhead (see §4.2). The grant is sized so a new user comfortably covers a few thousand stages on either posture without thinking about top-ups.
 
 ### 2.2 What happens when the starter grant runs out
 
-When `balance_cents` cannot cover the next event's estimated cost, the gate trips. The event is dead-lettered with `failure_label='balance_exhausted'`. The CLI prints a one-line pointer at the dashboard billing page; the dashboard shows the empty-balance state. **Stripe-backed Purchase Credits is deferred to v2.1.** In v2.0, a user whose grant runs out either contacts us (manual top-up via support) or stops using the platform. The pricing model and the schema both anticipate Stripe — they just don't ship the integration in v2.0.
+When `balance_nanos` cannot cover the next event's estimated cost, the gate trips. The event is dead-lettered with `failure_label='balance_exhausted'`. The CLI prints a one-line pointer at the dashboard billing page; the dashboard shows the empty-balance state. **Stripe-backed Purchase Credits is deferred to v2.1.** In v2.0, a user whose grant runs out either contacts us (manual top-up via support) or stops using the platform. The pricing model and the schema both anticipate Stripe — they just don't ship the integration in v2.0.
 
 ### 2.3 Plan tiers
 
-There are no plan tiers in the cost function. The flat-rate `compute_receive_charge` and `compute_stage_charge` functions in §4 do not take a plan parameter. If we ever introduce paid plans (v2.1+), they will manifest as larger one-time grants, recurring Stripe charges that top up `balance_cents`, or volume discounts on per-event rates — but not as a branch inside `compute_charge`.
+There are no plan tiers in the cost function. The flat-rate `compute_receive_charge` and `compute_stage_charge` functions in §4 do not take a plan parameter. If we ever introduce paid plans (v2.1+), they will manifest as larger one-time grants, recurring Stripe charges that top up `balance_nanos`, or volume discounts on per-event rates — but not as a branch inside `compute_charge`.
 
 ---
 
 ## 3. The two debit points
 
-Every event triggers two debits, in this order, from the same `tenant_billing.balance_cents` column:
+Every event triggers two debits, in this order, from the same `tenant_billing.balance_nanos` column:
 
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
-| 1 | **Receive** | Right after `INSERT zombie_events (status='received')` and the gate passes | `compute_receive_charge(posture)` | Yes — platform receive > self-managed receive |
-| 2 | **Stage** | Right before `executor.startStage` is invoked | `compute_stage_charge(posture, model, in_tok, out_tok)` | Yes — platform is token-based; self-managed is flat |
+| 1 | **Receive** | Right after `INSERT zombie_events (status='received')` and the gate passes | `computeReceiveCharge(posture)` = `EVENT_NANOS` | No today — both postures use the same `EVENT_NANOS` constant. Function signature keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
+| 2 | **Stage** | Right before `executor.startStage` is invoked | `computeStageCharge(posture, model, in_tok, out_tok)` | Yes — platform: `STAGE_PLATFORM_NANOS` + per-token cost from the model-caps cache. self-managed: flat `STAGE_SELF_MANAGED_NANOS`. |
 
-Why two points and not one:
+Why two debit points and not one:
 
-- **Receive captures the orchestration cost of accepting the event.** Queue ingest, gate evaluation, telemetry row setup, persistence overhead. Even an event whose stage decides to do nothing useful (zero-tool-call response, agent declines) has cost us this overhead. We deduct for it regardless.
-- **Stage captures the cost of running NullClaw.** Under platform that's token rate × tokens (we paid Anthropic / OpenAI / Fireworks for the tokens). Under self-managed that's flat orchestration overhead (the user paid the provider; we did the executor RPC, the sandbox setup, the StageResult plumbing).
+- **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
+- **Stage captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the executor RPC, the sandbox setup, and the StageResult plumbing.
 
 Each debit produces its own row in `core.zombie_execution_telemetry` with a `charge_type` discriminator (`'receive'` or `'stage'`). One event → two telemetry rows. This is auditable: a quarterly question like "what fraction of last month's revenue came from receive overhead vs LLM markup" is a one-line SQL query.
 
@@ -65,9 +73,9 @@ The stage debit happens **before** `startStage` returns. We deduct on the conser
 
 ---
 
-## 4. `compute_receive_charge` and `compute_stage_charge`
+## 4. `computeReceiveCharge` and `computeStageCharge`
 
-Two functions, both in `src/state/tenant_billing.zig`. Both take `posture`. Neither takes plan.
+Two functions, both in `src/state/tenant_billing.zig`. Both take `posture`. Neither takes plan. Receive is posture-independent in the current rate table; the signature keeps `posture` so a future ratchet can re-introduce asymmetry without a fn-shape change.
 
 ### 4.0 Worked examples up front
 
@@ -78,86 +86,78 @@ Two events for John, taken at different points in his journey, drive the worked 
 
 ### 4.1 Receive charge
 
+Function shape:
+
 ```zig
 pub const Posture = enum { platform, self_managed };
 
-const EVENT_PLATFORM_CENTS: u32 = 1;   // platform-managed event ingest
-const EVENT_NANOS:     u32 = 0;   // self-managed ingest folded into stage overhead
-
-pub fn compute_receive_charge(posture: Posture) u32 {
-    return switch (posture) {
-        .platform => EVENT_PLATFORM_CENTS,
-        .self_managed     => EVENT_NANOS,
-    };
+pub fn computeReceiveCharge(posture: Posture) i64 {
+    _ = posture;
+    return EVENT_NANOS;
 }
 ```
 
-Receive is one cent under platform, zero cents under self-managed in v2.0. The asymmetry is deliberate: under self-managed the user is already paying for the LLM elsewhere, and we'd rather take our margin in one transparent place (the stage flat fee) than nickel-and-dime them across two debit points. Under platform we charge the receive cent because the bundled rate already presumes we're pricing the orchestration alongside inference; the receive cent is the separable orchestration share.
-
-The numbers are illustrative — see §10's caveat about pricing controversy. The function shape is what matters: posture-dependent, plan-independent, plumbed through `processEvent`.
+Receive is a single named constant, `EVENT_NANOS`, defined in `src/state/tenant_billing.zig`. Both postures currently resolve to the same value via this function; the `posture` parameter stays on the signature so a future ratchet can re-introduce asymmetry without touching callers. The function shape is what matters: posture-aware, plan-independent, plumbed through `processEvent`. Live value lives in the source — read it there; pin tests lock it.
 
 ### 4.2 Stage charge
 
-```zig
-const STAGE_CENTS: u32 = 10;   // executor RPC + sandbox + plumbing; flat across postures
+Function shape:
 
-pub fn compute_stage_charge(
+```zig
+pub fn computeStageCharge(
     posture:       Posture,
     model:         []const u8,        // "accounts/fireworks/models/kimi-k2.6", "kimi-k2.6", …
     input_tokens:  u32,
     output_tokens: u32,
-) u32 {
+) i64 {
     return switch (posture) {
         .platform => blk: {
-            const rate = lookup_model_rate(model) orelse @panic("unknown model");
-            const in_cents  = (rate.input_cents_per_mtok  * input_tokens)  / 1_000_000;
-            const out_cents = (rate.output_cents_per_mtok * output_tokens) / 1_000_000;
-            break :blk STAGE_CENTS + in_cents + out_cents;
+            const rate = model_rate_cache.lookup_model_rate(model) orelse
+                std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
+            const in_nanos  = @divTrunc(rate.input_nanos_per_mtok  * @as(i64, input_tokens),  1_000_000);
+            const out_nanos = @divTrunc(rate.output_nanos_per_mtok * @as(i64, output_tokens), 1_000_000);
+            break :blk STAGE_PLATFORM_NANOS + in_nanos + out_nanos;
         },
-        .self_managed => STAGE_CENTS,
+        .self_managed => STAGE_SELF_MANAGED_NANOS,
     };
 }
 ```
 
-Under platform: a fixed overhead (10¢) plus token cost driven by the per-model rates from the model-caps endpoint (§10). Under self-managed: just the overhead — flat 10¢ per stage, regardless of model or token count, because we did not pay for the tokens.
+Two named constants drive this — `STAGE_PLATFORM_NANOS` and `STAGE_SELF_MANAGED_NANOS`, defined in `src/state/tenant_billing.zig`. Under platform: the flat platform overhead plus a per-token component driven by the model-caps cache (§10). Under self-managed: the flat self-managed overhead, regardless of model or token count, because we did not pay for the tokens.
 
-`lookup_model_rate` reads from a process-local cache populated on API server start (and refreshed when the model-caps endpoint updates). The model-caps endpoint is the single source of truth; the API server caches it to keep `compute_stage_charge` synchronous and free of network calls in the hot path.
+The gradient between the two stage constants is the friction-reducing signal the marketing surface leans on: on-ramp on platform default without bringing a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. The specific ratio is asserted by pin tests in `tenant_billing_test.zig` + `ui/packages/website/src/lib/rates.test.ts` so a bump on either side surfaces immediately.
 
-`@panic("unknown model")` under platform is correct: a model that's not in the catalogue should never reach `processEvent` — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `compute_stage_charge` with an unknown model is an internal inconsistency; we want to crash the worker, alert, and investigate, not silently use a default.
+`lookup_model_rate` reads from a process-local cache populated on API server start (and refreshed when the model-caps endpoint updates). The model-caps endpoint is the single source of truth; the API server caches it to keep `computeStageCharge` synchronous and free of network calls in the hot path.
 
-### 4.3 Worked example — John under platform, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
+`std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach `processEvent` — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want to crash the worker, alert, and investigate, not silently use a default.
 
-> **Illustrative only.** The `{input, output}` cents-per-mtok values below are placeholders chosen to make the math read easily. The canonical rates live at the model-caps endpoint (§10) and change as upstream provider pricing moves. **Do not treat any number in this section as the contracted retail rate.** The contract is the *shape* of the math: `compute_stage_charge` reads cached rates by model id, multiplies by tokens, adds the platform overhead.
+### 4.3 What an event costs — by shape, not by number
 
-```
-compute_receive_charge(.platform)
-  = 1¢
+A worked example with hardcoded dollar amounts goes stale the moment a rate moves. Instead, here is the *cost shape* a caller can reason about without consulting the doc again after a rate ratchet:
 
-compute_stage_charge(.platform, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
-  rate ← lookup_model_rate(model)           // from cache, populated at API boot
-                                            // from the model-caps endpoint (§10)
-  // illustrative values: { input: 300, output: 1500 } cents per million
-  in_cents  = (rate.input  × 800)  / 1_000_000 = 0¢ (rounds to 0; under 1¢)
-  out_cents = (rate.output × 1040) / 1_000_000 = 1¢
-  = STAGE (10¢) + 0¢ + 1¢ = 11¢
-
-Total event cost: 1¢ + 11¢ = 12¢
-```
-
-### 4.4 Worked example — John under self-managed, accounts/fireworks/models/kimi-k2.6, 800 in / 1040 out
+**Platform posture, single event:**
 
 ```
-compute_receive_charge(.self_managed)
-  = 0¢
-
-compute_stage_charge(.self_managed, "accounts/fireworks/models/kimi-k2.6", 800, 1040)
-  posture is self-managed → no rate lookup, no token math
-  = STAGE (10¢)
-
-Total event cost: 0¢ + 10¢ = 10¢
+total_nanos = EVENT_NANOS                          // receive
+            + STAGE_PLATFORM_NANOS                 // flat platform overhead
+            + (input_tokens  × rate.input_nanos_per_mtok)  / 1_000_000
+            + (output_tokens × rate.output_nanos_per_mtok) / 1_000_000
 ```
 
-Same $5 starter grant, same model, same workload — different posture, different drain rate. Under platform John gets ~41 typical events on his $5 grant (12¢ each); under self-managed he gets 50 events (10¢ each). Worth more once token costs are non-trivial: the platform overhead stays at 10¢ but the per-token cents stack on top.
+The token component dominates as `input_tokens + output_tokens` grow; the flat overhead dominates on small stages. `rate` is the row for the active model in the model-caps cache (§10).
+
+**Self-managed posture, single event:**
+
+```
+total_nanos = EVENT_NANOS                          // receive
+            + STAGE_SELF_MANAGED_NANOS             // flat overhead, no token math
+```
+
+One named constant for each posture's flat overhead, one named constant for receive, one rate lookup for platform's token component. To learn the live dollar amounts: read the constants in `src/state/tenant_billing.zig`, the model-caps response for token rates, and `~/Projects/docs/snippets/rates.mdx` for the marketing display strings.
+
+### 4.4 Drain-rate envelope
+
+Same $5-class starter grant, same model, same workload — different posture, different drain rate, by design. Under self-managed the drain is `STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_NANOS` stages flat. Under platform the drain is bounded above by `STARTER_CREDIT_NANOS / STAGE_PLATFORM_NANOS` (when token component is zero) and below by `STARTER_CREDIT_NANOS / (STAGE_PLATFORM_NANOS + worst_case_tokens × rate)` (when the model is expensive and stages are long). The exact count moves as model rates and stage constants move; this doc deliberately doesn't quote a number that's wrong the moment we ratchet.
 
 ---
 
@@ -170,14 +170,14 @@ flowchart TD
     A([XREADGROUP unblocks]) --> B[INSERT zombie_events status=received]
     B --> C[Resolve posture<br/>tenant_provider.resolveActiveProvider]
     C --> D[Estimate event cost:<br/>receive + worst-case stage]
-    D --> E{balance_cents<br/>≥ estimate?}
+    D --> E{balance_nanos<br/>≥ estimate?}
     E -->|no| Block[UPDATE zombie_events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
     Block --> X1([XACK — terminal])
-    E -->|yes| F[DEDUCT RECEIVE<br/>UPDATE balance_cents -=<br/>compute_receive_charge<br/>INSERT telemetry charge_type=receive]
+    E -->|yes| F[DEDUCT RECEIVE<br/>UPDATE balance_nanos -=<br/>compute_receive_charge<br/>INSERT telemetry charge_type=receive]
     F --> G[Approval gate]
     G -->|blocked| Wait[gate_blocked until<br/>user resumes]
     G -->|pass| H[Resolve secrets_map]
-    H --> I[DEDUCT STAGE<br/>UPDATE balance_cents -=<br/>compute_stage_charge<br/>INSERT telemetry charge_type=stage]
+    H --> I[DEDUCT STAGE<br/>UPDATE balance_nanos -=<br/>compute_stage_charge<br/>INSERT telemetry charge_type=stage]
     I --> J[executor.createExecution<br/>+ startStage]
     J --> K[StageResult]
     K --> L[UPDATE zombie_events<br/>SET status=processed<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
@@ -186,10 +186,10 @@ flowchart TD
 
 Properties:
 
-- **Single-pass gate.** One `balance_cents < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the stage portion.
+- **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the stage portion.
 - **Two deductions, two telemetry rows, in transaction.** Receive deduct + telemetry insert is one transaction; stage deduct + telemetry insert is another. If the worker crashes between them, the receive-row is the durable record that the receive overhead was charged; on retry the gate re-runs and either passes (still in credit) or blocks (not enough left for the stage portion).
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
-- **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_cents < 0`, gate trips.
+- **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
 
 ---
 
@@ -198,7 +198,7 @@ Properties:
 When the gate blocks, the user's surfaces show:
 
 - **`zombiectl events {id}`** — the gate-blocked row appears with `status='gate_blocked'`, `failure_label='balance_exhausted'`. The CLI prints a one-line pointer: *Credits exhausted. See https://app.usezombie.com/settings/billing.*
-- **`zombiectl billing show`** — balance reads `0¢ ($0.00)`; below it, the most recent N event rows showing where the credits went.
+- **`zombiectl billing show`** — balance reads `$0.00`; below it, the most recent N event rows showing where the credits went.
 - **Dashboard `/zombies/{id}/events`** — the row renders with a red *Blocked: balance* chip linking to the billing page.
 - **Dashboard `/settings/billing`** — empty-balance hero state. The Purchase Credits button is visible but disabled in v2.0 with a tooltip *"Coming in v2.1 — contact support for a top-up."*. The Usage tab still shows the historical drain.
 
@@ -298,9 +298,9 @@ The single source of truth for model context caps **and per-model token rates**.
 
 - **Platform-managed context cap.** The install-skill reads the resolved cap via `zombiectl doctor --json`'s `tenant_provider` block; the platform-side resolver hardcodes the synth-default values for tenants with no `tenant_providers` row.
 - **self-managed context cap.** `zombiectl tenant provider set` calls the endpoint and writes the cap into `core.tenant_providers.context_cap_tokens`.
-- **Per-model token rates.** The API server reads the endpoint at boot and on a periodic refresh; `compute_stage_charge` consults the cached rates.
+- **Per-model token rates.** The API server reads the endpoint at boot and on a periodic refresh; `computeStageCharge` consults the cached rates.
 
-Endpoint shape (extended in M48 with token-rate columns). **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific cents-per-million figures change as upstream provider pricing moves and the admin-zombie reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
+Endpoint shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-zombie reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
 
 ```
 GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
@@ -312,15 +312,15 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
     {
       "id":                    "<model identifier as the provider expects it>",
       "context_cap_tokens":    <int — context window in tokens>,
-      "input_cents_per_mtok":  <int — retail rate per 1M input tokens, in cents>,
-      "output_cents_per_mtok": <int — retail rate per 1M output tokens, in cents>
+      "input_nanos_per_mtok":  <int — retail rate per 1M input tokens, in nanos>,
+      "output_nanos_per_mtok": <int — retail rate per 1M output tokens, in nanos>
     },
     …one row per supported model…
   ]
 }
 ```
 
-The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-zombie keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider set` validates membership, the API server caches all rates at boot, and the worked examples in §4 use illustrative values only (not pinned to whatever's live).
+The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-zombie keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider set` validates membership, the API server caches all rates at boot, and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
 
 The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their self-managed credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
 
@@ -341,13 +341,13 @@ The billing dashboard mirrors Amp's settings page in shape. Layout and what ship
 
 ### 11.1 Balance card
 
-- Large display: `$X.XX USD` (the balance_cents value formatted as dollars).
+- Large display: `$X.XX USD` (the balance_nanos value formatted as dollars).
 - Subtitle: `Covers all your zombie events.`
 - **Purchase Credits** button — present, **disabled in v2.0** with a tooltip *"Coming in v2.1 — contact support for a top-up."* The button moves to enabled in v2.1 once the Stripe integration ships.
 
 ### 11.2 Tabs — Usage / Invoices / Payment Method
 
-- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by zombie / time range. Each row shows event_id, zombie, timestamp, posture, model (under platform), tokens (under platform), receive cents, stage cents, total cents. Sortable and exportable to CSV.
+- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by zombie / time range. Each row shows event_id, zombie, timestamp, posture, model (under platform), tokens (under platform), receive nanos, stage nanos, total nanos (rendered as dollars via the website's `formatDollars` helper). Sortable and exportable to CSV.
 - **Invoices** (shipped as empty state in v2.0). Renders *"No invoices yet — invoicing arrives with Purchase Credits in v2.1."*
 - **Payment Method** (shipped as empty state in v2.0). Renders *"No payment method on file — coming in v2.1."*
 
@@ -358,7 +358,7 @@ Hidden entirely in v2.0. Re-introduced in v2.1 alongside Stripe.
 ### 11.4 What gets read by this page
 
 Everything on the page is sourced from rows the runtime already writes:
-- `core.tenant_billing.balance_cents` for the headline.
+- `core.tenant_billing.balance_nanos` for the headline.
 - `core.zombie_execution_telemetry` (filtered by tenant_id, with the `charge_type` discriminator) for the Usage tab.
 - No Stripe, no purchase tables, no invoicing tables — those land in v2.1.
 
@@ -372,14 +372,14 @@ One read-only subcommand in v2.0:
 zombiectl billing show [--limit N]
 ```
 
-Output:
+Output (shape — actual dollar columns reflect current rates):
 
 ```
-Tenant balance:    $4.71 (471¢)
+Tenant balance:    $X.XX
 Last 10 events drained credits:
-  EVENT_ID            POSTURE  MODEL                        IN_TOK  OUT_TOK  RECEIVE  STAGE  TOTAL
-  evt_01HXG2K4…       platform accounts/fireworks/models/kimi-k2.6              800    1040       1¢     2¢     3¢
-  evt_01HXG3M2…       self_managed accounts/.../kimi-k2.6         800    1320       0¢     1¢     1¢
+  EVENT_ID       POSTURE       MODEL                                IN_TOK  OUT_TOK  RECEIVE  STAGE     TOTAL
+  evt_01HXG2K4…  platform      accounts/fireworks/models/kimi-k2.6    800    1040    $0      $0.001…   $0.001…
+  evt_01HXG3M2…  self_managed  accounts/fireworks/models/kimi-k2.6    800    1320    $0      $0.0001   $0.0001
   …
 ⓘ Out of credits? See https://app.usezombie.com/settings/billing
    Or run zombiectl billing show --json | jq for machine-readable output.
@@ -395,7 +395,7 @@ When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) p
 
 - **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement, CLI subcommand if/when warranted.
 - **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
-- **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_cents`, not as branches in `compute_charge`.
+- **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in `compute_charge`.
 - **Refund-on-actual-tokens.** v3. Today the conservative estimate at stage-debit time is the charge; reconciling to actual tokens after `StageResult` would add bookkeeping for marginal accuracy gains.
 - **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3 — needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.

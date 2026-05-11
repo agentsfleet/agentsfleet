@@ -1,8 +1,10 @@
 # Scenario 01 — Default install, platform-managed key
 
-**Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time $10 starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
+**Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
-> **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time $10 grant. John in this scenario, John in Scenario 02 (after he flips to self-managed), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.
+> **Rate snapshot.** Cent-and-token arithmetic in steps 4–8 was authored against an earlier rate table ($10 starter, 1¢ receive, ~2¢ stage). Current values are different (smaller starter, free receive, sub-cent stage); the *flow* is unchanged. Authoritative source: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1.
+
+> **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time grant. John in this scenario, John in Scenario 02 (after he flips to self-managed), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.
 
 **Outcome under test:** From cold start (`zombiectl` not installed) to the first webhook-driven Slack diagnosis in under 10 minutes, with zero manual JSON-editing.
 
@@ -135,11 +137,11 @@ The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent` wa
 1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
 2. PUBLISH `zombie:{id}:activity` (`event_received`).
 3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
-4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_cents=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
-5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_cents = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
+4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_nanos=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
+5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
 6. Approval gate (no destructive tools wired in this zombie) → pass.
 7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map` — it travels separately from resolveActiveProvider's return value into `executor.startStage`.
-8. **Stage deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_cents = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
+8. **Stage deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
 9. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: <fetched from admin workspace vault via platform_llm_keys pointer>})`.
 10. `executor.startStage(execution_id, message=<webhook payload as text>)`.
 
@@ -154,7 +156,7 @@ Worker:
 - PUBLISH `event_complete`.
 - XACK.
 
-After this event: `balance_cents = 997`. Two telemetry rows (`charge_type='receive'` + `charge_type='stage'`), both with `posture='platform'`. The user reads the diagnosis in Slack; later opens `zombiectl events {id}` (or the dashboard) to see the full evidence trail and the per-charge-type breakdown.
+After this event: `balance_nanos = 997`. Two telemetry rows (`charge_type='receive'` + `charge_type='stage'`), both with `posture='platform'`. The user reads the diagnosis in Slack; later opens `zombiectl events {id}` (or the dashboard) to see the full evidence trail and the per-charge-type breakdown.
 
 ---
 

@@ -23,7 +23,7 @@ This workstream is founder-led, not agent-led. The "implementing agent" here is 
 Required reading before Week 1 outreach:
 
 1. `docs/architecture/office_hours_v2.md` Persona section (lines 36-40) — the explicit P1 + P2 personas and the SaaS-fatigue signal.
-2. `docs/architecture/high_level.md` §1 differentiation (3 pillars: OSS + BYOK + markdown-defined) — the actual claim being tested.
+2. `docs/architecture/high_level.md` §1 differentiation (3 pillars: open source + self-managed provider keys + markdown-defined) — the actual claim being tested.
 3. `docs/architecture/high_level.md` §5.1 platform-ops persona — what the zombie does in concrete terms.
 4. The author's existing E2E Networks SRE workflow notes (mental model only, not in repo) — Customer Zero's lived experience, source of credibility in outreach.
 
