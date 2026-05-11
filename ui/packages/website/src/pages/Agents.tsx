@@ -67,7 +67,7 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG>
+          <DisplayLG className="text-fluid-display-md">
             Bootstrap
           </DisplayLG>
           <Terminal label="Bootstrap commands" copyable className="max-w-wide">
@@ -92,7 +92,7 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG>
+          <DisplayLG className="text-fluid-display-md">
             Machine surface
           </DisplayLG>
           <Card className="font-mono text-mono">
@@ -112,7 +112,7 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG>
+          <DisplayLG className="text-fluid-display-md">
             API operations
           </DisplayLG>
           <Card className="p-0 overflow-x-auto">
@@ -145,7 +145,7 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG>
+          <DisplayLG className="text-fluid-display-md">
             Webhook ingest example
           </DisplayLG>
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
@@ -161,7 +161,7 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG>
+          <DisplayLG className="text-fluid-display-md">
             Safety limits
           </DisplayLG>
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
