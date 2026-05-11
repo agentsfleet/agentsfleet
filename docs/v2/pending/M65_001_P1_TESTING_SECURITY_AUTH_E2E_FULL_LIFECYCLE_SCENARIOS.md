@@ -80,7 +80,9 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 |------|--------|-----|
 | `ui/packages/app/tests/e2e/auth/signup-platformops-lifecycle.spec.ts` | CREATE | Scenario 1 — ephemeral signup → install → observe → bill → halt. DEV-only via `test.skip(isProdApi)` mirror of `signup.spec.ts`. |
 | `ui/packages/app/tests/e2e/auth/login-existing-zombie-lifecycle.spec.ts` | CREATE | Scenario 2 — persistent fixture login → seeded zombie → observe → bill → halt. Runs on both DEV and PROD. |
-| `ui/packages/app/tests/e2e/auth/fixtures/seed.ts` | EDIT | Add `seedPlatformOpsZombie(key, ws)` helper that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk (same path Scenario 1's CLI invocation uses) and seeds via the API. Centralised so both scenarios point at the canonical bundle. |
+| `ui/packages/app/tests/e2e/auth/fixtures/seed.ts` | EDIT | Add `seedPlatformOpsZombie(auth, ws)` helper that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk and seeds via the API. Widen `getDefaultWorkspaceId` + `seedPlatformOpsZombie` to accept `AuthHandle = { key: FixtureKey } \| { sessionJwt: string }` so Scenario 1's mid-test-minted JWT can drive the seed (the ephemeral signup user is NOT in `.fixture-jwts.json`). |
+| `ui/packages/app/tests/e2e/auth/fixtures/api-client.ts` | EDIT | Add `clientForJwt(sessionJwt)` thin constructor that reuses the existing request implementation. Routes the `{sessionJwt}` variant of `AuthHandle` without duplicating fetch/error logic. Existing `clientFor(key)` remains as the cache-backed default for persistent fixtures. |
+| `ui/packages/app/tests/e2e/auth/{_smoke,lifecycle,kill,multi-zombie,multi-workspace,settings-billing,events,logs-detail,install-zombie-seed,install-zombie-cli}.spec.ts` | EDIT | Migrate `getDefaultWorkspaceId(FIXTURE_KEY.regular)` call sites to `getDefaultWorkspaceId({ key: FIXTURE_KEY.regular })` in the same commit as the signature widening. RULE NLG — no parallel signature, no overload, no compat shim. |
 | `ui/packages/app/tests/e2e/auth/fixtures/lifecycle.ts` | CREATE | Shared selectors + action helpers: `stopZombie(page, id)`, `resumeZombie(page, id)`, `killZombie(page, id)`. Pulls the duplicated KillSwitch + ConfirmDialog wiring out of `lifecycle.spec.ts`/`kill.spec.ts` and the new scenarios. Eliminates the row of literal-duplicates the existing two specs have today (RULE UFS). |
 | `ui/packages/app/tests/e2e/auth/fixtures/_jwt-cache-location.test.ts` | CREATE | Vitest regression for WS-B #4 — asserts `.fixture-jwts.json` path is outside `playwright-auth-results/` and `playwright-auth-report/`. Runs in `make test`. |
 | `ui/packages/app/tests/e2e/auth/_smoke.spec.ts` | EDIT | WS-B #8 + #9 assertions: (a) resolved `@clerk/nextjs` major equals the pinned constant in `fixtures/constants.ts`; (b) on PROD only, `__clerk_db_jwt` cookie value parses as a real 3-segment JWT; (c) `freshPassword()` output length ≥ 16 chars (regression for Clerk password-policy tightening). |
@@ -162,7 +164,9 @@ Items #4, #7, #8, #9, #11 are `FIX_THIS_PR`. Everything else is dispositioned wi
 | 3 | OTP verification: fill `locator('input[autocomplete="one-time-code"]').first()` with `424242`, click Continue if visible. | URL no longer contains `/sign-up` or `/sign-in`. |
 | 4 | Landed on `/zombies` empty-state. | `getByText("usezombie")` OR a dashboard sentinel visible. WorkspaceSwitcher shows the auto-provisioned default workspace (existing `data-testid="workspace-switcher"` per `WorkspaceSwitcher.tsx`). |
 | 5 | The freshly-provisioned tenant has no zombies. `FirstInstallCard` renders with the CLI command. | `getByText(/zombiectl install --from/)` visible. |
-| 6 | Install the canonical `platform-ops` zombie via the API path (not the form, not the CLI — Scenario 1 asserts the **post-install dashboard state**, not the install mechanism, which is covered by `install-zombie-{cli,seed}.spec.ts`). Use a new `seedPlatformOpsZombie(key, ws)` helper in `fixtures/seed.ts` that reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk and POSTs to `/v1/workspaces/{ws}/zombies`. | New zombie id returned; `await page.goto('/zombies')` shows a row `data-state="live"`. |
+| 5a | **Mint an api-template JWT for the freshly-signed-up user** (the in-test signup does NOT populate `.fixture-jwts.json`, so `FixtureKey`-based clients cannot reach this user). Look up the Clerk user by the test-generated email via `findUserIdByEmail`, then call `attachJwt` from `clerk-admin.ts` to mint session + cookie JWTs. Bootstrap is NOT needed — Clerk's hosted SignUp flow already triggered the real `user.created` webhook to zombied, so the tenant + default workspace exist server-side. | Returns `{sessionJwt, cookieJwt, clerkUserId, sessionId}`. Track `sessionId` for `globalTeardown`-style revocation in `afterEach`. |
+| 5b | **Resolve the ephemeral user's default workspace ID** via `getDefaultWorkspaceId({sessionJwt})` (see Interfaces — the helper is widened to accept either a `FixtureKey` or a raw `{sessionJwt}`). | Non-empty `ws` returned; the dashboard's WorkspaceSwitcher in step 4 shows the same workspace. |
+| 6 | Install the canonical `platform-ops` zombie via the API path (not the form, not the CLI — Scenario 1 asserts the **post-install dashboard state**, not the install mechanism, which is covered by `install-zombie-{cli,seed}.spec.ts`). Call `seedPlatformOpsZombie({sessionJwt}, ws)` — reads `samples/platform-ops/{SKILL,TRIGGER}.md` from disk and POSTs to `/v1/workspaces/{ws}/zombies` using the mid-test JWT. | New zombie id returned; `await page.goto('/zombies')` shows a row `data-state="live"`. |
 | 7 | Open detail page `/zombies/{id}`. | `<LiveEventsPanel>` (the section M64_006 left rendering an inline truncated `<p>` instead of a dialog) renders with either the SSR empty-state OR a populated list. The spec asserts the **section scaffolding**, not the event payload — same downgrade M64_006 took for `events.spec.ts`. |
 | 8 | Navigate to `/settings/billing`. | `BillingBalanceCard` renders. The credit balance card shows the starter credit value. Purchase button is disabled (pre-v2.1). |
 | 9 | Return to detail page. Click `getByRole("button", { name: "Stop" }).first()`, confirm in `getByRole("alertdialog").getByRole("button", { name: "Stop" })`. | `/zombies` row `data-state` becomes `parked`. |
@@ -184,10 +188,11 @@ Items #4, #7, #8, #9, #11 are `FIX_THIS_PR`. Everything else is dispositioned wi
 
 | Step | Action | Assertion |
 |---|---|---|
-| 1 | `beforeEach`: `seedPlatformOpsZombie(FIXTURE_KEY.regular, ws)` returns `{id, name}`. | — |
-| 2 | `await signInAs(page, FIXTURE_KEY.regular)` (cookie-mount, no form). | — |
-| 3 | `page.goto('/zombies')` lands authenticated. | Existing row visible with `data-state="live"`. |
-| 4–11 | Same as Scenario 1 steps 7–11. | Same. |
+| 1 | `beforeEach`: resolve workspace — `const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular)`. | Non-empty workspace id. |
+| 2 | `beforeEach`: `seedPlatformOpsZombie(FIXTURE_KEY.regular, ws)` returns `{id, name}`. | — |
+| 3 | `await signInAs(page, FIXTURE_KEY.regular)` (cookie-mount, no form). | — |
+| 4 | `page.goto('/zombies')` lands authenticated. | Existing row visible with `data-state="live"`. |
+| 5–12 | Same as Scenario 1 steps 7–11 (and step 12 `afterEach` cleanup via `cleanWorkspaceZombies(FIXTURE_KEY.regular, ws)` — no Clerk user deletion, the fixture is persistent). | Same. |
 
 Selectors live in `fixtures/lifecycle.ts` so `lifecycle.spec.ts` + `kill.spec.ts` + Scenario 1 + Scenario 2 all share the same `stopZombie/resumeZombie/killZombie/expectRowState` helpers (RULE UFS — same literals appearing in four specs).
 
@@ -211,8 +216,19 @@ New TS helpers (signatures the implementation must NOT change without spec amend
 
 ```ts
 // fixtures/seed.ts (extension)
+
+// Auth handle: either a cached fixture key (Scenario 2 / persistent fixtures)
+// OR a mid-test-minted JWT (Scenario 1 ephemeral signup user, who is NOT in
+// the `.fixture-jwts.json` cache because they were created in-test).
+export type AuthHandle = { key: FixtureKey } | { sessionJwt: string };
+
+// Both helpers accept the union; the extending implementation routes
+// `key`-shaped handles through the existing `clientFor(key)` and
+// `sessionJwt`-shaped handles through a new `clientForJwt(sessionJwt)` thin
+// constructor in `api-client.ts`. No duplicated request logic.
+export async function getDefaultWorkspaceId(auth: AuthHandle): Promise<string>;
 export async function seedPlatformOpsZombie(
-  key: FixtureKey,
+  auth: AuthHandle,
   workspaceId: string,
 ): Promise<Zombie>;
 
@@ -226,6 +242,8 @@ export async function expectRowState(
   state: "live" | "parked" | "failed",
 ): Promise<void>;
 ```
+
+**Backwards-compatibility shim for the existing callers** (RULE NLG — pre-v2.0.0, no compat layer). The existing `getDefaultWorkspaceId(FIXTURE_KEY.regular)` call sites in `fixtures/seed.ts` and the eight existing specs are migrated **in the same commit** as the signature widening: `getDefaultWorkspaceId(FIXTURE_KEY.regular)` → `getDefaultWorkspaceId({ key: FIXTURE_KEY.regular })`. No overload, no parallel signature.
 
 ---
 
