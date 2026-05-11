@@ -27,7 +27,14 @@ vi.mock("lucide-react", () => ({
 import ModeRadio from "@/app/(dashboard)/settings/provider/components/ModeRadio";
 import ProviderKeyFields from "@/app/(dashboard)/settings/provider/components/ProviderKeyFields";
 import ProviderSelector from "@/app/(dashboard)/settings/provider/components/ProviderSelector";
+import { RadioGroup } from "@usezombie/design-system";
 import { PROVIDER_MODE } from "@/lib/types";
+
+// ModeRadio renders a Radix RadioGroupItem internally; render it inside a
+// RadioGroup at the test boundary to mirror the production composition.
+function inRadioGroup(children: React.ReactNode, value: string) {
+  return React.createElement(RadioGroup, { value, onValueChange: () => {} }, children);
+}
 
 const CRED = { name: "fw-key", created_at: "2026-04-30T00:00:00Z" } as const;
 const WORKSPACE_ID = "ws_provider_test";
@@ -44,13 +51,16 @@ afterEach(() => cleanup());
 describe("ModeRadio", () => {
   it("renders label + description and reflects checked state via data-active", () => {
     const { container } = render(
-      React.createElement(ModeRadio, {
-        value: PROVIDER_MODE.self_managed,
-        checked: true,
-        onChange: () => {},
-        label: "Use my own provider key",
-        description: "your provider, your key.",
-      }),
+      inRadioGroup(
+        React.createElement(ModeRadio, {
+          value: PROVIDER_MODE.self_managed,
+          checked: true,
+          onChange: () => {},
+          label: "Use my own provider key",
+          description: "your provider, your key.",
+        }),
+        PROVIDER_MODE.self_managed,
+      ),
     );
     expect(screen.getByText("Use my own provider key")).toBeTruthy();
     expect(container.querySelector("[data-active='true']")).toBeTruthy();
@@ -59,13 +69,16 @@ describe("ModeRadio", () => {
   it("fires onChange when the radio is clicked", () => {
     const onChange = vi.fn();
     render(
-      React.createElement(ModeRadio, {
-        value: PROVIDER_MODE.platform,
-        checked: false,
-        onChange,
-        label: "Platform-managed",
-        description: "we charge from your tenant balance.",
-      }),
+      inRadioGroup(
+        React.createElement(ModeRadio, {
+          value: PROVIDER_MODE.platform,
+          checked: false,
+          onChange,
+          label: "Platform-managed",
+          description: "we charge from your tenant balance.",
+        }),
+        PROVIDER_MODE.self_managed,
+      ),
     );
     fireEvent.click(screen.getByRole("radio"));
     expect(onChange).toHaveBeenCalledTimes(1);

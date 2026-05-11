@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2Icon } from "lucide-react";
-import { Alert, Button } from "@usezombie/design-system";
+import { Alert, Button, RadioGroup } from "@usezombie/design-system";
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";
@@ -85,20 +85,26 @@ export default function ProviderSelector({
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Mode
         </legend>
-        <ModeRadio
-          value={PROVIDER_MODE.platform}
-          checked={mode === PROVIDER_MODE.platform}
-          onChange={() => setMode(PROVIDER_MODE.platform)}
-          label="Platform-managed"
-          description="Zombie credits cover everything. Charged from your tenant balance per event."
-        />
-        <ModeRadio
-          value={PROVIDER_MODE.self_managed}
-          checked={isSelfManaged}
-          onChange={() => setMode(PROVIDER_MODE.self_managed)}
-          label="Use my own provider key"
-          description="Your provider account, your API key. We charge a flat per-event overhead."
-        />
+        <RadioGroup
+          value={mode}
+          onValueChange={(v) => setMode(v as ProviderMode)}
+          aria-label="Provider mode"
+        >
+          <ModeRadio
+            value={PROVIDER_MODE.platform}
+            checked={mode === PROVIDER_MODE.platform}
+            onChange={() => setMode(PROVIDER_MODE.platform)}
+            label="Platform-managed"
+            description="Zombie credits cover everything. Charged from your tenant balance per event."
+          />
+          <ModeRadio
+            value={PROVIDER_MODE.self_managed}
+            checked={isSelfManaged}
+            onChange={() => setMode(PROVIDER_MODE.self_managed)}
+            label="Use my own provider key"
+            description="Your provider account, your API key. We charge a flat per-event overhead."
+          />
+        </RadioGroup>
       </fieldset>
 
       {isSelfManaged ? (
