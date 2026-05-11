@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M66
 **Workstream:** 001
 **Date:** May 10, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — user-facing pricing change + breaking API rename + single canonical contact email; gates the marketing/economics shape for stealth-mode design partners.
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — single workstream, sequential sections.
-**Branch:** feat/m66-001-byok-retirement (created at CHORE(open))
+**Branch:** feat/m66-001-byok-retirement
 **Depends on:** none (M65 marketing rephrase work landed via PRs #310 and #311; this spec supersedes the M65 vocabulary split).
 
 **Canonical architecture:** `docs/architecture/billing_and_byok.md` (renamed to `billing_and_provider_keys.md` by §5 of this spec) §0 vocabulary preamble, §1 two postures, §2 pure-credits.
@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 2. **`ui/packages/website/src/lib/rates.ts`** — TS mirror of the Zig constants with `RATES_CENTS` / `RATES_DISPLAY` shape. **Mirror this:** the named-constant + paired `rates.test.ts` discipline. **Replace this:** drop `eventPlatform` / `eventByok` distinction; collapse to `event` since both modes price events at zero post-M66.
 3. **`~/Projects/docs/snippets/rates.mdx`** — Mintlify-side rate snippet. **Replace these values:** `STARTER_CREDIT = "$5"` (unchanged), `EVENT_RATE = "free"` (was `$0.01`), `STAGE_PLATFORM = "$0.001"`, `STAGE_SELF_MANAGED = "$0.0001"` (new key — two stage rates because the gradient between modes is the whole point). Role names must match Zig/TS exactly — see **Naming convention (cross-tier)** below.
 4. **`docs/architecture/billing_and_byok.md` §0 + §1**" — current two-posture model. **Mirror this:** the architecture-doc convention of explicit posture matrix + §0 vocabulary preamble. **Replace these:** every "BYOK" surface in §1, plus the file rename to `billing_and_provider_keys.md`. Internal historical-note preserves the BYOK lineage.
-5. **`docs/v2/done/M48_001_P1_API_CLI_UI_BYOK_PROVIDER.md`** — original spec that introduced the BYOK posture. **Read this:** to understand the data model, vault path, and `crypto_store.load()` flow that this spec deliberately preserves.
+5. **`docs/v2/done/M48_001_P1_API_CLI_UI_SELF_MANAGED_PROVIDER.md`** — original spec that introduced the BYOK posture. **Read this:** to understand the data model, vault path, and `crypto_store.load()` flow that this spec deliberately preserves.
 6. **`docs/v2/done/M51_001_P1_DOCS_SITE_REWRITE_AND_ARCH_CROSSREF.md`** + the `M51 follow-up` changelog entry — establishes the pre-v2.0 pattern for breaking-API removal (HTTP 404, no graceful 410). This spec follows the same posture for the schema-enum rename and CLI-flag rename.
 7. **`docs/REST_API_DESIGN_GUIDELINES.md`** §1 (URL design), §4 (error shapes), §10 (pre-PR gates) — the API value rename `mode: "byok"` → `mode: "self_managed"` lands a clean 4xx for the old value with a `replacement` hint per the error-registry pattern.
 
@@ -56,7 +56,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### Goal (testable)
 
-After this spec lands: (a) `grep -rn '\bBYOK\b' src/ ui/ zombiectl/ public/ docs/architecture/` returns zero hits in active source/copy (with named exemptions for the architecture-doc historical note and the `~/Projects/docs/changelog.mdx` archive); (b) `mode: "byok"` to `PUT /v1/tenants/me/provider` returns HTTP 400 with error code `UZ-PROVIDER-MODE-RENAMED` naming `self_managed` as the replacement; (c) `cat src/state/tenant_billing.zig | grep -E "STAGE_NANOS|EVENT_NANOS|STARTER_CREDIT_NANOS"` shows `STAGE_PLATFORM_NANOS = 1_000_000`, `STAGE_SELF_MANAGED_NANOS = 100_000`, `EVENT_NANOS = 0`, `STARTER_CREDIT_NANOS = 5_000_000_000`; (d) every literal `hello@usezombie.com` is gone from the repo, replaced by an import of a per-repo `SUPPORT_EMAIL` constant resolving to `usezombie@agentmail.to`.
+After this spec lands: (a) `grep -rn '\bBYOK\b' src/ ui/ zombiectl/ public/ docs/architecture/` returns zero hits in active source/copy (with named exemptions for the architecture-doc historical note and the `~/Projects/docs/changelog.mdx` archive); (b) `mode: "byok"` to `PUT /v1/tenants/me/provider` returns HTTP 400 via the generic `UZ-REQ-001` `ERR_INVALID_REQUEST` fall-through with body message `"mode must be 'platform' or 'self_managed'"` — pre-v2.0 RULE NLG (Session Notes #2) ruled out the earlier-drafted special-case `UZ-PROVIDER-MODE-RENAMED` branch; (c) `cat src/state/tenant_billing.zig | grep -E "STAGE_NANOS|EVENT_NANOS|STARTER_CREDIT_NANOS"` shows `STAGE_PLATFORM_NANOS = 1_000_000`, `STAGE_SELF_MANAGED_NANOS = 100_000`, `EVENT_NANOS = 0`, `STARTER_CREDIT_NANOS = 5_000_000_000`; (d) every literal `hello@usezombie.com` is gone from the repo, replaced by an import of a per-repo `SUPPORT_EMAIL` constant resolving to `usezombie@agentmail.to`.
 
 ### Problem
 
@@ -81,15 +81,23 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 
 | File | Action | Why |
 |---|---|---|
+| `schema/014_zombie_execution_telemetry.sql` | EDIT (in place) | Rename column `credit_deducted_cents BIGINT` → `credit_deducted_nanos BIGINT`. Same pre-v2.0 in-place edit as `017`. (See Discovery — original spec missed this.) |
 | `schema/017_tenant_billing.sql` | EDIT (in place) | Rename column `balance_cents` → `balance_nanos`. CHECK becomes `balance_nanos >= 0`. Update file-top comment to drop M65 cents prose. **No migration file, no `ALTER`** — pre-v2.0 clean break, dev DB reseeded via `make down && make up`. |
+| `schema/019_model_caps.sql` | EDIT (in place) | Rename `input_cents_per_mtok INTEGER` → `input_nanos_per_mtok BIGINT`, same for `output_*`. Type widens because `$30/M` tokens in nanos = `3e10`, beyond INT32 max. Update INSERT, ON CONFLICT clause, and any seed VALUES rows in the same file. (See Discovery.) |
+| `src/state/model_rate_cache.zig` | EDIT | Field rename `input_cents_per_mtok` → `input_nanos_per_mtok` (same for output); SQL column rename; cached struct + load() rebuilt. |
+| `src/state/zombie_telemetry_store.zig` (+ `_test.zig`) | EDIT | Field rename `credit_deducted_cents` → `credit_deducted_nanos`; SQL columns; struct fields; insert + load + test fixtures. |
+| `src/http/handlers/model_caps.zig` (+ `_integration_test.zig`) | EDIT | Wire-format rename `input_cents_per_mtok` → `input_nanos_per_mtok` (and output) in JSON serializer + `i32` → `i64` field types + integration-test assertions. (UI consumer in `ui/packages/app/` covered by the §3/§4 sweep.) |
+| `src/zombie/metering.zig` (+ `_test.zig`) | EDIT | Charge-amount field rename `cents` → `nanos` in MeterResult / dispatch; SQL bound params; test fixtures. |
+| `src/zombie/event_loop_writepath_integration_test.zig`, `src/state/signup_bootstrap_test.zig` | EDIT | SQL string updates for `balance_cents` column references. |
+| `src/config/balance_policy.zig`, `src/zombie/event_loop_types.zig` | EDIT (comment-only) | Comment updates from `balance_cents` → `balance_nanos`. |
 | `schema/020_tenant_providers.sql` | EDIT (in place) | Update file-top comment: `mode ∈ {platform, byok}` → `mode ∈ {platform, self_managed}`. The `mode` column is already `TEXT` (RULE STS — value enforcement lives in `src/state/tenant_provider.zig`), so no DDL change. Update the operator-query index comment from "list all BYOK tenants" to "list all self-managed tenants". |
 | `src/state/tenant_billing.zig` | EDIT | Constants renamed `_CENTS` → `_NANOS`, value set rebuilt from M66 rate table (not a value-preserving rescale). Drop `EVENT_BYOK_CENTS` and `EVENT_PLATFORM_CENTS` (collapsed into single `EVENT_NANOS = 0`). Drop single `STAGE_CENTS`; add posture-dispatched `STAGE_PLATFORM_NANOS = 1_000_000` and `STAGE_SELF_MANAGED_NANOS = 100_000`. `STARTER_CREDIT_NANOS = 5_000_000_000`. Column type stays `BIGINT` (i64). |
 | `src/state/tenant_billing_test.zig` | EDIT | Pin tests for all new constants. New negative test: parsing legacy `'byok'` string into `Mode` returns `error.UnknownMode`. |
 | `src/state/tenant_provider.zig` | EDIT | `Mode.byok` → `Mode.self_managed`. Update `displayName()`, `parse()`, every match arm. |
-| `src/http/handlers/tenant_provider.zig` | EDIT | Accept only `mode: "self_managed"` on input; reject `"byok"` with HTTP 400 + `UZ-PROVIDER-MODE-RENAMED`. Update response body. |
+| `src/http/handlers/tenant_provider.zig` | EDIT | Accept only `mode: "self_managed"` (or `"platform"`); any other value falls through the generic `ERR_INVALID_REQUEST` path (HTTP 400, `UZ-REQ-001`, body message `"mode must be 'platform' or 'self_managed'"`). No special-case `UZ-PROVIDER-MODE-RENAMED` branch — pre-v2.0 RULE NLG ruled out legacy-aware scaffolding (Session Notes #2). |
 | `src/zombie/executor.zig` | EDIT | Posture matching arms. |
 | `src/observability/scoped.zig` (or wherever scopes are declared) | EDIT | Log scope rename `byok_credential_*` → `self_managed_credential_*`. |
-| `src/errors/error_registry.zig` | EDIT | Add `UZ-PROVIDER-MODE-RENAMED` with `replacement: "self_managed"` hint. |
+| `src/errors/error_registry.zig` | NO EDIT (drift from earlier draft) | Earlier draft planned a `UZ-PROVIDER-MODE-RENAMED` registry entry. RULE NLG ruled it out: byok is rejected via the existing generic `UZ-REQ-001` path, not a dedicated retired-value-aware code. |
 | `src/config/contact.zig` | CREATE | `pub const SUPPORT_EMAIL: []const u8 = "usezombie@agentmail.to";` |
 | `src/config/contact_test.zig` | CREATE | Pin test asserting the exact string. |
 | `public/openapi.json` | EDIT | Rename enum value `byok` → `self_managed` in `TenantProviderMode` schema; bump example payloads. |
@@ -129,7 +137,7 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 
 ## Sections (implementation slices)
 
-### §1 — Nanos unit (clean break, pre-v2.0)
+### §1 — Nanos unit (clean break, pre-v2.0) — DONE (cbb23fac + 1cd35544)
 
 Switch the canonical billing unit from cents (`i64`) to **nanos (1/1,000,000,000 USD = 9 decimal places)**. Pre-v2.0 RULE NLG + Schema Removal Guard pre-v2.0 path → **edit the existing schema file in place; no migration script; no `ALTER`.**
 
@@ -166,7 +174,7 @@ Switch the canonical billing unit from cents (`i64`) to **nanos (1/1,000,000,000
 
 A renamed role triggers test failures in **all three** layers, not just one.
 
-### §2 — M66 traction rates
+### §2 — M66 traction rates — DONE (cbb23fac)
 
 Replace the M65 rate constants with M66 values. New constant set:
 - `STARTER_CREDIT_NANOS = 5_000_000_000` ($5)
@@ -178,21 +186,21 @@ Drop `EVENT_PLATFORM_CENTS`, `EVENT_BYOK_CENTS`, `STAGE_CENTS` (the single cross
 
 The platform/self-managed gradient is the friction-reducer: on-ramp on platform mode without bringing a key; graduate to self-managed for 10× cheaper stages once the user is serious. Document this in the `<Update>` block as a deliberate stealth-mode subsidy.
 
-### §3 — BYOK term retirement (every tier)
+### §3 — BYOK term retirement (every tier) — DONE (cbb23fac + d5d5b6ad)
 
 Rename in lockstep across schema, Zig, API wire format, TS, app components, CLI, architecture docs.
 
 **Implementation default:** use `git mv` for file renames to preserve history. **No DDL change for the `mode` column** — `core.tenant_providers.mode` is `TEXT` with app-side enforcement per RULE STS (see `schema/020_tenant_providers.sql:12-14` comment). Value-set drift lives entirely in `src/state/tenant_provider.zig`'s `Mode` enum + `parse()` function. The schema file's only edit is the prose comment switch from `byok` → `self_managed`. Dev DB reseed via `make down && make up`.
 
-**Clean break — no alias:** the API rejects `mode: "byok"` with HTTP 400 + `UZ-PROVIDER-MODE-RENAMED` (replacement hint = `"self_managed"`). The CLI rejects `--byok` with stderr message naming the new flag. Pre-v2.0 RULE NLG forbids legacy scaffolding.
+**Clean break — no alias:** the API rejects `mode: "byok"` with HTTP 400 via the existing generic `UZ-REQ-001` (`ERR_INVALID_REQUEST`) path, body message `"mode must be 'platform' or 'self_managed'"`. The CLI never accepted a `--byok` flag in this milestone's CLI shape (the verb is `tenant provider add --credential <name>`, posture is implicit on `add`). Pre-v2.0 RULE NLG forbids legacy scaffolding — including a dedicated retired-value error code that would only exist to soften the break. The generic fall-through is the break.
 
-### §4 — Website pricing surface fix
+### §4 — Website pricing surface fix — DONE (9bfcac54)
 
 Update `Pricing.tsx`, `FAQ.tsx`, `lib/rates.ts` to surface the new rates. Pricing card displays two stage rates side-by-side with the friction-reduction framing ("$0.001/stage on platform default, $0.0001/stage when you bring your own provider key — 10× cheaper to scale"). Drop the BYOK provider-list paragraph; the diagram below already names providers. Stealth-mode banner lands in the Pricing card itself (already shipped via PR #311; this section keeps it consistent with the new rates).
 
 **Introductory-rate framing:** the rate line carries a small subscript "stealth-mode testing rate — will rise post-GA" so future ratchets are expected behavior, not surprise price hikes.
 
-### §5 — Single canonical SUPPORT_EMAIL per repo
+### §5 — Single canonical SUPPORT_EMAIL per repo — DONE (32001911)
 
 Five new constant files (one per repo / package) all asserting `usezombie@agentmail.to`:
 - `src/config/contact.zig`
@@ -203,7 +211,7 @@ Five new constant files (one per repo / package) all asserting `usezombie@agentm
 
 Paired pin test in each repo asserts the exact string. Sweep replaces every `hello@usezombie.com` literal with the constant import. The org-profile README (`~/Projects/.github/profile/README.md`) carries a single literal (markdown can't import).
 
-### §6 — Documentation currency audit
+### §6 — Documentation currency audit — DONE (a9be55ed)
 
 Before merging, walk every spec under `docs/v2/done/` and grep-confirm:
 - `~/Projects/docs/` (Mintlify site) prose aligns with what shipped.
@@ -222,29 +230,26 @@ Any drift is either (a) fixed in this PR (mechanical wording fixes) or (b) filed
 **Before (M65):** request `{ "mode": "platform" | "byok", "credential_ref"?: string }`.
 **After (M66):** request `{ "mode": "platform" | "self_managed", "credential_ref"?: string }`.
 
-`mode: "byok"` returns:
+`mode: "byok"` (or any value other than `platform` / `self_managed`) returns the generic invalid-request response:
 ```
 HTTP/1.1 400 Bad Request
 Content-Type: application/problem+json
 
 {
-  "type": "https://docs.usezombie.com/errors/UZ-PROVIDER-MODE-RENAMED",
-  "title": "Provider mode 'byok' was renamed to 'self_managed'",
+  "type": "https://docs.usezombie.com/errors/UZ-REQ-001",
+  "title": "Invalid request",
   "status": 400,
-  "code": "UZ-PROVIDER-MODE-RENAMED",
-  "replacement": "self_managed"
+  "code": "UZ-REQ-001",
+  "detail": "mode must be 'platform' or 'self_managed'"
 }
 ```
 
-### CLI — `zombiectl tenant provider set`
+Earlier drafts of this spec called for a dedicated `UZ-PROVIDER-MODE-RENAMED` code carrying a `replacement` field hint. Pre-v2.0 RULE NLG (Session Notes #2) ruled it out — a retired-value-aware code is itself legacy scaffolding, and the generic fall-through is the clean break.
 
-**Before (M65):** `--byok <credential>` flag.
-**After (M66):** `--self-managed <credential>`. `--byok` → stderr error + exit 2:
+### CLI — `zombiectl tenant provider add`
 
-```
-zombiectl: --byok was renamed to --self-managed in M66.
-See https://docs.usezombie.com/zombies/credentials.
-```
+**Before (M65 draft):** the spec's earlier draft assumed a `--byok` flag on a `tenant provider set` verb. Neither existed in the shipped CLI; the verb is `tenant provider add --credential <name>` and the mode is implicit on the `add` action (`PROVIDER_MODE.self_managed`). No flag was renamed; the spec drift is documented in Session Notes #2.
+**After (M66):** unchanged. `zombiectl tenant provider add --credential <name>` is the supported surface.
 
 ### Schema — `core.tenant_providers.mode` and `billing.tenant_billing`
 
@@ -265,9 +270,9 @@ See https://docs.usezombie.com/zombies/credentials.
 
 | Mode | Cause | Handling | Test |
 |---|---|---|---|
-| Old client sends `mode: "byok"` | Pre-M66 SDK / cached client / curl from a runbook | HTTP 400 + `UZ-PROVIDER-MODE-RENAMED` with `replacement: "self_managed"`. No alias. | `test_provider_mode_byok_returns_400_with_replacement` |
-| TS Mode parser receives `"byok"` from API | Stale client cache / network race during cutover | Strict TypeScript union → parse error → toast. No silent coerce. | `test_mode_parser_rejects_byok` |
-| CLI --byok flag passed | User following old docs / shell history | Stderr error with replacement flag name; non-zero exit. | `test_cli_legacy_byok_flag_emits_error` |
+| Old client sends `mode: "byok"` | Pre-M66 SDK / cached client / curl from a runbook | HTTP 400 + `UZ-REQ-001` generic invalid-request, body says `mode must be 'platform' or 'self_managed'`. No alias, no dedicated retired-value code (per RULE NLG; see Session Notes #2). | Mode-parse rejection covered by `tenant_provider_test.zig` Mode-enum tests + the HTTP handler's branch coverage in the integration suite. |
+| TS Mode parser receives `"byok"` from API | Stale client cache / network race during cutover | Strict TypeScript union → parse error → toast. No silent coerce. | `provider-selector.test.ts` PROVIDER_MODE constants. |
+| CLI --byok flag passed | N/A — the flag never existed in this milestone's CLI | The CLI verb is `tenant provider add --credential <name>` with implicit `self_managed` posture; there is no `--byok` flag to reject. Earlier spec draft assumed otherwise. | n/a — spec drift documented in Session Notes #2. |
 | Dev DB still holds pre-M66 column shape after pulling this branch | Developer didn't reseed | Pre-v2.0 procedure: `make down && make up` after merge. Schema files are the source of truth; no migration runner. CI starts from clean Postgres so this only affects local dev. | n/a — documented in PR Session Notes; no test (clean-slate is the contract) |
 | Saved Grafana dashboards keyed on `byok_credential_*` log scopes | Log scope rename | Listed in Discovery; saved-search update is a follow-up doc-only change. Not blocking. | n/a — operational |
 | Architecture-doc intra-doc links broken after `git mv` | `[link](billing_and_byok.md)` references in peer docs | DOC READ GATE on `docs/architecture/**` catches unfixed links during execute; sweep listed in §3. | `test_arch_doc_links_resolve` (grep-based) |
@@ -281,9 +286,9 @@ See https://docs.usezombie.com/zombies/credentials.
 1. **No surface mentions BYOK except named exemptions.** Enforced by `make lint` step that greps `\bBYOK\b` against `src/`, `ui/`, `zombiectl/`, `public/`, `docs/architecture/` and asserts zero hits. Allowlist file lists the architecture-doc historical-note line and the docs-site changelog archive.
 2. **Both rate constants are pinned identically across Zig + TS.** Enforced by paired test asserting exact i64 values match.
 3. **`SUPPORT_EMAIL` is `usezombie@agentmail.to` everywhere.** Enforced by per-repo pin test asserting the exact string + `make lint` step grepping for `hello@usezombie.com` and asserting zero hits.
-4. **`mode` value-set is exactly `{platform, self_managed}` and lives in app code.** `core.tenant_providers.mode` stays `TEXT` (RULE STS — no static-string CHECKs). Enforced by `Mode.parse()` in `src/state/tenant_provider.zig` + the parse-fails-on-byok pin test.
-5. **`Mode.parse("byok")` returns `error.UnknownMode`.** Enforced by Zig pin test.
-6. **API responses always serialize `mode` as `"platform"` or `"self_managed"` — never `"byok"`.** Enforced by integration test on `GET /v1/tenants/me/provider`.
+4. **`mode` value-set is exactly `{platform, self_managed}` and lives in app code.** `core.tenant_providers.mode` stays `TEXT` (RULE STS — no static-string CHECKs). Enforced by string comparison in `src/http/handlers/tenant_provider.zig` (the JSON body's `mode` is matched against `"platform"` / `"self_managed"`; anything else falls through to `ERR_INVALID_REQUEST`). The Zig-side `Mode` enum holds the two variants for resolved-state representation, not for input parsing.
+5. **Input strings other than `"platform"` / `"self_managed"` return 400 via the generic invalid-request path.** Enforced by the HTTP handler's branch coverage. There is no dedicated `Mode.parse()` helper; the handler does the string comparison inline and reaches `ERR_INVALID_REQUEST` on any non-match.
+6. **API responses always serialize `mode` as `"platform"` or `"self_managed"` — never `"byok"`.** Enforced by the OpenAPI enum (`["platform","self_managed"]` at three sites in `public/openapi.json` and `public/openapi/paths/tenant-provider.yaml`).
 
 ---
 
@@ -296,15 +301,15 @@ See https://docs.usezombie.com/zombies/credentials.
 | `test_stage_platform_nanos_pinned` | `STAGE_PLATFORM_NANOS == 1_000_000` |
 | `test_stage_self_managed_nanos_pinned` | `STAGE_SELF_MANAGED_NANOS == 100_000` |
 | `test_compute_stage_charge_dispatches_on_posture` | `.platform` → 1_000_000 nanos, `.self_managed` → 100_000 nanos |
-| `test_mode_parse_self_managed_succeeds` | `Mode.parse("self_managed")` → `.self_managed` |
-| `test_mode_parse_byok_fails` | `Mode.parse("byok")` → `error.UnknownMode` |
+| ~~`test_mode_parse_self_managed_succeeds`~~ | Superseded — no `Mode.parse()` helper. Equivalent coverage: `tenant_provider_test.zig` "Mode label round-trips for both variants" + `resolveActiveProvider with self_managed row` (state-layer happy path). |
+| ~~`test_mode_parse_byok_fails`~~ | Superseded — rejection happens at the HTTP layer's string comparison, not via a `Mode.parse` helper. Covered by the handler's branch coverage in the integration suite. |
 | `test_schema_balance_nanos_column_exists` | Integration test: after `make up` from clean, `\d billing.tenant_billing` shows column `balance_nanos BIGINT NOT NULL` (and zero columns named `balance_cents`). |
 | `test_schema_no_byok_in_comments` | grep `\bbyok\b` in `schema/*.sql` returns 0 hits. |
-| `test_provider_mode_byok_returns_400_with_replacement` | `PUT /v1/tenants/me/provider` with `{"mode":"byok"}` → 400 + body `{"code":"UZ-PROVIDER-MODE-RENAMED","replacement":"self_managed"}` |
+| ~~`test_provider_mode_byok_returns_400_with_replacement`~~ | Superseded — implementation took the generic `UZ-REQ-001` fall-through path. Wire behavior: 400 + `code=UZ-REQ-001` + detail `"mode must be 'platform' or 'self_managed'"`. RULE NLG ruled out the special-case retired-value-aware code (Session Notes #2). |
 | `test_provider_mode_self_managed_accepted` | Same endpoint with `{"mode":"self_managed","credential_ref":"my-key"}` → 200 |
 | `test_provider_mode_response_never_emits_byok` | `GET /v1/tenants/me/provider` after a `self_managed` set → response.mode === "self_managed" |
-| `test_cli_legacy_byok_flag_emits_error` | `zombiectl tenant provider set --byok foo` → exit 2 + stderr names `--self-managed` |
-| `test_cli_self_managed_flag_works` | `zombiectl tenant provider set --self-managed foo` → exit 0 |
+| ~~`test_cli_legacy_byok_flag_emits_error`~~ | Superseded — the `--byok` flag never existed in this milestone's CLI shape; the verb is `tenant provider add --credential <name>`. Spec drift documented in Session Notes #2. |
+| `test_cli_self_managed_add_works` | `zombiectl tenant provider add --credential <name>` → exit 0, PUT body `{ mode: "self_managed", credential_ref: "<name>" }`. Covered by `zombiectl/test/tenant_provider.unit.test.js` (tests at L67–L95). |
 | `test_rates_pinned_zig` | `tenant_billing_test.zig` pins all four nanos constants. |
 | `test_rates_pinned_ts` | `rates.test.ts` pins TS mirror to identical values. |
 | `test_pricing_renders_two_stage_rates` | `Pricing.tsx` test asserts both `pricing-rate-stage-platform` and `pricing-rate-stage-self-managed` test IDs render with $0.001 / $0.0001 strings. |
@@ -386,11 +391,11 @@ echo "E10b: both Mode.parse pin tests should be PASS"
 grep -c '\bbyok\b' schema/*.sql
 echo "E10c: should print 0"
 
-# E11: API value rename
+# E11: API value rename — generic fall-through, no dedicated retired-value code
 curl -s -X PUT http://localhost:9090/v1/tenants/me/provider \
   -H "Content-Type: application/json" \
   -d '{"mode":"byok","credential_ref":"x"}' | jq -r '.code'
-echo "E11: should print UZ-PROVIDER-MODE-RENAMED"
+echo "E11: should print UZ-REQ-001 (generic ERR_INVALID_REQUEST; RULE NLG ruled out a dedicated retired-value code)"
 
 # E12: 350-line gate
 git diff --name-only origin/main | grep -v -E '\.md$|^vendor/' | \
@@ -435,11 +440,15 @@ echo "E13: should be empty"
 
 ## Discovery (consult log)
 
-(Empty at spec creation — populated as Legacy-Design Consult Guard, Architecture Consult, and other action-triggered guards fire during EXECUTE.)
+**§1 scope expansion (logged at EXECUTE entry, May 10):** the original Files-Changed table listed only `schema/017_tenant_billing.sql` for the cents → nanos unit change. Grep across `schema/` and `src/` surfaced two additional cents-typed schemas that must flip in the same commit to keep "canonical billing unit = nanos" honest:
 
-Expected entries:
+- `schema/014_zombie_execution_telemetry.sql` — `credit_deducted_cents BIGINT` → `credit_deducted_nanos BIGINT`. Consumed by `src/state/zombie_telemetry_store.zig` + tests + `src/zombie/metering.zig`.
+- `schema/019_model_caps.sql` — `input_cents_per_mtok INTEGER`, `output_cents_per_mtok INTEGER` → `input_nanos_per_mtok BIGINT`, `output_nanos_per_mtok BIGINT`. Type widens INTEGER → BIGINT because `$30/M tokens` in nanos = `3e10`, beyond `INT32_MAX` (~2.1e9). Consumed by `src/state/model_rate_cache.zig`, `src/http/handlers/model_caps.zig`, the model_caps integration test, and `src/state/tenant_billing.zig::computeStageCharge`.
+
+Without this expansion, `STAGE_PLATFORM_NANOS + in_cents + out_cents` would mix nanos and cents and produce nonsense charges. Spec body's Files-Changed table is amended in the same commit so the spec stays the source of truth.
+
+Expected further entries:
 - Inventory of `provider-byok-*` data-testid usage (out-of-repo e2e dependency check) before §3 begins.
-- Confirmation that `make down && make up` is the canonical reseed path on this dev environment (Schema Removal Guard pre-v2.0 procedure), captured before §1 lands.
 - Documentation drift findings from §6 audit; either fixed in PR or filed as follow-up specs.
 
 ---
@@ -457,21 +466,21 @@ Expected entries:
 
 ## Verification Evidence
 
-(Filled during VERIFY.)
-
 | Check | Command | Result | Pass? |
 |---|---|---|---|
-| Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
-| Lint | `make lint` | | |
-| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | | |
-| Memleak | `make memleak \| tail -3` | | |
-| Gitleaks | `gitleaks detect \| tail -3` | | |
-| 350L gate | `git diff --name-only origin/main \| ...` | | |
-| BYOK term sweep | `grep -rn '\bBYOK\b' ...` | | |
-| `hello@usezombie.com` sweep | `grep -rn 'hello@usezombie\.com' ...` | | |
-| Schema mode column shape (TEXT, not enum) | `psql -c "\d core.tenant_providers" \| grep -E '^ mode\s+\| text'` + `grep -c '\bbyok\b' schema/*.sql` | | |
-| OpenAPI enum | `jq '.components.schemas.TenantProviderMode.enum' public/openapi.json` | | |
+| Unit tests (Zig) | `make test` | 29/29 + skill evals green | ✅ |
+| Unit tests (website) | `cd ui/packages/website && bun run test` | 129/129 (18 files) | ✅ |
+| Unit tests (app) | `cd ui/packages/app && bun run test` | 357/357 (34 files) | ✅ |
+| Unit tests (zombiectl) | `cd zombiectl && bun test` | 567/567 (57 files) | ✅ |
+| Integration tests | `make test-integration` | full suite passed | ✅ |
+| Lint | `make lint` | all green (Zig, eslint, openapi bundle + schemas + url shape) | ✅ |
+| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both targets green | ✅ |
+| Gitleaks | `gitleaks detect` | 1715 commits scanned, no leaks | ✅ |
+| UFS audit | `bash scripts/audit-ufs.sh --diff` | 4 violations, all baseline / by-design (CHARGE_TYPE / PROVIDER_MODE / SELF_MANAGED_SENTINELS are Zig enums vs JS SCREAMING_SNAKE wrappers; RATES_DISPLAY is presentation-only) | ⚠ — see Session Notes |
+| BYOK term sweep | `grep -rn '\bBYOK\b' src/ ui/ zombiectl/ public/ docs/architecture/` | 1 hit — `Pricing.test.tsx` negative assertion verifying BYOK is absent from the rate card (intentional) | ✅ (assertion only) |
+| `hello@usezombie.com` sweep | `grep -rn 'hello@usezombie\.com' src/ ui/ zombiectl/ docs/ public/` | 0 hits in source/copy; remaining hits are in this spec body + the deleted handoff doc | ✅ |
+| Schema `mode` column shape (TEXT, not enum) | `grep -nE 'mode TEXT NOT NULL' schema/020_tenant_providers.sql` + `grep -c '\bbyok\b' schema/*.sql` | TEXT confirmed; 0 byok hits in schema | ✅ |
+| OpenAPI enum | `jq '.components.schemas.TenantProviderMode.enum' public/openapi.json` | `["platform","self_managed"]` | ✅ |
 
 ---
 
@@ -483,3 +492,49 @@ Expected entries:
 - **Public docs publishing of `UZ-PROVIDER-MODE-RENAMED` error code page on docs.usezombie.com.** Error registry update lands in this spec; the docs page lands in the paired docs PR's `<Update>` block.
 - **Currency / locale display formatting.** All rates render in USD; localization is future work.
 - **Volume-tier pricing or post-GA ratchet schedule.** Captured as a marketing/strategy decision; not in this spec.
+
+---
+
+## Session Notes (CHORE close)
+
+**Branch:** `feat/m66-001-byok-retirement` · **Commits:** `3db21927` → `a9be55ed` (10 commits, single workstream).
+
+**Decisions made during EXECUTE (cross-references to Discovery):**
+
+1. **§1 scope expansion to three schemas.** Original Files-Changed table listed only `schema/017_tenant_billing.sql`; grep surfaced `schema/014_zombie_execution_telemetry.sql` (`credit_deducted_cents` → `credit_deducted_nanos`) and `schema/019_model_caps.sql` (`input_cents_per_mtok`/`output_cents_per_mtok` → `input_nanos_per_mtok`/`output_nanos_per_mtok`, with type widen INTEGER → BIGINT because `$30/M tokens` in nanos overflows i32). Logged in commit `e9f4621a`.
+2. **No special-case retired-mode branch.** Initial §3 implementation had an `if (input.mode == "byok")` branch returning `UZ-PROVIDER-MODE-RENAMED`. Per RULE NLG pre-v2.0 (no legacy retention) the special-case branch was removed in the §3 tail; `mode: "byok"` now flows through the generic mode-not-recognized fall-through with a "mode must be one of: platform, self_managed" message. `UZ-PROVIDER-005` registry entry retired.
+3. **§4 pricing redesign — fix install button stretch.** Captain flagged the install CTA looked stretched in the rendered Pricing card. Root cause: `flex flex-col` Card stretches inline-flex Buttons. Fix: `self-start` on the Button (mirrors the existing `<Badge className="self-start">` precedent two children up).
+4. **§4 BILLED_FLOW realism.** Captain asked for concrete platform-ops cells instead of abstract "stage 1: reason · act". Refactored to: event = "deploy webhook fires", stage 1 = "read CI logs", stage 2 = "correlate commits", stage N = "post Slack diagnosis" — mirrors the install transcript on Hero.tsx.
+5. **§5 cross-tier `SUPPORT_EMAIL`.** Created per-repo named constants in Zig + 2× TS + JS plus the paired Mintlify snippet. Swept two `support@usezombie.com` literals from the dashboard (`BillingBalanceCard`, `ExhaustionBanner`) and three `usezombie@agentmail.to` literals from the website (`Pricing.tsx`, `Privacy.tsx`, `Terms.tsx`) into the constant. The org-profile README literal is kept per Captain's "skip .github/profile" decision.
+6. **§5 also fixed `ui/packages/app/package.json` test glob.** vitest's `lib/**/*.test.ts` pattern was silently skipping `lib/contact.test.ts` (no intermediate directory under `lib/`); script expanded to `lib/*.test.ts lib/**/*.test.ts`.
+7. **§6 architecture-doc depinning.** Captain's directive: "rate constants will keep changing; the docs shouldn't have to follow each ratchet." `docs/architecture/billing_and_provider_keys.md` rewrote shape-first — function signatures and constant *names* live in the doc, *values* live behind three authoritative sources (`tenant_billing.zig`, `snippets/rates.mdx`, the `model-caps.json` endpoint). Scenario walk-throughs (01_default_install, 03_balance_gate) got mechanical column-name fixes + "Rate snapshot" banners pointing readers at the canonical doc; the cent-by-cent arithmetic is preserved as instructional narrative rather than rewritten for the current rate table.
+8. **§6 broken cross-reference fix in pending spec.** `docs/v2/pending/M50_001_*.md` L26 cited "OSS + BYOK + markdown-defined" as the architecture's three pillars; `high_level.md` now reads "open source + self-managed provider keys + markdown-defined". Fixed inline so M50_001 reads against the current architecture state when it lands.
+
+**Assumptions surfaced and confirmed:**
+
+- **Sealed history stays.** `docs/v2/done/M48_001_*` keeps `STARTER_GRANT_CENTS = 1000`, `RECEIVE_PLATFORM_CENTS = 1`, etc. — those describe what shipped at that time. Same for M48-era changelog entries.
+- **Display strings ≠ domain constants.** `RATES_DISPLAY` map (TS) and `STAGE_PLATFORM`/`STAGE_SELF_MANAGED` (Mintlify) are presentation-layer; they don't get Zig mirrors. The cross-tier parity rule applies to domain integers (`STARTER_CREDIT_NANOS`, etc.), not their `$`-formatted display siblings.
+- **Mintlify changelog snippets are forward-only.** The May 9 (M65) entry imported `EVENT_RATE` / `STAGE_RATE` from `rates.mdx`; M66 rewrote those exports. To preserve the M65 entry's meaning, hardcoded `EVENT_RATE_M65 = "$0.01"` and `STAGE_RATE_M65 = "$0.10"` placeholders were defined at the import header and substituted only in the May 9 entry. Future changelog entries should hardcode their rate values inline rather than rely on snippet imports if they describe a state of the world that pre-dates the current rate table.
+
+**Dead ends / discarded approaches:**
+
+- **Adding `pub const RATES_DISPLAY` in Zig.** Considered as a way to clear the UFS-gate `RATES_DISPLAY absent-in-zig` violation. Rejected — Zig isn't a presentation runtime; the const would be dead code (NLR violation) and the cross-tier rule applies to domain values, not display strings.
+- **Filing `docs/architecture/billing_and_provider_keys.md` cent-numerics fix as a follow-up spec.** Initial plan was to file a follow-up. Switched to inline after Captain's "fix all drift inline in this PR" decision, then again to "depin from concrete values entirely" after Captain's mid-§6 guidance.
+
+**UFS-gate violations remaining (4):** all by design / baseline.
+
+| Violation | Why it persists |
+|---|---|
+| `CHARGE_TYPE absent-in-zig` | Zig holds this as enum `ChargeType` (PascalCase); JS exports SCREAMING_SNAKE wrapper. Audit's regex matches `pub const NAME`, not enum types. Pre-existing baseline since d5d5b6ad. |
+| `PROVIDER_MODE absent-in-zig` | Same shape: Zig `enum Mode`, JS `PROVIDER_MODE` SCREAMING_SNAKE. Pre-existing baseline. |
+| `SELF_MANAGED_SENTINELS absent-in-zig` | JS-only test fixture for the install-skill frontmatter substitution; no Zig analog by design. Pre-existing baseline. |
+| `RATES_DISPLAY absent-in-zig` | TS/JS display-strings map; no Zig analog by design (Zig isn't a presentation runtime). Introduced in §4; flagged as out-of-scope baseline rather than fixed. |
+
+**`/write-unit-test` outcome:** TBD — runs as the first step of CHORE(close) after this commit lands.
+**`/review` outcome:** TBD — runs after `/write-unit-test`.
+**`/review-pr` outcome:** TBD — runs after `gh pr create`.
+**`kishore-babysit-prs` outcome:** TBD — runs after every push.
+
+**Companion docs PR:** `usezombie/docs#feat/m66-001-byok-retirement-docs` (commit `11290fe`). Branch pushed; PR opens after this lead PR is up so the docs side cannot diverge.
+
+**Pre-push integration suite:** 1508/0 locally and on the pre-push hook each iteration. No state-pollution flake seen this session (Gotcha 13 from the resume handoff didn't recur).

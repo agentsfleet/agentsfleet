@@ -1,5 +1,5 @@
 //! Parse `BALANCE_EXHAUSTED_POLICY` env var. Drives the metering gate on a
-//! tenant whose `billing.tenant_billing.balance_cents` has hit zero.
+//! tenant whose `billing.tenant_billing.balance_nanos` has hit zero.
 
 const std = @import("std");
 const logging = @import("log");
@@ -9,7 +9,7 @@ const log = logging.scoped(.balance_policy);
 const ENV_VAR_NAME = "BALANCE_EXHAUSTED_POLICY";
 
 pub const Policy = enum {
-    /// Log + let the run proceed. Zero cents deducted.
+    /// Log + let the run proceed. Zero nanos deducted.
     @"continue",
     /// Same as `continue` plus a rate-limited activity event. Default.
     warn,

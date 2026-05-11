@@ -36,7 +36,7 @@ If a user can get the same value by opening Claude locally and asking "what shou
 Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
-- **Bring Your Own Key (BYOK).** Operators bring their own large-language-model provider key — Anthropic, OpenAI, Fireworks (which serves Kimi K2), Together AI, Groq, and others. The executor treats it as another secret resolved at the tool bridge. No vendor lock-in on inference cost. See [`billing_and_byok.md`](./billing_and_byok.md).
+- **Self-managed provider keys.** Operators bring their own large-language-model provider key — Anthropic, OpenAI, Fireworks (which serves Kimi K2), Together AI, Groq, and others. The executor treats it as another secret resolved at the tool bridge. No vendor lock-in on inference cost. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md).
 - **Markdown-defined.** Operational behaviour lives in `SKILL.md` + `TRIGGER.md`, not in a typed workflow engine. Iteration is editing prose, not redeploying code.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.usezombie.com` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.

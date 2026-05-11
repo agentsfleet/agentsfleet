@@ -1,15 +1,19 @@
 import { Badge, Button, Card, List, ListItem, SectionLabel } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupStarted } from "../analytics/posthog";
-import { RATES_DISPLAY, WORKED_EXAMPLE } from "../lib/rates";
+import { SUPPORT_EMAIL } from "../lib/contact";
+import { RATES_DISPLAY } from "../lib/rates";
 
 type FlowCell = { id: string; label: string; price: string; sub: string };
 
+// Concrete platform-ops run — what an end user actually sees when a
+// deploy webhook fires. Mirrors the install transcript on Hero.tsx;
+// "stage N" lands on the resolving step (Slack diagnosis posted).
 const BILLED_FLOW: FlowCell[] = [
-  { id: "event", label: "event", price: RATES_DISPLAY.eventPlatform, sub: "webhook · cron · steer" },
-  { id: "stage-1", label: "stage 1", price: RATES_DISPLAY.stage, sub: "reason · act" },
-  { id: "stage-2", label: "stage 2", price: RATES_DISPLAY.stage, sub: "reason · act" },
-  { id: "stage-n", label: "stage N", price: RATES_DISPLAY.stage, sub: "until resolved" },
+  { id: "event", label: "event", price: RATES_DISPLAY.EVENT_RATE, sub: "deploy webhook fires" },
+  { id: "stage-1", label: "stage 1", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "read CI logs" },
+  { id: "stage-2", label: "stage 2", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "correlate commits" },
+  { id: "stage-n", label: "stage N", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "post Slack diagnosis" },
 ];
 
 const EXTRAS: string[] = [
@@ -27,25 +31,46 @@ export default function Pricing() {
         <Card data-testid="pricing-rate-card" className="flex flex-col gap-5">
           <div className="flex flex-col gap-3">
             <Badge className="self-start font-mono">
-              → try free · {RATES_DISPLAY.starterCredit} starter credit, never expires
+              → try free · {RATES_DISPLAY.STARTER_CREDIT} starter credit, never expires
             </Badge>
+
             <p
               data-testid="pricing-rate-line"
               className="font-mono text-[clamp(28px,4vw,40px)] leading-[1.1] tracking-[-0.02em] font-medium text-text m-0 tabular-nums"
             >
-              <span data-testid="pricing-rate-event">{RATES_DISPLAY.eventPlatform}</span>{" "}
+              <span data-testid="pricing-rate-event">{RATES_DISPLAY.EVENT_RATE}</span>{" "}
               <span className="font-sans text-text-muted text-[18px] align-middle">per event receipt</span>
-              <span className="text-text-subtle"> · </span>
-              <span data-testid="pricing-rate-stage">{RATES_DISPLAY.stage}</span>{" "}
-              <span className="font-sans text-text-muted text-[18px] align-middle">per stage execution</span>
             </p>
+
+            <div data-testid="pricing-stage-rates" className="flex flex-col gap-1.5">
+              <p
+                className="font-mono text-[clamp(24px,3.4vw,34px)] leading-[1.1] tracking-[-0.02em] font-medium text-text m-0 tabular-nums flex flex-wrap items-baseline gap-x-3 gap-y-1"
+              >
+                <span data-testid="pricing-rate-stage-platform">{RATES_DISPLAY.STAGE_PLATFORM}</span>
+                <span className="font-sans text-text-muted text-[14px]">platform default</span>
+                <span className="text-text-subtle">·</span>
+                <span data-testid="pricing-rate-stage-self-managed">
+                  {RATES_DISPLAY.STAGE_SELF_MANAGED}
+                </span>
+                <span className="font-sans text-text-muted text-[14px]">self-managed</span>
+              </p>
+              <p className="font-sans text-[14px] leading-[1.55] text-text-muted m-0">
+                per stage execution — self-managed is 10× cheaper to scale once you bring your
+                own provider key.
+              </p>
+              <p
+                data-testid="pricing-introductory-rate-note"
+                className="font-mono text-[11px] uppercase tracking-[0.08em] text-text-subtle m-0"
+              >
+                stealth-mode testing rate — will rise post-GA
+              </p>
+            </div>
+
             <p className="font-sans text-[15px] leading-[1.6] text-text-muted m-0 max-w-[640px]">
-              A <span className="text-text">stage</span> is one reasoning step — the agent gathers
-              evidence, decides, or acts once, then either stops or continues into the next stage.
-              Most diagnoses resolve in 1–5 stages. BYOK on Anthropic, OpenAI, Fireworks,
-              Together, Groq, Moonshot — your provider bills you for tokens directly; usezombie
-              never marks up inference.
+              A <span className="text-text">stage</span> is one reasoning step. Most diagnoses
+              resolve in 1–5 stages.
             </p>
+
             <p
               data-testid="pricing-design-partner-note"
               className="font-sans text-[13px] leading-[1.55] text-pulse m-0 max-w-[640px]"
@@ -53,28 +78,16 @@ export default function Pricing() {
               Stealth-mode testing — APIs and behavior change without long deprecation windows.
               Want a hand calibrating a zombie or to join as a design partner? Email{" "}
               <a
-                href="mailto:usezombie@agentmail.to?subject=Design%20partner"
+                href={`mailto:${SUPPORT_EMAIL}?subject=Design%20partner`}
                 className="underline hover:text-text"
               >
-                usezombie@agentmail.to
+                {SUPPORT_EMAIL}
               </a>
               .
             </p>
           </div>
 
-          <p
-            data-testid="pricing-worked-example"
-            className="font-mono text-[14px] leading-[1.6] text-text-muted m-0 border-l-2 border-border pl-4"
-          >
-            {WORKED_EXAMPLE.events} events with {WORKED_EXAMPLE.stagesPerEvent} stages each ={" "}
-            {WORKED_EXAMPLE.events} × {RATES_DISPLAY.eventPlatform} +{" "}
-            {WORKED_EXAMPLE.events * WORKED_EXAMPLE.stagesPerEvent} × {RATES_DISPLAY.stage} ={" "}
-            <span className="text-text">{WORKED_EXAMPLE.total}</span>. Your{" "}
-            {RATES_DISPLAY.starterCredit} starter credit covers ~{WORKED_EXAMPLE.starterCoversEvents}{" "}
-            events at this shape.
-          </p>
-
-          <Button asChild>
+          <Button asChild className="self-start">
             <a
               href={APP_BASE_URL}
               data-testid="pricing-install-cta"
@@ -124,7 +137,7 @@ export default function Pricing() {
               underneath every stage — not on your usezombie bill
             </SectionLabel>
             <span className="font-mono text-[14px] text-text">
-              LLM call · BYOK · your bill
+              LLM call · your provider · your bill
             </span>
             <span className="font-sans text-[12px] leading-[1.5] text-text-muted">
               Anthropic · OpenAI · Fireworks · Together · Groq · Moonshot. Pay your provider

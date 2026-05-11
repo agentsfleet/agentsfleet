@@ -42,5 +42,5 @@ platform-only (set by the anomaly gate) and rejected if requested via API.
 - `critical`: `delete_zombie` — irreversible row + history purge; require double confirmation
 
 ## Revenue model
-BYOK (bring your own LLM API key) + credit-pool metering: $0.01 per event receipt and $0.10 per stage execution. New tenants get a $5 starter credit that never expires.
+self-managed (bring your own LLM API key) + credit-pool metering: $0.01 per event receipt and $0.10 per stage execution. New tenants get a $5 starter credit that never expires.
 usezombie never stores or marks up LLM provider costs.

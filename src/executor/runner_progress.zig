@@ -67,7 +67,7 @@ pub const Adapter = struct {
     /// continuation'"). Spec §6 wires this gap as observability + prose.
     stage_chunk_threshold: f32 = 0.0,
     /// L3 context-lifecycle: hard cap on input tokens for the resolved
-    /// model (M49 install-skill writes this into frontmatter; M48 BYOK
+    /// model (M49 install-skill writes this into frontmatter; M48 self-managed
     /// writes from the credential body). Required denominator for the
     /// fill ratio — when 0, L3 short-circuits (no ratio, no log).
     context_cap_tokens: u32 = 0,

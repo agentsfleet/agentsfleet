@@ -114,7 +114,7 @@ pub const ZombieConfig = struct {
     skill: ?[]const u8,
     // Opaque model identifier from `x-usezombie.model`. Pass-through: the
     // executor's ContextBudget.model carries it; nothing in this binary
-    // interprets it. Empty/null means "fall back to tenant_providers" (BYOK).
+    // interprets it. Empty/null means "fall back to tenant_providers" (self-managed).
     model: ?[]const u8,
     // Frontmatter overrides for the context budget knobs. Null means
     // "no `x-usezombie.context:` block authored — every knob is auto."

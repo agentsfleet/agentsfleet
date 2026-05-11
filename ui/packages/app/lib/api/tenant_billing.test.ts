@@ -12,12 +12,12 @@ describe("getTenantBilling", () => {
       ok: true,
       status: 200,
       json: async () => ({
-        balance_cents: 471, updated_at: 1, is_exhausted: false, exhausted_at: null,
+        balance_nanos: 4_710_000_000, updated_at: 1, is_exhausted: false, exhausted_at: null,
       }),
     });
     const { getTenantBilling } = await import("./tenant_billing");
     const res = await getTenantBilling("tok");
-    expect(res.balance_cents).toBe(471);
+    expect(res.balance_nanos).toBe(4_710_000_000);
   });
 
   it("throws ApiError on 500", async () => {

@@ -1,4 +1,5 @@
 import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
+import { SUPPORT_EMAIL } from "../lib/contact";
 import { RATES_DISPLAY } from "../lib/rates";
 
 /*
@@ -25,7 +26,7 @@ export default function Terms() {
       <p className="text-text-muted m-0">
         usezombie is an agent delivery control plane that processes specification queues into
         validated pull requests. The Service operates on your Git repositories using branch-based
-        state and BYOK (Bring Your Own Keys) model access.
+        state and self-managed (self-managed provider keys) model access.
       </p>
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">3. Your responsibilities</h2>
@@ -38,8 +39,8 @@ export default function Terms() {
 
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">4. Billing</h2>
       <List className="pl-6 text-text-muted m-0">
-        <ListItem>usezombie charges {RATES_DISPLAY.eventPlatform} per event receipt and {RATES_DISPLAY.stage} per stage execution. Each new account receives a {RATES_DISPLAY.starterCredit} starter credit that never expires.</ListItem>
-        <ListItem>Hosted execution is metered against a credit pool. Debits fire on event receipt and on each stage execution.</ListItem>
+        <ListItem>usezombie charges {RATES_DISPLAY.EVENT_RATE} per event receipt and {RATES_DISPLAY.STAGE_PLATFORM} per stage execution on platform default ({RATES_DISPLAY.STAGE_SELF_MANAGED} per stage on self-managed). Each new account receives a {RATES_DISPLAY.STARTER_CREDIT} starter credit that never expires. Stealth-mode testing rate — will rise post-GA.</ListItem>
+        <ListItem>Hosted execution is metered against a credit pool. Debits fire before each stage execution; event receipt is currently free.</ListItem>
         <ListItem>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</ListItem>
         <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via Mission Control.</ListItem>
       </List>
@@ -66,8 +67,8 @@ export default function Terms() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">8. Contact</h2>
       <p className="text-text-muted m-0">
         For questions about these terms, contact{" "}
-        <a href="mailto:usezombie@agentmail.to" className="text-pulse hover:underline">
-          usezombie@agentmail.to
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-pulse hover:underline">
+          {SUPPORT_EMAIL}
         </a>
         .
       </p>

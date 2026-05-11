@@ -23,7 +23,7 @@ pub const ResolveOutcome = union(enum) {
     /// Caller takes ownership of both fields and must free tenant_id with
     /// alloc.free and call resolved.deinit(alloc) before returning from run.
     resolved: struct { tenant_id: []u8, resolved: tenant_provider.ResolvedProvider },
-    /// User-fixable BYOK error: dead-letter the event and return.
+    /// User-fixable self-managed error: dead-letter the event and return.
     dead_letter: []const u8, // failure_label
     /// Operator-side or transient error: sleep + retry path.
     transient_err: void,
@@ -49,12 +49,12 @@ pub fn resolveTenantAndProvider(
 
     const resolved = tenant_provider.resolveActiveProvider(alloc, conn, tenant_id) catch |err| switch (err) {
         tenant_provider.ResolveError.CredentialMissing => {
-            log.warn("byok_credential_missing", .{ .zombie_id = session.zombie_id, .tenant_id = tenant_id, .event_id = event_id });
+            log.warn("self_managed_credential_missing", .{ .zombie_id = session.zombie_id, .tenant_id = tenant_id, .event_id = event_id });
             alloc.free(tenant_id);
             return .{ .dead_letter = rows.LABEL_PROVIDER_CREDENTIAL_MISSING };
         },
         tenant_provider.ResolveError.CredentialDataMalformed => {
-            log.warn("byok_credential_malformed", .{ .zombie_id = session.zombie_id, .tenant_id = tenant_id, .event_id = event_id });
+            log.warn("self_managed_credential_malformed", .{ .zombie_id = session.zombie_id, .tenant_id = tenant_id, .event_id = event_id });
             alloc.free(tenant_id);
             return .{ .dead_letter = rows.LABEL_PROVIDER_CREDENTIAL_MALFORMED };
         },

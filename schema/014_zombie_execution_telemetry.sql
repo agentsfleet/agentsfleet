@@ -16,7 +16,7 @@ CREATE TABLE zombie_execution_telemetry (
     charge_type              TEXT   NOT NULL,
     posture                  TEXT   NOT NULL,
     model                    TEXT   NOT NULL,
-    credit_deducted_cents    BIGINT NOT NULL DEFAULT 0,
+    credit_deducted_nanos    BIGINT NOT NULL DEFAULT 0,
     token_count_input        BIGINT NULL,
     token_count_output       BIGINT NULL,
     wall_ms                  BIGINT NULL,

@@ -3,6 +3,7 @@ import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import Home from "./Home";
 import { DOCS_QUICKSTART_URL } from "../config";
+import { RATES_DISPLAY } from "../lib/rates";
 
 function renderHome() {
   return render(
@@ -62,7 +63,7 @@ describe("Home", () => {
     renderHome();
     expect(screen.getByText(/core capabilities/i)).toBeInTheDocument();
     expect(screen.getByText("Markdown-defined")).toBeInTheDocument();
-    expect(screen.getByText("BYOK")).toBeInTheDocument();
+    expect(screen.getByText("Self-managed key")).toBeInTheDocument();
   });
 
   it("renders the install block", () => {
@@ -74,8 +75,13 @@ describe("Home", () => {
   it("embeds the Pricing block below How it works", () => {
     renderHome();
     expect(screen.getByTestId("pricing-block")).toBeInTheDocument();
-    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent("$0.01");
-    expect(screen.getByTestId("pricing-rate-stage")).toHaveTextContent("$0.10");
+    expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent(RATES_DISPLAY.EVENT_RATE);
+    expect(screen.getByTestId("pricing-rate-stage-platform")).toHaveTextContent(
+      RATES_DISPLAY.STAGE_PLATFORM,
+    );
+    expect(screen.getByTestId("pricing-rate-stage-self-managed")).toHaveTextContent(
+      RATES_DISPLAY.STAGE_SELF_MANAGED,
+    );
   });
 
   it("does not render a view-full-pricing link (pricing is inline)", () => {

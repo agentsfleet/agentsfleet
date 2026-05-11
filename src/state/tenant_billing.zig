@@ -8,25 +8,32 @@ const logging = @import("log");
 
 const log = logging.scoped(.state);
 
-pub const STARTER_CREDIT_CENTS: i64 = 500;
+/// Canonical nanos-per-USD conversion factor. 1 USD = 1_000_000_000 nanos
+/// (1 nano = 1/1,000,000,000 USD). Mirrors `NANOS_PER_USD` in
+/// `ui/packages/app/lib/types.ts` and `zombiectl/src/constants/billing.js`.
+pub const NANOS_PER_USD: i64 = 1_000_000_000;
+
+/// $5 starter grant in nanos.
+pub const STARTER_CREDIT_NANOS: i64 = 5 * NANOS_PER_USD;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 
-// Credit-pool cost model. Single rate, no tier branching — every tenant
-// pays $0.01 per event receipt and $0.10 per stage execution platform fee.
-// BYOK adds the user's direct token cost on top, billed by their provider.
+// Credit-pool cost model — M66 traction rates expressed in nanos.
+// Events are free both postures; stages cost $0.001 platform / $0.0001
+// self-managed. The 10× gradient between postures is the on-ramp signal:
+// platform mode is convenient, self-managed is cheap to scale.
 pub const Posture = tenant_provider.Mode;
 
-/// Receive-side per-event drain. Charged once per event after the balance
-/// gate passes. BYOK is free at receive (the user's own provider account
-/// pays for the LLM call); platform-managed pays a flat 1¢ overhead.
-pub const EVENT_PLATFORM_CENTS: i64 = 1;
-pub const EVENT_BYOK_CENTS: i64 = 0;
+/// Receive-side per-event drain. M66: zero, both postures.
+pub const EVENT_NANOS: i64 = 0;
 
-/// Stage-side platform fee, $0.10. Charged once per stage execution before
-/// the executor runs. Platform-managed adds the model-rate-based token
-/// charge on top; BYOK pays this fee only and the user's provider bills
-/// the token cost directly.
-pub const STAGE_CENTS: i64 = 10;
+/// Stage-side platform fee, $0.001 = 1M nanos. Charged once per stage
+/// execution before the executor runs under platform posture; the per-token
+/// model cost (also in nanos) is added on top.
+pub const STAGE_PLATFORM_NANOS: i64 = 1_000_000;
+
+/// Stage-side self-managed fee, $0.0001 = 100K nanos. The user's own provider
+/// account pays the token cost directly; we only charge the flat overhead.
+pub const STAGE_SELF_MANAGED_NANOS: i64 = 100_000;
 
 /// Conservative estimate floors used by the gate-time stage-cost projection
 /// (the executor doesn't know real token counts yet). The actual cost is
@@ -35,45 +42,44 @@ pub const ESTIMATE_FLOOR_INPUT_TOKENS: u32 = 100;
 pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: u32 = 100;
 
 pub const Billing = struct {
-    balance_cents: i64,
+    balance_nanos: i64,
     grant_source: []const u8,
     updated_at_ms: i64,
     exhausted_at_ms: ?i64,
 };
 
-pub const DebitResult = struct { balance_cents: i64, updated_at_ms: i64 };
+pub const DebitResult = struct { balance_nanos: i64, updated_at_ms: i64 };
 
 pub fn provision(
     conn: *pg.Conn,
     tenant_id: []const u8,
-    balance_cents: i64,
+    balance_nanos: i64,
     grant_source: []const u8,
 ) !void {
-    try store.insertIfAbsent(conn, tenant_id, balance_cents, grant_source);
-    log.info("tenant_billing_provisioned", .{ .tenant_id = tenant_id, .balance_cents = balance_cents, .source = grant_source });
+    try store.insertIfAbsent(conn, tenant_id, balance_nanos, grant_source);
+    log.info("tenant_billing_provisioned", .{ .tenant_id = tenant_id, .balance_nanos = balance_nanos, .source = grant_source });
 }
 
 /// Insert the one-time $5 starter grant for a new tenant. Called from the
 /// tenant-create transaction in signup_bootstrap. Idempotent via the
 /// underlying ON CONFLICT DO NOTHING.
 pub fn insertStarterGrant(conn: *pg.Conn, tenant_id: []const u8) !void {
-    return provision(conn, tenant_id, STARTER_CREDIT_CENTS, BOOTSTRAP_GRANT_SOURCE);
+    return provision(conn, tenant_id, STARTER_CREDIT_NANOS, BOOTSTRAP_GRANT_SOURCE);
 }
 
-/// Receive-side per-event charge. Posture-only; no token math.
+/// Receive-side per-event charge. M66: zero both postures.
 pub fn computeReceiveCharge(posture: Posture) i64 {
-    return switch (posture) {
-        .platform => EVENT_PLATFORM_CENTS,
-        .byok => EVENT_BYOK_CENTS,
-    };
+    _ = posture;
+    return EVENT_NANOS;
 }
 
-/// Stage-side per-event charge. Under platform-managed posture this is the
-/// flat overhead plus per-token cost looked up from model_rate_cache; under
-/// BYOK it's the flat overhead alone (token cost lands on the user's own
-/// provider bill). Panics under platform if `model` is missing from the
-/// cache — that condition should have been rejected upstream by the
-/// tenant-provider PUT validator and the install-skill frontmatter check.
+/// Stage-side per-event charge. Under platform posture this is the flat
+/// platform stage fee plus per-token cost looked up from model_rate_cache
+/// (both in nanos); under self_managed it's the flat self-managed fee
+/// alone (token cost lands on the user's own provider bill). Panics under
+/// platform if `model` is missing from the cache — that condition should
+/// have been rejected upstream by the tenant-provider PUT validator and
+/// the install-skill frontmatter check.
 pub fn computeStageCharge(
     posture: Posture,
     model: []const u8,
@@ -84,17 +90,17 @@ pub fn computeStageCharge(
         .platform => blk: {
             const rate = model_rate_cache.lookup_model_rate(model) orelse
                 std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
-            const in_cents = @divTrunc(rate.input_cents_per_mtok * @as(i64, input_tokens), 1_000_000);
-            const out_cents = @divTrunc(rate.output_cents_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk STAGE_CENTS + in_cents + out_cents;
+            const in_nanos = @divTrunc(rate.input_nanos_per_mtok * @as(i64, input_tokens), 1_000_000);
+            const out_nanos = @divTrunc(rate.output_nanos_per_mtok * @as(i64, output_tokens), 1_000_000);
+            break :blk STAGE_PLATFORM_NANOS + in_nanos + out_nanos;
         },
-        .byok => STAGE_CENTS,
+        .self_managed => STAGE_SELF_MANAGED_NANOS,
     };
 }
 
-pub fn debit(conn: *pg.Conn, tenant_id: []const u8, cents: i64) !DebitResult {
-    const r = try store.debit(conn, tenant_id, cents);
-    return .{ .balance_cents = r.balance_cents, .updated_at_ms = r.updated_at_ms };
+pub fn debit(conn: *pg.Conn, tenant_id: []const u8, nanos: i64) !DebitResult {
+    const r = try store.debit(conn, tenant_id, nanos);
+    return .{ .balance_nanos = r.balance_nanos, .updated_at_ms = r.updated_at_ms };
 }
 
 /// Atomically stamp `balance_exhausted_at` on the first CreditExhausted debit.
@@ -123,7 +129,7 @@ pub fn getBilling(
 ) !?Billing {
     const row = (try store.loadByTenant(conn, alloc, tenant_id)) orelse return null;
     return .{
-        .balance_cents = row.balance_cents,
+        .balance_nanos = row.balance_nanos,
         .grant_source = row.grant_source,
         .updated_at_ms = row.updated_at_ms,
         .exhausted_at_ms = row.exhausted_at_ms,

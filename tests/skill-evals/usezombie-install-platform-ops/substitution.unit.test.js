@@ -1,11 +1,11 @@
 // Substitution behaviour — the install-skill's step-8 contract codified
-// as deterministic tests. Covers platform-managed posture, BYOK sentinels,
+// as deterministic tests. Covers platform-managed posture, self-managed sentinels,
 // the empty-cron path, and the no-leftover-placeholders invariant.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PLATFORM_DEFAULTS, BYOK_SENTINELS,
+  PLATFORM_DEFAULTS, SELF_MANAGED_SENTINELS,
   readTemplate, substitute,
 } from "./substitute.js";
 
@@ -16,11 +16,11 @@ const FULL_VARS_PLATFORM = {
   ...PLATFORM_DEFAULTS,
 };
 
-const FULL_VARS_BYOK = {
+const FULL_VARS_SELF_MANAGED = {
   slack_channel: "#platform-ops",
   prod_branch_glob: "main",
   cron_schedule: "",
-  ...BYOK_SENTINELS,
+  ...SELF_MANAGED_SENTINELS,
 };
 
 test("template TRIGGER.md carries the doctor-sourced placeholders (model + cap)", () => {
@@ -47,8 +47,8 @@ test("substitute platform-default produces fully-substituted TRIGGER.md", () => 
   assert.match(out, /context_cap_tokens: 256000/);
 });
 
-test("substitute BYOK produces sentinel TRIGGER.md (empty model + zero cap)", () => {
-  const out = substitute(readTemplate("TRIGGER.md"), FULL_VARS_BYOK);
+test("substitute self-managed produces sentinel TRIGGER.md (empty model + zero cap)", () => {
+  const out = substitute(readTemplate("TRIGGER.md"), FULL_VARS_SELF_MANAGED);
   assert.match(out, /model: ""/);
   assert.match(out, /context_cap_tokens: 0/);
 });

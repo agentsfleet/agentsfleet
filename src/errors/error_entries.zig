@@ -196,8 +196,8 @@ pub const ENTRIES = [_]Entry{
     e("UZ-VAULT-002", .bad_request, "Credential data too large",
         "Stringified credential data exceeds 4KB. Compose the secret from fewer or shorter fields."),
     // ── PROVIDER (PUT /v1/tenants/me/provider) ───────────────────────────────
-    e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=byok",
-        "PUT body must include `credential_ref` naming a vault credential when `mode` is byok."),
+    e("UZ-PROVIDER-001", .bad_request, "credential_ref required when mode=self_managed",
+        "PUT body must include `credential_ref` naming a vault credential when `mode` is self_managed."),
     e("UZ-PROVIDER-002", .bad_request, "Credential row not found in vault",
         "The named credential_ref has no vault row in the tenant's primary workspace. " ++
         "Run `zombiectl credential set <name> --data @-` to create it."),

@@ -12,6 +12,7 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const bootstrap = @import("signup_bootstrap.zig");
 const store = @import("signup_bootstrap_store.zig");
 const base = @import("../db/test_fixtures.zig");
+const tenant_billing = @import("tenant_billing.zig");
 
 const COLLISION_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-b00000000003";
 const COLLISION_WORKSPACE_EXISTING = "0195b4ba-8d3a-7f13-8abc-b00000000004";
@@ -144,15 +145,15 @@ test "bootstrapPersonalAccount: fresh signup provisions tenant/user/membership/w
         try std.testing.expectEqualSlices(u8, "owner", try row.get([]const u8, 0));
     }
 
-    // Tenant billing row initialized at 500¢ starter credit (no plan tier).
+    // Tenant billing row initialized at STARTER_CREDIT_NANOS ($5 in nanos).
     {
         var q = PgQuery.from(try db_ctx.conn.query(
-            \\SELECT balance_cents, grant_source
+            \\SELECT balance_nanos, grant_source
             \\FROM billing.tenant_billing WHERE tenant_id = $1::uuid
         , .{result.tenant_id}));
         defer q.deinit();
         const row = (try q.next()) orelse return error.TestUnexpectedResult;
-        try std.testing.expectEqual(@as(i64, 500), try row.get(i64, 0));
+        try std.testing.expectEqual(tenant_billing.STARTER_CREDIT_NANOS, try row.get(i64, 0));
         try std.testing.expectEqualSlices(u8, "bootstrap_starter_grant", try row.get([]const u8, 1));
     }
 }
