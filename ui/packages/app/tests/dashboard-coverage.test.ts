@@ -712,6 +712,21 @@ describe("KillSwitch component", () => {
     );
     expect(stopZombieMock).not.toHaveBeenCalled();
   });
+
+  it("server action returning empty error string falls back to 'Failed to stop zombie' default", async () => {
+    setZombieStatusActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "",
+      status: 500,
+    });
+    const user = userEvent.setup();
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    await clickConfirmInDialog(user, /^stop$/i);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Failed to stop zombie/i),
+    );
+  });
 });
 
 // ── ZombiesList ────────────────────────────────────────────────────────────
@@ -806,6 +821,20 @@ describe("ZombiesList component", () => {
     await user.click(screen.getByRole("button", { name: /load more/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
+    );
+  });
+
+  it("loadMore: empty error string falls back to default message (covers `||` short-circuit)", async () => {
+    listZombiesActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "",
+      status: 500,
+    });
+    const user = userEvent.setup();
+    await renderList({ initialCursor: "cursor_1" });
+    await user.click(screen.getByRole("button", { name: /load more/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Failed to load more/),
     );
   });
 

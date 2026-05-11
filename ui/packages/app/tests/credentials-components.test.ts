@@ -251,6 +251,25 @@ describe("AddCredentialForm component", () => {
     );
   });
 
+  it("API error with empty string falls back to default message (covers `||` short-circuit)", async () => {
+    createCredentialActionMock.mockResolvedValue({
+      ok: false,
+      error: "",
+      status: 500,
+    });
+    const user = userEvent.setup();
+    await renderForm();
+    await user.type(screen.getByLabelText(/^name$/i), "fly");
+    await user.type(
+      screen.getByLabelText(/data \(json object\)/i),
+      '{{"host":"x"}',
+    );
+    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Failed to store credential/i)).toBeTruthy(),
+    );
+  });
+
   it("unauthenticated action result surfaces Not authenticated", async () => {
     createCredentialActionMock.mockResolvedValue({
       ok: false,

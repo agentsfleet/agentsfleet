@@ -39,13 +39,16 @@ test.describe("events page", () => {
 
     // Either empty-state or a populated list of event cards. Both are
     // legitimate outcomes for a fresh fixture; the assertion is that the
-    // section rendered — not whether events happened to exist.
+    // section rendered — not whether events happened to exist. Playwright's
+    // `.or()` locator returns whichever side appears first; using
+    // `Promise.race` here would leave the losing leg dangling until its
+    // timeout fires, which spawns a "Target closed" rejection during
+    // browser teardown.
     const emptyState = workspaceEvents.getByText(/no events yet/i);
     const populatedList = workspaceEvents.getByRole("article");
-    const eitherVisible = await Promise.race([
-      emptyState.waitFor({ state: "visible", timeout: 10_000 }).then(() => "empty"),
-      populatedList.first().waitFor({ state: "visible", timeout: 10_000 }).then(() => "populated"),
-    ]);
-    expect(["empty", "populated"]).toContain(eitherVisible);
+    await emptyState.or(populatedList.first()).waitFor({ state: "visible", timeout: 10_000 });
+    const isEmpty = await emptyState.isVisible();
+    const hasItems = await populatedList.first().isVisible();
+    expect(isEmpty || hasItems).toBe(true);
   });
 });

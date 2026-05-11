@@ -447,8 +447,19 @@ jobs:
 
   # ── 4b. Authenticated e2e against DEV ───────────────────────────────────
   # Mirrors the qa-dev structure but loads Clerk DEV credentials and runs
-  # the authenticated suite (tests/e2e/auth/**). Targets the deployed
-  # Vercel preview pointed at api-dev. Failures gate the notify step.
+  # the authenticated suite (tests/e2e/auth/**). Failures gate the notify
+  # step.
+  #
+  # `https://usezombie-app.vercel.app` is the dev-facing dashboard — the
+  # `usezombie-app` Vercel project's Production env has
+  # `NEXT_PUBLIC_API_URL=https://api-dev.usezombie.com` baked in (the
+  # production-customer dashboard lives behind the `app.usezombie.com`
+  # custom domain via a separate project). Same URL that `qa-dev` above
+  # uses for the unauthenticated smoke. The harness-side
+  # `NEXT_PUBLIC_API_URL` env below feeds the direct fixture-seeding
+  # fetch() calls (clerk-admin, bootstrap, api-client) — Next.js bakes
+  # `NEXT_PUBLIC_*` at build time, so this var doesn't steer the
+  # dashboard's API calls.
   auth-e2e-dev:
     runs-on: ubuntu-latest
     needs: verify-dev

@@ -93,14 +93,12 @@ export default function ProviderSelector({
           <ModeRadio
             value={PROVIDER_MODE.platform}
             checked={mode === PROVIDER_MODE.platform}
-            onChange={() => setMode(PROVIDER_MODE.platform)}
             label="Platform-managed"
             description="Zombie credits cover everything. Charged from your tenant balance per event."
           />
           <ModeRadio
             value={PROVIDER_MODE.self_managed}
             checked={isSelfManaged}
-            onChange={() => setMode(PROVIDER_MODE.self_managed)}
             label="Use my own provider key"
             description="Your provider account, your API key. We charge a flat per-event overhead."
           />

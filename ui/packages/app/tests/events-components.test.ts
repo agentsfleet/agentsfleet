@@ -246,6 +246,19 @@ describe("EventsList", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/Failed to load more events/),
     );
   });
+
+  it("loadMore (workspace scope) falls back to default message on empty error string", async () => {
+    listWorkspaceEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
+    renderList(
+      { items: [row()], next_cursor: "cur_y" },
+      { kind: "workspace", workspaceId: "ws_42" },
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: /load more|next/i }));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Failed to load more events/),
+    );
+  });
 });
 
 // ── LiveEventsPanel ────────────────────────────────────────────────────────

@@ -55,7 +55,6 @@ describe("ModeRadio", () => {
         React.createElement(ModeRadio, {
           value: PROVIDER_MODE.self_managed,
           checked: true,
-          onChange: () => {},
           label: "Use my own provider key",
           description: "your provider, your key.",
         }),
@@ -66,22 +65,30 @@ describe("ModeRadio", () => {
     expect(container.querySelector("[data-active='true']")).toBeTruthy();
   });
 
-  it("fires onChange when the radio is clicked", () => {
-    const onChange = vi.fn();
+  it("delegates click selection to the parent RadioGroup's onValueChange", () => {
+    const onValueChange = vi.fn();
     render(
-      inRadioGroup(
+      React.createElement(
+        RadioGroup,
+        {
+          defaultValue: PROVIDER_MODE.self_managed,
+          onValueChange,
+          "aria-label": "wrap",
+        },
         React.createElement(ModeRadio, {
           value: PROVIDER_MODE.platform,
           checked: false,
-          onChange,
           label: "Platform-managed",
           description: "we charge from your tenant balance.",
         }),
-        PROVIDER_MODE.self_managed,
       ),
     );
     fireEvent.click(screen.getByRole("radio"));
-    expect(onChange).toHaveBeenCalledTimes(1);
+    // ModeRadio no longer carries its own onClick; the parent's
+    // onValueChange owns selection. Asserting via the RadioGroup
+    // callback proves the delegation, not the redundant double-fire.
+    expect(onValueChange).toHaveBeenCalledWith(PROVIDER_MODE.platform);
+    expect(onValueChange).toHaveBeenCalledTimes(1);
   });
 });
 
