@@ -346,7 +346,21 @@ The harness mirrors production exactly: `cookieJwt` for cookie validation by `cl
 
 The Svix bootstrap step is the local-only stand-in for Clerk's real outbound webhook: real Clerk cannot reach `localhost:3000`, so the harness signs the same payload Clerk would have sent and POSTs it directly. The signature math is identical to what zombied's `webhook_sig` middleware would verify in production — `webhook_secret` is the shared key, the `user.created` payload shape mirrors `src/http/handlers/webhooks/clerk_integration_test.zig`. zombied cannot tell the difference.
 
-The local-zombied loop runs via `bun run test:e2e:auth:local` (forces `NEXT_PUBLIC_API_URL=http://localhost:3000`); the deployed-zombied loop runs the same harness against `api-dev.usezombie.com` from CI. No production-target invocation exists.
+The local-zombied loop runs via `bun run test:e2e:auth:local` (forces `NEXT_PUBLIC_API_URL=http://localhost:3000`); the deployed-zombied loop runs the same harness against `api-dev.usezombie.com` from CI (`auth-e2e-dev` job in `.github/workflows/deploy-dev.yml`). The PROD smoke (`auth-e2e-prod` in `.github/workflows/smoke-post-deploy.yml`) targets `api.usezombie.com` after every Vercel `usezombie-app` Production deploy — see "PROD fixture identity carve-out" below for what gets created in PROD Clerk and the security guarantees around it.
+
+### PROD fixture identity carve-out
+
+The PROD harness creates two fixture identities in Clerk PROD on first run, then reuses them across deploys. Operators viewing the Clerk PROD user list will see them — they are **expected, not anomalies**.
+
+| Item | Value | Notes |
+|---|---|---|
+| Email — regular fixture | `op://VAULT_PROD/e2e-fixtures/regular/email` (default `regular-fixture@mailinator.com` for DEV) | The CI job overrides via `AUTH_E2E_REGULAR_EMAIL`. Switch the vault item to a private-domain alias before enabling PROD runs if mailinator is unacceptable. |
+| Email — admin fixture | `op://VAULT_PROD/e2e-fixtures/admin/email` (default `admin-fixture@mailinator.com` for DEV) | Same override mechanism. |
+| Password | random per `provisionUser()` call (`crypto.randomBytes(32).toString("base64url")`) | **Not persisted.** The harness mints sessions through Clerk's admin API (`POST /v1/sessions/{id}/tokens`, authenticated by `CLERK_SECRET_KEY`); the user-password flow is never used by the harness. A stable password would be a meaningful attack surface (mailinator inbox is publicly readable) — random + discarded eliminates it. |
+| Clerk `publicMetadata` | `{ is_test_fixture: true, owner: "auth-e2e-suite", role: "regular" \| "admin" }` | Tag exists so prod ops dashboards can filter these identities out, and so a future Clerk webhook handler can refuse unsafe operations against fixture users. Backfilled on existing fixtures via `PATCH /users/{id}/metadata` in `ensureUser`. |
+| Tenant in zombied PROD | `core.tenants` row created by the Svix-signed `user.created` POST, same shape as a real signup | The fixture tenant accumulates real `tenant_billing.balance_nanos` (starts at the standard starter credit) and any state created by tests. Per-spec teardown deletes zombies; the tenant itself is reused across runs. |
+| `signup.spec.ts` against PROD | **skipped** (`test.skip(NEXT_PUBLIC_API_URL.includes('api.usezombie.com'))`) | Clerk PROD does not have test mode enabled, so the `+clerk_test@mailinator.com` short-circuit (DEV-only) would fail; running it would either hang on the verification screen or send a real OTP to a publicly-readable mailinator inbox. The DEV gate covers this spec instead. |
+| `.fixture-jwts.json` (cookieJwt cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-auth-report/` so it does not ride out in CI artifact uploads. The cookieJwt is a real Clerk session for ~1h; treat the cache file like a credential. |
 
 ### External-state runbook prerequisites
 
@@ -355,7 +369,7 @@ These two things live outside the repo and the harness assumes both are in place
 | Item | Where it lives | What it must look like | What fails if missing |
 |---|---|---|---|
 | `api` JWT template | Clerk DEV dashboard → JWT Templates → `api` | `aud=https://api.usezombie.com`; claims include `{ "metadata": "{{user.public_metadata}}" }` so Token B carries `tenant_id` + `role` | `mintTokens` returns Token B without metadata → every API call lands at 403 UZ-AUTH-001 ("Tenant context required") |
-| `regular-fixture@mailinator.com` + `admin-fixture@mailinator.com` | Clerk DEV → Users | Email matches, password matches the value in `clerk-admin.ts:FIXTURE_USERS` | `globalSetup` re-provisions them automatically (idempotent) — but only if Clerk's user-create endpoint accepts the password complexity |
+| `regular-fixture@…` + `admin-fixture@…` (default mailinator addresses; override via `AUTH_E2E_{REGULAR,ADMIN}_EMAIL`) | Clerk DEV → Users | Email matches; password is generated fresh per `provisionUser()` call and not persisted (the harness uses admin-API mint, not the user-password flow) | `globalSetup` re-provisions automatically (idempotent on email lookup); per-create random passwords mean Clerk's complexity policy must accept 32-byte base64url strings (~256 bits entropy, all printable) |
 
 The harness mounts a literal `__clerk_db_jwt = "fixture-dev-browser"` (non-JWT) — clerkMiddleware reads this cookie truthy-only today, no signature verification. If a future `@clerk/nextjs` upgrade hardens that check, the harness fails fast in test 5 (`signInAs … produces an accepted Clerk session`) before any spec runs — switch to a real dev-browser-token mint via Clerk's `/v1/dev_browser` endpoint at that point. Pin `@clerk/nextjs` to its current major version in `package.json` and re-validate `setupClerkTestingToken` behavior before each major upgrade.
 

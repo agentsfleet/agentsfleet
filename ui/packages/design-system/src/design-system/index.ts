@@ -55,6 +55,12 @@ export {
   type TabsContentProps,
 } from "./Tabs";
 export {
+  RadioGroup,
+  RadioGroupItem,
+  type RadioGroupProps,
+  type RadioGroupItemProps,
+} from "./RadioGroup";
+export {
   Accordion,
   AccordionItem,
   AccordionTrigger,

@@ -14,11 +14,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 006
 **Date:** May 11, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — M64_005 landed the auth harness (admin-mint cookie-direct sign-in) plus the install-{seed,cli} specs. The five lifecycle/dashboard specs the original plan called for and the W3 polish carry-over (RadioGroup primitive + zombiectl/website coverage uplift) are blocked on one piece of plumbing: making Clerk's client-side SDK aware of the fixture session. Until that's solved, every dashboard-interactive spec stays fixme. P1 (not P0) because the harness itself ships in M64_005 with clear FIXMEs; this milestone unblocks the deferred coverage and ships the W3 polish.
 **Categories:** TESTING
 **Batch:** B1 — depends only on M64_005 merged. No earlier work in this milestone gates it.
-**Branch:** TBD (set at CHORE(open))
+**Branch:** feat/m64-006-auth-e2e-continuation
 **Depends on:** M64_005 DONE; the existing cookie-mount harness in `ui/packages/app/tests/e2e/auth/`.
 
 **Canonical architecture:** `docs/AUTH.md` — Pattern 2 two-token model. M64_005 landed the SSR half; this milestone unblocks the client-interactive half.
@@ -77,7 +77,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `zombiectl/test/zombie-steer-fallback.unit.test.js` | NEW (Workstream D) | Cover `zombie_steer.js` poll-fallback + helpers. |
 | `zombiectl/test/workspace-helpers.unit.test.js` | NEW (Workstream D) | Cover `workspace.js` uncovered branches. |
 | `zombiectl/bunfig.toml` | EDIT (Workstream D) | Lift `coverageThreshold` to 95% line + 95% function after the Workstream-D writes land. |
-| `.github/workflows/deploy-dev.yml` | EDIT (gated) | Plug `bun run test:e2e:auth` into the post-deploy gate. **CLAUDE.md gates `.github/workflows/**` behind explicit user approval — confirm before editing.** |
+| `.github/workflows/deploy-dev.yml` | EDIT (gated) | Plug `bun run test:e2e:auth` into the post-deploy gate. **CLAUDE.md gates `.github/workflows/**` behind explicit user approval — Captain authorized in M64_006 handoff.** |
+| `.github/workflows/smoke-post-deploy.yml` | EDIT (gated) | Add `auth-e2e-prod` job that fires on Vercel `deployment_status: success` for the `usezombie-app` PROD environment. Uses `clerk-prod/{secret-key,webhook-secret}` from `VAULT_PROD`. **Captain authorized in M64_006 (May 11) — DEV + PROD smoke decision.** |
 
 ---
 
@@ -164,6 +165,10 @@ Independent of WS-A and WS-B. The three new zombiectl unit-test files lift `cli.
 
 - If WS-A path 2 (server actions) is chosen, the same refactor pattern applies to every `useAuth().getToken()` call site listed in M64_005's `fix(auth)` commit — picking off a few per PR keeps blast radius small.
 - `setupClerkTestingToken` (path 1) intercepts FAPI requests at the Playwright route layer. If a future spec drives Clerk's hosted UI for OAuth (GitHub sign-in), the interceptor needs to allow-list those upstream calls or the OAuth dance breaks.
+- **EventDetail dialog deferred.** The spec's `logs-detail.spec.ts` row called for "event-row click → `<Dialog>` payload preview". `components/domain/EventsList.tsx` renders an inline truncated `<p>` instead of opening a modal — the click-to-dialog feature is unbuilt. The spec was downgraded to assert the SSR + WakePulse + section scaffolding render. The EventDetail dialog should ship in a follow-up PR alongside the assertion that completes this spec line.
+- **Webhook-driven event seeding deferred.** `events.spec.ts` was authored to assert page render + empty-state OR populated-list, not "trigger via POST /v1/webhooks/{zombie_id}". The webhook handler requires a workspace credential keyed by `trigger.source` for HMAC verification, which the M64_005 fixture seeder does not provision. Adding credential seeding (Pattern 3 of the e2e harness) would unlock real event ingest in tests — natural follow-on once the EventDetail dialog lands.
+- **Multi-tenant admin fixture deferred.** Spec assumed admin had memberships in BOTH fixture tenants, but the M64_005 bootstrap only creates one tenant per Clerk user. `multi-workspace.spec.ts` instead seeds a second workspace inside the regular fixture's tenant via `POST /v1/workspaces` — same UI surface (`WorkspaceSwitcher` + `setActiveWorkspace`). Cross-tenant membership wiring (insert into `core.memberships`) is a one-Zig-helper add for a future milestone.
+- **`auth-e2e-prod` follow-up landed in this milestone.** Per Captain's May 11 decision, `smoke-post-deploy.yml` now branches off `auth-e2e-prod` when the `usezombie-app` PROD environment deploys, using `clerk-prod/{secret-key,webhook-secret}` from `VAULT_PROD`. Mirrors the DEV job, targets `https://api.usezombie.com`.
 
 ---
 

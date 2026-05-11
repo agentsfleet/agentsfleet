@@ -102,3 +102,29 @@ export async function listZombies(key: FixtureKey, workspaceId: string): Promise
   const res = await c.get<ListResp<Zombie>>(`/v1/workspaces/${workspaceId}/zombies`);
   return res.items;
 }
+
+export async function listWorkspaces(key: FixtureKey): Promise<Workspace[]> {
+  const c = clientFor(key);
+  const res = await c.get<ListResp<Workspace>>("/v1/tenants/me/workspaces");
+  return res.items;
+}
+
+interface CreateWorkspaceResp {
+  workspace_id: string;
+  name: string;
+}
+
+// POST /v1/workspaces — name is optional; server picks a Heroku-style name
+// when omitted. Used by multi-workspace.spec.ts to ensure the fixture user
+// has at least two workspaces for the WorkspaceSwitcher dropdown.
+export async function ensureSecondWorkspace(
+  key: FixtureKey,
+  desiredName: string,
+): Promise<Workspace> {
+  const existing = await listWorkspaces(key);
+  const match = existing.find((w) => (w.name ?? "") === desiredName);
+  if (match) return match;
+  const c = clientFor(key);
+  const resp = await c.post<CreateWorkspaceResp>("/v1/workspaces", { name: desiredName });
+  return { id: resp.workspace_id, name: resp.name };
+}

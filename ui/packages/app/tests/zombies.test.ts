@@ -772,7 +772,9 @@ describe("ZombieConfig interactions", () => {
   });
 
   it("delete flow: missing token blocks the call and surfaces an error", async () => {
-    getTokenFn.mockResolvedValueOnce(null);
+    // Server action mints the Bearer via `auth()` on @clerk/nextjs/server.
+    // Null getToken there is what the harness sees in the unauthenticated path.
+    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const { default: ZombieConfig } = await import(
       "../app/(dashboard)/zombies/[id]/components/ZombieConfig"
     );
@@ -961,7 +963,9 @@ describe("InstallZombieForm interactions", () => {
   });
 
   it("missing token surfaces Not authenticated", async () => {
-    getTokenFn.mockResolvedValueOnce(null);
+    // Server-side auth() returns no token → installZombieAction returns
+    // { ok: false, status: 401 }; the form surfaces it as the api-error alert.
+    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^Name$/), "platform-ops");

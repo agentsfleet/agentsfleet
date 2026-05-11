@@ -6,29 +6,16 @@ import userEvent from "@testing-library/user-event";
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
 const routerRefresh = vi.fn();
-const getTokenFn = vi.fn().mockResolvedValue("token_abc");
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh, push: vi.fn() }),
 }));
 
-vi.mock("@clerk/nextjs", () => ({
-  useAuth: () => ({ getToken: getTokenFn }),
-  useUser: () => ({ isLoaded: true, isSignedIn: true, user: null }),
-  ClerkProvider: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  UserButton: () => React.createElement("div", { "data-user-button": "1" }),
-  SignIn: () => React.createElement("div", { "data-sign-in": "1" }),
-  SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
-}));
-
-const listCredentialsMock = vi.fn();
-const createCredentialMock = vi.fn();
-const deleteCredentialMock = vi.fn();
-vi.mock("@/lib/api/credentials", () => ({
-  listCredentials: listCredentialsMock,
-  createCredential: createCredentialMock,
-  deleteCredential: deleteCredentialMock,
+const createCredentialActionMock = vi.fn();
+const deleteCredentialActionMock = vi.fn();
+vi.mock("@/app/(dashboard)/credentials/actions", () => ({
+  createCredentialAction: createCredentialActionMock,
+  deleteCredentialAction: deleteCredentialActionMock,
 }));
 
 // Use the real ConfirmDialog (for errorMessage rendering) and lucide stubs;
@@ -49,7 +36,6 @@ vi.mock("lucide-react", () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getTokenFn.mockResolvedValue("token_abc");
 });
 
 afterEach(() => cleanup());
@@ -86,26 +72,26 @@ describe("CredentialsList component", () => {
     expect(screen.getByText("2026-04-26T00:00:00Z")).toBeTruthy();
   });
 
-  it("happy path: click delete → confirm → deleteCredential called → router refresh", async () => {
-    deleteCredentialMock.mockResolvedValue(undefined);
+  it("happy path: click delete → confirm → deleteCredentialAction called → router refresh", async () => {
+    deleteCredentialActionMock.mockResolvedValue({ ok: true, data: undefined });
     const user = userEvent.setup();
     await renderList();
     await user.click(screen.getByLabelText(/Delete credential fly/i));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() =>
-      expect(deleteCredentialMock).toHaveBeenCalledWith("ws_1", "fly", "token_abc"),
+      expect(deleteCredentialActionMock).toHaveBeenCalledWith("ws_1", "fly"),
     );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
 
   it("delete failure surfaces errorMessage, dialog stays open", async () => {
-    deleteCredentialMock.mockRejectedValue(new Error("network down"));
+    deleteCredentialActionMock.mockResolvedValue({ ok: false, error: "network down" });
     const user = userEvent.setup();
     await renderList();
     await user.click(screen.getByLabelText(/Delete credential fly/i));
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
-    await waitFor(() => expect(deleteCredentialMock).toHaveBeenCalled());
+    await waitFor(() => expect(deleteCredentialActionMock).toHaveBeenCalled());
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/network down/),
     );
@@ -113,8 +99,12 @@ describe("CredentialsList component", () => {
     expect(routerRefresh).not.toHaveBeenCalled();
   });
 
-  it("missing token surfaces Not authenticated and does not call deleteCredential", async () => {
-    getTokenFn.mockResolvedValue(null);
+  it("unauthenticated action result surfaces Not authenticated and keeps the dialog open", async () => {
+    deleteCredentialActionMock.mockResolvedValue({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+    });
     const user = userEvent.setup();
     await renderList();
     await user.click(screen.getByLabelText(/Delete credential fly/i));
@@ -122,7 +112,6 @@ describe("CredentialsList component", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
     );
-    expect(deleteCredentialMock).not.toHaveBeenCalled();
   });
 
   it("cancel on dialog clears target without invoking delete", async () => {
@@ -132,11 +121,11 @@ describe("CredentialsList component", () => {
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(deleteCredentialMock).not.toHaveBeenCalled();
+    expect(deleteCredentialActionMock).not.toHaveBeenCalled();
   });
 
   it("error from a previous attempt clears when reopening for another credential", async () => {
-    deleteCredentialMock.mockRejectedValueOnce(new Error("boom"));
+    deleteCredentialActionMock.mockResolvedValueOnce({ ok: false, error: "boom" });
     const user = userEvent.setup();
     await renderList();
     await user.click(screen.getByLabelText(/Delete credential fly/i));
@@ -144,8 +133,6 @@ describe("CredentialsList component", () => {
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/boom/),
     );
-    // Cancel the failed dialog, then click another credential — the prior
-    // error must not leak into the new dialog.
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
     await user.click(screen.getByLabelText(/Delete credential slack/i));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
@@ -178,7 +165,7 @@ describe("AddCredentialForm component", () => {
       expect(screen.getByText(/Credential name is required/i)).toBeTruthy();
       expect(screen.getByText(/Credential data is required/i)).toBeTruthy();
     });
-    expect(createCredentialMock).not.toHaveBeenCalled();
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
   // `userEvent.type` interprets `{` and `[` as keyboard descriptors, so use
@@ -195,7 +182,7 @@ describe("AddCredentialForm component", () => {
     await waitFor(() =>
       expect(screen.getByText(/Invalid JSON:/i)).toBeTruthy(),
     );
-    expect(createCredentialMock).not.toHaveBeenCalled();
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
   it("submit with array JSON rejects (must be object)", async () => {
@@ -209,7 +196,7 @@ describe("AddCredentialForm component", () => {
     await waitFor(() =>
       expect(screen.getByText(/Data must be a JSON object/i)).toBeTruthy(),
     );
-    expect(createCredentialMock).not.toHaveBeenCalled();
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
   it("submit with empty object rejects (must have one field)", async () => {
@@ -223,11 +210,11 @@ describe("AddCredentialForm component", () => {
     await waitFor(() =>
       expect(screen.getByText(/Object must have at least one field/i)).toBeTruthy(),
     );
-    expect(createCredentialMock).not.toHaveBeenCalled();
+    expect(createCredentialActionMock).not.toHaveBeenCalled();
   });
 
-  it("happy path: createCredential called with parsed data, then router refresh", async () => {
-    createCredentialMock.mockResolvedValue({ name: "fly" });
+  it("happy path: createCredentialAction called with parsed data, then router refresh", async () => {
+    createCredentialActionMock.mockResolvedValue({ ok: true, data: { name: "fly" } });
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^name$/i), "fly");
@@ -237,19 +224,20 @@ describe("AddCredentialForm component", () => {
     );
     await user.click(screen.getByRole("button", { name: /store credential/i }));
     await waitFor(() =>
-      expect(createCredentialMock).toHaveBeenCalledWith(
+      expect(createCredentialActionMock).toHaveBeenCalledWith(
         "ws_1",
         { name: "fly", data: { host: "api.machines.dev", api_token: "T" } },
-        "token_abc",
       ),
     );
     await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
   });
 
   it("API error renders apiError below the form", async () => {
-    createCredentialMock.mockRejectedValue(
-      Object.assign(new Error("data too large"), { status: 400 }),
-    );
+    createCredentialActionMock.mockResolvedValue({
+      ok: false,
+      error: "data too large",
+      status: 400,
+    });
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^name$/i), "fly");
@@ -263,8 +251,31 @@ describe("AddCredentialForm component", () => {
     );
   });
 
-  it("missing token surfaces Not authenticated", async () => {
-    getTokenFn.mockResolvedValue(null);
+  it("API error with empty string falls back to default message (covers `||` short-circuit)", async () => {
+    createCredentialActionMock.mockResolvedValue({
+      ok: false,
+      error: "",
+      status: 500,
+    });
+    const user = userEvent.setup();
+    await renderForm();
+    await user.type(screen.getByLabelText(/^name$/i), "fly");
+    await user.type(
+      screen.getByLabelText(/data \(json object\)/i),
+      '{{"host":"x"}',
+    );
+    await user.click(screen.getByRole("button", { name: /store credential/i }));
+    await waitFor(() =>
+      expect(screen.getByText(/Failed to store credential/i)).toBeTruthy(),
+    );
+  });
+
+  it("unauthenticated action result surfaces Not authenticated", async () => {
+    createCredentialActionMock.mockResolvedValue({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+    });
     const user = userEvent.setup();
     await renderForm();
     await user.type(screen.getByLabelText(/^name$/i), "fly");
@@ -276,6 +287,5 @@ describe("AddCredentialForm component", () => {
     await waitFor(() =>
       expect(screen.getByText(/Not authenticated/i)).toBeTruthy(),
     );
-    expect(createCredentialMock).not.toHaveBeenCalled();
   });
 });
