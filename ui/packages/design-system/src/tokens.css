@@ -32,10 +32,14 @@
   --border: #23292e;
   --border-strong: #2e373e;
 
-  /* ── Text ── */
+  /* ── Text ──
+   * --text-subtle was #5C6469, which measured 3.23:1 against --bg
+   * (#0A0D0E) — below WCAG AA's 4.5:1 floor for normal text. Lifted to
+   * #7A8085 (4.88:1) so timestamps + CLI subtle output + tertiary
+   * eyebrow labels stay AA-compliant. Re-evaluate when --bg shifts. */
   --text: #e6eaec;
   --text-muted: #8b9398;
-  --text-subtle: #5c6469;
+  --text-subtle: #7a8085;
 
   /* ── The pulse — currency, never decoration ── */
   --pulse: #5eead4;
@@ -190,7 +194,10 @@
   --border-strong: #b7ae96;
   --text: #1a1d1e;
   --text-muted: #5a625f;
-  --text-subtle: #8a918a;
+  /* Light-mode --text-subtle was #8A918A which measured 2.99:1 against
+   * the warm parchment --bg (#F8F6F1) — below AA. Darkened to #67706B
+   * (4.73:1) so the same content reads at AA in both themes. */
+  --text-subtle: #67706b;
   --pulse: #14b8a6;
   --pulse-dim: #0d9488;
   --pulse-glow: rgba(20, 184, 166, 0.3);

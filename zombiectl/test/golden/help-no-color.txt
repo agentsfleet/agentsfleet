@@ -6,15 +6,15 @@ USAGE
   zombiectl [--api URL] [--json] <command> [args] [flags]
 
 USER COMMANDS
-  login [--timeout-sec N] [--poll-ms N] [--no-open]
-  logout
-  workspace add [<name>]
-  workspace list
-  workspace use <workspace_id>
-  workspace show [--workspace-id ID]
-  workspace credentials
-  workspace delete <workspace_id>
-  doctor
+  login [--timeout-sec N] [--poll-ms N] [--no-open]  Authenticate via browser
+  logout                      Clear stored credentials
+  workspace add [<name>]      Create a new workspace
+  workspace list              List workspaces
+  workspace use <workspace_id>  Set the active workspace
+  workspace show [--workspace-id ID]  Show workspace details
+  workspace credentials       Open the credential vault
+  workspace delete <workspace_id>  Delete a workspace (irreversible)
+  doctor                      Diagnose CLI configuration and connectivity
 
 AGENT COMMANDS
   agent add                   Mint an agent API key for the workspace

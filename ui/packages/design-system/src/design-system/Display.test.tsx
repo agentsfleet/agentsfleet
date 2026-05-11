@@ -9,19 +9,19 @@ describe("DisplayXL", () => {
     expect(screen.getByText("Hero headline")).toBeInTheDocument();
   });
 
-  it("applies the display-xl token (mono, fluid clamp, tight tracking)", () => {
+  it("applies the display-xl tokens (mono, fluid hero, tracking + leading)", () => {
     const { container } = render(<DisplayXL>X</DisplayXL>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("font-mono");
-    expect(cls).toContain("text-[clamp(40px,6vw,64px)]");
-    expect(cls).toContain("tracking-[-0.025em]");
-    expect(cls).toContain("leading-[1.05]");
+    expect(cls).toContain("text-fluid-hero");
+    expect(cls).toContain("tracking-display-xl");
+    expect(cls).toContain("leading-display-xl");
   });
 
   it("merges consumer className without dropping base utilities", () => {
-    const { container } = render(<DisplayXL className="max-w-[900px]">X</DisplayXL>);
+    const { container } = render(<DisplayXL className="max-w-narrow">X</DisplayXL>);
     const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("max-w-[900px]");
+    expect(cls).toContain("max-w-narrow");
     expect(cls).toContain("font-mono");
   });
 });
@@ -33,19 +33,19 @@ describe("DisplayLG", () => {
     expect(screen.getByText("Section heading")).toBeInTheDocument();
   });
 
-  it("applies the display-lg token (mono, fluid clamp, tight tracking)", () => {
+  it("applies the display-lg tokens (mono, fluid display-lg, tracking + leading)", () => {
     const { container } = render(<DisplayLG>X</DisplayLG>);
     const cls = (container.firstChild as HTMLElement).className;
     expect(cls).toContain("font-mono");
-    expect(cls).toContain("text-[clamp(28px,4vw,40px)]");
-    expect(cls).toContain("tracking-[-0.02em]");
-    expect(cls).toContain("leading-[1.15]");
+    expect(cls).toContain("text-fluid-display-lg");
+    expect(cls).toContain("tracking-display-lg");
+    expect(cls).toContain("leading-display-md");
   });
 
   it("merges consumer className without dropping base utilities", () => {
-    const { container } = render(<DisplayLG className="max-w-[640px]">X</DisplayLG>);
+    const { container } = render(<DisplayLG className="max-w-narrow">X</DisplayLG>);
     const cls = (container.firstChild as HTMLElement).className;
-    expect(cls).toContain("max-w-[640px]");
+    expect(cls).toContain("max-w-narrow");
     expect(cls).toContain("font-mono");
   });
 });
