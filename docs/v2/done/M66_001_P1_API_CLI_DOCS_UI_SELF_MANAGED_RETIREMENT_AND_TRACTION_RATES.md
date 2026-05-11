@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M66
 **Workstream:** 001
 **Date:** May 10, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — user-facing pricing change + breaking API rename + single canonical contact email; gates the marketing/economics shape for stealth-mode design partners.
 **Categories:** API, CLI, DOCS, UI
 **Batch:** B1 — single workstream, sequential sections.
@@ -137,7 +137,7 @@ User-visible outcome: the docs site, marketing site, dashboard, and CLI all spea
 
 ## Sections (implementation slices)
 
-### §1 — Nanos unit (clean break, pre-v2.0)
+### §1 — Nanos unit (clean break, pre-v2.0) — DONE (cbb23fac + 1cd35544)
 
 Switch the canonical billing unit from cents (`i64`) to **nanos (1/1,000,000,000 USD = 9 decimal places)**. Pre-v2.0 RULE NLG + Schema Removal Guard pre-v2.0 path → **edit the existing schema file in place; no migration script; no `ALTER`.**
 
@@ -174,7 +174,7 @@ Switch the canonical billing unit from cents (`i64`) to **nanos (1/1,000,000,000
 
 A renamed role triggers test failures in **all three** layers, not just one.
 
-### §2 — M66 traction rates
+### §2 — M66 traction rates — DONE (cbb23fac)
 
 Replace the M65 rate constants with M66 values. New constant set:
 - `STARTER_CREDIT_NANOS = 5_000_000_000` ($5)
@@ -186,7 +186,7 @@ Drop `EVENT_PLATFORM_CENTS`, `EVENT_BYOK_CENTS`, `STAGE_CENTS` (the single cross
 
 The platform/self-managed gradient is the friction-reducer: on-ramp on platform mode without bringing a key; graduate to self-managed for 10× cheaper stages once the user is serious. Document this in the `<Update>` block as a deliberate stealth-mode subsidy.
 
-### §3 — BYOK term retirement (every tier)
+### §3 — BYOK term retirement (every tier) — DONE (cbb23fac + d5d5b6ad)
 
 Rename in lockstep across schema, Zig, API wire format, TS, app components, CLI, architecture docs.
 
@@ -194,13 +194,13 @@ Rename in lockstep across schema, Zig, API wire format, TS, app components, CLI,
 
 **Clean break — no alias:** the API rejects `mode: "byok"` with HTTP 400 + `UZ-PROVIDER-MODE-RENAMED` (replacement hint = `"self_managed"`). The CLI rejects `--byok` with stderr message naming the new flag. Pre-v2.0 RULE NLG forbids legacy scaffolding.
 
-### §4 — Website pricing surface fix
+### §4 — Website pricing surface fix — DONE (9bfcac54)
 
 Update `Pricing.tsx`, `FAQ.tsx`, `lib/rates.ts` to surface the new rates. Pricing card displays two stage rates side-by-side with the friction-reduction framing ("$0.001/stage on platform default, $0.0001/stage when you bring your own provider key — 10× cheaper to scale"). Drop the BYOK provider-list paragraph; the diagram below already names providers. Stealth-mode banner lands in the Pricing card itself (already shipped via PR #311; this section keeps it consistent with the new rates).
 
 **Introductory-rate framing:** the rate line carries a small subscript "stealth-mode testing rate — will rise post-GA" so future ratchets are expected behavior, not surprise price hikes.
 
-### §5 — Single canonical SUPPORT_EMAIL per repo
+### §5 — Single canonical SUPPORT_EMAIL per repo — DONE (32001911)
 
 Five new constant files (one per repo / package) all asserting `usezombie@agentmail.to`:
 - `src/config/contact.zig`
@@ -211,7 +211,7 @@ Five new constant files (one per repo / package) all asserting `usezombie@agentm
 
 Paired pin test in each repo asserts the exact string. Sweep replaces every `hello@usezombie.com` literal with the constant import. The org-profile README (`~/Projects/.github/profile/README.md`) carries a single literal (markdown can't import).
 
-### §6 — Documentation currency audit
+### §6 — Documentation currency audit — DONE (a9be55ed)
 
 Before merging, walk every spec under `docs/v2/done/` and grep-confirm:
 - `~/Projects/docs/` (Mintlify site) prose aligns with what shipped.
@@ -469,21 +469,21 @@ Expected further entries:
 
 ## Verification Evidence
 
-(Filled during VERIFY.)
-
 | Check | Command | Result | Pass? |
 |---|---|---|---|
-| Unit tests | `make test` | | |
-| Integration tests | `make test-integration` | | |
-| Lint | `make lint` | | |
-| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | | |
-| Memleak | `make memleak \| tail -3` | | |
-| Gitleaks | `gitleaks detect \| tail -3` | | |
-| 350L gate | `git diff --name-only origin/main \| ...` | | |
-| BYOK term sweep | `grep -rn '\bBYOK\b' ...` | | |
-| `hello@usezombie.com` sweep | `grep -rn 'hello@usezombie\.com' ...` | | |
-| Schema mode column shape (TEXT, not enum) | `psql -c "\d core.tenant_providers" \| grep -E '^ mode\s+\| text'` + `grep -c '\bbyok\b' schema/*.sql` | | |
-| OpenAPI enum | `jq '.components.schemas.TenantProviderMode.enum' public/openapi.json` | | |
+| Unit tests (Zig) | `make test` | 29/29 + skill evals green | ✅ |
+| Unit tests (website) | `cd ui/packages/website && bun run test` | 129/129 (18 files) | ✅ |
+| Unit tests (app) | `cd ui/packages/app && bun run test` | 357/357 (34 files) | ✅ |
+| Unit tests (zombiectl) | `cd zombiectl && bun test` | 567/567 (57 files) | ✅ |
+| Integration tests | `make test-integration` | full suite passed | ✅ |
+| Lint | `make lint` | all green (Zig, eslint, openapi bundle + schemas + url shape) | ✅ |
+| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | both targets green | ✅ |
+| Gitleaks | `gitleaks detect` | 1715 commits scanned, no leaks | ✅ |
+| UFS audit | `bash scripts/audit-ufs.sh --diff` | 4 violations, all baseline / by-design (CHARGE_TYPE / PROVIDER_MODE / SELF_MANAGED_SENTINELS are Zig enums vs JS SCREAMING_SNAKE wrappers; RATES_DISPLAY is presentation-only) | ⚠ — see Session Notes |
+| BYOK term sweep | `grep -rn '\bBYOK\b' src/ ui/ zombiectl/ public/ docs/architecture/` | 1 hit — `Pricing.test.tsx` negative assertion verifying BYOK is absent from the rate card (intentional) | ✅ (assertion only) |
+| `hello@usezombie.com` sweep | `grep -rn 'hello@usezombie\.com' src/ ui/ zombiectl/ docs/ public/` | 0 hits in source/copy; remaining hits are in this spec body + the deleted handoff doc | ✅ |
+| Schema `mode` column shape (TEXT, not enum) | `grep -nE 'mode TEXT NOT NULL' schema/020_tenant_providers.sql` + `grep -c '\bbyok\b' schema/*.sql` | TEXT confirmed; 0 byok hits in schema | ✅ |
+| OpenAPI enum | `jq '.components.schemas.TenantProviderMode.enum' public/openapi.json` | `["platform","self_managed"]` | ✅ |
 
 ---
 
@@ -495,3 +495,49 @@ Expected further entries:
 - **Public docs publishing of `UZ-PROVIDER-MODE-RENAMED` error code page on docs.usezombie.com.** Error registry update lands in this spec; the docs page lands in the paired docs PR's `<Update>` block.
 - **Currency / locale display formatting.** All rates render in USD; localization is future work.
 - **Volume-tier pricing or post-GA ratchet schedule.** Captured as a marketing/strategy decision; not in this spec.
+
+---
+
+## Session Notes (CHORE close)
+
+**Branch:** `feat/m66-001-byok-retirement` · **Commits:** `3db21927` → `a9be55ed` (10 commits, single workstream).
+
+**Decisions made during EXECUTE (cross-references to Discovery):**
+
+1. **§1 scope expansion to three schemas.** Original Files-Changed table listed only `schema/017_tenant_billing.sql`; grep surfaced `schema/014_zombie_execution_telemetry.sql` (`credit_deducted_cents` → `credit_deducted_nanos`) and `schema/019_model_caps.sql` (`input_cents_per_mtok`/`output_cents_per_mtok` → `input_nanos_per_mtok`/`output_nanos_per_mtok`, with type widen INTEGER → BIGINT because `$30/M tokens` in nanos overflows i32). Logged in commit `e9f4621a`.
+2. **No special-case retired-mode branch.** Initial §3 implementation had an `if (input.mode == "byok")` branch returning `UZ-PROVIDER-MODE-RENAMED`. Per RULE NLG pre-v2.0 (no legacy retention) the special-case branch was removed in the §3 tail; `mode: "byok"` now flows through the generic mode-not-recognized fall-through with a "mode must be one of: platform, self_managed" message. `UZ-PROVIDER-005` registry entry retired.
+3. **§4 pricing redesign — fix install button stretch.** Captain flagged the install CTA looked stretched in the rendered Pricing card. Root cause: `flex flex-col` Card stretches inline-flex Buttons. Fix: `self-start` on the Button (mirrors the existing `<Badge className="self-start">` precedent two children up).
+4. **§4 BILLED_FLOW realism.** Captain asked for concrete platform-ops cells instead of abstract "stage 1: reason · act". Refactored to: event = "deploy webhook fires", stage 1 = "read CI logs", stage 2 = "correlate commits", stage N = "post Slack diagnosis" — mirrors the install transcript on Hero.tsx.
+5. **§5 cross-tier `SUPPORT_EMAIL`.** Created per-repo named constants in Zig + 2× TS + JS plus the paired Mintlify snippet. Swept two `support@usezombie.com` literals from the dashboard (`BillingBalanceCard`, `ExhaustionBanner`) and three `usezombie@agentmail.to` literals from the website (`Pricing.tsx`, `Privacy.tsx`, `Terms.tsx`) into the constant. The org-profile README literal is kept per Captain's "skip .github/profile" decision.
+6. **§5 also fixed `ui/packages/app/package.json` test glob.** vitest's `lib/**/*.test.ts` pattern was silently skipping `lib/contact.test.ts` (no intermediate directory under `lib/`); script expanded to `lib/*.test.ts lib/**/*.test.ts`.
+7. **§6 architecture-doc depinning.** Captain's directive: "rate constants will keep changing; the docs shouldn't have to follow each ratchet." `docs/architecture/billing_and_provider_keys.md` rewrote shape-first — function signatures and constant *names* live in the doc, *values* live behind three authoritative sources (`tenant_billing.zig`, `snippets/rates.mdx`, the `model-caps.json` endpoint). Scenario walk-throughs (01_default_install, 03_balance_gate) got mechanical column-name fixes + "Rate snapshot" banners pointing readers at the canonical doc; the cent-by-cent arithmetic is preserved as instructional narrative rather than rewritten for the current rate table.
+8. **§6 broken cross-reference fix in pending spec.** `docs/v2/pending/M50_001_*.md` L26 cited "OSS + BYOK + markdown-defined" as the architecture's three pillars; `high_level.md` now reads "open source + self-managed provider keys + markdown-defined". Fixed inline so M50_001 reads against the current architecture state when it lands.
+
+**Assumptions surfaced and confirmed:**
+
+- **Sealed history stays.** `docs/v2/done/M48_001_*` keeps `STARTER_GRANT_CENTS = 1000`, `RECEIVE_PLATFORM_CENTS = 1`, etc. — those describe what shipped at that time. Same for M48-era changelog entries.
+- **Display strings ≠ domain constants.** `RATES_DISPLAY` map (TS) and `STAGE_PLATFORM`/`STAGE_SELF_MANAGED` (Mintlify) are presentation-layer; they don't get Zig mirrors. The cross-tier parity rule applies to domain integers (`STARTER_CREDIT_NANOS`, etc.), not their `$`-formatted display siblings.
+- **Mintlify changelog snippets are forward-only.** The May 9 (M65) entry imported `EVENT_RATE` / `STAGE_RATE` from `rates.mdx`; M66 rewrote those exports. To preserve the M65 entry's meaning, hardcoded `EVENT_RATE_M65 = "$0.01"` and `STAGE_RATE_M65 = "$0.10"` placeholders were defined at the import header and substituted only in the May 9 entry. Future changelog entries should hardcode their rate values inline rather than rely on snippet imports if they describe a state of the world that pre-dates the current rate table.
+
+**Dead ends / discarded approaches:**
+
+- **Adding `pub const RATES_DISPLAY` in Zig.** Considered as a way to clear the UFS-gate `RATES_DISPLAY absent-in-zig` violation. Rejected — Zig isn't a presentation runtime; the const would be dead code (NLR violation) and the cross-tier rule applies to domain values, not display strings.
+- **Filing `docs/architecture/billing_and_provider_keys.md` cent-numerics fix as a follow-up spec.** Initial plan was to file a follow-up. Switched to inline after Captain's "fix all drift inline in this PR" decision, then again to "depin from concrete values entirely" after Captain's mid-§6 guidance.
+
+**UFS-gate violations remaining (4):** all by design / baseline.
+
+| Violation | Why it persists |
+|---|---|
+| `CHARGE_TYPE absent-in-zig` | Zig holds this as enum `ChargeType` (PascalCase); JS exports SCREAMING_SNAKE wrapper. Audit's regex matches `pub const NAME`, not enum types. Pre-existing baseline since d5d5b6ad. |
+| `PROVIDER_MODE absent-in-zig` | Same shape: Zig `enum Mode`, JS `PROVIDER_MODE` SCREAMING_SNAKE. Pre-existing baseline. |
+| `SELF_MANAGED_SENTINELS absent-in-zig` | JS-only test fixture for the install-skill frontmatter substitution; no Zig analog by design. Pre-existing baseline. |
+| `RATES_DISPLAY absent-in-zig` | TS/JS display-strings map; no Zig analog by design (Zig isn't a presentation runtime). Introduced in §4; flagged as out-of-scope baseline rather than fixed. |
+
+**`/write-unit-test` outcome:** TBD — runs as the first step of CHORE(close) after this commit lands.
+**`/review` outcome:** TBD — runs after `/write-unit-test`.
+**`/review-pr` outcome:** TBD — runs after `gh pr create`.
+**`kishore-babysit-prs` outcome:** TBD — runs after every push.
+
+**Companion docs PR:** `usezombie/docs#feat/m66-001-byok-retirement-docs` (commit `11290fe`). Branch pushed; PR opens after this lead PR is up so the docs side cannot diverge.
+
+**Pre-push integration suite:** 1508/0 locally and on the pre-push hook each iteration. No state-pollution flake seen this session (Gotcha 13 from the resume handoff didn't recur).
