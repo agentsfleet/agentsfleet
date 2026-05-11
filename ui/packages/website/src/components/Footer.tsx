@@ -24,7 +24,7 @@ export default function Footer() {
           <span className="font-mono text-body font-medium text-text">
             {BRAND_NAME}
           </span>
-          <p className="font-sans text-body-sm leading-body text-text-muted m-0 max-w-[28ch]">
+          <p className="font-sans text-body-sm leading-body text-text-muted m-0 max-w-tagline">
             Durable, markdown-defined agent runtime. self-managed. Open source.
           </p>
         </div>
