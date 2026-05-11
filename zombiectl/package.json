@@ -35,7 +35,7 @@
     "postinstall": "node ./scripts/postinstall.mjs"
   },
   "dependencies": {
-    "posthog-node": "^5.28.11"
+    "posthog-node": "^5.33.4"
   },
   "license": "MIT",
   "devDependencies": {
