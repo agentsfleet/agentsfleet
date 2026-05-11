@@ -42,11 +42,72 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 > exact path to be confirmed in PLAN by greppping `src/http/handlers/`; if no admin-callable
 > surface exists, that is a blocker before WS-A can land). Idempotent: safe to re-run.
 
+> **AMENDMENT (May 11, 2026 — at CHORE(close)):** scope amendment to match what
+> shipped.
+>
+> **Pivoted from `@clerk/testing` clerk.signIn to admin-mint cookie-direct sign-in.**
+> Captain's prior spike found `clerk.signIn` (both password + ticket strategies)
+> silently fails on this Clerk DEV instance because the library's FAPI route
+> interceptor strips Set-Cookie headers. The harness now mints both tokens via
+> Clerk's admin API (`api`-template JWT for Bearer; default session JWT for cookie),
+> writes them to the fixture cache, and `signInAs(page, key)` mounts the three
+> cookies clerkMiddleware needs (`__session`, `__client_uat`, `__clerk_db_jwt`).
+> Documented in `docs/AUTH.md` "Test infrastructure — e2e fixture mint (admin path)".
+>
+> **What shipped in M64_005 (specs in this branch):**
+> - WS-A.1–A.5: harness skeleton + admin-API JWT mint + Svix-signed bootstrap +
+>   ticket sign-in (replaced by cookie-mount) + real-run hardening — done.
+> - WS-C.1 (seed/teardown infra): seedZombie, listZombies, cleanWorkspaceZombies — done.
+> - `_smoke.spec.ts` — 6/6 pass (env, JWT cache, /sign-in render, signInAs, dashboard
+>   render, seed roundtrip with status=killed tolerance for the open zombied DELETE
+>   bug).
+> - `install-zombie-seed.spec.ts` — pass.
+> - `install-zombie-cli.spec.ts` — pass (canonical install path: spawn `zombiectl install`).
+> - `lifecycle.spec.ts` + `kill.spec.ts` — written, **`test.fixme`** with a clear
+>   FIXME block in the describe header. KillSwitch is a client component that
+>   dispatches PATCH /status via `useClientToken().getToken()`; that hook reads
+>   Clerk's in-browser SDK state, which Playwright cookie-mount does not populate.
+>   Two roads forward (whichever lands first), both **deferred to M64_006**:
+>     1. `@clerk/testing` clerk.signIn becoming reliable on this DEV instance.
+>     2. Refactor KillSwitch into a server action so the token comes from
+>        `getServerToken()` instead of `useAuth`.
+>   The PATCH contract itself is already covered by zombied's integration tests at
+>   `src/http/handlers/zombies/*_integration_test.zig`, so the gap is only on the
+>   dashboard's interactive surface.
+> - `signup.spec.ts` — **`test.fixme`** (Captain's original open item). Clerk DEV
+>   injects a verification step the spec does not drive. Unblockers documented
+>   inline; same M64_006 cohort.
+> - `getServerToken` / `useClientToken` patched to use `{template:"api"}` — bare
+>   getToken returns the default session JWT (no metadata.tenant_id, no api `aud`),
+>   which today happens to work locally only because zombied has `OIDC_AUDIENCE`
+>   unset. The fix is in `lib/auth/{server,client}.ts` and aligns with
+>   `docs/AUTH.md` "The two tokens at a glance".
+> - `fix(http)`: schema-qualified `common.zig:authorizeWorkspace` queries
+>   (`workspaces` → `core.workspaces`). Surfaced from the seed roundtrip 403;
+>   root cause is `pool init → migration apply` ordering in
+>   `make up` (with `MIGRATE_ON_START=true`). Production not affected; the
+>   `pool-init-after-migrations` startup-order fix is a separate `fix(zombie)` PR.
+>
+> **Dropped from this milestone — moved to M64_006:**
+> - `multi-zombie.spec.ts`, `multi-workspace.spec.ts`, `settings-billing.spec.ts`,
+>   `events.spec.ts`, `logs-detail.spec.ts` — were planned for M64_005 but the
+>   dashboard-interactive client-token gap above blocks any spec that exercises
+>   a client component. M64_006 unblocks all of them together by resolving the
+>   client-token issue (whichever path lands).
+> - Workstream B (RadioGroup primitive + ModeRadio rebuild) — not started in this
+>   branch; carries over to M64_006.
+> - Workstream D (zombiectl + website coverage uplift) — not started in this
+>   branch; carries over to M64_006.
+> - CI plug-in (`bun run test:e2e:auth` in `deploy-dev.yml`) — deferred to
+>   M64_006 because the CI wiring needs `.github/workflows/**` (which CLAUDE.md
+>   gates behind explicit approval) and is best landed at the same time the
+>   fixme'd specs go green so the workflow is meaningful from day one.
+
 **Prototype:** v2.0.0
 **Milestone:** M64
 **Workstream:** 005
 **Date:** May 08, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — W3 shipped the visual surface and the unit suite proves component contracts, but no test today drives a real signed-in user from `/sign-up` through `/zombies/[id]` against `api-dev`. Until the e2e harness lands, every dashboard regression has to be caught by a human. P1 (not P0) because W3 itself is shipping with strong unit coverage; this milestone hardens the seam and closes the function-coverage gap left at the W3 cut.
 **Categories:** TESTING
 **Batch:** B4 — depends on M64_004 (W3) merged. Fixture pool consumes the dashboard surface as it shipped; nothing earlier is gated on it.
