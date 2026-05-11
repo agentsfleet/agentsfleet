@@ -13,6 +13,14 @@ import { FixtureKey, JWT_TEMPLATE } from "./constants";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
+// Session-token TTL for minted fixture JWTs. Default Clerk TTL is 60s — too
+// short for a full suite run. The harness uses 15 min, which is ~2× the
+// observed p95 wall-clock on CI (suites complete in ~5 min). Tighter than
+// the historical 3600s posture to bound the impact of a leaked
+// .fixture-jwts.json file. `clientFor` callers that exceed this window
+// will fail loud with a 401 from zombied — re-mint if/when that happens.
+const SESSION_TOKEN_TTL_SECONDS = 900;
+
 export interface FixtureUserSpec {
   key: FixtureKey;
   email: string;
@@ -122,9 +130,10 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
  *      mounted as a cookie — the dashboard middleware redirects to /sign-in.
  *
  * Both share the same session, so they expire together. Default Clerk session-
- * token TTL is 60s, far shorter than a full e2e suite — the body's
- * `expires_in_seconds=3600` lifts it to one hour. Body, not URL: Clerk's
- * Backend API takes mint params in the JSON body for token endpoints.
+ * token TTL is 60s, far shorter than a full e2e suite — `SESSION_TOKEN_TTL_SECONDS`
+ * (declared at the top of this file) lifts it just enough to cover a suite
+ * wall-clock with a 2× margin. Body, not URL: Clerk's Backend API takes mint
+ * params in the JSON body for token endpoints.
  */
 export async function mintTokens(
   userId: string,
@@ -134,12 +143,12 @@ export async function mintTokens(
     clerkRequest<ClerkSessionToken>(
       "POST",
       `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
-      { expires_in_seconds: 3600 },
+      { expires_in_seconds: SESSION_TOKEN_TTL_SECONDS },
     ),
     clerkRequest<ClerkSessionToken>(
       "POST",
       `/sessions/${session.id}/tokens`,
-      { expires_in_seconds: 3600 },
+      { expires_in_seconds: SESSION_TOKEN_TTL_SECONDS },
     ),
   ]);
   return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
