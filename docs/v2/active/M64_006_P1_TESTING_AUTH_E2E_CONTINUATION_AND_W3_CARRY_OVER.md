@@ -14,11 +14,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M64
 **Workstream:** 006
 **Date:** May 11, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — M64_005 landed the auth harness (admin-mint cookie-direct sign-in) plus the install-{seed,cli} specs. The five lifecycle/dashboard specs the original plan called for and the W3 polish carry-over (RadioGroup primitive + zombiectl/website coverage uplift) are blocked on one piece of plumbing: making Clerk's client-side SDK aware of the fixture session. Until that's solved, every dashboard-interactive spec stays fixme. P1 (not P0) because the harness itself ships in M64_005 with clear FIXMEs; this milestone unblocks the deferred coverage and ships the W3 polish.
 **Categories:** TESTING
 **Batch:** B1 — depends only on M64_005 merged. No earlier work in this milestone gates it.
-**Branch:** TBD (set at CHORE(open))
+**Branch:** feat/m64-006-auth-e2e-continuation
 **Depends on:** M64_005 DONE; the existing cookie-mount harness in `ui/packages/app/tests/e2e/auth/`.
 
 **Canonical architecture:** `docs/AUTH.md` — Pattern 2 two-token model. M64_005 landed the SSR half; this milestone unblocks the client-interactive half.
