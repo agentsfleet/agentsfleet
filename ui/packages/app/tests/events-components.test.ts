@@ -5,36 +5,18 @@ import userEvent from "@testing-library/user-event";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
-const { getTokenFn, listZombieEventsMock, listWorkspaceEventsMock } = vi.hoisted(() => ({
-  getTokenFn: vi.fn(),
-  listZombieEventsMock: vi.fn(),
-  listWorkspaceEventsMock: vi.fn(),
+const { listZombieEventsActionMock, listWorkspaceEventsActionMock } = vi.hoisted(() => ({
+  listZombieEventsActionMock: vi.fn(),
+  listWorkspaceEventsActionMock: vi.fn(),
 }));
 
-vi.mock("@clerk/nextjs", () => ({
-  useAuth: () => ({ getToken: getTokenFn }),
-  useUser: () => ({ isLoaded: true, isSignedIn: true, user: null }),
-  ClerkProvider: ({ children }: { children: React.ReactNode }) =>
-    React.createElement(React.Fragment, null, children),
-  UserButton: () => React.createElement("div"),
-  SignIn: () => React.createElement("div"),
-  SignUp: () => React.createElement("div"),
+vi.mock("@/app/(dashboard)/events/actions", () => ({
+  listZombieEventsAction: listZombieEventsActionMock,
+  listWorkspaceEventsAction: listWorkspaceEventsActionMock,
 }));
-
-vi.mock("@/lib/api/events", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/events")>(
-    "@/lib/api/events",
-  );
-  return {
-    ...actual,
-    listZombieEvents: listZombieEventsMock,
-    listWorkspaceEvents: listWorkspaceEventsMock,
-  };
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getTokenFn.mockResolvedValue("token_abc");
 });
 
 afterEach(() => cleanup());
@@ -188,9 +170,12 @@ describe("EventsList", () => {
   });
 
   it("loadMore (zombie scope) appends items and updates cursor", async () => {
-    listZombieEventsMock.mockResolvedValueOnce({
-      items: [row({ event_id: "p2", response_text: "page two" })],
-      next_cursor: "cur_2",
+    listZombieEventsActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        items: [row({ event_id: "p2", response_text: "page two" })],
+        next_cursor: "cur_2",
+      },
     });
     renderList({
       items: [row({ event_id: "p1", response_text: "page one" })],
@@ -198,17 +183,20 @@ describe("EventsList", () => {
     });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listZombieEventsMock).toHaveBeenCalled());
-    expect(listZombieEventsMock).toHaveBeenCalledWith("ws_1", "zomb_1", "token_abc", {
+    await waitFor(() => expect(listZombieEventsActionMock).toHaveBeenCalled());
+    expect(listZombieEventsActionMock).toHaveBeenCalledWith("ws_1", "zomb_1", {
       cursor: "cur_1",
     });
     await waitFor(() => expect(screen.getByText("page two")).toBeTruthy());
   });
 
-  it("loadMore (workspace scope) calls workspace API", async () => {
-    listWorkspaceEventsMock.mockResolvedValueOnce({
-      items: [row({ event_id: "wsp", response_text: "ws page" })],
-      next_cursor: null,
+  it("loadMore (workspace scope) calls workspace action", async () => {
+    listWorkspaceEventsActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: {
+        items: [row({ event_id: "wsp", response_text: "ws page" })],
+        next_cursor: null,
+      },
     });
     renderList(
       {
@@ -219,25 +207,28 @@ describe("EventsList", () => {
     );
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
-    await waitFor(() => expect(listWorkspaceEventsMock).toHaveBeenCalled());
-    expect(listWorkspaceEventsMock).toHaveBeenCalledWith("ws_42", "token_abc", {
+    await waitFor(() => expect(listWorkspaceEventsActionMock).toHaveBeenCalled());
+    expect(listWorkspaceEventsActionMock).toHaveBeenCalledWith("ws_42", {
       cursor: "cur_a",
     });
   });
 
-  it("loadMore surfaces 'Not authenticated' when token is null", async () => {
-    getTokenFn.mockResolvedValueOnce(null);
+  it("loadMore surfaces 'Not authenticated' when the action reports unauth", async () => {
+    listZombieEventsActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+    });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
     );
-    expect(listZombieEventsMock).not.toHaveBeenCalled();
   });
 
-  it("loadMore surfaces error message when API rejects", async () => {
-    listZombieEventsMock.mockRejectedValueOnce(new Error("backend down"));
+  it("loadMore surfaces error message when the action returns an error", async () => {
+    listZombieEventsActionMock.mockResolvedValueOnce({ ok: false, error: "backend down" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
@@ -246,8 +237,8 @@ describe("EventsList", () => {
     );
   });
 
-  it("loadMore falls back to default message when error has no message", async () => {
-    listZombieEventsMock.mockRejectedValueOnce({} as unknown as Error);
+  it("loadMore falls back to default message when the action returns an empty error", async () => {
+    listZombieEventsActionMock.mockResolvedValueOnce({ ok: false, error: "" });
     renderList({ items: [row()], next_cursor: "cur_x" });
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
