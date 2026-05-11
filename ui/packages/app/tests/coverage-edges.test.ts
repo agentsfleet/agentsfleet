@@ -163,6 +163,42 @@ describe("dashboard page inner async components", () => {
     expect(element).not.toBeNull();
   });
 
+  it("StatusTiles renders the dollar-formatted balance when zombies exist + billing succeeds", async () => {
+    await withMocks({
+      listZombies: vi.fn().mockResolvedValue({
+        items: [
+          { id: "zom_1", name: "alpha", status: "active", created_at: "2026-04-22T00:00:00Z" },
+        ],
+        cursor: null,
+      }),
+      billing: vi.fn().mockResolvedValue({
+        balance_nanos: 4_710_000_000, is_exhausted: false, exhausted_at: null,
+      }),
+    });
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const element = await StatusTiles();
+    expect(element).not.toBeNull();
+    const html = renderToStaticMarkup(element as React.ReactElement);
+    expect(html).toContain("$4.71");
+  });
+
+  it("StatusTiles renders the em-dash balance fallback when zombies exist + billing is null", async () => {
+    await withMocks({
+      listZombies: vi.fn().mockResolvedValue({
+        items: [
+          { id: "zom_1", name: "alpha", status: "active", created_at: "2026-04-22T00:00:00Z" },
+        ],
+        cursor: null,
+      }),
+      billing: () => Promise.reject(new Error("billing-down")),
+    });
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const element = await StatusTiles();
+    expect(element).not.toBeNull();
+    const html = renderToStaticMarkup(element as React.ReactElement);
+    expect(html).toContain("—");
+  });
+
   it("RecentActivity returns null when token missing", async () => {
     await withMocks({ token: null });
     const { RecentActivity } = await import("../app/(dashboard)/page");

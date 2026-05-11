@@ -76,6 +76,27 @@ describe("groupChargesByEvent", () => {
     expect(groups[0]?.total_nanos).toBe(0);
   });
 
+  it("treats null credit_deducted_nanos as 0 on a receive row (`?? 0` fallback)", () => {
+    // Defensive — the API serializes the column as i64 NOT NULL, so a null
+    // here is wire-shape drift, not a legitimate state. The `?? 0` keeps
+    // grouping deterministic instead of propagating NaN into the dashboard.
+    const nullReceive: ChargeRow = {
+      ...RECEIVE,
+      credit_deducted_nanos: null as unknown as ChargeRow["credit_deducted_nanos"],
+    };
+    const groups = groupChargesByEvent([nullReceive]);
+    expect(groups[0]?.receive_nanos).toBe(0);
+  });
+
+  it("treats null credit_deducted_nanos as 0 on a stage row (`?? 0` fallback)", () => {
+    const nullStage: ChargeRow = {
+      ...STAGE,
+      credit_deducted_nanos: null as unknown as ChargeRow["credit_deducted_nanos"],
+    };
+    const groups = groupChargesByEvent([nullStage]);
+    expect(groups[0]?.stage_nanos).toBe(0);
+  });
+
   it("skips updating recorded_at when the new row's timestamp is later", () => {
     // Verifies the `r.recorded_at < entry.recorded_at` branch — the second
     // row arrives later than the first, so entry.recorded_at must NOT change.
