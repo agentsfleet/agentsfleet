@@ -69,10 +69,10 @@ test.describe("signup", () => {
     // the published testing OTP. Clerk renders six independent digit inputs
     // (an OTP-style segmented field) — type the code into the active first
     // box and Clerk's input handler distributes the digits across the
-    // remaining boxes.
-    const otpInput = page
-      .getByRole("textbox", { name: /verification|code|enter/i })
-      .first();
+    // remaining boxes. Selector: Clerk emits autocomplete="one-time-code"
+    // on every segment input, which is stable across component versions
+    // and survives the absence of an aria-label on the inputs themselves.
+    const otpInput = page.locator('input[autocomplete="one-time-code"]').first();
     await otpInput.waitFor({ timeout: SIGNUP_TIMEOUT_MS });
     await otpInput.fill(TEST_OTP);
 
