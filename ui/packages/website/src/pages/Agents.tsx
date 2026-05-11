@@ -58,7 +58,7 @@ export default function Agents() {
         <div className="wrap flex flex-col gap-6">
           <SectionLabel className="mb-0">agent surface</SectionLabel>
           <DisplayXL>This page is for autonomous agents.</DisplayXL>
-          <p className="font-sans text-body-lg leading-[1.5] text-text-muted m-0 max-w-[640px]">
+          <p className="font-sans text-body-lg leading-body-lg text-text-muted m-0 max-w-narrow">
             Use <code className="font-mono">/openapi.json</code> as canonical surface. Docs are
             secondary.
           </p>
@@ -67,10 +67,10 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-[clamp(1.75rem,3vw,2.5rem)] leading-[1.2] tracking-display-md">
+          <DisplayLG className="text-fluid-display-lg leading-display-md tracking-display-md">
             Bootstrap
           </DisplayLG>
-          <Terminal label="Bootstrap commands" copyable className="max-w-[860px]">
+          <Terminal label="Bootstrap commands" copyable className="max-w-wide">
             {bootstrapScript}
           </Terminal>
         </div>
@@ -92,7 +92,7 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-[clamp(1.75rem,3vw,2.5rem)] leading-[1.2] tracking-display-md">
+          <DisplayLG className="text-fluid-display-lg leading-display-md tracking-display-md">
             Machine surface
           </DisplayLG>
           <Card className="font-mono text-mono">
@@ -112,7 +112,7 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-[clamp(1.75rem,3vw,2.5rem)] leading-[1.2] tracking-display-md">
+          <DisplayLG className="text-fluid-display-lg leading-display-md tracking-display-md">
             API operations
           </DisplayLG>
           <Card className="p-0 overflow-x-auto">
@@ -145,15 +145,15 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-[clamp(1.75rem,3vw,2.5rem)] leading-[1.2] tracking-display-md">
+          <DisplayLG className="text-fluid-display-lg leading-display-md tracking-display-md">
             Webhook ingest example
           </DisplayLG>
-          <p className="font-sans text-body leading-[1.6] text-text-muted m-0 max-w-[720px]">
+          <p className="font-sans text-body leading-body text-text-muted m-0 max-w-measure">
             Configure an agent&apos;s trigger and POST inbound events to{" "}
             <code className="font-mono">/v1/webhooks/:zombie_id</code>. Every inbound webhook must
             carry a per-zombie HMAC signature header — unsigned requests are rejected.
           </p>
-          <Terminal label="Webhook payload example" className="max-w-[860px]">
+          <Terminal label="Webhook payload example" className="max-w-wide">
             {webhookPayload}
           </Terminal>
         </div>
@@ -161,16 +161,16 @@ export default function Agents() {
 
       <section className="site-section">
         <div className="wrap flex flex-col gap-4">
-          <DisplayLG className="text-[clamp(1.75rem,3vw,2.5rem)] leading-[1.2] tracking-display-md">
+          <DisplayLG className="text-fluid-display-lg leading-display-md tracking-display-md">
             Safety limits
           </DisplayLG>
           <div className="grid gap-4 grid-cols-1 md:grid-cols-2">
             {safetyLimits.map((limit) => (
               <Card key={limit.title} className="flex flex-col gap-2">
-                <h3 className="font-mono text-heading leading-[1.3] text-text font-medium m-0">
+                <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
                   {limit.title}
                 </h3>
-                <p className="font-sans text-body-sm leading-[1.55] text-text-muted m-0">
+                <p className="font-sans text-body-sm leading-body text-text-muted m-0">
                   {limit.body}
                 </p>
               </Card>

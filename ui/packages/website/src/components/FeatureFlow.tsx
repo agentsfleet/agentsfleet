@@ -91,15 +91,15 @@ export default function FeatureFlow() {
                   {item.panel.join("\n")}
                 </Terminal>
               ) : (
-                <Card className="font-mono text-mono leading-[1.7] text-text-muted whitespace-pre-line">
+                <Card className="font-mono text-mono leading-prose text-text-muted whitespace-pre-line">
                   {item.panel.join("\n")}
                 </Card>
               )}
               <div className="flex flex-col gap-4">
-                <h3 className="font-mono text-[clamp(1.125rem,2.5vw,1.75rem)] leading-[1.2] tracking-display-md text-text font-medium m-0">
+                <h3 className="font-mono text-fluid-display-md leading-display-md tracking-display-md text-text font-medium m-0">
                   {item.title}
                 </h3>
-                <p className="font-sans text-body leading-[1.6] text-text-muted m-0">
+                <p className="font-sans text-body leading-body text-text-muted m-0">
                   {item.description}
                 </p>
                 <List variant="plain" className="m-0 flex flex-col gap-2 space-y-0">

@@ -132,12 +132,44 @@
   --text-label: var(--fs-label);
   --text-mono: var(--fs-mono);
 
+  /* Fluid display sizes — `text-fluid-hero`, `text-fluid-display-lg`,
+   * `text-fluid-display-md`. Use these on responsive marketing/legal
+   * headings instead of writing an inline clamp(); bounds stay locked
+   * to the type scale. */
+  --text-fluid-hero: var(--fs-fluid-hero);
+  --text-fluid-display-lg: var(--fs-fluid-display-lg);
+  --text-fluid-display-md: var(--fs-fluid-display-md);
+
   /* Tracking */
   --tracking-display-xl: var(--letter-spacing-display-xl);
   --tracking-display-lg: var(--letter-spacing-display-lg);
   --tracking-display-md: var(--letter-spacing-display-md);
   --tracking-eyebrow: var(--letter-spacing-eyebrow);
   --tracking-label: var(--letter-spacing-label);
+
+  /* Line-heights mirror the type scale — `leading-display-xl` ↔
+   * `leading-mono`. `leading-prose` is the long-form override (1.7) used
+   * in legal pages + docs. Forwards --lh-* tokens defined in tokens.css. */
+  --leading-display-xl: var(--lh-display-xl);
+  --leading-display-lg: var(--lh-display-lg);
+  --leading-display-md: var(--lh-display-md);
+  --leading-heading: var(--lh-heading);
+  --leading-eyebrow: var(--lh-eyebrow);
+  --leading-body-lg: var(--lh-body-lg);
+  --leading-body: var(--lh-body);
+  --leading-body-sm: var(--lh-body-sm);
+  --leading-label: var(--lh-label);
+  --leading-mono: var(--lh-mono);
+  --leading-prose: var(--lh-prose);
+
+  /* Named content widths — `max-w-narrow` / `max-w-measure` / `max-w-form`
+   * / `max-w-wide` / `max-w-content`. Consumers stop writing `max-w-[640px]`
+   * etc. Tailwind v4 reads --container-* as the source of max-width utilities. */
+  --container-narrow: var(--max-w-narrow);
+  --container-measure: var(--max-w-measure);
+  --container-form: var(--max-w-form);
+  --container-wide: var(--max-w-wide);
+  --container-content: var(--max-w-content);
 
   /* Radius */
   --radius-sm: var(--r-sm);

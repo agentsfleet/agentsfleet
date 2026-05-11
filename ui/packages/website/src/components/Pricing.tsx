@@ -36,7 +36,7 @@ export default function Pricing() {
 
             <p
               data-testid="pricing-rate-line"
-              className="font-mono text-[clamp(1.75rem,4vw,2.5rem)] leading-[1.1] tracking-display-lg font-medium text-text m-0 tabular-nums"
+              className="font-mono text-fluid-display-lg leading-display-lg tracking-display-lg font-medium text-text m-0 tabular-nums"
             >
               <span data-testid="pricing-rate-event">{RATES_DISPLAY.EVENT_RATE}</span>{" "}
               <span className="font-sans text-text-muted text-body-lg align-middle">per event receipt</span>
@@ -44,7 +44,7 @@ export default function Pricing() {
 
             <div data-testid="pricing-stage-rates" className="flex flex-col gap-1.5">
               <p
-                className="font-mono text-[clamp(1.75rem,3.4vw,2.5rem)] leading-[1.1] tracking-display-lg font-medium text-text m-0 tabular-nums flex flex-wrap items-baseline gap-x-3 gap-y-1"
+                className="font-mono text-fluid-display-lg leading-display-lg tracking-display-lg font-medium text-text m-0 tabular-nums flex flex-wrap items-baseline gap-x-3 gap-y-1"
               >
                 <span data-testid="pricing-rate-stage-platform">{RATES_DISPLAY.STAGE_PLATFORM}</span>
                 <span className="font-sans text-text-muted text-body-sm">platform default</span>
@@ -54,7 +54,7 @@ export default function Pricing() {
                 </span>
                 <span className="font-sans text-text-muted text-body-sm">self-managed</span>
               </p>
-              <p className="font-sans text-body-sm leading-[1.55] text-text-muted m-0">
+              <p className="font-sans text-body-sm leading-body text-text-muted m-0">
                 per stage execution — self-managed is 10× cheaper to scale once you bring your
                 own provider key.
               </p>
@@ -66,14 +66,14 @@ export default function Pricing() {
               </p>
             </div>
 
-            <p className="font-sans text-body leading-[1.6] text-text-muted m-0 max-w-[640px]">
+            <p className="font-sans text-body leading-body text-text-muted m-0 max-w-narrow">
               A <span className="text-text">stage</span> is one reasoning step. Most diagnoses
               resolve in 1–5 stages.
             </p>
 
             <p
               data-testid="pricing-design-partner-note"
-              className="font-sans text-body-sm leading-[1.55] text-pulse m-0 max-w-[640px]"
+              className="font-sans text-body-sm leading-body-sm text-pulse m-0 max-w-narrow"
             >
               Stealth-mode testing — APIs and behavior change without long deprecation windows.
               Want a hand calibrating a zombie or to join as a design partner? Email{" "}
@@ -119,10 +119,10 @@ export default function Pricing() {
                 className="flex flex-col gap-1 p-4 border border-border bg-surface-1"
               >
                 <SectionLabel className="mb-0">{cell.label}</SectionLabel>
-                <span className="font-mono text-heading leading-[1.1] tabular-nums text-text">
+                <span className="font-mono text-heading leading-display-lg tabular-nums text-text">
                   {cell.price}
                 </span>
-                <span className="font-sans text-eyebrow leading-[1.45] text-text-muted">
+                <span className="font-sans text-eyebrow leading-eyebrow text-text-muted">
                   {cell.sub}
                 </span>
               </div>
@@ -139,20 +139,20 @@ export default function Pricing() {
             <span className="font-mono text-body-sm text-text">
               LLM call · your provider · your bill
             </span>
-            <span className="font-sans text-eyebrow leading-[1.5] text-text-muted">
+            <span className="font-sans text-eyebrow leading-body-lg text-text-muted">
               Anthropic · OpenAI · Fireworks · Together · Groq · Moonshot. Pay your provider
               directly; usezombie marks up zero on inference.
             </span>
           </div>
 
-          <p className="font-sans text-body-sm leading-[1.55] text-text-muted m-0">
+          <p className="font-sans text-body-sm leading-body text-text-muted m-0">
             One event wakes the zombie. The runtime executes one or more stages until the outcome
             is resolved or blocked. Each stage is independently billed; the model call rides
             underneath and never touches your usezombie invoice.
           </p>
         </Card>
 
-        <div className="flex flex-col gap-3 max-w-[760px]">
+        <div className="flex flex-col gap-3 max-w-form">
           <SectionLabel className="mb-0">
             operational extras — provisioned per workspace as you scale, not gated by tier
           </SectionLabel>
@@ -160,7 +160,7 @@ export default function Pricing() {
             {EXTRAS.map((point) => (
               <ListItem
                 key={point}
-                className="font-mono text-mono leading-[1.5] text-text-muted before:content-['·_'] before:text-text-subtle"
+                className="font-mono text-mono leading-mono text-text-muted before:content-['·_'] before:text-text-subtle"
               >
                 {point}
               </ListItem>

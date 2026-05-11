@@ -16,10 +16,10 @@ export default function FeatureSection({ number, title, description }: Props) {
       <span className="font-mono text-eyebrow uppercase tracking-eyebrow text-text-subtle">
         {number}
       </span>
-      <h3 className="font-mono text-heading leading-[1.3] text-text font-medium m-0">
+      <h3 className="font-mono text-heading leading-heading text-text font-medium m-0">
         {title}
       </h3>
-      <p className="font-sans text-body leading-[1.55] text-text-muted m-0">
+      <p className="font-sans text-body leading-body text-text-muted m-0">
         {description}
       </p>
     </Card>

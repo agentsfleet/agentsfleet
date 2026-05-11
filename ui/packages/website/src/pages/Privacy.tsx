@@ -9,10 +9,10 @@ export default function Privacy() {
   return (
     <article
       data-testid="privacy-page"
-      className="wrap site-section flex flex-col gap-6 max-w-[68ch] font-sans text-body leading-[1.7] text-text"
+      className="wrap site-section flex flex-col gap-6 max-w-[68ch] font-sans text-body leading-prose text-text"
     >
       <SectionLabel className="mb-0">legal</SectionLabel>
-      <DisplayXL className="text-[clamp(2.5rem,5vw,4rem)]">Privacy Policy</DisplayXL>
+      <DisplayXL className="text-fluid-hero">Privacy Policy</DisplayXL>
       <p className="font-mono text-eyebrow text-text-muted m-0">Last updated: May 5, 2026</p>
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">1. Information we collect</h2>
