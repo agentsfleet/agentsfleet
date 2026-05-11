@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Branch:** fix/cli-login-workspace-hydration
 **Depends on:** M63_001 (default API URL — DONE), M11_006 (signup bootstrap — DONE).
 
-**Canonical architecture:** `docs/architecture/billing_and_byok.md` (starter grant), `docs/architecture/data_flow.md` (signup → tenant + default workspace).
+**Canonical architecture:** `docs/architecture/billing_and_provider_keys.md` (starter grant), `docs/architecture/data_flow.md` (signup → tenant + default workspace).
 
 ---
 
@@ -59,7 +59,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 **Problem:** The Clerk `user.created` webhook atomically creates a default workspace at signup. The dashboard discovers it via the same endpoint and selects it (see `ui/packages/app/lib/workspace.ts:21-29`). The CLI does not — `commandLogin` saves credentials and stops, so `loadWorkspaces` returns the empty fallback on next invocation, and `doctor` complains "no workspace selected. Run: zombiectl workspace add". The user creates a duplicate workspace, billing rolls up to the same tenant (no double-grant), but the canonical default is invisible.
 
-**Solution summary:** After credentials persist on a successful login, the CLI calls `GET /v1/tenants/me/workspaces`, normalizes the response, writes `workspaces.json` with the first item as `current_workspace_id`. Failure to fetch is silent — login still returns 0; the user can still run `workspace add` as a manual recovery. As a side carry, the architecture doc (`docs/architecture/billing_and_byok.md`) is corrected from $10 / 1000¢ to $5 / 500¢ to match `STARTER_GRANT_CENTS` — the same value the test fixture asserts (`signup_bootstrap_test.zig:147-158`).
+**Solution summary:** After credentials persist on a successful login, the CLI calls `GET /v1/tenants/me/workspaces`, normalizes the response, writes `workspaces.json` with the first item as `current_workspace_id`. Failure to fetch is silent — login still returns 0; the user can still run `workspace add` as a manual recovery. As a side carry, the architecture doc (`docs/architecture/billing_and_provider_keys.md`) is corrected from $10 / 1000¢ to $5 / 500¢ to match `STARTER_GRANT_CENTS` — the same value the test fixture asserts (`signup_bootstrap_test.zig:147-158`).
 
 ---
 
@@ -71,7 +71,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `zombiectl/test/login.unit.test.js` | EDIT | Three new tests: hydrate selects default, empty items leaves state untouched, pre-existing current id preserved when present in response, hydrate failure does not regress login exit code. |
 | `zombiectl/test/onboarding-flow.integration.test.js` | EDIT | Two new tests: end-to-end fresh-state login → workspaces.json populated; end-to-end fresh-state login → doctor green. Existing fresh-state credentials test stands (still asserts the credential shape; new hydration request 404s and is swallowed). |
 | `zombiectl/test/cli-analytics.unit.test.js` | EDIT | Pre-existing test routes by `options.method` only; new hydration GET fell through and double-counted polls. Stub the workspaces path explicitly. |
-| `docs/architecture/billing_and_byok.md` | EDIT | Two prose lines: `1000 cents (USD $10)` → `500 cents (USD $5)`; "$10 starter grant ... ~300 events / ~1000 events" → "$5 starter grant ... ~150 / ~500". |
+| `docs/architecture/billing_and_provider_keys.md` | EDIT | Two prose lines: `1000 cents (USD $10)` → `500 cents (USD $5)`; "$10 starter grant ... ~300 events / ~1000 events" → "$5 starter grant ... ~150 / ~500". |
 | `docs/architecture/README.md` | EDIT | One-line cross-reference description. |
 | `docs/architecture/scenarios/README.md` | EDIT | One-line scenario-3 description. |
 
@@ -111,7 +111,7 @@ The pre-existing `cli-analytics.unit.test.js` "post-login distinct id" test coun
 
 ### §3 — Architecture doc starter-grant correction
 
-Two `docs/architecture/billing_and_byok.md` prose lines (§3 and §4 paragraphs) and two cross-reference table cells (`docs/architecture/README.md`, `docs/architecture/scenarios/README.md`) flip from `$10 / 1000¢` to `$5 / 500¢`. The line in `billing_and_byok.md` §3 also gains a "source of truth: `STARTER_GRANT_CENTS` in `src/state/tenant_billing.zig`" cross-reference so the next agent reading this finds the canonical value without grepping.
+Two `docs/architecture/billing_and_provider_keys.md` prose lines (§3 and §4 paragraphs) and two cross-reference table cells (`docs/architecture/README.md`, `docs/architecture/scenarios/README.md`) flip from `$10 / 1000¢` to `$5 / 500¢`. The line in `billing_and_provider_keys.md` §3 also gains a "source of truth: `STARTER_GRANT_CENTS` in `src/state/tenant_billing.zig`" cross-reference so the next agent reading this finds the canonical value without grepping.
 
 ---
 
@@ -165,7 +165,7 @@ The CLI consumes `GET /v1/tenants/me/workspaces`. Same handler, but the response
 - [x] `make lint` clean — verify: `make lint`.
 - [x] `gitleaks detect` clean — verify: hook on every commit.
 - [x] No file in diff over 350 lines — verify: standard 350L gate from `docs/gates/file-length.md`.
-- [x] `docs/architecture/billing_and_byok.md` says "$5 / 500 cents" with a source-of-truth cross-reference to `tenant_billing.zig` — verify: `grep -n "STARTER_GRANT_CENTS" docs/architecture/billing_and_byok.md`.
+- [x] `docs/architecture/billing_and_provider_keys.md` says "$5 / 500 cents" with a source-of-truth cross-reference to `tenant_billing.zig` — verify: `grep -n "STARTER_GRANT_CENTS" docs/architecture/billing_and_provider_keys.md`.
 - [x] No regression in pre-existing tests (analytics, doctor, workspace add) — verify: full `bun test` from `zombiectl/`.
 
 ---
@@ -183,7 +183,7 @@ cd zombiectl && bun test
 make lint
 
 # E4: Doc cross-reference
-grep -n "STARTER_GRANT_CENTS\|500 cents (USD \$5)" docs/architecture/billing_and_byok.md
+grep -n "STARTER_GRANT_CENTS\|500 cents (USD \$5)" docs/architecture/billing_and_provider_keys.md
 
 # E5: 350-line gate (CLI files only)
 git diff --name-only origin/main \

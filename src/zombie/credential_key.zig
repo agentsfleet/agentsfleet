@@ -6,7 +6,7 @@
 //! worker-side lookup miss its row with `error.NotFound`.
 //!
 //! Sits outside `vault.zig` on purpose: vault is naming-agnostic by design,
-//! and BYOK provider records (user-named) use the same vault layer without
+//! and self-managed provider records (user-named) use the same vault layer without
 //! this prefix.
 
 const std = @import("std");

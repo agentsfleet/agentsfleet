@@ -1,6 +1,7 @@
 import { AlertTriangleIcon } from "lucide-react";
 import { Alert, AlertTitle, AlertDescription, Time } from "@usezombie/design-system";
 import type { TenantBilling } from "@/lib/types";
+import { SUPPORT_EMAIL } from "@/lib/contact";
 
 type Props = { billing: TenantBilling | null };
 
@@ -21,7 +22,7 @@ export default function ExhaustionBanner({ billing }: Props) {
             </>
           ) : null}
           <a
-            href="mailto:support@usezombie.com"
+            href={`mailto:${SUPPORT_EMAIL}`}
             className="underline underline-offset-2 hover:text-destructive"
           >
             Contact support

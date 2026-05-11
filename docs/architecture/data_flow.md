@@ -153,7 +153,7 @@ The flow above writes to three Postgres tables. They are **not** redundant — e
 |---|---|---|---|
 | `core.zombie_sessions` | **One row per zombie** | UPSERT — mutated on every event boundary | "Where is this zombie *right now*? Is it idle or executing? What was its last successful response?" — the worker's resume bookmark + active-execution handle. Read at claim, written at start + end of each event. |
 | `core.zombie_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `agent_error` \| `gate_blocked`) | "What did this zombie do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `zombiectl events`. |
-| `zombie_execution_telemetry` | **Two rows per event** under M48: one `charge_type='receive'` written at the receive deduct, one `charge_type='stage'` written at the stage deduct (then UPDATEd with token counts after `StageResult`). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the cents column; stage row UPDATEd once with token counts. | "How much did event X cost (split by receive vs stage)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `zombie_events` via `event_id`. Aggregated for p95 latency, token-spend rollups, credit deductions. |
+| `zombie_execution_telemetry` | **Two rows per event** under M48: one `charge_type='receive'` written at the receive deduct, one `charge_type='stage'` written at the stage deduct (then UPDATEd with token counts after `StageResult`). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; stage row UPDATEd once with token counts. | "How much did event X cost (split by receive vs stage)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `zombie_events` via `event_id`. Aggregated for p95 latency, token-spend rollups, credit deductions. |
 
 Why two per-delivery tables (`events` + `telemetry`) instead of one? They have different write authorities and retention contracts:
 
@@ -444,14 +444,14 @@ consulted on `/v1/webhooks/…` routes. See `docs/AUTH.md §Webhook auth
 
      4. resolveSecretsMap from vault (per-zombie tool credentials —
         github, fly, slack, etc. — keyed by name; workspace-scoped).
-        Provider posture (platform or BYOK) is resolved separately
+        Provider posture (platform or self-managed) is resolved separately
         through tenant_provider.resolveActiveProvider(tenant_id), which
         either synthesises the platform default (no row) or reads the
         tenant_providers row and follows credential_ref into the vault
-        for the BYOK api_key. The api_key crosses this boundary in
+        for the self-managed api_key. The api_key crosses this boundary in
         process memory only — it does NOT join secrets_map and is never
         substituted into a tool placeholder. See
-        billing_and_byok.md §8.2 for the full visibility boundary.
+        billing_and_provider_keys.md §8.2 for the full visibility boundary.
 
      5. UPSERT core.zombie_sessions                ← worker marks busy
           SET execution_id, execution_started_at = now()

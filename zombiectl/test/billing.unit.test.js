@@ -1,10 +1,15 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandBilling } from "../src/commands/billing.js";
+import { CHARGE_TYPE, PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.js";
 import { makeNoop, makeBufferStream, ui } from "./helpers.js";
 
 const BILLING_PATH = "/v1/tenants/me/billing";
 const CHARGES_PATH_PREFIX = "/v1/tenants/me/billing/charges";
+
+// 1¢ in nanos. Test fixtures use named multiples of this so the arithmetic
+// stays readable rather than counting zeros.
+const ONE_CENT_NANOS = NANOS_PER_USD / 100;
 
 function makeDeps({ requestImpl, parseFlagsImpl } = {}) {
   return {
@@ -32,13 +37,13 @@ function makeDeps({ requestImpl, parseFlagsImpl } = {}) {
 }
 
 const RECEIVE_ROW = {
-  event_id: "evt_1", charge_type: "receive", posture: "platform", model: "kimi-k2.6",
-  credit_deducted_cents: 1, token_count_input: null, token_count_output: null,
+  event_id: "evt_1", charge_type: CHARGE_TYPE.receive, posture: PROVIDER_MODE.platform, model: "kimi-k2.6",
+  credit_deducted_nanos: ONE_CENT_NANOS, token_count_input: null, token_count_output: null,
   recorded_at: 1_000_000,
 };
 const STAGE_ROW = {
-  event_id: "evt_1", charge_type: "stage", posture: "platform", model: "kimi-k2.6",
-  credit_deducted_cents: 2, token_count_input: 820, token_count_output: 1040,
+  event_id: "evt_1", charge_type: CHARGE_TYPE.stage, posture: PROVIDER_MODE.platform, model: "kimi-k2.6",
+  credit_deducted_nanos: 2 * ONE_CENT_NANOS, token_count_input: 820, token_count_output: 1040,
   recorded_at: 1_000_005,
 };
 
@@ -69,7 +74,7 @@ test("billing show: GETs balance + usage in parallel, default limit=10 → usage
   const deps = makeDeps({
     requestImpl: async (_ctx, url, opts) => {
       calls.push({ url, method: opts.method });
-      if (url === BILLING_PATH) return { balance_cents: 471, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 471 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [] };
     },
   });
@@ -85,7 +90,7 @@ test("billing show --limit 5: requests usage with limit=10 (limit*2)", async () 
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
       if (url.startsWith(CHARGES_PATH_PREFIX)) usageUrl = url;
-      if (url === BILLING_PATH) return { balance_cents: 100, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [] };
     },
   });
@@ -157,14 +162,14 @@ test("billing show: text mode prints formatted balance and footer pointer", asyn
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === BILLING_PATH) return { balance_cents: 471, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 471 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [] };
     },
   });
   const ctx = { stdout: stdout.stream, stderr: makeNoop(), jsonMode: false };
   await commandBilling(ctx, ["show"], null, deps);
   const out = stdout.read();
-  assert.match(out, /Tenant balance: {4}\$4\.71 \(471¢\)/);
+  assert.match(out, /Tenant balance: {4}\$4\.71/);
   assert.match(out, /No billable events recorded yet\./);
   assert.match(out, /Out of credits\? See https:\/\/app\.usezombie\.com\/settings\/billing/);
 });
@@ -173,7 +178,7 @@ test("billing show: surfaces exhausted balance with explicit warning", async () 
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === BILLING_PATH) return { balance_cents: 0, is_exhausted: true };
+      if (url === BILLING_PATH) return { balance_nanos: 0, is_exhausted: true };
       return { items: [] };
     },
   });
@@ -186,7 +191,7 @@ test("billing show: groups receive+stage rows by event_id and sums totals", asyn
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === BILLING_PATH) return { balance_cents: 500, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 500 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [STAGE_ROW, RECEIVE_ROW] }; // out-of-order on purpose
     },
   });
@@ -203,7 +208,7 @@ test("billing show --json: emits balance + grouped events array", async () => {
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === BILLING_PATH) return { balance_cents: 250, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 250 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [RECEIVE_ROW, STAGE_ROW] };
     },
   });
@@ -211,14 +216,14 @@ test("billing show --json: emits balance + grouped events array", async () => {
   const code = await commandBilling(ctx, ["show", "--json"], null, deps);
   assert.equal(code, 0);
   const body = JSON.parse(stdout.read());
-  assert.equal(body.balance_cents, 250);
+  assert.equal(body.balance_nanos, 250 * ONE_CENT_NANOS);
   assert.equal(body.is_exhausted, false);
   assert.equal(body.events.length, 1);
   const ev = body.events[0];
   assert.equal(ev.event_id, "evt_1");
-  assert.equal(ev.receive_cents, 1);
-  assert.equal(ev.stage_cents, 2);
-  assert.equal(ev.total_cents, 3);
+  assert.equal(ev.receive_nanos, ONE_CENT_NANOS);
+  assert.equal(ev.stage_nanos, 2 * ONE_CENT_NANOS);
+  assert.equal(ev.total_nanos, 3 * ONE_CENT_NANOS);
   assert.equal(ev.token_count_input, 820);
   assert.equal(ev.token_count_output, 1040);
 });
@@ -228,7 +233,7 @@ test("billing show: forwards --cursor verbatim (URI-encoded) to the charges endp
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
       calls.push(url);
-      if (url === BILLING_PATH) return { balance_cents: 100, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [], next_cursor: null };
     },
   });
@@ -242,7 +247,7 @@ test("billing show: surfaces next_cursor in text mode footer when present", asyn
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === BILLING_PATH) return { balance_cents: 100, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [RECEIVE_ROW, STAGE_ROW], next_cursor: "next_token_xyz" };
     },
   });
@@ -255,7 +260,7 @@ test("billing show --json: surfaces next_cursor in the body for scripting", asyn
   const stdout = makeBufferStream();
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === BILLING_PATH) return { balance_cents: 100, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
       return { items: [], next_cursor: "tok_for_page_2" };
     },
   });
@@ -275,7 +280,7 @@ test("billing show --json: limit slices grouped events not raw rows", async () =
   }
   const deps = makeDeps({
     requestImpl: async (_ctx, url) => {
-      if (url === BILLING_PATH) return { balance_cents: 1000, is_exhausted: false };
+      if (url === BILLING_PATH) return { balance_nanos: 1000 * ONE_CENT_NANOS, is_exhausted: false };
       return { items };
     },
   });

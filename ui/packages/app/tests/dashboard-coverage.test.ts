@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { renderToStaticMarkup } from "react-dom/server";
+import { CHARGE_TYPE, NANOS_PER_USD, PROVIDER_MODE } from "@/lib/types";
 
 // ── Shared mocks ───────────────────────────────────────────────────────────
 
@@ -87,11 +88,11 @@ vi.mock("@/lib/api/tenant_billing", () => ({
 }));
 
 const getTenantProviderMock = vi.fn();
-const setTenantProviderByokMock = vi.fn();
+const setTenantProviderSelfManagedMock = vi.fn();
 const resetTenantProviderMock = vi.fn();
 vi.mock("@/lib/api/tenant_provider", () => ({
   getTenantProvider: getTenantProviderMock,
-  setTenantProviderByok: setTenantProviderByokMock,
+  setTenantProviderSelfManaged: setTenantProviderSelfManagedMock,
   resetTenantProvider: resetTenantProviderMock,
 }));
 
@@ -310,7 +311,7 @@ beforeEach(() => {
     cursor: null,
   });
   getTenantBillingMock.mockResolvedValue({
-    balance_cents: 5000,
+    balance_nanos: 5 * NANOS_PER_USD,
     is_exhausted: false,
     exhausted_at: null,
   });
@@ -416,7 +417,7 @@ describe("placeholder pages", () => {
     getServerTokenMock.mockResolvedValue("token_provider");
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
     getTenantProviderMock.mockResolvedValue({
-      mode: "platform",
+      mode: PROVIDER_MODE.platform,
       provider: "fireworks",
       model: "kimi-k2.6",
       context_cap_tokens: 256000,
@@ -427,7 +428,7 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("LLM Provider");
-    expect(m).toContain("platform");
+    expect(m).toContain(PROVIDER_MODE.platform);
     expect(m).toContain("data-provider-selector=\"ws_p\"");
     expect(m).toContain("This is the platform default");
   });
@@ -436,14 +437,14 @@ describe("placeholder pages", () => {
     getServerTokenMock.mockResolvedValue("token_provider");
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
     getTenantProviderMock.mockResolvedValue({
-      mode: "byok",
+      mode: PROVIDER_MODE.self_managed,
       provider: "fireworks",
       model: "kimi-k2.6",
       context_cap_tokens: 256000,
-      credential_ref: "fw-byok",
+      credential_ref: "fw-key",
       error: "credential_missing",
     });
-    listCredentialsMock.mockResolvedValue({ credentials: [{ name: "fw-byok", created_at: "2026-04-01T00:00:00Z" }] });
+    listCredentialsMock.mockResolvedValue({ credentials: [{ name: "fw-key", created_at: "2026-04-01T00:00:00Z" }] });
     const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Provider resolver error");
@@ -478,15 +479,15 @@ describe("placeholder pages", () => {
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
     getServerTokenMock.mockResolvedValue("token_billing");
     getTenantBillingMock.mockResolvedValue({
-      balance_cents: 471,
+      balance_nanos: 4_710_000_000,
       updated_at: 1, is_exhausted: false, exhausted_at: null,
     });
     listTenantBillingChargesMock.mockResolvedValue({
       items: [
         {
           id: "tel_1", tenant_id: "t", workspace_id: "w", zombie_id: "z",
-          event_id: "evt_1", charge_type: "receive", posture: "platform",
-          model: "kimi-k2.6", credit_deducted_cents: 1,
+          event_id: "evt_1", charge_type: CHARGE_TYPE.receive, posture: PROVIDER_MODE.platform,
+          model: "kimi-k2.6", credit_deducted_nanos: 1,
           token_count_input: null, token_count_output: null, wall_ms: null, recorded_at: 1,
         },
       ],
@@ -505,7 +506,7 @@ describe("placeholder pages", () => {
   it("billing settings page tolerates a /charges 5xx by falling back to empty events", async () => {
     getServerTokenMock.mockResolvedValue("token_billing");
     getTenantBillingMock.mockResolvedValue({
-      balance_cents: 0,
+      balance_nanos: 0,
       updated_at: 1, is_exhausted: true, exhausted_at: 2,
     });
     listTenantBillingChargesMock.mockRejectedValue(new Error("503"));

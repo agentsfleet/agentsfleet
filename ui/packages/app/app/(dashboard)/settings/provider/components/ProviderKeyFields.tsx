@@ -13,7 +13,7 @@ import {
 } from "@usezombie/design-system";
 import type { CredentialSummary } from "@/lib/api/credentials";
 
-export type ByokFieldsProps = {
+export type ProviderKeyFieldsProps = {
   workspaceId: string;
   credentials: CredentialSummary[];
   credentialRef: string;
@@ -23,19 +23,19 @@ export type ByokFieldsProps = {
 };
 
 /**
- * BYOK-specific form fields: credential dropdown + model override. Pure
- * presentation. Renders an "add a credential first" CTA when the workspace
- * vault is empty so the parent doesn't need to branch on emptiness for the
- * primary form path.
+ * Self-managed-provider form fields: credential dropdown + model override.
+ * Pure presentation. Renders an "add a credential first" CTA when the
+ * workspace vault is empty so the parent doesn't need to branch on
+ * emptiness for the primary form path.
  */
-export default function ByokFields({
+export default function ProviderKeyFields({
   workspaceId,
   credentials,
   credentialRef,
   onCredentialRefChange,
   modelOverride,
   onModelOverrideChange,
-}: ByokFieldsProps) {
+}: ProviderKeyFieldsProps) {
   const noCredentials = credentials.length === 0;
 
   return (
@@ -45,7 +45,7 @@ export default function ByokFields({
         {noCredentials ? (
           <Alert
             variant="warning"
-            data-testid="byok-no-credentials"
+            data-testid="provider-key-no-credentials"
             className="text-xs"
           >
             <span>

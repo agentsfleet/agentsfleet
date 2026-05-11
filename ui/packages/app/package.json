@@ -9,14 +9,14 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint --type-aware .",
-    "test": "vitest run tests/*.test.ts lib/**/*.test.ts",
+    "test": "vitest run tests/*.test.ts lib/*.test.ts lib/**/*.test.ts",
     "test:smoke": "vitest run tests/smoke.test.ts",
     "test:e2e": "bunx playwright test",
     "test:e2e:smoke": "bunx playwright test tests/e2e/smoke.spec.ts",
     "test:e2e:auth": "bunx playwright test --config=playwright.auth.config.ts",
     "test:e2e:auth:local": "NEXT_PUBLIC_API_URL=http://localhost:3000 bunx playwright test --config=playwright.auth.config.ts",
     "qa": "bun run test && bun run test:e2e",
-    "test:coverage": "vitest run tests/*.test.ts lib/**/*.test.ts --coverage",
+    "test:coverage": "vitest run tests/*.test.ts lib/*.test.ts lib/**/*.test.ts --coverage",
     "qa:smoke": "bun run test:smoke && bun run test:e2e:smoke"
   },
   "dependencies": {

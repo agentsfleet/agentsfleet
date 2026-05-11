@@ -49,7 +49,7 @@ The core happy path is:
 
 If this path fails, the wedge is not ready no matter how polished the surrounding docs are.
 
-Current launch contract: BYOK flows through tenant-scoped provider configuration (`zombiectl tenant provider set --credential <name>`). The workspace-scoped `/credentials/llm` route is removed before v2.0.0 and must not be preserved as a compatibility path.
+Current launch contract: self-managed flows through tenant-scoped provider configuration (`zombiectl tenant provider set --credential <name>`). The workspace-scoped `/credentials/llm` route is removed before v2.0.0 and must not be preserved as a compatibility path.
 
 ## Hosted posture assumptions
 
@@ -70,7 +70,7 @@ These are the must-pass end-to-end flows:
 - first steer after install
 - first real webhook-triggered failure after install
 - re-run idempotency on the same repo
-- Bring Your Own Key resolution on at least one real provider path
+- self-managed provider key resolution on at least one real provider path
 - gitleaks-clean generated files
 
 The most important rule is that the first steer and the first webhook must hit the same reasoning loop. If those paths diverge in meaningful behaviour, the wedge becomes much harder to explain and trust.
@@ -144,7 +144,7 @@ The wedge is ready only if:
 - the first steer proves real evidence gathering
 - the webhook path proves the same reasoning loop under production-style input
 - generated files are safe to commit
-- BYOK does not feel like a second-class path
+- self-managed does not feel like a second-class path
 - failure messages are clear enough that an operator can recover without reading source code
 
 ## How to use this file

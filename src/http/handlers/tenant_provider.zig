@@ -3,11 +3,11 @@
 //! GET    returns the persisted config (no api_key, ever).
 //! PUT    body {mode, credential_ref?, model?} validates eagerly and UPSERTs
 //!        the row. Validation order matches the spec PUT contract:
-//!          1. body shape malformed                  → 400 UZ-REQ-001
-//!          2. mode=byok + credential_ref absent     → 400 UZ-PROVIDER-001
-//!          3. mode=byok + credential row absent     → 400 UZ-PROVIDER-002
-//!          4. mode=byok + JSON shape invalid        → 400 UZ-PROVIDER-003
-//!          5. effective model not in caps catalogue → 400 UZ-PROVIDER-004
+//!          1. body shape malformed                          → 400 UZ-REQ-001
+//!          2. mode=self_managed + credential_ref absent     → 400 UZ-PROVIDER-001
+//!          3. mode=self_managed + credential row absent     → 400 UZ-PROVIDER-002
+//!          4. mode=self_managed + JSON shape invalid        → 400 UZ-PROVIDER-003
+//!          5. effective model not in caps catalogue         → 400 UZ-PROVIDER-004
 //!          6. UPSERT, return 200 with the resolved config
 //! DELETE is equivalent to PUT mode=platform — writes the explicit
 //!        platform-default row so the dashboard can distinguish "never
@@ -90,11 +90,11 @@ pub fn innerPutTenantProvider(hx: Hx, req: *httpz.Request) void {
         applyPlatform(hx, conn, tenant_id);
         return;
     }
-    if (std.mem.eql(u8, input.mode, "byok")) {
-        applyByok(hx, conn, tenant_id, input);
+    if (std.mem.eql(u8, input.mode, "self_managed")) {
+        applySelfManaged(hx, conn, tenant_id, input);
         return;
     }
-    hx.fail(ec.ERR_INVALID_REQUEST, "mode must be 'platform' or 'byok'");
+    hx.fail(ec.ERR_INVALID_REQUEST, "mode must be 'platform' or 'self_managed'");
 }
 
 // ── DELETE ──────────────────────────────────────────────────────────────────
@@ -139,13 +139,13 @@ fn applyPlatform(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8) void 
     hx.ok(.ok, view);
 }
 
-fn applyByok(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: PutInput) void {
+fn applySelfManaged(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: PutInput) void {
     const credential_ref = input.credential_ref orelse {
-        hx.fail(ec.ERR_PROVIDER_CREDENTIAL_REF_REQUIRED, "credential_ref required when mode=byok");
+        hx.fail(ec.ERR_PROVIDER_CREDENTIAL_REF_REQUIRED, "credential_ref required when mode=self_managed");
         return;
     };
 
-    var probed = tenant_provider.probeByok(hx.alloc, conn, tenant_id, credential_ref) catch |err| switch (err) {
+    var probed = tenant_provider.probeSelfManaged(hx.alloc, conn, tenant_id, credential_ref) catch |err| switch (err) {
         tenant_provider.ResolveError.CredentialMissing => {
             hx.fail(ec.ERR_PROVIDER_CREDENTIAL_NOT_FOUND, "credential row not found in vault");
             return;
@@ -174,7 +174,7 @@ fn applyByok(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: Pu
         return;
     };
 
-    tenant_provider.upsertByok(hx.alloc, conn, tenant_id, credential_ref, effective_model, cache_entry.context_cap_tokens) catch |err| {
+    tenant_provider.upsertSelfManaged(hx.alloc, conn, tenant_id, credential_ref, effective_model, cache_entry.context_cap_tokens) catch |err| {
         log.err("upsert_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .tenant_id = tenant_id, .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;

@@ -23,7 +23,7 @@ fn seedStageRow(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8,
         .charge_type = .stage,
         .posture = .platform,
         .model = PLATFORM_MODEL,
-        .credit_deducted_cents = 2,
+        .credit_deducted_nanos = 2,
         .recorded_at = recorded_at,
     });
 }
@@ -37,7 +37,7 @@ fn seedReceiveRow(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u
         .charge_type = .receive,
         .posture = .platform,
         .model = PLATFORM_MODEL,
-        .credit_deducted_cents = 1,
+        .credit_deducted_nanos = 1,
         .recorded_at = recorded_at,
     });
 }

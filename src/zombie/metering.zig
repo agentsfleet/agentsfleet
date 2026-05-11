@@ -5,7 +5,7 @@
 //! before the executor starts. Each debit pairs with a telemetry-row INSERT
 //! inside one transaction. After execution, the stage telemetry row is
 //! updated with the executor's reported token counts and wall_ms — the
-//! debit cents stay at the conservative pre-execution estimate; later
+//! debit nanos stay at the conservative pre-execution estimate; later
 //! reconciliation can adjust it if the product needs that.
 //!
 //! Replay safety. The telemetry table has UNIQUE (event_id, charge_type) +
@@ -16,7 +16,7 @@
 //!
 //! All DB failures are non-fatal: callers receive `.db_error` and the
 //! event loop XACKs the event so it isn't redelivered into the same fault.
-//! Cents already drained on a partial transaction (receive succeeds, stage
+//! Nanos already drained on a partial transaction (receive succeeds, stage
 //! fails) are NOT refunded — receive is "we did the work to evaluate it"
 //! and stays charged on a stage-side exhaust.
 
@@ -46,9 +46,9 @@ pub const PreflightContext = struct {
 };
 
 pub const DebitOutcome = union(enum) {
-    /// Debit + telemetry both committed. Cents drained on this charge.
+    /// Debit + telemetry both committed. Nanos drained on this charge.
     deducted: i64,
-    /// Balance < cents. Tenant balance unchanged. Caller marks gate_blocked.
+    /// Balance < nanos. Tenant balance unchanged. Caller marks gate_blocked.
     /// On the *first* exhaust the row's `balance_exhausted_at` is stamped
     /// inside the same transaction (atomic with the failed debit attempt).
     exhausted: void,
@@ -100,7 +100,7 @@ pub fn balanceCoversEstimate(
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
     );
-    return billing.balance_cents >= (receive + stage);
+    return billing.balance_nanos >= (receive + stage);
 }
 
 /// Charge `computeReceiveCharge(ctx.posture)` and INSERT a `receive`
@@ -113,14 +113,14 @@ pub fn debitReceive(
     ctx: PreflightContext,
     policy: balance_policy.Policy,
 ) DebitOutcome {
-    const cents = tenant_billing.computeReceiveCharge(ctx.posture);
-    return debitAndInsert(pool, alloc, tenant_id, ctx, .receive, cents, policy);
+    const nanos = tenant_billing.computeReceiveCharge(ctx.posture);
+    return debitAndInsert(pool, alloc, tenant_id, ctx, .receive, nanos, policy);
 }
 
 /// Charge `computeStageCharge(posture, model, FLOOR_INPUT, FLOOR_OUTPUT)`
 /// and INSERT a `stage` telemetry row with NULL token counts and wall_ms.
 /// The conservative estimate is the charge — `recordStageActuals` later
-/// only updates the token/wall fields, never the cents.
+/// only updates the token/wall fields, never the debited nanos.
 pub fn debitStage(
     pool: *pg.Pool,
     alloc: Allocator,
@@ -128,13 +128,13 @@ pub fn debitStage(
     ctx: PreflightContext,
     policy: balance_policy.Policy,
 ) DebitOutcome {
-    const cents = tenant_billing.computeStageCharge(
+    const nanos = tenant_billing.computeStageCharge(
         ctx.posture,
         ctx.model,
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
     );
-    return debitAndInsert(pool, alloc, tenant_id, ctx, .stage, cents, policy);
+    return debitAndInsert(pool, alloc, tenant_id, ctx, .stage, nanos, policy);
 }
 
 /// Post-execution: UPDATE the stage telemetry row's token counts and
@@ -196,7 +196,7 @@ fn debitAndInsert(
     tenant_id: []const u8,
     ctx: PreflightContext,
     charge_type: zombie_telemetry_store.ChargeType,
-    cents: i64,
+    nanos: i64,
     policy: balance_policy.Policy,
 ) DebitOutcome {
     const conn = pool.acquire() catch |err| {
@@ -214,15 +214,15 @@ fn debitAndInsert(
         conn.rollback() catch {};
     };
 
-    if (cents > 0) {
-        _ = tenant_billing.debit(conn, tenant_id, cents) catch |err| switch (err) {
+    if (nanos > 0) {
+        _ = tenant_billing.debit(conn, tenant_id, nanos) catch |err| switch (err) {
             error.CreditExhausted => {
                 _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
                     log.warn("mark_exhausted_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
                 };
                 _ = conn.exec("COMMIT", .{}) catch {};
                 tx_open = false;
-                onExhaustedDebit(ctx.zombie_id, tenant_id, charge_type, cents, policy);
+                onExhaustedDebit(ctx.zombie_id, tenant_id, charge_type, nanos, policy);
                 return .{ .exhausted = {} };
             },
             error.TenantBillingMissing => {
@@ -253,7 +253,7 @@ fn debitAndInsert(
         .charge_type = charge_type,
         .posture = ctx.posture,
         .model = ctx.model,
-        .credit_deducted_cents = cents,
+        .credit_deducted_nanos = nanos,
         .token_count_input = null,
         .token_count_output = null,
         .wall_ms = null,
@@ -271,22 +271,22 @@ fn debitAndInsert(
     };
     tx_open = false;
 
-    log.debug("debit", .{ .charge_type = charge_type.label(), .tenant_id = tenant_id, .event_id = ctx.event_id, .cents = cents });
-    return .{ .deducted = cents };
+    log.debug("debit", .{ .charge_type = charge_type.label(), .tenant_id = tenant_id, .event_id = ctx.event_id, .nanos = nanos });
+    return .{ .deducted = nanos };
 }
 
 fn onExhaustedDebit(
     zombie_id: []const u8,
     tenant_id: []const u8,
     charge_type: zombie_telemetry_store.ChargeType,
-    cents: i64,
+    nanos: i64,
     policy: balance_policy.Policy,
 ) void {
     log.info("exhausted", .{
         .zombie_id = zombie_id,
         .tenant_id = tenant_id,
         .charge_type = charge_type.label(),
-        .cents_attempted = cents,
+        .nanos_attempted = nanos,
         .policy = policy.label(),
     });
 }

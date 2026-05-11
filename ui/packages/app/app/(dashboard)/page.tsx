@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@usezombie/design-system";
 import { listZombies, ZOMBIE_STATUS } from "@/lib/api/zombies";
 import { getTenantBilling } from "@/lib/api/tenant_billing";
+import { NANOS_PER_USD } from "@/lib/types";
 import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
@@ -35,7 +36,7 @@ export async function StatusTiles() {
     return (
       <>
         <ExhaustionBanner billing={billing} />
-        <FirstInstallCard balanceCents={billing?.balance_cents ?? null} />
+        <FirstInstallCard balanceNanos={billing?.balance_nanos ?? null} />
       </>
     );
   }
@@ -49,7 +50,7 @@ export async function StatusTiles() {
         <StatusCard label="Stopped" count={stopped} variant="default" />
         <StatusCard
           label="Balance"
-          count={billing ? `${billing.balance_cents / 100} credits` : "—"}
+          count={billing ? `$${(billing.balance_nanos / NANOS_PER_USD).toFixed(2)}` : "—"}
           variant={billing?.is_exhausted ? "danger" : "default"}
         />
       </div>
@@ -57,8 +58,8 @@ export async function StatusTiles() {
   );
 }
 
-function FirstInstallCard({ balanceCents }: { balanceCents: number | null }) {
-  const credits = balanceCents != null ? Math.floor(balanceCents / 100) : null;
+function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
+  const credits = balanceNanos != null ? Math.floor(balanceNanos / NANOS_PER_USD) : null;
   return (
     <Section asChild>
       <section aria-label="Install your first zombie" className="mb-8">

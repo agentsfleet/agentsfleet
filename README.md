@@ -15,7 +15,7 @@
 
 > **Early Access Preview.** APIs and CLI may change before GA.
 
-A **Zombie** wakes on your events (webhook · cron · steer), gathers evidence against your infra, posts an evidenced diagnosis to Slack, and records every action in a replayable event log. Markdown-defined. BYOK. Hosted on `api.usezombie.com`.
+A **Zombie** wakes on your events (webhook · cron · steer), gathers evidence against your infra, posts an evidenced diagnosis to Slack, and records every action in a replayable event log. Markdown-defined. Self-managed provider keys. Hosted on `api.usezombie.com`.
 
 **Trying it as a user?** Skip the rest of this README and go straight to **[docs.usezombie.com/quickstart](https://docs.usezombie.com/quickstart)** — `$5` starter credit on signup, no card required, full install + first run in under five minutes.
 

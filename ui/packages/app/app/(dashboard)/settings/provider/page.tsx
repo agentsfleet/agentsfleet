@@ -15,6 +15,7 @@ import { getServerToken } from "@/lib/auth/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
+import { PROVIDER_MODE } from "@/lib/types";
 import ProviderSelector from "./components/ProviderSelector";
 
 export const dynamic = "force-dynamic";
@@ -51,9 +52,9 @@ export default async function ProviderSettingsPage() {
       </PageHeader>
       <p className="mb-6 max-w-2xl text-sm text-muted-foreground">
         Choose between platform-managed credits (we handle the billing) and
-        Bring-Your-Own-Key (your API key, your provider account, our flat
-        per-event overhead). Platform-managed is the default for every new
-        tenant.
+        self-managed provider keys (your API key, your provider account,
+        our flat per-event overhead). Platform-managed is the default for
+        every new tenant.
       </p>
       <div className="grid gap-8 md:grid-cols-2">
         <Section asChild>
@@ -115,7 +116,7 @@ export default async function ProviderSettingsPage() {
             <SectionLabel>Change provider</SectionLabel>
             <ProviderSelector
               workspaceId={workspace.id}
-              currentMode={provider.mode ?? "platform"}
+              currentMode={provider.mode ?? PROVIDER_MODE.platform}
               currentCredentialRef={provider.credential_ref}
               currentModel={provider.model ?? ""}
               credentials={credentialsResp.credentials}

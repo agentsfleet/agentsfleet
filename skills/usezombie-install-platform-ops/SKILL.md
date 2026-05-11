@@ -28,7 +28,7 @@ inputs:
 references:
   - references/credential-resolution.md
   - references/failure-modes.md
-  - references/byok-handoff.md
+  - references/self-managed-handoff.md
 ---
 
 # usezombie-install-platform-ops
@@ -114,10 +114,10 @@ surface the diagnostic and let the user fix it before retrying.
    response is the source of `model` and `context_cap_tokens` for the
    generated frontmatter; capture it.
 2. **Read provider posture.** From doctor's `tenant_provider` block,
-   note `mode` (`platform` or `byok`), `model`, and
+   note `mode` (`platform` or `self_managed`), `model`, and
    `context_cap_tokens`. Under `platform`, both values are real
    (e.g. `accounts/fireworks/models/kimi-k2.6` + `256000`); under
-   `byok` you will write the visible sentinels `""` and `0` so the
+   `self_managed` you will write the visible sentinels `""` and `0` so the
    worker overlays from `core.tenant_providers` at trigger time.
 3. **Detect the repo.** Read `.github/workflows/*.yml`, `fly.toml`,
    `Dockerfile`, `pyproject.toml`, `package.json` from the user's CWD.
@@ -128,7 +128,7 @@ surface the diagnostic and let the user fix it before retrying.
    inline prompts: `slack_channel` (required, e.g. `#platform-ops`),
    `prod_branch_glob` (default `main`), `cron_schedule` (optional,
    e.g. `*/30 * * * *`; empty string disables the recurring check).
-   Never ask about LLM model or BYOK — those come from doctor (step 2)
+   Never ask about LLM model or self-managed — those come from doctor (step 2)
    and M48 respectively.
 5. **Resolve the GitHub webhook secret.** Check whether the workspace
    already has a `github` credential with a `webhook_secret` field
@@ -174,8 +174,8 @@ surface the diagnostic and let the user fix it before retrying.
    | `{{slack_channel}}` | step 4 |
    | `{{prod_branch_glob}}` | step 4 (default `main` if blank) |
    | `{{cron_schedule}}` | step 4 (empty omits the cron-related prose) |
-   | `{{model}}` | doctor `tenant_provider.model` (real value or `""` under BYOK) |
-   | `{{context_cap_tokens}}` | doctor `tenant_provider.context_cap_tokens` (real value or `0` under BYOK) |
+   | `{{model}}` | doctor `tenant_provider.model` (real value or `""` under self-managed) |
+   | `{{context_cap_tokens}}` | doctor `tenant_provider.context_cap_tokens` (real value or `0` under self-managed) |
 
    If `.usezombie/platform-ops/` already exists, prompt overwrite
    (default `N`). On `N`, exit cleanly with no changes to disk.
@@ -226,18 +226,18 @@ surface the diagnostic and let the user fix it before retrying.
 | 4 | Asking the user to paste the webhook into GitHub before verifying it works | Always self-verify with `openssl dgst -sha256 -hmac` + `curl` to the receiver first (step 10). |
 | 5 | Hard-coding Claude Code's `AskUserQuestion` in the body prose | Use the host's question primitive when present, or inline natural-language prompts otherwise. This skill must work in Amp, Codex CLI, and OpenCode too. |
 | 6 | Calling the model-caps endpoint directly | Doctor's `tenant_provider` block already carries resolved values. Never add a network dependency for what doctor already has. |
-| 7 | Asking the user about LLM model or BYOK | Out-of-band — see [`references/byok-handoff.md`](references/byok-handoff.md). The skill never holds an LLM api_key. |
+| 7 | Asking the user about LLM model or self-managed key | Out-of-band — see [`references/self-managed-handoff.md`](references/self-managed-handoff.md). The skill never holds an LLM api_key. |
 
 ## When to Load References
 
 - **Credential resolution failed** → [`references/credential-resolution.md`](references/credential-resolution.md)
 - **Skill exited with an error** → [`references/failure-modes.md`](references/failure-modes.md)
-- **User wants to switch to BYOK** → [`references/byok-handoff.md`](references/byok-handoff.md)
+- **User wants to switch to self-managed** → [`references/self-managed-handoff.md`](references/self-managed-handoff.md)
 
 ## Out of Scope
 
 - Non-GitHub-Actions CI providers (GitLab, CircleCI, Jenkins) — future milestone.
-- BYOK setup — out-of-band, via `zombiectl credential add <name> --data @-`
+- self-managed setup — out-of-band, via `zombiectl credential add <name> --data @-`
   + `zombiectl tenant provider add --credential <name>`. The skill never
   asks about, holds, or stores an LLM api_key.
 - GitHub App for auto-webhook configuration — separate milestone (next

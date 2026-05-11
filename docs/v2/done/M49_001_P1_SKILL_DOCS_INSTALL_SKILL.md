@@ -20,8 +20,8 @@
 
 **Canonical architecture:**
 - [`docs/architecture/user_flow.md`](../../architecture/user_flow.md) §8.1-§8.5 (authoring, installing, triggering — this skill IS that workflow automated) and §8.7 (model + cap origin under both postures).
-- [`docs/architecture/billing_and_byok.md`](../../architecture/billing_and_byok.md) §10 — the model-caps endpoint shape, rotation, and Cloudflare configuration.
-- [`docs/architecture/scenarios/01_default_install.md`](../../architecture/scenarios/01_default_install.md) and [`02_byok.md`](../../architecture/scenarios/02_byok.md) — the two end-to-end scenarios this skill enables.
+- [`docs/architecture/billing_and_provider_keys.md`](../../architecture/billing_and_provider_keys.md) §10 — the model-caps endpoint shape, rotation, and Cloudflare configuration.
+- [`docs/architecture/scenarios/01_default_install.md`](../../architecture/scenarios/01_default_install.md) and [`02_self_managed.md`](../../architecture/scenarios/02_self_managed.md) — the two end-to-end scenarios this skill enables.
 
 **Distribution reference:** [resend/resend-cli's agent skills](https://github.com/resend/resend-cli/tree/main#agent-skills) — Resend's pattern of shipping a host-neutral SKILL.md with a CLI, distributed via `npx skills add <org>/<repo>`. M49 mirrors that exact shape.
 
@@ -210,7 +210,7 @@ The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816
 | `skills/usezombie-install-platform-ops/SKILL.md` | NEW | The agent skill. Resend-pattern frontmatter + body sections. Distributed via `npx skills add usezombie/usezombie`. |
 | `skills/usezombie-install-platform-ops/references/credential-resolution.md` | NEW | Reference doc for credential resolution order, op layouts, env var naming. Pointed at by frontmatter `references:`. |
 | `skills/usezombie-install-platform-ops/references/failure-modes.md` | NEW | Reference doc enumerating every failure mode + the recovery hint the skill prints. |
-| `skills/usezombie-install-platform-ops/references/byok-handoff.md` | NEW | Reference doc explaining the BYOK out-of-band flow (M48 contract) for users who want to switch posture. |
+| `skills/usezombie-install-platform-ops/references/self-managed-handoff.md` | NEW | Reference doc explaining the BYOK out-of-band flow (M48 contract) for users who want to switch posture. |
 | `skills/README.md` | NEW | Top-level explainer: what the skills folder is, the `npx skills add usezombie/usezombie` install command, the symlink fallback. |
 | `tests/skill-evals/usezombie-install-platform-ops/` | NEW | Fixture repos + eval harness. Basic file-generation eval (mock zombiectl, assert substituted SKILL.md + TRIGGER.md match expected). |
 | `tests/skill-evals/fixtures/` | NEW | Test fixture repos: `gh-actions-fly/`, `gh-actions-only/`, `no-ci/`. |
@@ -277,7 +277,7 @@ inputs:
 references:
   - references/credential-resolution.md
   - references/failure-modes.md
-  - references/byok-handoff.md
+  - references/self-managed-handoff.md
 ---
 
 # usezombie-install-platform-ops
@@ -353,7 +353,7 @@ JSON bodies are piped through stdin into `zombiectl credential add <name> --data
 
 - **Credential resolution failed** → [references/credential-resolution.md](references/credential-resolution.md)
 - **Skill exited with an error** → [references/failure-modes.md](references/failure-modes.md)
-- **User wants to switch to BYOK** → [references/byok-handoff.md](references/byok-handoff.md)
+- **User wants to switch to BYOK** → [references/self-managed-handoff.md](references/self-managed-handoff.md)
 
 ## Out of Scope
 

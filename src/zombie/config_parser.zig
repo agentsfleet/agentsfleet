@@ -251,7 +251,7 @@ fn parseSkillRef(
     return try alloc.dupe(u8, s);
 }
 
-/// Opaque pass-through. Empty string → null (BYOK sentinel; the executor
+/// Opaque pass-through. Empty string → null (self-managed sentinel; the executor
 /// resolves the model from `tenant_providers` at trigger time).
 fn parseModelField(
     alloc: Allocator,
