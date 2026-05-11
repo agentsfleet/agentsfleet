@@ -68,11 +68,16 @@ function writeCache(fixtures: MintedFixture[]): void {
       email: f.email,
       password: f.password,
       clerkUserId: f.clerkUserId,
+      sessionId: f.sessionId,
       sessionJwt: f.sessionJwt,
       cookieJwt: f.cookieJwt,
     };
   }
-  fs.writeFileSync(JWT_CACHE_PATH, JSON.stringify(cache, null, 2), { mode: 0o600 });
+  fs.writeFileSync(JWT_CACHE_PATH, JSON.stringify(cache, null, 2));
+  // chmod unconditionally — writeFileSync's `mode` option only applies on
+  // file creation, so a re-run over an existing world-readable file would
+  // leave the loose perms in place.
+  fs.chmodSync(JWT_CACHE_PATH, 0o600);
 }
 
 export default async function globalSetup(): Promise<void> {

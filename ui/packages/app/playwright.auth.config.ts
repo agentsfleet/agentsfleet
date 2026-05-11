@@ -19,6 +19,7 @@ export default defineConfig({
     ? [["line"], ["html", { open: "never", outputFolder: "playwright-auth-report" }]]
     : "line",
   globalSetup: "./tests/e2e/auth/global-setup.ts",
+  globalTeardown: "./tests/e2e/auth/global-teardown.ts",
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: process.env.VERCEL_BYPASS_SECRET

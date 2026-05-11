@@ -14,7 +14,8 @@
  *   - `ZOMBIE_TOKEN=<fixture.sessionJwt>` populates the Bearer header.
  *     (The env var name is `ZOMBIE_TOKEN`, not `ZOMBIECTL_TOKEN` — see
  *      `zombiectl/src/cli.js:65`.)
- *   - `ZOMBIE_API_URL=http://localhost:3000` overrides the prod default.
+ *   - `ZOMBIE_API_URL=$NEXT_PUBLIC_API_URL` so the CLI and the
+ *     workspace-id fetch hit the same zombied (mismatched URLs land at 404).
  *
  * No `signInAs` cookie-mount, no per-page DOM auth — just zombiectl + a
  * post-install dashboard reload to confirm the row landed.
@@ -104,6 +105,11 @@ async function spawnZombiectl(args: string[], env: Record<string, string>): Prom
 
 test.describe("install-zombie-cli", () => {
   test("zombiectl install lands a row on /zombies with live state", async ({ page }) => {
+    // Drive the CLI and the workspace-id fetch against the SAME zombied —
+    // splitting them lands the install at a 404 (workspace from server A,
+    // install to server B) with no clear hint about the URL mismatch.
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (!apiUrl) throw new Error("NEXT_PUBLIC_API_URL must be set");
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
     const cache = loadFixtureCache();
     const token = cache[FIXTURE_KEY.regular]?.sessionJwt;
@@ -134,12 +140,12 @@ test.describe("install-zombie-cli", () => {
     );
     await fs.writeFile(
       path.join(stateDir, "credentials.json"),
-      JSON.stringify({ token, api_url: "http://localhost:3000" }, null, 2),
+      JSON.stringify({ token, api_url: apiUrl }, null, 2),
     );
 
     const result = await spawnZombiectl(["--json", "install", "--from", bundleDir], {
       ZOMBIE_STATE_DIR: stateDir,
-      ZOMBIE_API_URL: "http://localhost:3000",
+      ZOMBIE_API_URL: apiUrl,
       ZOMBIE_TOKEN: token,
       NO_COLOR: "1",
     });
