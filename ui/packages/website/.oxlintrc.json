@@ -39,6 +39,7 @@
   },
   "ignorePatterns": [
     "dist/**",
+    "node_modules/**",
     "playwright-report/**",
     "playwright-results/**",
     "coverage/**"

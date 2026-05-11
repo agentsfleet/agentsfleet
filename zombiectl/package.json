@@ -28,8 +28,8 @@
   "scripts": {
     "test": "node ./scripts/run-tests.mjs",
     "test:coverage": "bun test --coverage",
-    "lint": "oxlint src bin test scripts",
-    "lint:fix": "oxlint src bin test scripts --fix",
+    "lint": "oxlint src bin test scripts && node ./scripts/audit-runtime-imports.mjs",
+    "lint:fix": "oxlint src bin test scripts --fix && node ./scripts/audit-runtime-imports.mjs",
     "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js",
     "prepublishOnly": "node ./scripts/prepublish.mjs",
     "postinstall": "node ./scripts/postinstall.mjs"

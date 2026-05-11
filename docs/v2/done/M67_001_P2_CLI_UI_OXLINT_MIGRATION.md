@@ -66,14 +66,18 @@
 | `zombiectl/eslint.config.js` | DELETE | ESLint config removed after replacement. |
 | `zombiectl/package.json` | EDIT | Lint scripts and dev dependencies switch to Oxlint. |
 | `zombiectl/bun.lock` | EDIT | Package manager lockfile reflects dependency migration. |
+| `zombiectl/scripts/audit-runtime-imports.mjs` | CREATE | Published CLI import audit preserves dependency-boundary and Node ESM extension checks that Oxlint does not provide directly. |
 | `zombiectl/src/commands/core.js` | EDIT | Stale ESLint suppression becomes a normal code comment after the tool migration. |
 | `zombiectl/test/banner.unit.test.js` | EDIT | Color-mode assertions pin terminal capability so pre-push verification is deterministic. |
 | `ui/packages/app/.oxlintrc.json` | CREATE | Oxlint config for the dashboard app. |
 | `ui/packages/app/eslint.config.js` | DELETE | ESLint config removed after replacement. |
-| `ui/packages/app/package.json` | EDIT | Lint script and dev dependencies switch to Oxlint. |
+| `ui/packages/app/package.json` | EDIT | Lint script and dev dependencies switch to type-aware Oxlint. |
 | `ui/packages/app/app/(dev)/ds-button-rsc/page.tsx` | EDIT | Inline lint suppression switches to Oxlint syntax. |
 | `ui/packages/app/app/(dashboard)/events/page.tsx` | EDIT | Import-only cleanup for Oxlint duplicate-import baseline. |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingBalanceCard.tsx` | EDIT | Inline lint suppression switches to Oxlint syntax. |
+| `ui/packages/app/lib/api/approvals.ts` | EDIT | Open-ended status type avoids redundant union diagnostics under type-aware Oxlint. |
+| `ui/packages/app/lib/api/events.ts` | EDIT | Open-ended event/status types avoid redundant union diagnostics under type-aware Oxlint. |
+| `ui/packages/app/tests/e2e/auth-theme.spec.ts` | EDIT | Synchronous Playwright value assertions no longer use incidental `await`. |
 | `ui/packages/app/tests/events-components.test.ts` | EDIT | Import-only cleanup for Oxlint duplicate-import baseline. |
 | `ui/packages/website/.oxlintrc.json` | CREATE | Oxlint config for the website package. |
 | `ui/packages/website/eslint.config.js` | DELETE | ESLint config removed after replacement. |
@@ -172,3 +176,5 @@ No HTTP API, schema, `zombiectl` user command, or runtime interface changes.
 - May 10, 2026: `make lint`, `make lint-apps`, `make lint-website`, and `make lint-ci` pass with Oxlint-backed package lint commands.
 - May 10, 2026: CI-shaped frozen installs pass for `ui/packages/website`, `ui/packages/app`, and `zombiectl`.
 - May 10, 2026: `make test` initially reached `test-unit-zombiectl` and failed two banner glyph assertions because the color-mode tests inherited the shell color environment; the tests now pin terminal capability for those assertions.
+- May 11, 2026: Greptile flagged dropped async typed lint in the app config; Oxlint's type-aware `typescript/no-floating-promises`, `typescript/no-misused-promises`, and `typescript/await-thenable` rules now run through `oxlint-tsgolint`.
+- May 11, 2026: Greptile flagged dropped CLI package-boundary checks; `zombiectl` now runs Oxlint import-cycle/extension rules plus `scripts/audit-runtime-imports.mjs` for published runtime dependency checks.
