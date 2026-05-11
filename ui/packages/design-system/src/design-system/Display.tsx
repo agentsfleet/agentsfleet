@@ -13,6 +13,11 @@ import { cn } from "../utils";
  * tracking values — closing the UI Component Substitution Gate's
  * "marketing-display typography exception" carve-out.
  *
+ * Line-height note: DisplayXL uses leading-display-xl (--lh-display-xl: 1.0).
+ * The pre-token version had leading-[1.05] which was off-spec — DESIGN_SYSTEM.md
+ * §Typography pins display-xl line-height at 1.0. The two-line marketing hero
+ * was visually verified at 1.0 before this change shipped; descenders clear.
+ *
  * Renders as <h1>/<h2> by default; RSC-safe.
  */
 

@@ -1,1 +1,1 @@
-/Users/kishore/Projects/dotfiles/scripts/audit-error-codes.sh
+../../dotfiles/scripts/audit-error-codes.sh

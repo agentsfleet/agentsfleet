@@ -1,1 +1,1 @@
-/Users/kishore/Projects/dotfiles/scripts/audit-deinit-pairs.sh
+../../dotfiles/scripts/audit-deinit-pairs.sh

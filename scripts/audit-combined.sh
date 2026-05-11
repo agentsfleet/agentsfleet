@@ -1,1 +1,1 @@
-/Users/kishore/Projects/dotfiles/scripts/audit-combined.sh
+../../dotfiles/scripts/audit-combined.sh

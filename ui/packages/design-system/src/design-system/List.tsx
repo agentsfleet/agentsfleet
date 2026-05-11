@@ -17,10 +17,14 @@ import { cn } from "../utils";
  * applied via CSS. Pass an explicit `role` to override.
  *
  * `<ListItem bullet="arrow|dot">` renders a leading glyph in
- * --text-subtle (the canonical bullet treatment from the design
- * system). The pre-bullet-variant idiom of
- * `before:content-['↳'] before:text-text-subtle` is no longer
- * permitted (DESIGN TOKEN GATE) — use the variant prop.
+ * --text-subtle — the canonical bullet treatment from the design
+ * system. Prefer this over the older `before:content-['↳']
+ * before:text-text-subtle` className soup: the variant centralises
+ * the glyph + colour + spacing so a future redesign edits one place,
+ * not every consumer. (DESIGN TOKEN GATE carves out
+ * `before:content-[…]` for legitimate pseudo-element use, so the old
+ * idiom still compiles — choose the variant for hygiene, not because
+ * the gate forces it.)
  */
 
 const BULLET_CHAR = {

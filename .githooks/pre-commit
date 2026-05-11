@@ -31,7 +31,7 @@ while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
     *.zig)                         needs_lint=1 ;;
-    apps/*|website/*|*.ts|*.tsx|*.js|*.jsx|*.json) needs_lint=1 ;;
+    *.ts|*.tsx|*.js|*.jsx|*.json)  needs_lint=1 ;;
     ui/packages/*)                 needs_lint=1 ;;
     scripts/*.sh)                  needs_lint=1 ;;
     .github/workflows/*.yml|.github/workflows/*.yaml) needs_lint=1 ;;

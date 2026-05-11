@@ -1,1 +1,1 @@
-/Users/kishore/Projects/dotfiles/scripts/audit-design-tokens.sh
+../../dotfiles/scripts/audit-design-tokens.sh

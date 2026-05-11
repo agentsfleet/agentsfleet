@@ -125,4 +125,64 @@ describe("List", () => {
     const li = container.querySelector("li");
     expect(li?.className).toContain("custom-li");
   });
+
+  describe("ListItem bullet variants", () => {
+    it("no bullet prop → renders <li> with only the user's content (no leading span)", () => {
+      const { container } = render(
+        <ul>
+          <ListItem>just text</ListItem>
+        </ul>,
+      );
+      const li = container.querySelector("li");
+      expect(li).not.toBeNull();
+      // Guard: no aria-hidden artefact, no leading span injected.
+      expect(li?.querySelector("span[aria-hidden=\"true\"]")).toBeNull();
+      expect(li?.textContent).toBe("just text");
+    });
+
+    it("bullet='arrow' → renders the ↳ glyph in --text-subtle with aria-hidden", () => {
+      const { container } = render(
+        <ul>
+          <ListItem bullet="arrow">stage one</ListItem>
+        </ul>,
+      );
+      const li = container.querySelector("li");
+      const span = li?.querySelector("span[aria-hidden=\"true\"]");
+      expect(span).not.toBeNull();
+      expect(span?.textContent).toBe("↳");
+      // Bullet is muted (text-subtle) and has the canonical 8px gap (mr-md).
+      expect(span?.className).toContain("text-text-subtle");
+      expect(span?.className).toContain("mr-md");
+      // User content is preserved alongside the bullet span.
+      expect(li?.textContent).toContain("stage one");
+    });
+
+    it("bullet='dot' → renders the · glyph in --text-subtle with aria-hidden", () => {
+      const { container } = render(
+        <ul>
+          <ListItem bullet="dot">priority support</ListItem>
+        </ul>,
+      );
+      const li = container.querySelector("li");
+      const span = li?.querySelector("span[aria-hidden=\"true\"]");
+      expect(span).not.toBeNull();
+      expect(span?.textContent).toBe("·");
+      expect(span?.className).toContain("text-text-subtle");
+      expect(span?.className).toContain("mr-md");
+      expect(li?.textContent).toContain("priority support");
+    });
+
+    it("merges consumer className alongside the bullet span", () => {
+      // Catches a regression where the bullet branch dropped className.
+      const { container } = render(
+        <ul>
+          <ListItem bullet="arrow" className="font-mono text-text-muted">x</ListItem>
+        </ul>,
+      );
+      const li = container.querySelector("li");
+      expect(li?.className).toContain("font-mono");
+      expect(li?.className).toContain("text-text-muted");
+      expect(li?.querySelector("span[aria-hidden=\"true\"]")?.textContent).toBe("↳");
+    });
+  });
 });
