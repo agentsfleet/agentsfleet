@@ -19,7 +19,7 @@ export default function Footer() {
       className="border-t border-border mt-24 pt-16 pb-12"
       data-testid="footer"
     >
-      <div className="wrap grid gap-12 lg:grid-cols-[2fr_1fr_1fr_1fr]">
+      <div className="wrap grid gap-12 lg:grid-cols-footer">
         <div className="flex flex-col gap-3">
           <span className="font-mono text-body font-medium text-text">
             {BRAND_NAME}

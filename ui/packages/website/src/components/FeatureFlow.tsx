@@ -106,7 +106,8 @@ export default function FeatureFlow() {
                   {item.bullets.map((bullet) => (
                     <ListItem
                       key={bullet}
-                      className="font-mono text-mono text-text-muted before:content-['↳'] before:mr-2 before:text-text-subtle"
+                      bullet="arrow"
+                      className="font-mono text-mono text-text-muted"
                     >
                       {bullet}
                     </ListItem>

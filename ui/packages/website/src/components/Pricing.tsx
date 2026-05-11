@@ -160,7 +160,8 @@ export default function Pricing() {
             {EXTRAS.map((point) => (
               <ListItem
                 key={point}
-                className="font-mono text-mono leading-mono text-text-muted before:content-['·_'] before:text-text-subtle"
+                bullet="dot"
+                className="font-mono text-mono leading-mono text-text-muted"
               >
                 {point}
               </ListItem>

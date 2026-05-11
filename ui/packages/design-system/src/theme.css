@@ -176,6 +176,11 @@
   --container-tagline: var(--max-w-tagline);
   --container-prose: var(--max-w-prose);
 
+  /* Named grid templates — `grid-cols-footer` etc. Tailwind v4 reads
+   * `--grid-template-columns-{name}` as the source of `grid-cols-{name}`
+   * utilities. Add a row here when a layout earns its second consumer. */
+  --grid-template-columns-footer: var(--grid-footer);
+
   /* Radius */
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
