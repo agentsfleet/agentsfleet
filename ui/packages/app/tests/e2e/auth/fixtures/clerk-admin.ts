@@ -24,6 +24,8 @@ export interface MintedFixture {
   email: string;
   password: string;
   clerkUserId: string;
+  /** Clerk session id — used by globalTeardown to revoke. */
+  sessionId: string;
   /** `api`-template JWT — Bearer auth on zombied; carries publicMetadata. */
   sessionJwt: string;
   /** Default (non-template) session JWT — `__session` cookie value;
@@ -107,7 +109,7 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
  */
 export async function mintTokens(
   userId: string,
-): Promise<{ sessionJwt: string; cookieJwt: string }> {
+): Promise<{ sessionId: string; sessionJwt: string; cookieJwt: string }> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
   const [template, standard] = await Promise.all([
     clerkRequest<ClerkSessionToken>(
@@ -121,7 +123,22 @@ export async function mintTokens(
       { expires_in_seconds: 3600 },
     ),
   ]);
-  return { sessionJwt: template.jwt, cookieJwt: standard.jwt };
+  return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
+}
+
+/**
+ * Revoke a previously-minted session. Used by globalTeardown to keep the
+ * Clerk DEV session list bounded across suite runs. Tolerates "already
+ * revoked" / "session not found" so a teardown after a partial setup
+ * cannot mask a real test failure.
+ */
+export async function revokeSession(sessionId: string): Promise<void> {
+  try {
+    await clerkRequest<unknown>("POST", `/sessions/${sessionId}/revoke`);
+  } catch (err) {
+    if (err instanceof Error && /4\d\d/.test(err.message)) return;
+    throw err;
+  }
 }
 
 export interface ProvisionedUser {
