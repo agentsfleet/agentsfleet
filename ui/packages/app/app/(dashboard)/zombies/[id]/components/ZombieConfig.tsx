@@ -24,7 +24,13 @@ export default function ZombieConfig({
   async function onConfirm() {
     setError(null);
     const result = await deleteZombieAction(workspaceId, zombieId);
-    if (!result.ok) throw new Error(result.error);
+    if (!result.ok) {
+      // ConfirmDialog renders the thrown Error's .message — empty string
+      // would surface as a blank alert. Mirror the `|| <default>` pattern
+      // used by KillSwitch / ZombiesList / EventsList so the operator
+      // always sees a real message.
+      throw new Error(result.error || "Failed to delete zombie");
+    }
     router.push("/zombies");
     router.refresh();
   }

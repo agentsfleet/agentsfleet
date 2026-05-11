@@ -31,7 +31,16 @@ function uniqueEmail(): string {
   return `signup-fixture-${tag}+clerk_test@mailinator.com`;
 }
 
+// Skip signup against PROD: Clerk PROD almost certainly does not have
+// test mode enabled (a DEV-only configuration), so the documented
+// `+clerk_test@mailinator.com` alias would not short-circuit OTP and the
+// spec would either hang on the verification screen or send a real OTP
+// to a publicly-readable mailinator inbox. Both are unsafe.
+const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.usezombie.com");
+
 test.describe("signup", () => {
+  test.skip(isProdApi, "signup spec only runs against DEV/local — see comment above");
+
   let createdEmail: string | null = null;
 
   test.afterEach(async () => {
@@ -69,9 +78,11 @@ test.describe("signup", () => {
 
     // Some Clerk SignUp variants auto-submit on the 6th digit; others wait
     // for an explicit Continue. Click Continue if it's present, otherwise
-    // rely on the auto-submit.
+    // rely on the auto-submit. Playwright's `isVisible()` returns a
+    // boolean (never throws on a chained `.first()` locator), so no
+    // catch fallback is needed.
     const continueBtn = page.getByRole("button", { name: /continue|verify/i });
-    if (await continueBtn.first().isVisible().catch(() => false)) {
+    if (await continueBtn.first().isVisible()) {
       await continueBtn.first().click();
     }
 

@@ -71,7 +71,15 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
       const result = await listApprovalsAction(workspaceId, { limit: 50, zombieId });
       if (!alive || hasLoadedMore.current) return;
       if (!result.ok) {
-        // Transient — leave the existing list rendered until the next tick.
+        // 401 is terminal — silently retrying for 5s forever leaves the
+        // operator staring at a stale list with no signal that their
+        // session expired. Surface it; refresh fixes it.
+        if (result.status === 401) {
+          setError("Session expired — refresh the page to sign back in.");
+          return;
+        }
+        // Transient (5xx, network blips, etc.) — leave the existing list
+        // rendered until the next tick.
         return;
       }
       setItems(result.data.items);
