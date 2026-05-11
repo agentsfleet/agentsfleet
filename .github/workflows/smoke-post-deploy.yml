@@ -77,3 +77,71 @@ jobs:
           name: smoke-post-deploy-${{ steps.detect.outputs.package }}-${{ github.sha }}
           path: ${{ steps.detect.outputs.workdir }}/playwright-report/
           retention-days: 7
+
+  # Authenticated suite — only fires when the dashboard app deploys to PROD.
+  # Mirrors auth-e2e-dev (in deploy-dev.yml) but targets the production app
+  # URL + clerk-prod credentials. The smoke job above stays unauth so it
+  # remains valid for the marketing/agents projects too.
+  auth-e2e-prod:
+    if: >-
+      github.event.deployment_status.state == 'success' &&
+      startsWith(github.event.deployment.environment, 'Production') &&
+      contains(github.event.deployment.environment, 'usezombie-app')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+
+      - name: Load Clerk PROD credentials from 1Password
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/secret-key
+          CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_PROD }}/clerk-prod/webhook-secret
+          VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: ui/packages/app
+
+      - name: Restore Playwright browser cache
+        id: playwright-cache-auth
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-app-${{ hashFiles('ui/packages/app/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-app-
+
+      - name: Install Playwright browsers
+        run: |
+          if [ "${{ steps.playwright-cache-auth.outputs.cache-hit }}" = "true" ]; then
+            bunx playwright install chromium
+          else
+            bunx playwright install --with-deps chromium
+          fi
+        working-directory: ui/packages/app
+
+      - name: Run authenticated e2e against PROD
+        run: bun run test:e2e:auth
+        working-directory: ui/packages/app
+        env:
+          BASE_URL: ${{ github.event.deployment_status.target_url }}
+          NEXT_PUBLIC_API_URL: https://api.usezombie.com
+          CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
+          VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
+
+      - name: Upload authenticated Playwright report
+        uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: auth-e2e-prod-${{ github.sha }}
+          path: ui/packages/app/playwright-auth-report/
+          retention-days: 7

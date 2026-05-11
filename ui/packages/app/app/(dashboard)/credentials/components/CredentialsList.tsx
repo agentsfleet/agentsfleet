@@ -4,8 +4,8 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button, ConfirmDialog } from "@usezombie/design-system";
 import { Loader2Icon, Trash2Icon } from "lucide-react";
-import { useClientToken } from "@/lib/auth/client";
-import { deleteCredential, type CredentialSummary } from "@/lib/api/credentials";
+import { deleteCredentialAction } from "../actions";
+import type { CredentialSummary } from "@/lib/api/credentials";
 
 type Props = {
   workspaceId: string;
@@ -14,7 +14,6 @@ type Props = {
 
 export default function CredentialsList({ workspaceId, credentials }: Props) {
   const router = useRouter();
-  const { getToken } = useClientToken();
   const [pending, startTransition] = useTransition();
   const [target, setTarget] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -30,19 +29,13 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
   function onConfirmDelete(name: string) {
     setError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setError("Not authenticated");
+      const result = await deleteCredentialAction(workspaceId, name);
+      if (!result.ok) {
+        setError(result.error || "Failed to delete credential");
         return;
       }
-      try {
-        await deleteCredential(workspaceId, name, token);
-        setTarget(null);
-        router.refresh();
-      } catch (e) {
-        const err = e as Error;
-        setError(err.message || "Failed to delete credential");
-      }
+      setTarget(null);
+      router.refresh();
     });
   }
 

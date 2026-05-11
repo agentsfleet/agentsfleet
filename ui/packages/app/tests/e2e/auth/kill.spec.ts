@@ -18,10 +18,10 @@ import { getDefaultWorkspaceId, seedZombie } from "./fixtures/seed";
 import { cleanWorkspaceZombies } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
+const ROW_STATE_TIMEOUT_MS = 15_000;
+
 test.describe("kill", () => {
-  // FIXME: blocked on client-side Clerk session in e2e (see
-  // `lifecycle.spec.ts` describe-block FIXME — same root cause).
-  test.fixme("Kill transitions the row's data-state from live to failed (terminal)", async ({
+  test("Kill transitions the row's data-state from live to failed (terminal)", async ({
     page,
   }) => {
     const ws = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
@@ -36,23 +36,22 @@ test.describe("kill", () => {
     await page.getByRole("button", { name: "Kill" }).first().click();
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
-    const patched = page.waitForResponse(
-      (res) =>
-        res.url().includes(`/zombies/${seeded.id}`) && res.request().method() === "PATCH",
-    );
     await dialog.getByRole("button", { name: "Kill" }).click();
-    await patched;
 
     // Detail page collapses to the terminal "Killed" indicator once
     // router.refresh() re-runs the SSR with the new status.
-    await expect(page.getByRole("button", { name: "Killed" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Killed" })).toBeDisabled({
+      timeout: ROW_STATE_TIMEOUT_MS,
+    });
 
-    // Dashboard listing: row still appears (list.zig does not filter
-    // killed rows) but state dot is `failed`.
+    // Dashboard listing: row still appears (list.zig does not filter killed
+    // rows) but state dot is `failed`.
     await page.goto("/zombies");
     const row = page.locator(`a[href="/zombies/${seeded.id}"]`);
     await expect(row).toBeVisible();
-    await expect(row).toHaveAttribute("data-state", "failed");
+    await expect(row).toHaveAttribute("data-state", "failed", {
+      timeout: ROW_STATE_TIMEOUT_MS,
+    });
   });
 
   test.afterEach(async () => {
