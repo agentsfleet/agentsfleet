@@ -1,23 +1,25 @@
 import { defineConfig, devices } from "@playwright/test";
+import { loadWorktreeEnv } from "./tests/e2e/auth/fixtures/env-loader";
 
-// E2E dev server port — unique per package to avoid collisions with locally-running
-// Next.js apps on :3000. Override by exporting BASE_URL.
-const E2E_PORT = process.env.E2E_PORT ?? "3100";
+// Load <worktree-root>/.env so CLERK_SECRET_KEY / CLERK_WEBHOOK_SECRET land
+// in process.env before globalSetup runs. Bun auto-loads only this package's
+// .env*, which gives us NEXT_PUBLIC_API_URL but not the Clerk creds.
+loadWorktreeEnv();
+
+const E2E_PORT = process.env.E2E_PORT ?? "3101";
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
 
 export default defineConfig({
-  testDir: "./tests/e2e",
-  // Auth-suite specs require Clerk DEV credentials + globalSetup
-  // (see playwright.auth.config.ts). Exclude them from the default
-  // suite so the `qa-app` lane (no Clerk env) does not collect them.
-  testIgnore: ["**/auth/**"],
-  fullyParallel: true,
+  testDir: "./tests/e2e/auth",
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1,
   reporter: process.env.CI
-    ? [["line"], ["html", { open: "never", outputFolder: "playwright-report" }]]
+    ? [["line"], ["html", { open: "never", outputFolder: "playwright-auth-report" }]]
     : "line",
+  globalSetup: "./tests/e2e/auth/global-setup.ts",
+  globalTeardown: "./tests/e2e/auth/global-teardown.ts",
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: process.env.VERCEL_BYPASS_SECRET
@@ -32,12 +34,8 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "chromium",
+      name: "auth-chromium",
       use: { ...devices["Desktop Chrome"] },
-    },
-    {
-      name: "mobile-chromium",
-      use: { ...devices["Pixel 7"] },
     },
   ],
   webServer: process.env.BASE_URL
@@ -46,8 +44,7 @@ export default defineConfig({
         command: `bun run dev -- --port ${E2E_PORT}`,
         url: `http://localhost:${E2E_PORT}/sign-in`,
         reuseExistingServer: !process.env.CI,
-        // Next.js Turbopack cold start can exceed 45s on first run after install.
         timeout: 120_000,
       },
-  outputDir: "playwright-results",
+  outputDir: "playwright-auth-results",
 });

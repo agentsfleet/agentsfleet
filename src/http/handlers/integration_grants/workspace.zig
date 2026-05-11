@@ -197,9 +197,9 @@ test "integration: revoke UPDATE SQL blocks cross-workspace even without app che
     defer {
         _ = conn.exec("DELETE FROM core.integration_grants WHERE grant_id = $1", .{grant_id}) catch {};
         _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{zombie_in_b}) catch {};
-        _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{ws_a}) catch {};
-        _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{ws_b}) catch {};
-        _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1", .{tenant_id}) catch {};
+        _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{ws_a}) catch {};
+        _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1", .{ws_b}) catch {};
+        _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1", .{tenant_id}) catch {};
     }
 
     // Execute the EXACT production UPDATE with a MISMATCHED workspace_id (WS_A,
