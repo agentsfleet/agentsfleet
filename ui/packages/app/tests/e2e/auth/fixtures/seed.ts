@@ -8,9 +8,6 @@
  * construction. Per-spec cleanup deletes everything in the fixture user's
  * workspace; no extra discriminator needed today.
  */
-import * as fs from "node:fs";
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
 import { clientFor, type ClientHandle } from "./api-client";
 import type { FixtureKey, ZombieStatus } from "./constants";
 
@@ -105,37 +102,6 @@ export async function seedZombie(
   const resp = await c.post<CreateZombieResp>(`/v1/workspaces/${workspaceId}/zombies`, {
     trigger_markdown: triggerMd(opts.name),
     source_markdown: skillMd(opts.name),
-  });
-  return { id: resp.zombie_id, name: resp.name };
-}
-
-// Worktree-root resolution mirrors install-zombie-cli.spec.ts:WORKTREE_ROOT,
-// adjusted for the extra fixtures/ nesting layer.
-const SEED_DIR = path.dirname(fileURLToPath(import.meta.url));
-const WORKTREE_ROOT = path.resolve(SEED_DIR, "../../../../../../..");
-const PLATFORM_OPS_DIR = path.join(WORKTREE_ROOT, "samples/platform-ops");
-
-// Seeds the canonical samples/platform-ops bundle byte-for-byte (same content
-// the CLI install path consumes). Both lifecycle scenarios route their install
-// step here so the post-install state is identical across signup and
-// existing-fixture flows. Accepts ClientHandle so the mid-test-minted JWT
-// path (ephemeral signup user) drives the seed the same way persistent
-// fixtures do.
-export async function seedPlatformOpsZombie(
-  handle: ClientHandle,
-  workspaceId: string,
-): Promise<Zombie> {
-  const triggerPath = path.join(PLATFORM_OPS_DIR, "TRIGGER.md");
-  const skillPath = path.join(PLATFORM_OPS_DIR, "SKILL.md");
-  if (!fs.existsSync(triggerPath) || !fs.existsSync(skillPath)) {
-    throw new Error(
-      `samples/platform-ops bundle missing: expected ${triggerPath} and ${skillPath}`,
-    );
-  }
-  const c = clientFor(handle);
-  const resp = await c.post<CreateZombieResp>(`/v1/workspaces/${workspaceId}/zombies`, {
-    trigger_markdown: fs.readFileSync(triggerPath, "utf8"),
-    source_markdown: fs.readFileSync(skillPath, "utf8"),
   });
   return { id: resp.zombie_id, name: resp.name };
 }
