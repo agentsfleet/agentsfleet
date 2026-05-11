@@ -12,8 +12,10 @@ const XTERM_256 = {
   success:   78,
   warn:      214,
   error:     210,
-  muted:     102,  // grey53 — closest to --text-muted
-  subtle:    240,  // closest to --text-subtle
+  muted:     102,  // grey53 — closest to --text-muted #8B9398
+  // --text-subtle lifted from #5C6469 → #7A8085 for AA contrast.
+  // xterm256 244 (#808080) is the new closest match (was 240 #585858).
+  subtle:    244,
 };
 
 // basic16 fallback — used when terminal advertises <256 colors. SGR

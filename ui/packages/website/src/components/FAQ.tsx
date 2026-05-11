@@ -68,7 +68,7 @@ const items: { q: string; a: ReactNode }[] = [
 export default function FAQ() {
   return (
     <section className="site-section" data-testid="faq">
-      <div className="wrap flex flex-col gap-8 max-w-[720px]">
+      <div className="wrap flex flex-col gap-8 max-w-measure">
         <div className="flex flex-col gap-3">
           <SectionLabel className="mb-0">FAQ</SectionLabel>
           <DisplayLG>Common questions</DisplayLG>
@@ -83,13 +83,13 @@ export default function FAQ() {
             >
               <AccordionTrigger
                 data-testid={`faq-trigger-${i}`}
-                className="font-mono text-[14px] py-4 text-text"
+                className="font-mono text-body-sm py-4 text-text"
               >
                 {item.q}
               </AccordionTrigger>
               <AccordionContent
                 data-testid={`faq-answer-${i}`}
-                className="font-sans text-[14px] leading-[1.65] text-text-muted pb-4"
+                className="font-sans text-body-sm leading-prose text-text-muted pb-4"
               >
                 {item.a}
               </AccordionContent>
