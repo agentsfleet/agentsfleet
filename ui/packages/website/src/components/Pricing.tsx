@@ -44,7 +44,7 @@ export default function Pricing() {
 
             <div data-testid="pricing-stage-rates" className="flex flex-col gap-1.5">
               <p
-                className="font-mono text-fluid-display-lg leading-display-lg tracking-display-lg font-medium text-text m-0 tabular-nums flex flex-wrap items-baseline gap-x-3 gap-y-1"
+                className="font-mono text-fluid-display-md leading-display-md tracking-display-md font-medium text-text m-0 tabular-nums flex flex-wrap items-baseline gap-x-3 gap-y-1"
               >
                 <span data-testid="pricing-rate-stage-platform">{RATES_DISPLAY.STAGE_PLATFORM}</span>
                 <span className="font-sans text-text-muted text-body-sm">platform default</span>
@@ -119,7 +119,7 @@ export default function Pricing() {
                 className="flex flex-col gap-1 p-4 border border-border bg-surface-1"
               >
                 <SectionLabel className="mb-0">{cell.label}</SectionLabel>
-                <span className="font-mono text-heading leading-display-lg tabular-nums text-text">
+                <span className="font-mono text-heading leading-heading tabular-nums text-text">
                   {cell.price}
                 </span>
                 <span className="font-sans text-eyebrow leading-eyebrow text-text-muted">

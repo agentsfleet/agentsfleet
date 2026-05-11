@@ -176,6 +176,20 @@
   --container-tagline: var(--max-w-tagline);
   --container-prose: var(--max-w-prose);
 
+  /* Min-width forwards — Tailwind v4 reads `--container-*` for `max-w-*`
+   * utilities but uses a SEPARATE `--min-width-*` namespace for `min-w-*`.
+   * Without these forwards `min-w-narrow` etc. silently emit no CSS and
+   * the consumer's min-width constraint vanishes. Mirror the container
+   * set so every named width works as both a max and a min. */
+  --min-width-trim: var(--max-w-trim);
+  --min-width-narrow: var(--max-w-narrow);
+  --min-width-measure: var(--max-w-measure);
+  --min-width-form: var(--max-w-form);
+  --min-width-wide: var(--max-w-wide);
+  --min-width-content: var(--max-w-content);
+  --min-width-tagline: var(--max-w-tagline);
+  --min-width-prose: var(--max-w-prose);
+
   /* Named grid templates — `grid-cols-footer` etc. Tailwind v4 reads
    * `--grid-template-columns-{name}` as the source of `grid-cols-{name}`
    * utilities. Add a row here when a layout earns its second consumer. */
