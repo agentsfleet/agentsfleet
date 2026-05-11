@@ -10,8 +10,7 @@ import {
   EmptyState,
   type DataTableColumn,
 } from "@usezombie/design-system";
-import { useClientToken } from "@/lib/auth/client";
-import { listTenantBillingCharges } from "@/lib/api/tenant_billing";
+import { listTenantBillingChargesAction } from "../actions";
 import { PROVIDER_MODE } from "@/lib/types";
 import { formatDollars, groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";
 
@@ -28,7 +27,8 @@ export type BillingUsageTabProps = {
  * primitive.
  *
  * Initial events + cursor come from the server-rendered page; subsequent
- * pages are fetched client-side with the bearer token from useClientToken.
+ * pages are fetched via `listTenantBillingChargesAction`, a Server Action
+ * that mints the api-template Bearer server-side via `getServerToken()`.
  * `limit * 2` is intentional: each event yields up to two rows (receive +
  * stage), so we ask for double the rows we'll surface as events.
  */
@@ -60,7 +60,6 @@ export default function BillingUsageTab({
   initialEvents,
   initialCursor,
 }: BillingUsageTabProps) {
-  const { getToken } = useClientToken();
   const [events, setEvents] = useState<GroupedEvent[]>(initialEvents);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [error, setError] = useState<string | null>(null);
@@ -70,25 +69,20 @@ export default function BillingUsageTab({
     if (!cursor) return;
     setError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setError("Not authenticated");
+      const result = await listTenantBillingChargesAction({ limit: PAGE_SIZE, cursor });
+      if (!result.ok) {
+        // Empty error string from the action would render as a blank
+        // alert; mirror the `|| <default>` pattern used by every other
+        // Server Action consumer.
+        setError(result.error || "Failed to load more usage events");
         return;
       }
-      try {
-        const resp = await listTenantBillingCharges(token, {
-          limit: PAGE_SIZE,
-          cursor,
-        });
-        const more = groupChargesByEvent(resp.items);
-        // De-dupe by event_id in case the page boundary repeats an event.
-        const seen = new Set(events.map((e) => e.event_id));
-        const fresh = more.filter((e) => !seen.has(e.event_id));
-        setEvents([...events, ...fresh]);
-        setCursor(resp.next_cursor);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
+      const more = groupChargesByEvent(result.data.items);
+      // De-dupe by event_id in case the page boundary repeats an event.
+      const seen = new Set(events.map((e) => e.event_id));
+      const fresh = more.filter((e) => !seen.has(e.event_id));
+      setEvents([...events, ...fresh]);
+      setCursor(result.data.next_cursor);
     });
   }
 

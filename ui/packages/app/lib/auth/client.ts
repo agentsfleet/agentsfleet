@@ -1,16 +1,12 @@
-import { useAuth, useUser, UserButton, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
+import { useUser, UserButton, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
-// Mirror of `lib/auth/server.ts`: client-side `getToken()` returns Token B
-// (the `api`-template JWT zombied accepts as Bearer). Bare `getToken()`
-// returns the default session token (Token A), which lacks
-// `metadata.tenant_id` and the api `aud` claim — see docs/AUTH.md
-// "The two tokens at a glance".
-const API_TEMPLATE = "api" as const;
-
-export function useClientToken(): { getToken: () => Promise<string | null> } {
-  const { getToken } = useAuth();
-  return { getToken: () => getToken({ template: API_TEMPLATE }) };
-}
+// `useClientToken()` was retired in M64_006. Every dashboard mutation/read
+// now flows through a Server Action that calls `getServerToken()`
+// server-side, so the Clerk in-browser SDK's session state is no longer
+// load-bearing for any API call. This unblocks Playwright's cookie-mount
+// fixture path — `clerkMiddleware` accepts the mounted `__session` cookie
+// SSR, which is all Server Actions need. See `docs/AUTH.md` "Test
+// infrastructure" for the full picture.
 
 // Hook returning the current user's identity. Keyed on Clerk today;
 // swapping to zombie-auth means replacing only this file + server.ts.

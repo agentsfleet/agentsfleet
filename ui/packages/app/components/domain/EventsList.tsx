@@ -17,13 +17,11 @@ import {
   Separator,
   Time,
 } from "@usezombie/design-system";
-import { useClientToken } from "@/lib/auth/client";
 import {
-  listWorkspaceEvents,
-  listZombieEvents,
-  type EventRow,
-  type EventsPage,
-} from "@/lib/api/events";
+  listWorkspaceEventsAction,
+  listZombieEventsAction,
+} from "@/app/(dashboard)/events/actions";
+import type { EventRow, EventsPage } from "@/lib/api/events";
 
 type Scope =
   | { kind: "zombie"; workspaceId: string; zombieId: string }
@@ -51,7 +49,6 @@ export function EventsList({
   emptyTitle = "No events yet",
   emptyDescription = "Operator steers, webhooks, and cron triggers will land here once your zombies start running.",
 }: EventsListProps) {
-  const { getToken } = useClientToken();
   const [items, setItems] = useState<EventRow[]>(initial.items);
   const [cursor, setCursor] = useState<string | null>(initial.next_cursor);
   const [error, setError] = useState<string | null>(null);
@@ -60,21 +57,16 @@ export function EventsList({
   function loadMore(nextCursor: string) {
     setError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setError("Not authenticated");
+      const result =
+        scope.kind === "zombie"
+          ? await listZombieEventsAction(scope.workspaceId, scope.zombieId, { cursor: nextCursor })
+          : await listWorkspaceEventsAction(scope.workspaceId, { cursor: nextCursor });
+      if (!result.ok) {
+        setError(result.error || "Failed to load more events");
         return;
       }
-      try {
-        const page =
-          scope.kind === "zombie"
-            ? await listZombieEvents(scope.workspaceId, scope.zombieId, token, { cursor: nextCursor })
-            : await listWorkspaceEvents(scope.workspaceId, token, { cursor: nextCursor });
-        setItems((prev) => [...prev, ...page.items]);
-        setCursor(page.next_cursor);
-      } catch (e) {
-        setError((e as Error).message ?? "Failed to load more events");
-      }
+      setItems((prev) => [...prev, ...result.data.items]);
+      setCursor(result.data.next_cursor);
     });
   }
 

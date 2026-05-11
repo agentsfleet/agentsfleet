@@ -3,11 +3,11 @@
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2Icon } from "lucide-react";
-import { Alert, Button } from "@usezombie/design-system";
-import { useClientToken } from "@/lib/auth/client";
-import { resetTenantProvider, setTenantProviderSelfManaged } from "@/lib/api/tenant_provider";
+import { Alert, Button, RadioGroup } from "@usezombie/design-system";
+import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
+import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";
-import { PROVIDER_MODE, type ProviderMode } from "@/lib/types";
+import { PROVIDER_MODE, type ProviderMode, type TenantProvider } from "@/lib/types";
 import ModeRadio from "./ModeRadio";
 import ProviderKeyFields from "./ProviderKeyFields";
 
@@ -24,23 +24,23 @@ type ActionState = { ok: string | null; error: string | null };
 type ModeStrategy = {
   submitLabel: string;
   successMsg: string;
-  run: (token: string, form: { credentialRef: string; modelOverride: string }) => Promise<unknown>;
+  run: (form: { credentialRef: string; modelOverride: string }) => Promise<ActionResult<TenantProvider>>;
 };
 
 const MODE_STRATEGIES: Record<ProviderMode, ModeStrategy> = {
   platform: {
     submitLabel: "Reset to platform default",
     successMsg: "Reset to platform default.",
-    run: (token) => resetTenantProvider(token),
+    run: () => resetProviderAction(),
   },
   self_managed: {
     submitLabel: "Save self-managed key",
     successMsg: "Switched to self-managed. Run a test event to verify the key.",
-    run: (token, { credentialRef, modelOverride }) =>
-      setTenantProviderSelfManaged(
-        { credential_ref: credentialRef, model: modelOverride.trim() || undefined },
-        token,
-      ),
+    run: ({ credentialRef, modelOverride }) =>
+      setProviderSelfManagedAction({
+        credential_ref: credentialRef,
+        model: modelOverride.trim() || undefined,
+      }),
   },
 };
 
@@ -54,7 +54,6 @@ export default function ProviderSelector({
   credentials,
 }: Props) {
   const router = useRouter();
-  const { getToken } = useClientToken();
 
   // Form-controlled inputs are local state; the action below is the React 19
   // form-action handler that the <form> submits to.
@@ -72,15 +71,10 @@ export default function ProviderSelector({
   const strategy = MODE_STRATEGIES[mode];
 
   async function action(_prev: ActionState, _formData: FormData): Promise<ActionState> {
-    const token = await getToken();
-    if (!token) return { ok: null, error: "Not authenticated" };
-    try {
-      await strategy.run(token, { credentialRef, modelOverride });
-      router.refresh();
-      return { ok: strategy.successMsg, error: null };
-    } catch (err) {
-      return { ok: null, error: err instanceof Error ? err.message : String(err) };
-    }
+    const result = await strategy.run({ credentialRef, modelOverride });
+    if (!result.ok) return { ok: null, error: result.error };
+    router.refresh();
+    return { ok: strategy.successMsg, error: null };
   }
 
   const [state, submitAction, isPending] = useActionState(action, INITIAL_ACTION_STATE);
@@ -91,20 +85,24 @@ export default function ProviderSelector({
         <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Mode
         </legend>
-        <ModeRadio
-          value={PROVIDER_MODE.platform}
-          checked={mode === PROVIDER_MODE.platform}
-          onChange={() => setMode(PROVIDER_MODE.platform)}
-          label="Platform-managed"
-          description="Zombie credits cover everything. Charged from your tenant balance per event."
-        />
-        <ModeRadio
-          value={PROVIDER_MODE.self_managed}
-          checked={isSelfManaged}
-          onChange={() => setMode(PROVIDER_MODE.self_managed)}
-          label="Use my own provider key"
-          description="Your provider account, your API key. We charge a flat per-event overhead."
-        />
+        <RadioGroup
+          value={mode}
+          onValueChange={(v) => setMode(v as ProviderMode)}
+          aria-label="Provider mode"
+        >
+          <ModeRadio
+            value={PROVIDER_MODE.platform}
+            checked={mode === PROVIDER_MODE.platform}
+            label="Platform-managed"
+            description="Zombie credits cover everything. Charged from your tenant balance per event."
+          />
+          <ModeRadio
+            value={PROVIDER_MODE.self_managed}
+            checked={isSelfManaged}
+            label="Use my own provider key"
+            description="Your provider account, your API key. We charge a flat per-event overhead."
+          />
+        </RadioGroup>
       </fieldset>
 
       {isSelfManaged ? (

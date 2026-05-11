@@ -17,14 +17,12 @@ import {
   ListItem,
 } from "@usezombie/design-system";
 
-import { useClientToken } from "@/lib/auth/client";
 import {
-  approveApproval,
-  denyApproval,
-  listApprovals,
-  type ApprovalGate,
-  type ResolveOutcome,
-} from "@/lib/api/approvals";
+  approveApprovalAction,
+  denyApprovalAction,
+  listApprovalsAction,
+} from "../actions";
+import type { ApprovalGate, ResolveOutcome } from "@/lib/api/approvals";
 
 const POLL_MS = 5000;
 
@@ -37,7 +35,6 @@ type Props = {
 };
 
 export default function ApprovalsList({ workspaceId, initialItems, initialCursor, zombieId }: Props) {
-  const { getToken } = useClientToken();
   const [items, setItems] = useState<ApprovalGate[]>(initialItems);
   const [cursor, setCursor] = useState<string | null>(initialCursor);
   const [filter, setFilter] = useState<string>("");
@@ -71,74 +68,64 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     let alive = true;
     const tick = async () => {
       if (hasLoadedMore.current) return;
-      const token = await getToken();
-      if (!token || !alive) return;
-      try {
-        const next = await listApprovals(workspaceId, token, {
-          limit: 50,
-          zombieId,
-        });
-        if (!alive || hasLoadedMore.current) return;
-        setItems(next.items);
-        setCursor(next.next_cursor);
-      } catch {
-        // Transient — leave the existing list rendered until the next tick.
+      const result = await listApprovalsAction(workspaceId, { limit: 50, zombieId });
+      if (!alive || hasLoadedMore.current) return;
+      if (!result.ok) {
+        // 401 is terminal — silently retrying for 5s forever leaves the
+        // operator staring at a stale list with no signal that their
+        // session expired. Surface it; refresh fixes it.
+        if (result.status === 401) {
+          setError("Session expired — refresh the page to sign back in.");
+          return;
+        }
+        // Transient (5xx, network blips, etc.) — leave the existing list
+        // rendered until the next tick.
+        return;
       }
+      setItems(result.data.items);
+      setCursor(result.data.next_cursor);
     };
     const id = setInterval(() => { void tick(); }, POLL_MS);
     return () => {
       alive = false;
       clearInterval(id);
     };
-  }, [workspaceId, zombieId, getToken]);
+  }, [workspaceId, zombieId]);
 
   function loadMore() {
     if (!cursor) return;
     setError(null);
     startTransition(async () => {
-      const token = await getToken();
-      if (!token) {
-        setError("Not authenticated");
+      const result = await listApprovalsAction(workspaceId, { cursor, zombieId, limit: 50 });
+      if (!result.ok) {
+        setError(result.error || "Failed to load more");
         return;
       }
-      try {
-        const next = await listApprovals(workspaceId, token, {
-          cursor,
-          zombieId,
-          limit: 50,
-        });
-        setItems((prev) => [...prev, ...next.items]);
-        setCursor(next.next_cursor);
-        // Latch the polling guard so the next 5s tick doesn't reset the
-        // operator back to page 1 by replacing items with the first page.
-        hasLoadedMore.current = true;
-      } catch (e) {
-        setError((e as Error).message ?? "Failed to load more");
-      }
+      setItems((prev) => [...prev, ...result.data.items]);
+      setCursor(result.data.next_cursor);
+      // Latch the polling guard so the next 5s tick doesn't reset the
+      // operator back to page 1 by replacing items with the first page.
+      hasLoadedMore.current = true;
     });
   }
 
   async function resolve(gateId: string, decision: "approve" | "deny") {
     setError(null);
-    const token = await getToken();
-    if (!token) {
-      setError("Not authenticated");
+    const action = decision === "approve" ? approveApprovalAction : denyApprovalAction;
+    const result = await action(workspaceId, gateId);
+    if (!result.ok) {
+      setError(result.error || "Resolve failed");
       return;
     }
-    const fn = decision === "approve" ? approveApproval : denyApproval;
-    try {
-      const outcome: ResolveOutcome = await fn(workspaceId, gateId, token);
-      // Optimistic removal — even on already_resolved the row leaves the
-      // pending list. Toasts could be added later; for v1 the list update
-      // alone is the operator-visible signal.
-      setItems((prev) => prev.filter((g) => g.gate_id !== gateId));
-      if (outcome.kind === "already_resolved") {
-        setError(
-          `Already ${outcome.data.outcome} by ${outcome.data.resolved_by}`,
-        );
-      }
-    } catch (e) {
-      setError((e as Error).message ?? "Resolve failed");
+    const outcome: ResolveOutcome = result.data;
+    // Optimistic removal — even on already_resolved the row leaves the
+    // pending list. Toasts could be added later; for v1 the list update
+    // alone is the operator-visible signal.
+    setItems((prev) => prev.filter((g) => g.gate_id !== gateId));
+    if (outcome.kind === "already_resolved") {
+      setError(
+        `Already ${outcome.data.outcome} by ${outcome.data.resolved_by}`,
+      );
     }
   }
 

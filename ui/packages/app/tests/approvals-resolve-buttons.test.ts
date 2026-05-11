@@ -4,14 +4,12 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 const WORKSPACE_ID = "ws_resolve_001";
 const GATE_ID = "01999999-0000-7000-8000-000000000001";
-const TOKEN = "token_xyz";
 const ERR_ALREADY_RESOLVED = "UZ-APPROVAL-006" as const;
 
-const { getTokenFn, approveApprovalMock, denyApprovalMock, routerPush, routerRefresh } =
+const { approveActionMock, denyActionMock, routerPush, routerRefresh } =
   vi.hoisted(() => ({
-    getTokenFn: vi.fn(),
-    approveApprovalMock: vi.fn(),
-    denyApprovalMock: vi.fn(),
+    approveActionMock: vi.fn(),
+    denyActionMock: vi.fn(),
     routerPush: vi.fn(),
     routerRefresh: vi.fn(),
   }));
@@ -19,28 +17,21 @@ const { getTokenFn, approveApprovalMock, denyApprovalMock, routerPush, routerRef
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: routerPush, refresh: routerRefresh }),
 }));
-vi.mock("@/lib/auth/client", () => ({
-  useClientToken: () => ({ getToken: getTokenFn }),
-}));
-vi.mock("@/lib/api/approvals", () => ({
-  approveApproval: approveApprovalMock,
-  denyApproval: denyApprovalMock,
+vi.mock("@/app/(dashboard)/approvals/actions", () => ({
+  approveApprovalAction: approveActionMock,
+  denyApprovalAction: denyActionMock,
 }));
 
 import ResolveButtons from "@/app/(dashboard)/approvals/[gateId]/ResolveButtons";
 
 beforeEach(() => {
-  getTokenFn.mockResolvedValue(TOKEN);
-});
-
-afterEach(() => {
-  cleanup();
-  approveApprovalMock.mockReset();
-  denyApprovalMock.mockReset();
-  getTokenFn.mockReset();
+  approveActionMock.mockReset();
+  denyActionMock.mockReset();
   routerPush.mockReset();
   routerRefresh.mockReset();
 });
+
+afterEach(() => cleanup());
 
 describe("ResolveButtons — rendering", () => {
   it("renders reason textarea + approve + deny", () => {
@@ -54,15 +45,18 @@ describe("ResolveButtons — rendering", () => {
 });
 
 describe("ResolveButtons — approve happy path", () => {
-  it("calls approveApproval with reason and routes back to /approvals on success", async () => {
-    approveApprovalMock.mockResolvedValueOnce({
-      kind: "resolved",
+  it("calls approveApprovalAction with reason and routes back to /approvals on success", async () => {
+    approveActionMock.mockResolvedValueOnce({
+      ok: true,
       data: {
-        gate_id: GATE_ID,
-        action_id: "act",
-        outcome: "approved",
-        resolved_at: 1,
-        resolved_by: "user:user_x",
+        kind: "resolved",
+        data: {
+          gate_id: GATE_ID,
+          action_id: "act",
+          outcome: "approved",
+          resolved_at: 1,
+          resolved_by: "user:user_x",
+        },
       },
     });
     render(
@@ -73,26 +67,24 @@ describe("ResolveButtons — approve happy path", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await waitFor(() => {
-      expect(approveApprovalMock).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        GATE_ID,
-        TOKEN,
-        "looks good",
-      );
+      expect(approveActionMock).toHaveBeenCalledWith(WORKSPACE_ID, GATE_ID, "looks good");
       expect(routerPush).toHaveBeenCalledWith("/approvals");
       expect(routerRefresh).toHaveBeenCalled();
     });
   });
 
   it("omits reason when textarea is empty", async () => {
-    approveApprovalMock.mockResolvedValueOnce({
-      kind: "resolved",
+    approveActionMock.mockResolvedValueOnce({
+      ok: true,
       data: {
-        gate_id: GATE_ID,
-        action_id: "act",
-        outcome: "approved",
-        resolved_at: 1,
-        resolved_by: "user:user_x",
+        kind: "resolved",
+        data: {
+          gate_id: GATE_ID,
+          action_id: "act",
+          outcome: "approved",
+          resolved_at: 1,
+          resolved_by: "user:user_x",
+        },
       },
     });
     render(
@@ -100,26 +92,24 @@ describe("ResolveButtons — approve happy path", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     await waitFor(() => {
-      expect(approveApprovalMock).toHaveBeenCalledWith(
-        WORKSPACE_ID,
-        GATE_ID,
-        TOKEN,
-        undefined,
-      );
+      expect(approveActionMock).toHaveBeenCalledWith(WORKSPACE_ID, GATE_ID, undefined);
     });
   });
 });
 
 describe("ResolveButtons — deny happy path", () => {
-  it("calls denyApproval and routes back to /approvals on success", async () => {
-    denyApprovalMock.mockResolvedValueOnce({
-      kind: "resolved",
+  it("calls denyApprovalAction and routes back to /approvals on success", async () => {
+    denyActionMock.mockResolvedValueOnce({
+      ok: true,
       data: {
-        gate_id: GATE_ID,
-        action_id: "act",
-        outcome: "denied",
-        resolved_at: 1,
-        resolved_by: "user:user_x",
+        kind: "resolved",
+        data: {
+          gate_id: GATE_ID,
+          action_id: "act",
+          outcome: "denied",
+          resolved_at: 1,
+          resolved_by: "user:user_x",
+        },
       },
     });
     render(
@@ -127,7 +117,7 @@ describe("ResolveButtons — deny happy path", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
     await waitFor(() => {
-      expect(denyApprovalMock).toHaveBeenCalled();
+      expect(denyActionMock).toHaveBeenCalled();
       expect(routerPush).toHaveBeenCalledWith("/approvals");
     });
   });
@@ -135,16 +125,19 @@ describe("ResolveButtons — deny happy path", () => {
 
 describe("ResolveButtons — 409 already_resolved", () => {
   it("refreshes the page (does NOT push to /approvals) so the terminal state renders", async () => {
-    approveApprovalMock.mockResolvedValueOnce({
-      kind: "already_resolved",
+    approveActionMock.mockResolvedValueOnce({
+      ok: true,
       data: {
-        gate_id: GATE_ID,
-        action_id: "act",
-        outcome: "approved",
-        resolved_at: 1,
-        resolved_by: "slack:webhook",
-        error_code: ERR_ALREADY_RESOLVED,
-        detail: "raced",
+        kind: "already_resolved",
+        data: {
+          gate_id: GATE_ID,
+          action_id: "act",
+          outcome: "approved",
+          resolved_at: 1,
+          resolved_by: "slack:webhook",
+          error_code: ERR_ALREADY_RESOLVED,
+          detail: "raced",
+        },
       },
     });
     render(
@@ -159,8 +152,8 @@ describe("ResolveButtons — 409 already_resolved", () => {
 });
 
 describe("ResolveButtons — error paths", () => {
-  it("shows alert when not authenticated", async () => {
-    getTokenFn.mockResolvedValueOnce(null);
+  it("shows alert when the server action reports unauth", async () => {
+    approveActionMock.mockResolvedValueOnce({ ok: false, error: "Not authenticated", status: 401 });
     render(
       React.createElement(ResolveButtons, { workspaceId: WORKSPACE_ID, gateId: GATE_ID }),
     );
@@ -168,11 +161,10 @@ describe("ResolveButtons — error paths", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toMatch(/not authenticated/i);
     });
-    expect(approveApprovalMock).not.toHaveBeenCalled();
   });
 
-  it("shows alert when approveApproval rejects (network error)", async () => {
-    approveApprovalMock.mockRejectedValueOnce(new Error("ECONNRESET"));
+  it("shows alert when approve action returns a network-level error", async () => {
+    approveActionMock.mockResolvedValueOnce({ ok: false, error: "ECONNRESET" });
     render(
       React.createElement(ResolveButtons, { workspaceId: WORKSPACE_ID, gateId: GATE_ID }),
     );
@@ -182,8 +174,8 @@ describe("ResolveButtons — error paths", () => {
     });
   });
 
-  it("falls back to generic 'Resolve failed' when thrown value lacks a message", async () => {
-    approveApprovalMock.mockRejectedValueOnce({ unexpected: true });
+  it("falls back to generic 'Resolve failed' when action returns an empty error", async () => {
+    approveActionMock.mockResolvedValueOnce({ ok: false, error: "" });
     render(
       React.createElement(ResolveButtons, { workspaceId: WORKSPACE_ID, gateId: GATE_ID }),
     );
