@@ -40,15 +40,12 @@ test.describe("events page", () => {
     // Either empty-state or a populated list of event cards. Both are
     // legitimate outcomes for a fresh fixture; the assertion is that the
     // section rendered — not whether events happened to exist. Playwright's
-    // `.or()` locator returns whichever side appears first; using
-    // `Promise.race` here would leave the losing leg dangling until its
-    // timeout fires, which spawns a "Target closed" rejection during
-    // browser teardown.
+    // `.or()` resolves on the first side to become visible, so the wait
+    // itself is the assertion: if neither side appears within the timeout
+    // we fail loud, and we don't need to re-check `isVisible()` (which
+    // would race with re-renders between frames).
     const emptyState = workspaceEvents.getByText(/no events yet/i);
-    const populatedList = workspaceEvents.getByRole("article");
-    await emptyState.or(populatedList.first()).waitFor({ state: "visible", timeout: 10_000 });
-    const isEmpty = await emptyState.isVisible();
-    const hasItems = await populatedList.first().isVisible();
-    expect(isEmpty || hasItems).toBe(true);
+    const populatedList = workspaceEvents.getByRole("article").first();
+    await emptyState.or(populatedList).waitFor({ state: "visible", timeout: 10_000 });
   });
 });

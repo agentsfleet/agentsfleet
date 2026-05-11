@@ -71,7 +71,10 @@ export default function BillingUsageTab({
     startTransition(async () => {
       const result = await listTenantBillingChargesAction({ limit: PAGE_SIZE, cursor });
       if (!result.ok) {
-        setError(result.error);
+        // Empty error string from the action would render as a blank
+        // alert; mirror the `|| <default>` pattern used by every other
+        // Server Action consumer.
+        setError(result.error || "Failed to load more usage events");
         return;
       }
       const more = groupChargesByEvent(result.data.items);
