@@ -357,12 +357,16 @@ jobs:
           APP="${{ vars.FLY_APP_DEV }}"
           echo "Starting all machines for $APP..."
           MACHINES="$(flyctl machine list --app "$APP" --json 2>/dev/null || echo '[]')"
+          echo "Machine list: $(echo "$MACHINES" | jq -r '[.[] | {id: .id, state: .state}]' 2>/dev/null || echo "$MACHINES")"
           echo "$MACHINES" | jq -r '.[].id' | while read -r MID; do
             [ -n "$MID" ] || continue
             echo "  flyctl machine start $MID"
             flyctl machine start "$MID" --app "$APP" || true
           done
-          sleep 10
+          # flyctl machine start is async; give release_command (`zombied migrate`)
+          # + serve startup time to settle so the 180s /healthz loop isn't doing
+          # all the real waiting on a cold start.
+          sleep 20
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
