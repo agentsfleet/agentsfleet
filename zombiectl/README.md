@@ -1,10 +1,15 @@
 # zombiectl
 
-The official CLI for [usezombie](https://usezombie.com).
+The official Command Line Interface (CLI) for [usezombie](https://usezombie.com).
 
-Install zombies, manage workspaces, monitor zombie events, and operate your usezombie deployment from the terminal.
+[![Try Free — $5 Credit](https://img.shields.io/badge/usezombie-Try_Free_·_%245_Credit-5EEAD4?style=for-the-badge)](https://usezombie.com)
+[![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.usezombie.com)
+[![npm](https://img.shields.io/npm/v/@usezombie/zombiectl/next?style=for-the-badge&color=cb3837)](https://www.npmjs.com/package/@usezombie/zombiectl)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 
-> **Pre-release** — usezombie is in pre-release. APIs, CLI, and behavior may change without notice before general availability. This package is published under the `next` dist-tag.
+Authenticate, manage workspaces, install zombies, tail their events, and operate your usezombie deployment from the terminal.
+
+> **Pre-release** — usezombie is in pre-release. Application Programming Interface (API), CLI, and behavior may change without notice before General Availability (GA). This package is published under the `next` dist-tag.
 
 ## Install
 
@@ -12,52 +17,93 @@ Install zombies, manage workspaces, monitor zombie events, and operate your usez
 npm install -g @usezombie/zombiectl@next
 ```
 
+Requires Node.js ≥ 24 (or Bun ≥ 1.3).
+
 ## Quick start
 
 ```bash
-# Authenticate with your usezombie account
+# Authenticate with your usezombie account (opens browser)
 zombiectl login
 
-# Add a GitHub repository as a workspace
-zombiectl workspace add https://github.com/org/repo
+# Create a workspace
+zombiectl workspace add my-workspace
 
-# Check your environment
+# Verify configuration and connectivity
 zombiectl doctor
 ```
 
-## Features
-
-- **Workspaces** — add, switch, and manage GitHub-connected workspaces
-- **Zombies** — install, list, kill, and steer zombies; tail their event streams
-- **Credential vault** — store workspace-scoped tool credentials (Slack, GitHub, Fly, Upstash, etc.)
-- **Diagnostics** — `doctor` command validates your environment
-- **JSON output** — `--json` flag for scripts and CI/CD pipelines
-
 ## Commands
+
+### User
 
 | Command | Description |
 |---------|-------------|
-| `login` | Authenticate with usezombie |
+| `login [--timeout-sec N] [--poll-ms N] [--no-open]` | Authenticate via browser |
 | `logout` | Clear stored credentials |
-| `workspace add <url>` | Connect a GitHub repository |
-| `workspace list` | List your workspaces |
-| `workspace show` | Show details for the active workspace |
-| `workspace use <id>` | Switch the active workspace |
-| `workspace delete <id>` | Remove a workspace from your local list |
-| `install --from <path>` | Install a zombie from a local template directory |
-| `list` | List zombies in the active workspace |
+| `workspace add [<name>]` | Create a new workspace |
+| `workspace list` | List workspaces |
+| `workspace use <workspace_id>` | Set the active workspace |
+| `workspace show [--workspace-id ID]` | Show workspace details |
+| `workspace credentials` | Open the credential vault |
+| `workspace delete <workspace_id>` | Delete a workspace (irreversible) |
+| `doctor` | Diagnose CLI configuration and connectivity |
+
+### Agent keys
+
+| Command | Description |
+|---------|-------------|
+| `agent add` | Mint an agent API key for the workspace |
+| `agent list` | List agent API keys |
+| `agent delete <key_id>` | Revoke an agent API key |
+
+### Integration grants
+
+| Command | Description |
+|---------|-------------|
+| `grant list` | List integration grants in the workspace |
+| `grant delete <grant_id>` | Revoke an integration grant |
+
+### Tenant provider
+
+| Command | Description |
+|---------|-------------|
+| `tenant provider show` | Show the active provider config |
+| `tenant provider add --credential <name>` | Use a self-managed credential |
+| `tenant provider delete` | Reset to the platform default |
+
+### Billing
+
+| Command | Description |
+|---------|-------------|
+| `billing show` | Plan, balance, and usage snapshot |
+
+### Zombies
+
+| Command | Description |
+|---------|-------------|
+| `install --from <path>` | Register a zombie from `<path>` |
+| `list [--cursor C] [--limit N]` | List zombies (paginated) |
 | `status [<zombie_id>]` | Show zombie status |
-| `kill <zombie_id>` | Delete a zombie |
+| `stop <zombie_id>` | Halt the session (resumable) |
+| `resume <zombie_id>` | Resume from stopped |
+| `kill <zombie_id>` | Mark terminal (irreversible) |
+| `delete <zombie_id>` | Hard-delete (kill first) |
 | `logs <zombie_id>` | Tail zombie activity |
-| `steer <zombie_id> <message>` | Send a message into a zombie's loop |
-| `events <zombie_id>` | Stream zombie events (SSE) |
-| `credential add <name> --data=@-` | Add a workspace credential (pipe JSON on stdin; default skip-if-exists) |
+| `events <zombie_id> [opts]` | Page through historical events |
+| `steer <zombie_id> "<msg>"` | Send a message; stream response |
+
+### Workspace credentials
+
+Workspace-scoped tool credentials live in the vault (Slack, GitHub, Fly, Upstash, etc.). Secret bytes are never echoed back.
+
+| Command | Description |
+|---------|-------------|
+| `credential add <name> --data=@-` | Add a credential (pipe JSON on stdin; skip if exists) |
 | `credential add <name> --data=@- --force` | Overwrite an existing credential |
-| `credential show <name>` | Check existence + created_at (never echoes secret bytes) |
+| `credential add <name> --data='<json>'` | Add a credential (inline JSON, exposes secret to shell history) |
+| `credential show <name>` | Check existence and `created_at` (never echoes secret) |
 | `credential list` | List workspace credentials |
 | `credential delete <name>` | Remove a workspace credential |
-| `doctor` | Run environment diagnostics |
-| `doctor --json` | Diagnostics in JSON format |
 
 ## Global flags
 
@@ -65,10 +111,20 @@ zombiectl doctor
 |------|-------------|
 | `--api <url>` | API base URL |
 | `--json` | Machine-readable JSON output |
-| `--no-open` | Do not auto-open browser on login |
 | `--no-input` | Disable interactive prompts |
-| `--version` | Print version and exit |
-| `--help` | Show help text |
+| `--no-open` | Skip auto-opening browser on `login` |
+| `--version` | Show version and exit |
+| `--help`, `-h` | Show help text |
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `ZOMBIE_API_URL` | API base URL (overridden by `--api`) |
+| `ZOMBIE_TOKEN` | Auth token (overridden by `login`) |
+| `ZOMBIE_API_KEY` | API key for service auth |
+| `ZOMBIE_STATE_DIR` | Override the config directory (default `~/.config/zombiectl`) |
+| `NO_COLOR` | Any non-empty value disables color |
 
 ## Configuration
 
@@ -77,7 +133,7 @@ zombiectl doctor
 | Credentials | `~/.config/zombiectl/credentials.json` |
 | Workspaces | `~/.config/zombiectl/workspaces.json` |
 
-Override the config directory with `ZOMBIE_STATE_DIR`.
+Precedence for API base URL: `--api` flag → `ZOMBIE_API_URL` → saved credentials → default (`https://api.usezombie.com`).
 
 ## Links
 
