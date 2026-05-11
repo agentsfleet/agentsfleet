@@ -20,9 +20,12 @@
 # Scope:
 #   Each script's "diff scope" flag is passed so the audit operates on the
 #   staged delta (not the whole repo). Flag conventions differ per script —
-#   audit-ufs.sh + audit-design-tokens.sh use `--diff`; the rest use
-#   `--staged`. The flag passed to each call matches the script's own
-#   convention.
+#   `audit-ufs.sh` uses `--diff` (vs origin/main, the only mode it supports);
+#   `audit-design-tokens.sh` and `audit-combined.sh` accept both `--diff`
+#   and `--staged`, and the pre-commit context wants `--staged` so that
+#   staged-but-uncommitted changes are seen. The rest of the audits use
+#   `--staged`. The flag passed to each call below matches what's correct
+#   for the pre-commit invocation, not the script's *default*.
 #
 # Adding a gate:
 #   1. Drop scripts/audit-<gate>.sh on disk (or symlink from dotfiles).
@@ -77,5 +80,9 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh --all)
 	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh --all)
 	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh --all)
+	# COMBINED is diff-shaped by construction — it asserts on *added* lines
+	# (`^\+` in a unified diff), not on file state. There's no "whole-worktree"
+	# semantic that makes sense; --diff (vs origin/main) is the broadest
+	# meaningful scope. The script intentionally rejects --all (exit 2).
 	$(call HARNESS_RUN,COMBINED,scripts/audit-combined.sh --diff)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"
