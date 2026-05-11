@@ -1,4 +1,5 @@
 import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
+import { SUPPORT_EMAIL } from "../lib/contact";
 
 /*
  * Privacy — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
@@ -74,8 +75,8 @@ export default function Privacy() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">7. Contact</h2>
       <p className="text-text-muted m-0">
         For privacy inquiries, contact{" "}
-        <a href="mailto:usezombie@agentmail.to" className="text-pulse hover:underline">
-          usezombie@agentmail.to
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-pulse hover:underline">
+          {SUPPORT_EMAIL}
         </a>
         .
       </p>

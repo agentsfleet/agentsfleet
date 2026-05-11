@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { SUPPORT_EMAIL } from "../lib/contact";
 import { RATES_DISPLAY } from "../lib/rates";
 
 const analytics = vi.hoisted(() => ({
@@ -94,7 +95,7 @@ describe("Pricing component", () => {
     expect(note).toHaveTextContent(/design partner/i);
     expect(note.querySelector("a")).toHaveAttribute(
       "href",
-      expect.stringContaining("usezombie@agentmail.to"),
+      expect.stringContaining(SUPPORT_EMAIL),
     );
   });
 

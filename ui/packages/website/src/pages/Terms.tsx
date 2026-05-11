@@ -1,4 +1,5 @@
 import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
+import { SUPPORT_EMAIL } from "../lib/contact";
 import { RATES_DISPLAY } from "../lib/rates";
 
 /*
@@ -66,8 +67,8 @@ export default function Terms() {
       <h2 className="font-mono text-[20px] mt-6 mb-0 font-medium tracking-[-0.01em]">8. Contact</h2>
       <p className="text-text-muted m-0">
         For questions about these terms, contact{" "}
-        <a href="mailto:usezombie@agentmail.to" className="text-pulse hover:underline">
-          usezombie@agentmail.to
+        <a href={`mailto:${SUPPORT_EMAIL}`} className="text-pulse hover:underline">
+          {SUPPORT_EMAIL}
         </a>
         .
       </p>

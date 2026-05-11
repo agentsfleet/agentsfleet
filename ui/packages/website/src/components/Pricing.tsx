@@ -1,6 +1,7 @@
 import { Badge, Button, Card, List, ListItem, SectionLabel } from "@usezombie/design-system";
 import { APP_BASE_URL } from "../config";
 import { trackSignupStarted } from "../analytics/posthog";
+import { SUPPORT_EMAIL } from "../lib/contact";
 import { RATES_DISPLAY } from "../lib/rates";
 
 type FlowCell = { id: string; label: string; price: string; sub: string };
@@ -77,10 +78,10 @@ export default function Pricing() {
               Stealth-mode testing — APIs and behavior change without long deprecation windows.
               Want a hand calibrating a zombie or to join as a design partner? Email{" "}
               <a
-                href="mailto:usezombie@agentmail.to?subject=Design%20partner"
+                href={`mailto:${SUPPORT_EMAIL}?subject=Design%20partner`}
                 className="underline hover:text-text"
               >
-                usezombie@agentmail.to
+                {SUPPORT_EMAIL}
               </a>
               .
             </p>

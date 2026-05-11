@@ -12,6 +12,7 @@ import {
   TooltipTrigger,
 } from "@usezombie/design-system";
 import type { TenantBilling } from "@/lib/types";
+import { SUPPORT_EMAIL } from "@/lib/contact";
 import { formatDollars } from "../lib/groupCharges";
 
 const PURCHASE_TOOLTIP = "Coming in v2.1 — contact support for a top-up.";
@@ -55,7 +56,7 @@ export default function BillingBalanceCard({ billing }: BillingBalanceCardProps)
           <Alert variant="destructive" className="text-xs">
             Balance exhausted. New zombie events are gate-blocked until a
             top-up — Stripe purchase ships in v2.1; contact{" "}
-            <a href="mailto:support@usezombie.com" className="underline">
+            <a href={`mailto:${SUPPORT_EMAIL}`} className="underline">
               support
             </a>{" "}
             for a manual top-up.

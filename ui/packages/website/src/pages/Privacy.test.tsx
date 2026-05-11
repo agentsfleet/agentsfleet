@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import Privacy from "./Privacy";
+import { SUPPORT_EMAIL } from "../lib/contact";
 
 describe("Privacy", () => {
   it("renders the heading", () => {
@@ -28,11 +29,11 @@ describe("Privacy", () => {
     expect(screen.getByText(/self-managed model/i)).toBeInTheDocument();
   });
 
-  it("renders contact email link", () => {
+  it("renders contact email link sourced from SUPPORT_EMAIL", () => {
     render(<Privacy />);
-    expect(screen.getByRole("link", { name: /usezombie@agentmail\.to/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: SUPPORT_EMAIL })).toHaveAttribute(
       "href",
-      "mailto:usezombie@agentmail.to"
+      `mailto:${SUPPORT_EMAIL}`,
     );
   });
 });

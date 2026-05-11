@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, it, expect } from "vitest";
 import Terms from "./Terms";
+import { SUPPORT_EMAIL } from "../lib/contact";
 
 describe("Terms", () => {
   it("renders the heading", () => {
@@ -29,11 +30,11 @@ describe("Terms", () => {
     expect(screen.getByText(/\$5/)).toBeInTheDocument();
   });
 
-  it("renders contact email link", () => {
+  it("renders contact email link sourced from SUPPORT_EMAIL", () => {
     render(<Terms />);
-    expect(screen.getByRole("link", { name: /usezombie@agentmail\.to/i })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: SUPPORT_EMAIL })).toHaveAttribute(
       "href",
-      "mailto:usezombie@agentmail.to"
+      `mailto:${SUPPORT_EMAIL}`,
     );
   });
 });
