@@ -391,12 +391,7 @@ curl -sS -H "Authorization: Bearer $CLERK_PROD_SECRET" \
   | jq '[.[] | select(.public_metadata.is_test_fixture == true) | {id, email: .email_addresses[0].email_address, owner: .public_metadata.owner, role: .public_metadata.role}]'
 ```
 
-The two user IDs returned by the second query are the only Clerk PROD identities the harness ever creates. Capture them in this doc on first audit so a future operator can spot-check without re-running the Clerk API:
-
-| Fixture | Clerk PROD user ID |
-|---|---|
-| `regular` | _TBD — fill on first PROD audit_ |
-| `admin`   | _TBD — fill on first PROD audit_ |
+Both queries are idempotent — `is_test_fixture: true` is the actual audit predicate, and the harness sets it on every fixture user. No need to record literal user IDs in this doc; rotate fixtures freely (delete + re-provision) without invalidating the runbook.
 
 #### WS-A finding — password-disable not viable on Clerk admin API
 
@@ -419,7 +414,7 @@ In-scope fixes that DID land in this milestone:
 
 - **WS-B #1** — vault items `op://ZMB_CD_{DEV,PROD}/e2e-fixtures-email/{regular,admin}` exist; workflow env wiring is the remaining merge-gate (parallel handoff).
 - **WS-B #4** — vitest regression at `ui/packages/app/tests/fixture-jwt-cache-location.test.ts` asserts the cache file is outside Playwright artifact dirs.
-- **WS-B #7** — `is_test_fixture` filter query documented above; user IDs filled on first PROD audit.
+- **WS-B #7** — `is_test_fixture` filter query documented above; the metadata tag is the audit predicate, no literal user IDs recorded (fixtures can be rotated freely).
 - **WS-B #8 part 1** — `@clerk/nextjs` major pinned + `_smoke.spec.ts` asserts resolved major matches `CLERK_NEXTJS_PINNED_MAJOR`.
 - **WS-B #9** — `_smoke.spec.ts` asserts `freshPassword().length ≥ 16`.
 - **WS-B #11** — `mintTokens` TTL tightened from 3600s to 900s (15 min, ~2× observed p95 wall-clock).
