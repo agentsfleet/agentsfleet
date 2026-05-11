@@ -6,14 +6,16 @@ import { request } from "./client";
 
 export type EventStatus = "received" | "processed" | "agent_error" | "gate_blocked";
 export type EventType = "chat" | "webhook" | "cron" | "continuation";
+export type EventStatusValue = EventStatus | (string & {});
+export type EventTypeValue = EventType | (string & {});
 
 export type EventRow = {
   event_id: string;
   zombie_id: string;
   workspace_id: string;
   actor: string;
-  event_type: EventType | string;
-  status: EventStatus | string;
+  event_type: EventTypeValue;
+  status: EventStatusValue;
   request_json: string;
   response_text: string | null;
   tokens: number | null;

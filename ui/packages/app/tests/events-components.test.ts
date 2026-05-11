@@ -42,7 +42,7 @@ afterEach(() => cleanup());
 // ── EventsList ─────────────────────────────────────────────────────────────
 
 import { EventsList } from "../components/domain/EventsList";
-import type { EventRow, EventsPage } from "@/lib/api/events";
+import { FRAME_KIND, type EventRow, type EventsPage, type LiveFrame } from "@/lib/api/events";
 import { TooltipProvider } from "@usezombie/design-system";
 
 function row(over: Partial<EventRow> = {}): EventRow {
@@ -260,8 +260,6 @@ describe("EventsList", () => {
 // ── LiveEventsPanel ────────────────────────────────────────────────────────
 
 import { LiveEventsPanel } from "../components/domain/LiveEventsPanel";
-import { FRAME_KIND, type LiveFrame } from "@/lib/api/events";
-
 type EsHandlers = {
   onopen: ((this: EventSource, ev: Event) => unknown) | null;
   onmessage: ((this: EventSource, ev: MessageEvent) => unknown) | null;

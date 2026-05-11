@@ -137,7 +137,7 @@ function createCoreHandlers(ctx, workspaces, deps) {
             api_url: ctx.apiUrl,
           };
           await saveCredentials(saved);
-          // eslint-disable-next-line require-atomic-updates -- single-threaded CLI; ctx is request-scoped, not shared across concurrent callers
+          // Single-threaded CLI; ctx is request-scoped, not shared across concurrent callers.
           ctx.token = last.token;
           await hydrateWorkspacesAfterLogin(ctx, workspaces, {
             apiHeaders,

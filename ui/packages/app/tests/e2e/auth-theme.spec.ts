@@ -33,10 +33,10 @@ test.describe("Auth theming", () => {
     await expect(heading).toBeVisible();
     await expect(button).toBeVisible();
 
-    await expect(await getCss(heading, "color")).toBe(PRIMARY_TEXT);
-    await expect(await getCss(subtitle, "color")).toBe(MUTED_TEXT);
-    await expect(await getCss(label, "color")).toBe(PRIMARY_TEXT);
-    await expect(await getCss(button, "background-color")).not.toBe("rgb(109, 74, 255)");
+    expect(await getCss(heading, "color")).toBe(PRIMARY_TEXT);
+    expect(await getCss(subtitle, "color")).toBe(MUTED_TEXT);
+    expect(await getCss(label, "color")).toBe(PRIMARY_TEXT);
+    expect(await getCss(button, "background-color")).not.toBe("rgb(109, 74, 255)");
   });
 
   test("protected route redirects to local sign-in instead of hosted clerk", async ({ page }) => {
@@ -59,7 +59,7 @@ test.describe("Auth theming", () => {
     const body = page.locator("body");
     await expect(body).toContainText(/usezombie|Zombies|Dashboard/);
     // --bg #0a0d0e (Operational Restraint) → rgb(10, 13, 14)
-    await expect(await getCss(body, "background-color")).toBe("rgb(10, 13, 14)");
+    expect(await getCss(body, "background-color")).toBe("rgb(10, 13, 14)");
   });
 
   test("mobile auth keeps the dark card treatment", async ({ page, isMobile }) => {
@@ -74,8 +74,8 @@ test.describe("Auth theming", () => {
     await expect(googleButton).toBeVisible();
 
     const buttonBackground = await getCss(googleButton, "background-color");
-    await expect(await getCss(heading, "color")).toBe(PRIMARY_TEXT);
+    expect(await getCss(heading, "color")).toBe(PRIMARY_TEXT);
     expect([DARK_SURFACE, ELEVATED_SURFACE]).toContain(buttonBackground);
-    await expect(buttonBackground).not.toBe("rgb(255, 255, 255)");
+    expect(buttonBackground).not.toBe("rgb(255, 255, 255)");
   });
 });
