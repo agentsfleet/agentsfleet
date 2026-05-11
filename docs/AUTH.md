@@ -348,6 +348,17 @@ The Svix bootstrap step is the local-only stand-in for Clerk's real outbound web
 
 The local-zombied loop runs via `bun run test:e2e:auth:local` (forces `NEXT_PUBLIC_API_URL=http://localhost:3000`); the deployed-zombied loop runs the same harness against `api-dev.usezombie.com` from CI. No production-target invocation exists.
 
+### External-state runbook prerequisites
+
+These two things live outside the repo and the harness assumes both are in place. If a Clerk DEV instance is reset or rotated, re-provision both before running the suite — otherwise globalSetup fails opaquely.
+
+| Item | Where it lives | What it must look like | What fails if missing |
+|---|---|---|---|
+| `api` JWT template | Clerk DEV dashboard → JWT Templates → `api` | `aud=https://api.usezombie.com`; claims include `{ "metadata": "{{user.public_metadata}}" }` so Token B carries `tenant_id` + `role` | `mintTokens` returns Token B without metadata → every API call lands at 403 UZ-AUTH-001 ("Tenant context required") |
+| `regular-fixture@mailinator.com` + `admin-fixture@mailinator.com` | Clerk DEV → Users | Email matches, password matches the value in `clerk-admin.ts:FIXTURE_USERS` | `globalSetup` re-provisions them automatically (idempotent) — but only if Clerk's user-create endpoint accepts the password complexity |
+
+The harness mounts a literal `__clerk_db_jwt = "fixture-dev-browser"` (non-JWT) — clerkMiddleware reads this cookie truthy-only today, no signature verification. If a future `@clerk/nextjs` upgrade hardens that check, the harness fails fast in test 5 (`signInAs … produces an accepted Clerk session`) before any spec runs — switch to a real dev-browser-token mint via Clerk's `/v1/dev_browser` endpoint at that point. Pin `@clerk/nextjs` to its current major version in `package.json` and re-validate `setupClerkTestingToken` behavior before each major upgrade.
+
 ---
 
 ## Webhook auth (separate surface)

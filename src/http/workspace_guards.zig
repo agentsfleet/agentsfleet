@@ -36,14 +36,16 @@ fn authorizeWorkspace(
 /// Only queries the DB when a `user`-role principal fails the minimum role
 /// gate, so there is no hot-path cost for operator/admin callers.
 fn isWorkspaceCreator(conn: *pg.Conn, workspace_id: []const u8, user_id: []const u8, tenant_id: ?[]const u8) bool {
+    // Schema-qualified — see common.zig:authorizeWorkspace for the pool-init
+    // before migrations search_path race that justifies this.
     var q = PgQuery.from(if (tenant_id) |tid|
         conn.query(
-            "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND created_by = $2 AND tenant_id = $3",
+            "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 AND created_by = $2 AND tenant_id = $3",
             .{ workspace_id, user_id, tid },
         ) catch return false
     else
         conn.query(
-            "SELECT 1 FROM workspaces WHERE workspace_id = $1 AND created_by = $2",
+            "SELECT 1 FROM core.workspaces WHERE workspace_id = $1 AND created_by = $2",
             .{ workspace_id, user_id },
         ) catch return false);
     defer q.deinit();

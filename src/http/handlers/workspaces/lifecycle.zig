@@ -27,7 +27,7 @@ fn generateWorkspaceId(alloc: std.mem.Allocator) ![]const u8 {
 /// is just a cleaner surface for the common "stale claim" case.
 fn tenantExists(conn: anytype, tenant_id: []const u8) bool {
     var q = PgQuery.from(conn.query(
-        "SELECT 1 FROM tenants WHERE tenant_id = $1 LIMIT 1",
+        "SELECT 1 FROM core.tenants WHERE tenant_id = $1 LIMIT 1",
         .{tenant_id},
     ) catch return true);
     defer q.deinit();

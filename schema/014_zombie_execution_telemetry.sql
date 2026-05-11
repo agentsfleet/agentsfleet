@@ -7,7 +7,7 @@
 -- code via constants in src/state/tenant_provider.zig and
 -- src/state/zombie_telemetry_store.zig — RULE STS forbids static-string CHECKs.
 
-CREATE TABLE zombie_execution_telemetry (
+CREATE TABLE core.zombie_execution_telemetry (
     id                       TEXT   NOT NULL PRIMARY KEY,
     tenant_id                UUID   NOT NULL,
     workspace_id             TEXT   NOT NULL,
@@ -26,23 +26,23 @@ CREATE TABLE zombie_execution_telemetry (
 
 -- Customer query: workspace + zombie, newest-first (cursor pagination).
 CREATE INDEX idx_telemetry_workspace_zombie
-    ON zombie_execution_telemetry (workspace_id, zombie_id, recorded_at DESC);
+    ON core.zombie_execution_telemetry (workspace_id, zombie_id, recorded_at DESC);
 
 -- Operator query: workspace filter + time-window.
 CREATE INDEX idx_telemetry_workspace_time
-    ON zombie_execution_telemetry (workspace_id, recorded_at DESC);
+    ON core.zombie_execution_telemetry (workspace_id, recorded_at DESC);
 
 -- Operator query: zombie_id-only filter (workspace_id is optional in listTelemetryAll).
 CREATE INDEX idx_telemetry_zombie
-    ON zombie_execution_telemetry (zombie_id, recorded_at DESC);
+    ON core.zombie_execution_telemetry (zombie_id, recorded_at DESC);
 
 -- Tenant-scoped charges query: GET /v1/tenants/me/billing/charges.
 CREATE INDEX idx_telemetry_tenant_time
-    ON zombie_execution_telemetry (tenant_id, recorded_at DESC);
+    ON core.zombie_execution_telemetry (tenant_id, recorded_at DESC);
 
 -- api_runtime: customer + operator + tenant Usage read endpoints (SELECT),
 -- metering INSERT from HTTP path.
-GRANT SELECT, INSERT, UPDATE ON zombie_execution_telemetry TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON core.zombie_execution_telemetry TO api_runtime;
 -- worker_runtime: event-loop metering writes (receive INSERT pre-stage,
 -- stage INSERT pre-execution, stage UPDATE post-execution).
-GRANT INSERT, UPDATE ON zombie_execution_telemetry TO worker_runtime;
+GRANT INSERT, UPDATE ON core.zombie_execution_telemetry TO worker_runtime;
