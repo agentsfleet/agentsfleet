@@ -23,6 +23,18 @@ describe("lib/auth/server", () => {
     expect(await mod.getServerToken()).toBe("tkn_abc");
   });
 
+  it("getServerToken calls Clerk getToken with the api template", async () => {
+    // Pin Token B selection: bare getToken returns Token A (default
+    // session, no metadata + no api aud), which fails any SSR call that
+    // needs principal.tenant_id or strict aud-check downstream. See
+    // docs/AUTH.md "The two tokens at a glance".
+    const getToken = vi.fn().mockResolvedValue("tkn_b");
+    authMock.mockResolvedValue({ getToken });
+    const mod = await import("../lib/auth/server");
+    await mod.getServerToken();
+    expect(getToken).toHaveBeenCalledWith({ template: "api" });
+  });
+
   it("getServerAuth returns token + userId", async () => {
     authMock.mockResolvedValue({
       getToken: vi.fn().mockResolvedValue("tkn_xyz"),
@@ -31,6 +43,14 @@ describe("lib/auth/server", () => {
     const mod = await import("../lib/auth/server");
     const out = await mod.getServerAuth();
     expect(out).toEqual({ token: "tkn_xyz", userId: "usr_42" });
+  });
+
+  it("getServerAuth calls Clerk getToken with the api template", async () => {
+    const getToken = vi.fn().mockResolvedValue("tkn_b");
+    authMock.mockResolvedValue({ getToken, userId: "usr_1" });
+    const mod = await import("../lib/auth/server");
+    await mod.getServerAuth();
+    expect(getToken).toHaveBeenCalledWith({ template: "api" });
   });
 
   it("getServerAuth normalizes missing userId to null", async () => {
