@@ -90,7 +90,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 | `--border-strong` | `#2E373E` | Active/focused borders, button outlines. |
 | `--text` | `#E6EAEC` | Default text. Off-white, never pure `#FFF`. |
 | `--text-muted` | `#8B9398` | Secondary text, captions. |
-| `--text-subtle` | `#5C6469` | Tertiary text, timestamps, dim CLI output. |
+| `--text-subtle` | `#7A8085` | Tertiary text, timestamps, dim CLI output. AA against `--bg` (4.88:1); lifted from `#5C6469` (3.23:1) on May 11, 2026. |
 
 ### The pulse — used only on live signals
 
@@ -124,7 +124,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 | `--border-strong` | `#B7AE96` | |
 | `--text` | `#1A1D1E` | |
 | `--text-muted` | `#5A625F` | |
-| `--text-subtle` | `#8A918A` | |
+| `--text-subtle` | `#67706B` | AA against light `--bg` (4.73:1); darkened from `#8A918A` (2.99:1) on May 11, 2026. |
 | `--pulse` | `#14B8A6` | Pulse desaturates 15% in light mode. |
 | `--pulse-dim` | `#0D9488` | |
 | `--pulse-glow` | `rgba(20, 184, 166, 0.30)` | |
@@ -227,7 +227,7 @@ The system has **one** signature animation. Everything else is functional or abs
   - `--warn` → `#F59E0B` (closest 256: 214)
   - `--error` → `#F87171` (closest 256: 210)
   - `--text-muted` → `#8B9398` (closest 256: 102 / `grey53`)
-  - `--text-subtle` → `#5C6469` (closest 256: 240)
+  - `--text-subtle` → `#7A8085` (closest 256: 244)
 - **Status glyphs:**
   - Live: `●` in `--pulse`
   - Parked: `○` in `--text-subtle`
@@ -264,6 +264,7 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-05-08 | Wake-pulse motion is the only signature animation | The metaphor is enacted (live entities pulse) rather than illustrated (no skulls, no Halloween palette). |
 | 2026-05-08 | 4px base unit | Engineers want information density. 8px reads SaaS-marketing. |
 | 2026-05-08 | Light mode is secondary, never the brand's hero shot | Devtools category baseline is dark; the brand's first impression must be dark. Light mode is a polite afterthought. |
+| 2026-05-11 | Lift `--text-subtle` to ≥4.5:1 WCAG AA in both themes | Audit found the pre-existing values failed body-text AA (dark 3.23:1, light 2.99:1). Tertiary text + CLI subtle output + eyebrow labels were borderline-illegible at small sizes. Dark `#5C6469 → #7A8085` (4.88:1); light `#8A918A → #67706B` (4.73:1); CLI xterm256 `240 → 244`. |
 
 ---
 

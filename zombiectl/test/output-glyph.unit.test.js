@@ -1,7 +1,7 @@
 // Unit tests for src/output/glyph.js — status glyph + color pairing.
 // Per docs/DESIGN_SYSTEM.md "Status glyphs":
 //   Live      → ● in pulse-cyan (256:79)
-//   Parked    → ○ in subtle-grey (256:240)
+//   Parked    → ○ in subtle-grey (256:244)
 //   Degraded  → ● in warn-amber (256:214)
 //   Failed    → ✕ in error-red (256:210)
 //
@@ -26,7 +26,7 @@ describe("glyph — character + color pairing matches the design system", () => 
   test("parked → ○ in subtle-grey", () => {
     const g = glyph.parked({ mode: ColorMode.XTERM256 });
     expect(g.char).toBe("○");
-    expect(g.render()).toBe(`${ESC}[38;5;240m○${ESC}[0m`);
+    expect(g.render()).toBe(`${ESC}[38;5;244m○${ESC}[0m`);
   });
 
   test("degraded → ● in warn-amber (distinct color from live)", () => {

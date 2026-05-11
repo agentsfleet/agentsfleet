@@ -3,19 +3,23 @@ import { cn } from "../utils";
 
 /*
  * Display primitives — marketing-scale typography per DESIGN_SYSTEM.md
- * §Type scale. Tokens:
- *   display-xl  64 / 1.0  / -0.025em — marketing hero h1
- *   display-lg  40 / 1.1  / -0.02em  — section heads on marketing & docs
+ * §Type scale. Composed entirely from design-system token utilities:
  *
- * Both use a fluid clamp() between display-md (28) and the target size
- * for responsive marketing layouts. Renders as <h1>/<h2> by default;
- * RSC-safe.
+ *   DisplayXL  text-fluid-hero        (clamp 40 ↔ 64) — marketing hero <h1>
+ *   DisplayLG  text-fluid-display-lg  (clamp 28 ↔ 40) — section heads
+ *
+ * Both forward Layer-0 fluid tokens declared in tokens.css §Fluid display
+ * sizes via theme.css @theme inline. No arbitrary clamp() / leading /
+ * tracking values — closing the UI Component Substitution Gate's
+ * "marketing-display typography exception" carve-out.
+ *
+ * Renders as <h1>/<h2> by default; RSC-safe.
  */
 
 const DISPLAY_XL_CLASS =
-  "font-mono text-[clamp(40px,6vw,64px)] leading-[1.05] tracking-[-0.025em] font-medium text-text m-0";
+  "font-mono text-fluid-hero leading-display-xl tracking-display-xl font-medium text-text m-0";
 const DISPLAY_LG_CLASS =
-  "font-mono text-[clamp(28px,4vw,40px)] leading-[1.15] tracking-[-0.02em] font-medium text-text m-0";
+  "font-mono text-fluid-display-lg leading-display-md tracking-display-lg font-medium text-text m-0";
 
 export type DisplayXLProps = ComponentProps<"h1">;
 export type DisplayLGProps = ComponentProps<"h2">;

@@ -13,7 +13,7 @@ export default function Terms() {
       className="wrap site-section flex flex-col gap-6 max-w-prose font-sans text-body leading-prose text-text"
     >
       <SectionLabel className="mb-0">legal</SectionLabel>
-      <DisplayXL className="text-fluid-hero">Terms of Service</DisplayXL>
+      <DisplayXL>Terms of Service</DisplayXL>
       <p className="font-mono text-eyebrow text-text-muted m-0">Last updated: May 4, 2026</p>
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">1. Acceptance</h2>
