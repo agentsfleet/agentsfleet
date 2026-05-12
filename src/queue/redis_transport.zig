@@ -49,6 +49,9 @@ pub const PlainTransport = struct {
     write_buffer: []u8,
 
     pub fn init(alloc: std.mem.Allocator, stream: std.net.Stream) !PlainTransport {
+        // Own the stream on entry — any subsequent failure must close it
+        // so callers (incl. dialAndAuth on every reconnect) cannot leak fds.
+        errdefer stream.close();
         applyKeepalive(stream);
         const read_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(read_buffer);
@@ -93,6 +96,10 @@ const TlsTransport = struct {
     ca_bundle: std.crypto.Certificate.Bundle,
 
     pub fn initInPlace(self: *TlsTransport, alloc: std.mem.Allocator, stream: std.net.Stream, host: []const u8) !void {
+        // Own the stream on entry — any subsequent failure (CA load, buffer
+        // alloc, TLS handshake) must close it so callers (incl. dialAndAuth
+        // on every reconnect) cannot leak fds.
+        errdefer stream.close();
         applyKeepalive(stream);
         const ca_file = std.process.getEnvVarOwned(alloc, "REDIS_TLS_CA_CERT_FILE") catch null;
         defer if (ca_file) |v| alloc.free(v);
