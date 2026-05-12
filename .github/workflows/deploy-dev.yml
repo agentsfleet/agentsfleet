@@ -434,9 +434,9 @@ jobs:
           path: ui/packages/app/playwright-report/
           retention-days: 7
 
-  # ── 4b. Authenticated e2e against DEV ───────────────────────────────────
+  # ── 4b. Acceptance e2e against DEV ──────────────────────────────────────
   # Mirrors the qa-dev structure but loads Clerk DEV credentials and runs
-  # the authenticated suite (tests/e2e/auth/**). Failures gate the notify
+  # the acceptance suite (tests/e2e/acceptance/**). Failures gate the notify
   # step.
   #
   # `https://usezombie-app.vercel.app` is the dev-facing dashboard — the
@@ -449,7 +449,7 @@ jobs:
   # fetch() calls (clerk-admin, bootstrap, api-client) — Next.js bakes
   # `NEXT_PUBLIC_*` at build time, so this var doesn't steer the
   # dashboard's API calls.
-  auth-e2e-dev:
+  acceptance-e2e-dev:
     runs-on: ubuntu-latest
     needs: verify-dev
     timeout-minutes: 20
@@ -476,7 +476,7 @@ jobs:
         working-directory: ui/packages/app
 
       - name: Restore Playwright browser cache
-        id: playwright-cache-auth
+        id: playwright-cache-acceptance
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
@@ -486,15 +486,15 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          if [ "${{ steps.playwright-cache-auth.outputs.cache-hit }}" = "true" ]; then
+          if [ "${{ steps.playwright-cache-acceptance.outputs.cache-hit }}" = "true" ]; then
             bunx playwright install chromium
           else
             bunx playwright install --with-deps chromium
           fi
         working-directory: ui/packages/app
 
-      - name: Run authenticated e2e against DEV
-        run: bun run test:e2e:auth
+      - name: Run acceptance e2e against DEV
+        run: bun run test:e2e:acceptance
         working-directory: ui/packages/app
         env:
           BASE_URL: https://usezombie-app.vercel.app
@@ -504,18 +504,18 @@ jobs:
           CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
-      - name: Upload authenticated Playwright report
+      - name: Upload acceptance Playwright report
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: auth-e2e-dev-${{ github.sha }}
-          path: ui/packages/app/playwright-auth-report/
+          name: acceptance-e2e-dev-${{ github.sha }}
+          path: ui/packages/app/playwright-acceptance-report/
           retention-days: 7
 
   # ── 5. Discord notify ────────────────────────────────────────────────────
   notify:
     runs-on: ubuntu-latest
-    needs: [qa-dev, auth-e2e-dev, deploy-worker-dev]
+    needs: [qa-dev, acceptance-e2e-dev, deploy-worker-dev]
     if: always()
     steps:
       - name: Load Discord webhook from 1Password
@@ -533,15 +533,15 @@ jobs:
           REF="${{ github.ref_name }}"
 
           QA="${{ needs.qa-dev.result }}"
-          AUTH="${{ needs.auth-e2e-dev.result }}"
+          ACC="${{ needs.acceptance-e2e-dev.result }}"
           WORKER="${{ needs.deploy-worker-dev.result }}"
 
-          if [ "$QA" = "success" ] && [ "$AUTH" = "success" ] && { [ "$WORKER" = "success" ] || [ "$WORKER" = "skipped" ]; }; then
+          if [ "$QA" = "success" ] && [ "$ACC" = "success" ] && { [ "$WORKER" = "success" ] || [ "$WORKER" = "skipped" ]; }; then
             COLOR=3066993
-            MSG="✅ DEV deploy green — \`$REF\` @ \`$SHORT\`\\n/healthz: ok | QA: passed | auth-e2e: passed | worker: ${WORKER}\\n→ ready for tag release"
+            MSG="✅ DEV deploy green — \`$REF\` @ \`$SHORT\`\\n/healthz: ok | QA: passed | acceptance-e2e: passed | worker: ${WORKER}\\n→ ready for tag release"
           else
             COLOR=15158332
-            MSG="❌ DEV deploy failed — \`$REF\` @ \`$SHORT\`\\nQA: ${QA} | auth-e2e: ${AUTH} | worker: ${WORKER}\\nCheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            MSG="❌ DEV deploy failed — \`$REF\` @ \`$SHORT\`\\nQA: ${QA} | acceptance-e2e: ${ACC} | worker: ${WORKER}\\nCheck: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           fi
 
           curl -sf -X POST "$DISCORD_WEBHOOK" \

@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { loadWorktreeEnv } from "./tests/e2e/auth/fixtures/env-loader";
+import { loadWorktreeEnv } from "./tests/e2e/acceptance/fixtures/env-loader";
 
 // Load <worktree-root>/.env so CLERK_SECRET_KEY / CLERK_WEBHOOK_SECRET land
 // in process.env before globalSetup runs. Bun auto-loads only this package's
@@ -10,16 +10,16 @@ const E2E_PORT = process.env.E2E_PORT ?? "3101";
 const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
 
 export default defineConfig({
-  testDir: "./tests/e2e/auth",
+  testDir: "./tests/e2e/acceptance",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
   reporter: process.env.CI
-    ? [["line"], ["html", { open: "never", outputFolder: "playwright-auth-report" }]]
+    ? [["line"], ["html", { open: "never", outputFolder: "playwright-acceptance-report" }]]
     : "line",
-  globalSetup: "./tests/e2e/auth/global-setup.ts",
-  globalTeardown: "./tests/e2e/auth/global-teardown.ts",
+  globalSetup: "./tests/e2e/acceptance/global-setup.ts",
+  globalTeardown: "./tests/e2e/acceptance/global-teardown.ts",
   use: {
     baseURL: BASE_URL,
     extraHTTPHeaders: process.env.VERCEL_BYPASS_SECRET
@@ -34,7 +34,7 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "auth-chromium",
+      name: "acceptance-chromium",
       use: { ...devices["Desktop Chrome"] },
     },
   ],
@@ -46,5 +46,5 @@ export default defineConfig({
         reuseExistingServer: !process.env.CI,
         timeout: 120_000,
       },
-  outputDir: "playwright-auth-results",
+  outputDir: "playwright-acceptance-results",
 });

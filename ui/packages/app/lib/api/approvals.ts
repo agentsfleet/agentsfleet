@@ -89,6 +89,15 @@ export async function getApproval(
   );
 }
 
+// Wire-protocol values the API understands for the `:approve` / `:deny` POST
+// paths. Single source of truth — dashboard components import these so the
+// decision flow has one place that pins the literal.
+export const APPROVAL_DECISION = {
+  APPROVE: "approve",
+  DENY: "deny",
+} as const;
+export type ApprovalDecision = typeof APPROVAL_DECISION[keyof typeof APPROVAL_DECISION];
+
 // Resolve. The server returns 200 with ResolveResponse on success and 409 with
 // AlreadyResolvedResponse when another channel got there first. Both are
 // expected outcomes from the operator's perspective — we surface them to the
@@ -96,7 +105,7 @@ export async function getApproval(
 async function resolveAction(
   workspaceId: string,
   gateId: string,
-  decision: "approve" | "deny",
+  decision: ApprovalDecision,
   token: string,
   reason?: string,
 ): Promise<ResolveOutcome> {
@@ -125,9 +134,9 @@ async function resolveAction(
 }
 
 export function approveApproval(workspaceId: string, gateId: string, token: string, reason?: string) {
-  return resolveAction(workspaceId, gateId, "approve", token, reason);
+  return resolveAction(workspaceId, gateId, APPROVAL_DECISION.APPROVE, token, reason);
 }
 
 export function denyApproval(workspaceId: string, gateId: string, token: string, reason?: string) {
-  return resolveAction(workspaceId, gateId, "deny", token, reason);
+  return resolveAction(workspaceId, gateId, APPROVAL_DECISION.DENY, token, reason);
 }

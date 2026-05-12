@@ -4,6 +4,12 @@
  * Reads the JWT cache produced by global-setup.ts and returns a typed client
  * bound to a specific fixture user. No retry logic — fixture seeding/teardown
  * runs in a controlled environment, failures should fail tests loudly.
+ *
+ * ClientHandle accepts either a cached fixture key (persistent regular/admin
+ * fixtures from .fixture-jwts.json) OR a raw `{ sessionJwt }` object for the
+ * ephemeral signup-flow user, which is minted mid-test and is NOT in the
+ * cache. One entrypoint, one fetch implementation — no duplicated request
+ * logic (RULE UFS).
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -41,10 +47,13 @@ export interface ApiClient {
   delete(p: string): Promise<void>;
 }
 
-export function clientFor(key: FixtureKey): ApiClient {
-  const entry = loadEntry(key);
+export type ClientHandle = FixtureKey | { sessionJwt: string };
+
+export function clientFor(handle: ClientHandle): ApiClient {
+  const sessionJwt =
+    typeof handle === "string" ? loadEntry(handle).sessionJwt : handle.sessionJwt;
   const base = apiBase();
-  const headers = { Authorization: `Bearer ${entry.sessionJwt}` };
+  const headers = { Authorization: `Bearer ${sessionJwt}` };
 
   async function request(method: string, p: string, body?: unknown): Promise<Response> {
     const res = await fetch(`${base}${p}`, {
