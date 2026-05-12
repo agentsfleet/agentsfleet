@@ -16,7 +16,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  Input,
   Textarea,
 } from "@usezombie/design-system";
 import { installZombieAction } from "../actions";
@@ -24,28 +23,14 @@ import { installZombieAction } from "../actions";
 type Props = { workspaceId: string };
 
 const schema = z.object({
-  name: z.string().trim().min(1, "Zombie name is required"),
+  trigger_markdown: z.string().trim().min(1, "TRIGGER.md body is required"),
   source_markdown: z.string().trim().min(1, "SKILL.md body is required"),
-  config_json: z
-    .string()
-    .trim()
-    .min(1, "Config JSON is required")
-    .refine((s) => {
-      try {
-        JSON.parse(s);
-        return true;
-      } catch {
-        return false;
-      }
-    }, "Config JSON must be valid JSON"),
 });
 type FormValues = z.infer<typeof schema>;
 
-// Power-user install. Server contract is {name, source_markdown, config_json}.
-// The ergonomic flow is `zombiectl install --from`, which reads SKILL.md +
-// TRIGGER.md from disk and compiles the config JSON. This form exists so an
-// operator without CLI access can still install by pasting the two bodies
-// directly.
+// Mirrors `zombiectl install --from`: paste TRIGGER.md + SKILL.md, zombied
+// parses the YAML frontmatter and derives name + config from it. Same wire
+// contract as the CLI — no client-side compile, no hand-crafted JSON.
 export default function InstallZombieForm({ workspaceId }: Props) {
   const router = useRouter();
   const [apiError, setApiError] = useState<string | null>(null);
@@ -53,7 +38,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { name: "", source_markdown: "", config_json: "" },
+    defaultValues: { trigger_markdown: "", source_markdown: "" },
   });
 
   function onSubmit(values: FormValues) {
@@ -65,10 +50,16 @@ export default function InstallZombieForm({ workspaceId }: Props) {
         router.refresh();
         return;
       }
+      // Surface zombied's exact error text so a paste mismatch (e.g. invalid
+      // frontmatter, missing budget) is debuggable from the dashboard instead
+      // of a generic "Bad Request". Conflict gets a slightly friendlier wrap
+      // since 409 here always means name-collision on the workspace.
       if (result.status === 409) {
-        setApiError(`A zombie named "${values.name}" already exists in this workspace`);
+        setApiError(
+          `That bundle's name already exists in this workspace — change the \`name:\` in TRIGGER.md frontmatter.`,
+        );
       } else {
-        setApiError(result.error || "Install failed");
+        setApiError(result.error || `Install failed (HTTP ${result.status ?? "unknown"})`);
       }
     });
   }
@@ -77,21 +68,34 @@ export default function InstallZombieForm({ workspaceId }: Props) {
     <Form {...form}>
       <form onSubmit={(e) => { void form.handleSubmit(onSubmit)(e); }} className="max-w-xl space-y-4">
         <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Power-user install. Prefer{" "}
-          <code className="font-mono">zombiectl install --from</code>, which
-          reads SKILL.md and TRIGGER.md from disk and compiles the config JSON
-          automatically.
+          Paste the two markdown files that <code className="font-mono">zombiectl install --from</code>
+          {" "}reads from disk. <code className="font-mono">name</code> and the compiled config are
+          derived from <code className="font-mono">TRIGGER.md</code> frontmatter server-side — same
+          wire as the CLI.
         </p>
 
         <FormField
           control={form.control}
-          name="name"
+          name="trigger_markdown"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Name</FormLabel>
+              <FormLabel>TRIGGER.md body</FormLabel>
               <FormControl>
-                <Input placeholder="platform-ops" {...field} />
+                <Textarea
+                  placeholder={
+                    "---\nname: my-zombie\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n"
+                  }
+                  rows={8}
+                  className="font-mono text-xs"
+                  {...field}
+                />
               </FormControl>
+              <FormDescription>
+                YAML frontmatter must include <code className="font-mono">name</code> (kebab-case),
+                {" "}<code className="font-mono">x-usezombie.trigger</code>,{" "}
+                <code className="font-mono">x-usezombie.tools</code>, and{" "}
+                <code className="font-mono">x-usezombie.budget</code>.
+              </FormDescription>
               <FormMessage />
             </FormItem>
           )}
@@ -105,38 +109,15 @@ export default function InstallZombieForm({ workspaceId }: Props) {
               <FormLabel>SKILL.md body</FormLabel>
               <FormControl>
                 <Textarea
-                  placeholder={"---\nname: platform-ops\n---\n# Platform Ops\n..."}
+                  placeholder={"---\nname: my-zombie\ndescription: …\nversion: 0.1.0\n---\n# My Zombie\n…"}
                   rows={8}
                   className="font-mono text-xs"
                   {...field}
                 />
               </FormControl>
               <FormDescription>
-                Paste the full contents of your skill&apos;s{" "}
+                Paste the full contents of the skill&apos;s{" "}
                 <code className="font-mono">SKILL.md</code> file.
-              </FormDescription>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
-
-        <FormField
-          control={form.control}
-          name="config_json"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Config JSON</FormLabel>
-              <FormControl>
-                <Textarea
-                  placeholder={'{"name":"platform-ops","trigger":{"kind":"webhook"}}'}
-                  rows={6}
-                  className="font-mono text-xs"
-                  {...field}
-                />
-              </FormControl>
-              <FormDescription>
-                Compiled from TRIGGER.md frontmatter. Operators typically use
-                the CLI to generate this.
               </FormDescription>
               <FormMessage />
             </FormItem>

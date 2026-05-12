@@ -207,9 +207,9 @@ describe("lib/api/zombies", () => {
     });
     const mod = await import("../lib/api/zombies");
     const body = {
-      name: "platform-ops",
+      trigger_markdown:
+        "---\nname: platform-ops\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n",
       source_markdown: "---\nname: platform-ops\n---\nhi",
-      config_json: '{"name":"platform-ops"}',
     };
     const res = await mod.installZombie("ws_1", body, "tkn");
     expect(fetchMock).toHaveBeenCalledWith(
@@ -233,7 +233,7 @@ describe("lib/api/zombies", () => {
     await expect(
       mod.installZombie(
         "ws_1",
-        { name: "dup", source_markdown: "s", config_json: "{}" },
+        { trigger_markdown: "---\nname: dup\n---\n", source_markdown: "s" },
         "tkn",
       ),
     ).rejects.toMatchObject({ status: 409, code: "UZ-ZOM-002", message: "name taken" });
@@ -252,7 +252,7 @@ describe("lib/api/zombies", () => {
     await expect(
       mod.installZombie(
         "ws_1",
-        { name: "x", source_markdown: "y", config_json: "{}" },
+        { trigger_markdown: "---\nname: x\n---\n", source_markdown: "y" },
         "tkn",
       ),
     ).rejects.toMatchObject({ status: 500, message: "Server Error" });
@@ -560,9 +560,8 @@ describe("zombies routes", () => {
     const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
     const markup = renderToStaticMarkup(await Page());
     expect(markup).toContain("Install Zombie");
-    expect(markup).toContain("name=\"name\"");
+    expect(markup).toContain("name=\"trigger_markdown\"");
     expect(markup).toContain("name=\"source_markdown\"");
-    expect(markup).toContain("name=\"config_json\"");
   });
 
   it("zombies detail page redirects to /sign-in when no token", async () => {
@@ -848,12 +847,15 @@ describe("InstallZombieForm interactions", () => {
     return render(React.createElement(Form, { workspaceId: "ws_1" }));
   }
 
-  it("empty name blocks submit and shows the required-field error", async () => {
+  const FIXTURE_TRIGGER =
+    "---\nname: platform-ops\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
+
+  it("empty TRIGGER.md blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup();
     await renderForm();
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
-      expect(screen.getByText(/Zombie name is required/i)).toBeTruthy(),
+      expect(screen.getByText(/TRIGGER\.md body is required/i)).toBeTruthy(),
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -861,7 +863,7 @@ describe("InstallZombieForm interactions", () => {
   it("empty SKILL.md blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
+    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy(),
@@ -869,32 +871,7 @@ describe("InstallZombieForm interactions", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("empty config JSON blocks submit and shows the required-field error", async () => {
-    const user = userEvent.setup();
-    await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "hello");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/Config JSON is required/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("invalid config JSON blocks submit with a parse error", async () => {
-    const user = userEvent.setup();
-    await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "hello");
-    await user.type(screen.getByLabelText(/Config JSON/i), "not-json");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/Config JSON must be valid JSON/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("happy path: fills form, POSTs, redirects to detail page", async () => {
+  it("happy path: fills form, POSTs trigger+source markdown, redirects to detail", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       status: 201,
@@ -902,9 +879,8 @@ describe("InstallZombieForm interactions", () => {
     });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
+    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill body");
-    await user.type(screen.getByLabelText(/Config JSON/i), '{{"name":"x"}');
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
 
     await waitFor(() =>
@@ -915,17 +891,20 @@ describe("InstallZombieForm interactions", () => {
     );
     const callBody = JSON.parse(
       (fetchMock.mock.calls[0]![1] as RequestInit).body as string,
-    );
-    expect(callBody).toEqual({
-      name: "platform-ops",
-      source_markdown: "# skill body",
-      config_json: '{"name":"x"}',
-    });
+    ) as { trigger_markdown: string; source_markdown: string };
+    // userEvent.type may normalize whitespace slightly when typing multi-line
+    // YAML into a happy-dom textarea; assert the load-bearing tokens are
+    // present in the POSTed body rather than byte-for-byte equality with the
+    // source fixture.
+    expect(Object.keys(callBody).sort()).toEqual(["source_markdown", "trigger_markdown"]);
+    expect(callBody.trigger_markdown).toContain("name: platform-ops");
+    expect(callBody.trigger_markdown).toContain("x-usezombie:");
+    expect(callBody.source_markdown).toContain("skill body");
     expect(routerPush).toHaveBeenCalledWith("/zombies/zom_new");
     expect(routerRefresh).toHaveBeenCalled();
   });
 
-  it("409 conflict renders the 'already exists' error", async () => {
+  it("409 conflict renders a name-collision hint", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 409,
@@ -934,9 +913,8 @@ describe("InstallZombieForm interactions", () => {
     });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
+    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
@@ -953,9 +931,8 @@ describe("InstallZombieForm interactions", () => {
     });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
+    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/boom/)).toBeTruthy(),
@@ -968,9 +945,8 @@ describe("InstallZombieForm interactions", () => {
     auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/^Name$/), "platform-ops");
+    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.type(screen.getByLabelText(/Config JSON/i), "{{}");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
     await waitFor(() =>
       expect(screen.getByText(/Not authenticated/i)).toBeTruthy(),
