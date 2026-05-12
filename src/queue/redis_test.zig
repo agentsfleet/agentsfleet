@@ -91,3 +91,140 @@ test "makeConsumerId produces unique IDs across calls" {
     try std.testing.expect(!std.mem.eql(u8, id1, id2));
 }
 
+// ── Keepalive + reconnect tests ──────────────────────────────────────────
+// These exercise the patch that turned a long-lived idle connection from
+// "silently dead" into "self-healing on next request" — the failure mode
+// the prior dev `/readyz` `queue:false` regression uncovered. We use a
+// tiny in-process RESP fake instead of a real Redis so the behaviour is
+// deterministic across CI environments.
+
+const redis_transport = @import("redis_transport.zig");
+
+/// Fake Redis server: each accepted connection eats whatever the client
+/// sends, replies `+PONG\r\n`, and closes. The reset on the second client
+/// call is what proves the reconnect path works.
+const PingFake = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+    accepts: std.atomic.Value(u32),
+
+    fn start(self: *PingFake) !void {
+        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.accepts = std.atomic.Value(u32).init(0);
+        self.thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
+    }
+
+    fn shutdown(self: *PingFake) void {
+        self.stop.store(true, .release);
+        // Wake the accept() by dialing ourselves; ignore failure (the
+        // listener may already be torn down by the loop on error paths).
+        const addr = self.addr;
+        if (std.net.tcpConnectToAddress(addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn acceptLoop(self: *PingFake) void {
+        while (!self.stop.load(.acquire)) {
+            const conn = self.server.accept() catch return;
+            defer conn.stream.close();
+            if (self.stop.load(.acquire)) return;
+            _ = self.accepts.fetchAdd(1, .monotonic);
+
+            var buf: [256]u8 = undefined;
+            const n = conn.stream.read(&buf) catch 0;
+            if (n == 0) continue;
+            conn.stream.writeAll("+PONG\r\n") catch {};
+            // Drop the connection — emulates Upstash idle-drop / restart.
+        }
+    }
+
+    fn url(self: *PingFake, alloc: std.mem.Allocator) ![]u8 {
+        return std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.addr.in.getPort()});
+    }
+};
+
+test "PlainTransport.init enables SO_KEEPALIVE on its socket" {
+    // Bind a loopback listener and dial it through PlainTransport so the
+    // keepalive bit is exercised through the same path the real client uses.
+    // SO_KEEPALIVE on the underlying fd is observable via getsockopt; the
+    // per-OS keep-idle knobs are best-effort and not asserted.
+    const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+    var listener = try loopback.listen(.{ .reuse_address = true });
+    defer listener.deinit();
+
+    const stream = try std.net.tcpConnectToAddress(listener.listen_address);
+    var t = try redis_transport.PlainTransport.init(std.testing.allocator, stream);
+    defer t.deinit(std.testing.allocator);
+
+    var enabled: c_int = 0;
+    try std.posix.getsockopt(
+        t.stream.handle,
+        std.posix.SOL.SOCKET,
+        std.posix.SO.KEEPALIVE,
+        std.mem.asBytes(&enabled),
+    );
+    try std.testing.expect(enabled != 0);
+}
+
+test "PlainTransport.init closes the stream on allocation failure (no fd leak)" {
+    // Regression for the dialAndAuth fd-leak path: every reconnect calls
+    // PlainTransport.init / TlsTransport.initInPlace; if that fails after
+    // tcpConnectToHost succeeds, the socket must be closed or a sustained
+    // period of init failures (TLS rotation, OOM) exhausts the fd table.
+    // We force the failure by giving init a failing allocator and assert
+    // that the second alloc call (write_buffer) gets a free()'d read_buffer
+    // without the test allocator complaining about the leaked stream.
+    const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+    var listener = try loopback.listen(.{ .reuse_address = true });
+    defer listener.deinit();
+
+    const stream = try std.net.tcpConnectToAddress(listener.listen_address);
+    const fd_before = stream.handle;
+
+    // FailingAllocator that errors on the 2nd allocation — read_buffer
+    // succeeds (so init progresses past the first errdefer), write_buffer
+    // fails (so init returns an error and our errdefer stream.close() must fire).
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    const result = redis_transport.PlainTransport.init(failing.allocator(), stream);
+    try std.testing.expectError(error.OutOfMemory, result);
+
+    // Confirm the fd is no longer open. read() on a closed fd returns
+    // EBADF, which Zig maps to error.NotOpenForReading — unlike fcntl
+    // which panics on EBADF in 0.15.2. Proves the errdefer stream.close()
+    // in init actually fired (otherwise we'd block waiting for a byte).
+    var probe: [1]u8 = undefined;
+    const probe_result = std.posix.read(fd_before, &probe);
+    try std.testing.expectError(error.NotOpenForReading, probe_result);
+}
+
+test "Client.readyCheck self-heals when the server drops the connection" {
+    const alloc = std.testing.allocator;
+
+    var fake: PingFake = undefined;
+    try fake.start();
+    defer fake.shutdown();
+
+    const url = try fake.url(alloc);
+    defer alloc.free(url);
+
+    var client = try redis.testing.connectFromUrl(alloc, url);
+    defer client.deinit();
+
+    // First probe goes through cleanly on the original socket.
+    try client.readyCheck();
+    try std.testing.expectEqual(@as(u32, 1), fake.accepts.load(.monotonic));
+
+    // The fake closed the socket after replying — the next probe MUST
+    // transparently re-dial and succeed via the idempotent retry layer
+    // in readyCheck. Without the patch this would surface as RedisPingFailed
+    // and /readyz would return queue:false until process restart.
+    try client.readyCheck();
+    try std.testing.expect(fake.accepts.load(.monotonic) >= 2);
+}
+

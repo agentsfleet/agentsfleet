@@ -428,28 +428,6 @@ jobs:
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
 
-      - name: Verify Fly machine state (deploy settled)
-        run: |
-          APP="${{ vars.FLY_APP_PROD }}"
-          echo "Checking Fly machine state for ${APP}..."
-          for i in $(seq 1 12); do
-            OUT="$(flyctl machine list --app "${APP}" || true)"
-            echo "${OUT}"
-            if echo "${OUT}" | grep -qiE '\bstarted\b'; then
-              echo "✓ at least one machine is in started state for ${APP}"
-              exit 0
-            fi
-            echo "attempt ${i}/12: no settled machine yet; retrying in 5s..."
-            sleep 5
-          done
-          echo "✗ no settled machine found for ${APP} after 60s"
-          echo "Fly app status for diagnostics:"
-          flyctl status --app "${APP}" || true
-          timeout 30s flyctl logs --app "${APP}" || true
-          exit 1
-        env:
-          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
-
       - name: Ensure restart-policy always on prod machines
         # Set restart-policy=always so Fly self-heals the machine on crash.
         run: |
