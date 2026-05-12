@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M65
 **Workstream:** 002
 **Date:** May 12, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — M65_001 ships dashboard acceptance gates on every deploy. The published CLI (`@usezombie/zombiectl`) has no equivalent: today's `zombiectl/test/**` files are unit + mock-API integration runs. A regression in the CLI's auth handoff, install, or lifecycle path against the real `api-dev`/`api` ships to npm undetected until a user reports it. This spec adds the same shape of gate for the CLI surface — DEV against the worktree binary on every backend deploy, PROD against the just-published npm tarball on every release.
 **Categories:** TESTING, SECURITY
 **Batch:** B1 — no parallel workstreams in M65_002. Sequenced after M65_001 because it consumes the same `op://VAULT/e2e-fixtures/{regular,admin}/email` vault items and the same `regular` Clerk fixture identity.
-**Branch:** TBD — opens at CHORE(open) on the implementation milestone (this spec is the planning gate).
+**Branch:** chore/m65-002-spec-zombiectl-e2e-lifecycle — Captain authorized continuing on the spec branch in lieu of cutting a separate `feat/m65-002-zombiectl-cli-e2e` branch; the PR scope broadens from spec-only to spec+implementation.
 **Depends on:** M65_001 (vault-resolved fixture emails + persistent `regular` fixture in both Clerk DEV and Clerk PROD). **Hard merge-gate:** same as M65_001 — `op://VAULT/e2e-fixtures/{regular,admin}/email` MUST resolve to non-mailinator domains AND the workflow `env:` blocks MUST consume them. The CLI suite re-uses both invariants.
 
 **Canonical architecture:** `docs/AUTH.md` §"Test infrastructure — e2e fixture mint (admin path)" + §"PROD fixture identity carve-out". Sibling spec: `docs/v2/pending/M65_001_P1_TESTING_SECURITY_AUTH_E2E_FULL_LIFECYCLE_SCENARIOS.md`.
