@@ -7,11 +7,11 @@
  * cleaned up by the returned `cleanup` callback.
  *
  * Use cases:
- *   - §3 unknown-subcommand sweep: needs to reach the per-group
- *     dispatcher, which is guarded by auth + workspace-context resolution.
- *     The dispatcher's "unknown action" branch fires BEFORE any fetch, so
+ *   - unknown-subcommand sweep: needs to reach the per-group dispatcher,
+ *     which is guarded by auth + workspace-context resolution. The
+ *     dispatcher's "unknown action" branch fires BEFORE any fetch, so
  *     `ZOMBIE_API_URL=http://127.0.0.1:1` plus this stub yields the
- *     spec's required stem without touching the network.
+ *     expected stem without touching the network.
  */
 
 import fs from "node:fs/promises";

@@ -86,6 +86,15 @@ function createCoreHandlers(ctx, workspaces, deps) {
     const timeoutSec = Number.parseInt(String(options["timeout-sec"] || "300"), 10);
     const pollMs = Number.parseInt(String(options["poll-ms"] || "2000"), 10);
 
+    // SIGINT handler — terminal Ctrl+C during the poll loop (or before
+    // creds are written) exits non-zero without persisting a partial
+    // credentials.json. Scoped: registered at entry, removed in finally.
+    // Same handler shape works on macOS, Linux, and CI runners — Node's
+    // process.on("SIGINT") normalises Ctrl+C across platforms.
+    const interrupt = new AbortController();
+    const onSigint = () => interrupt.abort();
+    process.on("SIGINT", onSigint);
+
     const created = await request(ctx, "/v1/auth/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -124,12 +133,14 @@ function createCoreHandlers(ctx, workspaces, deps) {
 
     try {
       while (Date.now() < deadline) {
+        if (interrupt.signal.aborted) return signalInterrupt();
         last = await request(ctx, `/v1/auth/sessions/${encodeURIComponent(sessionId)}`, {
           method: "GET",
           headers: { "Content-Type": "application/json" },
         });
 
         if (last.status === "complete" && last.token) {
+          if (interrupt.signal.aborted) return signalInterrupt();
           const saved = {
             token: last.token,
             saved_at: Date.now(),
@@ -171,13 +182,24 @@ function createCoreHandlers(ctx, workspaces, deps) {
     } catch (err) {
       spinner.fail();
       throw err;
+    } finally {
+      process.removeListener("SIGINT", onSigint);
     }
 
+    if (interrupt.signal.aborted) return signalInterrupt();
     spinner.fail();
     const timeoutResult = { status: "timeout", session_id: sessionId };
     if (ctx.jsonMode) printJson(ctx.stdout, timeoutResult);
     else writeLine(ctx.stderr, ui.err("login timed out"));
     return 1;
+
+    function signalInterrupt() {
+      spinner.fail();
+      const result = { status: "interrupted", session_id: sessionId };
+      if (ctx.jsonMode) printJson(ctx.stdout, result);
+      else writeLine(ctx.stderr, ui.err("login interrupted"));
+      return 130;
+    }
   }
 
   async function commandLogout() {
