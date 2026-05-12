@@ -28,6 +28,8 @@ import { createSpinner } from "./ui-progress.js";
 import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.js";
 import { buildProgram } from "./program/cli-tree.js";
 import { buildHandlers } from "./program/handlers-bind.js";
+import { ROLE_ADMIN } from "./constants/auth-roles.js";
+import { EVT_USER_AUTHENTICATED, EVT_WORKSPACE_CREATED } from "./constants/analytics-events.js";
 
 // VERSION is the source-of-truth `package.json` field, read once at module
 // load. `make sync-version` writes package.json + build.zig.zon together;
@@ -150,13 +152,13 @@ async function runPostActionAnalytics(lifecycle, state) {
   if (state.exitCode === 0 && lifecycle.lastCommand === "login") {
     const latestCreds = await loadCredentials().catch(() => ({}));
     eventDistinctId = extractDistinctIdFromToken(latestCreds.token) || distinctId;
-    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
+    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, EVT_USER_AUTHENTICATED, {
       command: lifecycle.lastCommand,
       ...analyticsContext,
     });
   }
   if (state.exitCode === 0 && lifecycle.lastCommand === "workspace.add") {
-    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "workspace_created", {
+    cliAnalytics.trackCliEvent(analyticsClient, distinctId, EVT_WORKSPACE_CREATED, {
       command: lifecycle.lastCommand,
       ...analyticsContext,
     });
@@ -193,7 +195,7 @@ export async function runCli(argv, io = {}) {
   const workspaces = await loadWorkspaces().catch(() => ({ items: [], current_workspace_id: null }));
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
-  const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? "admin" : null);
+  const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
 
   const explicitApi = resolveGlobalApiUrl(argv, env);
   const ctx = {

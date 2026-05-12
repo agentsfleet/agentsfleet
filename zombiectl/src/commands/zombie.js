@@ -26,6 +26,7 @@ import {
   ZOMBIE_PRESET,
   compose,
 } from "../lib/error-map-presets.js";
+import { ZOMBIE_STATUS } from "../constants/zombie-status.js";
 
 // Shared by every `zombie.*` route — install/list/status/kill/stop/
 // resume/delete/logs/steer/events/credential all hit the same workspace
@@ -50,15 +51,15 @@ export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
 });
 
 const STATUS_PAST_TENSE = {
-  stopped: "stopped",
-  active: "resumed",
-  killed: "killed",
+  [ZOMBIE_STATUS.STOPPED]: "stopped",
+  [ZOMBIE_STATUS.ACTIVE]: "resumed",
+  [ZOMBIE_STATUS.KILLED]: "killed",
 };
 
 const STATUS_VERB = {
-  stopped: "stop",
-  active: "resume",
-  killed: "kill",
+  [ZOMBIE_STATUS.STOPPED]: "stop",
+  [ZOMBIE_STATUS.ACTIVE]: "resume",
+  [ZOMBIE_STATUS.KILLED]: "kill",
 };
 
 function requireWorkspace(ctx, workspaces, deps) {
@@ -189,15 +190,15 @@ async function commandSetStatus(ctx, parsed, workspaces, deps, status) {
 }
 
 export function commandStop(ctx, parsed, workspaces, deps) {
-  return commandSetStatus(ctx, parsed, workspaces, deps, "stopped");
+  return commandSetStatus(ctx, parsed, workspaces, deps, ZOMBIE_STATUS.STOPPED);
 }
 
 export function commandResume(ctx, parsed, workspaces, deps) {
-  return commandSetStatus(ctx, parsed, workspaces, deps, "active");
+  return commandSetStatus(ctx, parsed, workspaces, deps, ZOMBIE_STATUS.ACTIVE);
 }
 
 export function commandKill(ctx, parsed, workspaces, deps) {
-  return commandSetStatus(ctx, parsed, workspaces, deps, "killed");
+  return commandSetStatus(ctx, parsed, workspaces, deps, ZOMBIE_STATUS.KILLED);
 }
 
 export async function commandDelete(ctx, parsed, workspaces, deps) {

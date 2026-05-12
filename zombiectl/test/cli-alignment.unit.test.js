@@ -190,9 +190,9 @@ test("workspace show errors when no active workspace and no --workspace-id", asy
   });
 });
 
-// ── workspace credentials placeholder ────────────────────────────────────
+// ── workspace credentials redirect ───────────────────────────────────────
 
-test("workspace credentials prints the placeholder message", async () => {
+test("workspace credentials prints the redirect message", async () => {
   await withStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
@@ -202,11 +202,11 @@ test("workspace credentials prints the placeholder message", async () => {
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
     });
     assert.equal(code, 0);
-    assert.ok(out.read().includes("ships once the backing feature"));
+    assert.ok(out.read().includes("/credentials"));
   });
 });
 
-test("workspace credentials --json returns status=placeholder", async () => {
+test("workspace credentials --json returns status=redirect", async () => {
   await withStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
@@ -216,8 +216,8 @@ test("workspace credentials --json returns status=placeholder", async () => {
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
     });
     const parsed = JSON.parse(out.read());
-    assert.equal(parsed.status, "placeholder");
-    assert.ok(parsed.message.includes("coming soon"));
+    assert.equal(parsed.status, "redirect");
+    assert.ok(parsed.message.includes("/credentials"));
   });
 });
 

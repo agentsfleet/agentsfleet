@@ -178,7 +178,7 @@ describe("commandWorkspace", () => {
     expect(printed.active).toBe(true);
   });
 
-  test("credentials placeholder action returns 0", async () => {
+  test("credentials redirect action returns 0", async () => {
     const deps = makeDeps();
     const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: null, items: [] };
@@ -187,7 +187,7 @@ describe("commandWorkspace", () => {
     expect(code).toBe(0);
   });
 
-  test("credentials jsonMode emits the placeholder payload", async () => {
+  test("credentials jsonMode emits the redirect payload", async () => {
     let printed;
     const deps = makeDeps({
       printJson: (_s, v) => { printed = v; },
@@ -197,7 +197,7 @@ describe("commandWorkspace", () => {
     const core = createCoreHandlers(ctx, workspaces, deps);
     const code = await core.commandWorkspace(["credentials"]);
     expect(code).toBe(0);
-    expect(printed?.status).toBe("placeholder");
+    expect(printed?.status).toBe("redirect");
   });
 
   test("delete without id returns error", async () => {

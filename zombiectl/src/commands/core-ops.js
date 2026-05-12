@@ -1,10 +1,11 @@
-import { wsZombiesPath } from "../lib/api-paths.js";
+import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import {
   ERR_INTERNAL_DB_UNAVAILABLE,
   ERR_INTERNAL_GENERIC,
   ERR_INTERNAL_SERVER_ERROR,
 } from "../constants/error-codes.js";
+import { DOCTOR_CHECK } from "../constants/doctor-checks.js";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 
@@ -40,35 +41,35 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
   const checks = [];
 
   try {
-    const healthz = await request(ctx, "/healthz", {
+    const healthz = await request(ctx, HEALTHZ_PATH, {
       method: "GET",
       timeoutMs: PER_CHECK_TIMEOUT_MS,
     });
-    const ok = healthz?.status === "ok";
+    const ok = healthz?.status === HEALTHZ_STATUS_OK;
     checks.push({
-      name: "server_reachable",
+      name: DOCTOR_CHECK.SERVER_REACHABLE,
       ok,
-      detail: ok ? `${ctx.apiUrl}/healthz` : `unexpected payload: ${JSON.stringify(healthz)}`,
+      detail: ok ? `${ctx.apiUrl}${HEALTHZ_PATH}` : `unexpected payload: ${JSON.stringify(healthz)}`,
     });
   } catch (err) {
     checks.push({
-      name: "server_reachable",
+      name: DOCTOR_CHECK.SERVER_REACHABLE,
       ok: false,
-      detail: `${ctx.apiUrl}/healthz: ${err?.message ?? String(err)}`,
+      detail: `${ctx.apiUrl}${HEALTHZ_PATH}: ${err?.message ?? String(err)}`,
     });
   }
 
   const wsId = workspaces.current_workspace_id;
   const wsSelected = Boolean(wsId);
   checks.push({
-    name: "workspace_selected",
+    name: DOCTOR_CHECK.WORKSPACE_SELECTED,
     ok: wsSelected,
     detail: wsSelected ? wsId : "no workspace selected. Run: zombiectl workspace add",
   });
 
   if (!wsSelected) {
     checks.push({
-      name: "workspace_binding_valid",
+      name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
       ok: false,
       detail: "skipped: no workspace selected",
     });
@@ -80,14 +81,14 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
         timeoutMs: PER_CHECK_TIMEOUT_MS,
       });
       checks.push({
-        name: "workspace_binding_valid",
+        name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
         ok: true,
         detail: `token bound to ${wsId}`,
       });
     } catch (err) {
       const code = err?.code || "REQUEST_FAILED";
       checks.push({
-        name: "workspace_binding_valid",
+        name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
         ok: false,
         detail: `${wsId}: ${code} — run \`zombiectl workspace list\` to reset`,
       });

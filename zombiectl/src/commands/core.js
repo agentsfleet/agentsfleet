@@ -1,5 +1,7 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_SESSIONS_PATH } from "../lib/api-paths.js";
+import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.js";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
@@ -98,7 +100,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
   const onSigint = () => interrupt.abort();
   process.on("SIGINT", onSigint);
 
-  const created = await request(ctx, "/v1/auth/sessions", {
+  const created = await request(ctx, AUTH_SESSIONS_PATH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: "{}",
@@ -140,7 +142,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
   try {
     while (Date.now() < deadline) {
       if (interrupt.signal.aborted) return signalInterrupt();
-      last = await request(ctx, `/v1/auth/sessions/${encodeURIComponent(sessionId)}`, {
+      last = await request(ctx, `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}`, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
       });
@@ -210,7 +212,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
 export async function commandLogout(ctx, _parsed, _workspaces, deps) {
   const { clearCredentials, printJson, ui, writeLine } = deps;
   await clearCredentials();
-  queueCliAnalyticsEvent(ctx, "logout_completed");
+  queueCliAnalyticsEvent(ctx, EVT_LOGOUT_COMPLETED);
   if (ctx.jsonMode) printJson(ctx.stdout, { status: "ok", logged_out: true });
   else writeLine(ctx.stdout, ui.ok("logout complete"));
   return 0;

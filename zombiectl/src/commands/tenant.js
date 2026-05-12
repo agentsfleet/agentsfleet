@@ -13,8 +13,8 @@ import {
   NANOS_PER_USD,
 } from "../constants/billing.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { TENANT_PROVIDER_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
-const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 // <$1 left → warn on reset.
 const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
 
@@ -139,7 +139,7 @@ export async function commandTenantProviderDelete(ctx, _parsed, _workspaces, dep
   // Best-effort low-balance warning. Skip silently if the snapshot endpoint
   // isn't reachable — the reset itself succeeded and that's the headline.
   try {
-    const billing = await request(ctx, "/v1/tenants/me/billing", { method: "GET", headers: apiHeaders(ctx) });
+    const billing = await request(ctx, TENANT_BILLING_PATH, { method: "GET", headers: apiHeaders(ctx) });
     const balance = typeof billing?.balance_nanos === "number" ? billing.balance_nanos : null;
     if (balance !== null && balance < LOW_BALANCE_THRESHOLD_NANOS) {
       writeLine(ctx.stdout);

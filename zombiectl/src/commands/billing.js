@@ -11,6 +11,7 @@ import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import { writeError } from "../program/io.js";
 import { CHARGE_TYPE, formatDollars } from "../constants/billing.js";
 import { ERR_BILLING_UNAVAILABLE } from "../constants/error-codes.js";
+import { TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
 // Billing show hits /v1/tenants/me/billing (GET) + charges (GET).
 // Auth-only surface; the server propagates UZ-BILLING-* internally
@@ -22,8 +23,8 @@ export const errorMap = compose(AUTH_PRESET, {
   },
 });
 
-const BILLING_PATH = "/v1/tenants/me/billing";
-const CHARGES_PATH = "/v1/tenants/me/billing/charges";
+const BILLING_PATH = TENANT_BILLING_PATH;
+const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const BILLING_DASHBOARD_URL = "https://app.usezombie.com/settings/billing";
 const PURCHASE_FOOTER_LINE_2 = "Stripe purchase ships in v2.1; for now contact support for a top-up.";
 

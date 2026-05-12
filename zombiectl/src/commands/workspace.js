@@ -8,6 +8,13 @@ import {
   VALIDATION_ERROR,
 } from "../constants/cli-errors.js";
 import { AUTH_PRESET, WORKSPACE_PRESET, compose } from "../lib/error-map-presets.js";
+import { WORKSPACES_COLLECTION_PATH } from "../lib/api-paths.js";
+import {
+  EVT_WORKSPACE_ADD_COMPLETED,
+  EVT_WORKSPACE_LIST_VIEWED,
+  EVT_WORKSPACE_USED,
+  EVT_WORKSPACE_DELETED,
+} from "../constants/analytics-events.js";
 
 // Covers workspace add/list/use/show/delete/credentials. Auth codes
 // because every sub-command is authenticated; workspace codes because
@@ -28,7 +35,7 @@ export async function workspaceAdd(ctx, parsed, workspaces, deps) {
   const name = parsed.positionals[0] || null;
 
   const body = name ? { name } : {};
-  const created = await request(ctx, "/v1/workspaces", {
+  const created = await request(ctx, WORKSPACES_COLLECTION_PATH, {
     method: "POST",
     headers: apiHeaders(ctx),
     body: JSON.stringify(body),
@@ -48,7 +55,7 @@ export async function workspaceAdd(ctx, parsed, workspaces, deps) {
   await saveWorkspaces(workspaces);
 
   setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-  queueCliAnalyticsEvent(ctx, "workspace_add_completed", { workspace_id: workspaceId });
+  queueCliAnalyticsEvent(ctx, EVT_WORKSPACE_ADD_COMPLETED, { workspace_id: workspaceId });
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, { workspace_id: workspaceId, name: resolvedName });
@@ -68,7 +75,7 @@ export async function workspaceList(ctx, _parsed, workspaces, deps) {
     workspace_id: workspaces.current_workspace_id,
     workspace_count: workspaces.items.length,
   });
-  queueCliAnalyticsEvent(ctx, "workspace_list_viewed", {
+  queueCliAnalyticsEvent(ctx, EVT_WORKSPACE_LIST_VIEWED, {
     workspace_count: workspaces.items.length,
   });
   if (ctx.jsonMode) {
@@ -117,7 +124,7 @@ export async function workspaceUse(ctx, parsed, workspaces, deps) {
   workspaces.current_workspace_id = workspaceId;
   await saveWorkspaces(workspaces);
   setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-  queueCliAnalyticsEvent(ctx, "workspace_used", { workspace_id: workspaceId });
+  queueCliAnalyticsEvent(ctx, EVT_WORKSPACE_USED, { workspace_id: workspaceId });
   if (ctx.jsonMode) {
     printJson(ctx.stdout, { active: workspaceId });
   } else {
@@ -159,13 +166,12 @@ export async function workspaceCredentials(ctx, _parsed, _workspaces, deps) {
   const { printJson, printSection = () => {}, ui, writeLine } = deps;
   if (ctx.jsonMode) {
     printJson(ctx.stdout, {
-      status: "placeholder",
-      message: "workspace-level credential vault coming soon — use 'zombiectl zombie credential' for per-zombie overrides",
+      status: "redirect",
+      message: "use `zombiectl zombie credential` from the CLI, or manage workspace credentials at /credentials in the dashboard",
     });
   } else {
     printSection(ctx.stdout, "Workspace credentials");
-    writeLine(ctx.stdout, ui.info("The workspace credential vault ships once the backing feature lands."));
-    writeLine(ctx.stdout, ui.dim("For per-zombie credential overrides today, use: zombiectl zombie credential"));
+    writeLine(ctx.stdout, ui.info("Manage credentials at /credentials in the dashboard, or run: zombiectl zombie credential"));
   }
   return 0;
 }
@@ -190,7 +196,7 @@ export async function workspaceDelete(ctx, parsed, workspaces, deps) {
   await saveWorkspaces(workspaces);
 
   setCliAnalyticsContext(ctx, { workspace_id: workspaceId });
-  queueCliAnalyticsEvent(ctx, "workspace_deleted", { workspace_id: workspaceId });
+  queueCliAnalyticsEvent(ctx, EVT_WORKSPACE_DELETED, { workspace_id: workspaceId });
   if (ctx.jsonMode) printJson(ctx.stdout, { deleted: workspaceId });
   else writeLine(ctx.stdout, ui.ok(`workspace deleted: ${workspaceId}`));
   return 0;
