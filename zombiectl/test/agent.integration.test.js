@@ -4,8 +4,8 @@ import { runCli } from "../src/cli.js";
 import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
-const WS_ID = "ws_agent_test";
-const ZOMBIE_ID = "zmb_agent_test";
+const WS_ID = "01900000-0000-7000-8000-000000a6e711";
+const ZOMBIE_ID = "01900000-0000-7000-8000-000000a67e57";
 const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_agent" }, fn);
 
 describe("agent (external API key) commands", () => {
@@ -87,20 +87,20 @@ describe("agent (external API key) commands", () => {
   test("`agent delete <id>` DELETEs the key and prints invalidation confirmation", async () => {
     await authedScope(async () => {
       const routes = {
-        [`DELETE /v1/workspaces/${WS_ID}/agent-keys/agent_to_delete`]:
+        [`DELETE /v1/workspaces/${WS_ID}/agent-keys/01900000-0000-7000-8000-0000a6e7de7e`]:
           () => jsonResponse(204, {}),
       };
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["agent", "delete", "--workspace", WS_ID, "agent_to_delete"],
+          ["agent", "delete", "--workspace", WS_ID, "01900000-0000-7000-8000-0000a6e7de7e"],
           { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
         );
         expect(code).toBe(0);
-        expect(out.read()).toMatch(/agent_to_delete.*invalidated/i);
+        expect(out.read()).toMatch(/01900000-0000-7000-8000-0000a6e7de7e.*invalidated/i);
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
-          `DELETE /v1/workspaces/${WS_ID}/agent-keys/agent_to_delete`,
+          `DELETE /v1/workspaces/${WS_ID}/agent-keys/01900000-0000-7000-8000-0000a6e7de7e`,
         ]);
       });
     });

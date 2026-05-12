@@ -6,6 +6,8 @@
 
 import { commandAgentAdd, commandAgentList, commandAgentDelete } from "./agent_external.js";
 import { writeError } from "../program/io.js";
+import { UNKNOWN_COMMAND } from "../constants/cli-errors.js";
+import { ACTION_ADD, ACTION_DELETE, ACTION_LIST } from "../constants/cli-actions.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 
 // Agent commands hit /v1/workspaces/{ws}/agent-keys (POST/GET/DELETE).
@@ -15,18 +17,18 @@ import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 // expand as the audit (§4) flags missing entries.
 export const errorMap = compose(AUTH_PRESET);
 
-export async function commandAgent(ctx, args, _workspaces, deps) {
+export async function commandAgent(ctx, args, workspaces, deps) {
   const { parseFlags, ui, writeLine } = deps;
 
   const action = args[0];
   const parsed = parseFlags(args.slice(1));
 
-  if (action === "add")    return commandAgentAdd(ctx, parsed, deps);
-  if (action === "list")   return commandAgentList(ctx, parsed, deps);
-  if (action === "delete") return commandAgentDelete(ctx, parsed, deps);
+  if (action === ACTION_ADD)    return commandAgentAdd(ctx, parsed, workspaces, deps);
+  if (action === ACTION_LIST)   return commandAgentList(ctx, parsed, workspaces, deps);
+  if (action === ACTION_DELETE) return commandAgentDelete(ctx, parsed, workspaces, deps);
 
   if (ctx.jsonMode) {
-    writeError(ctx, "UNKNOWN_COMMAND", `unknown agent subcommand: ${action ?? "(none)"}`, deps);
+    writeError(ctx, UNKNOWN_COMMAND, `unknown agent subcommand: ${action ?? "(none)"}`, deps);
   } else {
     writeLine(ctx.stderr, ui.err("usage: zombiectl agent add    --workspace <ws> --zombie <id> --name <name>"));
     writeLine(ctx.stderr, ui.err("       zombiectl agent list   --workspace <ws>"));

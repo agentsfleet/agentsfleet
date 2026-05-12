@@ -1,13 +1,24 @@
 /**
  * ID format validation utilities.
+ *
+ * Single source of truth: every server-generated id is a uuidv7
+ * (`src/types/id_format.zig → allocUuidV7`). The CLI validates the same
+ * shape client-side so a malformed id is rejected before any network
+ * call — saves a round-trip and never stresses the API with garbage.
+ *
+ * The `uuid` npm package (Apache-2.0, no postinstall, single dep tree)
+ * provides `validate` + `version` — pinned in package.json, vetted as
+ * acceptable supply-chain posture for runtime use.
  */
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SAFE_ID_RE = /^[a-zA-Z0-9_-]{4,128}$/;
+import { validate as isValidUuid, version as uuidVersion } from "uuid";
+
+const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
 export function isValidId(value) {
   if (!value || typeof value !== "string") return false;
-  return UUID_RE.test(value) || SAFE_ID_RE.test(value);
+  if (!isValidUuid(value)) return false;
+  return uuidVersion(value) === 7;
 }
 
 export function validateRequiredId(value, name) {
@@ -17,7 +28,7 @@ export function validateRequiredId(value, name) {
   if (!isValidId(value)) {
     return {
       ok: false,
-      message: `invalid ${name}: expected UUID format (e.g. 550e8400-e29b-41d4-a716-446655440000) or alphanumeric identifier (4-128 chars)`,
+      message: `invalid ${name}: expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})`,
     };
   }
   return { ok: true };

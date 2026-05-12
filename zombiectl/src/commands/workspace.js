@@ -1,6 +1,22 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
+import {
+  NO_WORKSPACE,
+  UNKNOWN_COMMAND,
+  UNKNOWN_WORKSPACE,
+  USAGE_ERROR,
+  VALIDATION_ERROR,
+} from "../constants/cli-errors.js";
+import {
+  ACTION_ADD,
+  ACTION_CREDENTIALS,
+  ACTION_DELETE,
+  ACTION_LIST,
+  ACTION_SHOW,
+  ACTION_USE,
+} from "../constants/cli-actions.js";
+import { OPT_WORKSPACE_ID } from "../constants/cli-flags.js";
 import { AUTH_PRESET, WORKSPACE_PRESET, compose } from "../lib/error-map-presets.js";
 
 // Covers workspace add/list/use/show/delete/credentials. Auth codes
@@ -31,7 +47,7 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
   const action = args[0];
   const tail = args.slice(1);
 
-  if (action === "add") {
+  if (action === ACTION_ADD) {
     const parsed = parseFlags(tail);
     const name = parsed.positionals[0] || null;
 
@@ -77,7 +93,7 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  if (action === "list") {
+  if (action === ACTION_LIST) {
     setCliAnalyticsContext(ctx, {
       workspace_id: workspaces.current_workspace_id,
       workspace_count: workspaces.items.length,
@@ -111,21 +127,21 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  if (action === "use") {
+  if (action === ACTION_USE) {
     const parsed = parseFlags(tail);
-    const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
+    const workspaceId = parsed.positionals[0] || parsed.options[OPT_WORKSPACE_ID];
     if (!workspaceId) {
-      writeError(ctx, "USAGE_ERROR", "workspace use requires <workspace_id>", deps);
+      writeError(ctx, USAGE_ERROR, "workspace use requires <workspace_id>", deps);
       return 2;
     }
     const check = validateRequiredId(workspaceId, "workspace_id");
     if (!check.ok) {
-      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
+      writeError(ctx, VALIDATION_ERROR, check.message, deps);
       return 2;
     }
     const known = workspaces.items.find((x) => x.workspace_id === workspaceId);
     if (!known) {
-      writeError(ctx, "UNKNOWN_WORKSPACE", `workspace ${workspaceId} is not in your local list — run "zombiectl workspace add" or "workspace list" first`, deps);
+      writeError(ctx, UNKNOWN_WORKSPACE, `workspace ${workspaceId} is not in your local list — run "zombiectl workspace add" or "workspace list" first`, deps);
       return 2;
     }
     workspaces.current_workspace_id = workspaceId;
@@ -140,11 +156,11 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  if (action === "show") {
+  if (action === ACTION_SHOW) {
     const parsed = parseFlags(tail);
-    const workspaceId = await ensureWorkspaceId(parsed.options["workspace-id"] || parsed.positionals[0]);
+    const workspaceId = await ensureWorkspaceId(parsed.options[OPT_WORKSPACE_ID] || parsed.positionals[0]);
     if (!workspaceId) {
-      writeError(ctx, "NO_WORKSPACE", "no active workspace — run \"zombiectl workspace use <id>\" or pass --workspace-id", deps);
+      writeError(ctx, NO_WORKSPACE, "no active workspace — run \"zombiectl workspace use <id>\" or pass --workspace-id", deps);
       return 2;
     }
     const known = workspaces.items.find((x) => x.workspace_id === workspaceId) || null;
@@ -168,7 +184,7 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  if (action === "credentials") {
+  if (action === ACTION_CREDENTIALS) {
     // Workspace-level credential vault — mirrors the dashboard /credentials
     // page. The backing vault ships later; for now both surfaces are a
     // placeholder so operators don't see one side claim features the other
@@ -186,17 +202,17 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  if (action === "delete") {
+  if (action === ACTION_DELETE) {
     const parsed = parseFlags(tail);
-    const workspaceId = parsed.positionals[0] || parsed.options["workspace-id"];
+    const workspaceId = parsed.positionals[0] || parsed.options[OPT_WORKSPACE_ID];
     if (!workspaceId) {
-      writeError(ctx, "USAGE_ERROR", "workspace delete requires <workspace_id>", deps);
+      writeError(ctx, USAGE_ERROR, "workspace delete requires <workspace_id>", deps);
       return 2;
     }
 
     const check = validateRequiredId(workspaceId, "workspace_id");
     if (!check.ok) {
-      writeError(ctx, "VALIDATION_ERROR", check.message, deps);
+      writeError(ctx, VALIDATION_ERROR, check.message, deps);
       return 2;
     }
 
@@ -213,6 +229,6 @@ export async function commandWorkspace(ctx, workspaces, args, deps) {
     return 0;
   }
 
-  writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|use|show|credentials|delete", deps);
+  writeError(ctx, UNKNOWN_COMMAND, "usage: workspace add|list|use|show|credentials|delete", deps);
   return 2;
 }

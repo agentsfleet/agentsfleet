@@ -8,16 +8,27 @@
 // zombiectl agent delete --workspace <ws> <agent_id>
 
 import { WORKSPACES_PATH } from "../lib/api-paths.js";
+import { validateRequiredId } from "../program/validate.js";
+import {
+  OPT_AGENT_ID,
+  OPT_DESCRIPTION,
+  OPT_NAME,
+  OPT_WORKSPACE,
+  OPT_WORKSPACE_ID,
+  OPT_ZOMBIE,
+  OPT_ZOMBIE_ID,
+} from "../constants/cli-flags.js";
 
 // ── agent add ────────────────────────────────────────────────────────────────
 
-export async function commandAgentAdd(ctx, parsed, deps) {
+export async function commandAgentAdd(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
-  const workspaceId = parsed.options["workspace"] || parsed.options["workspace-id"];
-  const zombieId    = parsed.options["zombie"] || parsed.options["zombie-id"];
-  const name        = parsed.options["name"];
-  const description = parsed.options["description"] || "";
+  const workspaceId = parsed.options[OPT_WORKSPACE] || parsed.options[OPT_WORKSPACE_ID]
+    || workspaces?.current_workspace_id;
+  const zombieId    = parsed.options[OPT_ZOMBIE] || parsed.options[OPT_ZOMBIE_ID];
+  const name        = parsed.options[OPT_NAME];
+  const description = parsed.options[OPT_DESCRIPTION] || "";
 
   if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent add requires --workspace <id>")); return 2; }
   if (!zombieId)    { writeLine(ctx.stderr, ui.err("agent add requires --zombie <id>")); return 2; }
@@ -63,11 +74,12 @@ export async function commandAgentAdd(ctx, parsed, deps) {
 
 // ── agent list ────────────────────────────────────────────────────────────────
 
-export async function commandAgentList(ctx, parsed, deps) {
+export async function commandAgentList(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
-  const workspaceId = parsed.options["workspace"] || parsed.options["workspace-id"];
-  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent list requires --workspace <id>")); return 2; }
+  const workspaceId = parsed.options[OPT_WORKSPACE] || parsed.options[OPT_WORKSPACE_ID]
+    || workspaces?.current_workspace_id;
+  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent list requires --workspace <id> or an active workspace context")); return 2; }
 
   const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
@@ -97,14 +109,20 @@ export async function commandAgentList(ctx, parsed, deps) {
 
 // ── agent delete ──────────────────────────────────────────────────────────────
 
-export async function commandAgentDelete(ctx, parsed, deps) {
+export async function commandAgentDelete(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, writeLine } = deps;
 
-  const workspaceId = parsed.options["workspace"] || parsed.options["workspace-id"];
-  const agentId     = parsed.positionals[0] || parsed.options["agent-id"];
+  const workspaceId = parsed.options[OPT_WORKSPACE] || parsed.options[OPT_WORKSPACE_ID]
+    || workspaces?.current_workspace_id;
+  const agentId     = parsed.positionals[0] || parsed.options[OPT_AGENT_ID];
 
-  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent delete requires --workspace <id>")); return 2; }
+  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent delete requires --workspace <id> or an active workspace context")); return 2; }
   if (!agentId)     { writeLine(ctx.stderr, ui.err("agent delete requires <agent_id>")); return 2; }
+
+  const checkWs = validateRequiredId(workspaceId, "workspace_id");
+  if (!checkWs.ok) { writeLine(ctx.stderr, ui.err(checkWs.message)); return 2; }
+  const checkKey = validateRequiredId(agentId, "key_id");
+  if (!checkKey.ok) { writeLine(ctx.stderr, ui.err(checkKey.message)); return 2; }
 
   const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys/${encodeURIComponent(agentId)}`;
   await request(ctx, url, { method: "DELETE", headers: apiHeaders(ctx) });

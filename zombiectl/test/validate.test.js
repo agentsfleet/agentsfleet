@@ -1,13 +1,20 @@
 import { describe, test, expect } from "bun:test";
 import { isValidId, validateRequiredId } from "../src/program/validate.js";
 
+// Sample valid uuidv7 — backend's allocUuidV7 emits this shape; CLI
+// validator must accept v7 (and ONLY v7, post-RULE-NLG swap).
+const VALID_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
+// Sample uuidv4 — accepted by the old permissive regex; rejected after
+// the uuidv7 tightening because version nibble (4th group, first char) is "4".
+const UUIDV4_STRING = "550e8400-e29b-41d4-a716-446655440000";
+
 describe("isValidId", () => {
-  test("valid UUID passes", () => {
-    expect(isValidId("550e8400-e29b-41d4-a716-446655440000")).toBe(true);
+  test("valid uuidv7 passes", () => {
+    expect(isValidId(VALID_UUIDV7)).toBe(true);
   });
 
-  test("uppercase UUID passes", () => {
-    expect(isValidId("550E8400-E29B-41D4-A716-446655440000")).toBe(true);
+  test("uppercase uuidv7 passes", () => {
+    expect(isValidId(VALID_UUIDV7.toUpperCase())).toBe(true);
   });
 
   test("empty string fails", () => {
@@ -26,12 +33,20 @@ describe("isValidId", () => {
     expect(isValidId("abc")).toBe(false);
   });
 
-  test("valid non-UUID ID (alphanumeric) passes", () => {
-    expect(isValidId("ws_123456789abc")).toBe(true);
+  // Post-tightening: only uuidv7 is accepted. uuidv4 / arbitrary
+  // alphanumeric strings / IDs with dashes used to pass via the old
+  // permissive regex; they are now rejected. Backend's allocUuidV7
+  // is the single source of truth — the CLI mirrors it.
+  test("uuidv4 fails (only uuidv7 is accepted)", () => {
+    expect(isValidId(UUIDV4_STRING)).toBe(false);
   });
 
-  test("valid non-UUID with dashes passes", () => {
-    expect(isValidId("my-workspace-id")).toBe(true);
+  test("alphanumeric non-UUID fails", () => {
+    expect(isValidId("ws_123456789abc")).toBe(false);
+  });
+
+  test("dashed non-UUID fails", () => {
+    expect(isValidId("my-workspace-id")).toBe(false);
   });
 
   test("special characters (spaces) fail", () => {
@@ -42,22 +57,14 @@ describe("isValidId", () => {
     expect(isValidId("has.dots")).toBe(false);
   });
 
-  test("4-char minimum passes", () => {
-    expect(isValidId("abcd")).toBe(true);
-  });
-
-  test("128-char maximum passes", () => {
-    expect(isValidId("a".repeat(128))).toBe(true);
-  });
-
-  test("129-char string fails", () => {
-    expect(isValidId("a".repeat(129))).toBe(false);
+  test("malformed uuid fails", () => {
+    expect(isValidId("0192a3b4-c5d6-7e8f-9012-34567890123")).toBe(false);
   });
 });
 
 describe("validateRequiredId", () => {
-  test("valid UUID returns ok", () => {
-    const result = validateRequiredId("550e8400-e29b-41d4-a716-446655440000", "workspace_id");
+  test("valid uuidv7 returns ok", () => {
+    const result = validateRequiredId(VALID_UUIDV7, "workspace_id");
     expect(result.ok).toBe(true);
   });
 
@@ -67,15 +74,15 @@ describe("validateRequiredId", () => {
     expect(result.message).toContain("workspace_id");
   });
 
-  test("invalid format returns helpful message", () => {
+  test("invalid format returns helpful message naming uuidv7", () => {
     const result = validateRequiredId("!@#", "run_id");
     expect(result.ok).toBe(false);
     expect(result.message).toContain("run_id");
-    expect(result.message).toContain("UUID");
+    expect(result.message.toLowerCase()).toContain("uuidv7");
   });
 
-  test("valid non-UUID ID returns ok", () => {
-    const result = validateRequiredId("ws_123456789abc", "workspace_id");
-    expect(result.ok).toBe(true);
+  test("uuidv4 returns error (rejected post-tightening)", () => {
+    const result = validateRequiredId(UUIDV4_STRING, "workspace_id");
+    expect(result.ok).toBe(false);
   });
 });
