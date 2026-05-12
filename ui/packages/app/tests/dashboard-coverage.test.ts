@@ -724,7 +724,7 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Failed to stop zombie/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this zombie/i),
     );
   });
 });
@@ -834,7 +834,7 @@ describe("ZombiesList component", () => {
     await renderList({ initialCursor: "cursor_1" });
     await user.click(screen.getByRole("button", { name: /load more/i }));
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Failed to load more/),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more zombies/),
     );
   });
 

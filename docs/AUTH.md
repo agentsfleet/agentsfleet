@@ -332,17 +332,18 @@ globalSetup
   │                     zombied creates the tenant + default workspace +
   │                     starter credit, then PATCHes Clerk publicMetadata
   │                     with the new tenant_id.
-  └─ attachJwt        → mints two tokens from the same Clerk session via:
-                          POST /v1/sessions/{id}/tokens         → Token A (cookie)
-                          POST /v1/sessions/{id}/tokens/api     → Token B (Bearer)
-                        Both authorized by CLERK_SECRET_KEY.
+  └─ attachJwt        → mints Token B from a Clerk session via:
+                          POST /v1/sessions/{id}/tokens/api
+                        Authorized by CLERK_SECRET_KEY.
 
 per-spec
-  ├─ signInAs(page, key)  → context.addCookies({name:"__session", value: cookieJwt})
+  ├─ signInAs(page, key)  → setupClerkTestingToken(page), then
+  │                         clerk.signIn({page, emailAddress})
+  │                         through Clerk's browser-side sign-in path.
   └─ clientFor(key)       → fetch with Authorization: Bearer ${sessionJwt}
 ```
 
-The harness mirrors production exactly: `cookieJwt` for cookie validation by `clerkMiddleware()`, `sessionJwt` for Bearer to zombied. Two tokens because Pattern 2 (cross-origin frontend + backend).
+The harness mirrors production's two-verifier shape without hand-writing dashboard cookies. `signInAs` lets Clerk's JavaScript Software Development Kit (SDK) write Token A cookies (`__session`, `__client_uat`, `__clerk_db_jwt`) through the same sign-in path `clerkMiddleware()` expects. `clientFor` uses the cached Token B (`sessionJwt`) as Bearer auth for direct zombied calls such as seed, teardown, and workspace lookup. Two tokens because Pattern 2 (cross-origin frontend + backend).
 
 The Svix bootstrap step is the local-only stand-in for Clerk's real outbound webhook: real Clerk cannot reach `localhost:3000`, so the harness signs the same payload Clerk would have sent and POSTs it directly. The signature math is identical to what zombied's `webhook_sig` middleware would verify in production — `webhook_secret` is the shared key, the `user.created` payload shape mirrors `src/http/handlers/webhooks/clerk_integration_test.zig`. zombied cannot tell the difference.
 
@@ -360,7 +361,7 @@ The PROD harness creates two fixture identities in Clerk PROD on first run, then
 | Clerk `publicMetadata` | `{ is_test_fixture: true, owner: "acceptance-e2e-suite", role: "regular" \| "admin" }` | Tag exists so prod ops dashboards can filter these identities out, and so a future Clerk webhook handler can refuse unsafe operations against fixture users. Backfilled on existing fixtures via `PATCH /users/{id}/metadata` in `ensureUser`. |
 | Tenant in zombied PROD | `core.tenants` row created by the Svix-signed `user.created` POST, same shape as a real signup | The fixture tenant accumulates real `tenant_billing.balance_nanos` (starts at the standard starter credit) and any state created by tests. Per-spec teardown deletes zombies; the tenant itself is reused across runs. |
 | `signup.spec.ts` against PROD | **skipped** (`test.skip(NEXT_PUBLIC_API_URL.includes('api.usezombie.com'))`) | Clerk PROD does not have test mode enabled, so the `+clerk_test@mailinator.com` short-circuit (DEV-only) would fail; running it would either hang on the verification screen or send a real OTP to a publicly-readable mailinator inbox. The DEV gate covers this spec instead. |
-| `.fixture-jwts.json` (cookieJwt cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-acceptance-report/` so it does not ride out in CI artifact uploads. The cookieJwt is a real Clerk session for ~1h; treat the cache file like a credential. |
+| `.fixture-jwts.json` (Token B cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-acceptance-report/` so it does not ride out in CI artifact uploads. The cached `sessionJwt` is a real `api`-template Bearer token for 15 minutes; treat the cache file like a credential. |
 
 ### External-state runbook prerequisites
 
@@ -371,7 +372,7 @@ These two things live outside the repo and the harness assumes both are in place
 | `api` JWT template | Clerk DEV dashboard → JWT Templates → `api` | `aud=https://api.usezombie.com`; claims include `{ "metadata": "{{user.public_metadata}}" }` so Token B carries `tenant_id` + `role` | `mintTokens` returns Token B without metadata → every API call lands at 403 UZ-AUTH-001 ("Tenant context required") |
 | `regular-fixture@…` + `admin-fixture@…` (default mailinator addresses; override via `AUTH_E2E_{REGULAR,ADMIN}_EMAIL`) | Clerk DEV → Users | Email matches; password is generated fresh per `provisionUser()` call and not persisted (the harness uses admin-API mint, not the user-password flow) | `globalSetup` re-provisions automatically (idempotent on email lookup); per-create random passwords mean Clerk's complexity policy must accept 32-byte base64url strings (~256 bits entropy, all printable) |
 
-The harness mounts a literal `__clerk_db_jwt = "fixture-dev-browser"` (non-JWT) — clerkMiddleware reads this cookie truthy-only today, no signature verification. If a future `@clerk/nextjs` upgrade hardens that check, the harness fails fast in test 5 (`signInAs … produces an accepted Clerk session`) before any spec runs — switch to a real dev-browser-token mint via Clerk's `/v1/dev_browser` endpoint at that point. `@clerk/nextjs` is pinned to its current major (`^7.x.x`) in `package.json`, and the smoke suite asserts the resolved major equals `CLERK_NEXTJS_PINNED_MAJOR` in `fixtures/constants.ts` — a `bun install` that crosses majors fails the smoke before any selector-dependent spec runs.
+`signInAs` calls `setupClerkTestingToken({ page })` before `clerk.signIn` so Clerk's browser-side Frontend API calls carry `__clerk_testing_token`. That testing token is what bypasses Completely Automated Public Turing test to tell Computers and Humans Apart (CAPTCHA) / Cloudflare Turnstile on the DEV instance. The dashboard session cookies themselves are then written by clerk-js, not by Playwright `addCookies`, which keeps the `azp` claim and `__client_uat` shape aligned with `@clerk/nextjs` Server Actions. `@clerk/nextjs` is pinned to its current major (`^7.x.x`) in `package.json`, and the smoke suite asserts the resolved major equals `CLERK_NEXTJS_PINNED_MAJOR` in `fixtures/constants.ts` — a `bun install` that crosses majors fails the smoke before any selector-dependent spec runs.
 
 #### Filter query for PROD Clerk fixture identities
 
@@ -407,7 +408,7 @@ The full-lifecycle audit dispositioned every hardening item the harness still ca
 | 3 | Harness uses PROD webhook secret to Svix-sign synthetic `user.created` events — secret cannot be rotated without coordinating with CI | S1 | `DEFERRED` to backend milestone | Backend adds `CLERK_WEBHOOK_TEST_SECRET` with `is_test_fixture: true` tenant flagging; harness migrates to it. |
 | 5 | Fixture tenants in PROD accumulate `tenant_billing.balance_nanos` and event/zombie rows forever — no teardown | S3 | `ACCEPTED_RISK` | One calendar quarter of PROD runs elapses, OR `tenant_billing.balance_nanos` for either fixture tenant rises above a threshold to be set on the ops dashboard. |
 | 6 | No PR-time `auth-e2e` gate — only post-merge to `main` and post-deploy to PROD | S3 | `DEFERRED` (separate agent's territory) | Captain greenlights adding the PR-time job; estimate adds a few minutes per PR. |
-| 8 (part 2) | `__clerk_db_jwt = "fixture-dev-browser"` literal on PROD — not a real JWT | S2 | `DEFERRED` | clerkMiddleware tightens validation on PROD (the failure surfaces in test 5 before any spec runs); switch to `/v1/dev_browser` mint then. |
+| 8 (part 2) | Browser-side Clerk test token posture can drift if Clerk changes the testing-token route or Turnstile bypass semantics | S2 | `DEFERRED` | `signInAs … produces an accepted Clerk session` fails before any lifecycle spec runs; revisit `setupClerkTestingToken` / Clerk DEV instance configuration then. |
 | 10 | `msg_e2e_bootstrap` Svix message IDs not deduped across rapid back-to-back `globalSetup` runs | S3 | `ACCEPTED_RISK` (data-layer idempotency is the load-bearing guarantee) | n/a — informational. |
 
 In-scope fixes that DID land in this milestone:

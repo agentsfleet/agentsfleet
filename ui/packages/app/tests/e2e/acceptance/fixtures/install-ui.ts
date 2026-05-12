@@ -61,8 +61,12 @@ export async function installViaUI(page: Page, name: string): Promise<string> {
 
   // Success path: router.push(`/zombies/${zombie_id}`). Exclude the
   // /zombies/new sentinel so we don't false-match an install that failed and
-  // stayed on the form.
-  await page.waitForURL(/\/zombies\/(?!new)[a-z0-9-]+(\?|$)/, { timeout: INSTALL_TIMEOUT_MS });
+  // stayed on the form. Use expect.toHaveURL (URL-polling) rather than
+  // waitForURL: Next App Router's router.push is a soft Single-Page
+  // Application navigation that mutates history without re-firing the
+  // document `load` event, so waitForURL's default waitUntil:"load" hangs
+  // even after the URL changes.
+  await expect(page).toHaveURL(/\/zombies\/(?!new)[a-z0-9-]+(\?|$)/, { timeout: INSTALL_TIMEOUT_MS });
   const id = new URL(page.url()).pathname.split("/").pop();
   if (!id) throw new Error(`installViaUI: could not extract zombie id from ${page.url()}`);
   return id;

@@ -6,6 +6,7 @@ import { Button, ConfirmDialog } from "@usezombie/design-system";
 import { Loader2Icon, Trash2Icon } from "lucide-react";
 import { deleteCredentialAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = {
   workspaceId: string;
@@ -31,7 +32,13 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
     startTransition(async () => {
       const result = await deleteCredentialAction(workspaceId, name);
       if (!result.ok) {
-        setError(result.error || "Failed to delete credential");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "delete the credential",
+          }),
+        );
         return;
       }
       setTarget(null);

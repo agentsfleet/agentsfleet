@@ -19,6 +19,7 @@ import {
   Textarea,
 } from "@usezombie/design-system";
 import { installZombieAction } from "../actions";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = { workspaceId: string };
 
@@ -46,20 +47,32 @@ export default function InstallZombieForm({ workspaceId }: Props) {
     startTransition(async () => {
       const result = await installZombieAction(workspaceId, values);
       if (result.ok) {
+        // No router.refresh() — calling refresh immediately after push races
+        // inside the same transition: refresh re-fetches the *current* route
+        // (/zombies/new) before the push URL commits, leaving the browser
+        // stuck on the form even though Next fetched the destination
+        // React Server Component tree.
+        // The destination page fetches its own data; no refresh needed.
         router.push(`/zombies/${result.data.zombie_id}`);
-        router.refresh();
         return;
       }
-      // Surface zombied's exact error text so a paste mismatch (e.g. invalid
-      // frontmatter, missing budget) is debuggable from the dashboard instead
-      // of a generic "Bad Request". Conflict gets a slightly friendlier wrap
-      // since 409 here always means name-collision on the workspace.
+      // Conflict gets a hand-rolled message — 409 here always means name
+      // collision on the workspace, and pointing the operator at the
+      // exact field to fix beats any generic wording. Everything else
+      // routes through presentError so the surfaced server message is
+      // wrapped in our voice instead of "Failed to <verb>".
       if (result.status === 409) {
         setApiError(
           `That bundle's name already exists in this workspace — change the \`name:\` in TRIGGER.md frontmatter.`,
         );
       } else {
-        setApiError(result.error || `Install failed (HTTP ${result.status ?? "unknown"})`);
+        setApiError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "install the zombie",
+          }),
+        );
       }
     });
   }

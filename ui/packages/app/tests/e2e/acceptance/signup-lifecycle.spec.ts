@@ -28,10 +28,9 @@ import {
   resumeZombie,
   stopZombie,
 } from "./fixtures/lifecycle";
+import { signUpAs } from "./fixtures/signup";
 
 const PASSWORD = "SignupFixture!2026-stable";
-const TEST_OTP = "424242";
-const SIGNUP_TIMEOUT_MS = 30_000;
 const FLOW_TIMEOUT_MS = 120_000;
 
 function uniqueEmail(): string {
@@ -47,17 +46,6 @@ const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.usezombi
 
 test.describe("signup → install → lifecycle", () => {
   test.skip(isProdApi, "Scenario 1 only runs against DEV/local — Clerk test mode is DEV-only");
-  // Additionally blocked on DEV: Clerk DEV's hosted SignUp form now renders
-  // a Cloudflare Turnstile CAPTCHA on the email/password step.
-  // `setupClerkTestingToken` attaches the testing token to FAPI calls and
-  // forces `captcha_bypass: true` on responses, but the SignUp form's
-  // browser-side bot-check still blocks the navigation to the OTP screen
-  // — `input[autocomplete="one-time-code"]` never appears.
-  // Pre-existing `signup.spec.ts` has the same failure mode, so this is a
-  // Clerk-DEV-instance configuration change, not a regression introduced
-  // by this PR. Re-enable once the Clerk DEV instance disables Turnstile
-  // or the harness is taught to satisfy it; see Discovery in the spec.
-  test.skip();
   test.setTimeout(FLOW_TIMEOUT_MS);
 
   let createdEmail: string | null = null;
@@ -75,23 +63,12 @@ test.describe("signup → install → lifecycle", () => {
     const email = uniqueEmail();
     createdEmail = email;
 
-    // Clerk hosted SignUp form + OTP. Mirrors signup.spec.ts so drift in
-    // Clerk's component lives in one place.
-    await page.goto("/sign-up");
-    await page.getByLabel("Email address", { exact: true }).fill(email);
-    await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
-    await page.getByRole("button", { name: /continue|sign up/i }).first().click();
-
-    const otpInput = page.locator('input[autocomplete="one-time-code"]').first();
-    await otpInput.waitFor({ timeout: SIGNUP_TIMEOUT_MS });
-    await otpInput.fill(TEST_OTP);
-    const continueBtn = page.getByRole("button", { name: /continue|verify/i });
-    if (await continueBtn.first().isVisible()) await continueBtn.first().click();
-
-    await page.waitForURL(
-      (url) => !url.toString().includes("/sign-up") && !url.toString().includes("/sign-in"),
-      { timeout: SIGNUP_TIMEOUT_MS },
-    );
+    // Clerk DEV's hosted SignUp form renders a Cloudflare Turnstile widget
+    // on the email/password step that gates navigation to the OTP screen
+    // even with the testing-token captcha-bypass in place. `signUpAs`
+    // drives Clerk's browser SDK directly to skip the form — see
+    // fixtures/signup.ts for why this is equivalent to a real signup.
+    await signUpAs(page, email, PASSWORD);
 
     // Dashboard /zombies renders auto-provisioned workspace + empty state.
     // First-deploy regression surface lives here (route-guard chain on a
