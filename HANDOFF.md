@@ -1,163 +1,166 @@
-# Handoff — M65_002 commander refactor (session 4 → session 5)
+# Handoff — M65_002 commander refactor (session 5 → session 6)
 
-**Date:** May 13, 2026 (session 4 close)
-**Outgoing agent:** Session 4 — landed Steps 6 + 6.1 + a few opportunistic
-  fixes Captain greenlit mid-session (Redocly bump, barrel collapse).
-  **Step 6.1 IS committed locally but not yet pushed** — Captain's directive
-  was to push after Step 7b, not after 6.1.
-**Incoming agent:** Picks up at Step 7 (spec amend) → Step 7b (E2E option
-  metavar coverage) → commit + push → Step 8 (CHORE close + skill chain).
-  Final verification gate added: total function coverage ≥95%.
+**Date:** May 13, 2026 (session 5 close)
+**Outgoing agent:** Session 5 — landed Step 7 (spec amend) + Step 7b
+  (options-metavar E2E spec + EVENT_STATUS constants) + reviewed Captain's
+  reversals on review #9 (SIGINT) and #6 (HTTP verbs — declined again per
+  Captain). All session-5 commits are LOCAL ONLY — push happens once at
+  the top of Step 8 per Captain's directive.
+**Incoming agent:** Picks up at Step 7c (coverage gate ≥95% funcs) → Step 8
+  (push + CHORE close + skill chain). Wait for "ship it" before opening
+  the sibling docs PR.
 
 ---
 
 ## Where you are
 
 - **Worktree:** `~/Projects/usezombie-m65-002-spec-zombiectl-cli-e2e`
-- **Branch:** `chore/m65-002-spec-zombiectl-e2e-lifecycle` — 1 commit
-  **local-only** (99a7223a), 23 commits pushed to origin.
-- **PR:** [#323](https://github.com/usezombie/usezombie/pull/323) — open,
-  needs the Step 7 spec amendment + the 20-item review table in
-  Session Notes at CHORE(close).
+- **Branch:** `chore/m65-002-spec-zombiectl-e2e-lifecycle` — **5 commits
+  LOCAL ONLY** (push at Step 8): `99a7223a`, `aa22c6f4`, `a99ffb8f`,
+  `e3c6b1a4`, `9d4cb80e`.
+- **PR:** [#323](https://github.com/usezombie/usezombie/pull/323) — head
+  `9ea6490f` on origin; the 5 local commits will push together at Step 8.
 - **Docs sibling PR:** `chore/m65-002-zombiectl-cli-e2e-changelog` on
-  `usezombie/docs` — branch exists, changelog block pushed earlier;
-  no PR opened yet (waits for Captain's "ship it" at Step 8).
+  `usezombie/docs` — branch exists, changelog block pushed earlier; no
+  PR opened yet (waits for Captain's "ship it" at Step 8).
 
-### Session 4 commits
+### Session 5 commits (newest first, ALL local-only)
 
 | Commit | Step | What |
 |---|---|---|
-| `9ad7fdbc` | 6 | `chore(zombiectl): post-swap dead-code sweep (RULE ORP)` — deleted `cli-actions.js` + `helpers-fs.js`, trimmed 8 unused `OPT_*` exports, stripped dead `parseFlags:` deps from 6 test fixtures, scrubbed stale comments. |
-| `f60d1b0f` | bonus | `chore(deps): bump @redocly/cli ^2.30.4 → ^2.30.5` (Captain saw the nag in pre-commit and asked) |
-| `fa376cff` | bonus | `chore(zombiectl): collapse barrel files + trim http-client surface` — merged `agent_external.js → agent.js`, `tenant_provider.js → tenant.js`, deleted redundant `test/browser.unit.test.js`, trimmed 3 unused exports from `http-client.js`. |
-| `9ea6490f` | 6.1 (#17/#18) | `feat(zombiectl): VERSION read from package.json at runtime` — `cli.js` no longer carries the hardcoded string; `make sync-version` + `make check-version` updated. |
-| `99a7223a` | 6.1 (#1/#8/#10/#11/#12/#16) | `feat(zombiectl): constantize analytics, status, doctor, roles, paths` — 4 new constants modules, URL constants in `api-paths.js`, fixed workspace-credentials placeholder text (the feature shipped in the UI). **LOCAL ONLY — push after Step 7b.** |
+| `9d4cb80e` | 7b | `test(zombiectl): options-metavar E2E coverage + EVENT_STATUS constants` — new `test/acceptance/options-metavar.spec.js` (27 tests) pinning --help metavar / validator-reject / wire-request round-trip across 8 commands; new `src/constants/event-status.js` wired into `zombie_events.js` + `zombie_steer.js` (5 sites) — review #21 (gate_blocked / processed / agent_error). |
+| `e3c6b1a4` | 6.1 (#9) | `feat(zombiectl): constantize SIGINT signal name (review #9 revisited)` — new `src/constants/signals.js`; core.js's two `process.on("SIGINT", …)` / `removeListener` sites now read `SIGINT` from the constant. Verified in both Node and Bun. |
+| `a99ffb8f` | 7 | `docs(spec): M65_002 — Commander refactor evidence + close Discovery #10/#14/#15` — Verification Evidence amended with the Commander-refactor subsection; Discovery rows #10/#14/#15 marked resolved. |
+| `aa22c6f4` | 4-handoff | session-4 HANDOFF (will be `git rm` at Step 8). |
+| `99a7223a` | 6.1 (#1/#8/#10/#11/#12/#16) | session-4 constants tail (analytics-events, zombie-status, doctor-checks, auth-roles + URL constants in api-paths.js). |
 
 ### Current verification state
 
 ```
-bun run lint        ✅ 0 warnings, 0 errors (128 files, 64 rules)
-bun test            ✅ 598 pass / 2 skip / 0 fail / 800 expect() calls
-bun run test        ✅ 574 pass / 0 fail (node --test + bun test)
+bun run lint        ✅ 0 warnings, 0 errors (131 files, 64 rules)
+bun test            ✅ 625 pass / 2 skip / 0 fail / 800 expect() calls
+bun run test        ✅ 574 pass / 0 fail (node --test + bun test combined)
 make check-version  ✅ all versions match 0.34.0
 LENGTH GATE         ✅ every touched file ≤ 350L (cli-tree.js at 345)
 ERROR REGISTRY      ✅ no raw UZ-* literals outside the registry
 gitleaks detect     ✅ no leaks found (pre-commit verified each commit)
-COVERAGE            ⚠ funcs 93.62% / lines 95.79% — see Step 7b gap notes
+HARNESS VERIFY      ✅ COMBINED audit 0 hits (RULE TST-NAM clean)
+COVERAGE            ⚠ funcs 93.62% / lines 95.79% — Step 7c lifts to ≥95% funcs
 ```
 
 ---
 
-## What landed in Step 6.1 (Captain's 20-item review)
+## What landed in session 5
 
-**New constants modules (one named export per fact):**
-- `src/constants/analytics-events.js` — `EVT_*` PostHog event names.
-- `src/constants/zombie-status.js` — frozen `ZOMBIE_STATUS = {STOPPED, ACTIVE, KILLED}`.
-- `src/constants/doctor-checks.js` — frozen `DOCTOR_CHECK = {SERVER_REACHABLE, WORKSPACE_SELECTED, WORKSPACE_BINDING_VALID}`.
-- `src/constants/auth-roles.js` — `ROLE_ADMIN` / `ROLE_USER`.
+### Step 7 — spec amendment (commit `a99ffb8f`)
 
-**`src/lib/api-paths.js` extensions** — `HEALTHZ_PATH`, `AUTH_SESSIONS_PATH`,
-`WORKSPACES_COLLECTION_PATH`, `TENANT_BILLING_PATH`, `TENANT_PROVIDER_PATH`,
-`HEALTHZ_STATUS_OK` body sentinel.
+Appended a **"Commander refactor"** subsection to
+`docs/v2/done/M65_002_P1_TESTING_ZOMBIECTL_E2E_LIFECYCLE.md` Verification
+Evidence covering:
 
-**Workspace credentials placeholder fix (item #11):** the `/credentials`
-dashboard route shipped in `ui/packages/app/app/(dashboard)/credentials/page.tsx`,
-so the "coming soon" CLI text was incorrect. Re-framed as a redirect to
-`/credentials` (dashboard) or `zombiectl zombie credential` (per-zombie).
-Tests in `cli-alignment.unit.test.js` + `workspace.unit.test.js` updated
-to assert the new wording.
+- Parser swap (parseFlags → commander 14 + validators.js)
+- `ZombieHelp` subclass owning every level of help rendering
+- Test-shim rationale in `test/helpers.js` (intentional adapters, NOT
+  RULE NLR violations)
+- `[--option <value>]` metavar convention adopted tree-wide
+- Captain's 20-item review summary (8 landed / 12 declined with
+  rationale)
+- Barrel-collapse cleanup (`agent_external.js`/`tenant_provider.js`
+  merged back)
+- VERSION read from `package.json` at runtime
 
-**Resolved 20-item review table** — every row resolved in HANDOFF.md
-session-3 had a recommendation; session 4 acted on the ones that needed
-code (#1, #8, #10, #11, #12, #16, #17, #18) and declined the rest with
-documented rationale. The full table needs to land in the PR's
-`## Session notes` block at Step 8 — drop the table verbatim from
-session-3 HANDOFF.md (the resolutions there match what landed).
+Discovery rows marked resolved with `✅ Resolved (Commander refactor)`:
+**#10** (printHelp(jsonMode)), **#14** (validateRequiredId scatter),
+**#15** (CLI constants centralisation).
+
+### Step 7b — options-metavar E2E spec + EVENT_STATUS (commit `9d4cb80e`)
+
+New `zombiectl/test/acceptance/options-metavar.spec.js` (290L, 27 tests)
+pins three contracts for every option that takes a value across the
+8 minimum-touchpoint commands (list / logs / events / install / login /
+billing show / agent add / tenant provider add):
+
+1. **`--help` body advertises the option with `<metavar>`** — e.g.
+   `--limit <n>`, `--cursor <token>`, `--workspace <id>`. 8 tests.
+2. **Validators reject invalid input with a clear stderr stem** —
+   e.g. `--limit 0` → `"must be ≥ 1"`. 11 tests. ⚠ **CLI emits exit
+   1, not 2, for commander.invalidArgument** today; the spec asserts
+   non-zero + stem and notes that mapping to POSIX 2 is a separate
+   cli.js hygiene PR (extend `COMMANDER_USAGE_CODES`).
+3. **Valid values round-trip end-to-end to the wire request** — in-spec
+   capturing HTTP stub records every `(method, url, body)`. 8 tests
+   pinning `--limit`/`--cursor` in GET queries, `--name`/`--zombie`
+   in agent-keys POST body, `--credential_ref`/`--model` in provider
+   PUT body, `--from` in install error path, `--timeout-sec` in
+   login poll loop wall-clock exit.
+
+Also new: **`src/constants/event-status.js`** — Captain caught the
+remaining wire-status literals (`"processed"`, `"agent_error"`,
+`"gate_blocked"`) in `zombie_events.js` (renderStatus, 3 sites) and
+`zombie_steer.js` (terminal detection + processed-exit-code, 2 sites).
+Now centralised; mirrors Zig-side `STATUS_GATE_BLOCKED` constant per
+RULE UFS cross-runtime. **For the next agent: this counts as a new
+20-item review row (#21) — fold it into the Step 8 PR Session Notes.**
+
+### Captain's reversals on session-4 declines
+
+- **Review #9 SIGINT** — declined in session 4 ("Node has no built-in")
+  was wrong: `os.constants.signals.SIGINT` exists. But the constant is
+  an integer (signal number 2), and `process.on(signal, handler)` for
+  signal events takes the string name. The CLI now reads `SIGINT` from
+  `src/constants/signals.js` (a string export) so the symbolic-name
+  intent is satisfied without breaking `process.on` in either Node or
+  Bun. Commit `e3c6b1a4`.
+- **Review #6 HTTP verbs** — Captain considered then declined again
+  in session 5 (*"trivial and not needed"*). Bare `method: "GET"`
+  stays as-is. **Do not revisit unless Captain re-opens.**
+
+### One Discovery item surfaced but NOT acted on
+
+Captain spotted `BILLING_DASHBOARD_URL = "https://app.usezombie.com/settings/billing"`
+hardcoded in `src/commands/billing.js:28`. Dev operators hitting
+`api-dev.usezombie.com` get pointed at the prod app (no override
+vector, unlike `apiUrl` which has `--api`/`ZOMBIE_API_URL` precedence).
+**Captain's call: leave it as-is for this PR**, surface as Discovery
+for a future hygiene PR. Suggested fix shape: env-overridable
+`appUrl` in `src/util/url.js` mirroring the `apiUrl` precedence, or
+have the server return a `topup_url` on the billing payload.
 
 ---
 
 ## What the next session does
 
-### Step 7 — Amend M65_002 spec Verification Evidence
+### Step 7c — close coverage to ≥95% functions (Captain-imposed gate)
 
-`docs/v2/done/M65_002_P1_TESTING_ZOMBIECTL_E2E_LIFECYCLE.md` — append a
-**"Commander refactor"** subsection. Cover:
-
-- Parser swap (`parseFlags` → commander 14 + `validators.js`)
-- Help-output shape change (`printHelp` deleted, `ZombieHelp` subclass owns rendering)
-- The test-shim approach in `test/helpers.js` (`buildParsed`, `commandZombieDispatch`,
-  `createCoreHandlers`, `commandBilling`, `commandTenant`) with the rationale
-  that direct-handler tests still verify leaf behavior. Call out that these
-  are intentional test-only adapters so a future reviewer doesn't flag them
-  as RULE NLR violations.
-- The `[--option <value>]` metavar convention adopted across the tree
-  (Captain's UX directive: angle-bracket form is fine as long as the user
-  is explained — Step 7b verifies the explanation surface).
-- Captain's 20-item review outcomes (link to the tabulated table in the
-  PR body).
-- The barrel-collapse cleanup (`agent.js`/`tenant.js` are now single-file
-  per group; `_external`/`_provider` suffixes retired).
-- The `VERSION` read-from-package.json change (`make sync-version` is now
-  a 2-file rewrite, not 3).
-
-Mark Discovery rows resolved:
-- #10 `printHelp(jsonMode)` JSON help → resolved; structured JSON help
-  is a future enhancement, the CLI surfaces commander's text body today.
-- #14 / #15 — handler signature consistency closes the inline-validation
-  scatter (every option now flows through `validators.js`).
-
-### Step 7b — E2E coverage for `--option <value>` round-trips
-
-After Step 7, before Step 8. **NEW required file:**
-`zombiectl/test/acceptance/options-metavar.spec.js`
-
-Prove every option that takes a value:
-1. Is documented with the consistent `<metavar>` convention in `zombiectl <cmd> --help`.
-2. Rejects invalid input via the validator with a clear error
-   (`--limit 0` → "must be ≥ 1").
-3. Flows through to the handler in a real CLI invocation.
-
-Minimum touchpoints:
-- `zombiectl list --limit 25` / `--cursor abc123`
-- `zombiectl logs --limit 50`
-- `zombiectl events --limit 100 --since 2h --actor "steer:*"`
-- `zombiectl install --from <existing-path>`
-- `zombiectl login --timeout-sec 5 --poll-ms 100`
-- `zombiectl billing show --limit 5 --cursor xyz`
-- `zombiectl agent add --workspace <id> --zombie <id> --name <s>`
-- `zombiectl tenant provider add --credential <name> --model <override>`
-
-Each must round-trip end-to-end (commander parses → validator validates
-→ handler observes). Captain's exact words from session 3:
-*"as long as we explain to the user we are fine. and those options must
-be tested end to end and work"*.
-
-### Coverage gate (≥95% functions) — NEW from Captain in session 4
-
-Baseline at end of session 4: **93.62% funcs / 95.79% lines**.
+Baseline at end of session 5: **93.62% funcs / 95.79% lines** (the
+options-metavar spec did NOT meaningfully shift the unit-test
+function-coverage number — acceptance specs spawn a subprocess so
+the in-process coverage instrument doesn't see executions).
 
 Gap-closer priorities (highest leverage first):
+
 | File | Funcs | Strategy |
 |---|---|---|
-| `src/program/cli-tree.js` | 65.31% | Step 7b's E2E coverage will lift this substantially (action closures fire only when a command is run end-to-end) |
-| `src/commands/zombie.js` | 72.73% | Add direct-handler unit tests for the install/status/stop/resume/kill branches that aren't currently exercised. Lines 91, 147, 149-160, 176-177, 191, 195, 203-225 in the source map. |
-| `src/output/index.js` | 80% | Trivial — re-exported helpers (`withGlyph` etc.) not all called. Add a focused test or move into `coverage-fill.unit.test.js`. |
+| `src/program/cli-tree.js` | 65.31% | Each `actionFor(name, fn)` closure fires only when commander dispatches the command. Add a focused unit test that drives `buildProgram({...}).parseAsync([...])` for each leaf — pure parser-level invocation, no real handlers needed (inject `runHandler` no-op via `handlers`). |
+| `src/commands/zombie.js` | 72.73% | Direct-handler unit tests for install/status/stop/resume/kill branches not currently exercised. Lines 91, 147, 149–160, 176–177, 191, 195, 203–225 in the source map. |
+| `src/output/index.js` | 80% | Trivial — re-exported helpers (`withGlyph`, etc.) not all called. Add a focused test or move into `coverage-fill.unit.test.js`. |
 | `src/lib/browser.js` | 81.82% | Platform-fallback paths gated on env. Add WSL/SSH/missing-DISPLAY cases. |
-| `src/cli.js` | 81.25% | Error-path tail at lines 243-257. Add a runCli test that throws a non-Commander error. |
-| `src/commands/workspace.js` | 83.33% | The new redirect placeholder added test coverage; small remaining gap on the empty-state branch. |
-| `src/commands/core.js` | 85.71% | Session-polling edge cases (expired/interrupted) at lines 187-188, 201-205. |
-| `src/commands/zombie_steer.js` | 85.71% | SSE early-return paths at 70-72, 121-124. |
-| `src/lib/sse.js` | 60% | The `lines coverage is 96%` so this is a small function count thing — add 1-2 targeted tests. |
+| `src/cli.js` | 81.25% | Error-path tail at lines 243–257 — add a `runCli` test that throws a non-Commander error. |
+| `src/commands/workspace.js` | 83.33% | Empty-state branch (post-credentials-redirect placeholder). |
+| `src/commands/core.js` | 85.71% | Session-polling edge cases (expired/interrupted) at lines 187–188, 201–205. |
+| `src/commands/zombie_steer.js` | 85.71% | SSE early-return paths at 70–72, 121–124. |
+| `src/lib/sse.js` | 60% | Lines coverage is 96% — function count is the gap. Add 1–2 targeted tests. |
 
-After Step 7b, **re-run `bun test`** and confirm `All files` row shows
-≥95% function coverage before continuing to Step 8.
+After adding tests, **re-run `bun test`** and confirm the `All files`
+row shows ≥95% function coverage. Pin the before/after numbers in the
+Step 8 PR Session Notes.
 
-### Step 8 — CHORE(close) + skill chain
+### Step 8 — CHORE(close) + push + skill chain
 
 Required outputs:
 
-1. **Push** the local-only commit (`99a7223a`) PLUS the Step 7 + 7b commits.
-   This is the moment Captain wanted the push to happen.
+1. **Push** all 5 local-only commits + any Step 7c commits. This is the
+   moment Captain wanted the push to happen.
 2. Append new `<Update>` block to `~/Projects/docs/changelog.mdx`. Use
    `~/Projects/dotfiles/skills/release-template.md` verbatim — don't
    paraphrase the version-bump matrix.
@@ -166,18 +169,19 @@ Required outputs:
    - `/write-unit-test` outcome
    - `/review` outcome
    - `kishore-babysit-prs` final report
-   - **Captain's 20-item review table** — copy from session-3 HANDOFF.md
-     verbatim. The "fix-location" column entries are accurate as committed.
+   - **The 20-item review table** with session-5 corrections (table
+     verbatim below — note the #9 SIGINT row flips to "Done", and a
+     new #21 row appears for `gate_blocked`).
    - Before/after coverage deltas (93.62% → ≥95% funcs).
+   - The "leave billing dashboard URL hardcoded for now" Discovery
+     note + recommended fix shape for the follow-on PR.
 4. `git rm HANDOFF.md`
 5. `make check-version` passes
-6. Orphan sweep complete (RULE ORP — re-run the three sweeps from
-   session-3 HANDOFF for paranoia)
+6. Orphan sweep complete (RULE ORP)
 7. Open the sibling docs PR **only after Captain says "ship it"**.
 
 **Skill chain (mandatory order):**
-1. `/write-unit-test` — audit diff coverage vs the spec's Test
-   Specification. Iterate until clean.
+1. `/write-unit-test` — audit diff coverage. Iterate until clean.
 2. `/review` — adversarial diff review. Address or document deferrals.
 3. After CHORE(close) commits, `git push`.
 4. `/review-pr` — greptile triage. Comments via `gh pr review`.
@@ -188,20 +192,22 @@ Required outputs:
 ## Hard constraints (carry forward — read CLAUDE.md for full set)
 
 - **350L cap** stays in force. Current high-water marks: `cli-tree.js`
-  at 345 (5 lines from the cap — watch this when wiring Step 7b
-  validators if you add new option declarations), `cli.js` at 279
-  (room to grow).
+  345, `options-metavar.spec.js` 290, `cli.js` 279. Step 7c unit tests
+  for `cli-tree.js` go in a SEPARATE file (e.g.
+  `test/cli-tree.parse.unit.test.js`) — do not edit `cli-tree.js`
+  itself just to lift coverage.
 - **RULE NLR + NLG**: no parallel paths, no "legacy" framing in any
   new code. Test-only shims in `test/helpers.js` are intentional
-  adapters — call out the rationale in the Step 7 spec amendment.
+  adapters.
 - **RULE TST-NAM**: no milestone IDs / § markers in test file source.
-  The combined audit in HARNESS VERIFY catches this.
+  The combined audit in HARNESS VERIFY catches this — already bit
+  me once in session 5 (had to strip `M65_002` from a docstring).
 - **gitleaks + lint + harness-verify** stay clean before every commit
   (pre-commit hook enforces).
 - **External commitment** (sibling docs PR for changelog) needs a
   paired PR at Step 8 — branch already exists on `usezombie/docs`.
-- **Coverage ≥95% function** is now a Captain-imposed gate before
-  Step 8 closes. Pin the number in PR Session Notes.
+- **Coverage ≥95% function** is a Captain-imposed gate before Step 8
+  closes. Pin the number in PR Session Notes.
 
 ### Operating mode
 
@@ -218,60 +224,77 @@ Required outputs:
 ## First 5 actions
 
 1. `cd ~/Projects/usezombie-m65-002-spec-zombiectl-cli-e2e`
-2. `cat HANDOFF.md` — read the full brief (this file).
-3. `git log --oneline -8` — confirm `99a7223a` is HEAD and is
-   **local-only** (not on origin).
-4. `git status` — should be clean.
-5. Start Step 7: open `docs/v2/done/M65_002_P1_TESTING_ZOMBIECTL_E2E_LIFECYCLE.md`,
-   find the Verification Evidence section, append the Commander-refactor
-   subsection covering everything in session 4's scope.
+2. `cat HANDOFF.md` — read this file.
+3. `git log --oneline -8` — confirm `9d4cb80e` is HEAD and the 5 local
+   commits listed above are present but not on origin
+   (`git log origin/chore/m65-002-spec-zombiectl-e2e-lifecycle..HEAD`
+   shows 5 commits).
+4. `cd zombiectl && bun test --coverage 2>&1 | grep "All files"` —
+   confirm 93.62% baseline.
+5. Start Step 7c: lift `src/program/cli-tree.js` first (biggest delta —
+   65% → ~95%) by adding `test/cli-tree.parse.unit.test.js` that drives
+   `buildProgram` with no-op handlers and asserts each action closure
+   fires for its argv. That single file should lift All-files funcs
+   by several points.
 
 ---
 
-## 20-item review table (verbatim from session 3, all rows resolved)
-
-(Paste this block into the PR's `## Session notes` at CHORE(close) — the
-"Resolution" column reflects what actually landed in session 4.)
+## 20-item review table (session-5 corrections — paste verbatim into PR Session Notes at Step 8)
 
 | # | Finding | Resolution | Fix-location |
 |---|---|---|---|
-| 1 | Static analytics/status strings need consts | **Done** — 4 new constants modules + per-emit-site wiring | `src/constants/{analytics-events,zombie-status,doctor-checks}.js` |
+| 1 | Static analytics/status strings need consts | **Done (session 4)** — 4 new constants modules + per-emit-site wiring | `src/constants/{analytics-events,zombie-status,doctor-checks}.js` |
 | 1b | `workspace_created` → `workspace_added` rename | **Declined this PR** — external PostHog surface; coordinated rename later | M65_002 spec Discovery |
 | 2 | `workspaceShow` uses both `workspaceId` + `workspace-id` | **Correct** — commander camelCase + legacy dashed; both forms documented | Spec amendment §Commander refactor |
-| 3 | `active: "yes"/"no"` standard? | **Kept** — human surface uses yes/no, JSON uses booleans. Future: `BOOLEAN_DISPLAY` const if a second surface appears | n/a (rationale doc only) |
+| 3 | `active: "yes"/"no"` standard? | **Kept** — human surface uses yes/no, JSON uses booleans | n/a (rationale doc only) |
 | 4 | `workspaceDelete` uses both `workspace-id` + `workspace_id` | **Correct** — CLI flag vs JSON field name; different roles | Spec amendment §Commander refactor |
 | 5 | Rename `workspace_add_completed` → `workspace_added` | **Declined** (same as 1b) | M65_002 spec Discovery |
-| 6 | HttpVerb constants (`POST`/`GET`/`PATCH`) | **Declined** — convention is bare string in `method:` field; no rename risk | n/a |
-| 7 | `[OK]` / `[FAIL]` constantize | **Declined** — single-file usage in `core-ops.js`; trivial cost to inline | n/a |
-| 8 | URL constants for `/healthz`, `/v1/auth/sessions`, `/v1/workspaces`, `/v1/tenants/me/billing` | **Done** — `src/lib/api-paths.js` extended with flat routes + `HEALTHZ_STATUS_OK` envelope sentinel | `src/lib/api-paths.js`, `core-ops.js`, `core.js`, `workspace.js`, `tenant.js`, `billing.js` |
-| 9 | `"SIGINT"` constant | **Declined** — Node has no built-in; literal is the convention | n/a |
-| 10 | `{ status: "ok" }` envelope | **Done** — `HEALTHZ_STATUS_OK = "ok"` in api-paths.js | `src/lib/api-paths.js` |
-| 11 | "credential vault ships once backing feature lands" placeholder | **Done** — backing feature IS shipped (`/credentials` route). Re-framed CLI message as a redirect | `src/commands/workspace.js`, tests updated |
-| 12 | `const limit = parsed.options.limit \|\| "20"` const | **Done** — `DEFAULT_LOGS_LIMIT = "20"` | `src/commands/zombie_logs.js` |
+| 6 | HttpVerb constants (`POST`/`GET`/`PATCH`) | **Declined (session 5 reaffirmed)** — Captain considered, declared "trivial and not needed"; bare string in `method:` is the convention | n/a |
+| 7 | `[OK]` / `[FAIL]` constantize | **Declined** — single-file usage in `core-ops.js` | n/a |
+| 8 | URL constants for `/healthz`, `/v1/auth/sessions`, `/v1/workspaces`, `/v1/tenants/me/billing` | **Done (session 4)** — `src/lib/api-paths.js` extended | `src/lib/api-paths.js` and call sites |
+| 9 | `"SIGINT"` constant | **Done (session 5)** — `src/constants/signals.js` exports the string name; core.js's two sites read from it. `os.constants.signals.SIGINT` is the numeric form (works for syscalls, not for `process.on` listener registration) | `src/constants/signals.js`, `src/commands/core.js` |
+| 10 | `{ status: "ok" }` envelope | **Done (session 4)** — `HEALTHZ_STATUS_OK = "ok"` in api-paths.js | `src/lib/api-paths.js` |
+| 11 | "credential vault ships once backing feature lands" placeholder | **Done (session 4)** — backing feature IS shipped (`/credentials` route); re-framed as redirect | `src/commands/workspace.js` |
+| 12 | `const limit = parsed.options.limit \|\| "20"` const | **Done (session 4)** — `DEFAULT_LOGS_LIMIT = "20"` | `src/commands/zombie_logs.js` |
 | 13 | `parsed` null/undefined handling in `commandSteer`? | **No guard needed** — invariant: commander + buildParsed both always supply `{options, positionals}` | Spec amendment §Commander refactor |
 | 14 | `"utf8"` built-in const | **Declined** — canonical literal | n/a |
-| 15 | Rename `runCli` → `runCLI` | **Declined** — convention call; ~15 import sites for casing preference | n/a |
-| 16 | `"admin"` const | **Done** — `ROLE_ADMIN` / `ROLE_USER` in `src/constants/auth-roles.js`, wired in `cli.js` | `src/constants/auth-roles.js` |
-| 17 | `VERSION = "0.34.0"` read from package.json | **Done** — `cli.js` reads `package.json` at module load; `make sync-version` updated | `src/cli.js`, `make/build.mk` |
-| 18 | `make sync-version` target | **Verified + updated** — now a 2-file rewrite (build.zig.zon, zombiectl/package.json) since cli.js reads pkg at runtime | `make/build.mk` |
+| 15 | Rename `runCli` → `runCLI` | **Declined** — convention call | n/a |
+| 16 | `"admin"` const | **Done (session 4)** — `ROLE_ADMIN` / `ROLE_USER` in `src/constants/auth-roles.js` | `src/constants/auth-roles.js` |
+| 17 | `VERSION = "0.34.0"` read from package.json | **Done (session 4)** — `cli.js` reads `package.json` at module load | `src/cli.js`, `make/build.mk` |
+| 18 | `make sync-version` target | **Verified + updated (session 4)** — 2-file rewrite | `make/build.mk` |
 | 19 | `"user"` (commander argv source) const | **Declined** — local literal, low value | n/a |
-| 20 | "autonomous agent platform" tagline | **Kept** — README owns the marketing line ("Your deploy failed. The agent already knows why."), the CLI tagline stays generic-descriptive; 5+ tests pin the string | n/a |
-| UX | `<token>` / `<n>` metavar convention | **Adopted across tree** — Step 7b verifies the explanation surface (help body, README, error messages) | `src/program/cli-tree.js`, validators.js |
+| 20 | "autonomous agent platform" tagline | **Kept** — generic-descriptive CLI tagline; 5+ tests pin the string | n/a |
+| 21 | Event status literals `"processed"` / `"agent_error"` / `"gate_blocked"` | **Done (session 5)** — `src/constants/event-status.js` mirrors Zig-side `STATUS_GATE_BLOCKED`; wired into `zombie_events.js` renderStatus + `zombie_steer.js` terminal detection (5 sites) | `src/constants/event-status.js`, `src/commands/zombie_events.js`, `src/commands/zombie_steer.js` |
+| UX | `<token>` / `<n>` metavar convention | **Adopted + verified (session 5)** — `test/acceptance/options-metavar.spec.js` pins --help body, validator reject, and wire-request round-trip for every option-bearing command | `src/program/cli-tree.js`, `validators.js`, `test/acceptance/options-metavar.spec.js` |
+
+**Discovery surfaced this session (NOT acted on; for a follow-on PR):**
+
+- `BILLING_DASHBOARD_URL` hardcoded to `https://app.usezombie.com/settings/billing`
+  in `src/commands/billing.js:28`. Breaks dev (`api-dev.usezombie.com` →
+  prod app). Suggested fix: env-overridable `appUrl` in `src/util/url.js`
+  mirroring `apiUrl` precedence (`--app` > `ZOMBIE_APP_URL` > derive
+  `api[-x]` → `app[-x]` > fallback). Captain declared "leave it as-is
+  for this PR".
+- CLI exit code 1 (not POSIX 2) for `commander.invalidArgument` —
+  `COMMANDER_USAGE_CODES` set in `src/cli.js` evidently doesn't match
+  the wrapped error code commander 14 emits. Separate cli.js hygiene
+  PR can map invalidArgument to exit 2.
 
 ---
 
 ## Files NOT to touch this session
 
-- `~/Projects/docs/` — sibling PR territory. Wait for Step 8.
+- `~/Projects/docs/` — sibling PR territory. Wait for Step 8 + "ship it".
 - `.github/workflows/auth-e2e-{dev,prod}.yml` — out of scope.
 - Any sibling worktree — stay inside this one.
+- `src/commands/billing.js` BILLING_DASHBOARD_URL — Captain's call.
 
 ---
 
 ## Cross-agent note
 
-This is a Claude → Claude handoff. Session 4 stayed inside the worktree
-throughout. Session 5 should too.
+This is a Claude → Claude handoff. Session 5 stayed inside the worktree
+throughout. Session 6 should too.
 
 **Delete this file at the end of CHORE(close):** `git rm HANDOFF.md`
 in the final commit.
