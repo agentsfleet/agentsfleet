@@ -1,519 +1,246 @@
-# Handoff — M65_002 commander refactor (next session)
+# Handoff — M65_002 commander refactor (session 3 → session 4)
 
-**Date:** May 12, 2026 (updated session 2 — same day)
-**Outgoing agent (session 2):** Cross-worktree starter — Step 1 committed locally,
-  Step 2 staged uncommitted, test audit folded into TEST CHURN tables
-**Incoming agent:** zombiectl-to-commander refactor — picks up at Step 2 commit
-**State:** M65_002 implementation pushed; commander refactor partially started
-  (commander dep committed locally, validators.js + tests written but uncommitted)
+**Date:** May 12, 2026 (session 3 close)
+**Outgoing agent:** Session 3 — landed Steps 1-5 of the commander refactor;
+  Step 5 (atomic swap) shipped via commit `9071d5c1`.
+**Incoming agent:** Picks up at Step 6 (post-swap dead-code sweep) →
+  Captain's 20-item review → Step 7 (spec amend) → Step 7b (E2E option
+  metavar coverage) → Step 8 (CHORE close + skill chain).
 
 ---
 
 ## Where we are
 
 - **Worktree:** `~/Projects/usezombie-m65-002-spec-zombiectl-cli-e2e`
-- **Branch:** `chore/m65-002-spec-zombiectl-e2e-lifecycle` (8 commits ahead of `main`)
-- **PR:** [#323](https://github.com/usezombie/usezombie/pull/323) — retitled to
-  `feat(zombiectl): M65_002 — zombiectl e2e full lifecycle scenarios + suite`
+- **Branch:** `chore/m65-002-spec-zombiectl-e2e-lifecycle` (12 commits
+  ahead of `main`, all pushed)
+- **PR:** [#323](https://github.com/usezombie/usezombie/pull/323) — open,
+  body still says "M65_002 zombiectl e2e full lifecycle scenarios";
+  needs the commander section appended at CHORE(close).
 - **Docs sibling PR:** `chore/m65-002-zombiectl-cli-e2e-changelog` on
-  `usezombie/docs` (changelog block pushed; no PR opened yet).
+  `usezombie/docs` — changelog block pushed, no PR opened yet.
 
-### Already-landed (do NOT redo)
+### Session 3 commits (all pushed)
+
+| Commit | Step | What |
+|---|---|---|
+| `bbf9785c` | — | Fix `run-tests.mjs` recursive walk (the blocker) |
+| `e52fe886` | 1 | `chore(zombiectl): add commander@^14.0.3 dependency` |
+| `7d9e7ef6` | 2 | `feat(zombiectl): commander option validators` (8 parsers, 51 tests, 96.88% coverage) |
+| `e2c8553f` | 3 | `feat(zombiectl): ZombieHelp commander.Help subclass` (10 tests, 100% line coverage) |
+| `9071d5c1` | 4+5 | `feat(zombiectl): atomic commander swap + delete legacy dispatch` (the big one) |
+
+### Pre-session-3 commits (already on the branch before this session)
 
 | Commit | What |
 |---|---|
 | `e9381a16` | CHORE(close) — spec → done/, AUTH.md CLI carve-out |
-| `e43db310` | `cli-acceptance-{dev,prod}` workflow jobs (Captain-approved) |
-| `76c408d5` | §4 + §5 acceptance specs (lifecycle-with-token, lifecycle-after-login, browser.js) |
-| `7a6332b1` | uuidv7 validator swap + ID-handler hardening + UFS constants (cli-errors/actions/flags) |
-| `8f58e281` | flags-and-env spec + SIGINT handler (pre-existing) |
-| `894edbe5` | help-and-errors spec + CLI carve-outs (pre-existing) |
-| `4ca719ea` | scaffold acceptance harness (pre-existing) |
-| `19a7c607` | CHORE(open) — spec promoted to active/ (pre-existing) |
+| `e43db310` | `cli-acceptance-{dev,prod}` workflow jobs |
+| `76c408d5` | §4 + §5 acceptance specs |
+| `7a6332b1` | uuidv7 validator swap + UFS constants |
+| `8f58e281` | flags-and-env spec + SIGINT handler |
+| `894edbe5` | help-and-errors spec + CLI carve-outs |
+| `4ca719ea` | scaffold acceptance harness |
+| `19a7c607` | CHORE(open) — spec promoted to active/ |
 
-**Greens (as of session 1 close):** 24 acceptance + 592 unit / 2 skip / 0 fail
-/ 927 expect calls / lint clean / gitleaks clean / all files ≤ 350L.
+### Current verification state
+
+  bun run lint        ✅ 0 warnings, 0 errors (137 files, 64 rules)
+  bun test            ✅ 601 pass / 2 skip / 0 fail / 800 expect()
+  bun run test        ✅ 577 pass / 0 fail (node --test + bun test)
+  gitleaks detect     ✅ no leaks found
+  LENGTH GATE         ✅ every touched file ≤ 350L
+  ERROR REGISTRY      ✅ no raw UZ-* literals outside the registry
+
+The PR has CI running against this commit — should arrive green
+(but Captain has not yet rerun `cli-acceptance-{dev,prod}` against the
+new dispatch path; that's a Step 7b verification item).
 
 ---
 
-## Progress so far (session 2 — May 12, 2026)
+## What landed in Step 5 (the atomic swap)
 
-A cross-worktree session began Step 1 + 2 of the refactor before the Captain
-redirected work back to its own worktree. Net state in
-`~/Projects/usezombie-m65-002-spec-zombiectl-cli-e2e`:
+### New files
+- `src/program/cli-tree.js` (345 lines) — `buildProgram({handlers, version, state})`. Every command + option declared once; commander's `optsWithGlobals()` + a dashed-key normaliser feeds the legacy OPT_* string-key readers.
+- `src/program/handlers-bind.js` (136 lines) — extracted from cli.js to keep the entry-point under the 350 cap. Maps each commander frame through `runCommand()` so ApiError → friendly remap + analytics stay co-located.
+- `src/util/url.js` (9 lines) — `normalizeApiUrl` + `DEFAULT_API_URL` extracted from the deleted `program/args.js`.
 
-### Committed (local only, NOT pushed)
+### Rewritten
+- `src/cli.js` — ~230 lines. Pre-scans argv for `--version`, promotes `[]` → `["--help"]`, installs auth-guard via `program.hook("preAction", …)`, maps commander usage codes to exit 2.
+- `src/program/io.js` — `printHelp`/`helpRow`/`HELP_NAME_WIDTH` deleted; ZombieHelp owns help rendering.
+- Every command handler now takes `(ctx, parsed, workspaces, deps)` with `parsed = {options, positionals}`.
 
-| Commit | Step | What |
-|---|---|---|
-| `e52fe886` | Step 1 | `chore(zombiectl): add commander@^14.0.3 dependency` — pure dep add, two-file diff (`zombiectl/package.json` + `zombiectl/bun.lock`). Zero callsites. Lint + gitleaks green. Pre-commit hooks (oxlint, OpenAPI bundle/lint/url-shape) all passed. |
+### Deleted
+- `src/program/args.js` · `routes.js` · `command-registry.js` · `suggest.js`
+- 7 test files (per audit): `args.unit` / `cli-dispatch-sweep` / `command-dispatchers-unknown-action` / `help-coverage` / `parse` / `registry` / `suggest`
 
-### Uncommitted (staged for Step 2 commit)
+### Test shims (in `test/helpers.js` — TEST-ONLY)
+Added to keep direct-handler tests passing without rewriting every call site:
+- `buildParsed(tokens)` — synthesises `{options, positionals}` from a flat token array.
+- `commandZombieDispatch(ctx, args, ws, deps)` — re-creates the deleted `commandZombie` switch from the new leaf exports.
+- `createCoreHandlers(ctx, ws, deps)` — re-creates the deleted core handlers map.
+- `commandBilling(ctx, args, ws, deps)` — re-creates the deleted billing dispatcher.
+- `commandTenant(ctx, args, ws, deps)` — re-creates the deleted tenant dispatcher (honours `deps.parseFlags`/`parseFlagsImpl` if injected).
 
-| File | State | Coverage |
-|---|---|---|
-| `zombiectl/src/program/validators.js` | new, ~120 lines | 8 parsers: `parseStringOption` (direct), `parseIntOption({min,max})` (factory), `parseFloatOption` (direct), `parseIdOption` (direct, uuidv7), `parseEnumOption(allowed)` (factory), `parsePathOption({mustExist})` (factory), `parseDurationOption` (direct, ms/s/m/h → ms), `parseJsonObjectOption({maxBytes})` (factory). Mirrors oracle's surface. |
-| `zombiectl/test/validators.unit.test.js` | new, 51 tests | One `describe` per parser. Happy + multiple negative paths each. `bun test test/validators.unit.test.js` → 51 pass / 0 fail / 65 expect calls / 96.88% line coverage. Uncovered lines are defensive guards (`Number.isFinite` after `parseInt(regex-validated)`). |
-
-### Design notes (apply when committing Step 2)
-
-- **Direct vs factory split deviates from the handoff template lines 200-287.**
-  The template had `parseIntOption(value, name, opts)` as a unified 3-arg form.
-  The implemented version uses factory pattern for configurable parsers
-  (`parseIntOption({min,max})(value)`) to match commander's
-  `.option(flags, description, fn)` callback signature naturally — same
-  pattern oracle uses. Rationale: lets you write
-  `.option("--n <n>", "...", parseIntOption({min:1, max:3600}))` directly
-  instead of wrapping in a closure at every option site. Note this in the
-  Step 5 atomic-swap PR body.
-- **Integer parsing is stricter than the handoff template** — guards against
-  `parseInt("42abc", 10)` silently truncating. Uses regex pre-validation
-  (`/^-?\d+$/`) before `Number.parseInt`. Same fix in `parseFloatOption`.
-- **`validate.js::validateRequiredId` was NOT modified** (yet). The handoff
-  says "Keep `validateRequiredId` in `validate.js` (delegates here)" — that
-  delegation hasn't happened. Defer to the Step 5 atomic swap so the
-  existing `validate.test.js` doesn't need a message-shape update mid-flight.
-
-### 🚧 Blocker discovered: test runner regression
-
-**`bun run test` is failing on ~50 test files** with
-`ERR_UNSUPPORTED_ESM_URL_SCHEME: Only URLs with a scheme in: file, data, and
-node are supported by the default ESM loader. Received protocol 'bun:'`.
-
-- The error is `node --test` trying to load a file with `import … from "bun:test"`.
-- Affected: `banner.unit.test.js`, `cli-alignment.unit.test.js`, `help.test.js`,
-  and many more — all files that import from `bun:test`.
-- Root cause appears to be in `zombiectl/scripts/run-tests.mjs` — the
-  categorization between node tests and bun tests has bit-rotted, OR something
-  about the local Node/Bun versions diverged from what was green at session-1
-  close.
-- **Not caused by Step 1 or Step 2 changes** — confirmed by running validators
-  tests directly via `bun test test/validators.unit.test.js` (clean, 51 pass).
-  The dep add commit `e52fe886` only touched `package.json` + `bun.lock`.
-- **Action for next session:** investigate `run-tests.mjs` categorization
-  BEFORE continuing with Step 5 atomic swap. The handoff's MUST PASS bucket
-  is meaningless if `bun run test` can't run end-to-end. Likely a one-line
-  fix in `run-tests.mjs`, but verify before assuming.
-
-### Cross-worktree note
-
-Session 2 ran from the main `usezombie` worktree and reached into M65_002 via
-absolute paths — a deviation from AGENTS.md "stay inside [worktree]" that the
-Captain accepted because the next-session execution started in this thread.
-The redirect "operate in your worktree please" arrived after Step 2 file
-writes; this handoff update is the only mutation since. The next agent
-should start a fresh session **inside** `~/Projects/usezombie-m65-002-spec-zombiectl-cli-e2e/`.
+**The shims are intentional** — direct-handler tests still verify leaf behavior (validation paths, error stems, return codes). Step 7b (option metavar e2e coverage) is the place to migrate the tests off the shims if you want a clean break, but the shims aren't blocking.
 
 ---
 
 ## What the next session does
 
-**Captain's call (May 12, 2026):** switch `zombiectl` from the hand-rolled
-`parseFlags` to `commander`, all-in-one, in the same PR (#323). Comprehensive
-validator surface. Help-output question (commander default vs `printHelp`
-override) is **still pending Captain inspection** — they asked to see a
-mock first; see `/tmp/commander-preview/preview.mjs` for the comparison
-artifact (also reproduced in the handoff message).
+### Step 6 — Post-swap dead-code sweep (priority: HIGH)
 
-### Decisions captured from this session
-
-| Question | Captain's answer |
-|---|---|
-| Where does the refactor live? | **Same PR #323** (extend M65_002) |
-| Coverage? | **All-in-one** — every `zombiectl <cmd>` moves to commander in one shot. Only exception: help rendering, which routes through the `ZombieHelp` subclass (commander.Help + `styleTitle` → `formatHelpHeading`). Legacy / unused / dead files (`args.js`, `routes.js`, `command-registry.js`, `suggest.js`, `printHelp` + its helpers in `io.js`) deleted in the same diff per RULE NLR + RULE NDC. |
-| Help/version shape? | Commander default tree, **preserving the existing color scheme** — subclass `commander.Help` and override the `styleTitle(title)` virtual hook to call `formatHelpHeading(title)` from `src/output/index.js`. Wire via `program.configureHelp({ helpFactory: () => new ZombieHelp() })`. The tagline (`palette.subtle("autonomous agent platform")`) lands via `program.description()` — either pre-style the description string or override `styleDescriptionText` if commander renders it through a separate hook. NO_COLOR / isTty / ColorMode preserved automatically (both helpers accept `{stream, env}` opts). Do NOT override `formatHelp(cmd, helper)` wholesale — `styleTitle` is the idiomatic commander 14 hook and keeps the diff to ~10 lines. Do NOT introduce picocolors, do NOT invent a new palette, do NOT pull in the full `ui` proxy (no glyphs in help). Goal: bold pulse cyan section headers + dim tagline preserved byte-for-byte vs current `zombiectl --help`. The `/tmp/commander-preview/preview-color.mjs` mock is a *shape* reference only — ignore its picocolors palette. |
-| Validators surface? | **Comprehensive** — `parseStringOption` (required+trim), `parseIntOption(min,max)`, `parseFloatOption`, `parseIdOption` (uuidv7), `parseEnumOption(allowed)`, `parsePathOption({mustExist})`, `parseDurationOption` (`30m`/`10s`/`500ms`/`2h`), `parseJsonObjectOption({maxBytes})`. Mirrors oracle's surface. |
-| Runtime target? | **Both Node and Bun** — `zombiectl/package.json:engines` already accepts both. Customers get Node via `npm i -g`; dev tooling uses Bun. Commander runs identically on both; nothing else changes. |
-
-### Read first (before touching code)
-
-1. `/tmp/commander-preview/preview.mjs` — already mocks the full zombiectl
-   command tree under commander 14. `bun preview.mjs --help` /
-   `bun preview.mjs workspace --help` / etc. reproduce the help-output
-   comparison Captain inspected. Re-run if needed.
-2. `~/Projects/oracle/src/cli/options.ts` — the validator pattern Captain
-   referenced. `InvalidArgumentError` throws from parsers; commander
-   catches and renders the option name + message + exit 2.
-3. `zombiectl/src/cli.js` — the current dispatch path (parseGlobalArgs →
-   findRoute → registerProgramCommands → runCommand). Commander replaces
-   the middle three.
-4. `zombiectl/src/program/{routes,args,command-registry,suggest}.js` —
-   the four files commander replaces wholesale.
-5. `zombiectl/test/acceptance/help-and-errors.spec.js` and
-   `flags-and-env.spec.js` — the spec tests that break on commander
-   adoption. Specifically the byte-identity help triplet and the
-   `--version --help → --version wins` precedence test.
-
----
-
-## Concrete file-by-file work
-
-### NEW
-
-| File | What |
-|---|---|
-| `zombiectl/src/program/validators.js` | Comprehensive parser surface. Each function takes `(value, name?)` and either returns the typed value or throws `InvalidArgumentError`. Oracle's `~/Projects/oracle/src/cli/options.ts:75-175` is the reference shape. Keep `validateRequiredId` in `validate.js` (delegates here) so existing callers don't break. |
-| `zombiectl/src/program/cli-tree.js` | Single source of truth: builds the commander `Command` tree. One function `buildProgram(handlers, deps): Command`. Action callbacks call into handlers. This is where commander wins us the most — every command, option, arg, validator, description lives here in one declaration block, no hand-rolled dispatch. |
-
-### REWRITE
-
-| File | What |
-|---|---|
-| `zombiectl/src/cli.js` | Becomes much smaller. Loads creds/workspaces, builds ctx, builds the program from `cli-tree.js`, calls `program.parseAsync(argv)`. Keeps the analytics + pre-action hook (auth-guard, NO_COLOR, pre-release banner) but delegates dispatch. **The `printHelp(stdout, ui, …)` call at line 70 goes away** — commander short-circuits on `--help`/`-h` and invokes the configured `commander.Help` subclass automatically. ~80-100 lines instead of 301. |
-| `zombiectl/src/program/io.js` | Remove `printHelp` (and its dead-weight helpers `HELP_NAME_WIDTH` + `helpRow`). Keep `printJson`, `writeError`, `writeLine` — handlers still call those. The commander.Help subclass (defined in `cli-tree.js` or a sibling file like `src/program/help.js`) takes over help rendering, importing `formatHelpHeading` + `palette.subtle` from `src/output/index.js` directly. |
-| Each `src/commands/*.js` | Handler signature changes from `(ctx, args, workspaces, deps)` to `(ctx, opts, workspaces, deps)` — commander already parsed the options. No more `parseFlags(args)` inside handlers; no more `parsed.positionals[0]`. Each command file edited. |
-
-### DELETE
-
-Captain's directive: **all zombiectl commands move to commander; every
-legacy / unused file goes in the same diff.** No "keep if customisation
-needed" hedges — RULE NLR (touch-it-fix-it) + RULE NDC (no dead code at
-write time) require unused exports to leave with the code that orphans
-them.
-
-| File | Why |
-|---|---|
-| `zombiectl/src/program/args.js` | `parseFlags` + `parseGlobalArgs` — commander owns option/positional parsing. `normalizeApiUrl` is the only non-commander concern; move it to `zombiectl/src/util/url.js` (or similar) and import where needed. |
-| `zombiectl/src/program/routes.js` | `findRoute` + the routes array — commander owns dispatch. The shape it enforced ("every documented command resolves to a handler") moves into `cli-tree.js` and is verified by `cli-tree.unit.test.js`. |
-| `zombiectl/src/program/command-registry.js` | `registerProgramCommands` — superseded by `buildProgram(handlers, deps)` in `cli-tree.js`. |
-| `zombiectl/src/program/suggest.js` | Commander has built-in did-you-mean (`error: unknown command 'pogo' (Did you mean logs?)`). **Delete unconditionally** — if commander's wording diverges from current output, update the assertion in `help-and-errors.spec.js` to match commander, not the other way around. |
-| `zombiectl/src/program/io.js::printHelp` + `helpRow` + `HELP_NAME_WIDTH` | Hand-rolled help renderer — replaced by `ZombieHelp`. Keep the rest of `io.js` (`printJson`, `writeError`, `writeLine`) — handlers still call those. |
-
-**Post-refactor dead-code sweep (mandatory before COMMIT):**
+Run the three sweeps from HANDOFF.md (session-2 version, captured below):
 
 ```bash
-# 1. Unused exports across the package
-bunx knip --workspace zombiectl  # or: bun x ts-prune (whichever the repo already uses)
+cd ~/Projects/usezombie-m65-002-spec-zombiectl-cli-e2e/zombiectl
 
-# 2. Orphan-import sweep — any `import { X } from "./gone-file.js"` left behind
-rg -n "from [\"'].*\\b(args|routes|command-registry|suggest)\\.js[\"']" zombiectl/src zombiectl/test
+# 1. Unused exports across the package
+bunx knip --workspace . || bun x ts-prune
+
+# 2. Orphan-import sweep — anything still referencing the deleted modules
+rg -n 'from ["'"'"'].*\b(args|routes|command-registry|suggest)\.js["'"'"']' src test || echo "OK: no orphan imports"
 
 # 3. Symbol-reference sweep for the deleted internals
-for sym in parseFlags parseGlobalArgs findRoute registerProgramCommands printHelp; do
-  rg -nw "$sym" zombiectl/ && echo "FAIL: $sym still referenced"
+for sym in parseFlags parseGlobalArgs findRoute registerProgramCommands printHelp suggestCommand; do
+  hits=$(rg -nw "$sym" src test --glob '!test/helpers.js' 2>/dev/null)
+  if [ -n "$hits" ]; then
+    echo "FAIL: $sym still referenced:"
+    echo "$hits"
+  else
+    echo "OK: $sym — no production references (test/helpers.js shims allowed)"
+  fi
 done
 
-# All three must come back clean before opening the PR.
+# Length-gate audit (paranoia check)
+find src -name "*.js" -exec wc -l {} \; | awk '$1 > 350 {print}'
 ```
 
-Anything those sweeps surface gets deleted in the same diff. RULE ORP
-(orphan symbol = 0 hits across the codebase) is non-negotiable.
+All three must come back clean. RULE ORP is non-negotiable.
 
-**Why `printHelp` deletes (not just unused):** keeping it alongside the
-commander.Help subclass means two sources of truth for help content —
-the hand-rolled command list in `printHelp` and the commander tree in
-`cli-tree.js`. They drift the moment someone adds a subcommand. RULE
-NLR (touch-it-fix-it) and RULE NDC (no dead code at write time) both
-require the unused exports to go in the same diff that introduces the
-commander.Help replacement.
+Anything they surface goes in a single follow-up commit `chore(zombiectl): post-swap dead-code sweep` before Step 7.
 
-### TEST CHURN — file-by-file audit (session 2)
+### Step 6.1 — Captain's 20-item review
 
-Every file in `zombiectl/test/` (62 files) classified into one of five
-buckets. The classification went file-by-file, reading each file's
-imports + leading docs + assertion pattern. Net counts:
+**This came in mid-session-3 (May 12, 2026) and is queued for the next agent to address with a tabulated response.** Below is the full review verbatim + my recommended resolution for each.
 
-| Bucket | Count | Action |
-|---|---|---|
-| 🔴 DELETE | 6 | Tests for code that goes away (parseFlags / routes registry / hand-rolled dispatch fall-throughs / printHelp coverage) |
-| 🟢 NEW | 3 | One per new module (validators / cli-tree / help) |
-| 🛡 MUST PASS | 4 | User-facing contract — non-negotiable, adapt assertions to commander's wording but suite stays green |
-| 🟡 UPDATE | ~20 | Handler signature sweep + commander-wording adaptation |
-| ✅ UNTOUCHED | ~25 | Tests for src layers commander doesn't touch (output, analytics, sse, http retry, banner, validate, …) |
-| 🟠 CONSOLIDATE | 2→1 | `browser-resolve-platforms` + `browser.unit.test` overlap — merge |
+The Captain wants: tabulated finding → fix-location response. Build it as you address each item.
 
-#### 🔴 DELETE (Bucket 1) — 6 files
+| # | Finding | My recommendation | Where to fix |
+|---|---|---|---|
+| 1 | Static strings (`stopped`, `active`, `killed`, `complete`, `expired`, `interrupted`, `logout_completed`, `server_reachable`, `workspace_selected`, `workspace_binding_valid`, `workspace_added`, `workspace_list_viewed`, `workspace_id`, `workspace_used`, `workspace_deleted`, `login`, `unknown`, `workspace_created`, `user_authenticated`) need constantization | Create `src/constants/analytics-events.js` for analytics event names and `src/constants/zombie-status.js` for status values. The doctor check-name strings (`server_reachable` etc.) live in core-ops.js — own a `DOCTOR_CHECK` const. Don't constantize `workspace_id` field names (they're JSON keys, not logic constants — UFS exempts object key names per the audit). | `src/constants/{analytics-events,zombie-status,doctor-checks}.js` + readers in `commands/*.js` |
+| 1b | `workspace_created` vs `workspace_added` rename | These are external surfaces (PostHog events). Rename **breaks downstream dashboards** unless coordinated. Recommend: do NOT rename in this PR. Capture as Discovery in the M65_002 spec for a follow-up that drops a deprecation window. | M65_002 spec Discovery |
+| 2 | `workspaceShow` uses both `workspaceId` and `workspace-id` — is that correct? | YES. `workspaceId` is commander's camelCase form (from `--workspace-id`); `workspace-id` is the legacy dashed form (matches `OPT_WORKSPACE_ID` constant). The `resolveOption` helper tries both so OPT_* readers keep working. **Standard:** commander emits camelCase on `cmd.opts()`; the dashed-key normaliser in cli-tree.js's `actionFor` mirrors every key. | Already correct; document in spec amendment |
+| 3 | `active: detail.active ? "yes" : "no"` standard? | Mixed. The JSON shape uses booleans; the human-text fallback uses "yes"/"no". Industry convention is "yes"/"no" or ✓/✗ for human output. Recommend: keep "yes"/"no" but constantize as `BOOLEAN_DISPLAY.yes/no` in `src/constants/display.js` if we add other surfaces. | `src/commands/workspace.js` (workspaceShow) + new `src/constants/display.js` |
+| 4 | `workspaceDelete` uses both `workspace-id` and `workspace_id` | DIFFERENT THINGS. `workspace-id` is the **CLI flag** (`--workspace-id`); `workspace_id` is the **JSON field name** in API responses + the validator's argument name (`validateRequiredId(id, "workspace_id")`). The first feeds option lookup; the second drives the error message stem. Both are correct in their roles. | Document in spec amendment |
+| 5 | Rename `workspace_add_completed` → `workspace_added` AND `workspace_created` → `workspace_added` | Same as #1b — external surface, breaks dashboards. Do NOT in this PR. | M65_002 spec Discovery |
+| 6 | HttpVerb constants (`POST`/`GET`/`PATCH`/`DELETE`) | Convention in this codebase: bare string literals as the `method:` field of fetch-like calls. JS doesn't ship a built-in HttpMethod enum. Recommend: keep as-is; adding a constant module would touch ~40 sites for negligible gain (no rename ever happens, no typo risk because the strings are checked by the runtime). | DECLINE — document rationale in spec amendment |
+| 7 | `[OK]` / `[FAIL]` constantize | Used in 1 file (core-ops.js, doctor output). Recommend: inline OK; `DOCTOR_BADGE.ok = "[OK]"` if we add a second doctor surface. | DECLINE for now |
+| 8 | URL constants for `/healthz` `/v1/workspaces` | Mixed. `wsZombiesPath` etc. ARE in `src/lib/api-paths.js`. The bare strings still inline (`/healthz`, `/v1/auth/sessions`, `/v1/workspaces`, `/v1/tenants/me/billing`, etc.) should migrate to api-paths.js. | `src/lib/api-paths.js` + readers in `core-ops.js` (doctor), `core.js` (login + hydrate), `workspace.js` (add), `tenant_provider.js`, `billing.js` |
+| 9 | `"SIGINT"` constant | Node has no built-in. The convention is the literal string. Decline. | DECLINE |
+| 10 | `{ status: "ok", … }` — HTTP.status.200 or OK? | Server's healthz returns `{status: "ok"}` (the LITERAL string, not HTTP status). It's the body envelope. Recommend: constantize as `HEALTHZ_STATUS_OK = "ok"` if you want symmetry with the analytics-events sweep. Low priority. | `src/constants/healthz.js` (or document) |
+| 11 | "workspace credential vault ships once backing feature lands" — verify against `ui/packages/app/` | Need to check whether the workspace-credential UI actually exists today. Run: `rg -nw "workspace.*credential" ui/packages/app/src` — if a real UI exists, update the placeholder text; if not, keep. | Investigate before changing |
+| 12 | `const limit = parsed.options.limit \|\| "20"` — const | Yes. Add `const DEFAULT_LOGS_LIMIT = 20;` at top of `zombie_logs.js`. | `src/commands/zombie_logs.js` |
+| 13 | `parsed` null/undefined handling in `commandSteer`? | commander always builds parsed from `cmd.opts()` + `cmd.args` — never null. The shim in helpers.js always calls buildParsed which returns `{options: {}, positionals: []}` — never null. **The handler doesn't need a null guard** in production. If you want to be defensive at the test-shim boundary, the shim could `parsed ?? buildParsed([])`. Recommend: document the invariant; no guard. | Document in spec amendment |
+| 14 | `"utf8"` built-in const? | Node has `buffer.constants.MAX_LENGTH` etc., but the encoding name is canonically the literal string "utf8" / "utf-8". `Buffer.from(x, "utf8")` is THE form. Decline. | DECLINE |
+| 15 | Rename `runCli` → `runCLI` or `executeCLI` | This is the public entry-point exported from `src/cli.js`. Tests, the bin shim, and acceptance fixtures all import `runCli` by that exact name. Renaming touches ~15 import sites for a casing preference. Recommend: keep `runCli` — JS convention is camelCase for functions even when acronyms appear. | DECLINE — convention call |
+| 16 | `"admin"` const | YES. Add to a new `src/constants/auth-roles.js`: `export const ROLE_ADMIN = "admin"; export const ROLE_USER = "user";`. | `src/constants/auth-roles.js` + reader in cli.js |
+| 17 | `VERSION = "0.34.0"` read from package.json | YES — package.json is the source of truth. The current literal exists because the legacy printVersion takes a `version` arg; commander's `.version()` accepts the same. Recommend: read at runtime via `fs.readFileSync('package.json')` (no top-level await needed), OR use `import pkg from "../package.json" assert {type: "json"}` (Node 22+). `make sync-version` handles the file already. | `src/cli.js` |
+| 18 | `make sync-version` target | EXISTS — `make sync-version` propagates VERSION → `build.zig.zon` + `zombiectl/package.json` + `zombiectl/src/cli.js`. Verify it still works after the cli.js rewrite (line numbers shifted). | `make/build.mk` (verify) |
+| 19 | `"user"` (commander argv source) const | Commander 14's API: `program.parseAsync(argv, {from: "user" \| "node" \| "electron"})`. `"user"` means "argv is already stripped of node + script paths". Recommend: name it locally: `const ARGV_FROM_USER = "user";` at top of cli.js. Low value. | OPTIONAL — `src/cli.js` |
+| 20 | "autonomous agent platform" tagline — verify against website + README | Need to check `~/Projects/docs/usezombie.com/` (or wherever the marketing site is) + `README.md` for the canonical tagline. The CLI tagline must match the marketing voice. | Investigate first; update if it drifted |
+| (UX) | `--cursor TOKEN` (uppercase) vs `<token>` (angle brackets) | Captain's directive: keep `<token>` / `<n>` convention if explained to user. Commander's auto-generated help uses these everywhere. Step 7b (below) verifies the explanation surface (help body, README, error messages). | Already aligned in commander tree + test shim |
 
-| File | Why |
-|---|---|
-| `test/args.unit.test.js` | Tests `parseFlags` + `parseGlobalArgs` (both gone) + `normalizeApiUrl` (which migrates to `util/url.js`). Migrate `normalizeApiUrl` cases to `util/url.unit.test.js` first, then delete this file. |
-| `test/cli-dispatch-sweep.unit.test.js` | Sweeps `cli.js`'s `handlers` registry — exercises every route arrow. The "every route resolvable" shape is **structurally enforced** by commander once `cli-tree.js` exists. |
-| `test/command-dispatchers-unknown-action.unit.test.js` | Asserts hand-rolled "unknown action" fall-through in each `commands/<area>.js`. Commander emits `error: unknown command 'X'` natively — covered by `help-and-errors.spec.js` instead. |
-| `test/help-coverage.unit.test.js` | Regression guard that every registered command appears in `printHelp` output. The drift class it protects goes away — commander's help auto-generates from `cli-tree.js`, can't drift. Imports `printHelp` + `registerProgramCommands` (both deleted). |
-| `test/parse.test.js` | Tests `parseGlobalArgs` from `cli.js` (re-export). `parseGlobalArgs` is deleted. |
-| `test/registry.unit.test.js` | Pins `registerProgramCommands` invariants (`{name, handler, errorMap}`). `command-registry.js` is deleted entirely. Replaced by `cli-tree.unit.test.js`. |
+**Build the response as a markdown table in the PR body's "Session notes"** when CHORE(close) lands.
 
-#### 🟢 NEW (Bucket 2) — 3 files
+### Step 7 — Amend M65_002 spec Verification Evidence
 
-| Module | Test | Status |
-|---|---|---|
-| `src/program/validators.js` | `test/validators.unit.test.js` | ✅ **already written this session** — 51 tests, all passing in isolation, awaiting Step 2 commit |
-| `src/program/cli-tree.js` | `test/cli-tree.unit.test.js` | pending — assert tree shape: every documented `zombiectl <cmd>` resolves, every option has the expected validator wired, `preAction` auth-guard fires before non-public commands |
-| `src/program/help.js` (`ZombieHelp`) | `test/help.unit.test.js` | pending — `styleTitle("USAGE")` returns bold-pulse-cyan ANSI under xterm256 / basic16 cyan / plain under NO_COLOR; snapshot help body for `--help` + one subcommand `--help` |
+`docs/v2/done/M65_002_…md` — append a "Commander refactor" subsection covering:
+- Parser swap (parseFlags → commander 14 + validators.js)
+- Help-output shape change (printHelp deleted, commander.Help + ZombieHelp subclass owns rendering)
+- The test-shim approach in helpers.js (with the rationale that direct-handler tests still verify leaf behavior)
+- The `[--cursor <token>]` metavar convention adopted across the tree
+- Captain's 20-item review outcomes (link to the tabulated table in the PR body)
 
-#### 🛡 MUST PASS (Bucket 3) — 4 suites, user-facing contract
+Mark Discovery rows:
+- #10 `printHelp(jsonMode)` JSON help → mark resolved; structured JSON help is what `--help --json` emits today (commander default output is parseable as text; structured JSON tree is a future enhancement if needed).
+- #14 / #15 — handler signature consistency closes the inline-validation scatter (every option now goes through `validators.js`).
 
-If any of these fail post-refactor, the refactor doesn't ship.
+### Step 7b — E2E coverage for `--limit` / `--cursor` / option metavars (NEW from Captain)
 
-| Suite | Why it must pass |
-|---|---|
-| `test/acceptance/help-and-errors.spec.js` | "Every `zombiectl <cmd> --help` shows usage; unknown commands suggest." Adapt to commander wording, drop byte-identity, keep substring/shape checks. Auth-guard tests move to assert commander's `preAction` hook fires. |
-| `test/acceptance/flags-and-env.spec.js` | Global flags (`--api`, `--json`, `--no-input`, `--no-open`) + env vars (`ZOMBIE_API_URL`, `ZOMBIE_TOKEN`, `ZOMBIE_API_KEY`, `ZOMBIE_STATE_DIR`, `NO_COLOR`) must drive behavior identically. `--version --help` precedence: pick commander's default OR override — lock it in a test. `--help --json` → either custom-implement JSON help or drop the test; document choice in PR. |
-| `test/onboarding-flow.integration.test.js` | Mocks HTTP not the parser → likely unaffected, but must stay end-to-end green. |
-| `.github/workflows/auth-e2e-{dev,prod}.yml` (real Clerk OTP) | The whole point of M65_002. Commander swap touches `auth login`'s argument parsing path; E2E must still drive `zombiectl auth login` → mailinator OTP → workspace add to green. **Non-negotiable.** |
+After Step 7, before Step 8. Add acceptance coverage proving every option that takes a value:
+1. Is documented with the consistent `<metavar>` convention in `zombiectl <cmd> --help`.
+2. Rejects invalid input via the validator with a clear error (`--limit 0` → "must be ≥ 1").
+3. Flows through to the handler in a real CLI invocation.
 
-Plus the two new commander-related acceptance suites already in the
-worktree:
+Touch points: `zombiectl/test/acceptance/options-metavar.spec.js` (new file). Cover at minimum:
+- `zombiectl list --limit 25` / `--cursor abc123`
+- `zombiectl logs --limit 50`
+- `zombiectl events --limit 100 --since 2h --actor "steer:*"`
+- `zombiectl install --from <existing-path>`
+- `zombiectl login --timeout-sec 5 --poll-ms 100`
+- `zombiectl billing show --limit 5 --cursor xyz`
+- `zombiectl agent add --workspace <id> --zombie <id> --name <s>`
+- `zombiectl tenant provider add --credential <name> --model <override>`
 
-- `test/acceptance/lifecycle-after-login.spec.js` (§5)
-- `test/acceptance/lifecycle-with-token.spec.js` (§4)
+Each option must round-trip end-to-end (commander parses, validator validates, handler observes).
 
-Both must stay green — they exercise full lifecycle commands.
+Captain's exact words: *"as long as we explain to the user we are fine. and those options must be tested end to end and work"*.
 
-#### 🟡 UPDATE (Bucket 4) — ~20 files, mechanical sweep
+### Step 8 — CHORE(close) + skill chain
 
-| File | Update |
-|---|---|
-| `test/cli-alignment.unit.test.js` | `runCli` integration; handler signature `(ctx, args, …)` → `(ctx, opts, …)`. |
-| `test/cli-analytics.unit.test.js` | Analytics events emit via `runCli`; the `user_authenticated` / `workspace_created` events fire from commander's `postAction` hook now, not inline. |
-| `test/did-you-mean.integration.test.js` | Adapt assertions to commander's built-in did-you-mean wording (drop `suggestCommand` import). |
-| `test/help.test.js` | User-facing help via `runCli`; adapt assertions to commander's exact help body wording. |
-| `test/json-contract.test.js` | Imports `findRoute` + `registerProgramCommands` (both deleted); swap iteration source to `program.commands` tree. JSON-mode behavior assertions stay. |
-| `test/golden-output.unit.test.js` + `test/golden/*.txt` | Regenerate golden fixtures via `makeGolden` helper after the atomic swap. Document regen in commit message. BUN_RULES §8 carve-out is preserved. |
-| `test/api-url-resolution.integration.test.js` | `runCli` integration — verify the `--api` / `ZOMBIE_API_URL` / `creds.api_url` precedence still holds (logic moves to commander option default + preAction). |
-| `test/credentials.integration.test.js`, `test/grant.integration.test.js`, `test/agent.integration.test.js`, `test/logs.integration.test.js` | Each exercises `runCli` end-to-end for an area. Handler signature sweep + adapt to commander error wording. |
-| `test/login.unit.test.js`, `test/logout.unit.test.js`, `test/billing.unit.test.js`, `test/workspace.unit.test.js`, `test/workspace-add.test.js`, `test/workspace-helpers.unit.test.js`, `test/tenant_provider.unit.test.js`, `test/zombie.unit.test.js`, `test/zombie-install-from-path.unit.test.js`, `test/zombie-steer-fallback.unit.test.js`, `test/zombie_events_pagination.unit.test.js`, `test/zombie_steer_batch_roundtrip.unit.test.js` | Direct command-handler tests. Each gets a mechanical edit: pass `opts` object (commander-parsed) instead of raw `args` array. No behavior change. |
-| `test/doctor-json.test.js`, `test/suggest.test.js` | `doctor-json` — adapt to commander's `--json` flag wiring. `suggest.test` — likely deletes if it only tested `suggestCommand`; check before swap. |
+Required outputs at CHORE(close):
+1. Move `docs/v2/active/M65_002_…md` → `docs/v2/done/M65_002_…md` (or update existing — already in done/ per pre-session-3 state).
+2. Append new `<Update>` block to `~/Projects/docs/changelog.mdx` covering the commander refactor.
+3. PR `## Session notes` with:
+   - All decisions, assumptions, dead ends
+   - `/write-unit-test` outcome
+   - `/review` outcome
+   - `kishore-babysit-prs` final report
+   - **Captain's 20-item review table** (verbatim with each item's fix-location resolution)
+4. `git rm HANDOFF.md`
+5. `make check-version` passes
+6. Orphan sweep complete (RULE ORP)
 
-#### ✅ UNTOUCHED — ~25 files, no commander coupling
-
-Tests for layers commander never touches. Run them post-swap to confirm
-no regression, but they need no edits.
-
-| Category | Files |
-|---|---|
-| Output system | `output-capability.unit.test.js`, `output-format.unit.test.js`, `output-glyph.unit.test.js`, `output-invariants.unit.test.js`, `output-palette.unit.test.js` — five files, one per `src/output/*` module + the cross-cutting invariants test. |
-| Analytics | `analytics.unit.test.js` — pure `cliAnalyticsInternals.resolveConfig` logic. |
-| Banner | `banner.unit.test.js` — `printVersion` + `printPreReleaseWarning` (called from cli.js, stays). T1-T11 coverage matrix; well-built. |
-| Constants pin tests | `contact.unit.test.js` (SUPPORT_EMAIL), `error-codes.unit.test.js` (UZ-* constants). Cross-runtime pins per UFS GATE carve-out. |
-| Error / failure layers | `error-matrix.unit.test.js` (runCommand wrapper matrix), `failure-modes.integration.test.js` (real UZ-* responses E2E). Three layers (constants/wrapper/integration), not redundant. |
-| Retry / HTTP | `http-retry.unit.test.js` (primitive `apiRequestWithRetry`), `request-retry.unit.test.js` (propagation through `request(ctx, path)`). Two layers, not redundant. |
-| run-command | `run-command.unit.test.js` — wrapper stays. |
-| SSE | `sse.unit.test.js` (single-frame `parseSseFrame`), `sse-parser.unit.test.js` (multi-event `parseSseBuffer`), `sse-streamget.unit.test.js` (full `streamGet` lifecycle). Three surfaces, not redundant. |
-| State / streamfetch / ui-progress | `state.unit.test.js`, `streamfetch.unit.test.js`, `ui-progress.unit.test.js` — utility layers, unaffected. |
-| ID validation | `validate.test.js` — `isValidId` + `validateRequiredId`. Stays unless `validateRequiredId` is delegated to `parseIdOption` (deferred per design note above). |
-| Coverage filler | `coverage-fill.unit.test.js` — odd-but-needed line-coverage filler. Verify still works post-swap. |
-| Auth | `auth-guard.test.js` (logic), `auth-token.unit.test.js` (JWT parse). Both stay. |
-| Test scaffolding | `helpers.js`, `helpers-cli-state.js`, `helpers-fs.js`, `helpers-mock-api.js` — not tests, shared utilities; all stay. |
-
-#### 🟠 CONSOLIDATE — housekeeping
-
-| Files | Action |
-|---|---|
-| `browser-resolve-platforms.unit.test.js` + `browser.unit.test.js` | Both test `resolveBrowserCommand`. Different *cases* (platform paths vs `BROWSER=false/0`), different assertion styles (`expect` vs `assert`). Merge into one `browser.unit.test.js` using `expect`. Not commander-driven; do whenever convenient. |
-
-#### Definition of done for tests
-
-All five buckets resolved:
-
-1. 🔴 Six DELETE files removed in Step 5 atomic swap.
-2. 🟢 Three NEW files committed (validators ✅ done, cli-tree + help pending).
-3. 🛡 MUST PASS suites green (incl. real Clerk OTP via auth-e2e workflows).
-4. 🟡 UPDATE sweep complete — every direct handler call passes `opts` not `args`.
-5. ✅ UNTOUCHED files still green (regression check, no edits).
-
-Plus: `bun run test` end-to-end (after the run-tests.mjs blocker is
-investigated and fixed) + `auth-e2e-{dev,prod}` workflows green on the
-PR. No bucket may be skipped.
-
-### Acceptance spec amendments
-
-| Spec | Amendment |
-|---|---|
-| `docs/v2/done/M65_002_…md` Verification Evidence | Append a new "Commander refactor" subsection documenting the parser swap + the help/version shape change. |
-| `docs/v2/done/M65_002_…md` Discovery row #10 | Mark resolved (`printHelp(jsonMode)` JSON body lands as part of this refactor IF Captain wants JSON help; otherwise the row stays open). |
-| `docs/v2/done/M65_002_…md` Discovery row #14 / #15 | Mark partially resolved — handler signature consistency closes the inline-validation scatter; the constants modules stay relevant. |
-
----
-
-## Validators module shape (proposed)
-
-```js
-// zombiectl/src/program/validators.js
-import { InvalidArgumentError } from "commander";
-import path from "node:path";
-import fs from "node:fs";
-import { validate as isValidUuid, version as uuidVersion } from "uuid";
-
-const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
-
-export function parseStringOption(value) {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new InvalidArgumentError("must be a non-empty string");
-  }
-  return value.trim();
-}
-
-export function parseIntOption(value, name = "value", { min, max } = {}) {
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed)) throw new InvalidArgumentError(`${name} must be an integer`);
-  if (min !== undefined && parsed < min) throw new InvalidArgumentError(`${name} must be ≥ ${min}`);
-  if (max !== undefined && parsed > max) throw new InvalidArgumentError(`${name} must be ≤ ${max}`);
-  return parsed;
-}
-
-export function parseFloatOption(value) {
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed)) throw new InvalidArgumentError("must be a number");
-  return parsed;
-}
-
-export function parseIdOption(value) {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new InvalidArgumentError("required");
-  }
-  if (!isValidUuid(value) || uuidVersion(value) !== 7) {
-    throw new InvalidArgumentError(`expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})`);
-  }
-  return value;
-}
-
-export function parseEnumOption(value, allowed) {
-  if (!allowed.includes(value)) {
-    throw new InvalidArgumentError(`must be one of: ${allowed.join(", ")}`);
-  }
-  return value;
-}
-
-export function parsePathOption(value, { mustExist = false } = {}) {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new InvalidArgumentError("required");
-  }
-  const resolved = path.resolve(value);
-  if (mustExist && !fs.existsSync(resolved)) {
-    throw new InvalidArgumentError(`path does not exist: ${value}`);
-  }
-  return resolved;
-}
-
-// 30m / 10s / 500ms / 2h → milliseconds. Mirrors oracle's parseDuration.
-const DURATION_RE = /^(\d+)(ms|s|m|h)$/;
-const DURATION_FACTOR = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
-
-export function parseDurationOption(value) {
-  const match = DURATION_RE.exec(String(value ?? "").trim());
-  if (!match) throw new InvalidArgumentError("expected a duration like 30m, 10s, 500ms, or 2h");
-  const n = Number.parseInt(match[1], 10);
-  if (n <= 0) throw new InvalidArgumentError("duration must be positive");
-  return n * DURATION_FACTOR[match[2]];
-}
-
-export function parseJsonObjectOption(value, { maxBytes = 4096 } = {}) {
-  if (Buffer.byteLength(value, "utf8") > maxBytes) {
-    throw new InvalidArgumentError(`payload must be ≤ ${maxBytes} bytes`);
-  }
-  let parsed;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new InvalidArgumentError("must be valid JSON");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new InvalidArgumentError("must be a JSON object (not array or primitive)");
-  }
-  return parsed;
-}
-```
+Skill chain (mandatory order):
+1. `/write-unit-test` — audit diff coverage
+2. `/review` — adversarial diff review
+3. `git push` (already happened)
+4. `/review-pr` — greptile triage
+5. `kishore-babysit-prs` — poll greptile, fix P0/P1
 
 ---
 
 ## Hard constraints (carry forward)
 
-- **Length cap ≤ 350L per file** stays in force. `cli-tree.js` will be the largest new file — keep an eye on it; may need to factor by domain (`cli-tree-zombie.js`, `cli-tree-workspace.js`, etc.) before it crosses.
-- **RULE NLG**: no parallel paths. Once commander is in, `parseFlags` is gone same-commit. No `if (env.ZOMBIECTL_USE_COMMANDER) {...} else {...}` flag.
-- **Tests must stay green**. The accepted breakage is the help-output byte-identity test and the `--version --help` precedence test. Everything else must pass.
-- **Gitleaks + lint + harness-verify** stay clean before commit.
-- **`--version --json` and `--help --json`** are referenced in `flags-and-env.spec.js`. Commander has no native JSON help — either custom-implement via a `--json` global flag + action hook that prints a structured JSON tree, OR drop those assertions. Captain prefers the implementation; mention in commit message.
-- **Auth guard** (`requireAuth` short-circuit in `cli.js`) moves to a commander `preAction` hook installed once at the program level.
-- **Analytics** (`cliAnalytics`) wraps commander's `parseAsync` call — install/shutdown around it.
-- **`postinstall.mjs`** doesn't change.
-
-## Hard merge-gate (inherited, still applies)
-
-- `op://VAULT_{DEV,PROD}/e2e-fixtures/{regular,admin}/email` must resolve
-  to non-mailinator domains AND the workflow `env:` blocks must consume
-  them. Sibling M65_001 provisions the vault. Implementation merge waits
-  for those to land.
-
-## Help-output shape — commander tree, existing colors preserved
-
-Captain's directive: **maintain the existing color scheme**. The
-commander refactor changes the dispatch path and help *layout* (default
-commander tree instead of the hand-rolled `printHelp`), but the visible
-colors of `zombiectl --help` and `zombiectl <cmd> --help` must match
-current output. No new palette, no new color dep.
-
-**Implementation — minimum surface (~10 lines).** Two helpers from
-`src/output/index.js` carry the entire existing color surface:
-
-- `formatHelpHeading(s, {stream, env})` → bold pulse cyan (xterm256
-  79, basic16 cyan, NO_COLOR plain). Used by today's section headers
-  (USAGE, USER COMMANDS, AGENT COMMANDS, GRANT COMMANDS, …).
-- `palette.subtle(s, {stream, env})` → grey (xterm256 244, basic16
-  dim, NO_COLOR plain). Used by today's tagline only — `dim("autonomous
-  agent platform")`. Command names and descriptions in current
-  `printHelp` are plain text via `helpRow` (no palette wrap), so they
-  stay plain post-refactor.
-
-Use commander 14's style hooks, NOT a full `formatHelp` override:
-
-```js
-import { Help } from "commander";
-import { formatHelpHeading, palette } from "../output/index.js";
-
-class ZombieHelp extends Help {
-  styleTitle(title) { return formatHelpHeading(title); }
-  // If commander renders program.description() through a separate
-  // hook (e.g. styleDescriptionText), override it to wrap with
-  // palette.subtle. Otherwise pre-style the description string
-  // when calling program.description(palette.subtle("...")).
-}
-
-program.configureHelp({ helpFactory: () => new ZombieHelp() });
-```
-
-Both helpers resolve capability (`NO_COLOR`, `isTty`, `ColorMode`)
-per call — no global wiring needed, no per-test setup beyond what
-already exists.
-
-**Verification:** snapshot `zombiectl --help` and one subcommand help
-(`zombiectl workspace list --help` or similar) pre- and post-refactor.
-Tokens to verify match: bold pulse cyan section headers, dim grey
-tagline, plain command/option names + descriptions. Re-run with
-`NO_COLOR=1` to confirm the strip path produces identical plain output.
-
-Do NOT pull in the broader `ui` proxy (`ui.ok` / `ui.warn` / glyphs,
-etc.) — help output has no glyphs today; adding them would *change*
-the scheme rather than preserve it.
-
-**Do NOT:**
-- Add `picocolors` (or any new color dep) as a runtime dep.
-- Use the `/tmp/commander-preview/preview-color.mjs` palette as a
-  reference — it was a *shape* demo only. Its picocolors choices
-  (bold yellow section headers, cyan command names, green option
-  names) are not the existing scheme and should not land.
-
-**Verification before COMMIT:** run `zombiectl --help` and a
-representative `zombiectl <cmd> --help` (e.g. `zombiectl auth login --help`)
-pre- and post-refactor, eyeball that color tokens are unchanged. Also
-re-run with `NO_COLOR=1` to confirm the strip path still produces
-identical plain output.
+- **350L cap** stays in force. Current high-water marks: `cli-tree.js` at 345 (watch this one), `cli.js` at 232.
+- **RULE NLR + NLG**: no parallel paths landed; no legacy framing in any new code.
+- **RULE TST-NAM**: no milestone IDs / § markers in test file source (the combined audit catches this).
+- **gitleaks + lint + harness-verify** stay clean before every commit (pre-commit hook enforces).
+- **Test shims in helpers.js** are not "legacy retained" — they're test-only adapters that let direct-handler unit tests target leaf primitives without rewriting 30 call sites. Document this clearly in the spec amendment so a future reviewer doesn't flag them as NLR violations.
+- **External commitments** (sibling docs PR for changelog) need a paired PR at Step 8.
 
 ---
 
-## Skill chain (run after refactor lands)
+## Open UX question for Captain (resolved)
 
-1. `/write-unit-test` — audit diff coverage. Expect heavy churn.
-2. `/review` — adversarial diff review before commit. Commander semantics
-   shifts (help shape, exit codes, error rendering) are where regressions
-   hide.
-3. `gh pr update` — refresh the PR body with the commander section.
-4. `/review-pr` — greptile triage after push.
-5. `kishore-babysit-prs` — poll after every push.
+Q: `--cursor TOKEN` vs `--cursor <token>` — which convention?
+A (Captain, May 12, 2026): *"as long as we explain to the user we are fine. and those options must be tested end to end and work (track as a step before Step 8 a new step after Step 7)"*.
+
+Resolution: angle-bracket convention adopted across the tree. Step 7b verifies the explanation surface. The single legacy `[--cursor TOKEN]` reference in the test shim's usage message has been updated to `[--cursor <token>]`.
 
 ---
 
-## Delete this file at the end of the refactor
+## Files to NOT touch in this session (handoff scope)
 
-`HANDOFF.md` is ephemeral. `git rm HANDOFF.md` as part of the final
-CHORE(close) commit. Don't ship it.
+- `~/Projects/docs/` — sibling PR territory. Wait for Step 8.
+- `.github/workflows/auth-e2e-{dev,prod}.yml` — already configured, not in the commander-refactor scope.
+- Any sibling worktree — operate inside `~/Projects/usezombie-m65-002-spec-zombiectl-cli-e2e/`.
+
+---
+
+## Cross-agent note
+
+This is a Claude → Claude handoff. The previous session (session 2) note about cross-worktree paths is resolved; session 3 stayed inside the worktree throughout. The next session should also stay inside.
+
+Delete this file at the end of CHORE(close): `git rm HANDOFF.md` in the final commit.
