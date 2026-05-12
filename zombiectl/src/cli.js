@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+
 import { CommanderError, InvalidArgumentError } from "commander";
 
 import { openUrl } from "./lib/browser.js";
@@ -25,7 +29,11 @@ import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.js";
 import { buildProgram } from "./program/cli-tree.js";
 import { buildHandlers } from "./program/handlers-bind.js";
 
-export const VERSION = "0.34.0";
+// VERSION is the source-of-truth `package.json` field, read once at module
+// load. `make sync-version` writes package.json + build.zig.zon together;
+// no manual edits to cli.js to bump.
+const PKG_JSON_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+export const VERSION = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")).version;
 
 // Only `login` skips the preAction auth-guard. Subcommands of every
 // other root inherit the requirement.
