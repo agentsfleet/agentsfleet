@@ -36,6 +36,7 @@
     "postinstall": "node ./scripts/postinstall.mjs"
   },
   "dependencies": {
+    "commander": "^14.0.3",
     "posthog-node": "^5.33.4",
     "uuid": "^11.0.0"
   },
