@@ -28,8 +28,11 @@ export const AUTH_APPEARANCE = {
   },
   elements: {
     cardBox: {
-      backgroundColor: "var(--surface-1)",
-      border: "1px solid var(--border)",
+      // --surface-2 over the page's --bg gives the card real visual lift on
+      // the auth route — at --surface-1 (luminance delta = 3 units) the card
+      // disappears into the background. --border-strong sharpens the edge.
+      backgroundColor: "var(--surface-2)",
+      border: "1px solid var(--border-strong)",
     },
     headerTitle: {
       color: "var(--text)",

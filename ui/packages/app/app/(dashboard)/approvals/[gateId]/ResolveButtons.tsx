@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Alert, Button, Label, Textarea } from "@usezombie/design-system";
 
 import { approveApprovalAction, denyApprovalAction } from "../actions";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = {
   workspaceId: string;
@@ -23,7 +24,13 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
       const action = decision === "approve" ? approveApprovalAction : denyApprovalAction;
       const result = await action(workspaceId, gateId, reason || undefined);
       if (!result.ok) {
-        setError(result.error || "Resolve failed");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: decision === "approve" ? "approve this approval" : "deny this approval",
+          }),
+        );
         return;
       }
       if (result.data.kind === "already_resolved") {

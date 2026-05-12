@@ -23,6 +23,7 @@ import {
   listApprovalsAction,
 } from "../actions";
 import type { ApprovalGate, ResolveOutcome } from "@/lib/api/approvals";
+import { presentErrorString } from "@/lib/errors";
 
 const POLL_MS = 5000;
 
@@ -98,7 +99,13 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     startTransition(async () => {
       const result = await listApprovalsAction(workspaceId, { cursor, zombieId, limit: 50 });
       if (!result.ok) {
-        setError(result.error || "Failed to load more");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "load more approvals",
+          }),
+        );
         return;
       }
       setItems((prev) => [...prev, ...result.data.items]);
@@ -114,7 +121,13 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     const action = decision === "approve" ? approveApprovalAction : denyApprovalAction;
     const result = await action(workspaceId, gateId);
     if (!result.ok) {
-      setError(result.error || "Resolve failed");
+      setError(
+        presentErrorString({
+          errorCode: result.errorCode,
+          message: result.error,
+          action: decision === "approve" ? "approve this approval" : "deny this approval",
+        }),
+      );
       return;
     }
     const outcome: ResolveOutcome = result.data;

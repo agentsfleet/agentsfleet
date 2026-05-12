@@ -13,6 +13,7 @@ import {
 import { listTenantBillingChargesAction } from "../actions";
 import { PROVIDER_MODE } from "@/lib/types";
 import { formatDollars, groupChargesByEvent, type GroupedEvent } from "../lib/groupCharges";
+import { presentErrorString } from "@/lib/errors";
 
 export type BillingUsageTabProps = {
   initialEvents: GroupedEvent[];
@@ -74,7 +75,13 @@ export default function BillingUsageTab({
         // Empty error string from the action would render as a blank
         // alert; mirror the `|| <default>` pattern used by every other
         // Server Action consumer.
-        setError(result.error || "Failed to load more usage events");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "load more usage events",
+          }),
+        );
         return;
       }
       const more = groupChargesByEvent(result.data.items);

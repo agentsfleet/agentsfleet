@@ -19,6 +19,7 @@ import {
   Textarea,
 } from "@usezombie/design-system";
 import { createCredentialAction } from "../actions";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = { workspaceId: string };
 
@@ -75,12 +76,23 @@ export default function AddCredentialForm({ workspaceId }: Props) {
       try {
         data = JSON.parse(values.data_json) as Record<string, unknown>;
       } catch (e) {
-        setApiError((e as Error).message || "Failed to parse credential JSON");
+        setApiError(
+          presentErrorString({
+            message: (e as Error).message,
+            action: "parse the credential JSON",
+          }),
+        );
         return;
       }
       const result = await createCredentialAction(workspaceId, { name: values.name.trim(), data });
       if (!result.ok) {
-        setApiError(result.error || "Failed to store credential");
+        setApiError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "store the credential",
+          }),
+        );
         return;
       }
       form.reset({ name: "", data_json: "" });

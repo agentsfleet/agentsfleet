@@ -767,7 +767,11 @@ describe("ZombieConfig interactions", () => {
       ),
     );
     expect(routerPush).toHaveBeenCalledWith("/zombies");
-    expect(routerRefresh).toHaveBeenCalled();
+    // router.refresh() is intentionally NOT called — refresh-after-push races
+    // the current-route refetch against push's URL commit (same race the
+    // InstallZombieForm hit). /zombies is `force-dynamic` so refresh isn't
+    // needed.
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 
   it("delete flow: missing token blocks the call and surfaces an error", async () => {
@@ -787,8 +791,11 @@ describe("ZombieConfig interactions", () => {
     );
     await user.click(screen.getByRole("button", { name: /delete zombie/i }));
     await user.click(screen.getByRole("button", { name: /yes, delete/i }));
+    // 401 from withToken maps to UZ-AUTH-401, which presentError renders as
+    // the curated "Your session expired" copy — no raw "Not authenticated"
+    // string surfaces to the operator (WS-G).
     await waitFor(() =>
-      expect(screen.getByText(/Not authenticated/i)).toBeTruthy(),
+      expect(screen.getByText(/Your session expired/i)).toBeTruthy(),
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -901,7 +908,9 @@ describe("InstallZombieForm interactions", () => {
     expect(callBody.trigger_markdown).toContain("x-usezombie:");
     expect(callBody.source_markdown).toContain("skill body");
     expect(routerPush).toHaveBeenCalledWith("/zombies/zom_new");
-    expect(routerRefresh).toHaveBeenCalled();
+    // No router.refresh() — InstallZombieForm intentionally drops the refresh
+    // after push to avoid racing the destination URL commit.
+    expect(routerRefresh).not.toHaveBeenCalled();
   });
 
   it("409 conflict renders a name-collision hint", async () => {
@@ -948,8 +957,9 @@ describe("InstallZombieForm interactions", () => {
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
     await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    // Same UZ-AUTH-401 mapping — "Your session expired" copy in the alert.
     await waitFor(() =>
-      expect(screen.getByText(/Not authenticated/i)).toBeTruthy(),
+      expect(screen.getByText(/Your session expired/i)).toBeTruthy(),
     );
     expect(fetchMock).not.toHaveBeenCalled();
   });

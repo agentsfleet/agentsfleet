@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Trash2Icon } from "lucide-react";
 import { Button, ConfirmDialog } from "@usezombie/design-system";
 import { deleteZombieAction } from "../../actions";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = {
   workspaceId: string;
@@ -25,14 +26,18 @@ export default function ZombieConfig({
     setError(null);
     const result = await deleteZombieAction(workspaceId, zombieId);
     if (!result.ok) {
-      // ConfirmDialog renders the thrown Error's .message — empty string
-      // would surface as a blank alert. Mirror the `|| <default>` pattern
-      // used by KillSwitch / ZombiesList / EventsList so the operator
-      // always sees a real message.
-      throw new Error(result.error || "Failed to delete zombie");
+      throw new Error(
+        presentErrorString({
+          errorCode: result.errorCode,
+          message: result.error,
+          action: "delete this zombie",
+        }),
+      );
     }
+    // No router.refresh() — calling refresh immediately after push races
+    // the URL commit (same surface InstallZombieForm hit); /zombies is
+    // `force-dynamic` so it re-fetches on its own.
     router.push("/zombies");
-    router.refresh();
   }
 
   return (
@@ -63,7 +68,13 @@ export default function ZombieConfig({
         intent="destructive"
         onConfirm={onConfirm}
         errorMessage={error}
-        onError={(e) => setError(e instanceof Error ? e.message : "Delete failed")}
+        onError={(e) =>
+          setError(
+            e instanceof Error
+              ? e.message
+              : presentErrorString({ action: "delete this zombie" }),
+          )
+        }
       />
     </div>
   );

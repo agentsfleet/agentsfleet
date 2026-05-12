@@ -174,14 +174,15 @@ describe("ResolveButtons — error paths", () => {
     });
   });
 
-  it("falls back to generic 'Resolve failed' when action returns an empty error", async () => {
+  it("falls back to presentError default when action returns an empty error", async () => {
     approveActionMock.mockResolvedValueOnce({ ok: false, error: "" });
     render(
       React.createElement(ResolveButtons, { workspaceId: WORKSPACE_ID, gateId: GATE_ID }),
     );
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
+    // WS-G — empty server error falls through presentError's default path.
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toMatch(/Resolve failed/i);
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't approve this approval/i);
     });
   });
 });
