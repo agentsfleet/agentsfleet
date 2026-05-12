@@ -4,9 +4,9 @@
  * via `node --test`. Gates on `ZOMBIE_ACCEPTANCE_TARGET` being set —
  * exits 0 silently when unset so local `bun run test` is unaffected.
  *
- * Empty suite (no spec files) is a green exit: §1 acceptance criterion
- * "green `bun run test:acceptance` that exits 0 with 'no specs' when
- * unset and exits 0 with an empty suite when set."
+ * Empty suite (no spec files) is a green exit by design — `bun run
+ * test:acceptance` exits 0 with "no specs" when unset and exits 0
+ * with an empty suite when set so local `bun run test` is unaffected.
  */
 
 import fs from "node:fs";
