@@ -64,7 +64,7 @@ const CODE_MAP: Record<string, CodeEntry> = {
     body: "Double-check the fields above and resubmit.",
   },
   "UZ-CRED-001": {
-    title: "Credential lookup failed",
+    title: "We couldn't look up that credential",
     body: "Re-store the credential under the same name, or pick a different one.",
   },
   "UZ-CRED-003": {
