@@ -125,7 +125,7 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
         presentErrorString({
           errorCode: result.errorCode,
           message: result.error,
-          action: decision === "approve" ? "approve this approval" : "deny this approval",
+          action: decision === "approve" ? "approve this request" : "deny this request",
         }),
       );
       return;

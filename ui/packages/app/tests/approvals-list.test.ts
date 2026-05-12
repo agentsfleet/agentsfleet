@@ -292,7 +292,7 @@ describe("ApprovalsList — resolve actions", () => {
     fireEvent.click(screen.getByRole("button", { name: /^approve$/i }));
     // WS-G — empty server error falls through presentError's default path.
     await waitFor(() => {
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't approve this approval/i);
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't approve this request/i);
     });
   });
 });

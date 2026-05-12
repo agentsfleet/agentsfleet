@@ -28,7 +28,7 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
           presentErrorString({
             errorCode: result.errorCode,
             message: result.error,
-            action: decision === "approve" ? "approve this approval" : "deny this approval",
+            action: decision === "approve" ? "approve this request" : "deny this request",
           }),
         );
         return;
