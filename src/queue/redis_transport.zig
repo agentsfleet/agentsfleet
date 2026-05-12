@@ -1,9 +1,44 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const error_codes = @import("../errors/error_registry.zig");
 
 const log = logging.scoped(.redis_queue);
+
+/// Best-effort TCP keepalive so an idle Upstash connection is detected by the
+/// kernel within ~60s instead of sitting silently dead until the next request.
+/// Failures are logged at debug and swallowed — keepalive is a hardening, not
+/// a correctness guarantee; reconnect-on-error is the actual safety net.
+/// Applied automatically from each transport's init.
+fn applyKeepalive(stream: std.net.Stream) void {
+    const sock = stream.handle;
+    const enable: c_int = 1;
+    std.posix.setsockopt(sock, std.posix.SOL.SOCKET, std.posix.SO.KEEPALIVE, std.mem.asBytes(&enable)) catch |err| {
+        log.debug("keepalive_enable_failed", .{ .err = @errorName(err) });
+        return;
+    };
+
+    const idle: c_int = 30;
+    const intvl: c_int = 10;
+    const cnt: c_int = 3;
+
+    switch (builtin.target.os.tag) {
+        .linux => {
+            const TCP_KEEPIDLE: u32 = 4;
+            const TCP_KEEPINTVL: u32 = 5;
+            const TCP_KEEPCNT: u32 = 6;
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPIDLE, std.mem.asBytes(&idle)) catch {};
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPINTVL, std.mem.asBytes(&intvl)) catch {};
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPCNT, std.mem.asBytes(&cnt)) catch {};
+        },
+        .macos, .ios, .tvos, .watchos => {
+            const TCP_KEEPALIVE: u32 = 0x10;
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPALIVE, std.mem.asBytes(&idle)) catch {};
+        },
+        else => {},
+    }
+}
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const PlainTransport = struct {
@@ -14,6 +49,7 @@ pub const PlainTransport = struct {
     write_buffer: []u8,
 
     pub fn init(alloc: std.mem.Allocator, stream: std.net.Stream) !PlainTransport {
+        applyKeepalive(stream);
         const read_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(read_buffer);
         const write_buffer = try alloc.alloc(u8, 16 * 1024);
@@ -57,6 +93,7 @@ const TlsTransport = struct {
     ca_bundle: std.crypto.Certificate.Bundle,
 
     pub fn initInPlace(self: *TlsTransport, alloc: std.mem.Allocator, stream: std.net.Stream, host: []const u8) !void {
+        applyKeepalive(stream);
         const ca_file = std.process.getEnvVarOwned(alloc, "REDIS_TLS_CA_CERT_FILE") catch null;
         defer if (ca_file) |v| alloc.free(v);
         var ca_bundle = try redis_config.loadCaBundle(alloc, ca_file);
