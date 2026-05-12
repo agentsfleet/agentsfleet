@@ -7,15 +7,16 @@
 // both charges combined. `--json` emits the raw shape for scripting and
 // includes `next_cursor` so callers can paginate.
 
-import { writeError } from "../program/io.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { writeError } from "../program/io.js";
 import { CHARGE_TYPE, formatDollars } from "../constants/billing.js";
+import { ERR_BILLING_UNAVAILABLE } from "../constants/error-codes.js";
 
 // Billing show hits /v1/tenants/me/billing (GET) + charges (GET).
 // Auth-only surface; the server propagates UZ-BILLING-* internally
 // but the CLI's read endpoint surfaces them as plain server messages.
 export const errorMap = compose(AUTH_PRESET, {
-  "UZ-BILLING-001": {
+  [ERR_BILLING_UNAVAILABLE]: {
     code: "BILLING_UNAVAILABLE",
     message: "Billing data is temporarily unavailable — try again shortly.",
   },
@@ -29,22 +30,7 @@ const PURCHASE_FOOTER_LINE_2 = "Stripe purchase ships in v2.1; for now contact s
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
 
-export async function commandBilling(ctx, args, _workspaces, deps) {
-  const { parseFlags, ui, writeLine } = deps;
-  const action = args[0];
-  const parsed = parseFlags(args.slice(1));
-
-  if (action === "show") return commandBillingShow(ctx, parsed, deps);
-
-  if (ctx.jsonMode) {
-    writeError(ctx, "UNKNOWN_COMMAND", `unknown billing action: ${action ?? "(none)"}`, deps);
-  } else {
-    writeLine(ctx.stderr, ui.err("usage: zombiectl billing show [--limit N] [--cursor TOKEN] [--json]"));
-  }
-  return 2;
-}
-
-export async function commandBillingShow(ctx, parsed, deps) {
+export async function commandBillingShow(ctx, parsed, _workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const limit = parseLimitOption(parsed.options.limit);

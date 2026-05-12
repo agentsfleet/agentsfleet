@@ -15,9 +15,12 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandSteer } from "../src/commands/zombie_steer.js";
-import { makeBufferStream, ui, WS_ID } from "./helpers.js";
-import { parseFlags } from "../src/program/args.js";
-
+import {
+  buildParsed,
+  makeBufferStream,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa90";
 const EVENT_ID = "1777400000000-0";
 
@@ -56,7 +59,6 @@ test("steer batch: POST /messages + SSE roundtrip prints chunks and exits 0", as
   ];
 
   const deps = {
-    parseFlags,
     request: async (_ctx, url, opts) => {
       if (opts.method === "POST" && url.includes("/messages")) {
         postUrl = url;
@@ -81,7 +83,7 @@ test("steer batch: POST /messages + SSE roundtrip prints chunks and exits 0", as
   };
 
   const { ctx, readStdout, readStderr } = makeCtx();
-  const code = await commandSteer(ctx, [ZOMBIE_ID, "ping"], workspaces, deps);
+  const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
 
   assert.equal(code, 0);
   assert.ok(postUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/messages`));
@@ -98,7 +100,6 @@ test("steer batch: POST /messages + SSE roundtrip prints chunks and exits 0", as
 
 test("steer batch: agent_error terminal status yields exit 1", async () => {
   const deps = {
-    parseFlags,
     request: async () => ({ event_id: EVENT_ID }),
     apiHeaders: () => ({}),
     streamGet: async (_url, _h, onEvent) => {
@@ -110,14 +111,13 @@ test("steer batch: agent_error terminal status yields exit 1", async () => {
     writeError: () => {},
   };
   const { ctx } = makeCtx();
-  const code = await commandSteer(ctx, [ZOMBIE_ID, "ping"], workspaces, deps);
+  const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
   assert.equal(code, 1);
 });
 
 test("steer batch: missing message returns exit 2 without calling API", async () => {
   let calls = 0;
   const deps = {
-    parseFlags,
     request: async () => { calls += 1; return {}; },
     apiHeaders: () => ({}),
     streamGet: async () => { calls += 1; },
@@ -127,14 +127,13 @@ test("steer batch: missing message returns exit 2 without calling API", async ()
     writeError: () => {},
   };
   const { ctx } = makeCtx();
-  const code = await commandSteer(ctx, [ZOMBIE_ID], workspaces, deps);
+  const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID]), workspaces, deps);
   assert.equal(code, 2);
   assert.equal(calls, 0);
 });
 
 test("steer batch: missing event_id in POST response returns exit 1", async () => {
   const deps = {
-    parseFlags,
     request: async () => ({}), // No event_id.
     apiHeaders: () => ({}),
     streamGet: async () => { throw new Error("should not be called"); },
@@ -144,7 +143,7 @@ test("steer batch: missing event_id in POST response returns exit 1", async () =
     writeError: () => {},
   };
   const { ctx } = makeCtx();
-  const code = await commandSteer(ctx, [ZOMBIE_ID, "ping"], workspaces, deps);
+  const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
   assert.equal(code, 1);
 });
 
@@ -157,7 +156,6 @@ test("steer batch: filters frames whose event_id does not match", async () => {
     { type: "event_complete", data: { event_id: EVENT_ID, status: "processed" } },
   ];
   const deps = {
-    parseFlags,
     request: async () => ({ event_id: EVENT_ID }),
     apiHeaders: () => ({}),
     streamGet: async (_url, _h, onEvent) => {
@@ -171,7 +169,7 @@ test("steer batch: filters frames whose event_id does not match", async () => {
     writeError: () => {},
   };
   const { ctx, readStdout } = makeCtx();
-  const code = await commandSteer(ctx, [ZOMBIE_ID, "ping"], workspaces, deps);
+  const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
   assert.equal(code, 0);
   const out = readStdout();
   assert.ok(out.includes("[claw] real"), `stdout missing matched chunk: ${out}`);

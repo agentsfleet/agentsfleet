@@ -6,8 +6,7 @@
 import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.js";
 import { writeError } from "../program/io.js";
 import { validateRequiredId } from "../program/validate.js";
-import { NO_WORKSPACE, UNKNOWN_COMMAND } from "../constants/cli-errors.js";
-import { ACTION_DELETE, ACTION_LIST } from "../constants/cli-actions.js";
+import { NO_WORKSPACE } from "../constants/cli-errors.js";
 import { OPT_ZOMBIE } from "../constants/cli-flags.js";
 import { ERR_GRANT_NOT_FOUND, ERR_GRANT_PENDING } from "../constants/error-codes.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
@@ -26,34 +25,18 @@ export const errorMap = compose(AUTH_PRESET, {
   },
 });
 
-export async function commandGrant(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
-
-  const action = args[0];
-  const parsed = parseFlags(args.slice(1));
-
+function requireWorkspace(ctx, workspaces, deps) {
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
     writeError(ctx, NO_WORKSPACE, "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
   }
-
-  if (action === ACTION_LIST) return commandGrantList(ctx, parsed, wsId, { request, apiHeaders, ui, printJson, printTable, writeLine });
-  if (action === ACTION_DELETE) return commandGrantDelete(ctx, parsed, wsId, { request, apiHeaders, ui, printJson, writeLine, writeError, deps });
-
-  if (ctx.jsonMode) {
-    writeError(ctx, UNKNOWN_COMMAND, `unknown grant subcommand: ${action ?? "(none)"}`, deps);
-  } else {
-    writeLine(ctx.stderr, ui.err("usage: zombiectl grant list   --zombie <id>"));
-    writeLine(ctx.stderr, ui.err("       zombiectl grant delete --zombie <id> <grant_id>"));
-  }
-  return 2;
+  return wsId;
 }
 
-// ── grant list ───────────────────────────────────────────────────────────────
-
-async function commandGrantList(ctx, parsed, wsId, deps) {
+export async function commandGrantList(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
 
   const zombieId = parsed.options[OPT_ZOMBIE] || parsed.positionals[0];
   if (!zombieId) {
@@ -89,10 +72,10 @@ async function commandGrantList(ctx, parsed, wsId, deps) {
   return 0;
 }
 
-// ── grant delete ─────────────────────────────────────────────────────────────
-
-async function commandGrantDelete(ctx, parsed, wsId, deps) {
+export async function commandGrantDelete(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, writeLine } = deps;
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
 
   const zombieId = parsed.options[OPT_ZOMBIE];
   const grantId = parsed.positionals[0];

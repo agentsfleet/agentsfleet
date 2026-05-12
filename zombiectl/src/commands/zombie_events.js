@@ -10,9 +10,8 @@ import { wsZombieEventsPath } from "../lib/api-paths.js";
 
 const DEFAULT_LIMIT = 50;
 
-export async function commandEvents(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
-  const parsed = parseFlags(args);
+export async function commandEvents(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
   const zombieId = parsed.positionals[0];
 
   const wsId = workspaces.current_workspace_id;

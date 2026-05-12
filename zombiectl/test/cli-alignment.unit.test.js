@@ -45,12 +45,15 @@ test("--help lists the zombie subcommand group", async () => {
   });
   assert.equal(code, 0);
   const text = out.read();
-  assert.ok(text.includes("ZOMBIE COMMANDS"), "ZOMBIE COMMANDS header missing");
-  assert.ok(text.includes("list [--cursor"), "zombie list line missing");
-  assert.ok(text.includes("status"), "zombie status line missing");
-  assert.ok(text.includes("kill"), "zombie kill line missing");
-  assert.ok(text.includes("logs"), "zombie logs line missing");
-  assert.ok(text.includes("credential"), "zombie credential line missing");
+  // Commander emits a flat Commands list — each zombie op gets its
+  // own line in the top-level body. The added Subcommands block lists
+  // the namespaced credential vault.
+  assert.ok(text.includes("install"), "install line missing");
+  assert.ok(text.includes("list"),    "list line missing");
+  assert.ok(text.includes("status"),  "status line missing");
+  assert.ok(text.includes("kill"),    "kill line missing");
+  assert.ok(text.includes("logs"),    "logs line missing");
+  assert.ok(text.includes("credential"), "credential line missing");
 });
 
 test("--help surfaces workspace use/show/credentials", async () => {
@@ -62,7 +65,7 @@ test("--help surfaces workspace use/show/credentials", async () => {
     env: { NO_COLOR: "1" },
   });
   const text = out.read();
-  assert.ok(text.includes("workspace use <workspace_id>"));
+  assert.ok(text.includes("workspace use"));
   assert.ok(text.includes("workspace show"));
   assert.ok(text.includes("workspace credentials"));
 });

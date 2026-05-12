@@ -19,12 +19,11 @@ import { streamGet as defaultStreamGet } from "../lib/sse.js";
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
 
-export async function commandSteer(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
+export async function commandSteer(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   // streamGet is optionally injectable for tests; production resolves to
   // the real fetch-backed implementation. Same shape, same contract.
   const streamGet = deps.streamGet || defaultStreamGet;
-  const parsed = parseFlags(args);
   const zombieId = parsed.positionals[0];
   const message = parsed.positionals[1];
 

@@ -191,14 +191,14 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         client: analyticsClient,
         distinctId: "user_workspace_456",
         event: "cli_command_started",
-        properties: { command: "workspace", json_mode: "false" },
+        properties: { command: "workspace.add", json_mode: "false" },
       });
       assert.deepEqual(events[1], {
         client: analyticsClient,
         distinctId: "user_workspace_456",
         event: "cli_command_finished",
         properties: {
-          command: "workspace",
+          command: "workspace.add",
           json_mode: "false",
           exit_code: "0",
           workspace_id: "ws_123456789abc",
@@ -209,7 +209,7 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         distinctId: "user_workspace_456",
         event: "workspace_created",
         properties: {
-          command: "workspace",
+          command: "workspace.add",
           workspace_id: "ws_123456789abc",
         },
       });
@@ -218,7 +218,7 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         distinctId: "user_workspace_456",
         event: "workspace_add_completed",
         properties: {
-          command: "workspace",
+          command: "workspace.add",
           workspace_id: "ws_123456789abc",
         },
       });
@@ -253,7 +253,7 @@ test("runCli tracks unknown-command errors and still shuts down analytics when t
       });
 
       assert.equal(code, 2);
-      assert.match(stderr.read(), /unknown command: runx/);
+      assert.match(stderr.read(), /unknown command.*runx/);
       assert.equal(events.length, 1);
       assert.equal(events[0].event, "cli_error");
       assert.equal(events[0].distinctId, "anonymous");
@@ -291,7 +291,7 @@ test("runCli honors analytics opt-out with bundled key", async () => {
     });
 
     assert.equal(code, 2);
-    assert.match(stderr.read(), /unknown command: runx/);
+    assert.match(stderr.read(), /unknown command.*runx/);
     assert.equal(createCalls, 1);
     assert.equal(trackCalls, 0);
     assert.equal(shutdownCalls, 1);

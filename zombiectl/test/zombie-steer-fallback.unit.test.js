@@ -1,5 +1,6 @@
 import { test, expect } from "bun:test";
 import { commandSteer } from "../src/commands/zombie_steer.js";
+import { buildParsed } from "./helpers.js";
 
 // Internals (eventIdToSince / isTerminal / buildBearer) are exercised
 // indirectly through commandSteer. We drive every uncovered branch:
@@ -33,7 +34,7 @@ test("commandSteer no-workspace short-circuits with NO_WORKSPACE", async () => {
   const deps = STUB_DEPS({
     writeError: (_ctx, code, msg) => { captured = { code, msg }; },
   });
-  const code = await commandSteer(CTX(), ["zmb_1", "hi"], { current_workspace_id: null }, deps);
+  const code = await commandSteer(CTX(), buildParsed(["zmb_1", "hi"]), { current_workspace_id: null }, deps);
   expect(code).toBe(1);
   expect(captured.code).toBe("NO_WORKSPACE");
 });
@@ -43,14 +44,14 @@ test("commandSteer missing zombie_id reports MISSING_ARGUMENT", async () => {
   const deps = STUB_DEPS({
     writeError: (_ctx, code) => { captured = code; },
   });
-  const code = await commandSteer(CTX(), [], { current_workspace_id: "ws_1" }, deps);
+  const code = await commandSteer(CTX(), buildParsed([]), { current_workspace_id: "ws_1" }, deps);
   expect(code).toBe(2);
   expect(captured).toBe("MISSING_ARGUMENT");
 });
 
 test("commandSteer empty message reports MISSING_ARGUMENT (interactive REPL deferred)", async () => {
   const deps = STUB_DEPS();
-  const code = await commandSteer(CTX(), ["zmb_1", "   "], { current_workspace_id: "ws_1" }, deps);
+  const code = await commandSteer(CTX(), buildParsed(["zmb_1", "   "]), { current_workspace_id: "ws_1" }, deps);
   expect(code).toBe(2);
 });
 
@@ -63,7 +64,7 @@ test("commandSteer SSE happy path yields exit 0 on processed", async () => {
   });
   const code = await commandSteer(
     CTX(),
-    ["zmb_1", "go"],
+    buildParsed(["zmb_1", "go"]),
     { current_workspace_id: "ws_1" },
     deps,
   );
@@ -84,7 +85,7 @@ test("commandSteer SSE → poll fallback finds terminal status", async () => {
   });
   const code = await commandSteer(
     CTX(),
-    ["zmb_1", "go"],
+    buildParsed(["zmb_1", "go"]),
     { current_workspace_id: "ws_1" },
     deps,
   );
@@ -108,7 +109,7 @@ test("commandSteer SSE → poll fallback hits a non-processed terminal status �
   };
   const code = await commandSteer(
     CTX(),
-    ["zmb_1", "go"],
+    buildParsed(["zmb_1", "go"]),
     { current_workspace_id: "ws_1" },
     STUB_DEPS(tracker),
   );
@@ -126,7 +127,7 @@ test("commandSteer JSON mode prints structured outcome", async () => {
   });
   const code = await commandSteer(
     CTX({ jsonMode: true }),
-    ["zmb_1", "go"],
+    buildParsed(["zmb_1", "go"]),
     { current_workspace_id: "ws_1" },
     deps,
   );
@@ -144,7 +145,7 @@ test("commandSteer messages response without event_id reports BAD_RESPONSE", asy
   });
   const code = await commandSteer(
     CTX(),
-    ["zmb_1", "go"],
+    buildParsed(["zmb_1", "go"]),
     { current_workspace_id: "ws_1" },
     deps,
   );
@@ -164,7 +165,7 @@ test("commandSteer carries Bearer header from ctx.apiKey when ctx.token absent",
   });
   await commandSteer(
     { ...CTX(), apiKey: "key_abc", token: undefined },
-    ["zmb_1", "go"],
+    buildParsed(["zmb_1", "go"]),
     { current_workspace_id: "ws_1" },
     deps,
   );
@@ -181,7 +182,7 @@ test("commandSteer with neither token nor apiKey sends no Authorization", async 
   });
   await commandSteer(
     { ...CTX(), token: undefined, apiKey: undefined },
-    ["zmb_1", "go"],
+    buildParsed(["zmb_1", "go"]),
     { current_workspace_id: "ws_1" },
     deps,
   );

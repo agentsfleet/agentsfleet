@@ -11,9 +11,12 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { commandEvents } from "../src/commands/zombie_events.js";
-import { makeBufferStream, ui, WS_ID } from "./helpers.js";
-import { parseFlags } from "../src/program/args.js";
-
+import {
+  buildParsed,
+  makeBufferStream,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa91";
 const NEXT_CURSOR = "Y3Vyc29yLW9wYXF1ZS10b2tlbi0xMjM0";
 
@@ -56,7 +59,6 @@ test("events: default limit=50 + first page renders 50 rows + next-cursor hint",
   let captured = null;
   const items = buildItems(50);
   const deps = {
-    parseFlags,
     request: async (_ctx, url) => {
       captured = url;
       return { items, next_cursor: NEXT_CURSOR };
@@ -69,7 +71,7 @@ test("events: default limit=50 + first page renders 50 rows + next-cursor hint",
     writeError: () => {},
   };
   const { ctx, readStdout } = makeCtx();
-  const code = await commandEvents(ctx, [ZOMBIE_ID], workspaces, deps);
+  const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID]), workspaces, deps);
   assert.equal(code, 0);
 
   assert.ok(captured.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`), `wrong url: ${captured}`);
@@ -88,7 +90,6 @@ test("events: --cursor=<token> is forwarded as ?cursor=<token> and 10-row tail r
   let captured = null;
   const items = buildItems(10, "tail");
   const deps = {
-    parseFlags,
     request: async (_ctx, url) => {
       captured = url;
       return { items }; // no next_cursor
@@ -101,7 +102,7 @@ test("events: --cursor=<token> is forwarded as ?cursor=<token> and 10-row tail r
     writeError: () => {},
   };
   const { ctx, readStdout } = makeCtx();
-  const code = await commandEvents(ctx, [ZOMBIE_ID, `--cursor=${NEXT_CURSOR}`], workspaces, deps);
+  const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID, `--cursor=${NEXT_CURSOR}`]), workspaces, deps);
   assert.equal(code, 0);
 
   assert.ok(captured.includes(`cursor=${NEXT_CURSOR}`), `cursor not forwarded: ${captured}`);
@@ -120,7 +121,6 @@ test("events: 60 events split 50 + 10 across two paginated calls", async () => {
   const firstPage = buildItems(50, "p1");
   const secondPage = buildItems(10, "p2");
   const deps = {
-    parseFlags,
     request: async (_ctx, url) => {
       calls += 1;
       if (calls === 1) {
@@ -139,11 +139,11 @@ test("events: 60 events split 50 + 10 across two paginated calls", async () => {
   };
 
   const { ctx: ctx1 } = makeCtx();
-  const code1 = await commandEvents(ctx1, [ZOMBIE_ID], workspaces, deps);
+  const code1 = await commandEvents(ctx1, buildParsed([ZOMBIE_ID]), workspaces, deps);
   assert.equal(code1, 0);
 
   const { ctx: ctx2 } = makeCtx();
-  const code2 = await commandEvents(ctx2, [ZOMBIE_ID, `--cursor=${NEXT_CURSOR}`], workspaces, deps);
+  const code2 = await commandEvents(ctx2, buildParsed([ZOMBIE_ID, `--cursor=${NEXT_CURSOR}`]), workspaces, deps);
   assert.equal(code2, 0);
 
   assert.equal(calls, 2);
@@ -153,7 +153,6 @@ test("events: --json mode emits raw envelope and skips human format", async () =
   let printed = null;
   const items = buildItems(3);
   const deps = {
-    parseFlags,
     request: async () => ({ items, next_cursor: NEXT_CURSOR }),
     apiHeaders: () => ({}),
     ui: { ...ui, warn: ui.dim },
@@ -163,7 +162,7 @@ test("events: --json mode emits raw envelope and skips human format", async () =
     writeError: () => {},
   };
   const { ctx } = makeCtx();
-  const code = await commandEvents(ctx, [ZOMBIE_ID, "--json"], workspaces, deps);
+  const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID, "--json"]), workspaces, deps);
   assert.equal(code, 0);
   assert.deepEqual(printed.items.length, 3);
   assert.equal(printed.next_cursor, NEXT_CURSOR);
@@ -171,7 +170,6 @@ test("events: --json mode emits raw envelope and skips human format", async () =
 
 test("events: empty response prints \"No events yet.\" and exits 0", async () => {
   const deps = {
-    parseFlags,
     request: async () => ({ items: [] }),
     apiHeaders: () => ({}),
     ui: { ...ui, warn: ui.dim },
@@ -181,7 +179,7 @@ test("events: empty response prints \"No events yet.\" and exits 0", async () =>
     writeError: () => {},
   };
   const { ctx, readStdout } = makeCtx();
-  const code = await commandEvents(ctx, [ZOMBIE_ID], workspaces, deps);
+  const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID]), workspaces, deps);
   assert.equal(code, 0);
   assert.ok(readStdout().includes("No events yet."));
 });
@@ -189,7 +187,6 @@ test("events: empty response prints \"No events yet.\" and exits 0", async () =>
 test("events: --actor and --since flags forward to API", async () => {
   let captured = null;
   const deps = {
-    parseFlags,
     request: async (_ctx, url) => {
       captured = url;
       return { items: [] };
@@ -202,7 +199,7 @@ test("events: --actor and --since flags forward to API", async () => {
     writeError: () => {},
   };
   const { ctx } = makeCtx();
-  const code = await commandEvents(ctx, [ZOMBIE_ID, "--actor=steer:*", "--since=2h"], workspaces, deps);
+  const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID, "--actor=steer:*", "--since=2h"]), workspaces, deps);
   assert.equal(code, 0);
   assert.ok(captured.includes("actor=steer"), `actor not forwarded: ${captured}`);
   assert.ok(captured.includes("since=2h"), `since not forwarded: ${captured}`);

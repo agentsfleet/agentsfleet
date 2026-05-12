@@ -1,0 +1,345 @@
+// Single source of truth for the zombiectl command tree. buildProgram
+// returns a configured commander.Command — cli.js wires creds, ctx,
+// analytics, and the preAction auth-guard around it. Pure construction;
+// no I/O at module load.
+//
+// Each .action() callback constructs `parsed = { options, positionals }`
+// from commander's parsed opts + args so the existing leaf handlers
+// (which already accept that shape) keep their internal signatures.
+// Option validators come from validators.js and throw
+// InvalidArgumentError on rejection, which commander catches and
+// renders as `error: option '--foo <v>' argument '<x>' is invalid. <why>`
+// then exits 2.
+
+import { Command } from "commander";
+import { ZombieHelp, styleTagline } from "./help.js";
+import {
+  parseIntOption,
+  parseIdOption,
+  parsePathOption,
+} from "./validators.js";
+
+const TIMEOUT_SEC_BOUNDS = { min: 1, max: 3600 };
+// Floor (1ms) is the validator's job; the handler enforces a hard
+// 500ms minimum sleep at runtime. Keeping the validator permissive
+// lets fast integration tests pass `--poll-ms 50` without commander
+// rejecting it before reaching the handler.
+const POLL_MS_BOUNDS = { min: 1, max: 60_000 };
+const LIST_LIMIT_BOUNDS = { min: 1, max: 200 };
+const BILLING_LIMIT_BOUNDS = { min: 1, max: 100 };
+const EVENTS_LIMIT_BOUNDS = { min: 1, max: 500 };
+
+function helpTail() {
+  // Commander's default help shows top-level commands only — subcommand
+  // names (`workspace add`, `workspace list`, …) and the env-var matrix
+  // never appear in the top-level body. Operators (and acceptance tests)
+  // expect both. addHelpText is additive — it does not override
+  // formatHelp, so commander still owns the layout above.
+  const subcommands = [
+    "workspace add", "workspace list", "workspace use", "workspace show",
+    "workspace credentials", "workspace delete",
+    "agent add", "agent list", "agent delete",
+    "grant list", "grant delete",
+    "tenant provider show", "tenant provider add", "tenant provider delete",
+    "billing show",
+    "credential add", "credential show", "credential list", "credential delete",
+  ];
+  return [
+    "",
+    "Subcommands:",
+    ...subcommands.map((s) => `  ${s}`),
+    "",
+    "Environment variables:",
+    "  ZOMBIE_API_URL    API base URL (overridden by --api)",
+    "  ZOMBIE_TOKEN      Auth token (overridden by login)",
+    "  ZOMBIE_API_KEY    API key for service auth",
+    "  ZOMBIE_STATE_DIR  Directory for local CLI state files",
+    "  NO_COLOR          Any non-empty value disables color",
+  ].join("\n");
+}
+
+function normalizeOptions(opts) {
+  // Commander camelCases hyphenated flag names: `--workspace-id` → `opts.workspaceId`.
+  // The OPT_* constants in src/constants/cli-flags.js carry the dashed
+  // wire-form (`"workspace-id"`), so leaf handlers reading
+  // `parsed.options[OPT_WORKSPACE_ID]` only find the dashed key. Mirror
+  // every camelCase key under its dashed form so both spellings resolve
+  // — no handler needs a per-option shim.
+  const out = { ...opts };
+  for (const k of Object.keys(opts)) {
+    const dashed = k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
+    if (dashed !== k && !(dashed in out)) out[dashed] = opts[k];
+  }
+  return out;
+}
+
+function actionFor(name, fn) {
+  // Returns a commander action callback. `this` inside the function
+  // body refers to the commander Command instance, which exposes
+  // .opts() (local + inherited globals merged) and .args (positionals
+  // after option stripping). The constructed `parsed` shape is the
+  // same { options, positionals } object the leaf handlers consumed
+  // pre-commander, so nothing downstream needs to learn commander.
+  return async function action(...callbackArgs) {
+    const command = callbackArgs[callbackArgs.length - 1];
+    const options = normalizeOptions(command.optsWithGlobals());
+    const positionals = command.args.slice();
+    const parsed = { options, positionals };
+    await fn({ name, parsed, command });
+  };
+}
+
+export function buildProgram({ handlers, version, state, helpFactory }) {
+  const program = new Command();
+
+  program
+    .name("zombiectl")
+    .description(styleTagline("autonomous agent platform"))
+    .version(version, "-v, --version", "Show version")
+    .helpOption("-h, --help", "Show this help")
+    .showSuggestionAfterError(true)
+    .showHelpAfterError("(use --help for usage)")
+    .configureHelp({ helpFactory: helpFactory ?? (() => new ZombieHelp()) })
+    .addHelpText("after", helpTail());
+
+  // Global options. --api and --json are read by every command via
+  // optsWithGlobals(); --no-input + --no-open are surfaced for the
+  // commands that observe them (login, doctor).
+  program
+    .option("--api <url>", "API base URL")
+    .option("--json", "Machine-readable JSON output", false)
+    .option("--no-input", "Disable interactive prompts")
+    .option("--no-open", "Skip auto-opening the browser on login");
+
+  // ── User commands ────────────────────────────────────────────────
+
+  program
+    .command("login")
+    .description("Authenticate via browser")
+    .option("--timeout-sec <n>", "Wait up to N seconds for browser callback", parseIntOption(TIMEOUT_SEC_BOUNDS))
+    .option("--poll-ms <n>", "Poll cadence in milliseconds", parseIntOption(POLL_MS_BOUNDS))
+    .action(actionFor("login", (frame) => runHandler(state, frame, handlers.login)));
+
+  program
+    .command("logout")
+    .description("Clear stored credentials")
+    .action(actionFor("logout", (frame) => runHandler(state, frame, handlers.logout)));
+
+  program
+    .command("doctor")
+    .description("Diagnose CLI configuration and connectivity")
+    .action(actionFor("doctor", (frame) => runHandler(state, frame, handlers.doctor)));
+
+  buildWorkspaceTree(program, handlers, state);
+  buildAgentTree(program, handlers, state);
+  buildGrantTree(program, handlers, state);
+  buildTenantTree(program, handlers, state);
+  buildBillingTree(program, handlers, state);
+  buildZombieTree(program, handlers, state);
+
+  return program;
+}
+
+function runHandler(state, frame, handler) {
+  if (typeof handler !== "function") {
+    state.exitCode = 2;
+    throw new Error(`no handler wired for command: ${frame.name}`);
+  }
+  return handler(frame).then((code) => {
+    state.exitCode = typeof code === "number" ? code : 0;
+  });
+}
+
+function buildWorkspaceTree(program, handlers, state) {
+  const ws = program
+    .command("workspace")
+    .description("Manage workspaces");
+
+  ws.command("add [name]")
+    .description("Create a new workspace")
+    .action(actionFor("workspace.add", (frame) => runHandler(state, frame, handlers.workspace.add)));
+
+  ws.command("list")
+    .description("List workspaces")
+    .action(actionFor("workspace.list", (frame) => runHandler(state, frame, handlers.workspace.list)));
+
+  ws.command("use <workspace_id>")
+    .description("Set the active workspace")
+    .action(actionFor("workspace.use", (frame) => runHandler(state, frame, handlers.workspace.use)));
+
+  ws.command("show [workspace_id]")
+    .description("Show workspace details")
+    .option("--workspace-id <id>", "Workspace ID (alternative to positional)", parseIdOption)
+    .action(actionFor("workspace.show", (frame) => runHandler(state, frame, handlers.workspace.show)));
+
+  ws.command("credentials")
+    .description("Open the workspace credential vault")
+    .action(actionFor("workspace.credentials", (frame) => runHandler(state, frame, handlers.workspace.credentials)));
+
+  ws.command("delete <workspace_id>")
+    .description("Delete a workspace (irreversible)")
+    .action(actionFor("workspace.delete", (frame) => runHandler(state, frame, handlers.workspace.delete)));
+}
+
+function buildAgentTree(program, handlers, state) {
+  const agent = program
+    .command("agent")
+    .description("Manage external agent API keys");
+
+  agent.command("add")
+    .description("Mint an agent API key for the workspace")
+    .option("--workspace <id>", "Workspace ID", parseIdOption)
+    .option("--zombie <id>", "Zombie ID this key is bound to", parseIdOption)
+    .option("--name <name>", "Human-readable agent name")
+    .option("--description <desc>", "Optional description")
+    .action(actionFor("agent.add", (frame) => runHandler(state, frame, handlers.agent.add)));
+
+  agent.command("list")
+    .description("List external agent API keys")
+    .option("--workspace <id>", "Workspace ID", parseIdOption)
+    .action(actionFor("agent.list", (frame) => runHandler(state, frame, handlers.agent.list)));
+
+  agent.command("delete <agent_id>")
+    .description("Revoke an external agent API key")
+    .option("--workspace <id>", "Workspace ID", parseIdOption)
+    .action(actionFor("agent.delete", (frame) => runHandler(state, frame, handlers.agent.delete)));
+}
+
+function buildGrantTree(program, handlers, state) {
+  const grant = program
+    .command("grant")
+    .description("Manage integration grants");
+
+  grant.command("list")
+    .description("List integration grants for a zombie")
+    .option("--zombie <id>", "Zombie ID", parseIdOption)
+    .action(actionFor("grant.list", (frame) => runHandler(state, frame, handlers.grant.list)));
+
+  grant.command("delete <grant_id>")
+    .description("Revoke an integration grant")
+    .option("--zombie <id>", "Zombie ID", parseIdOption)
+    .action(actionFor("grant.delete", (frame) => runHandler(state, frame, handlers.grant.delete)));
+}
+
+function buildTenantTree(program, handlers, state) {
+  const tenant = program
+    .command("tenant")
+    .description("Tenant-scoped commands");
+  const provider = tenant
+    .command("provider")
+    .description("Manage tenant LLM provider posture");
+
+  provider.command("show")
+    .description("Show the active provider config")
+    .action(actionFor("tenant.provider.show", (frame) => runHandler(state, frame, handlers.tenant.provider.show)));
+
+  provider.command("add")
+    .description("Use a self-managed credential")
+    .option("--credential <name>", "Named credential from the workspace vault")
+    .option("--model <name>", "Override the default model identifier")
+    .action(actionFor("tenant.provider.add", (frame) => runHandler(state, frame, handlers.tenant.provider.add)));
+
+  provider.command("delete")
+    .description("Reset to the platform default")
+    .action(actionFor("tenant.provider.delete", (frame) => runHandler(state, frame, handlers.tenant.provider.delete)));
+}
+
+function buildBillingTree(program, handlers, state) {
+  const billing = program
+    .command("billing")
+    .description("Tenant billing dashboard");
+
+  billing.command("show")
+    .description("Plan, balance, and recent events")
+    .option("--limit <n>", "Number of recent events to show", parseIntOption(BILLING_LIMIT_BOUNDS))
+    .option("--cursor <token>", "next_cursor from a previous page")
+    .action(actionFor("billing.show", (frame) => runHandler(state, frame, handlers.billing.show)));
+}
+
+function buildZombieTree(program, handlers, state) {
+  program
+    .command("install")
+    .description("Register a zombie from a local skill bundle")
+    // Path existence is validated by loadSkillFromPath inside the handler
+    // so the failure path emits ERR_PATH_NOT_FOUND with the friendly
+    // remap message instead of commander's generic "path does not exist".
+    .option("--from <path>", "Skill bundle path", parsePathOption({ mustExist: false }))
+    .action(actionFor("zombie.install", (frame) => runHandler(state, frame, handlers.zombie.install)));
+
+  program
+    .command("list")
+    .description("List zombies in the active workspace (paginated)")
+    .option("--workspace-id <id>", "Workspace ID override", parseIdOption)
+    .option("--cursor <token>", "next_cursor from a previous page")
+    .option("--limit <n>", "Page size", parseIntOption(LIST_LIMIT_BOUNDS))
+    .action(actionFor("zombie.list", (frame) => runHandler(state, frame, handlers.zombie.list)));
+
+  program
+    .command("status [zombie_id]")
+    .description("Show zombie status (workspace-wide if no id)")
+    .action(actionFor("zombie.status", (frame) => runHandler(state, frame, handlers.zombie.status)));
+
+  program
+    .command("stop <zombie_id>")
+    .description("Halt the running session (resumable)")
+    .action(actionFor("zombie.stop", (frame) => runHandler(state, frame, handlers.zombie.stop)));
+
+  program
+    .command("resume <zombie_id>")
+    .description("Resume from stopped or auto-paused")
+    .action(actionFor("zombie.resume", (frame) => runHandler(state, frame, handlers.zombie.resume)));
+
+  program
+    .command("kill <zombie_id>")
+    .description("Mark terminal (irreversible)")
+    .action(actionFor("zombie.kill", (frame) => runHandler(state, frame, handlers.zombie.kill)));
+
+  program
+    .command("delete <zombie_id>")
+    .description("Hard-delete a killed zombie")
+    .action(actionFor("zombie.delete", (frame) => runHandler(state, frame, handlers.zombie.delete)));
+
+  program
+    .command("logs [zombie_id]")
+    .description("Tail zombie activity")
+    .option("--zombie <id>", "Zombie ID (alternative to positional)", parseIdOption)
+    .option("--limit <n>", "Number of events to show", parseIntOption(EVENTS_LIMIT_BOUNDS))
+    .option("--cursor <token>", "next_cursor from a previous page")
+    .action(actionFor("zombie.logs", (frame) => runHandler(state, frame, handlers.zombie.logs)));
+
+  program
+    .command("events <zombie_id>")
+    .description("Page through historical events")
+    .option("--actor <glob>", "Filter by actor glob")
+    .option("--since <when>", "RFC 3339 or duration (e.g. 2h)")
+    .option("--cursor <token>", "next_cursor from a previous page")
+    .option("--limit <n>", "Page size", parseIntOption(EVENTS_LIMIT_BOUNDS))
+    .action(actionFor("zombie.events", (frame) => runHandler(state, frame, handlers.zombie.events)));
+
+  program
+    .command("steer <zombie_id> <message>")
+    .description("Send a message; stream the response")
+    .action(actionFor("zombie.steer", (frame) => runHandler(state, frame, handlers.zombie.steer)));
+
+  const credential = program
+    .command("credential")
+    .description("Workspace credential vault");
+
+  credential.command("add <name>")
+    .description("Store a credential JSON object")
+    .option("--data <json>", "Credential JSON object, or @- to read stdin")
+    .option("--force", "Overwrite if a credential with this name already exists")
+    .action(actionFor("zombie.credential.add", (frame) => runHandler(state, frame, handlers.zombie.credential.add)));
+
+  credential.command("show <name>")
+    .description("Confirm a credential exists (never echoes secret bytes)")
+    .action(actionFor("zombie.credential.show", (frame) => runHandler(state, frame, handlers.zombie.credential.show)));
+
+  credential.command("list")
+    .description("List credentials in the workspace vault")
+    .action(actionFor("zombie.credential.list", (frame) => runHandler(state, frame, handlers.zombie.credential.list)));
+
+  credential.command("delete <name>")
+    .description("Delete a credential from the workspace vault")
+    .action(actionFor("zombie.credential.delete", (frame) => runHandler(state, frame, handlers.zombie.credential.delete)));
+}

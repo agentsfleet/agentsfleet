@@ -1,62 +1,61 @@
-zombiectl v0.34.0
+Usage: zombiectl [options] [command]
 
 autonomous agent platform
 
-USAGE
-  zombiectl [--api URL] [--json] <command> [args] [flags]
+Options:
+  -v, --version                 Show version
+  --api <url>                   API base URL
+  --json                        Machine-readable JSON output (default: false)
+  --no-input                    Disable interactive prompts
+  --no-open                     Skip auto-opening the browser on login
+  -h, --help                    Show this help
 
-USER COMMANDS
-  login [--timeout-sec N] [--poll-ms N] [--no-open]  Authenticate via browser
-  logout                      Clear stored credentials
-  workspace add [<name>]      Create a new workspace
-  workspace list              List workspaces
-  workspace use <workspace_id>  Set the active workspace
-  workspace show [--workspace-id ID]  Show workspace details
-  workspace credentials       Open the credential vault
-  workspace delete <workspace_id>  Delete a workspace (irreversible)
-  doctor                      Diagnose CLI configuration and connectivity
+Commands:
+  login [options]               Authenticate via browser
+  logout                        Clear stored credentials
+  doctor                        Diagnose CLI configuration and connectivity
+  workspace                     Manage workspaces
+  agent                         Manage external agent API keys
+  grant                         Manage integration grants
+  tenant                        Tenant-scoped commands
+  billing                       Tenant billing dashboard
+  install [options]             Register a zombie from a local skill bundle
+  list [options]                List zombies in the active workspace (paginated)
+  status [zombie_id]            Show zombie status (workspace-wide if no id)
+  stop <zombie_id>              Halt the running session (resumable)
+  resume <zombie_id>            Resume from stopped or auto-paused
+  kill <zombie_id>              Mark terminal (irreversible)
+  delete <zombie_id>            Hard-delete a killed zombie
+  logs [options] [zombie_id]    Tail zombie activity
+  events [options] <zombie_id>  Page through historical events
+  steer <zombie_id> <message>   Send a message; stream the response
+  credential                    Workspace credential vault
+  help [command]                display help for command
 
-AGENT COMMANDS
-  agent add                   Mint an agent API key for the workspace
-  agent list                  List agent API keys
-  agent delete <key_id>       Revoke an agent API key
+Subcommands:
+  workspace add
+  workspace list
+  workspace use
+  workspace show
+  workspace credentials
+  workspace delete
+  agent add
+  agent list
+  agent delete
+  grant list
+  grant delete
+  tenant provider show
+  tenant provider add
+  tenant provider delete
+  billing show
+  credential add
+  credential show
+  credential list
+  credential delete
 
-GRANT COMMANDS
-  grant list                  List integration grants in the workspace
-  grant delete <grant_id>     Revoke an integration grant
-
-TENANT COMMANDS
-  tenant provider show        Show the active provider config
-  tenant provider add --credential <name>  Use a self-managed credential
-  tenant provider delete      Reset to the platform default
-
-BILLING COMMANDS
-  billing show                Plan, balance, and usage snapshot
-
-ZOMBIE COMMANDS
-  install --from <path>       Register a zombie from <path>
-  list [--cursor C] [--limit N]  List zombies (paginated)
-  status [<zombie_id>]        Show zombie status
-  stop <zombie_id>            Halt the session (resumable)
-  resume <zombie_id>          Resume from stopped
-  kill <zombie_id>            Mark terminal (irreversible)
-  delete <zombie_id>          Hard-delete (kill first)
-  logs <zombie_id>            Tail zombie activity
-  events <zombie_id> [opts]   Page through historical events
-  steer <zombie_id> "<msg>"   Send a message; stream response
-  credential add|show|list|delete  Workspace credential vault
-
-GLOBAL FLAGS
-  --api URL                   API base URL
-  --json                      Machine-readable JSON output
-  --no-input                  Disable interactive prompts
-  --no-open                   Skip auto-opening browser
-  --version                   Show version
-  --help, -h                  Show this help
-
-ENVIRONMENT VARIABLES
-  ZOMBIE_API_URL              API base URL (overridden by --api)
-  ZOMBIE_TOKEN                Auth token (overridden by login)
-  ZOMBIE_API_KEY              API key for service auth
-  ZOMBIE_STATE_DIR            Directory for local CLI state files
-  NO_COLOR                    Any non-empty value disables color
+Environment variables:
+  ZOMBIE_API_URL    API base URL (overridden by --api)
+  ZOMBIE_TOKEN      Auth token (overridden by login)
+  ZOMBIE_API_KEY    API key for service auth
+  ZOMBIE_STATE_DIR  Directory for local CLI state files
+  NO_COLOR          Any non-empty value disables color

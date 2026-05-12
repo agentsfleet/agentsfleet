@@ -15,11 +15,13 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { commandZombie } from "../src/commands/zombie.js";
-import { findRoute } from "../src/program/routes.js";
-import { parseFlags } from "../src/program/args.js";
-import { makeNoop, ui, WS_ID } from "./helpers.js";
-
+import {
+  buildParsed,
+  commandZombieDispatch as commandZombie,
+  makeNoop,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = dirname(TEST_DIR);
 
@@ -33,7 +35,6 @@ function makeStdout() {
 
 function makeDeps(overrides = {}) {
   return {
-    parseFlags,
     // Default mock mirrors what the create handler returns post-parse.
     // Tests that need a different shape override `request`.
     request: async () => ({
@@ -413,12 +414,6 @@ test("install --from --json: emits JSON with server-returned name", async () => 
   const out = stdout.lines.join("");
   assert.ok(!out.includes("🎉"), `no emoji in JSON mode:\n${out}`);
   assert.ok(!out.includes("is live"), `no prose in JSON mode:\n${out}`);
-});
-
-// ── §4 — Removed commands ─────────────────────────────────────────────────
-
-test("route: 'up' no longer resolves to a handler", () => {
-  assert.equal(findRoute("up", []), null);
 });
 
 test("install --from (no value): boolean-true treated as missing argument", async () => {

@@ -1,19 +1,11 @@
+import { CommanderError, InvalidArgumentError } from "commander";
+
 import { openUrl } from "./lib/browser.js";
 import {
   cliAnalytics,
   drainCliAnalyticsEvents,
   getCliAnalyticsContext,
 } from "./lib/analytics.js";
-import { runCommand } from "./lib/run-command.js";
-import { findRoute } from "./program/routes.js";
-import { registerProgramCommands } from "./program/command-registry.js";
-import { commandAgent as commandAgentModule } from "./commands/agent.js";
-import { commandGrant as commandGrantModule } from "./commands/grant.js";
-import { commandTenant as commandTenantModule } from "./commands/tenant.js";
-import { commandBilling as commandBillingModule } from "./commands/billing.js";
-import { commandZombie as commandZombieModule } from "./commands/zombie.js";
-import { ui, printKeyValue, printSection, printTable } from "./output/index.js";
-import { createSpinner } from "./ui-progress.js";
 import {
   clearCredentials,
   loadCredentials,
@@ -23,93 +15,69 @@ import {
   saveWorkspaces,
 } from "./lib/state.js";
 import { apiHeaders, request } from "./program/http-client.js";
-import { parseFlags, parseGlobalArgs, normalizeApiUrl, DEFAULT_API_URL } from "./program/args.js";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
-import { printHelp, printJson, writeError, writeLine } from "./program/io.js";
+import { printJson, writeError, writeLine } from "./program/io.js";
 import { printVersion, printPreReleaseWarning } from "./program/banner.js";
-import { suggestCommand } from "./program/suggest.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
-import { createCoreHandlers } from "./commands/core.js";
+import { ui, printKeyValue, printSection, printTable } from "./output/index.js";
+import { createSpinner } from "./ui-progress.js";
+import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.js";
+import { buildProgram } from "./program/cli-tree.js";
+import { buildHandlers } from "./program/handlers-bind.js";
 
 export const VERSION = "0.34.0";
 
-export { parseGlobalArgs };
+// Only `login` skips the preAction auth-guard. Subcommands of every
+// other root inherit the requirement.
+const AUTH_EXEMPT = new Set(["login"]);
 
-const AUTH_EXEMPT_ROUTES = new Set(["login"]);
-
-export async function runCli(argv, io = {}) {
-  const stdout = io.stdout || process.stdout;
-  const stderr = io.stderr || process.stderr;
-  const env = io.env || process.env;
-  const fetchImpl = io.fetchImpl || globalThis.fetch;
-
-  const { global, rest } = parseGlobalArgs(argv, env);
-  // no-color.org spec — any non-empty NO_COLOR disables color. Aligns
-  // with capability.detectColorMode and printHelp. (Was previously a
-  // narrow "1"|"true" check that diverged from the spec.)
-  const noColor = Boolean(env.NO_COLOR && env.NO_COLOR.length > 0);
-
-  printPreReleaseWarning(stderr, { noColor, jsonMode: global.json, ttyOnly: !stderr.isTTY });
-
-  if (global.version) {
-    if (global.json) {
-      printJson(stdout, { version: VERSION });
-    } else {
-      printVersion(stdout, VERSION, { noColor, jsonMode: false });
-    }
-    return 0;
-  }
-
-  const creds = await loadCredentials().catch(() => ({}));
-  const workspaces = await loadWorkspaces().catch(() => ({ items: [], current_workspace_id: null }));
-  const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
-  const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
-  const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? "admin" : null);
-
-  if (global.help || rest.length === 0 || rest[0] === "help") {
-    printHelp(stdout, ui, {
-      version: VERSION,
-      env,
-      jsonMode: global.json,
-      authRole: resolvedAuthRole,
-    });
-    return 0;
-  }
-
-  const ctx = {
-    apiUrl: normalizeApiUrl(global.apiUrl || creds.api_url || DEFAULT_API_URL),
-    token: resolvedToken,
-    apiKey: resolvedApiKey,
-    authRole: resolvedAuthRole,
-    jsonMode: global.json,
-    noOpen: global.noOpen,
-    noInput: global.noInput,
-    stdout,
-    stderr,
-    env,
-    fetchImpl,
-  };
-
-  const command = rest[0];
-  const args = rest.slice(1);
-  const route = findRoute(command, args);
-
-  // Auth guard: only `login` is exempt. Doctor and install both interact with
-  // workspace state, so they require credentials before any HTTP call.
-  if (route && !AUTH_EXEMPT_ROUTES.has(route.key)) {
-    const auth = requireAuth(ctx);
-    if (!auth.ok) {
-      writeError(ctx, "AUTH_REQUIRED", AUTH_FAIL_MESSAGE, { printJson, writeLine, ui });
-      return 1;
+// Commander's built-in --version prints plain text and exits, which
+// can't satisfy `--version --json` or `--help --version → --version
+// wins`. Pre-scan argv so we render version ourselves.
+function maybePrintVersion(argv, stdout, jsonMode, env) {
+  for (const token of argv) {
+    if (token === "--") break;
+    if (token === "--version" || token === "-v") {
+      if (jsonMode) {
+        printJson(stdout, { version: VERSION });
+      } else {
+        printVersion(stdout, VERSION, {
+          noColor: Boolean(env.NO_COLOR && env.NO_COLOR.length > 0),
+          jsonMode: false,
+        });
+      }
+      return true;
     }
   }
+  return false;
+}
 
-  const core = createCoreHandlers(ctx, workspaces, {
+function detectJsonMode(argv) {
+  for (const token of argv) {
+    if (token === "--") return false;
+    if (token === "--json") return true;
+  }
+  return false;
+}
+
+function resolveGlobalApiUrl(argv, env) {
+  let api = null;
+  for (let i = 0; i < argv.length; i += 1) {
+    const t = argv[i];
+    if (t === "--") break;
+    if (t === "--api") { api = argv[i + 1] || null; break; }
+    if (t.startsWith("--api=")) { api = t.slice("--api=".length); break; }
+  }
+  return api || env.ZOMBIE_API_URL || env.API_URL || null;
+}
+
+function buildDeps() {
+  return {
+    apiHeaders,
     clearCredentials,
     createSpinner,
     newIdempotencyKey,
     openUrl,
-    parseFlags,
     printJson,
     printKeyValue,
     printSection,
@@ -119,182 +87,183 @@ export async function runCli(argv, io = {}) {
     saveWorkspaces,
     ui,
     writeLine,
-    apiHeaders,
+    writeError,
+  };
+}
+
+function installPreAction(program, ctx, state) {
+  program.hook("preAction", (thisCommand, actionCommand) => {
+    // Carry --no-open / --no-input / --json / --api from commander's
+    // globals into ctx so handlers see the operator's intent. Commander
+    // normalises --no-open to opts.open === false (similarly --no-input).
+    const opts = thisCommand.optsWithGlobals();
+    ctx.jsonMode = ctx.jsonMode || Boolean(opts.json);
+    ctx.noOpen = opts.open === false || opts.noOpen === true;
+    ctx.noInput = opts.input === false || opts.noInput === true;
+    if (opts.api) ctx.apiUrl = normalizeApiUrl(opts.api);
+
+    // Auth-guard: walk to the top-level command and exempt `login` only.
+    let root = actionCommand;
+    while (root.parent && root.parent.name() !== "zombiectl") root = root.parent;
+    if (AUTH_EXEMPT.has(root.name())) return;
+    const auth = requireAuth(ctx);
+    if (!auth.ok) {
+      state.exitCode = 1;
+      writeError(ctx, "AUTH_REQUIRED", AUTH_FAIL_MESSAGE, { printJson, writeLine, ui });
+      throw new CommanderError(1, "auth.required", AUTH_FAIL_MESSAGE);
+    }
   });
+}
+
+// commander.* error codes that map to POSIX "usage error" exit 2.
+// Commander itself uses 1 for these — the legacy CLI used 2, the
+// did-you-mean / unknown-subcommand tests rely on that contract.
+const COMMANDER_USAGE_CODES = new Set([
+  "commander.unknownCommand",
+  "commander.unknownOption",
+  "commander.invalidArgument",
+  "commander.missingArgument",
+  "commander.missingMandatoryOptionValue",
+  "commander.optionMissingArgument",
+  "commander.excessArguments",
+]);
+
+function exitFromCommanderError(err, state) {
+  if (err.code === "commander.help" || err.code === "commander.helpDisplayed") return 0;
+  if (state.exitCode !== 0) return state.exitCode;
+  if (COMMANDER_USAGE_CODES.has(err.code)) return 2;
+  return typeof err.exitCode === "number" ? err.exitCode : 1;
+}
+
+async function runPostActionAnalytics(lifecycle, state) {
+  const { ctx, analyticsClient, distinctId } = lifecycle;
+  const analyticsContext = getCliAnalyticsContext(ctx);
+  let eventDistinctId = distinctId;
+  if (state.exitCode === 0 && lifecycle.lastCommand === "login") {
+    const latestCreds = await loadCredentials().catch(() => ({}));
+    eventDistinctId = extractDistinctIdFromToken(latestCreds.token) || distinctId;
+    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
+      command: lifecycle.lastCommand,
+      ...analyticsContext,
+    });
+  }
+  if (state.exitCode === 0 && lifecycle.lastCommand === "workspace.add") {
+    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "workspace_created", {
+      command: lifecycle.lastCommand,
+      ...analyticsContext,
+    });
+  }
+  for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
+    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
+      command: lifecycle.lastCommand || "unknown",
+      ...analyticsContext,
+      ...queuedEvent.properties,
+    });
+  }
+}
+
+export async function runCli(argv, io = {}) {
+  const stdout = io.stdout || process.stdout;
+  const stderr = io.stderr || process.stderr;
+  const env = io.env || process.env;
+  const fetchImpl = io.fetchImpl || globalThis.fetch;
+
+  const jsonMode = detectJsonMode(argv);
+  const noColor = Boolean(env.NO_COLOR && env.NO_COLOR.length > 0);
+
+  printPreReleaseWarning(stderr, { noColor, jsonMode, ttyOnly: !stderr.isTTY });
+
+  if (maybePrintVersion(argv, stdout, jsonMode, env)) return 0;
+
+  // Bare `zombiectl` (no args) — commander defaults to a "missing
+  // command" error on stderr; tests + operators expect help on stdout
+  // with exit 0. Promote empty argv to `--help` so it routes through
+  // commander's normal help path.
+  const effectiveArgv = argv.length === 0 ? ["--help"] : argv;
+
+  const creds = await loadCredentials().catch(() => ({}));
+  const workspaces = await loadWorkspaces().catch(() => ({ items: [], current_workspace_id: null }));
+  const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
+  const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
+  const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? "admin" : null);
+
+  const explicitApi = resolveGlobalApiUrl(argv, env);
+  const ctx = {
+    apiUrl: normalizeApiUrl(explicitApi || creds.api_url || DEFAULT_API_URL),
+    token: resolvedToken,
+    apiKey: resolvedApiKey,
+    authRole: resolvedAuthRole,
+    jsonMode,
+    noOpen: false,
+    noInput: false,
+    stdout,
+    stderr,
+    env,
+    fetchImpl,
+  };
 
   const analyticsClient = await cliAnalytics.createCliAnalytics(env);
   const distinctId = extractDistinctIdFromToken(ctx.token);
 
-  const handlers = registerProgramCommands({
-    login: (routeArgs) => core.commandLogin(routeArgs),
-    logout: () => core.commandLogout(),
-    workspace: (routeArgs) => core.commandWorkspace(routeArgs),
-    doctor: () => core.commandDoctor(),
-    // External agent key management
-    agent: (routeArgs) => commandAgentModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printKeyValue,
-      printSection,
-      printTable,
-      writeLine,
-    }),
-    // Integration grant management
-    grant: (routeArgs) => commandGrantModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printTable,
-      writeLine,
-    }),
-    // Tenant-scoped: provider posture (get/set/reset), billing snapshot.
-    tenant: (routeArgs) => commandTenantModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printTable,
-      writeLine,
-    }),
-    // Tenant billing dashboard: `zombiectl billing show [--limit N] [--json]`.
-    billing: (routeArgs) => commandBillingModule(ctx, routeArgs, workspaces, {
-      parseFlags,
-      request,
-      apiHeaders,
-      ui,
-      printJson,
-      printTable,
-      writeLine,
-    }),
-    // Zombie commands
-    zombieInstall: (routeArgs) => commandZombieModule(ctx, ["install", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieList: (routeArgs) => commandZombieModule(ctx, ["list", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, printTable, writeLine, writeError,
-    }),
-    zombieStatus: (routeArgs) => commandZombieModule(ctx, ["status", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieKill: (routeArgs) => commandZombieModule(ctx, ["kill", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieStop: (routeArgs) => commandZombieModule(ctx, ["stop", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieResume: (routeArgs) => commandZombieModule(ctx, ["resume", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieDelete: (routeArgs) => commandZombieModule(ctx, ["delete", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieLogs: (routeArgs) => commandZombieModule(ctx, ["logs", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieSteer: (routeArgs) => commandZombieModule(ctx, ["steer", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieEvents: (routeArgs) => commandZombieModule(ctx, ["events", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
-    zombieCredential: (routeArgs) => commandZombieModule(ctx, ["credential", ...routeArgs], workspaces, {
-      parseFlags, request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError,
-    }),
+  const lifecycle = {
+    ctx, workspaces, deps: buildDeps(), analyticsClient, distinctId, lastCommand: null,
+  };
+
+  const handlers = buildHandlers(lifecycle);
+  const state = { exitCode: 0 };
+  const program = buildProgram({ handlers, version: VERSION, state });
+
+  program.exitOverride();
+  program.configureOutput({
+    writeOut: (s) => stdout.write(s),
+    writeErr: (s) => stderr.write(s),
   });
 
-  try {
-    if (route && handlers[route.key]) {
-      const entry = handlers[route.key];
-      const exitCode = await runCommand({
-        name: entry.name,
-        errorMap: entry.errorMap,
-        ctx,
-        deps: {
-          analyticsClient,
-          distinctId,
-          trackCliEvent: cliAnalytics.trackCliEvent,
-          printJson,
-          writeLine,
-          ui,
-        },
-        handler: () => entry.handler(args),
-      });
+  installPreAction(program, ctx, state);
 
-      const analyticsContext = getCliAnalyticsContext(ctx);
-      let eventDistinctId = distinctId;
-      if (exitCode === 0 && route.key === "login") {
-        const latestCreds = await loadCredentials();
-        eventDistinctId = extractDistinctIdFromToken(latestCreds.token) || distinctId;
-        cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, "user_authenticated", {
-          command: route.key,
-          ...analyticsContext,
-        });
-      }
-      if (exitCode === 0 && route.key === "workspace" && args[0] === "add") {
-        cliAnalytics.trackCliEvent(analyticsClient, distinctId, "workspace_created", {
-          command: route.key,
-          ...analyticsContext,
-        });
-      }
-      for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
-        cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
-          command: route.key,
-          ...analyticsContext,
-          ...queuedEvent.properties,
-        });
+  try {
+    await program.parseAsync(effectiveArgv, { from: "user" });
+  } catch (err) {
+    if (err instanceof CommanderError) {
+      const exitCode = exitFromCommanderError(err, state);
+      if (COMMANDER_USAGE_CODES.has(err.code)) {
+        try {
+          cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
+            command: lifecycle.lastCommand || "unknown",
+            error_code: err.code === "commander.unknownCommand" ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
+            exit_code: String(exitCode),
+            ...getCliAnalyticsContext(ctx),
+          });
+        } catch {
+          // Analytics failure is swallowed; the unknown-command UX is the
+          // headline. The finally block still shuts down the client.
+        }
       }
       return exitCode;
     }
-
-    // "Did you mean?" suggestion for unknown commands
-    const fullInput = [command, ...args].join(" ");
-    const suggestions = suggestCommand(fullInput);
-    if (ctx.jsonMode) {
-      writeError(ctx, "UNKNOWN_COMMAND", `unknown command: ${command}`, { printJson, writeLine, ui });
-    } else if (suggestions.length > 0) {
-      writeLine(stderr, ui.err(`unknown command: ${command}`));
-      writeLine(stderr);
-      writeLine(stderr, "The most similar commands are");
-      for (const s of suggestions) {
-        writeLine(stderr, `    ${s}`);
-      }
-    } else {
-      writeLine(stderr, ui.err(`unknown command: ${command}`));
-      writeLine(stderr, `Run 'zombiectl --help' for usage.`);
+    if (err instanceof InvalidArgumentError) {
+      writeLine(stderr, ui.err(`error: ${err.message}`));
+      return 2;
     }
-
     cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-      command,
-      error_code: "UNKNOWN_COMMAND",
-      exit_code: "2",
-      ...getCliAnalyticsContext(ctx),
-    });
-    return 2;
-  } catch (err) {
-    // Safety net for errors that escape runCommand — i.e., throws
-    // from outside the dispatch path (route lookup, registry build,
-    // ctx finalization, queued-event drain). runCommand owns
-    // ApiError / fetch-failed / unknown for handler bodies; reaching
-    // this catch means something blew up before or after dispatch.
-    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-      command: route?.key || command || "unknown",
+      command: lifecycle.lastCommand || "unknown",
       error_code: "UNEXPECTED",
       exit_code: "1",
       ...getCliAnalyticsContext(ctx),
     });
-    if (global.json) {
+    if (ctx.jsonMode) {
       printJson(stderr, { error: { code: "UNEXPECTED", message: String(err?.message ?? err) } });
     } else {
       writeLine(stderr, ui.err(`error: ${String(err?.message ?? err)}`));
     }
     return 1;
   } finally {
-    await cliAnalytics.shutdownCliAnalytics(analyticsClient);
+    try {
+      await runPostActionAnalytics(lifecycle, state);
+    } finally {
+      await cliAnalytics.shutdownCliAnalytics(analyticsClient);
+    }
   }
+
+  return state.exitCode;
 }

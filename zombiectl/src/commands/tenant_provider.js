@@ -19,7 +19,7 @@ const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
 
 // ── tenant provider show ─────────────────────────────────────────────────────
 
-export async function commandTenantProviderShow(ctx, _parsed, deps) {
+export async function commandTenantProviderShow(ctx, _parsed, _workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const res = await request(ctx, TENANT_PROVIDER_PATH, { method: "GET", headers: apiHeaders(ctx) });
@@ -60,7 +60,7 @@ export async function commandTenantProviderShow(ctx, _parsed, deps) {
 
 // ── tenant provider add ──────────────────────────────────────────────────────
 
-export async function commandTenantProviderAdd(ctx, parsed, deps) {
+export async function commandTenantProviderAdd(ctx, parsed, _workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const credentialRef = parsed.options["credential"];
@@ -105,7 +105,7 @@ export async function commandTenantProviderAdd(ctx, parsed, deps) {
 
 // ── tenant provider delete ───────────────────────────────────────────────────
 
-export async function commandTenantProviderDelete(ctx, _parsed, deps) {
+export async function commandTenantProviderDelete(ctx, _parsed, _workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const res = await request(ctx, TENANT_PROVIDER_PATH, {

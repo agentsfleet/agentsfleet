@@ -12,9 +12,13 @@
  * `VALIDATION_ERROR` branch in `workspace use` and `workspace delete`.
  */
 import { describe, expect, test } from "bun:test";
-import { makeBufferStream, makeNoop, ui, WS_ID } from "./helpers.js";
-import { createCoreHandlers } from "../src/commands/core.js";
-
+import {
+  createCoreHandlers,
+  makeBufferStream,
+  makeNoop,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 const INVALID_ID = "@@@@";
 
 function makeDeps(overrides = {}) {

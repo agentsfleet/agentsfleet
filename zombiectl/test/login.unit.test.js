@@ -1,7 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { makeNoop, makeBufferStream, ui } from "./helpers.js";
-import { createCoreHandlers } from "../src/commands/core.js";
-
+import {
+  createCoreHandlers,
+  makeBufferStream,
+  makeNoop,
+  ui,
+} from "./helpers.js";
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 const LOGIN_TOKEN = "tok_123";
 const DEFAULT_WORKSPACE_ID = "ws_signup_default";

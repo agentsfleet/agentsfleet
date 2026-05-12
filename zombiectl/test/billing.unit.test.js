@@ -1,9 +1,12 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { commandBilling } from "../src/commands/billing.js";
+import {
+  commandBilling,
+  makeBufferStream,
+  makeNoop,
+  ui,
+} from "./helpers.js";
 import { CHARGE_TYPE, PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.js";
-import { makeNoop, makeBufferStream, ui } from "./helpers.js";
-
 const BILLING_PATH = "/v1/tenants/me/billing";
 const CHARGES_PATH_PREFIX = "/v1/tenants/me/billing/charges";
 
@@ -55,7 +58,10 @@ test("billing without action: prints usage and exits 2", async () => {
   const code = await commandBilling(ctx, [], null, makeDeps());
   assert.equal(code, 2);
   assert.match(stderr.read(), /usage: zombiectl billing show/);
-  assert.match(stderr.read(), /--cursor TOKEN/);
+  // commander/POSIX convention: `<token>` is the literal-placeholder form
+  // (operator types a real token in that slot). The pre-commander shim
+  // emitted `--cursor TOKEN`; the new metavar follows the rest of the tree.
+  assert.match(stderr.read(), /--cursor <token>/);
 });
 
 test("billing unknown action: --json emits UNKNOWN_COMMAND error", async () => {
@@ -136,13 +142,13 @@ test("billing show: rejects bare --cursor (no value)", async () => {
 test("billing show: rejects empty --cursor with JSON error code", async () => {
   const stderr = makeBufferStream();
   const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: true };
-  // Use the real parseFlags so `--cursor=` resolves to options.cursor="".
-  const { parseFlags: realParseFlags } = await import("../src/program/args.js");
+  // buildParsed (via the commandBilling test shim) resolves `--cursor=`
+  // to options.cursor="" — same shape the pre-commander parseFlags emitted.
   const code = await commandBilling(
     ctx,
     ["show", "--cursor=", "--json"],
     null,
-    makeDeps({ parseFlagsImpl: realParseFlags }),
+    makeDeps(),
   );
   assert.equal(code, 2);
   assert.equal(JSON.parse(stderr.read()).error.code, "INVALID_CURSOR");

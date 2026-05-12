@@ -1,7 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { makeNoop, makeBufferStream, ui, WS_ID } from "./helpers.js";
-import { createCoreHandlers } from "../src/commands/core.js";
-
+import {
+  createCoreHandlers,
+  makeBufferStream,
+  makeNoop,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 const WS_ID_2 = "0195b4ba-8d3a-7f13-8abc-000000000099";
 
 function makeDeps(overrides = {}) {

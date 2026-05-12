@@ -1,7 +1,10 @@
 import { describe, test, expect } from "bun:test";
-import { makeNoop, makeBufferStream, ui } from "./helpers.js";
-import { createCoreHandlers } from "../src/commands/core.js";
-
+import {
+  createCoreHandlers,
+  makeBufferStream,
+  makeNoop,
+  ui,
+} from "./helpers.js";
 function makeDeps(overrides = {}) {
   return {
     clearCredentials: async () => {},

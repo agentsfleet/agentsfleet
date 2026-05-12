@@ -6,9 +6,8 @@ import {
   VALIDATION_ERROR,
 } from "../constants/cli-errors.js";
 
-export async function commandLogs(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
-  const parsed = parseFlags(args);
+export async function commandLogs(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
   const limit = parsed.options.limit || "20";
 
   const wsId = workspaces.current_workspace_id;

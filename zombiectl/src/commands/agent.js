@@ -1,38 +1,13 @@
-// External agent key management CLI.
-//
-// zombiectl agent add    --workspace <ws> --zombie <id> --name <name>
-// zombiectl agent list   --workspace <ws>
-// zombiectl agent delete --workspace <ws> <agent_id>
+// Re-export of the external-agent error map. The dispatcher was deleted
+// when the commander refactor landed (cli-tree.js wires `agent add/list/delete`
+// directly to the leaf handlers in agent_external.js).
 
-import { commandAgentAdd, commandAgentList, commandAgentDelete } from "./agent_external.js";
-import { writeError } from "../program/io.js";
-import { UNKNOWN_COMMAND } from "../constants/cli-errors.js";
-import { ACTION_ADD, ACTION_DELETE, ACTION_LIST } from "../constants/cli-actions.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 
 // Agent commands hit /v1/workspaces/{ws}/agent-keys (POST/GET/DELETE).
 // Server-side these can surface validation, conflict on duplicate
-// names, and not-found on delete. The codes are not yet stabilized in
-// OpenAPI for this surface, so we lean on AUTH_PRESET for now and
-// expand as the audit (§4) flags missing entries.
+// names, and not-found on delete. AUTH_PRESET covers the auth leg;
+// area-specific codes expand here as the audit surfaces them.
 export const errorMap = compose(AUTH_PRESET);
 
-export async function commandAgent(ctx, args, workspaces, deps) {
-  const { parseFlags, ui, writeLine } = deps;
-
-  const action = args[0];
-  const parsed = parseFlags(args.slice(1));
-
-  if (action === ACTION_ADD)    return commandAgentAdd(ctx, parsed, workspaces, deps);
-  if (action === ACTION_LIST)   return commandAgentList(ctx, parsed, workspaces, deps);
-  if (action === ACTION_DELETE) return commandAgentDelete(ctx, parsed, workspaces, deps);
-
-  if (ctx.jsonMode) {
-    writeError(ctx, UNKNOWN_COMMAND, `unknown agent subcommand: ${action ?? "(none)"}`, deps);
-  } else {
-    writeLine(ctx.stderr, ui.err("usage: zombiectl agent add    --workspace <ws> --zombie <id> --name <name>"));
-    writeLine(ctx.stderr, ui.err("       zombiectl agent list   --workspace <ws>"));
-    writeLine(ctx.stderr, ui.err("       zombiectl agent delete --workspace <ws> <agent-id>"));
-  }
-  return 2;
-}
+export { commandAgentAdd, commandAgentList, commandAgentDelete } from "./agent_external.js";

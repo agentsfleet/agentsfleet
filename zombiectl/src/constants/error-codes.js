@@ -10,7 +10,13 @@
  */
 
 // Billing
+export const ERR_BILLING_UNAVAILABLE = "UZ-BILLING-001";
 export const ERR_BILLING_CREDIT_EXHAUSTED = "UZ-BILLING-005";
+
+// Server-internal (database / runtime failures bubbling out as 5xx)
+export const ERR_INTERNAL_DB_UNAVAILABLE = "UZ-INTERNAL-001";
+export const ERR_INTERNAL_GENERIC = "UZ-INTERNAL-002";
+export const ERR_INTERNAL_SERVER_ERROR = "UZ-INTERNAL-003";
 
 // Vault / credentials (workspace-scoped credential store)
 export const ERR_VAULT_INVALID = "UZ-VAULT-001";
