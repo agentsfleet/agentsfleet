@@ -67,13 +67,14 @@ Standard set from `docs/TEMPLATE.md` applies. Additionally for this spec:
 
 ## Overview
 
-**Goal (testable):** Three acceptance suites (`zombiectl/test/acceptance/help-and-errors.spec.js`, `…/lifecycle-with-token.spec.js`, `…/lifecycle-after-login.spec.js`) run inside the existing repo (not as a separate package), drive the published-shape `zombiectl` CLI surface against live API, and gate two new CI jobs: `cli-acceptance-dev` (post-deploy-dev, worktree binary, targets `api-dev`) and `cli-acceptance-prod` (post-release, globally-installed npm binary, targets `api`).
+**Goal (testable):** Four acceptance suites (`help-and-errors.spec.js`, `lifecycle-with-token.spec.js`, `lifecycle-after-login.spec.js`, `flags-and-env.spec.js`) under `zombiectl/test/acceptance/` run inside the existing repo (not as a separate package), drive the published-shape `zombiectl` CLI surface against live API, and gate two new CI jobs: `cli-acceptance-dev` (post-deploy-dev, worktree binary, targets `api-dev`) and `cli-acceptance-prod` (post-release, globally-installed npm binary, targets `api`).
 
-The three suites cover three orthogonal auth contexts:
+The first three suites cover three orthogonal auth contexts; the fourth covers cross-cutting configuration surface (global flags, env vars, signal handling):
 
 1. **`help-and-errors.spec.js`** — no auth, no live API needed for most assertions. Help triplet (`zombiectl` / `zombiectl help` / `zombiectl -h`), version flag, invalid top-level command (`zombiectl pogo` → exit ≠ 0 with suggest-command), invalid subcommand for every command group (`zombiectl workspace pogo`, `zombiectl agent pogo`, etc.), missing required arg on every command that needs one (e.g. `zombiectl workspace use` with no id), and "auth-required command without credentials" → exit 1 with `not authenticated`. Live API only touched for the auth-guard assertion (and only to confirm the guard fires *before* any network call).
 2. **`lifecycle-after-login.spec.js`** — drives real `zombiectl login` against `api-dev` with a Playwright browser handshake, asserts `credentials.json` mode `0600` + 3-segment JWT, then runs the full read+write happy path using ONLY the persisted credentials (no `ZOMBIE_TOKEN` env): `doctor`, `workspace list`, `workspace show`, `tenant provider show`, `billing show`, `agent list`, `grant list`, `zombie list`, install `platform-ops`, `zombie status <id>`, lifecycle Stop → Resume → Kill. DEV-only.
 3. **`lifecycle-with-token.spec.js`** — Clerk-admin-minted JWT in `ZOMBIE_TOKEN`, no `credentials.json` on disk. Covers the lifecycle, the read-only sweep across every command surface that supports `list`/`show`, and the invalid-arg-value negative matrix (`zombiectl status nonexistent-id`, `zombiectl kill nonexistent-id`, `zombiectl workspace use nonexistent-id`, etc. — each must exit ≠ 0 with a clear error code mapped to a UZ-* registry entry). DEV + PROD.
+4. **`flags-and-env.spec.js`** — global-flag matrix and precedence (`--api`, `--json`, `--no-input`, `--no-open`, `--version`, `--help`/`-h` including combinations like `--version --help` and `--version --json`), env-var matrix and documented overrides (`ZOMBIE_API_URL`, `ZOMBIE_TOKEN`, `ZOMBIE_API_KEY`, `ZOMBIE_STATE_DIR`, `NO_COLOR`), and signal handling — SIGINT on `zombiectl login` with and without `--no-open` exits non-zero and never persists a partial `credentials.json`. DEV + PROD.
 
 **Problem:**
 
@@ -90,6 +91,7 @@ The three suites cover three orthogonal auth contexts:
 | File | Action | Why |
 |------|--------|-----|
 | `zombiectl/test/acceptance/help-and-errors.spec.js` | CREATE | No-auth surface: help triplet, version, invalid top-level command, invalid subcommand on every group, missing required arg on every command, auth-guard fires before any network call. Runs against DEV (worktree binary) AND PROD (npm-installed binary). |
+| `zombiectl/test/acceptance/flags-and-env.spec.js` | CREATE | Global-flag matrix (`--api`, `--json`, `--no-input`, `--no-open`, `--version`, `--help`/`-h`) including precedence combinations, env-var matrix (`ZOMBIE_API_URL`, `ZOMBIE_TOKEN`, `ZOMBIE_API_KEY`, `ZOMBIE_STATE_DIR`, `NO_COLOR`) including documented overrides, and signal handling (SIGINT on `zombiectl login` with and without `--no-open`). Runs against DEV + PROD. |
 | `zombiectl/test/acceptance/lifecycle-with-token.spec.js` | CREATE | `ZOMBIE_TOKEN` env injection. Lifecycle (install → status → logs → billing → stop → resume → kill) + read-only sweep across every command that supports `list`/`show` + invalid-arg-value negative matrix. DEV + PROD. |
 | `zombiectl/test/acceptance/lifecycle-after-login.spec.js` | CREATE | Drives `zombiectl login` end-to-end against live `api-dev` with a Playwright browser handshake. After handshake, runs the full read+write happy path (doctor, workspace list/show, tenant provider show, billing show, agent list, grant list, install platform-ops, status, Stop → Resume → Kill) using ONLY the persisted `credentials.json` — `ZOMBIE_TOKEN` is explicitly absent from every follow-on spawn. DEV-only; skipped against PROD until the M65_001 vault + Clerk-PROD-test-mode conditions are met. |
 | `zombiectl/test/acceptance/fixtures/clerk-admin.js` | CREATE | Minimal JS twin of `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts`. Implements `provisionUser`, `mintTokens`, `attachJwt` against the Clerk Backend API. Self-contained — no imports from the UI package. |
@@ -195,7 +197,65 @@ Three behavioral blocks under the same auth context (real `zombiectl login` → 
 
 **Implementation default:** every spawn in §5b/§5c constructs the child env explicitly — `ZOMBIE_STATE_DIR` is included, `ZOMBIE_TOKEN` is NOT (even if the parent test process has it set for some other reason). The negatives assertion in WS-E #C1 fires here too.
 
-### §6 — CI job wiring
+### §6 — Global-flag and environment-variable matrix (`flags-and-env.spec.js`)
+
+Four behavioral blocks covering the cross-cutting configuration surface the README documents.
+
+**§6a — Global-flag matrix and precedence (no auth needed).**
+
+| Invocation | Asserts |
+|---|---|
+| `zombiectl --version` | Exit 0; stdout token equals `package.json` `version` |
+| `zombiectl -v` | Equivalent to `--version` (same stdout) |
+| `zombiectl --version --json` | Exit 0; stdout parses as JSON with `version` key matching `package.json` |
+| `zombiectl --help` | Exit 0; stdout contains the help banner |
+| `zombiectl -h` | Equivalent to `--help` |
+| `zombiectl --help --json` | Exit 0; stdout parses as JSON (existing `printHelp` honors `jsonMode` — `cli.js:71-76`) |
+| `zombiectl --version --help` | Exit 0; `--version` wins because it short-circuits first (`cli.js:54-61`). Stdout matches version, NOT help body. **Regression test for the documented precedence.** |
+| `zombiectl --help --version` | Same as `--version --help` — order on the command line does NOT change precedence because the parser collects flags before dispatch. |
+
+**§6b — `--api` flag and `ZOMBIE_API_URL` env precedence (with auth, needs `ZOMBIE_TOKEN`).**
+
+Per `cli.js:80` (`apiUrl: normalizeApiUrl(global.apiUrl || creds.api_url || DEFAULT_API_URL)`), the order is: `--api` > `creds.api_url` (from `credentials.json`) > `DEFAULT_API_URL`. `ZOMBIE_API_URL` enters via `parseGlobalArgs` (which reads env). Three precedence assertions:
+
+| Invocation | Asserts |
+|---|---|
+| `ZOMBIE_API_URL=http://127.0.0.1:1 zombiectl --api https://api-dev.usezombie.com workspace list --json` | Exit 0 (hits the real API, NOT the unroutable env URL). Proves `--api` wins over `ZOMBIE_API_URL`. |
+| `ZOMBIE_API_URL=https://api-dev.usezombie.com zombiectl workspace list --json` (no `--api`) | Exit 0; proves `ZOMBIE_API_URL` is honored when `--api` is absent. |
+| `zombiectl workspace list --json` (no `--api`, no `ZOMBIE_API_URL`, but `credentials.json` carries `api_url`) | Exit 0; proves `creds.api_url` is honored as the third tier. (Sequenced after `lifecycle-after-login.spec.js §5a` — re-uses the same persisted creds.) |
+
+**§6c — Environment variable precedence and behavior.**
+
+| Invocation | Asserts |
+|---|---|
+| `ZOMBIE_TOKEN=<jwt> zombiectl workspace list --json` (no `credentials.json`) | Exit 0; proves `ZOMBIE_TOKEN` is honored when no creds on disk. |
+| `ZOMBIE_TOKEN=garbage` + `credentials.json` carrying a real token | Exit 0; CLI uses `credentials.json`'s token (per `cli.js:65`: `creds.token \|\| env.ZOMBIE_TOKEN`). README: "ZOMBIE_TOKEN — Auth token (overridden by login)". **Regression test for that documented override.** |
+| `ZOMBIE_API_KEY=<admin-key> zombiectl workspace list --json` (no `ZOMBIE_TOKEN`, no creds) | Exit 0 if a valid admin key is provisioned in vault; resolved as `apiKey` per `cli.js:66`, role `admin` per `cli.js:67`. (Skipped if the vault item is absent — surfaces in `global-setup.js` log.) |
+| `NO_COLOR=1 zombiectl --help` | Exit 0; stdout contains zero ANSI escape sequences (regex `/\x1b\[/` produces no matches). Per no-color.org spec, any non-empty value disables color (`cli.js:50`). |
+| `NO_COLOR= zombiectl --help` (empty string) | Stdout MAY contain ANSI codes — empty value means "color allowed" per the spec. |
+| `ZOMBIE_STATE_DIR=<tmpdir> zombiectl login --no-open --no-input --timeout-sec 60` | Resolved `credentials.json` written inside `<tmpdir>`, not `~/.config/zombie/`. Already used by every other test — this is the dedicated assertion. |
+
+**§6d — `--no-input` and `--no-open` behavior on `zombiectl login`.**
+
+| Invocation | Asserts |
+|---|---|
+| `zombiectl login --no-open --no-input --timeout-sec 60 --poll-ms 500` | Exit 0 after browser leg approves; stdout contains a parseable `login_url`; **the spec asserts NO browser was spawned** — verified by inspecting the child process tree before the test's own browser leg fires (no `chromium`/`Chrome`/`Safari` PIDs descended from the CLI's PID). |
+| `zombiectl login --no-input --timeout-sec 1 --poll-ms 100` (NO `--no-open`) | CLI attempts to spawn a browser via `openUrl`. On a headless CI runner the spawn fails silently — the test only asserts that the CLI itself reaches the polling loop (stdout contains the URL) and exits non-zero on the 1-second timeout. Not asserting browser spawn semantics — they're OS-dependent. |
+
+**§6e — SIGINT handling on `zombiectl login`.**
+
+Two scenarios, both DEV-only:
+
+| Scenario | Steps | Asserts |
+|---|---|---|
+| Ctrl+C during `--no-open` poll | Spawn `zombiectl login --no-open --no-input --timeout-sec 60 --poll-ms 500`; wait for first poll line on stdout; send SIGINT to the child PID; await exit | Exit code is non-zero (130 if the CLI emits the conventional SIGINT-derived code, OR any non-zero if it catches the signal and exits cleanly — spec asserts ≠ 0, not the specific value); `credentials.json` does NOT exist in the tmpdir-scoped `ZOMBIE_STATE_DIR`. |
+| Ctrl+C without `--no-open` | Spawn `zombiectl login --no-input --timeout-sec 60 --poll-ms 500`; wait for first poll line; send SIGINT | Same assertions: non-zero exit, no `credentials.json`. Any browser process the CLI spawned is allowed to remain open (cleanup is OS-dependent and out-of-scope). |
+
+**Implementation default:** the SIGINT tests use `child.kill("SIGINT")` from `node:child_process` instead of literal `^C` keystrokes. Same wire result, deterministic timing.
+
+**Implementation default:** if the CLI does NOT currently handle SIGINT gracefully (and instead exits via the default Node behavior), §6e exposes the gap — the test failure is the bug report, and a follow-on PR adds a signal handler. The spec asserts the EXPECTED behavior (clean exit + no `credentials.json`), not whatever the CLI does today.
+
+### §7 — CI job wiring
 
 `cli-acceptance-dev` (`.github/workflows/deploy-dev.yml`): sequenced after the existing `auth-e2e-dev`. Loads op:// secrets (Clerk DEV admin key + fixture-email vault items) AFTER the `npm install` / `bun install` step so a hostile postinstall has no secret context. Runs `node ./bin/zombiectl.js` against `ZOMBIE_API_URL=https://api-dev.usezombie.com`. Uploads any artifacts to `cli-acceptance-dev-${{ github.sha }}/` scoped to a `playwright-cli-report/` subdir — never the temp state dir.
 
@@ -205,7 +265,7 @@ Three behavioral blocks under the same auth context (real `zombiectl login` → 
 
 **Implementation default:** add a daily cron trigger to `cli-acceptance-prod` so backend changes that ship without a CLI release still re-exercise the published CLI against live PROD once per day. Cron expression: `0 13 * * *` UTC (matches existing scheduled-run cadence in the repo's other workflows; implementing agent confirms by grepping `.github/workflows/`).
 
-### §7 — Vulnerability audit (CLI-specific rows only)
+### §8 — Vulnerability audit (CLI-specific rows only)
 
 See WS-E below.
 
@@ -369,6 +429,17 @@ The exact rows of `READ_ONLY_COMMANDS`, `REQUIRES_IDENTIFIER`, `REQUIRES_POSITIO
 | `lifecycle-after-login.spec.js → every spawn after login has no ZOMBIE_TOKEN in env` | For every `runZombiectl` call in §5b/§5c, the constructed child env object MUST NOT contain a `ZOMBIE_TOKEN` key. Asserted by the helper inspecting the env it was handed before spawn. |
 | `runZombiectl never mutates process.env` (in-suite invariant, not a separate test) | Before/after snapshot of `process.env.ZOMBIE_TOKEN` around every spawn is identical to the value the suite started with. WS-E #C1 regression. |
 | `cli-acceptance-prod first action: zombiectl --version equals package.json version` | The just-installed CLI's `--version` output equals the `version` field in the published `package.json`. Catches npm replication lag. |
+| `flags-and-env.spec.js §6a → --version short-circuits before --help` | `zombiectl --version --help` and `zombiectl --help --version` both exit 0 with stdout matching the version string (NOT the help body). Regression for the documented precedence in `cli.js:54-77`. |
+| `flags-and-env.spec.js §6a → --version --json emits JSON` | `zombiectl --version --json` exits 0; stdout parses as JSON; the parsed object has key `version` matching `package.json`. |
+| `flags-and-env.spec.js §6a → --help --json emits JSON` | `zombiectl --help --json` exits 0; stdout parses as JSON (existing `printHelp(stdout, …, { jsonMode: global.json })`). |
+| `flags-and-env.spec.js §6b → --api overrides ZOMBIE_API_URL` | `ZOMBIE_API_URL=http://127.0.0.1:1 zombiectl --api <real-api-dev> workspace list --json` exits 0 (hits the real API, not the unroutable env value). |
+| `flags-and-env.spec.js §6b → ZOMBIE_API_URL honored when --api absent` | `ZOMBIE_API_URL=<real-api-dev> zombiectl workspace list --json` (no `--api`) exits 0. |
+| `flags-and-env.spec.js §6c → credentials.json overrides ZOMBIE_TOKEN` | With a valid `credentials.json` AND `ZOMBIE_TOKEN=garbage` in env, `zombiectl workspace list --json` exits 0 (creds wins). Regression for the README's "Auth token (overridden by login)" claim. |
+| `flags-and-env.spec.js §6c → ZOMBIE_API_KEY auths as admin` | With a vault-provisioned admin key in `ZOMBIE_API_KEY` and no `ZOMBIE_TOKEN`/creds, `zombiectl workspace list --json` exits 0. Skipped if the vault item is absent. |
+| `flags-and-env.spec.js §6c → NO_COLOR disables ANSI codes` | `NO_COLOR=1 zombiectl --help` stdout contains zero `\x1b[` escape sequences. |
+| `flags-and-env.spec.js §6d → --no-open does NOT spawn a browser` | During `zombiectl login --no-open --no-input`, the child process tree contains zero `chromium`/`Chrome`/`Safari` PIDs descended from the CLI's PID. Stdout still contains a parseable `login_url`. |
+| `flags-and-env.spec.js §6e → SIGINT on `zombiectl login --no-open` exits cleanly` | Spawn the CLI, await first poll line on stdout, send `child.kill("SIGINT")`. Asserts: child exits with non-zero code; `credentials.json` does NOT exist in the tmpdir-scoped `ZOMBIE_STATE_DIR`. |
+| `flags-and-env.spec.js §6e → SIGINT on `zombiectl login` (no --no-open) exits cleanly` | Same as above but with `--no-open` omitted. Browser-process cleanup not asserted (OS-dependent). |
 
 Negative tests — `help-and-errors.spec.js` covers the parse + auth-guard negatives; `§4c` covers the auth-required invalid-arg-value negatives. Every Failure Mode row maps to either an existing positive test or one of the negative-matrix sweeps above.
 
@@ -390,6 +461,12 @@ Regression tests — every existing `zombiectl/test/*.test.js` MUST continue to 
 - [ ] Read-only sweep covered in BOTH auth contexts (items 4 + 8) — verify: each of `lifecycle-with-token.spec.js` and `lifecycle-after-login.spec.js` iterates `READ_ONLY_COMMANDS` (`grep -c "READ_ONLY_COMMANDS" zombiectl/test/acceptance/{lifecycle-with-token,lifecycle-after-login}.spec.js` is 1:1).
 - [ ] Invalid-arg-value matrix (item 10) — verify: `grep -c "expectInvalidArgValue" zombiectl/test/acceptance/lifecycle-with-token.spec.js` ≥ number of rows in `REQUIRES_IDENTIFIER`; each `expectedErrorCode` is registered in `src/errors/error_registry.zig`.
 - [ ] Persisted-credentials path proven without `ZOMBIE_TOKEN` (items 6, 9) — verify: in `lifecycle-after-login.spec.js`, every spawn after §5a passes an env that explicitly excludes `ZOMBIE_TOKEN`. Asserted by the helper.
+- [ ] Global-flag combinations (§6a) — verify: `flags-and-env.spec.js` has explicit tests for `--version --help` (version wins), `--version --json` (JSON shape), `--help --json` (JSON shape).
+- [ ] `--api` and `ZOMBIE_API_URL` precedence (§6b) — verify: both precedence assertions are present in `flags-and-env.spec.js`.
+- [ ] `credentials.json` overrides `ZOMBIE_TOKEN` env (§6c) — verify: `grep -n "garbage\|overrides.*ZOMBIE_TOKEN\|creds.*wins" zombiectl/test/acceptance/flags-and-env.spec.js`.
+- [ ] `NO_COLOR` regression (§6c) — verify: `grep -n "NO_COLOR" zombiectl/test/acceptance/flags-and-env.spec.js`.
+- [ ] `--no-open` browser-suppression assertion (§6d) — verify: `grep -n "chromium\|process.tree\|no.*browser" zombiectl/test/acceptance/flags-and-env.spec.js` ≥ 1 match.
+- [ ] SIGINT regression (§6e) — verify: `grep -c "SIGINT\|child.kill" zombiectl/test/acceptance/flags-and-env.spec.js` ≥ 2 (both `--no-open` and bare `login`).
 - [ ] WS-E #C1 regression: captured stdout/stderr never contain the minted JWT substring — verify: `grep -c "expect.*not.toContain.*sessionJwt" zombiectl/test/acceptance/*.spec.js` ≥ 2.
 - [ ] WS-E #C2 mitigation: op:// load step in both workflows is sequenced AFTER `npm i` / `bun install` — verify: `grep -n -A2 "1password/load-secrets-action" .github/workflows/{deploy-dev,post-release}.yml` shows it appearing later than the install step in YAML line order.
 - [ ] WS-E #C3 regression: `credentials.json` mode 0600 assertion present — verify: `grep -n "0o600" zombiectl/test/acceptance/lifecycle-after-login.spec.js`.
