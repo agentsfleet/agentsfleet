@@ -1,4 +1,8 @@
 const routes = [
+  // `zombiectl help` is an alias for bare `zombiectl` / `zombiectl --help`.
+  // cli.js short-circuits on this route key (and on the global.help flag)
+  // before dispatch; no command-registry entry is needed.
+  { key: "help", match: (cmd) => cmd === "help" },
   { key: "login", match: (cmd) => cmd === "login" },
   { key: "logout", match: (cmd) => cmd === "logout" },
   { key: "workspace", match: (cmd) => cmd === "workspace" },
