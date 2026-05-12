@@ -102,7 +102,6 @@ function writeCache(fixtures: MintedFixture[]): void {
       clerkUserId: f.clerkUserId,
       sessionId: f.sessionId,
       sessionJwt: f.sessionJwt,
-      cookieJwt: f.cookieJwt,
     };
   }
   fs.writeFileSync(JWT_CACHE_PATH, JSON.stringify(cache, null, 2));

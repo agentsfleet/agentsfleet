@@ -14,7 +14,11 @@
  */
 import { expect, type Page } from "@playwright/test";
 
-const INSTALL_TIMEOUT_MS = 15_000;
+// 30s, not 15s — the dashboard's `installZombieAction` is a Next.js Server
+// Action that compiles on first hit under `next dev --turbopack`. Cold-start
+// observed at ~18s in local runs; CI is in the same ballpark. A tighter
+// timeout false-fails the spec without exercising any product behavior.
+const INSTALL_TIMEOUT_MS = 30_000;
 
 function fixtureTriggerMd(name: string): string {
   return [
