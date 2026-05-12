@@ -654,6 +654,71 @@ contract):**
   convention). Documented in `docs/AUTH.md`'s "CLI fixture identity
   carve-out" subsection.
 
+### Commander refactor (session 2 → session 4, landed under this spec)
+
+Implementation of the spec uncovered that the hand-rolled `parseFlags` /
+`printHelp` dispatcher in `src/program/` had grown to the point where
+adding the §6 flags-and-env matrix would have doubled it. Captain
+greenlit a parser swap mid-spec. The work landed as part of this PR
+(commits `9071d5c1` atomic swap + the constants/cleanup tail) and the
+following points document what changed for future readers:
+
+- **Parser swap.** `parseFlags` and the bespoke option-walker are deleted;
+  every command is declared once in `src/program/cli-tree.js` using
+  `commander@^14.0.3`. Every option that takes a value runs through
+  `src/program/validators.js` (uuidv7, integer-with-range, duration,
+  cursor opacity, actor-pattern, file-exists). Inline `if (typeof x !==
+  ...)` checks in handlers are gone — the validator is the single source
+  of truth and the handler observes already-coerced values.
+- **Help-output shape.** `printHelp` is deleted. `src/program/zombie_help.js`
+  defines a `ZombieHelp` subclass of `commander.Help` that owns rendering
+  for every level (root, command-group, leaf command). This is the only
+  surface that talks to the user about `--option <value>` so the metavar
+  convention is enforced in one place.
+- **Test-only adapters in `test/helpers.js` are intentional.** The shims
+  `buildParsed`, `commandZombieDispatch`, `createCoreHandlers`,
+  `commandBilling`, `commandTenant` exist so the existing direct-handler
+  unit tests still verify leaf behavior without re-driving commander for
+  every assertion. They are NOT RULE NLR violations: they are test-suite
+  adapters that translate a `{positionals, options}` shape into the
+  same handler call commander makes in production. The production
+  dispatch path goes commander → action closure → handler with no
+  branching. A future reviewer who sees them in `test/helpers.js` should
+  recognise the file as test scaffolding, not parallel production code.
+- **`[--option <value>]` metavar convention.** Every option that takes a
+  value declares its angle-bracket metavar in `cli-tree.js`
+  (`--limit <n>`, `--cursor <token>`, `--workspace <id>`, `--credential
+  <name>`, `--model <override>`, `--from <path>`, `--since <duration>`,
+  `--actor <pattern>`, `--timeout-sec <n>`, `--poll-ms <n>`, `--name
+  <s>`). The convention surfaces three ways: in `zombiectl <cmd> --help`
+  bodies, in validator error messages ("`--limit` requires a value
+  (e.g. --limit 25)"), and in README examples. End-to-end coverage that
+  every option round-trips (commander parses → validator validates →
+  handler observes) lives in `test/acceptance/options-metavar.spec.js`.
+- **Captain's 20-item review (May 13, 2026).** A line-by-line review of
+  the post-swap diff produced 20 findings. 8 landed as code (4 new
+  constants modules, URL constants in `api-paths.js`, workspace
+  credentials placeholder rewording, `VERSION` read from `package.json`
+  at runtime); the remaining 12 were declined with rationale (single-
+  file usage, convention call, external surface coordinated separately,
+  built-in literal). The full table with resolutions and fix locations
+  is in the PR's `## Session notes` block.
+- **Barrel-collapse cleanup (RULE ORP).** The post-swap dead-code sweep
+  retired `src/commands/agent_external.js` and `src/commands/tenant_provider.js`
+  — both files were single-export barrels into `agent.js` / `tenant.js`
+  respectively, and the swap eliminated the dispatcher branch that
+  warranted the split. The split-by-verb files were merged back into the
+  primary file for each verb-group. `test/browser.unit.test.js` (a
+  redundant unit test fully covered by `test/lib/browser.unit.test.js`)
+  was deleted in the same pass; three unused exports were trimmed from
+  `src/program/http-client.js`.
+- **`VERSION` read from `package.json` at runtime.** `src/cli.js` no
+  longer carries a hardcoded `VERSION = "0.34.0"` literal. It reads
+  `zombiectl/package.json` at module load and uses `pkg.version`. The
+  `make sync-version` target is now a two-file rewrite (`build.zig.zon`
+  + `zombiectl/package.json`) instead of three; `make check-version`
+  still passes.
+
 ---
 
 ## Out of Scope
@@ -683,7 +748,7 @@ contract):**
 
 9. **Dispatcher ordering: workspace-context check before arg-validation.** `help-and-errors.spec.js` couldn't host the missing-arg sweep because without state the error lands as "no workspace selected" instead of "missing argument". The sweep moved to `lifecycle-with-token.spec.js` where state exists. A CLI hygiene PR can re-order the dispatcher so arg-validation precedes workspace-context resolution.
 
-10. **`printHelp(jsonMode)` only affects the version line, not the help body.** The JSON-formatted help body promised in the spec is not implemented today (`printHelp` accepts the flag but only forwards it to the version-line branch). Follow-on: render a structured command list in JSON mode (`--help --json`).
+10. **`printHelp(jsonMode)` only affects the version line, not the help body.** The JSON-formatted help body promised in the spec is not implemented today (`printHelp` accepts the flag but only forwards it to the version-line branch). Follow-on: render a structured command list in JSON mode (`--help --json`). **✅ Resolved (Commander refactor):** `printHelp` is deleted; `ZombieHelp` (a `commander.Help` subclass in `src/program/zombie_help.js`) renders the text body. A structured `--help --json` rendering remains a future enhancement — the divergent code path that prompted this row no longer exists.
 
 11. **Bare-login SIGINT case (no `--no-open`) skipped locally.** `openUrl(stub_login_url)` pops a browser tab on macOS dev machines. The `--no-open` variant covers the same handler invariant. CI is headless so this isn't a CI gap; a follow-on can add a `ZOMBIE_ACCEPTANCE_INCLUDE_BARE_LOGIN` env gate (or use a `data:`/`about:blank` stub `login_url`) for local SIGINT coverage.
 
@@ -691,9 +756,9 @@ contract):**
 
 13. **`agent` (CLI) vs `agent-keys` (API) naming.** CLI groups by verb (`zombiectl agent {add,list,delete}`); API groups by resource (`/v1/workspaces/{ws}/agent-keys[/{id}]`). Both refer to the same `core.agent_keys` table. Documented in the AUTH.md "CLI fixture identity carve-out". Future alignment options: rename the CLI to `agentkey` (breaking CLI users) or the API to `/agents` (breaking API consumers); neither has a forcing function today.
 
-14. **`validateRequiredId` wiring complete for ID-taking commands touched here.** The kill/stop/resume/delete/logs (zombie), agent delete, grant delete (grant_id + zombie_id), and workspace use/delete handlers all now validate the positional id client-side. Commands not touched in this PR (e.g. credential subcommands inside `zombie_credential.js`) MAY still skip validation — RULE UFS extension: a follow-on hygiene PR can grep `src/commands/` for positional id arguments that don't run through `validateRequiredId` and tighten.
+14. **`validateRequiredId` wiring complete for ID-taking commands touched here.** The kill/stop/resume/delete/logs (zombie), agent delete, grant delete (grant_id + zombie_id), and workspace use/delete handlers all now validate the positional id client-side. Commands not touched in this PR (e.g. credential subcommands inside `zombie_credential.js`) MAY still skip validation — RULE UFS extension: a follow-on hygiene PR can grep `src/commands/` for positional id arguments that don't run through `validateRequiredId` and tighten. **✅ Resolved (Commander refactor):** every option that takes a value, and every positional id argument, is declared once in `src/program/cli-tree.js` and validated by `src/program/validators.js` before the handler runs. The "scatter" of inline validation across handlers is gone — handlers observe coerced values only.
 
-15. **CLI constants centralised** in `src/constants/{cli-errors,cli-actions,cli-flags}.js`. The handlers this PR touches read from them; other files (tenant.js, billing.js, zombie_credential.js, zombie_events.js, zombie_steer.js, core-ops.js) still carry inline string literals. RULE UFS hygiene PR: wire them everywhere.
+15. **CLI constants centralised** in `src/constants/{cli-errors,cli-actions,cli-flags}.js`. The handlers this PR touches read from them; other files (tenant.js, billing.js, zombie_credential.js, zombie_events.js, zombie_steer.js, core-ops.js) still carry inline string literals. RULE UFS hygiene PR: wire them everywhere. **✅ Resolved (Captain's 20-item review, session 4):** the constants surface expanded with four new modules — `src/constants/{analytics-events,zombie-status,doctor-checks,auth-roles}.js` — and URL constants in `src/lib/api-paths.js` (`HEALTHZ_PATH`, `AUTH_SESSIONS_PATH`, `WORKSPACES_COLLECTION_PATH`, `TENANT_BILLING_PATH`, `TENANT_PROVIDER_PATH`, `HEALTHZ_STATUS_OK`). Wired into tenant.js, billing.js, core.js, core-ops.js, workspace.js. The remaining inline literals (single-file usages, convention strings, built-ins like `"utf8"` / `"SIGINT"`) were declined with rationale in the 20-item review.
 
 ---
 
