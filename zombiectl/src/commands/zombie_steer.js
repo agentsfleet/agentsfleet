@@ -15,6 +15,7 @@
 
 import { wsZombieMessagesPath, wsZombieEventsPath, wsZombieEventsStreamPath } from "../lib/api-paths.js";
 import { streamGet as defaultStreamGet } from "../lib/sse.js";
+import { EVENT_STATUS } from "../constants/event-status.js";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
@@ -73,7 +74,7 @@ export async function commandSteer(ctx, parsed, workspaces, deps) {
     writeLine(ctx.stderr, ui.err(`message failed: ${outcome.kind}${outcome.detail ? ` — ${outcome.detail}` : ""}`));
   }
 
-  return outcome.kind === "complete" && outcome.status === "processed" ? 0 : 1;
+  return outcome.kind === "complete" && outcome.status === EVENT_STATUS.PROCESSED ? 0 : 1;
 }
 
 async function tailEventStream(ctx, wsId, zombieId, eventId, deps, streamGet) {
@@ -139,7 +140,7 @@ function eventIdToSince(eventId) {
 }
 
 function isTerminal(status) {
-  return status === "processed" || status === "agent_error" || status === "gate_blocked";
+  return status === EVENT_STATUS.PROCESSED || status === EVENT_STATUS.AGENT_ERROR || status === EVENT_STATUS.GATE_BLOCKED;
 }
 
 function buildBearer(ctx) {
