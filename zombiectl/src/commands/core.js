@@ -2,6 +2,7 @@ import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.js";
 import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.js";
+import { SIGINT } from "../constants/signals.js";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
@@ -98,7 +99,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
   // credentials.json. Scoped: registered at entry, removed in finally.
   const interrupt = new AbortController();
   const onSigint = () => interrupt.abort();
-  process.on("SIGINT", onSigint);
+  process.on(SIGINT, onSigint);
 
   const created = await request(ctx, AUTH_SESSIONS_PATH, {
     method: "POST",
@@ -190,7 +191,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
     spinner.fail();
     throw err;
   } finally {
-    process.removeListener("SIGINT", onSigint);
+    process.removeListener(SIGINT, onSigint);
   }
 
   if (interrupt.signal.aborted) return signalInterrupt();
