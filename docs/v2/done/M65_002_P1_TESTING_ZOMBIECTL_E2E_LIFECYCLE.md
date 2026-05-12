@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M65
 **Workstream:** 002
 **Date:** May 12, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — M65_001 ships dashboard acceptance gates on every deploy. The published CLI (`@usezombie/zombiectl`) has no equivalent: today's `zombiectl/test/**` files are unit + mock-API integration runs. A regression in the CLI's auth handoff, install, or lifecycle path against the real `api-dev`/`api` ships to npm undetected until a user reports it. This spec adds the same shape of gate for the CLI surface — DEV against the worktree binary on every backend deploy, PROD against the just-published npm tarball on every release.
 **Categories:** TESTING, SECURITY
 **Batch:** B1 — no parallel workstreams in M65_002. Sequenced after M65_001 because it consumes the same `op://VAULT/e2e-fixtures/{regular,admin}/email` vault items and the same `regular` Clerk fixture identity.
@@ -576,7 +576,83 @@ The implementation PR (separate milestone, separate branch) runs the full chain.
 
 ## Verification Evidence
 
-Filled in by the implementation PR — not this spec PR.
+**Local smoke (May 12, 2026 — implementation PR):**
+
+```
+zombiectl/test/acceptance/ (ZOMBIE_ACCEPTANCE_TARGET=http://127.0.0.1:1)
+  → 24 pass, 2 skip (lifecycle-with-token + lifecycle-after-login both skip
+    cleanly on non-https / dashboard-URL-unset target)
+
+zombiectl bun test (existing unit + mock-integration)
+  → 592 pass, 1 skip, 0 fail (927 expect calls)
+
+zombiectl bun run lint
+  → 0 warnings, 0 errors. Runtime import audit passed.
+
+Length cap (350L per file):
+  zombie.js              322 (factored commandLogs → zombie_logs.js)
+  lifecycle-with-token.spec.js 305
+  lifecycle-after-login.spec.js 245
+  workspace.js           234
+  agent_external.js      136
+  grant.js               117
+  validate.js             35
+```
+
+CI runs (`cli-acceptance-dev` on `deploy-dev.yml`, `cli-acceptance-prod` on
+`post-release.yml` + daily cron `0 13 * * *`): land on the PR's first push;
+linked from the PR session-notes block once green.
+
+**Deviations from the original spec (resolved, not deferred):**
+
+1. **uuidv7 library swap landed (§4c2 default).** `validate.js` now requires
+   uuidv7 via the `uuid` npm package (`validate` + `version === 7`); the old
+   permissive regex was removed in the same commit (RULE NLG). Error stem
+   updated to name uuidv7 with an example.
+2. **`validateRequiredId` wired into every ID-taking handler.** Originally
+   only `workspace use`/`workspace delete` validated client-side; the §4c2
+   "no network call on invalid format" invariant was scoped to those two
+   rows. Now zombie kill/stop/resume/delete/logs, agent delete, and grant
+   delete all validate the positional id before any dispatch — §4c2 sweep
+   covers every `REQUIRES_IDENTIFIER` row.
+3. **`agent {add,list,delete}` default to current workspace.** Previously
+   required `--workspace <id>` explicitly; now falls back to
+   `workspaces.current_workspace_id` (consistent with zombie commands).
+4. **CLI constants extraction (RULE UFS).** New
+   `src/constants/{cli-errors,cli-actions,cli-flags}.js` centralise error
+   codes (10), action verbs (17), and option names (17). Wired into the
+   files this PR touches: zombie.js, zombie_logs.js, workspace.js,
+   agent.js, agent_external.js, grant.js.
+5. **`commandLogs` factored.** Moved to `src/commands/zombie_logs.js` to
+   keep `zombie.js` under the 350-line gate after the added validation.
+6. **§4 `getStatus` uses `list --json` + client filter.** The CLI's
+   `zombiectl status` ignores positional args and lists all zombies in
+   the workspace — there is no per-zombie status detail command. The
+   lifecycle fixture filters client-side until a CLI hygiene PR adds a
+   per-zombie GET-by-id command.
+7. **§4b' empty-list sweep narrowed to `zombie list`.** Only
+   `cleanWorkspaceZombies` provably empties the relevant collection at
+   suite time; workspace/agent/grant lists carry shared-tenant residual
+   state across CI runs. Surfacing per-suite tenant teardown as Discovery
+   (out of scope per Captain's inherited deferral).
+8. **§3-residual missing-arg sweep lives in `lifecycle-with-token`.**
+   `help-and-errors.spec.js` couldn't host it: the CLI's dispatcher checks
+   workspace-context BEFORE arg-validation, so without state the missing-arg
+   message is masked. Surfaced as Discovery: a CLI hygiene PR can reorder
+   the dispatcher.
+
+**Architectural realities documented (not deferred — these are server
+contract):**
+
+- `workspace delete` is local-only by design: the server has **no DELETE
+  endpoint** at `/v1/tenants/me/workspaces/{id}`. The CLI filters the
+  locally-cached list. Server-side deletion (if/when added) is a separate
+  spec.
+- `agent` (CLI verb-group) vs `agent-keys` (API resource path): both refer
+  to the same `core.agent_keys` table. The CLI groups by verb for
+  ergonomics (`zombiectl agent add`); the API groups by resource (REST
+  convention). Documented in `docs/AUTH.md`'s "CLI fixture identity
+  carve-out" subsection.
 
 ---
 
@@ -602,6 +678,22 @@ Filled in by the implementation PR — not this spec PR.
 5. **`postinstall.mjs` scrutiny.** `cli-acceptance-prod` is the first job to run `@usezombie/zombiectl`'s postinstall under CI with secrets in scope. Worth a separate security pass on `scripts/postinstall.mjs` — what does it read, what does it write, what does it phone home about. Surface findings in the PR; landing a fix is a separate spec if needed.
 6. **CLI/backend ID-format invariant mismatch.** The CLI's `validate.js` accepts any UUID format OR a 4-128 char alphanumeric ID; the backend's `src/types/id_format.zig` generates strict uuidv7 (`generateZombieId`, `generateWorkspaceId`, etc. → `allocUuidV7`) AND validates incoming IDs via `isUuidV7`. The CLI is more permissive than the backend invariant. Captain's preference (recorded in §4c2): swap the CLI validator to a uuidv7-aware library if supply-chain posture allows. If the library swap lands in this milestone, this Discovery item is closed. If it doesn't, the mismatch is documented here for a follow-on hygiene PR — risk is that the CLI happily accepts a uuidv4 from a user (e.g. copy-pasted from another system) and only the backend reports the 404, costing one stressed-API call per mistake. A tightened CLI validator catches it client-side.
 7. **Empty-list message convention gaps.** `workspace.js:95` shows the canonical "no \<items\>" pattern (`ui.info("no workspaces")`). Spec §4b' / §5b' will sweep every `list` command and surface any that does NOT emit the standard stem (e.g. silently exits with no output, or emits a different stem). Each gap is a CLI bug to fix in a follow-on PR — the spec asserts the EXPECTED behavior, and a missing implementation surfaces as a test failure with a clear name. Implementing agent records each gap as a Discovery row in the implementation PR's session notes.
+
+8. **`zombiectl status` ignores positional id.** Today `zombiectl status` lists all zombies in the current workspace; the positional id is silently dropped. The lifecycle fixture filters client-side via `list --json`. Follow-on: add a per-zombie GET-by-id command in the CLI (`zombiectl status <id>` should return a single envelope, not the full list).
+
+9. **Dispatcher ordering: workspace-context check before arg-validation.** `help-and-errors.spec.js` couldn't host the missing-arg sweep because without state the error lands as "no workspace selected" instead of "missing argument". The sweep moved to `lifecycle-with-token.spec.js` where state exists. A CLI hygiene PR can re-order the dispatcher so arg-validation precedes workspace-context resolution.
+
+10. **`printHelp(jsonMode)` only affects the version line, not the help body.** The JSON-formatted help body promised in the spec is not implemented today (`printHelp` accepts the flag but only forwards it to the version-line branch). Follow-on: render a structured command list in JSON mode (`--help --json`).
+
+11. **Bare-login SIGINT case (no `--no-open`) skipped locally.** `openUrl(stub_login_url)` pops a browser tab on macOS dev machines. The `--no-open` variant covers the same handler invariant. CI is headless so this isn't a CI gap; a follow-on can add a `ZOMBIE_ACCEPTANCE_INCLUDE_BARE_LOGIN` env gate (or use a `data:`/`about:blank` stub `login_url`) for local SIGINT coverage.
+
+12. **`workspace delete` is local-only because the server exposes no DELETE endpoint.** `/v1/tenants/me/workspaces` is GET-only. The CLI filters the locally-cached list. Adding server-side workspace deletion (and a corresponding CLI call) is a separate spec — risk is that local-only delete diverges from server state if the operator deletes via dashboard but the CLI's `workspaces.json` still lists the workspace.
+
+13. **`agent` (CLI) vs `agent-keys` (API) naming.** CLI groups by verb (`zombiectl agent {add,list,delete}`); API groups by resource (`/v1/workspaces/{ws}/agent-keys[/{id}]`). Both refer to the same `core.agent_keys` table. Documented in the AUTH.md "CLI fixture identity carve-out". Future alignment options: rename the CLI to `agentkey` (breaking CLI users) or the API to `/agents` (breaking API consumers); neither has a forcing function today.
+
+14. **`validateRequiredId` wiring complete for ID-taking commands touched here.** The kill/stop/resume/delete/logs (zombie), agent delete, grant delete (grant_id + zombie_id), and workspace use/delete handlers all now validate the positional id client-side. Commands not touched in this PR (e.g. credential subcommands inside `zombie_credential.js`) MAY still skip validation — RULE UFS extension: a follow-on hygiene PR can grep `src/commands/` for positional id arguments that don't run through `validateRequiredId` and tighten.
+
+15. **CLI constants centralised** in `src/constants/{cli-errors,cli-actions,cli-flags}.js`. The handlers this PR touches read from them; other files (tenant.js, billing.js, zombie_credential.js, zombie_events.js, zombie_steer.js, core-ops.js) still carry inline string literals. RULE UFS hygiene PR: wire them everywhere.
 
 ---
 
