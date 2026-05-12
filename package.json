@@ -7,6 +7,6 @@
     "ui/packages/design-system"
   ],
   "devDependencies": {
-    "@redocly/cli": "^2.30.4"
+    "@redocly/cli": "^2.30.5"
   }
 }
