@@ -73,13 +73,17 @@ export async function provisionUser(clerkSecret, opts) {
 export async function mintTokens(clerkSecret, clerkUserId, opts) {
   const session = await clerkRequest(clerkSecret, "POST", "/sessions", { user_id: clerkUserId });
   const ttl = opts?.ttlSeconds ?? SESSION_TOKEN_TTL_SECONDS;
-  const template = await clerkRequest(
-    clerkSecret,
-    "POST",
-    `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
-    { expires_in_seconds: ttl },
-  );
-  return { sessionId: session.id, sessionJwt: template.jwt };
+  // Two tokens per session: the template-minted JWT goes to the backend as
+  // Bearer auth (ZOMBIE_TOKEN), and the default (no-template) JWT goes into
+  // the `__session` cookie so clerkMiddleware accepts the dashboard request.
+  // Parallel mint matches the dashboard suite's posture verbatim.
+  const [template, standard] = await Promise.all([
+    clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
+      { expires_in_seconds: ttl }),
+    clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens`,
+      { expires_in_seconds: ttl }),
+  ]);
+  return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
 }
 
 export async function attachJwt(clerkSecret, opts) {

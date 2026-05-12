@@ -20,11 +20,21 @@ export const resumeZombie = (env, id) => lifecycleAction("resume", id, env);
 export const killZombie = (env, id) => lifecycleAction("kill", id, env);
 
 export async function getStatus(env, zombieId) {
-  const result = await runZombiectl(["status", zombieId, "--json"], { env });
+  // `zombiectl status` ignores positional args and lists all zombies in the
+  // current workspace (server returns `{items: [...], total}`). Filter
+  // client-side. Surface in Discovery: the CLI lacks a per-zombie GET-by-id
+  // command — adding one belongs in a follow-on CLI hygiene PR.
+  const result = await runZombiectl(["list", "--json"], { env });
   if (result.code !== 0) {
-    throw new Error(`status ${zombieId} exited ${result.code}: ${result.stderr.trim()}`);
+    throw new Error(`list (for status of ${zombieId}) exited ${result.code}: ${result.stderr.trim()}`);
   }
-  return JSON.parse(result.stdout.trim());
+  const payload = JSON.parse(result.stdout.trim() || "{}");
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  const match = items.find((z) => z.id === zombieId || z.zombie_id === zombieId);
+  if (!match) {
+    throw new Error(`zombie ${zombieId} not found in workspace list: ${result.stdout.slice(0, 400)}`);
+  }
+  return match;
 }
 
 export async function expectStatus(env, zombieId, expected) {

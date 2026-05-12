@@ -19,27 +19,52 @@ export const COMMAND_GROUPS = [
   "zombie",
 ];
 
+// Per-row fields:
+//   args      — argv passed to the CLI (always includes --json).
+//   label     — human label for test naming (defaults to `args.join(" ")`).
+//   requiredKey — top-level key the JSON envelope MUST carry on success.
+//                 Matrix-driven assertion replaces the spec's pinned
+//                 `jsonShape` map (which drifted from the CLI's actual
+//                 server-passthrough shape per command).
+//   isList    — list command. itemsKey names the array field whose
+//                length the §4b' / §5b' empty-list sweep inspects.
 export const READ_ONLY_COMMANDS = [
-  { args: ["doctor", "--json"], jsonShape: { object: "doctor" } },
-  { args: ["workspace", "list", "--json"], jsonShape: { items: "array" }, isList: true },
-  { args: ["workspace", "show", "--json"], jsonShape: { workspace_id: "string" } },
-  { args: ["agent", "list", "--json"], jsonShape: { items: "array" }, isList: true },
-  { args: ["grant", "list", "--json"], jsonShape: { items: "array" }, isList: true },
-  { args: ["tenant", "provider", "show", "--json"], jsonShape: { provider_mode: "string" } },
-  { args: ["billing", "show", "--json"], jsonShape: { balance: "any" } },
-  { args: ["list", "--json"], jsonShape: { items: "array" }, isList: true, label: "zombie list" },
+  { args: ["doctor", "--json"], requiredKey: "checks" },
+  { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
+  { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
+  { args: ["agent", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["grant", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["tenant", "provider", "show", "--json"], requiredKey: "provider_mode" },
+  { args: ["billing", "show", "--json"], requiredKey: "balance" },
+  { args: ["list", "--json"], isList: true, itemsKey: "items", label: "zombie list" },
 ];
 
+// Per-row flags:
+//   apiHits  — `true` iff the CLI dispatches to the live API on a
+//              syntactically-valid identifier; `false` for local-only
+//              mutators (workspace use/delete). §4c1's "valid-format
+//              nonexistent" sweep only iterates rows with `apiHits: true`.
+//   validatesClient — `true` iff the handler runs `validateRequiredId`
+//              before any dispatch. §4c2's "no-network on invalid-format"
+//              invariant only fires for these rows today; other rows are
+//              surfaced as Discovery (handlers do not validate IDs
+//              client-side and would stress the API).
+//   expectedErrorCode — server-side UZ-* code emitted on not-found
+//              (only meaningful when `apiHits: true`). Codes verified
+//              against zombiectl/../src/errors/error_registry.zig at
+//              the time of writing — kept in sync with §4c1.
+//   clientRejectCode — CLI-emitted error code when local validation /
+//              local lookup rejects the request (apiHits: false rows).
 export const REQUIRES_IDENTIFIER = [
-  { args: ["status"], expectedErrorCode: "UZ-ZOMBIE-NOT-FOUND", argName: "zombie_id" },
-  { args: ["kill"], expectedErrorCode: "UZ-ZOMBIE-NOT-FOUND", argName: "zombie_id" },
-  { args: ["stop"], expectedErrorCode: "UZ-ZOMBIE-NOT-FOUND", argName: "zombie_id" },
-  { args: ["resume"], expectedErrorCode: "UZ-ZOMBIE-NOT-FOUND", argName: "zombie_id" },
-  { args: ["logs"], expectedErrorCode: "UZ-ZOMBIE-NOT-FOUND", argName: "zombie_id" },
-  { args: ["workspace", "use"], expectedErrorCode: "UZ-WORKSPACE-NOT-FOUND", argName: "workspace_id" },
-  { args: ["workspace", "delete"], expectedErrorCode: "UZ-WORKSPACE-NOT-FOUND", argName: "workspace_id" },
-  { args: ["agent", "delete"], expectedErrorCode: "UZ-AGENT-NOT-FOUND", argName: "key_id" },
-  { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-NOT-FOUND", argName: "grant_id" },
+  { args: ["status"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
+  { args: ["kill"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
+  { args: ["stop"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
+  { args: ["resume"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
+  { args: ["logs"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
+  { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
+  { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
+  { args: ["agent", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: true, validatesClient: false },
+  { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: true, validatesClient: false },
 ];
 
 export const REQUIRES_POSITIONAL_ARG = [
