@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { presentError, presentErrorString } from "./errors";
+import { CURATED_ERROR_CODES, presentError, presentErrorString } from "./errors";
 
 describe("presentError", () => {
   it("maps a known errorCode to the curated title + body", () => {
@@ -40,5 +40,18 @@ describe("presentErrorString", () => {
   it("returns just the title when no body is provided", () => {
     const s = presentErrorString({ action: "kill this zombie" });
     expect(s).toContain("Couldn't kill this zombie");
+  });
+
+  // Invariant guard: every curated map title must NOT end in terminal
+  // punctuation. presentErrorString unconditionally inserts `. ` between
+  // title and body, so a title ending in `.`/`!`/`?` would double-period
+  // the rendered sentence. This test fails loud the day a new map entry
+  // breaks the invariant — iterating CURATED_ERROR_CODES (exported from
+  // errors.ts) means new codes are auto-covered without touching the test.
+  it("invariant: no curated map title ends in terminal punctuation", () => {
+    for (const code of CURATED_ERROR_CODES) {
+      const title = presentErrorString({ errorCode: code, action: "x" }).split(". ")[0];
+      expect(title, `code=${code} title=${title}`).not.toMatch(/[.!?]$/);
+    }
   });
 });

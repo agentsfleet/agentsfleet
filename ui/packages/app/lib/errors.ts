@@ -46,7 +46,11 @@ interface CodeEntry {
 // needs to read like a colleague telling you what happened, not a CLI
 // traceback. The fallback at the bottom of presentError handles unmapped
 // codes gracefully, so this list grows organically.
-const CODE_MAP: Record<string, CodeEntry> = {
+//
+// `CURATED_ERROR_CODES` (below) is the public-facing key list — exported so
+// the invariant test in errors.test.ts iterates the live set instead of a
+// hand-typed shadow that goes stale the next time someone adds an entry.
+const CODE_MAP = {
   "UZ-AUTH-401": {
     title: "Your session expired",
     body: "Sign in again to keep going.",
@@ -79,12 +83,26 @@ const CODE_MAP: Record<string, CodeEntry> = {
     title: "That zombie is in a state that blocks this action",
     body: "Check the current status on the detail page and try the right transition.",
   },
-};
+} as const satisfies Record<string, CodeEntry>;
+
+/** Every code the dashboard currently maps to operator-friendly copy. */
+export const CURATED_ERROR_CODES = Object.keys(CODE_MAP) as ReadonlyArray<keyof typeof CODE_MAP>;
+
+/**
+ * Named lookup for backend error codes the TS layer mints or branches on.
+ * `with-token.ts` mints UZ-AUTH-401 when the server-side Bearer is null;
+ * any future TS-side mint goes here so the code string lives in one place
+ * and drift between CODE_MAP keys + the minter sites is caught at compile
+ * time via `satisfies`.
+ */
+export const ERROR_CODE = {
+  AUTH_401: "UZ-AUTH-401",
+} as const satisfies Record<string, keyof typeof CODE_MAP>;
 
 export function presentError(input: ErrorInput): ErrorPresentation {
   const { errorCode, message, action } = input;
-  if (errorCode && CODE_MAP[errorCode]) {
-    const entry = CODE_MAP[errorCode];
+  if (errorCode && errorCode in CODE_MAP) {
+    const entry = CODE_MAP[errorCode as keyof typeof CODE_MAP];
     return { title: entry.title, body: entry.body, code: errorCode };
   }
   // Fallback. If the server gave us a usable message, surface it after the
@@ -102,13 +120,17 @@ export function presentError(input: ErrorInput): ErrorPresentation {
 
 /**
  * Convenience for callers that only need a single string (e.g. the
- * `errorMessage` prop on ConfirmDialog). Joins title + body with a space,
- * inserting a trailing period on the title when one is missing so the
- * concatenated sentence flows.
+ * `errorMessage` prop on ConfirmDialog). Joins title + body with `. `.
+ *
+ * Invariant: every entry in CODE_MAP has a title that does NOT end in
+ * terminal punctuation, so we unconditionally insert the period — both
+ * the unit test `presentError titles never end in terminal punctuation`
+ * and the per-entry tone pass enforce that. A title ending in `.`/`!`/`?`
+ * would produce a double-period here; that's intentional load-bearing
+ * pressure on the next person adding to CODE_MAP.
  */
 export function presentErrorString(input: ErrorInput): string {
   const p = presentError(input);
   if (!p.body) return p.title;
-  const tail = /[.!?]$/.test(p.title) ? "" : ".";
-  return `${p.title}${tail} ${p.body}`;
+  return `${p.title}. ${p.body}`;
 }

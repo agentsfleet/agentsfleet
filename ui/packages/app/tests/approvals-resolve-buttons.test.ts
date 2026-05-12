@@ -185,4 +185,17 @@ describe("ResolveButtons — error paths", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't approve this request/i);
     });
   });
+
+  // Pins the deny-branch of the action-verb ternary so patch coverage hits
+  // both arms (approve already covered above).
+  it("deny error path renders 'Couldn't deny this request' (WS-G verb literal — deny arm)", async () => {
+    denyActionMock.mockResolvedValueOnce({ ok: false, error: "" });
+    render(
+      React.createElement(ResolveButtons, { workspaceId: WORKSPACE_ID, gateId: GATE_ID }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't deny this request/i);
+    });
+  });
 });

@@ -68,13 +68,9 @@ export default function ZombieConfig({
         intent="destructive"
         onConfirm={onConfirm}
         errorMessage={error}
-        onError={(e) =>
-          setError(
-            e instanceof Error
-              ? e.message
-              : presentErrorString({ action: "delete this zombie" }),
-          )
-        }
+        // onConfirm wraps every failure in `throw new Error(presentErrorString(...))`,
+        // so onError always receives an Error.
+        onError={(e) => setError((e as Error).message)}
       />
     </div>
   );

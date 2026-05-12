@@ -144,23 +144,19 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
       </div>
       <ConfirmDialog
         open={pendingAction !== null}
-        onOpenChange={(next) => {
-          if (!next) setPendingAction(null);
-        }}
+        // ConfirmDialog only calls onOpenChange on user-dismiss (cancel,
+        // escape, click-outside) — `open={pendingAction !== null}` is the
+        // controlled prop for the open case, so a dismiss-only handler
+        // captures the full event surface without a `next` guard.
+        onOpenChange={() => setPendingAction(null)}
         intent={pendingAction?.intent ?? "default"}
         title={pendingAction?.dialogTitle ?? ""}
         description={pendingAction?.dialogDescription ?? ""}
         confirmLabel={pendingAction?.confirmLabel ?? "Confirm"}
         onConfirm={handleConfirm}
-        onError={(err) =>
-          setErrorMessage(
-            err instanceof Error
-              ? err.message
-              : presentErrorString({
-                  action: pendingAction?.errorVerb ?? "complete this action",
-                }),
-          )
-        }
+        // handleConfirm owns its own error reporting (sets errorMessage
+        // directly on result.ok=false). It never throws, so ConfirmDialog
+        // doesn't need an onError backup.
         errorMessage={errorMessage}
       />
     </>

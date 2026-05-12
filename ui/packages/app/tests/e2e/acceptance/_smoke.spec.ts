@@ -25,7 +25,6 @@ import { cleanWorkspaceZombies } from "./fixtures/teardown";
 import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY } from "./fixtures/constants";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
-const isProdApi = (process.env.NEXT_PUBLIC_API_URL ?? "").includes("api.usezombie.com");
 
 // Mirrors the random-password generator used by global-setup.ts so the smoke
 // assertion checks the same shape that lands in Clerk during provisioning.

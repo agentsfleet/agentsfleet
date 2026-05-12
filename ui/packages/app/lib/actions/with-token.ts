@@ -1,5 +1,6 @@
 import { getServerToken } from "@/lib/auth/server";
 import { ApiError } from "@/lib/api/errors";
+import { ERROR_CODE } from "@/lib/errors";
 
 // Discriminated union every server action returns. Server Actions can't
 // throw across the RSC boundary with custom fields intact (`.status`,
@@ -19,7 +20,7 @@ export async function withToken<T>(
   fn: (token: string) => Promise<T>,
 ): Promise<ActionResult<T>> {
   const token = await getServerToken();
-  if (!token) return { ok: false, error: "Not authenticated", status: 401, errorCode: "UZ-AUTH-401" };
+  if (!token) return { ok: false, error: "Not authenticated", status: 401, errorCode: ERROR_CODE.AUTH_401 };
   try {
     return { ok: true, data: await fn(token) };
   } catch (e) {

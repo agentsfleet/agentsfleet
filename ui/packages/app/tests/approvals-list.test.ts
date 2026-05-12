@@ -295,6 +295,23 @@ describe("ApprovalsList — resolve actions", () => {
       expect(screen.getByRole("alert").textContent).toMatch(/Couldn't approve this request/i);
     });
   });
+
+  // Deny-arm pin so patch coverage hits both ternary branches (the approve
+  // arm above stays load-bearing on its own).
+  it("deny error path renders 'Couldn't deny this request' (WS-G verb literal — deny arm)", async () => {
+    denyApprovalActionMock.mockResolvedValueOnce({ ok: false, error: "" });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^deny$/i }));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't deny this request/i);
+    });
+  });
 });
 
 // ── Pagination ────────────────────────────────────────────────────────

@@ -72,18 +72,11 @@ export default function AddCredentialForm({ workspaceId }: Props) {
   function onSubmit(values: FormValues) {
     setApiError(null);
     startTransition(async () => {
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(values.data_json) as Record<string, unknown>;
-      } catch (e) {
-        setApiError(
-          presentErrorString({
-            message: (e as Error).message,
-            action: "parse the credential JSON",
-          }),
-        );
-        return;
-      }
+      // zod's superRefine on `data_json` (see schema above) runs the same
+      // JSON.parse + object-shape checks before onSubmit fires, so by the
+      // time we land here `values.data_json` is guaranteed parseable.
+      // No defensive try/catch — the framework already proved it.
+      const data = JSON.parse(values.data_json) as Record<string, unknown>;
       const result = await createCredentialAction(workspaceId, { name: values.name.trim(), data });
       if (!result.ok) {
         setApiError(
