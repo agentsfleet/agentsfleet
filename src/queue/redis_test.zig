@@ -172,6 +172,37 @@ test "PlainTransport.init enables SO_KEEPALIVE on its socket" {
     try std.testing.expect(enabled != 0);
 }
 
+test "PlainTransport.init closes the stream on allocation failure (no fd leak)" {
+    // Regression for the dialAndAuth fd-leak path: every reconnect calls
+    // PlainTransport.init / TlsTransport.initInPlace; if that fails after
+    // tcpConnectToHost succeeds, the socket must be closed or a sustained
+    // period of init failures (TLS rotation, OOM) exhausts the fd table.
+    // We force the failure by giving init a failing allocator and assert
+    // that the second alloc call (write_buffer) gets a free()'d read_buffer
+    // without the test allocator complaining about the leaked stream.
+    const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+    var listener = try loopback.listen(.{ .reuse_address = true });
+    defer listener.deinit();
+
+    const stream = try std.net.tcpConnectToAddress(listener.listen_address);
+    const fd_before = stream.handle;
+
+    // FailingAllocator that errors on the 2nd allocation — read_buffer
+    // succeeds (so init progresses past the first errdefer), write_buffer
+    // fails (so init returns an error and our errdefer stream.close() must fire).
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 1 });
+    const result = redis_transport.PlainTransport.init(failing.allocator(), stream);
+    try std.testing.expectError(error.OutOfMemory, result);
+
+    // Confirm the fd is no longer open. read() on a closed fd returns
+    // EBADF, which Zig maps to error.NotOpenForReading — unlike fcntl
+    // which panics on EBADF in 0.15.2. Proves the errdefer stream.close()
+    // in init actually fired (otherwise we'd block waiting for a byte).
+    var probe: [1]u8 = undefined;
+    const probe_result = std.posix.read(fd_before, &probe);
+    try std.testing.expectError(error.NotOpenForReading, probe_result);
+}
+
 test "Client.readyCheck self-heals when the server drops the connection" {
     const alloc = std.testing.allocator;
 
