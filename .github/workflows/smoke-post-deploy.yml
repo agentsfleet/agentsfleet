@@ -103,6 +103,7 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLERK_SECRET_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/secret-key
+          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/publishable-key
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_PROD }}/clerk-prod/webhook-secret
           VERCEL_BYPASS_SECRET: op://${{ vars.VAULT_PROD }}/vercel-bypass-app/credential
 
@@ -135,6 +136,7 @@ jobs:
           BASE_URL: ${{ github.event.deployment_status.target_url }}
           NEXT_PUBLIC_API_URL: https://api.usezombie.com
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
           CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 

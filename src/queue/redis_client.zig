@@ -3,6 +3,7 @@
 pub const Client = @This();
 
 alloc: std.mem.Allocator,
+cfg: redis_config.Config,
 transport: redis_transport.Transport,
 lock: std.Thread.Mutex = .{},
 
@@ -14,37 +15,17 @@ pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole) !Cl
 
 pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
     const cfg = try redis_config.parseRedisUrl(alloc, url);
-    defer redis_config.deinitConfig(alloc, cfg);
+    errdefer redis_config.deinitConfig(alloc, cfg);
 
-    const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
-    var client = Client{ .alloc = alloc, .transport = undefined };
-
-    if (cfg.use_tls) {
-        client.transport = .{ .tls = undefined };
-        try client.transport.tls.initInPlace(alloc, stream, cfg.host);
-    } else {
-        client.transport = .{ .plain = try redis_transport.PlainTransport.init(alloc, stream) };
-    }
-    errdefer client.deinit();
-
-    if (cfg.password) |pwd| {
-        if (cfg.username) |usr| {
-            var auth = try client.commandUnlocked(&.{ "AUTH", usr, pwd });
-            defer auth.deinit(alloc);
-            try redis_protocol.ensureSimpleOk(auth);
-        } else {
-            var auth = try client.commandUnlocked(&.{ "AUTH", pwd });
-            defer auth.deinit(alloc);
-            try redis_protocol.ensureSimpleOk(auth);
-        }
-    }
-
+    var client = Client{ .alloc = alloc, .cfg = cfg, .transport = undefined };
+    client.transport = try dialAndAuth(alloc, cfg);
     log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
     return client;
 }
 
 pub fn deinit(self: *Client) void {
     self.transport.deinit(self.alloc);
+    redis_config.deinitConfig(self.alloc, self.cfg);
 }
 
 pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
@@ -94,7 +75,22 @@ pub fn readyCheck(self: *Client) !void {
     // created lazily by the worker via `redis_zombie.ensureZombieEventsGroup`
     // when a zombie spawns; the control stream by `control_stream.ensureGroup`
     // at worker boot.
-    try self.ping();
+    //
+    // PING is idempotent, so we retry the full round-trip (write AND read)
+    // after a forced reconnect. `commandUnlocked` only retries write-phase
+    // failures because most callers can't tolerate a duplicate request; here
+    // we know we can.
+    self.ping() catch {
+        self.lock.lock();
+        defer self.lock.unlock();
+        try self.reconnectUnlocked();
+        var resp = try self.commandUnlocked(&.{"PING"});
+        defer resp.deinit(self.alloc);
+        switch (resp) {
+            .simple => |v| if (!std.mem.eql(u8, v, "PONG")) return error.RedisPingFailed,
+            else => return error.RedisPingFailed,
+        }
+    };
 }
 
 pub fn aclWhoAmI(self: *Client) ![]u8 {
@@ -175,19 +171,69 @@ pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protoco
 }
 
 fn commandUnlocked(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
-    const writer = self.transport.writer();
+    // Write-phase failures (BrokenPipe, ConnectionResetByPeer, etc.) prove the
+    // server hadn't seen the request — safe to reconnect+resend for any cmd.
+    // Read-phase failures are NOT auto-retried here because the server may have
+    // already processed the write; replaying could double-XADD or double-PUBLISH.
+    // Idempotent callers (e.g. /readyz PING) layer their own read-phase retry.
+    writeArgvToTransport(&self.transport, argv) catch |err| {
+        log.warn("write_failed_reconnecting", .{ .err = @errorName(err) });
+        self.reconnectUnlocked() catch return err;
+        try writeArgvToTransport(&self.transport, argv);
+        return try redis_protocol.readRespValue(self.alloc, self.transport.reader());
+    };
+    return try redis_protocol.readRespValue(self.alloc, self.transport.reader());
+}
+
+fn writeArgvToTransport(transport: *redis_transport.Transport, argv: []const []const u8) !void {
+    const writer = transport.writer();
     try writer.print("*{d}\r\n", .{argv.len});
     for (argv) |arg| {
         try writer.print("${d}\r\n", .{arg.len});
         try writer.writeAll(arg);
         try writer.writeAll("\r\n");
     }
-    if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
+    if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
     try writer.flush();
-    if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
+    if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
+}
 
-    const reader = self.transport.reader();
-    return try redis_protocol.readRespValue(self.alloc, reader);
+/// Build a fresh authenticated transport. Used at first connect and on
+/// transparent reconnect. On failure the partially-built transport is freed
+/// before returning.
+fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transport.Transport {
+    const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
+
+    var transport: redis_transport.Transport = undefined;
+    if (cfg.use_tls) {
+        transport = .{ .tls = undefined };
+        try transport.tls.initInPlace(alloc, stream, cfg.host);
+    } else {
+        transport = .{ .plain = try redis_transport.PlainTransport.init(alloc, stream) };
+    }
+    errdefer transport.deinit(alloc);
+
+    if (cfg.password) |pwd| {
+        const argv: []const []const u8 = if (cfg.username) |usr|
+            &.{ "AUTH", usr, pwd }
+        else
+            &.{ "AUTH", pwd };
+        try writeArgvToTransport(&transport, argv);
+        var resp = try redis_protocol.readRespValue(alloc, transport.reader());
+        defer resp.deinit(alloc);
+        try redis_protocol.ensureSimpleOk(resp);
+    }
+    return transport;
+}
+
+/// Re-dial Redis using the stored config and atomically replace the live
+/// transport. Caller must hold `self.lock`. If the dial or re-AUTH fails the
+/// existing transport is left untouched so the next attempt can retry.
+fn reconnectUnlocked(self: *Client) !void {
+    const new_transport = try dialAndAuth(self.alloc, self.cfg);
+    self.transport.deinit(self.alloc);
+    self.transport = new_transport;
+    log.info("reconnected", .{ .host = self.cfg.host, .port = self.cfg.port });
 }
 
 pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
