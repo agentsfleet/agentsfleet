@@ -22,9 +22,8 @@ export type Zombie = {
 };
 
 export type InstallZombieRequest = {
-  name: string;
+  trigger_markdown: string;
   source_markdown: string;
-  config_json: string;
 };
 
 export type InstallZombieResponse = {
