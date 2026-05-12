@@ -33,7 +33,7 @@ import { cleanWorkspaceZombies } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
 
 // Worktree root, derived from this file's path. This file lives at
-// `ui/packages/app/tests/e2e/auth/install-zombie-cli.spec.ts`; the
+// `ui/packages/app/tests/e2e/acceptance/install-zombie-cli.spec.ts`; the
 // worktree root is six levels up from its containing directory.
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(THIS_DIR, "../../../../../..");

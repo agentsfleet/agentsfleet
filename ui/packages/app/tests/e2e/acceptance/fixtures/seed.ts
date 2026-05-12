@@ -8,7 +8,7 @@
  * construction. Per-spec cleanup deletes everything in the fixture user's
  * workspace; no extra discriminator needed today.
  */
-import { clientFor } from "./api-client";
+import { clientFor, type ClientHandle } from "./api-client";
 import type { FixtureKey, ZombieStatus } from "./constants";
 
 export interface Workspace {
@@ -27,11 +27,20 @@ interface ListResp<T> {
   total: number;
 }
 
-export async function getDefaultWorkspaceId(key: FixtureKey): Promise<string> {
-  const c = clientFor(key);
+function handleLabel(handle: ClientHandle): string {
+  return typeof handle === "string" ? handle : "ephemeral-jwt";
+}
+
+// Widened to ClientHandle so the ephemeral signup-flow user (whose JWT is
+// minted mid-test and is NOT in the .fixture-jwts.json cache) can drive
+// the lookup the same way persistent fixtures do.
+export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<string> {
+  const c = clientFor(handle);
   const res = await c.get<ListResp<Workspace>>("/v1/tenants/me/workspaces");
   if (res.items.length === 0) {
-    throw new Error(`Fixture user '${key}' has no workspace; bootstrap step must have failed.`);
+    throw new Error(
+      `Fixture user '${handleLabel(handle)}' has no workspace; bootstrap step must have failed.`,
+    );
   }
   return res.items[0]!.id;
 }

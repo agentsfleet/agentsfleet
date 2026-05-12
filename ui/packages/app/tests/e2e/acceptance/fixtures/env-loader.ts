@@ -1,12 +1,12 @@
 /**
  * Bridges the worktree-root .env into the playwright process.
  *
- * Bun auto-loads only the cwd's .env / .env.local. The auth e2e suite runs
+ * Bun auto-loads only the cwd's .env / .env.local. The acceptance suite runs
  * from `ui/packages/app/`, where .env.local has NEXT_PUBLIC_API_URL but the
  * Clerk credentials (CLERK_SECRET_KEY, CLERK_WEBHOOK_SECRET) live one level
  * up at the worktree root alongside zombied's .env. Running the suite used
  * to require shell-side `op read` exports for every run; this loader makes
- * `bun run test:e2e:auth` self-sufficient.
+ * `bun run test:e2e:acceptance` self-sufficient.
  *
  * Idempotent and non-clobbering: existing `process.env` values win, so CI
  * secrets / explicit shell exports always override the file.

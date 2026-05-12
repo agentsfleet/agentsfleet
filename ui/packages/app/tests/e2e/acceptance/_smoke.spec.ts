@@ -15,15 +15,22 @@
  * the WS-C spec workstream — the bootstrap state itself is reused across
  * runs (idempotent on the user.created replay).
  */
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { getDefaultWorkspaceId, listZombies, seedZombie } from "./fixtures/seed";
 import { cleanWorkspaceZombies } from "./fixtures/teardown";
-import { FIXTURE_KEY } from "./fixtures/constants";
+import { CLERK_NEXTJS_PINNED_MAJOR, FIXTURE_KEY } from "./fixtures/constants";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
+
+// Mirrors the random-password generator used by global-setup.ts so the smoke
+// assertion checks the same shape that lands in Clerk during provisioning.
+function freshPassword(): string {
+  return crypto.randomBytes(32).toString("base64url");
+}
 
 test.describe("auth e2e wire", () => {
   test("dashboard /sign-in renders", async ({ page }) => {
@@ -36,6 +43,26 @@ test.describe("auth e2e wire", () => {
     expect(process.env.NEXT_PUBLIC_API_URL?.length ?? 0).toBeGreaterThan(0);
     expect(process.env.CLERK_SECRET_KEY?.length ?? 0).toBeGreaterThan(20);
     expect(process.env.CLERK_WEBHOOK_SECRET?.length ?? 0).toBeGreaterThan(20);
+  });
+
+  // WS-B #8: a `bun install` that bumps @clerk/nextjs into a new major would
+  // silently relax or tighten clerkMiddleware's cookie/JWT validation. The
+  // pinned major in fixtures/constants.ts is a single source of truth — read
+  // the resolved version from node_modules (NOT the package.json range string,
+  // which would conflate `^7.x` and `^8.x` if both start with `^`).
+  test("@clerk/nextjs installed major matches the harness pin", () => {
+    const pkgPath = path.join(process.cwd(), "node_modules", "@clerk", "nextjs", "package.json");
+    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { version: string };
+    const major = Number(pkg.version.split(".")[0]);
+    expect(major).toBe(CLERK_NEXTJS_PINNED_MAJOR);
+  });
+
+  // WS-B #9: Clerk's password policy may tighten over time. freshPassword's
+  // base64url-encoded 32-byte output is well above any reasonable Clerk
+  // minimum-length requirement; pin that floor explicitly so a future
+  // generator change cannot silently dip below it.
+  test("freshPassword output clears the 16-character floor", () => {
+    expect(freshPassword().length).toBeGreaterThanOrEqual(16);
   });
 
   test("globalSetup cached fixture JWTs for both fixture users", () => {

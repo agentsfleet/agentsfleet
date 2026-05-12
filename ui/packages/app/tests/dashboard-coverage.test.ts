@@ -724,8 +724,56 @@ describe("KillSwitch component", () => {
     await user.click(screen.getByRole("button", { name: /^stop$/i }));
     await clickConfirmInDialog(user, /^stop$/i);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Failed to stop zombie/i),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this zombie/i),
     );
+  });
+
+  // WS-G — every ActionConfig carries its own `errorVerb` literal so the
+  // operator-facing sentence reads naturally per action. The Stop case above
+  // exercises the Stop verb; the next two pin Resume and Kill so each branch
+  // of the static-literal config is hit by patch coverage.
+  it("resume action error path renders 'Couldn't resume this zombie' (WS-G verb literal)", async () => {
+    setZombieStatusActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "",
+      status: 500,
+    });
+    const user = userEvent.setup();
+    await renderSwitch("stopped");
+    await user.click(screen.getByRole("button", { name: /^resume$/i }));
+    await clickConfirmInDialog(user, /^resume$/i);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't resume this zombie/i),
+    );
+  });
+
+  it("kill action error path renders 'Couldn't kill this zombie' (WS-G verb literal)", async () => {
+    setZombieStatusActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "",
+      status: 500,
+    });
+    const user = userEvent.setup();
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^kill$/i }));
+    await clickConfirmInDialog(user, /^kill$/i);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't kill this zombie/i),
+    );
+  });
+
+  // Pins the dialog-dismiss path: clicking Cancel drives onOpenChange(false)
+  // which clears pendingAction. Without this, the close-handler line stays
+  // uncovered by patch coverage even though every other interaction works.
+  it("Cancel dismisses the confirm dialog and clears pendingAction", async () => {
+    const user = userEvent.setup();
+    await renderSwitch("active");
+    await user.click(screen.getByRole("button", { name: /^stop$/i }));
+    const dialog = await screen.findByRole("alertdialog");
+    const { within } = await import("@testing-library/react");
+    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(setZombieStatusActionMock).not.toHaveBeenCalled();
   });
 });
 
@@ -834,7 +882,7 @@ describe("ZombiesList component", () => {
     await renderList({ initialCursor: "cursor_1" });
     await user.click(screen.getByRole("button", { name: /load more/i }));
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Failed to load more/),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more zombies/),
     );
   });
 
