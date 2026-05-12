@@ -536,7 +536,7 @@ jobs:
           ACC="${{ needs.acceptance-e2e-dev.result }}"
           WORKER="${{ needs.deploy-worker-dev.result }}"
 
-          if [ "$QA" = "success" ] && [ "$AUTH" = "success" ] && { [ "$WORKER" = "success" ] || [ "$WORKER" = "skipped" ]; }; then
+          if [ "$QA" = "success" ] && [ "$ACC" = "success" ] && { [ "$WORKER" = "success" ] || [ "$WORKER" = "skipped" ]; }; then
             COLOR=3066993
             MSG="✅ DEV deploy green — \`$REF\` @ \`$SHORT\`\\n/healthz: ok | QA: passed | acceptance-e2e: passed | worker: ${WORKER}\\n→ ready for tag release"
           else
