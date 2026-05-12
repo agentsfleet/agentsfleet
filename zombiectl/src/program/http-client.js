@@ -1,9 +1,4 @@
-import {
-  ApiError,
-  apiRequest,
-  apiRequestWithRetry,
-  authHeaders,
-} from "../lib/http.js";
+import { apiRequestWithRetry, authHeaders } from "../lib/http.js";
 import { trackHttpRequest, trackHttpRetry } from "../lib/analytics.js";
 
 function apiHeaders(ctx) {
@@ -47,33 +42,4 @@ async function request(ctx, reqPath, options = {}) {
   });
 }
 
-// Internal escape hatch — callers that explicitly need a single-shot
-// fetch (no retry, no instrumentation) can call apiRequest directly
-// via this re-export. Used by tests; not for handler code.
-const requestNoRetry = apiRequest;
-
-function printApiError(stderr, err, jsonMode, printJson, writeLine) {
-  if (!(err instanceof ApiError)) throw err;
-  const payload = {
-    error: {
-      code: err.code || "API_ERROR",
-      message: err.message,
-      status: err.status || null,
-      request_id: err.requestId || null,
-    },
-  };
-  if (jsonMode) {
-    printJson(stderr, payload);
-  } else {
-    writeLine(stderr, `error: ${payload.error.code} ${payload.error.message}`);
-    if (payload.error.request_id) writeLine(stderr, `request_id: ${payload.error.request_id}`);
-  }
-}
-
-export {
-  ApiError,
-  apiHeaders,
-  printApiError,
-  request,
-  requestNoRetry,
-};
+export { apiHeaders, request };

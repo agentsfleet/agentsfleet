@@ -34,7 +34,7 @@ import {
   commandTenantProviderShow,
   commandTenantProviderAdd,
   commandTenantProviderDelete,
-} from "../src/commands/tenant_provider.js";
+} from "../src/commands/tenant.js";
 
 export { ApiError };
 
@@ -94,7 +94,7 @@ export function commandTenant(ctx, args, workspaces, deps) {
   const rest = args.slice(2);
   if (subgroup === "provider") {
     // Honor deps.parseFlags / deps.parseFlagsImpl when injected — legacy
-    // tenant_provider tests stub it to control parsed.options without
+    // tenant provider tests stub it to control parsed.options without
     // routing through the dashed-CLI form.
     const parse = (deps && (deps.parseFlags || deps.parseFlagsImpl)) || buildParsed;
     if (action === "show")   return commandTenantProviderShow(ctx,   parse(rest), workspaces, deps);
