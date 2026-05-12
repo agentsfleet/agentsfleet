@@ -66,7 +66,7 @@ export async function runCli(argv, io = {}) {
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? "admin" : null);
 
-  if (global.help || rest.length === 0) {
+  if (global.help || rest.length === 0 || rest[0] === "help") {
     printHelp(stdout, ui, {
       version: VERSION,
       env,

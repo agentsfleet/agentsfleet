@@ -63,7 +63,7 @@ function parseGlobalArgs(argv, env = process.env) {
       options.noOpen = true;
     } else if (token === "--help" || token === "-h") {
       options.help = true;
-    } else if (token === "--version") {
+    } else if (token === "--version" || token === "-v") {
       options.version = true;
     } else if (token === "--api") {
       options.api = argv[i + 1] || null;
