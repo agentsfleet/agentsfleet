@@ -18,10 +18,8 @@ export class ZombieHelp extends Help {
     };
   }
 
-  // Bold pulse-cyan section headers — matches today's `printHelp`
-  // output byte-for-byte under each ColorMode. Commander 14 calls
-  // this hook once per section ("Usage:", "Options:", "Commands:",
-  // and the program description block).
+  // Bold pulse-cyan section headers. Commander 14 calls this hook once
+  // per section ("Usage:", "Options:", "Commands:", program description).
   styleTitle(title) {
     return formatHelpHeading(title, this.styleOpts);
   }

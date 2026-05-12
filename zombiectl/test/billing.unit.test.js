@@ -125,7 +125,7 @@ test("billing show: rejects non-numeric --limit", async () => {
 test("billing show: rejects bare --limit (no value) with usage hint", async () => {
   const stderr = makeBufferStream();
   const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: false };
-  // parseFlags treats `--limit` followed by `--json` (a flag) as boolean true.
+  // buildParsed treats `--limit` followed by `--json` (a flag) as boolean true.
   const code = await commandBilling(ctx, ["show", "--limit", "--json"], null, makeDeps());
   assert.equal(code, 2);
   assert.match(stderr.read(), /--limit requires a value/);
@@ -143,7 +143,7 @@ test("billing show: rejects empty --cursor with JSON error code", async () => {
   const stderr = makeBufferStream();
   const ctx = { stdout: makeNoop(), stderr: stderr.stream, jsonMode: true };
   // buildParsed (via the commandBilling test shim) resolves `--cursor=`
-  // to options.cursor="" — same shape the pre-commander parseFlags emitted.
+  // to options.cursor="".
   const code = await commandBilling(
     ctx,
     ["show", "--cursor=", "--json"],

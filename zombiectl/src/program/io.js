@@ -1,6 +1,5 @@
-// I/O primitives consumed by every command handler. printHelp was
-// deleted when the commander refactor landed — commander.Help (via
-// the ZombieHelp subclass in help.js) renders the help body now.
+// I/O primitives consumed by every command handler. Help rendering
+// lives in help.js (commander.Help subclass).
 
 function writeLine(stream, line = "") {
   stream.write(`${line}\n`);

@@ -90,12 +90,10 @@ describe("global flag matrix", () => {
     assert.ok(!/usage|commands:/i.test(result.stdout));
   });
 
-  // --help --json exits 0 and emits help output; the JSON-formatted help body
-  // promised in the spec is not actually implemented (printHelp accepts a
-  // jsonMode flag but only forwards it to the version line — the rest of the
-  // help body is always plaintext). Discovery row: render JSON help via a
-  // structured command list in a follow-on PR. For now, assert what the CLI
-  // actually does today: exit 0 with help content present.
+  // --help --json exits 0 and emits help output. A structured JSON help
+  // tree (Discovery row) is a future enhancement; commander's text body
+  // is what --json currently returns. Assert exit 0 with help content
+  // present — the contract the CLI ships.
   it("--help --json exits 0 with help content", async () => {
     const result = await runZombiectl(["--help", "--json"], { env: emptyEnv() });
     assert.equal(result.code, 0);

@@ -11,7 +11,6 @@ import { buildParsed } from "./helpers.js";
 //   - eventIdToSince: ms-prefix Redis ID, missing dash, NaN prefix
 
 const STUB_DEPS = (overrides = {}) => ({
-  parseFlags: (args) => ({ positionals: args.filter((a) => !a.startsWith("--")), flags: {} }),
   request: async () => ({ event_id: "1700000000000-0" }),
   apiHeaders: () => ({ "Content-Type": "application/json" }),
   ui: { ok: (s) => s, dim: (s) => s, err: (s) => s },

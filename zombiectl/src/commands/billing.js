@@ -123,8 +123,8 @@ export async function commandBillingShow(ctx, parsed, _workspaces, deps) {
 
 function parseLimitOption(raw) {
   if (raw === undefined || raw === null) return DEFAULT_LIMIT;
-  // parseFlags returns `true` for --limit with no following value. Treat
-  // that as a usage error rather than parsing "true" → NaN below.
+  // boolean true = bare `--limit` with no following value. Caller-shim
+  // path; commander rejects this at parse-time in production.
   if (raw === true) return new Error("--limit requires a value (e.g. --limit 25)");
   const n = Number.parseInt(String(raw), 10);
   if (!Number.isFinite(n) || n <= 0 || n > MAX_LIMIT) {
@@ -135,8 +135,8 @@ function parseLimitOption(raw) {
 
 function parseCursorOption(raw) {
   if (raw === undefined || raw === null) return null;
-  // parseFlags returns `true` for --cursor with no following value. Reject
-  // before it gets URI-encoded as the literal string "true".
+  // boolean true = bare `--cursor` with no following value (caller-shim
+  // path). Reject before URI-encoding the literal string "true".
   if (raw === true) return new Error("--cursor requires a value (the next_cursor token from a previous page)");
   const s = String(raw);
   if (s.length === 0) return new Error("--cursor must not be empty");

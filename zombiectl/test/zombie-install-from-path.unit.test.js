@@ -416,30 +416,6 @@ test("install --from --json: emits JSON with server-returned name", async () => 
   assert.ok(!out.includes("is live"), `no prose in JSON mode:\n${out}`);
 });
 
-test("install --from (no value): boolean-true treated as missing argument", async () => {
-  let captured = null;
-  const code = await commandZombie(
-    { stdout: makeStdout(), stderr: makeNoop(), jsonMode: false, noInput: false },
-    ["install"],
-    workspaces,
-    {
-      parseFlags: () => ({ options: { from: true }, positionals: [] }),
-      request: async () => { throw new Error("request should not be called"); },
-      apiHeaders: () => ({}),
-      ui,
-      printJson: () => {},
-      printKeyValue: () => {},
-      printSection: () => {},
-      writeLine: () => {},
-      writeError: (_ctx, errCode, message) => { captured = { code: errCode, message }; },
-    },
-  );
-  assert.equal(code, 2);
-  assert.equal(captured?.code, "MISSING_ARGUMENT");
-  assert.ok(captured.message.includes("--from"), captured.message);
-  assert.ok(!captured.message.includes("true"), `message must not leak boolean: ${captured.message}`);
-});
-
 test("install without --from exits 2 with usage pointing at --from", async () => {
   let captured = null;
   const code = await commandZombie(
