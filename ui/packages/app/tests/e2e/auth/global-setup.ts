@@ -44,6 +44,10 @@ loadWorktreeEnv();
 const REQUIRED_ENV = [
   "NEXT_PUBLIC_API_URL",
   "CLERK_SECRET_KEY",
+  // clerkSetup() from @clerk/testing also requires the publishable key;
+  // listing it here makes the failure mode explicit at our fail-loud check
+  // instead of bubbling up from inside the @clerk/testing internals.
+  "CLERK_PUBLISHABLE_KEY",
   "CLERK_WEBHOOK_SECRET",
 ] as const;
 
