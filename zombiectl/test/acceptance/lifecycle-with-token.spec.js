@@ -148,8 +148,12 @@ if (!isLive) {
         assert.equal(typeof payload.status, "string");
       });
 
-      it("logs --json --since 1m returns a parseable envelope", async () => {
-        const result = await spawn(["logs", zombieId, "--json", "--since", "1m"]);
+      it("logs --json returns a parseable envelope", async () => {
+        // `--since` lives on `events`, NOT `logs` (`logs` only takes
+        // `--zombie`, `--limit`, `--cursor`); commander would exit 1 on
+        // an unknown flag. The recency bound here was misplaced — the
+        // intent is just to exercise the read path on a real zombie.
+        const result = await spawn(["logs", zombieId, "--json"]);
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}");
         assert.equal(typeof parsed, "object");
