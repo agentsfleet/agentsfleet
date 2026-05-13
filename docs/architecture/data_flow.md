@@ -356,13 +356,34 @@ Considered alternatives:
                                                    to filter SSE frames
 
    WEBHOOK   GH Actions posts workflow_run failure
-               → POST /v1/webhooks/{zombie_id}   (HMAC-SHA256 verified
-                 against workspace credential `github`.webhook_secret)
+               → POST /v1/webhooks/{zombie_id}/github   (HMAC-SHA256
+                 verified against workspace credential
+                 `github`.webhook_secret)
                → XADD zombie:{id}:events *
                       actor=webhook:github  type=webhook
                       workspace_id=<ws>     request=<normalized-json>
                       created_at=<ms>
                → 202
+
+               Receiver path carries a static `/{source}` suffix per provider
+               (`/github`, `/linear`, `/jira`, `/grafana`, `/agentmail`,
+               `/svix/{zombie_id}` for Clerk). M28's signature middleware
+               dispatches on the path, not on runtime config.
+
+               A zombie's TRIGGER.md declares `triggers: [...]` as an array
+               (length 1–8, unique on `(type, source)` tuple). Each webhook
+               entry carries `events: [...]` — the provider-specific
+               subscription list the install-skill forwards to the provider
+               (e.g. `gh api repos/.../hooks --field 'events[]=workflow_run'`).
+               The receiver itself doesn't read `events[]`; M43's normaliser
+               filters server-side on the event's own semantics
+               (`conclusion=failure` for `workflow_run`). Declaration shape
+               and wire-side filtering are separate concerns.
+
+               The internal Clerk endpoint that bootstraps our own tenants
+               on `user.created` is NOT this surface — it lives in the auth
+               plane at `POST /v1/auth/identity-events/clerk` (M68). The
+               `/v1/webhooks/` namespace is customer-data-plane only.
 
    CRON      NullClaw cron-tool fires on schedule (in-executor)
                → XADD zombie:{id}:events *

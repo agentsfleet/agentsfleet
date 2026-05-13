@@ -10,11 +10,12 @@ The billing model is **credit-based, Amp-style**: every tenant has a single cred
 
 > **Where the live values are.** Specific rates are not pinned in this doc on purpose — they change. The canonical sources, in lockstep:
 >
-> - **Zig (server authority):** `src/state/tenant_billing.zig` — `STARTER_CREDIT_NANOS`, `EVENT_NANOS`, `STAGE_PLATFORM_NANOS`, `STAGE_SELF_MANAGED_NANOS`. Pin tests in `tenant_billing_test.zig` lock the values.
+> - **User-facing (always start here):** [`https://usezombie.com/#pricing`](https://usezombie.com/#pricing) — the live Pricing section is the single source of truth a customer (or anyone unfamiliar with the codebase) should consult. It renders the current rates plus any active promotional window (e.g. the strikethrough + "Free until July 31, 2026" banner during the free-trial window described in §2.3).
+> - **Zig (server authority):** `src/state/tenant_billing.zig` — `STARTER_CREDIT_NANOS`, `EVENT_NANOS`, `STAGE_PLATFORM_NANOS`, `STAGE_SELF_MANAGED_NANOS`, `FREE_TRIAL_END_MS`, `FREE_TRIAL_STAGE_NANOS`. Pin tests in `tenant_billing_test.zig` lock the values.
 > - **Marketing display strings:** `~/Projects/docs/snippets/rates.mdx` (Mintlify), mirrored at `ui/packages/website/src/lib/rates.ts` for the on-site Pricing surface.
 > - **Per-model token rates (platform posture):** the public-but-unguessable `model-caps.json` endpoint — see §10.
 >
-> Cross-tier parity rule: identifier names match across Zig/TS/JS so a rate bump is a coordinated PR across all sources, not a silent drift.
+> Cross-tier parity rule: identifier names match across Zig/TS/JS so a rate bump is a coordinated PR across all sources, not a silent drift. Architecture docs and scenarios in this directory deliberately do not quote dollar amounts — they describe shape and behaviour. For numbers, the website is authoritative.
 
 ---
 
@@ -47,7 +48,27 @@ Under self-managed the grant covers `STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_N
 
 When `balance_nanos` cannot cover the next event's estimated cost, the gate trips. The event is dead-lettered with `failure_label='balance_exhausted'`. The CLI prints a one-line pointer at the dashboard billing page; the dashboard shows the empty-balance state. **Stripe-backed Purchase Credits is deferred to v2.1.** In v2.0, a user whose grant runs out either contacts us (manual top-up via support) or stops using the platform. The pricing model and the schema both anticipate Stripe — they just don't ship the integration in v2.0.
 
-### 2.3 Plan tiers
+### 2.3 Free-trial window (through 2026-07-31)
+
+A platform-wide promotional window runs from launch through **2026-07-31 23:59:59 UTC** (constant `FREE_TRIAL_END_MS = 1785542400000` in `src/state/tenant_billing.zig`). While `now_ms < FREE_TRIAL_END_MS`:
+
+- `compute_stage_charge(posture, model, in_tok, out_tok)` returns `0` regardless of posture, model, or token count.
+- `compute_receive_charge(posture)` already returns `0` outside the trial (today's `EVENT_NANOS`); no change inside the window.
+- The starter grant is still inserted on tenant create. It accumulates rather than draining while the trial is active — users carry the unused balance into the post-trial period.
+- Telemetry rows (`zombie_execution_telemetry`) still INSERT, still record posture and token counts, but `credit_deducted_nanos = 0`. Accurate audit history; zero revenue while we gather traction.
+
+After `FREE_TRIAL_END_MS`, both functions fall through to the existing rate constants (`STAGE_PLATFORM_NANOS`, `STAGE_SELF_MANAGED_NANOS`) with no other code change. The gate, the telemetry inserter, and the dashboard all read the same charge functions; flipping the cutoff is a one-line constant move.
+
+**Surfacing.** Two consumer-visible reads carry the state so users see the cutoff before charges resume:
+
+- `zombiectl doctor --json` → `billing.free_trial: { active: bool, ends_at_ms: int }`
+- Dashboard billing panel → "Free trial · expires 2026-07-31 (UTC)" while active; falls back to standard balance display after.
+
+The website's Pricing component renders the standard rate strings with strike-through plus a "Free until July 31, 2026" banner during the window. Strike-through is a presentational choice on the marketing surface; the API and CLI just return the active state and let consumers decide how to render it.
+
+**Why timestamp-gated, not feature-flagged.** No environment variable, no `is_free_trial_enabled` toggle, no database column. The trial ends because time passes. Tests inject `now_ms` rather than reading the system clock, so pre-trial / mid-trial / post-trial behaviour is all pin-tested deterministically in `tenant_billing_test.zig`.
+
+### 2.4 Plan tiers
 
 There are no plan tiers in the cost function. The flat-rate `compute_receive_charge` and `compute_stage_charge` functions in §4 do not take a plan parameter. If we ever introduce paid plans (v2.1+), they will manifest as larger one-time grants, recurring Stripe charges that top up `balance_nanos`, or volume discounts on per-event rates — but not as a branch inside `compute_charge`.
 
