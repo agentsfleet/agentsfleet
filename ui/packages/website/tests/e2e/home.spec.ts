@@ -46,7 +46,7 @@ test.describe("Home page", () => {
   test("renders feature flow rows", async ({ page }) => {
     await expect(page.getByRole("heading", { name: "Install once." })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Every event on the record." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Mission Control" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
   });
 
   test("renders how it works steps", async ({ page }) => {

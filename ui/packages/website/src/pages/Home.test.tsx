@@ -44,11 +44,11 @@ describe("Home", () => {
     expect(screen.getByLabelText(/install platform-ops via claude code/i)).toBeInTheDocument();
   });
 
-  it("renders feature flow rows including Mission Control", () => {
+  it("renders feature flow rows including Dashboard", () => {
     renderHome();
     expect(screen.getByRole("heading", { level: 3, name: "Install once." })).toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 3, name: "Every event on the record." })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Mission Control" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Dashboard" })).toBeInTheDocument();
   });
 
   it("renders How it works section", () => {

@@ -42,7 +42,7 @@ export default function Terms() {
         <ListItem>usezombie charges {RATES_DISPLAY.EVENT_RATE} per event receipt and {RATES_DISPLAY.STAGE_PLATFORM} per stage execution on platform default ({RATES_DISPLAY.STAGE_SELF_MANAGED} per stage on self-managed). Each new account receives a {RATES_DISPLAY.STARTER_CREDIT} starter credit that never expires. Stealth-mode testing rate — will rise post-GA.</ListItem>
         <ListItem>Hosted execution is metered against a credit pool. Debits fire before each stage execution; event receipt is currently free.</ListItem>
         <ListItem>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</ListItem>
-        <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via Mission Control.</ListItem>
+        <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via the Dashboard.</ListItem>
       </List>
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">5. Intellectual property</h2>

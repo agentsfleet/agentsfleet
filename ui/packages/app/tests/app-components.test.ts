@@ -105,8 +105,8 @@ describe("app components", () => {
     renderToStaticMarkup(React.createElement(Shell, null, React.createElement("div", null, "root")));
 
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
-    // Brand-mark + wordmark are the new topbar shape; the legacy
-    // "Mission Control" badge was removed for Operational Restraint.
+    // Brand-mark + wordmark are the topbar shape — Operational Restraint:
+    // no decorative badges, no marketing chrome.
     const markup = renderToStaticMarkup(React.createElement(React.Fragment, null, shellTree));
     expect(markup).toContain("usezombie");
     expect(markup).toContain("data-live");
@@ -166,7 +166,7 @@ describe("app components", () => {
     expect(AUTH_APPEARANCE.elements.formResendCodeLink.color).not.toBe("var(--pulse)");
   });
 
-  it("renders Shell with brand-mark wake-pulse + sidebar nav (no Mission Control branding)", async () => {
+  it("renders Shell with brand-mark wake-pulse + sidebar nav", async () => {
     const { default: Shell } = await import("../components/layout/Shell");
     mocks.usePathname.mockReturnValue("/zombies");
     const tree = Shell({ children: React.createElement("div", null, "content") });
@@ -174,8 +174,6 @@ describe("app components", () => {
     // Brand-mark always-alive contract.
     expect(markup).toContain("data-live");
     expect(markup).toContain("usezombie");
-    // No legacy "Mission Control" tag.
-    expect(markup).not.toContain("Mission Control");
     // Sidebar nav rendered with all 5 operational routes + 2 in More.
     expect(markup).toContain("Dashboard");
     expect(markup).toContain("Zombies");
