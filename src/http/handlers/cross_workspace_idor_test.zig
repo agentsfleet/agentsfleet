@@ -213,7 +213,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .oidc = undefined, .auth_sessions = undefined, .app_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
+        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .oidc = undefined, .auth_sessions = undefined, .app_url = "http://127.0.0.1", .api_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .telemetry = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.

@@ -29,6 +29,7 @@ pub const Context = struct {
     oidc: ?*oidc.Verifier,
     auth_sessions: *auth_sessions.SessionStore,
     app_url: []const u8,
+    api_url: []const u8,
     api_in_flight_requests: std.atomic.Value(u32),
     api_max_in_flight_requests: u32,
     ready_max_queue_depth: ?i64,

@@ -159,6 +159,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .oidc = null,
         .auth_sessions = &sessions,
         .app_url = serve_cfg.app_url,
+        .api_url = serve_cfg.api_url,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,

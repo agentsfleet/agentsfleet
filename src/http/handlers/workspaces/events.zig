@@ -75,6 +75,7 @@ const FilterParams = struct {
     limit: u32,
     cursor: ?[]const u8,
     actor: ?[]const u8,
+    actor_prefix: ?[]const u8,
     since_raw: ?[]const u8,
     zombie_id: ?[]const u8,
 };
@@ -86,6 +87,7 @@ fn parseFilterParams(hx: hx_mod.Hx, qs: anytype) error{Failed}!FilterParams {
     };
     const cursor = qs.get("cursor");
     const actor = qs.get("actor");
+    const actor_prefix = qs.get("actor_prefix");
     const since_raw = qs.get("since");
     const zombie_id = qs.get("zombie_id");
 
@@ -93,11 +95,16 @@ fn parseFilterParams(hx: hx_mod.Hx, qs: anytype) error{Failed}!FilterParams {
         hx.fail(ec.ERR_INVALID_REQUEST, "since_and_cursor_mutually_exclusive");
         return error.Failed;
     }
+    if (actor != null and actor_prefix != null) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "actor_and_actor_prefix_mutually_exclusive");
+        return error.Failed;
+    }
 
     return .{
         .limit = limit,
         .cursor = cursor,
         .actor = actor,
+        .actor_prefix = actor_prefix,
         .since_raw = since_raw,
         .zombie_id = zombie_id,
     };
@@ -118,6 +125,11 @@ fn buildFilter(hx: hx_mod.Hx, params: FilterParams) error{Failed}!events_store.F
             common.internalDbError(hx.res, hx.req_id);
             return error.Failed;
         };
+    } else if (params.actor_prefix) |p| {
+        actor_like = prefixToLike(hx.alloc, p) catch {
+            common.internalDbError(hx.res, hx.req_id);
+            return error.Failed;
+        };
     }
 
     return events_store.Filter{
@@ -126,6 +138,24 @@ fn buildFilter(hx: hx_mod.Hx, params: FilterParams) error{Failed}!events_store.F
         .actor_like = actor_like,
         .since_ms = since_ms,
     };
+}
+
+/// `<prefix>%` with `%` and `_` escaped — see zombies/events.zig for the
+/// twin. Same rule, both endpoints. (Two callsites is below the threshold
+/// for hoisting into events_store; if a third endpoint grows it, lift it
+/// then.)
+fn prefixToLike(alloc: std.mem.Allocator, prefix: []const u8) ![]u8 {
+    var out: std.ArrayList(u8) = .{};
+    errdefer out.deinit(alloc);
+    for (prefix) |b| switch (b) {
+        '%', '_' => {
+            try out.append(alloc, '\\');
+            try out.append(alloc, b);
+        },
+        else => try out.append(alloc, b),
+    };
+    try out.append(alloc, '%');
+    return out.toOwnedSlice(alloc);
 }
 
 fn writeListResponse(hx: hx_mod.Hx, rows: []events_store.EventRow, limit: u32) void {

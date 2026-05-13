@@ -31,6 +31,7 @@ pub const ServeConfig = struct {
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     app_url: []u8,
+    api_url: []u8,
     oidc_enabled: bool,
     oidc_provider: oidc.Provider,
     oidc_jwks_url: ?[]u8,
@@ -65,6 +66,7 @@ pub const ServeConfig = struct {
             .ready_max_queue_depth = sizes.ready_max_queue_depth,
             .ready_max_queue_age_ms = sizes.ready_max_queue_age_ms,
             .app_url = misc.app_url,
+            .api_url = misc.api_url,
             .oidc_enabled = oidc_cfg.enabled,
             .oidc_provider = oidc_cfg.provider,
             .oidc_jwks_url = oidc_cfg.jwks_url,
@@ -77,6 +79,7 @@ pub const ServeConfig = struct {
 
     pub fn deinit(self: *ServeConfig) void {
         self.alloc.free(self.app_url);
+        self.alloc.free(self.api_url);
         if (self.oidc_jwks_url) |v| self.alloc.free(v);
         if (self.oidc_issuer) |v| self.alloc.free(v);
         if (self.oidc_audience) |v| self.alloc.free(v);

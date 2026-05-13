@@ -124,6 +124,7 @@ pub const TestHarness = struct {
             .oidc = &h.verifier,
             .auth_sessions = &h.session_store,
             .app_url = "http://127.0.0.1",
+            .api_url = "http://127.0.0.1",
             .api_in_flight_requests = std.atomic.Value(u32).init(0),
             .api_max_in_flight_requests = 64,
             .ready_max_queue_depth = null,

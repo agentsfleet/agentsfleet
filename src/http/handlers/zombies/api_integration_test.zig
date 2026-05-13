@@ -150,6 +150,55 @@ test "integration: zombies list — cursor pagination roundtrip" {
     try r_anon.expectStatus(.unauthorized);
 }
 
+test "integration: zombies list — projects triggers array from config_json" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+
+    // Seed one zombie with a `triggers[]` array inside `x-usezombie:` — mirrors
+    // what config_parser.zig persists for a real install. Bypasses the HTTP
+    // create path (Redis required) but exercises the SELECT projection that
+    // list.zig adds: `config_json->'x-usezombie'->'triggers'`.
+    const zid = try id_format.generateZombieId(alloc);
+    defer alloc.free(zid);
+    const config_json =
+        \\{"name":"triggers-projection","x-usezombie":{"triggers":[
+        \\  {"type":"webhook","source":"github","events":["workflow_run"]},
+        \\  {"type":"cron","schedule":"*/30 * * * *"}
+        \\]}}
+    ;
+    _ = try conn.exec(
+        \\INSERT INTO core.zombies
+        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\   status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, $4::jsonb, 'active', $5, $5)
+    , .{ zid, TEST_WORKSPACE_ID, "triggers-projection", config_json, now_ms + 9_000 });
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies?limit=20", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+
+    const r = try (try h.get(url).bearer(TOKEN_USER)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    // Newest-first ordering puts our zombie at index 0 (created_at = now+9000s,
+    // greater than any sibling rows from the pagination suite).
+    try std.testing.expect(r.bodyContains("\"name\":\"triggers-projection\""));
+    try std.testing.expect(r.bodyContains("\"type\":\"webhook\""));
+    try std.testing.expect(r.bodyContains("\"source\":\"github\""));
+    try std.testing.expect(r.bodyContains("\"workflow_run\""));
+    try std.testing.expect(r.bodyContains("\"type\":\"cron\""));
+    try std.testing.expect(r.bodyContains("\"schedule\":\"*/30 * * * *\""));
+}
+
 // Cross-file `name:` invariant: SKILL.md and TRIGGER.md must agree on identity.
 // Handler enforcement at create.zig fires before workspace authorization, so a
 // USER-role token still surfaces the mismatch error (no escalation needed).
