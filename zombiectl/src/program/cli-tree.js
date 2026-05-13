@@ -98,7 +98,7 @@ export function buildProgram({ handlers, version, state, helpFactory }) {
 
   program
     .name("zombiectl")
-    .description(styleTagline("autonomous agent platform"))
+    .description(styleTagline("usezombie cli"))
     .version(version, "-v, --version", "Show version")
     .helpOption("-h, --help", "Show this help")
     .showSuggestionAfterError(true)
