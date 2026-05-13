@@ -22,6 +22,7 @@ import {
   listZombieEventsAction,
 } from "@/app/(dashboard)/events/actions";
 import type { EventRow, EventsPage } from "@/lib/api/events";
+import { presentErrorString } from "@/lib/errors";
 
 type Scope =
   | { kind: "zombie"; workspaceId: string; zombieId: string }
@@ -62,7 +63,13 @@ export function EventsList({
           ? await listZombieEventsAction(scope.workspaceId, scope.zombieId, { cursor: nextCursor })
           : await listWorkspaceEventsAction(scope.workspaceId, { cursor: nextCursor });
       if (!result.ok) {
-        setError(result.error || "Failed to load more events");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "load more events",
+          }),
+        );
         return;
       }
       setItems((prev) => [...prev, ...result.data.items]);

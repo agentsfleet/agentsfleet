@@ -243,7 +243,7 @@ describe("EventsList", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Failed to load more events/),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more events/),
     );
   });
 
@@ -256,7 +256,7 @@ describe("EventsList", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /load more|next/i }));
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Failed to load more events/),
+      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't load more events/),
     );
   });
 });

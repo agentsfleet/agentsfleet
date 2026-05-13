@@ -8,7 +8,8 @@
  * `app/(dashboard)/zombies/components/ZombiesList.tsx:19`).
  *
  * Sister to kill.spec.ts; both exercise the same KillSwitch + ConfirmDialog
- * wiring but with different target statuses (`stopped` vs `killed`).
+ * wiring but with different target statuses (`stopped` vs `killed`). The
+ * shared interaction lives in fixtures/lifecycle.ts.
  *
  * Why no `waitForResponse(... PATCH)`: post-WS-A, KillSwitch fires
  * `setZombieStatusAction` (a Next.js Server Action) which POSTs to the app
@@ -18,11 +19,10 @@
  */
 import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
+import { expectRowState, stopZombie } from "./fixtures/lifecycle";
 import { getDefaultWorkspaceId, seedZombie } from "./fixtures/seed";
 import { cleanWorkspaceZombies } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
-
-const ROW_STATE_TIMEOUT_MS = 15_000;
 
 test.describe("lifecycle", () => {
   test("Stop transitions the row's data-state from live to parked", async ({ page }) => {
@@ -35,24 +35,10 @@ test.describe("lifecycle", () => {
     await page.goto(`/zombies/${seeded.id}`);
     await expect(page).toHaveURL(new RegExp(`/zombies/${seeded.id}(\\?|$)`));
 
-    // KillSwitch shows Stop + Kill while status is active. Click Stop, then
-    // confirm in the ConfirmDialog (a second "Stop" button appears inside the
-    // dialog — disambiguate via Radix's role="alertdialog").
-    await page.getByRole("button", { name: "Stop" }).first().click();
-    const dialog = page.getByRole("alertdialog");
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole("button", { name: "Stop" }).click();
-
-    // Server Action returns optimistic; ConfirmDialog closes; router.refresh
-    // re-fetches the SSR listing. The listing row carries the new state.
-    await expect(dialog).toBeHidden({ timeout: ROW_STATE_TIMEOUT_MS });
+    await stopZombie(page);
 
     await page.goto("/zombies");
-    const row = page.locator(`a[href="/zombies/${seeded.id}"]`);
-    await expect(row).toBeVisible();
-    await expect(row).toHaveAttribute("data-state", "parked", {
-      timeout: ROW_STATE_TIMEOUT_MS,
-    });
+    await expectRowState(page, seeded.id, "parked");
   });
 
   test.afterEach(async () => {

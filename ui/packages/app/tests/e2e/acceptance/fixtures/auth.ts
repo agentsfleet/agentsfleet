@@ -1,0 +1,86 @@
+/**
+ * signInAs(page, fixtureKey) — establish a Clerk session in the browser
+ * for a fixture user without driving the hosted SignIn form.
+ *
+ * Implementation: the `clerk.signIn` helper from `@clerk/testing/playwright`
+ * mints a one-time sign-in-token via the Backend API
+ * (`signInTokens.createSignInToken`), then evaluates clerk-js in the page
+ * to call `Clerk.signIn.create({strategy: 'ticket', ticket})` and
+ * `Clerk.setActive({session})`. The cookies that come out the other side
+ * (`__session`, `__client_uat`, `__clerk_db_jwt`) are written by clerk-js
+ * itself, so they carry the same shape clerkMiddleware expects from a
+ * real interactive sign-in — including the `azp` claim on the session
+ * JWT, which a Backend-API-minted default token omits.
+ *
+ * Why we cannot manually `addCookies` here: the previous implementation
+ * minted the `__session` cookie via `POST /v1/sessions/{id}/tokens` and
+ * stuffed `__clerk_db_jwt = "fixture-dev-browser"`. clerkMiddleware
+ * accepted that on plain GETs but rejected it on the first Server-Action
+ * round-trip (current `@clerk/nextjs` warns
+ * `Session token from cookie is missing the azp claim`, and at the same
+ * time clears `__client_uat` to `0`). The next protected navigation then
+ * 302s to /sign-in. The `clerk.signIn` route avoids the entire mismatch
+ * because clerk-js mints the cookies the way clerkMiddleware was built
+ * to consume them.
+ *
+ * `setupClerkTestingToken({ page })` runs first to attach
+ * `__clerk_testing_token` to every browser-side FAPI call — bypasses
+ * CAPTCHA on Clerk DEV (Cloudflare Turnstile is now on by default for
+ * the SignUp form) and keeps the testing posture stable across instance
+ * config drift.
+ *
+ * Pre-req: globalSetup ran (`provisionUser` → `bootstrapTenant` → `attachJwt`)
+ * and wrote the fixture-JWT cache.
+ */
+import * as fs from "node:fs";
+import * as path from "node:path";
+import type { Page } from "@playwright/test";
+import { clerk, setupClerkTestingToken } from "@clerk/testing/playwright";
+import type { FixtureKey } from "./constants";
+
+export type { FixtureKey } from "./constants";
+
+const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
+
+interface FixtureCacheEntry {
+  email: string;
+  clerkUserId: string;
+  sessionJwt: string;
+}
+
+interface JwtCache {
+  [key: string]: FixtureCacheEntry;
+}
+
+function loadCache(): JwtCache {
+  if (!fs.existsSync(JWT_CACHE_PATH)) {
+    throw new Error(
+      `Fixture JWT cache missing at ${JWT_CACHE_PATH}. globalSetup must run before signInAs.`,
+    );
+  }
+  return JSON.parse(fs.readFileSync(JWT_CACHE_PATH, "utf8")) as JwtCache;
+}
+
+function getFixtureEntry(cache: JwtCache, key: FixtureKey): FixtureCacheEntry {
+  const entry = cache[key];
+  if (!entry) {
+    throw new Error(`No fixture entry for key '${key}'. Available: ${Object.keys(cache).join(", ")}`);
+  }
+  return entry;
+}
+
+export async function signInAs(page: Page, key: FixtureKey): Promise<void> {
+  const cache = loadCache();
+  const entry = getFixtureEntry(cache, key);
+  await setupClerkTestingToken({ page });
+  // clerk-js needs a Clerk-aware page mounted before it can mint a session.
+  // /sign-in is the cheapest such page in the dashboard (no API fetches in
+  // the Server Component), and it survives a redirect from any protected
+  // route a future caller might land on first.
+  await page.goto("/sign-in");
+  await clerk.signIn({ page, emailAddress: entry.email });
+}
+
+export function fixtureEmail(key: FixtureKey): string {
+  return getFixtureEntry(loadCache(), key).email;
+}

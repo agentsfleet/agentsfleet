@@ -6,6 +6,7 @@ import { Button, ConfirmDialog } from "@usezombie/design-system";
 import { ZOMBIE_STATUS } from "@/lib/api/zombies";
 import type { Zombie, ZombieStatusSettable } from "@/lib/api/zombies";
 import { setZombieStatusAction } from "../../actions";
+import { presentErrorString } from "@/lib/errors";
 
 interface KillSwitchProps {
   workspaceId: string;
@@ -20,6 +21,11 @@ interface ActionConfig {
   dialogDescription: string;
   confirmLabel: string;
   intent: "default" | "destructive";
+  // Static phrase fed to presentError so the error sentence reads
+  // naturally per action. Kept as a string literal — never built from
+  // confirmLabel at the call site (RULE UFS — verb literals stay
+  // adjacent to the config that owns them).
+  errorVerb: "stop this zombie" | "resume this zombie" | "kill this zombie";
 }
 
 // Drives the per-zombie lifecycle controls. The panel renders a state-aware
@@ -57,7 +63,11 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
         return;
       }
       setErrorMessage(
-        result.error || `Failed to ${action.confirmLabel.toLowerCase()} zombie. Please try again.`,
+        presentErrorString({
+          errorCode: result.errorCode,
+          message: result.error,
+          action: action.errorVerb,
+        }),
       );
     });
   }
@@ -70,6 +80,7 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
     dialogDescription: "Halt execution now. You can resume it later from this page or via the CLI.",
     confirmLabel: "Stop",
     intent: "destructive",
+    errorVerb: "stop this zombie",
   };
   const resumeAction: ActionConfig = {
     target: ZOMBIE_STATUS.ACTIVE,
@@ -82,6 +93,7 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
         : "Return this zombie to active execution.",
     confirmLabel: "Resume",
     intent: "default",
+    errorVerb: "resume this zombie",
   };
   const killAction: ActionConfig = {
     target: ZOMBIE_STATUS.KILLED,
@@ -92,6 +104,7 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
       "Marks the zombie terminal. This is irreversible — once killed, the zombie cannot be resumed and only Delete remains.",
     confirmLabel: "Kill",
     intent: "destructive",
+    errorVerb: "kill this zombie",
   };
 
   const actions: ActionConfig[] = (() => {
@@ -131,17 +144,19 @@ export default function KillSwitch({ workspaceId, zombie }: KillSwitchProps) {
       </div>
       <ConfirmDialog
         open={pendingAction !== null}
-        onOpenChange={(next) => {
-          if (!next) setPendingAction(null);
-        }}
+        // ConfirmDialog only calls onOpenChange on user-dismiss (cancel,
+        // escape, click-outside) — `open={pendingAction !== null}` is the
+        // controlled prop for the open case, so a dismiss-only handler
+        // captures the full event surface without a `next` guard.
+        onOpenChange={() => setPendingAction(null)}
         intent={pendingAction?.intent ?? "default"}
         title={pendingAction?.dialogTitle ?? ""}
         description={pendingAction?.dialogDescription ?? ""}
         confirmLabel={pendingAction?.confirmLabel ?? "Confirm"}
         onConfirm={handleConfirm}
-        onError={(err) =>
-          setErrorMessage(err instanceof Error ? err.message : "An error occurred")
-        }
+        // handleConfirm owns its own error reporting (sets errorMessage
+        // directly on result.ok=false). It never throws, so ConfirmDialog
+        // doesn't need an onError backup.
         errorMessage={errorMessage}
       />
     </>

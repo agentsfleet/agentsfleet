@@ -36,7 +36,7 @@ import { bootstrapTenant } from "./fixtures/bootstrap";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { loadWorktreeEnv } from "./fixtures/env-loader";
 
-// Defensive: playwright.auth.config.ts loads worktree-root .env, but
+// Defensive: playwright.acceptance.config.ts loads worktree-root .env, but
 // globalSetup is the actual fail-fast point for missing creds and should
 // re-load idempotently in case it's invoked outside the standard config.
 loadWorktreeEnv();
@@ -106,7 +106,6 @@ function writeCache(fixtures: MintedFixture[]): void {
       clerkUserId: f.clerkUserId,
       sessionId: f.sessionId,
       sessionJwt: f.sessionJwt,
-      cookieJwt: f.cookieJwt,
     };
   }
   fs.writeFileSync(JWT_CACHE_PATH, JSON.stringify(cache, null, 2));
