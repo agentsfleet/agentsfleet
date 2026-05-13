@@ -25,9 +25,18 @@ export const ZOMBIE_STATUS = {
   stopped: "stopped",
   killed: "killed",
   errored: "errored",
+  terminated: "terminated",
 };
 
-export const TERMINAL_STATUSES = [ZOMBIE_STATUS.killed, ZOMBIE_STATUS.errored];
+// `terminated` is a third post-kill resting state alongside `killed` /
+// `errored` — lifecycle-with-token.spec.js §4a accepts any of the three
+// after `killZombie`. Omitting it would land terminated zombies in the
+// teardown `live` list, where the kill retry trips UZ-ZMB-010.
+export const TERMINAL_STATUSES = [
+  ZOMBIE_STATUS.killed,
+  ZOMBIE_STATUS.errored,
+  ZOMBIE_STATUS.terminated,
+];
 
 export const PLATFORM_OPS_SAMPLE_DIR = "samples/platform-ops";
 

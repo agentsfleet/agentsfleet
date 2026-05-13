@@ -23,6 +23,8 @@ import { runZombiectl, spawnZombiectl, composeEnv } from "./fixtures/cli.js";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.js";
 import { makeStubbedStateDir } from "./fixtures/state-dir.js";
 import { startLocalStubServer } from "./fixtures/local-stub-server.js";
+import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.js";
+import { attachJwt } from "./fixtures/clerk-admin.js";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
@@ -219,10 +221,23 @@ describe("SIGINT during login (stub backend)", () => {
 
   if (isLive) {
     describe("--api / ZOMBIE_API_URL precedence", () => {
+      // process.env.ZOMBIE_TOKEN is NOT injected by the CI workflow step
+      // (only CLERK_SECRET_KEY + fixture emails land). Mint a real
+      // session JWT once per describe so the auth-guard passes and the
+      // tests actually exercise URL precedence instead of exiting on
+      // "not authenticated".
+      let sessionJwt;
+      before(async () => {
+        const minted = await attachJwt(resolveClerkSecret(), {
+          email: resolveFixtureEmail("regular"),
+        });
+        sessionJwt = minted.sessionJwt;
+      });
+
       it("--api overrides ZOMBIE_API_URL", async () => {
         const env = composeEnv({
           ZOMBIE_API_URL: UNROUTABLE_API_URL,
-          ZOMBIE_TOKEN: process.env.ZOMBIE_TOKEN ?? "",
+          ZOMBIE_TOKEN: sessionJwt,
           NO_COLOR: "1",
         });
         const result = await runZombiectl(
@@ -236,7 +251,7 @@ describe("SIGINT during login (stub backend)", () => {
       it("ZOMBIE_API_URL honored when --api absent", async () => {
         const env = composeEnv({
           ZOMBIE_API_URL: target,
-          ZOMBIE_TOKEN: process.env.ZOMBIE_TOKEN ?? "",
+          ZOMBIE_TOKEN: sessionJwt,
           NO_COLOR: "1",
         });
         const result = await runZombiectl(["workspace", "list", "--json"], { env });

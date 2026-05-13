@@ -10,6 +10,7 @@
 import { WORKSPACES_PATH } from "../lib/api-paths.js";
 import { validateRequiredId } from "../program/validate.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { MISSING_ARGUMENT, VALIDATION_ERROR } from "../constants/cli-errors.js";
 import {
   OPT_AGENT_ID,
   OPT_DESCRIPTION,
@@ -117,19 +118,19 @@ export async function commandAgentList(ctx, parsed, workspaces, deps) {
 // ── agent delete ──────────────────────────────────────────────────────────────
 
 export async function commandAgentDelete(ctx, parsed, workspaces, deps) {
-  const { request, apiHeaders, ui, printJson, writeLine } = deps;
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
 
   const workspaceId = parsed.options[OPT_WORKSPACE] || parsed.options[OPT_WORKSPACE_ID]
     || workspaces?.current_workspace_id;
   const agentId     = parsed.positionals[0] || parsed.options[OPT_AGENT_ID];
 
-  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent delete requires --workspace <id> or an active workspace context")); return 2; }
-  if (!agentId)     { writeLine(ctx.stderr, ui.err("agent delete requires <agent_id>")); return 2; }
+  if (!workspaceId) { writeError(ctx, MISSING_ARGUMENT, "agent delete requires --workspace <id> or an active workspace context", deps); return 2; }
+  if (!agentId)     { writeError(ctx, MISSING_ARGUMENT, "agent delete requires <agent_id>", deps); return 2; }
 
   const checkWs = validateRequiredId(workspaceId, "workspace_id");
-  if (!checkWs.ok) { writeLine(ctx.stderr, ui.err(checkWs.message)); return 2; }
+  if (!checkWs.ok) { writeError(ctx, VALIDATION_ERROR, checkWs.message, deps); return 2; }
   const checkKey = validateRequiredId(agentId, "key_id");
-  if (!checkKey.ok) { writeLine(ctx.stderr, ui.err(checkKey.message)); return 2; }
+  if (!checkKey.ok) { writeError(ctx, VALIDATION_ERROR, checkKey.message, deps); return 2; }
 
   const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys/${encodeURIComponent(agentId)}`;
   await request(ctx, url, { method: "DELETE", headers: apiHeaders(ctx) });
