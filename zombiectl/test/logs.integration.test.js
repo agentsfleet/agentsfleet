@@ -4,8 +4,8 @@ import { runCli } from "../src/cli.js";
 import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
-const WS_ID = "ws_logs_test";
-const ZOMBIE_ID = "zmb_logs_test";
+const WS_ID = "01900000-0000-7000-8000-00000010c105";
+const ZOMBIE_ID = "01900000-0000-7000-8000-0000007090c5";
 const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_logs" }, fn);
 
 describe("logs (paginated event tail)", () => {

@@ -7,12 +7,12 @@
 // short response preview. `--json` emits the raw envelope for piping.
 
 import { wsZombieEventsPath } from "../lib/api-paths.js";
+import { EVENT_STATUS } from "../constants/event-status.js";
 
 const DEFAULT_LIMIT = 50;
 
-export async function commandEvents(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
-  const parsed = parseFlags(args);
+export async function commandEvents(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
   const zombieId = parsed.positionals[0];
 
   const wsId = workspaces.current_workspace_id;
@@ -72,9 +72,9 @@ function formatRow(ev, ui) {
 
 function renderStatus(status, ui) {
   if (!status) return ui.dim("—");
-  if (status === "processed") return ui.ok(status);
-  if (status === "agent_error") return ui.err(status);
-  if (status === "gate_blocked") return ui.warn ? ui.warn(status) : ui.dim(status);
+  if (status === EVENT_STATUS.PROCESSED) return ui.ok(status);
+  if (status === EVENT_STATUS.AGENT_ERROR) return ui.err(status);
+  if (status === EVENT_STATUS.GATE_BLOCKED) return ui.warn ? ui.warn(status) : ui.dim(status);
   return ui.dim(status);
 }
 

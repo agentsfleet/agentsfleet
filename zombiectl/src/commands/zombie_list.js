@@ -1,9 +1,8 @@
 import { wsZombiesPath } from "../lib/api-paths.js";
 
-export async function commandList(ctx, args, workspaces, deps) {
-  const { request, apiHeaders, ui, printJson, printTable, writeLine, writeError, parseFlags } = deps;
-  const parsed = parseFlags(args);
-  const wsId = parsed.options["workspace-id"] || workspaces.current_workspace_id;
+export async function commandList(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, printTable, writeLine, writeError } = deps;
+  const wsId = parsed.options["workspace-id"] || parsed.options.workspaceId || workspaces.current_workspace_id;
   if (!wsId) {
     writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace use <id>", deps);
     return 1;

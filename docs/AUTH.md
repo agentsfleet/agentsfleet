@@ -363,6 +363,24 @@ The PROD harness creates two fixture identities in Clerk PROD on first run, then
 | `signup.spec.ts` against PROD | **skipped** (`test.skip(NEXT_PUBLIC_API_URL.includes('api.usezombie.com'))`) | Clerk PROD does not have test mode enabled, so the `+clerk_test@mailinator.com` short-circuit (DEV-only) would fail; running it would either hang on the verification screen or send a real OTP to a publicly-readable mailinator inbox. The DEV gate covers this spec instead. |
 | `.fixture-jwts.json` (Token B cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-acceptance-report/` so it does not ride out in CI artifact uploads. The cached `sessionJwt` is a real `api`-template Bearer token for 15 minutes; treat the cache file like a credential. |
 
+### CLI fixture identity carve-out
+
+The `cli-acceptance-{dev,prod}` jobs (`/.github/workflows/deploy-dev.yml`, `/.github/workflows/post-release.yml`) re-use the same `regular` and `admin` Clerk fixtures the dashboard suite provisions — same op:// vault items, same `is_test_fixture` metadata tag, same admin-mint posture. The CLI suite adds a few surface-specific invariants documented here so an operator looking at Clerk PROD or vault state doesn't mistake these for anomalies.
+
+| Item | Value | Notes |
+|---|---|---|
+| Token B injection — `lifecycle-with-token.spec.js` | `ZOMBIE_TOKEN=<template-minted JWT>` per `runZombiectl` call | Per-call env scoping (never `process.env` mutation) — WS-E #C1. The minted JWT TTL is `SESSION_TOKEN_TTL_SECONDS = 900` (15 min), same posture as the dashboard suite. |
+| Cookie cookie-mount — `lifecycle-after-login.spec.js` | Three cookies via Playwright Chromium: `__session` (default-mint cookieJwt), `__client_uat` (= `iat - 1`), `__clerk_db_jwt = "fixture-dev-browser"` | Mirrors `signInAs` in the dashboard suite verbatim. Cookie scope = dashboard host (parsed from `ZOMBIE_ACCEPTANCE_DASHBOARD_URL`). |
+| Dashboard handoff page contract | `/cli-auth/{session_id}` exposes `[data-testid="cli-auth-approve"]` on the approve action | The CLI suite waits for this selector via `page.waitForSelector` and clicks it. If the dashboard renames the test-id, the spec fails loud; M65_001's dashboard PR lands the page + selector. |
+| `credentials.json` mode (WS-E #C3) | `0600` enforced by `src/lib/state.js → writeJson` | Asserted at the end of `§5a handshake` via `fs.stat(credentialsPath).mode & 0o777 === 0o600`. The token field is verified to be a 3-segment JWT. |
+| op:// secret load posture (WS-E #C2) | Both `cli-acceptance-dev` and `cli-acceptance-prod` jobs load Clerk credentials AFTER `bun install` / `npm i -g` | Postinstall scripts see no Clerk admin key; same shape as `auth-e2e-dev`. |
+| State directory | tmpdir-scoped per spec run (`fs.mkdtemp(os.tmpdir(), "zombiectl-token-…")` or `…/zombiectl-login-…`); cleaned in `afterEach`/`after` regardless of test outcome | Never touches `~/.config/zombiectl/`. |
+| ID format invariant | All CLI commands that take a positional id (`zombiectl status|kill|stop|resume|logs|delete <id>`, `workspace use|delete <id>`, `agent delete <id>`, `grant delete <id>`) validate uuidv7 client-side via `src/program/validate.js` (uses the `uuid` npm package — `validate` + `version === 7`). Backend's `id_format.zig` is the source of truth; CLI mirrors it. |
+
+The CLI surface that maps `agent <verb>` ↔ server resource `core.agent_keys`: the CLI exposes `zombiectl agent {add,list,delete}` for ergonomics; the server's REST resource path is `/v1/workspaces/{ws}/agent-keys[/{agent_id}]`. Both refer to the same table. Re-naming for alignment is a separate spec decision.
+
+`lifecycle-after-login.spec.js` runs only when both `ZOMBIE_ACCEPTANCE_TARGET=https://…` AND `ZOMBIE_ACCEPTANCE_DASHBOARD_URL=https://…` are set in the workflow env. The dashboard URL is intentionally absent on PROD until Clerk-PROD-test-mode posture and the dashboard's PROD `/cli-auth` page are both validated.
+
 ### External-state runbook prerequisites
 
 These two things live outside the repo and the harness assumes both are in place. If a Clerk DEV instance is reset or rotated, re-provision both before running the suite — otherwise globalSetup fails opaquely.

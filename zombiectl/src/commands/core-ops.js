@@ -1,5 +1,11 @@
-import { wsZombiesPath } from "../lib/api-paths.js";
+import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import {
+  ERR_INTERNAL_DB_UNAVAILABLE,
+  ERR_INTERNAL_GENERIC,
+  ERR_INTERNAL_SERVER_ERROR,
+} from "../constants/error-codes.js";
+import { DOCTOR_CHECK } from "../constants/doctor-checks.js";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 
@@ -8,21 +14,21 @@ const PER_CHECK_TIMEOUT_MS = 5000;
 // failure-modes.integration.test.js. AUTH_PRESET covers the
 // authenticated leg.
 export const doctorErrorMap = compose(AUTH_PRESET, {
-  "UZ-INTERNAL-001": {
+  [ERR_INTERNAL_DB_UNAVAILABLE]: {
     code: "SERVER_INTERNAL",
     message: "Database unavailable — the API is degraded; try again shortly.",
   },
-  "UZ-INTERNAL-002": {
+  [ERR_INTERNAL_GENERIC]: {
     code: "SERVER_INTERNAL",
     message: "Server internal error — the API is degraded; try again shortly.",
   },
-  "UZ-INTERNAL-003": {
+  [ERR_INTERNAL_SERVER_ERROR]: {
     code: "SERVER_INTERNAL",
     message: "Server internal error — the API is degraded; try again shortly.",
   },
 });
 
-function createCoreOpsHandlers(ctx, workspaces, deps) {
+export async function commandDoctor(ctx, _parsed, workspaces, deps) {
   const {
     apiHeaders,
     printJson,
@@ -32,102 +38,82 @@ function createCoreOpsHandlers(ctx, workspaces, deps) {
     writeLine,
   } = deps;
 
-  async function commandDoctor() {
-    const checks = [];
+  const checks = [];
 
-    // 1. server_reachable — GET /healthz returns {status: "ok"} within 5s.
-    try {
-      const healthz = await request(ctx, "/healthz", {
-        method: "GET",
-        timeoutMs: PER_CHECK_TIMEOUT_MS,
-      });
-      const ok = healthz?.status === "ok";
-      checks.push({
-        name: "server_reachable",
-        ok,
-        detail: ok ? `${ctx.apiUrl}/healthz` : `unexpected payload: ${JSON.stringify(healthz)}`,
-      });
-    } catch (err) {
-      checks.push({
-        name: "server_reachable",
-        ok: false,
-        detail: `${ctx.apiUrl}/healthz: ${err?.message ?? String(err)}`,
-      });
-    }
-
-    // 2. workspace_selected — local config has a current_workspace_id.
-    const wsId = workspaces.current_workspace_id;
-    const wsSelected = Boolean(wsId);
-    checks.push({
-      name: "workspace_selected",
-      ok: wsSelected,
-      detail: wsSelected ? wsId : "no workspace selected. Run: zombiectl workspace add",
+  try {
+    const healthz = await request(ctx, HEALTHZ_PATH, {
+      method: "GET",
+      timeoutMs: PER_CHECK_TIMEOUT_MS,
     });
-
-    // 3. workspace_binding_valid — token is bound to the selected workspace.
-    //    Probe via GET /v1/workspaces/{ws}/zombies (canonical workspace-scoped
-    //    read; returns 200 with an empty list if no zombies). Skips when
-    //    workspace_selected already failed — no point hitting the server with
-    //    an empty workspace id.
-    if (!wsSelected) {
-      checks.push({
-        name: "workspace_binding_valid",
-        ok: false,
-        detail: "skipped: no workspace selected",
-      });
-    } else {
-      try {
-        // No defensive `apiHeaders ? ... : {}` fallback — a missing dep is a
-        // wiring bug, and silently dropping the Authorization header would
-        // surface as a misleading "binding bad" report instead of a loud
-        // TypeError pointing at the real problem (the call site forgot to
-        // pass apiHeaders).
-        await request(ctx, wsZombiesPath(wsId), {
-          method: "GET",
-          headers: apiHeaders(ctx),
-          timeoutMs: PER_CHECK_TIMEOUT_MS,
-        });
-        checks.push({
-          name: "workspace_binding_valid",
-          ok: true,
-          detail: `token bound to ${wsId}`,
-        });
-      } catch (err) {
-        const code = err?.code || "REQUEST_FAILED";
-        checks.push({
-          name: "workspace_binding_valid",
-          ok: false,
-          detail: `${wsId}: ${code} — run \`zombiectl workspace list\` to reset`,
-        });
-      }
-    }
-
-    const ok = checks.every((c) => c.ok);
-    const report = { ok, api_url: ctx.apiUrl, checks };
-
-    if (ctx.jsonMode) {
-      printJson(ctx.stdout, report);
-    } else {
-      printSection(ctx.stdout, "zombiectl doctor");
-      for (const c of checks) {
-        const tag = c.ok ? "[OK]" : "[FAIL]";
-        const line = `${tag} ${c.name}`;
-        writeLine(ctx.stdout, c.ok ? ui.ok(line) : ui.err(line));
-        if (!c.ok && c.detail) writeLine(ctx.stdout, `        ${c.detail}`);
-      }
-      writeLine(ctx.stdout);
-      const passed = checks.filter((c) => c.ok).length;
-      writeLine(
-        ctx.stdout,
-        ok ? ui.ok("All checks passed.") : ui.err(`${passed}/${checks.length} checks passed`),
-      );
-    }
-    return ok ? 0 : 1;
+    const ok = healthz?.status === HEALTHZ_STATUS_OK;
+    checks.push({
+      name: DOCTOR_CHECK.SERVER_REACHABLE,
+      ok,
+      detail: ok ? `${ctx.apiUrl}${HEALTHZ_PATH}` : `unexpected payload: ${JSON.stringify(healthz)}`,
+    });
+  } catch (err) {
+    checks.push({
+      name: DOCTOR_CHECK.SERVER_REACHABLE,
+      ok: false,
+      detail: `${ctx.apiUrl}${HEALTHZ_PATH}: ${err?.message ?? String(err)}`,
+    });
   }
 
-  return {
-    commandDoctor,
-  };
-}
+  const wsId = workspaces.current_workspace_id;
+  const wsSelected = Boolean(wsId);
+  checks.push({
+    name: DOCTOR_CHECK.WORKSPACE_SELECTED,
+    ok: wsSelected,
+    detail: wsSelected ? wsId : "no workspace selected. Run: zombiectl workspace add",
+  });
 
-export { createCoreOpsHandlers };
+  if (!wsSelected) {
+    checks.push({
+      name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
+      ok: false,
+      detail: "skipped: no workspace selected",
+    });
+  } else {
+    try {
+      await request(ctx, wsZombiesPath(wsId), {
+        method: "GET",
+        headers: apiHeaders(ctx),
+        timeoutMs: PER_CHECK_TIMEOUT_MS,
+      });
+      checks.push({
+        name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
+        ok: true,
+        detail: `token bound to ${wsId}`,
+      });
+    } catch (err) {
+      const code = err?.code || "REQUEST_FAILED";
+      checks.push({
+        name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
+        ok: false,
+        detail: `${wsId}: ${code} — run \`zombiectl workspace list\` to reset`,
+      });
+    }
+  }
+
+  const ok = checks.every((c) => c.ok);
+  const report = { ok, api_url: ctx.apiUrl, checks };
+
+  if (ctx.jsonMode) {
+    printJson(ctx.stdout, report);
+  } else {
+    printSection(ctx.stdout, "zombiectl doctor");
+    for (const c of checks) {
+      const tag = c.ok ? "[OK]" : "[FAIL]";
+      const line = `${tag} ${c.name}`;
+      writeLine(ctx.stdout, c.ok ? ui.ok(line) : ui.err(line));
+      if (!c.ok && c.detail) writeLine(ctx.stdout, `        ${c.detail}`);
+    }
+    writeLine(ctx.stdout);
+    const passed = checks.filter((c) => c.ok).length;
+    writeLine(
+      ctx.stdout,
+      ok ? ui.ok("All checks passed.") : ui.err(`${passed}/${checks.length} checks passed`),
+    );
+  }
+  return ok ? 0 : 1;
+}

@@ -28,6 +28,7 @@
   "scripts": {
     "test": "node ./scripts/run-tests.mjs",
     "test:coverage": "bun test --coverage",
+    "test:acceptance": "node ./scripts/run-acceptance.mjs",
     "lint": "oxlint src bin test scripts && node ./scripts/audit-runtime-imports.mjs",
     "lint:fix": "oxlint src bin test scripts --fix && node ./scripts/audit-runtime-imports.mjs",
     "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js",
@@ -35,10 +36,13 @@
     "postinstall": "node ./scripts/postinstall.mjs"
   },
   "dependencies": {
-    "posthog-node": "^5.33.4"
+    "commander": "^14.0.3",
+    "posthog-node": "^5.33.4",
+    "uuid": "^11.0.0"
   },
   "license": "MIT",
   "devDependencies": {
-    "oxlint": "^1.63.0"
+    "oxlint": "^1.63.0",
+    "playwright": "^1.49.0"
   }
 }

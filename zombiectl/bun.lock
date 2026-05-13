@@ -5,10 +5,13 @@
     "": {
       "name": "zombiectl",
       "dependencies": {
+        "commander": "^14.0.3",
         "posthog-node": "^5.33.4",
+        "uuid": "^11.0.0",
       },
       "devDependencies": {
         "oxlint": "^1.63.0",
+        "playwright": "^1.49.0",
       },
     },
   },
@@ -55,8 +58,18 @@
 
     "@posthog/types": ["@posthog/types@1.372.10", "", {}, "sha512-KuT3vLu3LSFsNWCwasS4gqjH/ysAyIUcB/aJSmKyNhDd/85hAznHRz1eSSl0sMvtsDTYiQIq0I0ybduVbrpPew=="],
 
+    "commander": ["commander@14.0.3", "", {}, "sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw=="],
+
+    "fsevents": ["fsevents@2.3.2", "", { "os": "darwin" }, "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA=="],
+
     "oxlint": ["oxlint@1.63.0", "", { "optionalDependencies": { "@oxlint/binding-android-arm-eabi": "1.63.0", "@oxlint/binding-android-arm64": "1.63.0", "@oxlint/binding-darwin-arm64": "1.63.0", "@oxlint/binding-darwin-x64": "1.63.0", "@oxlint/binding-freebsd-x64": "1.63.0", "@oxlint/binding-linux-arm-gnueabihf": "1.63.0", "@oxlint/binding-linux-arm-musleabihf": "1.63.0", "@oxlint/binding-linux-arm64-gnu": "1.63.0", "@oxlint/binding-linux-arm64-musl": "1.63.0", "@oxlint/binding-linux-ppc64-gnu": "1.63.0", "@oxlint/binding-linux-riscv64-gnu": "1.63.0", "@oxlint/binding-linux-riscv64-musl": "1.63.0", "@oxlint/binding-linux-s390x-gnu": "1.63.0", "@oxlint/binding-linux-x64-gnu": "1.63.0", "@oxlint/binding-linux-x64-musl": "1.63.0", "@oxlint/binding-openharmony-arm64": "1.63.0", "@oxlint/binding-win32-arm64-msvc": "1.63.0", "@oxlint/binding-win32-ia32-msvc": "1.63.0", "@oxlint/binding-win32-x64-msvc": "1.63.0" }, "peerDependencies": { "oxlint-tsgolint": ">=0.22.1" }, "optionalPeers": ["oxlint-tsgolint"], "bin": { "oxlint": "bin/oxlint" } }, "sha512-9TGXetdjgIHOJ9OiReomP7nnrMkV9HxC1xM2ramJSLQpzxjsAJtQwa4wqkJN2f/uCrqZuJseFuSlWDdvcruveg=="],
 
+    "playwright": ["playwright@1.60.0", "", { "dependencies": { "playwright-core": "1.60.0" }, "optionalDependencies": { "fsevents": "2.3.2" }, "bin": { "playwright": "cli.js" } }, "sha512-hheHdokM8cdqCb0lcE3s+zT4t4W+vvjpGxsZlDnikarzx8tSzMebh3UiFtgqwFwnTnjYQcsyMF8ei2mCO/tpeA=="],
+
+    "playwright-core": ["playwright-core@1.60.0", "", { "bin": { "playwright-core": "cli.js" } }, "sha512-9bW6zvX/m0lEbgTKJ6YppOKx8H3VOPBMOCFh2irXFOT4BbHgrx5hPjwJYLT40Lu+4qtD36qKc/Hn56StUW57IA=="],
+
     "posthog-node": ["posthog-node@5.33.4", "", { "dependencies": { "@posthog/core": "1.28.4" }, "peerDependencies": { "rxjs": "^7.0.0" }, "optionalPeers": ["rxjs"] }, "sha512-kK6nepnkSStbbxWxB2ZFhKxE2nw9tSHLv/3tUKcypwzKfovp8e8icsndBVf9RTHxiXBiF1M3B13tWvjBT2UWBw=="],
+
+    "uuid": ["uuid@11.1.1", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
   }
 }

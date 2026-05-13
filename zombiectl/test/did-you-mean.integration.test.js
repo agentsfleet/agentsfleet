@@ -26,7 +26,8 @@ describe("did-you-mean integration", () => {
     });
     expect(code).toBe(2);
     const errText = err.read();
-    expect(errText).toContain("unknown command: docto");
+    expect(errText).toContain("unknown command");
+    expect(errText).toContain("docto");
     expect(errText).toContain("doctor");
   });
 

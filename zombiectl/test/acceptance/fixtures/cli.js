@@ -1,0 +1,144 @@
+/**
+ * Per-spawn CLI runner for the acceptance suite.
+ *
+ * Two binary modes:
+ *   - worktree: spawn `node ./bin/zombiectl.js` from the repo (DEV jobs)
+ *   - global:   spawn `zombiectl` from PATH (PROD jobs, post-`npm i -g`)
+ *
+ * The caller composes the full child env — `runZombiectl` NEVER mutates
+ * `process.env`. WS-E #C1 invariant: the minted Clerk JWT is per-call;
+ * leaking it into the parent env would inherit into every later spawn.
+ */
+
+import { spawn } from "node:child_process";
+import path from "node:path";
+import url from "node:url";
+
+import { ACCEPTANCE_BINARY, ACCEPTANCE_BINARY_ENV } from "./constants.js";
+
+const HERE = path.dirname(url.fileURLToPath(import.meta.url));
+const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..", "..");
+const WORKTREE_ENTRY = path.join(ZOMBIECTL_ROOT, "bin", "zombiectl.js");
+
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+export class TimeoutError extends Error {
+  constructor(message, opts) {
+    super(message);
+    this.name = "TimeoutError";
+    this.args = opts?.args ?? [];
+    this.timeoutMs = opts?.timeoutMs;
+  }
+}
+
+function resolveBinary(opts) {
+  const requested = opts?.binary ?? process.env[ACCEPTANCE_BINARY_ENV] ?? ACCEPTANCE_BINARY.worktree;
+  if (requested === ACCEPTANCE_BINARY.global) return { command: "zombiectl", prefixArgs: [] };
+  if (requested === ACCEPTANCE_BINARY.worktree) {
+    return { command: process.execPath, prefixArgs: [WORKTREE_ENTRY] };
+  }
+  throw new Error(`unknown ZOMBIE_ACCEPTANCE_BINARY: ${requested}`);
+}
+
+function assertEnvComposed(env) {
+  if (env === undefined || env === null) {
+    throw new Error("runZombiectl requires explicit env (per-call composition is the contract)");
+  }
+  if (typeof env !== "object") {
+    throw new Error("runZombiectl env must be an object");
+  }
+}
+
+/**
+ * Spawn the CLI with a fully-composed child env.
+ *
+ * @param {string[]} args - argv passed to zombiectl (e.g. ["workspace","list","--json"])
+ * @param {object} opts
+ * @param {Record<string,string>} opts.env - COMPLETE child env (no merge with process.env)
+ * @param {string} [opts.stdin] - data to pipe to stdin; if absent, stdin is closed
+ * @param {number} [opts.timeoutMs] - default 60_000
+ * @param {string} [opts.cwd] - default: zombiectl/
+ * @param {"worktree"|"global"} [opts.binary] - default from env
+ * @returns {Promise<{code:number, stdout:string, stderr:string, durationMs:number}>}
+ */
+export function runZombiectl(args, opts) {
+  assertEnvComposed(opts?.env);
+  const { command, prefixArgs } = resolveBinary(opts);
+  const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const cwd = opts.cwd ?? ZOMBIECTL_ROOT;
+  const started = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, [...prefixArgs, ...args], {
+      cwd,
+      env: opts.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGKILL");
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+
+    child.on("error", (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    child.on("close", (code, signal) => {
+      clearTimeout(timer);
+      const durationMs = Date.now() - started;
+      if (timedOut) {
+        reject(new TimeoutError(`zombiectl ${args.join(" ")} timed out after ${timeoutMs}ms`, { args, timeoutMs }));
+        return;
+      }
+      resolve({ code: code ?? (signal ? 128 : 0), stdout, stderr, durationMs, signal });
+    });
+
+    if (opts.stdin !== undefined) {
+      child.stdin.write(opts.stdin);
+    }
+    child.stdin.end();
+  });
+}
+
+/**
+ * Spawn the CLI and return the child handle for streaming-output cases
+ * (`zombiectl login` poll loop, SIGINT scenarios). Caller is responsible
+ * for awaiting exit and cleaning up.
+ */
+export function spawnZombiectl(args, opts) {
+  assertEnvComposed(opts?.env);
+  const { command, prefixArgs } = resolveBinary(opts);
+  const cwd = opts.cwd ?? ZOMBIECTL_ROOT;
+  return spawn(command, [...prefixArgs, ...args], {
+    cwd,
+    env: opts.env,
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+/**
+ * Compose a child env from a known-allowlist of fixture-supplied vars.
+ * Never reads `process.env` for fields the caller did not list — keeps
+ * the parent's `ZOMBIE_TOKEN` (if any) out of every spawn unless the
+ * caller asks for it explicitly.
+ */
+export function composeEnv(fields) {
+  const env = {
+    PATH: process.env.PATH,
+    HOME: process.env.HOME,
+  };
+  for (const [key, value] of Object.entries(fields)) {
+    if (value === undefined || value === null) continue;
+    env[key] = String(value);
+  }
+  return env;
+}

@@ -3,28 +3,39 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 
 const testDir = path.resolve("test");
-const files = fs.readdirSync(testDir)
-  .filter((file) => file.endsWith(".js"))
-  .map((file) => path.join("test", file))
-  .sort();
+
+function walk(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...walk(full));
+    } else if (entry.isFile() && entry.name.endsWith(".js")) {
+      out.push(full);
+    }
+  }
+  return out;
+}
+
+const files = walk(testDir).sort();
 
 const nodeTests = [];
 const bunTests = [];
 
 for (const file of files) {
-  const source = fs.readFileSync(path.resolve(file), "utf8");
+  const source = fs.readFileSync(file, "utf8");
   if (source.includes('from "node:test"') || source.includes("from 'node:test'")) {
-    nodeTests.push(file);
+    nodeTests.push(path.relative(process.cwd(), file));
     continue;
   }
   if (source.includes('from "bun:test"') || source.includes("from 'bun:test'")) {
-    bunTests.push(file);
+    bunTests.push(path.relative(process.cwd(), file));
   }
 }
 
-function run(command, args) {
-  if (args.length === 0) return;
-  const result = spawnSync(command, args, {
+function run(command, baseArgs, targets) {
+  if (targets.length === 0) return;
+  const result = spawnSync(command, [...baseArgs, ...targets], {
     stdio: "inherit",
     cwd: process.cwd(),
     env: process.env,
@@ -34,5 +45,5 @@ function run(command, args) {
   }
 }
 
-run("node", ["--test", ...nodeTests]);
-run("bun", ["test", ...bunTests]);
+run("node", ["--test"], nodeTests);
+run("bun", ["test"], bunTests);

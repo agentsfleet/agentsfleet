@@ -2,3 +2,7 @@
 # Authoritative copies live at ../samples/ and ../skills/.
 /samples/
 /skills/
+
+# Per-suite minted Clerk session JWT (mode 0600). Written by
+# test/acceptance/global-setup.js; never published.
+/test/acceptance/.fixture-jwt

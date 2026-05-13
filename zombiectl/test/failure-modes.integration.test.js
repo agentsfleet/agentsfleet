@@ -27,8 +27,8 @@ import { saveWorkspaces } from "../src/lib/state.js";
 import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 
-const WS_ID = "ws_failure_test";
-const ZOMBIE_ID = "zmb_failure_test";
+const WS_ID = "01900000-0000-7000-8000-000000fa17e1";
+const ZOMBIE_ID = "01900000-0000-7000-8000-000000fa17e2";
 const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fail" }, fn);
 
 function errorEnvelope(code, message, requestId = "req_fail_test") {

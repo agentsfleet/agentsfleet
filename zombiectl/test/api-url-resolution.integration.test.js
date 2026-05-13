@@ -116,13 +116,13 @@ describe("api url resolution drives every fetch from runCli", () => {
   });
 
   test("honors creds.api_url when no flag and no env override are set (regression: PR #297 review)", async () => {
-    // Regression for the dead-code bug in cli.js:76's `||` chain: parseGlobalArgs
-    // used to bake DEFAULT_API_URL into its return, making global.apiUrl always
-    // truthy and short-circuiting creds.api_url. A user who ran
-    // `zombiectl login --api http://localhost:3000` would have their URL written
-    // to credentials.json but every subsequent invocation silently fell through
-    // to the production default. This test pre-seeds the saved api_url and
-    // proves it survives end-to-end as the ctx.apiUrl that drives fetch.
+    // Regression: a global arg parser used to bake DEFAULT_API_URL into its
+    // return, making global.apiUrl always truthy and short-circuiting
+    // creds.api_url. A user who ran `zombiectl login --api http://localhost:3000`
+    // would have their URL written to credentials.json but every subsequent
+    // invocation silently fell through to the production default. Pre-seed
+    // the saved api_url and prove it survives end-to-end as the ctx.apiUrl
+    // that drives fetch.
     await withStateDir(async () => {
       await saveCredentials({
         token: "header.payload.sig",
@@ -156,12 +156,11 @@ describe("api url resolution drives every fetch from runCli", () => {
   });
 
   // Full precedence-chain matrix. The bug fixed in bb1ca7c9 lived in the
-  // composition at cli.js:76 — parseGlobalArgs unit tests alone could not
-  // catch it because the bug was the cross-module short-circuit, not the
-  // parser. This 16-case matrix walks every combination of (--api flag,
-  // ZOMBIE_API_URL env, API_URL env, creds.api_url persisted) and asserts
-  // the resolved URL drives the actual outbound fetch through the runCli
-  // dispatch.
+  // cross-module short-circuit between the global-arg parser and creds
+  // resolution — unit tests on the parser alone could not catch it. This
+  // 16-case matrix walks every combination of (--api flag, ZOMBIE_API_URL
+  // env, API_URL env, creds.api_url persisted) and asserts the resolved
+  // URL drives the actual outbound fetch through the runCli dispatch.
   describe("full precedence matrix", () => {
     const FLAG = "https://flag.example";
     const ZENV = "https://zombie-env.example";

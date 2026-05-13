@@ -11,24 +11,16 @@
 // consumes the secret addresses fields as ${secrets.<name>.<field>}; this
 // CLI does not enforce a schema — that's the consumer's contract.
 //
-// Default upsert: skip-if-exists. If a credential with `<name>` already
-// exists, `add` returns 0 with status="skipped" and does NOT mutate the
-// vault. Pass `--force` to overwrite. The backing endpoint upserts on
-// (workspace_id, key_name); the CLI's skip-if-exists is a client-side
-// guard so installation flows can re-run without clobbering a
-// workspace-shared secret like `github.webhook_secret`.
+// Default upsert: skip-if-exists. `--force` to overwrite. The backing
+// endpoint upserts on (workspace_id, key_name); the client-side guard
+// prevents re-runs from silently clobbering a shared secret.
 
 import { wsCredentialsPath, wsCredentialPath } from "../lib/api-paths.js";
 
-function ensureWorkspace(ctx, workspaces, deps) {
+function requireWorkspace(ctx, workspaces, deps) {
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
-    deps.writeError(
-      ctx,
-      "NO_WORKSPACE",
-      "no workspace selected. Run: zombiectl workspace add",
-      deps,
-    );
+    deps.writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
   }
   return wsId;
 }
@@ -49,22 +41,18 @@ function parseDataObject(raw) {
   return { value: parsed };
 }
 
-// Read all of stdin as UTF-8. Used when --data is `@-` so secret JSON
-// never appears in shell history or process argv. Returns the raw body
-// (caller pipes through parseDataObject).
+// Read all of stdin as UTF-8 — used when --data is `@-` so secret JSON
+// never appears in shell history or process argv.
 async function readStdinJson(ctx) {
-  // Allow tests to inject a fake stdin via ctx.stdin (string or async iterable).
   if (typeof ctx?.stdin === "string") return ctx.stdin;
   if (ctx?.stdin && typeof ctx.stdin[Symbol.asyncIterator] === "function") {
     const chunks = [];
     for await (const chunk of ctx.stdin) chunks.push(chunk);
     return chunks.map((c) => (typeof c === "string" ? c : new TextDecoder().decode(c))).join("");
   }
-  // Bun runtime path.
   if (typeof globalThis.Bun?.stdin?.text === "function") {
     return await globalThis.Bun.stdin.text();
   }
-  // Node fallback.
   const chunks = [];
   for await (const chunk of process.stdin) chunks.push(chunk);
   return Buffer.concat(chunks).toString("utf8");
@@ -80,15 +68,17 @@ async function findCredentialByName(ctx, wsId, name, deps) {
   return list.find((c) => c.name === name) || null;
 }
 
-async function addCredential(ctx, args, wsId, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const credName = args[1];
+export async function commandCredentialAdd(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
+
+  const credName = parsed.positionals[0];
   if (!credName) {
     writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl credential add <name> --data='<json-object>' [--force]", deps);
     return 2;
   }
 
-  const parsed = parseFlags(args.slice(2));
   const force = Boolean(parsed.options.force);
   const dataFlag = parsed.options.data;
   if (!dataFlag) {
@@ -118,9 +108,6 @@ async function addCredential(ctx, args, wsId, deps) {
     return 2;
   }
 
-  // Default skip-if-exists. The backend upserts on (workspace_id, key_name);
-  // the client-side guard prevents re-runs from silently clobbering a shared
-  // secret (e.g. github.webhook_secret across multiple zombies in a workspace).
   if (!force) {
     const existing = await findCredentialByName(ctx, wsId, credName, deps);
     if (existing) {
@@ -147,9 +134,12 @@ async function addCredential(ctx, args, wsId, deps) {
   return 0;
 }
 
-async function showCredential(ctx, args, wsId, deps) {
+export async function commandCredentialShow(ctx, parsed, workspaces, deps) {
   const { ui, printJson, writeLine, writeError } = deps;
-  const credName = args[1];
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
+
+  const credName = parsed.positionals[0];
   if (!credName) {
     writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl credential show <name>", deps);
     return 2;
@@ -165,10 +155,6 @@ async function showCredential(ctx, args, wsId, deps) {
     return 1;
   }
 
-  // Never echo secret bytes — show only existence + metadata. Field-level
-  // presence requires a backend GET which doesn't yet exist; M49 only needs
-  // the existence check (skill prompts reuse-vs-scope on second install
-  // when the github credential is present at all).
   if (ctx.jsonMode) {
     printJson(ctx.stdout, { name: found.name, exists: true, created_at: found.created_at ?? null });
   } else {
@@ -178,8 +164,11 @@ async function showCredential(ctx, args, wsId, deps) {
   return 0;
 }
 
-async function listCredentials(ctx, wsId, deps) {
+export async function commandCredentialList(ctx, _parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, writeLine } = deps;
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
+
   const res = await request(ctx, wsCredentialsPath(wsId), {
     method: "GET",
     headers: apiHeaders(ctx),
@@ -200,9 +189,12 @@ async function listCredentials(ctx, wsId, deps) {
   return 0;
 }
 
-async function deleteCredential(ctx, args, wsId, deps) {
+export async function commandCredentialDelete(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const credName = args[1];
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
+
+  const credName = parsed.positionals[0];
   if (!credName) {
     writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl credential delete <name>", deps);
     return 2;
@@ -218,37 +210,4 @@ async function deleteCredential(ctx, args, wsId, deps) {
     writeLine(ctx.stdout, ui.ok(`Credential '${credName}' removed from vault.`));
   }
   return 0;
-}
-
-function unknownAction(ctx, action, deps) {
-  const { ui, writeLine, writeError } = deps;
-  if (ctx.jsonMode) {
-    writeError(ctx, "UNKNOWN_COMMAND", `unknown credential action: ${action ?? "(none)"}`, deps);
-  } else {
-    writeLine(ctx.stderr, ui.err(`unknown credential action: ${action ?? "(none)"}`));
-    writeLine(ctx.stderr, "usage: zombiectl credential add    <name> --data=@- [--force]   (pipe JSON on stdin)");
-    writeLine(ctx.stderr, "       zombiectl credential show   <name>");
-    writeLine(ctx.stderr, "       zombiectl credential list");
-    writeLine(ctx.stderr, "       zombiectl credential delete <name>");
-  }
-  return 2;
-}
-
-export async function commandCredential(ctx, args, workspaces, deps) {
-  const action = args[0];
-  const wsId = ensureWorkspace(ctx, workspaces, deps);
-  if (!wsId) return 1;
-
-  switch (action) {
-    case "add":
-      return addCredential(ctx, args, wsId, deps);
-    case "show":
-      return showCredential(ctx, args, wsId, deps);
-    case "list":
-      return listCredentials(ctx, wsId, deps);
-    case "delete":
-      return deleteCredential(ctx, args, wsId, deps);
-    default:
-      return unknownAction(ctx, action, deps);
-  }
 }

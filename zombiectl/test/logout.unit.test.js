@@ -1,26 +1,16 @@
 import { describe, test, expect } from "bun:test";
-import { makeNoop, makeBufferStream, ui } from "./helpers.js";
-import { createCoreHandlers } from "../src/commands/core.js";
-
+import {
+  createCoreHandlers,
+  makeBufferStream,
+  makeNoop,
+  ui,
+} from "./helpers.js";
 function makeDeps(overrides = {}) {
   return {
     clearCredentials: async () => {},
     createSpinner: () => ({ start() {}, succeed() {}, fail() {} }),
     newIdempotencyKey: () => "idem_test",
     openUrl: async () => false,
-    parseFlags: (tokens) => {
-      const options = {};
-      const positionals = [];
-      for (let i = 0; i < tokens.length; i++) {
-        if (tokens[i].startsWith("--")) {
-          const key = tokens[i].slice(2);
-          const next = tokens[i + 1];
-          if (next && !next.startsWith("--")) { options[key] = next; i++; }
-          else options[key] = true;
-        } else { positionals.push(tokens[i]); }
-      }
-      return { options, positionals };
-    },
     printJson: (_s, v) => {},
     printKeyValue: () => {},
     printTable: () => {},

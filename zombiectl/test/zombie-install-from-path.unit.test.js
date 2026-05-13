@@ -15,11 +15,12 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { commandZombie } from "../src/commands/zombie.js";
-import { findRoute } from "../src/program/routes.js";
-import { parseFlags } from "../src/program/args.js";
-import { makeNoop, ui, WS_ID } from "./helpers.js";
-
+import {
+  commandZombieDispatch as commandZombie,
+  makeNoop,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = dirname(TEST_DIR);
 
@@ -33,7 +34,6 @@ function makeStdout() {
 
 function makeDeps(overrides = {}) {
   return {
-    parseFlags,
     // Default mock mirrors what the create handler returns post-parse.
     // Tests that need a different shape override `request`.
     request: async () => ({
@@ -413,36 +413,6 @@ test("install --from --json: emits JSON with server-returned name", async () => 
   const out = stdout.lines.join("");
   assert.ok(!out.includes("🎉"), `no emoji in JSON mode:\n${out}`);
   assert.ok(!out.includes("is live"), `no prose in JSON mode:\n${out}`);
-});
-
-// ── §4 — Removed commands ─────────────────────────────────────────────────
-
-test("route: 'up' no longer resolves to a handler", () => {
-  assert.equal(findRoute("up", []), null);
-});
-
-test("install --from (no value): boolean-true treated as missing argument", async () => {
-  let captured = null;
-  const code = await commandZombie(
-    { stdout: makeStdout(), stderr: makeNoop(), jsonMode: false, noInput: false },
-    ["install"],
-    workspaces,
-    {
-      parseFlags: () => ({ options: { from: true }, positionals: [] }),
-      request: async () => { throw new Error("request should not be called"); },
-      apiHeaders: () => ({}),
-      ui,
-      printJson: () => {},
-      printKeyValue: () => {},
-      printSection: () => {},
-      writeLine: () => {},
-      writeError: (_ctx, errCode, message) => { captured = { code: errCode, message }; },
-    },
-  );
-  assert.equal(code, 2);
-  assert.equal(captured?.code, "MISSING_ARGUMENT");
-  assert.ok(captured.message.includes("--from"), captured.message);
-  assert.ok(!captured.message.includes("true"), `message must not leak boolean: ${captured.message}`);
 });
 
 test("install without --from exits 2 with usage pointing at --from", async () => {

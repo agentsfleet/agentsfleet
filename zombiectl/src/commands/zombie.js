@@ -1,113 +1,86 @@
-// Zombie CLI commands.
-//
-// Flat top-level for common ops: install, status, kill, logs.
-// Namespaced for less common: credential add, credential list.
+// Zombie CLI top-level command leaf handlers. Each handler takes
+// (ctx, parsed, workspaces, deps) — cli-tree.js wires commander into
+// these directly. The list/logs/events/steer/credential leaves live
+// in sibling files (zombie_list.js, zombie_logs.js, zombie_events.js,
+// zombie_steer.js, zombie_credential.js).
 
+import { wsZombiesPath, wsZombiePath } from "../lib/api-paths.js";
+import { loadSkillFromPath, SkillLoadError } from "../lib/load-skill-from-path.js";
+import { validateRequiredId } from "../program/validate.js";
 import {
-  wsZombiesPath,
-  wsZombiePath,
-  wsZombieEventsPath,
-} from "../lib/api-paths.js";
+  IO_ERROR,
+  MISSING_ARGUMENT,
+  NO_WORKSPACE,
+  VALIDATION_ERROR,
+} from "../constants/cli-errors.js";
+import { OPT_FROM } from "../constants/cli-flags.js";
 import {
-  loadSkillFromPath,
-  SkillLoadError,
-} from "../lib/load-skill-from-path.js";
-import { commandCredential } from "./zombie_credential.js";
-import { commandList } from "./zombie_list.js";
-import { commandEvents } from "./zombie_events.js";
-import { commandSteer } from "./zombie_steer.js";
+  ERR_CREDENTIAL_NAME_INVALID,
+  ERR_CREDENTIAL_NOT_FOUND,
+  ERR_VAULT_INVALID,
+  ERR_ZOMBIE_RUNNER_FAILED,
+} from "../constants/error-codes.js";
 import {
   AUTH_PRESET,
   WORKSPACE_PRESET,
   ZOMBIE_PRESET,
   compose,
 } from "../lib/error-map-presets.js";
+import { ZOMBIE_STATUS } from "../constants/zombie-status.js";
 
-// Single map shared by every `zombie.*` route. The dispatcher in
-// commandZombie routes to install/list/status/kill/stop/resume/delete/
-// logs/steer/events/credential — all hit the same workspace + zombie
-// auth path, so the union map is the right grain. Vault and execution
-// codes go in here too because credential and events surface them.
+// Shared by every `zombie.*` route — install/list/status/kill/stop/
+// resume/delete/logs/steer/events/credential all hit the same workspace
+// + zombie auth path, so the union map is the right grain.
 export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
-  "UZ-VAULT-001": {
+  [ERR_VAULT_INVALID]: {
     code: "CREDENTIAL_INVALID",
     message: "Credential JSON is invalid — must be a non-empty object ≤ 4 KiB.",
   },
-  "UZ-CRED-001": {
+  [ERR_CREDENTIAL_NOT_FOUND]: {
     code: "CREDENTIAL_NOT_FOUND",
     message: "Credential not found in this workspace.",
   },
-  "UZ-CRED-003": {
+  [ERR_CREDENTIAL_NAME_INVALID]: {
     code: "CREDENTIAL_NAME_INVALID",
     message: "Credential name is invalid — use lowercase letters, digits, and dashes.",
   },
-  "UZ-EXEC-013": {
+  [ERR_ZOMBIE_RUNNER_FAILED]: {
     code: "ZOMBIE_RUNNER_FAILED",
     message: "Zombie runner exited with an error — see `zombiectl logs <zombie_id>` for details.",
   },
 });
 
-export async function commandZombie(ctx, args, workspaces, deps) {
-  const action = args[0];
-  const { ui, writeLine, writeError } = deps;
+const STATUS_PAST_TENSE = {
+  [ZOMBIE_STATUS.STOPPED]: "stopped",
+  [ZOMBIE_STATUS.ACTIVE]: "resumed",
+  [ZOMBIE_STATUS.KILLED]: "killed",
+};
 
-  if (action === "install") return commandInstall(ctx, args.slice(1), workspaces, deps);
-  if (action === "list") return commandList(ctx, args.slice(1), workspaces, deps);
-  if (action === "status") return commandStatus(ctx, args.slice(1), workspaces, deps);
-  if (action === "stop") return commandSetStatus(ctx, args.slice(1), workspaces, deps, "stopped");
-  if (action === "resume") return commandSetStatus(ctx, args.slice(1), workspaces, deps, "active");
-  if (action === "kill") return commandSetStatus(ctx, args.slice(1), workspaces, deps, "killed");
-  if (action === "delete") return commandDelete(ctx, args.slice(1), workspaces, deps);
-  if (action === "logs") return commandLogs(ctx, args.slice(1), workspaces, deps);
-  if (action === "events") return commandEvents(ctx, args.slice(1), workspaces, deps);
-  if (action === "steer") return commandSteer(ctx, args.slice(1), workspaces, deps);
-  if (action === "credential") return commandCredential(ctx, args.slice(1), workspaces, deps);
+const STATUS_VERB = {
+  [ZOMBIE_STATUS.STOPPED]: "stop",
+  [ZOMBIE_STATUS.ACTIVE]: "resume",
+  [ZOMBIE_STATUS.KILLED]: "kill",
+};
 
-  if (ctx.jsonMode) {
-    writeError(ctx, "UNKNOWN_COMMAND", `unknown zombie subcommand: ${action ?? "(none)"}`, deps);
-  } else {
-    writeLine(ctx.stderr, ui.err(`unknown zombie subcommand: ${action ?? "(none)"}`));
-    writeLine(ctx.stderr);
-    writeLine(ctx.stderr, "usage: zombiectl install --from <path>");
-    writeLine(ctx.stderr, "       zombiectl status");
-    writeLine(ctx.stderr, "       zombiectl stop <id>     # halt the running session (resumable)");
-    writeLine(ctx.stderr, "       zombiectl resume <id>   # resume from stopped or auto-paused");
-    writeLine(ctx.stderr, "       zombiectl kill <id>     # mark terminal (irreversible)");
-    writeLine(ctx.stderr, "       zombiectl delete <id>   # hard-purge (must kill first)");
-    writeLine(ctx.stderr, "       zombiectl logs");
-    writeLine(ctx.stderr, "       zombiectl steer <id> \"<msg>\"");
-    writeLine(ctx.stderr, "       zombiectl events <id> [--actor=glob] [--since=2h]");
-    writeLine(ctx.stderr, "       zombiectl credential add|list|delete");
-  }
-  return 2;
-}
-
-// ── install ──────────────────────────────────────────────────────────────
-
-async function commandInstall(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const parsed = parseFlags(args);
-  const fromPath = parsed.options.from;
-
-  if (!fromPath || typeof fromPath !== "string") {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl install --from <path>", deps);
-    return 2;
-  }
-  if (parsed.positionals.length > 0) {
-    writeError(
-      ctx,
-      "UNKNOWN_ARGUMENT",
-      `unexpected argument: ${parsed.positionals[0]}. usage: zombiectl install --from <path>`,
-      deps,
-    );
-    return 2;
-  }
-
+function requireWorkspace(ctx, workspaces, deps) {
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
-    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
+    deps.writeError(ctx, NO_WORKSPACE, "no workspace selected. Run: zombiectl workspace add", deps);
   }
+  return wsId;
+}
+
+export async function commandInstall(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
+  const fromPath = parsed.options[OPT_FROM] || parsed.options.from;
+
+  if (!fromPath || typeof fromPath !== "string") {
+    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl install --from <path>", deps);
+    return 2;
+  }
+
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
 
   let bundle;
   try {
@@ -131,17 +104,11 @@ async function commandInstall(ctx, args, workspaces, deps) {
       }),
     });
   } catch (err) {
-    // Non-ApiError network failures (ECONNREFUSED, DNS, socket close) land here.
-    // ApiErrors (409/5xx/timeout) get re-thrown so cli.js's printApiError renders
-    // them with the code + request_id the server returned.
     if (err && err.name === "ApiError") throw err;
-    writeError(ctx, "IO_ERROR", `IO_ERROR: ${err?.message ?? String(err)}`, deps);
+    writeError(ctx, IO_ERROR, `IO_ERROR: ${err?.message ?? String(err)}`, deps);
     return 1;
   }
 
-  // Server is the source of truth for the resolved name (parsed from
-  // TRIGGER.md frontmatter). Fall back to the directory hint only when the
-  // response omits it.
   const displayName = res.name || bundle.fallback_name;
 
   if (ctx.jsonMode) {
@@ -155,23 +122,14 @@ async function commandInstall(ctx, args, workspaces, deps) {
   }
 
   writeLine(ctx.stdout, ui.ok(`${displayName} is live.`));
-  if (res.zombie_id) {
-    writeLine(ctx.stdout, `  Zombie ID: ${res.zombie_id}`);
-  }
-
+  if (res.zombie_id) writeLine(ctx.stdout, `  Zombie ID: ${res.zombie_id}`);
   return 0;
 }
 
-// ── status ───────────────────────────────────────────────────────────────
-
-async function commandStatus(ctx, args, workspaces, deps) {
-  const { request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine, writeError } = deps;
-
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
-  }
+export async function commandStatus(ctx, _parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine } = deps;
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
 
   const res = await request(ctx, wsZombiesPath(wsId), {
     method: "GET",
@@ -200,42 +158,23 @@ async function commandStatus(ctx, args, workspaces, deps) {
     });
     writeLine(ctx.stdout);
   }
-
   return 0;
 }
 
-// ── status transitions: stop / resume / kill ──────────────────────────────
-// Drives PATCH /v1/workspaces/{ws}/zombies/{id} {status: ...}.
-//   stopped — halt the running session, resumable
-//   active  — resume from stopped or auto-paused
-//   killed  — terminal mark (irreversible)
-// `paused` is gate-only and intentionally not exposed here.
-
-const STATUS_PAST_TENSE = {
-  stopped: "stopped",
-  active: "resumed",
-  killed: "killed",
-};
-
-const STATUS_VERB = {
-  stopped: "stop",
-  active: "resume",
-  killed: "kill",
-};
-
-async function commandSetStatus(ctx, args, workspaces, deps, status) {
-  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const parsed = parseFlags(args);
+async function commandSetStatus(ctx, parsed, workspaces, deps, status) {
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const zombieId = parsed.positionals[0];
   const verb = STATUS_VERB[status] ?? "patch";
 
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
-  }
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
   if (!zombieId) {
-    writeError(ctx, "MISSING_ARGUMENT", `usage: zombiectl ${verb} <zombie_id>`, deps);
+    writeError(ctx, MISSING_ARGUMENT, `usage: zombiectl ${verb} <zombie_id>`, deps);
+    return 2;
+  }
+  const check = validateRequiredId(zombieId, "zombie_id");
+  if (!check.ok) {
+    writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;
   }
 
@@ -245,30 +184,36 @@ async function commandSetStatus(ctx, args, workspaces, deps, status) {
     body: JSON.stringify({ status }),
   });
 
-  if (ctx.jsonMode) {
-    printJson(ctx.stdout, res);
-  } else {
-    writeLine(ctx.stdout, ui.ok(`${zombieId} ${STATUS_PAST_TENSE[status]}.`));
-  }
+  if (ctx.jsonMode) printJson(ctx.stdout, res);
+  else writeLine(ctx.stdout, ui.ok(`${zombieId} ${STATUS_PAST_TENSE[status]}.`));
   return 0;
 }
 
-// ── delete (hard-purge) ───────────────────────────────────────────────────
-// DELETE /v1/workspaces/{ws}/zombies/{id}. Must kill first; server returns
-// 409 (UZ-ZMB-010) if the zombie isn't terminal yet.
+export function commandStop(ctx, parsed, workspaces, deps) {
+  return commandSetStatus(ctx, parsed, workspaces, deps, ZOMBIE_STATUS.STOPPED);
+}
 
-async function commandDelete(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const parsed = parseFlags(args);
+export function commandResume(ctx, parsed, workspaces, deps) {
+  return commandSetStatus(ctx, parsed, workspaces, deps, ZOMBIE_STATUS.ACTIVE);
+}
+
+export function commandKill(ctx, parsed, workspaces, deps) {
+  return commandSetStatus(ctx, parsed, workspaces, deps, ZOMBIE_STATUS.KILLED);
+}
+
+export async function commandDelete(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const zombieId = parsed.positionals[0];
 
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
-  }
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
   if (!zombieId) {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl delete <zombie_id>", deps);
+    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl delete <zombie_id>", deps);
+    return 2;
+  }
+  const check = validateRequiredId(zombieId, "zombie_id");
+  if (!check.ok) {
+    writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;
   }
 
@@ -277,69 +222,7 @@ async function commandDelete(ctx, args, workspaces, deps) {
     headers: apiHeaders(ctx),
   });
 
-  if (ctx.jsonMode) {
-    printJson(ctx.stdout, { zombie_id: zombieId, deleted: true });
-  } else {
-    writeLine(ctx.stdout, ui.ok(`${zombieId} deleted.`));
-  }
+  if (ctx.jsonMode) printJson(ctx.stdout, { zombie_id: zombieId, deleted: true });
+  else writeLine(ctx.stdout, ui.ok(`${zombieId} deleted.`));
   return 0;
 }
-
-// ── logs ─────────────────────────────────────────────────────────────────
-
-async function commandLogs(ctx, args, workspaces, deps) {
-  const { parseFlags, request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
-  const parsed = parseFlags(args);
-  const limit = parsed.options.limit || "20";
-
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
-  }
-
-  const zombieId = parsed.options.zombie || parsed.positionals[0];
-  if (!zombieId) {
-    writeError(ctx, "MISSING_ARGUMENT", "logs requires --zombie <id>", deps);
-    return 2;
-  }
-  let url = `${wsZombieEventsPath(wsId, zombieId)}?limit=${encodeURIComponent(limit)}`;
-  if (parsed.options.cursor) {
-    url += `&cursor=${encodeURIComponent(parsed.options.cursor)}`;
-  }
-
-  const res = await request(ctx, url, {
-    method: "GET",
-    headers: apiHeaders(ctx),
-  });
-
-  if (ctx.jsonMode) {
-    printJson(ctx.stdout, res);
-    return 0;
-  }
-
-  const events = res.items ?? [];
-  if (events.length === 0) {
-    writeLine(ctx.stdout, ui.info("No events yet."));
-    return 0;
-  }
-
-  // The events endpoint replaced the activity stream in M42; row shape now
-  // carries actor/status/response_text instead of event_type/detail. Render
-  // the new shape verbatim — `zombiectl events` is the richer surface.
-  printSection(ctx.stdout, "Event Stream");
-  for (const evt of events) {
-    const ts = evt.created_at ? new Date(evt.created_at).toISOString() : "—";
-    const summary = evt.response_text ? evt.response_text.slice(0, 80) : (evt.status ?? "");
-    writeLine(ctx.stdout, `  ${ui.dim(ts)}  ${evt.actor}  ${summary}`);
-  }
-
-  if (res.next_cursor) {
-    writeLine(ctx.stdout);
-    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.next_cursor}`));
-  }
-
-  return 0;
-}
-
-// commandCredential extracted to ./zombie_credential.js for the 350-line file gate.

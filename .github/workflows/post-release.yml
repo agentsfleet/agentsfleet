@@ -4,11 +4,16 @@ on:
   workflow_run:
     workflows: [Release]
     types: [completed]
+  schedule:
+    # Daily 13:00 UTC — backend changes that ship without a CLI release still
+    # re-exercise the published CLI against live PROD once per day. WS-E #C2
+    # secret-load posture identical to the post-publish run.
+    - cron: "0 13 * * *"
 
 jobs:
   verify-npm:
-    # Only run when the release workflow succeeded
-    if: github.event.workflow_run.conclusion == 'success'
+    # Run after a successful Release, OR on the daily cron schedule.
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule'
     strategy:
       fail-fast: false
       matrix:
@@ -55,8 +60,74 @@ jobs:
           echo "| ${{ matrix.name }} | npm | $ICON |" >> "$GITHUB_STEP_SUMMARY"
         shell: bash
 
-  summary:
+  # CLI acceptance against api.usezombie.com using the just-published
+  # @usezombie/zombiectl@latest. WS-E #C2: secret-load comes AFTER `bun
+  # install` AND `npm i -g` so a hostile postinstall sees no Clerk admin
+  # key. lifecycle-after-login is skipped on PROD (no dashboard URL is
+  # provided — per spec §5 disposition).
+  cli-acceptance-prod:
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule'
     needs: verify-npm
+    runs-on: ubuntu-latest
+    name: CLI acceptance — api.usezombie.com
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.12
+
+      - name: Install zombiectl dev deps (BEFORE secret load — WS-E #C2)
+        run: bun install --frozen-lockfile
+        working-directory: zombiectl
+
+      - name: Install zombiectl from npm @latest (BEFORE secret load — WS-E #C2)
+        run: npm install -g @usezombie/zombiectl@latest
+
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+        working-directory: zombiectl
+
+      - name: Load Clerk PROD credentials from 1Password (AFTER install)
+        uses: 1password/load-secrets-action@v4
+        with:
+          export-env: true
+        env:
+          OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
+          CLERK_SECRET_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/secret-key
+          AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures/regular/email
+          AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures/admin/email
+
+      - name: Run CLI acceptance against api.usezombie.com
+        run: bun run test:acceptance
+        working-directory: zombiectl
+        env:
+          ZOMBIE_ACCEPTANCE_TARGET: https://api.usezombie.com
+          ZOMBIE_ACCEPTANCE_BINARY: global
+          # ZOMBIE_ACCEPTANCE_DASHBOARD_URL intentionally unset — the
+          # lifecycle-after-login spec skips on PROD per spec §5.
+          CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
+          AUTH_E2E_REGULAR_EMAIL: ${{ env.AUTH_E2E_REGULAR_EMAIL }}
+          AUTH_E2E_ADMIN_EMAIL: ${{ env.AUTH_E2E_ADMIN_EMAIL }}
+
+      - name: Write CLI acceptance summary row
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            ICON="✅"
+          else
+            ICON="❌"
+          fi
+          echo "| CLI acceptance (api.usezombie.com) | npm @latest | $ICON |" >> "$GITHUB_STEP_SUMMARY"
+        shell: bash
+
+  summary:
+    needs: [verify-npm, cli-acceptance-prod]
     if: always()
     runs-on: ubuntu-latest
     name: Post-Release Summary

@@ -8,13 +8,14 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { commandZombie } from "../src/commands/zombie.js";
-import { makeNoop, ui, WS_ID } from "./helpers.js";
-import { parseFlags } from "../src/program/args.js";
-
+import {
+  commandZombieDispatch as commandZombie,
+  makeNoop,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 function makeDeps(overrides = {}) {
   return {
-    parseFlags,
     request: async () => ({}),
     apiHeaders: () => ({}),
     ui,

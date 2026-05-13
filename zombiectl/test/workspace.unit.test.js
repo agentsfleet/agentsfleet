@@ -1,7 +1,11 @@
 import { describe, test, expect } from "bun:test";
-import { makeNoop, makeBufferStream, ui, WS_ID } from "./helpers.js";
-import { createCoreHandlers } from "../src/commands/core.js";
-
+import {
+  createCoreHandlers,
+  makeBufferStream,
+  makeNoop,
+  ui,
+  WS_ID,
+} from "./helpers.js";
 const WS_ID_2 = "0195b4ba-8d3a-7f13-8abc-000000000099";
 
 function makeDeps(overrides = {}) {
@@ -10,19 +14,6 @@ function makeDeps(overrides = {}) {
     createSpinner: () => ({ start() {}, succeed() {}, fail() {} }),
     newIdempotencyKey: () => "idem_test",
     openUrl: async () => false,
-    parseFlags: (tokens) => {
-      const options = {};
-      const positionals = [];
-      for (let i = 0; i < tokens.length; i++) {
-        if (tokens[i].startsWith("--")) {
-          const key = tokens[i].slice(2);
-          const next = tokens[i + 1];
-          if (next && !next.startsWith("--")) { options[key] = next; i++; }
-          else options[key] = true;
-        } else { positionals.push(tokens[i]); }
-      }
-      return { options, positionals };
-    },
     printJson: (_s, v) => {},
     printKeyValue: () => {},
     printTable: () => {},
@@ -187,7 +178,7 @@ describe("commandWorkspace", () => {
     expect(printed.active).toBe(true);
   });
 
-  test("credentials placeholder action returns 0", async () => {
+  test("credentials redirect action returns 0", async () => {
     const deps = makeDeps();
     const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: false, env: {} };
     const workspaces = { current_workspace_id: null, items: [] };
@@ -196,7 +187,7 @@ describe("commandWorkspace", () => {
     expect(code).toBe(0);
   });
 
-  test("credentials jsonMode emits the placeholder payload", async () => {
+  test("credentials jsonMode emits the redirect payload", async () => {
     let printed;
     const deps = makeDeps({
       printJson: (_s, v) => { printed = v; },
@@ -206,7 +197,7 @@ describe("commandWorkspace", () => {
     const core = createCoreHandlers(ctx, workspaces, deps);
     const code = await core.commandWorkspace(["credentials"]);
     expect(code).toBe(0);
-    expect(printed?.status).toBe("placeholder");
+    expect(printed?.status).toBe("redirect");
   });
 
   test("delete without id returns error", async () => {

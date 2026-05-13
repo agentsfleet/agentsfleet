@@ -7,44 +7,31 @@
 // both charges combined. `--json` emits the raw shape for scripting and
 // includes `next_cursor` so callers can paginate.
 
-import { writeError } from "../program/io.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { writeError } from "../program/io.js";
 import { CHARGE_TYPE, formatDollars } from "../constants/billing.js";
+import { ERR_BILLING_UNAVAILABLE } from "../constants/error-codes.js";
+import { TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
 // Billing show hits /v1/tenants/me/billing (GET) + charges (GET).
 // Auth-only surface; the server propagates UZ-BILLING-* internally
 // but the CLI's read endpoint surfaces them as plain server messages.
 export const errorMap = compose(AUTH_PRESET, {
-  "UZ-BILLING-001": {
+  [ERR_BILLING_UNAVAILABLE]: {
     code: "BILLING_UNAVAILABLE",
     message: "Billing data is temporarily unavailable — try again shortly.",
   },
 });
 
-const BILLING_PATH = "/v1/tenants/me/billing";
-const CHARGES_PATH = "/v1/tenants/me/billing/charges";
+const BILLING_PATH = TENANT_BILLING_PATH;
+const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;
 const BILLING_DASHBOARD_URL = "https://app.usezombie.com/settings/billing";
 const PURCHASE_FOOTER_LINE_2 = "Stripe purchase ships in v2.1; for now contact support for a top-up.";
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 100;
 
-export async function commandBilling(ctx, args, _workspaces, deps) {
-  const { parseFlags, ui, writeLine } = deps;
-  const action = args[0];
-  const parsed = parseFlags(args.slice(1));
-
-  if (action === "show") return commandBillingShow(ctx, parsed, deps);
-
-  if (ctx.jsonMode) {
-    writeError(ctx, "UNKNOWN_COMMAND", `unknown billing action: ${action ?? "(none)"}`, deps);
-  } else {
-    writeLine(ctx.stderr, ui.err("usage: zombiectl billing show [--limit N] [--cursor TOKEN] [--json]"));
-  }
-  return 2;
-}
-
-export async function commandBillingShow(ctx, parsed, deps) {
+export async function commandBillingShow(ctx, parsed, _workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const limit = parseLimitOption(parsed.options.limit);
@@ -137,8 +124,8 @@ export async function commandBillingShow(ctx, parsed, deps) {
 
 function parseLimitOption(raw) {
   if (raw === undefined || raw === null) return DEFAULT_LIMIT;
-  // parseFlags returns `true` for --limit with no following value. Treat
-  // that as a usage error rather than parsing "true" → NaN below.
+  // boolean true = bare `--limit` with no following value. Caller-shim
+  // path; commander rejects this at parse-time in production.
   if (raw === true) return new Error("--limit requires a value (e.g. --limit 25)");
   const n = Number.parseInt(String(raw), 10);
   if (!Number.isFinite(n) || n <= 0 || n > MAX_LIMIT) {
@@ -149,8 +136,8 @@ function parseLimitOption(raw) {
 
 function parseCursorOption(raw) {
   if (raw === undefined || raw === null) return null;
-  // parseFlags returns `true` for --cursor with no following value. Reject
-  // before it gets URI-encoded as the literal string "true".
+  // boolean true = bare `--cursor` with no following value (caller-shim
+  // path). Reject before URI-encoding the literal string "true".
   if (raw === true) return new Error("--cursor requires a value (the next_cursor token from a previous page)");
   const s = String(raw);
   if (s.length === 0) return new Error("--cursor must not be empty");
