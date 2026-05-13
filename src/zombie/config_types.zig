@@ -25,7 +25,10 @@ pub const ZombieConfigError = error{
     /// `context: "bad"` where an object is expected, `tool_window: -1`,
     /// `tool_window: true`). Distinct from `MissingRequiredField` so a CI
     /// log clearly distinguishes "you forgot a key" from "you got the
-    /// shape wrong."
+    /// shape wrong." Also covers `triggers[]` shape rejections (length
+    /// out-of-bounds, malformed `events`, non-object elements) — the
+    /// parser emits a scoped log with the specific cause, the API caller
+    /// gets the generic shape-wrong code.
     InvalidFieldType,
 };
 
@@ -74,8 +77,22 @@ pub const WebhookSignatureConfig = struct {
 
 /// Tagged union for trigger config. Each variant carries only the fields it needs,
 /// making invalid states (e.g. webhook without source) unrepresentable.
+///
+/// `events` is the GitHub-style event-name filter (`["workflow_run"]`).
+/// Null means "fire on every event"; non-null asserts an allow-list with
+/// length 1..MAX_EVENTS_PER_TRIGGER.
+///
+/// `credential_name` is an optional vault-key override. The webhook auth
+/// resolver builds the vault row name as `zombie:<credential_name orelse source>`.
+/// Lets one workspace store distinct webhook secrets per zombie when two
+/// zombies subscribe to the same `source` (e.g. two GitHub orgs).
 pub const ZombieTrigger = union(ZombieTriggerType) {
-    webhook: struct { source: []const u8, event: ?[]const u8, signature: ?WebhookSignatureConfig = null },
+    webhook: struct {
+        source: []const u8,
+        events: ?[]const []const u8,
+        credential_name: ?[]const u8 = null,
+        signature: ?WebhookSignatureConfig = null,
+    },
     cron: struct { schedule: []const u8 },
     api: void,
 };
@@ -103,13 +120,13 @@ pub const ZombieContextBudget = struct {
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
 pub const ZombieConfig = struct {
     name: []const u8,
-    trigger: ZombieTrigger,
+    triggers: []const ZombieTrigger,
     tools: []const []const u8,
     credentials: []const []const u8,
     network: ?ZombieNetwork,
     budget: ZombieBudget,
     gates: ?config_gates.GatePolicy,
-    // M2_002: ClaHub skill reference (e.g. "clawhub://queen/lead-hunter@1.0.1")
+    // ClaHub skill reference (e.g. "clawhub://queen/lead-hunter@1.0.1").
     // Resolution deferred — stored but not fetched.
     skill: ?[]const u8,
     // Opaque model identifier from `x-usezombie.model`. Pass-through: the
@@ -122,7 +139,8 @@ pub const ZombieConfig = struct {
 
     pub fn deinit(self: *const ZombieConfig, alloc: Allocator) void {
         alloc.free(self.name);
-        freeZombieTrigger(alloc, self.trigger);
+        for (self.triggers) |t| freeZombieTrigger(alloc, t);
+        alloc.free(self.triggers);
         freeStringSlice(alloc, self.tools);
         freeStringSlice(alloc, self.credentials);
         if (self.network) |net| freeStringSlice(alloc, net.allow);
@@ -134,10 +152,12 @@ pub const ZombieConfig = struct {
 
 // Guards against silent field drift: if a field is added to ZombieConfig
 // without updating deinit(), @sizeOf changes and this assert fails at compile.
-// `model: ?[]const u8` (16 bytes) + `context: ?ZombieContextBudget`
-// (20 bytes payload + 1 byte tag, padded to 24 bytes). Base 272 + 16 + 24 = 312.
+// Trigger storage flipped from inline union to a heap slice — fixed-size
+// `[]const ZombieTrigger` (16 bytes) replaces the largest-variant
+// `ZombieTrigger` union. If the layout shifts, update this number rather
+// than papering over with a runtime check.
 comptime {
-    std.debug.assert(@sizeOf(ZombieConfig) == 312);
+    std.debug.assert(@sizeOf(ZombieConfig) == 216);
 }
 
 /// Authoring metadata extracted from SKILL.md frontmatter (the SOUL file's
@@ -175,7 +195,11 @@ pub fn freeZombieTrigger(alloc: Allocator, t: ZombieTrigger) void {
     switch (t) {
         .webhook => |w| {
             alloc.free(w.source);
-            if (w.event) |e| alloc.free(e);
+            if (w.events) |evs| {
+                for (evs) |e| alloc.free(e);
+                alloc.free(evs);
+            }
+            if (w.credential_name) |c| alloc.free(c);
             if (w.signature) |sig| {
                 alloc.free(sig.header);
                 alloc.free(sig.prefix);

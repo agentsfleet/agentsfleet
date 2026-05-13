@@ -3,7 +3,6 @@
 
 const std = @import("std");
 const Session = @import("session.zig");
-const types = @import("types.zig");
 const context_budget = @import("context_budget.zig");
 
 test "Session create and lifecycle" {

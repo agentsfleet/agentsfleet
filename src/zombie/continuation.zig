@@ -30,7 +30,6 @@
 
 const std = @import("std");
 const executor_client = @import("../executor/client.zig");
-const event_envelope = @import("event_envelope.zig");
 
 /// Hard cap from Invariant 4: never re-enqueue a continuation if the
 /// incident already produced this many. The 11th attempt force-stops

@@ -211,7 +211,7 @@ fn debitAndInsert(
     };
     var tx_open = true;
     defer if (tx_open) {
-        conn.rollback() catch {};
+        conn.rollback() catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     };
 
     if (nanos > 0) {
@@ -220,13 +220,13 @@ fn debitAndInsert(
                 _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
                     log.warn("mark_exhausted_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
                 };
-                _ = conn.exec("COMMIT", .{}) catch {};
+                _ = conn.exec("COMMIT", .{}) catch |commit_err| log.warn("ignored_error", .{ .err = @errorName(commit_err) });
                 tx_open = false;
                 onExhaustedDebit(ctx.zombie_id, tenant_id, charge_type, nanos, policy);
                 return .{ .exhausted = {} };
             },
             error.TenantBillingMissing => {
-                conn.rollback() catch {};
+                conn.rollback() catch |rb_err| log.warn("ignored_error", .{ .err = @errorName(rb_err) });
                 tx_open = false;
                 log.err("missing_tenant_billing", .{
                     .zombie_id = ctx.zombie_id,
@@ -237,7 +237,7 @@ fn debitAndInsert(
                 return .{ .missing_tenant_billing = {} };
             },
             else => {
-                conn.rollback() catch {};
+                conn.rollback() catch |rb_err| log.warn("ignored_error", .{ .err = @errorName(rb_err) });
                 tx_open = false;
                 log.warn("debit_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(err) });
                 return .{ .db_error = {} };
@@ -259,7 +259,7 @@ fn debitAndInsert(
         .wall_ms = null,
         .recorded_at = std.time.milliTimestamp(),
     }) catch |err| {
-        conn.rollback() catch {};
+        conn.rollback() catch |rb_err| log.warn("ignored_error", .{ .err = @errorName(rb_err) });
         tx_open = false;
         log.warn("telemetry_insert_fail", .{ .zombie_id = ctx.zombie_id, .event_id = ctx.event_id, .charge_type = charge_type.label(), .err = @errorName(err) });
         return .{ .db_error = {} };

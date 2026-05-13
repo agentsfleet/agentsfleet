@@ -43,6 +43,7 @@ pub fn redactedFinalReply(
 /// Caller defers `deinit()` to release the optional.
 pub const ProviderBundle = struct {
     inner: ?providers.runtime_bundle.RuntimeProviderBundle = null,
+    // SAFETY: populated by the owning init/builder before any consumer reads this field.
     stub: stub_gate.Module.StubProvider = undefined,
 
     pub fn deinit(self: *@This()) void {
@@ -135,11 +136,11 @@ pub fn buildToolsFromSpec(
     cfg: *const Config,
     policy: ?*const context_budget.ExecutionPolicy,
 ) ![]tools_mod.Tool {
-    const spec = tools_spec orelse return try tools_mod.allTools(alloc, workspace_path, .{
+    const spec = tools_spec orelse return tools_mod.allTools(alloc, workspace_path, .{
         .allowed_paths = &.{workspace_path},
         .tools_config = cfg.tools,
     });
-    if (spec != .array) return try tools_mod.allTools(alloc, workspace_path, .{
+    if (spec != .array) return tools_mod.allTools(alloc, workspace_path, .{
         .allowed_paths = &.{workspace_path},
         .tools_config = cfg.tools,
     });

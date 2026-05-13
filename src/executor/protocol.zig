@@ -6,6 +6,9 @@
 const std = @import("std");
 const types = @import("types.zig");
 
+
+const logging = @import("log");
+const log = logging.scoped(.executor_protocol);
 /// RPC method names — the executor API surface (§2.1).
 pub const Method = struct {
     pub const create_execution = "CreateExecution";
@@ -86,7 +89,7 @@ pub fn readFrameFromFd(alloc: std.mem.Allocator, fd: std.posix.socket_t) ![]u8 {
     errdefer alloc.free(buf);
     readAllFd(fd, buf) catch return error.ConnectionClosed;
     if (read_byte_recorder) |rec| {
-        rec.list.appendSlice(rec.alloc, buf) catch {};
+        rec.list.appendSlice(rec.alloc, buf) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     }
     return buf;
 }

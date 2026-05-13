@@ -75,12 +75,6 @@ pub const ResourceLimits = struct {
 };
 
 /// Configuration for the executor sidecar.
-const ExecutorConfig = struct {
-    socket_path: []const u8 = "/run/zombie/executor.sock",
-    startup_timeout_ms: u64 = 5_000,
-    lease_timeout_ms: u64 = 30_000,
-    resource_limits: ResourceLimits = .{},
-};
 
 /// Per-zombie configuration for durable Postgres-backed memory (M14_001).
 ///
@@ -160,6 +154,7 @@ pub const MemoryBackendConfig = struct {
 // resource-limits + lease state only.
 
 pub fn generateExecutionId() ExecutionId {
+    // SAFETY: written by surrounding init logic before any read of this storage.
     var id: ExecutionId = undefined;
     std.crypto.random.bytes(&id);
     return id;
@@ -171,6 +166,7 @@ pub fn executionIdHex(id: ExecutionId) [32]u8 {
 
 pub fn parseExecutionId(hex: []const u8) ?ExecutionId {
     if (hex.len != 32) return null;
+    // SAFETY: written by surrounding init logic before any read of this storage.
     var id: ExecutionId = undefined;
     _ = std.fmt.hexToBytes(&id, hex) catch return null;
     return id;

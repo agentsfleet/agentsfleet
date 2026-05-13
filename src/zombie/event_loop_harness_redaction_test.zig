@@ -61,7 +61,7 @@ fn driveRedactionRun(alloc: Allocator) !RedactionRun {
         },
     });
     defer alloc.free(execution_id);
-    defer harness.executor.destroyExecution(execution_id) catch {};
+    defer harness.executor.destroyExecution(execution_id) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 
     // The stub provider's canned response will fire tool_use + chunk
     // observer events containing SYNTHETIC_SECRET. Tool dispatch may
@@ -145,7 +145,7 @@ fn deleteEventStream(redis: *queue_redis.Client) void {
 }
 
 fn cleanupZombieEventsRows(conn: *@import("pg").Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 test "test_args_redacted_no_secret_leak" {

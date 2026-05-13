@@ -38,6 +38,8 @@ const RP_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f51";
 const RP_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa55";
 const RP_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa56";
 
+const ZOMBIE_CONFIG_JSON = "{\"name\":\"" ++ helpers.ZOMBIE_NAME ++ "\",\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"agentmail\"}],\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}}}";
+
 const TEST_ACTOR = "steer:test-user";
 const TEST_REQUEST_JSON = "{\"message\":\"lifecycle\"}";
 const EMPTY_CONTEXT_JSON = "{}";
@@ -57,12 +59,12 @@ fn deleteEventStream(redis: *queue_redis.Client, zombie_id: []const u8) void {
 }
 
 fn cleanupEventRows(conn: *pg.Conn, zombie_id: []const u8) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{zombie_id}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{zombie_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn cleanupTelemetry(conn: *pg.Conn, zombie_id: []const u8) void {
     // zombie_execution_telemetry.zombie_id is TEXT (not UUID), so no cast.
-    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE zombie_id = $1", .{zombie_id}) catch {};
+    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE zombie_id = $1", .{zombie_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn openRedis(alloc: Allocator) !?queue_redis.Client {
@@ -94,7 +96,7 @@ test "integration: one processed event lands 1 zombie_events + 2 telemetry (rece
     defer base.teardownWorkspace(db_ctx.conn, LC_WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, LC_WORKSPACE_ID);
     defer base.teardownPlatformProvider(db_ctx.conn, LC_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, LC_ZOMBIE_ID, LC_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, LC_ZOMBIE_ID, LC_WORKSPACE_ID, helpers.ZOMBIE_NAME, ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, LC_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, LC_SESSION_ID, LC_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
 
@@ -161,7 +163,7 @@ test "integration: replaying the same event_id twice does not duplicate any of t
     defer base.teardownWorkspace(db_ctx.conn, RP_WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, RP_WORKSPACE_ID);
     defer base.teardownPlatformProvider(db_ctx.conn, RP_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, RP_ZOMBIE_ID, RP_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, RP_ZOMBIE_ID, RP_WORKSPACE_ID, helpers.ZOMBIE_NAME, ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, RP_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, RP_SESSION_ID, RP_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
 

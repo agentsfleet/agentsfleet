@@ -6,7 +6,6 @@
 // Skipped when DB is not available.
 
 const std = @import("std");
-const pg = @import("pg");
 const event_loop = @import("event_loop.zig");
 const base = @import("../db/test_fixtures.zig");
 
@@ -14,7 +13,7 @@ const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-000000000099";
 const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000100";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"platform-ops","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"platform-ops","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---

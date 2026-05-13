@@ -49,17 +49,17 @@ fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
     _ = conn.exec(
         \\DELETE FROM core.workspaces
         \\WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1)
-    , .{oidc_subject}) catch {};
+    , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\DELETE FROM core.memberships
         \\WHERE user_id IN (SELECT user_id FROM core.users WHERE oidc_subject = $1)
-    , .{oidc_subject}) catch {};
+    , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\WITH doomed_users AS (
         \\    DELETE FROM core.users WHERE oidc_subject = $1 RETURNING tenant_id
         \\)
         \\DELETE FROM core.tenants WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
-    , .{oidc_subject}) catch {};
+    , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 /// Build a `v1,<base64_hmac>` entry against the test secret.
@@ -90,7 +90,7 @@ fn countUsers(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
     ));
     defer q.deinit();
     const row = (try q.next()) orelse return 0;
-    return try row.get(i64, 0);
+    return row.get(i64, 0);
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────

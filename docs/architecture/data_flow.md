@@ -414,10 +414,10 @@ Considered alternatives:
 inbound rejection into one of three error codes, each with a distinct
 user action:
 
-- `UZ-WH-020 webhook_credential_not_configured` — the zombie's
-  `trigger.source` is unknown to the provider registry, OR the workspace
-  has no `zombie:<source>` vault credential (vault row missing OR
-  `webhook_secret` field absent). User-recoverable misconfig — fix
+- `UZ-WH-020 webhook_credential_not_configured` — the matching
+  `triggers[].source` is unknown to the provider registry, OR the
+  workspace has no `zombie:<source>` vault credential (vault row missing
+  OR `webhook_secret` field absent). User-recoverable misconfig — fix
   with `zombiectl credential set <source> --data @-` and pipe JSON on stdin.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.

@@ -84,6 +84,7 @@ const TestServer = struct {
     pool: *pg.Pool,
     session_store: auth_sessions.SessionStore,
     verifier: oidc.Verifier,
+    // SAFETY: test fixture; field is populated by the surrounding builder before any read.
     queue: queue_redis.Client = undefined,
     has_redis: bool = false,
     telemetry: telemetry_mod.Telemetry,
@@ -143,10 +144,10 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.integration_grants WHERE zombie_id = $1::uuid", .{ZOMBIE_IN_FOREIGN_WS}) catch {};
-    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{ZOMBIE_IN_FOREIGN_WS}) catch {};
+    _ = conn.exec("DELETE FROM core.integration_grants WHERE zombie_id = $1::uuid", .{ZOMBIE_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{ZOMBIE_IN_FOREIGN_WS}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     // Delete OTHER_WS_ID only — TEST_WORKSPACE_ID is shared with other test files.
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch {};
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // Bind/spawn/healthz attempts before we give up. The TOCTOU window between
@@ -206,10 +207,18 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .pool = db_ctx.pool,
         .session_store = auth_sessions.SessionStore.init(alloc),
         .verifier = oidc.Verifier.init(alloc, .{ .provider = .clerk, .jwks_url = TEST_JWKS_URL, .issuer = TEST_ISSUER, .audience = TEST_AUDIENCE, .inline_jwks_json = TEST_JWKS }),
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .registry = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .oidc = undefined, .auth_sessions = undefined, .app_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .telemetry = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .server = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .thread = undefined,
         .port = 0,
     };
@@ -224,6 +233,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     srv.ctx.auth_sessions = &srv.session_store;
     srv.registry = .{
         .bearer_or_api_key = .{ .verifier = &srv.verifier },
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
@@ -261,7 +271,7 @@ fn urlJoin(alloc: std.mem.Allocator, port: u16, comptime path_fmt: []const u8, a
     defer parts.deinit(alloc);
     try parts.writer(alloc).print("http://127.0.0.1:{d}", .{port});
     try parts.writer(alloc).print(path_fmt, args);
-    return try parts.toOwnedSlice(alloc);
+    return parts.toOwnedSlice(alloc);
 }
 
 // ── IDOR Tests ────────────────────────────────────────────────────────────

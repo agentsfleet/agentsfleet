@@ -16,7 +16,6 @@
 //! (cgroup guards + protocol/metric constants live in executor_limits_test.zig)
 
 const std = @import("std");
-const builtin = @import("builtin");
 const runner = @import("runner.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");

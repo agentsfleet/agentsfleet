@@ -106,7 +106,7 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     }
 
     _ = try conn.exec("BEGIN", .{});
-    errdefer _ = conn.exec("ROLLBACK", .{}) catch {};
+    errdefer _ = conn.exec("ROLLBACK", .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 
     _ = try conn.exec(
         "DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1 AND zombie_id = $2",
@@ -136,7 +136,7 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     defer del.deinit();
     const purged = (try del.next()) != null;
     if (!purged) {
-        _ = conn.exec("ROLLBACK", .{}) catch {};
+        _ = conn.exec("ROLLBACK", .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
         return .not_killed;
     }
     _ = try conn.exec("COMMIT", .{});

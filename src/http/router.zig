@@ -29,7 +29,7 @@ pub const Route = union(enum) {
     tenant_provider,
     /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
-    /// workspace credential keyed by `trigger.source`.
+    /// workspace credential keyed by the matching `triggers[].source`.
     receive_webhook: []const u8,
     // Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
     receive_svix_webhook: []const u8,

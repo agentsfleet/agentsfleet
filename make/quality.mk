@@ -17,7 +17,7 @@ _fmt_check:
 
 _zlint_check:
 	@echo "→ [zombied] Running ZLint..."
-	@command -v $(ZLINT) >/dev/null 2>&1 || { echo "ZLint not found. Install v0.7.9 or set ZLINT=/path/to/zlint."; exit 1; }
+	@command -v $(ZLINT) >/dev/null 2>&1 || { echo "ZLint not found. Install v0.8.1 or set ZLINT=/path/to/zlint."; exit 1; }
 	@$(ZLINT) --deny-warnings
 	@echo "✓ [zombied] ZLint passed"
 

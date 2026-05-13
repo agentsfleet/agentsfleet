@@ -1,11 +1,8 @@
 // Tests for src/state/tenant_billing.zig.
 
 const std = @import("std");
-const pg = @import("pg");
-const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const tenant_billing = @import("tenant_billing.zig");
-const tenant_provider = @import("tenant_provider.zig");
 const model_rate_cache = @import("model_rate_cache.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");

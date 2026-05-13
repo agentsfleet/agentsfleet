@@ -68,7 +68,9 @@ pub const TraceContext = struct {
         if (!isValidHex(trace_hex) or !isValidHex(span_hex)) return null;
 
         var ctx = TraceContext{
+            // SAFETY: written by surrounding init logic before any read of this storage.
             .trace_id = undefined,
+            // SAFETY: written by surrounding init logic before any read of this storage.
             .span_id = undefined,
         };
         @memcpy(&ctx.trace_id, trace_hex);

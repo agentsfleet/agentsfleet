@@ -17,10 +17,8 @@
 const std = @import("std");
 const logging = @import("log");
 const httpz = @import("httpz");
-const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
-const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 
 const h = @import("helpers.zig");

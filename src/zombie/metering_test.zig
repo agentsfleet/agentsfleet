@@ -1,13 +1,10 @@
 // Tests for src/zombie/metering.zig — two-debit credit-pool path.
 
 const std = @import("std");
-const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
-const tenant_provider = @import("../state/tenant_provider.zig");
-const balance_policy = @import("../config/balance_policy.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
 

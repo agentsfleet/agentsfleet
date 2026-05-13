@@ -60,16 +60,22 @@ pub const MiddlewareRegistry = struct {
     // ── Pre-built policy chains ────────────────────────────────────────────
     // Populated by initChains(). Fixed-size arrays so policy methods can
     // return slices without allocating per request.
+    // SAFETY: populated by initChains() before any policy method reads it.
     _bearer_chain: [1]Middleware(AuthCtx) = undefined,
+    // SAFETY: populated by initChains() before any policy method reads it.
     _admin_chain: [2]Middleware(AuthCtx) = undefined,
+    // SAFETY: populated by initChains() before any policy method reads it.
     _operator_chain: [2]Middleware(AuthCtx) = undefined,
+    // SAFETY: populated by initChains() before any policy method reads it.
     _webhook_hmac_chain: [1]Middleware(AuthCtx) = undefined,
     // webhook_sig is generic over LookupCtx, so the host calls
     // .middleware() on the concrete instance and passes the pre-built
     // Middleware(AuthCtx) value here. No *anyopaque needed.
+    // SAFETY: host assigns the concrete Middleware(AuthCtx) before consumer reads.
     _webhook_sig_chain: [1]Middleware(AuthCtx) = undefined,
-    // M28_001 §5: svix middleware is also generic over LookupCtx; host
-    // supplies the built Middleware(AuthCtx) after construction.
+    // svix middleware is also generic over LookupCtx; host supplies the
+    // built Middleware(AuthCtx) after construction.
+    // SAFETY: host assigns the concrete Middleware(AuthCtx) before consumer reads.
     _svix_chain: [1]Middleware(AuthCtx) = undefined,
 
     /// Build the policy chain arrays. Must be called once after the registry
@@ -131,8 +137,8 @@ pub const MiddlewareRegistry = struct {
     /// Per-zombie HMAC signature for webhooks routed to a zombie (HMAC-only —
     /// no Bearer fallback). The lookup function returns the HMAC scheme +
     /// secret resolved from the workspace credential identified by the
-    /// zombie's `trigger.source` (or an explicit `trigger.credential_name`
-    /// override).
+    /// matching `triggers[].source` entry (or an explicit
+    /// `triggers[].credential_name` override).
     pub fn webhookSig(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._webhook_sig_chain;
     }

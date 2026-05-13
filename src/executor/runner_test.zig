@@ -18,7 +18,6 @@ const json = @import("json_helpers.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
 const handler_mod = @import("handler.zig");
-const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 

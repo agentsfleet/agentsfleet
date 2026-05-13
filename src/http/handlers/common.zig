@@ -6,7 +6,6 @@ const oidc = @import("../../auth/oidc.zig");
 const auth_sessions = @import("../../auth/sessions.zig");
 const queue_redis = @import("../../queue/redis.zig");
 const metrics = @import("../../observability/metrics.zig");
-const logging = @import("log");
 const telemetry_mod = @import("../../observability/telemetry.zig");
 const trace_ctx = @import("../../observability/trace.zig");
 const db = @import("../../db/pool.zig");

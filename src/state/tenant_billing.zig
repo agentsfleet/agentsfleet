@@ -1,6 +1,5 @@
 const std = @import("std");
 const pg = @import("pg");
-const error_codes = @import("../errors/error_registry.zig");
 const store = @import("tenant_billing_store.zig");
 const tenant_provider = @import("tenant_provider.zig");
 const model_rate_cache = @import("model_rate_cache.zig");

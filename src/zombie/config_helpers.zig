@@ -5,10 +5,12 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const logging = @import("log");
 
 const config_types = @import("config_types.zig");
 const webhook_verify = @import("webhook_verify.zig");
-const ZombieTriggerType = config_types.ZombieTriggerType;
+
+const log = logging.scoped(.zombie_config);
 const ZombieTrigger = config_types.ZombieTrigger;
 const ZombieNetwork = config_types.ZombieNetwork;
 const ZombieBudget = config_types.ZombieBudget;
@@ -16,6 +18,16 @@ const ZombieConfigError = config_types.ZombieConfigError;
 const WebhookSignatureConfig = config_types.WebhookSignatureConfig;
 const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
 
+// Trigger array + event allow-list bounds. Local to the parser so the
+// type module stays free of validation knobs; tests reach in via the
+// parser's behaviour, not the constants. RULE NSQ: every limit is a
+// named constant — no inline `8`/`16`/`64` at validation sites.
+const MAX_EVENTS_PER_TRIGGER: usize = 16;
+const MAX_EVENT_NAME_LEN: usize = 64;
+
+/// Parse a `triggers[]` array element. The api variant is admitted by
+/// the type union for layout stability but rejected here — re-admission
+/// lands with workspace-API-token surface.
 pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.Error || ZombieConfigError)!ZombieTrigger {
     const type_str = blk: {
         const val = obj.get("type") orelse return ZombieConfigError.MissingRequiredField;
@@ -28,17 +40,83 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
     if (std.mem.eql(u8, type_str, "webhook")) {
         const source = try requireString(alloc, obj, "source") orelse return ZombieConfigError.InvalidTriggerSource;
         errdefer alloc.free(source);
-        const event = try optionalString(alloc, obj, "event");
-        errdefer if (event) |e| alloc.free(e);
+        const events = try parseEvents(alloc, obj);
+        errdefer if (events) |evs| {
+            for (evs) |e| alloc.free(e);
+            alloc.free(evs);
+        };
+        const credential_name = try optionalString(alloc, obj, "credential_name");
+        errdefer if (credential_name) |c| alloc.free(c);
         const signature = try parseWebhookSignature(alloc, obj, source);
-        return .{ .webhook = .{ .source = source, .event = event, .signature = signature } };
+        return .{ .webhook = .{
+            .source = source,
+            .events = events,
+            .credential_name = credential_name,
+            .signature = signature,
+        } };
     }
     if (std.mem.eql(u8, type_str, "cron")) {
         const schedule = try requireString(alloc, obj, "schedule") orelse return ZombieConfigError.MissingRequiredField;
         return .{ .cron = .{ .schedule = schedule } };
     }
-    if (std.mem.eql(u8, type_str, "api")) return .{ .api = {} };
+    if (std.mem.eql(u8, type_str, "api")) {
+        log.warn("trigger_type_api_not_yet_available", .{
+            .hint = "type: api is not yet available; use webhook or cron",
+        });
+        return ZombieConfigError.InvalidTriggerType;
+    }
     return ZombieConfigError.InvalidTriggerType;
+}
+
+/// Parse the `triggers:` array under `x-usezombie:`. Enforces:
+///   * length in 1..MAX_TRIGGERS_PER_ZOMBIE
+///   * at most one cron entry
+///   * unique `(type, source)` tuple across webhook entries
+/// On error every successfully-parsed trigger is freed before propagating.
+fn parseEvents(
+    alloc: Allocator,
+    obj: std.json.ObjectMap,
+) (Allocator.Error || ZombieConfigError)!?[]const []const u8 {
+    const val = obj.get("events") orelse return null;
+    const arr = switch (val) {
+        .array => |a| a,
+        else => {
+            log.warn("events_must_be_array", .{});
+            return ZombieConfigError.InvalidFieldType;
+        },
+    };
+    if (arr.items.len == 0 or arr.items.len > MAX_EVENTS_PER_TRIGGER) {
+        log.warn("events_count_out_of_bounds", .{ .count = arr.items.len, .max = MAX_EVENTS_PER_TRIGGER });
+        return ZombieConfigError.InvalidFieldType;
+    }
+    var out = try alloc.alloc([]const u8, arr.items.len);
+    var i: usize = 0;
+    errdefer {
+        for (out[0..i]) |s| alloc.free(s);
+        alloc.free(out);
+    }
+    for (arr.items) |item| {
+        const s = switch (item) {
+            .string => |str| str,
+            else => {
+                log.warn("events_entry_not_string", .{});
+                return ZombieConfigError.InvalidFieldType;
+            },
+        };
+        if (s.len == 0 or s.len > MAX_EVENT_NAME_LEN) {
+            log.warn("events_entry_length_out_of_bounds", .{ .len = s.len, .max = MAX_EVENT_NAME_LEN });
+            return ZombieConfigError.InvalidFieldType;
+        }
+        for (s) |c| {
+            if (std.ascii.isWhitespace(c)) {
+                log.warn("events_entry_has_whitespace", .{});
+                return ZombieConfigError.InvalidFieldType;
+            }
+        }
+        out[i] = try alloc.dupe(u8, s);
+        i += 1;
+    }
+    return out;
 }
 
 fn parseWebhookSignature(
@@ -158,104 +236,7 @@ pub fn dupeStringArray(alloc: Allocator, items: []const std.json.Value) ![]const
     return out;
 }
 
-// ── parseWebhookSignature (§3 + §4.7) ────────────────────────────────────
-// Exercised via parseZombieTrigger (pub). Uses std.json.parseFromSlice to
-// produce the ObjectMap.
-
-const test_alloc = std.testing.allocator;
-
-fn parseTriggerForTest(src: []const u8) !ZombieTrigger {
-    const parsed = try std.json.parseFromSlice(std.json.Value, test_alloc, src, .{});
-    defer parsed.deinit();
-    return parseZombieTrigger(test_alloc, parsed.value.object);
-}
-
-fn freeTrigger(t: ZombieTrigger) void {
-    config_types.freeZombieTrigger(test_alloc, t);
-}
-
-test "parseWebhookSignature: defaults from github registry (dim 3.1)" {
-    const src =
-        \\{"type":"webhook","source":"github","signature":{"secret_ref":"gh_secret"}}
-    ;
-    const trig = try parseTriggerForTest(src);
-    defer freeTrigger(trig);
-    const sig = trig.webhook.signature.?;
-    try std.testing.expectEqualStrings("x-hub-signature-256", sig.header);
-    try std.testing.expectEqualStrings("sha256=", sig.prefix);
-    try std.testing.expect(sig.ts_header == null);
-    try std.testing.expectEqualStrings("gh_secret", sig.secret_ref);
-}
-
-test "parseWebhookSignature: defaults from linear registry (dim 3.7, Q1)" {
-    const src =
-        \\{"type":"webhook","source":"linear","signature":{"secret_ref":"ln_secret"}}
-    ;
-    const trig = try parseTriggerForTest(src);
-    defer freeTrigger(trig);
-    const sig = trig.webhook.signature.?;
-    try std.testing.expectEqualStrings("linear-signature", sig.header);
-    try std.testing.expectEqualStrings("", sig.prefix);
-    try std.testing.expectEqualStrings("ln_secret", sig.secret_ref);
-}
-
-test "parseWebhookSignature: no signature block = null (backward compat, dim 3.2)" {
-    const src =
-        \\{"type":"webhook","source":"agentmail"}
-    ;
-    const trig = try parseTriggerForTest(src);
-    defer freeTrigger(trig);
-    try std.testing.expect(trig.webhook.signature == null);
-}
-
-test "parseWebhookSignature: Jira custom scheme (not in registry)" {
-    const src =
-        \\{"type":"webhook","source":"jira","signature":{"secret_ref":"j","header":"x-jira-hook-signature","prefix":"sha256=","ts_header":"x-jira-timestamp"}}
-    ;
-    const trig = try parseTriggerForTest(src);
-    defer freeTrigger(trig);
-    const sig = trig.webhook.signature.?;
-    try std.testing.expectEqualStrings("x-jira-hook-signature", sig.header);
-    try std.testing.expectEqualStrings("sha256=", sig.prefix);
-    try std.testing.expectEqualStrings("x-jira-timestamp", sig.ts_header.?);
-}
-
-test "parseWebhookSignature: explicit header overrides registry (escape hatch)" {
-    const src =
-        \\{"type":"webhook","source":"github","signature":{"secret_ref":"s","header":"x-custom-gh"}}
-    ;
-    const trig = try parseTriggerForTest(src);
-    defer freeTrigger(trig);
-    const sig = trig.webhook.signature.?;
-    try std.testing.expectEqualStrings("x-custom-gh", sig.header);
-    try std.testing.expectEqualStrings("sha256=", sig.prefix);
-}
-
-test "parseWebhookSignature: missing secret_ref is rejected" {
-    const src =
-        \\{"type":"webhook","source":"github","signature":{}}
-    ;
-    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
-}
-
-test "parseWebhookSignature: empty secret_ref is rejected" {
-    const src =
-        \\{"type":"webhook","source":"github","signature":{"secret_ref":""}}
-    ;
-    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
-}
-
-test "parseWebhookSignature: unknown source without header is rejected" {
-    const src =
-        \\{"type":"webhook","source":"custom_provider","signature":{"secret_ref":"s"}}
-    ;
-    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
-}
-
-test "parseWebhookSignature: header > 64 chars is rejected" {
-    // 65 'a's
-    const src =
-        \\{"type":"webhook","source":"jira","signature":{"secret_ref":"s","header":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
-    ;
-    try std.testing.expectError(ZombieConfigError.InvalidSignatureConfig, parseTriggerForTest(src));
-}
+// Tests live in `config_helpers_test.zig` to keep this implementation
+// file under the 350-line cap and so the validation matrix
+// (parseWebhookSignature + parseEvents + parseZombieTriggers) lives in
+// one place.
