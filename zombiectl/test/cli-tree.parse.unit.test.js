@@ -223,18 +223,30 @@ test("--limit 0 on billing show is rejected by parseIntOption (commander Invalid
 
 // ── helpFactory injection point exists at construction ─────────────────
 
-test("helpFactory option is accepted at construction (lets cli.js inject ZombieHelp)", () => {
+test("helpFactory is deferred — not invoked at construction, fires when help renders", async () => {
   let factoryCalls = 0;
-  buildProgram({
-    handlers: makeSpyTree().handlers,
+  const { handlers } = makeSpyTree();
+  const state = { exitCode: 0 };
+  const program = buildProgram({
+    handlers,
     version: "0.0.0-test",
-    state: { exitCode: 0 },
+    state,
     helpFactory: () => {
       factoryCalls += 1;
       return { formatHelp: () => "", visibleCommands: () => [], visibleOptions: () => [] };
     },
   });
-  // commander defers helpFactory invocation until help is rendered, so a
-  // count of zero here just confirms no throw at construction.
-  expect(factoryCalls).toBeGreaterThanOrEqual(0);
+  // Construction alone must not invoke the factory — cli.js needs to
+  // wire ctx-aware help renderers around it after buildProgram returns.
+  expect(factoryCalls).toBe(0);
+
+  program.exitOverride();
+  program.configureOutput({ writeOut: () => {}, writeErr: () => {} });
+  try {
+    await program.parseAsync(["--help"], { from: "user" });
+  } catch {
+    // commander throws CommanderError(0, "commander.helpDisplayed") after
+    // rendering help; that's the expected control-flow.
+  }
+  expect(factoryCalls).toBeGreaterThan(0);
 });

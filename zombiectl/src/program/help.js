@@ -1,6 +1,7 @@
 // ZombieHelp — commander.Help subclass that preserves zombiectl's
 // existing color scheme when commander renders --help. Wired by
-// cli-tree.js via `program.configureHelp({ helpFactory: ... })`.
+// cli-tree.js via `program.createHelp = () => new ZombieHelp()`
+// (configureHelp's `helpFactory` key is unsupported in commander 14).
 // Capability resolution (NO_COLOR, isTTY, ColorMode) flows through
 // formatHelpHeading + palette.subtle, both of which accept a
 // `{stream, env}` opts object so tests can drive each mode without
