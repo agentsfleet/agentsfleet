@@ -1,4 +1,4 @@
-//! Integration tests for POST /v1/webhooks/clerk.
+//! Integration tests for POST /v1/auth/identity-events/clerk.
 //!
 //! Skips cleanly when TEST_DATABASE_URL is unset. Each test sets a deterministic
 //! CLERK_WEBHOOK_SECRET before starting the harness, signs the payload with
@@ -116,7 +116,7 @@ test "clerk webhook: valid signed user.created bootstraps and returns 200" {
     const sig = try signEntry(ALLOC, svix_id, ts, body);
     defer ALLOC.free(sig);
 
-    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, svix_id))
         .header(svix.SVIX_TS_HEADER, ts))
         .header(svix.SVIX_SIG_HEADER, sig))
@@ -157,7 +157,7 @@ test "clerk webhook: tampered body returns 401 UZ-WH-010 and writes no rows" {
     const tampered_body = try userCreatedBody(ALLOC, oidc, "tampered@acme.test");
     defer ALLOC.free(tampered_body);
 
-    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, svix_id))
         .header(svix.SVIX_TS_HEADER, ts))
         .header(svix.SVIX_SIG_HEADER, sig))
@@ -195,7 +195,7 @@ test "clerk webhook: stale timestamp returns 401 UZ-WH-011" {
     const sig = try signEntry(ALLOC, svix_id, stale_ts, body);
     defer ALLOC.free(sig);
 
-    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, svix_id))
         .header(svix.SVIX_TS_HEADER, stale_ts))
         .header(svix.SVIX_SIG_HEADER, sig))
@@ -235,7 +235,7 @@ test "clerk webhook: missing primary email returns 400 UZ-REQ-001" {
     const sig = try signEntry(ALLOC, svix_id, ts, body);
     defer ALLOC.free(sig);
 
-    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, svix_id))
         .header(svix.SVIX_TS_HEADER, ts))
         .header(svix.SVIX_SIG_HEADER, sig))
@@ -288,7 +288,7 @@ test "clerk webhook: oversized body returns 413 UZ-REQ-002 and writes no rows" {
     const sig = try signEntry(ALLOC, svix_id, ts, body);
     defer ALLOC.free(sig);
 
-    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, svix_id))
         .header(svix.SVIX_TS_HEADER, ts))
         .header(svix.SVIX_SIG_HEADER, sig))
@@ -331,7 +331,7 @@ test "clerk webhook: missing CLERK_WEBHOOK_SECRET fails closed with 500" {
     const sig = try signEntry(ALLOC, svix_id, ts, body);
     defer ALLOC.free(sig);
 
-    const resp = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, svix_id))
         .header(svix.SVIX_TS_HEADER, ts))
         .header(svix.SVIX_SIG_HEADER, sig))
@@ -366,7 +366,7 @@ test "clerk webhook: replay of same user.created returns created:false with no n
     const first_id = "msg_clerk_replay_a";
     const first_sig = try signEntry(ALLOC, first_id, first_ts, body);
     defer ALLOC.free(first_sig);
-    const first = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const first = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, first_id))
         .header(svix.SVIX_TS_HEADER, first_ts))
         .header(svix.SVIX_SIG_HEADER, first_sig))
@@ -382,7 +382,7 @@ test "clerk webhook: replay of same user.created returns created:false with no n
     const second_id = "msg_clerk_replay_b";
     const second_sig = try signEntry(ALLOC, second_id, second_ts, body);
     defer ALLOC.free(second_sig);
-    const second = try (try (try (try (try h.post("/v1/webhooks/clerk")
+    const second = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
         .header(svix.SVIX_ID_HEADER, second_id))
         .header(svix.SVIX_TS_HEADER, second_ts))
         .header(svix.SVIX_SIG_HEADER, second_sig))

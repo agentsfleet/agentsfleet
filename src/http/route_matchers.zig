@@ -14,7 +14,6 @@ const std = @import("std");
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
 const RESERVED_SVIX = "svix";
-const RESERVED_CLERK = "clerk";
 const RESERVED_APPROVAL = "approval";
 const RESERVED_GRANT_APPROVAL = "grant-approval";
 
@@ -279,16 +278,17 @@ pub fn matchWorkspaceApprovalGate(p: Path) ?ApprovalGateRoute {
 
 // ── /webhooks/* family ─────────────────────────────────────────────────────
 //
-// Five shapes share the prefix; reserved second segments (svix, clerk) and
-// reserved trailing actions (approval, grant-approval) are excluded from the
-// catch-all matchers so any two matchers are mutually exclusive at the
-// segment level.
+// Five shapes share the prefix; reserved second segment (svix) and reserved
+// trailing actions (approval, grant-approval) are excluded from the catch-all
+// matchers so any two matchers are mutually exclusive at the segment level.
+// (Clerk's user.created event lives on /v1/auth/identity-events/clerk now,
+// outside the /v1/webhooks/ namespace — no reserved literal needed.)
 
 pub fn matchWebhookAction(p: Path, action: []const u8) ?[]const u8 {
     if (p.segs.len != 3) return null;
     if (!p.eq(0, "webhooks")) return null;
     if (!p.eq(2, action)) return null;
-    if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
+    if (p.eq(1, RESERVED_SVIX)) return null;
     if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
     return p.param(1);
 }
@@ -306,7 +306,7 @@ pub fn matchSvixWebhook(p: Path) ?[]const u8 {
 pub fn matchWebhook(p: Path) ?[]const u8 {
     if (p.segs.len != 2) return null;
     if (!p.eq(0, "webhooks")) return null;
-    if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
+    if (p.eq(1, RESERVED_SVIX)) return null;
     if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
     return p.param(1);
 }

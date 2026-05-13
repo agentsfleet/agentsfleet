@@ -1,0 +1,85 @@
+/v1/auth/identity-events/clerk:
+  post:
+    operationId: auth_identity_event_clerk
+    summary: Clerk user.created auth-plane event
+    description: |
+      Internal auth-plane endpoint. Clerk delivers `user.created` (and adjacent
+      identity-lifecycle types) via Svix; the signature is verified inline
+      against `CLERK_WEBHOOK_SECRET`. On success the handler atomically
+      provisions a personal account (tenant + user + owner membership + default
+      workspace + zero-cent credit state + audit row). Idempotent on
+      `oidc_subject` — replays return `created:false` with no new rows.
+      Non-`user.created` event types are 200-ignored so Clerk stops retrying.
+
+      Sits outside `/v1/webhooks/` (customer data plane) — the auth namespace
+      is for signals about the platform's own auth lifecycle, not for events
+      that wake user-defined zombies.
+    tags:
+    - auth-identity-events
+    parameters:
+    - name: svix-id
+      in: header
+      required: true
+      description: Svix message identifier (used for deduplication and signature binding).
+      schema:
+        type: string
+    - name: svix-timestamp
+      in: header
+      required: true
+      description: Unix timestamp of the Svix delivery (used for replay protection).
+      schema:
+        type: string
+    - name: svix-signature
+      in: header
+      required: true
+      description: Space-separated list of Svix v1 signatures.
+      schema:
+        type: string
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - type
+            - data
+            properties:
+              type:
+                type: string
+                description: Clerk event type. Only `user.created` triggers a bootstrap; other types return 200 ignored.
+              data:
+                type: object
+                description: |
+                  Clerk user payload. The handler reads `id`, `email_addresses`,
+                  `primary_email_address_id`, `first_name`, and `last_name`; unknown fields are tolerated.
+                additionalProperties: true
+    responses:
+      '200':
+        description: |
+          Account bootstrapped (fresh or replayed). `created` is `true` on first delivery and `false` on every
+          subsequent replay of the same `oidc_subject`.
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                workspace_id:
+                  type: string
+                  format: uuid
+                  description: UUIDv7 of the newly provisioned default workspace (or the existing one on replay).
+                workspace_name:
+                  type: string
+                  description: Heroku-style workspace name, e.g. `jolly-harbor-482`.
+                created:
+                  type: boolean
+                  description: "`true` on fresh bootstrap; `false` on idempotent replay."
+      '400':
+        $ref: ../../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../../components/responses.yaml#/components/responses/Error
+      '413':
+        $ref: ../../components/responses.yaml#/components/responses/Error
+      '500':
+        $ref: ../../components/responses.yaml#/components/responses/Error
+    security: []

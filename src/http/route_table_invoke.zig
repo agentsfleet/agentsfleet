@@ -35,7 +35,7 @@ const api_keys_invokes = @import("route_table_invoke_api_keys.zig");
 
 pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
-const clerk_webhook_h = @import("handlers/webhooks/clerk.zig");
+const clerk_webhook_h = @import("handlers/auth/identity_events_clerk.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
@@ -156,8 +156,10 @@ pub fn invokeReceiveSvixWebhook(hx: *Hx, req: *httpz.Request, route: router.Rout
     webhooks.innerReceiveWebhook(hx.*, req, route.receive_svix_webhook);
 }
 
-// Clerk signup webhook. No middleware — handler verifies Svix signature
-// inline against env CLERK_WEBHOOK_SECRET.
+// Clerk user.created auth-plane event. No middleware — handler verifies
+// Svix signature inline against env CLERK_WEBHOOK_SECRET. Fn name kept as
+// `invokeClerkWebhook` (path-rename only; PUB GATE intent is "don't grow
+// the pub surface" and a rename is symmetric).
 pub fn invokeClerkWebhook(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }

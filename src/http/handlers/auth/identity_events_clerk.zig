@@ -1,4 +1,4 @@
-//! Clerk signup webhook handler — `POST /v1/webhooks/clerk`.
+//! Clerk `user.created` auth-plane handler — `POST /v1/auth/identity-events/clerk`.
 //!
 //! Verifies an Svix-signed `user.created` event against env
 //! `CLERK_WEBHOOK_SECRET`, parses the payload, and atomically provisions a
@@ -33,7 +33,7 @@ const clerk_backend = @import("../../../auth/clerk_backend.zig");
 /// (`role: "admin"`); the webhook never writes admin.
 const DEFAULT_SIGNUP_ROLE = "operator";
 
-const log = logging.scoped(.clerk_webhook);
+const log = logging.scoped(.auth_identity_events);
 
 const Hx = hx_mod.Hx;
 
@@ -167,7 +167,7 @@ fn rejectMissingEmail(hx: Hx, detail: []const u8) void {
 fn readSecret(hx: Hx) ?[]u8 {
     // Log at warn so the negative-path test doesn't trip "logged errors" test
     // gates. The user-visible signal is the 500 response + 5xx-rate Prometheus
-    // alerting on /v1/webhooks/clerk — the log line is supporting context, not
+    // alerting on /v1/auth/identity-events/clerk — the log line is supporting context, not
     // the primary alert.
     const secret = std.process.getEnvVarOwned(std.heap.page_allocator, "CLERK_WEBHOOK_SECRET") catch {
         log.warn("secret_missing", .{

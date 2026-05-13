@@ -216,10 +216,8 @@ test "matchWebhookAction excludes reserved literals at slot 1" {
     // guard. (svix is excluded by matchWebhookAction too, but svix paths route
     // to the svix family via matchSvixWebhook — so they're tested separately.)
     const cases = [_][]const u8{
-        "/v1/webhooks/clerk/approval",
         "/v1/webhooks/approval/approval",
         "/v1/webhooks/grant-approval/approval",
-        "/v1/webhooks/clerk/grant-approval",
         "/v1/webhooks/approval/grant-approval",
         "/v1/webhooks/grant-approval/grant-approval",
     };

@@ -50,10 +50,10 @@
       }
     },
     {
-      "name": "Runs",
-      "description": "Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs",
+      "name": "auth-identity-events",
+      "description": "Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer zombies.",
       "x-mintlify": {
-        "navigation": "Runs"
+        "navigation": "Auth Identity Events"
       }
     },
     {
@@ -113,31 +113,10 @@
       }
     },
     {
-      "name": "Execute",
-      "description": "Synchronous tool execution proxy for external agents",
-      "x-mintlify": {
-        "navigation": "Execute"
-      }
-    },
-    {
-      "name": "Slack",
-      "description": "Slack OAuth install flow and inbound events/interactions webhooks",
-      "x-mintlify": {
-        "navigation": "Slack"
-      }
-    },
-    {
       "name": "Webhooks",
       "description": "Approval-gate webhooks invoked by humans to unblock a paused zombie",
       "x-mintlify": {
         "navigation": "Webhooks"
-      }
-    },
-    {
-      "name": "Telemetry",
-      "description": "Per-zombie execution telemetry",
-      "x-mintlify": {
-        "navigation": "Telemetry"
       }
     },
     {
@@ -855,13 +834,13 @@
         }
       }
     },
-    "/v1/webhooks/clerk": {
+    "/v1/auth/identity-events/clerk": {
       "post": {
-        "operationId": "clerk_webhook",
-        "summary": "Clerk signup webhook",
-        "description": "Ingress for Clerk `user.created` events delivered via Svix. The signature is verified inline against `CLERK_WEBHOOK_SECRET`; on success the handler atomically provisions a personal account (tenant + user + owner membership + default workspace + 0-cent credit state + audit row). Idempotent on `oidc_subject` — replays return `created:false` with no new rows. Non-`user.created` event types are 200-ignored so Clerk stops retrying them.",
+        "operationId": "auth_identity_event_clerk",
+        "summary": "Clerk user.created auth-plane event",
+        "description": "Internal auth-plane endpoint. Clerk delivers `user.created` (and adjacent\nidentity-lifecycle types) via Svix; the signature is verified inline\nagainst `CLERK_WEBHOOK_SECRET`. On success the handler atomically\nprovisions a personal account (tenant + user + owner membership + default\nworkspace + zero-cent credit state + audit row). Idempotent on\n`oidc_subject` — replays return `created:false` with no new rows.\nNon-`user.created` event types are 200-ignored so Clerk stops retrying.\n\nSits outside `/v1/webhooks/` (customer data plane) — the auth namespace\nis for signals about the platform's own auth lifecycle, not for events\nthat wake user-defined zombies.\n",
         "tags": [
-          "Webhooks"
+          "auth-identity-events"
         ],
         "parameters": [
           {
@@ -909,7 +888,7 @@
                   },
                   "data": {
                     "type": "object",
-                    "description": "Clerk user payload. The handler reads `id`, `email_addresses`, `primary_email_address_id`, `first_name`, and `last_name`; unknown fields are tolerated.",
+                    "description": "Clerk user payload. The handler reads `id`, `email_addresses`,\n`primary_email_address_id`, `first_name`, and `last_name`; unknown fields are tolerated.\n",
                     "additionalProperties": true
                   }
                 }
@@ -919,7 +898,7 @@
         },
         "responses": {
           "200": {
-            "description": "Account bootstrapped (fresh or replayed). `created` is `true` on first delivery and `false` on every subsequent replay of the same `oidc_subject`.",
+            "description": "Account bootstrapped (fresh or replayed). `created` is `true` on first delivery and `false` on every\nsubsequent replay of the same `oidc_subject`.\n",
             "content": {
               "application/json": {
                 "schema": {

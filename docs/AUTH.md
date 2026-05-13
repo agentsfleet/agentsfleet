@@ -327,7 +327,7 @@ The acceptance e2e harness (`ui/packages/app/tests/e2e/acceptance/`) uses the **
 globalSetup
   ├─ provisionUser    → idempotent: GET /v1/users by email (Clerk admin API),
   │                     create if missing.
-  ├─ bootstrapTenant  → POST /v1/webhooks/clerk with a locally-Svix-signed
+  ├─ bootstrapTenant  → POST /v1/auth/identity-events/clerk with a locally-Svix-signed
   │                     `user.created` payload (uses CLERK_WEBHOOK_SECRET).
   │                     zombied creates the tenant + default workspace +
   │                     starter credit, then PATCHes Clerk publicMetadata
