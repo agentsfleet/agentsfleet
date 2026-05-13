@@ -234,6 +234,50 @@ The workspace-API-tokens spec (deferred from M68; admits `type: api` triggers) h
 
 **Verification:** `grep -rln "/v1/webhooks/clerk" .` returns empty before PR open. Receiver tests for the new path pass. The internal `user.created` flow re-bootstraps cleanly on a manual signup test.
 
+### O. Redis client audit (read-only research dimension — 1 deliverable)
+
+Standalone read-only audit of `src/queue/*.zig` against two third-party Zig Redis libraries. Deliverable is a single markdown report at `src/queue/AUDIT.md`. **No code edits inside this dimension** — purely a research artifact whose recommendations will seed a follow-up implementation spec. Lives in this M68 PR for proximity to the wider scope-bundle the user is shipping together; could have been a separate spec but the user chose to dimension it here.
+
+**Motivation.** `src/queue/redis_client.zig` carries a single `std.Thread.Mutex` on `Client` that all command paths (XADD, XACK, XAUTOCLAIM, PUBLISH) contend on. Worker write-path + progress callbacks all hit one lock; M42_003's contention diagnosis is the existing record. Two reference libraries with mature pooling + concurrency models exist in the OSS ecosystem and can be read for patterns we should adopt.
+
+| # | Path | Action | Why |
+|---|---|---|---|
+| O1 | `src/queue/AUDIT.md` | NEW | Single markdown report. Sections: Executive summary (3–5 bullets: what to steal, what to fix, what to keep); Per-dimension analysis with file:line citations from reference libs; Concrete recommendations for usezombie ranked P0/P1/P2; Specific code patterns to adopt (pseudocode acceptable, exact when obvious). |
+
+**Read-only target code (DO NOT edit in this dimension):**
+- `src/queue/redis_client.zig` — the `Client` struct (~255 lines)
+- `src/queue/redis_transport.zig` — plain + TLS transport
+- `src/queue/redis_pubsub.zig` — dedicated subscriber conn
+- `src/queue/redis_zombie.zig` — zombie stream ops (XREADGROUP etc.)
+- `src/queue/redis_config.zig` — URL parsing, CA bundle
+- `src/queue/redis_protocol.zig` — RESP serializer/deserializer
+- `src/queue/redis_types.zig` — `RedisRole` enum
+- `src/queue/redis.zig` — facade re-export
+
+**Read-only reference code (DO NOT edit; cite by path + line range):**
+- `~/Projects/oss/redis.zig/` — karlseguin's redis.zig
+- `~/Projects/oss/zig-okredis/` — zig-okredis
+
+**Eight dimensions to audit:**
+
+1. **Allocation patterns.** Per-command allocations (arena? pooled bufs?), response value lifetime (ownership + free point), buffer sizing strategy (read/write buffers, static vs dynamic).
+2. **Connection pooling.** Pool init / acquire / release / deinit. Connection lifecycle (health check on acquire? eager vs lazy connect?). Eager `connect_on_init` count (redis.zig does this). Pool-to-result lifetime coupling (`result.deinit` releases conn?).
+3. **Concurrency model.** **The key issue.** usezombie has one `std.Thread.Mutex` on `Client` — every command contends. How do redis.zig and zig-okredis structure locking (per-connection mutex? lock-free? sharded pools?). What's the right model for the usezombie usage pattern (one pool → many zombies → each does XADD / PUBLISH / XACK)?
+4. **Fault tolerance + retry.** Reconnect strategy. Write-phase vs read-phase retry. Idempotency awareness (XADD / PUBLISH replay safety). Connection health detection (SO_KEEPALIVE, heartbeat, PING). Error surfacing (errdefer, error payloads, PG-style err object). Stale connection detection. Pool repair (invalid connections returned to pool → close + reopen).
+5. **Stability + reliability.** Invariants enforced (e.g. drain before deinit). Edge cases (half-open connections, Redis restart, Upstash proxy timeout). TLS handshake failure recovery. Memory leak guards (errdefer on partial init). Pub/sub disconnection behaviour.
+6. **Performance.** Per-command allocator pressure. Buffer reuse across commands. Unsafe fast paths (redis.zig has `row.getUnsafe` / `nextUnsafe`). Prepared statement / pipelining support. Where the M42_003 contention bottleneck bites.
+7. **Pooling return patterns.** redis.zig's `pool.query → result.deinit` auto-release. How zig-okredis handles the same. What usezombie does today vs should do.
+8. **What usezombie does that neither library handles** (these stay — focus the audit on client infrastructure, not on these business-logic bits): per-zombie stream consumer groups (`zombie_workers`); `XREADGROUP` / `XAUTOCLAIM` / `XACK` lifecycle; pub/sub subscriber with `SO_RCVTIMEO` heartbeat; role-based ACL env vars (`REDIS_URL` vs `REDIS_URL_API` vs `REDIS_URL_WORKER`).
+
+**Hard constraints on the audit:**
+
+- No code edits anywhere in the repo or in the reference libs.
+- No recommendation to switch libraries — the custom streams / pub-sub code stays.
+- No speculation without a reference-lib citation (`file.zig:LN-LN`).
+- Recommendations ranked P0/P1/P2 explicitly so the follow-up implementation spec can pick a slice.
+
+This dimension can land independently of the rest of M68's slices because it produces only a markdown artifact. Execution order: schedule after §1–§9 (architecture, config, install/list, install-skill, internal Clerk rename, pricing, READMEs, Mission Control sweep, chat surface, trigger panel) but before `make` verification — the audit doesn't affect the verification surface.
+
 ### M. Release mechanics (3 files — lead repo)
 
 | # | File | Action | Why |
@@ -606,9 +650,10 @@ Single PR, commit history in this order so review can read it sequentially. The 
 11. Trigger panel multi-card (E1–E5 minus E5 ApiCard, F1–F4)
 12. Test files (F2–F4, B3 eval fixtures, H2 pin tests, A8 server-side filter pin, G15 replay-page tests, G17 Hero CTA tests)
 13. Release mechanics (M1–M3) — `VERSION` bump + `make sync-version`
-14. `make` verification full sweep — `make test`, `make test-integration`, `make lint`, `make memleak`, `make check-pg-drain`
-15. **Ops step**: update Clerk dashboard webhook URL (N5) — before merging to main
-16. Companion PR open (`~/Projects/docs/`) on `feat/m68-trigger-dx-and-free-trial`
+14. Redis client audit (O1) — produces `src/queue/AUDIT.md`; read-only research; no code edits in this dimension
+15. `make` verification full sweep — `make test`, `make test-integration`, `make lint`, `make memleak`, `make check-pg-drain`
+16. **Ops step**: update Clerk dashboard webhook URL (N5) — before merging to main
+17. Companion PR open (`~/Projects/docs/`) on `feat/m68-trigger-dx-and-free-trial`
 
 `kishore-babysit-prs` polls after every push per the project's review cadence.
 
