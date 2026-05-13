@@ -77,6 +77,34 @@ Piping on stdin (`--data @-`) keeps secret bytes inside the process
 boundary. The JSON arrives at `zombiectl` via `read(0)`; the parent
 shell has no record of the payload.
 
+## `gh` authentication precondition (webhook registration)
+
+The install-skill registers the GitHub webhook via `gh api
+repos/.../hooks` (SKILL.md step 9) using the user's local `gh` CLI.
+That call needs the `admin:repo_hook` scope; the skill's step 0
+precondition includes `gh auth login -s admin:repo_hook`. To verify
+mid-install:
+
+```bash
+gh auth status
+```
+
+The output must mention `Token scopes:` including `admin:repo_hook`.
+If the scope is missing (typical when the user logged in with `gh auth
+login` first and the prompt offered narrower default scopes):
+
+```bash
+gh auth refresh -s admin:repo_hook
+```
+
+The refresh opens a browser tab for OAuth re-consent; existing scopes
+stay, the missing one is appended. The skill never adds `gh` scopes
+on the user's behalf — both `gh auth login` and `gh auth refresh` run
+under the user's shell.
+
+`gh` is the only path the install-skill takes for webhook registration
+on the GitHub side. There is no paste-into-github.com step.
+
 ## Storing fewer fields than the JSON shape suggests
 
 `zombiectl credential add` accepts any JSON object — the field set is
