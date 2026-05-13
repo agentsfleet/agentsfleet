@@ -30,7 +30,7 @@ export const errorMap = compose(AUTH_PRESET);
 // ── agent add ────────────────────────────────────────────────────────────────
 
 export async function commandAgentAdd(ctx, parsed, workspaces, deps) {
-  const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
+  const { request, apiHeaders, ui, printJson, printTable, writeLine, writeError } = deps;
 
   const workspaceId = parsed.options[OPT_WORKSPACE] || parsed.options[OPT_WORKSPACE_ID]
     || workspaces?.current_workspace_id;
@@ -38,9 +38,9 @@ export async function commandAgentAdd(ctx, parsed, workspaces, deps) {
   const name        = parsed.options[OPT_NAME];
   const description = parsed.options[OPT_DESCRIPTION] || "";
 
-  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent add requires --workspace <id>")); return 2; }
-  if (!zombieId)    { writeLine(ctx.stderr, ui.err("agent add requires --zombie <id>")); return 2; }
-  if (!name)        { writeLine(ctx.stderr, ui.err("agent add requires --name <name>")); return 2; }
+  if (!workspaceId) { writeError(ctx, MISSING_ARGUMENT, "agent add requires --workspace <id>", deps); return 2; }
+  if (!zombieId)    { writeError(ctx, MISSING_ARGUMENT, "agent add requires --zombie <id>", deps); return 2; }
+  if (!name)        { writeError(ctx, MISSING_ARGUMENT, "agent add requires --name <name>", deps); return 2; }
 
   const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
   const res = await request(ctx, url, {
@@ -74,7 +74,7 @@ export async function commandAgentAdd(ctx, parsed, workspaces, deps) {
       { label: "agent_id",  value: res.agent_id },
       { label: "zombie_id", value: zombieId },
       { label: "name",      value: name },
-      { label: "created_at", value: new Date(res.created_at).toISOString() },
+      { label: "created_at", value: res.created_at ? new Date(res.created_at).toISOString() : "—" },
     ]);
   }
   return 0;
@@ -83,11 +83,11 @@ export async function commandAgentAdd(ctx, parsed, workspaces, deps) {
 // ── agent list ────────────────────────────────────────────────────────────────
 
 export async function commandAgentList(ctx, parsed, workspaces, deps) {
-  const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
+  const { request, apiHeaders, ui, printJson, printTable, writeLine, writeError } = deps;
 
   const workspaceId = parsed.options[OPT_WORKSPACE] || parsed.options[OPT_WORKSPACE_ID]
     || workspaces?.current_workspace_id;
-  if (!workspaceId) { writeLine(ctx.stderr, ui.err("agent list requires --workspace <id> or an active workspace context")); return 2; }
+  if (!workspaceId) { writeError(ctx, MISSING_ARGUMENT, "agent list requires --workspace <id> or an active workspace context", deps); return 2; }
 
   const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
   const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) });
