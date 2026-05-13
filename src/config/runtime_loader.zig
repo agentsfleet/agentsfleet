@@ -112,9 +112,12 @@ pub fn freeEncryption(alloc: Allocator, cfg: EncryptionConfig) void {
 
 const MiscConfig = struct {
     app_url: []u8,
+    api_url: []u8,
 };
 
 pub fn loadMisc(alloc: Allocator) !MiscConfig {
     const app_url = try env.envOrDefaultOwned(alloc, "APP_URL", "https://app.usezombie.com");
-    return .{ .app_url = app_url };
+    errdefer alloc.free(app_url);
+    const api_url = try env.envOrDefaultOwned(alloc, "API_URL", "https://api.usezombie.com");
+    return .{ .app_url = app_url, .api_url = api_url };
 }

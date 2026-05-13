@@ -115,7 +115,7 @@ export async function commandInstall(ctx, parsed, workspaces, deps) {
     printJson(ctx.stdout, {
       status: "installed",
       zombie_id: res.zombie_id,
-      webhook_url: res.webhook_url,
+      webhook_urls: res.webhook_urls ?? {},
       name: displayName,
     });
     return 0;
@@ -123,6 +123,14 @@ export async function commandInstall(ctx, parsed, workspaces, deps) {
 
   writeLine(ctx.stdout, ui.ok(`${displayName} is live.`));
   if (res.zombie_id) writeLine(ctx.stdout, `  Zombie ID: ${res.zombie_id}`);
+  const urls = res.webhook_urls ?? {};
+  const sources = Object.keys(urls);
+  if (sources.length > 0) {
+    writeLine(ctx.stdout, `  Webhook URLs (register on the upstream provider):`);
+    for (const source of sources) {
+      writeLine(ctx.stdout, `    ${source}: ${urls[source]}`);
+    }
+  }
   return 0;
 }
 
