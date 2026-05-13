@@ -32,6 +32,7 @@ import {
   COMMAND_GROUPS,
   EMPTY_LIST_CONVENTIONS,
   INVALID_ID_SAMPLES,
+  PER_ZOMBIE_READ_ONLY_COMMANDS,
   READ_ONLY_COMMANDS,
   REQUIRES_IDENTIFIER,
   REQUIRES_POSITIONAL_ARG,
@@ -142,6 +143,26 @@ if (!isLive) {
         assert.ok(installed.id || installed.zombie_id, `install response missing id: ${JSON.stringify(installed)}`);
         zombieId = installed.id ?? installed.zombie_id;
       });
+
+      // Per-zombie read-only sweep — runs against the live zombieId so
+      // commands like `grant list` (which require `--zombie <id>`) get
+      // exercised inside the lifecycle suite instead of forcing
+      // fixture state into the workspace-wide READ_ONLY_COMMANDS table.
+      for (const row of PER_ZOMBIE_READ_ONLY_COMMANDS) {
+        const label = `${row.argsHead.join(" ")} --zombie <id>`;
+        it(`${label} exits 0 with parseable JSON`, async () => {
+          const args = [...row.argsHead, "--zombie", zombieId, "--json"];
+          const result = await spawn(args);
+          assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
+          const parsed = JSON.parse(result.stdout.trim());
+          if (row.requiredKey) {
+            assert.ok(row.requiredKey in parsed, `${label}: missing ${row.requiredKey} in ${result.stdout}`);
+          }
+          if (row.isList) {
+            assert.ok(Array.isArray(parsed[row.itemsKey]), `${label}: ${row.itemsKey} not an array`);
+          }
+        });
+      }
 
       it("status reports active", async () => {
         const payload = await expectStatus(env, zombieId, ["active", "starting", "running"]);
@@ -294,13 +315,17 @@ if (!isLive) {
     });
 
     // Coverage check — every COMMAND_GROUP exercised somewhere in this suite
-    // (read-only sweep covers workspace/agent/grant/tenant/billing/zombie).
+    // (workspace-wide read-only sweep + per-zombie sweep together cover
+    // workspace/agent/grant/tenant/billing/zombie).
     it("touch every COMMAND_GROUP via the read-only sweep", () => {
       const exercised = new Set();
       for (const row of READ_ONLY_COMMANDS) {
         const head = row.args[0];
         if (head === "list" || head === "doctor") exercised.add("zombie");
         if (COMMAND_GROUPS.includes(head)) exercised.add(head);
+      }
+      for (const row of PER_ZOMBIE_READ_ONLY_COMMANDS) {
+        if (row.group) exercised.add(row.group);
       }
       const missing = COMMAND_GROUPS.filter((g) => !exercised.has(g) && g !== "zombie");
       assert.deepEqual(missing, [], `command groups missing from §4b sweep: ${missing.join(",")}`);

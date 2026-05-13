@@ -33,10 +33,18 @@ export const READ_ONLY_COMMANDS = [
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
   { args: ["agent", "list", "--json"], isList: true, itemsKey: "items" },
-  { args: ["grant", "list", "--json"], isList: true, itemsKey: "items" },
   { args: ["tenant", "provider", "show", "--json"], requiredKey: "provider_mode" },
   { args: ["billing", "show", "--json"], requiredKey: "balance" },
   { args: ["list", "--json"], isList: true, itemsKey: "items", label: "zombie list" },
+];
+
+// Read-only commands scoped to a live zombie_id. The spec interpolates
+// the §4a-installed zombieId via `--zombie <id>` before running. Kept
+// separate from READ_ONLY_COMMANDS (which is workspace-scoped) because
+// `grant list` requires `--zombie <id>`; the §4b read-only sweep cannot
+// thread fixture state into a static argv.
+export const PER_ZOMBIE_READ_ONLY_COMMANDS = [
+  { argsHead: ["grant", "list"], isList: true, itemsKey: "items", group: "grant" },
 ];
 
 // Per-row flags:
@@ -72,16 +80,23 @@ export const REQUIRES_IDENTIFIER = [
   { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: true, validatesClient: true },
 ];
 
+// Commands whose first positional is `<required>` in cli-tree and so
+// produce commander's "missing required argument" rejection (matched by
+// `expectMissingArg`'s /missing|required|usage|expected/ regex).
+//
+// `status [zombie_id]` and `logs [zombie_id]` are optional positionals
+// — `status` bare exits 0 (workspace-wide fallback) and `logs` bare
+// exits 2 with a domain-specific stem ("logs requires --zombie <id>")
+// that the generic missing-arg regex does not match. They are
+// exercised in §4a's lifecycle walk with a real zombieId instead.
 export const REQUIRES_POSITIONAL_ARG = [
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
   { args: ["agent", "delete"], missingArgName: "key_id" },
   { args: ["grant", "delete"], missingArgName: "grant_id" },
-  { args: ["status"], missingArgName: "zombie_id" },
   { args: ["kill"], missingArgName: "zombie_id" },
   { args: ["stop"], missingArgName: "zombie_id" },
   { args: ["resume"], missingArgName: "zombie_id" },
-  { args: ["logs"], missingArgName: "zombie_id" },
 ];
 
 export const INVALID_ID_SAMPLES = [
