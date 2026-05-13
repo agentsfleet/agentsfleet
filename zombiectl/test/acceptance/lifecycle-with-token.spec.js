@@ -274,10 +274,10 @@ if (!isLive) {
     // surfaced as Discovery (CLI hygiene: wire validateRequiredId into the
     // remaining ID-taking handlers, then this sweep widens automatically).
     describe("§4c2 invalid-format ID — client-side rejection, no network", () => {
-      // Pick samples that today's SAFE_ID_RE actually rejects. "not-a-uuid"
-      // passes because it's a 10-char alphanumeric+hyphen string (matches
-      // SAFE_ID_RE); use the space/dash-only variants which definitely fail.
-      const rejectingSamples = INVALID_ID_SAMPLES.filter((s) => /\s/.test(s) || /^-+$/.test(s));
+      // All INVALID_ID_SAMPLES fail the uuidv7 validator introduced in this
+      // PR (SAFE_ID_RE was removed). Run the full set so every sample is
+      // confirmed to be rejected client-side without touching the network.
+      const rejectingSamples = INVALID_ID_SAMPLES;
       assert.ok(rejectingSamples.length >= 1, "INVALID_ID_SAMPLES must include at least one stem that fails SAFE_ID_RE");
 
       for (const row of REQUIRES_IDENTIFIER) {
