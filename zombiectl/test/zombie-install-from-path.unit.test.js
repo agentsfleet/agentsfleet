@@ -16,7 +16,6 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-  buildParsed,
   commandZombieDispatch as commandZombie,
   makeNoop,
   ui,

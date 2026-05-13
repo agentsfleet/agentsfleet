@@ -9,7 +9,6 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import {
-  buildParsed,
   commandZombieDispatch as commandZombie,
   makeNoop,
   ui,

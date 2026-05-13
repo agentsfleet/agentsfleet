@@ -26,7 +26,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import url from "node:url";
 
-import { runZombiectl, spawnZombiectl, composeEnv } from "./fixtures/cli.js";
+import { runZombiectl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir } from "./fixtures/state-dir.js";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
