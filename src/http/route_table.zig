@@ -64,7 +64,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
         // Webhooks — receive_webhook uses webhookSig middleware (HMAC-only:
         // scheme + secret resolved per-zombie from the workspace credential
-        // keyed by `trigger.source`).
+        // keyed by the matching `triggers[].source`).
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
         // Clerk via Svix — dedicated middleware, shared handler.

@@ -11,7 +11,6 @@ const uc1 = @import("../db/test_fixtures_uc1.zig");
 const ALLOC = std.testing.allocator;
 const WS_A = "0195b4ba-8d3a-7f13-8abc-aa1900000001";
 const ZOMBIE_A = "zombie-telem-a";
-const ZOMBIE_B = "zombie-telem-b";
 const PLATFORM_MODEL = tenant_provider.PLATFORM_DEFAULT_MODEL;
 
 fn seedStageRow(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8, event_id: []const u8, recorded_at: i64) !void {
@@ -43,7 +42,7 @@ fn seedReceiveRow(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u
 }
 
 fn teardownTelemetry(conn: *pg.Conn, workspace_id: []const u8) void {
-    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch {};
+    _ = conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Insert: idempotent on (event_id, charge_type) ───────────────────────────

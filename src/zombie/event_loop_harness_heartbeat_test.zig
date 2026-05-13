@@ -29,6 +29,7 @@ const ALLOC = std.testing.allocator;
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f30";
 const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa30";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa31";
+const ZOMBIE_CONFIG_JSON = "{\"name\":\"" ++ helpers.ZOMBIE_NAME ++ "\",\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"agentmail\"}],\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}}}";
 const ACTIVITY_CHANNEL = "zombie:" ++ TEST_ZOMBIE_ID ++ ":activity";
 const TEST_ACTOR = "steer:test-user";
 const TEST_REQUEST_JSON = "{\"message\":\"long-tool\"}";
@@ -77,7 +78,7 @@ fn deleteEventStream(redis: *queue_redis.Client) void {
 }
 
 fn cleanupZombieEventsRows(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 test "integration: harness emits ≥3 tool_call_progress frames at ~2s intervals" {
@@ -108,7 +109,7 @@ test "integration: harness emits ≥3 tool_call_progress frames at ~2s intervals
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownPlatformProvider(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
 

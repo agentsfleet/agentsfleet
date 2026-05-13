@@ -6,7 +6,6 @@ const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
-const redis_types = @import("redis_types.zig");
 
 const log = logging.scoped(.redis_pubsub);
 
@@ -40,9 +39,11 @@ pub const Subscriber = struct {
         defer redis_config.deinitConfig(alloc, cfg);
 
         const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
+        // SAFETY: written by surrounding init logic before any read of this storage.
         var sub = Subscriber{ .alloc = alloc, .transport = undefined };
 
         if (cfg.use_tls) {
+            // SAFETY: written by surrounding init logic before any read of this storage.
             sub.transport = .{ .tls = undefined };
             try sub.transport.tls.initInPlace(alloc, stream, cfg.host);
         } else {

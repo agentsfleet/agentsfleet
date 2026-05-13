@@ -26,7 +26,7 @@ pub const Fixture = struct {
 /// Caller must call `cleanup()` at end of test before `harness.deinit()`.
 ///
 /// `config_json` is the ENTIRE config — e.g.:
-///   {"name":"x","x-usezombie":{"trigger":{"type":"webhook","source":"github"}}}
+///   {"name":"x","x-usezombie":{"triggers":[{"type":"webhook","source":"github"}]}}
 pub fn insertZombie(
     conn: *pg.Conn,
     fx: Fixture,
@@ -91,10 +91,10 @@ pub fn insertWebhookCredential(
 
 /// Delete all rows this test created. Idempotent.
 pub fn cleanup(conn: *pg.Conn, fx: Fixture) !void {
-    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{fx.zombie_id}) catch {};
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch {};
-    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch {};
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch {};
+    _ = conn.exec("DELETE FROM core.zombies WHERE id = $1::uuid", .{fx.zombie_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.workspaces WHERE workspace_id = $1::uuid", .{fx.workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{fx.tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 /// Convenience: build a trigger config JSON for a given source. Optionally
@@ -117,18 +117,18 @@ pub fn buildTriggerConfig(
         type: []const u8 = "webhook",
         source: []const u8,
     };
-    const WrapWith = struct { @"x-usezombie": struct { trigger: TriggerWith } };
-    const WrapNoOverride = struct { @"x-usezombie": struct { trigger: TriggerNoOverride } };
+    const WrapWith = struct { @"x-usezombie": struct { triggers: [1]TriggerWith } };
+    const WrapNoOverride = struct { @"x-usezombie": struct { triggers: [1]TriggerNoOverride } };
     if (credential_name) |name| {
         return std.json.Stringify.valueAlloc(
             alloc,
-            WrapWith{ .@"x-usezombie" = .{ .trigger = .{ .source = source, .credential_name = name } } },
+            WrapWith{ .@"x-usezombie" = .{ .triggers = .{.{ .source = source, .credential_name = name }} } },
             .{},
         );
     }
     return std.json.Stringify.valueAlloc(
         alloc,
-        WrapNoOverride{ .@"x-usezombie" = .{ .trigger = .{ .source = source } } },
+        WrapNoOverride{ .@"x-usezombie" = .{ .triggers = .{.{ .source = source }} } },
         .{},
     );
 }
@@ -140,14 +140,12 @@ pub const ID_TENANT_A = "0197a4ba-8d3a-7f13-8abc-11111111aa01";
 pub const ID_WS_A = "0197a4ba-8d3a-7f13-8abc-11111111aa11";
 pub const ID_ZOMBIE_A = "0197a4ba-8d3a-7f13-8abc-11111111aa21";
 const ID_TENANT_B = "0197a4ba-8d3a-7f13-8abc-22222222bb01";
-const ID_WS_B = "0197a4ba-8d3a-7f13-8abc-22222222bb11";
-const ID_ZOMBIE_B = "0197a4ba-8d3a-7f13-8abc-22222222bb21";
 
 test "buildTriggerConfig with credential_name override produces valid JSON" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "github", "github-prod");
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"github\",\"credential_name\":\"github-prod\"}}}";
+    const want = "{\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\",\"credential_name\":\"github-prod\"}]}}";
     try std.testing.expectEqualStrings(want, got);
 }
 
@@ -155,7 +153,7 @@ test "buildTriggerConfig without override produces source-only config" {
     const alloc = std.testing.allocator;
     const got = try buildTriggerConfig(alloc, "github", null);
     defer alloc.free(got);
-    const want = "{\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"github\"}}}";
+    const want = "{\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"github\"}]}}";
     try std.testing.expectEqualStrings(want, got);
 }
 

@@ -12,7 +12,6 @@
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const Allocator = std.mem.Allocator;
 
 const event_loop = @import("event_loop.zig");
 const writepath = @import("event_loop_writepath.zig");
@@ -34,6 +33,7 @@ const ACTIVITY_CHANNEL = "zombie:" ++ TEST_ZOMBIE_ID ++ ":activity";
 const TEST_ACTOR = "steer:test-user";
 const TEST_REQUEST_JSON = "{\"message\":\"ping\"}";
 const EMPTY_CONTEXT_JSON = "{}";
+const ZOMBIE_CONFIG_JSON = "{\"name\":\"" ++ helpers.ZOMBIE_NAME ++ "\",\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"agentmail\"}],\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}}}";
 const TEST_CONSUMER = "harness-test-consumer";
 
 const DRAIN_OVERALL_BUDGET_MS: u64 = 8_000;
@@ -58,7 +58,7 @@ fn deleteEventStream(redis: *queue_redis.Client) void {
 }
 
 fn cleanupZombieEventsRows(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 test "integration: harness emits started/chunk/completed frames in order via real worker pipeline" {
@@ -91,7 +91,7 @@ test "integration: harness emits started/chunk/completed frames in order via rea
     defer base.teardownWorkspace(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, TEST_WORKSPACE_ID);
     defer base.teardownPlatformProvider(db_ctx.conn, TEST_WORKSPACE_ID);
-    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, helpers.ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
+    try base.seedZombie(db_ctx.conn, TEST_ZOMBIE_ID, TEST_WORKSPACE_ID, helpers.ZOMBIE_NAME, ZOMBIE_CONFIG_JSON, helpers.ZOMBIE_SOURCE_MD);
     defer base.teardownZombies(db_ctx.conn, TEST_WORKSPACE_ID);
     try base.seedZombieSession(db_ctx.conn, TEST_SESSION_ID, TEST_ZOMBIE_ID, EMPTY_CONTEXT_JSON);
 

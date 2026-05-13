@@ -86,7 +86,7 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
     // Best-effort: record last use time. Failure is not fatal.
     _ = conn.exec(
         \\UPDATE core.agent_keys SET last_used_at = $1 WHERE key_hash = $2
-    , .{ std.time.milliTimestamp(), computed_hash }) catch {};
+    , .{ std.time.milliTimestamp(), computed_hash }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 
     return .{
         .zombie_id = alloc.dupe(u8, zombie_id) catch return null,

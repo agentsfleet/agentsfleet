@@ -17,6 +17,7 @@ pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
     const cfg = try redis_config.parseRedisUrl(alloc, url);
     errdefer redis_config.deinitConfig(alloc, cfg);
 
+    // SAFETY: written by surrounding init logic before any read of this storage.
     var client = Client{ .alloc = alloc, .cfg = cfg, .transport = undefined };
     client.transport = try dialAndAuth(alloc, cfg);
     log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
@@ -97,7 +98,7 @@ pub fn aclWhoAmI(self: *Client) ![]u8 {
     var resp = try self.command(&.{ "ACL", "WHOAMI" });
     defer resp.deinit(self.alloc);
     const who = redis_protocol.valueAsString(resp) orelse return error.RedisUnexpectedResponse;
-    return try self.alloc.dupe(u8, who);
+    return self.alloc.dupe(u8, who);
 }
 
 /// setNx sets key=value with ttl only if key does not exist.
@@ -180,9 +181,9 @@ fn commandUnlocked(self: *Client, argv: []const []const u8) !redis_protocol.Resp
         log.warn("write_failed_reconnecting", .{ .err = @errorName(err) });
         self.reconnectUnlocked() catch return err;
         try writeArgvToTransport(&self.transport, argv);
-        return try redis_protocol.readRespValue(self.alloc, self.transport.reader());
+        return redis_protocol.readRespValue(self.alloc, self.transport.reader());
     };
-    return try redis_protocol.readRespValue(self.alloc, self.transport.reader());
+    return redis_protocol.readRespValue(self.alloc, self.transport.reader());
 }
 
 fn writeArgvToTransport(transport: *redis_transport.Transport, argv: []const []const u8) !void {
@@ -204,8 +205,10 @@ fn writeArgvToTransport(transport: *redis_transport.Transport, argv: []const []c
 fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transport.Transport {
     const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
 
+    // SAFETY: written by surrounding init logic before any read of this storage.
     var transport: redis_transport.Transport = undefined;
     if (cfg.use_tls) {
+        // SAFETY: written by surrounding init logic before any read of this storage.
         transport = .{ .tls = undefined };
         try transport.tls.initInPlace(alloc, stream, cfg.host);
     } else {

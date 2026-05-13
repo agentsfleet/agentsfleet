@@ -171,7 +171,7 @@ test "integration: zombie create rejects SKILL/TRIGGER name mismatch with UZ-ZMB
     // handler, which is what this test pins.
     const body =
         "{\"source_markdown\":\"---\\nname: alpha-zombie\\ndescription: alpha\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: beta-zombie\\nx-usezombie:\\n  trigger:\\n    type: api\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+        "\"trigger_markdown\":\"---\\nname: beta-zombie\\nx-usezombie:\\n  triggers:\\n    - type: webhook\\n      source: agentmail\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);

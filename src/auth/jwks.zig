@@ -159,7 +159,7 @@ pub const Verifier = struct {
             return VerifyError.SignatureInvalid;
         };
 
-        return try parseStandardClaims(alloc, payload_raw, self.issuer, self.audience);
+        return parseStandardClaims(alloc, payload_raw, self.issuer, self.audience);
     }
 
     pub fn checkJwksConnectivity(self: *Verifier) !void {

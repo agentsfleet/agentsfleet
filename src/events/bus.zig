@@ -13,10 +13,13 @@ const DETAIL_MAX: usize = 256;
 
 const BusEvent = struct {
     ts_ms: i64 = 0,
+    // SAFETY: populated by the owning init/builder before any consumer reads this field.
     kind: [KIND_MAX]u8 = undefined,
     kind_len: u8 = 0,
+    // SAFETY: populated by the owning init/builder before any consumer reads this field.
     run_id: [RUN_ID_MAX]u8 = undefined,
     run_id_len: u8 = 0,
+    // SAFETY: populated by the owning init/builder before any consumer reads this field.
     detail: [DETAIL_MAX]u8 = undefined,
     detail_len: u16 = 0,
 
@@ -47,6 +50,7 @@ pub const Bus = struct {
     mutex: std.Thread.Mutex = .{},
     cond: std.Thread.Condition = .{},
     running: std.atomic.Value(bool) = std.atomic.Value(bool).init(true),
+    // SAFETY: populated by the owning init/builder before any consumer reads this field.
     queue: [CAPACITY]BusEvent = undefined,
     head: usize = 0,
     tail: usize = 0,

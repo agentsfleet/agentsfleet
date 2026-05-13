@@ -8,7 +8,7 @@ const ZombieConfigError = config_types.ZombieConfigError;
 test "parseZombieConfig: credential names validated (no op:// paths)" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],
+        \\{"name":"x","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],
         \\ "credentials":["op://ZMB_LOCAL_DEV/agentmail/api_key"],
         \\ "budget":{"daily_dollars":1.0}}}
     ;
@@ -51,7 +51,7 @@ test "parseZombieConfig: unknown tool name accepted (gate moved to executor sand
     // because the executor sandbox is the binding authority on dispatch —
     // is independent of where the runtime block sits in the JSON tree.
     const json =
-        \\{"name":"x","x-usezombie":{"trigger":{"type":"api"},"tools":["whatever_the_skill_wants"],"budget":{"daily_dollars":1.0}}}
+        \\{"name":"x","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["whatever_the_skill_wants"],"budget":{"daily_dollars":1.0}}}
     ;
     var cfg = try config_parser.parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);

@@ -88,9 +88,9 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn connectPublisher(alloc: std.mem.Allocator) !queue_redis.Client {
@@ -126,7 +126,7 @@ fn openAndSettle(alloc: std.mem.Allocator, port: u16, zombie_id: []const u8, opt
 /// before `h.deinit()` runs.
 fn closeAndWakeSubscriber(sc: *SseClient, pub_client: *queue_redis.Client, channel: []const u8) void {
     sc.closeStream();
-    pub_client.publish(channel, "{\"kind\":\"drain\",\"event_id\":\"_\"}") catch {};
+    pub_client.publish(channel, "{\"kind\":\"drain\",\"event_id\":\"_\"}") catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn percentile(values: []u64, pct: f64) u64 {

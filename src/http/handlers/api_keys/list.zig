@@ -8,6 +8,9 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 
+const logging = @import("log");
+const log = logging.scoped(.api_keys_list);
+
 const Hx = hx_mod.Hx;
 
 const DEFAULT_PAGE_SIZE: i32 = 25;
@@ -105,7 +108,7 @@ fn fetchPage(hx: Hx, conn: anytype, tenant_id: []const u8, q: ListQuery) ?[]List
             .created_at = row.get(i64, 3) catch continue,
             .last_used_at = row.get(i64, 4) catch null,
             .revoked_at = row.get(i64, 5) catch null,
-        }) catch {};
+        }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     }
     return items.toOwnedSlice(hx.alloc) catch &[_]ListRow{};
 }

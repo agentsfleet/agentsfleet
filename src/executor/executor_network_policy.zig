@@ -24,11 +24,6 @@ pub const REGISTRY_ALLOWLIST = [_][]const u8{
 /// M2_001: Zombie skill-specific domain allowlists.
 /// Keyed by skill name from ZombieConfig.skills[].
 /// The executor merges these with the Zombie's config.network.allow list.
-const ZOMBIE_SKILL_ALLOWLIST = struct {
-    pub const agentmail = [_][]const u8{
-        "api.agentmail.to",
-    };
-};
 
 // ── M3_001: Per-Zombie domain merging ─────────────────────────────────────────
 

@@ -64,8 +64,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
         else => return ToolResult.fail("Invalid 'url' parameter"),
     };
 
-    const subst_url = substOrFail(arena, url_str, self.policy.secrets_map) catch |fail|
-        return fail;
+    const subst_url = try substOrFail(arena, url_str, self.policy.secrets_map);
     if (!secret_substitution.assertNoLeftover(subst_url))
         return ToolResult.fail("substitution_left_placeholder");
 
@@ -88,8 +87,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
                 const v = e.value_ptr.*;
                 const replaced: std.json.Value = switch (v) {
                     .string => |s| blk: {
-                        const r = substOrFail(arena, s, self.policy.secrets_map) catch |fail|
-                            return fail;
+                        const r = try substOrFail(arena, s, self.policy.secrets_map);
                         if (!secret_substitution.assertNoLeftover(r))
                             return ToolResult.fail("substitution_left_placeholder");
                         break :blk .{ .string = r };
@@ -107,8 +105,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
     if (args.get(arg_body)) |bv| {
         const replaced: std.json.Value = switch (bv) {
             .string => |s| blk: {
-                const r = substOrFail(arena, s, self.policy.secrets_map) catch |fail|
-                    return fail;
+                const r = try substOrFail(arena, s, self.policy.secrets_map);
                 if (!secret_substitution.assertNoLeftover(r))
                     return ToolResult.fail("substitution_left_placeholder");
                 break :blk .{ .string = r };
