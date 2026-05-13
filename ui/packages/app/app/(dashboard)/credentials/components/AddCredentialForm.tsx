@@ -19,6 +19,7 @@ import {
   Textarea,
 } from "@usezombie/design-system";
 import { createCredentialAction } from "../actions";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = { workspaceId: string };
 
@@ -71,16 +72,20 @@ export default function AddCredentialForm({ workspaceId }: Props) {
   function onSubmit(values: FormValues) {
     setApiError(null);
     startTransition(async () => {
-      let data: Record<string, unknown>;
-      try {
-        data = JSON.parse(values.data_json) as Record<string, unknown>;
-      } catch (e) {
-        setApiError((e as Error).message || "Failed to parse credential JSON");
-        return;
-      }
+      // zod's superRefine on `data_json` (see schema above) runs the same
+      // JSON.parse + object-shape checks before onSubmit fires, so by the
+      // time we land here `values.data_json` is guaranteed parseable.
+      // No defensive try/catch — the framework already proved it.
+      const data = JSON.parse(values.data_json) as Record<string, unknown>;
       const result = await createCredentialAction(workspaceId, { name: values.name.trim(), data });
       if (!result.ok) {
-        setApiError(result.error || "Failed to store credential");
+        setApiError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "store the credential",
+          }),
+        );
         return;
       }
       form.reset({ name: "", data_json: "" });

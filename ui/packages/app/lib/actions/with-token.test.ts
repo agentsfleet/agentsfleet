@@ -19,7 +19,12 @@ describe("withToken", () => {
   it("returns 401 when no token resolves", async () => {
     getServerTokenMock.mockResolvedValueOnce(null);
     const result = await withToken(async () => "should-not-call");
-    expect(result).toEqual({ ok: false, error: "Not authenticated", status: 401 });
+    expect(result).toEqual({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+      errorCode: "UZ-AUTH-401",
+    });
   });
 
   it("returns ok:true with data on success", async () => {
@@ -28,12 +33,17 @@ describe("withToken", () => {
     expect(result).toEqual({ ok: true, data: "data:tok_abc" });
   });
 
-  it("maps ApiError to ok:false with status field", async () => {
+  it("maps ApiError to ok:false with status + errorCode fields", async () => {
     getServerTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken(async () => {
       throw new ApiError("conflict", 409, "UZ-ZMB-009");
     });
-    expect(result).toEqual({ ok: false, error: "conflict", status: 409 });
+    expect(result).toEqual({
+      ok: false,
+      error: "conflict",
+      status: 409,
+      errorCode: "UZ-ZMB-009",
+    });
   });
 
   it("maps a plain Error to ok:false with message and no status", async () => {

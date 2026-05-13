@@ -7,10 +7,10 @@ const BASE_URL = process.env.BASE_URL ?? `http://localhost:${E2E_PORT}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  // Auth-suite specs require Clerk DEV credentials + globalSetup
-  // (see playwright.auth.config.ts). Exclude them from the default
+  // Acceptance-suite specs require Clerk DEV credentials + globalSetup
+  // (see playwright.acceptance.config.ts). Exclude them from the default
   // suite so the `qa-app` lane (no Clerk env) does not collect them.
-  testIgnore: ["**/auth/**"],
+  testIgnore: ["**/acceptance/**"],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

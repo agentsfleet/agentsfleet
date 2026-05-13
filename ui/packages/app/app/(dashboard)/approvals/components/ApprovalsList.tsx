@@ -22,7 +22,13 @@ import {
   denyApprovalAction,
   listApprovalsAction,
 } from "../actions";
-import type { ApprovalGate, ResolveOutcome } from "@/lib/api/approvals";
+import {
+  APPROVAL_DECISION,
+  type ApprovalDecision,
+  type ApprovalGate,
+  type ResolveOutcome,
+} from "@/lib/api/approvals";
+import { presentErrorString } from "@/lib/errors";
 
 const POLL_MS = 5000;
 
@@ -98,7 +104,13 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     startTransition(async () => {
       const result = await listApprovalsAction(workspaceId, { cursor, zombieId, limit: 50 });
       if (!result.ok) {
-        setError(result.error || "Failed to load more");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "load more approvals",
+          }),
+        );
         return;
       }
       setItems((prev) => [...prev, ...result.data.items]);
@@ -109,12 +121,19 @@ export default function ApprovalsList({ workspaceId, initialItems, initialCursor
     });
   }
 
-  async function resolve(gateId: string, decision: "approve" | "deny") {
+  async function resolve(gateId: string, decision: ApprovalDecision) {
     setError(null);
-    const action = decision === "approve" ? approveApprovalAction : denyApprovalAction;
+    const isApprove = decision === APPROVAL_DECISION.APPROVE;
+    const action = isApprove ? approveApprovalAction : denyApprovalAction;
     const result = await action(workspaceId, gateId);
     if (!result.ok) {
-      setError(result.error || "Resolve failed");
+      setError(
+        presentErrorString({
+          errorCode: result.errorCode,
+          message: result.error,
+          action: isApprove ? "approve this request" : "deny this request",
+        }),
+      );
       return;
     }
     const outcome: ResolveOutcome = result.data;
@@ -175,7 +194,7 @@ function ApprovalCard({
   onResolve,
 }: {
   gate: ApprovalGate;
-  onResolve: (gateId: string, decision: "approve" | "deny") => Promise<void>;
+  onResolve: (gateId: string, decision: ApprovalDecision) => Promise<void>;
 }) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -211,10 +230,14 @@ function ApprovalCard({
         </CardContent>
       ) : null}
       <CardFooter className="gap-2">
-        <Button size="sm" onClick={() => void onResolve(gate.gate_id, "approve")}>
+        <Button size="sm" onClick={() => void onResolve(gate.gate_id, APPROVAL_DECISION.APPROVE)}>
           Approve
         </Button>
-        <Button size="sm" variant="destructive" onClick={() => void onResolve(gate.gate_id, "deny")}>
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => void onResolve(gate.gate_id, APPROVAL_DECISION.DENY)}
+        >
           Deny
         </Button>
         <Button asChild size="sm" variant="ghost">

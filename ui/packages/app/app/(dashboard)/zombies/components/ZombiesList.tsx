@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Alert, Button, Input, List, ListItem, Time, WakePulse } from "@usezombie/design-system";
 import { ZOMBIE_STATUS, type Zombie } from "@/lib/api/zombies";
 import { listZombiesAction } from "../actions";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = {
   workspaceId: string;
@@ -71,7 +72,13 @@ export default function ZombiesList({
     startTransition(async () => {
       const result = await listZombiesAction(workspaceId, { cursor });
       if (!result.ok) {
-        setError(result.error || "Failed to load more");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: "load more zombies",
+          }),
+        );
         return;
       }
       setZombies((prev) => [...prev, ...result.data.items]);

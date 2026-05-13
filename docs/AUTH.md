@@ -321,7 +321,7 @@ If rotated under suspected compromise, skip the gradual revoke — invalidate th
 
 ## Test infrastructure — e2e fixture mint (admin path)
 
-The authenticated e2e harness (`ui/packages/app/tests/e2e/auth/`) uses the **admin mint path** to provision two non-interactive fixture users (`regular-fixture@…`, `admin-fixture@…`) without driving Clerk's interactive sign-in form:
+The acceptance e2e harness (`ui/packages/app/tests/e2e/acceptance/`) uses the **admin mint path** to provision two non-interactive fixture users (`regular-fixture@…`, `admin-fixture@…`) without driving Clerk's interactive sign-in form:
 
 ```text
 globalSetup
@@ -332,21 +332,22 @@ globalSetup
   │                     zombied creates the tenant + default workspace +
   │                     starter credit, then PATCHes Clerk publicMetadata
   │                     with the new tenant_id.
-  └─ attachJwt        → mints two tokens from the same Clerk session via:
-                          POST /v1/sessions/{id}/tokens         → Token A (cookie)
-                          POST /v1/sessions/{id}/tokens/api     → Token B (Bearer)
-                        Both authorized by CLERK_SECRET_KEY.
+  └─ attachJwt        → mints Token B from a Clerk session via:
+                          POST /v1/sessions/{id}/tokens/api
+                        Authorized by CLERK_SECRET_KEY.
 
 per-spec
-  ├─ signInAs(page, key)  → context.addCookies({name:"__session", value: cookieJwt})
+  ├─ signInAs(page, key)  → setupClerkTestingToken(page), then
+  │                         clerk.signIn({page, emailAddress})
+  │                         through Clerk's browser-side sign-in path.
   └─ clientFor(key)       → fetch with Authorization: Bearer ${sessionJwt}
 ```
 
-The harness mirrors production exactly: `cookieJwt` for cookie validation by `clerkMiddleware()`, `sessionJwt` for Bearer to zombied. Two tokens because Pattern 2 (cross-origin frontend + backend).
+The harness mirrors production's two-verifier shape without hand-writing dashboard cookies. `signInAs` lets Clerk's JavaScript Software Development Kit (SDK) write Token A cookies (`__session`, `__client_uat`, `__clerk_db_jwt`) through the same sign-in path `clerkMiddleware()` expects. `clientFor` uses the cached Token B (`sessionJwt`) as Bearer auth for direct zombied calls such as seed, teardown, and workspace lookup. Two tokens because Pattern 2 (cross-origin frontend + backend).
 
 The Svix bootstrap step is the local-only stand-in for Clerk's real outbound webhook: real Clerk cannot reach `localhost:3000`, so the harness signs the same payload Clerk would have sent and POSTs it directly. The signature math is identical to what zombied's `webhook_sig` middleware would verify in production — `webhook_secret` is the shared key, the `user.created` payload shape mirrors `src/http/handlers/webhooks/clerk_integration_test.zig`. zombied cannot tell the difference.
 
-The local-zombied loop runs via `bun run test:e2e:auth:local` (forces `NEXT_PUBLIC_API_URL=http://localhost:3000`); the deployed-zombied loop runs the same harness against `api-dev.usezombie.com` from CI (`auth-e2e-dev` job in `.github/workflows/deploy-dev.yml`). The PROD smoke (`auth-e2e-prod` in `.github/workflows/smoke-post-deploy.yml`) targets `api.usezombie.com` after every Vercel `usezombie-app` Production deploy — see "PROD fixture identity carve-out" below for what gets created in PROD Clerk and the security guarantees around it.
+The local-zombied loop runs via `bun run test:e2e:acceptance:local` (forces `NEXT_PUBLIC_API_URL=http://localhost:3000`); the deployed-zombied loop runs the same harness against `api-dev.usezombie.com` from CI (`acceptance-e2e-dev` job in `.github/workflows/deploy-dev.yml`). The PROD smoke (`acceptance-e2e-prod` in `.github/workflows/smoke-post-deploy.yml`) targets `api.usezombie.com` after every Vercel `usezombie-app` Production deploy — see "PROD fixture identity carve-out" below for what gets created in PROD Clerk and the security guarantees around it.
 
 ### PROD fixture identity carve-out
 
@@ -354,13 +355,13 @@ The PROD harness creates two fixture identities in Clerk PROD on first run, then
 
 | Item | Value | Notes |
 |---|---|---|
-| Email — regular fixture | `op://VAULT_PROD/e2e-fixtures/regular/email` (default `regular-fixture@mailinator.com` for DEV) | The CI job overrides via `AUTH_E2E_REGULAR_EMAIL`. Switch the vault item to a private-domain alias before enabling PROD runs if mailinator is unacceptable. |
-| Email — admin fixture | `op://VAULT_PROD/e2e-fixtures/admin/email` (default `admin-fixture@mailinator.com` for DEV) | Same override mechanism. |
+| Email — regular fixture | `op://ZMB_CD_PROD/e2e-fixtures-email/regular` (DEV equivalent: `op://ZMB_CD_DEV/e2e-fixtures-email/regular`; default `regular-fixture@mailinator.com` if neither vault item resolves) | The CI job overrides via `AUTH_E2E_REGULAR_EMAIL`. Switch the vault item to a private-domain alias before enabling PROD runs if the current catch-all inbox is unacceptable. |
+| Email — admin fixture | `op://ZMB_CD_PROD/e2e-fixtures-email/admin` (DEV equivalent: `op://ZMB_CD_DEV/e2e-fixtures-email/admin`; default `admin-fixture@mailinator.com` if neither vault item resolves) | Same override mechanism. |
 | Password | random per `provisionUser()` call (`crypto.randomBytes(32).toString("base64url")`) | **Not persisted.** The harness mints sessions through Clerk's admin API (`POST /v1/sessions/{id}/tokens`, authenticated by `CLERK_SECRET_KEY`); the user-password flow is never used by the harness. A stable password would be a meaningful attack surface (mailinator inbox is publicly readable) — random + discarded eliminates it. |
-| Clerk `publicMetadata` | `{ is_test_fixture: true, owner: "auth-e2e-suite", role: "regular" \| "admin" }` | Tag exists so prod ops dashboards can filter these identities out, and so a future Clerk webhook handler can refuse unsafe operations against fixture users. Backfilled on existing fixtures via `PATCH /users/{id}/metadata` in `ensureUser`. |
+| Clerk `publicMetadata` | `{ is_test_fixture: true, owner: "acceptance-e2e-suite", role: "regular" \| "admin" }` | Tag exists so prod ops dashboards can filter these identities out, and so a future Clerk webhook handler can refuse unsafe operations against fixture users. Backfilled on existing fixtures via `PATCH /users/{id}/metadata` in `ensureUser`. |
 | Tenant in zombied PROD | `core.tenants` row created by the Svix-signed `user.created` POST, same shape as a real signup | The fixture tenant accumulates real `tenant_billing.balance_nanos` (starts at the standard starter credit) and any state created by tests. Per-spec teardown deletes zombies; the tenant itself is reused across runs. |
 | `signup.spec.ts` against PROD | **skipped** (`test.skip(NEXT_PUBLIC_API_URL.includes('api.usezombie.com'))`) | Clerk PROD does not have test mode enabled, so the `+clerk_test@mailinator.com` short-circuit (DEV-only) would fail; running it would either hang on the verification screen or send a real OTP to a publicly-readable mailinator inbox. The DEV gate covers this spec instead. |
-| `.fixture-jwts.json` (cookieJwt cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-auth-report/` so it does not ride out in CI artifact uploads. The cookieJwt is a real Clerk session for ~1h; treat the cache file like a credential. |
+| `.fixture-jwts.json` (Token B cache) | `<worktree>/.fixture-jwts.json`, mode 0600, gitignored | Lives outside Playwright's `outputDir` and `playwright-acceptance-report/` so it does not ride out in CI artifact uploads. The cached `sessionJwt` is a real `api`-template Bearer token for 15 minutes; treat the cache file like a credential. |
 
 ### CLI fixture identity carve-out
 
@@ -389,7 +390,53 @@ These two things live outside the repo and the harness assumes both are in place
 | `api` JWT template | Clerk DEV dashboard → JWT Templates → `api` | `aud=https://api.usezombie.com`; claims include `{ "metadata": "{{user.public_metadata}}" }` so Token B carries `tenant_id` + `role` | `mintTokens` returns Token B without metadata → every API call lands at 403 UZ-AUTH-001 ("Tenant context required") |
 | `regular-fixture@…` + `admin-fixture@…` (default mailinator addresses; override via `AUTH_E2E_{REGULAR,ADMIN}_EMAIL`) | Clerk DEV → Users | Email matches; password is generated fresh per `provisionUser()` call and not persisted (the harness uses admin-API mint, not the user-password flow) | `globalSetup` re-provisions automatically (idempotent on email lookup); per-create random passwords mean Clerk's complexity policy must accept 32-byte base64url strings (~256 bits entropy, all printable) |
 
-The harness mounts a literal `__clerk_db_jwt = "fixture-dev-browser"` (non-JWT) — clerkMiddleware reads this cookie truthy-only today, no signature verification. If a future `@clerk/nextjs` upgrade hardens that check, the harness fails fast in test 5 (`signInAs … produces an accepted Clerk session`) before any spec runs — switch to a real dev-browser-token mint via Clerk's `/v1/dev_browser` endpoint at that point. Pin `@clerk/nextjs` to its current major version in `package.json` and re-validate `setupClerkTestingToken` behavior before each major upgrade.
+`signInAs` calls `setupClerkTestingToken({ page })` before `clerk.signIn` so Clerk's browser-side Frontend API calls carry `__clerk_testing_token`. That testing token is what bypasses Completely Automated Public Turing test to tell Computers and Humans Apart (CAPTCHA) / Cloudflare Turnstile on the DEV instance. The dashboard session cookies themselves are then written by clerk-js, not by Playwright `addCookies`, which keeps the `azp` claim and `__client_uat` shape aligned with `@clerk/nextjs` Server Actions. `@clerk/nextjs` is pinned to its current major (`^7.x.x`) in `package.json`, and the smoke suite asserts the resolved major equals `CLERK_NEXTJS_PINNED_MAJOR` in `fixtures/constants.ts` — a `bun install` that crosses majors fails the smoke before any selector-dependent spec runs.
+
+#### Filter query for PROD Clerk fixture identities
+
+Two fixture users live in Clerk PROD, both tagged `public_metadata.is_test_fixture = true`. Operators triaging the Clerk PROD user list can filter them out with:
+
+```bash
+curl -sS -H "Authorization: Bearer $CLERK_PROD_SECRET" \
+  "https://api.clerk.com/v1/users?limit=100" \
+  | jq '[.[] | select(.public_metadata.is_test_fixture != true)]'
+```
+
+Or to enumerate ONLY the fixtures (e.g. for audit):
+
+```bash
+curl -sS -H "Authorization: Bearer $CLERK_PROD_SECRET" \
+  "https://api.clerk.com/v1/users?limit=100" \
+  | jq '[.[] | select(.public_metadata.is_test_fixture == true) | {id, email: .email_addresses[0].email_address, owner: .public_metadata.owner, role: .public_metadata.role}]'
+```
+
+Both queries are idempotent — `is_test_fixture: true` is the actual audit predicate, and the harness sets it on every fixture user. No need to record literal user IDs in this doc; rotate fixtures freely (delete + re-provision) without invalidating the runbook.
+
+#### WS-A finding — password-disable not viable on Clerk admin API
+
+`PATCH /v1/users/{id}` with `{"password_enabled": false}` returns 200 but the response body shows `password_enabled: true`. Clerk silently ignores the field. Verified live against Clerk DEV on May 11, 2026; the originally-proposed `disablePassword()` PATCH path is NOT viable. Whether some other endpoint (`DELETE /v1/users/{id}/password` or instance-level "password is optional" config) achieves the same outcome is an open follow-up, not blocking — the more important hardening (private-domain email via `AUTH_E2E_*_EMAIL`) removes the public-mailinator attack surface that motivated password-disable in the first place. Current harness posture: random 256-bit password per `provisionUser()` call, never persisted.
+
+#### Known gaps (carried forward from full-lifecycle audit)
+
+The full-lifecycle audit dispositioned every hardening item the harness still carries. Items below remain after the in-scope fixes landed; reactivate when their preconditions change.
+
+| # | Vulnerability | Sev | Disposition | Reactivation condition |
+|---|---|---|---|---|
+| 2 | Persistent fixture user has `password_enabled: true`; Clerk admin API PATCH is a silent no-op | S2 | `ACCEPTED_RISK` | A working endpoint (`DELETE /v1/users/{id}/password` or instance-level passwordless config) emerges during a future Clerk SDK or API change. |
+| 3 | Harness uses PROD webhook secret to Svix-sign synthetic `user.created` events — secret cannot be rotated without coordinating with CI | S1 | `DEFERRED` to backend milestone | Backend adds `CLERK_WEBHOOK_TEST_SECRET` with `is_test_fixture: true` tenant flagging; harness migrates to it. |
+| 5 | Fixture tenants in PROD accumulate `tenant_billing.balance_nanos` and event/zombie rows forever — no teardown | S3 | `ACCEPTED_RISK` | One calendar quarter of PROD runs elapses, OR `tenant_billing.balance_nanos` for either fixture tenant rises above a threshold to be set on the ops dashboard. |
+| 6 | No PR-time `auth-e2e` gate — only post-merge to `main` and post-deploy to PROD | S3 | `DEFERRED` (separate agent's territory) | Captain greenlights adding the PR-time job; estimate adds a few minutes per PR. |
+| 8 (part 2) | Browser-side Clerk test token posture can drift if Clerk changes the testing-token route or Turnstile bypass semantics | S2 | `DEFERRED` | `signInAs … produces an accepted Clerk session` fails before any lifecycle spec runs; revisit `setupClerkTestingToken` / Clerk DEV instance configuration then. |
+| 10 | `msg_e2e_bootstrap` Svix message IDs not deduped across rapid back-to-back `globalSetup` runs | S3 | `ACCEPTED_RISK` (data-layer idempotency is the load-bearing guarantee) | n/a — informational. |
+
+In-scope fixes that DID land in this milestone:
+
+- **WS-B #1** — vault items `op://ZMB_CD_{DEV,PROD}/e2e-fixtures-email/{regular,admin}` exist; workflow env wiring is the remaining merge-gate (parallel handoff).
+- **WS-B #4** — vitest regression at `ui/packages/app/tests/fixture-jwt-cache-location.test.ts` asserts the cache file is outside Playwright artifact dirs.
+- **WS-B #7** — `is_test_fixture` filter query documented above; the metadata tag is the audit predicate, no literal user IDs recorded (fixtures can be rotated freely).
+- **WS-B #8 part 1** — `@clerk/nextjs` major pinned + `_smoke.spec.ts` asserts resolved major matches `CLERK_NEXTJS_PINNED_MAJOR`.
+- **WS-B #9** — `_smoke.spec.ts` asserts `freshPassword().length ≥ 16`.
+- **WS-B #11** — `mintTokens` TTL tightened from 3600s to 900s (15 min, ~2× observed p95 wall-clock).
 
 ---
 

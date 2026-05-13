@@ -265,8 +265,10 @@ describe("AddCredentialForm component", () => {
       '{{"host":"x"}',
     );
     await user.click(screen.getByRole("button", { name: /store credential/i }));
+    // WS-G — empty error from the action falls through presentError's
+    // default path ("Couldn't store the credential. Try again …").
     await waitFor(() =>
-      expect(screen.getByText(/Failed to store credential/i)).toBeTruthy(),
+      expect(screen.getByText(/Couldn't store the credential/i)).toBeTruthy(),
     );
   });
 

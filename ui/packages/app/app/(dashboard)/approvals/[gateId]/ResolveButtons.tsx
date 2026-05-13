@@ -5,6 +5,8 @@ import { useState, useTransition } from "react";
 import { Alert, Button, Label, Textarea } from "@usezombie/design-system";
 
 import { approveApprovalAction, denyApprovalAction } from "../actions";
+import { APPROVAL_DECISION, type ApprovalDecision } from "@/lib/api/approvals";
+import { presentErrorString } from "@/lib/errors";
 
 type Props = {
   workspaceId: string;
@@ -17,13 +19,20 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  function resolve(decision: "approve" | "deny") {
+  function resolve(decision: ApprovalDecision) {
     setError(null);
     startTransition(async () => {
-      const action = decision === "approve" ? approveApprovalAction : denyApprovalAction;
+      const isApprove = decision === APPROVAL_DECISION.APPROVE;
+      const action = isApprove ? approveApprovalAction : denyApprovalAction;
       const result = await action(workspaceId, gateId, reason || undefined);
       if (!result.ok) {
-        setError(result.error || "Resolve failed");
+        setError(
+          presentErrorString({
+            errorCode: result.errorCode,
+            message: result.error,
+            action: isApprove ? "approve this request" : "deny this request",
+          }),
+        );
         return;
       }
       if (result.data.kind === "already_resolved") {
@@ -52,10 +61,15 @@ export default function ResolveButtons({ workspaceId, gateId }: Props) {
         />
       </div>
       <div className="flex gap-2">
-        <Button onClick={() => resolve("approve")} disabled={pending} aria-busy={pending}>
+        <Button onClick={() => resolve(APPROVAL_DECISION.APPROVE)} disabled={pending} aria-busy={pending}>
           Approve
         </Button>
-        <Button variant="destructive" onClick={() => resolve("deny")} disabled={pending} aria-busy={pending}>
+        <Button
+          variant="destructive"
+          onClick={() => resolve(APPROVAL_DECISION.DENY)}
+          disabled={pending}
+          aria-busy={pending}
+        >
           Deny
         </Button>
       </div>

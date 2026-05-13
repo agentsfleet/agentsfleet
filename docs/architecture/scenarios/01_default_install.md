@@ -30,7 +30,7 @@ sequenceDiagram
     Skill->>CLI: credential set (fly, slack, github, upstash)
     CLI->>API: PUT /credentials
     Skill->>CLI: install --from .usezombie/platform-ops/
-    CLI->>API: POST /zombies
+    CLI->>API: POST /zombies<br/>{trigger_markdown, source_markdown}
     API->>Worker: XADD zombie:control (zombie_created)
     Worker-->>API: ≤1s thread spawned
     API-->>Skill: { id, webhook_url }
@@ -97,7 +97,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
-7. **Install.** `zombiectl install --from .usezombie/platform-ops/`. The CLI POSTs `{name, config_json, source_markdown}`; the API persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required.
+7. **Install.** `zombiectl install --from .usezombie/platform-ops/`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required. The dashboard install form exercises the same wire shape by posting pasted `TRIGGER.md` + `SKILL.md`.
 8. **Webhook URL + secret.** The skill has already generated the workspace `github.webhook_secret` locally and stored it with `zombiectl credential set github --data @-`. API returns `{zombie_id, webhook_url}`. The skill prints the URL plus the one-time local secret inline:
    ```
    Add this webhook to your repo:

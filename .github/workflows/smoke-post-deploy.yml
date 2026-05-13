@@ -78,11 +78,11 @@ jobs:
           path: ${{ steps.detect.outputs.workdir }}/playwright-report/
           retention-days: 7
 
-  # Authenticated suite — only fires when the dashboard app deploys to PROD.
-  # Mirrors auth-e2e-dev (in deploy-dev.yml) but targets the production app
-  # URL + clerk-prod credentials. The smoke job above stays unauth so it
+  # Acceptance suite — only fires when the dashboard app deploys to PROD.
+  # Mirrors acceptance-e2e-dev (in deploy-dev.yml) but targets the production
+  # app URL + clerk-prod credentials. The smoke job above stays unauth so it
   # remains valid for the marketing/agents projects too.
-  auth-e2e-prod:
+  acceptance-e2e-prod:
     if: >-
       github.event.deployment_status.state == 'success' &&
       startsWith(github.event.deployment.environment, 'Production') &&
@@ -112,7 +112,7 @@ jobs:
         working-directory: ui/packages/app
 
       - name: Restore Playwright browser cache
-        id: playwright-cache-auth
+        id: playwright-cache-acceptance
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
@@ -122,15 +122,15 @@ jobs:
 
       - name: Install Playwright browsers
         run: |
-          if [ "${{ steps.playwright-cache-auth.outputs.cache-hit }}" = "true" ]; then
+          if [ "${{ steps.playwright-cache-acceptance.outputs.cache-hit }}" = "true" ]; then
             bunx playwright install chromium
           else
             bunx playwright install --with-deps chromium
           fi
         working-directory: ui/packages/app
 
-      - name: Run authenticated e2e against PROD
-        run: bun run test:e2e:auth
+      - name: Run acceptance e2e against PROD
+        run: bun run test:e2e:acceptance
         working-directory: ui/packages/app
         env:
           BASE_URL: ${{ github.event.deployment_status.target_url }}
@@ -140,10 +140,10 @@ jobs:
           CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}
           VERCEL_BYPASS_SECRET: ${{ env.VERCEL_BYPASS_SECRET }}
 
-      - name: Upload authenticated Playwright report
+      - name: Upload acceptance Playwright report
         uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: auth-e2e-prod-${{ github.sha }}
-          path: ui/packages/app/playwright-auth-report/
+          name: acceptance-e2e-prod-${{ github.sha }}
+          path: ui/packages/app/playwright-acceptance-report/
           retention-days: 7

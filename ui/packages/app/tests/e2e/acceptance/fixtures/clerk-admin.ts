@@ -1,9 +1,16 @@
 /**
  * Clerk backend-API helpers for the e2e harness.
  *
- * Idempotent fixture-user provisioning + session JWT mint via Clerk's
+ * Idempotent fixture-user provisioning + api-template JWT mint via Clerk's
  * REST API. Same wire shape as `playbooks/012_usezombie_admin_bootstrap`
- * (lines 119–125): GET /v1/users → POST /v1/sessions → POST /v1/sessions/{id}/tokens.
+ * (lines 119–125): GET /v1/users → POST /v1/sessions → POST /v1/sessions/{id}/tokens/api.
+ *
+ * The cookie-side of "sign in" is handled by `clerk.signIn` from
+ * `@clerk/testing/playwright` (see `fixtures/auth.ts`) — that helper mints
+ * a single-use ticket via Backend API + drives `Clerk.signIn.create` in
+ * the page, so clerk-js owns every session cookie. The harness only owns
+ * the api-template Bearer JWT that direct zombied calls (seed/teardown)
+ * use; clerkMiddleware never sees it.
  *
  * Uses fetch directly. No @clerk/backend SDK — the surface is small and
  * stable, and the SDK pulls in node:crypto-heavy deps we don't need.
@@ -12,6 +19,14 @@
 import { FixtureKey, JWT_TEMPLATE } from "./constants";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
+
+// Session-token TTL for minted fixture JWTs. Default Clerk TTL is 60s — too
+// short for a full suite run. The harness uses 15 min, which is ~2× the
+// observed p95 wall-clock on CI (suites complete in ~5 min). Tighter than
+// the historical 3600s posture to bound the impact of a leaked
+// .fixture-jwts.json file. `clientFor` callers that exceed this window
+// will fail loud with a 401 from zombied — re-mint if/when that happens.
+const SESSION_TOKEN_TTL_SECONDS = 900;
 
 export interface FixtureUserSpec {
   key: FixtureKey;
@@ -28,9 +43,6 @@ export interface MintedFixture {
   sessionId: string;
   /** `api`-template JWT — Bearer auth on zombied; carries publicMetadata. */
   sessionJwt: string;
-  /** Default (non-template) session JWT — `__session` cookie value;
-   *  carries `sid`/`azp` claims that `clerkMiddleware()` requires. */
-  cookieJwt: string;
 }
 
 interface ClerkUser {
@@ -85,7 +97,7 @@ async function createUser(spec: FixtureUserSpec): Promise<ClerkUser> {
     skip_password_requirement: false,
     public_metadata: {
       is_test_fixture: true,
-      owner: "auth-e2e-suite",
+      owner: "acceptance-e2e-suite",
       role: spec.key,
     },
   });
@@ -99,7 +111,7 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
     await clerkRequest<ClerkUser>("PATCH", `/users/${existing.id}/metadata`, {
       public_metadata: {
         is_test_fixture: true,
-        owner: "auth-e2e-suite",
+        owner: "acceptance-e2e-suite",
         role: spec.key,
       },
     }).catch(() => undefined);
@@ -109,40 +121,32 @@ async function ensureUser(spec: FixtureUserSpec): Promise<ClerkUser> {
 }
 
 /**
- * Mints two session JWTs for the same Clerk session:
+ * Mint an api-template session JWT for direct zombied calls.
  *
- *   1. **Template (`api`) JWT** — carries `metadata.tenant_id` + `metadata.role`
- *      from publicMetadata; used as Bearer auth on zombied. Default session
- *      tokens omit publicMetadata, which lands at 403 UZ-AUTH-001 ("Tenant
- *      context required").
+ * Carries `metadata.tenant_id` + `metadata.role` from publicMetadata; used
+ * as Bearer auth on zombied. Default (non-template) session tokens omit
+ * publicMetadata, which would land at 403 UZ-AUTH-001 ("Tenant context
+ * required"). The cookie-side of "sign in" is owned by clerk-js via
+ * `clerk.signIn` in `fixtures/auth.ts`; this helper mints only the
+ * out-of-band Bearer the harness uses for direct API calls (seed,
+ * teardown, listing).
  *
- *   2. **Default JWT** — Clerk's standard session token (no template); carries
- *      the `sid` and `azp` claims `clerkMiddleware()` needs to validate the
- *      `__session` cookie. Template tokens omit `sid`, so they cannot be
- *      mounted as a cookie — the dashboard middleware redirects to /sign-in.
- *
- * Both share the same session, so they expire together. Default Clerk session-
- * token TTL is 60s, far shorter than a full e2e suite — the body's
- * `expires_in_seconds=3600` lifts it to one hour. Body, not URL: Clerk's
- * Backend API takes mint params in the JSON body for token endpoints.
+ * Default Clerk session-token TTL is 60s, far shorter than a full e2e
+ * suite — `SESSION_TOKEN_TTL_SECONDS` (declared at the top of this file)
+ * lifts it just enough to cover a suite wall-clock with a 2× margin.
+ * Body, not URL: Clerk's Backend API takes mint params in the JSON body
+ * for token endpoints.
  */
 export async function mintTokens(
   userId: string,
-): Promise<{ sessionId: string; sessionJwt: string; cookieJwt: string }> {
+): Promise<{ sessionId: string; sessionJwt: string }> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
-  const [template, standard] = await Promise.all([
-    clerkRequest<ClerkSessionToken>(
-      "POST",
-      `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
-      { expires_in_seconds: 3600 },
-    ),
-    clerkRequest<ClerkSessionToken>(
-      "POST",
-      `/sessions/${session.id}/tokens`,
-      { expires_in_seconds: 3600 },
-    ),
-  ]);
-  return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
+  const template = await clerkRequest<ClerkSessionToken>(
+    "POST",
+    `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
+    { expires_in_seconds: SESSION_TOKEN_TTL_SECONDS },
+  );
+  return { sessionId: session.id, sessionJwt: template.jwt };
 }
 
 /**
@@ -178,8 +182,8 @@ export async function provisionUser(spec: FixtureUserSpec): Promise<ProvisionedU
 }
 
 /**
- * Phase 3: mint the session + cookie JWTs after bootstrapTenant has updated
- * publicMetadata. The order matters — the template JWT snapshots
+ * Phase 3: mint the api-template session JWT after bootstrapTenant has
+ * updated publicMetadata. The order matters — the template JWT snapshots
  * publicMetadata at mint time; minting before bootstrap produces a JWT
  * without tenant_id, which zombied rejects with UZ-AUTH-001 ("Tenant context
  * required").
