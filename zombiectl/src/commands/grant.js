@@ -34,13 +34,13 @@ function requireWorkspace(ctx, workspaces, deps) {
 }
 
 export async function commandGrantList(ctx, parsed, workspaces, deps) {
-  const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
+  const { request, apiHeaders, ui, printJson, printTable, writeLine, writeError } = deps;
   const wsId = requireWorkspace(ctx, workspaces, deps);
   if (!wsId) return 1;
 
   const zombieId = parsed.options[OPT_ZOMBIE] || parsed.positionals[0];
   if (!zombieId) {
-    writeLine(ctx.stderr, ui.err("grant list requires --zombie <id>"));
+    writeError(ctx, MISSING_ARGUMENT, "grant list requires --zombie <id>", deps);
     return 2;
   }
 
