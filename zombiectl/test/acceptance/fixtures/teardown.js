@@ -19,9 +19,13 @@ export async function cleanWorkspaceZombies(env, workspaceId) {
     return !TERMINAL_STATUSES.includes(z.status);
   });
   for (const zombie of live) {
-    const killed = await runZombiectl(["kill", zombie.id, "--json"], { env });
-    if (killed.code !== 0 && !/already.*killed|not.*found/i.test(killed.stderr)) {
-      throw new Error(`teardown kill ${zombie.id} exited ${killed.code}: ${killed.stderr.trim()}`);
+    // List responses may carry `zombie_id` instead of `id`; lifecycle.js
+    // already guards both. Without the fallback, `kill undefined` trips
+    // the new uuidv7 validator and the error-tolerance regex misses it.
+    const zombieId = zombie.id ?? zombie.zombie_id;
+    const killed = await runZombiectl(["kill", zombieId, "--json"], { env });
+    if (killed.code !== 0 && !/already.*killed|already.*terminal|not.*found/i.test(killed.stderr)) {
+      throw new Error(`teardown kill ${zombieId} exited ${killed.code}: ${killed.stderr.trim()}`);
     }
   }
   return live.length;

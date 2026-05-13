@@ -56,15 +56,20 @@ export const READ_ONLY_COMMANDS = [
 //   clientRejectCode — CLI-emitted error code when local validation /
 //              local lookup rejects the request (apiHits: false rows).
 export const REQUIRES_IDENTIFIER = [
+  // status is the only zombie verb that does NOT run validateRequiredId
+  // (it accepts an optional positional and falls back to workspace-wide).
   { args: ["status"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
-  { args: ["kill"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
-  { args: ["stop"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
-  { args: ["resume"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
-  { args: ["logs"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
+  // kill/stop/resume/logs and grant/agent delete all run validateRequiredId
+  // — §4c2 sweep relies on validatesClient: true to fire the no-network
+  // invariant against an invalid-format id sample.
+  { args: ["kill"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
+  { args: ["stop"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
+  { args: ["resume"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
+  { args: ["logs"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
-  { args: ["agent", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: true, validatesClient: false },
-  { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: true, validatesClient: false },
+  { args: ["agent", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: true, validatesClient: true },
+  { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: true, validatesClient: true },
 ];
 
 export const REQUIRES_POSITIONAL_ARG = [

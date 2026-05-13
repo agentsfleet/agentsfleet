@@ -31,8 +31,10 @@ export async function installPlatformOpsZombie(opts) {
     throw new Error(`install exited ${result.code}: ${result.stderr.trim() || result.stdout.trim()}`);
   }
   const parsed = JSON.parse(result.stdout.trim());
-  if (!parsed.id) {
-    throw new Error(`install JSON missing id field: ${result.stdout.trim()}`);
+  // Both callers fall back via `installed.id ?? installed.zombie_id`; the
+  // server's install envelope can carry either key depending on the route.
+  if (!parsed.id && !parsed.zombie_id) {
+    throw new Error(`install JSON missing id/zombie_id field: ${result.stdout.trim()}`);
   }
   return parsed;
 }

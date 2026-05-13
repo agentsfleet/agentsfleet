@@ -6,7 +6,7 @@
 import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.js";
 import { writeError } from "../program/io.js";
 import { validateRequiredId } from "../program/validate.js";
-import { NO_WORKSPACE } from "../constants/cli-errors.js";
+import { MISSING_ARGUMENT, NO_WORKSPACE, VALIDATION_ERROR } from "../constants/cli-errors.js";
 import { OPT_ZOMBIE } from "../constants/cli-flags.js";
 import { ERR_GRANT_NOT_FOUND, ERR_GRANT_PENDING } from "../constants/error-codes.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
@@ -73,7 +73,7 @@ export async function commandGrantList(ctx, parsed, workspaces, deps) {
 }
 
 export async function commandGrantDelete(ctx, parsed, workspaces, deps) {
-  const { request, apiHeaders, ui, printJson, writeLine } = deps;
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   const wsId = requireWorkspace(ctx, workspaces, deps);
   if (!wsId) return 1;
 
@@ -81,13 +81,13 @@ export async function commandGrantDelete(ctx, parsed, workspaces, deps) {
   const grantId = parsed.positionals[0];
 
   if (!zombieId || !grantId) {
-    writeLine(ctx.stderr, ui.err("grant delete requires --zombie <id> <grant_id>"));
+    writeError(ctx, MISSING_ARGUMENT, "grant delete requires --zombie <id> <grant_id>", deps);
     return 2;
   }
   const checkZ = validateRequiredId(zombieId, "zombie_id");
-  if (!checkZ.ok) { writeLine(ctx.stderr, ui.err(checkZ.message)); return 2; }
+  if (!checkZ.ok) { writeError(ctx, VALIDATION_ERROR, checkZ.message, deps); return 2; }
   const checkG = validateRequiredId(grantId, "grant_id");
-  if (!checkG.ok) { writeLine(ctx.stderr, ui.err(checkG.message)); return 2; }
+  if (!checkG.ok) { writeError(ctx, VALIDATION_ERROR, checkG.message, deps); return 2; }
 
   const url = wsGrantPath(wsId, zombieId, grantId);
   await request(ctx, url, { method: "DELETE", headers: apiHeaders(ctx) });
