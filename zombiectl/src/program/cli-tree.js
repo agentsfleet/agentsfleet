@@ -92,6 +92,10 @@ function actionFor(name, fn) {
 export function buildProgram({ handlers, version, state, helpFactory }) {
   const program = new Command();
 
+  // commander 14: configureHelp() ignores unknown keys (incl. helpFactory);
+  // the supported override is createHelp, invoked on each Command's --help.
+  program.createHelp = helpFactory ?? (() => new ZombieHelp());
+
   program
     .name("zombiectl")
     .description(styleTagline("autonomous agent platform"))
@@ -99,7 +103,6 @@ export function buildProgram({ handlers, version, state, helpFactory }) {
     .helpOption("-h, --help", "Show this help")
     .showSuggestionAfterError(true)
     .showHelpAfterError("(use --help for usage)")
-    .configureHelp({ helpFactory: helpFactory ?? (() => new ZombieHelp()) })
     .addHelpText("after", helpTail());
 
   // Global options. --api and --json are read by every command via
