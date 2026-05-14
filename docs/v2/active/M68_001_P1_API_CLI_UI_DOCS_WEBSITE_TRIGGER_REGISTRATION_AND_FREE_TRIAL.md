@@ -469,11 +469,11 @@ Adding `ETag` headers, `If-Match` honoring, 412 surfaces, and a stale-revision e
 
 **Defensive timeouts (per-txn, not session-wide).** `lock_timeout=5s` makes a long lock-wait fail fast with Postgres `55P03` rather than tie up a pool connection; `statement_timeout=10s` bounds the txn; `idle_in_transaction_session_timeout=5s` kills the connection if the client disconnects mid-merge. Mapped to `503 ERR_DB_LOCK_TIMEOUT` (retryable) at the handler.
 
-CLI: `zombiectl zombie patch <id> --from <dir>` reads TRIGGER.md + SKILL.md from `<dir>`, PATCHes the existing route. No concurrency-token flag — fresh-launch invariant makes one meaningless; LWW with row-lock-merge is the contract.
+CLI: `zombiectl zombie update <id> --from <dir>` reads TRIGGER.md + SKILL.md from `<dir>`, PATCHes the existing route. (`update` is the operator-facing verb; `patch` is HTTP plumbing — this matches the `install` / `list` imperative shape.) No concurrency-token flag — fresh-launch invariant makes one meaningless; LWW with row-lock-merge is the contract.
 
 ### §10c — install-skill update-in-place
 
-Markdown-only branch in `skills/usezombie-install-platform-ops/SKILL.md`: when a zombie already exists for the repo+workspace, route step 7 through `zombiectl zombie patch` (the §10b CLI) instead of `zombiectl install`. ~30 lines markdown + eval test.
+Markdown-only branch in `skills/usezombie-install-platform-ops/SKILL.md`: when a zombie already exists for the repo+workspace, route step 7 through `zombiectl zombie update` (the §10b CLI) instead of `zombiectl install`. ~30 lines markdown + eval test.
 
 ---
 
@@ -546,13 +546,13 @@ zombiectl install --from <path> [--json]
   Now prints webhook_urls map per trigger in JSON mode.
   No change to non-JSON output other than one trailing line listing the webhook URLs.
 
-zombiectl zombie patch <id> --from <dir> [--if-match <etag>] [--json]    // NEW (§10b)
+zombiectl zombie update <id> --from <dir> [--json]                       // NEW (§10b)
   Reads TRIGGER.md + SKILL.md from <dir>, PATCHes /zombies/{id} with
-  {trigger_markdown, source_markdown}. --if-match is opt-in for optimistic
-  concurrency; omit to fall back to LWW. JSON mode prints { etag, config_revision }.
+  {trigger_markdown, source_markdown}. JSON mode prints { config_revision }.
+  No concurrency-token flag — LWW; row-lock + field-merge handles same-millisecond races.
 
 (Trigger registration still runs in the install-skill via gh, not via a new
- zombiectl subcommand — `zombie patch` is for update-in-place after initial install.)
+ zombiectl subcommand — `zombie update` is for update-in-place after initial install.)
 ```
 
 ### Vault credential shapes (unchanged from M45)
