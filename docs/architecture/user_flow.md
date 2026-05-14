@@ -101,6 +101,8 @@ All actors flow through the same runtime path. The zombie's reasoning loop does 
 
 `type: api` (catch-all JSON ingress at `POST /v1/zombies/{id}/events`) is reserved by the architecture but **not accepted in `TRIGGER.md` in v1** — admission lands with the workspace-API-tokens spec that builds the `/v1/auth/tokens` surface. Webhook and cron cover the wedge.
 
+Beyond the three trigger ingresses, the runtime emits its own `system:*` events on the activity channel when state changes apply (`config_updated` after a PATCH reload; more kinds to follow). These are not triggers — they are the worker telling the user "what I just had to apply got applied" — see [`data_flow.md` §Synthetic system events](./data_flow.md#synthetic-system-events). They surface in the same activity tail and in `zombiectl events {id} --actor=system`, so the user sees them alongside the work the zombie does.
+
 ## §8.4 Working from Claude or the dashboard
 
 The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like this:
