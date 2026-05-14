@@ -26,6 +26,14 @@ export const EVENT_NANOS = 0;
 export const STAGE_PLATFORM_NANOS = 1_000_000;
 export const STAGE_SELF_MANAGED_NANOS = 100_000;
 
+// Promotional free-trial window: while `now_ms < FREE_TRIAL_END_MS`,
+// the server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS
+// regardless of posture / model / tokens. `zombiectl doctor --json`'s
+// `billing.free_trial` block surfaces the active state for clients.
+// Live window state lives on usezombie.com/#pricing.
+export const FREE_TRIAL_END_MS = 1_785_542_400_000; // 2026-08-01T00:00:00Z
+export const FREE_TRIAL_STAGE_NANOS = 0;
+
 // Two-to-four decimal places — cents granularity, with sub-cent precision
 // when traction rates ($0.001 stage, $0.0001 self-managed) need it.
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {

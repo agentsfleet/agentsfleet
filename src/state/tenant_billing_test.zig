@@ -3,7 +3,6 @@
 const std = @import("std");
 
 const tenant_billing = @import("tenant_billing.zig");
-const model_rate_cache = @import("model_rate_cache.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
 
@@ -30,45 +29,13 @@ test "computeReceiveCharge: zero both postures" {
     try std.testing.expectEqual(@as(i64, 0), tenant_billing.computeReceiveCharge(.self_managed));
 }
 
-test "computeStageCharge: self_managed returns flat overhead independent of tokens or model" {
-    try std.testing.expectEqual(
-        tenant_billing.STAGE_SELF_MANAGED_NANOS,
-        tenant_billing.computeStageCharge(.self_managed, "any-model", 0, 0),
-    );
-    try std.testing.expectEqual(
-        tenant_billing.STAGE_SELF_MANAGED_NANOS,
-        tenant_billing.computeStageCharge(.self_managed, "claude-opus-4-7", 1_000_000, 1_000_000),
-    );
-    // self_managed does not consult the rate cache, so a model not in the
-    // catalogue must NOT panic — only platform mode requires a cached rate.
-    try std.testing.expectEqual(
-        @as(i64, 100_000),
-        tenant_billing.computeStageCharge(.self_managed, "model-not-in-catalogue", 100, 100),
-    );
-}
-
-test "computeStageCharge: platform charges overhead + token math from cache" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    // Populate the process-global cache from the seeded core.model_caps.
-    try model_rate_cache.populate(ALLOC, db_ctx.conn);
-    defer model_rate_cache.deinit();
-
-    // Sonnet rates (per schema/019 seed, cents → nanos × 10M):
-    //   input  3_000_000_000 nanos/Mtok ($3.00/Mtok)
-    //   output 15_000_000_000 nanos/Mtok ($15.00/Mtok)
-    // 800 input  → 800 * 3e9 / 1e6 = 2_400_000 nanos
-    // 1000 output → 1000 * 15e9 / 1e6 = 15_000_000 nanos
-    // Plus STAGE_PLATFORM_NANOS = 1_000_000
-    const small = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", 800, 1000);
-    try std.testing.expectEqual(@as(i64, 1_000_000 + 2_400_000 + 15_000_000), small);
-
-    // 1M input + 1M output → $3 + $15 + $0.001 stage = 18_001_000_000 nanos.
-    const big = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", 1_000_000, 1_000_000);
-    try std.testing.expectEqual(@as(i64, 1_000_000 + 3_000_000_000 + 15_000_000_000), big);
-}
+// `computeStageCharge` reads the system clock. While `now_ms <
+// FREE_TRIAL_END_MS` (2026-08-01T00:00:00Z) it short-circuits to zero
+// regardless of posture / model / tokens — the rate-math tests live
+// inline in `tenant_billing.zig` so they have access to the private
+// time-injected `computeStageChargeAt` for deterministic pre/mid/post
+// trial coverage. This file's remaining tests don't depend on the
+// clock-gated cost function.
 
 test "provision inserts one row and replay is a no-op" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;

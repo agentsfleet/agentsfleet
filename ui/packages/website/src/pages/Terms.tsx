@@ -1,6 +1,5 @@
 import { DisplayXL, List, ListItem, SectionLabel } from "@usezombie/design-system";
 import { SUPPORT_EMAIL } from "../lib/contact";
-import { RATES_DISPLAY } from "../lib/rates";
 
 /*
  * Terms — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
@@ -39,7 +38,7 @@ export default function Terms() {
 
       <h2 className="font-mono text-heading mt-6 mb-0 font-medium">4. Billing</h2>
       <List className="pl-6 text-text-muted m-0">
-        <ListItem>usezombie charges {RATES_DISPLAY.EVENT_RATE} per event receipt and {RATES_DISPLAY.STAGE_PLATFORM} per stage execution on platform default ({RATES_DISPLAY.STAGE_SELF_MANAGED} per stage on self-managed). Each new account receives a {RATES_DISPLAY.STARTER_CREDIT} starter credit that never expires. Stealth-mode testing rate — will rise post-GA.</ListItem>
+        <ListItem>usezombie is free to try through July 31, 2026 (UTC); see the Pricing section on the home page for current rates and trial details. Each new account receives a starter credit; the specific value is displayed on the Pricing page. Stealth-mode testing rate — will rise post-GA.</ListItem>
         <ListItem>Hosted execution is metered against a credit pool. Debits fire before each stage execution; event receipt is currently free.</ListItem>
         <ListItem>LLM token costs are paid directly to your provider — usezombie never marks up tokens.</ListItem>
         <ListItem>Once your credit pool is exhausted, additional usage requires a top-up via the Dashboard.</ListItem>

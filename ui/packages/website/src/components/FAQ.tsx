@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import { RATES_DISPLAY } from "../lib/rates";
 import {
   Accordion,
   AccordionItem,
@@ -20,11 +19,11 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: `Hosted execution. Runs are metered against a credit pool with a ${RATES_DISPLAY.STARTER_CREDIT} starter grant that never expires. Event receipt is ${RATES_DISPLAY.EVENT_RATE}; you're charged before each stage the agent runs — every reasoning step is line-itemed. Stage rate depends on posture: ${RATES_DISPLAY.STAGE_PLATFORM} on platform default (we pay your model provider), ${RATES_DISPLAY.STAGE_SELF_MANAGED} on self-managed (you bring your own key, your provider bills you for tokens directly). Stealth-mode testing rate — will rise post-GA.`,
+    a: "Free to try until July 31, 2026 — see the Pricing section above for the current rate table and trial details. Hosted execution is metered against a credit pool; once the trial closes, two rates apply (a platform-default per-stage rate and a 10× cheaper self-managed rate) and event receipt stays free. Stealth-mode testing rate — will rise post-GA.",
   },
   {
     q: "Does platform-managed cost more per stage than self-managed?",
-    a: `Yes — that's the deliberate gradient. Platform default bills ${RATES_DISPLAY.STAGE_PLATFORM} per stage because usezombie is paying your model provider for the tokens; self-managed bills ${RATES_DISPLAY.STAGE_SELF_MANAGED} per stage because you pay your provider directly. The 10× spread is the friction-reducer: on-ramp on platform mode without bringing a key, then graduate to self-managed once you're running real volume. usezombie marks up zero on inference in either posture.`,
+    a: "Yes — that's the deliberate gradient. Once the free-trial window closes, platform default carries a per-stage rate (usezombie is paying your model provider for tokens) and self-managed is ~10× cheaper per stage (you pay your provider directly). The spread is the friction-reducer: on-ramp on platform without bringing a key, graduate to self-managed once volume justifies it. Current rates on the Pricing section above; usezombie marks up zero on inference in either posture.",
   },
   {
     q: "What does 'extras provisioned per workspace' mean?",

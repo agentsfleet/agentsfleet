@@ -60,12 +60,25 @@ describe("Pricing component", () => {
     );
   });
 
-  it("renders the STARTER_CREDIT badge", () => {
+  it("renders the free-until-July-2026 trial badge", () => {
     renderPricing();
-    const badge = screen.getByText(/starter credit, never expires/i);
-    expect(badge).toHaveTextContent(
-      `${RATES_DISPLAY.STARTER_CREDIT} starter credit, never expires`,
-    );
+    const badge = screen.getByText(/try free · free until July 2026/i);
+    expect(badge.textContent).toMatch(/try free/i);
+  });
+
+  it("renders the free-trial banner copy from RATES_DISPLAY", () => {
+    renderPricing();
+    const banner = screen.getByTestId("pricing-free-trial-banner");
+    expect(banner).toHaveTextContent(RATES_DISPLAY.FREE_TRIAL_BANNER);
+    expect(banner).toHaveTextContent(/Free until July 31, 2026/);
+  });
+
+  it("renders both stage-rate lines wrapped in <s> (strike-through) during the trial window", () => {
+    renderPricing();
+    const platform = screen.getByTestId("pricing-rate-stage-platform");
+    const selfManaged = screen.getByTestId("pricing-rate-stage-self-managed");
+    expect(platform.tagName).toBe("S");
+    expect(selfManaged.tagName).toBe("S");
   });
 
   it("does not render the dropped worked-example math line", () => {

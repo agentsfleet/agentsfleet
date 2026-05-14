@@ -49,6 +49,10 @@ pub fn innerGetTenantBilling(hx: Hx, req: *httpz.Request) void {
         .updated_at = billing.updated_at_ms,
         .is_exhausted = billing.exhausted_at_ms != null,
         .exhausted_at = billing.exhausted_at_ms,
+        .free_trial = .{
+            .active = billing.free_trial_active,
+            .ends_at_ms = billing.free_trial_ends_at_ms,
+        },
     });
 }
 
