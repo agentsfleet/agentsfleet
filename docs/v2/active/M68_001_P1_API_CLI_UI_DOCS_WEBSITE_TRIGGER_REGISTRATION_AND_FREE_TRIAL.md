@@ -420,6 +420,63 @@ G8 + G9 + L1–L7.
 
 Lead-repo PR ships G8 + G9. Companion PR ships L1–L7 — opened from `~/Projects/docs/` on branch `chore/m68-trigger-dx-free-trial`. Same operator opens both PRs; merge order is companion-then-lead so the lead-PR's `README.md` link points at the live updated docs page. Cross-reference: lead-PR description carries the companion-PR link; companion-PR description carries the lead-PR link.
 
+### §10 — Synthetic system events (architecture extension) — DONE
+
+Shipped at `612dfb79` (docs-only): `docs/architecture/data_flow.md §Synthetic system events` + `user_flow.md §8.3` crossref + `bastion.md` "What does not change" crossref. Establishes the single-publisher invariant for one-shot state changes (config reload, future `balance_exhausted` / `manual_pause` / `kill_received`): inline private write fn next to the state-changing fn, durable row in `core.zombie_events`, no activity-channel publish. Codex-validated (Option D, durable-only).
+
+### §10a — Durable system-event row on config reload — DONE
+
+Shipped at `331819d6`. `reloadZombieConfig` extended (`SELECT` now returns `updated_at`) + private `writeReloadEventRow` (~28L). Idempotent via `cfg-{revision}` event_id + `ON CONFLICT DO NOTHING`. Four integration tests in `event_loop_reload_emits_system_row_integration_test.zig` via the existing pub `reloadZombieConfig` test seam. No activity-channel publish; durable-only.
+
+### §10b — PATCH body fields + ETag / If-Match
+
+Extends `PATCH /v1/workspaces/{ws}/zombies/{id}` to accept `{trigger_markdown?, source_markdown?}` alongside the existing `{status?, config_json?}`. No new endpoint; no `:verb` operation (REST §1 collision check forbids it — `status` already holds the values).
+
+**Transaction shape (row-lock + field-level merge).** All field-bearing PATCHes run inside one transaction:
+
+```
+BEGIN;
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '10s';
+SET LOCAL idle_in_transaction_session_timeout = '5s';
+SELECT config_json, updated_at, status
+  FROM core.zombies
+  WHERE id = $1 AND workspace_id = $2
+  FOR UPDATE;                                                       -- one row, one lock
+-- in Zig: reparse trigger_markdown / source_markdown if present;
+-- overlay halves onto current config_json via patch_merge.zig helper
+UPDATE core.zombies
+  SET config_json = $merged, status = COALESCE($status, status), updated_at = $now
+  WHERE id = $1 AND workspace_id = $2
+    AND status != 'killed' AND (<fsm-guards-as-today>)
+  RETURNING updated_at;
+COMMIT;
+```
+
+The handler then XADDs `config_changed` to `zombie:control` so the worker reloads → §10a system-event row fires for free.
+
+**Concurrency contract.** Two writers patching *different* body fields (`{trigger_markdown}` + `{source_markdown}`) both land via the row-lock merge — no silent clobber. Two writers patching the *same* field collapse to last-write-wins (the second reads the first's commit, overlays, writes).
+
+**Deadlock invariant.** The §10b txn locks **exactly one row** (the `core.zombies` row identified by `$id`) and performs **exactly one UPDATE** on that same row. No second `SELECT FOR UPDATE`, no second table touched, no second row referenced. Deadlock requires a lock-ordering cycle; a one-row txn cannot participate in one. Future edits to `patch.zig` that add any second locked read/write must re-run deadlock analysis and update the integration test matrix.
+
+**Optimistic concurrency (`ETag` / `If-Match`).** For the "Dashboard edit started 2min ago vs CLI patch now" race the row-lock cannot cover, callers MAY use weak ETags:
+
+- `GET /v1/.../zombies/{id}` and `PATCH` / `DELETE` responses include `ETag: W/"<updated_at>"` (weak; `updated_at` is monotonic per zombie per M41_001 invariant — collision-free).
+- Clients MAY send `If-Match: W/"<etag>"`. Mismatch → `412` with body `{error_code: "UZ-ZMB-011", message, etag: "<current>"}` per REST §4. Omit `If-Match` → falls back to LWW; preserves backwards compat for today's status-only callers.
+- `If-Match` plumbing is shared across `PATCH` (status + body) and `DELETE` (§10d) — one helper, one error code, three handlers.
+
+**Defensive timeouts (per-txn, not session-wide).** `lock_timeout=5s` makes a long lock-wait fail fast with Postgres `55P03` rather than tie up a pool connection; `statement_timeout=10s` bounds the txn; `idle_in_transaction_session_timeout=5s` kills the connection if the client disconnects mid-merge. Mapped to `503 ERR_DB_LOCK_TIMEOUT` (retryable) at the handler.
+
+CLI: `zombiectl zombie patch <id> --from <dir> [--if-match <etag>]` reads TRIGGER.md + SKILL.md from `<dir>`, PATCHes the existing route. `--if-match` is opt-in; omit for LWW.
+
+### §10c — install-skill update-in-place
+
+Markdown-only branch in `skills/usezombie-install-platform-ops/SKILL.md`: when a zombie already exists for the repo+workspace, route step 7 through `zombiectl zombie patch` (the §10b CLI) instead of `zombiectl install`. ~30 lines markdown + eval test.
+
+### §10d — DELETE /zombies/{id} honors If-Match
+
+Extends the existing DELETE handler to honor the same `If-Match` plumbing introduced in §10b. Catches the "Dashboard renders Delete button against stale view of an already-un-killed zombie" race: caller's `If-Match` is checked against current `updated_at` before the kill-precondition check; stale → `412` with current etag. Omitting `If-Match` falls through to today's behavior (kill-precondition gates). ~15 LOC delta in `delete.zig` reusing `etag.zig` from §10b.
+
 ---
 
 ## Interfaces
@@ -453,6 +510,33 @@ GET /v1/workspaces/{ws}/zombies
 GET /v1/workspaces/{ws}/zombies/{id}/events?actor_prefix=<prefix>&limit=<n>
   200:   { items: [...], next_cursor }                            // optional new query param
   Note:  actor_prefix is additive; absent → today's behaviour.
+
+PATCH /v1/workspaces/{ws}/zombies/{id}                            // §10b — body fields ADDITIVE
+  request headers:
+    If-Match: W/"<updated_at_ms>"                                 // OPTIONAL; opt-in optimistic concurrency
+  body: {                                                         // all fields optional, ≥1 required for non-noop
+    status?:           "active" | "stopped" | "killed",           // unchanged
+    config_json?:      string,                                    // unchanged (whole-blob replace)
+    trigger_markdown?: string,                                    // NEW — reparses, overlays triggers half
+    source_markdown?:  string                                     // NEW — reparses, overlays tools/creds/network/budget half
+  }
+  200:   { zombie_id, status?, config_revision, etag }
+  response headers:
+    ETag: W/"<new_updated_at_ms>"                                 // always present on 200
+  412:   { error_code: "UZ-ZMB-011", message, etag: "W/\"<current>\"" }   // If-Match mismatch
+  409:   { error_code: "UZ-ZMB-010", ... }                        // FSM transition rejected (unchanged)
+  503:   { error_code: "UZ-DB-XXX", ... retryable }               // lock_timeout
+
+DELETE /v1/workspaces/{ws}/zombies/{id}                           // §10d — If-Match ADDITIVE
+  request headers:
+    If-Match: W/"<updated_at_ms>"                                 // OPTIONAL
+  204:   no body                                                  // unchanged
+  412:   { error_code: "UZ-ZMB-011", etag: "W/\"<current>\"" }    // NEW path; stale If-Match
+  409:   { error_code: "UZ-ZMB-010", ... }                        // not-killed precondition (unchanged)
+
+GET /v1/workspaces/{ws}/zombies/{id}                              // §10b — adds ETag header
+  response headers:
+    ETag: W/"<updated_at_ms>"                                     // NEW; always present
 ```
 
 ### Frontmatter (TRIGGER.md)
@@ -480,8 +564,13 @@ zombiectl install --from <path> [--json]
   Now prints webhook_urls map per trigger in JSON mode.
   No change to non-JSON output other than one trailing line listing the webhook URLs.
 
-(No new subcommands. Trigger registration runs in the install-skill via gh, not via a new
- zombiectl subcommand — keeps the surface lean.)
+zombiectl zombie patch <id> --from <dir> [--if-match <etag>] [--json]    // NEW (§10b)
+  Reads TRIGGER.md + SKILL.md from <dir>, PATCHes /zombies/{id} with
+  {trigger_markdown, source_markdown}. --if-match is opt-in for optimistic
+  concurrency; omit to fall back to LWW. JSON mode prints { etag, config_revision }.
+
+(Trigger registration still runs in the install-skill via gh, not via a new
+ zombiectl subcommand — `zombie patch` is for update-in-place after initial install.)
 ```
 
 ### Vault credential shapes (unchanged from M45)
@@ -528,6 +617,13 @@ const runtime = useExternalStoreRuntime<ZombieMessage>({
 | Steer fails (409 — agent busy) | Prior stage still running | Composer disabled with caption "agent is responding…" |
 | Bundle exceeds 220 kB gz | Tree-shake regression | CI bundle-budget check fails; implementer reduces footprint before merge |
 | Free-trial end timestamp passed in test fixture | Time-based test brittleness | Tests inject `now_ms` via dependency injection; no live-clock dependence |
+| Stale `If-Match` on PATCH / DELETE (§10b / §10d) | Caller's view of zombie revision predates a concurrent write | `412 ERR_ZOMBIE_STALE_ETAG` with body `{etag: "<current>"}`; caller refetches and retries |
+| Row-lock wait > 5s (§10b) | Another writer holding `FOR UPDATE` for >5s (unexpected — pathological client, blocked I/O) | `lock_timeout` fires; Postgres returns `55P03`; handler maps to `503 ERR_DB_LOCK_TIMEOUT` (retryable). Pool connection released, not leaked. |
+| Concurrent PATCH `{trigger_markdown}` + `{source_markdown}` on same zombie (§10b) | Two operators / one operator + CLI script | Both succeed via row-lock merge; final `config_json` reflects both halves (no silent clobber) |
+| Concurrent PATCH on same field (§10b) | Same operator double-click or two CLI invocations | Last-write-wins; both responses succeed with their respective etags; no deadlock, no error |
+| Concurrent PATCH + DELETE on same zombie (§10b / §10d) | Operator A patches config while operator B deletes a just-killed zombie | Postgres serializes via row-lock; whichever entered first commits; second observes new state (PATCH on deleted → 404; DELETE on un-killed → 409) |
+| Worker reload races with PATCH (§10a / §10b) | PATCH commits while worker is mid-reload of a prior `config_changed` | Worker uses plain SELECT (MVCC); no lock contention; reload converges to the latest `updated_at` it observes |
+| Webhook secret rotation race (out of M68; flagged) | Upstream signs payload with `S1`; user rotates to `S2`; webhook arrives at receiver | Receiver verifies against `S2` → HMAC mismatch → 401 → upstream redelivers. Fix is dual-secret window (`webhook_secret_previous` in vault, receiver tries both); separate future spec — out of M68 scope, documented here so a reader of §10b's concurrency discussion doesn't think we missed it. |
 
 ---
 
@@ -542,6 +638,8 @@ const runtime = useExternalStoreRuntime<ZombieMessage>({
 7. **No "Mission Control" string survives.** Lead-repo `grep -rln "Mission Control" .` (excluding `node_modules`, `.next`, `.zig-cache`) returns empty before lead-PR open. Companion-PR's `grep -rln "Mission Control" ~/Projects/docs/` returns empty before companion-PR open. The two greps are independent invariants — each PR's grep must show empty in its own scope.
 8. **No singular `trigger:` survives.** `grep -rln "^\s*trigger:" samples/ src/ tests/` (modulo legitimate non-frontmatter uses) returns zero; positive cases captured in PR Discovery.
 9. **Free-trial path is timestamp-gated, not flag-gated.** `is_free_trial_active(now_ms)` reads `FREE_TRIAL_END_MS`. No environment variable, no feature flag, no database column.
+10. **§10b txn locks exactly one row.** `patch.zig`'s body-field transaction performs `SELECT … FOR UPDATE` on a single `core.zombies` row and one `UPDATE` on that same row. No second `SELECT FOR UPDATE`, no second locked table, no second row. Deadlock is structurally impossible. Future edits adding a second lock acquisition in this txn must re-run deadlock analysis and add coverage to `patch_concurrent_integration_test.zig`.
+11. **`updated_at` is the ETag.** Weak ETag `W/"<updated_at_ms>"` is the only entity tag for `core.zombies`. It is strictly monotonic per zombie (M41_001) and bumps on every committed mutation. `If-Match` matching is byte-equality on the quoted ms-epoch value; no normalization, no version vector.
 
 ---
 
@@ -564,6 +662,31 @@ const runtime = useExternalStoreRuntime<ZombieMessage>({
 | `test_free_trial_stage_returns_zero` | `src/state/tenant_billing_test.zig` | `compute_stage_charge(now_ms=before_trial_end)` returns 0 |
 | `test_post_trial_stage_returns_rate` | same | `compute_stage_charge(now_ms=after_trial_end)` returns `STAGE_PLATFORM_NANOS` |
 | `test_rates_pinned_cross_tier` | same | Zig constants match TypeScript constants match JavaScript constants — assertion on string-equal serialisation |
+| `test_merge_overlay_trigger_only` | `src/http/handlers/zombies/patch_merge_test.zig` | Overlay `{trigger_markdown}` onto current config_json — only `x_usezombie.triggers` replaced; tools/credentials/source untouched |
+| `test_merge_overlay_source_only` | same | Overlay `{source_markdown}` — only tools/credentials/network/budget replaced; triggers untouched |
+| `test_merge_overlay_both` | same | Both fields together — both halves replaced in one merged jsonb |
+| `test_merge_reparse_error_rolls_back` | same | Malformed `trigger_markdown` reparse fails → caller receives error, txn ROLLBACKs (verified via unlock + next-writer-succeeds in I11 integration) |
+| `test_etag_weak_format` | `src/http/handlers/zombies/etag_test.zig` | `formatWeakETag(1714694412345)` → `W/"1714694412345"` round-trips via `parseWeakETag` |
+| `test_if_match_parse_tolerance` | same | Accepts `W/"123"`, `"123"`, leading/trailing whitespace; rejects malformed (`W/123`, `"`, empty) |
+| `test_if_match_mismatch` | same | `If-Match: W/"100"` vs current `200` → `.mismatch`; `If-Match: W/"200"` → `.match`; absent → `.absent` |
+| `test_patch_trigger_md_only_persists_and_publishes` | `src/http/handlers/zombies/patch_body_fields_integration_test.zig` | `{trigger_markdown}`-only PATCH reparses, persists merged config_json, XADDs `config_changed` once |
+| `test_patch_source_md_only_persists_and_publishes` | same | `{source_markdown}`-only same |
+| `test_patch_both_fields_one_update` | same | Both fields → one SQL UPDATE; one config_changed XADD; one durable §10a system event row with new revision |
+| `test_patch_reparse_rollback_releases_lock` | same | Malformed reparse mid-txn → ROLLBACK → next PATCH on same zombie succeeds within 1s (lock released, not leaked) |
+| `test_patch_etag_round_trip` | same | GET → response carries `ETag: W/"<updated_at>"`; PATCH with matching `If-Match` → 200 with new ETag |
+| `test_patch_if_match_mismatch_412` | same | PATCH with stale `If-Match` → 412 body `{error_code: "UZ-ZMB-011", etag: "<current>"}` |
+| `test_patch_no_if_match_lww_compat` | same | PATCH without `If-Match` against current state → 200 (LWW path; backwards compat for today's status-only callers) |
+| `test_patch_status_if_match_unified` | same | `{status}` PATCH also honors `If-Match`; same 412 surface |
+| `test_patch_worker_reload_emits_system_row` | same | After §10b PATCH commits, worker observes `config_changed`, reloads, emits `cfg-{new_revision}` system event row (end-to-end through §10a path) |
+| `test_concurrent_different_fields_both_land` | `src/http/handlers/zombies/patch_concurrent_integration_test.zig` | Thread A `{trigger_md}` + Thread B `{source_md}` released via barrier → both 200; final config_json contains both halves; **no `40P01` in either thread's response** |
+| `test_concurrent_same_field_lww` | same | Thread A `{trigger_md=T2}` + Thread B `{trigger_md=T3}` → both 200; final value = whichever committed second; no deadlock_detected error |
+| `test_concurrent_n_writers_no_pool_exhaustion` | same | N=10 PATCHes via thread pool on same zombie → all 10 succeed within 10s; pool connection count returns to baseline after |
+| `test_concurrent_patch_delete_no_deadlock` | same | Thread A: PATCH; Thread B: DELETE same zombie → exactly one final state (PATCH-then-DELETE or DELETE-then-404); **assert no `40P01` deadlock_detected error code in either response body or log** |
+| `test_concurrent_patch_webhook_insert_serializes` | same | Thread A: PATCH; Thread B: INSERT into `core.zombie_events` (FK ref to zombie) → both succeed; insert serializes after PATCH commit (latency proves wait) |
+| `test_concurrent_patch_different_zombies_parallel` | same | Two PATCHes on distinct zombies → wall time < 1.5× single-PATCH (proves no false contention) |
+| `test_lock_timeout_fails_fast` | same | Inject 7s `pg_sleep` via test fixture holding row lock → second PATCH returns `503 ERR_DB_LOCK_TIMEOUT` within 5.5s (not hung) |
+| `test_delete_if_match_mismatch_412` | `src/http/handlers/zombies/delete_if_match_integration_test.zig` | DELETE killed zombie with stale `If-Match` → 412 with current etag |
+| `test_delete_no_if_match_compat` | same | DELETE without `If-Match` on killed zombie → 204 (today's behavior preserved) |
 
 ### CLI install-skill (eval fixtures)
 
