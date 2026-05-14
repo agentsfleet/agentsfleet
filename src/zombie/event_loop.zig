@@ -197,12 +197,13 @@ pub fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.P
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT config_json::text FROM core.zombies WHERE id = $1
+        \\SELECT config_json::text, updated_at FROM core.zombies WHERE id = $1
     , .{session.zombie_id}));
     defer q.deinit();
     const row = try q.next() orelse return error.ZombieNotFound;
     const config_json_owned = try alloc.dupe(u8, try row.get([]const u8, 0));
     defer alloc.free(config_json_owned);
+    const revision = try row.get(i64, 1);
 
     var new_config = try zombie_config.parseZombieConfig(alloc, config_json_owned);
     errdefer new_config.deinit(alloc);
@@ -211,6 +212,43 @@ pub fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.P
     session.config = new_config;
     old_config.deinit(alloc);
     log.info("zombie_event_loop.config_reloaded", .{ .zombie_id = session.zombie_id, .name = session.config.name });
+
+    try writeReloadEventRow(conn, session, revision);
+}
+
+// Durable trace of "the worker reloaded its config to this revision."
+// No activity-channel publish — the row appears on the next /events poll
+// (zombie_events is the canonical audit; pub/sub is a live-tail accelerator
+// only, intentionally not used for state-change events).
+// Idempotent via (zombie_id, event_id) PK + ON CONFLICT DO NOTHING; the same
+// revision retried (e.g. two config_changed signals coalescing) is a no-op.
+fn writeReloadEventRow(conn: *pg.Conn, session: *ZombieSession, revision: i64) !void {
+    var event_id_buf: [40]u8 = undefined;
+    const event_id = try std.fmt.bufPrint(&event_id_buf, "cfg-{d}", .{revision});
+
+    var request_buf: [64]u8 = undefined;
+    const request_json = try std.fmt.bufPrint(&request_buf, "{{\"revision\":{d}}}", .{revision});
+
+    var response_buf: [64]u8 = undefined;
+    const response_text = try std.fmt.bufPrint(&response_buf, "Configuration reloaded to revision {d}.", .{revision});
+
+    _ = try conn.exec(
+        \\INSERT INTO core.zombie_events
+        \\  (zombie_id, event_id, workspace_id, actor, event_type,
+        \\   status, request_json, response_text, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, $3::uuid, $4, $5, $6, $7::jsonb, $8, $9, $9)
+        \\ON CONFLICT (zombie_id, event_id) DO NOTHING
+    , .{
+        session.zombie_id,
+        event_id,
+        session.workspace_id,
+        "system:config_update",
+        "system",
+        "processed",
+        request_json,
+        response_text,
+        revision,
+    });
 }
 
 test {
@@ -220,6 +258,7 @@ test {
     _ = @import("event_loop_test.zig");
     _ = @import("event_loop_integration_test.zig");
     _ = @import("event_loop_writepath_integration_test.zig");
+    _ = @import("event_loop_reload_emits_system_row_integration_test.zig");
     _ = @import("test_executor_harness.zig");
     _ = @import("test_harness_helpers.zig");
     _ = @import("test_rpc_recorder.zig");
