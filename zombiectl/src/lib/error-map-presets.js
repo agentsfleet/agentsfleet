@@ -13,16 +13,16 @@
 // literals here, which would trip the raw-literal gate.
 
 import {
-  ERR_AUTH_FORBIDDEN,
-  ERR_AUTH_UNAUTHORIZED,
-  ERR_AUTH_TOKEN_EXPIRED,
+  ERR_FORBIDDEN,
+  ERR_UNAUTHORIZED,
+  ERR_TOKEN_EXPIRED,
   ERR_AUTH_UNAVAILABLE,
-  ERR_AUTH_SESSION_NOT_FOUND,
-  ERR_AUTH_SESSION_EXPIRED,
-  ERR_AUTH_SESSION_ALREADY_COMPLETE,
-  ERR_AUTH_SESSION_LIMIT,
-  ERR_AUTH_INSUFFICIENT_ROLE,
-  ERR_AUTH_UNSUPPORTED_ROLE,
+  ERR_SESSION_NOT_FOUND,
+  ERR_SESSION_EXPIRED,
+  ERR_SESSION_ALREADY_COMPLETE,
+  ERR_SESSION_LIMIT,
+  ERR_INSUFFICIENT_ROLE,
+  ERR_UNSUPPORTED_ROLE,
   ERR_WORKSPACE_NOT_FOUND,
   ERR_WORKSPACE_PAUSED,
   ERR_ZOMBIE_NAME_EXISTS,
@@ -35,15 +35,15 @@ import {
 // Universal auth codes — every authenticated command can hit these.
 // Mirrors src/errors/error_registry.zig UZ-AUTH-001..010.
 export const AUTH_PRESET = Object.freeze({
-  [ERR_AUTH_FORBIDDEN]: {
+  [ERR_FORBIDDEN]: {
     code: "FORBIDDEN",
     message: "Access denied — your role does not permit this action.",
   },
-  [ERR_AUTH_UNAUTHORIZED]: {
+  [ERR_UNAUTHORIZED]: {
     code: "UNAUTHORIZED",
     message: "Not authenticated — run `zombiectl login` to start a session.",
   },
-  [ERR_AUTH_TOKEN_EXPIRED]: {
+  [ERR_TOKEN_EXPIRED]: {
     code: "TOKEN_EXPIRED",
     message: "Token expired — run `zombiectl login` to refresh.",
   },
@@ -51,27 +51,27 @@ export const AUTH_PRESET = Object.freeze({
     code: "AUTH_UNAVAILABLE",
     message: "Authentication service unavailable — try again shortly.",
   },
-  [ERR_AUTH_SESSION_NOT_FOUND]: {
+  [ERR_SESSION_NOT_FOUND]: {
     code: "SESSION_NOT_FOUND",
     message: "Login session not found — start a fresh `zombiectl login`.",
   },
-  [ERR_AUTH_SESSION_EXPIRED]: {
+  [ERR_SESSION_EXPIRED]: {
     code: "SESSION_EXPIRED",
     message: "Login session expired — start a fresh `zombiectl login`.",
   },
-  [ERR_AUTH_SESSION_ALREADY_COMPLETE]: {
+  [ERR_SESSION_ALREADY_COMPLETE]: {
     code: "SESSION_ALREADY_COMPLETE",
     message: "Login session already completed — re-run `zombiectl login` if you need a new token.",
   },
-  [ERR_AUTH_SESSION_LIMIT]: {
+  [ERR_SESSION_LIMIT]: {
     code: "SESSION_LIMIT",
     message: "Too many active login sessions — wait a minute and retry.",
   },
-  [ERR_AUTH_INSUFFICIENT_ROLE]: {
+  [ERR_INSUFFICIENT_ROLE]: {
     code: "INSUFFICIENT_ROLE",
     message: "Your role does not have permission for this action.",
   },
-  [ERR_AUTH_UNSUPPORTED_ROLE]: {
+  [ERR_UNSUPPORTED_ROLE]: {
     code: "UNSUPPORTED_ROLE",
     message: "Server does not recognize your role — contact support.",
   },
