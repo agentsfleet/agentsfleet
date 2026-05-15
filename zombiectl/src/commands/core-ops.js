@@ -2,8 +2,8 @@ import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import {
   ERR_INTERNAL_DB_UNAVAILABLE,
-  ERR_INTERNAL_GENERIC,
-  ERR_INTERNAL_SERVER_ERROR,
+  ERR_INTERNAL_DB_QUERY,
+  ERR_INTERNAL_OPERATION_FAILED,
 } from "../constants/error-codes.js";
 import { DOCTOR_CHECK } from "../constants/doctor-checks.js";
 
@@ -18,11 +18,11 @@ export const doctorErrorMap = compose(AUTH_PRESET, {
     code: "SERVER_INTERNAL",
     message: "Database unavailable — the API is degraded; try again shortly.",
   },
-  [ERR_INTERNAL_GENERIC]: {
+  [ERR_INTERNAL_DB_QUERY]: {
     code: "SERVER_INTERNAL",
     message: "Server internal error — the API is degraded; try again shortly.",
   },
-  [ERR_INTERNAL_SERVER_ERROR]: {
+  [ERR_INTERNAL_OPERATION_FAILED]: {
     code: "SERVER_INTERNAL",
     message: "Server internal error — the API is degraded; try again shortly.",
   },
