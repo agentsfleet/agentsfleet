@@ -16,11 +16,11 @@
 import { wsZombieMessagesPath, wsZombieEventsPath, wsZombieEventsStreamPath } from "../lib/api-paths.js";
 import { streamGet as defaultStreamGet } from "../lib/sse.js";
 import { EVENT_STATUS } from "../constants/event-status.js";
+import { MISSING_ARGUMENT } from "../constants/cli-errors.js";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
 
-const K_MISSING_ARGUMENT = "MISSING_ARGUMENT";
 const K_TIMEOUT = "timeout";
 const K_COMPLETE = "complete";
 const K_TOOL = "[tool]";
@@ -40,12 +40,12 @@ export async function commandSteer(ctx, parsed, workspaces, deps) {
     return 1;
   }
   if (!zombieId) {
-    writeError(ctx, K_MISSING_ARGUMENT, "usage: zombiectl steer <zombie_id> \"<message>\"", deps);
+    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl steer <zombie_id> \"<message>\"", deps);
     return 2;
   }
   if (!message || typeof message !== K_STRING || message.trim().length === 0) {
     // Interactive REPL is a follow-up; for now require a message.
-    writeError(ctx, K_MISSING_ARGUMENT, "interactive steer is not yet implemented. Pass a message: zombiectl steer <zombie_id> \"<msg>\"", deps);
+    writeError(ctx, MISSING_ARGUMENT, "interactive steer is not yet implemented. Pass a message: zombiectl steer <zombie_id> \"<msg>\"", deps);
     return 2;
   }
 

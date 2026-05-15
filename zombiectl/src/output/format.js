@@ -13,7 +13,7 @@ const K_N = "\n";
 
 const K_RIGHT = "right";
 
-const K_PUNCT_23B58D = "  ";
+const K_COLUMN_GAP = "  ";
 
 function resolveWidth(opts = {}) {
   if (opts.widthHint && Number.isFinite(opts.widthHint)) return opts.widthHint;
@@ -62,13 +62,13 @@ export function formatKeyValue(rows, opts) {
 }
 
 function renderHeader(columns, widths, opts) {
-  const cells = columns.map((c, i) => c.label.padEnd(widths[i])).join(K_PUNCT_23B58D);
+  const cells = columns.map((c, i) => c.label.padEnd(widths[i])).join(K_COLUMN_GAP);
   // Table headers are chrome, not currency — bold default, not pulse.
   return palette.bold(cells, opts);
 }
 
 function renderRule(widths, opts) {
-  const rule = widths.map((w) => HORIZONTAL_RULE.repeat(w)).join(K_PUNCT_23B58D);
+  const rule = widths.map((w) => HORIZONTAL_RULE.repeat(w)).join(K_COLUMN_GAP);
   return palette.subtle(rule, opts);
 }
 
@@ -76,7 +76,7 @@ function renderRow(columns, widths, row, alignments) {
   return columns.map((c, i) => {
     const cell = String(row[c.key] ?? "");
     return alignments[i] === K_RIGHT ? cell.padStart(widths[i]) : cell.padEnd(widths[i]);
-  }).join(K_PUNCT_23B58D);
+  }).join(K_COLUMN_GAP);
 }
 
 function renderHorizontal(columns, rows, opts) {

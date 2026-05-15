@@ -12,7 +12,7 @@ const K_CLI_ERROR = "cli_error";
 const K_UNEXPECTED = "UNEXPECTED";
 const K_COMMANDER_UNKNOWNCOMMAND = "commander.unknownCommand";
 
-const K_PUNCT_CFAB1B = "--";
+const K_DOUBLE_DASH = "--";
 
 import {
   cliAnalytics,
@@ -55,7 +55,7 @@ const AUTH_EXEMPT = new Set([K_LOGIN]);
 // wins`. Pre-scan argv so we render version ourselves.
 function maybePrintVersion(argv, stdout, jsonMode, env) {
   for (const token of argv) {
-    if (token === K_PUNCT_CFAB1B) break;
+    if (token === K_DOUBLE_DASH) break;
     if (token === "--version" || token === "-v") {
       if (jsonMode) {
         printJson(stdout, { version: VERSION });
@@ -73,7 +73,7 @@ function maybePrintVersion(argv, stdout, jsonMode, env) {
 
 function detectJsonMode(argv) {
   for (const token of argv) {
-    if (token === K_PUNCT_CFAB1B) return false;
+    if (token === K_DOUBLE_DASH) return false;
     if (token === "--json") return true;
   }
   return false;
@@ -83,7 +83,7 @@ function resolveGlobalApiUrl(argv, env) {
   let api = null;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
-    if (t === K_PUNCT_CFAB1B) break;
+    if (t === K_DOUBLE_DASH) break;
     if (t === "--api") { api = argv[i + 1] || null; break; }
     if (t.startsWith(K_API)) { api = t.slice(K_API.length); break; }
   }

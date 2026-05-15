@@ -5,7 +5,7 @@ const K_WORKSPACE_ID = "workspace_id";
 const K_WORKSPACE_ID_2 = "workspace-id";
 const K_WORKSPACEID = "workspaceId";
 
-const K_PUNCT_26AEAB = "—";
+const K_EM_DASH = "—";
 
 import {
   NO_WORKSPACE,
@@ -69,7 +69,7 @@ export async function workspaceAdd(ctx, parsed, workspaces, deps) {
     printSection(ctx.stdout, "Workspace added");
     printKeyValue(ctx.stdout, {
       workspace_id: workspaceId,
-      name: resolvedName ?? K_PUNCT_26AEAB,
+      name: resolvedName ?? K_EM_DASH,
     });
   }
   return 0;
@@ -104,7 +104,7 @@ export async function workspaceList(ctx, _parsed, workspaces, deps) {
     workspaces.items.map((item) => ({
       active: item.workspace_id === workspaces.current_workspace_id ? "*" : "",
       workspace_id: item.workspace_id,
-      name: item.name ?? K_PUNCT_26AEAB,
+      name: item.name ?? K_EM_DASH,
     })),
   );
   return 0;
@@ -162,7 +162,7 @@ export async function workspaceShow(ctx, parsed, workspaces, deps) {
     printKeyValue(ctx.stdout, {
       workspace_id: detail.workspace_id,
       active: detail.active ? "yes" : "no",
-      name: detail.name ?? K_PUNCT_26AEAB,
+      name: detail.name ?? K_EM_DASH,
     });
   }
   return 0;

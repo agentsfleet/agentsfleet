@@ -18,7 +18,7 @@ import { TENANT_BILLING_PATH } from "../lib/api-paths.js";
 // but the CLI's read endpoint surfaces them as plain server messages.
 const K_GET = "GET";
 
-const K_PUNCT_26AEAB = "—";
+const K_EM_DASH = "—";
 
 export const errorMap = compose(AUTH_PRESET, {
   [ERR_BILLING_UNAVAILABLE]: {
@@ -104,8 +104,8 @@ export async function commandBillingShow(ctx, parsed, _workspaces, deps) {
       event_id: e.event_id,
       posture: e.posture,
       model: e.model,
-      in_tok: e.token_count_input != null ? String(e.token_count_input) : K_PUNCT_26AEAB,
-      out_tok: e.token_count_output != null ? String(e.token_count_output) : K_PUNCT_26AEAB,
+      in_tok: e.token_count_input != null ? String(e.token_count_input) : K_EM_DASH,
+      out_tok: e.token_count_output != null ? String(e.token_count_output) : K_EM_DASH,
       receive: formatDollars(e.receive_nanos),
       stage: formatDollars(e.stage_nanos),
       total: formatDollars(e.total_nanos),

@@ -19,7 +19,7 @@ const K_NUMBER = "number";
 const K_GET = "GET";
 const K_MODEL = "model";
 
-const K_PUNCT_26AEAB = "—";
+const K_EM_DASH = "—";
 
 import {
   PROVIDER_MODE,
@@ -64,11 +64,11 @@ export async function commandTenantProviderShow(ctx, _parsed, _workspaces, deps)
     { key: K_FIELD_2, label: K_FIELD },
     { key: K_VALUE, label: K_VALUE_2 },
   ], [
-    { field: K_MODE,                value: res.mode ?? K_PUNCT_26AEAB },
-    { field: K_PROVIDER,            value: res.provider ?? K_PUNCT_26AEAB },
-    { field: K_MODEL,               value: res.model ?? K_PUNCT_26AEAB },
-    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_PUNCT_26AEAB },
-    { field: K_CREDENTIAL_REF,      value: res.credential_ref ?? K_PUNCT_26AEAB },
+    { field: K_MODE,                value: res.mode ?? K_EM_DASH },
+    { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
+    { field: K_MODEL,               value: res.model ?? K_EM_DASH },
+    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_EM_DASH },
+    { field: K_CREDENTIAL_REF,      value: res.credential_ref ?? K_EM_DASH },
   ]);
 
   if (res.synthesised_default === true) {
@@ -112,11 +112,11 @@ export async function commandTenantProviderAdd(ctx, parsed, _workspaces, deps) {
     { key: K_FIELD_2, label: K_FIELD },
     { key: K_VALUE, label: K_VALUE_2 },
   ], [
-    { field: K_MODE,                value: res.mode ?? K_PUNCT_26AEAB },
-    { field: K_PROVIDER,            value: res.provider ?? K_PUNCT_26AEAB },
-    { field: K_MODEL,               value: res.model ?? K_PUNCT_26AEAB },
-    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_PUNCT_26AEAB },
-    { field: K_CREDENTIAL_REF,      value: res.credential_ref ?? K_PUNCT_26AEAB },
+    { field: K_MODE,                value: res.mode ?? K_EM_DASH },
+    { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
+    { field: K_MODEL,               value: res.model ?? K_EM_DASH },
+    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_EM_DASH },
+    { field: K_CREDENTIAL_REF,      value: res.credential_ref ?? K_EM_DASH },
   ]);
   writeLine(ctx.stdout);
   writeLine(ctx.stdout, ui.dim(`Tip: run a test event to verify the key works against ${res.provider ?? credentialRef}.`));
@@ -144,10 +144,10 @@ export async function commandTenantProviderDelete(ctx, _parsed, _workspaces, dep
     { key: K_FIELD_2, label: K_FIELD },
     { key: K_VALUE, label: K_VALUE_2 },
   ], [
-    { field: K_MODE,                value: res.mode ?? K_PUNCT_26AEAB },
-    { field: K_PROVIDER,            value: res.provider ?? K_PUNCT_26AEAB },
-    { field: K_MODEL,               value: res.model ?? K_PUNCT_26AEAB },
-    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_PUNCT_26AEAB },
+    { field: K_MODE,                value: res.mode ?? K_EM_DASH },
+    { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
+    { field: K_MODEL,               value: res.model ?? K_EM_DASH },
+    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_EM_DASH },
   ]);
 
   // Best-effort low-balance warning. Skip silently if the snapshot endpoint

@@ -15,7 +15,6 @@ import {
   apiRequest,
   apiRequestWithRetry,
   authHeaders,
-  ApiError,
 } from "../src/lib/http.js";
 import { openUrl } from "../src/lib/browser.js";
 import { commandSteer } from "../src/commands/zombie_steer.js";

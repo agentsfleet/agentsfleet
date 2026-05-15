@@ -1,6 +1,6 @@
 import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
-const K_SERVER_INTERNAL_ERROR_THE_API_IS_DEGRADED_TRY_AGAI = "Server internal error — the API is degraded; try again shortly.";
+const K_MSG_SERVER_DEGRADED = "Server internal error — the API is degraded; try again shortly.";
 const K_GET = "GET";
 const K_SERVER_INTERNAL = "SERVER_INTERNAL";
 
@@ -24,11 +24,11 @@ export const doctorErrorMap = compose(AUTH_PRESET, {
   },
   [ERR_INTERNAL_DB_QUERY]: {
     code: K_SERVER_INTERNAL,
-    message: K_SERVER_INTERNAL_ERROR_THE_API_IS_DEGRADED_TRY_AGAI,
+    message: K_MSG_SERVER_DEGRADED,
   },
   [ERR_INTERNAL_OPERATION_FAILED]: {
     code: K_SERVER_INTERNAL,
-    message: K_SERVER_INTERNAL_ERROR_THE_API_IS_DEGRADED_TRY_AGAI,
+    message: K_MSG_SERVER_DEGRADED,
   },
 });
 
