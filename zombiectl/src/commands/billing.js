@@ -7,21 +7,15 @@
 // both charges combined. `--json` emits the raw shape for scripting and
 // includes `next_cursor` so callers can paginate.
 
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_PRESET } from "../lib/error-map-presets.js";
 import { writeError } from "../program/io.js";
 import { CHARGE_TYPE, formatDollars } from "../constants/billing.js";
-import { ERR_BILLING_UNAVAILABLE } from "../constants/error-codes.js";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
 // Billing show hits /v1/tenants/me/billing (GET) + charges (GET).
 // Auth-only surface; the server propagates UZ-BILLING-* internally
 // but the CLI's read endpoint surfaces them as plain server messages.
-export const errorMap = compose(AUTH_PRESET, {
-  [ERR_BILLING_UNAVAILABLE]: {
-    code: "BILLING_UNAVAILABLE",
-    message: "Billing data is temporarily unavailable — try again shortly.",
-  },
-});
+export const errorMap = AUTH_PRESET;
 
 const BILLING_PATH = TENANT_BILLING_PATH;
 const CHARGES_PATH = `${TENANT_BILLING_PATH}/charges`;

@@ -7,47 +7,71 @@
 // Stable surface: once a code → message lands here, treat the message
 // string as a public string (RULE EMS). Refactors must keep the
 // substring search in the failure-modes integration tests valid.
+//
+// Keys reference named ERR_* constants from ../constants/error-codes.js
+// (allowlisted by scripts/audit-error-codes.sh) — never raw "UZ-..."
+// literals here, which would trip the raw-literal gate.
+
+import {
+  ERR_AUTH_FORBIDDEN,
+  ERR_AUTH_UNAUTHORIZED,
+  ERR_AUTH_TOKEN_EXPIRED,
+  ERR_AUTH_UNAVAILABLE,
+  ERR_AUTH_SESSION_NOT_FOUND,
+  ERR_AUTH_SESSION_EXPIRED,
+  ERR_AUTH_SESSION_ALREADY_COMPLETE,
+  ERR_AUTH_SESSION_LIMIT,
+  ERR_AUTH_INSUFFICIENT_ROLE,
+  ERR_AUTH_UNSUPPORTED_ROLE,
+  ERR_WORKSPACE_NOT_FOUND,
+  ERR_WORKSPACE_PAUSED,
+  ERR_ZOMBIE_NAME_EXISTS,
+  ERR_ZOMBIE_INVALID_CONFIG,
+  ERR_ZOMBIE_NOT_FOUND,
+  ERR_ZOMBIE_ALREADY_TERMINAL,
+  ERR_ZOMBIE_NAME_MISMATCH,
+} from "../constants/error-codes.js";
 
 // Universal auth codes — every authenticated command can hit these.
 // Mirrors src/errors/error_registry.zig UZ-AUTH-001..010.
 export const AUTH_PRESET = Object.freeze({
-  "UZ-AUTH-001": {
+  [ERR_AUTH_FORBIDDEN]: {
     code: "FORBIDDEN",
     message: "Access denied — your role does not permit this action.",
   },
-  "UZ-AUTH-002": {
+  [ERR_AUTH_UNAUTHORIZED]: {
     code: "UNAUTHORIZED",
     message: "Not authenticated — run `zombiectl login` to start a session.",
   },
-  "UZ-AUTH-003": {
+  [ERR_AUTH_TOKEN_EXPIRED]: {
     code: "TOKEN_EXPIRED",
     message: "Token expired — run `zombiectl login` to refresh.",
   },
-  "UZ-AUTH-004": {
+  [ERR_AUTH_UNAVAILABLE]: {
     code: "AUTH_UNAVAILABLE",
     message: "Authentication service unavailable — try again shortly.",
   },
-  "UZ-AUTH-005": {
+  [ERR_AUTH_SESSION_NOT_FOUND]: {
     code: "SESSION_NOT_FOUND",
     message: "Login session not found — start a fresh `zombiectl login`.",
   },
-  "UZ-AUTH-006": {
+  [ERR_AUTH_SESSION_EXPIRED]: {
     code: "SESSION_EXPIRED",
     message: "Login session expired — start a fresh `zombiectl login`.",
   },
-  "UZ-AUTH-007": {
+  [ERR_AUTH_SESSION_ALREADY_COMPLETE]: {
     code: "SESSION_ALREADY_COMPLETE",
     message: "Login session already completed — re-run `zombiectl login` if you need a new token.",
   },
-  "UZ-AUTH-008": {
+  [ERR_AUTH_SESSION_LIMIT]: {
     code: "SESSION_LIMIT",
     message: "Too many active login sessions — wait a minute and retry.",
   },
-  "UZ-AUTH-009": {
+  [ERR_AUTH_INSUFFICIENT_ROLE]: {
     code: "INSUFFICIENT_ROLE",
     message: "Your role does not have permission for this action.",
   },
-  "UZ-AUTH-010": {
+  [ERR_AUTH_UNSUPPORTED_ROLE]: {
     code: "UNSUPPORTED_ROLE",
     message: "Server does not recognize your role — contact support.",
   },
@@ -55,39 +79,35 @@ export const AUTH_PRESET = Object.freeze({
 
 // Workspace lifecycle codes that surface to the human operator.
 export const WORKSPACE_PRESET = Object.freeze({
-  "UZ-WORKSPACE-001": {
+  [ERR_WORKSPACE_NOT_FOUND]: {
     code: "WORKSPACE_NOT_FOUND",
     message: "Workspace not found — check `zombiectl workspace list`.",
   },
-  "UZ-WORKSPACE-002": {
+  [ERR_WORKSPACE_PAUSED]: {
     code: "WORKSPACE_PAUSED",
     message: "Workspace paused — resolve billing in the dashboard before continuing.",
-  },
-  "UZ-WORKSPACE-003": {
-    code: "WORKSPACE_FREE_LIMIT",
-    message: "Free-tier workspace limit reached — upgrade or reuse an existing workspace.",
   },
 });
 
 // Zombie lifecycle codes that surface from install / list / status etc.
 export const ZOMBIE_PRESET = Object.freeze({
-  "UZ-ZMB-006": {
+  [ERR_ZOMBIE_NAME_EXISTS]: {
     code: "ZOMBIE_NAME_EXISTS",
     message: "A zombie with this name already exists — pick a different name.",
   },
-  "UZ-ZMB-008": {
+  [ERR_ZOMBIE_INVALID_CONFIG]: {
     code: "ZOMBIE_INVALID_CONFIG",
     message: "Zombie config is invalid — check the SKILL.md and required fields.",
   },
-  "UZ-ZMB-009": {
+  [ERR_ZOMBIE_NOT_FOUND]: {
     code: "ZOMBIE_NOT_FOUND",
     message: "Zombie not found in this workspace.",
   },
-  "UZ-ZMB-010": {
+  [ERR_ZOMBIE_ALREADY_TERMINAL]: {
     code: "ZOMBIE_ALREADY_TERMINAL",
     message: "Zombie is already in a terminal state — kill/delete is final.",
   },
-  "UZ-ZMB-011": {
+  [ERR_ZOMBIE_NAME_MISMATCH]: {
     code: "ZOMBIE_NAME_MISMATCH",
     message: "Zombie name does not match — recheck the install path.",
   },
