@@ -338,6 +338,8 @@ The three Redis surfaces above ride on **two distinct connection patterns** insi
 
 **Where this is enforced.** `src/queue/redis_pool.zig` (introduced by M69_004) exposes only `acquire`/`release` for short-lived commands. The blocking-XREADGROUP consumers — `src/queue/redis_zombie.zig` (per-zombie events loop) and `src/cmd/worker_watcher_poll.zig` (watcher's control loop) — each construct a dedicated `Connection` via `Connection.init(...)` and own it for the lifetime of the thread. SSE subscribers use a separate `Subscriber` type with its own connection (the unified `src/queue/redis_subscriber.zig`).
 
+**Sizing the fleet.** This topology determines connection budget and Upstash-billing math at scale. See [`scaling.md`](./scaling.md) for the worked 100-zombie / 10-worker example, the tuneup-knob table (`REDIS_POOL_MAX_IDLE`, `XREADGROUP BLOCK` duration, etc.), Upstash plan-ceiling considerations, and failover-storm behavior.
+
 ## Why a single zombie:control instead of per-tenant control
 
 Considered alternatives:
