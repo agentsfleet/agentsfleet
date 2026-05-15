@@ -15,10 +15,10 @@ import {
 } from "../constants/cli-errors.js";
 import { OPT_FROM } from "../constants/cli-flags.js";
 import {
-  ERR_CREDENTIAL_NAME_INVALID,
-  ERR_CREDENTIAL_NOT_FOUND,
-  ERR_VAULT_INVALID,
-  ERR_ZOMBIE_RUNNER_FAILED,
+  ERR_CRED_PLATFORM_KEY_MISSING,
+  ERR_CRED_ANTHROPIC_KEY_MISSING,
+  ERR_VAULT_DATA_INVALID,
+  ERR_EXEC_RUNNER_AGENT_RUN,
 } from "../constants/error-codes.js";
 import {
   AUTH_PRESET,
@@ -32,19 +32,19 @@ import { ZOMBIE_STATUS } from "../constants/zombie-status.js";
 // resume/delete/logs/steer/events/credential all hit the same workspace
 // + zombie auth path, so the union map is the right grain.
 export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
-  [ERR_VAULT_INVALID]: {
+  [ERR_VAULT_DATA_INVALID]: {
     code: "CREDENTIAL_INVALID",
     message: "Credential JSON is invalid — must be a non-empty object ≤ 4 KiB.",
   },
-  [ERR_CREDENTIAL_NOT_FOUND]: {
+  [ERR_CRED_ANTHROPIC_KEY_MISSING]: {
     code: "CREDENTIAL_NOT_FOUND",
     message: "Credential not found in this workspace.",
   },
-  [ERR_CREDENTIAL_NAME_INVALID]: {
+  [ERR_CRED_PLATFORM_KEY_MISSING]: {
     code: "CREDENTIAL_NAME_INVALID",
     message: "Credential name is invalid — use lowercase letters, digits, and dashes.",
   },
-  [ERR_ZOMBIE_RUNNER_FAILED]: {
+  [ERR_EXEC_RUNNER_AGENT_RUN]: {
     code: "ZOMBIE_RUNNER_FAILED",
     message: "Zombie runner exited with an error — see `zombiectl logs <zombie_id>` for details.",
   },
