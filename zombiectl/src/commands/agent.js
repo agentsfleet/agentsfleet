@@ -11,9 +11,6 @@ import { WORKSPACES_PATH } from "../lib/api-paths.js";
 import { validateRequiredId } from "../program/validate.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import { MISSING_ARGUMENT, VALIDATION_ERROR } from "../constants/cli-errors.js";
-const K_NAME = "name";
-const K_AGENT_ID = "agent_id";
-
 import {
   OPT_AGENT_ID,
   OPT_DESCRIPTION,
@@ -23,6 +20,9 @@ import {
   OPT_ZOMBIE,
   OPT_ZOMBIE_ID,
 } from "../constants/cli-flags.js";
+
+const K_NAME = "name";
+const K_AGENT_ID = "agent_id";
 
 // Agent commands hit /v1/workspaces/{ws}/agent-keys (POST/GET/DELETE).
 // Server-side these can surface validation, conflict on duplicate

@@ -5,15 +5,6 @@ import { dirname, join } from "node:path";
 import { CommanderError, InvalidArgumentError } from "commander";
 
 import { openUrl } from "./lib/browser.js";
-const K_UNKNOWN = "unknown";
-const K_API = "--api=";
-const K_LOGIN = "login";
-const K_CLI_ERROR = "cli_error";
-const K_UNEXPECTED = "UNEXPECTED";
-const K_COMMANDER_UNKNOWNCOMMAND = "commander.unknownCommand";
-
-const K_DOUBLE_DASH = "--";
-
 import {
   cliAnalytics,
   drainCliAnalyticsEvents,
@@ -39,6 +30,14 @@ import { buildProgram } from "./program/cli-tree.js";
 import { buildHandlers } from "./program/handlers-bind.js";
 import { ROLE_ADMIN } from "./constants/auth-roles.js";
 import { EVT_USER_AUTHENTICATED, EVT_WORKSPACE_CREATED } from "./constants/analytics-events.js";
+
+const K_UNKNOWN = "unknown";
+const K_API = "--api=";
+const K_LOGIN = "login";
+const K_CLI_ERROR = "cli_error";
+const K_UNEXPECTED = "UNEXPECTED";
+const K_COMMANDER_UNKNOWNCOMMAND = "commander.unknownCommand";
+const K_DOUBLE_DASH = "--";
 
 // VERSION is the source-of-truth `package.json` field, read once at module
 // load. `make sync-version` writes package.json + build.zig.zon together;

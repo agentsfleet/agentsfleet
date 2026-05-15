@@ -10,14 +10,14 @@
 // don't need to pre-wire io.js's positional writeError.
 
 import { ApiError } from "./http.js";
-const K_FUNCTION = "function";
-const K_STRING = "string";
-const K_API_ERROR = "API_ERROR";
-
 import {
   trackCliEvent,
   getCliAnalyticsContext,
 } from "./analytics.js";
+
+const K_FUNCTION = "function";
+const K_STRING = "string";
+const K_API_ERROR = "API_ERROR";
 
 const API_UNREACHABLE_CODE = "API_UNREACHABLE";
 const UNEXPECTED_CODE = "UNEXPECTED";

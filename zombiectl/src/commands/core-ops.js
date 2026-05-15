@@ -1,15 +1,15 @@
 import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
-const K_MSG_SERVER_DEGRADED = "Server internal error — the API is degraded; try again shortly.";
-const K_GET = "GET";
-const K_SERVER_INTERNAL = "SERVER_INTERNAL";
-
 import {
   ERR_INTERNAL_DB_UNAVAILABLE,
   ERR_INTERNAL_DB_QUERY,
   ERR_INTERNAL_OPERATION_FAILED,
 } from "../constants/error-codes.js";
 import { DOCTOR_CHECK } from "../constants/doctor-checks.js";
+
+const K_MSG_SERVER_DEGRADED = "Server internal error — the API is degraded; try again shortly.";
+const K_GET = "GET";
+const K_SERVER_INTERNAL = "SERVER_INTERNAL";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 
