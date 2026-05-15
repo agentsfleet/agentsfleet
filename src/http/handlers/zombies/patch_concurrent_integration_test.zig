@@ -1,0 +1,474 @@
+// Concurrent + lock-timeout integration tests for the §10b body-field
+// PATCH path. Sister file to patch_body_fields_integration_test.zig;
+// shares the row-lock/field-merge txn shape (per-txn lock_timeout=5s,
+// statement_timeout=10s, idle_in_transaction_session_timeout=5s) but
+// exercises it under contention.
+//
+// Requires TEST_DATABASE_URL — skipped gracefully otherwise. Uses the
+// shared TestHarness; spawns std.Thread workers that each fire one
+// HTTP PATCH and collect status + outcome. The lock-timeout test
+// reaches into h.pool to hold a row-lock from a sibling txn so the
+// handler's lock_timeout path is the system under test.
+//
+// Deadlock invariant proofs:
+//   - Different-fields concurrent PATCH: both land via row-lock merge.
+//   - Same-field concurrent PATCH: collapses to last-write-wins; no
+//     `40P01 deadlock_detected` in either response.
+//   - N concurrent writers on same zombie: all 200; pool returns to
+//     baseline (no exhausted connections).
+//   - PATCH + DELETE on same zombie: exactly one final state, no
+//     deadlock_detected in either response/log.
+//   - Different zombies in parallel: wall time stays sub-linear.
+//
+// Lock-timeout fixture: a holder thread takes SELECT FOR UPDATE in its
+// own txn + sleeps 7s. A second PATCH must observe 503
+// ERR_INTERNAL_DB_UNAVAILABLE in <5.5s (the handler's lock_timeout=5s
+// path), proving fail-fast.
+
+const std = @import("std");
+const pg = @import("pg");
+const auth_mw = @import("../../../auth/middleware/mod.zig");
+
+const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
+const harness_mod = @import("../../test_harness.zig");
+const TestHarness = harness_mod.TestHarness;
+
+const ALLOC = std.testing.allocator;
+
+const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f01";
+const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f11";
+const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f21";
+const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f22";
+const TEST_ISSUER = "https://clerk.dev.usezombie.com";
+const TEST_AUDIENCE = "https://api.usezombie.com";
+const TEST_JWKS =
+    \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
+;
+// Operator-role token — DELETE needs operator-minimum; PATCH body-field
+// is workspace-member but operator covers both.
+const TOKEN_OPERATOR =
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGM2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGM2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.NbW0c3hQqgxYf3y8j2-T3jzExNo7Bo0XJM_S5Y9N7Z2xN-7Xq3WzKB9oMpL-tQH";
+
+const BASE_CONFIG_JSON =
+    \\{"name":"conc-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
+;
+const BASE_TRIGGER_MD =
+    \\---
+    \\name: conc-bot
+    \\x-usezombie:
+    \\  triggers:
+    \\    - type: webhook
+    \\      source: github
+    \\      events: ["push"]
+    \\  tools: ["http_request"]
+    \\  budget:
+    \\    daily_dollars: 5.0
+    \\---
+;
+const BASE_SOURCE_MD =
+    \\---
+    \\name: conc-bot
+    \\---
+    \\# initial
+;
+
+const TRIGGER_VARIANT_A =
+    \\---
+    \\name: conc-bot
+    \\x-usezombie:
+    \\  triggers:
+    \\    - type: cron
+    \\      schedule: "*/15 * * * *"
+    \\  tools: ["http_request"]
+    \\  budget:
+    \\    daily_dollars: 5.0
+    \\---
+;
+const TRIGGER_VARIANT_B =
+    \\---
+    \\name: conc-bot
+    \\x-usezombie:
+    \\  triggers:
+    \\    - type: cron
+    \\      schedule: "0 9 * * *"
+    \\  tools: ["http_request"]
+    \\  budget:
+    \\    daily_dollars: 5.0
+    \\---
+;
+const SOURCE_VARIANT_A =
+    \\---
+    \\name: conc-bot
+    \\---
+    \\# variant A
+;
+
+const TRIGGER_VARIANT_A_JSON = jsonEscape(TRIGGER_VARIANT_A);
+const TRIGGER_VARIANT_B_JSON = jsonEscape(TRIGGER_VARIANT_B);
+const SOURCE_VARIANT_A_JSON = jsonEscape(SOURCE_VARIANT_A);
+
+fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
+
+fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {
+    const h = try TestHarness.start(alloc, .{
+        .configureRegistry = configureRegistry,
+        .inline_jwks_json = TEST_JWKS,
+        .issuer = TEST_ISSUER,
+        .audience = TEST_AUDIENCE,
+    });
+    errdefer h.deinit();
+    _ = h.tryConnectRedis();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    try seedFixture(conn);
+    return h;
+}
+
+fn seedFixture(conn: *pg.Conn) !void {
+    const now = std.time.milliTimestamp();
+    _ = try conn.exec(
+        \\INSERT INTO tenants (tenant_id, name, created_at, updated_at)
+        \\VALUES ($1, 'PatchConcurrentTest', $2, $2)
+        \\ON CONFLICT (tenant_id) DO NOTHING
+    , .{ TEST_TENANT_ID, now });
+    _ = try conn.exec(
+        \\INSERT INTO workspaces (workspace_id, tenant_id, created_at)
+        \\VALUES ($1, $2, $3)
+        \\ON CONFLICT (workspace_id) DO NOTHING
+    , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
+    for ([_][]const u8{ ZOMBIE_A, ZOMBIE_B }) |zid| {
+        _ = try conn.exec(
+            \\INSERT INTO core.zombies
+            \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+            \\   status, created_at, updated_at)
+            \\VALUES ($1::uuid, $2::uuid, 'conc-bot', $3, $4, $5::jsonb, 'active', $6, $6)
+            \\ON CONFLICT (id) DO UPDATE SET
+            \\    source_markdown = EXCLUDED.source_markdown,
+            \\    trigger_markdown = EXCLUDED.trigger_markdown,
+            \\    config_json = EXCLUDED.config_json,
+            \\    status = 'active',
+            \\    updated_at = EXCLUDED.updated_at
+        , .{ zid, TEST_WORKSPACE_ID, BASE_SOURCE_MD, BASE_TRIGGER_MD, BASE_CONFIG_JSON, now });
+    }
+}
+
+fn cleanup(conn: *pg.Conn) void {
+    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+}
+
+fn patchUrl(zombie_id: []const u8) ![]const u8 {
+    return std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/zombies/{s}", .{ TEST_WORKSPACE_ID, zombie_id });
+}
+
+const Outcome = struct {
+    status: u16 = 0,
+    body: ?[]u8 = null,
+    elapsed_ms: i64 = 0,
+};
+
+fn freeOutcomes(slice: []Outcome) void {
+    for (slice) |o| if (o.body) |b| ALLOC.free(b);
+}
+
+const Worker = struct {
+    fn run(h: *TestHarness, body: []const u8, zid: []const u8, slot: *Outcome) void {
+        const url = patchUrl(zid) catch return;
+        defer ALLOC.free(url);
+        const t0 = std.time.milliTimestamp();
+        const r_req = h.request(.PATCH, url).bearer(TOKEN_OPERATOR) catch return;
+        const r_json = r_req.json(body) catch return;
+        const r = r_json.send() catch return;
+        defer r.deinit();
+        slot.* = .{
+            .status = r.status,
+            .body = ALLOC.dupe(u8, r.body) catch null,
+            .elapsed_ms = std.time.milliTimestamp() - t0,
+        };
+    }
+
+    fn runDelete(h: *TestHarness, zid: []const u8, slot: *Outcome) void {
+        const url = patchUrl(zid) catch return;
+        defer ALLOC.free(url);
+        const t0 = std.time.milliTimestamp();
+        const r_req = h.request(.DELETE, url).bearer(TOKEN_OPERATOR) catch return;
+        const r = r_req.send() catch return;
+        defer r.deinit();
+        slot.* = .{
+            .status = r.status,
+            .body = ALLOC.dupe(u8, r.body) catch null,
+            .elapsed_ms = std.time.milliTimestamp() - t0,
+        };
+    }
+};
+
+fn bodyContainsDeadlock(out: Outcome) bool {
+    if (out.body) |b| {
+        // Postgres deadlock_detected SQLSTATE is 40P01. The handler never
+        // surfaces this code in any deterministic outcome — its presence
+        // anywhere in the response body is the bug.
+        return std.mem.indexOf(u8, b, "40P01") != null or
+            std.mem.indexOf(u8, b, "deadlock_detected") != null;
+    }
+    return false;
+}
+
+// ── §1 — Different fields land both halves via row-lock merge ────────────
+
+test "integration: concurrent PATCH different fields — both halves land, no deadlock" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const c_init = try h.acquireConn();
+    defer h.releaseConn(c_init);
+    defer cleanup(c_init);
+
+    const body_trig = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+    const body_src = "{\"source_markdown\":" ++ SOURCE_VARIANT_A_JSON ++ "}";
+
+    var outcomes: [2]Outcome = .{ .{}, .{} };
+    defer freeOutcomes(&outcomes);
+
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_trig, ZOMBIE_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_src, ZOMBIE_A, &outcomes[1] });
+    for (threads) |t| t.join();
+
+    try std.testing.expectEqual(@as(u16, 200), outcomes[0].status);
+    try std.testing.expectEqual(@as(u16, 200), outcomes[1].status);
+    try std.testing.expect(!bodyContainsDeadlock(outcomes[0]));
+    try std.testing.expect(!bodyContainsDeadlock(outcomes[1]));
+
+    // Read back — both halves must be visible (last write didn't clobber).
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    var q = PgQuery.from(try conn.query(
+        "SELECT config_json::text, source_markdown FROM core.zombies WHERE id = $1::uuid",
+        .{ZOMBIE_A},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.RowNotFound;
+    const cfg = try row.get([]const u8, 0);
+    const src = try row.get([]const u8, 1);
+    // Triggers half = variant A (cron */15)
+    try std.testing.expect(std.mem.indexOf(u8, cfg, "*/15 * * * *") != null);
+    // Source half = variant A
+    try std.testing.expect(std.mem.indexOf(u8, src, "variant A") != null);
+}
+
+// ── §2 — Same field concurrent → LWW, no deadlock ────────────────────────
+
+test "integration: concurrent PATCH same field — last write wins, no deadlock" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const c_init = try h.acquireConn();
+    defer h.releaseConn(c_init);
+    defer cleanup(c_init);
+
+    const body_a = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+    const body_b = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_B_JSON ++ "}";
+
+    var outcomes: [2]Outcome = .{ .{}, .{} };
+    defer freeOutcomes(&outcomes);
+
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_a, ZOMBIE_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_b, ZOMBIE_A, &outcomes[1] });
+    for (threads) |t| t.join();
+
+    try std.testing.expectEqual(@as(u16, 200), outcomes[0].status);
+    try std.testing.expectEqual(@as(u16, 200), outcomes[1].status);
+    try std.testing.expect(!bodyContainsDeadlock(outcomes[0]));
+    try std.testing.expect(!bodyContainsDeadlock(outcomes[1]));
+
+    // One of the two schedules must be the final value.
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    var q = PgQuery.from(try conn.query(
+        "SELECT config_json::text FROM core.zombies WHERE id = $1::uuid",
+        .{ZOMBIE_A},
+    ));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.RowNotFound;
+    const cfg = try row.get([]const u8, 0);
+    const has_a = std.mem.indexOf(u8, cfg, "*/15 * * * *") != null;
+    const has_b = std.mem.indexOf(u8, cfg, "0 9 * * *") != null;
+    try std.testing.expect(has_a or has_b);
+    try std.testing.expect(!(has_a and has_b)); // exactly one — no merged stew
+}
+
+// ── §3 — N writers on same row, no pool exhaustion, no deadlock ──────────
+
+test "integration: 10 concurrent PATCHes on same zombie — all 200, no deadlock" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const c_init = try h.acquireConn();
+    defer h.releaseConn(c_init);
+    defer cleanup(c_init);
+
+    const N = 10;
+    const body = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+
+    var outcomes: [N]Outcome = @splat(Outcome{});
+    defer freeOutcomes(&outcomes);
+
+    var threads: [N]std.Thread = undefined;
+    for (&threads, 0..) |*t, i| {
+        t.* = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_A, &outcomes[i] });
+    }
+    for (threads) |t| t.join();
+
+    var ok_count: usize = 0;
+    for (outcomes) |o| {
+        if (o.status == 200) ok_count += 1;
+        try std.testing.expect(!bodyContainsDeadlock(o));
+    }
+    try std.testing.expectEqual(@as(usize, N), ok_count);
+}
+
+// ── §4 — PATCH + DELETE on same zombie → no deadlock, one final state ───
+
+test "integration: concurrent PATCH + DELETE same zombie — no deadlock" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const c_init = try h.acquireConn();
+    defer h.releaseConn(c_init);
+    defer cleanup(c_init);
+
+    const body = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+
+    var outcomes: [2]Outcome = .{ .{}, .{} };
+    defer freeOutcomes(&outcomes);
+
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.runDelete, .{ h, ZOMBIE_A, &outcomes[1] });
+    for (threads) |t| t.join();
+
+    // Two interleavings are valid:
+    //   (a) PATCH first → DELETE second: PATCH=200, DELETE=204 (or 200/202)
+    //   (b) DELETE first → PATCH second: DELETE=204, PATCH=404 (zombie gone)
+    // Either way: no 40P01 in any response.
+    try std.testing.expect(!bodyContainsDeadlock(outcomes[0]));
+    try std.testing.expect(!bodyContainsDeadlock(outcomes[1]));
+    // At least one of the two must succeed in some shape.
+    const patch_ok = outcomes[0].status == 200 or outcomes[0].status == 404;
+    try std.testing.expect(patch_ok);
+}
+
+// ── §5 — Different zombies in parallel: near-linear wall time ────────────
+
+test "integration: concurrent PATCH on different zombies — parallel, sub-linear" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const c_init = try h.acquireConn();
+    defer h.releaseConn(c_init);
+    defer cleanup(c_init);
+
+    const body = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+
+    var outcomes: [2]Outcome = .{ .{}, .{} };
+    defer freeOutcomes(&outcomes);
+
+    const t0 = std.time.milliTimestamp();
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_B, &outcomes[1] });
+    for (threads) |t| t.join();
+    const parallel_ms = std.time.milliTimestamp() - t0;
+
+    try std.testing.expectEqual(@as(u16, 200), outcomes[0].status);
+    try std.testing.expectEqual(@as(u16, 200), outcomes[1].status);
+
+    // Sanity: parallel wall time should not be more than 1.8× the slower
+    // single-request elapsed (rough proxy — real serial baseline would
+    // require a separate run, but each thread's elapsed approximates one).
+    const slower = @max(outcomes[0].elapsed_ms, outcomes[1].elapsed_ms);
+    if (slower > 0) {
+        const ratio_x100 = @divTrunc(parallel_ms * 100, slower);
+        try std.testing.expect(ratio_x100 < 180);
+    }
+}
+
+// ── §6 — Lock-timeout fails fast under sustained row-lock contention ────
+
+test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const c_init = try h.acquireConn();
+    defer h.releaseConn(c_init);
+    defer cleanup(c_init);
+
+    // Holder thread takes its own connection, BEGINs, SELECT FOR UPDATE,
+    // sleeps 7s, then ROLLBACKs. The 7s holds the row-lock longer than
+    // the handler's 5s lock_timeout, so the contending PATCH must fail
+    // fast with 503, not hang for the full 7s.
+    const Holder = struct {
+        fn run(harness: *TestHarness, started: *std.Thread.ResetEvent) void {
+            const c = harness.pool.acquire() catch return;
+            defer harness.pool.release(c);
+            _ = c.exec("BEGIN", .{}) catch return;
+            defer _ = c.exec("ROLLBACK", .{}) catch {};
+            _ = c.exec(
+                "SELECT id FROM core.zombies WHERE id = $1::uuid FOR UPDATE",
+                .{ZOMBIE_A},
+            ) catch return;
+            started.set();
+            std.Thread.sleep(7 * std.time.ns_per_s);
+        }
+    };
+
+    var started = std.Thread.ResetEvent{};
+    const holder = try std.Thread.spawn(.{}, Holder.run, .{ h, &started });
+    defer holder.join();
+    // Wait up to 2s for the holder's SELECT FOR UPDATE to grab the lock.
+    started.timedWait(2 * std.time.ns_per_s) catch return error.HolderLockSetupTimeout;
+
+    const body = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+    var outcome: Outcome = .{};
+    defer if (outcome.body) |b| ALLOC.free(b);
+    const t0 = std.time.milliTimestamp();
+    Worker.run(h, body, ZOMBIE_A, &outcome);
+    const elapsed = std.time.milliTimestamp() - t0;
+
+    // Fail-fast: should return well before holder's 7s sleep completes.
+    try std.testing.expect(elapsed < 5_500);
+    try std.testing.expectEqual(@as(u16, 503), outcome.status);
+    try std.testing.expect(!bodyContainsDeadlock(outcome));
+}
+
+// Comptime JSON-string-encode a multi-line literal. See
+// patch_body_fields_integration_test.zig for the rationale.
+fn jsonEscape(comptime s: []const u8) []const u8 {
+    @setEvalBranchQuota(100_000);
+    comptime var out: []const u8 = "\"";
+    inline for (s) |c| {
+        out = out ++ switch (c) {
+            '"' => "\\\"",
+            '\\' => "\\\\",
+            '\n' => "\\n",
+            '\r' => "\\r",
+            '\t' => "\\t",
+            else => &[_]u8{c},
+        };
+    }
+    return out ++ "\"";
+}

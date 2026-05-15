@@ -221,6 +221,7 @@ test {
     _ = @import("http/handlers/zombies/list.zig");
     _ = @import("http/handlers/zombies/patch.zig");
     _ = @import("http/handlers/zombies/patch_body_fields_integration_test.zig");
+    _ = @import("http/handlers/zombies/patch_concurrent_integration_test.zig");
     _ = @import("http/handlers/zombies/delete.zig");
     // Zombie execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
     _ = @import("state/zombie_telemetry_store.zig");
