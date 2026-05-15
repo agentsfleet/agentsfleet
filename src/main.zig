@@ -210,6 +210,8 @@ test {
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
     _ = @import("queue/redis_pubsub_test.zig");
+    _ = @import("queue/redis_pool_test.zig");
+    _ = @import("queue/redis_connection_test.zig");
     _ = @import("reliability/backoff.zig");
     // M14_001: Persistent Zombie Memory — role isolation tests + executor unit tests
     _ = @import("memory/zombie_memory_role_test.zig");

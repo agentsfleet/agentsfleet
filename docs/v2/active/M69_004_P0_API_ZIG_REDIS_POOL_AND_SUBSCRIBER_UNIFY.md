@@ -153,54 +153,35 @@ Extract everything that's per-connection out of today's `Client`: `Transport`, r
 
 **Implementation default:** keep today's RESP2 parser and write-side argv encoder; the audit's Dimension 1 verdict was "leave alone unless bench shows allocator pressure." The XADD argv compile-fold (P2) is a separate slice (§7).
 
-**`ConnectionRole` is a correctness-boundary field, not observability metadata.** It governs `Pool.acquire` return-shape, `Pool.release` accept-shape, `Subscriber.connect` accept-shape, and the dedicated XREADGROUP loop's construction site. Role is set at `Connection.init` time via separate constructor functions and is `const` for the connection's lifetime — transitioning roles is a programmer error rejected by the type system, not a runtime check.
+**`ConnectionRole` is a correctness-boundary field, not observability metadata.** It governs `Pool.acquire` return-shape, `Pool.release` accept-shape, `Subscriber.connect` accept-shape, and the dedicated XREADGROUP loop's construction site. Role is set at `Connection.init` time via a `role: Role` parameter and is `const` for the connection's lifetime — boundary code (`Pool.release`, `Subscriber.connect`) asserts the role on receipt; nothing inside `Connection` mutates `self.role` after init. Three role-named constructors were considered (`initPooled` / `initDedicated` / `initSubscriber`) but rejected: same `Connection` return type means the role check stays runtime regardless, so the wrappers added LOC without adding compile-time safety.
 
 ```zig
 pub const Role = enum { pooled, blocking_consumer, subscriber };
 
-pub const ConnectionState = enum {
-    active,    // dialed, fd valid, ready for I/O
-    poisoned,  // RESP-ambiguous; must close on release, never reuse
-    closing,   // graceful teardown in progress
-    closed,    // close(fd) done; fd == INVALID_FD; terminal
-};
+// `ConnectionState` and `transitionTo` stay file-private — the invariants
+// they enforce (10, 14) operate inside Connection's own methods, and
+// boundary code reads `state` via the field with literal-typed comparisons
+// (`.poisoned` / `.active`). `INVALID_FD` is pub so slice-1 tests in
+// `redis_connection_test.zig` can verify Invariant 13's post-close zero.
 
-pub const INVALID_FD: std.posix.fd_t = -1;
+const Connection = @This();
 
-pub const Connection = struct {
-    role: Role,             // const after init — see Invariant 7
-    state: ConnectionState, // mutate ONLY via transitionTo() — see Invariant 14
-    fd: std.posix.fd_t,     // set to INVALID_FD after close — see Invariant 13
-    transport: Transport,
-    read_buf: []u8,
-    write_buf: []u8,
-    alloc: std.mem.Allocator,
+role: Role,              // const after init — see Invariant 7
+state: ConnectionState,  // mutate ONLY via transitionTo() — see Invariant 14
+fd: std.posix.fd_t,      // set to INVALID_FD after close — see Invariant 13
+transport: Transport,
+alloc: std.mem.Allocator,
+cfg: *const Config,      // borrowed from Pool / spawning thread
 
-    pub fn initPooled(alloc, cfg) !Connection { /* role = .pooled, state = .active */ }
-    pub fn initDedicated(alloc, cfg) !Connection { /* role = .blocking_consumer */ }
-    pub fn initSubscriber(alloc, cfg) !Connection { /* role = .subscriber */ }
+pub fn init(alloc, cfg, role: Role) !Connection {}
+pub fn deinit(self: *Connection) void {}
 
-    pub fn command(self: *Connection, argv: []const []const u8) RedisError!RespValue {
-        // PIPELINING FORBIDDEN — see spec §Invariants 12.
-        // One argv in, one RESP reply out, parser-boundary-exact.
-        // Residual bytes after the reply = poison the connection.
-        // Do NOT add pipelined command queuing. That path requires async
-        // machinery this design explicitly rejects.
-        ...
-    }
+// The source-side anchor comment `// PIPELINING FORBIDDEN — see spec
+// §Invariants 12.` is mandated by Invariant 12 and lives at the call site
+// in `redis_connection.zig`.
+pub fn command(self: *Connection, argv: []const []const u8) RedisError!RespValue {}
 
-    fn transitionTo(self: *Connection, new_state: ConnectionState) void {
-        // Enforces the legal-transition table; debug-assert on illegal.
-        // .closed is reachable exactly once (Invariant 14).
-    }
-
-    fn closeFd(self: *Connection) void {
-        if (self.fd != INVALID_FD) {
-            std.posix.close(self.fd);
-            self.fd = INVALID_FD;  // load-bearing — see Invariant 13
-        }
-    }
-};
+fn transitionTo(self: *Connection, new_state: ConnectionState) void {}
 ```
 
 **Legal `ConnectionState` transitions** (anything else asserts in debug):
@@ -229,7 +210,7 @@ The retry posture differs by operation and connection role. This table is the lo
 | **Pool** | `XADD zombie:{id}:events` | NO at Redis layer · **YES at PG layer** via `INSERT ON CONFLICT (zombie_id, event_id) DO NOTHING` on `core.zombie_events` | Resumable err → same conn, retry; Transport err → close conn (state→poisoned→closing→closed), dial fresh, retry | 2 | none (immediate) | After 2: surface `error.BrokenPipe` / `error.RedisCommandError` to caller |
 | **Pool** | `PUBLISH zombie:{id}:activity` | YES (pub/sub is lossy by design; dropped frames acceptable — durable record in `core.zombie_events`) | Same as XADD | 2 | none | After 2: log + drop frame (best-effort surface) |
 | **Pool** | `XACK zombie:{id}:events <stream_id>` | YES (XACK on already-acked entry is a no-op in Redis consumer groups) | Same as XADD | 2 | none | After 2: log + continue; PEL reclaim recovers via `XAUTOCLAIM` eventually |
-| **Dedicated** | Watcher `XREADGROUP zombie_workers ... zombie:control >` | YES (consumer-group resumes from PEL) | On any error: `Connection.deinit` (poisoned → closing → closed), sleep backoff, dial fresh via `Connection.initDedicated`, re-issue `XREADGROUP` | **unlimited** | exponential 100ms → 30s + 50% jitter | **Never** — watcher is durable; a 5-min Redis outage must not kill the thread |
+| **Dedicated** | Watcher `XREADGROUP zombie_workers ... zombie:control >` | YES (consumer-group resumes from PEL) | On any error: `Connection.deinit` (poisoned → closing → closed), sleep backoff, dial fresh via `Connection.init(alloc, cfg, .blocking_consumer)`, re-issue `XREADGROUP` | **unlimited** | exponential 100ms → 30s + 50% jitter | **Never** — watcher is durable; a 5-min Redis outage must not kill the thread |
 | **Dedicated** | Per-zombie worker `XREADGROUP zombie_workers ... zombie:{id}:events >` | YES (same CG semantics) | Same as watcher | **unlimited** | exponential 100ms → 30s + 50% jitter | **Never** — zombies are durable runtime instances; thread survives outage |
 | **Subscriber** | SSE `SUBSCRIBE zombie:{id}:activity` | YES (pub/sub lossy; missed frames fall back to durable `GET /events`) | On any error: `nextMessage` returns `null` → SSE handler closes the response → HTTP client reconnects → fresh `Subscriber.connect` in the new handler | **0** at Redis layer | n/a — retry is HTTP-layer responsibility | One-strike at the Redis-conn layer; **no internal Redis retry** |
 
@@ -486,7 +467,7 @@ try conn.exec(
 
 ### Ownership and lifecycle invariants (per round-2 + round-3 engg review)
 
-7. **A `Connection` has exactly one owner at a time.** Owner is either (a) the `Pool`'s idle list, (b) the caller of `Pool.acquire` until matched `Pool.release`, or (c) the thread that constructed it via `Connection.initDedicated` / `Connection.initSubscriber`. Cross-owner access is undefined behavior. Enforced by: `conn.role` is `const` after init; assertion in `Pool.release` rejects `role != .pooled`; test `test_release_into_pool_rejects_dedicated`.
+7. **A `Connection` has exactly one owner at a time.** Owner is either (a) the `Pool`'s idle list, (b) the caller of `Pool.acquire` until matched `Pool.release`, or (c) the thread that constructed it via `Connection.init(alloc, cfg, .blocking_consumer)` or `.subscriber`. Cross-owner access is undefined behavior. Enforced by: `conn.role` is set once at `init(role)` and `const` thereafter — no method on Connection mutates it; `Pool.release` asserts `role == .pooled`; `Subscriber.connect` asserts `role == .subscriber`; test `test_release_into_pool_rejects_dedicated`.
 
 8. **Pool-owned connections may never enter SUBSCRIBE mode.** SUBSCRIBE mutates the Redis connection-state machine — most commands return `ERR Can't execute 'X': only (P)SUBSCRIBE...` after SUBSCRIBE. A previously-SUBSCRIBEd connection cannot serve request-path commands. Enforced by: `Pool.acquire` returns `role == .pooled` connections only; `Subscriber.connect` accepts `role == .subscriber` connections only; both checks happen at the type-system / constructor boundary, not at command-dispatch time.
 
