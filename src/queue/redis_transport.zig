@@ -11,6 +11,8 @@ const log = logging.scoped(.redis_queue);
 /// Failures are logged at debug and swallowed — keepalive is a hardening, not
 /// a correctness guarantee; reconnect-on-error is the actual safety net.
 /// Applied automatically from each transport's init.
+const S_TRANSPORT_CONNECTED = "transport_connected";
+
 fn applyKeepalive(stream: std.net.Stream) void {
     const sock = stream.handle;
     const enable: c_int = 1;
@@ -58,7 +60,7 @@ pub const PlainTransport = struct {
         const write_buffer = try alloc.alloc(u8, 16 * 1024);
         errdefer alloc.free(write_buffer);
 
-        log.debug("transport_connected", .{ .mode = "plain" });
+        log.debug(S_TRANSPORT_CONNECTED, .{ .mode = "plain" });
 
         return .{
             .stream = stream,
@@ -147,7 +149,7 @@ const TlsTransport = struct {
             log.err("tls_handshake_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .host = host });
             return err;
         };
-        log.debug("transport_connected", .{ .mode = "tls", .host = host });
+        log.debug(S_TRANSPORT_CONNECTED, .{ .mode = "tls", .host = host });
     }
 
     pub fn deinit(self: *TlsTransport, alloc: std.mem.Allocator) void {

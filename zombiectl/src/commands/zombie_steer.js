@@ -20,6 +20,12 @@ import { EVENT_STATUS } from "../constants/event-status.js";
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
 
+const K_MISSING_ARGUMENT = "MISSING_ARGUMENT";
+const K_TIMEOUT = "timeout";
+const K_COMPLETE = "complete";
+const K_TOOL = "[tool]";
+const K_STRING = "string";
+
 export async function commandSteer(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
   // streamGet is optionally injectable for tests; production resolves to
@@ -34,12 +40,12 @@ export async function commandSteer(ctx, parsed, workspaces, deps) {
     return 1;
   }
   if (!zombieId) {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl steer <zombie_id> \"<message>\"", deps);
+    writeError(ctx, K_MISSING_ARGUMENT, "usage: zombiectl steer <zombie_id> \"<message>\"", deps);
     return 2;
   }
-  if (!message || typeof message !== "string" || message.trim().length === 0) {
+  if (!message || typeof message !== K_STRING || message.trim().length === 0) {
     // Interactive REPL is a follow-up; for now require a message.
-    writeError(ctx, "MISSING_ARGUMENT", "interactive steer is not yet implemented. Pass a message: zombiectl steer <zombie_id> \"<msg>\"", deps);
+    writeError(ctx, K_MISSING_ARGUMENT, "interactive steer is not yet implemented. Pass a message: zombiectl steer <zombie_id> \"<msg>\"", deps);
     return 2;
   }
 
@@ -59,22 +65,22 @@ export async function commandSteer(ctx, parsed, workspaces, deps) {
   // (network, server close) drop us to the polling fallback.
   let outcome = await tailEventStream(ctx, wsId, zombieId, eventId, deps, streamGet).catch((err) => ({ kind: "sse_error", err }));
 
-  if (outcome?.kind !== "complete") {
+  if (outcome?.kind !== K_COMPLETE) {
     outcome = await pollEventTerminal(ctx, wsId, zombieId, eventId, deps);
   }
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, { event_id: eventId, ...outcome });
-  } else if (outcome.kind === "complete") {
+  } else if (outcome.kind === K_COMPLETE) {
     writeLine(ctx.stdout);
     writeLine(ctx.stdout, ui.ok(`event ${eventId} ${outcome.status}`));
-  } else if (outcome.kind === "timeout") {
+  } else if (outcome.kind === K_TIMEOUT) {
     writeLine(ctx.stderr, ui.err(`event ${eventId} still in flight after ${Math.round(SSE_FALLBACK_TIMEOUT_MS / 1000)}s — check: zombiectl events ${zombieId}`));
   } else {
     writeLine(ctx.stderr, ui.err(`message failed: ${outcome.kind}${outcome.detail ? ` — ${outcome.detail}` : ""}`));
   }
 
-  return outcome.kind === "complete" && outcome.status === EVENT_STATUS.PROCESSED ? 0 : 1;
+  return outcome.kind === K_COMPLETE && outcome.status === EVENT_STATUS.PROCESSED ? 0 : 1;
 }
 
 async function tailEventStream(ctx, wsId, zombieId, eventId, deps, streamGet) {
@@ -87,21 +93,21 @@ async function tailEventStream(ctx, wsId, zombieId, eventId, deps, streamGet) {
     const payload = event.data;
     if (!payload || typeof payload !== "object") return undefined;
     if (payload.event_id && payload.event_id !== eventId) return undefined;
-    if (event.type === "chunk" && typeof payload.text === "string") {
+    if (event.type === "chunk" && typeof payload.text === K_STRING) {
       writeLine(ctx.stdout, `${ui.dim("[claw]")} ${payload.text}`);
       return undefined;
     }
-    if (event.type === "tool_call_started" && typeof payload.name === "string") {
-      writeLine(ctx.stdout, `${ui.dim("[tool]")} ${payload.name} starting`);
+    if (event.type === "tool_call_started" && typeof payload.name === K_STRING) {
+      writeLine(ctx.stdout, `${ui.dim(K_TOOL)} ${payload.name} starting`);
       return undefined;
     }
-    if (event.type === "tool_call_completed" && typeof payload.name === "string") {
+    if (event.type === "tool_call_completed" && typeof payload.name === K_STRING) {
       const ms = typeof payload.ms === "number" ? `${payload.ms}ms` : "";
-      writeLine(ctx.stdout, `${ui.dim("[tool]")} ${payload.name} done ${ms}`);
+      writeLine(ctx.stdout, `${ui.dim(K_TOOL)} ${payload.name} done ${ms}`);
       return undefined;
     }
     if (event.type === "event_complete") {
-      outcome = { kind: "complete", status: payload.status || "unknown" };
+      outcome = { kind: K_COMPLETE, status: payload.status || "unknown" };
       return false; // stop the stream
     }
     return undefined;
@@ -118,11 +124,11 @@ async function pollEventTerminal(ctx, wsId, zombieId, eventId, deps) {
     const res = await request(ctx, url, { method: "GET", headers: apiHeaders(ctx) }).catch(() => null);
     const match = res?.items?.find((row) => row.event_id === eventId);
     if (match && isTerminal(match.status)) {
-      return { kind: "complete", status: match.status };
+      return { kind: K_COMPLETE, status: match.status };
     }
     await new Promise((resolve) => setTimeout(resolve, FALLBACK_POLL_MS));
   }
-  return { kind: "timeout" };
+  return { kind: K_TIMEOUT };
 }
 
 // Redis stream IDs are `<ms>-<seq>`. The events endpoint's `since=` accepts

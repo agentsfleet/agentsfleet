@@ -37,6 +37,8 @@ const log = logging.scoped(.http_webhook_github);
 
 const Hx = hx_mod.Hx;
 
+const S_WEBHOOK_BODY_EXCEEDS_1_MIB = "Webhook body exceeds 1 MiB";
+
 const MAX_BODY_BYTES: usize = 1 * 1024 * 1024;
 const ACTOR = "webhook:github";
 const PROVIDER_DEDUP_NAMESPACE = "gh";
@@ -52,7 +54,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     if (req.header("content-length")) |cl_str| {
         const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
         if (cl > MAX_BODY_BYTES) {
-            hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, "Webhook body exceeds 1 MiB");
+            hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, S_WEBHOOK_BODY_EXCEEDS_1_MIB);
             return;
         }
     }
@@ -63,7 +65,7 @@ pub fn innerInvokeGithubWebhook(hx: Hx, req: *httpz.Request, zombie_id: []const 
     // Post-buffer guard: catches payloads sent without (or with a lying)
     // Content-Length header.
     if (body.len > MAX_BODY_BYTES) {
-        hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, "Webhook body exceeds 1 MiB");
+        hx.fail(ec.ERR_WEBHOOK_PAYLOAD_TOO_LARGE, S_WEBHOOK_BODY_EXCEEDS_1_MIB);
         return;
     }
 

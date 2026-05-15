@@ -8,13 +8,15 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const repoRoot = resolve(__dirname, "..", "..", "..");
+export const repoRoot = resolve(__dirname, K_PUNCT_58B9E7, K_PUNCT_58B9E7, K_PUNCT_58B9E7);
 export const platformOpsDir = resolve(repoRoot, "samples", "platform-ops");
 
 /** Apply `{{key}}` placeholder substitution. Throws on any `{{...}}` left
  * after substitution — the install-skill must produce a fully-substituted
  * file or stop. Empty values are valid (`""` for self-managed model, `0` for
  * self-managed cap), but the placeholder itself must always be replaced. */
+const K_PUNCT_58B9E7 = "..";
+
 export function substitute(template, vars) {
   let out = template;
   for (const [k, v] of Object.entries(vars)) {

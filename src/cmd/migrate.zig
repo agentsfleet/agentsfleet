@@ -9,6 +9,8 @@ const logging = @import("log");
 const log = logging.scoped(.zombied);
 
 const max_migrate_attempts = 3;
+const S_MIGRATOR = "migrator";
+
 const retry_delay_ms: u64 = 2_000;
 
 pub fn run(alloc: std.mem.Allocator) !void {
@@ -17,7 +19,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     var attempt: u32 = 1;
     while (true) {
-        log.info("migrate.connect_start", .{ .role = "migrator", .attempt = attempt, .max_attempts = max_migrate_attempts });
+        log.info("migrate.connect_start", .{ .role = S_MIGRATOR, .attempt = attempt, .max_attempts = max_migrate_attempts });
         const pool = db.initFromEnvForRole(alloc, .migrator) catch |err| {
             if (attempt < max_migrate_attempts and isRetryable(err)) {
                 log.warn("migrate.connect_retry", .{
@@ -32,7 +34,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
             }
             log.err("migrate.db_connect_failed", .{
                 .error_code = error_codes.ERR_STARTUP_DB_CONNECT,
-                .role = "migrator",
+                .role = S_MIGRATOR,
                 .err = @errorName(err),
             });
             preflight.deinitOtelLogs();

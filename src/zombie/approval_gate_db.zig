@@ -19,8 +19,9 @@ const logging = @import("log");
 const log = logging.scoped(.approval_gate_db);
 
 const reads = @import("approval_gate_db_reads.zig");
-const GateStatus = @import("approval_gate.zig").GateStatus;
-const ActionDetail = @import("approval_gate.zig").ActionDetail;
+const approval_gate = @import("approval_gate.zig");
+const GateStatus = approval_gate.GateStatus;
+const ActionDetail = approval_gate.ActionDetail;
 
 const PENDING_STATUS = GateStatus.pending.toSlice();
 

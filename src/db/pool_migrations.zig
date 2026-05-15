@@ -20,6 +20,9 @@ const types = @import("pool_types.zig");
 const Migration = types.Migration;
 const MigrationState = types.MigrationState;
 
+const S_PG_ERROR = "pg_error";
+const S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI = "SELECT 1 FROM audit.schema_migration_failures LIMIT 1";
+
 const MigrationAdvisoryLockKey: i64 = 0x7A6F6D6269650001;
 
 fn ensureAuditSchema(conn: *Conn) !void {
@@ -57,7 +60,7 @@ fn isMigrationApplied(conn: *Conn, version: i32) !bool {
 
 fn hasFailedMigrationRecords(conn: *Conn) !bool {
     var result = PgQuery.from(try conn.query(
-        "SELECT 1 FROM audit.schema_migration_failures LIMIT 1",
+        S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI,
         .{},
     ));
     defer result.deinit();
@@ -145,7 +148,7 @@ fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
 
 fn logPgErrorContext(conn: *Conn, op: []const u8) void {
     if (conn.err) |pg_err| {
-        log.err("pg_error", .{
+        log.err(S_PG_ERROR, .{
             .op = op,
             .error_code = error_codes.ERR_INTERNAL_DB_QUERY,
             .pg_code = pg_err.code,
@@ -159,7 +162,7 @@ fn logPgErrorContext(conn: *Conn, op: []const u8) void {
         }
         return;
     }
-    log.err("pg_error", .{
+    log.err(S_PG_ERROR, .{
         .op = op,
         .error_code = error_codes.ERR_INTERNAL_DB_QUERY,
         .message = "unknown",
@@ -223,7 +226,7 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
         if (err == error.PG) logPgErrorContext(conn, "inspect.table_exists audit.schema_migrations");
         return err;
     };
-    const has_schema_migration_failures = tableExists(conn, "SELECT 1 FROM audit.schema_migration_failures LIMIT 1") catch |err| {
+    const has_schema_migration_failures = tableExists(conn, S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI) catch |err| {
         if (err == error.PG) logPgErrorContext(conn, "inspect.table_exists audit.schema_migration_failures");
         return err;
     };

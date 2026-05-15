@@ -5,6 +5,15 @@ import { dirname, join } from "node:path";
 import { CommanderError, InvalidArgumentError } from "commander";
 
 import { openUrl } from "./lib/browser.js";
+const K_UNKNOWN = "unknown";
+const K_API = "--api=";
+const K_LOGIN = "login";
+const K_CLI_ERROR = "cli_error";
+const K_UNEXPECTED = "UNEXPECTED";
+const K_COMMANDER_UNKNOWNCOMMAND = "commander.unknownCommand";
+
+const K_PUNCT_CFAB1B = "--";
+
 import {
   cliAnalytics,
   drainCliAnalyticsEvents,
@@ -39,14 +48,14 @@ export const VERSION = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")).version;
 
 // Only `login` skips the preAction auth-guard. Subcommands of every
 // other root inherit the requirement.
-const AUTH_EXEMPT = new Set(["login"]);
+const AUTH_EXEMPT = new Set([K_LOGIN]);
 
 // Commander's built-in --version prints plain text and exits, which
 // can't satisfy `--version --json` or `--help --version → --version
 // wins`. Pre-scan argv so we render version ourselves.
 function maybePrintVersion(argv, stdout, jsonMode, env) {
   for (const token of argv) {
-    if (token === "--") break;
+    if (token === K_PUNCT_CFAB1B) break;
     if (token === "--version" || token === "-v") {
       if (jsonMode) {
         printJson(stdout, { version: VERSION });
@@ -64,7 +73,7 @@ function maybePrintVersion(argv, stdout, jsonMode, env) {
 
 function detectJsonMode(argv) {
   for (const token of argv) {
-    if (token === "--") return false;
+    if (token === K_PUNCT_CFAB1B) return false;
     if (token === "--json") return true;
   }
   return false;
@@ -74,9 +83,9 @@ function resolveGlobalApiUrl(argv, env) {
   let api = null;
   for (let i = 0; i < argv.length; i += 1) {
     const t = argv[i];
-    if (t === "--") break;
+    if (t === K_PUNCT_CFAB1B) break;
     if (t === "--api") { api = argv[i + 1] || null; break; }
-    if (t.startsWith("--api=")) { api = t.slice("--api=".length); break; }
+    if (t.startsWith(K_API)) { api = t.slice(K_API.length); break; }
   }
   return api || env.ZOMBIE_API_URL || env.API_URL || null;
 }
@@ -129,7 +138,7 @@ function installPreAction(program, ctx, state) {
 // Commander itself uses 1 for these — the legacy CLI used 2, the
 // did-you-mean / unknown-subcommand tests rely on that contract.
 const COMMANDER_USAGE_CODES = new Set([
-  "commander.unknownCommand",
+  K_COMMANDER_UNKNOWNCOMMAND,
   "commander.unknownOption",
   "commander.invalidArgument",
   "commander.missingArgument",
@@ -149,7 +158,7 @@ async function runPostActionAnalytics(lifecycle, state) {
   const { ctx, analyticsClient, distinctId } = lifecycle;
   const analyticsContext = getCliAnalyticsContext(ctx);
   let eventDistinctId = distinctId;
-  if (state.exitCode === 0 && lifecycle.lastCommand === "login") {
+  if (state.exitCode === 0 && lifecycle.lastCommand === K_LOGIN) {
     const latestCreds = await loadCredentials().catch(() => ({}));
     eventDistinctId = extractDistinctIdFromToken(latestCreds.token) || distinctId;
     cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, EVT_USER_AUTHENTICATED, {
@@ -165,7 +174,7 @@ async function runPostActionAnalytics(lifecycle, state) {
   }
   for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
     cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
-      command: lifecycle.lastCommand || "unknown",
+      command: lifecycle.lastCommand || K_UNKNOWN,
       ...analyticsContext,
       ...queuedEvent.properties,
     });
@@ -238,9 +247,9 @@ export async function runCli(argv, io = {}) {
       const exitCode = exitFromCommanderError(err, state);
       if (COMMANDER_USAGE_CODES.has(err.code)) {
         try {
-          cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-            command: lifecycle.lastCommand || "unknown",
-            error_code: err.code === "commander.unknownCommand" ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
+          cliAnalytics.trackCliEvent(analyticsClient, distinctId, K_CLI_ERROR, {
+            command: lifecycle.lastCommand || K_UNKNOWN,
+            error_code: err.code === K_COMMANDER_UNKNOWNCOMMAND ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
             exit_code: String(exitCode),
             ...getCliAnalyticsContext(ctx),
           });
@@ -255,14 +264,14 @@ export async function runCli(argv, io = {}) {
       writeLine(stderr, ui.err(`error: ${err.message}`));
       return 2;
     }
-    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-      command: lifecycle.lastCommand || "unknown",
-      error_code: "UNEXPECTED",
+    cliAnalytics.trackCliEvent(analyticsClient, distinctId, K_CLI_ERROR, {
+      command: lifecycle.lastCommand || K_UNKNOWN,
+      error_code: K_UNEXPECTED,
       exit_code: "1",
       ...getCliAnalyticsContext(ctx),
     });
     if (ctx.jsonMode) {
-      printJson(stderr, { error: { code: "UNEXPECTED", message: String(err?.message ?? err) } });
+      printJson(stderr, { error: { code: K_UNEXPECTED, message: String(err?.message ?? err) } });
     } else {
       writeLine(stderr, ui.err(`error: ${String(err?.message ?? err)}`));
     }

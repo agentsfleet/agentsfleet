@@ -21,6 +21,8 @@ const SkillMetadata = config_types.SkillMetadata;
 const ZombieConfigError = config_types.ZombieConfigError;
 
 /// Return value of the frontmatter scanner.
+const S_T_R_N = " \t\r\n";
+
 const Frontmatter = struct {
     yaml: []const u8, // slice between the opening and closing `---`
     body: []const u8, // slice after the closing `---`, trimmed
@@ -30,7 +32,7 @@ const Frontmatter = struct {
 /// slices (both borrowed from `markdown`). Returns null if no well-formed
 /// frontmatter block is present.
 fn scanFrontmatter(markdown: []const u8) ?Frontmatter {
-    const trimmed = std.mem.trim(u8, markdown, " \t\r\n");
+    const trimmed = std.mem.trim(u8, markdown, S_T_R_N);
     if (!std.mem.startsWith(u8, trimmed, "---")) return null;
 
     const after_open = trimmed[3..];
@@ -42,7 +44,7 @@ fn scanFrontmatter(markdown: []const u8) ?Frontmatter {
         after_close[1..]
     else
         after_close;
-    return .{ .yaml = yaml, .body = std.mem.trim(u8, body, " \t\r\n") };
+    return .{ .yaml = yaml, .body = std.mem.trim(u8, body, S_T_R_N) };
 }
 
 /// Return the index of the closing `\n---` in `haystack` such that the

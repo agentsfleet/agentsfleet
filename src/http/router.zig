@@ -3,6 +3,8 @@ const httpz = @import("httpz");
 const matchers = @import("route_matchers.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
 
+const S_EVENTS = "events";
+
 pub const Route = union(enum) {
     healthz,
     readyz,
@@ -130,7 +132,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceZombieMemoryByKey(p)) |r| return .{ .workspace_zombie_memory = r };
 
     // ── Workspace + zombie + action ───────────────────────────────────────
-    if (matchers.matchWorkspaceZombieAction(p, "events")) |r| return .{ .workspace_zombie_events = r };
+    if (matchers.matchWorkspaceZombieAction(p, S_EVENTS)) |r| return .{ .workspace_zombie_events = r };
     if (matchers.matchWorkspaceZombieAction(p, "messages")) |r| return .{ .workspace_zombie_messages = r };
     if (matchers.matchWorkspaceZombieAction(p, "memories")) |r| return .{ .workspace_zombie_memories = r };
     if (matchers.matchWorkspaceZombieAction(p, "integration-requests")) |r| return .{ .request_integration_grant = r };
@@ -148,7 +150,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchWorkspaceSuffix(p, "zombies")) |ws_id| return .{ .workspace_zombies = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "credentials")) |ws_id| return .{ .workspace_credentials = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "agent-keys")) |ws_id| return .{ .agent_keys = ws_id };
-    if (matchers.matchWorkspaceSuffix(p, "events")) |ws_id| return .{ .workspace_events = ws_id };
+    if (matchers.matchWorkspaceSuffix(p, S_EVENTS)) |ws_id| return .{ .workspace_events = ws_id };
     if (matchers.matchWorkspaceSuffix(p, "approvals")) |ws_id| return .{ .workspace_approvals = ws_id };
 
     // ── Webhook family (reserved-segment exclusions in the matchers make

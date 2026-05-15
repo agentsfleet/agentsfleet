@@ -27,6 +27,15 @@ const log = logging.scoped(.executor_handler);
 /// Error-response message bodies. Centralising these keeps each unique
 /// failure mode greppable (one place to find every message users see) and
 /// satisfies RULE UFS — string literals belong in named constants.
+const S_D = "\":{d},\"";
+const S_S_D_S_S = "{{\"{s}\":{d},\"{s}\":{s}}}";
+const S_ID_D_RESULT = "{{\"id\":{d},\"result\":{{\"";
+const S_RESULT = "result";
+const S_DEFAULT = "default";
+const S_D_2 = "\":{d}}}}}";
+const S_ID = "id";
+const S_TRUE = "true";
+
 const Msg = struct {
     const invalid_jsonrpc: []const u8 = "Invalid JSON-RPC request";
     const unknown_method: []const u8 = "Unknown method";
@@ -52,17 +61,17 @@ const Msg = struct {
 /// because they're JSON-RPC structural, not executor-protocol fields.
 const Fmt = struct {
     const create_response: []const u8 =
-        "{{\"id\":{d},\"result\":{{\"" ++ wire.execution_id ++ "\":\"{s}\"}}}}";
+        S_ID_D_RESULT ++ wire.execution_id ++ "\":\"{s}\"}}}}";
     const start_stage_response: []const u8 =
-        "{{\"id\":{d},\"result\":{{\"" ++ wire.content ++ "\":\"{s}\",\"" ++
-        wire.token_count ++ "\":{d},\"" ++ wire.wall_seconds ++ "\":{d},\"" ++
-        wire.exit_ok ++ "\":true,\"" ++ wire.memory_peak_bytes ++ "\":{d},\"" ++
-        wire.cpu_throttled_ms ++ "\":{d}}}}}";
+        S_ID_D_RESULT ++ wire.content ++ "\":\"{s}\",\"" ++
+        wire.token_count ++ S_D ++ wire.wall_seconds ++ S_D ++
+        wire.exit_ok ++ "\":true,\"" ++ wire.memory_peak_bytes ++ S_D ++
+        wire.cpu_throttled_ms ++ S_D_2;
     const get_usage_response: []const u8 =
-        "{{\"id\":{d},\"result\":{{\"" ++ wire.token_count ++ "\":{d},\"" ++
-        wire.wall_seconds ++ "\":{d},\"" ++ wire.exit_ok ++ "\":{s},\"" ++
-        wire.memory_peak_bytes ++ "\":{d},\"" ++ wire.cpu_throttled_ms ++ "\":{d},\"" ++
-        wire.memory_limit_bytes ++ "\":{d}}}}}";
+        S_ID_D_RESULT ++ wire.token_count ++ S_D ++
+        wire.wall_seconds ++ S_D ++ wire.exit_ok ++ "\":{s},\"" ++
+        wire.memory_peak_bytes ++ S_D ++ wire.cpu_throttled_ms ++ S_D ++
+        wire.memory_limit_bytes ++ S_D_2;
 };
 
 pub const Handler = struct {
@@ -134,7 +143,7 @@ pub const Handler = struct {
             return self.handleHeartbeat(alloc, id, params);
         } else if (std.mem.eql(u8, method, protocol.Method.stream_events)) {
             // StreamEvents is deferred to v1.1 — return success with empty events for now.
-            return std.fmt.allocPrint(alloc, "{{\"{s}\":{d},\"{s}\":[]}}", .{ "id", id, "result" });
+            return std.fmt.allocPrint(alloc, "{{\"{s}\":{d},\"{s}\":[]}}", .{ S_ID, id, S_RESULT });
         } else {
             return self.errorResponse(alloc, id, protocol.ErrorCode.method_not_found, Msg.unknown_method);
         }
@@ -224,7 +233,7 @@ pub const Handler = struct {
         const message = json.getStr(p, wire.message);
         const context = json.getObjectParam(p, wire.context);
 
-        const model_name = if (agent_config) |ac| json.getStr(ac, wire.model) orelse "default" else "default";
+        const model_name = if (agent_config) |ac| json.getStr(ac, wire.model) orelse S_DEFAULT else S_DEFAULT;
         log.info("runner_start", .{
             .execution_id = &hex,
             .zombie_id = session.correlation.zombie_id,
@@ -295,7 +304,7 @@ pub const Handler = struct {
         session.cancel();
         executor_metrics.incExecutorCancellations();
 
-        return std.fmt.allocPrint(alloc, "{{\"{s}\":{d},\"{s}\":{s}}}", .{ "id", id, "result", "true" });
+        return std.fmt.allocPrint(alloc, S_S_D_S_S, .{ S_ID, id, S_RESULT, S_TRUE });
     }
 
     fn handleGetUsage(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
@@ -313,7 +322,7 @@ pub const Handler = struct {
             id,
             usage.token_count,
             usage.wall_seconds,
-            if (usage.exit_ok) "true" else "false",
+            if (usage.exit_ok) S_TRUE else "false",
             usage.memory_peak_bytes,
             usage.cpu_throttled_ms,
             res_ctx.memory_limit_bytes,
@@ -332,7 +341,7 @@ pub const Handler = struct {
         self.alloc.destroy(session);
         executor_metrics.setExecutorSessionsActive(@intCast(self.store.activeCount()));
 
-        return std.fmt.allocPrint(alloc, "{{\"{s}\":{d},\"{s}\":{s}}}", .{ "id", id, "result", "true" });
+        return std.fmt.allocPrint(alloc, S_S_D_S_S, .{ S_ID, id, S_RESULT, S_TRUE });
     }
 
     fn handleHeartbeat(self: *Handler, alloc: std.mem.Allocator, id: u64, params: ?std.json.Value) ![]u8 {
@@ -345,7 +354,7 @@ pub const Handler = struct {
         const session = self.store.get(exec_id) orelse return self.errorResponse(alloc, id, protocol.ErrorCode.execution_failed, Msg.session_not_found);
         session.touchLease();
 
-        return std.fmt.allocPrint(alloc, "{{\"{s}\":{d},\"{s}\":{s}}}", .{ "id", id, "result", "true" });
+        return std.fmt.allocPrint(alloc, S_S_D_S_S, .{ S_ID, id, S_RESULT, S_TRUE });
     }
 
     fn errorResponse(self: *Handler, alloc: std.mem.Allocator, id: u64, code: i32, message: []const u8) ![]u8 {

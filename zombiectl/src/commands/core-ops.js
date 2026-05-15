@@ -1,5 +1,9 @@
 import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+const K_SERVER_INTERNAL_ERROR_THE_API_IS_DEGRADED_TRY_AGAI = "Server internal error — the API is degraded; try again shortly.";
+const K_GET = "GET";
+const K_SERVER_INTERNAL = "SERVER_INTERNAL";
+
 import {
   ERR_INTERNAL_DB_UNAVAILABLE,
   ERR_INTERNAL_DB_QUERY,
@@ -15,16 +19,16 @@ const PER_CHECK_TIMEOUT_MS = 5000;
 // authenticated leg.
 export const doctorErrorMap = compose(AUTH_PRESET, {
   [ERR_INTERNAL_DB_UNAVAILABLE]: {
-    code: "SERVER_INTERNAL",
+    code: K_SERVER_INTERNAL,
     message: "Database unavailable — the API is degraded; try again shortly.",
   },
   [ERR_INTERNAL_DB_QUERY]: {
-    code: "SERVER_INTERNAL",
-    message: "Server internal error — the API is degraded; try again shortly.",
+    code: K_SERVER_INTERNAL,
+    message: K_SERVER_INTERNAL_ERROR_THE_API_IS_DEGRADED_TRY_AGAI,
   },
   [ERR_INTERNAL_OPERATION_FAILED]: {
-    code: "SERVER_INTERNAL",
-    message: "Server internal error — the API is degraded; try again shortly.",
+    code: K_SERVER_INTERNAL,
+    message: K_SERVER_INTERNAL_ERROR_THE_API_IS_DEGRADED_TRY_AGAI,
   },
 });
 
@@ -42,7 +46,7 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
 
   try {
     const healthz = await request(ctx, HEALTHZ_PATH, {
-      method: "GET",
+      method: K_GET,
       timeoutMs: PER_CHECK_TIMEOUT_MS,
     });
     const ok = healthz?.status === HEALTHZ_STATUS_OK;
@@ -76,7 +80,7 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
   } else {
     try {
       await request(ctx, wsZombiesPath(wsId), {
-        method: "GET",
+        method: K_GET,
         headers: apiHeaders(ctx),
         timeoutMs: PER_CHECK_TIMEOUT_MS,
       });

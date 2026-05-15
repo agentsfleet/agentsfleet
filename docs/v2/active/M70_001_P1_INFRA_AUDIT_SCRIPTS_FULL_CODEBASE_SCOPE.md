@@ -79,29 +79,41 @@ Project repos pick this up via the next `bin/sync-agents` run; no per-project fi
 
 ## Sections (implementation slices)
 
-### §1 — `audit-ufs.sh` complete the conversion
+### §1 — `audit-ufs.sh` complete the conversion — DONE
 
-The cross-runtime-orphan check is already full-codebase. Convert string-dup-file and numeric-suspect to the same shape: enumerate files via `git ls-files`, walk every source file, accumulate the per-file violation list. Drop the `--diff` default; keep it as an opt-in mode if iterative use justifies it (decide based on actual dev workflow — if no one uses it, delete the mode entirely per RULE NDC).
+Default mode = full-codebase walk via `git ls-files`. `--diff` retired (RULE NDC; zero callers post-harness.mk update); `--all` kept as back-compat alias. Single awk pass over all files for string-dup-file + numeric-suspect (was 5 forks × ~760 files); cross-runtime grep batched (`xargs -I{} grep` → `xargs grep -h`). Benchmark: 40s → 4s. Latent `while record` subshell bug preserved deliberately — fixing it surfaces ~3019 pre-existing string-dup violations (separate cleanup spec). Landed dotfiles `a55d677`.
 
-### §2 — `audit-design-tokens.sh` flip default
+### §2 — `audit-design-tokens.sh` flip default — DONE
 
-Change default from `--diff` to a new `--all`-equivalent mode. Same `git ls-files`-driven file enumeration. Iterative `--diff`/`--staged` stay as opt-in.
+Default flipped from `--diff` to `--all`-equivalent (full ui/packages walk via `git ls-files`). `--staged` preserved as opt-in narrowing for iterative dev. `--diff` rejected with exit 2 + pointer to gate body. Single grep per pattern across all scoped files (was per-pattern × per-file). Benchmark: 3.5s → 0.8s. Landed dotfiles `a55d677`.
 
-### §3 — `audit-combined.sh` per-check decision
+### §3 — `audit-msid-ui.sh` per-check decision — DONE
 
-This script's three sub-checks (MS-ID, PUB, UI substitution) all assert on *added* content (`^\+` lines from a unified diff). Converting to full-codebase means asserting on file *state*, which changes the rule semantics. Implementation default: leave the diff-shaped checks alone; document in the script header *why* they are diff-shaped (the rule itself is "don't introduce X", not "X must not exist anywhere"). If any sub-check has a state-shaped equivalent, add it as a sibling check rather than rewriting the diff one.
+Renamed by Captain from `audit-combined.sh` to `audit-msid-ui.sh` mid-flow (dotfiles `a2fd057` dropped the PUB clause — `zlint`'s `unused-decls: error` now owns pub-surface parity). Script stays diff-shaped (`--staged` default for pre-commit, `--diff` for periodic deep audit). Header docstring documents per-check rationale: MS-ID flags milestone identifiers added in this commit, UI flags raw HTML primitives added now; legacy raw-HTML cleaned by RULE NLR not by this audit. Landed dotfiles `a55d677` + Captain's `a2fd057`.
 
-### §4 — Four `--all`-default scripts harness-mode flip
+### §4 — Harness-mode flip — DONE
 
-`audit-deinit-pairs`, `audit-error-codes`, `audit-logging`, `audit-spec-template` already default to `--all`. The change here is in `make/harness.mk`: `harness-verify` calls them with `--staged` today, which limits the scope to staged files. Drop the `--staged` argument so they use their own default. Keep the `--staged` mode in each script for opt-in narrowing during iterative loops.
+`make/harness.mk` `harness-verify` target invokes every audit with no scope flag (default = full-codebase) except `audit-msid-ui.sh --staged` (diff-shaped by construction). `harness-verify-all` similarly: full-codebase for the converted scripts, `--diff` for the diff-shaped one. **Correction to original draft:** `make/harness.mk` lives in the project repo (usezombie), not dotfiles. Each project repo owns its own harness wiring. Landed usezombie `e650cb6e`.
 
-### §5 — Gate-body documentation pass
+### §5 — Gate-body documentation pass — DONE
 
-Every `docs/gates/<slug>.md` for the affected scripts gets a one-paragraph "Scope" section explaining what the script scans (full working tree via `git ls-files`) and when the iterative modes are appropriate. Plus the rationale: pre-commit `HEAD` is the prior commit, so partial-scope checks based on `BASE...HEAD` are blind to the index.
+`docs/gates/{ufs,design-token,spec-template,error-registry,logging,lifecycle}.md` each carry a "Scope (M70)" section documenting full-codebase semantics + the M68 `02c1f3cf` forcing function (pre-commit `HEAD` is the prior commit; `BASE...HEAD` checks were blind to the index). Landed dotfiles `a55d677`.
 
-### §6 — Invariance suite extension
+### §6 — Invariance suite extension — DONE
 
-Add one Scenario question to `AGENTS_INVARIANCE.md`: "When pre-commit invokes an audit script, does the script see staged content?" — expected YES. The scenario verifies the change persists; if a future edit reverts a script to diff-only default, the questionnaire surfaces it.
+`AGENTS_INVARIANCE.md` Scenario 22 added (4 questions covering full-codebase scope, `--diff` retirement, `audit-msid-ui.sh` carve-out, and gate-body Scope-section discipline). Verdict-table row 22 added. Question 4.1c text fix-up — removed stale `--diff` reference. Questionnaire all-YES against AGENTS.md HEAD = `d0f3bf6`, signoff PASS, pushed clean. Landed dotfiles `d0f3bf6` + `a55d677`.
+
+### §7 — Perf bonus (audit-logging + audit-deinit-pairs) — DONE
+
+Surfaced during HARNESS VERIFY budget check. audit-logging: 22s → 4.8s (single-awk Section 2; batched grep Sections 3+5; pre-computed zig/js non-test file subsets). audit-deinit-pairs: 17s → 3.2s (pre-computed `files_with_cleanup` set in one batched grep -lE; per-init body-window awk preserved; Section 3 defer/errdefer awk consolidated with per-file `flush()` on `FNR == 1`). Total `make harness-verify` sequential: 48s → 10.02s. Landed dotfiles `56e578e`. **Acceptance budget set at 15s by Captain (was ≤10s aspirational).**
+
+### §8 — Bonus cleanup surfaced by M70 (A1 + B1) — DONE
+
+Full-codebase scope's first run flagged two clusters on `main` that `BASE...HEAD` had been blind to. Both fixed in usezombie `7671769b`:
+
+**A1 — cross-runtime naming drift** (9 UFS orphans). JS `ERR_*` consts whose UZ-* codes were declared in Zig under different identifiers. Captain's decision: rename JS to match Zig (server is source of truth). 7 renames, 1 delete (`ERR_GRANT_REVOKED`, 0 consumers), 1 add (`pub const ERR_BILLING_UNAVAILABLE = "UZ-BILLING-001"` in Zig — the dead-server / live-CLI case). Callers updated in `zombiectl/src/commands/{billing,core-ops,zombie}.js` + `zombiectl/test/error-codes.unit.test.js`. Also promoted `ERR_WORKSPACE_FREE_LIMIT` from private const to `pub const` for cross-runtime parity.
+
+**B1 — raw-literal map keys** (18 ERROR REGISTRY hits). `zombiectl/src/lib/error-map-presets.js` rewritten to use computed-key `[ERR_X]:` syntax importing from `zombiectl/src/constants/error-codes.js`. Single source of truth: each `UZ-*` literal lives in one JS file (mirroring Zig); typos fail at import time. Captain's framing ("since i need a single source of truth") drove the B1 over B2 choice.
 
 ---
 

@@ -10,6 +10,8 @@
 
 const std = @import("std");
 
+const S_WORKFLOW_RUN = "workflow_run";
+
 pub const FilterDecision = struct {
     ingest: bool,
     reason: []const u8,
@@ -17,14 +19,14 @@ pub const FilterDecision = struct {
 
 const ACTION_COMPLETED = "completed";
 const CONCLUSION_FAILURE = "failure";
-pub const EVENT_WORKFLOW_RUN = "workflow_run";
+pub const EVENT_WORKFLOW_RUN = S_WORKFLOW_RUN;
 
 pub fn filterParsedRoot(root: std.json.ObjectMap) ?FilterDecision {
     const action = stringField(root.get("action")) orelse "";
     if (!std.mem.eql(u8, action, ACTION_COMPLETED)) {
         return .{ .ingest = false, .reason = "non_completed_action" };
     }
-    const wr = switch (root.get("workflow_run") orelse return null) {
+    const wr = switch (root.get(S_WORKFLOW_RUN) orelse return null) {
         .object => |o| o,
         else => return null,
     };
