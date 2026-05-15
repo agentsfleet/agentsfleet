@@ -42,6 +42,7 @@ import {
 } from "../commands/billing.js";
 import {
   commandInstall,
+  commandUpdate,
   commandStatus,
   commandStop,
   commandResume,
@@ -116,6 +117,7 @@ export function buildHandlers(lifecycle) {
     },
     zombie: {
       install: wrap("zombie.install", zombieErrorMap, commandInstall),
+      update:  wrap("zombie.update",  zombieErrorMap, commandUpdate),
       list:    wrap("zombie.list",    zombieErrorMap, commandZombieList),
       status:  wrap("zombie.status",  zombieErrorMap, commandStatus),
       stop:    wrap("zombie.stop",    zombieErrorMap, commandStop),

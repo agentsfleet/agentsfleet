@@ -47,6 +47,7 @@ export function makeSpyTree() {
     },
     zombie: {
       install: spy("zombie.install"),
+      update: spy("zombie.update"),
       list: spy("zombie.list"),
       status: spy("zombie.status"),
       stop: spy("zombie.stop"),
