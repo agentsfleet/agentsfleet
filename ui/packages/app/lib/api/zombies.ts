@@ -1,4 +1,5 @@
 import { API_ORIGIN, request } from "./client";
+import { requestWithRetry, type RetryOptions } from "./retry";
 import { ApiError } from "./errors";
 import type {
   InstallZombieRequest,
@@ -129,8 +130,9 @@ export async function steerZombie(
   zombieId: string,
   message: string,
   token: string,
+  retry?: RetryOptions,
 ): Promise<{ event_id: string }> {
-  return request<{ event_id: string }>(
+  return requestWithRetry<{ event_id: string }>(
     `/v1/workspaces/${workspaceId}/zombies/${zombieId}/messages`,
     {
       method: "POST",
@@ -138,5 +140,6 @@ export async function steerZombie(
       body: JSON.stringify({ message }),
     },
     token,
+    retry,
   );
 }
