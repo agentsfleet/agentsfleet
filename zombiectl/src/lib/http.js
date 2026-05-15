@@ -211,7 +211,7 @@ export async function streamFetch(url, payload, headers, onEvent, options = {}) 
   try {
     const res = await fetchImpl(url, {
       method: "POST",
-      headers: { ...headers, K_CONTENT_TYPE: K_APPLICATION_JSON, "Accept": "text/event-stream" },
+      headers: { ...headers, [K_CONTENT_TYPE]: K_APPLICATION_JSON, "Accept": "text/event-stream" },
       body: JSON.stringify(payload),
       signal: ctrl.signal,
     });
@@ -266,7 +266,7 @@ function parseSseFrame(frame) {
 
 export function authHeaders(auth) {
     const headers = {
-        K_CONTENT_TYPE: K_APPLICATION_JSON,
+        [K_CONTENT_TYPE]: K_APPLICATION_JSON,
     };
 
     if (auth?.token) {

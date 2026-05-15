@@ -1,33 +1,16 @@
 // Single source of truth for the zombiectl command tree. buildProgram
 // returns a configured commander.Command — cli.js wires creds, ctx,
 // analytics, and the preAction auth-guard around it. Pure construction;
-// no I/O at module load.
-//
-// Each .action() callback constructs `parsed = { options, positionals }`
-// from commander's parsed opts + args so the existing leaf handlers
-// (which already accept that shape) keep their internal signatures.
-// Option validators come from validators.js and throw
-// InvalidArgumentError on rejection, which commander catches and
-// renders as `error: option '--foo <v>' argument '<x>' is invalid. <why>`
-// then exits 2.
+// no I/O at module load. Each .action() callback constructs
+// `parsed = { options, positionals }` from commander's parsed opts +
+// args so the existing leaf handlers keep their internal signatures.
+// Validators come from validators.js and throw InvalidArgumentError on
+// rejection, which commander catches as `error: option '--foo <v>'
+// argument '<x>' is invalid. <why>` then exits 2.
 
 import { Command } from "commander";
 import { ZombieHelp, styleTagline } from "./help.js";
-const K_WORKSPACE_ID_ID = "--workspace-id <id>";
-const K_CURSOR_TOKEN = "--cursor <token>";
-const K_LIST = "list";
-const K_ZOMBIE_ID = "Zombie ID";
-const K_LOGOUT = "logout";
-const K_LOGIN = "login";
-const K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE = "next_cursor from a previous page";
-const K_WORKSPACE_ID = "Workspace ID";
-const K_LIMIT_N = "--limit <n>";
-const K_WORKSPACE_ID_2 = "--workspace <id>";
-const K_DOCTOR = "doctor";
-const K_SHOW = "show";
-const K_ADD = "add";
-const K_ZOMBIE_ID_2 = "--zombie <id>";
-const K_PAGE_SIZE = "Page size";
+import { K_WORKSPACE_ID_ID, K_CURSOR_TOKEN, K_LIST, K_ZOMBIE_ID, K_LOGOUT, K_LOGIN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE, K_WORKSPACE_ID, K_LIMIT_N, K_WORKSPACE_ID_2, K_DOCTOR, K_SHOW, K_ADD, K_ZOMBIE_ID_2, K_PAGE_SIZE } from "./cli-tree-consts.js";
 
 import {
   parseIntOption,
