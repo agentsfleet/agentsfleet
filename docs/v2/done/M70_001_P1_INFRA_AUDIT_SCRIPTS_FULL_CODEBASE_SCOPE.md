@@ -4,7 +4,7 @@
 **Milestone:** M70
 **Workstream:** 001
 **Date:** May 15, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — pre-commit gates that silently fail to catch invariants are worse than no gate.
 **Categories:** INFRA
 **Batch:** B1
