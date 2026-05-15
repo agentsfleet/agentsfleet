@@ -41,12 +41,12 @@ export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
     message: "Credential JSON is invalid — must be a non-empty object ≤ 4 KiB.",
   },
   [ERR_CRED_ANTHROPIC_KEY_MISSING]: {
-    code: "CREDENTIAL_NOT_FOUND",
-    message: "Credential not found in this workspace.",
+    code: "ANTHROPIC_KEY_MISSING",
+    message: "Anthropic API key missing — workspace LLM API key not found in vault.secrets (key: anthropic_api_key). Set it via the workspace credentials API. Executor fell back to process env — check ANTHROPIC_API_KEY on the worker if dev mode.",
   },
   [ERR_CRED_PLATFORM_KEY_MISSING]: {
-    code: "CREDENTIAL_NAME_INVALID",
-    message: "Credential name is invalid — use lowercase letters, digits, and dashes.",
+    code: "PLATFORM_LLM_KEY_MISSING",
+    message: "Platform LLM key missing — no active platform LLM key for this provider. Admin must set one via PUT /v1/admin/platform-keys, or the workspace must add its own key via PUT /v1/workspaces/{id}/credentials/llm.",
   },
   [ERR_EXEC_RUNNER_AGENT_RUN]: {
     code: "ZOMBIE_RUNNER_FAILED",

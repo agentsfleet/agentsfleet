@@ -15,14 +15,14 @@ import {
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import { TENANT_PROVIDER_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
-const K_FIELD = "FIELD";
+const K_FIELD_LABEL = "FIELD";
 const K_PROVIDER = "provider";
 const K_CONTEXT_CAP_TOKENS = "context_cap_tokens";
-const K_FIELD_2 = "field";
-const K_VALUE = "value";
+const K_FIELD_KEY = "field";
+const K_VALUE_KEY = "value";
 const K_CREDENTIAL_REF = "credential_ref";
 const K_MODE = "mode";
-const K_VALUE_2 = "VALUE";
+const K_VALUE_LABEL = "VALUE";
 const K_NUMBER = "number";
 const K_GET = "GET";
 const K_MODEL = "model";
@@ -60,8 +60,8 @@ export async function commandTenantProviderShow(ctx, _parsed, _workspaces, deps)
   }
 
   printTable(ctx.stdout, [
-    { key: K_FIELD_2, label: K_FIELD },
-    { key: K_VALUE, label: K_VALUE_2 },
+    { key: K_FIELD_KEY, label: K_FIELD_LABEL },
+    { key: K_VALUE_KEY, label: K_VALUE_LABEL },
   ], [
     { field: K_MODE,                value: res.mode ?? K_EM_DASH },
     { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
@@ -108,8 +108,8 @@ export async function commandTenantProviderAdd(ctx, parsed, _workspaces, deps) {
   writeLine(ctx.stdout, ui.ok(`Tenant provider added: mode=${PROVIDER_MODE.self_managed} credential=${credentialRef}`));
   writeLine(ctx.stdout);
   printTable(ctx.stdout, [
-    { key: K_FIELD_2, label: K_FIELD },
-    { key: K_VALUE, label: K_VALUE_2 },
+    { key: K_FIELD_KEY, label: K_FIELD_LABEL },
+    { key: K_VALUE_KEY, label: K_VALUE_LABEL },
   ], [
     { field: K_MODE,                value: res.mode ?? K_EM_DASH },
     { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
@@ -140,8 +140,8 @@ export async function commandTenantProviderDelete(ctx, _parsed, _workspaces, dep
   writeLine(ctx.stdout, ui.ok("Tenant provider deleted; using platform default."));
   writeLine(ctx.stdout);
   printTable(ctx.stdout, [
-    { key: K_FIELD_2, label: K_FIELD },
-    { key: K_VALUE, label: K_VALUE_2 },
+    { key: K_FIELD_KEY, label: K_FIELD_LABEL },
+    { key: K_VALUE_KEY, label: K_VALUE_LABEL },
   ], [
     { field: K_MODE,                value: res.mode ?? K_EM_DASH },
     { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },

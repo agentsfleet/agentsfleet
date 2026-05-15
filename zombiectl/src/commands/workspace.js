@@ -16,9 +16,9 @@ import {
   EVT_WORKSPACE_DELETED,
 } from "../constants/analytics-events.js";
 
-const K_WORKSPACE_ID = "workspace_id";
-const K_WORKSPACE_ID_2 = "workspace-id";
-const K_WORKSPACEID = "workspaceId";
+const K_WORKSPACE_ID_FIELD = "workspace_id";
+const K_WORKSPACE_ID_OPT_KEBAB = "workspace-id";
+const K_WORKSPACE_ID_OPT_CAMEL = "workspaceId";
 const K_EM_DASH = "—";
 
 // Covers workspace add/list/use/show/delete/credentials. Auth codes
@@ -97,7 +97,7 @@ export async function workspaceList(ctx, _parsed, workspaces, deps) {
     ctx.stdout,
     [
       { key: "active", label: "ACTIVE" },
-      { key: K_WORKSPACE_ID, label: "WORKSPACE" },
+      { key: K_WORKSPACE_ID_FIELD, label: "WORKSPACE" },
       { key: "name", label: "NAME" },
     ],
     workspaces.items.map((item) => ({
@@ -111,12 +111,12 @@ export async function workspaceList(ctx, _parsed, workspaces, deps) {
 
 export async function workspaceUse(ctx, parsed, workspaces, deps) {
   const { printJson, saveWorkspaces, ui, writeLine } = deps;
-  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, K_WORKSPACEID, K_WORKSPACE_ID_2);
+  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, K_WORKSPACE_ID_OPT_CAMEL, K_WORKSPACE_ID_OPT_KEBAB);
   if (!workspaceId) {
     writeError(ctx, USAGE_ERROR, "workspace use requires <workspace_id>", deps);
     return 2;
   }
-  const check = validateRequiredId(workspaceId, K_WORKSPACE_ID);
+  const check = validateRequiredId(workspaceId, K_WORKSPACE_ID_FIELD);
   if (!check.ok) {
     writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;
@@ -140,7 +140,7 @@ export async function workspaceUse(ctx, parsed, workspaces, deps) {
 
 export async function workspaceShow(ctx, parsed, workspaces, deps) {
   const { printJson, printKeyValue, printSection = () => {} } = deps;
-  const optionId = resolveOption(parsed.options, K_WORKSPACEID, K_WORKSPACE_ID_2);
+  const optionId = resolveOption(parsed.options, K_WORKSPACE_ID_OPT_CAMEL, K_WORKSPACE_ID_OPT_KEBAB);
   const workspaceId = optionId || parsed.positionals[0] || workspaces.current_workspace_id;
   if (!workspaceId) {
     writeError(ctx, NO_WORKSPACE, "no active workspace — run \"zombiectl workspace use <id>\" or pass --workspace-id", deps);
@@ -183,12 +183,12 @@ export async function workspaceCredentials(ctx, _parsed, _workspaces, deps) {
 
 export async function workspaceDelete(ctx, parsed, workspaces, deps) {
   const { printJson, saveWorkspaces, ui, writeLine } = deps;
-  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, K_WORKSPACEID, K_WORKSPACE_ID_2);
+  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, K_WORKSPACE_ID_OPT_CAMEL, K_WORKSPACE_ID_OPT_KEBAB);
   if (!workspaceId) {
     writeError(ctx, USAGE_ERROR, "workspace delete requires <workspace_id>", deps);
     return 2;
   }
-  const check = validateRequiredId(workspaceId, K_WORKSPACE_ID);
+  const check = validateRequiredId(workspaceId, K_WORKSPACE_ID_FIELD);
   if (!check.ok) {
     writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;
