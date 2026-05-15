@@ -4,11 +4,11 @@
 **Milestone:** M70
 **Workstream:** 001
 **Date:** May 15, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — pre-commit gates that silently fail to catch invariants are worse than no gate.
 **Categories:** INFRA
 **Batch:** B1
-**Branch:** feat/m70-audit-scripts-full-codebase (to be created)
+**Branch:** feat/m70-audit-scripts-full-codebase
 **Depends on:** None — pure harness work; can land independently of any in-flight feature spec.
 **Provenance:** LLM-drafted (claude-opus-4-7, 2026-05-15) from the M68 §10b post-mortem after `audit-ufs.sh` slipped a `cross-runtime-orphan` violation past pre-commit.
 
@@ -19,7 +19,7 @@
 ## Implementing agent — read these first
 
 1. `~/Projects/dotfiles/scripts/audit-ufs.sh` — the only script already converted to full-codebase scope (cross-runtime-orphan check). Mirror this pattern: `git ls-files <glob>` to enumerate the working tree (sees the index, so pre-commit-friendly), then `xargs grep` to extract symbols.
-2. `~/Projects/dotfiles/make/harness.mk` — sets the per-script mode flags (`--diff`, `--staged`, `--all`). The `harness-verify` target is what pre-commit invokes; `harness-verify-all` is the periodic deep variant.
+2. `~/Projects/usezombie/make/harness.mk` — sets the per-script mode flags (`--diff`, `--staged`, `--all`). The `harness-verify` target is what pre-commit invokes; `harness-verify-all` is the periodic deep variant. **Correction to original draft:** this file lives in the project repo (usezombie), not dotfiles; dotfiles carries no `make/` directory. Each project repo owns its own harness wiring.
 3. `~/Projects/dotfiles/AGENTS.md` (Action-Triggered Guards table, rows 9–18 — every gate body lives in `docs/gates/<slug>.md` and the table cites the script). Update each gate body when its script's scope changes.
 4. The post-mortem in M68_001's commit `<hash to be filled>` "fix(zombiectl): rename ERR_AUTH_* JS exports …" — explains *why* the slip happened (pre-commit `HEAD` is the prior commit; staged content lives in the index, not in `BASE...HEAD`).
 
@@ -64,7 +64,7 @@ The four `--all`-default scripts (`audit-deinit-pairs`, `audit-error-codes`, `au
 | `~/Projects/dotfiles/scripts/audit-error-codes.sh` | EDIT | Same as audit-deinit-pairs. |
 | `~/Projects/dotfiles/scripts/audit-logging.sh` | EDIT | Same. |
 | `~/Projects/dotfiles/scripts/audit-spec-template.sh` | EDIT | Same. |
-| `~/Projects/dotfiles/make/harness.mk` | EDIT | Drop the `--staged`/`--diff` arguments from `harness-verify` calls; let each script default. Keep `harness-verify-all` for periodic deep audits if it adds anything beyond default. |
+| `~/Projects/usezombie/make/harness.mk` | EDIT | Drop the `--staged`/`--diff` arguments from `harness-verify` calls; let each script default. Keep `harness-verify-all` for periodic deep audits if it adds anything beyond default. *(Lives in the project repo, not dotfiles.)* |
 | `~/Projects/dotfiles/docs/gates/ufs.md` | EDIT | Document the cross-runtime-orphan + string-dup-file + numeric-suspect scope changes. |
 | `~/Projects/dotfiles/docs/gates/design-token.md` | EDIT | Document the scope change. |
 | `~/Projects/dotfiles/docs/gates/spec-template.md` | EDIT | Same. |
