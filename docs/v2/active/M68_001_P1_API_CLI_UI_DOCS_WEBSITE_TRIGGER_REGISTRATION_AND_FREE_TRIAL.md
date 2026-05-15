@@ -514,6 +514,7 @@ In-scope this PR (CLI-only, no handshake changes):
 - **D28 — Error taxonomy (I).** Distinguish `InvalidSession` / `ExpiredSession` / `NetworkError` / `RateLimited` / `Timeout` / `Interrupted`. Tightens the existing AUTH_PRESET map. No new error pathways — purely a remap of conditions zombiectl already encounters.
 - **D29 — Exp-backoff polling with jitter (J).** Start 1s, grow to 5s, ±20% jitter, honor server `Retry-After` if sent. Caps polling RPS during retry storms.
 - **D30 — Polling transient-retry (K).** Single 503 / network blip during the poll loop doesn't kill the session — log + continue.
+- **D31 — `zombiectl auth status` companion (L). — DONE (un-deferred per Captain).** Landed client-only: no new server endpoint required. Resolves token source (file vs env vs none), decodes JWT claims via the existing `decodeTokenPayload` helper (`iss`/`aud`/`sub`/`metadata.tenant_id`/`metadata.role`/`exp`), then probes `GET /v1/tenants/me/billing` (existing authenticated endpoint per AUTH.md test infra) as the validity check. Probe outcomes — `valid` (200), `unauthorized` (UZ-AUTH-001/002 or TOKEN_EXPIRED/UNAUTHORIZED tag), `unreachable` (network / 5xx) — drive exit code: 0 for valid|unreachable (token still trusted; transient API issues don't poison local state), 1 for unauthorized. Defensive `probe ?? { status: "unreachable" }` guard added per Captain's null-safety review since zombiectl is plain JS with no type checker. Eight unit tests in `test/auth-status.unit.test.js` pin: no-creds-no-env → exit 1; file-with-valid → exit 0 + tenant_id/role/server_check rendered; env-only → source=env + saved_at null; unauthorized → exit 1; unreachable → exit 0; expired JWT → token.expired=true; file token wins over env (file source); malformed JWT → token=null but probe still runs. New `auth` subcommand group declared in `cli-tree.js` (under top-level Commands, before `doctor`); `auth status` listed in the Subcommands help block. Golden help file regenerated.
 
 Deferred to **cli-auth handshake hardening** sibling spec (`HANDOFF_SUPABASE_HARDENING_SPEC.md`):
 
@@ -522,7 +523,6 @@ Deferred to **cli-auth handshake hardening** sibling spec (`HANDOFF_SUPABASE_HAR
 - **D24 — Token validation before save (E).** The `/me` ping endpoint shape is decided by the handshake redesign (today no auth introspection endpoint exists — Flow 3's `core.api_keys` is service-to-service, separate from Flow 1's Clerk JWT path).
 - **D25 — Argv-leak warning (F).** `--token` flag doesn't exist in `cli-tree.js` today; adding it is itself a new auth pathway ("direct token mode") that the sibling spec's multi-mode token resolution will introduce.
 - **D26 — TTY-priority env resolution (G).** Same reason as D25 — `ZMB_TOKEN`/`ZOMBIE_TOKEN` env-token reading doesn't exist in commandLogin today; it lands with the new pathways.
-- **D31 — `zombiectl auth status` companion (L).** Needs the token-introspection endpoint shape the sibling spec resolves.
 - **D32 — `zombiectl logout --all` (M).** Needs the server-side revocation design the sibling spec resolves (Clerk JWTs are stateless; revocation is non-trivial).
 
 ---

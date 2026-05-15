@@ -13,6 +13,7 @@ Options:
 Commands:
   login [options]               Authenticate via browser
   logout                        Clear stored credentials
+  auth                          Inspect authentication state
   doctor                        Diagnose CLI configuration and connectivity
   workspace                     Manage workspaces
   agent                         Manage external agent API keys
@@ -34,6 +35,7 @@ Commands:
   help [command]                display help for command
 
 Subcommands:
+  auth status
   workspace add
   workspace list
   workspace use

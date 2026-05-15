@@ -86,6 +86,7 @@ function buildDeps() {
     apiHeaders,
     clearCredentials,
     createSpinner,
+    loadCredentials,
     newIdempotencyKey,
     openUrl,
     printJson,

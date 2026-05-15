@@ -34,6 +34,7 @@ function helpTail() {
   // expect both. addHelpText is additive — it does not override
   // formatHelp, so commander still owns the layout above.
   const subcommands = [
+    "auth status",
     "workspace add", "workspace list", "workspace use", "workspace show",
     "workspace credentials", "workspace delete",
     "agent add", "agent list", "agent delete",
@@ -126,6 +127,12 @@ export function buildProgram({ handlers, version, state, helpFactory }) {
     .command("logout")
     .description("Clear stored credentials")
     .action(actionFor("logout", (frame) => runHandler(state, frame, handlers.logout)));
+
+  const auth = program.command("auth").description("Inspect authentication state");
+  auth
+    .command("status")
+    .description("Show active token source, claims, and server-side validity")
+    .action(actionFor("auth.status", (frame) => runHandler(state, frame, handlers.auth.status)));
 
   program
     .command("doctor")

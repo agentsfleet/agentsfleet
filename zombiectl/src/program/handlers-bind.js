@@ -9,6 +9,7 @@ import { printJson, writeLine } from "./io.js";
 import { ui } from "../output/index.js";
 
 import { commandLogin, commandLogout, loginErrorMap, logoutErrorMap } from "../commands/core.js";
+import { commandAuthStatus, authStatusErrorMap } from "../commands/auth.js";
 import { commandDoctor, doctorErrorMap } from "../commands/core-ops.js";
 import {
   workspaceAdd,
@@ -87,6 +88,9 @@ export function buildHandlers(lifecycle) {
   return {
     login: wrap("login", loginErrorMap, commandLogin),
     logout: wrap("logout", logoutErrorMap, commandLogout),
+    auth: {
+      status: wrap("auth.status", authStatusErrorMap, commandAuthStatus),
+    },
     doctor: wrap("doctor", doctorErrorMap, commandDoctor),
     workspace: {
       add:         wrap("workspace.add",         workspaceErrorMap, workspaceAdd),
