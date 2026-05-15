@@ -101,7 +101,7 @@ export async function commandInstall(ctx, parsed, workspaces, deps) {
   try {
     res = await request(ctx, wsZombiesPath(wsId), {
       method: "POST",
-      headers: { ...apiHeaders(ctx), K_CONTENT_TYPE: K_APPLICATION_JSON },
+      headers: { ...apiHeaders(ctx), [K_CONTENT_TYPE]: K_APPLICATION_JSON },
       body: JSON.stringify({
         trigger_markdown: bundle.trigger_md,
         source_markdown: bundle.skill_md,
@@ -184,7 +184,7 @@ async function commandSetStatus(ctx, parsed, workspaces, deps, status) {
 
   const res = await request(ctx, wsZombiePath(wsId, zombieId), {
     method: "PATCH",
-    headers: { ...apiHeaders(ctx), K_CONTENT_TYPE: K_APPLICATION_JSON },
+    headers: { ...apiHeaders(ctx), [K_CONTENT_TYPE]: K_APPLICATION_JSON },
     body: JSON.stringify({ status }),
   });
 

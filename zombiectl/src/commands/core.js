@@ -110,7 +110,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
 
   const created = await request(ctx, AUTH_SESSIONS_PATH, {
     method: "POST",
-    headers: { K_CONTENT_TYPE: K_APPLICATION_JSON },
+    headers: { [K_CONTENT_TYPE]: K_APPLICATION_JSON },
     body: "{}",
   });
 
@@ -152,7 +152,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
       if (interrupt.signal.aborted) return signalInterrupt();
       last = await request(ctx, `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}`, {
         method: K_GET,
-        headers: { K_CONTENT_TYPE: K_APPLICATION_JSON },
+        headers: { [K_CONTENT_TYPE]: K_APPLICATION_JSON },
       });
 
       if (last.status === K_COMPLETE && last.token) {
