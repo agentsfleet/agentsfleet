@@ -26,8 +26,13 @@ const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
 
-const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0b6f01";
-const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0b6f11";
+// Canonical test tenant/workspace pair shared across handler integration
+// tests so the verbatim TOKEN_USER from api_integration_test.zig validates.
+// The original synthesized signature (against a non-canonical 0b6f01 pair)
+// failed RS256 verification — handoff §10b risk note flagged regenerating
+// via the test-token mint helper or copying the canonical token instead.
+const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0b6f21";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
 const TEST_AUDIENCE = "https://api.usezombie.com";
@@ -36,9 +41,11 @@ const TEST_JWKS =
 ;
 // User-role token bound to TEST_WORKSPACE_ID under TEST_TENANT_ID. Body-
 // field PATCHes (no `status`) require workspace-member, so user role
-// suffices.
+// suffices. Verbatim copy of the canonical TOKEN_USER from
+// `src/http/handlers/zombies/api_integration_test.zig` — same JWKS kid,
+// same canonical 0a6f01/0a6f11 claims, validated RS256 signature.
 const TOKEN_USER =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGI2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGI2ZjExIiwicm9sZSI6InVzZXIifX0.JhFlnWnPB-Z9PXdYn0X-O7T9sWzGI1nKZ8FwLpgX5pq2gx9q8pCQEjP7pY9V_S5OBpSDC3qzN3DhEEgK6h-VTI";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6InVzZXIifX0.UEZ3huXtn6bXpa3M1EJZ2QmqLtXewLsHYP5ggTeRg-lgX-Vzp2ECvTsGgzhCSxNNPudRXYgdTsPa1ufIKv_5n1SvuoCRw2eRZfTUp5a_68KbScepnLVx5LaRJmoMyPP8Q_DPYwB0vHm1NCPRIfFqzcBOpLw01Ygkse4mTq19JPE4vcINmaVTWMiN02_ScU0DWhzhzx3_B1_vCBC3wxCpVuM_wqOHDUCnBEPkM-YVQcZrtQIdXPfRzZ2XFRVWFn-E7s0EWBpEP1wSCh31ymki_E1vlnrW4q9ZKNBYnZX0ErvJlcqH2U7nIsFlLYULNP_4mdYrDaWvBSSYZROoK1d8WQ";
 
 // Initial state — a webhook-only zombie. Tests will PATCH it to add a
 // cron trigger, change the source body, or both.
@@ -80,9 +87,14 @@ const NEW_TRIGGER_MD_WITH_CRON =
     \\# updated trigger — cron only
 ;
 
+// parseSkillMetadata requires name+description+version in the frontmatter
+// (config_markdown.zig:159-166). The PATCH body's source_markdown goes
+// through that parser before the field-merge txn touches the row.
 const NEW_SOURCE_MD =
     \\---
     \\name: patch-bot
+    \\description: PATCH body-fields test bot
+    \\version: 0.2.0
     \\---
     \\# new skill body — operator updated guidance
 ;
