@@ -21,7 +21,7 @@
 #   Each script's "diff scope" flag is passed so the audit operates on the
 #   staged delta (not the whole repo). Flag conventions differ per script —
 #   `audit-ufs.sh` post-M70 only supports `--all` (the `--diff` mode was
-#   retired); `audit-design-tokens.sh` and `audit-combined.sh` accept both
+#   retired); `audit-design-tokens.sh` and `audit-msid-ui.sh` accept both
 #   `--diff` and `--staged`, and the pre-commit context wants `--staged` so
 #   that staged-but-uncommitted changes are seen. The rest of the audits
 #   use `--staged`. The flag passed to each call below matches what's
@@ -69,7 +69,7 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh --staged)
 	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh --staged)
 	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh --staged)
-	$(call HARNESS_RUN,COMBINED,scripts/audit-combined.sh --staged)
+	$(call HARNESS_RUN,COMBINED,scripts/audit-msid-ui.sh --staged)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 
 harness-verify-all:  ## Whole-worktree variant for periodic deep audits
@@ -84,5 +84,5 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	# (`^\+` in a unified diff), not on file state. There's no "whole-worktree"
 	# semantic that makes sense; --diff (vs origin/main) is the broadest
 	# meaningful scope. The script intentionally rejects --all (exit 2).
-	$(call HARNESS_RUN,COMBINED,scripts/audit-combined.sh --diff)
+	$(call HARNESS_RUN,COMBINED,scripts/audit-msid-ui.sh --diff)
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"
