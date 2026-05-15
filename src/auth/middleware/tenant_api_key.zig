@@ -38,6 +38,9 @@ const log = logging.scoped(.api_keys);
 /// Outcome of a key-hash lookup. All slices are owned by the allocator
 /// passed to `LookupFn`; the caller of `LookupFn` is responsible for
 /// freeing them.
+const S_AUTH_REJECTED = "auth_rejected";
+const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
+
 pub const LookupResult = struct {
     api_key_id: []const u8,
     tenant_id: []const u8,
@@ -69,11 +72,11 @@ pub const TenantApiKey = struct {
 
     pub fn execute(self: *TenantApiKey, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const provided = bearer.parseBearerToken(req) orelse {
-            ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+            ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;
         };
         if (!std.mem.startsWith(u8, provided, TENANT_KEY_PREFIX)) {
-            ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+            ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;
         }
         return resolve(self, ctx, provided);
@@ -88,13 +91,13 @@ fn resolve(self: *TenantApiKey, ctx: *AuthCtx, raw_key: []const u8) !chain.Outco
         return .short_circuit;
     };
     const row = maybe_row orelse {
-        log.info("auth_rejected", .{ .reason = "unknown", .key_prefix = TENANT_KEY_PREFIX });
-        ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+        log.info(S_AUTH_REJECTED, .{ .reason = "unknown", .key_prefix = TENANT_KEY_PREFIX });
+        ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
         return .short_circuit;
     };
 
     if (!row.active) {
-        log.info("auth_rejected", .{ .reason = "revoked", .api_key_id = row.api_key_id });
+        log.info(S_AUTH_REJECTED, .{ .reason = "revoked", .api_key_id = row.api_key_id });
         freeRow(ctx.alloc, row);
         ctx.fail(ERR_APIKEY_REVOKED, "API key has been revoked");
         return .short_circuit;

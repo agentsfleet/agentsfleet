@@ -32,6 +32,20 @@ const freeZombieTrigger = config_types.freeZombieTrigger;
 /// Parse `config_json` into a ZombieConfig. Caller owns the result and
 /// must call `.deinit(alloc)`. On failure, every field allocated up to
 /// the failure point is freed via the errdefer chain.
+const S_CONTEXT = "context";
+const S_CONTEXT_CAP_TOKENS = "context_cap_tokens";
+const S_NETWORK = "network";
+const S_TRIGGER = "trigger";
+const S_SKILL = "skill";
+const S_BUDGET = "budget";
+const S_GATES = "gates";
+const S_MEMORY_CHECKPOINT_EVERY = "memory_checkpoint_every";
+const S_TOOLS = "tools";
+const S_CREDENTIALS = "credentials";
+const S_STAGE_CHUNK_THRESHOLD = "stage_chunk_threshold";
+const S_TOOL_WINDOW = "tool_window";
+const S_MODEL = "model";
+
 pub fn parseZombieConfig(
     alloc: Allocator,
     config_json: []const u8,
@@ -102,8 +116,8 @@ pub fn parseZombieConfig(
 /// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!void {
     const forbidden = [_][]const u8{
-        "trigger", "tools", "credentials", "network", "budget",
-        "gates",   "skill", "model",       "context",
+        S_TRIGGER, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,   S_SKILL, S_MODEL,       S_CONTEXT,
     };
     for (forbidden) |k| {
         if (root.get(k) != null) return ZombieConfigError.RuntimeKeysOutsideBlock;
@@ -125,8 +139,8 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.Obje
 /// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        "trigger", "tools", "credentials", "network", "budget",
-        "gates",   "skill", "model",       "context",
+        S_TRIGGER, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,   S_SKILL, S_MODEL,       S_CONTEXT,
     };
     var it = runtime.iterator();
     while (it.next()) |entry| {
@@ -157,7 +171,7 @@ fn parseTriggerField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!ZombieTrigger {
-    const val = root.get("trigger") orelse return ZombieConfigError.MissingRequiredField;
+    const val = root.get(S_TRIGGER) orelse return ZombieConfigError.MissingRequiredField;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
@@ -169,7 +183,7 @@ fn parseToolsField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)![]const []const u8 {
-    const val = root.get("tools") orelse return ZombieConfigError.MissingRequiredField;
+    const val = root.get(S_TOOLS) orelse return ZombieConfigError.MissingRequiredField;
     const arr = switch (val) {
         .array => |a| a,
         else => return ZombieConfigError.MissingRequiredField,
@@ -182,7 +196,7 @@ fn parseCredentialsField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)![]const []const u8 {
-    const val = root.get("credentials") orelse return try alloc.alloc([]const u8, 0);
+    const val = root.get(S_CREDENTIALS) orelse return try alloc.alloc([]const u8, 0);
     const arr = switch (val) {
         .array => |a| a,
         else => return ZombieConfigError.MissingRequiredField,
@@ -194,7 +208,7 @@ fn parseNetworkField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?ZombieNetwork {
-    const val = root.get("network") orelse return null;
+    const val = root.get(S_NETWORK) orelse return null;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
@@ -203,7 +217,7 @@ fn parseNetworkField(
 }
 
 fn parseBudgetField(root: std.json.ObjectMap) ZombieConfigError!ZombieBudget {
-    const val = root.get("budget") orelse return ZombieConfigError.MissingRequiredField;
+    const val = root.get(S_BUDGET) orelse return ZombieConfigError.MissingRequiredField;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
@@ -215,7 +229,7 @@ fn parseGatesField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?config_gates.GatePolicy {
-    const val = root.get("gates") orelse return null;
+    const val = root.get(S_GATES) orelse return null;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
@@ -242,7 +256,7 @@ fn parseSkillRef(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?[]const u8 {
-    const val = root.get("skill") orelse return null;
+    const val = root.get(S_SKILL) orelse return null;
     const s = switch (val) {
         .string => |str| str,
         else => return null,
@@ -257,7 +271,7 @@ fn parseModelField(
     alloc: Allocator,
     runtime: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?[]const u8 {
-    const val = runtime.get("model") orelse return null;
+    const val = runtime.get(S_MODEL) orelse return null;
     const s = switch (val) {
         .string => |str| str,
         else => return ZombieConfigError.InvalidFieldType,
@@ -271,17 +285,17 @@ fn parseModelField(
 /// Absent block → null; present-but-empty block → all-zero struct (still
 /// gets defaulted downstream — same observable behaviour).
 fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieContextBudget {
-    const val = runtime.get("context") orelse return null;
+    const val = runtime.get(S_CONTEXT) orelse return null;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.InvalidFieldType,
     };
     try ensureKnownContextKeys(obj);
     return ZombieContextBudget{
-        .context_cap_tokens = try readU32(obj, "context_cap_tokens"),
-        .tool_window = try readU32(obj, "tool_window"),
-        .memory_checkpoint_every = try readU32(obj, "memory_checkpoint_every"),
-        .stage_chunk_threshold = try readF32(obj, "stage_chunk_threshold"),
+        .context_cap_tokens = try readU32(obj, S_CONTEXT_CAP_TOKENS),
+        .tool_window = try readU32(obj, S_TOOL_WINDOW),
+        .memory_checkpoint_every = try readU32(obj, S_MEMORY_CHECKPOINT_EVERY),
+        .stage_chunk_threshold = try readF32(obj, S_STAGE_CHUNK_THRESHOLD),
     };
 }
 
@@ -293,8 +307,8 @@ fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieConte
 /// runtime back to a misspelled key in frontmatter.
 fn ensureKnownContextKeys(ctx: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        "context_cap_tokens", "tool_window",
-        "memory_checkpoint_every", "stage_chunk_threshold",
+        S_CONTEXT_CAP_TOKENS, S_TOOL_WINDOW,
+        S_MEMORY_CHECKPOINT_EVERY, S_STAGE_CHUNK_THRESHOLD,
     };
     var it = ctx.iterator();
     while (it.next()) |entry| {

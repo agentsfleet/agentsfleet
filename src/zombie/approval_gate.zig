@@ -18,6 +18,7 @@ const config_gates = @import("config_gates.zig");
 
 const approval_gate_db = @import("approval_gate_db.zig");
 const approval_gate_anomaly = @import("approval_gate_anomaly.zig");
+const approval_gate_slack = @import("approval_gate_slack.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.approval_gate);
@@ -28,6 +29,8 @@ pub const GateResult = enum { approved, denied, timed_out };
 
 /// Status values stored in core.zombie_approval_gates.status column.
 /// Typed enum — no raw strings for gate status (RULES.md #36).
+const S_S_S = "{s}{s}";
+
 pub const GateStatus = enum {
     pending,
     approved,
@@ -161,7 +164,7 @@ pub fn requestApproval(
     });
 
     // JSON-escape user-supplied fields to prevent injection (RULES.md #23).
-    const slack = @import("approval_gate_slack.zig");
+    const slack = approval_gate_slack;
     var detail_list: std.ArrayList(u8) = .{};
     defer detail_list.deinit(alloc);
     const dw = detail_list.writer(alloc);
@@ -192,7 +195,7 @@ pub fn waitForDecision(
     timeout_ms: u64,
 ) GateResult {
     var response_key_buf: [256]u8 = undefined;
-    const response_key = std.fmt.bufPrint(&response_key_buf, "{s}{s}", .{
+    const response_key = std.fmt.bufPrint(&response_key_buf, S_S_S, .{
         ec.GATE_RESPONSE_KEY_PREFIX, action_id,
     }) catch return .timed_out;
 
@@ -237,7 +240,7 @@ pub fn resolveApproval(
     decision: []const u8,
 ) !void {
     var response_key_buf: [256]u8 = undefined;
-    const response_key = try std.fmt.bufPrint(&response_key_buf, "{s}{s}", .{
+    const response_key = try std.fmt.bufPrint(&response_key_buf, S_S_S, .{
         ec.GATE_RESPONSE_KEY_PREFIX, action_id,
     });
     try redis.setEx(response_key, decision, ec.GATE_PENDING_TTL_SECONDS);
@@ -307,11 +310,11 @@ pub const checkAnomaly = approval_gate_anomaly.checkAnomaly;
 pub const AnomalyResult = approval_gate_anomaly.AnomalyResult;
 pub const recordGatePending = approval_gate_db.recordGatePending;
 pub const resolveGateDecision = approval_gate_db.resolveGateDecision;
-pub const buildSlackApprovalMessage = @import("approval_gate_slack.zig").buildSlackApprovalMessage;
+pub const buildSlackApprovalMessage = approval_gate_slack.buildSlackApprovalMessage;
 
 test {
     _ = @import("approval_gate_test.zig");
     _ = @import("approval_gate_pins_test.zig");
-    _ = @import("approval_gate_slack.zig");
-    _ = @import("approval_gate_anomaly.zig");
+    _ = approval_gate_slack;
+    _ = approval_gate_anomaly;
 }

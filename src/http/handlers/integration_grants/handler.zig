@@ -21,6 +21,10 @@ pub const Context = common.Context;
 /// core.integration_grants.status values. Owned here because handler.zig
 /// is the only writer that creates rows; the webhook approval flow imports
 /// these to drive its own UPDATE precondition.
+const S_PENDING = "pending";
+const S_SESSION = "Session ";
+const S_REVOKED = "revoked";
+
 pub const GrantStatus = enum {
     pending,
     approved,
@@ -29,9 +33,9 @@ pub const GrantStatus = enum {
 
     pub fn toSlice(self: GrantStatus) []const u8 {
         return switch (self) {
-            .pending => "pending",
+            .pending => S_PENDING,
             .approved => "approved",
-            .revoked => "revoked",
+            .revoked => S_REVOKED,
             .rejected => "rejected",
         };
     }
@@ -96,8 +100,8 @@ fn zombieFromApiKey(alloc: std.mem.Allocator, conn: *pg.Conn, raw_key: []const u
 
 fn authenticateZombie(alloc: std.mem.Allocator, conn: *pg.Conn, req: *httpz.Request) ?Caller {
     const auth_header = req.header("authorization") orelse return null;
-    if (std.mem.startsWith(u8, auth_header, "Session "))
-        return zombieFromSession(alloc, conn, auth_header["Session ".len..]);
+    if (std.mem.startsWith(u8, auth_header, S_SESSION))
+        return zombieFromSession(alloc, conn, auth_header[S_SESSION.len..]);
     const bearer_prefix = "Bearer ";
     if (std.mem.startsWith(u8, auth_header, bearer_prefix)) {
         const token = auth_header[bearer_prefix.len..];
@@ -191,7 +195,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         const existing_st = existing_row.get([]u8, 1) catch "unknown";
         const existing_at = existing_row.get(i64, 2) catch 0;
 
-        const is_terminal = std.mem.eql(u8, existing_st, "revoked") or
+        const is_terminal = std.mem.eql(u8, existing_st, S_REVOKED) or
             std.mem.eql(u8, existing_st, "denied");
         if (!is_terminal) {
             // pending or approved — idempotent return.
@@ -299,7 +303,7 @@ pub fn innerRequestGrant(hx: hx_mod.Hx, req: *httpz.Request, workspace_id: []con
         .grant_id = grant_id,
         .zombie_id = zombie_id,
         .service = body.service,
-        .status = "pending",
+        .status = S_PENDING,
         .requested_at = now_ms,
         .message = "Grant request submitted. Awaiting workspace owner approval via Slack, Discord, or dashboard.",
     });

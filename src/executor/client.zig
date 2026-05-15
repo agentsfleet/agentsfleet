@@ -26,6 +26,8 @@ const ClientError = client_errors.ClientError;
 pub const classifyError = client_errors.classifyError;
 const errorCodeForRpcCode = client_errors.errorCodeForRpcCode;
 
+const S_TRANSPORT_LOSS = "transport_loss";
+
 pub const ExecutorClient = struct {
     transport_client: transport.Client,
     alloc: std.mem.Allocator,
@@ -115,7 +117,7 @@ pub const ExecutorClient = struct {
         try params.object.put(wire.context, .{ .object = ctx_obj });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.create_execution, params) catch {
-            log.err("transport_loss", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "CreateExecution" });
+            log.err(S_TRANSPORT_LOSS, .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "CreateExecution" });
             executor_metrics.incExecutorFailures();
             return ClientError.TransportLoss;
         };
@@ -222,7 +224,7 @@ pub const ExecutorClient = struct {
         if (payload.context) |c| try params.object.put(wire.context, c);
 
         var resp = self.transport_client.sendRequestStreaming(self.nextId(), protocol.Method.start_stage, params, emitter) catch {
-            log.err("transport_loss", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "StartStage", .execution_id = execution_id });
+            log.err(S_TRANSPORT_LOSS, .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "StartStage", .execution_id = execution_id });
             executor_metrics.incExecutorFailures();
             return ClientError.TransportLoss;
         };
@@ -265,7 +267,7 @@ pub const ExecutorClient = struct {
         try params.object.put(wire.execution_id, .{ .string = execution_id });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.cancel_execution, params) catch {
-            log.err("transport_loss", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "CancelExecution", .execution_id = execution_id });
+            log.err(S_TRANSPORT_LOSS, .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "CancelExecution", .execution_id = execution_id });
             executor_metrics.incExecutorFailures();
             return ClientError.TransportLoss;
         };
@@ -278,7 +280,7 @@ pub const ExecutorClient = struct {
         try params.object.put(wire.execution_id, .{ .string = execution_id });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.get_usage, params) catch {
-            log.err("transport_loss", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "GetUsage", .execution_id = execution_id });
+            log.err(S_TRANSPORT_LOSS, .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "GetUsage", .execution_id = execution_id });
             executor_metrics.incExecutorFailures();
             return ClientError.TransportLoss;
         };
@@ -307,7 +309,7 @@ pub const ExecutorClient = struct {
         try params.object.put(wire.execution_id, .{ .string = execution_id });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.destroy_execution, params) catch {
-            log.err("transport_loss", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "DestroyExecution", .execution_id = execution_id });
+            log.err(S_TRANSPORT_LOSS, .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "DestroyExecution", .execution_id = execution_id });
             executor_metrics.incExecutorFailures();
             return ClientError.TransportLoss;
         };
@@ -320,7 +322,7 @@ pub const ExecutorClient = struct {
         try params.object.put(wire.execution_id, .{ .string = execution_id });
 
         var resp = self.transport_client.sendRequest(self.nextId(), protocol.Method.heartbeat, params) catch {
-            log.err("transport_loss", .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "Heartbeat", .execution_id = execution_id });
+            log.err(S_TRANSPORT_LOSS, .{ .error_code = ERR_EXEC_TRANSPORT_LOSS, .method = "Heartbeat", .execution_id = execution_id });
             executor_metrics.incExecutorFailures();
             return ClientError.TransportLoss;
         };

@@ -7,6 +7,8 @@ const logging = @import("log");
 
 const log = logging.scoped(.auth);
 
+const PANIC_OOM = "oom";
+
 pub const VerifyError = error{
     MissingAuthorization,
     InvalidAuthorization,
@@ -95,11 +97,11 @@ pub const Verifier = struct {
     pub fn init(alloc: std.mem.Allocator, cfg: Config) Verifier {
         return .{
             .alloc = alloc,
-            .jwks_url = alloc.dupe(u8, cfg.jwks_url) catch @panic("oom"),
-            .issuer = if (cfg.issuer) |v| alloc.dupe(u8, v) catch @panic("oom") else null,
-            .audience = if (cfg.audience) |v| alloc.dupe(u8, v) catch @panic("oom") else null,
-            .inline_jwks_json = if (cfg.inline_jwks_json) |v| alloc.dupe(u8, v) catch @panic("oom") else null,
-            .jwks_env_var = if (cfg.jwks_env_var) |v| alloc.dupe(u8, v) catch @panic("oom") else null,
+            .jwks_url = alloc.dupe(u8, cfg.jwks_url) catch @panic(PANIC_OOM),
+            .issuer = if (cfg.issuer) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
+            .audience = if (cfg.audience) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
+            .inline_jwks_json = if (cfg.inline_jwks_json) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
+            .jwks_env_var = if (cfg.jwks_env_var) |v| alloc.dupe(u8, v) catch @panic(PANIC_OOM) else null,
             .cache_ttl_ms = cfg.cache_ttl_ms,
         };
     }

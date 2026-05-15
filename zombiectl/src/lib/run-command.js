@@ -15,13 +15,17 @@ import {
   getCliAnalyticsContext,
 } from "./analytics.js";
 
+const K_FUNCTION = "function";
+const K_STRING = "string";
+const K_API_ERROR = "API_ERROR";
+
 const API_UNREACHABLE_CODE = "API_UNREACHABLE";
 const UNEXPECTED_CODE = "UNEXPECTED";
 
 function isFetchFailed(err) {
   return (
     err instanceof TypeError &&
-    typeof err.message === "string" &&
+    typeof err.message === K_STRING &&
     err.message.toLowerCase().includes("fetch failed")
   );
 }
@@ -48,9 +52,9 @@ function emitCliError(opts, errorCode) {
 function renderApi(opts, code, message, err) {
   const { handlerCtx, printJson, writeLine } = opts;
   const stderr = handlerCtx.stderr;
-  if (!stderr || typeof writeLine !== "function") return;
+  if (!stderr || typeof writeLine !== K_FUNCTION) return;
   if (handlerCtx.jsonMode) {
-    if (typeof printJson !== "function") return;
+    if (typeof printJson !== K_FUNCTION) return;
     printJson(stderr, {
       error: {
         code,
@@ -68,9 +72,9 @@ function renderApi(opts, code, message, err) {
 function renderPlain(opts, code, message) {
   const { handlerCtx, printJson, writeLine, ui } = opts;
   const stderr = handlerCtx.stderr;
-  if (!stderr || typeof writeLine !== "function") return;
+  if (!stderr || typeof writeLine !== K_FUNCTION) return;
   if (handlerCtx.jsonMode) {
-    if (typeof printJson !== "function") return;
+    if (typeof printJson !== K_FUNCTION) return;
     printJson(stderr, { error: { code, message } });
     return;
   }
@@ -78,7 +82,7 @@ function renderPlain(opts, code, message) {
   // the `error: ` prefix so operators see the visual signal in
   // --no-color and CI environments. Coloring (when ui is present)
   // wraps the full prefixed line.
-  const colorize = ui && typeof ui.err === "function" ? ui.err : (s) => s;
+  const colorize = ui && typeof ui.err === K_FUNCTION ? ui.err : (s) => s;
   writeLine(stderr, colorize(`error: ${message}`));
 }
 
@@ -92,10 +96,10 @@ export async function runCommand(opts) {
     ctx,
     deps = {},
   } = opts;
-  if (typeof handler !== "function") {
+  if (typeof handler !== K_FUNCTION) {
     throw new TypeError("runCommand: handler must be a function");
   }
-  if (typeof name !== "string" || name.length === 0) {
+  if (typeof name !== K_STRING || name.length === 0) {
     throw new TypeError("runCommand: name must be a non-empty string");
   }
 
@@ -158,8 +162,8 @@ export async function runCommand(opts) {
       // analytics dimension (cli_error.error_code) — that lets us
       // bucket events without leaking churn from server-side code
       // renames into the operator-facing surface.
-      const displayCode = err.code ?? "API_ERROR";
-      const analyticsCode = remap?.code ?? err.code ?? "API_ERROR";
+      const displayCode = err.code ?? K_API_ERROR;
+      const analyticsCode = remap?.code ?? err.code ?? K_API_ERROR;
       const finalMessage = remap?.message ?? err.message;
       emitCliError(renderOpts, analyticsCode);
       renderApi(renderOpts, displayCode, finalMessage, err);

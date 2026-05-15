@@ -1,5 +1,7 @@
+const K_STRING = "string";
+
 function decodeTokenPayload(token) {
-  if (!token || typeof token !== "string") return null;
+  if (!token || typeof token !== K_STRING) return null;
   const parts = token.split(".");
   if (parts.length < 2 || !parts[1]) return null;
   try {
@@ -13,7 +15,7 @@ function decodeTokenPayload(token) {
 
 function extractDistinctIdFromToken(token) {
   const payload = decodeTokenPayload(token);
-  if (payload && typeof payload.sub === "string" && payload.sub.trim().length > 0) {
+  if (payload && typeof payload.sub === K_STRING && payload.sub.trim().length > 0) {
     return payload.sub.trim();
   }
   return null;
@@ -34,7 +36,7 @@ function extractRoleFromToken(token) {
     payload.metadata?.["https://usezombie.com/role"],
   ];
   for (const raw of candidates) {
-    if (typeof raw !== "string") continue;
+    if (typeof raw !== K_STRING) continue;
     const value = raw.toLowerCase();
     if (value === "user" || value === "operator" || value === "admin") return value;
   }

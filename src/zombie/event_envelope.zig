@@ -13,6 +13,11 @@
 
 const EventEnvelope = @This();
 
+const S_CHAT = "chat";
+const S_CONTINUATION = "continuation";
+const S_CRON = "cron";
+const S_WEBHOOK = "webhook";
+
 event_id: []const u8,
 zombie_id: []const u8,
 workspace_id: []const u8,
@@ -29,18 +34,18 @@ pub const EventType = enum {
 
     pub fn toSlice(self: EventType) []const u8 {
         return switch (self) {
-            .chat => "chat",
-            .webhook => "webhook",
-            .cron => "cron",
-            .continuation => "continuation",
+            .chat => S_CHAT,
+            .webhook => S_WEBHOOK,
+            .cron => S_CRON,
+            .continuation => S_CONTINUATION,
         };
     }
 
     pub fn fromSlice(s: []const u8) ?EventType {
-        if (std.mem.eql(u8, s, "chat")) return .chat;
-        if (std.mem.eql(u8, s, "webhook")) return .webhook;
-        if (std.mem.eql(u8, s, "cron")) return .cron;
-        if (std.mem.eql(u8, s, "continuation")) return .continuation;
+        if (std.mem.eql(u8, s, S_CHAT)) return .chat;
+        if (std.mem.eql(u8, s, S_WEBHOOK)) return .webhook;
+        if (std.mem.eql(u8, s, S_CRON)) return .cron;
+        if (std.mem.eql(u8, s, S_CONTINUATION)) return .continuation;
         return null;
     }
 };

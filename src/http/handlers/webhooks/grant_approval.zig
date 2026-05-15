@@ -30,9 +30,12 @@ pub const Context = common.Context;
 
 const GRANT_NONCE_KEY_PREFIX = "grant:nonce:";
 
+const S_DENIED = "denied";
+const S_APPROVED = "approved";
+
 const GrantApprovalBody = struct {
     grant_id: []const u8,
-    decision: []const u8, // "approved" | "denied"
+    decision: []const u8, // S_APPROVED | S_DENIED
     nonce: []const u8,    // single-use, verified against Redis
 };
 
@@ -152,8 +155,8 @@ pub fn innerGrantApproval(hx: hx_mod.Hx, req: *httpz.Request, zombie_id: []const
         hx.fail(ec.ERR_INVALID_REQUEST, "nonce required");
         return;
     }
-    const is_approved = std.mem.eql(u8, body.decision, "approved");
-    const is_denied   = std.mem.eql(u8, body.decision, "denied");
+    const is_approved = std.mem.eql(u8, body.decision, S_APPROVED);
+    const is_denied   = std.mem.eql(u8, body.decision, S_DENIED);
     if (!is_approved and !is_denied) {
         log.warn("invalid_decision", .{
             .error_code = ec.ERR_INVALID_REQUEST,

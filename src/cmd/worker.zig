@@ -18,6 +18,9 @@ const control_stream = @import("../zombie/control_stream.zig");
 
 const log = logging.scoped(.worker);
 
+const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
+const S_WORKER = "worker";
+
 var shutdown_requested = std.atomic.Value(bool).init(false);
 
 fn onSignal(sig: i32) callconv(.c) void {
@@ -61,10 +64,10 @@ pub fn run(alloc: std.mem.Allocator) !void {
     env_vars.enforceFromEnvWithMode(alloc, .worker) catch |err| {
         const env_code = error_codes.ERR_STARTUP_ENV_CHECK;
         switch (err) {
-            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_WORKER not set" }),
-            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER not set" }),
-            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER must use rediss://" }),
-            else => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = @errorName(err) }),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "DATABASE_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_WORKER must use rediss://" }),
+            else => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = @errorName(err) }),
         }
         std.process.exit(1);
     };
@@ -101,7 +104,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 .socket = path,
                 .err = @errorName(err),
             });
-            tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = "worker", .phase = "executor_connect", .reason = @errorName(err), .error_code = error_codes.ERR_EXEC_STARTUP_POSTURE });
+            tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = S_WORKER, .phase = "executor_connect", .reason = @errorName(err), .error_code = error_codes.ERR_EXEC_STARTUP_POSTURE });
             std.process.exit(1);
         };
         exec_client = ec;
@@ -112,14 +115,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer if (exec_client) |*ec| ec.close();
 
     const worker_pool = preflight.connectDbPool(alloc, .worker) catch |err| {
-        tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = "worker", .phase = "db_connect", .reason = @errorName(err), .error_code = error_codes.ERR_STARTUP_DB_CONNECT });
+        tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = S_WORKER, .phase = "db_connect", .reason = @errorName(err), .error_code = error_codes.ERR_STARTUP_DB_CONNECT });
         tel.deinit(alloc);
         std.process.exit(1);
     };
     defer worker_pool.deinit();
 
     preflight.checkMigrations(worker_pool, false) catch |err| {
-        tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = "worker", .phase = "migration_check", .reason = @errorName(err), .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK });
+        tel.ptr().capture(telemetry_mod.StartupFailed, .{ .command = S_WORKER, .phase = "migration_check", .reason = @errorName(err), .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK });
         tel.deinit(alloc);
         std.process.exit(1);
     };

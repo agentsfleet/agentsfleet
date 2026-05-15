@@ -7,6 +7,11 @@ import { join, basename } from "node:path";
 const SKILL_FILENAME = "SKILL.md";
 const TRIGGER_FILENAME = "TRIGGER.md";
 
+const K_UTF_8 = "utf-8";
+const K_ERR_PATH_NOT_FOUND = "ERR_PATH_NOT_FOUND";
+const K_EACCES = "EACCES";
+const K_ERR_PATH_DENIED = "ERR_PATH_DENIED";
+
 export class SkillLoadError extends Error {
   constructor(code, detail) {
     super(detail);
@@ -16,17 +21,17 @@ export class SkillLoadError extends Error {
 
 export function loadSkillFromPath(path) {
   if (typeof path !== "string" || path === "") {
-    throw new SkillLoadError("ERR_PATH_NOT_FOUND", "<no path provided>");
+    throw new SkillLoadError(K_ERR_PATH_NOT_FOUND, "<no path provided>");
   }
   let stat;
   try {
     stat = statSync(path);
   } catch (err) {
-    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", path);
-    throw new SkillLoadError("ERR_PATH_NOT_FOUND", path);
+    if (err.code === K_EACCES) throw new SkillLoadError(K_ERR_PATH_DENIED, path);
+    throw new SkillLoadError(K_ERR_PATH_NOT_FOUND, path);
   }
   if (!stat.isDirectory()) {
-    throw new SkillLoadError("ERR_PATH_NOT_FOUND", `${path} (not a directory)`);
+    throw new SkillLoadError(K_ERR_PATH_NOT_FOUND, `${path} (not a directory)`);
   }
 
   const skillPath = join(path, SKILL_FILENAME);
@@ -34,17 +39,17 @@ export function loadSkillFromPath(path) {
 
   let skill_md;
   try {
-    skill_md = readFileSync(skillPath, "utf-8");
+    skill_md = readFileSync(skillPath, K_UTF_8);
   } catch (err) {
-    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", skillPath);
+    if (err.code === K_EACCES) throw new SkillLoadError(K_ERR_PATH_DENIED, skillPath);
     throw new SkillLoadError("ERR_SKILL_MISSING", skillPath);
   }
 
   let trigger_md;
   try {
-    trigger_md = readFileSync(triggerPath, "utf-8");
+    trigger_md = readFileSync(triggerPath, K_UTF_8);
   } catch (err) {
-    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", triggerPath);
+    if (err.code === K_EACCES) throw new SkillLoadError(K_ERR_PATH_DENIED, triggerPath);
     throw new SkillLoadError("ERR_TRIGGER_MISSING", triggerPath);
   }
 

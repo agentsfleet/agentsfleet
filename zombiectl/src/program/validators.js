@@ -21,8 +21,13 @@ const DURATION_RE = /^(\d+)(ms|s|m|h)$/;
 const DURATION_FACTOR = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 };
 const DEFAULT_JSON_MAX_BYTES = 4096;
 
+const K_MUST_BE_A_NUMBER = "must be a number";
+const K_MUST_BE_AN_INTEGER = "must be an integer";
+const K_STRING = "string";
+const K_REQUIRED = "required";
+
 export function parseStringOption(value) {
-  if (typeof value !== "string" || value.trim().length === 0) {
+  if (typeof value !== K_STRING || value.trim().length === 0) {
     throw new InvalidArgumentError("must be a non-empty string");
   }
   return value.trim();
@@ -32,11 +37,11 @@ export function parseIntOption({ min, max } = {}) {
   return (value) => {
     const trimmed = String(value ?? "").trim();
     if (!INTEGER_RE.test(trimmed)) {
-      throw new InvalidArgumentError("must be an integer");
+      throw new InvalidArgumentError(K_MUST_BE_AN_INTEGER);
     }
     const parsed = Number.parseInt(trimmed, 10);
     if (!Number.isFinite(parsed)) {
-      throw new InvalidArgumentError("must be an integer");
+      throw new InvalidArgumentError(K_MUST_BE_AN_INTEGER);
     }
     if (min !== undefined && parsed < min) {
       throw new InvalidArgumentError(`must be ≥ ${min}`);
@@ -51,18 +56,18 @@ export function parseIntOption({ min, max } = {}) {
 export function parseFloatOption(value) {
   const trimmed = String(value ?? "").trim();
   if (!NUMBER_RE.test(trimmed)) {
-    throw new InvalidArgumentError("must be a number");
+    throw new InvalidArgumentError(K_MUST_BE_A_NUMBER);
   }
   const parsed = Number.parseFloat(trimmed);
   if (!Number.isFinite(parsed)) {
-    throw new InvalidArgumentError("must be a number");
+    throw new InvalidArgumentError(K_MUST_BE_A_NUMBER);
   }
   return parsed;
 }
 
 export function parseIdOption(value) {
-  if (typeof value !== "string" || value.length === 0) {
-    throw new InvalidArgumentError("required");
+  if (typeof value !== K_STRING || value.length === 0) {
+    throw new InvalidArgumentError(K_REQUIRED);
   }
   if (!isValidUuid(value) || uuidVersion(value) !== 7) {
     throw new InvalidArgumentError(`expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})`);
@@ -84,8 +89,8 @@ export function parseEnumOption(allowed) {
 
 export function parsePathOption({ mustExist = false } = {}) {
   return (value) => {
-    if (typeof value !== "string" || value.length === 0) {
-      throw new InvalidArgumentError("required");
+    if (typeof value !== K_STRING || value.length === 0) {
+      throw new InvalidArgumentError(K_REQUIRED);
     }
     const resolved = path.resolve(value);
     if (mustExist && !fs.existsSync(resolved)) {
@@ -109,7 +114,7 @@ export function parseDurationOption(value) {
 
 export function parseJsonObjectOption({ maxBytes = DEFAULT_JSON_MAX_BYTES } = {}) {
   return (value) => {
-    if (typeof value !== "string") {
+    if (typeof value !== K_STRING) {
       throw new InvalidArgumentError("must be a string of JSON");
     }
     if (Buffer.byteLength(value, "utf8") > maxBytes) {

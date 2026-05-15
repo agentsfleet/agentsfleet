@@ -13,10 +13,12 @@ import { ApiError } from "./http.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
+const K_FUNCTION = "function";
+
 export async function streamGet(url, headers, onEvent, options = {}) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const fetchImpl = options.fetchImpl || globalThis.fetch;
-  if (typeof fetchImpl !== "function") {
+  if (typeof fetchImpl !== K_FUNCTION) {
     throw new ApiError("fetch is unavailable", { code: "NO_FETCH" });
   }
 
@@ -43,7 +45,7 @@ export async function streamGet(url, headers, onEvent, options = {}) {
       throw new ApiError(message, { status: res.status, code: errorCode, body: json ?? text });
     }
 
-    if (!res.body || typeof res.body.getReader !== "function") {
+    if (!res.body || typeof res.body.getReader !== K_FUNCTION) {
       throw new ApiError("response body is not streamable", { code: "NO_STREAM_BODY" });
     }
 

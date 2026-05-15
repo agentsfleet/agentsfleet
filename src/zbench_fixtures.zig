@@ -12,12 +12,18 @@ const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 // (≈64 BPE tokens — typical LLM chunk batch), and the kind discriminator.
 pub const CHUNK_ZOMBIE_ID = "019abcde-1234-7aaa-8bbb-abcdef012345";
 pub const CHUNK_EVENT_ID = "019abcde-5678-7ccc-8ddd-abcdef012345";
+const S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG = "The quick brown fox jumps over the lazy dog. ";
+const S_PAUSED = "paused";
+const S_N_019WSPS_7AAA_8BBB_ABCDEF012345 = "019wsps-7aaa-8bbb-abcdef012345";
+const S_SHA256 = "sha256=";
+const S_RUNNING = "running";
+
 pub const CHUNK_TEXT =
-    "The quick brown fox jumps over the lazy dog. " ++
-    "The quick brown fox jumps over the lazy dog. " ++
-    "The quick brown fox jumps over the lazy dog. " ++
-    "The quick brown fox jumps over the lazy dog. " ++
-    "The quick brown fox jumps over the lazy dog. " ++
+    S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG ++
+    S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG ++
+    S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG ++
+    S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG ++
+    S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG ++
     "Pack my box with five dozen liquor jugs. The end.";
 
 // ── progress_frame_decode ─────────────────────────────────────────────────
@@ -82,16 +88,16 @@ pub const ZombieRow = struct {
 };
 
 pub const ZOMBIE_PAGE = [_]ZombieRow{
-    .{ .id = "019abcde-0001-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-alpha",   .status = "running",  .created_at = 1_700_000_000_000, .updated_at = 1_700_000_030_000 },
-    .{ .id = "019abcde-0002-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-beta",    .status = "running",  .created_at = 1_700_000_001_000, .updated_at = 1_700_000_031_000 },
-    .{ .id = "019abcde-0003-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-gamma",   .status = "paused",   .created_at = 1_700_000_002_000, .updated_at = 1_700_000_032_000 },
-    .{ .id = "019abcde-0004-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-delta",   .status = "running",  .created_at = 1_700_000_003_000, .updated_at = 1_700_000_033_000 },
-    .{ .id = "019abcde-0005-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-epsilon", .status = "stopped",  .created_at = 1_700_000_004_000, .updated_at = 1_700_000_034_000 },
-    .{ .id = "019abcde-0006-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-zeta",    .status = "running",  .created_at = 1_700_000_005_000, .updated_at = 1_700_000_035_000 },
-    .{ .id = "019abcde-0007-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-eta",     .status = "running",  .created_at = 1_700_000_006_000, .updated_at = 1_700_000_036_000 },
-    .{ .id = "019abcde-0008-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-theta",   .status = "paused",   .created_at = 1_700_000_007_000, .updated_at = 1_700_000_037_000 },
-    .{ .id = "019abcde-0009-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-iota",    .status = "running",  .created_at = 1_700_000_008_000, .updated_at = 1_700_000_038_000 },
-    .{ .id = "019abcde-000a-7aaa-8bbb-abcdef012345", .workspace_id = "019wsps-7aaa-8bbb-abcdef012345", .name = "zombie-kappa",   .status = "running",  .created_at = 1_700_000_009_000, .updated_at = 1_700_000_039_000 },
+    .{ .id = "019abcde-0001-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-alpha",   .status = S_RUNNING,  .created_at = 1_700_000_000_000, .updated_at = 1_700_000_030_000 },
+    .{ .id = "019abcde-0002-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-beta",    .status = S_RUNNING,  .created_at = 1_700_000_001_000, .updated_at = 1_700_000_031_000 },
+    .{ .id = "019abcde-0003-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-gamma",   .status = S_PAUSED,   .created_at = 1_700_000_002_000, .updated_at = 1_700_000_032_000 },
+    .{ .id = "019abcde-0004-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-delta",   .status = S_RUNNING,  .created_at = 1_700_000_003_000, .updated_at = 1_700_000_033_000 },
+    .{ .id = "019abcde-0005-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-epsilon", .status = "stopped",  .created_at = 1_700_000_004_000, .updated_at = 1_700_000_034_000 },
+    .{ .id = "019abcde-0006-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-zeta",    .status = S_RUNNING,  .created_at = 1_700_000_005_000, .updated_at = 1_700_000_035_000 },
+    .{ .id = "019abcde-0007-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-eta",     .status = S_RUNNING,  .created_at = 1_700_000_006_000, .updated_at = 1_700_000_036_000 },
+    .{ .id = "019abcde-0008-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-theta",   .status = S_PAUSED,   .created_at = 1_700_000_007_000, .updated_at = 1_700_000_037_000 },
+    .{ .id = "019abcde-0009-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-iota",    .status = S_RUNNING,  .created_at = 1_700_000_008_000, .updated_at = 1_700_000_038_000 },
+    .{ .id = "019abcde-000a-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-kappa",   .status = S_RUNNING,  .created_at = 1_700_000_009_000, .updated_at = 1_700_000_039_000 },
 };
 
 // ── 1.7 webhook_signature_verify ───────────────────────────────────────────
@@ -116,13 +122,13 @@ pub const WEBHOOK_SIGNATURE = blk: {
     hmac.update(&WEBHOOK_BODY);
     hmac.final(&mac);
     const hex = std.fmt.bytesToHex(mac, .lower);
-    break :blk "sha256=" ++ hex;
+    break :blk S_SHA256 ++ hex;
 };
 
 comptime {
     // Catch silent drift: a format change in GITHUB would invalidate the
     // precomputed signature, producing a benchmark that always hits the
     // reject path and doesn't measure the work we think it does.
-    std.debug.assert(webhook_verify.GITHUB.prefix.len == "sha256=".len);
-    std.debug.assert(WEBHOOK_SIGNATURE.len == "sha256=".len + 64);
+    std.debug.assert(webhook_verify.GITHUB.prefix.len == S_SHA256.len);
+    std.debug.assert(WEBHOOK_SIGNATURE.len == S_SHA256.len + 64);
 }

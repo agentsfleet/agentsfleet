@@ -1,5 +1,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const S_T = " \t";
+const S_T_R_N = " \t\r\n";
+
 const c = @cImport({
     @cInclude("stdlib.h");
 });
@@ -26,14 +29,14 @@ pub fn applyEnvSources(alloc: std.mem.Allocator) !void {
 fn shouldLoadDotEnvLocal(alloc: std.mem.Allocator) bool {
     if (std.process.getEnvVarOwned(alloc, ENV_ZOMBIED_LOAD_DOTENV)) |raw| {
         defer alloc.free(raw);
-        const trimmed = std.mem.trim(u8, raw, " \t\r\n");
+        const trimmed = std.mem.trim(u8, raw, S_T_R_N);
         if (std.ascii.eqlIgnoreCase(trimmed, VAL_TRUE) or std.mem.eql(u8, trimmed, VAL_ONE)) return true;
         if (std.ascii.eqlIgnoreCase(trimmed, VAL_FALSE) or std.mem.eql(u8, trimmed, VAL_ZERO)) return false;
     } else |_| {}
 
     if (std.process.getEnvVarOwned(alloc, ENV_ZOMBIED_ENV_MODE)) |raw| {
         defer alloc.free(raw);
-        const trimmed = std.mem.trim(u8, raw, " \t\r\n");
+        const trimmed = std.mem.trim(u8, raw, S_T_R_N);
         return std.ascii.eqlIgnoreCase(trimmed, ENV_MODE_DEV);
     } else |_| {}
 
@@ -56,10 +59,10 @@ fn loadDotEnvLocalNonOverriding(alloc: std.mem.Allocator) !void {
         if (line.len == 0 or line[0] == '#') continue;
 
         const eq_idx = std.mem.indexOfScalar(u8, line, '=') orelse return LoadError.InvalidDotenvLine;
-        const key = std.mem.trim(u8, line[0..eq_idx], " \t");
+        const key = std.mem.trim(u8, line[0..eq_idx], S_T);
         if (key.len == 0) return LoadError.EmptyDotenvKey;
 
-        const value_raw = std.mem.trim(u8, line[eq_idx + 1 ..], " \t");
+        const value_raw = std.mem.trim(u8, line[eq_idx + 1 ..], S_T);
         const value = stripOptionalQuotes(value_raw);
         try setIfMissingEnv(key, value);
     }
