@@ -5,6 +5,15 @@ const DEFAULT_CAP_DELAY_MS = 2000;
 const MAX_ATTEMPTS_HARD_CAP = 10;
 const RETRYABLE_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
 
+const K_REQUEST_FAILED = "request failed";
+const K_ABORTERROR = "AbortError";
+const K_NETWORK = "network";
+const K_CONTENT_TYPE = "Content-Type";
+const K_TIMEOUT = "TIMEOUT";
+const K_FUNCTION = "function";
+const K_APPLICATION_JSON = "application/json";
+const K_STRING = "string";
+
 export class ApiError extends Error {
   constructor(message, details = {}) {
     super(message);
@@ -23,7 +32,7 @@ export class ApiError extends Error {
 
 function classifyRetryable(err) {
   if (err instanceof ApiError) {
-    if (err.code === "TIMEOUT") return "timeout";
+    if (err.code === K_TIMEOUT) return "timeout";
     if (err.status && RETRYABLE_STATUSES.has(err.status)) {
       // Server can opt out of retries by sending Retry-After: 0; we
       // surface that on the body so the wrapper can honor it.
@@ -31,16 +40,16 @@ function classifyRetryable(err) {
       if (err.status === 429) return "429";
       return "5xx";
     }
-    if (typeof err.code === "string" && /^UZ-[A-Z0-9]+-RETRY/.test(err.code)) {
+    if (typeof err.code === K_STRING && /^UZ-[A-Z0-9]+-RETRY/.test(err.code)) {
       return "server_marked_retryable";
     }
     return null;
   }
-  if (err instanceof TypeError && typeof err.message === "string" && err.message.toLowerCase().includes("fetch failed")) {
-    return "network";
+  if (err instanceof TypeError && typeof err.message === K_STRING && err.message.toLowerCase().includes("fetch failed")) {
+    return K_NETWORK;
   }
   if (err && (err.code === "ECONNRESET" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND")) {
-    return "network";
+    return K_NETWORK;
   }
   return null;
 }
@@ -101,7 +110,7 @@ export async function apiRequestWithRetry(url, options = {}) {
     try {
       const result = await apiRequest(url, options);
       const durationMs = Date.now() - startedAt;
-      if (typeof onAttempt === "function") {
+      if (typeof onAttempt === K_FUNCTION) {
         onAttempt({ attempt, status: 200, durationMs, retryCount: attempt - 1, terminal: true });
       }
       return result;
@@ -111,7 +120,7 @@ export async function apiRequestWithRetry(url, options = {}) {
       const status = err instanceof ApiError ? err.status : undefined;
       const willRetry = reason !== null && attempt < maxAttempts;
       if (willRetry) {
-        if (typeof onRetry === "function") {
+        if (typeof onRetry === K_FUNCTION) {
           onRetry({ attempt, status, durationMs, reason });
         }
         const retryAfterMs = err instanceof ApiError ? err.retryAfterMs : null;
@@ -120,7 +129,7 @@ export async function apiRequestWithRetry(url, options = {}) {
         lastErr = err;
         continue;
       }
-      if (typeof onAttempt === "function") {
+      if (typeof onAttempt === K_FUNCTION) {
         onAttempt({ attempt, status, durationMs, retryCount: attempt - 1, terminal: true });
       }
       throw err;
@@ -133,7 +142,7 @@ export async function apiRequestWithRetry(url, options = {}) {
 export async function apiRequest(url, options = {}) {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const fetchImpl = options.fetchImpl || globalThis.fetch;
-  if (typeof fetchImpl !== "function") {
+  if (typeof fetchImpl !== K_FUNCTION) {
     throw new ApiError("fetch is unavailable", { code: "NO_FETCH" });
   }
 
@@ -161,7 +170,7 @@ export async function apiRequest(url, options = {}) {
     if (!res.ok) {
       const errorCode = json?.error?.code || `HTTP_${res.status}`;
       const requestId = json?.error?.request_id ?? json?.request_id ?? null;
-      const message = json?.error?.message || res.statusText || "request failed";
+      const message = json?.error?.message || res.statusText || K_REQUEST_FAILED;
       // Capture Retry-After at the boundary where res.headers is still
       // in scope; ApiError.body intentionally carries only the parsed
       // payload, so the header lives on a dedicated field.
@@ -177,10 +186,10 @@ export async function apiRequest(url, options = {}) {
 
     return json ?? {};
   } catch (err) {
-    if (err.name === "AbortError") {
+    if (err.name === K_ABORTERROR) {
       throw new ApiError(`request timed out after ${timeoutMs}ms`, {
         status: 408,
-        code: "TIMEOUT",
+        code: K_TIMEOUT,
       });
     }
     throw err;
@@ -202,7 +211,7 @@ export async function streamFetch(url, payload, headers, onEvent, options = {}) 
   try {
     const res = await fetchImpl(url, {
       method: "POST",
-      headers: { ...headers, "Content-Type": "application/json", "Accept": "text/event-stream" },
+      headers: { ...headers, K_CONTENT_TYPE: K_APPLICATION_JSON, "Accept": "text/event-stream" },
       body: JSON.stringify(payload),
       signal: ctrl.signal,
     });
@@ -212,7 +221,7 @@ export async function streamFetch(url, payload, headers, onEvent, options = {}) 
       let json = null;
       try { json = JSON.parse(text); } catch { /* ignore */ }
       const errorCode = json?.error?.code || `HTTP_${res.status}`;
-      const message = json?.error?.message || res.statusText || "request failed";
+      const message = json?.error?.message || res.statusText || K_REQUEST_FAILED;
       throw new ApiError(message, { status: res.status, code: errorCode, body: json ?? text });
     }
 
@@ -234,8 +243,8 @@ export async function streamFetch(url, payload, headers, onEvent, options = {}) 
       }
     }
   } catch (err) {
-    if (err.name === "AbortError") {
-      throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
+    if (err.name === K_ABORTERROR) {
+      throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: K_TIMEOUT });
     }
     throw err;
   } finally {
@@ -257,7 +266,7 @@ function parseSseFrame(frame) {
 
 export function authHeaders(auth) {
     const headers = {
-        "Content-Type": "application/json",
+        K_CONTENT_TYPE: K_APPLICATION_JSON,
     };
 
     if (auth?.token) {

@@ -23,6 +23,8 @@ pub const Context = common.Context;
 const Hx = hx_mod.Hx;
 
 const KEY_PREFIX = "zmb_";
+const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
+
 const KEY_RANDOM_BYTES: usize = 32;
 
 // ── Key generation ─────────────────────────────────────────────────────────
@@ -83,7 +85,7 @@ pub fn innerCreateAgentKey(hx: Hx, req: *httpz.Request, workspace_id: []const u8
     defer hx.ctx.pool.release(conn);
 
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
 
@@ -166,7 +168,7 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
     defer hx.ctx.pool.release(conn);
 
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
 
@@ -213,7 +215,7 @@ pub fn innerDeleteAgentKey(hx: Hx, workspace_id: []const u8, agent_id: []const u
     defer hx.ctx.pool.release(conn);
 
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
 

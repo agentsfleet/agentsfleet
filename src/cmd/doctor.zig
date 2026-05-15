@@ -9,6 +9,24 @@ const logging = @import("log");
 
 const log = logging.scoped(.zombied);
 
+const S_DOCTOR_DB_CONNECT_START = "doctor.db_connect_start";
+const S_DOCTOR_REDIS_CONNECT_START = "doctor.redis_connect_start";
+const S_DOCTOR_DB_CONNECT_OK = "doctor.db_connect_ok";
+const S_OIDC_PROVIDER = "oidc_provider";
+const S_FORMAT = "--format=";
+const S_API = "api";
+const S_WORKER = "worker";
+const S_ENCRYPTION_MASTER_KEY = "encryption_master_key";
+const S_DOCTOR_SCHEMA_GATE_FAILED = "doctor.schema_gate_failed";
+const S_SCHEMA_GATE_COMPAT = "schema_gate_compat";
+const S_DB_API_CONFIG = "db_api_config";
+const S_DOCTOR_REDIS_CONNECT_FAILED = "doctor.redis_connect_failed";
+const S_OIDC_JWKS_REACHABILITY = "oidc_jwks_reachability";
+const S_T_R_N = " \t\r\n";
+const S_DOCTOR_REDIS_CONNECT_OK = "doctor.redis_connect_ok";
+const S_DOCTOR_DB_CONNECT_FAILED = "doctor.db_connect_failed";
+const S_DB_WORKER_CONFIG = "db_worker_config";
+
 const OutputFormat = enum {
     text,
     json,
@@ -87,8 +105,8 @@ fn parseDoctorArgs(args: []const []const u8) DoctorArgError!DoctorOptions {
             out.format = try parseFormatValue(args[i]);
             continue;
         }
-        if (std.mem.startsWith(u8, arg, "--format=")) {
-            out.format = try parseFormatValue(arg["--format=".len..]);
+        if (std.mem.startsWith(u8, arg, S_FORMAT)) {
+            out.format = try parseFormatValue(arg[S_FORMAT.len..]);
             continue;
         }
         return DoctorArgError.InvalidDoctorArgument;
@@ -206,33 +224,33 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     db_check: {
-        log.info("doctor.db_connect_start", .{ .role = "api" });
+        log.info(S_DOCTOR_DB_CONNECT_START, .{ .role = S_API });
         const pool = db.initFromEnvForRole(alloc, .api) catch |err| {
-            log.err("doctor.db_connect_failed", .{ .role = "api", .err = @errorName(err) });
-            try appendCheck(alloc, &results, "db_api_config", false, "DATABASE_URL_API not set/invalid", &ok);
+            log.err(S_DOCTOR_DB_CONNECT_FAILED, .{ .role = S_API, .err = @errorName(err) });
+            try appendCheck(alloc, &results, S_DB_API_CONFIG, false, "DATABASE_URL_API not set/invalid", &ok);
             break :db_check;
         };
         pool.deinit();
-        log.info("doctor.db_connect_ok", .{ .role = "api" });
-        try appendCheck(alloc, &results, "db_api_config", true, "API database config", &ok);
+        log.info(S_DOCTOR_DB_CONNECT_OK, .{ .role = S_API });
+        try appendCheck(alloc, &results, S_DB_API_CONFIG, true, "API database config", &ok);
     }
 
     worker_db_check: {
-        log.info("doctor.db_connect_start", .{ .role = "worker" });
+        log.info(S_DOCTOR_DB_CONNECT_START, .{ .role = S_WORKER });
         const pool = db.initFromEnvForRole(alloc, .worker) catch |err| {
-            log.err("doctor.db_connect_failed", .{ .role = "worker", .err = @errorName(err) });
-            try appendCheck(alloc, &results, "db_worker_config", false, "DATABASE_URL_WORKER not set/invalid", &ok);
+            log.err(S_DOCTOR_DB_CONNECT_FAILED, .{ .role = S_WORKER, .err = @errorName(err) });
+            try appendCheck(alloc, &results, S_DB_WORKER_CONFIG, false, "DATABASE_URL_WORKER not set/invalid", &ok);
             break :worker_db_check;
         };
         pool.deinit();
-        log.info("doctor.db_connect_ok", .{ .role = "worker" });
-        try appendCheck(alloc, &results, "db_worker_config", true, "Worker database config", &ok);
+        log.info(S_DOCTOR_DB_CONNECT_OK, .{ .role = S_WORKER });
+        try appendCheck(alloc, &results, S_DB_WORKER_CONFIG, true, "Worker database config", &ok);
     }
 
     if (options.schema_gate) schema_gate_check: {
         log.info("doctor.schema_gate_start", .{});
         const pool = db.initFromEnvForRole(alloc, .migrator) catch |err| {
-            log.err("doctor.schema_gate_failed", .{ .stage = "connect", .err = @errorName(err) });
+            log.err(S_DOCTOR_SCHEMA_GATE_FAILED, .{ .stage = "connect", .err = @errorName(err) });
             try appendCheck(alloc, &results, "schema_gate_config", false, "DATABASE_URL_MIGRATOR not set/invalid", &ok);
             break :schema_gate_check;
         };
@@ -240,7 +258,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
         const migrations = common.canonicalMigrations();
         const state = db.inspectMigrationState(pool, &migrations) catch |err| {
-            log.err("doctor.schema_gate_failed", .{ .stage = "inspect", .err = @errorName(err) });
+            log.err(S_DOCTOR_SCHEMA_GATE_FAILED, .{ .stage = "inspect", .err = @errorName(err) });
             try appendCheck(alloc, &results, "schema_gate_state", false, "Unable to inspect migration state", &ok);
             break :schema_gate_check;
         };
@@ -250,7 +268,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
             try appendFmtCheck(
                 alloc,
                 &results,
-                "schema_gate_compat",
+                S_SCHEMA_GATE_COMPAT,
                 false,
                 &ok,
                 "schema_gate status=fail expected_versions={d} applied_versions={d} reason_code={s}",
@@ -263,7 +281,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         try appendFmtCheck(
             alloc,
             &results,
-            "schema_gate_compat",
+            S_SCHEMA_GATE_COMPAT,
             true,
             &ok,
             "schema_gate status=ok expected_versions={d} applied_versions={d} reason_code={s}",
@@ -272,9 +290,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
     }
 
     redis_api_check: {
-        log.info("doctor.redis_connect_start", .{ .role = "api" });
+        log.info(S_DOCTOR_REDIS_CONNECT_START, .{ .role = S_API });
         var client = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
-            log.err("doctor.redis_connect_failed", .{ .role = "api", .err = @errorName(err) });
+            log.err(S_DOCTOR_REDIS_CONNECT_FAILED, .{ .role = S_API, .err = @errorName(err) });
             try appendCheck(alloc, &results, "redis_api_config", false, "REDIS_URL_API not set/invalid", &ok);
             break :redis_api_check;
         };
@@ -295,14 +313,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 break :redis_api_check;
             }
         }
-        log.info("doctor.redis_connect_ok", .{ .role = "api" });
+        log.info(S_DOCTOR_REDIS_CONNECT_OK, .{ .role = S_API });
         try appendCheck(alloc, &results, "redis_api_ready_acl", true, "Redis API readiness + ACL identity", &ok);
     }
 
     redis_worker_check: {
-        log.info("doctor.redis_connect_start", .{ .role = "worker" });
+        log.info(S_DOCTOR_REDIS_CONNECT_START, .{ .role = S_WORKER });
         var client = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-            log.err("doctor.redis_connect_failed", .{ .role = "worker", .err = @errorName(err) });
+            log.err(S_DOCTOR_REDIS_CONNECT_FAILED, .{ .role = S_WORKER, .err = @errorName(err) });
             try appendCheck(alloc, &results, "redis_worker_config", false, "REDIS_URL_WORKER not set/invalid", &ok);
             break :redis_worker_check;
         };
@@ -323,7 +341,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 break :redis_worker_check;
             }
         }
-        log.info("doctor.redis_connect_ok", .{ .role = "worker" });
+        log.info(S_DOCTOR_REDIS_CONNECT_OK, .{ .role = S_WORKER });
         try appendCheck(alloc, &results, "redis_worker_ready_acl", true, "Redis worker readiness + ACL identity", &ok);
     }
 
@@ -332,12 +350,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (key) |k| {
             defer alloc.free(k);
             if (k.len == 64) {
-                try appendCheck(alloc, &results, "encryption_master_key", true, "ENCRYPTION_MASTER_KEY set", &ok);
+                try appendCheck(alloc, &results, S_ENCRYPTION_MASTER_KEY, true, "ENCRYPTION_MASTER_KEY set", &ok);
             } else {
-                try appendCheck(alloc, &results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY must be 64 hex chars", &ok);
+                try appendCheck(alloc, &results, S_ENCRYPTION_MASTER_KEY, false, "ENCRYPTION_MASTER_KEY must be 64 hex chars", &ok);
             }
         } else {
-            try appendCheck(alloc, &results, "encryption_master_key", false, "ENCRYPTION_MASTER_KEY not set", &ok);
+            try appendCheck(alloc, &results, S_ENCRYPTION_MASTER_KEY, false, "ENCRYPTION_MASTER_KEY not set", &ok);
         }
     }
 
@@ -346,8 +364,8 @@ pub fn run(alloc: std.mem.Allocator) !void {
         defer if (oidc_provider_raw) |v| alloc.free(v);
         const oidc_provider = blk: {
             const raw = oidc_provider_raw orelse break :blk oidc_auth.Provider.clerk;
-            break :blk oidc_auth.parseProvider(std.mem.trim(u8, raw, " \t\r\n")) catch {
-                try appendCheck(alloc, &results, "oidc_provider", false, "OIDC_PROVIDER is invalid", &ok);
+            break :blk oidc_auth.parseProvider(std.mem.trim(u8, raw, S_T_R_N)) catch {
+                try appendCheck(alloc, &results, S_OIDC_PROVIDER, false, "OIDC_PROVIDER is invalid", &ok);
                 break :blk null;
             };
         };
@@ -358,12 +376,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         if (jwks_url) |url| {
             defer alloc.free(url);
             any_auth_configured = true;
-            if (std.mem.trim(u8, url, " \t\r\n").len == 0) {
+            if (std.mem.trim(u8, url, S_T_R_N).len == 0) {
                 try appendCheck(alloc, &results, "oidc_jwks_url", false, "OIDC_JWKS_URL is empty", &ok);
             } else {
                 if (oidc_provider) |provider| {
                     const provider_name = @tagName(provider);
-                    try appendFmtCheck(alloc, &results, "oidc_provider", true, &ok, "OIDC_PROVIDER={s}", .{provider_name});
+                    try appendFmtCheck(alloc, &results, S_OIDC_PROVIDER, true, &ok, "OIDC_PROVIDER={s}", .{provider_name});
                 }
 
                 var verifier = oidc_auth.Verifier.init(alloc, .{
@@ -373,11 +391,11 @@ pub fn run(alloc: std.mem.Allocator) !void {
                 defer verifier.deinit();
                 var jwks_ok = true;
                 verifier.checkJwksConnectivity() catch {
-                    try appendCheck(alloc, &results, "oidc_jwks_reachability", false, "OIDC JWKS fetch failed", &ok);
+                    try appendCheck(alloc, &results, S_OIDC_JWKS_REACHABILITY, false, "OIDC JWKS fetch failed", &ok);
                     jwks_ok = false;
                 };
                 if (jwks_ok) {
-                    try appendCheck(alloc, &results, "oidc_jwks_reachability", true, "OIDC JWKS reachable", &ok);
+                    try appendCheck(alloc, &results, S_OIDC_JWKS_REACHABILITY, true, "OIDC JWKS reachable", &ok);
                 }
             }
         }

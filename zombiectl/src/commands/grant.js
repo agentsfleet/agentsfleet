@@ -14,6 +14,8 @@ import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 // Grant list/delete is authenticated. UZ-GRANT-003 ("grant revoked")
 // is surfaced to the zombie at execute-time, not to the CLI; the CLI
 // surface mostly hits validation + auth.
+const K_GRANT_ID = "grant_id";
+
 export const errorMap = compose(AUTH_PRESET, {
   [ERR_GRANT_NOT_FOUND]: {
     code: "GRANT_NOT_FOUND",
@@ -63,7 +65,7 @@ export async function commandGrantList(ctx, parsed, workspaces, deps) {
     { key: "status",       label: "STATUS" },
     { key: "requested_at", label: "REQUESTED_AT" },
     { key: "approved_at",  label: "APPROVED_AT" },
-    { key: "grant_id",     label: "GRANT_ID" },
+    { key: K_GRANT_ID,     label: "GRANT_ID" },
   ], grants.map((g) => ({
     ...g,
     requested_at: g.requested_at ? new Date(g.requested_at).toISOString() : "-",
@@ -86,7 +88,7 @@ export async function commandGrantDelete(ctx, parsed, workspaces, deps) {
   }
   const checkZ = validateRequiredId(zombieId, "zombie_id");
   if (!checkZ.ok) { writeError(ctx, VALIDATION_ERROR, checkZ.message, deps); return 2; }
-  const checkG = validateRequiredId(grantId, "grant_id");
+  const checkG = validateRequiredId(grantId, K_GRANT_ID);
   if (!checkG.ok) { writeError(ctx, VALIDATION_ERROR, checkG.message, deps); return 2; }
 
   const url = wsGrantPath(wsId, zombieId, grantId);

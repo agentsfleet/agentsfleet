@@ -6,6 +6,9 @@
 import { ColorMode, detectColorMode, noteBasic16IfFirst } from "./capability.js";
 
 // xterm256 codes — the canonical mapping. Indexed by token name.
+const K_N_33 = "33";
+const K_PULSE = "pulse";
+
 const XTERM_256 = {
   pulse:     79,   // cyan2 — closest to --pulse #5EEAD4
   evidence:  220,  // gold1 — closest to --evidence #FBBF24
@@ -23,9 +26,9 @@ const XTERM_256 = {
 // match, accepting that 256→16 always loses fidelity.
 const BASIC_16 = {
   pulse:    "36",  // cyan
-  evidence: "33",  // yellow
+  evidence: K_N_33,  // yellow
   success:  "32",  // green
-  warn:     "33",  // yellow (warn lands on the same bin as evidence in 16-color terms)
+  warn:     K_N_33,  // yellow (warn lands on the same bin as evidence in 16-color terms)
   error:    "31",  // red
   muted:    "2",   // dim
   subtle:   "2",   // dim (no separate subtle in 16-color)
@@ -78,7 +81,7 @@ function bold(text, opts = {}) {
 // Token helpers — every site that emits color goes through one of these.
 // Add a new token here, not at the call site.
 export const palette = {
-  pulse:    (text, opts) => styled("pulse", text, opts),
+  pulse:    (text, opts) => styled(K_PULSE, text, opts),
   evidence: (text, opts) => styled("evidence", text, opts),
   success:  (text, opts) => styled("success", text, opts),
   warn:     (text, opts) => styled("warn", text, opts),
@@ -88,7 +91,7 @@ export const palette = {
   text:     (text)       => String(text),
   bold,
 
-  pulseBold: (text, opts) => styledBold("pulse", text, opts),
+  pulseBold: (text, opts) => styledBold(K_PULSE, text, opts),
 };
 
 // Test/inspection surface. Production callers should not import these;

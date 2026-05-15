@@ -17,6 +17,14 @@
 
 import { wsCredentialsPath, wsCredentialPath } from "../lib/api-paths.js";
 
+const K_MISSING_ARGUMENT = "MISSING_ARGUMENT";
+const K_INVALID_ARGUMENT = "INVALID_ARGUMENT";
+const K_OVERWRITTEN = "overwritten";
+const K_FUNCTION = "function";
+const K_STRING = "string";
+const K_GET = "GET";
+const K_STORED = "stored";
+
 function requireWorkspace(ctx, workspaces, deps) {
   const wsId = workspaces.current_workspace_id;
   if (!wsId) {
@@ -44,13 +52,13 @@ function parseDataObject(raw) {
 // Read all of stdin as UTF-8 — used when --data is `@-` so secret JSON
 // never appears in shell history or process argv.
 async function readStdinJson(ctx) {
-  if (typeof ctx?.stdin === "string") return ctx.stdin;
-  if (ctx?.stdin && typeof ctx.stdin[Symbol.asyncIterator] === "function") {
+  if (typeof ctx?.stdin === K_STRING) return ctx.stdin;
+  if (ctx?.stdin && typeof ctx.stdin[Symbol.asyncIterator] === K_FUNCTION) {
     const chunks = [];
     for await (const chunk of ctx.stdin) chunks.push(chunk);
-    return chunks.map((c) => (typeof c === "string" ? c : new TextDecoder().decode(c))).join("");
+    return chunks.map((c) => (typeof c === K_STRING ? c : new TextDecoder().decode(c))).join("");
   }
-  if (typeof globalThis.Bun?.stdin?.text === "function") {
+  if (typeof globalThis.Bun?.stdin?.text === K_FUNCTION) {
     return await globalThis.Bun.stdin.text();
   }
   const chunks = [];
@@ -61,7 +69,7 @@ async function readStdinJson(ctx) {
 async function findCredentialByName(ctx, wsId, name, deps) {
   const { request, apiHeaders } = deps;
   const res = await request(ctx, wsCredentialsPath(wsId), {
-    method: "GET",
+    method: K_GET,
     headers: apiHeaders(ctx),
   });
   const list = Array.isArray(res?.credentials) ? res.credentials : [];
@@ -75,7 +83,7 @@ export async function commandCredentialAdd(ctx, parsed, workspaces, deps) {
 
   const credName = parsed.positionals[0];
   if (!credName) {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl credential add <name> --data='<json-object>' [--force]", deps);
+    writeError(ctx, K_MISSING_ARGUMENT, "usage: zombiectl credential add <name> --data='<json-object>' [--force]", deps);
     return 2;
   }
 
@@ -84,7 +92,7 @@ export async function commandCredentialAdd(ctx, parsed, workspaces, deps) {
   if (!dataFlag) {
     writeError(
       ctx,
-      "MISSING_ARGUMENT",
+      K_MISSING_ARGUMENT,
       "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.",
       deps,
     );
@@ -95,7 +103,7 @@ export async function commandCredentialAdd(ctx, parsed, workspaces, deps) {
   if (dataFlag === "@-") {
     raw = await readStdinJson(ctx);
     if (!raw || raw.trim().length === 0) {
-      writeError(ctx, "INVALID_ARGUMENT", "--data=@- but stdin was empty", deps);
+      writeError(ctx, K_INVALID_ARGUMENT, "--data=@- but stdin was empty", deps);
       return 2;
     }
   } else {
@@ -104,7 +112,7 @@ export async function commandCredentialAdd(ctx, parsed, workspaces, deps) {
 
   const validated = parseDataObject(raw);
   if (validated.error) {
-    writeError(ctx, "INVALID_ARGUMENT", validated.error, deps);
+    writeError(ctx, K_INVALID_ARGUMENT, validated.error, deps);
     return 2;
   }
 
@@ -127,9 +135,9 @@ export async function commandCredentialAdd(ctx, parsed, workspaces, deps) {
   });
 
   if (ctx.jsonMode) {
-    printJson(ctx.stdout, { status: force ? "overwritten" : "stored", name: credName });
+    printJson(ctx.stdout, { status: force ? K_OVERWRITTEN : K_STORED, name: credName });
   } else {
-    writeLine(ctx.stdout, ui.ok(`Credential '${credName}' ${force ? "overwritten" : "stored"} in vault.`));
+    writeLine(ctx.stdout, ui.ok(`Credential '${credName}' ${force ? K_OVERWRITTEN : K_STORED} in vault.`));
   }
   return 0;
 }
@@ -141,7 +149,7 @@ export async function commandCredentialShow(ctx, parsed, workspaces, deps) {
 
   const credName = parsed.positionals[0];
   if (!credName) {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl credential show <name>", deps);
+    writeError(ctx, K_MISSING_ARGUMENT, "usage: zombiectl credential show <name>", deps);
     return 2;
   }
 
@@ -170,7 +178,7 @@ export async function commandCredentialList(ctx, _parsed, workspaces, deps) {
   if (!wsId) return 1;
 
   const res = await request(ctx, wsCredentialsPath(wsId), {
-    method: "GET",
+    method: K_GET,
     headers: apiHeaders(ctx),
   });
 
@@ -196,7 +204,7 @@ export async function commandCredentialDelete(ctx, parsed, workspaces, deps) {
 
   const credName = parsed.positionals[0];
   if (!credName) {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl credential delete <name>", deps);
+    writeError(ctx, K_MISSING_ARGUMENT, "usage: zombiectl credential delete <name>", deps);
     return 2;
   }
   await request(ctx, wsCredentialPath(wsId, credName), {

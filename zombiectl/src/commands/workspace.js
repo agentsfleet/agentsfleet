@@ -1,6 +1,12 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
+const K_WORKSPACE_ID = "workspace_id";
+const K_WORKSPACE_ID_2 = "workspace-id";
+const K_WORKSPACEID = "workspaceId";
+
+const K_PUNCT_26AEAB = "—";
+
 import {
   NO_WORKSPACE,
   UNKNOWN_WORKSPACE,
@@ -63,7 +69,7 @@ export async function workspaceAdd(ctx, parsed, workspaces, deps) {
     printSection(ctx.stdout, "Workspace added");
     printKeyValue(ctx.stdout, {
       workspace_id: workspaceId,
-      name: resolvedName ?? "—",
+      name: resolvedName ?? K_PUNCT_26AEAB,
     });
   }
   return 0;
@@ -92,13 +98,13 @@ export async function workspaceList(ctx, _parsed, workspaces, deps) {
     ctx.stdout,
     [
       { key: "active", label: "ACTIVE" },
-      { key: "workspace_id", label: "WORKSPACE" },
+      { key: K_WORKSPACE_ID, label: "WORKSPACE" },
       { key: "name", label: "NAME" },
     ],
     workspaces.items.map((item) => ({
       active: item.workspace_id === workspaces.current_workspace_id ? "*" : "",
       workspace_id: item.workspace_id,
-      name: item.name ?? "—",
+      name: item.name ?? K_PUNCT_26AEAB,
     })),
   );
   return 0;
@@ -106,12 +112,12 @@ export async function workspaceList(ctx, _parsed, workspaces, deps) {
 
 export async function workspaceUse(ctx, parsed, workspaces, deps) {
   const { printJson, saveWorkspaces, ui, writeLine } = deps;
-  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, "workspaceId", "workspace-id");
+  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, K_WORKSPACEID, K_WORKSPACE_ID_2);
   if (!workspaceId) {
     writeError(ctx, USAGE_ERROR, "workspace use requires <workspace_id>", deps);
     return 2;
   }
-  const check = validateRequiredId(workspaceId, "workspace_id");
+  const check = validateRequiredId(workspaceId, K_WORKSPACE_ID);
   if (!check.ok) {
     writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;
@@ -135,7 +141,7 @@ export async function workspaceUse(ctx, parsed, workspaces, deps) {
 
 export async function workspaceShow(ctx, parsed, workspaces, deps) {
   const { printJson, printKeyValue, printSection = () => {} } = deps;
-  const optionId = resolveOption(parsed.options, "workspaceId", "workspace-id");
+  const optionId = resolveOption(parsed.options, K_WORKSPACEID, K_WORKSPACE_ID_2);
   const workspaceId = optionId || parsed.positionals[0] || workspaces.current_workspace_id;
   if (!workspaceId) {
     writeError(ctx, NO_WORKSPACE, "no active workspace — run \"zombiectl workspace use <id>\" or pass --workspace-id", deps);
@@ -156,7 +162,7 @@ export async function workspaceShow(ctx, parsed, workspaces, deps) {
     printKeyValue(ctx.stdout, {
       workspace_id: detail.workspace_id,
       active: detail.active ? "yes" : "no",
-      name: detail.name ?? "—",
+      name: detail.name ?? K_PUNCT_26AEAB,
     });
   }
   return 0;
@@ -178,12 +184,12 @@ export async function workspaceCredentials(ctx, _parsed, _workspaces, deps) {
 
 export async function workspaceDelete(ctx, parsed, workspaces, deps) {
   const { printJson, saveWorkspaces, ui, writeLine } = deps;
-  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, "workspaceId", "workspace-id");
+  const workspaceId = parsed.positionals[0] || resolveOption(parsed.options, K_WORKSPACEID, K_WORKSPACE_ID_2);
   if (!workspaceId) {
     writeError(ctx, USAGE_ERROR, "workspace delete requires <workspace_id>", deps);
     return 2;
   }
-  const check = validateRequiredId(workspaceId, "workspace_id");
+  const check = validateRequiredId(workspaceId, K_WORKSPACE_ID);
   if (!check.ok) {
     writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;

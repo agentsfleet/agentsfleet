@@ -7,6 +7,10 @@
 import { wsZombiesPath, wsZombiePath } from "../lib/api-paths.js";
 import { loadSkillFromPath, SkillLoadError } from "../lib/load-skill-from-path.js";
 import { validateRequiredId } from "../program/validate.js";
+const K_APPLICATION_JSON = "application/json";
+const K_CONTENT_TYPE = "Content-Type";
+const K_ZOMBIE_ID = "zombie_id";
+
 import {
   IO_ERROR,
   MISSING_ARGUMENT,
@@ -97,7 +101,7 @@ export async function commandInstall(ctx, parsed, workspaces, deps) {
   try {
     res = await request(ctx, wsZombiesPath(wsId), {
       method: "POST",
-      headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
+      headers: { ...apiHeaders(ctx), K_CONTENT_TYPE: K_APPLICATION_JSON },
       body: JSON.stringify({
         trigger_markdown: bundle.trigger_md,
         source_markdown: bundle.skill_md,
@@ -172,7 +176,7 @@ async function commandSetStatus(ctx, parsed, workspaces, deps, status) {
     writeError(ctx, MISSING_ARGUMENT, `usage: zombiectl ${verb} <zombie_id>`, deps);
     return 2;
   }
-  const check = validateRequiredId(zombieId, "zombie_id");
+  const check = validateRequiredId(zombieId, K_ZOMBIE_ID);
   if (!check.ok) {
     writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;
@@ -180,7 +184,7 @@ async function commandSetStatus(ctx, parsed, workspaces, deps, status) {
 
   const res = await request(ctx, wsZombiePath(wsId, zombieId), {
     method: "PATCH",
-    headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
+    headers: { ...apiHeaders(ctx), K_CONTENT_TYPE: K_APPLICATION_JSON },
     body: JSON.stringify({ status }),
   });
 
@@ -211,7 +215,7 @@ export async function commandDelete(ctx, parsed, workspaces, deps) {
     writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl delete <zombie_id>", deps);
     return 2;
   }
-  const check = validateRequiredId(zombieId, "zombie_id");
+  const check = validateRequiredId(zombieId, K_ZOMBIE_ID);
   if (!check.ok) {
     writeError(ctx, VALIDATION_ERROR, check.message, deps);
     return 2;

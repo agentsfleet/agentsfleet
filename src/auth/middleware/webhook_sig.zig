@@ -37,6 +37,9 @@ const log = logging.scoped(.webhook_sig);
 /// verify time. Local to `src/auth/` to preserve the `test-auth` portability
 /// gate; host populates these in `serve_webhook_lookup.zig` by translating
 /// from the canonical registry entry.
+const S_INVALID_SIGNATURE = "Invalid signature";
+const S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED = "Webhook credential not configured";
+
 pub const SignatureScheme = struct {
     sig_header: []const u8,
     ts_header: ?[]const u8 = null,
@@ -91,17 +94,17 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
 
         pub fn execute(self: *Self, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
             const zombie_id = ctx.webhook_zombie_id orelse {
-                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
 
             const result_opt = self.lookup_fn(self.lookup_ctx, zombie_id, ctx.alloc) catch |err| {
                 log.warn("lookup_failed", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .err = @errorName(err) });
-                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
             const result = result_opt orelse {
-                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
             defer result.deinit(ctx.alloc);
@@ -110,7 +113,7 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // configured" so operators see a recoverable error class.
             const scheme = result.signature_scheme orelse {
                 log.warn("no_scheme", .{ .req_id = ctx.req_id, .zombie_id = zombie_id });
-                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
             // Scheme but no secret = vault row missing or malformed. Distinct
@@ -118,11 +121,11 @@ pub fn WebhookSig(comptime LookupCtx: type) type {
             // not an attack.
             const secret = result.signature_secret orelse {
                 log.warn("hmac_secret_unavailable", .{ .req_id = ctx.req_id, .zombie_id = zombie_id, .reason = "vault load failed or empty" });
-                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, "Webhook credential not configured");
+                ctx.fail(errors.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, S_WEBHOOK_CREDENTIAL_NOT_CONFIGURED);
                 return .short_circuit;
             };
             const provided_sig = req.header(scheme.sig_header) orelse {
-                ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+                ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, S_INVALID_SIGNATURE);
                 return .short_circuit;
             };
             return verifyHmac(ctx, scheme, secret, provided_sig, req);
@@ -142,7 +145,7 @@ fn verifyHmac(
     // execute() already reject empty secrets upstream, but middleware must
     // not trust the vault blindly.
     if (secret.len == 0) {
-        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, S_INVALID_SIGNATURE);
         return .short_circuit;
     }
     const timestamp = if (scheme.ts_header) |ts_h| req.header(ts_h) else null;
@@ -158,24 +161,24 @@ fn verifyHmac(
     }
 
     if (!std.mem.startsWith(u8, provided_sig, scheme.prefix)) {
-        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, S_INVALID_SIGNATURE);
         return .short_circuit;
     }
     const expected = hs.hexDecode32(provided_sig[scheme.prefix.len..]) orelse {
-        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, S_INVALID_SIGNATURE);
         return .short_circuit;
     };
     const body = req.body() orelse "";
     const mac = if (scheme.includes_timestamp) blk: {
         const ts = timestamp orelse {
-            ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+            ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, S_INVALID_SIGNATURE);
             return .short_circuit;
         };
         break :blk hs.computeMac(secret, &.{ scheme.hmac_version, ":", ts, ":", body });
     } else hs.computeMac(secret, &.{body});
 
     if (!hs.constantTimeEql(&mac, &expected)) {
-        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, "Invalid signature");
+        ctx.fail(errors.ERR_WEBHOOK_SIG_INVALID, S_INVALID_SIGNATURE);
         return .short_circuit;
     }
     return .next;

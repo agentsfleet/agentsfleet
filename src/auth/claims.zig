@@ -7,6 +7,11 @@ const logging = @import("log");
 
 const log = logging.scoped(.auth);
 
+const S_CUSTOM_CLAIMS = "custom_claims";
+const S_METADATA = "metadata";
+const S_APP_METADATA = "app_metadata";
+const S_MISSING = "missing";
+
 pub const IdentityClaims = struct {
     tenant_id: ?[]u8,
     org_id: ?[]u8,
@@ -52,8 +57,8 @@ pub fn extractClerkClaims(alloc: std.mem.Allocator, claims_json: []const u8) !Cl
     const tenant_id = getClerkTenantId(parsed.value.object);
     const org_id = getClerkOrgId(parsed.value.object);
     log.debug("clerk_claims_extracted", .{
-        .tenant_id = if (tenant_id) |v| v else "missing",
-        .org_id = if (org_id) |v| v else "missing",
+        .tenant_id = if (tenant_id) |v| v else S_MISSING,
+        .org_id = if (org_id) |v| v else S_MISSING,
     });
 
     return duplicateClaims(alloc, .{
@@ -75,8 +80,8 @@ pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !C
     const tenant_id = getCustomTenantId(parsed.value.object);
     const org_id = getCustomOrgId(parsed.value.object);
     log.debug("custom_claims_extracted", .{
-        .tenant_id = if (tenant_id) |v| v else "missing",
-        .org_id = if (org_id) |v| v else "missing",
+        .tenant_id = if (tenant_id) |v| v else S_MISSING,
+        .org_id = if (org_id) |v| v else S_MISSING,
     });
 
     return duplicateClaims(alloc, .{
@@ -122,7 +127,7 @@ fn duplicateClaims(alloc: std.mem.Allocator, view: struct {
 fn getClerkTenantId(obj: std.json.ObjectMap) ?[]const u8 {
     if (jwks.getString(obj, CLAIM_TENANT_ID)) |v| return v;
 
-    const metadata = obj.get("metadata") orelse return null;
+    const metadata = obj.get(S_METADATA) orelse return null;
     if (metadata != .object) return null;
     return jwks.getString(metadata.object, CLAIM_TENANT_ID);
 }
@@ -135,7 +140,7 @@ fn getClerkWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
     if (jwks.getString(obj, CLAIM_WORKSPACE_ID)) |v| return v;
     if (jwks.getString(obj, CLAIM_WORKSPACE_CAMEL)) |v| return v;
 
-    const metadata = obj.get("metadata") orelse return null;
+    const metadata = obj.get(S_METADATA) orelse return null;
     if (metadata != .object) return null;
     if (jwks.getString(metadata.object, CLAIM_WORKSPACE_ID)) |v| return v;
     return jwks.getString(metadata.object, CLAIM_WORKSPACE_CAMEL);
@@ -146,7 +151,7 @@ fn getClerkRole(obj: std.json.ObjectMap) ?[]const u8 {
         CLAIM_ROLE,
         NAMESPACE_DEV ++ CLAIM_ROLE,
         NAMESPACE_PROD ++ CLAIM_ROLE,
-    }, &.{"metadata"});
+    }, &.{S_METADATA});
 }
 
 fn getCustomTenantId(obj: std.json.ObjectMap) ?[]const u8 {
@@ -154,7 +159,7 @@ fn getCustomTenantId(obj: std.json.ObjectMap) ?[]const u8 {
         CLAIM_TENANT_ID,
         NAMESPACE_DEV ++ CLAIM_TENANT_ID,
         NAMESPACE_PROD ++ CLAIM_TENANT_ID,
-    }, &.{ "custom_claims", "metadata", "app_metadata" });
+    }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
 fn getCustomOrgId(obj: std.json.ObjectMap) ?[]const u8 {
@@ -163,7 +168,7 @@ fn getCustomOrgId(obj: std.json.ObjectMap) ?[]const u8 {
         CLAIM_ORGANIZATION_ID,
         NAMESPACE_DEV ++ CLAIM_ORGANIZATION_ID,
         NAMESPACE_PROD ++ CLAIM_ORGANIZATION_ID,
-    }, &.{ "custom_claims", "metadata", "app_metadata" });
+    }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
 fn getCustomWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
@@ -174,7 +179,7 @@ fn getCustomWorkspaceId(obj: std.json.ObjectMap) ?[]const u8 {
         NAMESPACE_DEV ++ CLAIM_WORKSPACE_CAMEL,
         NAMESPACE_PROD ++ CLAIM_WORKSPACE_ID,
         NAMESPACE_PROD ++ CLAIM_WORKSPACE_CAMEL,
-    }, &.{ "custom_claims", "metadata", "app_metadata" });
+    }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
 fn getCustomRole(obj: std.json.ObjectMap) ?[]const u8 {
@@ -182,7 +187,7 @@ fn getCustomRole(obj: std.json.ObjectMap) ?[]const u8 {
         CLAIM_ROLE,
         NAMESPACE_DEV ++ CLAIM_ROLE,
         NAMESPACE_PROD ++ CLAIM_ROLE,
-    }, &.{ "custom_claims", "metadata", "app_metadata" });
+    }, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
 }
 
 fn getFirstValue(

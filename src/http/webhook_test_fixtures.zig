@@ -11,6 +11,8 @@ const crypto_store = @import("../secrets/crypto_store.zig");
 
 /// Set `ENCRYPTION_MASTER_KEY` so `crypto_store.store/load` can operate.
 /// Safe to call once per test. Value is a fixed test key — not a secret.
+const S_WEBHOOK = "webhook";
+
 pub fn setTestEncryptionKey() void {
     const c = @cImport(@cInclude("stdlib.h"));
     _ = c.setenv("ENCRYPTION_MASTER_KEY", "0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20", 1);
@@ -109,12 +111,12 @@ pub fn buildTriggerConfig(
     // containing `"` or `\` round-trip correctly — same fix applied to
     // `insertWebhookCredential` above.
     const TriggerWith = struct {
-        type: []const u8 = "webhook",
+        type: []const u8 = S_WEBHOOK,
         source: []const u8,
         credential_name: []const u8,
     };
     const TriggerNoOverride = struct {
-        type: []const u8 = "webhook",
+        type: []const u8 = S_WEBHOOK,
         source: []const u8,
     };
     const WrapWith = struct { @"x-usezombie": struct { trigger: TriggerWith } };

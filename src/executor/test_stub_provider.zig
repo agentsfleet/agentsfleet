@@ -38,6 +38,8 @@ const CANNED_TOOL_CALL_ID = "call_stub_001";
 const CONTENT_TEMPLATE = "Calling tool with api_key=" ++ SYNTHETIC_SECRET;
 const ARGS_TEMPLATE = "{\"api_key\":\"" ++ SYNTHETIC_SECRET ++ "\"}";
 
+const S_STUB = "stub";
+
 pub const StubProvider = struct {
     allocator: std.mem.Allocator,
     call_count: u32 = 0,
@@ -92,7 +94,7 @@ pub const StubProvider = struct {
     }
 
     fn getNameImpl(_: *anyopaque) []const u8 {
-        return "stub";
+        return S_STUB;
     }
 
     fn deinitImpl(_: *anyopaque) void {}
@@ -103,8 +105,8 @@ fn emptyResponse(allocator: std.mem.Allocator) !ChatResponse {
         .content = try allocator.dupe(u8, ""),
         .tool_calls = &.{},
         .usage = TokenUsage{},
-        .provider = try allocator.dupe(u8, "stub"),
-        .model = try allocator.dupe(u8, "stub"),
+        .provider = try allocator.dupe(u8, S_STUB),
+        .model = try allocator.dupe(u8, S_STUB),
     };
 }
 
@@ -131,7 +133,7 @@ fn cannedResponse(allocator: std.mem.Allocator) !ChatResponse {
         .content = content,
         .tool_calls = calls,
         .usage = TokenUsage{ .prompt_tokens = 8, .completion_tokens = 16, .total_tokens = 24 },
-        .provider = try allocator.dupe(u8, "stub"),
-        .model = try allocator.dupe(u8, "stub"),
+        .provider = try allocator.dupe(u8, S_STUB),
+        .model = try allocator.dupe(u8, S_STUB),
     };
 }

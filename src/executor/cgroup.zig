@@ -19,6 +19,11 @@ const log = logging.scoped(.executor_cgroup);
 
 const CGROUP_BASE = "/sys/fs/cgroup/zombie.executor";
 
+const S_THROTTLED_USEC = "throttled_usec ";
+const S_D = "{d}";
+const S_S_S = "{s}/{s}";
+const S_OOM_KILL = "oom_kill ";
+
 pub const CgroupError = error{
     UnsupportedPlatform,
     CgroupCreateFailed,
@@ -81,7 +86,7 @@ pub const CgroupScope = struct {
         defer self.alloc.free(procs_path);
 
         var buf: [20]u8 = undefined;
-        const pid_str = std.fmt.bufPrint(&buf, "{d}", .{pid}) catch return CgroupError.CgroupWriteFailed;
+        const pid_str = std.fmt.bufPrint(&buf, S_D, .{pid}) catch return CgroupError.CgroupWriteFailed;
 
         const file = std.fs.openFileAbsolute(procs_path, .{ .mode = .write_only }) catch {
             return CgroupError.CgroupMoveFailed;
@@ -116,8 +121,8 @@ pub const CgroupScope = struct {
         const content = buf[0..len];
 
         // Look for "throttled_usec N" in cpu.stat output.
-        if (std.mem.indexOf(u8, content, "throttled_usec ")) |pos| {
-            const after = content[pos + "throttled_usec ".len ..];
+        if (std.mem.indexOf(u8, content, S_THROTTLED_USEC)) |pos| {
+            const after = content[pos + S_THROTTLED_USEC.len ..];
             const end = std.mem.indexOfScalar(u8, after, '\n') orelse after.len;
             return std.fmt.parseInt(u64, after[0..end], 10) catch 0;
         }
@@ -137,8 +142,8 @@ pub const CgroupScope = struct {
         const content = buf[0..len];
 
         // Look for "oom_kill N" where N > 0.
-        if (std.mem.indexOf(u8, content, "oom_kill ")) |pos| {
-            const after = content[pos + "oom_kill ".len ..];
+        if (std.mem.indexOf(u8, content, S_OOM_KILL)) |pos| {
+            const after = content[pos + S_OOM_KILL.len ..];
             const end = std.mem.indexOfScalar(u8, after, '\n') orelse after.len;
             const count = std.fmt.parseInt(u64, after[0..end], 10) catch return false;
             return count > 0;
@@ -186,11 +191,11 @@ pub const CgroupScope = struct {
     }
 
     fn writeControl(self: *const CgroupScope, control_file: []const u8, value: u64) !void {
-        const control_path = try std.fmt.allocPrint(self.alloc, "{s}/{s}", .{ self.path, control_file });
+        const control_path = try std.fmt.allocPrint(self.alloc, S_S_S, .{ self.path, control_file });
         defer self.alloc.free(control_path);
 
         var buf: [20]u8 = undefined;
-        const val_str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return CgroupError.CgroupWriteFailed;
+        const val_str = std.fmt.bufPrint(&buf, S_D, .{value}) catch return CgroupError.CgroupWriteFailed;
 
         const file = std.fs.openFileAbsolute(control_path, .{ .mode = .write_only }) catch {
             return CgroupError.CgroupWriteFailed;
@@ -214,7 +219,7 @@ pub const CgroupScope = struct {
     }
 
     fn readControlValue(self: *const CgroupScope, control_file: []const u8) !u64 {
-        const control_path = try std.fmt.allocPrint(self.alloc, "{s}/{s}", .{ self.path, control_file });
+        const control_path = try std.fmt.allocPrint(self.alloc, S_S_S, .{ self.path, control_file });
         defer self.alloc.free(control_path);
 
         const file = std.fs.openFileAbsolute(control_path, .{}) catch return CgroupError.CgroupReadFailed;

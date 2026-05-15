@@ -9,6 +9,12 @@ import { palette } from "./palette.js";
 const NARROW_THRESHOLD = 80;
 const HORIZONTAL_RULE = "─";
 
+const K_N = "\n";
+
+const K_RIGHT = "right";
+
+const K_PUNCT_23B58D = "  ";
+
 function resolveWidth(opts = {}) {
   if (opts.widthHint && Number.isFinite(opts.widthHint)) return opts.widthHint;
   const cols = process.stdout && process.stdout.columns;
@@ -52,38 +58,38 @@ export function formatKeyValue(rows, opts) {
     const label = palette.subtle(String(key).padEnd(width), opts);
     return `  ${label}${sep}${value}`;
   });
-  return `${lines.join("\n")  }\n`;
+  return `${lines.join(K_N)  }\n`;
 }
 
 function renderHeader(columns, widths, opts) {
-  const cells = columns.map((c, i) => c.label.padEnd(widths[i])).join("  ");
+  const cells = columns.map((c, i) => c.label.padEnd(widths[i])).join(K_PUNCT_23B58D);
   // Table headers are chrome, not currency — bold default, not pulse.
   return palette.bold(cells, opts);
 }
 
 function renderRule(widths, opts) {
-  const rule = widths.map((w) => HORIZONTAL_RULE.repeat(w)).join("  ");
+  const rule = widths.map((w) => HORIZONTAL_RULE.repeat(w)).join(K_PUNCT_23B58D);
   return palette.subtle(rule, opts);
 }
 
 function renderRow(columns, widths, row, alignments) {
   return columns.map((c, i) => {
     const cell = String(row[c.key] ?? "");
-    return alignments[i] === "right" ? cell.padStart(widths[i]) : cell.padEnd(widths[i]);
-  }).join("  ");
+    return alignments[i] === K_RIGHT ? cell.padStart(widths[i]) : cell.padEnd(widths[i]);
+  }).join(K_PUNCT_23B58D);
 }
 
 function renderHorizontal(columns, rows, opts) {
   const alignments = columns.map((c) => {
     if (c.align) return c.align;
-    return isAllNumeric(rows.map((r) => r[c.key] ?? "")) ? "right" : "left";
+    return isAllNumeric(rows.map((r) => r[c.key] ?? "")) ? K_RIGHT : "left";
   });
   const widths = columns.map((c) =>
     Math.max(c.label.length, ...rows.map((r) => String(r[c.key] ?? "").length))
   );
   const lines = [renderHeader(columns, widths, opts), renderRule(widths, opts)];
   for (const row of rows) lines.push(renderRow(columns, widths, row, alignments));
-  return `${lines.join("\n")  }\n`;
+  return `${lines.join(K_N)  }\n`;
 }
 
 // Below NARROW_THRESHOLD columns, fall back to a vertical key:value
@@ -97,7 +103,7 @@ function renderVertical(columns, rows, opts) {
       const value = String(row[c.key] ?? "");
       return `  ${label}  ${value}`;
     });
-    return lines.join("\n");
+    return lines.join(K_N);
   });
   return `${blocks.join("\n\n")  }\n`;
 }
