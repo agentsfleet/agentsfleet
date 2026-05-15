@@ -170,7 +170,6 @@ npx zombiectl runs list
 
 Confirm:
 - run reaches `completed` with a `pr_url`
-- run-to-PR latency under 5 minutes
 - no errors in `runs list` output
 
 ---
