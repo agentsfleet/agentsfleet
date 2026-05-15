@@ -502,23 +502,28 @@ App Router note: a `/zombies/[id]/layout.tsx` host would only survive *within* t
 
 ### §13 — zombiectl login redesign (Tiers 1–3)
 
-Redesigns `zombiectl/src/commands/core.js commandLogin` per the CLI login DX critique. Leverages patterns from the Supabase CLI's `~/Projects/oss/cli/apps/cli/src/next/commands/login/login.handler.ts` (multi-mode token resolution, idempotency check, distinct error tags) — adapted from Effect-TS layered DI to zombiectl's plain Node.js stack.
+Redesigns `zombiectl/src/commands/core.js commandLogin` per the CLI login DX critique. Pure-CLI improvements landing here in M68; auth-flow-shape changes (ECDH transport, out-of-band verification code, server-side device labeling, token introspection endpoint, server-side revocation) split to a sibling spec — see `HANDOFF_SUPABASE_HARDENING_SPEC.md` at the worktree root. That sibling owns the **handshake redesign**; §13 here owns only the **CLI behavior polish** that doesn't depend on the new handshake.
 
 zombiectl already does polling (not paste-the-code), so Tier-1 items A (loopback callback) and #7 (verification-code retry semantics) from the Supabase critique table don't apply. The dimensions below cover what *does* translate.
 
-- **D20 — Idempotency check (A).** Warn + confirm before overwriting `credentials.json`; `--force` skips the prompt.
-- **D21 — Token name flag (B).** `--name <label>` sent to server as session label; default `hostname-username` so the dashboard can distinguish per-machine tokens.
-- **D22 — TTL countdown (C).** Replace the silent spinner with `Session expires in MM:SS` updating each poll tick. Counts down to the server-side deadline.
-- **D23 — Fail-loud workspace hydration (D).** Surface `hydrateWorkspacesAfterLogin` failures with a warning + exit code, not the current silent `catch { return null; }`.
-- **D24 — Token validation before save (E).** JWT format check + `/me` ping before `saveCredentials`. A stale-but-format-valid token never reaches disk.
-- **D25 — Argv-leak warning (F).** If `--token sbp_...` is passed on a TTY, print a warning (shell history + `ps aux` exposure) and a 3-second pause-with-Ctrl-C-to-cancel. CI (non-TTY) skips the warning.
-- **D26 — TTY-priority env resolution (G).** In a TTY, ignore `ZMB_TOKEN` env unless `--use-env` is explicit. Non-TTY keeps current behavior (env wins) so scripts don't break.
-- **D27 — Decompose `commandLogin` (H).** Split the 140L monolith into named stages: `createSession → openBrowser → awaitCompletion → validate → persist → hydrateWorkspaces → finalize`. Each stage testable in isolation.
-- **D28 — Error taxonomy (I).** Distinguish `InvalidSession` / `ExpiredSession` / `NetworkError` / `RateLimited` / `Timeout` / `Interrupted`. Tightens the existing AUTH_PRESET map.
+In-scope this PR (CLI-only, no handshake changes):
+
+- **D22 — TTL countdown (C).** Replace the silent spinner with `Session expires in MM:SS` updating each poll tick. Deadline derived client-side from `Date.now() + timeoutSec * 1000` since the response shape today carries no `expires_at_ms` (the cli-auth handshake hardening spec will add a server-supplied deadline; until then client-derived is the source).
+- **D23 — Fail-loud workspace hydration (D).** Surface `hydrateWorkspacesAfterLogin` failures with a stderr warning, not the current silent `catch { return null; }`. Exit code stays 0 — login succeeded, workspace hydration is best-effort. The existing unit-test contract (line 145–172 + 174–204 of `test/login.unit.test.js`) explicitly pins exit 0 when hydration fails, and breaking that would mis-signal login failure to scripts.
+- **D27 — Decompose `commandLogin` (H). — DONE.** Refactored the 142-line monolith into six named stages — `resolvePollParams`, `createLoginSession`, `announceLoginSession`, `maybeOpenBrowser`, `pollUntilComplete`, `persistAndHydrate`, `emitLoginResult` — plus a 45-line orchestrator. `validate` deliberately omitted (D24 is deferred to the cli-auth handshake hardening follow-up; RULE NDC bans empty-scaffold stages). External signature `commandLogin(ctx, parsed, workspaces, deps)` preserved verbatim; 625/625 unit tests green; every surface the acceptance suite asserts (`login_url:` regex, exit codes 0/1/130, `login complete` line, credentials.json shape + 0600 mode, no-token-in-stdout) unchanged. File 225 LOC (cap 350); every fn ≤ 50.
+- **D28 — Error taxonomy (I).** Distinguish `InvalidSession` / `ExpiredSession` / `NetworkError` / `RateLimited` / `Timeout` / `Interrupted`. Tightens the existing AUTH_PRESET map. No new error pathways — purely a remap of conditions zombiectl already encounters.
 - **D29 — Exp-backoff polling with jitter (J).** Start 1s, grow to 5s, ±20% jitter, honor server `Retry-After` if sent. Caps polling RPS during retry storms.
 - **D30 — Polling transient-retry (K).** Single 503 / network blip during the poll loop doesn't kill the session — log + continue.
-- **D31 — `zombiectl auth status` companion (L).** New command: shows active token, source (env/saved), `saved_at`, server-side validity ping. Closes the introspection gap.
-- **D32 — `zombiectl logout --all` (M).** Extends `commandLogout` to invalidate server-side, not just local.
+
+Deferred to **cli-auth handshake hardening** sibling spec (`HANDOFF_SUPABASE_HARDENING_SPEC.md`):
+
+- **D20 — Idempotency check (A).** Overlaps with the sibling spec's "already-logged-in detection" hardening; lands cohesively with the new handshake UX rather than as a one-off here.
+- **D21 — Token name flag (B).** Overlaps with the sibling spec's "token name / device label" hardening; the JWT-vs-row labeling tension (Clerk JWTs are stateless, nothing to label server-side without schema work) is a design decision the sibling spec owns.
+- **D24 — Token validation before save (E).** The `/me` ping endpoint shape is decided by the handshake redesign (today no auth introspection endpoint exists — Flow 3's `core.api_keys` is service-to-service, separate from Flow 1's Clerk JWT path).
+- **D25 — Argv-leak warning (F).** `--token` flag doesn't exist in `cli-tree.js` today; adding it is itself a new auth pathway ("direct token mode") that the sibling spec's multi-mode token resolution will introduce.
+- **D26 — TTY-priority env resolution (G).** Same reason as D25 — `ZMB_TOKEN`/`ZOMBIE_TOKEN` env-token reading doesn't exist in commandLogin today; it lands with the new pathways.
+- **D31 — `zombiectl auth status` companion (L).** Needs the token-introspection endpoint shape the sibling spec resolves.
+- **D32 — `zombiectl logout --all` (M).** Needs the server-side revocation design the sibling spec resolves (Clerk JWTs are stateless; revocation is non-trivial).
 
 ---
 

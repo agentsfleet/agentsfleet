@@ -67,22 +67,7 @@ function resolveOption(options, ...keys) {
   return undefined;
 }
 
-export async function commandLogin(ctx, parsed, workspaces, deps) {
-  const {
-    apiHeaders,
-    createSpinner,
-    openUrl,
-    printJson,
-    printKeyValue,
-    printSection = () => {},
-    request,
-    saveCredentials,
-    saveWorkspaces,
-    ui,
-    writeLine,
-  } = deps;
-
-  const options = parsed.options;
+function resolvePollParams(options) {
   // Commander camelCases hyphenated option names: --timeout-sec → opts.timeoutSec.
   // Fallback to the dashed form for callers that pass a synthetic parsed shape.
   const timeoutSecRaw = resolveOption(options, "timeoutSec", "timeout-sec");
@@ -93,6 +78,101 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
   const pollMs = Number.isFinite(pollMsRaw)
     ? pollMsRaw
     : Number.parseInt(String(pollMsRaw ?? DEFAULT_POLL_MS), 10);
+  return { timeoutSec, pollMs };
+}
+
+async function createLoginSession(ctx, deps) {
+  const { request } = deps;
+  const created = await request(ctx, AUTH_SESSIONS_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  return { sessionId: created.session_id, loginUrl: created.login_url };
+}
+
+function announceLoginSession(ctx, sessionId, loginUrl, deps) {
+  const { printKeyValue, printSection = () => {}, writeLine } = deps;
+  if (ctx.jsonMode) return;
+  printSection(ctx.stdout, "Login session");
+  printKeyValue(ctx.stdout, { session_id: sessionId, login_url: loginUrl });
+  writeLine(ctx.stdout);
+}
+
+async function maybeOpenBrowser(ctx, loginUrl, options, deps) {
+  const { openUrl, writeLine } = deps;
+  // Commander normalises --no-open to opts.open === false. Legacy parsed
+  // shape kept opts["no-open"] === true; both resolve here.
+  const noOpenFlag = options.open === false || options["no-open"] === true;
+  const shouldOpen = noOpenFlag ? false : !ctx.noOpen;
+  const opened = shouldOpen ? await openUrl(loginUrl, { env: ctx.env }) : false;
+  if (ctx.jsonMode || !shouldOpen) return opened;
+  writeLine(ctx.stdout, opened ? "browser: opened" : "browser: not opened (open URL manually)");
+  return opened;
+}
+
+async function pollUntilComplete(ctx, sessionId, params, interrupt, deps) {
+  const { request } = deps;
+  const { deadline, pollMs } = params;
+  while (Date.now() < deadline) {
+    if (interrupt.signal.aborted) return { status: "interrupted" };
+    const last = await request(ctx, `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (last.status === "complete" && last.token) {
+      if (interrupt.signal.aborted) return { status: "interrupted" };
+      return { status: "complete", token: last.token };
+    }
+    if (last.status === "expired") return { status: "expired" };
+    await new Promise((resolve) => setTimeout(resolve, Math.max(MIN_POLL_MS, pollMs)));
+  }
+  if (interrupt.signal.aborted) return { status: "interrupted" };
+  return { status: "timeout" };
+}
+
+async function persistAndHydrate(ctx, sessionId, token, workspaces, deps) {
+  const { apiHeaders, request, saveCredentials, saveWorkspaces } = deps;
+  await saveCredentials({
+    token,
+    saved_at: Date.now(),
+    session_id: sessionId,
+    api_url: ctx.apiUrl,
+  });
+  ctx.token = token;
+  await hydrateWorkspacesAfterLogin(ctx, workspaces, { apiHeaders, request, saveWorkspaces });
+}
+
+function emitLoginResult(ctx, sessionId, result, deps) {
+  const { printJson, ui, writeLine } = deps;
+  if (result.status === "complete") {
+    const payload = { status: "complete", session_id: sessionId, token_saved: true, api_url: ctx.apiUrl };
+    if (ctx.jsonMode) printJson(ctx.stdout, payload);
+    else writeLine(ctx.stdout, ui.ok("login complete"));
+    return 0;
+  }
+  if (result.status === "expired") {
+    const payload = { status: "expired", session_id: sessionId };
+    if (ctx.jsonMode) printJson(ctx.stdout, payload);
+    else writeLine(ctx.stderr, ui.err("login session expired"));
+    return 1;
+  }
+  if (result.status === "interrupted") {
+    const payload = { status: "interrupted", session_id: sessionId };
+    if (ctx.jsonMode) printJson(ctx.stdout, payload);
+    else writeLine(ctx.stderr, ui.err("login interrupted"));
+    return 130;
+  }
+  const payload = { status: "timeout", session_id: sessionId };
+  if (ctx.jsonMode) printJson(ctx.stdout, payload);
+  else writeLine(ctx.stderr, ui.err("login timed out"));
+  return 1;
+}
+
+export async function commandLogin(ctx, parsed, workspaces, deps) {
+  const { createSpinner } = deps;
+  const options = parsed.options;
+  const { timeoutSec, pollMs } = resolvePollParams(options);
 
   // SIGINT handler — terminal Ctrl+C during the poll loop (or before
   // creds are written) exits non-zero without persisting a partial
@@ -101,38 +181,11 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
   const onSigint = () => interrupt.abort();
   process.on(SIGINT, onSigint);
 
-  const created = await request(ctx, AUTH_SESSIONS_PATH, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: "{}",
-  });
-
-  const loginUrl = created.login_url;
-  const sessionId = created.session_id;
+  const { sessionId, loginUrl } = await createLoginSession(ctx, deps);
   setCliAnalyticsContext(ctx, { session_id: sessionId });
+  announceLoginSession(ctx, sessionId, loginUrl, deps);
+  await maybeOpenBrowser(ctx, loginUrl, options, deps);
 
-  if (!ctx.jsonMode) {
-    printSection(ctx.stdout, "Login session");
-    printKeyValue(ctx.stdout, {
-      session_id: sessionId,
-      login_url: loginUrl,
-    });
-    writeLine(ctx.stdout);
-  }
-
-  // Commander normalises --no-open to opts.open === false. Legacy parsed
-  // shape kept opts["no-open"] === true; both resolve here.
-  const noOpenFlag = options.open === false || options["no-open"] === true;
-  const shouldOpen = noOpenFlag ? false : !ctx.noOpen;
-  const opened = shouldOpen ? await openUrl(loginUrl, { env: ctx.env }) : false;
-
-  if (!ctx.jsonMode) {
-    if (shouldOpen && opened) writeLine(ctx.stdout, "browser: opened");
-    if (shouldOpen && !opened) writeLine(ctx.stdout, "browser: not opened (open URL manually)");
-  }
-
-  const deadline = Date.now() + Math.max(1, timeoutSec) * 1000;
-  let last;
   const spinner = createSpinner({
     enabled: !ctx.jsonMode && Boolean(ctx.stderr.isTTY),
     stream: ctx.stderr,
@@ -140,53 +193,10 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
   });
   spinner.start();
 
+  const deadline = Date.now() + Math.max(1, timeoutSec) * 1000;
+  let result;
   try {
-    while (Date.now() < deadline) {
-      if (interrupt.signal.aborted) return signalInterrupt();
-      last = await request(ctx, `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (last.status === "complete" && last.token) {
-        if (interrupt.signal.aborted) return signalInterrupt();
-        const saved = {
-          token: last.token,
-          saved_at: Date.now(),
-          session_id: sessionId,
-          api_url: ctx.apiUrl,
-        };
-        await saveCredentials(saved);
-        ctx.token = last.token;
-        await hydrateWorkspacesAfterLogin(ctx, workspaces, {
-          apiHeaders,
-          request,
-          saveWorkspaces,
-        });
-
-        const result = {
-          status: "complete",
-          session_id: sessionId,
-          token_saved: true,
-          api_url: ctx.apiUrl,
-        };
-        queueCliAnalyticsEvent(ctx, "login_completed", { session_id: sessionId });
-        if (ctx.jsonMode) printJson(ctx.stdout, result);
-        else writeLine(ctx.stdout, ui.ok("login complete"));
-        spinner.succeed();
-        return 0;
-      }
-
-      if (last.status === "expired") {
-        const result = { status: "expired", session_id: sessionId };
-        if (ctx.jsonMode) printJson(ctx.stdout, result);
-        else writeLine(ctx.stderr, ui.err("login session expired"));
-        spinner.fail();
-        return 1;
-      }
-
-      await new Promise((resolve) => setTimeout(resolve, Math.max(MIN_POLL_MS, pollMs)));
-    }
+    result = await pollUntilComplete(ctx, sessionId, { deadline, pollMs }, interrupt, deps);
   } catch (err) {
     spinner.fail();
     throw err;
@@ -194,20 +204,15 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
     process.removeListener(SIGINT, onSigint);
   }
 
-  if (interrupt.signal.aborted) return signalInterrupt();
-  spinner.fail();
-  const timeoutResult = { status: "timeout", session_id: sessionId };
-  if (ctx.jsonMode) printJson(ctx.stdout, timeoutResult);
-  else writeLine(ctx.stderr, ui.err("login timed out"));
-  return 1;
-
-  function signalInterrupt() {
+  if (result.status === "complete") {
+    await persistAndHydrate(ctx, sessionId, result.token, workspaces, deps);
+    queueCliAnalyticsEvent(ctx, "login_completed", { session_id: sessionId });
+    spinner.succeed();
+  } else {
     spinner.fail();
-    const result = { status: "interrupted", session_id: sessionId };
-    if (ctx.jsonMode) printJson(ctx.stdout, result);
-    else writeLine(ctx.stderr, ui.err("login interrupted"));
-    return 130;
   }
+
+  return emitLoginResult(ctx, sessionId, result, deps);
 }
 
 export async function commandLogout(ctx, _parsed, _workspaces, deps) {
