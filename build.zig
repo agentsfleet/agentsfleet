@@ -1,6 +1,21 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+const S_POSTHOG = "posthog";
+const S_ZBENCH = "zbench";
+const S_BUILD_OPTIONS = "build_options";
+const S_EXECUTOR_PROVIDER_STUB = "executor_provider_stub";
+const S_SRC_EXECUTOR_MAIN_ZIG = "src/executor/main.zig";
+const S_SCHEMA = "schema";
+const S_SRC_MAIN_ZIG = "src/main.zig";
+const S_NULLCLAW = "nullclaw";
+const S_EXECUTOR_HARNESS = "executor_harness";
+const S_ZOMBIED_TESTS = "zombied-tests";
+const S_LOG = "log";
+const S_HMAC_SIG = "hmac_sig";
+const S_PG = "pg";
+const S_YAML = "yaml";
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -14,13 +29,13 @@ pub fn build(b: *std.Build) void {
     // ── NullClaw dependency ──────────────────────────────────────────────────
     // Use base engines (sqlite for per-run memory) + no channels (we don't
     // need chat channels — usezombie runs agents programmatically).
-    const nullclaw_dep = b.dependency("nullclaw", .{
+    const nullclaw_dep = b.dependency(S_NULLCLAW, .{
         .target = target,
         .optimize = optimize,
         .channels = @as([]const u8, "none"),
         .engines = @as([]const u8, "base,sqlite"),
     });
-    const nullclaw_mod = nullclaw_dep.module("nullclaw");
+    const nullclaw_mod = nullclaw_dep.module(S_NULLCLAW);
 
     // ── httpz (pure-Zig HTTP server, karlseguin) ─────────────────────────────
     const httpz_dep = b.dependency("httpz", .{
@@ -57,17 +72,17 @@ pub fn build(b: *std.Build) void {
             b.fmt("/usr/lib/{s}", .{@tagName(builtin.cpu.arch) ++ "-linux-gnu"})
         else
             homebrew_prefix ++ "/opt/openssl@3/lib" };
-        break :blk b.dependency("pg", .{
+        break :blk b.dependency(S_PG, .{
             .target = target,
             .optimize = optimize,
             .openssl_include_path = ssl_include,
             .openssl_lib_path = ssl_lib,
         });
-    } else b.dependency("pg", .{
+    } else b.dependency(S_PG, .{
         .target = target,
         .optimize = optimize,
     });
-    const pg_mod = pg_dep.module("pg");
+    const pg_mod = pg_dep.module(S_PG);
 
     // Ubuntu/Debian multiarch: opensslconf.h lives in /usr/include/{arch}-linux-gnu/
     // rather than /usr/include/. Add the arch-specific include path so @cImport finds it.
@@ -78,11 +93,11 @@ pub fn build(b: *std.Build) void {
     }
 
     // ── posthog-zig (server-side PostHog SDK) ───────────────────────────────
-    const posthog_dep = b.dependency("posthog", .{
+    const posthog_dep = b.dependency(S_POSTHOG, .{
         .target = target,
         .optimize = optimize,
     });
-    const posthog_mod = posthog_dep.module("posthog");
+    const posthog_mod = posthog_dep.module(S_POSTHOG);
 
     // ── zig-yaml (TRIGGER.md / SKILL.md frontmatter parsing) ────────────────
     // Pinned to 0.2.0 (Zig 0.15.x compatible). main targets Zig 0.16; do not
@@ -93,7 +108,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const yaml_mod = zig_yaml_dep.module("yaml");
+    const yaml_mod = zig_yaml_dep.module(S_YAML);
 
     // ── Schema embed module (root = schema/ so @embedFile is in-bounds) ──────
     const schema_mod = b.createModule(.{
@@ -133,19 +148,19 @@ pub fn build(b: *std.Build) void {
     const exe = b.addExecutable(.{
         .name = "zombied",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
+            .root_source_file = b.path(S_SRC_MAIN_ZIG),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = "httpz", .module = httpz_mod },
-                .{ .name = "pg", .module = pg_mod },
-                .{ .name = "posthog", .module = posthog_mod },
-                .{ .name = "schema", .module = schema_mod },
-                .{ .name = "build_options", .module = build_opts.createModule() },
-                .{ .name = "hmac_sig", .module = hmac_sig_mod },
-                .{ .name = "log", .module = log_mod },
-                .{ .name = "yaml", .module = yaml_mod },
+                .{ .name = S_PG, .module = pg_mod },
+                .{ .name = S_POSTHOG, .module = posthog_mod },
+                .{ .name = S_SCHEMA, .module = schema_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
+                .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_YAML, .module = yaml_mod },
             },
         }),
     });
@@ -176,12 +191,12 @@ pub fn build(b: *std.Build) void {
     // the optimizer for routine cases.
 
     const exec_opts_prod = b.addOptions();
-    exec_opts_prod.addOption(bool, "executor_harness", false);
-    exec_opts_prod.addOption(bool, "executor_provider_stub", false);
+    exec_opts_prod.addOption(bool, S_EXECUTOR_HARNESS, false);
+    exec_opts_prod.addOption(bool, S_EXECUTOR_PROVIDER_STUB, false);
 
     const exec_opts_harness = b.addOptions();
-    exec_opts_harness.addOption(bool, "executor_harness", true);
-    exec_opts_harness.addOption(bool, "executor_provider_stub", false);
+    exec_opts_harness.addOption(bool, S_EXECUTOR_HARNESS, true);
+    exec_opts_harness.addOption(bool, S_EXECUTOR_PROVIDER_STUB, false);
 
     // `zombied-executor-stub` (test fixture for wire-level redaction):
     // production NullClaw pipeline (observer + redactor adapter all live)
@@ -189,19 +204,19 @@ pub fn build(b: *std.Build) void {
     // by integration tests asserting that resolved secrets never leak onto
     // RPC frames or Redis pub/sub. See test_stub_provider.zig.
     const exec_opts_stub = b.addOptions();
-    exec_opts_stub.addOption(bool, "executor_harness", false);
-    exec_opts_stub.addOption(bool, "executor_provider_stub", true);
+    exec_opts_stub.addOption(bool, S_EXECUTOR_HARNESS, false);
+    exec_opts_stub.addOption(bool, S_EXECUTOR_PROVIDER_STUB, true);
 
     const executor_exe = b.addExecutable(.{
         .name = "zombied-executor",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/executor/main.zig"),
+            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "nullclaw", .module = nullclaw_mod },
-                .{ .name = "log", .module = log_mod },
-                .{ .name = "build_options", .module = exec_opts_prod.createModule() },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_prod.createModule() },
             },
         }),
     });
@@ -215,13 +230,13 @@ pub fn build(b: *std.Build) void {
     const executor_harness_exe = b.addExecutable(.{
         .name = "zombied-executor-harness",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/executor/main.zig"),
+            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "nullclaw", .module = nullclaw_mod },
-                .{ .name = "log", .module = log_mod },
-                .{ .name = "build_options", .module = exec_opts_harness.createModule() },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_harness.createModule() },
             },
         }),
     });
@@ -232,13 +247,13 @@ pub fn build(b: *std.Build) void {
     const executor_stub_exe = b.addExecutable(.{
         .name = "zombied-executor-stub",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/executor/main.zig"),
+            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "nullclaw", .module = nullclaw_mod },
-                .{ .name = "log", .module = log_mod },
-                .{ .name = "build_options", .module = exec_opts_stub.createModule() },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_stub.createModule() },
             },
         }),
     });
@@ -250,13 +265,13 @@ pub fn build(b: *std.Build) void {
     const executor_tests = b.addTest(.{
         .name = "zombied-executor-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/executor/main.zig"),
+            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "nullclaw", .module = nullclaw_mod },
-                .{ .name = "log", .module = log_mod },
-                .{ .name = "build_options", .module = exec_opts_prod.createModule() },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_prod.createModule() },
             },
         }),
     });
@@ -270,21 +285,21 @@ pub fn build(b: *std.Build) void {
 
     // ── Test step ─────────────────────────────────────────────────────────────
     const tests = b.addTest(.{
-        .name = "zombied-tests",
+        .name = S_ZOMBIED_TESTS,
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/main.zig"),
+            .root_source_file = b.path(S_SRC_MAIN_ZIG),
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "nullclaw", .module = nullclaw_mod },
+                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
                 .{ .name = "httpz", .module = httpz_mod },
-                .{ .name = "pg", .module = pg_mod },
-                .{ .name = "posthog", .module = posthog_mod },
-                .{ .name = "schema", .module = schema_mod },
-                .{ .name = "build_options", .module = build_opts.createModule() },
-                .{ .name = "hmac_sig", .module = hmac_sig_mod },
-                .{ .name = "log", .module = log_mod },
-                .{ .name = "yaml", .module = yaml_mod },
+                .{ .name = S_PG, .module = pg_mod },
+                .{ .name = S_POSTHOG, .module = posthog_mod },
+                .{ .name = S_SCHEMA, .module = schema_mod },
+                .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
+                .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+                .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_YAML, .module = yaml_mod },
             },
         }),
         .filters = test_filters,
@@ -313,8 +328,8 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "httpz", .module = httpz_mod },
-                .{ .name = "hmac_sig", .module = hmac_sig_mod },
-                .{ .name = "log", .module = log_mod },
+                .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+                .{ .name = S_LOG, .module = log_mod },
             },
         }),
         .filters = test_filters,
@@ -328,11 +343,11 @@ pub fn build(b: *std.Build) void {
 
     if (with_bench_tools) {
         // ── zBench dependency ────────────────────────────────────────────────
-        const zbench_dep = b.dependency("zbench", .{
+        const zbench_dep = b.dependency(S_ZBENCH, .{
             .target = target,
             .optimize = optimize,
         });
-        const zbench_mod = zbench_dep.module("zbench");
+        const zbench_mod = zbench_dep.module(S_ZBENCH);
 
         // ── Tier-1 micro-benchmark runner (zBench-backed) ────────────────────
         // HTTP loadgen is handled by `hey` in make/test-bench.mk; see M24_001.
@@ -343,9 +358,9 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
                 .imports = &.{
-                    .{ .name = "zbench", .module = zbench_mod },
-                    .{ .name = "hmac_sig", .module = hmac_sig_mod },
-                .{ .name = "log", .module = log_mod },
+                    .{ .name = S_ZBENCH, .module = zbench_mod },
+                    .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+                .{ .name = S_LOG, .module = log_mod },
                 },
             }),
         });
@@ -357,7 +372,7 @@ pub fn build(b: *std.Build) void {
 
     // Installable backend test binary for coverage tooling (kcov/codecov).
     const install_tests = b.addInstallArtifact(tests, .{
-        .dest_sub_path = "zombied-tests",
+        .dest_sub_path = S_ZOMBIED_TESTS,
     });
     b.step("test-bin", "Build/install backend test binary for coverage").dependOn(&install_tests.step);
 }

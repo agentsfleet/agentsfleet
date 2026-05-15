@@ -12,6 +12,8 @@
 
 const std = @import("std");
 
+const S_T_R_N = " \t\r\n";
+
 pub const SqlStatementSplitter = struct {
     sql: []const u8,
     pos: usize,
@@ -84,7 +86,7 @@ pub const SqlStatementSplitter = struct {
 
             // Statement terminator — only outside quotes.
             if (ch == ';' and !self.in_single_quote and !self.in_dollar_quote) {
-                const stmt = std.mem.trim(u8, self.sql[start..self.pos], " \t\r\n");
+                const stmt = std.mem.trim(u8, self.sql[start..self.pos], S_T_R_N);
                 self.pos += 1;
                 if (stmt.len > 0) return stmt;
                 return self.next();
@@ -94,7 +96,7 @@ pub const SqlStatementSplitter = struct {
         }
 
         // Tail — content after last semicolon.
-        const tail = std.mem.trim(u8, self.sql[start..], " \t\r\n");
+        const tail = std.mem.trim(u8, self.sql[start..], S_T_R_N);
         if (tail.len > 0) return tail;
         return null;
     }

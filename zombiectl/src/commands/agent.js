@@ -21,6 +21,9 @@ import {
   OPT_ZOMBIE_ID,
 } from "../constants/cli-flags.js";
 
+const K_NAME = "name";
+const K_AGENT_ID = "agent_id";
+
 // Agent commands hit /v1/workspaces/{ws}/agent-keys (POST/GET/DELETE).
 // Server-side these can surface validation, conflict on duplicate
 // names, and not-found on delete. AUTH_PRESET covers the auth leg;
@@ -71,9 +74,9 @@ export async function commandAgentAdd(ctx, parsed, workspaces, deps) {
       { key: "label", label: "" },
       { key: "value", label: "" },
     ], [
-      { label: "agent_id",  value: res.agent_id },
+      { label: K_AGENT_ID,  value: res.agent_id },
       { label: "zombie_id", value: zombieId },
-      { label: "name",      value: name },
+      { label: K_NAME,      value: name },
       { label: "created_at", value: res.created_at ? new Date(res.created_at).toISOString() : "—" },
     ]);
   }
@@ -104,10 +107,10 @@ export async function commandAgentList(ctx, parsed, workspaces, deps) {
   }
 
   printTable(ctx.stdout, [
-    { key: "name",         label: "NAME" },
+    { key: K_NAME,         label: "NAME" },
     { key: "description",  label: "DESCRIPTION" },
     { key: "last_used_at", label: "LAST_USED" },
-    { key: "agent_id",     label: "AGENT_ID" },
+    { key: K_AGENT_ID,     label: "AGENT_ID" },
   ], agents.map((a) => ({
     ...a,
     last_used_at: a.last_used_at ? new Date(a.last_used_at).toISOString() : "never",

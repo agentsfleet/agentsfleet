@@ -18,13 +18,15 @@ const telemetry_store = @import("../../state/zombie_telemetry_store.zig");
 
 const Hx = hx_mod.Hx;
 
+const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
+
 const USAGE_LIMIT_DEFAULT: u32 = 50;
 const USAGE_LIMIT_MAX: u32 = 200;
 
 pub fn innerGetTenantBilling(hx: Hx, req: *httpz.Request) void {
     _ = req;
     const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
+        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
         return;
     };
 
@@ -54,7 +56,7 @@ pub fn innerGetTenantBilling(hx: Hx, req: *httpz.Request) void {
 
 pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
     const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
+        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
         return;
     };
 

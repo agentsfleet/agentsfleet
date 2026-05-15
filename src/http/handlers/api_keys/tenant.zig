@@ -29,6 +29,10 @@ pub const sortClauseFor = api_keys_list.sortClauseFor;
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.api_keys);
 
+const S_ID_MUST_BE_A_VALID_UUIDV7 = "id must be a valid UUIDv7";
+const S_API_KEY_NOT_FOUND = "API key not found";
+const S_PATCH_BODY_MUST_BE_ACTIVE_FALSE = "PATCH body must be {\"active\": false}";
+
 pub const KEY_PREFIX = tenant_api_key.TENANT_KEY_PREFIX; // "zmb_t_"
 pub const KEY_RANDOM_BYTES: usize = 32;
 pub const MAX_NAME_LEN: usize = 64;
@@ -158,16 +162,16 @@ pub fn innerPatchApiKey(hx: Hx, req: *httpz.Request, key_id: []const u8) void {
     const tenant_id = requireTenantId(hx) orelse return;
     const user_id = hx.principal.user_id orelse "";
     if (!id_format.isUuidV7(key_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "id must be a valid UUIDv7");
+        hx.fail(ec.ERR_INVALID_REQUEST, S_ID_MUST_BE_A_VALID_UUIDV7);
         return;
     }
 
     const raw_body = req.body() orelse {
-        hx.fail(ec.ERR_INVALID_REQUEST, "PATCH body must be {\"active\": false}");
+        hx.fail(ec.ERR_INVALID_REQUEST, S_PATCH_BODY_MUST_BE_ACTIVE_FALSE);
         return;
     };
     const parsed = std.json.parseFromSlice(PatchBody, hx.alloc, raw_body, .{}) catch {
-        hx.fail(ec.ERR_INVALID_REQUEST, "PATCH body must be {\"active\": false}");
+        hx.fail(ec.ERR_INVALID_REQUEST, S_PATCH_BODY_MUST_BE_ACTIVE_FALSE);
         return;
     };
     defer parsed.deinit();
@@ -218,13 +222,13 @@ fn reportRevokeFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []
     var q = PgQuery.from(conn.query(
         \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
     , .{ key_id, tenant_id }) catch {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, "API key not found");
+        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     });
     defer q.deinit();
     const row = q.next() catch null;
     if (row == null) {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, "API key not found");
+        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     }
     hx.fail(ec.ERR_APIKEY_ALREADY_REVOKED, "API key is already revoked");
@@ -234,7 +238,7 @@ pub fn innerDeleteApiKey(hx: Hx, key_id: []const u8) void {
     const tenant_id = requireTenantId(hx) orelse return;
     const user_id = hx.principal.user_id orelse "";
     if (!id_format.isUuidV7(key_id)) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "id must be a valid UUIDv7");
+        hx.fail(ec.ERR_INVALID_REQUEST, S_ID_MUST_BE_A_VALID_UUIDV7);
         return;
     }
 
@@ -271,13 +275,13 @@ fn reportDeleteFailure(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, key_id: []
     var q = PgQuery.from(conn.query(
         \\SELECT active FROM core.api_keys WHERE id = $1::uuid AND tenant_id = $2::uuid LIMIT 1
     , .{ key_id, tenant_id }) catch {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, "API key not found");
+        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     });
     defer q.deinit();
     const row = q.next() catch null;
     if (row == null) {
-        hx.fail(ec.ERR_APIKEY_NOT_FOUND, "API key not found");
+        hx.fail(ec.ERR_APIKEY_NOT_FOUND, S_API_KEY_NOT_FOUND);
         return;
     }
     hx.fail(ec.ERR_APIKEY_MUST_REVOKE_FIRST, "Active key must be revoked before deletion");

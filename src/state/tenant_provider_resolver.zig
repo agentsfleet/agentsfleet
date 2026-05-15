@@ -12,13 +12,16 @@ const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const vault = @import("vault.zig");
 const logging = @import("log");
 
-pub const Mode = @import("tenant_provider.zig").Mode;
-pub const ResolvedProvider = @import("tenant_provider.zig").ResolvedProvider;
-pub const ResolveError = @import("tenant_provider.zig").ResolveError;
-pub const PLATFORM_DEFAULT_MODEL = @import("tenant_provider.zig").PLATFORM_DEFAULT_MODEL;
-pub const PLATFORM_DEFAULT_CAP_TOKENS = @import("tenant_provider.zig").PLATFORM_DEFAULT_CAP_TOKENS;
+const tenant_provider = @import("tenant_provider.zig");
+pub const Mode = tenant_provider.Mode;
+pub const ResolvedProvider = tenant_provider.ResolvedProvider;
+pub const ResolveError = tenant_provider.ResolveError;
+pub const PLATFORM_DEFAULT_MODEL = tenant_provider.PLATFORM_DEFAULT_MODEL;
+pub const PLATFORM_DEFAULT_CAP_TOKENS = tenant_provider.PLATFORM_DEFAULT_CAP_TOKENS;
 
 const log = logging.scoped(.tenant_provider_resolver);
+
+const S_API_KEY = "api_key";
 
 pub const ProviderRow = struct {
     mode: Mode,
@@ -157,7 +160,7 @@ pub fn probeSelfManagedCredential(
 
     if (parsed.value != .object) return ResolveError.CredentialDataMalformed;
     const provider_v = parsed.value.object.get("provider") orelse return ResolveError.CredentialDataMalformed;
-    const api_key_v = parsed.value.object.get("api_key") orelse return ResolveError.CredentialDataMalformed;
+    const api_key_v = parsed.value.object.get(S_API_KEY) orelse return ResolveError.CredentialDataMalformed;
     const model_v = parsed.value.object.get("model") orelse return ResolveError.CredentialDataMalformed;
     if (provider_v != .string or api_key_v != .string or model_v != .string) return ResolveError.CredentialDataMalformed;
     if (provider_v.string.len == 0 or api_key_v.string.len == 0 or model_v.string.len == 0) return ResolveError.CredentialDataMalformed;
@@ -186,7 +189,7 @@ fn loadVaultApiKey(
     defer parsed.deinit();
 
     if (parsed.value != .object) return ResolveError.PlatformKeyMissing;
-    const api_key_v = parsed.value.object.get("api_key") orelse return ResolveError.PlatformKeyMissing;
+    const api_key_v = parsed.value.object.get(S_API_KEY) orelse return ResolveError.PlatformKeyMissing;
     if (api_key_v != .string or api_key_v.string.len == 0) return ResolveError.PlatformKeyMissing;
     return alloc.dupe(u8, api_key_v.string);
 }

@@ -21,6 +21,11 @@ const config_load = @import("config/load.zig");
 
 const log = logging.scoped(.zombied);
 
+const S_INFO = "info";
+const S_DEBUG = "debug";
+const S_ERR = "err";
+const S_WARN = "warn";
+
 var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode == .Debug) std.log.Level.debug else std.log.Level.info));
 
 // pub: consumed by std at comptime via @import("root").std_options
@@ -30,10 +35,10 @@ pub const std_options: std.Options = .{
 };
 
 fn parseLogLevel(level_raw: []const u8) ?std.log.Level {
-    if (std.ascii.eqlIgnoreCase(level_raw, "debug")) return .debug;
-    if (std.ascii.eqlIgnoreCase(level_raw, "info")) return .info;
-    if (std.ascii.eqlIgnoreCase(level_raw, "warn") or std.ascii.eqlIgnoreCase(level_raw, "warning")) return .warn;
-    if (std.ascii.eqlIgnoreCase(level_raw, "err") or std.ascii.eqlIgnoreCase(level_raw, "error")) return .err;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_DEBUG)) return .debug;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_INFO)) return .info;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_WARN) or std.ascii.eqlIgnoreCase(level_raw, "warning")) return .warn;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_ERR) or std.ascii.eqlIgnoreCase(level_raw, "error")) return .err;
     return null;
 }
 
@@ -60,10 +65,10 @@ fn zombiedLog(
     if (!shouldLog(level)) return;
 
     const level_str = comptime switch (level) {
-        .err => "err",
-        .warn => "warn",
-        .info => "info",
-        .debug => "debug",
+        .err => S_ERR,
+        .warn => S_WARN,
+        .info => S_INFO,
+        .debug => S_DEBUG,
     };
     const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
     const ts = std.time.milliTimestamp();
@@ -139,7 +144,7 @@ test {
     _ = @import("db/pg_query.zig");
     _ = @import("db/sql_splitter.zig");
     _ = @import("config/env_vars.zig");
-    _ = @import("config/load.zig");
+    _ = config_load;
     _ = @import("config/balance_policy.zig");
     _ = @import("config/contact.zig");
     _ = @import("config/contact_test.zig");
@@ -171,12 +176,12 @@ test {
     _ = @import("zombie/webhook_verify.zig");
     _ = @import("zombie/webhook_verify_test.zig");
     _ = @import("zombie/webhook/normalizer/github.zig");
-    _ = @import("cli/commands.zig");
+    _ = cli_commands;
     _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
     _ = @import("observability/trace.zig");
-    _ = @import("observability/otel_logs.zig");
+    _ = otel_logs;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/heroku_names.zig");
     _ = @import("state/heroku_names_test.zig");

@@ -5,10 +5,12 @@
 
 import { palette, glyph } from "../output/index.js";
 
+const K_UNDEFINED = "undefined";
+
 export function printVersion(stream, version, opts = {}) {
   if (opts.jsonMode) return;
 
-  const env = opts.env ?? (typeof process !== "undefined" ? process.env : {});
+  const env = opts.env ?? (typeof process !== K_UNDEFINED ? process.env : {});
   const envNoColor = env && env.NO_COLOR ? env.NO_COLOR.length > 0 : false;
   const noColor = Boolean(opts.noColor) || envNoColor;
 
@@ -23,7 +25,7 @@ export function printVersion(stream, version, opts = {}) {
 }
 
 export function printPreReleaseWarning(stream, opts = {}) {
-  const env = opts.env ?? (typeof process !== "undefined" ? process.env : {});
+  const env = opts.env ?? (typeof process !== K_UNDEFINED ? process.env : {});
   const envNoColor = env && env.NO_COLOR ? env.NO_COLOR.length > 0 : false;
   const noColor = Boolean(opts.noColor) || envNoColor;
   const jsonMode = opts.jsonMode || false;

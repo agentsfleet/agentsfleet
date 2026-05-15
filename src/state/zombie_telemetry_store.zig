@@ -224,6 +224,6 @@ fn queryRows(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8,
 }
 
 test {
-    _ = @import("zombie_telemetry_cursor.zig");
+    _ = cursor_mod;
     _ = @import("zombie_telemetry_store_test.zig");
 }

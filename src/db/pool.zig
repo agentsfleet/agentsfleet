@@ -18,6 +18,8 @@ pub const Pool = pg.Pool;
 pub const Conn = pg.Conn;
 pub const Row = pg.Row;
 
+const S_SSLMODE = "sslmode=";
+
 pub const DbRole = enum {
     default,
     api,
@@ -112,8 +114,8 @@ pub fn parseUrl(alloc: std.mem.Allocator, url: []const u8) !pg.Pool.Opts {
 fn hasSslModeDisable(query: []const u8) bool {
     var it = std.mem.splitScalar(u8, query, '&');
     while (it.next()) |param| {
-        if (std.mem.startsWith(u8, param, "sslmode=")) {
-            const val = param["sslmode=".len..];
+        if (std.mem.startsWith(u8, param, S_SSLMODE)) {
+            const val = param[S_SSLMODE.len..];
             if (std.mem.eql(u8, val, "disable")) return true;
         }
     }

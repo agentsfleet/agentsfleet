@@ -7,8 +7,11 @@ const log = logging.scoped(.telemetry);
 
 // ── Utility ─────────────────────────────────────────────────────────
 
+const S_SYSTEM = "system";
+const DISTINCT_ID_FIELD = "distinct_id";
+
 pub fn distinctIdOrSystem(raw: []const u8) []const u8 {
-    if (raw.len == 0) return "system";
+    if (raw.len == 0) return S_SYSTEM;
     return raw;
 }
 
@@ -65,10 +68,10 @@ pub const ProdBackend = struct {
     pub fn capture(self: *ProdBackend, comptime E: type, event: E) void {
         const ph = self.client orelse return;
         const props = event.properties();
-        const did = if (@hasField(E, "distinct_id"))
+        const did = if (@hasField(E, DISTINCT_ID_FIELD))
             distinctIdOrSystem(event.distinct_id)
         else
-            "system";
+            S_SYSTEM;
         ph.capture(.{
             .distinct_id = did,
             .event = @tagName(E.kind),
@@ -84,7 +87,7 @@ pub const TestBackend = struct {
     var count: usize = 0;
 
     pub fn capture(_: *TestBackend, comptime E: type, event: E) void {
-        const did = if (@hasField(E, "distinct_id")) event.distinct_id else "system";
+        const did = if (@hasField(E, DISTINCT_ID_FIELD)) event.distinct_id else S_SYSTEM;
         const wid = if (@hasField(E, "workspace_id")) event.workspace_id else "";
         ring[count % 64] = RecordedEvent.initFromSlices(E.kind, did, wid);
         count += 1;

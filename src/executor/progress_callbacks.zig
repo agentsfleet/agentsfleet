@@ -25,6 +25,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
+const S_TOOL_CALL_STARTED = "tool_call_started";
+const S_TOOL_CALL_COMPLETED = "tool_call_completed";
+const S_N_2_0 = "2.0";
+const S_AGENT_RESPONSE_CHUNK = "agent_response_chunk";
+const S_NAME = "name";
+const S_TOOL_CALL_PROGRESS = "tool_call_progress";
+
 pub const rpc_version: u32 = 2;
 
 /// Sentinel JSON-RPC method name carried on progress frames so the
@@ -42,18 +49,18 @@ pub const FrameKind = enum {
 
     pub fn toSlice(self: FrameKind) []const u8 {
         return switch (self) {
-            .tool_call_started => "tool_call_started",
-            .agent_response_chunk => "agent_response_chunk",
-            .tool_call_completed => "tool_call_completed",
-            .tool_call_progress => "tool_call_progress",
+            .tool_call_started => S_TOOL_CALL_STARTED,
+            .agent_response_chunk => S_AGENT_RESPONSE_CHUNK,
+            .tool_call_completed => S_TOOL_CALL_COMPLETED,
+            .tool_call_progress => S_TOOL_CALL_PROGRESS,
         };
     }
 
     pub fn fromSlice(s: []const u8) ?FrameKind {
-        if (std.mem.eql(u8, s, "tool_call_started")) return .tool_call_started;
-        if (std.mem.eql(u8, s, "agent_response_chunk")) return .agent_response_chunk;
-        if (std.mem.eql(u8, s, "tool_call_completed")) return .tool_call_completed;
-        if (std.mem.eql(u8, s, "tool_call_progress")) return .tool_call_progress;
+        if (std.mem.eql(u8, s, S_TOOL_CALL_STARTED)) return .tool_call_started;
+        if (std.mem.eql(u8, s, S_AGENT_RESPONSE_CHUNK)) return .agent_response_chunk;
+        if (std.mem.eql(u8, s, S_TOOL_CALL_COMPLETED)) return .tool_call_completed;
+        if (std.mem.eql(u8, s, S_TOOL_CALL_PROGRESS)) return .tool_call_progress;
         return null;
     }
 };
@@ -107,40 +114,40 @@ pub const Hello = struct {
 pub fn encodeProgress(alloc: Allocator, request_id: u64, frame: ProgressFrame) ![]u8 {
     return switch (frame) {
         .tool_call_started => |body| try std.json.Stringify.valueAlloc(alloc, .{
-            .jsonrpc = "2.0",
+            .jsonrpc = S_N_2_0,
             .id = request_id,
             .method = progress_method,
             .params = .{
-                .kind = "tool_call_started",
+                .kind = S_TOOL_CALL_STARTED,
                 .name = body.name,
                 .args_redacted_json = body.args_redacted,
             },
         }, .{}),
         .agent_response_chunk => |body| try std.json.Stringify.valueAlloc(alloc, .{
-            .jsonrpc = "2.0",
+            .jsonrpc = S_N_2_0,
             .id = request_id,
             .method = progress_method,
             .params = .{
-                .kind = "agent_response_chunk",
+                .kind = S_AGENT_RESPONSE_CHUNK,
                 .text = body.text,
             },
         }, .{}),
         .tool_call_completed => |body| try std.json.Stringify.valueAlloc(alloc, .{
-            .jsonrpc = "2.0",
+            .jsonrpc = S_N_2_0,
             .id = request_id,
             .method = progress_method,
             .params = .{
-                .kind = "tool_call_completed",
+                .kind = S_TOOL_CALL_COMPLETED,
                 .name = body.name,
                 .ms = body.ms,
             },
         }, .{}),
         .tool_call_progress => |body| try std.json.Stringify.valueAlloc(alloc, .{
-            .jsonrpc = "2.0",
+            .jsonrpc = S_N_2_0,
             .id = request_id,
             .method = progress_method,
             .params = .{
-                .kind = "tool_call_progress",
+                .kind = S_TOOL_CALL_PROGRESS,
                 .name = body.name,
                 .elapsed_ms = body.elapsed_ms,
             },
@@ -188,18 +195,18 @@ pub fn decodeProgressFromValue(root: std.json.Value) !ProgressDecoded {
 
     const frame: ProgressFrame = switch (fk) {
         .tool_call_started => .{ .tool_call_started = .{
-            .name = strField(params_v, "name") orelse return error.InvalidProgressFrame,
+            .name = strField(params_v, S_NAME) orelse return error.InvalidProgressFrame,
             .args_redacted = strField(params_v, "args_redacted_json") orelse "{}",
         } },
         .agent_response_chunk => .{ .agent_response_chunk = .{
             .text = strField(params_v, "text") orelse return error.InvalidProgressFrame,
         } },
         .tool_call_completed => .{ .tool_call_completed = .{
-            .name = strField(params_v, "name") orelse return error.InvalidProgressFrame,
+            .name = strField(params_v, S_NAME) orelse return error.InvalidProgressFrame,
             .ms = intField(params_v, "ms") orelse return error.InvalidProgressFrame,
         } },
         .tool_call_progress => .{ .tool_call_progress = .{
-            .name = strField(params_v, "name") orelse return error.InvalidProgressFrame,
+            .name = strField(params_v, S_NAME) orelse return error.InvalidProgressFrame,
             .elapsed_ms = intField(params_v, "elapsed_ms") orelse return error.InvalidProgressFrame,
         } },
     };

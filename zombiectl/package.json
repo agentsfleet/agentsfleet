@@ -29,8 +29,8 @@
     "test": "node ./scripts/run-tests.mjs",
     "test:coverage": "bun test --coverage",
     "test:acceptance": "node ./scripts/run-acceptance.mjs",
-    "lint": "oxlint src bin test scripts && node ./scripts/audit-runtime-imports.mjs",
-    "lint:fix": "oxlint src bin test scripts --fix && node ./scripts/audit-runtime-imports.mjs",
+    "lint": "oxlint src bin test scripts && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs",
+    "lint:fix": "oxlint src bin test scripts --fix && node ./scripts/audit-runtime-imports.mjs && node ./scripts/audit-const-names.mjs",
     "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js",
     "prepublishOnly": "node ./scripts/prepublish.mjs",
     "postinstall": "node ./scripts/postinstall.mjs"

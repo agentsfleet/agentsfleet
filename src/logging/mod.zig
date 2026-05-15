@@ -28,6 +28,10 @@ const std = @import("std");
 /// are double-quoted with escape sequences for `"`, `\`, `\n`, `\r`, `\t`.
 /// Optional fields with null payload are omitted (no `key=null`) per
 /// LOGGING_STANDARD §3.
+const S_S = "{s}";
+const S_D = "{d}";
+const S_ANY = "{any}";
+
 pub inline fn scoped(comptime scope: @TypeOf(.enum_literal)) type {
     return struct {
         pub inline fn err(
@@ -102,10 +106,10 @@ fn emit(
     const msg = buildLogfmtLine(&buf, event, fields);
     const log = std.log.scoped(scope);
     switch (level) {
-        .err => log.err("{s}", .{msg}),
-        .warn => log.warn("{s}", .{msg}),
-        .info => log.info("{s}", .{msg}),
-        .debug => log.debug("{s}", .{msg}),
+        .err => log.err(S_S, .{msg}),
+        .warn => log.warn(S_S, .{msg}),
+        .info => log.info(S_S, .{msg}),
+        .debug => log.debug(S_S, .{msg}),
     }
 }
 
@@ -137,11 +141,11 @@ fn writeOneField(w: anytype, key: []const u8, value: anytype) !void {
 fn writeValue(w: anytype, value: anytype) !void {
     const T = @TypeOf(value);
     switch (@typeInfo(T)) {
-        .int, .comptime_int => try w.print("{d}", .{value}),
+        .int, .comptime_int => try w.print(S_D, .{value}),
         // Decimal (not scientific) for floats — operator dashboards / LogQL
         // queries scrape `ratio=0\.\d+` patterns and the previous `{e}`
         // emitted `7.56e-1` which silently broke them.
-        .float, .comptime_float => try w.print("{d}", .{value}),
+        .float, .comptime_float => try w.print(S_D, .{value}),
         .bool => try w.writeAll(if (value) "true" else "false"),
         .pointer => |p| {
             if (p.size == .slice and p.child == u8) {
@@ -151,18 +155,18 @@ fn writeValue(w: anytype, value: anytype) !void {
             {
                 try writeStringValue(w, value);
             } else {
-                try w.print("{any}", .{value});
+                try w.print(S_ANY, .{value});
             }
         },
         .array => |a| {
             if (a.child == u8) {
                 try writeStringValue(w, &value);
             } else {
-                try w.print("{any}", .{value});
+                try w.print(S_ANY, .{value});
             }
         },
         .@"enum" => try w.writeAll(@tagName(value)),
-        else => try w.print("{any}", .{value}),
+        else => try w.print(S_ANY, .{value}),
     }
 }
 
@@ -229,8 +233,8 @@ pub fn fatalStderr(comptime fmt: []const u8, args: anytype) void {
 
 test {
     // Ensure tests in sibling files are reachable through the test runner.
-    _ = @import("envelope.zig");
-    _ = @import("pretty.zig");
+    _ = envelope;
+    _ = pretty;
 }
 
 test "fatalStderr is callable (compile check)" {

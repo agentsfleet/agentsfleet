@@ -16,6 +16,7 @@
 const std = @import("std");
 const logging = @import("log");
 const httpz = @import("httpz");
+const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 
 const common = @import("common.zig");
@@ -28,6 +29,9 @@ const Hx = hx_mod.Hx;
 
 const log = logging.scoped(.http_tenant_provider);
 
+const S_PLATFORM = "platform";
+const S_TENANT_CONTEXT_REQUIRED = "Tenant context required";
+
 const PutInput = struct {
     mode: []const u8,
     credential_ref: ?[]const u8 = null,
@@ -39,7 +43,7 @@ const PutInput = struct {
 pub fn innerGetTenantProvider(hx: Hx, req: *httpz.Request) void {
     _ = req;
     const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
+        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
         return;
     };
 
@@ -63,7 +67,7 @@ pub fn innerGetTenantProvider(hx: Hx, req: *httpz.Request) void {
 
 pub fn innerPutTenantProvider(hx: Hx, req: *httpz.Request) void {
     const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
+        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
         return;
     };
 
@@ -86,7 +90,7 @@ pub fn innerPutTenantProvider(hx: Hx, req: *httpz.Request) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    if (std.mem.eql(u8, input.mode, "platform")) {
+    if (std.mem.eql(u8, input.mode, S_PLATFORM)) {
         applyPlatform(hx, conn, tenant_id);
         return;
     }
@@ -102,7 +106,7 @@ pub fn innerPutTenantProvider(hx: Hx, req: *httpz.Request) void {
 pub fn innerDeleteTenantProvider(hx: Hx, req: *httpz.Request) void {
     _ = req;
     const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
+        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
         return;
     };
 
@@ -117,7 +121,7 @@ pub fn innerDeleteTenantProvider(hx: Hx, req: *httpz.Request) void {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-fn applyPlatform(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8) void {
+fn applyPlatform(hx: Hx, conn: *pg.Conn, tenant_id: []const u8) void {
     tenant_provider.upsertPlatform(hx.alloc, conn, tenant_id) catch |err| switch (err) {
         tenant_provider.ResolveError.PlatformKeyMissing => {
             log.err("platform_missing", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .tenant_id = tenant_id });
@@ -139,7 +143,7 @@ fn applyPlatform(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8) void 
     hx.ok(.ok, view);
 }
 
-fn applySelfManaged(hx: Hx, conn: *@import("pg").Conn, tenant_id: []const u8, input: PutInput) void {
+fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInput) void {
     const credential_ref = input.credential_ref orelse {
         hx.fail(ec.ERR_PROVIDER_CREDENTIAL_REF_REQUIRED, "credential_ref required when mode=self_managed");
         return;
@@ -196,7 +200,7 @@ const ProviderView = struct {
     credential_ref: ?[]const u8,
 };
 
-fn readProviderView(alloc: std.mem.Allocator, conn: *@import("pg").Conn, tenant_id: []const u8) !ProviderView {
+fn readProviderView(alloc: std.mem.Allocator, conn: *pg.Conn, tenant_id: []const u8) !ProviderView {
     var q = PgQuery.from(try conn.query(
         \\SELECT mode, provider, model, context_cap_tokens, credential_ref
         \\FROM core.tenant_providers
@@ -222,7 +226,7 @@ fn readProviderView(alloc: std.mem.Allocator, conn: *@import("pg").Conn, tenant_
         };
     }
     // Synth platform default for tenants with no row.
-    const mode = try alloc.dupe(u8, "platform");
+    const mode = try alloc.dupe(u8, S_PLATFORM);
     errdefer alloc.free(mode);
     const provider = try alloc.dupe(u8, "fireworks");
     errdefer alloc.free(provider);

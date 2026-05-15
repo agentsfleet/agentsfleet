@@ -2,6 +2,8 @@
 
 const std = @import("std");
 
+const S_PORT = "--port=";
+
 pub const ServeArgError = error{
     InvalidServeArgument,
     MissingPortValue,
@@ -16,8 +18,8 @@ pub fn parseArgs(it: anytype) ServeArgError!?u16 {
             override_port = parsePortValue(port_raw) orelse return ServeArgError.InvalidPortValue;
             continue;
         }
-        if (std.mem.startsWith(u8, arg, "--port=")) {
-            const port_raw = arg["--port=".len..];
+        if (std.mem.startsWith(u8, arg, S_PORT)) {
+            const port_raw = arg[S_PORT.len..];
             override_port = parsePortValue(port_raw) orelse return ServeArgError.InvalidPortValue;
             continue;
         }

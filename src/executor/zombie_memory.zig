@@ -46,13 +46,16 @@ const log = logging.scoped(.executor_zombie_memory);
 ///
 /// Returns null on any error (postgres disabled, connection failure, OOM).
 /// Caller falls back to ephemeral workspace SQLite and logs the failure.
+const S_POSTGRES = "postgres";
+const S_NONE = "none";
+
 pub fn initRuntime(
     alloc: std.mem.Allocator,
     cfg: *const MemoryBackendConfig,
     workspace_path: []const u8,
 ) ?memory_mod.MemoryRuntime {
-    const desc = memory_mod.findBackend("postgres") orelse {
-        log.warn("backend_disabled", .{ .backend = "postgres" });
+    const desc = memory_mod.findBackend(S_POSTGRES) orelse {
+        log.warn("backend_disabled", .{ .backend = S_POSTGRES });
         return null;
     };
 
@@ -93,10 +96,10 @@ pub fn initRuntime(
         .response_cache = null,
         .capabilities = desc.capabilities,
         .resolved = .{
-            .primary_backend = "postgres",
+            .primary_backend = S_POSTGRES,
             .retrieval_mode = "keyword",
-            .vector_mode = "none",
-            .embedding_provider = "none",
+            .vector_mode = S_NONE,
+            .embedding_provider = S_NONE,
             .rollout_mode = "on",
             .vector_sync_mode = "best_effort",
             .hygiene_enabled = false,
