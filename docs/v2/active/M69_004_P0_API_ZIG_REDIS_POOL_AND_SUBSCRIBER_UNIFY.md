@@ -4,11 +4,11 @@
 **Milestone:** M69
 **Workstream:** 004
 **Date:** May 14, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P0 — fixes M42_003's single-mutex contention bottleneck; throughput today is hard-capped at ~40 ops/sec/connection across the whole server.
 **Categories:** API, INFRA, OBS
 **Batch:** B1 — parallel-worktree compatible with M68 (zero queue-file overlap with M68's pending slices verified).
-**Branch:** {feat/m69-redis-pool — added when work begins}
+**Branch:** feat/m69-004-redis-pool
 **Depends on:** M42_003 (contention diagnosis the audit references), M68_001 §O (audit deliverable at `src/queue/AUDIT.md` is the spec brief).
 **Provenance:** LLM-drafted (claude-opus-4-7, 2026-05-14) from Captain Q&A scoping 2026-05-14 + the audit at `src/queue/AUDIT.md`.
 
