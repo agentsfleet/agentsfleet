@@ -134,7 +134,7 @@ const ACTIVITY_DRAIN_BUDGET_MS: u64 = 5_000;
 const REDACTION_ZOMBIE_NAME = "redaction-bot";
 const REDACTION_ZOMBIE_CONFIG_JSON =
     "{\"name\":\"" ++ REDACTION_ZOMBIE_NAME ++
-    "\",\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"}," ++
+    "\",\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"agentmail\"}]," ++
     "\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}," ++
     "\"credentials\":[\"llm_key\"]}}";
 const REDACTION_ZOMBIE_SOURCE_MD = "---\nname: " ++ REDACTION_ZOMBIE_NAME ++ "\n---\n\nYou are a redaction bot.\n";
