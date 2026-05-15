@@ -215,7 +215,6 @@ test "ERR_* constants match REGISTRY entry codes (spot check)" {
     // Verify the constant string equals the entry's code field
     try std.testing.expectEqualStrings(reg.ERR_UNAUTHORIZED, reg.lookup(reg.ERR_UNAUTHORIZED).code);
     try std.testing.expectEqualStrings(reg.ERR_ZOMBIE_NOT_FOUND, reg.lookup(reg.ERR_ZOMBIE_NOT_FOUND).code);
-    try std.testing.expectEqualStrings(reg.ERR_CRED_ANTHROPIC_KEY_MISSING, reg.lookup(reg.ERR_CRED_ANTHROPIC_KEY_MISSING).code);
     try std.testing.expectEqualStrings(reg.ERR_EXEC_TIMEOUT_KILL, reg.lookup(reg.ERR_EXEC_TIMEOUT_KILL).code);
     try std.testing.expectEqualStrings(reg.ERR_APPROVAL_CONDITION_INVALID, reg.lookup(reg.ERR_APPROVAL_CONDITION_INVALID).code);
 }

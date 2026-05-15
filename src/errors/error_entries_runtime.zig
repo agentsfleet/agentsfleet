@@ -60,15 +60,6 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // ── RELAY ────────────────────────────────────────────────────────────────
     e("UZ-RELAY-001", .bad_request, "No LLM provider configured",
         "No LLM provider configured. Set one via admin platform keys or workspace credentials."),
-    // ── CREDENTIALS ──────────────────────────────────────────────────────────
-    e("UZ-CRED-001", .service_unavailable, "Anthropic API key missing",
-        "Workspace LLM API key not found in vault.secrets (key: anthropic_api_key). " ++
-        "Set it via the workspace credentials API. " ++
-        "Executor fell back to process env \u{2014} check ANTHROPIC_API_KEY on the worker if dev mode."),
-    e("UZ-CRED-003", .service_unavailable, "Platform LLM key missing",
-        "No active platform LLM key for this provider. Admin must set one via " ++
-        "PUT /v1/admin/platform-keys, or the workspace must add its own key " ++
-        "via PUT /v1/workspaces/{id}/credentials/llm."),
     // ── APPROVAL GATE ────────────────────────────────────────────────────────
     e("UZ-APPROVAL-001", .bad_request, "Approval parse failed",
         "Gate policy in TRIGGER.md config_json has invalid syntax. Check the 'gates' section."),

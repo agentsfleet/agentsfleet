@@ -15,8 +15,6 @@ import {
 } from "../constants/cli-errors.js";
 import { OPT_FROM } from "../constants/cli-flags.js";
 import {
-  ERR_CRED_PLATFORM_KEY_MISSING,
-  ERR_CRED_ANTHROPIC_KEY_MISSING,
   ERR_VAULT_DATA_INVALID,
   ERR_EXEC_RUNNER_AGENT_RUN,
 } from "../constants/error-codes.js";
@@ -39,14 +37,6 @@ export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
   [ERR_VAULT_DATA_INVALID]: {
     code: "CREDENTIAL_INVALID",
     message: "Credential JSON is invalid — must be a non-empty object ≤ 4 KiB.",
-  },
-  [ERR_CRED_ANTHROPIC_KEY_MISSING]: {
-    code: "ANTHROPIC_KEY_MISSING",
-    message: "Anthropic API key missing — workspace LLM API key not found in vault.secrets (key: anthropic_api_key). Set it via the workspace credentials API. Executor fell back to process env — check ANTHROPIC_API_KEY on the worker if dev mode.",
-  },
-  [ERR_CRED_PLATFORM_KEY_MISSING]: {
-    code: "PLATFORM_LLM_KEY_MISSING",
-    message: "Platform LLM key missing — no active platform LLM key for this provider. Admin must set one via PUT /v1/admin/platform-keys, or the workspace must add its own key via PUT /v1/workspaces/{id}/credentials/llm.",
   },
   [ERR_EXEC_RUNNER_AGENT_RUN]: {
     code: "ZOMBIE_RUNNER_FAILED",
