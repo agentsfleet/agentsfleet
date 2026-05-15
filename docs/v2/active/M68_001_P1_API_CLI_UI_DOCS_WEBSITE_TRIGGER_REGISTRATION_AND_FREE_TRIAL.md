@@ -475,6 +475,51 @@ CLI: `zombiectl zombie update <id> --from <dir>` reads TRIGGER.md + SKILL.md fro
 
 Markdown-only branch in `skills/usezombie-install-platform-ops/SKILL.md`: when a zombie already exists for the repo+workspace, route step 7 through `zombiectl zombie update` (the §10b CLI) instead of `zombiectl install`. ~30 lines markdown + eval test.
 
+### §11 — Dashboard chat surface polish bundle
+
+Extends §5's D1–D8b chat surface with accessibility, loading affordances, motion, and responsive behavior. Pure UI dimensions; no API surface or schema impact.
+
+- **D9 — ARIA `role="log"` on viewport.** `ThreadPrimitive.Viewport` carries `role="log"`, `aria-live="polite"`, `aria-label="Live activity"`. Screen readers announce frame arrivals without interrupting the user.
+- **D10 — Backfill skeleton.** When `connectionStatus ∈ {CONNECTING, RECONNECTING}` and `events.length === 0`, render three `Skeleton` rows in place of the "Waiting for activity" hint. Avoids the dead-pixel feel during the initial backfill window.
+- **D11 — Frame-enter fade-in.** Every rendered row carries `animate-in fade-in-0 duration-150`. Streaming rows keep the same DOM node across CHUNK updates so the animation only fires on first paint, not on every concat.
+- **D12 — Jump-to-latest button.** `ThreadPrimitive.ScrollToBottom` mounts inside the Card; auto-hides at bottom via `disabled:invisible`. Mono `↓ latest` label, project token sizing.
+- **D13 — Responsive md/sm modifiers.** Actor rail collapses under the body at `<md` via a `--actor-rail-w` CSS variable + `GRID_2`/`GRID_3` constants (single source of truth for the literal `72px`, derived for the webhook payload offset via `calc(var(--actor-rail-w)+var(--actor-rail-gap))`). Composer button stacks below the textarea at `<sm`. Webhook `<pre>` caps at `max-h-64`.
+- **D14 — Polish tests.** Nine vitest specs in `tests/zombie-thread.test.ts` pin: ARIA attribute presence; skeleton render gate (CONNECTING/RECONNECTING with 0 events, suppressed when LIVE or events present); frame-enter class on every `data-role` row; scroll-to-bottom mount; responsive grid + `--actor-rail-w` injection; composer flex-col-to-sm-row breakpoint.
+
+Token cleanup landed alongside this section: session-introduced parallel naming (`text-body-sm`/`font-sans`/`leading-body`/`text-text-subtle`) reverted to dashboard convention (`text-sm`/`text-muted-foreground`); project-native mono/semantic tokens (`text-mono`, `text-label`, `text-evidence`, `font-mono`, `leading-mono`) preserved per the locked v2-B visual.
+
+### §12 — Persistent zombie thread subscription (registry)
+
+Lifts the streaming subscription out of `useZombieEventStream`'s per-mount `useEffect` lifecycle into a module-level registry keyed by `zombieId`. Solves the "dashboard ↔ /zombies/[id] round-trip reconnects every visit" DX bug: within a 30s idle window after the last consumer detaches, the `EventSource` survives and the next mount re-subscribes against the live entry — zero reconnect, zero re-backfill.
+
+App Router note: a `/zombies/[id]/layout.tsx` host would only survive *within* the segment (sub-routes that don't exist yet), not across exits to `/dashboard`. The module-singleton registry is the level above the layout tree that actually persists for the DX case Captain flagged.
+
+- **D15 — Frame transform split.** Pure helpers (`mergeBackfill`, `applyLiveFrame` family, `actorToRole`) extracted to `lib/streaming/zombie-stream-frames.ts` (130 LOC). Keeps the registry file under the 350L LENGTH GATE without losing the per-file coherence.
+- **D16 — Registry primitive.** `lib/streaming/zombie-stream-registry.ts` (292 LOC). Exports `subscribe(workspaceId, zombieId, token, listener) → unsubscribe`, `getSnapshot(zombieId)`, `appendOptimistic`, `reconcileOptimistic`, `__resetRegistryForTests`. Refcounted per-zombie entries; SSE opens cookie-authed regardless of token; backfill skipped when token is null and resumed if a later subscriber arrives with one; reconnect backoff (1s→15s, cap 5 attempts) preserved from the original hook; 30s idle release after refcount hits zero.
+- **D17 — React hook as registry consumer.** `useZombieEventStream` rewritten as a thin `useSyncExternalStore` boundary (94 LOC). Public API preserved exactly — `events`, `connectionStatus`, `isRunning`, `retryState`, `appendOptimistic`, `reconcileOptimistic`, `convertEvent` — so `ZombieThread.tsx` and 442 existing tests are untouched.
+- **D18 — Registry behavior tests.** `lib/streaming/zombie-stream-registry.test.ts` (12 specs) pins: single EventSource per zombieId regardless of subscriber count; listener fanout on snapshot change; refcount keeps connection alive when one subscriber detaches; idle timer (not immediate close) on refcount-zero; idle release tears down after 30s+1ms; **same-zombie revisit within idle window does NOT open a new EventSource** (the load-bearing assertion); cross-zombie nav opens a fresh stream; null-token opens SSE + skips backfill; later token kicks off the deferred backfill; optimistic append/reconcile + no-op on never-subscribed zombieId.
+- **D19 — E2E surface pin.** `tests/e2e/acceptance/zombie-thread.spec.ts` — two Playwright specs: live-activity Card + composer renders for an authenticated user (smoke); dashboard ↔ /zombies/[id] round-trip preserves the surface (DX). Deeper SSE-injection tests (first-frame timing, CHUNK growth, reconnect badge recovery, steer roundtrip) deferred — need backend test-mode frame-emit hooks not in M68 scope; filed as follow-ups in the spec docstring.
+
+### §13 — zombiectl login redesign (Tiers 1–3)
+
+Redesigns `zombiectl/src/commands/core.js commandLogin` per the CLI login DX critique. Leverages patterns from the Supabase CLI's `~/Projects/oss/cli/apps/cli/src/next/commands/login/login.handler.ts` (multi-mode token resolution, idempotency check, distinct error tags) — adapted from Effect-TS layered DI to zombiectl's plain Node.js stack.
+
+zombiectl already does polling (not paste-the-code), so Tier-1 items A (loopback callback) and #7 (verification-code retry semantics) from the Supabase critique table don't apply. The dimensions below cover what *does* translate.
+
+- **D20 — Idempotency check (A).** Warn + confirm before overwriting `credentials.json`; `--force` skips the prompt.
+- **D21 — Token name flag (B).** `--name <label>` sent to server as session label; default `hostname-username` so the dashboard can distinguish per-machine tokens.
+- **D22 — TTL countdown (C).** Replace the silent spinner with `Session expires in MM:SS` updating each poll tick. Counts down to the server-side deadline.
+- **D23 — Fail-loud workspace hydration (D).** Surface `hydrateWorkspacesAfterLogin` failures with a warning + exit code, not the current silent `catch { return null; }`.
+- **D24 — Token validation before save (E).** JWT format check + `/me` ping before `saveCredentials`. A stale-but-format-valid token never reaches disk.
+- **D25 — Argv-leak warning (F).** If `--token sbp_...` is passed on a TTY, print a warning (shell history + `ps aux` exposure) and a 3-second pause-with-Ctrl-C-to-cancel. CI (non-TTY) skips the warning.
+- **D26 — TTY-priority env resolution (G).** In a TTY, ignore `ZMB_TOKEN` env unless `--use-env` is explicit. Non-TTY keeps current behavior (env wins) so scripts don't break.
+- **D27 — Decompose `commandLogin` (H).** Split the 140L monolith into named stages: `createSession → openBrowser → awaitCompletion → validate → persist → hydrateWorkspaces → finalize`. Each stage testable in isolation.
+- **D28 — Error taxonomy (I).** Distinguish `InvalidSession` / `ExpiredSession` / `NetworkError` / `RateLimited` / `Timeout` / `Interrupted`. Tightens the existing AUTH_PRESET map.
+- **D29 — Exp-backoff polling with jitter (J).** Start 1s, grow to 5s, ±20% jitter, honor server `Retry-After` if sent. Caps polling RPS during retry storms.
+- **D30 — Polling transient-retry (K).** Single 503 / network blip during the poll loop doesn't kill the session — log + continue.
+- **D31 — `zombiectl auth status` companion (L).** New command: shows active token, source (env/saved), `saved_at`, server-side validity ping. Closes the introspection gap.
+- **D32 — `zombiectl logout --all` (M).** Extends `commandLogout` to invalidate server-side, not just local.
+
 ---
 
 ## Interfaces
