@@ -285,6 +285,70 @@ If only **one** table existed, every user query would either pay full-table-scan
 
 The two streams are durable (events appended, XACKed entries pruned) and back the at-least-once delivery contract. The pub/sub channel is ephemeral and exists only to power live user UIs — its loss never affects correctness, only what the user sees in real time. Durable activity history lives in core.zombie_events; the pub/sub channel is the eyeballs surface, not the audit surface.
 
+## Connection topology — pool vs. dedicated
+
+The three Redis surfaces above ride on **two distinct connection patterns** inside the process. Mixing them — specifically, pooling a long-lived blocking read — would silently exhaust the request-path pool the first time a customer crossed the pool's `max_idle` in concurrent zombies. The split is load-bearing.
+
+```
+                        REDIS CONNECTION TOPOLOGY
+                        ═════════════════════════
+
+  ┌─────────────────────────────────────────────────────────────────────────────────┐
+  │                        POOL  (max_idle=8, eager_min=2)                           │
+  │                  ──── short-lived request-path commands ────                     │
+  │                                                                                  │
+  │   acquire → command → release    (microseconds to milliseconds per cycle)        │
+  │                                                                                  │
+  └────▲─────────────────────────────▲────────────────────────────▲──────────────────┘
+       │                             │                            │
+       │ XADD                        │ XADD                       │ PUBLISH
+       │ zombie:{id}:events          │ zombie:control             │ zombie:{id}:activity
+       │ (from steer / webhook       │ (from install path)        │ (from worker after
+       │  / cron / continuation)     │                            │  each event step)
+       │                             │                            │
+   ┌───┴────────┐               ┌────┴────────┐              ┌────┴──────────┐
+   │ HTTP       │               │ Watcher     │              │ Per-zombie    │
+   │ handlers   │               │ thread      │              │ worker thread │
+   │ in         │               │ in          │              │ in            │
+   │ zombied-api│               │ zombied-    │              │ zombied-      │
+   │            │               │   worker    │              │   worker      │
+   └────────────┘               └─────────────┘              └───────────────┘
+
+
+  ┌──────────────────────────────────────────────────────────────────────────────────┐
+  │                   DEDICATED CONNECTIONS  (NOT in the pool)                        │
+  │                    ──── long-lived blocking reads ────                            │
+  │                                                                                   │
+  │   Watcher: 1 dedicated conn       Per-zombie worker: 1 conn per zombie thread     │
+  │   ─────────────────────────       ─────────────────────────────────────────       │
+  │                                                                                   │
+  │   ┌──────────────────┐            ┌─────────────────┐  ┌─────────────────┐        │
+  │   │ XREADGROUP       │            │ XREADGROUP      │  │ XREADGROUP      │        │
+  │   │ zombie:control > │            │ zombie:Z1:events│  │ zombie:Z2:events│  ...   │
+  │   │ BLOCK 5000ms     │            │ BLOCK 5000ms    │  │ BLOCK 5000ms    │        │
+  │   │   (loops)        │            │   (loops)       │  │   (loops)       │        │
+  │   └──────────────────┘            └─────────────────┘  └─────────────────┘        │
+  │                                                                                   │
+  │                                                                                   │
+  │   SSE subscribers: 1 conn per live tail                                           │
+  │   ─────────────────────────────────────                                           │
+  │                                                                                   │
+  │   ┌──────────────────────┐       ┌──────────────────────┐                         │
+  │   │ SUBSCRIBE            │       │ SUBSCRIBE            │                         │
+  │   │ zombie:Z1:activity   │       │ zombie:Z2:activity   │  ...                    │
+  │   │  (held while SSE     │       │  (held while SSE     │                         │
+  │   │   client is open)    │       │   client is open)    │                         │
+  │   └──────────────────────┘       └──────────────────────┘                         │
+  │                                                                                   │
+  └───────────────────────────────────────────────────────────────────────────────────┘
+```
+
+**The rule.** A connection held across a Redis call that blocks the server (XREADGROUP with BLOCK, SUBSCRIBE) cannot return to a pool — its lifetime is tied to the consumer, not the request. The pool is therefore reserved for commands that complete in milliseconds: XADD, PUBLISH, XACK, command-style operations on `core` data structures.
+
+**Why this matters at scale.** Suppose `max_idle = 8` and every per-zombie worker pulled a pooled connection for its `XREADGROUP BLOCK 5000` loop. The 9th zombie installs successfully (worker spawns) but cannot acquire a connection to begin reading its events — pool exhausted, worker stuck. usezombie supports ~unbounded zombies per worker process; the pool topology must not be the bottleneck. Same argument applies to SSE subscribers: a customer with 100 dashboard tabs open should not be able to exhaust the request-path pool just by watching.
+
+**Where this is enforced.** `src/queue/redis_pool.zig` (introduced by M69_004) exposes only `acquire`/`release` for short-lived commands. The blocking-XREADGROUP consumers — `src/queue/redis_zombie.zig` (per-zombie events loop) and `src/cmd/worker_watcher_poll.zig` (watcher's control loop) — each construct a dedicated `Connection` via `Connection.init(...)` and own it for the lifetime of the thread. SSE subscribers use a separate `Subscriber` type with its own connection (the unified `src/queue/redis_subscriber.zig`).
+
 ## Why a single zombie:control instead of per-tenant control
 
 Considered alternatives:

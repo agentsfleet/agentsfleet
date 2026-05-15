@@ -16,7 +16,16 @@ For the full end-to-end install + first-trigger walkthroughs (platform-managed a
 
 ## §8.0 The wedge surface: `/usezombie-install-platform-ops` skill
 
-The MVP's user-facing wedge is not raw `zombiectl install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path), or fetch it from `https://usezombie.sh/skills.md`. No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
+The MVP's user-facing wedge is not raw `zombiectl install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
+
+There are **two install paths, chosen by audience**:
+
+| Audience | Path | Why |
+|----------|------|-----|
+| **Humans** at `https://usezombie.sh` | Copy-paste install — fetch `https://usezombie.sh/skills.md` (single-file render of the skill body) or drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path). | Zero tooling assumption. Visitor reads the landing page, copies a snippet, pastes into their host. |
+| **Agents** (Claude Code, Codex, Amp, OpenCode) | `npm install -g @usezombie/zombiectl && npx skills add usezombie/skills` (post-M69_001). The skills repo is `github.com/usezombie/skills`; `npx skills add` clones and symlinks every top-level `<skill-name>/` directory into all four host skill paths in one command. | Agents already have Node/npm/npx in their environment; the two-command flow is faster than copy-paste and resolves cross-host install (Claude + Codex + Amp + OpenCode) in one shot. |
+
+No plugin manifest, no per-host packaging fork. Both paths land the same skill body at the same host paths; the difference is procurement, not artifact.
 
 The skill is the install UX; `zombiectl install --from <path>` is the substrate it drives.
 
