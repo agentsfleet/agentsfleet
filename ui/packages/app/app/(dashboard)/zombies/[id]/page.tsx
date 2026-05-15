@@ -7,9 +7,9 @@ import { listZombieEvents } from "@/lib/api/events";
 import { listApprovals } from "@/lib/api/approvals";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
-import { LiveEventsPanel } from "@/components/domain/LiveEventsPanel";
 import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import ZombieApprovalsPanel from "@/components/domain/ZombieApprovalsPanel";
+import ZombieThreadDynamic from "@/components/domain/ZombieThreadDynamic";
 import TriggerPanel from "./components/TriggerPanel";
 import ZombieConfig from "./components/ZombieConfig";
 import KillSwitch from "./components/KillSwitch";
@@ -95,7 +95,11 @@ export default async function ZombieDetailPage({
       <Section asChild>
         <section aria-label="Live activity">
           <SectionLabel>Live activity</SectionLabel>
-          <LiveEventsPanel workspaceId={workspace.id} zombieId={zombie.id} />
+          <ZombieThreadDynamic
+            workspaceId={workspace.id}
+            zombieId={zombie.id}
+            token={token}
+          />
         </section>
       </Section>
 
