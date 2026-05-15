@@ -149,6 +149,7 @@ function runHandler(state, frame, handler) {
   }
   return handler(frame).then((code) => {
     state.exitCode = typeof code === "number" ? code : 0;
+    return state.exitCode;
   });
 }
 
