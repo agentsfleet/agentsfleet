@@ -1,12 +1,6 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { validateRequiredId } from "../program/validate.js";
 import { writeError } from "../program/io.js";
-const K_WORKSPACE_ID = "workspace_id";
-const K_WORKSPACE_ID_2 = "workspace-id";
-const K_WORKSPACEID = "workspaceId";
-
-const K_EM_DASH = "—";
-
 import {
   NO_WORKSPACE,
   UNKNOWN_WORKSPACE,
@@ -21,6 +15,11 @@ import {
   EVT_WORKSPACE_USED,
   EVT_WORKSPACE_DELETED,
 } from "../constants/analytics-events.js";
+
+const K_WORKSPACE_ID = "workspace_id";
+const K_WORKSPACE_ID_2 = "workspace-id";
+const K_WORKSPACEID = "workspaceId";
+const K_EM_DASH = "—";
 
 // Covers workspace add/list/use/show/delete/credentials. Auth codes
 // because every sub-command is authenticated; workspace codes because

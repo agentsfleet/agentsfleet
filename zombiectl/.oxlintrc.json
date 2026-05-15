@@ -23,6 +23,7 @@
     "import/no-cycle": "error",
     "import/extensions": ["error", "ignorePackages"],
     "import/no-self-import": "error",
+    "import/first": "error",
     "promise/catch-or-return": "error",
     "promise/no-return-wrap": "error",
     "no-control-regex": "off",

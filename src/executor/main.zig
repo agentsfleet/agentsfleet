@@ -28,6 +28,8 @@ const S_INFO = "info";
 const S_DEBUG = "debug";
 const S_ERR = "err";
 const S_WARN = "warn";
+const S_WARNING = "warning";
+const S_ERROR = "error";
 
 var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode == .Debug) std.log.Level.debug else std.log.Level.info));
 
@@ -48,8 +50,8 @@ pub const std_options: std.Options = .{
 fn parseLogLevel(level_raw: []const u8) ?std.log.Level {
     if (std.ascii.eqlIgnoreCase(level_raw, S_DEBUG)) return .debug;
     if (std.ascii.eqlIgnoreCase(level_raw, S_INFO)) return .info;
-    if (std.ascii.eqlIgnoreCase(level_raw, S_WARN) or std.ascii.eqlIgnoreCase(level_raw, "warning")) return .warn;
-    if (std.ascii.eqlIgnoreCase(level_raw, S_ERR) or std.ascii.eqlIgnoreCase(level_raw, "error")) return .err;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_WARN) or std.ascii.eqlIgnoreCase(level_raw, S_WARNING)) return .warn;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_ERR) or std.ascii.eqlIgnoreCase(level_raw, S_ERROR)) return .err;
     return null;
 }
 

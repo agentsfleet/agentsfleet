@@ -35,6 +35,7 @@ const S_DEFAULT = "default";
 const S_D_2 = "\":{d}}}}}";
 const S_ID = "id";
 const S_TRUE = "true";
+const S_FALSE = "false";
 
 const Msg = struct {
     const invalid_jsonrpc: []const u8 = "Invalid JSON-RPC request";
@@ -322,7 +323,7 @@ pub const Handler = struct {
             id,
             usage.token_count,
             usage.wall_seconds,
-            if (usage.exit_ok) S_TRUE else "false",
+            if (usage.exit_ok) S_TRUE else S_FALSE,
             usage.memory_peak_bytes,
             usage.cpu_throttled_ms,
             res_ctx.memory_limit_bytes,

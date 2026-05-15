@@ -7,10 +7,6 @@
 import { wsZombiesPath, wsZombiePath } from "../lib/api-paths.js";
 import { loadSkillFromPath, SkillLoadError } from "../lib/load-skill-from-path.js";
 import { validateRequiredId } from "../program/validate.js";
-const K_APPLICATION_JSON = "application/json";
-const K_CONTENT_TYPE = "Content-Type";
-const K_ZOMBIE_ID = "zombie_id";
-
 import {
   IO_ERROR,
   MISSING_ARGUMENT,
@@ -31,6 +27,10 @@ import {
   compose,
 } from "../lib/error-map-presets.js";
 import { ZOMBIE_STATUS } from "../constants/zombie-status.js";
+
+const K_APPLICATION_JSON = "application/json";
+const K_CONTENT_TYPE = "Content-Type";
+const K_ZOMBIE_ID = "zombie_id";
 
 // Shared by every `zombie.*` route — install/list/status/kill/stop/
 // resume/delete/logs/steer/events/credential all hit the same workspace

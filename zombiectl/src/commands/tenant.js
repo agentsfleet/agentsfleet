@@ -7,6 +7,14 @@
 // CLI only ever displays the resolved metadata (mode, provider, model,
 // credential_ref, context_cap_tokens).
 
+import {
+  PROVIDER_MODE,
+  formatDollars,
+  NANOS_PER_USD,
+} from "../constants/billing.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { TENANT_PROVIDER_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.js";
+
 const K_FIELD = "FIELD";
 const K_PROVIDER = "provider";
 const K_CONTEXT_CAP_TOKENS = "context_cap_tokens";
@@ -18,16 +26,7 @@ const K_VALUE_2 = "VALUE";
 const K_NUMBER = "number";
 const K_GET = "GET";
 const K_MODEL = "model";
-
 const K_EM_DASH = "—";
-
-import {
-  PROVIDER_MODE,
-  formatDollars,
-  NANOS_PER_USD,
-} from "../constants/billing.js";
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
-import { TENANT_PROVIDER_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
 // <$1 left → warn on reset.
 const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
