@@ -16,12 +16,14 @@ import {
   CONNECTION_STATUS,
   useZombieEventStream,
 } from "../components/domain/useZombieEventStream";
+import { __resetRegistryForTests } from "@/lib/streaming/zombie-stream-registry";
 import { FRAME_KIND, type EventRow, type LiveFrame } from "@/lib/api/events";
 
 // ── FakeEventSource ────────────────────────────────────────────────────────
-// Mirrors the pattern in tests/events-components.test.ts so the SSE-test
-// surface stays uniform across LiveEventsPanel (deleted in D8) and
-// useZombieEventStream (D3).
+// Standalone SSE-test harness. Future SSE-touching tests should
+// inline the same pattern; centralizing was considered and rejected
+// (the helper is small enough that the duplication is cheaper than
+// the extra import surface).
 
 type EsHandlers = {
   onopen: ((this: EventSource, ev: Event) => unknown) | null;
@@ -84,8 +86,8 @@ const WS = "ws_1";
 const ZID = "zomb_1";
 const TOKEN = "tok_test";
 
-function mount() {
-  return renderHook(() => useZombieEventStream(WS, ZID, TOKEN));
+function mount(token: string | null = TOKEN) {
+  return renderHook(() => useZombieEventStream(WS, ZID, token));
 }
 
 describe("useZombieEventStream", () => {
@@ -94,10 +96,12 @@ describe("useZombieEventStream", () => {
     (globalThis as unknown as { EventSource: unknown }).EventSource = FakeEventSource;
     listZombieEventsMock.mockReset();
     listZombieEventsMock.mockResolvedValue({ items: [], next_cursor: null });
+    __resetRegistryForTests();
   });
 
   afterEach(() => {
     cleanup();
+    __resetRegistryForTests();
     delete (globalThis as { EventSource?: unknown }).EventSource;
   });
 
@@ -281,6 +285,84 @@ describe("useZombieEventStream", () => {
       FakeEventSource.instances[0]!.onmessage?.call(
         FakeEventSource.instances[0]! as unknown as EventSource,
         { data: "this is not json" } as MessageEvent,
+      );
+    });
+    expect(result.current.events).toEqual([]);
+  });
+
+  // ── Robustness: null/invalid/error paths ────────────────────────────────
+
+  it("skips bearer-authed backfill when token is null (SSE is cookie-authed and still opens)", () => {
+    const { result } = mount(null);
+    // SSE endpoint authenticates via the Next.js middleware cookie session,
+    // not the token prop — so the stream still opens. Backfill (bearer-only)
+    // is skipped.
+    expect(FakeEventSource.instances.length).toBe(1);
+    expect(listZombieEventsMock).not.toHaveBeenCalled();
+    expect(result.current.events).toEqual([]);
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+  });
+
+  it("survives a backfill HTTP failure: events stays [], stream still opens", async () => {
+    listZombieEventsMock.mockRejectedValueOnce(new Error("HTTP 503"));
+    const { result } = mount();
+    // The stream still opens (the SSE path is independent of backfill).
+    expect(FakeEventSource.instances.length).toBe(1);
+    await waitFor(() => {
+      expect(result.current.events).toEqual([]);
+    });
+    // No unhandled rejection escapes the hook's try/catch.
+    expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.CONNECTING);
+  });
+
+  it("creates a fresh event row when CHUNK arrives before EVENT_RECEIVED", async () => {
+    const { result } = mount();
+    act(() => {
+      FakeEventSource.instances[0]!.open();
+    });
+    await waitFor(() =>
+      expect(result.current.connectionStatus).toBe(CONNECTION_STATUS.LIVE),
+    );
+    act(() => {
+      FakeEventSource.instances[0]!.emit({
+        kind: FRAME_KIND.CHUNK,
+        event_id: "evt_orphan",
+        text: "partial body without a header frame",
+      } as LiveFrame);
+    });
+    await waitFor(() => {
+      expect(result.current.events.length).toBe(1);
+      expect(result.current.events[0]!.id).toBe("evt_orphan");
+      expect(result.current.events[0]!.text).toBe(
+        "partial body without a header frame",
+      );
+    });
+  });
+
+  it("drops SSE frames that parse to non-object values", async () => {
+    const { result } = mount();
+    const inputs: unknown[] = [null, 42, '"a string"', "[1,2,3]"];
+    act(() => {
+      for (const raw of inputs) {
+        FakeEventSource.instances[0]!.onmessage?.call(
+          FakeEventSource.instances[0]! as unknown as EventSource,
+          {
+            data: typeof raw === "string" ? raw : JSON.stringify(raw),
+          } as MessageEvent,
+        );
+      }
+    });
+    expect(result.current.events).toEqual([]);
+  });
+
+  it("drops SSE frames with unknown kind (default-switch arm)", async () => {
+    const { result } = mount();
+    act(() => {
+      FakeEventSource.instances[0]!.onmessage?.call(
+        FakeEventSource.instances[0]! as unknown as EventSource,
+        {
+          data: JSON.stringify({ kind: "future_kind_we_dont_know" }),
+        } as MessageEvent,
       );
     });
     expect(result.current.events).toEqual([]);
