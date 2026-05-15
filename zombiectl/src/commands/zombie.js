@@ -19,6 +19,7 @@ import {
   ERR_CRED_ANTHROPIC_KEY_MISSING,
   ERR_VAULT_DATA_INVALID,
   ERR_EXEC_RUNNER_AGENT_RUN,
+  ERR_INTERNAL_DB_UNAVAILABLE,
 } from "../constants/error-codes.js";
 import {
   AUTH_PRESET,
@@ -47,6 +48,10 @@ export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
   [ERR_EXEC_RUNNER_AGENT_RUN]: {
     code: "ZOMBIE_RUNNER_FAILED",
     message: "Zombie runner exited with an error — see `zombiectl logs <zombie_id>` for details.",
+  },
+  [ERR_INTERNAL_DB_UNAVAILABLE]: {
+    code: "DB_UNAVAILABLE",
+    message: "Database busy — another writer is updating this zombie. Retry in a moment.",
   },
 });
 
@@ -130,6 +135,71 @@ export async function commandInstall(ctx, parsed, workspaces, deps) {
     for (const source of sources) {
       writeLine(ctx.stdout, `    ${source}: ${urls[source]}`);
     }
+  }
+  return 0;
+}
+
+export async function commandUpdate(ctx, parsed, workspaces, deps) {
+  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
+  const zombieId = parsed.positionals[0];
+  const fromPath = parsed.options[OPT_FROM] || parsed.options.from;
+
+  const wsId = requireWorkspace(ctx, workspaces, deps);
+  if (!wsId) return 1;
+
+  if (!zombieId) {
+    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl zombie update <zombie_id> --from <path>", deps);
+    return 2;
+  }
+  const idCheck = validateRequiredId(zombieId, "zombie_id");
+  if (!idCheck.ok) {
+    writeError(ctx, VALIDATION_ERROR, idCheck.message, deps);
+    return 2;
+  }
+  if (!fromPath || typeof fromPath !== "string") {
+    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl zombie update <zombie_id> --from <path>", deps);
+    return 2;
+  }
+
+  let bundle;
+  try {
+    bundle = loadSkillFromPath(fromPath);
+  } catch (err) {
+    if (err instanceof SkillLoadError) {
+      writeError(ctx, err.code, `${err.code}: ${err.message}`, deps);
+      return 1;
+    }
+    throw err;
+  }
+
+  let res;
+  try {
+    res = await request(ctx, wsZombiePath(wsId, zombieId), {
+      method: "PATCH",
+      headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        trigger_markdown: bundle.trigger_md,
+        source_markdown: bundle.skill_md,
+      }),
+    });
+  } catch (err) {
+    if (err && err.name === "ApiError") throw err;
+    writeError(ctx, IO_ERROR, `IO_ERROR: ${err?.message ?? String(err)}`, deps);
+    return 1;
+  }
+
+  if (ctx.jsonMode) {
+    printJson(ctx.stdout, {
+      status: "updated",
+      zombie_id: zombieId,
+      config_revision: res.config_revision,
+    });
+    return 0;
+  }
+
+  writeLine(ctx.stdout, ui.ok(`${zombieId} updated.`));
+  if (res.config_revision != null) {
+    writeLine(ctx.stdout, `  Config revision: ${res.config_revision}`);
   }
   return 0;
 }

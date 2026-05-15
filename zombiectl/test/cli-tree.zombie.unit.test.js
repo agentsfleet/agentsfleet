@@ -18,6 +18,14 @@ test("install accepts --from <path>", async () => {
   expect(calls[0].frame.parsed.options.from).toBe("/tmp/skill");
 });
 
+test("zombie update <id> accepts --from <path>", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["zombie", "update", VALID_ID, "--from", "/tmp/skill"], handlers);
+  expect(calls[0].name).toBe("zombie.update");
+  expect(calls[0].frame.parsed.positionals[0]).toBe(VALID_ID);
+  expect(calls[0].frame.parsed.options.from).toBe("/tmp/skill");
+});
+
 test("list accepts --workspace-id / --cursor / --limit", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([

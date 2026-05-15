@@ -20,6 +20,7 @@ Commands:
   tenant                        Tenant-scoped commands
   billing                       Tenant billing dashboard
   install [options]             Register a zombie from a local skill bundle
+  zombie                        Zombie management subcommands
   list [options]                List zombies in the active workspace (paginated)
   status [zombie_id]            Show zombie status (workspace-wide if no id)
   stop <zombie_id>              Halt the running session (resumable)
@@ -52,6 +53,7 @@ Subcommands:
   credential show
   credential list
   credential delete
+  zombie update
 
 Environment variables:
   ZOMBIE_API_URL    API base URL (overridden by --api)

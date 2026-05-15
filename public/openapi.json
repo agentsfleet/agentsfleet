@@ -2734,7 +2734,7 @@
       "patch": {
         "operationId": "patch_zombie",
         "summary": "Update zombie config or drive its status FSM",
-        "description": "Partial update of a zombie. Body fields are optional and presence-based:\n\n- `config_json` — replace the zombie's config; publishes `zombie_config_changed`.\n- `status` — drive the lifecycle FSM. Allowed values: `active` (resume from\n  stopped or auto-paused), `stopped` (halt the running session, resumable),\n  `killed` (terminal mark, irreversible). The `paused` state is platform-only\n  (set by the anomaly gate) and rejected here.\n\nBoth fields can ride together; the SQL UPDATE is one statement and one\ncontrol-stream publish fires per dirty surface. Returns the new\n`config_revision` (a strictly monotonic ms-epoch timestamp).\n\nFSM rules:\n\n- `killed` is terminal — any further PATCH on a killed zombie returns 404\n  (the row is a tombstone).\n- Stop requires status ∈ {active, paused}; Resume requires status ∈\n  {stopped, paused}; Kill is allowed from any non-killed state.\n- Disallowed transitions return 409 (e.g. resume on an active zombie).\n\nStatus transitions (stop/resume/kill) require operator-minimum role\nper RULE BIL — destructive lifecycle actions. Pure config updates stay\nat workspace-member.\n",
+        "description": "Partial update of a zombie. Body fields are optional and presence-based:\n\n- `config_json` — replace the zombie's config blob whole; publishes\n  `zombie_config_changed`.\n- `trigger_markdown` — replace the zombie's stored `TRIGGER.md`; the server\n  reparses the frontmatter and overlays the `x_usezombie.triggers` half of\n  `config_json`. The zombie's `name` is rewritten to the reparsed name.\n  Mutually exclusive with `config_json` (both drive the same column).\n- `source_markdown` — replace the zombie's stored `SKILL.md`; the server\n  reparses the frontmatter and overlays the tools / credentials / network /\n  budget halves of `config_json`. The reparsed `name` must equal the\n  zombie's current name (renames require a fresh install).\n- `status` — drive the lifecycle FSM. Allowed values: `active` (resume from\n  stopped or auto-paused), `stopped` (halt the running session, resumable),\n  `killed` (terminal mark, irreversible). The `paused` state is platform-only\n  (set by the anomaly gate) and rejected here.\n\nAll field-bearing branches run inside a single transaction that takes a\nrow-level `FOR UPDATE` lock on `core.zombies`, applies field-level merge\nsemantics, and commits with a single `UPDATE`. Two writers patching\ndifferent body fields land both halves; two writers patching the same\nfield collapse to last-write-wins. Per-transaction `lock_timeout=5s`,\n`statement_timeout=10s`, `idle_in_transaction_session_timeout=5s` make\npathological waits fail fast as `503` (retryable).\n\nThe SQL UPDATE is one statement; one control-stream publish fires when any\ndirty surface lands. Returns the new `config_revision` (a strictly\nmonotonic ms-epoch timestamp).\n\nFSM rules:\n\n- `killed` is terminal — any further PATCH on a killed zombie returns 404\n  (the row is a tombstone).\n- Stop requires status ∈ {active, paused}; Resume requires status ∈\n  {stopped, paused}; Kill is allowed from any non-killed state.\n- Disallowed transitions return 409 (e.g. resume on an active zombie).\n\nStatus transitions (stop/resume/kill) require operator-minimum role\nper RULE BIL — destructive lifecycle actions. Pure config updates stay\nat workspace-member.\n",
         "tags": [
           "Zombies"
         ],
@@ -2769,7 +2769,15 @@
                 "properties": {
                   "config_json": {
                     "type": "string",
-                    "description": "The new zombie config as a JSON string. Validated server-side."
+                    "description": "The new zombie config as a JSON string. Validated server-side.\nMutually exclusive with `trigger_markdown`.\n"
+                  },
+                  "trigger_markdown": {
+                    "type": "string",
+                    "description": "The full TRIGGER.md to persist; the server reparses the\nfrontmatter and overlays the `x_usezombie.triggers` half of\n`config_json`. Must be non-empty. Mutually exclusive with\n`config_json`.\n"
+                  },
+                  "source_markdown": {
+                    "type": "string",
+                    "description": "The full SKILL.md to persist; the server reparses the\nfrontmatter and overlays the tools / credentials / network /\nbudget halves of `config_json`. The reparsed `name` must\nmatch the zombie's current name. Must be non-empty.\n"
                   },
                   "status": {
                     "type": "string",
@@ -2828,6 +2836,9 @@
             "$ref": "#/components/responses/Error"
           },
           "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "503": {
             "$ref": "#/components/responses/Error"
           }
         }

@@ -3,6 +3,7 @@ import { ApiError } from "../src/lib/http.js";
 
 import {
   commandInstall,
+  commandUpdate,
   commandStatus,
   commandStop,
   commandResume,
@@ -152,6 +153,7 @@ export function commandZombieDispatch(ctx, args, workspaces, deps) {
   const rest = args.slice(1);
   switch (action) {
     case "install": return commandInstall(ctx, buildParsed(rest), workspaces, deps);
+    case "update":  return commandUpdate(ctx, buildParsed(rest), workspaces, deps);
     case "status":  return commandStatus(ctx, buildParsed(rest), workspaces, deps);
     case "kill":    return commandKill(ctx, buildParsed(rest), workspaces, deps);
     case "stop":    return commandStop(ctx, buildParsed(rest), workspaces, deps);
