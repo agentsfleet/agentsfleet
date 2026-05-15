@@ -35,7 +35,7 @@ sequenceDiagram
     Worker-->>API: ≤1s thread spawned
     API-->>Skill: { id, webhook_url }
     Skill->>Op: print webhook URL + locally generated secret (manual paste in GH)
-    Skill->>CLI: steer {id} "morning health check"
+    Skill->>CLI: steer <zombie_id> "morning health check"
     CLI->>API: POST /steer
     API->>Worker: XADD zombie:{id}:events
     Worker->>Slack: posts first-pass health summary
@@ -106,7 +106,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
      Events: workflow_run
    ```
    Manual step the skill can't automate without a GitHub App — explicitly called out, takes ~30 seconds in the GH UI. (A GitHub App that auto-configures the webhook is a follow-up; v2 keeps the manual step.)
-9. **First steer (smoke test).** The skill runs `zombiectl steer {id} "morning health check"` in batch mode and streams the response inline.
+9. **First steer (smoke test).** The skill runs `zombiectl steer <zombie_id> "morning health check"` in batch mode and streams the response inline.
 
 ### 1.2 What the first steer actually returns
 

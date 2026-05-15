@@ -36,7 +36,7 @@ What the skill does, in order:
 3. **Resolves credentials in order**: 1Password CLI (`op read`) → environment variables → interactive prompt. The skill never asks again for what `op` already has.
 4. **Calls `zombiectl doctor --json` first** (see §8.2) to verify auth + workspace binding before any write.
 5. **Generates `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
-6. **Drives `zombiectl install --from .usezombie/platform-ops/`** then runs a batch `zombiectl steer {id} "morning health check"` smoke test.
+6. **Drives `zombiectl install --from .usezombie/platform-ops/`** then runs a batch `zombiectl steer <zombie_id> "morning health check"` smoke test.
 
 This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any agent CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time user.
 
@@ -89,7 +89,7 @@ For the MVP, the zombie is triggerable in three ways:
 
 - **Webhook input**: an external system (most importantly GitHub Actions on `workflow_run.conclusion == failure`) sends an event to the zombie's webhook ingest URL, which on `main` is `POST /v1/webhooks/{zombie_id}`. The receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`), normalizes the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:github`.
 - **Cron input**: NullClaw's `cron_add` tool persists a schedule. Each fire arrives as a synthetic event with `actor=cron:<schedule>`.
-- **User steer**: the user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer {id} "<message>"` (or the dashboard chat widget), which `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
+- **User steer**: the user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer <zombie_id> "<message>"` (or the dashboard chat widget), which `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
 
 All three flow through the same runtime path. The zombie's reasoning loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the install-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
 
@@ -138,7 +138,7 @@ When a GH Actions deploy fails:
 
 When the user opens Claude later, they see the outcome trail in `core.zombie_events` keyed by actor — they can filter "show me all webhook:github events from the last 24h" or "show me what kishore steered last Tuesday." They never reconstruct from memory; the durable log is authoritative.
 
-The same zombie also responds to manual `zombiectl steer {id} "morning health check"` — same reasoning loop, different `actor=steer:kishore`.
+The same zombie also responds to manual `zombiectl steer <zombie_id> "morning health check"` — same reasoning loop, different `actor=steer:kishore`.
 
 ## §8.6 Why Claude is the starting point
 
@@ -164,46 +164,15 @@ Two things travel together: the **model** the executor invokes, and the **`conte
 
 The install-skill's job in both postures is the same shape: **call `zombiectl doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `zombiectl auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
-```
-                     PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)
-                  ─────────────────────────────────       ─────────────────────────────────
-install-skill →   doctor --json                           doctor --json
-                    auth_token_present: true ✓              auth_token_present: true ✓
-                    workspace_bound: true   ✓              workspace_bound: true   ✓
-                    tenant_provider:                       tenant_provider:
-                      {mode=platform,                        {mode=self_managed,
-                       model=accounts/fireworks/models/kimi-k2.6,               provider=fireworks,
-                       context_cap_tokens=256000}             model=accounts/.../kimi-k2.6,
-                  ─ if any auth check fails: print           context_cap_tokens=256000}
-                    `zombiectl auth login` and STOP. ─    ─ same auth-fail short-circuit ─
-                  branch on mode → write frontmatter      branch on mode → write frontmatter
-                  pin into frontmatter (resolved):        pin into frontmatter (sentinels):
-                    model: accounts/fireworks/models/kimi-k2.6                model: ""
-                    context_cap_tokens: 256000              context_cap_tokens: 0
-
-tenant provider → (nothing — synth-default                → zombiectl tenant provider set
-set                stays in place)                            --credential account-fireworks-key
-                                                              → API loads vault row
-                                                              → API GETs /_um/.../model-caps.json
-                                                              → upsert tenant_providers row
-                                                                {mode=self_managed, provider, model,
-                                                                 context_cap_tokens, credential_ref}
-
-trigger fires  → processEvent:                            → processEvent:
-                   resolveActiveProvider()                    resolveActiveProvider()
-                     no row → synth-default                    follows credential_ref to vault
-                   frontmatter has resolved cap →              returns mode=self_managed + cap + key
-                   use it directly.                          frontmatter sentinels overlay:
-                                                               model "" or absent → overlay
-                                                               cap 0   or absent → overlay
-
-createExecution → context_cap_tokens=256000               → context_cap_tokens=256000
-                  model=accounts/fireworks/models/kimi-k2.6                   model=accounts/.../kimi-k2.6
-                  api_key=<from admin workspace vault>                   api_key=<fw_LIVE_…>
-
-L3 stage chunking
-                → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
-```
+| Stage | Platform-managed (John Doe, default) | Self-managed (John Doe, post-flip) |
+|---|---|---|
+| **Install-skill calls `doctor --json`** | `auth_token_present: true` ✓<br>`workspace_bound: true` ✓<br>`tenant_provider: { mode=platform, model=accounts/fireworks/models/kimi-k2.6, context_cap_tokens=256000 }` | `auth_token_present: true` ✓<br>`workspace_bound: true` ✓<br>`tenant_provider: { mode=self_managed, provider=fireworks, model=accounts/fireworks/models/kimi-k2.6, context_cap_tokens=256000 }` |
+| **Auth failure short-circuit** | If any auth check fails → print `zombiectl auth login` hint, STOP. | Same short-circuit. |
+| **Install-skill writes frontmatter** | Pins resolved values:<br>`model: accounts/fireworks/models/kimi-k2.6`<br>`context_cap_tokens: 256000` | Pins visible sentinels (inherit-from-tenant marker):<br>`model: ""`<br>`context_cap_tokens: 0` |
+| **`tenant provider set` time** | (nothing — synth-default stays in place) | `zombiectl tenant provider set --credential account-fireworks-key` → API loads vault row → API GETs `/_um/.../model-caps.json` → upsert `tenant_providers` row `{ mode=self_managed, provider, model, context_cap_tokens, credential_ref }` |
+| **Trigger fires → `processEvent`** | `resolveActiveProvider()` → no row → synth-default. Frontmatter carries resolved cap; use directly. | `resolveActiveProvider()` → follows `credential_ref` into vault → returns `{ mode=self_managed, cap, api_key }`. Sentinels in frontmatter overlay from `tenant_providers`. |
+| **`executor.createExecution`** | `context_cap_tokens = 256000`<br>`model = accounts/fireworks/models/kimi-k2.6`<br>`api_key = <admin workspace vault>` | `context_cap_tokens = 256000`<br>`model = accounts/fireworks/models/kimi-k2.6`<br>`api_key = <fw_LIVE_… from user's vault>` |
+| **L3 stage chunking threshold** | `0.75 × 256000 = 192000` tokens | `0.75 × 256000 = 192000` tokens |
 
 **Worker overlay rule (per-field, independent):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
 

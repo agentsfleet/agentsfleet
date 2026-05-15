@@ -10,8 +10,9 @@ The billing model is **credit-based, Amp-style**: every tenant has a single cred
 
 > **Where the live values are.** Specific rates are not pinned in this doc on purpose — they change. The canonical sources, in lockstep:
 >
+> - **User-facing rates:** <https://usezombie.com/#pricing> — anchor on the home page; `App.tsx:83` redirects bare `/pricing` here. Link to this URL anywhere a human-facing rate is needed; do not paraphrase the numbers.
 > - **Zig (server authority):** `src/state/tenant_billing.zig` — `STARTER_CREDIT_NANOS`, `EVENT_NANOS`, `STAGE_PLATFORM_NANOS`, `STAGE_SELF_MANAGED_NANOS`. Pin tests in `tenant_billing_test.zig` lock the values.
-> - **Marketing display strings:** `~/Projects/docs/snippets/rates.mdx` (Mintlify), mirrored at `ui/packages/website/src/lib/rates.ts` for the on-site Pricing surface.
+> - **Marketing display strings:** `~/Projects/docs/snippets/rates.mdx` (Mintlify), mirrored at `ui/packages/website/src/lib/rates.ts` (rendered into the `/#pricing` section).
 > - **Per-model token rates (platform posture):** the public-but-unguessable `model-caps.json` endpoint — see §10.
 >
 > Cross-tier parity rule: identifier names match across Zig/TS/JS so a rate bump is a coordinated PR across all sources, not a silent drift.
@@ -389,15 +390,3 @@ No `purchase` / `topup` / `configure` subcommands in v2.0. The CLI's job is to s
 
 When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) prints a one-line pointer at the dashboard billing page. The CLI never blocks the user from making the next call (you can still issue another `steer` even with zero balance) — the gate is server-side, and the CLI surfaces the eventual rejection through `zombiectl events`.
 
----
-
-## 13. Open questions deferred to v2.1+ and v3
-
-- **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement, CLI subcommand if/when warranted.
-- **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
-- **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in `compute_charge`.
-- **Refund-on-actual-tokens.** v3. Today the conservative estimate at stage-debit time is the charge; reconciling to actual tokens after `StageResult` would add bookkeeping for marginal accuracy gains.
-- **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3 — needs a new gate at the workspace level.
-- **Volume discounts beyond a threshold.** v3, sales-led.
-- **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.
-- **Auto-fallback from self-managed to platform on provider error.** Errors surface to the user; no silent fallback (it would charge them without consent).
