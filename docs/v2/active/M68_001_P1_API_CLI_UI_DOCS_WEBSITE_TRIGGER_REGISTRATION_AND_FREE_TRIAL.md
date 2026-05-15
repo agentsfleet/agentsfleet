@@ -111,13 +111,13 @@ The receiver substrate (M43_001 + M28_001) is untouched. No new entity, no new e
 
 | # | File | Action | Why |
 |---|---|---|---|
-| D1 | `ui/packages/app/package.json` | EDIT | Add `@assistant-ui/react` pinned to an exact version (Pull Request body records the chosen version). |
+| D1 | `ui/packages/app/package.json` | EDIT | Add `@assistant-ui/react` as a caret range (`^x.y.z` against the latest stable on npm at implementation time — Captain decision 2026-05-15: caret, not exact pin, to let patch fixes float). Pull Request body records the resolved version after `bun install`. Imports go through subpath entries (`@assistant-ui/react/runtime`, `@assistant-ui/react/primitives`) to preserve tree-shaking. The route-level mount in D7 is a dynamic import (`next/dynamic`, `ssr: false`) so assistant-ui's runtime + primitives ship in a separate chunk and the `/zombies/[id]` first-load JS only pays for it once the chat surface mounts client-side. |
 | D2 | `ui/packages/app/components/domain/ZombieThread.tsx` | NEW | Mounts `AssistantRuntimeProvider`, `<Thread />`, `<Composer />`. Consumes `useZombieEventStream` and `steerZombie`. |
 | D3 | `ui/packages/app/components/domain/useZombieEventStream.ts` | NEW | Hook: initial backfill via `listZombieEvents(limit:50)`; opens `EventSource` against `GET /v1/.../zombies/{id}/events/stream`; folds SSE frames into an assistant-ui `Message[]` array; maps actors → roles (`steer:` → `user`; agent chunks → `assistant`; `webhook:` / `cron:` / `continuation:` → `system` with `customData`). |
 | D4 | `ui/packages/app/components/domain/zombieMessageRenderers.tsx` | NEW | Custom `MessagePrimitive` renderers for `system`-role messages. Per-actor styling: webhook chip ("↪ webhook:github · workflow_run failure · kishore/usezombie@c0a151bd", collapsible to full `request_json`); cron chip ("↻ cron:0 */30 * * * · 18:30Z"); continuation chip ("↩ continuation · <reason>", muted). |
 | D5 | `ui/packages/app/components/domain/SteerComposer.tsx` | NEW (thin wrapper) | Wraps assistant-ui's `<Composer />` with our design-system `<Textarea>` + `<Button>` slots, disables while a stage is `received` (running), surfaces optimistic-state styling. ~40 lines. |
 | D6 | `ui/packages/app/lib/api/zombies.ts` | EDIT | Add `steerZombie(workspaceId, zombieId, message, token) → Promise<{event_id}>` posting `{message}` to `POST /v1/workspaces/{ws}/zombies/{id}/messages`. |
-| D7 | `ui/packages/app/app/(dashboard)/zombies/[id]/page.tsx:96-100` | EDIT | Replace `<LiveEventsPanel ...>` with `<ZombieThread workspaceId={...} zombieId={...} />`. |
+| D7 | `ui/packages/app/app/(dashboard)/zombies/[id]/page.tsx:96-100` | EDIT | Replace `<LiveEventsPanel ...>` with a `next/dynamic` import of `ZombieThread` (`ssr: false`, with a thin skeleton fallback matching the panel's grid cell). The dynamic boundary keeps assistant-ui out of the route's initial JS chunk; D7's verify step asserts the static-import variant is NOT used. |
 | D8 | `ui/packages/app/components/domain/LiveEventsPanel.tsx` | DELETE | Replaced by `ZombieThread`. Per RULE NLR, remove not deprecate. |
 | D8b | `ui/packages/app/tests/events-components.test.ts` | EDIT | Remove `LiveEventsPanel` import + tests; cover the equivalent paths via `ZombieThread.test.ts` (D3 family). Verified empirically: `grep -rln LiveEventsPanel ui/packages` returns three files — D7 (page.tsx swap), D8 (the file itself), D8b (this test). No other importers. |
 
@@ -761,6 +761,9 @@ To be filled at CHORE(close):
 - Final list of singular `trigger:` occurrences migrated.
 - Exact `@assistant-ui/react` version pinned.
 - Bundle-size before / after `/zombies/[id]` route.
+  - **Baseline (pre-§5, 2026-05-15, Next 16.2.6 Turbopack):** first-load = **325.53 kB gzipped** (1090.55 kB raw) across 16 unique chunks (8 root main + 1 polyfill + 7 route-specific client). Budget ceiling for post-§5: **425.53 kB gzipped** (baseline + 100 kB headroom for assistant-ui runtime + primitives + adapter).
+  - **Measurement method (deterministic, reproducible):** `bun run build` then run the route-bundle script — parse `.next/server/app/(dashboard)/zombies/[id]/page_client-reference-manifest.js` for all `/_next/static/chunks/*.js` and `*.css`, union with `.next/server/app/(dashboard)/zombies/[id]/page/build-manifest.json` `rootMainFiles` + `polyfillFiles`, then sum `gzip.compress(b, compresslevel=9)` of each on-disk chunk under `.next/`. The same script run pre- and post-change is the gate.
+  - **Post-change:** to be filled after §5 D1–D8 land.
 - Companion-PR URL.
 - HMAC self-verify response times observed in CI for the install-skill eval.
 - Any provider whose `gh`-equivalent terminal command needed adjustment from the design-time draft.

@@ -20,12 +20,12 @@
 # Scope:
 #   Each script's "diff scope" flag is passed so the audit operates on the
 #   staged delta (not the whole repo). Flag conventions differ per script —
-#   `audit-ufs.sh` uses `--diff` (vs origin/main, the only mode it supports);
-#   `audit-design-tokens.sh` and `audit-combined.sh` accept both `--diff`
-#   and `--staged`, and the pre-commit context wants `--staged` so that
-#   staged-but-uncommitted changes are seen. The rest of the audits use
-#   `--staged`. The flag passed to each call below matches what's correct
-#   for the pre-commit invocation, not the script's *default*.
+#   `audit-ufs.sh` post-M70 only supports `--all` (the `--diff` mode was
+#   retired); `audit-design-tokens.sh` and `audit-combined.sh` accept both
+#   `--diff` and `--staged`, and the pre-commit context wants `--staged` so
+#   that staged-but-uncommitted changes are seen. The rest of the audits
+#   use `--staged`. The flag passed to each call below matches what's
+#   correct for the pre-commit invocation, not the script's *default*.
 #
 # Adding a gate:
 #   1. Drop scripts/audit-<gate>.sh on disk (or symlink from dotfiles).
@@ -63,7 +63,7 @@ endef
 
 harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; --staged)
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope$(C_RESET)\n"
-	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh --diff)
+	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh --all)
 	$(call HARNESS_RUN,DESIGN TOKEN,scripts/audit-design-tokens.sh --staged)
 	$(call HARNESS_RUN,SPEC TEMPLATE,scripts/audit-spec-template.sh --staged)
 	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh --staged)
