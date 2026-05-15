@@ -20,6 +20,8 @@ const log = logging.scoped(.preflight);
 // ---------------------------------------------------------------------------
 
 /// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
+const S_STARTUP_MIGRATION_CHECK_FAILED = "startup.migration_check_failed";
+
 pub const PostHogResult = struct {
     client: ?*posthog.PostHogClient,
     api_key_owned: ?[]const u8,
@@ -129,27 +131,27 @@ pub fn checkMigrations(pool: *db.Pool, migrate_on_start: bool) anyerror!void {
     common.enforceServeMigrationSafety(pool, migrate_on_start) catch |err| {
         const mc_code = error_codes.ERR_STARTUP_MIGRATION_CHECK;
         switch (err) {
-            common.MigrationGuardError.MigrationPending => log.err("startup.migration_check_failed", .{
+            common.MigrationGuardError.MigrationPending => log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{
                 .error_code = mc_code,
                 .reason = "pending_migrations",
                 .hint = "run zombied migrate or set MIGRATE_ON_START=1",
             }),
-            common.MigrationGuardError.MigrationFailed => log.err("startup.migration_check_failed", .{
+            common.MigrationGuardError.MigrationFailed => log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{
                 .error_code = mc_code,
                 .reason = "migration_failure_state",
                 .hint = "inspect schema_migration_failures then rerun zombied migrate",
             }),
-            common.MigrationGuardError.MigrationSchemaAhead => log.err("startup.migration_check_failed", .{
+            common.MigrationGuardError.MigrationSchemaAhead => log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{
                 .error_code = mc_code,
                 .reason = "schema_ahead",
                 .hint = "deploy matching binary",
             }),
-            common.MigrationGuardError.MigrationLockUnavailable => log.err("startup.migration_check_failed", .{
+            common.MigrationGuardError.MigrationLockUnavailable => log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{
                 .error_code = mc_code,
                 .reason = "migration_lock_unavailable",
                 .hint = "another node is migrating",
             }),
-            else => log.err("startup.migration_check_failed", .{
+            else => log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{
                 .error_code = mc_code,
                 .err = @errorName(err),
             }),
@@ -161,7 +163,7 @@ pub fn checkMigrations(pool: *db.Pool, migrate_on_start: bool) anyerror!void {
 
 pub fn parseMigrateOnStart(alloc: std.mem.Allocator) !bool {
     return common.migrateOnStartEnabledFromEnv(alloc) catch |err| {
-        log.err("startup.migration_check_failed", .{
+        log.err(S_STARTUP_MIGRATION_CHECK_FAILED, .{
             .error_code = error_codes.ERR_STARTUP_MIGRATION_CHECK,
             .reason = "invalid_MIGRATE_ON_START",
             .err = @errorName(err),

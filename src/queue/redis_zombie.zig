@@ -20,6 +20,9 @@ const log = logging.scoped(.redis_zombie);
 /// argument passed to `xackZombie`. Producer-side does NOT write a
 /// separate event_id field — XADD `*` assigns the id and the worker
 /// reads it from the stream entry header.
+const S_XACK_FAILED = "xack_failed";
+const S_COUNT = "COUNT";
+
 pub const ZombieEvent = struct {
     event_id: []u8,
     actor: []u8,
@@ -76,7 +79,7 @@ pub fn xreadgroupZombie(
     var resp = try client.command(&.{
         "XREADGROUP",                       "GROUP",
         queue_consts.zombie_consumer_group, consumer_id,
-        "COUNT",                            queue_consts.zombie_xread_count,
+        S_COUNT,                            queue_consts.zombie_xread_count,
         "BLOCK",                            queue_consts.zombie_xread_block_ms,
         "STREAMS",                          stream_key,
         ">",
@@ -97,7 +100,7 @@ pub fn xautoclaimZombie(
         "XAUTOCLAIM",                               stream_key,
         queue_consts.zombie_consumer_group,         consumer_id,
         queue_consts.zombie_xautoclaim_min_idle_ms, queue_consts.xautoclaim_start,
-        "COUNT",                                    queue_consts.xautoclaim_count,
+        S_COUNT,                                    queue_consts.xautoclaim_count,
     });
     defer resp.deinit(client.alloc);
     return decodeAutoClaimZombieEvent(client.alloc, resp);
@@ -114,11 +117,11 @@ pub fn xackZombie(client: *redis_client.Client, zombie_id: []const u8, event_id:
     defer resp.deinit(client.alloc);
     switch (resp) {
         .integer => |v| if (v < 0) {
-            log.err("xack_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = zombie_id, .event_id = event_id });
+            log.err(S_XACK_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = zombie_id, .event_id = event_id });
             return error.RedisXackFailed;
         },
         else => {
-            log.err("xack_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = zombie_id, .event_id = event_id });
+            log.err(S_XACK_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = zombie_id, .event_id = event_id });
             return error.RedisXackFailed;
         },
     }

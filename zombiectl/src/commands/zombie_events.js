@@ -11,6 +11,8 @@ import { EVENT_STATUS } from "../constants/event-status.js";
 
 const DEFAULT_LIMIT = 50;
 
+const K_EM_DASH = "—";
+
 export async function commandEvents(ctx, parsed, workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
   const zombieId = parsed.positionals[0];
@@ -63,15 +65,15 @@ function buildUrl(wsId, zombieId, options) {
 }
 
 function formatRow(ev, ui) {
-  const ts = Number.isFinite(ev.created_at) ? new Date(ev.created_at).toISOString() : "—";
+  const ts = Number.isFinite(ev.created_at) ? new Date(ev.created_at).toISOString() : K_EM_DASH;
   const status = renderStatus(ev.status, ui);
-  const actor = ev.actor || "—";
+  const actor = ev.actor || K_EM_DASH;
   const preview = previewText(ev.response_text);
   return `  ${ui.dim(ts)}  ${actor}  ${status}  ${preview}`;
 }
 
 function renderStatus(status, ui) {
-  if (!status) return ui.dim("—");
+  if (!status) return ui.dim(K_EM_DASH);
   if (status === EVENT_STATUS.PROCESSED) return ui.ok(status);
   if (status === EVENT_STATUS.AGENT_ERROR) return ui.err(status);
   if (status === EVENT_STATUS.GATE_BLOCKED) return ui.warn ? ui.warn(status) : ui.dim(status);

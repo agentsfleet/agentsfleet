@@ -1,18 +1,17 @@
 // Single source of truth for the zombiectl command tree. buildProgram
 // returns a configured commander.Command — cli.js wires creds, ctx,
 // analytics, and the preAction auth-guard around it. Pure construction;
-// no I/O at module load.
-//
-// Each .action() callback constructs `parsed = { options, positionals }`
-// from commander's parsed opts + args so the existing leaf handlers
-// (which already accept that shape) keep their internal signatures.
-// Option validators come from validators.js and throw
-// InvalidArgumentError on rejection, which commander catches and
-// renders as `error: option '--foo <v>' argument '<x>' is invalid. <why>`
-// then exits 2.
+// no I/O at module load. Each .action() callback constructs
+// `parsed = { options, positionals }` from commander's parsed opts +
+// args so the existing leaf handlers keep their internal signatures.
+// Validators come from validators.js and throw InvalidArgumentError on
+// rejection, which commander catches as `error: option '--foo <v>'
+// argument '<x>' is invalid. <why>` then exits 2.
 
 import { Command } from "commander";
 import { ZombieHelp, styleTagline } from "./help.js";
+import { K_WORKSPACE_ID_ID, K_CURSOR_TOKEN, K_LIST, K_ZOMBIE_ID, K_LOGOUT, K_LOGIN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE, K_WORKSPACE_ID, K_LIMIT_N, K_WORKSPACE_ID_2, K_DOCTOR, K_SHOW, K_ADD, K_ZOMBIE_ID_2, K_PAGE_SIZE } from "./cli-tree-consts.js";
+
 import {
   parseIntOption,
   parseIdOption,
@@ -98,7 +97,7 @@ export function buildProgram({ handlers, version, state, helpFactory }) {
 
   program
     .name("zombiectl")
-    .description(styleTagline("autonomous agent platform"))
+    .description(styleTagline("usezombie cli"))
     .version(version, "-v, --version", "Show version")
     .helpOption("-h, --help", "Show this help")
     .showSuggestionAfterError(true)
@@ -117,21 +116,21 @@ export function buildProgram({ handlers, version, state, helpFactory }) {
   // ── User commands ────────────────────────────────────────────────
 
   program
-    .command("login")
+    .command(K_LOGIN)
     .description("Authenticate via browser")
     .option("--timeout-sec <n>", "Wait up to N seconds for browser callback", parseIntOption(TIMEOUT_SEC_BOUNDS))
     .option("--poll-ms <n>", "Poll cadence in milliseconds", parseIntOption(POLL_MS_BOUNDS))
-    .action(actionFor("login", (frame) => runHandler(state, frame, handlers.login)));
+    .action(actionFor(K_LOGIN, (frame) => runHandler(state, frame, handlers.login)));
 
   program
-    .command("logout")
+    .command(K_LOGOUT)
     .description("Clear stored credentials")
-    .action(actionFor("logout", (frame) => runHandler(state, frame, handlers.logout)));
+    .action(actionFor(K_LOGOUT, (frame) => runHandler(state, frame, handlers.logout)));
 
   program
-    .command("doctor")
+    .command(K_DOCTOR)
     .description("Diagnose CLI configuration and connectivity")
-    .action(actionFor("doctor", (frame) => runHandler(state, frame, handlers.doctor)));
+    .action(actionFor(K_DOCTOR, (frame) => runHandler(state, frame, handlers.doctor)));
 
   buildWorkspaceTree(program, handlers, state);
   buildAgentTree(program, handlers, state);
@@ -150,6 +149,7 @@ function runHandler(state, frame, handler) {
   }
   return handler(frame).then((code) => {
     state.exitCode = typeof code === "number" ? code : 0;
+    return state.exitCode;
   });
 }
 
@@ -162,7 +162,7 @@ function buildWorkspaceTree(program, handlers, state) {
     .description("Create a new workspace")
     .action(actionFor("workspace.add", (frame) => runHandler(state, frame, handlers.workspace.add)));
 
-  ws.command("list")
+  ws.command(K_LIST)
     .description("List workspaces")
     .action(actionFor("workspace.list", (frame) => runHandler(state, frame, handlers.workspace.list)));
 
@@ -172,7 +172,7 @@ function buildWorkspaceTree(program, handlers, state) {
 
   ws.command("show [workspace_id]")
     .description("Show workspace details")
-    .option("--workspace-id <id>", "Workspace ID (alternative to positional)", parseIdOption)
+    .option(K_WORKSPACE_ID_ID, "Workspace ID (alternative to positional)", parseIdOption)
     .action(actionFor("workspace.show", (frame) => runHandler(state, frame, handlers.workspace.show)));
 
   ws.command("credentials")
@@ -189,22 +189,22 @@ function buildAgentTree(program, handlers, state) {
     .command("agent")
     .description("Manage external agent API keys");
 
-  agent.command("add")
+  agent.command(K_ADD)
     .description("Mint an agent API key for the workspace")
-    .option("--workspace <id>", "Workspace ID", parseIdOption)
-    .option("--zombie <id>", "Zombie ID this key is bound to", parseIdOption)
+    .option(K_WORKSPACE_ID_2, K_WORKSPACE_ID, parseIdOption)
+    .option(K_ZOMBIE_ID_2, "Zombie ID this key is bound to", parseIdOption)
     .option("--name <name>", "Human-readable agent name")
     .option("--description <desc>", "Optional description")
     .action(actionFor("agent.add", (frame) => runHandler(state, frame, handlers.agent.add)));
 
-  agent.command("list")
+  agent.command(K_LIST)
     .description("List external agent API keys")
-    .option("--workspace <id>", "Workspace ID", parseIdOption)
+    .option(K_WORKSPACE_ID_2, K_WORKSPACE_ID, parseIdOption)
     .action(actionFor("agent.list", (frame) => runHandler(state, frame, handlers.agent.list)));
 
   agent.command("delete <agent_id>")
     .description("Revoke an external agent API key")
-    .option("--workspace <id>", "Workspace ID", parseIdOption)
+    .option(K_WORKSPACE_ID_2, K_WORKSPACE_ID, parseIdOption)
     .action(actionFor("agent.delete", (frame) => runHandler(state, frame, handlers.agent.delete)));
 }
 
@@ -213,14 +213,14 @@ function buildGrantTree(program, handlers, state) {
     .command("grant")
     .description("Manage integration grants");
 
-  grant.command("list")
+  grant.command(K_LIST)
     .description("List integration grants for a zombie")
-    .option("--zombie <id>", "Zombie ID", parseIdOption)
+    .option(K_ZOMBIE_ID_2, K_ZOMBIE_ID, parseIdOption)
     .action(actionFor("grant.list", (frame) => runHandler(state, frame, handlers.grant.list)));
 
   grant.command("delete <grant_id>")
     .description("Revoke an integration grant")
-    .option("--zombie <id>", "Zombie ID", parseIdOption)
+    .option(K_ZOMBIE_ID_2, K_ZOMBIE_ID, parseIdOption)
     .action(actionFor("grant.delete", (frame) => runHandler(state, frame, handlers.grant.delete)));
 }
 
@@ -232,11 +232,11 @@ function buildTenantTree(program, handlers, state) {
     .command("provider")
     .description("Manage tenant LLM provider posture");
 
-  provider.command("show")
+  provider.command(K_SHOW)
     .description("Show the active provider config")
     .action(actionFor("tenant.provider.show", (frame) => runHandler(state, frame, handlers.tenant.provider.show)));
 
-  provider.command("add")
+  provider.command(K_ADD)
     .description("Use a self-managed credential")
     .option("--credential <name>", "Named credential from the workspace vault")
     .option("--model <name>", "Override the default model identifier")
@@ -252,10 +252,10 @@ function buildBillingTree(program, handlers, state) {
     .command("billing")
     .description("Tenant billing dashboard");
 
-  billing.command("show")
+  billing.command(K_SHOW)
     .description("Plan, balance, and recent events")
-    .option("--limit <n>", "Number of recent events to show", parseIntOption(BILLING_LIMIT_BOUNDS))
-    .option("--cursor <token>", "next_cursor from a previous page")
+    .option(K_LIMIT_N, "Number of recent events to show", parseIntOption(BILLING_LIMIT_BOUNDS))
+    .option(K_CURSOR_TOKEN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .action(actionFor("billing.show", (frame) => runHandler(state, frame, handlers.billing.show)));
 }
 
@@ -270,11 +270,11 @@ function buildZombieTree(program, handlers, state) {
     .action(actionFor("zombie.install", (frame) => runHandler(state, frame, handlers.zombie.install)));
 
   program
-    .command("list")
+    .command(K_LIST)
     .description("List zombies in the active workspace (paginated)")
-    .option("--workspace-id <id>", "Workspace ID override", parseIdOption)
-    .option("--cursor <token>", "next_cursor from a previous page")
-    .option("--limit <n>", "Page size", parseIntOption(LIST_LIMIT_BOUNDS))
+    .option(K_WORKSPACE_ID_ID, "Workspace ID override", parseIdOption)
+    .option(K_CURSOR_TOKEN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
+    .option(K_LIMIT_N, K_PAGE_SIZE, parseIntOption(LIST_LIMIT_BOUNDS))
     .action(actionFor("zombie.list", (frame) => runHandler(state, frame, handlers.zombie.list)));
 
   program
@@ -305,9 +305,9 @@ function buildZombieTree(program, handlers, state) {
   program
     .command("logs [zombie_id]")
     .description("Tail zombie activity")
-    .option("--zombie <id>", "Zombie ID (alternative to positional)", parseIdOption)
-    .option("--limit <n>", "Number of events to show", parseIntOption(EVENTS_LIMIT_BOUNDS))
-    .option("--cursor <token>", "next_cursor from a previous page")
+    .option(K_ZOMBIE_ID_2, "Zombie ID (alternative to positional)", parseIdOption)
+    .option(K_LIMIT_N, "Number of events to show", parseIntOption(EVENTS_LIMIT_BOUNDS))
+    .option(K_CURSOR_TOKEN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .action(actionFor("zombie.logs", (frame) => runHandler(state, frame, handlers.zombie.logs)));
 
   program
@@ -315,8 +315,8 @@ function buildZombieTree(program, handlers, state) {
     .description("Page through historical events")
     .option("--actor <glob>", "Filter by actor glob")
     .option("--since <when>", "RFC 3339 or duration (e.g. 2h)")
-    .option("--cursor <token>", "next_cursor from a previous page")
-    .option("--limit <n>", "Page size", parseIntOption(EVENTS_LIMIT_BOUNDS))
+    .option(K_CURSOR_TOKEN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
+    .option(K_LIMIT_N, K_PAGE_SIZE, parseIntOption(EVENTS_LIMIT_BOUNDS))
     .action(actionFor("zombie.events", (frame) => runHandler(state, frame, handlers.zombie.events)));
 
   program
@@ -338,7 +338,7 @@ function buildZombieTree(program, handlers, state) {
     .description("Confirm a credential exists (never echoes secret bytes)")
     .action(actionFor("zombie.credential.show", (frame) => runHandler(state, frame, handlers.zombie.credential.show)));
 
-  credential.command("list")
+  credential.command(K_LIST)
     .description("List credentials in the workspace vault")
     .action(actionFor("zombie.credential.list", (frame) => runHandler(state, frame, handlers.zombie.credential.list)));
 

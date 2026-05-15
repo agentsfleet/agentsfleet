@@ -6,6 +6,10 @@
 const std = @import("std");
 const types = @import("types.zig");
 
+const RPC_ID_KEY = "id";
+const RPC_METHOD_KEY = "method";
+const RPC_PARAMS_KEY = "params";
+
 /// RPC method names — the executor API surface (§2.1).
 pub const Method = struct {
     pub const create_execution = "CreateExecution";
@@ -122,10 +126,10 @@ pub fn serializeRequest(alloc: std.mem.Allocator, id: u64, method: []const u8, p
     var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer obj.object.deinit();
 
-    try obj.object.put("id", .{ .integer = @intCast(id) });
-    try obj.object.put("method", .{ .string = method });
+    try obj.object.put(RPC_ID_KEY,.{ .integer = @intCast(id) });
+    try obj.object.put(RPC_METHOD_KEY,.{ .string = method });
     if (params) |p| {
-        try obj.object.put("params", p);
+        try obj.object.put(RPC_PARAMS_KEY,p);
     }
 
     return std.json.Stringify.valueAlloc(alloc, obj, .{});
@@ -155,17 +159,17 @@ pub fn parseRequest(alloc: std.mem.Allocator, payload: []const u8) !ParsedReques
     errdefer parsed.deinit();
 
     const root = parsed.value;
-    const id_val = root.object.get("id") orelse return error.InvalidRequest;
+    const id_val = root.object.get(RPC_ID_KEY) orelse return error.InvalidRequest;
     const id: u64 = switch (id_val) {
         .integer => |i| @intCast(i),
         else => return error.InvalidRequest,
     };
-    const method_val = root.object.get("method") orelse return error.InvalidRequest;
+    const method_val = root.object.get(RPC_METHOD_KEY) orelse return error.InvalidRequest;
     const method: []const u8 = switch (method_val) {
         .string => |s| s,
         else => return error.InvalidRequest,
     };
-    const params = root.object.get("params");
+    const params = root.object.get(RPC_PARAMS_KEY);
 
     return .{
         .id = id,
@@ -192,7 +196,7 @@ pub fn parseResponse(alloc: std.mem.Allocator, payload: []const u8) !ParsedRespo
     errdefer parsed.deinit();
 
     const root = parsed.value;
-    const id_val = root.object.get("id") orelse return error.InvalidRequest;
+    const id_val = root.object.get(RPC_ID_KEY) orelse return error.InvalidRequest;
     const id: u64 = switch (id_val) {
         .integer => |i| @intCast(i),
         else => return error.InvalidRequest,

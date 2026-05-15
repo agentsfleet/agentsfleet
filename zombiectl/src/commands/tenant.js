@@ -15,6 +15,19 @@ import {
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import { TENANT_PROVIDER_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
+const K_FIELD = "FIELD";
+const K_PROVIDER = "provider";
+const K_CONTEXT_CAP_TOKENS = "context_cap_tokens";
+const K_FIELD_2 = "field";
+const K_VALUE = "value";
+const K_CREDENTIAL_REF = "credential_ref";
+const K_MODE = "mode";
+const K_VALUE_2 = "VALUE";
+const K_NUMBER = "number";
+const K_GET = "GET";
+const K_MODEL = "model";
+const K_EM_DASH = "—";
+
 // <$1 left → warn on reset.
 const LOW_BALANCE_THRESHOLD_NANOS = NANOS_PER_USD;
 
@@ -28,7 +41,7 @@ export const errorMap = compose(AUTH_PRESET);
 export async function commandTenantProviderShow(ctx, _parsed, _workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
-  const res = await request(ctx, TENANT_PROVIDER_PATH, { method: "GET", headers: apiHeaders(ctx) });
+  const res = await request(ctx, TENANT_PROVIDER_PATH, { method: K_GET, headers: apiHeaders(ctx) });
 
   if (ctx.jsonMode) {
     printJson(ctx.stdout, res);
@@ -47,14 +60,14 @@ export async function commandTenantProviderShow(ctx, _parsed, _workspaces, deps)
   }
 
   printTable(ctx.stdout, [
-    { key: "field", label: "FIELD" },
-    { key: "value", label: "VALUE" },
+    { key: K_FIELD_2, label: K_FIELD },
+    { key: K_VALUE, label: K_VALUE_2 },
   ], [
-    { field: "mode",                value: res.mode ?? "—" },
-    { field: "provider",            value: res.provider ?? "—" },
-    { field: "model",               value: res.model ?? "—" },
-    { field: "context_cap_tokens",  value: typeof res.context_cap_tokens === "number" ? String(res.context_cap_tokens) : "—" },
-    { field: "credential_ref",      value: res.credential_ref ?? "—" },
+    { field: K_MODE,                value: res.mode ?? K_EM_DASH },
+    { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
+    { field: K_MODEL,               value: res.model ?? K_EM_DASH },
+    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_EM_DASH },
+    { field: K_CREDENTIAL_REF,      value: res.credential_ref ?? K_EM_DASH },
   ]);
 
   if (res.synthesised_default === true) {
@@ -70,7 +83,7 @@ export async function commandTenantProviderAdd(ctx, parsed, _workspaces, deps) {
   const { request, apiHeaders, ui, printJson, printTable, writeLine } = deps;
 
   const credentialRef = parsed.options["credential"];
-  const modelOverride = parsed.options["model"];
+  const modelOverride = parsed.options[K_MODEL];
 
   if (!credentialRef) {
     writeLine(ctx.stderr, ui.err("tenant provider add requires --credential <name>"));
@@ -95,14 +108,14 @@ export async function commandTenantProviderAdd(ctx, parsed, _workspaces, deps) {
   writeLine(ctx.stdout, ui.ok(`Tenant provider added: mode=${PROVIDER_MODE.self_managed} credential=${credentialRef}`));
   writeLine(ctx.stdout);
   printTable(ctx.stdout, [
-    { key: "field", label: "FIELD" },
-    { key: "value", label: "VALUE" },
+    { key: K_FIELD_2, label: K_FIELD },
+    { key: K_VALUE, label: K_VALUE_2 },
   ], [
-    { field: "mode",                value: res.mode ?? "—" },
-    { field: "provider",            value: res.provider ?? "—" },
-    { field: "model",               value: res.model ?? "—" },
-    { field: "context_cap_tokens",  value: typeof res.context_cap_tokens === "number" ? String(res.context_cap_tokens) : "—" },
-    { field: "credential_ref",      value: res.credential_ref ?? "—" },
+    { field: K_MODE,                value: res.mode ?? K_EM_DASH },
+    { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
+    { field: K_MODEL,               value: res.model ?? K_EM_DASH },
+    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_EM_DASH },
+    { field: K_CREDENTIAL_REF,      value: res.credential_ref ?? K_EM_DASH },
   ]);
   writeLine(ctx.stdout);
   writeLine(ctx.stdout, ui.dim(`Tip: run a test event to verify the key works against ${res.provider ?? credentialRef}.`));
@@ -127,20 +140,20 @@ export async function commandTenantProviderDelete(ctx, _parsed, _workspaces, dep
   writeLine(ctx.stdout, ui.ok("Tenant provider deleted; using platform default."));
   writeLine(ctx.stdout);
   printTable(ctx.stdout, [
-    { key: "field", label: "FIELD" },
-    { key: "value", label: "VALUE" },
+    { key: K_FIELD_2, label: K_FIELD },
+    { key: K_VALUE, label: K_VALUE_2 },
   ], [
-    { field: "mode",                value: res.mode ?? "—" },
-    { field: "provider",            value: res.provider ?? "—" },
-    { field: "model",               value: res.model ?? "—" },
-    { field: "context_cap_tokens",  value: typeof res.context_cap_tokens === "number" ? String(res.context_cap_tokens) : "—" },
+    { field: K_MODE,                value: res.mode ?? K_EM_DASH },
+    { field: K_PROVIDER,            value: res.provider ?? K_EM_DASH },
+    { field: K_MODEL,               value: res.model ?? K_EM_DASH },
+    { field: K_CONTEXT_CAP_TOKENS,  value: typeof res.context_cap_tokens === K_NUMBER ? String(res.context_cap_tokens) : K_EM_DASH },
   ]);
 
   // Best-effort low-balance warning. Skip silently if the snapshot endpoint
   // isn't reachable — the reset itself succeeded and that's the headline.
   try {
-    const billing = await request(ctx, TENANT_BILLING_PATH, { method: "GET", headers: apiHeaders(ctx) });
-    const balance = typeof billing?.balance_nanos === "number" ? billing.balance_nanos : null;
+    const billing = await request(ctx, TENANT_BILLING_PATH, { method: K_GET, headers: apiHeaders(ctx) });
+    const balance = typeof billing?.balance_nanos === K_NUMBER ? billing.balance_nanos : null;
     if (balance !== null && balance < LOW_BALANCE_THRESHOLD_NANOS) {
       writeLine(ctx.stdout);
       writeLine(ctx.stdout, ui.err(`⚠ Tenant balance is low: ${formatDollars(balance)}. Top up via the dashboard before the next event.`));

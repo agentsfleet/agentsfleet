@@ -3,6 +3,9 @@ const std = @import("std");
 const db = @import("../db/pool.zig");
 const queue_redis = @import("../queue/redis.zig");
 
+const S_T_R_N = " \t\r\n";
+const PANIC_OOM = "OOM";
+
 pub const EnvVarsErrors = error{
     MissingDatabaseUrlApi,
     MissingDatabaseUrlWorker,
@@ -51,10 +54,10 @@ fn validateRoleSeparatedValues(
     redis_api: []const u8,
     redis_worker: []const u8,
 ) EnvVarsErrors!void {
-    if (std.mem.trim(u8, db_api, " \t\r\n").len == 0) return EnvVarsErrors.MissingDatabaseUrlApi;
-    if (std.mem.trim(u8, db_worker, " \t\r\n").len == 0) return EnvVarsErrors.MissingDatabaseUrlWorker;
-    if (std.mem.trim(u8, redis_api, " \t\r\n").len == 0) return EnvVarsErrors.MissingRedisUrlApi;
-    if (std.mem.trim(u8, redis_worker, " \t\r\n").len == 0) return EnvVarsErrors.MissingRedisUrlWorker;
+    if (std.mem.trim(u8, db_api, S_T_R_N).len == 0) return EnvVarsErrors.MissingDatabaseUrlApi;
+    if (std.mem.trim(u8, db_worker, S_T_R_N).len == 0) return EnvVarsErrors.MissingDatabaseUrlWorker;
+    if (std.mem.trim(u8, redis_api, S_T_R_N).len == 0) return EnvVarsErrors.MissingRedisUrlApi;
+    if (std.mem.trim(u8, redis_worker, S_T_R_N).len == 0) return EnvVarsErrors.MissingRedisUrlWorker;
 
     if (std.mem.eql(u8, db_api, db_worker)) return EnvVarsErrors.SameDatabaseUrlForApiAndWorker;
     // TODO(infra): once Upstash ACL users are available on our plan, replace the temporary
@@ -77,15 +80,15 @@ fn validateLoadedWithMode(urls: EnvVars, mode: CheckMode) EnvVarsErrors!void {
         .api => {
             const db_api = urls.db_api orelse return EnvVarsErrors.MissingDatabaseUrlApi;
             const redis_api = urls.redis_api orelse return EnvVarsErrors.MissingRedisUrlApi;
-            if (std.mem.trim(u8, db_api, " \t\r\n").len == 0) return EnvVarsErrors.MissingDatabaseUrlApi;
-            if (std.mem.trim(u8, redis_api, " \t\r\n").len == 0) return EnvVarsErrors.MissingRedisUrlApi;
+            if (std.mem.trim(u8, db_api, S_T_R_N).len == 0) return EnvVarsErrors.MissingDatabaseUrlApi;
+            if (std.mem.trim(u8, redis_api, S_T_R_N).len == 0) return EnvVarsErrors.MissingRedisUrlApi;
             if (!std.mem.startsWith(u8, redis_api, "rediss://")) return EnvVarsErrors.RedisApiTlsRequired;
         },
         .worker => {
             const db_worker = urls.db_worker orelse return EnvVarsErrors.MissingDatabaseUrlWorker;
             const redis_worker = urls.redis_worker orelse return EnvVarsErrors.MissingRedisUrlWorker;
-            if (std.mem.trim(u8, db_worker, " \t\r\n").len == 0) return EnvVarsErrors.MissingDatabaseUrlWorker;
-            if (std.mem.trim(u8, redis_worker, " \t\r\n").len == 0) return EnvVarsErrors.MissingRedisUrlWorker;
+            if (std.mem.trim(u8, db_worker, S_T_R_N).len == 0) return EnvVarsErrors.MissingDatabaseUrlWorker;
+            if (std.mem.trim(u8, redis_worker, S_T_R_N).len == 0) return EnvVarsErrors.MissingRedisUrlWorker;
             if (!std.mem.startsWith(u8, redis_worker, "rediss://")) return EnvVarsErrors.RedisWorkerTlsRequired;
         },
         .both => try validateLoaded(urls),
@@ -144,10 +147,10 @@ fn testEnvVars(
 ) EnvVars {
     const alloc = std.testing.allocator;
     return .{
-        .db_api = if (db_api) |s| alloc.dupe(u8, s) catch @panic("OOM") else null,
-        .db_worker = if (db_worker) |s| alloc.dupe(u8, s) catch @panic("OOM") else null,
-        .redis_api = if (redis_api) |s| alloc.dupe(u8, s) catch @panic("OOM") else null,
-        .redis_worker = if (redis_worker) |s| alloc.dupe(u8, s) catch @panic("OOM") else null,
+        .db_api = if (db_api) |s| alloc.dupe(u8, s) catch @panic(PANIC_OOM) else null,
+        .db_worker = if (db_worker) |s| alloc.dupe(u8, s) catch @panic(PANIC_OOM) else null,
+        .redis_api = if (redis_api) |s| alloc.dupe(u8, s) catch @panic(PANIC_OOM) else null,
+        .redis_worker = if (redis_worker) |s| alloc.dupe(u8, s) catch @panic(PANIC_OOM) else null,
         .alloc = alloc,
     };
 }

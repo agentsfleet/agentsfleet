@@ -11,6 +11,8 @@ const log = logging.scoped(.http);
 pub const Context = common.Context;
 
 // none policy — login endpoint, no bearer auth required.
+const S_COMPLETE = "complete";
+
 pub fn innerCreateAuthSession(hx: hx_mod.Hx) void {
     log.debug("auth_session_create", .{ .req_id = hx.req_id });
 
@@ -38,7 +40,7 @@ pub fn innerPollAuthSession(hx: hx_mod.Hx, session_id: []const u8) void {
     const result = hx.ctx.auth_sessions.poll(session_id);
     const status_str: []const u8 = switch (result.status) {
         .pending => "pending",
-        .complete => "complete",
+        .complete => S_COMPLETE,
         .expired => "expired",
     };
     log.debug("auth_session_poll", .{ .session_id = session_id, .status = status_str });
@@ -56,7 +58,7 @@ pub fn innerPatchAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []c
         token: []const u8,
         // The only legal transition from `pending` is `complete`. Future
         // transitions (e.g. revoke) extend this enum + the parser branch.
-        status: []const u8 = "complete",
+        status: []const u8 = S_COMPLETE,
     };
     const parsed = std.json.parseFromSlice(Body, hx.alloc, body, .{}) catch {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "Malformed JSON or missing token field");
@@ -64,7 +66,7 @@ pub fn innerPatchAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []c
     };
     defer parsed.deinit();
 
-    if (!std.mem.eql(u8, parsed.value.status, "complete")) {
+    if (!std.mem.eql(u8, parsed.value.status, S_COMPLETE)) {
         hx.fail(error_codes.ERR_INVALID_REQUEST, "status must be \"complete\"");
         return;
     }
@@ -90,7 +92,7 @@ pub fn innerPatchAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []c
     // Mirror the GET poll response symmetry: {status, token}. The depositor
     // gets back exactly what a subsequent poll would return.
     hx.ok(.ok, .{
-        .status = "complete",
+        .status = S_COMPLETE,
         .token = parsed.value.token,
         .request_id = hx.req_id,
     });

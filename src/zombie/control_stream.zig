@@ -12,6 +12,7 @@ const redis_client = @import("../queue/redis_client.zig");
 const redis_protocol = @import("../queue/redis_protocol.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const parser = @import("control_stream_parse.zig");
+const c = @import("control_stream_consts.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.control_stream);
@@ -31,18 +32,18 @@ pub const MessageType = enum {
 
     pub fn toSlice(self: MessageType) []const u8 {
         return switch (self) {
-            .zombie_created => "zombie_created",
-            .zombie_status_changed => "zombie_status_changed",
-            .zombie_config_changed => "zombie_config_changed",
-            .worker_drain_request => "worker_drain_request",
+            .zombie_created => c.EVENT_ZOMBIE_CREATED,
+            .zombie_status_changed => c.EVENT_ZOMBIE_STATUS_CHANGED,
+            .zombie_config_changed => c.EVENT_ZOMBIE_CONFIG_CHANGED,
+            .worker_drain_request => c.EVENT_WORKER_DRAIN_REQUEST,
         };
     }
 
     pub fn fromSlice(s: []const u8) ?MessageType {
-        if (std.mem.eql(u8, s, "zombie_created")) return .zombie_created;
-        if (std.mem.eql(u8, s, "zombie_status_changed")) return .zombie_status_changed;
-        if (std.mem.eql(u8, s, "zombie_config_changed")) return .zombie_config_changed;
-        if (std.mem.eql(u8, s, "worker_drain_request")) return .worker_drain_request;
+        if (std.mem.eql(u8, s, c.EVENT_ZOMBIE_CREATED)) return .zombie_created;
+        if (std.mem.eql(u8, s, c.EVENT_ZOMBIE_STATUS_CHANGED)) return .zombie_status_changed;
+        if (std.mem.eql(u8, s, c.EVENT_ZOMBIE_CONFIG_CHANGED)) return .zombie_config_changed;
+        if (std.mem.eql(u8, s, c.EVENT_WORKER_DRAIN_REQUEST)) return .worker_drain_request;
         return null;
     }
 };
@@ -106,12 +107,12 @@ pub const Decoded = struct {
 pub fn ensureZombieEventsGroup(client: *redis_client.Client, zombie_id: []const u8) !void {
     var key_buf: [128]u8 = undefined;
     const key = try std.fmt.bufPrint(&key_buf, "zombie:{s}:events", .{zombie_id});
-    var resp = try client.commandAllowError(&.{ "XGROUP", "CREATE", key, consumer_group, "0", "MKSTREAM" });
+    var resp = try client.commandAllowError(&.{ c.REDIS_XGROUP, c.REDIS_CREATE, key, consumer_group, "0", c.REDIS_MKSTREAM });
     defer resp.deinit(client.alloc);
     switch (resp) {
-        .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.ZombieEventsGroupCreateFailed,
+        .simple => |v| if (!std.mem.eql(u8, v, c.REDIS_OK)) return error.ZombieEventsGroupCreateFailed,
         .err => |msg| {
-            if (std.mem.indexOf(u8, msg, "BUSYGROUP") != null) return;
+            if (std.mem.indexOf(u8, msg, c.REDIS_BUSYGROUP) != null) return;
             log.err("zombie_events_group_create_fail", .{ .err = msg, .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ZombieEventsGroupCreateFailed;
         },
@@ -126,13 +127,13 @@ pub fn ensureZombieEventsGroup(client: *redis_client.Client, zombie_id: []const 
 /// group's ACK pointer (Redis-managed state).
 pub fn ensureControlGroup(client: *redis_client.Client) !void {
     var resp = try client.commandAllowError(&.{
-        "XGROUP", "CREATE", stream_key, consumer_group, "0", "MKSTREAM",
+        c.REDIS_XGROUP, c.REDIS_CREATE, stream_key, consumer_group, "0", c.REDIS_MKSTREAM,
     });
     defer resp.deinit(client.alloc);
     switch (resp) {
-        .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.ControlGroupCreateFailed,
+        .simple => |v| if (!std.mem.eql(u8, v, c.REDIS_OK)) return error.ControlGroupCreateFailed,
         .err => |msg| {
-            if (std.mem.indexOf(u8, msg, "BUSYGROUP") != null) return;
+            if (std.mem.indexOf(u8, msg, c.REDIS_BUSYGROUP) != null) return;
             log.err("group_create_fail", .{ .err = msg, .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ControlGroupCreateFailed;
         },
@@ -158,7 +159,7 @@ pub fn publish(client: *redis_client.Client, msg: ControlMessage) !void {
     n += 1;
     argv[n] = "*";
     n += 1;
-    argv[n] = "type";
+    argv[n] = c.FIELD_TYPE;
     n += 1;
 
     const tag: MessageType = std.meta.activeTag(msg);
@@ -177,11 +178,11 @@ pub fn publish(client: *redis_client.Client, msg: ControlMessage) !void {
     defer resp.deinit(client.alloc);
     switch (resp) {
         .bulk => |v| if (v == null) {
-            log.err("xadd_fail", .{ .type = tag.toSlice(), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
+            log.err(c.LOG_XADD_FAIL, .{ .type = tag.toSlice(), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ControlXaddFailed;
         },
         else => {
-            log.err("xadd_fail", .{ .type = tag.toSlice(), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
+            log.err(c.LOG_XADD_FAIL, .{ .type = tag.toSlice(), .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
             return error.ControlXaddFailed;
         },
     }
@@ -197,30 +198,30 @@ fn appendVariantFields(
     var n = start;
     switch (msg) {
         .zombie_created => |m| {
-            argv[n] = "zombie_id";
+            argv[n] = c.FIELD_ZOMBIE_ID;
             argv[n + 1] = m.zombie_id;
-            argv[n + 2] = "workspace_id";
+            argv[n + 2] = c.FIELD_WORKSPACE_ID;
             argv[n + 3] = m.workspace_id;
             n += 4;
         },
         .zombie_status_changed => |m| {
-            argv[n] = "zombie_id";
+            argv[n] = c.FIELD_ZOMBIE_ID;
             argv[n + 1] = m.zombie_id;
-            argv[n + 2] = "status";
+            argv[n + 2] = c.FIELD_STATUS;
             argv[n + 3] = m.status.toSlice();
             n += 4;
         },
         .zombie_config_changed => |m| {
             const rev_str = try std.fmt.bufPrint(revision_buf, "{d}", .{m.config_revision});
-            argv[n] = "zombie_id";
+            argv[n] = c.FIELD_ZOMBIE_ID;
             argv[n + 1] = m.zombie_id;
-            argv[n + 2] = "config_revision";
+            argv[n + 2] = c.FIELD_CONFIG_REVISION;
             argv[n + 3] = rev_str;
             n += 4;
         },
         .worker_drain_request => |m| {
             if (m.reason) |r| {
-                argv[n] = "reason";
+                argv[n] = c.FIELD_REASON;
                 argv[n + 1] = r;
                 n += 2;
             }
@@ -253,17 +254,17 @@ pub fn decodeEntry(
     while (i < fields.len) : (i += 2) {
         const k = redis_protocol.valueAsString(fields[i]) orelse continue;
         const v = redis_protocol.valueAsString(fields[i + 1]) orelse continue;
-        if (std.mem.eql(u8, k, "type")) {
+        if (std.mem.eql(u8, k, c.FIELD_TYPE)) {
             msg_type = MessageType.fromSlice(v);
-        } else if (std.mem.eql(u8, k, "zombie_id")) {
+        } else if (std.mem.eql(u8, k, c.FIELD_ZOMBIE_ID)) {
             zombie_id = v;
-        } else if (std.mem.eql(u8, k, "workspace_id")) {
+        } else if (std.mem.eql(u8, k, c.FIELD_WORKSPACE_ID)) {
             workspace_id = v;
-        } else if (std.mem.eql(u8, k, "status")) {
+        } else if (std.mem.eql(u8, k, c.FIELD_STATUS)) {
             status = ZombieStatus.fromSlice(v);
-        } else if (std.mem.eql(u8, k, "config_revision")) {
+        } else if (std.mem.eql(u8, k, c.FIELD_CONFIG_REVISION)) {
             config_revision = parseConfigRevision(v);
-        } else if (std.mem.eql(u8, k, "reason")) {
+        } else if (std.mem.eql(u8, k, c.FIELD_REASON)) {
             reason = v;
         }
     }

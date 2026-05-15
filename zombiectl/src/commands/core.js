@@ -19,17 +19,24 @@ export const loginErrorMap = compose(AUTH_PRESET);
 
 export const logoutErrorMap = compose(AUTH_PRESET);
 
+const K_COMPLETE = "complete";
+const K_EXPIRED = "expired";
+const K_CONTENT_TYPE = "Content-Type";
+const K_APPLICATION_JSON = "application/json";
+const K_GET = "GET";
+const K_STRING = "string";
+
 function normalizeTenantWorkspace(item, fallbackCreatedAt) {
   if (!item || typeof item !== "object") return null;
-  const workspaceId = typeof item.workspace_id === "string"
+  const workspaceId = typeof item.workspace_id === K_STRING
     ? item.workspace_id
-    : typeof item.id === "string"
+    : typeof item.id === K_STRING
       ? item.id
       : null;
   if (!workspaceId) return null;
   return {
     workspace_id: workspaceId,
-    name: typeof item.name === "string" ? item.name : null,
+    name: typeof item.name === K_STRING ? item.name : null,
     created_at: Number.isFinite(item.created_at) ? item.created_at : fallbackCreatedAt,
   };
 }
@@ -38,7 +45,7 @@ async function hydrateWorkspacesAfterLogin(ctx, workspaces, deps) {
   const { apiHeaders, request, saveWorkspaces } = deps;
   try {
     const response = await request(ctx, TENANT_WORKSPACES_PATH, {
-      method: "GET",
+      method: K_GET,
       headers: apiHeaders(ctx),
     });
     const fallbackCreatedAt = Date.now();
@@ -103,7 +110,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
 
   const created = await request(ctx, AUTH_SESSIONS_PATH, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { [K_CONTENT_TYPE]: K_APPLICATION_JSON },
     body: "{}",
   });
 
@@ -144,11 +151,11 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
     while (Date.now() < deadline) {
       if (interrupt.signal.aborted) return signalInterrupt();
       last = await request(ctx, `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}`, {
-        method: "GET",
-        headers: { "Content-Type": "application/json" },
+        method: K_GET,
+        headers: { [K_CONTENT_TYPE]: K_APPLICATION_JSON },
       });
 
-      if (last.status === "complete" && last.token) {
+      if (last.status === K_COMPLETE && last.token) {
         if (interrupt.signal.aborted) return signalInterrupt();
         const saved = {
           token: last.token,
@@ -165,7 +172,7 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
         });
 
         const result = {
-          status: "complete",
+          status: K_COMPLETE,
           session_id: sessionId,
           token_saved: true,
           api_url: ctx.apiUrl,
@@ -177,8 +184,8 @@ export async function commandLogin(ctx, parsed, workspaces, deps) {
         return 0;
       }
 
-      if (last.status === "expired") {
-        const result = { status: "expired", session_id: sessionId };
+      if (last.status === K_EXPIRED) {
+        const result = { status: K_EXPIRED, session_id: sessionId };
         if (ctx.jsonMode) printJson(ctx.stdout, result);
         else writeLine(ctx.stderr, ui.err("login session expired"));
         spinner.fail();

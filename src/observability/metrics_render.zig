@@ -5,13 +5,19 @@ const mc = @import("metrics_counters.zig");
 const mw = @import("metrics_workspace.zig");
 const em = @import("../executor/executor_metrics.zig");
 
+const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
+const S_REASON = "reason";
+const S_COUNTER = "counter";
+const S_HELP_S_S_N = "# HELP {s} {s}\n";
+const S_GAUGE = "gauge";
+
 fn appendDurationHistogram(
     writer: anytype,
     name: []const u8,
     help: []const u8,
     hist: mc.HistogramSnapshot,
 ) !void {
-    try writer.print("# HELP {s} {s}\n", .{ name, help });
+    try writer.print(S_HELP_S_S_N, .{ name, help });
     try writer.print("# TYPE {s} histogram\n", .{name});
     for (mc.DurationBuckets, 0..) |le, i| {
         try writer.print("{s}_bucket{{le=\"{d}\"}} {d}\n", .{
@@ -32,8 +38,8 @@ fn appendMetric(
     help: []const u8,
     value: anytype,
 ) !void {
-    try writer.print("# HELP {s} {s}\n", .{ name, help });
-    try writer.print("# TYPE {s} {s}\n", .{ name, metric_type });
+    try writer.print(S_HELP_S_S_N, .{ name, help });
+    try writer.print(S_TYPE_S_S_N, .{ name, metric_type });
     try writer.print("{s} {d}\n", .{ name, value });
 }
 
@@ -55,8 +61,8 @@ fn appendLabeledFamily(
     label_name: []const u8,
     samples: []const LabeledSample,
 ) !void {
-    try writer.print("# HELP {s} {s}\n", .{ name, help });
-    try writer.print("# TYPE {s} {s}\n", .{ name, metric_type });
+    try writer.print(S_HELP_S_S_N, .{ name, help });
+    try writer.print(S_TYPE_S_S_N, .{ name, metric_type });
     for (samples) |sample| {
         try writer.print("{s}{{{s}=\"{s}\"}} {d}\n", .{ name, label_name, sample.label_value, sample.value });
     }
@@ -73,38 +79,38 @@ pub fn renderPrometheus(
     errdefer out.deinit(alloc);
     const writer = out.writer(alloc);
 
-    try appendMetric(writer, "zombie_external_retries_total", "counter", "Total retry attempts inside external side-effect wrappers.", s.external_retries_total);
-    try appendMetric(writer, "zombie_external_retries_rate_limited_total", "counter", "External retries classified as rate-limited.", s.external_retries_rate_limited_total);
-    try appendMetric(writer, "zombie_external_retries_timeout_total", "counter", "External retries classified as timeout.", s.external_retries_timeout_total);
-    try appendMetric(writer, "zombie_external_retries_context_exhausted_total", "counter", "External retries classified as context exhausted.", s.external_retries_context_exhausted_total);
-    try appendMetric(writer, "zombie_external_retries_auth_total", "counter", "External retries classified as auth.", s.external_retries_auth_total);
-    try appendMetric(writer, "zombie_external_retries_invalid_request_total", "counter", "External retries classified as invalid request.", s.external_retries_invalid_request_total);
-    try appendMetric(writer, "zombie_external_retries_server_error_total", "counter", "External retries classified as server error.", s.external_retries_server_error_total);
-    try appendMetric(writer, "zombie_external_retries_unknown_total", "counter", "External retries classified as unknown.", s.external_retries_unknown_total);
-    try appendMetric(writer, "zombie_external_failures_total", "counter", "External calls that exited wrappers as classified failures.", s.external_failures_total);
-    try appendMetric(writer, "zombie_external_failures_rate_limited_total", "counter", "External failures classified as rate-limited.", s.external_failures_rate_limited_total);
-    try appendMetric(writer, "zombie_external_failures_timeout_total", "counter", "External failures classified as timeout.", s.external_failures_timeout_total);
-    try appendMetric(writer, "zombie_external_failures_context_exhausted_total", "counter", "External failures classified as context exhausted.", s.external_failures_context_exhausted_total);
-    try appendMetric(writer, "zombie_external_failures_auth_total", "counter", "External failures classified as auth.", s.external_failures_auth_total);
-    try appendMetric(writer, "zombie_external_failures_invalid_request_total", "counter", "External failures classified as invalid request.", s.external_failures_invalid_request_total);
-    try appendMetric(writer, "zombie_external_failures_server_error_total", "counter", "External failures classified as server error.", s.external_failures_server_error_total);
-    try appendMetric(writer, "zombie_external_failures_unknown_total", "counter", "External failures classified as unknown.", s.external_failures_unknown_total);
-    try appendMetric(writer, "zombie_retry_after_hints_total", "counter", "Retry attempts that used Retry-After guidance.", s.retry_after_hints_total);
-    try appendMetric(writer, "zombie_agent_tokens_total", "counter", "Total tokens consumed by agent calls.", s.agent_tokens_total);
-    try appendMetric(writer, "zombie_backoff_wait_ms_total", "counter", "Total backoff wait time in milliseconds.", s.backoff_wait_ms_total);
-    try appendMetric(writer, "zombie_api_backpressure_rejections_total", "counter", "Total API requests rejected by in-flight backpressure guard.", s.api_backpressure_rejections_total);
-    try appendMetric(writer, "zombie_api_in_flight_requests", "gauge", "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
-    try appendMetric(writer, "zombie_worker_running", "gauge", "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
+    try appendMetric(writer, "zombie_external_retries_total", S_COUNTER, "Total retry attempts inside external side-effect wrappers.", s.external_retries_total);
+    try appendMetric(writer, "zombie_external_retries_rate_limited_total", S_COUNTER, "External retries classified as rate-limited.", s.external_retries_rate_limited_total);
+    try appendMetric(writer, "zombie_external_retries_timeout_total", S_COUNTER, "External retries classified as timeout.", s.external_retries_timeout_total);
+    try appendMetric(writer, "zombie_external_retries_context_exhausted_total", S_COUNTER, "External retries classified as context exhausted.", s.external_retries_context_exhausted_total);
+    try appendMetric(writer, "zombie_external_retries_auth_total", S_COUNTER, "External retries classified as auth.", s.external_retries_auth_total);
+    try appendMetric(writer, "zombie_external_retries_invalid_request_total", S_COUNTER, "External retries classified as invalid request.", s.external_retries_invalid_request_total);
+    try appendMetric(writer, "zombie_external_retries_server_error_total", S_COUNTER, "External retries classified as server error.", s.external_retries_server_error_total);
+    try appendMetric(writer, "zombie_external_retries_unknown_total", S_COUNTER, "External retries classified as unknown.", s.external_retries_unknown_total);
+    try appendMetric(writer, "zombie_external_failures_total", S_COUNTER, "External calls that exited wrappers as classified failures.", s.external_failures_total);
+    try appendMetric(writer, "zombie_external_failures_rate_limited_total", S_COUNTER, "External failures classified as rate-limited.", s.external_failures_rate_limited_total);
+    try appendMetric(writer, "zombie_external_failures_timeout_total", S_COUNTER, "External failures classified as timeout.", s.external_failures_timeout_total);
+    try appendMetric(writer, "zombie_external_failures_context_exhausted_total", S_COUNTER, "External failures classified as context exhausted.", s.external_failures_context_exhausted_total);
+    try appendMetric(writer, "zombie_external_failures_auth_total", S_COUNTER, "External failures classified as auth.", s.external_failures_auth_total);
+    try appendMetric(writer, "zombie_external_failures_invalid_request_total", S_COUNTER, "External failures classified as invalid request.", s.external_failures_invalid_request_total);
+    try appendMetric(writer, "zombie_external_failures_server_error_total", S_COUNTER, "External failures classified as server error.", s.external_failures_server_error_total);
+    try appendMetric(writer, "zombie_external_failures_unknown_total", S_COUNTER, "External failures classified as unknown.", s.external_failures_unknown_total);
+    try appendMetric(writer, "zombie_retry_after_hints_total", S_COUNTER, "Retry attempts that used Retry-After guidance.", s.retry_after_hints_total);
+    try appendMetric(writer, "zombie_agent_tokens_total", S_COUNTER, "Total tokens consumed by agent calls.", s.agent_tokens_total);
+    try appendMetric(writer, "zombie_backoff_wait_ms_total", S_COUNTER, "Total backoff wait time in milliseconds.", s.backoff_wait_ms_total);
+    try appendMetric(writer, "zombie_api_backpressure_rejections_total", S_COUNTER, "Total API requests rejected by in-flight backpressure guard.", s.api_backpressure_rejections_total);
+    try appendMetric(writer, "zombie_api_in_flight_requests", S_GAUGE, "Current in-flight API requests protected by backpressure guard.", s.api_in_flight_requests);
+    try appendMetric(writer, "zombie_worker_running", S_GAUGE, "Worker liveness gauge (1 running, 0 stopped).", worker_running_gauge);
 
-    try appendMetric(writer, "zombie_gate_repair_exhausted_total", "counter", "Total gate repair exhaustions (max loops reached).", s.gate_repair_exhausted_total);
+    try appendMetric(writer, "zombie_gate_repair_exhausted_total", S_COUNTER, "Total gate repair exhaustions (max loops reached).", s.gate_repair_exhausted_total);
     // Per-limit-type counters as a single labelled family (was three
     // per-series HELP/TYPE blocks, which strict scrapers reject).
     try appendLabeledFamily(
         writer,
         "zombied_run_limit_exceeded_total",
-        "counter",
+        S_COUNTER,
         "Runs terminated by a resource limit, labelled by which limit tripped.",
-        "reason",
+        S_REASON,
         &.{
             .{ .label_value = "token_budget", .value = s.run_limit_token_budget_exceeded_total },
             .{ .label_value = "wall_time", .value = s.run_limit_wall_time_exceeded_total },
@@ -112,14 +118,14 @@ pub fn renderPrometheus(
         },
     );
     // Signup funnel counters.
-    try appendMetric(writer, "zombie_signup_bootstrapped_total", "counter", "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);
-    try appendMetric(writer, "zombie_signup_replayed_total", "counter", "Clerk webhooks that matched an existing account (idempotent replay).", s.signup_replayed_total);
+    try appendMetric(writer, "zombie_signup_bootstrapped_total", S_COUNTER, "Clerk webhooks that provisioned a fresh personal account.", s.signup_bootstrapped_total);
+    try appendMetric(writer, "zombie_signup_replayed_total", S_COUNTER, "Clerk webhooks that matched an existing account (idempotent replay).", s.signup_replayed_total);
     try appendLabeledFamily(
         writer,
         "zombie_signup_failed_total",
-        "counter",
+        S_COUNTER,
         "Signup webhooks that were rejected, labelled by rejection reason.",
-        "reason",
+        S_REASON,
         &.{
             .{ .label_value = "bad_sig", .value = s.signup_failed_bad_sig_total },
             .{ .label_value = "stale_ts", .value = s.signup_failed_stale_ts_total },
@@ -139,23 +145,23 @@ pub fn renderPrometheus(
 
     // Executor metrics (§5.2).
     const es = em.executorSnapshot();
-    try appendMetric(writer, "zombie_executor_sessions_created_total", "counter", "Total executor sessions created.", es.sessions_created_total);
-    try appendMetric(writer, "zombie_executor_sessions_active", "gauge", "Current active executor sessions.", es.sessions_active);
-    try appendMetric(writer, "zombie_executor_failures_total", "counter", "Total executor RPC failures.", es.failures_total);
-    try appendMetric(writer, "zombie_executor_oom_kills_total", "counter", "Total OOM kills by executor cgroup.", es.oom_kills_total);
-    try appendMetric(writer, "zombie_executor_timeout_kills_total", "counter", "Total timeout kills through executor boundary.", es.timeout_kills_total);
-    try appendMetric(writer, "zombie_executor_landlock_denials_total", "counter", "Total Landlock filesystem denials.", es.landlock_denials_total);
-    try appendMetric(writer, "zombie_executor_resource_kills_total", "counter", "Total resource limit kills (CPU/disk).", es.resource_kills_total);
-    try appendMetric(writer, "zombie_executor_lease_expired_total", "counter", "Total executor leases expired (orphan cleanup).", es.lease_expired_total);
-    try appendMetric(writer, "zombie_executor_cancellations_total", "counter", "Total executor session cancellations.", es.cancellations_total);
-    try appendMetric(writer, "zombie_executor_cpu_throttled_ms_total", "counter", "Total CPU throttling time in milliseconds.", es.cpu_throttled_ms_total);
-    try appendMetric(writer, "zombie_executor_memory_peak_bytes", "gauge", "Peak memory usage across executor sessions.", es.memory_peak_bytes);
+    try appendMetric(writer, "zombie_executor_sessions_created_total", S_COUNTER, "Total executor sessions created.", es.sessions_created_total);
+    try appendMetric(writer, "zombie_executor_sessions_active", S_GAUGE, "Current active executor sessions.", es.sessions_active);
+    try appendMetric(writer, "zombie_executor_failures_total", S_COUNTER, "Total executor RPC failures.", es.failures_total);
+    try appendMetric(writer, "zombie_executor_oom_kills_total", S_COUNTER, "Total OOM kills by executor cgroup.", es.oom_kills_total);
+    try appendMetric(writer, "zombie_executor_timeout_kills_total", S_COUNTER, "Total timeout kills through executor boundary.", es.timeout_kills_total);
+    try appendMetric(writer, "zombie_executor_landlock_denials_total", S_COUNTER, "Total Landlock filesystem denials.", es.landlock_denials_total);
+    try appendMetric(writer, "zombie_executor_resource_kills_total", S_COUNTER, "Total resource limit kills (CPU/disk).", es.resource_kills_total);
+    try appendMetric(writer, "zombie_executor_lease_expired_total", S_COUNTER, "Total executor leases expired (orphan cleanup).", es.lease_expired_total);
+    try appendMetric(writer, "zombie_executor_cancellations_total", S_COUNTER, "Total executor session cancellations.", es.cancellations_total);
+    try appendMetric(writer, "zombie_executor_cpu_throttled_ms_total", S_COUNTER, "Total CPU throttling time in milliseconds.", es.cpu_throttled_ms_total);
+    try appendMetric(writer, "zombie_executor_memory_peak_bytes", S_GAUGE, "Peak memory usage across executor sessions.", es.memory_peak_bytes);
 
     // Executor stage metrics (M12_003 §5.3).
-    try appendMetric(writer, "zombie_executor_stages_started_total", "counter", "Total NullClaw stage invocations started.", es.stages_started_total);
-    try appendMetric(writer, "zombie_executor_stages_completed_total", "counter", "Total NullClaw stage invocations completed successfully.", es.stages_completed_total);
-    try appendMetric(writer, "zombie_executor_stages_failed_total", "counter", "Total NullClaw stage invocations failed.", es.stages_failed_total);
-    try appendMetric(writer, "zombie_executor_agent_tokens_total", "counter", "Total tokens consumed by executor agent calls.", es.agent_tokens_total);
+    try appendMetric(writer, "zombie_executor_stages_started_total", S_COUNTER, "Total NullClaw stage invocations started.", es.stages_started_total);
+    try appendMetric(writer, "zombie_executor_stages_completed_total", S_COUNTER, "Total NullClaw stage invocations completed successfully.", es.stages_completed_total);
+    try appendMetric(writer, "zombie_executor_stages_failed_total", S_COUNTER, "Total NullClaw stage invocations failed.", es.stages_failed_total);
+    try appendMetric(writer, "zombie_executor_agent_tokens_total", S_COUNTER, "Total tokens consumed by executor agent calls.", es.agent_tokens_total);
 
     // Executor agent duration histogram (M12_003 §5.3).
     try writer.print("# HELP zombie_executor_agent_duration_seconds Duration of executor agent calls in seconds.\n", .{});
@@ -168,10 +174,10 @@ pub fn renderPrometheus(
     try writer.print("zombie_executor_agent_duration_seconds_count {d}\n", .{es.duration_count});
 
     // M15_002: zombie execution counters + wall-time histogram.
-    try appendMetric(writer, "zombie_triggered_total", "counter", "Total zombie webhook triggers accepted.", s.zombie_triggered_total);
-    try appendMetric(writer, "zombie_completed_total", "counter", "Total zombie events delivered successfully.", s.zombie_completed_total);
-    try appendMetric(writer, "zombie_failed_total", "counter", "Total zombie event delivery failures.", s.zombie_failed_total);
-    try appendMetric(writer, "zombie_tokens_total", "counter", "Total tokens consumed across zombie deliveries.", s.zombie_tokens_total);
+    try appendMetric(writer, "zombie_triggered_total", S_COUNTER, "Total zombie webhook triggers accepted.", s.zombie_triggered_total);
+    try appendMetric(writer, "zombie_completed_total", S_COUNTER, "Total zombie events delivered successfully.", s.zombie_completed_total);
+    try appendMetric(writer, "zombie_failed_total", S_COUNTER, "Total zombie event delivery failures.", s.zombie_failed_total);
+    try appendMetric(writer, "zombie_tokens_total", S_COUNTER, "Total tokens consumed across zombie deliveries.", s.zombie_tokens_total);
     {
         const zh = s.zombie_execution_seconds;
         try writer.print("# HELP zombie_execution_seconds Zombie event end-to-end wall-time in seconds.\n", .{});

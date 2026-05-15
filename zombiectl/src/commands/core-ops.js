@@ -2,10 +2,14 @@ import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import {
   ERR_INTERNAL_DB_UNAVAILABLE,
-  ERR_INTERNAL_GENERIC,
-  ERR_INTERNAL_SERVER_ERROR,
+  ERR_INTERNAL_DB_QUERY,
+  ERR_INTERNAL_OPERATION_FAILED,
 } from "../constants/error-codes.js";
 import { DOCTOR_CHECK } from "../constants/doctor-checks.js";
+
+const K_MSG_SERVER_DEGRADED = "Server internal error — the API is degraded; try again shortly.";
+const K_GET = "GET";
+const K_SERVER_INTERNAL = "SERVER_INTERNAL";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 
@@ -15,16 +19,16 @@ const PER_CHECK_TIMEOUT_MS = 5000;
 // authenticated leg.
 export const doctorErrorMap = compose(AUTH_PRESET, {
   [ERR_INTERNAL_DB_UNAVAILABLE]: {
-    code: "SERVER_INTERNAL",
+    code: K_SERVER_INTERNAL,
     message: "Database unavailable — the API is degraded; try again shortly.",
   },
-  [ERR_INTERNAL_GENERIC]: {
-    code: "SERVER_INTERNAL",
-    message: "Server internal error — the API is degraded; try again shortly.",
+  [ERR_INTERNAL_DB_QUERY]: {
+    code: K_SERVER_INTERNAL,
+    message: K_MSG_SERVER_DEGRADED,
   },
-  [ERR_INTERNAL_SERVER_ERROR]: {
-    code: "SERVER_INTERNAL",
-    message: "Server internal error — the API is degraded; try again shortly.",
+  [ERR_INTERNAL_OPERATION_FAILED]: {
+    code: K_SERVER_INTERNAL,
+    message: K_MSG_SERVER_DEGRADED,
   },
 });
 
@@ -42,7 +46,7 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
 
   try {
     const healthz = await request(ctx, HEALTHZ_PATH, {
-      method: "GET",
+      method: K_GET,
       timeoutMs: PER_CHECK_TIMEOUT_MS,
     });
     const ok = healthz?.status === HEALTHZ_STATUS_OK;
@@ -76,7 +80,7 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
   } else {
     try {
       await request(ctx, wsZombiesPath(wsId), {
-        method: "GET",
+        method: K_GET,
         headers: apiHeaders(ctx),
         timeoutMs: PER_CHECK_TIMEOUT_MS,
       });

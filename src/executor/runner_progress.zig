@@ -17,8 +17,9 @@
 const std = @import("std");
 const logging = @import("log");
 const Allocator = std.mem.Allocator;
-const observability = @import("nullclaw").observability;
-const providers = @import("nullclaw").providers;
+const nullclaw = @import("nullclaw");
+const observability = nullclaw.observability;
+const providers = nullclaw.providers;
 
 const progress_writer_mod = @import("progress_writer.zig");
 const progress_callbacks = @import("progress_callbacks.zig");

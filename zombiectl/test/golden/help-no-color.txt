@@ -1,6 +1,6 @@
 Usage: zombiectl [options] [command]
 
-autonomous agent platform
+usezombie cli
 
 Options:
   -v, --version                 Show version

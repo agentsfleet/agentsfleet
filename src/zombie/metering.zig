@@ -37,6 +37,8 @@ const log = logging.scoped(.zombie_metering);
 /// Per-event context shared by the gate, both debits, and post-execution
 /// telemetry. Posture and model come from the resolver; everything else
 /// flows through from the worker.
+const S_COMMIT = "COMMIT";
+
 pub const PreflightContext = struct {
     workspace_id: []const u8,
     zombie_id: []const u8,
@@ -220,7 +222,7 @@ fn debitAndInsert(
                 _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
                     log.warn("mark_exhausted_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
                 };
-                _ = conn.exec("COMMIT", .{}) catch {};
+                _ = conn.exec(S_COMMIT, .{}) catch {};
                 tx_open = false;
                 onExhaustedDebit(ctx.zombie_id, tenant_id, charge_type, nanos, policy);
                 return .{ .exhausted = {} };
@@ -265,7 +267,7 @@ fn debitAndInsert(
         return .{ .db_error = {} };
     };
 
-    _ = conn.exec("COMMIT", .{}) catch |err| {
+    _ = conn.exec(S_COMMIT, .{}) catch |err| {
         log.warn("commit_fail", .{ .zombie_id = ctx.zombie_id, .err = @errorName(err) });
         return .{ .db_error = {} };
     };

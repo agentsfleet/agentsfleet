@@ -12,6 +12,8 @@
 
 pub const SseClient = @This();
 
+const S_R_N_R_N = "\r\n\r\n";
+
 alloc: Allocator,
 stream: std.net.Stream,
 buf: std.ArrayList(u8),
@@ -97,9 +99,9 @@ fn sendRequest(self: *SseClient, port: u16, path: []const u8, opts: ConnectOptio
 }
 
 fn consumeResponseHeaders(self: *SseClient) !void {
-    while (std.mem.indexOf(u8, self.buf.items, "\r\n\r\n") == null) try self.fill();
+    while (std.mem.indexOf(u8, self.buf.items, S_R_N_R_N) == null) try self.fill();
 
-    const eoh = std.mem.indexOf(u8, self.buf.items, "\r\n\r\n").?;
+    const eoh = std.mem.indexOf(u8, self.buf.items, S_R_N_R_N).?;
     const headers = self.buf.items[0..eoh];
     const status_line_end = std.mem.indexOf(u8, headers, "\r\n") orelse return error.SseInvalidStatusLine;
     const status_line = headers[0..status_line_end];

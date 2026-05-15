@@ -2,6 +2,15 @@
 
 pub const Client = @This();
 
+const S_PONG = "PONG";
+const S_SET = "SET";
+const S_AUTH = "AUTH";
+const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
+const S_EX = "EX";
+const S_D = "{d}";
+const S_PING = "PING";
+const S_OK = "OK";
+
 alloc: std.mem.Allocator,
 cfg: redis_config.Config,
 transport: redis_transport.Transport,
@@ -41,11 +50,11 @@ pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
 /// SET key value EX ttl_seconds — used for cancellation signals.
 pub fn setEx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32) !void {
     var ttl_buf: [16]u8 = undefined;
-    const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{ttl_seconds});
-    var resp = try self.command(&.{ "SET", key, value, "EX", ttl_str });
+    const ttl_str = try std.fmt.bufPrint(&ttl_buf, S_D, .{ttl_seconds});
+    var resp = try self.command(&.{ S_SET, key, value, S_EX, ttl_str });
     defer resp.deinit(self.alloc);
     switch (resp) {
-        .simple => |v| if (!std.mem.eql(u8, v, "OK")) return error.RedisSetExFailed,
+        .simple => |v| if (!std.mem.eql(u8, v, S_OK)) return error.RedisSetExFailed,
         else => return error.RedisSetExFailed,
     }
 }
@@ -60,10 +69,10 @@ pub fn exists(self: *Client, key: []const u8) !bool {
 }
 
 pub fn ping(self: *Client) !void {
-    var resp = try self.command(&.{"PING"});
+    var resp = try self.command(&.{S_PING});
     defer resp.deinit(self.alloc);
     switch (resp) {
-        .simple => |v| if (!std.mem.eql(u8, v, "PONG")) return error.RedisPingFailed,
+        .simple => |v| if (!std.mem.eql(u8, v, S_PONG)) return error.RedisPingFailed,
         else => return error.RedisPingFailed,
     }
 }
@@ -84,10 +93,10 @@ pub fn readyCheck(self: *Client) !void {
         self.lock.lock();
         defer self.lock.unlock();
         try self.reconnectUnlocked();
-        var resp = try self.commandUnlocked(&.{"PING"});
+        var resp = try self.commandUnlocked(&.{S_PING});
         defer resp.deinit(self.alloc);
         switch (resp) {
-            .simple => |v| if (!std.mem.eql(u8, v, "PONG")) return error.RedisPingFailed,
+            .simple => |v| if (!std.mem.eql(u8, v, S_PONG)) return error.RedisPingFailed,
             else => return error.RedisPingFailed,
         }
     };
@@ -104,11 +113,11 @@ pub fn aclWhoAmI(self: *Client) ![]u8 {
 /// Returns true if key was set (new), false if key already existed (duplicate).
 pub fn setNx(self: *Client, key: []const u8, value: []const u8, ttl_seconds: u32) !bool {
     var ttl_buf: [12]u8 = undefined;
-    const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{ttl_seconds});
-    var resp = try self.commandAllowError(&.{ "SET", key, value, "NX", "EX", ttl_str });
+    const ttl_str = try std.fmt.bufPrint(&ttl_buf, S_D, .{ttl_seconds});
+    var resp = try self.commandAllowError(&.{ S_SET, key, value, "NX", S_EX, ttl_str });
     defer resp.deinit(self.alloc);
     return switch (resp) {
-        .simple => |s| std.mem.eql(u8, s, "OK"),
+        .simple => |s| std.mem.eql(u8, s, S_OK),
         else => false,
     };
 }
@@ -141,11 +150,11 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
 
     const id_str = switch (resp) {
         .bulk => |v| v orelse {
-            log.err("xadd_zombie_event_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
+            log.err(S_XADD_ZOMBIE_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
         else => {
-            log.err("xadd_zombie_event_failed", .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
+            log.err(S_XADD_ZOMBIE_EVENT_FAILED, .{ .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED, .zombie_id = envelope.zombie_id, .actor = envelope.actor });
             return error.RedisXaddFailed;
         },
     };
@@ -215,9 +224,9 @@ fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transp
 
     if (cfg.password) |pwd| {
         const argv: []const []const u8 = if (cfg.username) |usr|
-            &.{ "AUTH", usr, pwd }
+            &.{ S_AUTH, usr, pwd }
         else
-            &.{ "AUTH", pwd };
+            &.{ S_AUTH, pwd };
         try writeArgvToTransport(&transport, argv);
         var resp = try redis_protocol.readRespValue(alloc, transport.reader());
         defer resp.deinit(alloc);

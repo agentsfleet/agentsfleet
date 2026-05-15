@@ -32,6 +32,8 @@ const context_budget = @import("../context_budget.zig");
 
 const Self = @This();
 
+const S_SUBSTITUTION_LEFT_PLACEHOLDER = "substitution_left_placeholder";
+
 const arg_url: []const u8 = "url";
 const arg_method: []const u8 = "method";
 const arg_headers: []const u8 = "headers";
@@ -67,7 +69,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
     const subst_url = substOrFail(arena, url_str, self.policy.secrets_map) catch |fail|
         return fail;
     if (!secret_substitution.assertNoLeftover(subst_url))
-        return ToolResult.fail("substitution_left_placeholder");
+        return ToolResult.fail(S_SUBSTITUTION_LEFT_PLACEHOLDER);
 
     const host = extractHost(subst_url) orelse
         return ToolResult.fail("Invalid URL: cannot extract host");
@@ -91,7 +93,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
                         const r = substOrFail(arena, s, self.policy.secrets_map) catch |fail|
                             return fail;
                         if (!secret_substitution.assertNoLeftover(r))
-                            return ToolResult.fail("substitution_left_placeholder");
+                            return ToolResult.fail(S_SUBSTITUTION_LEFT_PLACEHOLDER);
                         break :blk .{ .string = r };
                     },
                     else => v,
@@ -110,7 +112,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
                 const r = substOrFail(arena, s, self.policy.secrets_map) catch |fail|
                     return fail;
                 if (!secret_substitution.assertNoLeftover(r))
-                    return ToolResult.fail("substitution_left_placeholder");
+                    return ToolResult.fail(S_SUBSTITUTION_LEFT_PLACEHOLDER);
                 break :blk .{ .string = r };
             },
             else => bv,

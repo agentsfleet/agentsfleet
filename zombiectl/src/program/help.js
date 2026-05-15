@@ -26,10 +26,10 @@ export class ZombieHelp extends Help {
   }
 }
 
-// Tagline helper — the dim "autonomous agent platform" grey under
-// the version banner. cli-tree.js passes it to `program.description()`
-// pre-styled, since commander renders the description through
-// styleDescriptionText (default identity) before printing.
+// Tagline helper — the dim "usezombie cli" grey under the version
+// banner. cli-tree.js passes it to `program.description()` pre-styled,
+// since commander renders the description through styleDescriptionText
+// (default identity) before printing.
 export function styleTagline(text, { stream, env } = {}) {
   return palette.subtle(text, {
     stream: stream ?? process.stdout,

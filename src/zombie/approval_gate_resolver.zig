@@ -18,11 +18,13 @@ const PREFIX_USER = "user:";
 const PREFIX_API = "api:";
 
 /// Build "user:<subject>". Caller owns the returned slice.
+const S_S_S = "{s}{s}";
+
 pub fn user(alloc: Allocator, subject: []const u8) ![]u8 {
-    return std.fmt.allocPrint(alloc, "{s}{s}", .{ PREFIX_USER, subject });
+    return std.fmt.allocPrint(alloc, S_S_S, .{ PREFIX_USER, subject });
 }
 
 /// Build "api:<key_id>". Caller owns the returned slice.
 pub fn apiKey(alloc: Allocator, key_id: []const u8) ![]u8 {
-    return std.fmt.allocPrint(alloc, "{s}{s}", .{ PREFIX_API, key_id });
+    return std.fmt.allocPrint(alloc, S_S_S, .{ PREFIX_API, key_id });
 }

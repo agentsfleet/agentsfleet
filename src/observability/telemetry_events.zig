@@ -4,6 +4,15 @@
 
 const posthog = @import("posthog");
 
+const S_REASON = "reason";
+const S_ERROR_CODE = "error_code";
+const S_REQUEST_ID = "request_id";
+const S_WORKSPACE_ID = "workspace_id";
+const S_MESSAGE = "message";
+const S_TENANT_ID = "tenant_id";
+const S_ZOMBIE_ID = "zombie_id";
+const S_EVENT_ID = "event_id";
+
 pub const EventKind = enum {
     entitlement_rejected,
     server_started,
@@ -29,10 +38,10 @@ pub const EntitlementRejected = struct {
 
     pub fn properties(self: @This()) [4]posthog.Property {
         return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
+            .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
             .{ .key = "boundary", .value = .{ .string = self.boundary } },
             .{ .key = "reason_code", .value = .{ .string = self.reason_code } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = S_REQUEST_ID, .value = .{ .string = self.request_id } },
         };
     }
 };
@@ -73,8 +82,8 @@ pub const StartupFailed = struct {
         return .{
             .{ .key = "command", .value = .{ .string = self.command } },
             .{ .key = "phase", .value = .{ .string = self.phase } },
-            .{ .key = "reason", .value = .{ .string = self.reason } },
-            .{ .key = "error_code", .value = .{ .string = self.error_code } },
+            .{ .key = S_REASON, .value = .{ .string = self.reason } },
+            .{ .key = S_ERROR_CODE, .value = .{ .string = self.error_code } },
         };
     }
 };
@@ -89,9 +98,9 @@ pub const ApiError = struct {
 
     pub fn properties(self: @This()) [3]posthog.Property {
         return .{
-            .{ .key = "error_code", .value = .{ .string = self.error_code } },
-            .{ .key = "message", .value = .{ .string = self.message } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = S_ERROR_CODE, .value = .{ .string = self.error_code } },
+            .{ .key = S_MESSAGE, .value = .{ .string = self.message } },
+            .{ .key = S_REQUEST_ID, .value = .{ .string = self.request_id } },
         };
     }
 };
@@ -107,10 +116,10 @@ pub const ApiErrorWithContext = struct {
 
     pub fn properties(self: @This()) [4]posthog.Property {
         return .{
-            .{ .key = "error_code", .value = .{ .string = self.error_code } },
-            .{ .key = "message", .value = .{ .string = self.message } },
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = S_ERROR_CODE, .value = .{ .string = self.error_code } },
+            .{ .key = S_MESSAGE, .value = .{ .string = self.message } },
+            .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
+            .{ .key = S_REQUEST_ID, .value = .{ .string = self.request_id } },
         };
     }
 };
@@ -125,9 +134,9 @@ pub const WorkspaceCreated = struct {
 
     pub fn properties(self: @This()) [3]posthog.Property {
         return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "tenant_id", .value = .{ .string = self.tenant_id } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
+            .{ .key = S_TENANT_ID, .value = .{ .string = self.tenant_id } },
+            .{ .key = S_REQUEST_ID, .value = .{ .string = self.request_id } },
         };
     }
 };
@@ -142,7 +151,7 @@ pub const AuthLoginCompleted = struct {
     pub fn properties(self: @This()) [3]posthog.Property {
         return .{
             .{ .key = "session_id", .value = .{ .string = self.session_id } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = S_REQUEST_ID, .value = .{ .string = self.request_id } },
             .{ .key = "distinct_id", .value = .{ .string = self.distinct_id } },
         };
     }
@@ -156,8 +165,8 @@ pub const AuthRejected = struct {
 
     pub fn properties(self: @This()) [2]posthog.Property {
         return .{
-            .{ .key = "reason", .value = .{ .string = self.reason } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = S_REASON, .value = .{ .string = self.reason } },
+            .{ .key = S_REQUEST_ID, .value = .{ .string = self.request_id } },
         };
     }
 };
@@ -173,9 +182,9 @@ pub const ZombieTriggered = struct {
 
     pub fn properties(self: @This()) [4]posthog.Property {
         return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "zombie_id", .value = .{ .string = self.zombie_id } },
-            .{ .key = "event_id", .value = .{ .string = self.event_id } },
+            .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
+            .{ .key = S_ZOMBIE_ID, .value = .{ .string = self.zombie_id } },
+            .{ .key = S_EVENT_ID, .value = .{ .string = self.event_id } },
             .{ .key = "source", .value = .{ .string = self.source } },
         };
     }
@@ -196,9 +205,9 @@ pub const ZombieCompleted = struct {
 
     pub fn properties(self: @This()) [7]posthog.Property {
         return .{
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
-            .{ .key = "zombie_id", .value = .{ .string = self.zombie_id } },
-            .{ .key = "event_id", .value = .{ .string = self.event_id } },
+            .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
+            .{ .key = S_ZOMBIE_ID, .value = .{ .string = self.zombie_id } },
+            .{ .key = S_EVENT_ID, .value = .{ .string = self.event_id } },
             .{ .key = "tokens", .value = .{ .integer = @intCast(self.tokens) } },
             .{ .key = "wall_ms", .value = .{ .integer = @intCast(self.wall_ms) } },
             .{ .key = "exit_status", .value = .{ .string = self.exit_status } },
@@ -224,12 +233,12 @@ pub const SignupBootstrapped = struct {
 
     pub fn properties(self: @This()) [6]posthog.Property {
         return .{
-            .{ .key = "tenant_id", .value = .{ .string = self.tenant_id } },
-            .{ .key = "workspace_id", .value = .{ .string = self.workspace_id } },
+            .{ .key = S_TENANT_ID, .value = .{ .string = self.tenant_id } },
+            .{ .key = S_WORKSPACE_ID, .value = .{ .string = self.workspace_id } },
             .{ .key = "workspace_name", .value = .{ .string = self.workspace_name } },
             .{ .key = "email_domain", .value = .{ .string = self.email_domain } },
             .{ .key = "created", .value = .{ .boolean = self.created } },
-            .{ .key = "request_id", .value = .{ .string = self.request_id } },
+            .{ .key = S_REQUEST_ID, .value = .{ .string = self.request_id } },
         };
     }
 };

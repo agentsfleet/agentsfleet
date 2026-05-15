@@ -16,6 +16,10 @@ import { TENANT_BILLING_PATH } from "../lib/api-paths.js";
 // Billing show hits /v1/tenants/me/billing (GET) + charges (GET).
 // Auth-only surface; the server propagates UZ-BILLING-* internally
 // but the CLI's read endpoint surfaces them as plain server messages.
+const K_GET = "GET";
+
+const K_EM_DASH = "—";
+
 export const errorMap = compose(AUTH_PRESET, {
   [ERR_BILLING_UNAVAILABLE]: {
     code: "BILLING_UNAVAILABLE",
@@ -62,8 +66,8 @@ export async function commandBillingShow(ctx, parsed, _workspaces, deps) {
     ? `${CHARGES_PATH}?limit=${limit * 2}&cursor=${encodeURIComponent(cursor)}`
     : `${CHARGES_PATH}?limit=${limit * 2}`;
   const [billing, charges] = await Promise.all([
-    request(ctx, BILLING_PATH, { method: "GET", headers: apiHeaders(ctx) }),
-    request(ctx, chargesQs, { method: "GET", headers: apiHeaders(ctx) }),
+    request(ctx, BILLING_PATH, { method: K_GET, headers: apiHeaders(ctx) }),
+    request(ctx, chargesQs, { method: K_GET, headers: apiHeaders(ctx) }),
   ]);
 
   const events = groupRowsByEvent(charges?.items ?? []).slice(0, limit);
@@ -100,8 +104,8 @@ export async function commandBillingShow(ctx, parsed, _workspaces, deps) {
       event_id: e.event_id,
       posture: e.posture,
       model: e.model,
-      in_tok: e.token_count_input != null ? String(e.token_count_input) : "—",
-      out_tok: e.token_count_output != null ? String(e.token_count_output) : "—",
+      in_tok: e.token_count_input != null ? String(e.token_count_input) : K_EM_DASH,
+      out_tok: e.token_count_output != null ? String(e.token_count_output) : K_EM_DASH,
       receive: formatDollars(e.receive_nanos),
       stage: formatDollars(e.stage_nanos),
       total: formatDollars(e.total_nanos),

@@ -1,5 +1,13 @@
 import { spawn } from "node:child_process";
 
+const K_IGNORE = "ignore";
+const K_XDG_OPEN = "xdg-open";
+const K_WSLVIEW = "wslview";
+const K_OPEN = "open";
+const K_ERROR = "error";
+
+const K_CMD = "cmd";
+
 function browserDisabled(env) {
   const raw = env.BROWSER;
   if (raw == null) return false;
@@ -23,10 +31,10 @@ function looksLikeWsl(env) {
 function commandExists(command) {
   return new Promise((resolve) => {
     const probe = spawn("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], {
-      stdio: "ignore",
+      stdio: K_IGNORE,
     });
     probe.on("exit", (code) => resolve(code === 0));
-    probe.on("error", () => resolve(false));
+    probe.on(K_ERROR, () => resolve(false));
   });
 }
 
@@ -36,18 +44,18 @@ export async function resolveBrowserCommand(env = process.env, platform = proces
   }
 
   if (platform === "win32") {
-    return { argv: ["cmd", "/c", "start", ""], quoteUrl: true, command: "cmd" };
+    return { argv: [K_CMD, "/c", "start", ""], quoteUrl: true, command: K_CMD };
   }
 
   if (platform === "darwin") {
-    return { argv: ["open"], quoteUrl: false, command: "open" };
+    return { argv: [K_OPEN], quoteUrl: false, command: K_OPEN };
   }
 
   if (platform === "linux") {
     const wsl = looksLikeWsl(env);
     if (wsl) {
-      if (await commandExists("wslview")) {
-        return { argv: ["wslview"], quoteUrl: false, command: "wslview" };
+      if (await commandExists(K_WSLVIEW)) {
+        return { argv: [K_WSLVIEW], quoteUrl: false, command: K_WSLVIEW };
       }
       if (!hasDisplay(env)) {
         return { argv: null, reason: "wsl-no-wslview" };
@@ -58,8 +66,8 @@ export async function resolveBrowserCommand(env = process.env, platform = proces
       return { argv: null, reason: isSsh(env) ? "ssh-no-display" : "no-display" };
     }
 
-    if (await commandExists("xdg-open")) {
-      return { argv: ["xdg-open"], quoteUrl: false, command: "xdg-open" };
+    if (await commandExists(K_XDG_OPEN)) {
+      return { argv: [K_XDG_OPEN], quoteUrl: false, command: K_XDG_OPEN };
     }
 
     return { argv: null, reason: "missing-xdg-open" };
@@ -85,11 +93,11 @@ export async function openUrl(url, opts = {}) {
 
     const child = spawn(argv[0], argv.slice(1), {
       detached: true,
-      stdio: "ignore",
+      stdio: K_IGNORE,
       windowsVerbatimArguments: resolved.quoteUrl === true,
     });
 
-    child.on("error", () => resolve(false));
+    child.on(K_ERROR, () => resolve(false));
     child.unref();
     resolve(true);
   });

@@ -12,6 +12,8 @@ const log = logging.scoped(.redis_pubsub);
 
 /// Read timeout for pub/sub subscriber socket (ms). Must fire before the
 /// 30-second proxy idle timeout so the heartbeat loop can emit `: heartbeat`.
+const S_AUTH = "AUTH";
+
 pub const PUBSUB_READ_TIMEOUT_MS: u32 = 25_000;
 
 pub const PubSubMessage = struct {
@@ -52,9 +54,9 @@ pub const Subscriber = struct {
 
         if (cfg.password) |pwd| {
             if (cfg.username) |usr| {
-                try sub.sendCommand(&.{ "AUTH", usr, pwd });
+                try sub.sendCommand(&.{ S_AUTH, usr, pwd });
             } else {
-                try sub.sendCommand(&.{ "AUTH", pwd });
+                try sub.sendCommand(&.{ S_AUTH, pwd });
             }
             var resp = try redis_protocol.readRespValue(alloc, sub.transport.reader());
             defer resp.deinit(alloc);

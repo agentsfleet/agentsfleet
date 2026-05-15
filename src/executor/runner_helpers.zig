@@ -108,7 +108,7 @@ pub fn injectProviderApiKey(cfg: *Config, api_key: []const u8) !void {
 
     // No existing entry for default_provider — prepend one to the slice.
     // cfg.allocator is the arena so all allocations are freed by cfg.deinit().
-    const nullclaw_config = @import("nullclaw").config;
+    const nullclaw_config = nullclaw.config;
     const new_providers = try cfg.allocator.alloc(nullclaw_config.ProviderEntry, cfg.providers.len + 1);
     new_providers[0] = .{
         .name = cfg.default_provider,

@@ -16,7 +16,7 @@ const id_format = @import("../../../types/id_format.zig");
 const approval_gate = @import("../../../zombie/approval_gate.zig");
 const approval_gate_db = @import("../../../zombie/approval_gate_db.zig");
 const resolver = @import("../../../zombie/approval_gate_resolver.zig");
-const error_registry = @import("../../../errors/error_registry.zig");
+const error_registry = ec;
 
 const log = logging.scoped(.http_approvals_resolve);
 

@@ -24,6 +24,9 @@ const log = logging.scoped(.http_approval);
 pub const Context = common.Context;
 const Hx = hx_mod.Hx;
 
+const S_INVALID_SIGNATURE = "Invalid signature";
+const S_RESOLVED = "resolved";
+
 const ApprovalDecision = enum {
     approve,
     deny,
@@ -87,7 +90,7 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
     }
 
     switch (outcome) {
-        .resolved => log.info("resolved", .{
+        .resolved => log.info(S_RESOLVED, .{
             .zombie_id = zombie_id,
             .action_id = payload.action_id,
             .decision = decision_str,
@@ -102,7 +105,7 @@ pub fn innerApprovalCallback(hx: Hx, req: *httpz.Request, zombie_id: []const u8)
     }
 
     hx.ok(.ok, .{
-        .status = "resolved",
+        .status = S_RESOLVED,
         .action_id = payload.action_id,
         .decision = decision_str,
     });
@@ -224,13 +227,13 @@ fn verifyRequestSignature(hx: Hx, req: *httpz.Request) bool {
 
     // Constant-time comparison (RULE CTM: no short-circuit for secrets)
     if (provided_sig.len != expected.len) {
-        hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature");
+        hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, S_INVALID_SIGNATURE);
         return false;
     }
     var diff: u8 = 0;
     for (provided_sig, expected) |a, b| diff |= a ^ b;
     if (diff != 0) {
-        hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, "Invalid signature");
+        hx.fail(ec.ERR_APPROVAL_INVALID_SIGNATURE, S_INVALID_SIGNATURE);
         return false;
     }
 

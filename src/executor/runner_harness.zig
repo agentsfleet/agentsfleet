@@ -36,6 +36,8 @@ const progress_writer_mod = @import("progress_writer.zig");
 const log = logging.scoped(.executor_runner_harness);
 
 const SCRIPT_ENV_VAR = "EXECUTOR_HARNESS_SCRIPT";
+const S_NAME = "name";
+
 const MAX_SCRIPT_BYTES: usize = 1 * 1024 * 1024;
 
 pub fn execute(
@@ -124,18 +126,18 @@ fn emitOne(
 
     const frame: progress_callbacks.ProgressFrame = switch (kind) {
         .tool_call_started => .{ .tool_call_started = .{
-            .name = try requireString(obj, "name"),
+            .name = try requireString(obj, S_NAME),
             .args_redacted = try requireString(obj, "args_redacted"),
         } },
         .agent_response_chunk => .{ .agent_response_chunk = .{
             .text = try requireString(obj, "text"),
         } },
         .tool_call_completed => .{ .tool_call_completed = .{
-            .name = try requireString(obj, "name"),
+            .name = try requireString(obj, S_NAME),
             .ms = try requireInt(obj, "ms"),
         } },
         .tool_call_progress => .{ .tool_call_progress = .{
-            .name = try requireString(obj, "name"),
+            .name = try requireString(obj, S_NAME),
             .elapsed_ms = try requireInt(obj, "elapsed_ms"),
         } },
     };
