@@ -34,8 +34,6 @@ export const ERR_INTERNAL_OPERATION_FAILED = "UZ-INTERNAL-003";
 
 // Vault / credentials (workspace-scoped credential store)
 export const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
-export const ERR_CRED_ANTHROPIC_KEY_MISSING = "UZ-CRED-001";
-export const ERR_CRED_PLATFORM_KEY_MISSING = "UZ-CRED-003";
 
 // Workspace lifecycle (UZ-WORKSPACE-001 .. UZ-WORKSPACE-003)
 export const ERR_WORKSPACE_NOT_FOUND = "UZ-WORKSPACE-001";
