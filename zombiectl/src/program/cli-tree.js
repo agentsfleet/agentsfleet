@@ -10,7 +10,7 @@
 
 import { Command } from "commander";
 import { ZombieHelp, styleTagline } from "./help.js";
-import { K_WORKSPACE_ID_ID, K_CURSOR_TOKEN, K_LIST, K_ZOMBIE_ID, K_LOGOUT, K_LOGIN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE, K_WORKSPACE_ID, K_LIMIT_N, K_WORKSPACE_ID_2, K_DOCTOR, K_SHOW, K_ADD, K_ZOMBIE_ID_2, K_PAGE_SIZE } from "./cli-tree-consts.js";
+import { K_WORKSPACE_ID_FULL_OPT_FLAG, K_CURSOR_TOKEN, K_LIST, K_ZOMBIE_ID_DESCRIPTION, K_LOGOUT, K_LOGIN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE, K_WORKSPACE_ID_DESCRIPTION, K_LIMIT_N, K_WORKSPACE_OPT_FLAG, K_DOCTOR, K_SHOW, K_ADD, K_ZOMBIE_OPT_FLAG, K_PAGE_SIZE } from "./cli-tree-consts.js";
 
 import {
   parseIntOption,
@@ -172,7 +172,7 @@ function buildWorkspaceTree(program, handlers, state) {
 
   ws.command("show [workspace_id]")
     .description("Show workspace details")
-    .option(K_WORKSPACE_ID_ID, "Workspace ID (alternative to positional)", parseIdOption)
+    .option(K_WORKSPACE_ID_FULL_OPT_FLAG, "Workspace ID (alternative to positional)", parseIdOption)
     .action(actionFor("workspace.show", (frame) => runHandler(state, frame, handlers.workspace.show)));
 
   ws.command("credentials")
@@ -191,20 +191,20 @@ function buildAgentTree(program, handlers, state) {
 
   agent.command(K_ADD)
     .description("Mint an agent API key for the workspace")
-    .option(K_WORKSPACE_ID_2, K_WORKSPACE_ID, parseIdOption)
-    .option(K_ZOMBIE_ID_2, "Zombie ID this key is bound to", parseIdOption)
+    .option(K_WORKSPACE_OPT_FLAG, K_WORKSPACE_ID_DESCRIPTION, parseIdOption)
+    .option(K_ZOMBIE_OPT_FLAG, "Zombie ID this key is bound to", parseIdOption)
     .option("--name <name>", "Human-readable agent name")
     .option("--description <desc>", "Optional description")
     .action(actionFor("agent.add", (frame) => runHandler(state, frame, handlers.agent.add)));
 
   agent.command(K_LIST)
     .description("List external agent API keys")
-    .option(K_WORKSPACE_ID_2, K_WORKSPACE_ID, parseIdOption)
+    .option(K_WORKSPACE_OPT_FLAG, K_WORKSPACE_ID_DESCRIPTION, parseIdOption)
     .action(actionFor("agent.list", (frame) => runHandler(state, frame, handlers.agent.list)));
 
   agent.command("delete <agent_id>")
     .description("Revoke an external agent API key")
-    .option(K_WORKSPACE_ID_2, K_WORKSPACE_ID, parseIdOption)
+    .option(K_WORKSPACE_OPT_FLAG, K_WORKSPACE_ID_DESCRIPTION, parseIdOption)
     .action(actionFor("agent.delete", (frame) => runHandler(state, frame, handlers.agent.delete)));
 }
 
@@ -215,12 +215,12 @@ function buildGrantTree(program, handlers, state) {
 
   grant.command(K_LIST)
     .description("List integration grants for a zombie")
-    .option(K_ZOMBIE_ID_2, K_ZOMBIE_ID, parseIdOption)
+    .option(K_ZOMBIE_OPT_FLAG, K_ZOMBIE_ID_DESCRIPTION, parseIdOption)
     .action(actionFor("grant.list", (frame) => runHandler(state, frame, handlers.grant.list)));
 
   grant.command("delete <grant_id>")
     .description("Revoke an integration grant")
-    .option(K_ZOMBIE_ID_2, K_ZOMBIE_ID, parseIdOption)
+    .option(K_ZOMBIE_OPT_FLAG, K_ZOMBIE_ID_DESCRIPTION, parseIdOption)
     .action(actionFor("grant.delete", (frame) => runHandler(state, frame, handlers.grant.delete)));
 }
 
@@ -272,7 +272,7 @@ function buildZombieTree(program, handlers, state) {
   program
     .command(K_LIST)
     .description("List zombies in the active workspace (paginated)")
-    .option(K_WORKSPACE_ID_ID, "Workspace ID override", parseIdOption)
+    .option(K_WORKSPACE_ID_FULL_OPT_FLAG, "Workspace ID override", parseIdOption)
     .option(K_CURSOR_TOKEN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .option(K_LIMIT_N, K_PAGE_SIZE, parseIntOption(LIST_LIMIT_BOUNDS))
     .action(actionFor("zombie.list", (frame) => runHandler(state, frame, handlers.zombie.list)));
@@ -305,7 +305,7 @@ function buildZombieTree(program, handlers, state) {
   program
     .command("logs [zombie_id]")
     .description("Tail zombie activity")
-    .option(K_ZOMBIE_ID_2, "Zombie ID (alternative to positional)", parseIdOption)
+    .option(K_ZOMBIE_OPT_FLAG, "Zombie ID (alternative to positional)", parseIdOption)
     .option(K_LIMIT_N, "Number of events to show", parseIntOption(EVENTS_LIMIT_BOUNDS))
     .option(K_CURSOR_TOKEN, K_NEXT_CURSOR_FROM_A_PREVIOUS_PAGE)
     .action(actionFor("zombie.logs", (frame) => runHandler(state, frame, handlers.zombie.logs)));
