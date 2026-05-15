@@ -196,14 +196,24 @@ fn processEvent(alloc: Allocator, session: *ZombieSession, evt: *redis_zombie.Zo
 pub fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.Pool) !void {
     const conn = try pool.acquire();
     defer pool.release(conn);
-    var q = PgQuery.from(try conn.query(
-        \\SELECT config_json::text, updated_at FROM core.zombies WHERE id = $1
-    , .{session.zombie_id}));
-    defer q.deinit();
-    const row = try q.next() orelse return error.ZombieNotFound;
-    const config_json_owned = try alloc.dupe(u8, try row.get([]const u8, 0));
+    // SELECT scoped to its own block so PgQuery drains + releases BEFORE the
+    // follow-up writeReloadEventRow exec on the same conn. Without the scope,
+    // `defer q.deinit()` would fire at fn exit, leaving the conn in `.query`
+    // state during the exec — protocol violation that corrupts the conn's
+    // read buffer and surfaces later as heap-free crashes on the swapped-in
+    // ZombieConfig's `name` slice.
+    const config_json_owned, const revision = blk: {
+        var q = PgQuery.from(try conn.query(
+            \\SELECT config_json::text, updated_at FROM core.zombies WHERE id = $1
+        , .{session.zombie_id}));
+        defer q.deinit();
+        const row = try q.next() orelse return error.ZombieNotFound;
+        const json = try alloc.dupe(u8, try row.get([]const u8, 0));
+        errdefer alloc.free(json);
+        const rev = try row.get(i64, 1);
+        break :blk .{ json, rev };
+    };
     defer alloc.free(config_json_owned);
-    const revision = try row.get(i64, 1);
 
     var new_config = try zombie_config.parseZombieConfig(alloc, config_json_owned);
     errdefer new_config.deinit(alloc);
