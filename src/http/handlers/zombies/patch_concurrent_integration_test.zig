@@ -35,8 +35,13 @@ const TestHarness = harness_mod.TestHarness;
 
 const ALLOC = std.testing.allocator;
 
-const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f01";
-const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f11";
+// Canonical test tenant/workspace pair shared across handler integration
+// tests so the verbatim TOKEN_OPERATOR from tenant_billing_integration_test.zig
+// validates. The original synthesized signature (against a non-canonical
+// 0c6f01 pair) failed RS256 verification — handoff §10b risk note flagged
+// regenerating via the test-token mint helper or copying canonical tokens.
+const TEST_TENANT_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f01";
+const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
 const ZOMBIE_A = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f21";
 const ZOMBIE_B = "0195b4ba-8d3a-7f13-8abc-2b3e1e0c6f22";
 const TEST_ISSUER = "https://clerk.dev.usezombie.com";
@@ -45,9 +50,12 @@ const TEST_JWKS =
     \\{"keys":[{"kty":"RSA","n":"2hg972tpbq8H6kzRZ3oVL4wZ9bO-04gJ6gCig68aluyRBzagx-7XXPCiuX80oBHBVj51kvMjT_QDNXfrwzjy4cPbwiVV4HqOGpeIZkPEopfyzs4G7mjiQmx0YuM_5WQUlUjji6Y_DfeaoH-yOhTWBMBVoI0vW_1n66CFaGuEarj3VasdWYxObJTBAM6Jn4XZDcDsBBPNGO4ku7yILkfi11FqXfBP2V8NT0hAGXVAxlWwv-8up1RDzgACp-8JWoC2-kOUJN82fGenDGKq9hW_sumO-4YPNP4U1smnw5jzLlvKa0LBrYG8IgW-3Dniuq2mojhrD_ZQClUd5rF42OyYqw","e":"AQAB","kid":"rbac-test-kid","use":"sig","alg":"RS256"}]}
 ;
 // Operator-role token — DELETE needs operator-minimum; PATCH body-field
-// is workspace-member but operator covers both.
+// is workspace-member but operator covers both. Verbatim copy of the
+// canonical TOKEN_OPERATOR from
+// `src/http/handlers/tenant_billing_integration_test.zig` — same JWKS
+// kid, same canonical 0a6f01/0a6f11 claims, validated RS256 signature.
 const TOKEN_OPERATOR =
-    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGM2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGM2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.NbW0c3hQqgxYf3y8j2-T3jzExNo7Bo0XJM_S5Y9N7Z2xN-7Xq3WzKB9oMpL-tQH";
+    "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6InJiYWMtdGVzdC1raWQifQ.eyJzdWIiOiJ1c2VyX3Rlc3QiLCJpc3MiOiJodHRwczovL2NsZXJrLmRldi51c2V6b21iaWUuY29tIiwiYXVkIjoiaHR0cHM6Ly9hcGkudXNlem9tYmllLmNvbSIsImV4cCI6NDEwMjQ0NDgwMCwibWV0YWRhdGEiOnsidGVuYW50X2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjAxIiwid29ya3NwYWNlX2lkIjoiMDE5NWI0YmEtOGQzYS03ZjEzLThhYmMtMmIzZTFlMGE2ZjExIiwicm9sZSI6Im9wZXJhdG9yIn19.V84uE69RTLrRef0sogegUcUZeKWx8E68GEruFoS8HegUa3o7bVCfQjlkllNSbtUut919EygbQv1C16BMfNTOAv1Lvl3AeLYPYr4ni6EnzzGllbyxDw1aY68AGWEEvKOUxd5wCGl8BnEqaOKX7KNNbAOV4AzJNWqnV-uxJiZl6oDtqi8bsSF1HAm9qY9MAl6AwoZLGnT_x6ux_3vfKy_9ckZSbgjN7laZOMqQ5nwwcaSpwYNm_3ZpXJLgHYMVxel2M4rT0SIaFh__rE42yGE9FBDRUFoyktGOR3NYPOzogjj3tfOoecC8NEhrwifzXcSNVAiHOMnmXojjAPEUORovPg";
 
 const BASE_CONFIG_JSON =
     \\{"name":"conc-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
@@ -96,15 +104,59 @@ const TRIGGER_VARIANT_B =
     \\    daily_dollars: 5.0
     \\---
 ;
+// parseSkillMetadata requires name+description+version in the frontmatter
+// (config_markdown.zig:159-166). The PATCH body's source_markdown goes
+// through that parser before the field-merge txn touches the row.
 const SOURCE_VARIANT_A =
     \\---
     \\name: conc-bot
+    \\description: Concurrent test bot
+    \\version: 0.1.0
     \\---
     \\# variant A
 ;
 
+// ZOMBIE_B mirror of BASE/TRIGGER_VARIANT_A with its own name so the §5
+// parallel test can PATCH both rows concurrently without colliding on
+// uq_zombies_workspace_name (workspace_id, name).
+const BASE_CONFIG_JSON_B =
+    \\{"name":"conc-bot-b","x-usezombie":{"triggers":[{"type":"webhook","source":"github","events":["push"]}],"tools":["http_request"],"budget":{"daily_dollars":5.0}}}
+;
+const BASE_TRIGGER_MD_B =
+    \\---
+    \\name: conc-bot-b
+    \\x-usezombie:
+    \\  triggers:
+    \\    - type: webhook
+    \\      source: github
+    \\      events: ["push"]
+    \\  tools: ["http_request"]
+    \\  budget:
+    \\    daily_dollars: 5.0
+    \\---
+;
+const BASE_SOURCE_MD_B =
+    \\---
+    \\name: conc-bot-b
+    \\---
+    \\# initial
+;
+const TRIGGER_VARIANT_FOR_B =
+    \\---
+    \\name: conc-bot-b
+    \\x-usezombie:
+    \\  triggers:
+    \\    - type: cron
+    \\      schedule: "*/15 * * * *"
+    \\  tools: ["http_request"]
+    \\  budget:
+    \\    daily_dollars: 5.0
+    \\---
+;
+
 const TRIGGER_VARIANT_A_JSON = jsonEscape(TRIGGER_VARIANT_A);
 const TRIGGER_VARIANT_B_JSON = jsonEscape(TRIGGER_VARIANT_B);
+const TRIGGER_VARIANT_FOR_B_JSON = jsonEscape(TRIGGER_VARIANT_FOR_B);
 const SOURCE_VARIANT_A_JSON = jsonEscape(SOURCE_VARIANT_A);
 
 fn configureRegistry(_: *auth_mw.MiddlewareRegistry, _: *TestHarness) anyerror!void {}
@@ -136,19 +188,36 @@ fn seedFixture(conn: *pg.Conn) !void {
         \\VALUES ($1, $2, $3)
         \\ON CONFLICT (workspace_id) DO NOTHING
     , .{ TEST_WORKSPACE_ID, TEST_TENANT_ID, now });
-    for ([_][]const u8{ ZOMBIE_A, ZOMBIE_B }) |zid| {
+    // uq_zombies_workspace_name forbids two rows sharing (workspace_id, name);
+    // ZOMBIE_A and ZOMBIE_B coexist in TEST_WORKSPACE_ID, so each row needs
+    // a distinct (name, config_json.name, trigger_markdown name) triple
+    // — the PATCH handler enforces config_json.name ↔ source_markdown.name
+    // ↔ row.name parity (see patch.zig name_mismatch + new_name update).
+    const Row = struct {
+        id: []const u8,
+        name: []const u8,
+        source: []const u8,
+        trigger: []const u8,
+        config: []const u8,
+    };
+    const rows = [_]Row{
+        .{ .id = ZOMBIE_A, .name = "conc-bot", .source = BASE_SOURCE_MD, .trigger = BASE_TRIGGER_MD, .config = BASE_CONFIG_JSON },
+        .{ .id = ZOMBIE_B, .name = "conc-bot-b", .source = BASE_SOURCE_MD_B, .trigger = BASE_TRIGGER_MD_B, .config = BASE_CONFIG_JSON_B },
+    };
+    for (rows) |r| {
         _ = try conn.exec(
             \\INSERT INTO core.zombies
             \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
             \\   status, created_at, updated_at)
-            \\VALUES ($1::uuid, $2::uuid, 'conc-bot', $3, $4, $5::jsonb, 'active', $6, $6)
+            \\VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6::jsonb, 'active', $7, $7)
             \\ON CONFLICT (id) DO UPDATE SET
+            \\    name = EXCLUDED.name,
             \\    source_markdown = EXCLUDED.source_markdown,
             \\    trigger_markdown = EXCLUDED.trigger_markdown,
             \\    config_json = EXCLUDED.config_json,
             \\    status = 'active',
             \\    updated_at = EXCLUDED.updated_at
-        , .{ zid, TEST_WORKSPACE_ID, BASE_SOURCE_MD, BASE_TRIGGER_MD, BASE_CONFIG_JSON, now });
+        , .{ r.id, TEST_WORKSPACE_ID, r.name, r.source, r.trigger, r.config, now });
     }
 }
 
@@ -380,15 +449,21 @@ test "integration: concurrent PATCH on different zombies — parallel, sub-linea
     defer h.releaseConn(c_init);
     defer cleanup(c_init);
 
-    const body = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+    // Per-zombie bodies — each PATCH carries the trigger variant whose name
+    // matches its target row's name. Required because the PATCH handler's
+    // UPDATE sets `name = parsed_trigger.config.name`, and a shared body
+    // would drive both rows onto the same value → uq_zombies_workspace_name
+    // violation on whichever commits second.
+    const body_a = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+    const body_b = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_FOR_B_JSON ++ "}";
 
     var outcomes: [2]Outcome = .{ .{}, .{} };
     defer freeOutcomes(&outcomes);
 
     const t0 = std.time.milliTimestamp();
     var threads: [2]std.Thread = undefined;
-    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_A, &outcomes[0] });
-    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body, ZOMBIE_B, &outcomes[1] });
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_a, ZOMBIE_A, &outcomes[0] });
+    threads[1] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_b, ZOMBIE_B, &outcomes[1] });
     for (threads) |t| t.join();
     const parallel_ms = std.time.milliTimestamp() - t0;
 
