@@ -33,7 +33,19 @@ export interface HttpRetryInfo {
 }
 
 export function createCliAnalytics(env?: NodeJS.ProcessEnv): Promise<AnalyticsClient | null>;
-export function cliAnalytics(env?: NodeJS.ProcessEnv): Promise<AnalyticsClient | null>;
+export function shutdownCliAnalytics(client: AnalyticsClient | null | undefined): Promise<void>;
+
+// `cliAnalytics` is the namespace object exported by analytics.js
+// (not a function). Mirrors the literal object at the bottom of
+// src/lib/analytics.js so the call sites `cliAnalytics.trackCliEvent(...)`
+// + `cliAnalytics.shutdownCliAnalytics(...)` typecheck honestly.
+export const cliAnalytics: {
+  readonly createCliAnalytics: typeof createCliAnalytics;
+  readonly trackCliEvent: typeof trackCliEvent;
+  readonly trackHttpRequest: typeof trackHttpRequest;
+  readonly trackHttpRetry: typeof trackHttpRetry;
+  readonly shutdownCliAnalytics: typeof shutdownCliAnalytics;
+};
 export function getCliAnalyticsContext(
   ctx: { analyticsContext?: Record<string, unknown> | null } | null | undefined,
 ): Record<string, unknown>;

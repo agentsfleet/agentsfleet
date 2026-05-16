@@ -1,4 +1,4 @@
-// Wires the imported leaf handlers into the shape cli-tree.js expects.
+// Wires the imported leaf handlers into the shape cli-tree.ts expects.
 // Each entry runs through runCommand() so ApiError → friendly remap,
 // fetch-failed → API_UNREACHABLE, and the cli_command_started/finished/
 // error analytics triplet stay co-located with the dispatch path.
@@ -61,8 +61,32 @@ import {
   commandCredentialDelete,
 } from "../commands/zombie_credential.ts";
 
-function wrapHandler(name, errorMap, handler, lifecycle) {
-  return async (frame) => {
+import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
+import type {
+  CommandCtx,
+  CommandDeps,
+  CommandHandler,
+  Workspaces,
+} from "../commands/types.ts";
+import type { PresetMap } from "../lib/error-map-presets.ts";
+import type { AnalyticsClient } from "../lib/analytics.d.ts";
+
+export interface Lifecycle {
+  ctx: CommandCtx;
+  workspaces: Workspaces;
+  deps: CommandDeps;
+  analyticsClient: AnalyticsClient | null | undefined;
+  distinctId: string;
+  lastCommand: string | null;
+}
+
+function wrapHandler(
+  name: string,
+  errorMap: PresetMap,
+  handler: CommandHandler,
+  lifecycle: Lifecycle,
+): CommandHandlerFn {
+  return async (frame: ActionFrame): Promise<number> => {
     const exitCode = await runCommand({
       name,
       errorMap,
@@ -82,8 +106,9 @@ function wrapHandler(name, errorMap, handler, lifecycle) {
   };
 }
 
-export function buildHandlers(lifecycle) {
-  const wrap = (name, map, fn) => wrapHandler(name, map, fn, lifecycle);
+export function buildHandlers(lifecycle: Lifecycle): Handlers {
+  const wrap = (name: string, map: PresetMap, fn: CommandHandler): CommandHandlerFn =>
+    wrapHandler(name, map, fn, lifecycle);
   return {
     login: wrap("login", loginErrorMap, commandLogin),
     logout: wrap("logout", logoutErrorMap, commandLogout),

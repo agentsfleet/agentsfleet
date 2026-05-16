@@ -13,7 +13,7 @@
 
 import { validate as isValidUuid, version as uuidVersion } from "uuid";
 
-const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
+export const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
 export type ValidateResult =
   | { ok: true }

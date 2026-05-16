@@ -12,7 +12,7 @@ import {
   buildSilent,
   dispatch,
 } from "./helpers-cli-tree.js";
-import { buildProgram } from "../src/program/cli-tree.js";
+import { buildProgram } from "../src/program/cli-tree.ts";
 
 // ── User commands ───────────────────────────────────────────────────────
 

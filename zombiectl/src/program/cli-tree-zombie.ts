@@ -1,24 +1,35 @@
 // Zombie subtree of the zombiectl command program. Pure construction;
-// caller (cli-tree.js#buildProgram) passes the parent program, the
+// caller (cli-tree.ts#buildProgram) passes the parent program, the
 // already-wired handler map, and the shared mutable `state` object that
 // runHandler writes exit codes onto. Kept in its own file so the
-// LENGTH GATE on cli-tree.js does not block future zombie verbs.
+// LENGTH GATE on cli-tree.ts does not block future zombie verbs.
 //
-// Shape mirrors the sibling build*Tree helpers in cli-tree.js — top-level
+// Shape mirrors the sibling build*Tree helpers in cli-tree.ts — top-level
 // imperative verbs (install / list / status / stop / resume / kill /
 // delete / logs / events / steer) plus the `zombie` group for
 // update-in-place verbs and the `credential` group for the vault.
 
+import type { Command } from "commander";
 import {
   parseIntOption,
   parseIdOption,
   parsePathOption,
-} from "./validators.js";
+} from "./validators.ts";
+import type {
+  ActionDispatch,
+  Handlers,
+  ProgramState,
+} from "./cli-tree-types.ts";
 
 const LIST_LIMIT_BOUNDS = { min: 1, max: 200 };
 const EVENTS_LIMIT_BOUNDS = { min: 1, max: 500 };
 
-export function buildZombieTree(program, handlers, state, { actionFor, runHandler }) {
+export function buildZombieTree(
+  program: Command,
+  handlers: Handlers,
+  state: ProgramState,
+  { actionFor, runHandler }: ActionDispatch,
+): void {
   program
     .command("install")
     .description("Register a zombie from a local skill bundle")

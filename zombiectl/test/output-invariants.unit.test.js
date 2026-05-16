@@ -90,8 +90,8 @@ describe("decorative-ASCII teardown", () => {
     expect(offenders).toEqual([]);
   });
 
-  test("no box-drawing borders in src/program/banner.js", () => {
-    const banner = readSource(join(SRC_DIR, "program", "banner.js"));
+  test("no box-drawing borders in src/program/banner.ts", () => {
+    const banner = readSource(join(SRC_DIR, "program", "banner.ts"));
     for (const ch of ["╭", "╮", "╯", "╰", "│"]) {
       expect(banner.text).not.toContain(ch);
     }

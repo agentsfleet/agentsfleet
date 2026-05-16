@@ -21,13 +21,13 @@ import {
 import { apiHeaders, request } from "./program/http-client.ts";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
-import { printVersion, printPreReleaseWarning } from "./program/banner.js";
-import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
+import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
+import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
 import { createSpinner } from "./ui-progress.js";
 import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
-import { buildProgram } from "./program/cli-tree.js";
-import { buildHandlers } from "./program/handlers-bind.js";
+import { buildProgram } from "./program/cli-tree.ts";
+import { buildHandlers } from "./program/handlers-bind.ts";
 import { ROLE_ADMIN } from "./constants/auth-roles.ts";
 import { EVT_USER_AUTHENTICATED, EVT_WORKSPACE_CREATED } from "./constants/analytics-events.ts";
 

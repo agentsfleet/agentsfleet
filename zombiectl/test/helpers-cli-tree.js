@@ -4,7 +4,7 @@
 // subcommands, so a validator throwing InvalidArgumentError inside a
 // leaf would otherwise call process.exit and kill the test runner).
 
-import { buildProgram } from "../src/program/cli-tree.js";
+import { buildProgram } from "../src/program/cli-tree.ts";
 
 export const VALID_ID = "01900000-0000-7000-8000-000000000001";
 

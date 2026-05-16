@@ -4,13 +4,40 @@
 // the version. Pre-release stays a one-liner with a functional ⚠ glyph.
 
 import { palette, glyph } from "../output/index.ts";
+import type { WritableStreamLike } from "../output/capability.ts";
 
-export function printVersion(stream, version, opts = {}) {
+export interface PrintVersionOptions {
+  jsonMode?: boolean | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
+  noColor?: boolean | undefined;
+}
+
+export interface PrintPreReleaseWarningOptions {
+  jsonMode?: boolean | undefined;
+  env?: NodeJS.ProcessEnv | undefined;
+  noColor?: boolean | undefined;
+  ttyOnly?: boolean | undefined;
+}
+
+function resolveEnv(opts: { env?: NodeJS.ProcessEnv | undefined }): NodeJS.ProcessEnv {
+  if (opts.env) return opts.env;
+  return typeof process !== "undefined" ? process.env : ({} as NodeJS.ProcessEnv);
+}
+
+function resolveNoColor(opts: { noColor?: boolean | undefined }, env: NodeJS.ProcessEnv): boolean {
+  const envNoColor = typeof env.NO_COLOR === "string" && env.NO_COLOR.length > 0;
+  return Boolean(opts.noColor) || envNoColor;
+}
+
+export function printVersion(
+  stream: WritableStreamLike,
+  version: string,
+  opts: PrintVersionOptions = {},
+): void {
   if (opts.jsonMode) return;
 
-  const env = opts.env ?? (typeof process !== "undefined" ? process.env : {});
-  const envNoColor = env && env.NO_COLOR ? env.NO_COLOR.length > 0 : false;
-  const noColor = Boolean(opts.noColor) || envNoColor;
+  const env = resolveEnv(opts);
+  const noColor = resolveNoColor(opts, env);
 
   if (noColor) {
     stream.write(`zombiectl v${version}\n`);
@@ -22,10 +49,12 @@ export function printVersion(stream, version, opts = {}) {
   stream.write(`${dot} ${palette.text("zombiectl")} ${palette.subtle(`v${version}`, styleOpts)}\n`);
 }
 
-export function printPreReleaseWarning(stream, opts = {}) {
-  const env = opts.env ?? (typeof process !== "undefined" ? process.env : {});
-  const envNoColor = env && env.NO_COLOR ? env.NO_COLOR.length > 0 : false;
-  const noColor = Boolean(opts.noColor) || envNoColor;
+export function printPreReleaseWarning(
+  stream: WritableStreamLike,
+  opts: PrintPreReleaseWarningOptions = {},
+): void {
+  const env = resolveEnv(opts);
+  const noColor = resolveNoColor(opts, env);
   const jsonMode = opts.jsonMode || false;
   const ttyOnly = opts.ttyOnly || false;
 

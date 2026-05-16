@@ -6,18 +6,23 @@
 // Each .action() callback constructs `parsed = { options, positionals }`
 // from commander's parsed opts + args so the existing leaf handlers
 // (which already accept that shape) keep their internal signatures.
-// Option validators come from validators.js and throw
+// Option validators come from validators.ts and throw
 // InvalidArgumentError on rejection, which commander catches and
 // renders as `error: option '--foo <v>' argument '<x>' is invalid. <why>`
 // then exits 2.
 
-import { Command } from "commander";
-import { ZombieHelp, styleTagline } from "./help.js";
-import {
-  parseIntOption,
-  parseIdOption,
-} from "./validators.js";
-import { buildZombieTree } from "./cli-tree-zombie.js";
+import { Command, type Help } from "commander";
+import { ZombieHelp, styleTagline } from "./help.ts";
+import { parseIntOption, parseIdOption } from "./validators.ts";
+import { buildZombieTree } from "./cli-tree-zombie.ts";
+import type {
+  ActionFrame,
+  BuildProgramOptions,
+  CommandHandlerFn,
+  Handlers,
+  ProgramState,
+} from "./cli-tree-types.ts";
+import type { ParsedArgs } from "../commands/types.ts";
 
 const TIMEOUT_SEC_BOUNDS = { min: 1, max: 3600 };
 // Floor (1ms) is the validator's job; the handler enforces a hard
@@ -27,7 +32,7 @@ const TIMEOUT_SEC_BOUNDS = { min: 1, max: 3600 };
 const POLL_MS_BOUNDS = { min: 1, max: 60_000 };
 const BILLING_LIMIT_BOUNDS = { min: 1, max: 100 };
 
-function helpTail() {
+function helpTail(): string {
   // Commander's default help shows top-level commands only — subcommand
   // names (`workspace add`, `workspace list`, …) and the env-var matrix
   // never appear in the top-level body. Operators (and acceptance tests)
@@ -58,14 +63,14 @@ function helpTail() {
   ].join("\n");
 }
 
-function normalizeOptions(opts) {
+function normalizeOptions(opts: Record<string, unknown>): Record<string, unknown> {
   // Commander camelCases hyphenated flag names: `--workspace-id` → `opts.workspaceId`.
-  // The OPT_* constants in src/constants/cli-flags.js carry the dashed
+  // The OPT_* constants in src/constants/cli-flags.ts carry the dashed
   // wire-form (`"workspace-id"`), so leaf handlers reading
   // `parsed.options[OPT_WORKSPACE_ID]` only find the dashed key. Mirror
   // every camelCase key under its dashed form so both spellings resolve
   // — no handler needs a per-option shim.
-  const out = { ...opts };
+  const out: Record<string, unknown> = { ...opts };
   for (const k of Object.keys(opts)) {
     const dashed = k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);
     if (dashed !== k && !(dashed in out)) out[dashed] = opts[k];
@@ -73,28 +78,47 @@ function normalizeOptions(opts) {
   return out;
 }
 
-function actionFor(name, fn) {
+function actionFor(
+  name: string,
+  fn: (frame: ActionFrame) => Promise<void>,
+): (...callbackArgs: unknown[]) => Promise<void> {
   // Returns a commander action callback. `this` inside the function
   // body refers to the commander Command instance, which exposes
   // .opts() (local + inherited globals merged) and .args (positionals
   // after option stripping). The constructed `parsed` shape is the
   // same { options, positionals } object the leaf handlers consumed
   // pre-commander, so nothing downstream needs to learn commander.
-  return async function action(...callbackArgs) {
-    const command = callbackArgs[callbackArgs.length - 1];
-    const options = normalizeOptions(command.optsWithGlobals());
+  return async function action(...callbackArgs: unknown[]): Promise<void> {
+    const command = callbackArgs[callbackArgs.length - 1] as Command;
+    const options = normalizeOptions(
+      command.optsWithGlobals() as Record<string, unknown>,
+    ) as ParsedArgs["options"];
     const positionals = command.args.slice();
-    const parsed = { options, positionals };
+    const parsed: ParsedArgs = { options, positionals };
     await fn({ name, parsed, command });
   };
 }
 
-export function buildProgram({ handlers, version, state, helpFactory }) {
+function runHandler(
+  state: ProgramState,
+  frame: ActionFrame,
+  handler: CommandHandlerFn,
+): Promise<void> {
+  if (typeof handler !== "function") {
+    state.exitCode = 2;
+    throw new Error(`no handler wired for command: ${frame.name}`);
+  }
+  return Promise.resolve(handler(frame)).then((code) => {
+    state.exitCode = typeof code === "number" ? code : 0;
+  });
+}
+
+export function buildProgram({ handlers, version, state, helpFactory }: BuildProgramOptions): Command {
   const program = new Command();
 
   // commander 14: configureHelp() ignores unknown keys (incl. helpFactory);
   // the supported override is createHelp, invoked on each Command's --help.
-  program.createHelp = helpFactory ?? (() => new ZombieHelp());
+  program.createHelp = helpFactory ?? ((): Help => new ZombieHelp());
 
   program
     .name("zombiectl")
@@ -149,17 +173,7 @@ export function buildProgram({ handlers, version, state, helpFactory }) {
   return program;
 }
 
-function runHandler(state, frame, handler) {
-  if (typeof handler !== "function") {
-    state.exitCode = 2;
-    throw new Error(`no handler wired for command: ${frame.name}`);
-  }
-  return handler(frame).then((code) => {
-    state.exitCode = typeof code === "number" ? code : 0;
-  });
-}
-
-function buildWorkspaceTree(program, handlers, state) {
+function buildWorkspaceTree(program: Command, handlers: Handlers, state: ProgramState): void {
   const ws = program
     .command("workspace")
     .description("Manage workspaces");
@@ -190,7 +204,7 @@ function buildWorkspaceTree(program, handlers, state) {
     .action(actionFor("workspace.delete", (frame) => runHandler(state, frame, handlers.workspace.delete)));
 }
 
-function buildAgentTree(program, handlers, state) {
+function buildAgentTree(program: Command, handlers: Handlers, state: ProgramState): void {
   const agent = program
     .command("agent")
     .description("Manage external agent API keys");
@@ -214,7 +228,7 @@ function buildAgentTree(program, handlers, state) {
     .action(actionFor("agent.delete", (frame) => runHandler(state, frame, handlers.agent.delete)));
 }
 
-function buildGrantTree(program, handlers, state) {
+function buildGrantTree(program: Command, handlers: Handlers, state: ProgramState): void {
   const grant = program
     .command("grant")
     .description("Manage integration grants");
@@ -230,7 +244,7 @@ function buildGrantTree(program, handlers, state) {
     .action(actionFor("grant.delete", (frame) => runHandler(state, frame, handlers.grant.delete)));
 }
 
-function buildTenantTree(program, handlers, state) {
+function buildTenantTree(program: Command, handlers: Handlers, state: ProgramState): void {
   const tenant = program
     .command("tenant")
     .description("Tenant-scoped commands");
@@ -253,7 +267,7 @@ function buildTenantTree(program, handlers, state) {
     .action(actionFor("tenant.provider.delete", (frame) => runHandler(state, frame, handlers.tenant.provider.delete)));
 }
 
-function buildBillingTree(program, handlers, state) {
+function buildBillingTree(program: Command, handlers: Handlers, state: ProgramState): void {
   const billing = program
     .command("billing")
     .description("Tenant billing dashboard");

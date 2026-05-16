@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { requireAuth, AUTH_FAIL_MESSAGE } from "../src/program/auth-guard.js";
+import { requireAuth, AUTH_FAIL_MESSAGE } from "../src/program/auth-guard.ts";
 
 describe("requireAuth", () => {
   test("token present returns ok", () => {

@@ -1,5 +1,5 @@
 /**
- * Unit tests for src/program/banner.js — printVersion and printPreReleaseWarning.
+ * Unit tests for src/program/banner.ts — printVersion and printPreReleaseWarning.
  *
  * Coverage tiers addressed:
  *   T1  Happy path
@@ -19,7 +19,7 @@
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { makeBufferStream } from "./helpers.js";
-import { printVersion, printPreReleaseWarning } from "../src/program/banner.js";
+import { printVersion, printPreReleaseWarning } from "../src/program/banner.ts";
 import { runCli, VERSION } from "../src/cli.js";
 
 // ── T9: helpers — no magic, no copy-paste ─────────────────────────────────────

@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach } from "bun:test";
-import { ZombieHelp, styleTagline } from "../src/program/help.js";
+import { ZombieHelp, styleTagline } from "../src/program/help.ts";
 import { formatHelpHeading, palette, resetCapabilityWarning } from "../src/output/index.ts";
 
 // Three stream shims — one per ColorMode. detectColorMode resolves

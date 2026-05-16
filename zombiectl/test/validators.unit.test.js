@@ -12,7 +12,7 @@ import {
   parsePathOption,
   parseDurationOption,
   parseJsonObjectOption,
-} from "../src/program/validators.js";
+} from "../src/program/validators.ts";
 
 const VALID_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 const UUIDV4 = "550e8400-e29b-41d4-a716-446655440000";
