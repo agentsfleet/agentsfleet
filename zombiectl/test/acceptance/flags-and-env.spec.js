@@ -13,7 +13,7 @@
  * https:// URL — they run against real api-dev / api in CI, not local.
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -35,7 +35,7 @@ const SIGINT_DEADLINE_SEC = 60;
 
 let pkgVersion;
 
-before(async () => {
+beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
   pkgVersion = JSON.parse(pkgRaw).version;
 });
@@ -118,12 +118,12 @@ describe("--no-open suppresses browser spawn (stub backend)", () => {
   let stub;
   let stateDir;
 
-  before(async () => {
+  beforeAll(async () => {
     stub = await startLocalStubServer();
     stateDir = await makeStubbedStateDir();
   });
 
-  after(async () => {
+  afterAll(async () => {
     if (stub) await stub.close();
     if (stateDir) await stateDir.cleanup();
   });
@@ -154,12 +154,12 @@ describe("SIGINT during login (stub backend)", () => {
   let stub;
   let stateDir;
 
-  before(async () => {
+  beforeAll(async () => {
     stub = await startLocalStubServer();
     stateDir = await makeStubbedStateDir();
   });
 
-  after(async () => {
+  afterAll(async () => {
     if (stub) await stub.close();
     if (stateDir) await stateDir.cleanup();
   });
@@ -227,7 +227,7 @@ describe("SIGINT during login (stub backend)", () => {
       // tests actually exercise URL precedence instead of exiting on
       // "not authenticated".
       let sessionJwt;
-      before(async () => {
+      beforeAll(async () => {
         const minted = await attachJwt(resolveClerkSecret(), {
           email: resolveFixtureEmail("regular"),
         });

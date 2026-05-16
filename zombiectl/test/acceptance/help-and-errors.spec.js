@@ -9,7 +9,7 @@
  * surfaces as ECONNREFUSED instead of the expected stem).
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -39,7 +39,7 @@ function stripAnsi(text) {
 let pkgVersion;
 let validateModule;
 
-before(async () => {
+beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
   pkgVersion = JSON.parse(pkgRaw).version;
   validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validate.js"));
@@ -104,11 +104,11 @@ describe("--version", () => {
 describe("unknown commands", () => {
   let stubState;
 
-  before(async () => {
+  beforeAll(async () => {
     stubState = await makeStubbedStateDir();
   });
 
-  after(async () => {
+  afterAll(async () => {
     if (stubState) await stubState.cleanup();
   });
 

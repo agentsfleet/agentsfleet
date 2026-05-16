@@ -2,17 +2,26 @@
 # 95% bar shared with `ui/packages/{app,website}` — every product
 # in the monorepo answers to the same gate.
 #
-# The acceptance suite (`test/acceptance/**`) is intentionally
-# OUT of `bun test`'s glob: those specs use `node:test` (not
-# `bun:test`) because they spawn long-lived child processes
-# (Playwright Chromium, polling CLI subprocesses) that the Bun
-# test runner does not bound cleanly. They run via
-# `bun run test:acceptance` (→ `node --test` via
-# `scripts/run-acceptance.mjs`).
+# The acceptance suite (`test/acceptance/*.spec.js`) runs under the
+# same `bun:test` runtime as the rest of the suite — Captain
+# consolidated the dual-runner split (was node:test for acceptance,
+# bun:test elsewhere). The prior rationale was bound-cleanly concerns
+# with long-lived child processes (Playwright Chromium, polling CLI
+# subprocesses); if those resurface live, revisit. Acceptance specs
+# self-gate on ZOMBIE_ACCEPTANCE_TARGET being an https URL — without
+# the env they register skip-only placeholders. Default `bun test`
+# globs match `*.test.{js,ts}` so `*.spec.js` files are picked up
+# only by the explicit `bun test test/acceptance` invocation.
+#
+# Coverage scope: production code under src/ only. test/** is
+# excluded because helpers, fixtures, and matrix tables are scaffolding,
+# not subjects-under-test. coverageSkipTestFiles handles *.test.*
+# automatically; the explicit ignore catches the non-test files under
+# test/ that bun's heuristic doesn't.
 [test]
 coverage = true
 coverageThreshold = { line = 0.95, function = 0.95 }
 coverageReporter = ["text", "lcov"]
 coverageDir = "coverage"
 coverageSkipTestFiles = true
-coveragePathIgnorePatterns = ["test/acceptance/**"]
+coveragePathIgnorePatterns = ["test/**"]
