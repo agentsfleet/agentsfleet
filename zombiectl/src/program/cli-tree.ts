@@ -99,7 +99,7 @@ function actionFor(
   };
 }
 
-function runHandler(
+async function runHandler(
   state: ProgramState,
   frame: ActionFrame,
   handler: CommandHandlerFn,
@@ -108,9 +108,8 @@ function runHandler(
     state.exitCode = 2;
     throw new Error(`no handler wired for command: ${frame.name}`);
   }
-  return Promise.resolve(handler(frame)).then((code) => {
-    state.exitCode = typeof code === "number" ? code : 0;
-  });
+  const code = await handler(frame);
+  state.exitCode = typeof code === "number" ? code : 0;
 }
 
 export function buildProgram({ handlers, version, state, helpFactory }: BuildProgramOptions): Command {

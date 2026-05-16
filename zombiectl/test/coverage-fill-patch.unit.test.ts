@@ -6,22 +6,52 @@ import { test, expect } from "bun:test";
 import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Writable } from "node:stream";
 
 import {
   parseIntOption,
   parseFloatOption,
-} from "../src/program/validators.js";
+} from "../src/program/validators.ts";
 import {
   apiRequest,
   apiRequestWithRetry,
   authHeaders,
-} from "../src/lib/http.js";
-import { openUrl } from "../src/lib/browser.js";
-import { commandSteer } from "../src/commands/zombie_steer.js";
-import { commandCredentialAdd } from "../src/commands/zombie_credential.js";
-import { commandStop, commandInstall } from "../src/commands/zombie.js";
-import { loadSkillFromPath, SkillLoadError } from "../src/lib/load-skill-from-path.js";
+  type FetchImpl,
+  type RetryInfo,
+  type ApiRequestOptions,
+} from "../src/lib/http.ts";
+import { openUrl } from "../src/lib/browser.ts";
+import { commandSteer } from "../src/commands/zombie_steer.ts";
+import { commandCredentialAdd } from "../src/commands/zombie_credential.ts";
+import { commandStop } from "../src/commands/zombie.ts";
+import { commandInstall } from "../src/commands/zombie_install.ts";
+import { loadSkillFromPath, SkillLoadError } from "../src/lib/load-skill-from-path.ts";
+import type {
+  CommandCtx,
+  CommandDeps,
+  Workspaces,
+} from "../src/commands/types.ts";
 import { buildParsed } from "./helpers.js";
+
+// Discard-all writable — strict CommandCtx requires real NodeJS.WritableStream
+// shapes for stdout/stderr. Use one per test to avoid cross-test buffering.
+const sink = (): Writable => new Writable({ write(_c, _e, cb) { cb(); } });
+
+// Tagged Writable that records stream identity AND buffers, so handlers can
+// route per-stream and tests can read back what landed.
+function tagged(name: "stdout" | "stderr"): Writable & { __name: typeof name } {
+  const s = new Writable({ write(_c, _e, cb) { cb(); } }) as Writable & { __name: typeof name };
+  s.__name = name;
+  return s;
+}
+
+const passthroughUi = {
+  ok: (s: string) => s,
+  err: (s: string) => s,
+  info: (s: string) => s,
+  dim: (s: string) => s,
+  head: (s: string) => s,
+};
 
 // ── validators.js: Infinity catch after parseInt/parseFloat ────────────
 
@@ -53,17 +83,18 @@ test("authHeaders with neither token nor apiKey omits Authorization", () => {
 
 test("apiRequest throws NO_FETCH when fetchImpl is not a function", async () => {
   // Non-function truthy value bypasses `|| globalThis.fetch` and hits the
-  // explicit `typeof fetchImpl !== "function"` guard.
+  // explicit `typeof fetchImpl !== "function"` guard. Double-cast widens
+  // string→FetchImpl to reach the guard with a non-function value.
   await expect(
-    apiRequest("https://x", { fetchImpl: "not-a-fn" }),
+    apiRequest("https://x", { fetchImpl: "not-a-fn" as unknown as FetchImpl }),
   ).rejects.toMatchObject({ code: "NO_FETCH" });
 });
 
 test("apiRequest surfaces TIMEOUT when fetch aborts", async () => {
   // fetchImpl that throws AbortError to simulate the timeout path.
-  const fetchImpl = async (_url, init) => {
-    return await new Promise((_resolve, reject) => {
-      init.signal.addEventListener("abort", () => {
+  const fetchImpl: FetchImpl = (_url, init) => {
+    return new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () => {
         const err = new Error("aborted");
         err.name = "AbortError";
         reject(err);
@@ -75,14 +106,26 @@ test("apiRequest surfaces TIMEOUT when fetch aborts", async () => {
   ).rejects.toMatchObject({ code: "TIMEOUT", status: 408 });
 });
 
+// Structural Response mocks are minimal — apiRequest only reads ok/status/
+// statusText/headers.get/text. Double-cast widens to FetchImpl at boundary.
+type ResponseLike = {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: { get: (name: string) => string | null };
+  text: () => Promise<string>;
+};
+const asFetchImpl = (impl: (url: string) => Promise<ResponseLike>): FetchImpl =>
+  impl as unknown as FetchImpl;
+
 test("apiRequest tolerates non-JSON response body", async () => {
-  const fetchImpl = async () => ({
+  const fetchImpl = asFetchImpl(async () => ({
     ok: true,
     status: 200,
     statusText: "OK",
     headers: { get: () => null },
     text: async () => "not-json-{{{",
-  });
+  }));
   const res = await apiRequest("https://x", { fetchImpl });
   // JSON.parse fails → json=null → returns {}.
   expect(res).toEqual({});
@@ -90,9 +133,9 @@ test("apiRequest tolerates non-JSON response body", async () => {
 
 test("apiRequestWithRetry retries on ECONNRESET (network classify)", async () => {
   let calls = 0;
-  const retries = [];
+  const retries: RetryInfo[] = [];
   const econn = Object.assign(new Error("connection reset"), { code: "ECONNRESET" });
-  const fetchImpl = async () => {
+  const fetchImpl = asFetchImpl(async () => {
     calls += 1;
     if (calls < 2) throw econn;
     return {
@@ -102,7 +145,7 @@ test("apiRequestWithRetry retries on ECONNRESET (network classify)", async () =>
       headers: { get: () => null },
       text: async () => "{}",
     };
-  };
+  });
   const res = await apiRequestWithRetry("https://x", {
     fetchImpl,
     retry: { maxAttempts: 3, baseDelayMs: 1, capDelayMs: 1 },
@@ -111,13 +154,13 @@ test("apiRequestWithRetry retries on ECONNRESET (network classify)", async () =>
   });
   expect(res).toEqual({});
   expect(retries).toHaveLength(1);
-  expect(retries[0].reason).toBe("network");
+  expect(retries[0]?.reason).toBe("network");
 });
 
 test("apiRequestWithRetry classifies UZ-XXX-RETRY as server_marked_retryable", async () => {
-  const retries = [];
+  const retries: RetryInfo[] = [];
   let calls = 0;
-  const fetchImpl = async () => {
+  const fetchImpl = asFetchImpl(async () => {
     calls += 1;
     if (calls === 1) {
       return {
@@ -129,7 +172,7 @@ test("apiRequestWithRetry classifies UZ-XXX-RETRY as server_marked_retryable", a
       };
     }
     return { ok: true, status: 200, statusText: "OK", headers: { get: () => null }, text: async () => "{}" };
-  };
+  });
   // 500 is not in RETRYABLE_STATUSES → falls through to UZ-...-RETRY classify.
   await apiRequestWithRetry("https://x", {
     fetchImpl,
@@ -137,7 +180,7 @@ test("apiRequestWithRetry classifies UZ-XXX-RETRY as server_marked_retryable", a
     sleepImpl: async () => {},
     onRetry: (info) => retries.push(info),
   });
-  expect(retries[0].reason).toBe("server_marked_retryable");
+  expect(retries[0]?.reason).toBe("server_marked_retryable");
 });
 
 // ── browser.js: openUrl when resolveBrowserCommand declines ────────────
@@ -176,34 +219,41 @@ test("commandSteer SSE error + empty poll yields TIMEOUT branch", async () => {
   const realSetTimeout = globalThis.setTimeout;
   let tick = 0;
   Date.now = () => realDateNow() + tick;
-  globalThis.setTimeout = (fn, _ms) => {
+  // setTimeout has a ton of overload + typeof properties; double-cast at
+  // the override boundary to swap in the fast-forwarder for this test.
+  globalThis.setTimeout = ((fn: () => void, _ms: number) => {
     tick += 90_000; // past the 60s deadline on next iteration
     return realSetTimeout(fn, 0);
-  };
+  }) as unknown as typeof globalThis.setTimeout;
 
   let stderrCaptured = "";
+  const stderr = tagged("stderr");
+  // Intercept the buffered chunks via a writable proxy instead of
+  // overriding writeLine — keeps the production code path under test.
   const deps = {
-    request: async (_ctx, url) => {
+    request: async (_ctx: CommandCtx, url: string) => {
       if (url.includes("/messages")) return { event_id: "1700000000000-0" };
       return { items: [] }; // no matching row ever
     },
     apiHeaders: () => ({}),
     streamGet: async () => { throw new Error("disconnect"); },
-    ui: { ok: (s) => s, dim: (s) => s, err: (s) => s },
+    ui: passthroughUi,
     printJson: () => {},
-    writeLine: (stream, line) => {
-      if (stream && stream.__name === "stderr") stderrCaptured += String(line || "");
+    writeLine: (stream: NodeJS.WritableStream, line?: string) => {
+      const tag = (stream as Writable & { __name?: string }).__name;
+      if (tag === "stderr") stderrCaptured += String(line ?? "");
     },
     writeError: () => {},
-  };
-  const ctx = {
+  } as unknown as CommandDeps;
+  const ctx: CommandCtx = {
     apiUrl: "https://example",
-    stdout: { __name: "stdout", write() {} },
-    stderr: { __name: "stderr", write() {} },
+    stdout: tagged("stdout"),
+    stderr,
     jsonMode: false,
   };
+  const workspaces: Workspaces = { current_workspace_id: "ws_1", items: [] };
   try {
-    const code = await commandSteer(ctx, buildParsed(["zmb_1", "go"]), { current_workspace_id: "ws_1" }, deps);
+    const code = await commandSteer(ctx, buildParsed(["zmb_1", "go"]), workspaces, deps);
     expect(code).toBe(1);
     expect(stderrCaptured).toContain("still in flight");
   } finally {
@@ -217,28 +267,30 @@ test("commandSteer SSE error + empty poll yields TIMEOUT branch", async () => {
 test("commandCredentialAdd reads JSON from ctx.stdin string (--data=@-)", async () => {
   let requestCalls = 0;
   const deps = {
-    request: async (_ctx, _url, opts) => {
+    request: async (_ctx: CommandCtx, _url: string, opts?: ApiRequestOptions) => {
       requestCalls += 1;
       if (requestCalls === 1) return { credentials: [] }; // findCredentialByName
       // The actual add — assert body shape and return ok.
-      expect(opts.body).toContain('"data":{"api_key":"x"}');
+      expect(opts?.body).toContain('"data":{"api_key":"x"}');
       return { ok: true };
     },
     apiHeaders: () => ({}),
-    ui: { ok: (s) => s, dim: (s) => s, err: (s) => s },
+    ui: passthroughUi,
     printJson: () => {},
     writeLine: () => {},
     writeError: () => {},
-  };
-  const ctx = {
+  } as unknown as CommandDeps;
+  const ctx: CommandCtx = {
+    apiUrl: "https://example",
     stdin: '{"api_key":"x"}',
-    stdout: { write() {} },
-    stderr: { write() {} },
+    stdout: sink(),
+    stderr: sink(),
   };
+  const workspaces: Workspaces = { current_workspace_id: "ws_1", items: [] };
   const code = await commandCredentialAdd(
     ctx,
     buildParsed(["my-cred", "--data=@-"]),
-    { current_workspace_id: "ws_1" },
+    workspaces,
     deps,
   );
   expect(code).toBe(0);
@@ -246,17 +298,17 @@ test("commandCredentialAdd reads JSON from ctx.stdin string (--data=@-)", async 
 
 test("commandCredentialAdd reads JSON from async-iterable ctx.stdin (Uint8Array chunks)", async () => {
   const deps = {
-    request: async (_ctx, _url, opts) => {
-      if (opts.method === "GET") return { credentials: [] };
-      expect(opts.body).toContain('"api_key":"y"');
+    request: async (_ctx: CommandCtx, _url: string, opts?: ApiRequestOptions) => {
+      if (opts?.method === "GET") return { credentials: [] };
+      expect(opts?.body).toContain('"api_key":"y"');
       return { ok: true };
     },
     apiHeaders: () => ({}),
-    ui: { ok: (s) => s, dim: (s) => s, err: (s) => s },
+    ui: passthroughUi,
     printJson: () => {},
     writeLine: () => {},
     writeError: () => {},
-  };
+  } as unknown as CommandDeps;
   const enc = new TextEncoder();
   const stdin = {
     [Symbol.asyncIterator]() {
@@ -269,12 +321,18 @@ test("commandCredentialAdd reads JSON from async-iterable ctx.stdin (Uint8Array 
         },
       };
     },
+  } as unknown as NodeJS.ReadableStream;
+  const ctx: CommandCtx = {
+    apiUrl: "https://example",
+    stdin,
+    stdout: sink(),
+    stderr: sink(),
   };
-  const ctx = { stdin, stdout: { write() {} }, stderr: { write() {} } };
+  const workspaces: Workspaces = { current_workspace_id: "ws_1", items: [] };
   const code = await commandCredentialAdd(
     ctx,
     buildParsed(["my-cred", "--data=@-"]),
-    { current_workspace_id: "ws_1" },
+    workspaces,
     deps,
   );
   expect(code).toBe(0);
@@ -300,30 +358,38 @@ test("loadSkillFromPath maps EACCES on directory stat to ERR_PATH_DENIED", () =>
 // ── zombie.js: commandSetStatusStop (PATCH path with computed-key Content-Type)
 
 test("commandStop sends PATCH with correct Content-Type header", async () => {
-  let captured;
+  let captured: ApiRequestOptions | undefined;
   const deps = {
-    request: async (_ctx, _url, opts) => {
+    request: async (_ctx: CommandCtx, _url: string, opts?: ApiRequestOptions) => {
       captured = opts;
       return { ok: true };
     },
     apiHeaders: () => ({ "X-Trace": "t" }),
-    ui: { ok: (s) => s, dim: (s) => s, err: (s) => s },
+    ui: passthroughUi,
     printJson: () => {},
     writeLine: () => {},
     writeError: () => {},
+  } as unknown as CommandDeps;
+  const ctx: CommandCtx = {
+    apiUrl: "https://example",
+    stdout: sink(),
+    stderr: sink(),
   };
-  const ctx = { stdout: { write() {} }, stderr: { write() {} } };
+  const workspaces: Workspaces = {
+    current_workspace_id: "0195b4ba-8d3a-7f13-8abc-000000000010",
+    items: [],
+  };
   const code = await commandStop(
     ctx,
     buildParsed(["0195b4ba-8d3a-7f13-8abc-000000000001"]),
-    { current_workspace_id: "0195b4ba-8d3a-7f13-8abc-000000000010" },
+    workspaces,
     deps,
   );
   expect(code).toBe(0);
-  expect(captured.method).toBe("PATCH");
-  expect(captured.headers["Content-Type"]).toBe("application/json");
-  expect(captured.headers["X-Trace"]).toBe("t");
-  expect(JSON.parse(captured.body)).toEqual({ status: "stopped" });
+  expect(captured?.method).toBe("PATCH");
+  expect(captured?.headers?.["Content-Type"]).toBe("application/json");
+  expect(captured?.headers?.["X-Trace"]).toBe("t");
+  expect(JSON.parse(captured?.body ?? "{}")).toEqual({ status: "stopped" });
 });
 
 // Regression guard for the codemod object-key bug. If K_CONTENT_TYPE
@@ -333,28 +399,37 @@ test("commandInstall POST headers carry literal Content-Type, not the const name
   const dir = mkdtempSync(join(tmpdir(), "zctl-cov-skill-"));
   writeFileSync(join(dir, "SKILL.md"), "skill body");
   writeFileSync(join(dir, "TRIGGER.md"), "---\nname: z\n---\ntrigger");
-  let captured;
+  let captured: ApiRequestOptions | undefined;
   const deps = {
-    request: async (_ctx, _url, opts) => {
+    request: async (_ctx: CommandCtx, _url: string, opts?: ApiRequestOptions) => {
       captured = opts;
       return { zombie_id: "z_1", name: "z", webhook_url: "https://w" };
     },
     apiHeaders: () => ({}),
-    ui: { ok: (s) => s, dim: (s) => s, err: (s) => s, info: (s) => s },
+    ui: passthroughUi,
     printJson: () => {},
     writeLine: () => {},
     writeError: () => {},
+  } as unknown as CommandDeps;
+  const ctx: CommandCtx = {
+    apiUrl: "https://example",
+    stdout: sink(),
+    stderr: sink(),
+    jsonMode: false,
   };
-  const ctx = { stdout: { write() {} }, stderr: { write() {} }, jsonMode: false };
+  const workspaces: Workspaces = {
+    current_workspace_id: "0195b4ba-8d3a-7f13-8abc-000000000010",
+    items: [],
+  };
   try {
     await commandInstall(
       ctx,
       buildParsed([`--from=${dir}`]),
-      { current_workspace_id: "0195b4ba-8d3a-7f13-8abc-000000000010" },
+      workspaces,
       deps,
     );
-    expect(captured.headers).toHaveProperty("Content-Type", "application/json");
-    expect(captured.headers).not.toHaveProperty("K_CONTENT_TYPE");
+    expect(captured?.headers).toHaveProperty("Content-Type", "application/json");
+    expect(captured?.headers).not.toHaveProperty("K_CONTENT_TYPE");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
