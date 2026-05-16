@@ -141,6 +141,33 @@ test "Pool.release(ok=false) closes the connection" {
     try std.testing.expectEqual(@as(usize, 0), s.active);
 }
 
+test "Pool.release(ok=true) over max_idle increments forced_closes_total" {
+    const alloc = std.testing.allocator;
+
+    var fake: PingFake = undefined;
+    try fake.start(true);
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
+    defer pool.deinit();
+
+    // Two concurrent acquires push active above max_idle: first release
+    // parks back to idle (within cap); second release exceeds the cap and
+    // must force-close. Counter discriminates "stayed within cap" from
+    // "burst-discard happened" in operator scrapes of /metrics.
+    const a = try pool.acquire();
+    const b = try pool.acquire();
+
+    pool.release(a, true);
+    try std.testing.expectEqual(@as(u64, 0), pool.stats().forced_closes_total);
+    try std.testing.expectEqual(@as(usize, 1), pool.stats().idle);
+
+    pool.release(b, true);
+    try std.testing.expectEqual(@as(u64, 1), pool.stats().forced_closes_total);
+    try std.testing.expectEqual(@as(usize, 1), pool.stats().idle);
+}
+
 test "Pool.release of poisoned conn increments poisoned counter" {
     const alloc = std.testing.allocator;
 

@@ -92,3 +92,37 @@ test "command round-trips a single RESP reply" {
     defer resp.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("PONG", resp.simple);
 }
+
+test "commandAllowError: OOM during RESP read propagates without poisoning the connection" {
+    var srv: PongOnce = undefined;
+    try srv.start();
+    defer srv.shutdown();
+
+    const cfg = try srv.config(std.testing.allocator);
+    defer redis_config.deinitConfig(std.testing.allocator, cfg);
+
+    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    // Restore the real allocator before deinit so transport cleanup uses
+    // the same allocator that init dialed with.
+    defer {
+        conn.alloc = std.testing.allocator;
+        conn.deinit();
+    }
+
+    // FailingAllocator with fail_index=0 returns OutOfMemory on every
+    // allocation. The argv write path doesn't allocate, so the WRITE
+    // round-trip completes; readRespValue's first allocation inside the
+    // RESP parser fails. This is the exact failure mode greptile flagged.
+    var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    conn.alloc = fa.allocator();
+
+    const result = conn.commandAllowError(&.{"PING"});
+    try std.testing.expectError(error.OutOfMemory, result);
+
+    // Load-bearing assertion: OOM is a host-level allocator failure, NOT
+    // a transport corruption. The connection's framing is intact and the
+    // same `conn` can serve the next request once memory pressure subsides.
+    // Without the short-circuit in commandAllowError, this would be
+    // .poisoned and the pool would close + redial (and OOM again).
+    try std.testing.expect(conn.state == .active);
+}

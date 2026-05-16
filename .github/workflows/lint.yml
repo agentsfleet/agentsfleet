@@ -44,7 +44,7 @@ jobs:
       - name: Run website lint gate
         run: make lint-website
 
-  lint-apps:
+  lint-apps-ds-ctl:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -60,7 +60,7 @@ jobs:
       - name: Run app + design-system + zombiectl lint gate
         run: make lint-apps-ds-ctl
 
-  lint-ci:
+  check-gh-actions-valid:
     runs-on: ubuntu-latest
     env:
       ACTIONLINT_VERSION: 1.7.11
@@ -75,7 +75,7 @@ jobs:
       - name: Validate GH Actions workflows (actionlint + make-target refs)
         run: make check-gh-actions-valid
 
-  lint-openapi:
+  check-openapi:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -89,21 +89,21 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Assert public/openapi.json is produced purely from YAML
         run: |
-          # Delete the committed JSON first, then let `make openapi`
+          # Delete the committed JSON first, then let `make check-openapi`
           # rebundle it from the YAML source alone. If `git diff` then shows
           # any delta vs HEAD, either the YAML is out of sync or someone
           # hand-edited the JSON.
           rm public/openapi.json
-          make openapi
+          make check-openapi
           if ! git diff --exit-code public/openapi.json; then
             echo "::error::public/openapi.json drifted from public/openapi/**.yaml."
-            echo "::error::Run 'make openapi' locally and commit the result."
+            echo "::error::Run 'make check-openapi' locally and commit the result."
             exit 1
           fi
 
   lint:
     runs-on: ubuntu-latest
-    needs: [lint-zig, lint-website, lint-apps, lint-ci, lint-openapi]
+    needs: [lint-zig, lint-website, lint-apps-ds-ctl, check-gh-actions-valid, check-openapi]
     steps:
       - name: Preserve legacy lint check name
         run: echo "All lint lanes passed"
