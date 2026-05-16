@@ -10,7 +10,7 @@ import {
   drainCliAnalyticsEvents,
   getCliAnalyticsContext,
   type AnalyticsClient,
-} from "./lib/analytics.js";
+} from "./lib/analytics.ts";
 import {
   clearCredentials,
   loadCredentials,

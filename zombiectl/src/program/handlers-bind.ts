@@ -3,7 +3,7 @@
 // fetch-failed → API_UNREACHABLE, and the cli_command_started/finished/
 // error analytics triplet stay co-located with the dispatch path.
 
-import { cliAnalytics } from "../lib/analytics.js";
+import { cliAnalytics } from "../lib/analytics.ts";
 import { runCommand } from "../lib/run-command.ts";
 import { printJson, writeLine } from "./io.ts";
 import { ui } from "../output/index.ts";
@@ -69,7 +69,7 @@ import type {
   Workspaces,
 } from "../commands/types.ts";
 import type { PresetMap } from "../lib/error-map-presets.ts";
-import type { AnalyticsClient } from "../lib/analytics.d.ts";
+import type { AnalyticsClient } from "../lib/analytics.ts";
 
 export interface Lifecycle {
   ctx: CommandCtx;

@@ -1,4 +1,4 @@
-import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
+import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.ts";
 import { validateRequiredId } from "../program/validators.ts";
 import { writeError as ioWriteError } from "../program/io.ts";
 import {

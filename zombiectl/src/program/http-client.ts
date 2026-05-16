@@ -7,7 +7,7 @@ import {
   type RetryConfig,
   type RetryInfo,
 } from "../lib/http.ts";
-import { trackHttpRequest, trackHttpRetry } from "../lib/analytics.js";
+import { trackHttpRequest, trackHttpRetry } from "../lib/analytics.ts";
 
 // request() always overrides fetchImpl / retry / onAttempt / onRetry from ctx,
 // so callers cannot pass them. sleepImpl / randomFn / env flow through to

@@ -9,7 +9,7 @@ import { runCli } from "../src/cli.ts";
 import {
   cliAnalytics,
   type AnalyticsClient,
-} from "../src/lib/analytics.js";
+} from "../src/lib/analytics.ts";
 import { asFetchOverride, type ResponseLike } from "./helpers.ts";
 
 interface TrackedEvent {

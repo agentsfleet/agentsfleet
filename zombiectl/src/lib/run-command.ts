@@ -14,7 +14,7 @@ import {
   trackCliEvent as defaultTrackCliEvent,
   getCliAnalyticsContext,
   type AnalyticsClient,
-} from "./analytics.js";
+} from "./analytics.ts";
 import type { PresetMap } from "./error-map-presets.ts";
 
 const API_UNREACHABLE_CODE = "API_UNREACHABLE";

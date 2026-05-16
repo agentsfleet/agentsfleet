@@ -1,6 +1,6 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { cliAnalyticsInternals } from "../src/lib/analytics.js";
+import { cliAnalyticsInternals } from "../src/lib/analytics.ts";
 
 test("analytics resolveConfig disables telemetry by default with empty env", () => {
   const cfg = cliAnalyticsInternals.resolveConfig({});
