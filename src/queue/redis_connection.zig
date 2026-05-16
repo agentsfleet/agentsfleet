@@ -39,12 +39,12 @@ const Error = error{
     ReadFailed,
     WriteFailed,
     RedisCommandError,
-    RedisRequestTimeout,
-    /// Allocator failure during RESP read. NOT a transport error —
-    /// connection state is untouched and OOM propagates to the caller
-    /// so memory pressure surfaces with its real root cause, not a
-    /// misleading `ReadFailed`/`RedisRequestTimeout` after MAX_ATTEMPTS
-    /// of pool-retry poisoning.
+    /// Allocator failure during RESP read. The connection IS poisoned
+    /// (bulk-string and array replies leave partial bytes in the
+    /// transport buffer on body-alloc failure) but the OOM surfaces
+    /// verbatim to the caller so memory pressure shows up with its
+    /// real root cause, not a misleading `ReadFailed` after
+    /// MAX_ATTEMPTS of pool-retry redials.
     OutOfMemory,
 };
 
@@ -61,10 +61,11 @@ cfg: *const redis_config.Config,
 /// Embedded link node — only attached when `role == .pooled` and the
 /// connection sits on Pool.idle. Inert for other roles.
 node: std.SinglyLinkedList.Node = .{},
-/// `SO_RCVTIMEO` value installed via `applyReadTimeout`. Non-null re-tags
-/// `error.ReadFailed` from `mapReadError` as `error.RedisRequestTimeout`
-/// so the Pool / Client retry layer treats request-path read timeouts as
-/// non-resumable transport errors (spec §6).
+/// `SO_RCVTIMEO` value installed via `applyReadTimeout`. When armed, a
+/// kernel-triggered read timeout surfaces as `error.ReadFailed` (same as
+/// any other peer-side read failure — `std.Io.Reader` doesn't expose the
+/// underlying errno). Both stay non-resumable; the Pool / Client retry
+/// layer treats them identically (spec §6).
 read_timeout_ms: ?u32 = null,
 
 // === Constructor ===
@@ -181,7 +182,7 @@ pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redi
             return error.OutOfMemory;
         }
         self.transitionTo(.poisoned);
-        return self.mapReadError(err);
+        return mapReadError(err);
     };
 }
 
@@ -193,16 +194,18 @@ fn mapWriteError(err: anyerror) Error {
     };
 }
 
-// SO_RCVTIMEO surfaces as `error.ReadFailed` at the std.Io.Reader layer
-// (ZIG_RULES.md "TLS Transport"). When the request-path timeout is
-// armed (`read_timeout_ms != null`), re-tag `ReadFailed` as
-// `RedisRequestTimeout` so callers can distinguish a configured timeout
-// from a peer-side read failure. Both stay non-resumable.
-fn mapReadError(self: *Connection, err: anyerror) Error {
+// SO_RCVTIMEO and peer-side drops both surface as opaque `error.ReadFailed`
+// at the std.Io.Reader layer — the underlying errno (EAGAIN vs ECONNRESET vs
+// EOF) isn't exposed. Earlier code re-tagged ReadFailed as
+// `RedisRequestTimeout` whenever read_timeout_ms was armed; that conflated
+// real timeouts with peer-side connection drops in metric attribution.
+// Both stay non-resumable, so retry behavior is identical; we surface as
+// `ReadFailed` uniformly and let observability live with one bucket.
+fn mapReadError(err: anyerror) Error {
     return switch (err) {
         error.BrokenPipe => error.BrokenPipe,
         error.ConnectionResetByPeer => error.ConnectionResetByPeer,
-        else => if (self.read_timeout_ms != null) error.RedisRequestTimeout else error.ReadFailed,
+        else => error.ReadFailed,
     };
 }
 
@@ -248,8 +251,12 @@ fn writeArgvToTransport(transport: *redis_transport.Transport, argv: []const []c
         try writer.writeAll(arg);
         try writer.writeAll("\r\n");
     }
-    if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
     try writer.flush();
+    // For TLS, `transport.writer()` is the TLS encryption layer; the underlying
+    // TCP buffer is `transport.tls.stream_writer.interface`. After
+    // `writer.flush()` pushes ciphertext into the TCP buffer, flush THAT to
+    // get the bytes on the wire. (No pre-flush — the TCP buffer has nothing
+    // to flush before the TLS layer writes anything new.)
     if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
 }
 

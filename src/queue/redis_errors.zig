@@ -6,9 +6,10 @@
 //! compile until the new variant is explicitly classified resumable-or-not.
 //! No quiet "did I update the list?" at review time.
 //!
-//! Consumed by the Client retry layer (recycle vs close on error), by the
-//! Transport SO_RCVTIMEO translation that surfaces `RedisRequestTimeout`,
-//! and by the typed XADD/XACK error variants in the Client façade.
+//! Consumed by the Client retry layer (recycle vs close on error) and by
+//! the typed XADD/XACK error variants in the Client façade. Read timeouts
+//! (SO_RCVTIMEO) surface as opaque `ReadFailed` — std.Io.Reader doesn't
+//! expose errno, so we don't pretend to distinguish.
 
 /// Transport- and server-level errors the Redis client can surface.
 ///
@@ -25,7 +26,6 @@ pub const RedisError = error{
     ConnectionResetByPeer,
     ReadFailed,
     WriteFailed,
-    RedisRequestTimeout,
 };
 
 /// Resumable = the same connection can serve the next request (server-side
@@ -36,6 +36,6 @@ pub const RedisError = error{
 pub fn isResumable(err: RedisError) bool {
     return switch (err) {
         error.RedisCommandError, error.RedisXaddFailed, error.RedisXackFailed => true,
-        error.BrokenPipe, error.ConnectionResetByPeer, error.ReadFailed, error.WriteFailed, error.RedisRequestTimeout => false,
+        error.BrokenPipe, error.ConnectionResetByPeer, error.ReadFailed, error.WriteFailed => false,
     };
 }

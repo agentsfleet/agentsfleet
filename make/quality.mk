@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl check-openapi check-schema-gate check-gh-actions-valid _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _shell_lint
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -196,6 +196,19 @@ check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + 
 	@python3 scripts/check_openapi_url_shape.py
 	@echo "✓ [openapi] Bundle + lint + error-schema + url-shape all green"
 
+SHELLCHECK ?= shellcheck
+
+_shell_lint:
+	@echo "→ [shell] Running shellcheck on scripts/*.sh..."
+	@command -v $(SHELLCHECK) >/dev/null 2>&1 || { echo "shellcheck not found. Install via: mise install shellcheck"; exit 1; }
+	@# `--severity=error` is the floor: catches genuine breakage (syntax,
+	@# undefined-vars, dangerous quoting) without blocking on pre-existing
+	@# stylistic warnings in symlinked dotfiles/scripts/. Tighten to
+	@# `warning` once dotfiles cleanup lands.
+	@# `-x` lets shellcheck follow `source`/`.` into sibling scripts.
+	@$(SHELLCHECK) --severity=error -x scripts/*.sh
+	@echo "✓ [shell] shellcheck passed (error-level)"
+
 _legacy_symbols_check:
 	@echo "→ [zombied] Checking for legacy event-substrate symbols (orphan sweep — RULE ORP)..."
 	@FAIL=0; \
@@ -217,8 +230,10 @@ lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 
 lint-apps-ds-ctl: _app_lint _design_system_lint _zombiectl_lint  ## Lint app + design-system + zombiectl
 
+lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
-lint-all: lint-zig lint-website lint-apps-ds-ctl check-openapi check-schema-gate check-gh-actions-valid  ## Run all linters + quality gates
+
+lint-all: lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
 check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check

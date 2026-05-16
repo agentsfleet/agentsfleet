@@ -252,7 +252,7 @@ test "Pool.stats surfaces every PoolStats field" {
 // when the env var is unset so unit-test runs in CI / dev stay deterministic
 // without a live broker. Exercises behaviors that only a real RESP server
 // can prove: PING round-trip through the pool, over-`max_idle` dial path,
-// and `SO_RCVTIMEO` re-tag of `ReadFailed` into `RedisRequestTimeout`.
+// and `SO_RCVTIMEO`-triggered `ReadFailed` surfacing after MAX_ATTEMPTS.
 
 const TLS_URL_ENV = "TEST_REDIS_TLS_URL";
 const REDISS_SCHEME = "rediss://";
@@ -304,7 +304,7 @@ test "integration: pool acquires, parks idle, and over-cap dial increments overf
     try std.testing.expectEqual(@as(usize, 0), settled.active);
 }
 
-test "integration: request timeout surfaces RedisRequestTimeout on a hanging BLPOP" {
+test "integration: request timeout surfaces ReadFailed on a hanging BLPOP" {
     const alloc = std.testing.allocator;
     const tls_url = try tlsUrlOrSkip(alloc);
     defer alloc.free(tls_url);
@@ -312,10 +312,11 @@ test "integration: request timeout surfaces RedisRequestTimeout on a hanging BLP
     // `read_timeout_ms = 100` arms `SO_RCVTIMEO` on every pooled Connection.
     // BLPOP with a 5s server-side wait on a never-populated key holds the
     // socket idle past the budget; the kernel returns EAGAIN, std.Io.Reader
-    // surfaces `error.ReadFailed`, and `Connection.mapReadError` re-tags it
-    // as `error.RedisRequestTimeout` because `read_timeout_ms != null`.
-    // Pool retry dials a fresh conn for attempt 2 — it also times out — so
-    // the error surfaces to the caller after MAX_ATTEMPTS.
+    // surfaces `error.ReadFailed`, and `Connection.mapReadError` keeps it
+    // as `error.ReadFailed` (no separate timeout variant — std.Io.Reader
+    // doesn't expose the underlying errno so we'd misattribute peer-side
+    // drops as timeouts). Pool retry dials a fresh conn for attempt 2 —
+    // it also times out — so the error surfaces after MAX_ATTEMPTS.
     var client = try Client.connectFromUrlWithOptions(alloc, tls_url, .{ .read_timeout_ms = 100 });
     defer client.deinit();
 
@@ -323,7 +324,7 @@ test "integration: request timeout surfaces RedisRequestTimeout on a hanging BLP
     const result = client.command(&.{ "BLPOP", "test:blpop:never-populated", "5" });
     const elapsed_ns = std.time.nanoTimestamp() - start;
 
-    try std.testing.expectError(error.RedisRequestTimeout, result);
+    try std.testing.expectError(error.ReadFailed, result);
     // Sanity bound: two ~100ms timeouts + one redial fit well under 5s. If
     // this assertion ever trips, the retry loop is hanging — not just slow.
     try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
