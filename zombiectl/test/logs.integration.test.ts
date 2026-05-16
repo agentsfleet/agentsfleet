@@ -1,17 +1,18 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
-import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000010c105";
 const ZOMBIE_ID = "01900000-0000-7000-8000-0000007090c5";
-const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_logs" }, fn);
+const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
+  withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_logs" }, fn);
 
 describe("logs (paginated event tail)", () => {
   test("`logs <zombie_id>` with no events prints the empty-state message and exits 0", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
           () => jsonResponse(200, { items: [], next_cursor: null }),
       };
@@ -25,17 +26,17 @@ describe("logs (paginated event tail)", () => {
         expect(code).toBe(0);
         expect(out.read()).toMatch(/no events yet/i);
         expect(calls).toHaveLength(1);
-        expect(calls[0].method).toBe("GET");
-        expect(calls[0].path).toBe(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`);
+        expect(calls[0]?.method).toBe("GET");
+        expect(calls[0]?.path).toBe(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`);
         // The default limit=20 query is preserved on the wire.
-        expect(calls[0].search).toContain("limit=20");
+        expect(calls[0]?.search).toContain("limit=20");
       });
     });
   });
 
   test("`logs <zombie_id>` with events prints one row per event with timestamp + actor + summary", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
           () => jsonResponse(200, {
             items: [

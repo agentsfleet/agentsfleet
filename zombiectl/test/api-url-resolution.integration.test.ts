@@ -1,41 +1,34 @@
 import { describe, test, expect } from "bun:test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.ts";
 import { saveCredentials } from "../src/lib/state.ts";
+import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
 
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
+interface RecordedCall { url: string; method: string }
+interface FetchRecorder {
+  calls: RecordedCall[];
+  fetchImpl: (url: string, options?: { method?: string }) => Promise<ResponseLike>;
 }
 
-async function withStateDir(fn) {
-  const previous = process.env.ZOMBIE_STATE_DIR;
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-state-"));
-  process.env.ZOMBIE_STATE_DIR = dir;
-  try {
-    return await fn();
-  } finally {
-    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
-    else process.env.ZOMBIE_STATE_DIR = previous;
-    await fs.rm(dir, { recursive: true, force: true });
-  }
+// Structural Response — runCli's apiRequest only reads ok/status/text.
+interface ResponseLike {
+  ok: boolean;
+  status: number;
+  text: () => Promise<string>;
 }
 
-function makeFetchRecorder() {
-  const calls = [];
-  const fetchImpl = async (url, options) => {
+// fetch in runCli is invoked as `globalThis.fetch`-equivalent. `as unknown as typeof fetch`
+// at the boundary widens the structural mock; the production code only reads what we provide.
+const asFetchOverride = (
+  impl: (url: string, options?: { method?: string }) => Promise<ResponseLike>,
+): typeof fetch => impl as unknown as typeof fetch;
+
+function makeFetchRecorder(): FetchRecorder {
+  const calls: RecordedCall[] = [];
+  const fetchImpl = async (
+    url: string,
+    options?: { method?: string },
+  ): Promise<ResponseLike> => {
     calls.push({ url, method: options?.method ?? "GET" });
     if (calls.length === 1) {
       return {
@@ -58,13 +51,13 @@ function makeFetchRecorder() {
 
 describe("api url resolution drives every fetch from runCli", () => {
   test("dispatches the auth-session POST to the production default when no env or flag is set", async () => {
-    await withStateDir(async () => {
+    await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         ["login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50"],
-        { stdout: out.stream, stderr: err.stream, env: {}, fetchImpl },
+        { stdout: out.stream, stderr: err.stream, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(1);
       expect(calls.length).toBeGreaterThan(0);
@@ -75,7 +68,7 @@ describe("api url resolution drives every fetch from runCli", () => {
   });
 
   test("honors ZOMBIE_API_URL env override at the fetch boundary", async () => {
-    await withStateDir(async () => {
+    await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
       const { calls, fetchImpl } = makeFetchRecorder();
@@ -85,7 +78,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           env: { ZOMBIE_API_URL: "http://localhost:3000" },
-          fetchImpl,
+          fetchImpl: asFetchOverride(fetchImpl),
         },
       );
       expect(code).toBe(1);
@@ -94,7 +87,7 @@ describe("api url resolution drives every fetch from runCli", () => {
   });
 
   test("honors --api flag over ZOMBIE_API_URL env at the fetch boundary", async () => {
-    await withStateDir(async () => {
+    await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
       const { calls, fetchImpl } = makeFetchRecorder();
@@ -107,7 +100,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           stdout: out.stream,
           stderr: err.stream,
           env: { ZOMBIE_API_URL: "http://localhost:3000" },
-          fetchImpl,
+          fetchImpl: asFetchOverride(fetchImpl),
         },
       );
       expect(code).toBe(1);
@@ -123,7 +116,7 @@ describe("api url resolution drives every fetch from runCli", () => {
     // invocation silently fell through to the production default. Pre-seed
     // the saved api_url and prove it survives end-to-end as the ctx.apiUrl
     // that drives fetch.
-    await withStateDir(async () => {
+    await withFreshStateDir(async () => {
       await saveCredentials({
         token: "header.payload.sig",
         saved_at: Date.now(),
@@ -133,8 +126,8 @@ describe("api url resolution drives every fetch from runCli", () => {
 
       const out = bufferStream();
       const err = bufferStream();
-      const calls = [];
-      const fetchImpl = async (url) => {
+      const calls: { url: string }[] = [];
+      const fetchImpl = async (url: string): Promise<ResponseLike> => {
         calls.push({ url });
         return {
           ok: true,
@@ -147,11 +140,11 @@ describe("api url resolution drives every fetch from runCli", () => {
         stdout: out.stream,
         stderr: err.stream,
         env: {},
-        fetchImpl,
+        fetchImpl: asFetchOverride(fetchImpl),
       });
 
       expect(calls.length).toBeGreaterThan(0);
-      expect(calls[0].url).toBe("http://localhost:3000/healthz");
+      expect(calls[0]?.url).toBe("http://localhost:3000/healthz");
     });
   });
 
@@ -168,7 +161,12 @@ describe("api url resolution drives every fetch from runCli", () => {
     const CREDS = "https://saved-creds.example";
     const DEFAULT = "https://api.usezombie.com";
 
-    const cases = [
+    interface MatrixCase {
+      set: { flag: 0 | 1; zenv: 0 | 1; aenv: 0 | 1; creds: 0 | 1 };
+      expected: string;
+    }
+
+    const cases: MatrixCase[] = [
       // Flag set → flag wins regardless of all four other inputs.
       { set: { flag: 1, zenv: 1, aenv: 1, creds: 1 }, expected: FLAG },
       { set: { flag: 1, zenv: 1, aenv: 1, creds: 0 }, expected: FLAG },
@@ -199,36 +197,41 @@ describe("api url resolution drives every fetch from runCli", () => {
         .map(([k]) => k);
       const label = setNames.length === 0 ? "nothing set" : setNames.join(" + ");
       test(`${label} → ${c.expected}`, async () => {
-        await withStateDir(async () => {
+        await withFreshStateDir(async () => {
           await saveCredentials({
             token: "header.payload.sig",
             saved_at: Date.now(),
             session_id: "sess_matrix",
             api_url: c.set.creds === 1 ? CREDS : null,
           });
-          const env = {};
+          const env: NodeJS.ProcessEnv = {};
           if (c.set.zenv === 1) env.ZOMBIE_API_URL = ZENV;
           if (c.set.aenv === 1) env.API_URL = AENV;
           const argv = c.set.flag === 1 ? ["--api", FLAG, "doctor"] : ["doctor"];
 
           const out = bufferStream();
           const err = bufferStream();
-          const calls = [];
-          const fetchImpl = async (url) => {
+          const calls: { url: string }[] = [];
+          const fetchImpl = async (url: string): Promise<ResponseLike> => {
             calls.push({ url });
             return { ok: true, status: 200, text: async () => JSON.stringify({ status: "ok" }) };
           };
 
-          await runCli(argv, { stdout: out.stream, stderr: err.stream, env, fetchImpl });
+          await runCli(argv, {
+            stdout: out.stream,
+            stderr: err.stream,
+            env,
+            fetchImpl: asFetchOverride(fetchImpl),
+          });
           expect(calls.length).toBeGreaterThan(0);
-          expect(calls[0].url).toBe(`${c.expected}/healthz`);
+          expect(calls[0]?.url).toBe(`${c.expected}/healthz`);
         });
       });
     }
   });
 
   test("strips trailing slashes from --api before composing the request URL", async () => {
-    await withStateDir(async () => {
+    await withFreshStateDir(async () => {
       const out = bufferStream();
       const err = bufferStream();
       const { calls, fetchImpl } = makeFetchRecorder();
@@ -237,10 +240,10 @@ describe("api url resolution drives every fetch from runCli", () => {
           "--api", "https://api.usezombie.com//",
           "login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50",
         ],
-        { stdout: out.stream, stderr: err.stream, env: {}, fetchImpl },
+        { stdout: out.stream, stderr: err.stream, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(1);
-      expect(calls[0].url).toBe("https://api.usezombie.com/v1/auth/sessions");
+      expect(calls[0]?.url).toBe("https://api.usezombie.com/v1/auth/sessions");
     });
   });
 });

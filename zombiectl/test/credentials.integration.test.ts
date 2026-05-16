@@ -1,17 +1,18 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
-import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "ws_cred_test";
-const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_cred" }, fn);
+const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
+  withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_cred" }, fn);
 
 describe("credential commands", () => {
   test("`credential add` with no existing credential GETs list (empty), POSTs the secret, prints stored", async () => {
     await authedScope(async () => {
-      let postBody = null;
-      const routes = {
+      let postBody: string | null = null;
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/credentials`]: () => jsonResponse(200, { credentials: [] }),
         [`POST /v1/workspaces/${WS_ID}/credentials`]: async (_req, _url, body) => {
           postBody = body;
@@ -33,7 +34,10 @@ describe("credential commands", () => {
           `POST /v1/workspaces/${WS_ID}/credentials`,
         ]);
         // The POST body carries the name + opaque data object intact.
-        const parsed = JSON.parse(postBody);
+        const parsed = JSON.parse(postBody ?? "{}") as {
+          name?: string;
+          data?: Record<string, unknown>;
+        };
         expect(parsed.name).toBe("github");
         expect(parsed.data).toEqual({ token: "ghp_test_value" });
       });
@@ -42,7 +46,7 @@ describe("credential commands", () => {
 
   test("`credential add` skips silently when the name already exists (default upsert guard)", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/credentials`]: () => jsonResponse(200, {
           credentials: [{ name: "github", created_at: 1700000000000 }],
         }),
@@ -66,8 +70,8 @@ describe("credential commands", () => {
 
   test("`credential add --force` skips the preflight GET and POSTs immediately as overwritten", async () => {
     await authedScope(async () => {
-      let postBody = null;
-      const routes = {
+      let postBody: string | null = null;
+      const routes: MockRoutes = {
         // No GET handler — if --force trips the preflight, this becomes a 404
         // and the CLI errors out, which the test catches.
         [`POST /v1/workspaces/${WS_ID}/credentials`]: async (_req, _url, body) => {
@@ -85,7 +89,10 @@ describe("credential commands", () => {
         expect(code).toBe(0);
         expect(out.read()).toMatch(/overwritten/i);
         expect(calls.map((c) => c.method)).toEqual(["POST"]);
-        const parsed = JSON.parse(postBody);
+        const parsed = JSON.parse(postBody ?? "{}") as {
+          name?: string;
+          data?: Record<string, unknown>;
+        };
         expect(parsed.data).toEqual({ token: "ghp_force" });
       });
     });
@@ -93,7 +100,7 @@ describe("credential commands", () => {
 
   test("`credential list` GETs the vault and prints names without secret bytes", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/credentials`]: () => jsonResponse(200, {
           credentials: [
             { name: "github", created_at: 1700000000000 },

@@ -24,21 +24,26 @@ import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
 import { saveWorkspaces } from "../src/lib/state.ts";
-import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.js";
-import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
+import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.ts";
+import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000fa17e1";
 const ZOMBIE_ID = "01900000-0000-7000-8000-000000fa17e2";
-const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fail" }, fn);
+const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
+  withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fail" }, fn);
 
-function errorEnvelope(code, message, requestId = "req_fail_test") {
+function errorEnvelope(
+  code: string,
+  message: string,
+  requestId = "req_fail_test",
+): { error: { code: string; message: string }; request_id: string } {
   return { error: { code, message }, request_id: requestId };
 }
 
 describe("failure modes — login surface", () => {
   test("auth service 503 with UZ-AUTH-004 surfaces the code on stderr and exits 1", async () => {
     await withFreshStateDir(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         "POST /v1/auth/sessions": () => jsonResponse(503,
           errorEnvelope("UZ-AUTH-004", "Authentication service unavailable")),
       };
@@ -65,7 +70,7 @@ describe("failure modes — workspace surface", () => {
       // Start the customer in a logged-in but workspace-less state so the
       // failed `workspace add` is the moment they hit the paused error.
       await saveWorkspaces({ current_workspace_id: null, items: [] });
-      const routes = {
+      const routes: MockRoutes = {
         "POST /v1/workspaces": () => jsonResponse(402,
           errorEnvelope("UZ-WORKSPACE-002", "Workspace paused")),
       };
@@ -132,7 +137,7 @@ describe("failure modes — install surface (local + server)", () => {
           "---\nname: test-zombie\n---\n# test zombie\n", { mode: 0o644 });
         await fs.writeFile(path.join(tmpDir, "TRIGGER.md"),
           "---\nname: test-zombie\n---\n# trigger\n", { mode: 0o644 });
-        const routes = {
+        const routes: MockRoutes = {
           [`POST /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(409,
             errorEnvelope("UZ-ZMB-006", "Zombie name 'test-zombie' already exists in this workspace")),
         };
@@ -164,7 +169,7 @@ describe("failure modes — runtime / observability surface", () => {
           "---\nname: runner-test\n---\n# runner test\n", { mode: 0o644 });
         await fs.writeFile(path.join(tmpDir, "TRIGGER.md"),
           "---\nname: runner-test\n---\n# trigger\n", { mode: 0o644 });
-        const routes = {
+        const routes: MockRoutes = {
           // Step 1: install returns 201 — the server side is happy.
           [`POST /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(201, {
             zombie_id: ZOMBIE_ID,
@@ -230,7 +235,7 @@ describe("failure modes — runtime / observability surface", () => {
 
   test("logs fetched with an expired token returns UZ-AUTH-003 / 401 — user knows to re-login", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`]:
           () => jsonResponse(401,
             errorEnvelope("UZ-AUTH-003", "Token expired — run `zombiectl login` to refresh")),
@@ -260,7 +265,7 @@ describe("failure modes — infra / server-down surface", () => {
       //   workspace probe → 200 (so it's not a confounding second failure)
       // doctor returns 0 iff every check passes (core-ops.js:84,105). With one
       // failed check, it deterministically returns 1 — pinned strictly here.
-      const routes = {
+      const routes: MockRoutes = {
         "GET /healthz": () => jsonResponse(503,
           errorEnvelope("UZ-INTERNAL-001", "Database unavailable")),
         [`GET /v1/workspaces/${WS_ID}/zombies`]: () => jsonResponse(200, { items: [] }),
