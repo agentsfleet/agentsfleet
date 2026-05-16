@@ -1,1 +1,1 @@
-../../dotfiles/scripts/audit-spec-template.sh
+/Users/kishore/Projects/dotfiles/scripts/audit-spec-template.sh
