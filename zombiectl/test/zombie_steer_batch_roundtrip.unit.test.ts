@@ -21,10 +21,26 @@ import {
   ui,
   WS_ID,
 } from "./helpers.ts";
+import type {
+  CommandCtx,
+  CommandDeps,
+  Workspaces,
+} from "../src/commands/types.ts";
+import type { SseFrame } from "../src/lib/sse.ts";
+import type { WriteStream } from "../src/output/index.ts";
+
+type StreamArg = WriteStream | NodeJS.WritableStream;
+
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa90";
 const EVENT_ID = "1777400000000-0";
 
-function makeCtx(overrides = {}) {
+interface CtxBundle {
+  ctx: CommandCtx;
+  readStdout: () => string;
+  readStderr: () => string;
+}
+
+function makeCtx(overrides: Partial<CommandCtx> = {}): CtxBundle {
   const out = makeBufferStream();
   const err = makeBufferStream();
   return {
@@ -34,6 +50,7 @@ function makeCtx(overrides = {}) {
       jsonMode: false,
       apiUrl: "https://api.test.invalid",
       token: "test-token",
+      env: {},
       ...overrides,
     },
     readStdout: out.read,
@@ -41,15 +58,41 @@ function makeCtx(overrides = {}) {
   };
 }
 
-const workspaces = { current_workspace_id: WS_ID, items: [] };
+function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps {
+  const base = {
+    request: async () => ({ event_id: EVENT_ID }),
+    apiHeaders: () => ({}),
+    streamGet: async () => {},
+    ui,
+    printJson: () => {},
+    writeLine: () => {},
+    writeError: () => {},
+    ...overrides,
+  };
+  return base as unknown as CommandDeps;
+}
+
+function asString(body: unknown): string {
+  if (typeof body !== "string") throw new Error("expected string body");
+  return body;
+}
+
+// Test SSE frames omit the `id` field intentionally — commandSteer reads
+// only `.type` and `.data` for its frame-routing logic; an SSE without
+// `id:` is valid per the spec.
+type TestFrame = Pick<SseFrame, "type" | "data">;
+
+const workspaces: Workspaces = { current_workspace_id: WS_ID, items: [] };
 
 test("steer batch: POST /messages + SSE roundtrip prints chunks and exits 0", async () => {
-  let postUrl = null;
-  let postBody = null;
-  let streamUrl = null;
-  let streamHeaders = null;
+  const captured: {
+    postUrl: string | null;
+    postBody: { message?: string } | null;
+    streamUrl: string | null;
+    streamHeaders: Record<string, string> | null;
+  } = { postUrl: null, postBody: null, streamUrl: null, streamHeaders: null };
 
-  const scriptedFrames = [
+  const scriptedFrames: TestFrame[] = [
     { type: "event_received", data: { event_id: EVENT_ID, actor: "steer:test" } },
     { type: "tool_call_started", data: { event_id: EVENT_ID, name: "http.request" } },
     { type: "chunk", data: { event_id: EVENT_ID, text: "Hello" } },
@@ -58,38 +101,39 @@ test("steer batch: POST /messages + SSE roundtrip prints chunks and exits 0", as
     { type: "event_complete", data: { event_id: EVENT_ID, status: "processed" } },
   ];
 
-  const deps = {
+  const deps = makeDeps({
     request: async (_ctx, url, opts) => {
-      if (opts.method === "POST" && url.includes("/messages")) {
-        postUrl = url;
-        postBody = JSON.parse(opts.body);
+      if (opts?.method === "POST" && url.includes("/messages")) {
+        captured.postUrl = url;
+        captured.postBody = JSON.parse(asString(opts.body)) as { message?: string };
         return { event_id: EVENT_ID };
       }
-      throw new Error(`unexpected request: ${opts.method} ${url}`);
+      throw new Error(`unexpected request: ${opts?.method ?? "?"} ${url}`);
     },
     apiHeaders: () => ({ Authorization: "Bearer test-token" }),
     streamGet: async (url, headers, onEvent) => {
-      streamUrl = url;
-      streamHeaders = headers;
+      captured.streamUrl = url;
+      captured.streamHeaders = { ...headers };
       for (const frame of scriptedFrames) {
-        const result = onEvent(frame);
+        const result = onEvent({ id: null, ...frame });
         if (result === false) return; // terminal — caller asked to stop
       }
     },
-    ui,
-    printJson: () => {},
-    writeLine: (stream, line) => { if (line !== undefined) stream.write(`${line}\n`); else stream.write("\n"); },
-    writeError: (ctx, _code, msg) => ctx.stderr.write(`${msg}\n`),
-  };
+    writeLine: (stream: StreamArg, line?: string) => {
+      if (line !== undefined) stream.write(`${line}\n`);
+      else stream.write("\n");
+    },
+    writeError: (ctx, _code, msg) => { ctx.stderr?.write(`${msg}\n`); },
+  });
 
   const { ctx, readStdout, readStderr } = makeCtx();
   const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
 
   assert.equal(code, 0);
-  assert.ok(postUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/messages`));
-  assert.equal(postBody.message, "ping");
-  assert.ok(streamUrl.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events/stream`));
-  assert.equal(streamHeaders.Authorization, "Bearer test-token");
+  assert.ok(captured.postUrl?.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/messages`));
+  assert.equal(captured.postBody?.message, "ping");
+  assert.ok(captured.streamUrl?.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events/stream`));
+  assert.equal(captured.streamHeaders?.["Authorization"], "Bearer test-token");
 
   const out = readStdout();
   assert.ok(out.includes("[claw] Hello"), `stdout missing first chunk: ${out}`);
@@ -99,17 +143,11 @@ test("steer batch: POST /messages + SSE roundtrip prints chunks and exits 0", as
 });
 
 test("steer batch: agent_error terminal status yields exit 1", async () => {
-  const deps = {
-    request: async () => ({ event_id: EVENT_ID }),
-    apiHeaders: () => ({}),
+  const deps = makeDeps({
     streamGet: async (_url, _h, onEvent) => {
-      onEvent({ type: "event_complete", data: { event_id: EVENT_ID, status: "agent_error" } });
+      onEvent({ id: null, type: "event_complete", data: { event_id: EVENT_ID, status: "agent_error" } });
     },
-    ui,
-    printJson: () => {},
-    writeLine: () => {},
-    writeError: () => {},
-  };
+  });
   const { ctx } = makeCtx();
   const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
   assert.equal(code, 1);
@@ -117,15 +155,10 @@ test("steer batch: agent_error terminal status yields exit 1", async () => {
 
 test("steer batch: missing message returns exit 2 without calling API", async () => {
   let calls = 0;
-  const deps = {
+  const deps = makeDeps({
     request: async () => { calls += 1; return {}; },
-    apiHeaders: () => ({}),
     streamGet: async () => { calls += 1; },
-    ui,
-    printJson: () => {},
-    writeLine: () => {},
-    writeError: () => {},
-  };
+  });
   const { ctx } = makeCtx();
   const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID]), workspaces, deps);
   assert.equal(code, 2);
@@ -133,15 +166,10 @@ test("steer batch: missing message returns exit 2 without calling API", async ()
 });
 
 test("steer batch: missing event_id in POST response returns exit 1", async () => {
-  const deps = {
+  const deps = makeDeps({
     request: async () => ({}), // No event_id.
-    apiHeaders: () => ({}),
     streamGet: async () => { throw new Error("should not be called"); },
-    ui,
-    printJson: () => {},
-    writeLine: () => {},
-    writeError: () => {},
-  };
+  });
   const { ctx } = makeCtx();
   const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
   assert.equal(code, 1);
@@ -149,25 +177,23 @@ test("steer batch: missing event_id in POST response returns exit 1", async () =
 
 test("steer batch: filters frames whose event_id does not match", async () => {
   const otherEvent = "9999999999999-0";
-  const scriptedFrames = [
+  const scriptedFrames: TestFrame[] = [
     // Noise from a sibling zombie/event — must not render.
     { type: "chunk", data: { event_id: otherEvent, text: "OTHER NOISE" } },
     { type: "chunk", data: { event_id: EVENT_ID, text: "real" } },
     { type: "event_complete", data: { event_id: EVENT_ID, status: "processed" } },
   ];
-  const deps = {
-    request: async () => ({ event_id: EVENT_ID }),
-    apiHeaders: () => ({}),
+  const deps = makeDeps({
     streamGet: async (_url, _h, onEvent) => {
       for (const f of scriptedFrames) {
-        if (onEvent(f) === false) return;
+        if (onEvent({ id: null, ...f }) === false) return;
       }
     },
-    ui,
-    printJson: () => {},
-    writeLine: (stream, line) => { if (line !== undefined) stream.write(`${line}\n`); else stream.write("\n"); },
-    writeError: () => {},
-  };
+    writeLine: (stream: StreamArg, line?: string) => {
+      if (line !== undefined) stream.write(`${line}\n`);
+      else stream.write("\n");
+    },
+  });
   const { ctx, readStdout } = makeCtx();
   const code = await commandSteer(ctx, buildParsed([ZOMBIE_ID, "ping"]), workspaces, deps);
   assert.equal(code, 0);
