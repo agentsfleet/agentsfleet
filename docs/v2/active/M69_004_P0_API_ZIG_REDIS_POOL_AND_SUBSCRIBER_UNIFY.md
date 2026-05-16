@@ -41,7 +41,7 @@
 
 ## Overview
 
-**Goal (testable):** After M69_004 lands, `src/queue/redis_client.zig` no longer holds a `std.Thread.Mutex` across the network round-trip. Concurrent XADD / PUBLISH / XACK calls from worker threads + HTTP handlers each acquire their own pooled connection (default pool size 8, configurable via `REDIS_POOL_MAX_IDLE`), execute their command without contending on a shared lock, and release. A throughput bench (`tests/bench/redis_xadd_concurrency_bench.zig`) lands in this milestone and captures absolute ops/sec for the new pool against local Redis with 8 concurrent producers — operator-facing evidence, not a ratio assertion (the single-mutex baseline was eliminated by the slice-3 Client swap before any measurement could be taken on this branch; bench is observational from this milestone forward). `src/queue/redis_pubsub.zig` is deleted; its sole consumer (test harness) retargets to a unified `Subscriber` in `redis_subscriber.zig` with an `InitOptions { read_timeout_ms: ?u32 = null }` parameter. Request-path connections honor `REDIS_REQUEST_TIMEOUT_MS` (default 5000 ms) so a frozen Upstash proxy can't pin a worker thread indefinitely. Redis-level error messages (e.g. `READONLY`, `BUSYGROUP`) are logged before being mapped to `error.RedisCommandError` so operators see the underlying cause.
+**Goal (testable):** After M69_004 lands, `src/queue/redis_client.zig` no longer holds a `std.Thread.Mutex` across the network round-trip. Concurrent XADD / PUBLISH / XACK calls from worker threads + HTTP handlers each acquire their own pooled connection (default pool size 8, configurable via `REDIS_POOL_MAX_IDLE`), execute their command without contending on a shared lock, and release. A throughput bench (`tests/bench/redis_xadd_concurrency.zig`) lands in this milestone and captures absolute ops/sec for the new pool against local Redis with 8 concurrent producers — operator-facing evidence, not a ratio assertion (the single-mutex baseline was eliminated by the slice-3 Client swap before any measurement could be taken on this branch; bench is observational from this milestone forward). `src/queue/redis_pubsub.zig` is deleted; its sole consumer (test harness) retargets to a unified `Subscriber` in `redis_subscriber.zig` with an `InitOptions { read_timeout_ms: ?u32 = null }` parameter. Request-path connections honor `REDIS_REQUEST_TIMEOUT_MS` (default 5000 ms) so a frozen Upstash proxy can't pin a worker thread indefinitely. Redis-level error messages (e.g. `READONLY`, `BUSYGROUP`) are logged before being mapped to `error.RedisCommandError` so operators see the underlying cause.
 
 **Problem:** Three problems compounded in one file:
 
@@ -75,7 +75,13 @@
 | `tests/integration/redis_pool_test.zig` | CREATE | Pool acquire/release, max_idle behavior, eager preconnect, retry loop. |
 | `tests/integration/redis_subscriber_unified_test.zig` | CREATE | Subscriber with and without read_timeout_ms. |
 | `tests/integration/redis_request_timeout_test.zig` | CREATE | SO_RCVTIMEO fires when the server doesn't respond. |
-| `tests/bench/redis_xadd_concurrency_bench.zig` | CREATE | XADD concurrency bench: 8 producer threads against local Redis. Observational — captures aggregate ops/sec for the new pool. See §8 for the methodology pivot. |
+| `tests/bench/redis_xadd_concurrency.zig` | CREATE | XADD concurrency bench: 8 producer threads against local Redis. Observational — captures aggregate ops/sec for the new pool. See §8 for the methodology pivot. |
+| `tests/bench/micro.zig` | RENAME (from `src/zbench_micro.zig`) | Tier-1 micro-bench runner relocated under the new `tests/bench/` home. Drops the vestigial `z`/`bench` prefix (folder name already supplies the "bench" context; `zbench` is the library dep, not the file's purpose). Slice 8 reorg, RULE NLR touch-it-fix-it umbrella. |
+| `tests/bench/micro_fixtures.zig` | RENAME (from `src/zbench_fixtures.zig`) | Same relocation; sibling of `micro.zig`. |
+| `make/bench.mk` | RENAME (from `make/test-bench.mk`) | File no longer scoped to "test-bench" — owns `bench`, `_bench-micro`, `_bench-loadgen`, `memleak`, and the new `bench-redis` target. Same `_ensure-test-bin` shared helper. |
+| `make/test.mk` | EDIT | `include` directive path follows the rename. |
+| `src/zombie/keyset_cursor.zig` | EDIT | Comment-only path correction (`src/zbench_micro.zig` → `tests/bench/micro.zig`); RULE NLR touch-it-fix-it. |
+| `build.zig` | EDIT | Updates `bench-micro` exe `root_source_file` to the new path; renames local `zbench_micro` / `run_zbench_micro` vars + exe artifact name to drop the `z` prefix (`bench-micro`); adds a new `bench-redis` executable + step rooted at `tests/bench/redis_xadd_concurrency.zig`, gated behind `-Dwith-bench-tools=true` (no `zbench` dep needed — raw `std.Thread` + queue façade). |
 
 ---
 
@@ -284,7 +290,9 @@ At every `value.deinit(self.alloc)` site in `redis_client.zig` that's preceded b
 
 ### §8 — Bench + integration tests
 
-`tests/bench/redis_xadd_concurrency_bench.zig` runs 8 producer threads, captures absolute XADD throughput (ops/sec) for the pool-of-8 Client against local Redis. **Observational, single-stage** — the ≥4× ratio framing in earlier drafts assumed a pre-slice-3 baseline measurement on the same branch; the actual EXECUTE-order swapped the single-mutex Client before any baseline could be captured, so this milestone records the new pool's number directly and leaves ratio analysis to operator inspection against the audit-documented bottleneck (~40 ops/sec/connection, spec L8). Both spec-rule-honoring options (rebase to insert pre-slice-3 commit, or split into a follow-up M69_005) were explicitly rejected by Captain in favor of a single-stage observational bench in this milestone.
+`tests/bench/redis_xadd_concurrency.zig` runs 8 producer threads, captures absolute XADD throughput (ops/sec) for the pool-of-8 Client against local Redis. **Observational, single-stage** — the ≥4× ratio framing in earlier drafts assumed a pre-slice-3 baseline measurement on the same branch; the actual EXECUTE-order swapped the single-mutex Client before any baseline could be captured, so this milestone records the new pool's number directly and leaves ratio analysis to operator inspection against the audit-documented bottleneck (~40 ops/sec/connection, spec L8). Both spec-rule-honoring options (rebase to insert pre-slice-3 commit, or split into a follow-up M69_005) were explicitly rejected by Captain in favor of a single-stage observational bench in this milestone.
+
+**Bench framework reorg (slice 8 co-tenant):** `tests/bench/` is established as the home for all Zig benches. The pre-existing `src/zbench_micro.zig` + `src/zbench_fixtures.zig` (Tier-1 hot-path micros from M25_001) move to `tests/bench/micro.zig` + `tests/bench/micro_fixtures.zig`. `make/test-bench.mk` becomes `make/bench.mk` to match its actual content (`bench`, `bench-redis`, `memleak`, loadgen — never was "test-bench"). The `bench-micro` step + exe name drops the `z` prefix to `bench-micro` (parallel to the new `bench-redis`). No behavioral change to micro benches.
 
 **Methodology:**
 
@@ -296,6 +304,8 @@ At every `value.deinit(self.alloc)` site in `redis_client.zig` that's preceded b
   - Aggregate ops/sec.
   - Per-thread completion ordering (sanity check — all 8 threads finish within a small spread, confirming no serialization remained).
 - Number pasted into PR Session Notes with the bench commit SHA.
+
+**Wiring:** new `bench-redis` build step in `build.zig` (sibling of `bench-micro`, both gated on `-Dwith-bench-tools=true`); new `make bench-redis` target as the operator-facing entry point. Bench skip-by-default unless `BENCH_REDIS=1` so accidental `zig build bench-redis` without a running Redis exits clean instead of hanging on a connect attempt.
 
 **CI handling:** bench is marked `// skip-in-ci` (no Redis service container in CI today). Local-only evidence — agent runs the bench on their dev machine, pastes output. If a future change adds a CI Redis container, flip the skip and let CI re-run continuously.
 
@@ -526,7 +536,7 @@ try conn.exec(
 ## Acceptance Criteria
 
 - [ ] Every Test Specification row passes — verify: `make test && make test-integration && make memleak`.
-- [ ] Bench run clean — verify: `tests/bench/redis_xadd_concurrency_bench.zig` exits 0 against local Redis; aggregate ops/sec pasted in PR Session Notes.
+- [ ] Bench run clean — verify: `BENCH_REDIS=1 make bench-redis` exits 0 against local Redis; aggregate ops/sec pasted in PR Session Notes.
 - [ ] No `std.Thread.Mutex` in `redis_client.zig` — verify: `grep -c "std.Thread.Mutex" src/queue/redis_client.zig` returns `0`.
 - [x] `redis_pubsub.zig` deleted — verify: `test ! -f src/queue/redis_pubsub.zig`.
 - [x] All `redis_pubsub` references gone — verify: `grep -rn "redis_pubsub" src/` returns 0 hits.
