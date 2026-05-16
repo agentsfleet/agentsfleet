@@ -209,7 +209,17 @@ pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValu
     while (true) : (attempt += 1) {
         const conn = try self.pool.acquire();
         const resp = conn.command(argv) catch |err| {
-            const resumable = redis_errors.isResumable(err);
+            // OOM is a host-level allocator failure, not a transport
+            // corruption — the conn's RESP framing is intact (see fix in
+            // redis_connection.zig commandAllowError catch block). Release
+            // healthy and propagate the real root cause.
+            if (err == error.OutOfMemory) {
+                self.pool.release(conn, true);
+                return error.OutOfMemory;
+            }
+            // @errorCast narrows from Connection.Error (incl. OutOfMemory)
+            // to RedisError — safe because the OOM branch returned above.
+            const resumable = redis_errors.isResumable(@errorCast(err));
             self.pool.release(conn, resumable);
             if (resumable) {
                 log.err("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
@@ -232,7 +242,12 @@ pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protoco
     while (true) : (attempt += 1) {
         const conn = try self.pool.acquire();
         const resp = conn.commandAllowError(argv) catch |err| {
-            const resumable = redis_errors.isResumable(err);
+            // OOM passthrough — see command() above.
+            if (err == error.OutOfMemory) {
+                self.pool.release(conn, true);
+                return error.OutOfMemory;
+            }
+            const resumable = redis_errors.isResumable(@errorCast(err));
             self.pool.release(conn, resumable);
             if (resumable or attempt + 1 >= MAX_ATTEMPTS) return err;
             self.pool.recordReconnect();
