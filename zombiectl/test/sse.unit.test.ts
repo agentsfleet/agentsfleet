@@ -19,7 +19,8 @@ describe("parseSseFrame", () => {
   it("ignores comment lines", () => {
     const ev = parseSseFrame(": heartbeat\nid: 0\nevent: event_complete\ndata: {\"event_id\":\"a\",\"status\":\"processed\"}");
     expect(ev?.type).toBe("event_complete");
-    expect(ev?.data?.status).toBe("processed");
+    const data = ev?.data as { status?: string } | undefined;
+    expect(data?.status).toBe("processed");
   });
 
   it("falls back to raw data when JSON.parse fails", () => {
@@ -40,6 +41,7 @@ describe("parseSseFrame", () => {
     const frame = "id: 5\r\nevent: chunk\r\ndata: {\"event_id\":\"x\"}";
     const ev = parseSseFrame(frame);
     expect(ev?.type).toBe("chunk");
-    expect(ev?.data?.event_id).toBe("x");
+    const data = ev?.data as { event_id?: string } | undefined;
+    expect(data?.event_id).toBe("x");
   });
 });

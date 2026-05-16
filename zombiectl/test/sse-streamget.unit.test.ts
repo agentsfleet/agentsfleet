@@ -1,38 +1,60 @@
 import { test, expect } from "bun:test";
-import { streamGet } from "../src/lib/sse.ts";
+import { streamGet, type SseFrame } from "../src/lib/sse.ts";
+import { asFetchImpl, type ResponseLike } from "./helpers.ts";
 
 // streamGet covers the full GET-stream lifecycle: header injection,
 // frame boundary slicing, JSON-parsed event delivery, error mapping,
 // timeout, abort, and graceful early termination via onEvent → false.
 
-function fakeStream(chunks) {
+interface FakeReader {
+  read(): Promise<{ done: true } | { done: false; value: Uint8Array }>;
+}
+interface FakeStream { getReader(): FakeReader }
+
+function fakeStream(chunks: string[]): FakeStream {
   let i = 0;
   return {
     getReader() {
       return {
         async read() {
-          if (i >= chunks.length) return { done: true };
-          const value = new TextEncoder().encode(chunks[i++]);
-          return { done: false, value };
+          if (i >= chunks.length) return { done: true } as const;
+          const chunk = chunks[i++];
+          const value = new TextEncoder().encode(chunk ?? "");
+          return { done: false, value } as const;
         },
       };
     },
   };
 }
 
-function fakeFetch(impl) {
-  return (url, init) => Promise.resolve(impl(url, init));
+type FakeFetchResult = ResponseLike & { body?: FakeStream | null };
+
+function fakeFetch(impl: (url: string, init?: RequestInit) => FakeFetchResult | Promise<FakeFetchResult>) {
+  return asFetchImpl((url, init) => Promise.resolve(impl(url, init)) as Promise<ResponseLike>);
+}
+
+// Partial fake — apiRequest paths called by streamGet only touch a
+// subset of Response. ResponseLike's required fields are filled when
+// the production code reads them; tests stay minimal.
+function partialResponse(over: Partial<ResponseLike> & { body?: FakeStream | null }): FakeFetchResult {
+  return {
+    ok: true,
+    status: 200,
+    statusText: "OK",
+    headers: { get: () => null },
+    text: async () => "",
+    ...over,
+  };
 }
 
 test("streamGet decodes \\n\\n-separated frames into parsed events", async () => {
-  const fetchImpl = fakeFetch(() => ({
-    ok: true,
+  const fetchImpl = fakeFetch(() => partialResponse({
     body: fakeStream([
       "id: 1\nevent: chunk\ndata: {\"text\":\"a\"}\n\n",
       "id: 2\nevent: done\ndata: {\"text\":\"b\"}\n\n",
     ]),
   }));
-  const events = [];
+  const events: SseFrame[] = [];
   await streamGet("https://example/x", {}, (e) => { events.push(e); }, { fetchImpl, timeoutMs: 0 });
   expect(events).toHaveLength(2);
   expect(events[0]).toEqual({ id: "1", type: "chunk", data: { text: "a" } });
@@ -40,14 +62,13 @@ test("streamGet decodes \\n\\n-separated frames into parsed events", async () =>
 });
 
 test("streamGet stops early when onEvent returns false", async () => {
-  const fetchImpl = fakeFetch(() => ({
-    ok: true,
+  const fetchImpl = fakeFetch(() => partialResponse({
     body: fakeStream([
       "event: a\ndata: 1\n\n",
       "event: b\ndata: 2\n\n",
     ]),
   }));
-  const events = [];
+  const events: SseFrame[] = [];
   await streamGet("https://example/x", {}, (e) => {
     events.push(e);
     return false;
@@ -56,7 +77,7 @@ test("streamGet stops early when onEvent returns false", async () => {
 });
 
 test("streamGet throws ApiError when the response is non-2xx", async () => {
-  const fetchImpl = fakeFetch(() => ({
+  const fetchImpl = fakeFetch(() => partialResponse({
     ok: false,
     status: 500,
     statusText: "Server Error",
@@ -71,8 +92,10 @@ test("streamGet throws when fetch is unavailable", async () => {
   // Pass an explicit non-function impl AND temporarily knock out
   // globalThis.fetch so the typeof guard can fire.
   const originalFetch = globalThis.fetch;
-  // @ts-expect-error - intentional knock-out for the NO_FETCH branch
-  globalThis.fetch = undefined;
+  // exactOptionalPropertyTypes blocks `globalThis.fetch = undefined`;
+  // delete erases the property, which the NO_FETCH typeof-guard sees as
+  // `undefined` at runtime same as assignment did.
+  delete (globalThis as { fetch?: typeof fetch }).fetch;
   try {
     await expect(
       streamGet("https://example/x", {}, () => {}, { timeoutMs: 0 }),
@@ -83,7 +106,7 @@ test("streamGet throws when fetch is unavailable", async () => {
 });
 
 test("streamGet throws when the response body is not streamable", async () => {
-  const fetchImpl = fakeFetch(() => ({ ok: true, body: null }));
+  const fetchImpl = fakeFetch(() => partialResponse({ body: null }));
   await expect(
     streamGet("https://example/x", {}, () => {}, { fetchImpl, timeoutMs: 0 }),
   ).rejects.toMatchObject({ code: "NO_STREAM_BODY" });
@@ -117,13 +140,14 @@ test("streamGet maps a timeout AbortError to ApiError(TIMEOUT, 408)", async () =
 });
 
 test("streamGet sends Accept: text/event-stream and merges caller headers", async () => {
-  let captured;
-  const fetchImpl = fakeFetch((_, init) => {
+  let captured: RequestInit | undefined;
+  const fetchImpl = fakeFetch((_url, init) => {
     captured = init;
-    return { ok: true, body: fakeStream([]) };
+    return partialResponse({ body: fakeStream([]) });
   });
   await streamGet("https://example/x", { Authorization: "Bearer x" }, () => {}, { fetchImpl, timeoutMs: 0 });
-  expect(captured.method).toBe("GET");
-  expect(captured.headers.Accept).toBe("text/event-stream");
-  expect(captured.headers.Authorization).toBe("Bearer x");
+  expect(captured?.method).toBe("GET");
+  const headers = captured?.headers as Record<string, string> | undefined;
+  expect(headers?.Accept).toBe("text/event-stream");
+  expect(headers?.Authorization).toBe("Bearer x");
 });

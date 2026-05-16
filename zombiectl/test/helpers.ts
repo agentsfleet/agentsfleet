@@ -1,5 +1,5 @@
 import { Writable } from "node:stream";
-import { ApiError } from "../src/lib/http.ts";
+import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
 import {
   commandStatus,
@@ -44,6 +44,24 @@ import type {
 } from "../src/commands/types.ts";
 
 export { ApiError };
+export type { FetchImpl };
+
+// Structural Response mocks for tests that hit apiRequest / streamFetch
+// only need ok/status/statusText/headers.get/text (+ optional body for SSE).
+// Double-cast widens to FetchImpl at the test→prod boundary so production
+// code paths still face full strict-mode pressure.
+export interface ResponseLike {
+  ok: boolean;
+  status: number;
+  statusText: string;
+  headers: { get: (name: string) => string | null };
+  text: () => Promise<string>;
+  body?: unknown;
+}
+
+export const asFetchImpl = (
+  impl: (url: string, init?: RequestInit) => Promise<ResponseLike>,
+): FetchImpl => impl as unknown as FetchImpl;
 
 export interface UiTheme {
   ok: (s: string) => string;
