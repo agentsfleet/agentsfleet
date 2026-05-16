@@ -6,8 +6,9 @@ import path from "node:path";
 import { Writable } from "node:stream";
 import { runCli } from "../src/cli.ts";
 import { loadWorkspaces, saveWorkspaces } from "../src/lib/state.ts";
+import { asFetchOverride, makeHeaders, type ResponseLike } from "./helpers.ts";
 
-function bufferStream() {
+function bufferStream(): { stream: Writable; read: () => string } {
   let data = "";
   return {
     stream: new Writable({
@@ -20,7 +21,7 @@ function bufferStream() {
   };
 }
 
-async function withStateDir(fn) {
+async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const old = process.env.ZOMBIE_STATE_DIR;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-align-"));
   process.env.ZOMBIE_STATE_DIR = dir;
@@ -77,8 +78,8 @@ test("workspace use <id> writes current_workspace_id to state", async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [
-        { workspace_id: "01900000-0000-7000-8000-000000000001", created_at: 1 },
-        { workspace_id: "01900000-0000-7000-8000-000000000002", created_at: 2 },
+        { workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 },
+        { workspace_id: "01900000-0000-7000-8000-000000000002", name: null, created_at: 2 },
       ],
     });
     const out = bufferStream();
@@ -99,7 +100,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -119,7 +120,7 @@ test("workspace use --json emits {active: <id>}", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: null,
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
@@ -227,18 +228,19 @@ test("zombie list calls the paginated endpoint and prints rows", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
-    const urls = [];
-    const fetchImpl = async (url, opts) => {
+    const urls: string[] = [];
+    const fetchImpl = asFetchOverride(async (url, opts): Promise<ResponseLike> => {
       urls.push(url);
-      assert.equal(opts.method, "GET");
+      assert.equal(opts?.method, "GET");
       return {
         ok: true,
         status: 200,
-        headers: new Map([["content-type", "application/json"]]),
+        statusText: "OK",
+        headers: makeHeaders([["content-type", "application/json"]]),
         text: async () => JSON.stringify({
           items: [
             { zombie_id: "zom_1", name: "alpha", status: "active" },
@@ -248,7 +250,7 @@ test("zombie list calls the paginated endpoint and prints rows", async () => {
           cursor: "1713700000000:zom_2",
         }),
       };
-    };
+    });
     const code = await runCli(["list", "--limit", "2"], {
       stdout: out.stream,
       stderr: err.stream,
@@ -256,7 +258,7 @@ test("zombie list calls the paginated endpoint and prints rows", async () => {
       fetchImpl,
     });
     assert.equal(code, 0);
-    assert.ok(urls[0].includes("/v1/workspaces/01900000-0000-7000-8000-000000000001/zombies?limit=2"));
+    assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000001/zombies?limit=2"));
     const text = out.read();
     assert.ok(text.includes("alpha"));
     assert.ok(text.includes("beta"));
@@ -268,16 +270,17 @@ test("zombie list --json returns the raw envelope incl. cursor", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
-      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", created_at: 1 }],
+      items: [{ workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 }],
     });
     const out = bufferStream();
     const err = bufferStream();
-    const fetchImpl = async () => ({
+    const fetchImpl = asFetchOverride(async (): Promise<ResponseLike> => ({
       ok: true,
       status: 200,
-      headers: new Map([["content-type", "application/json"]]),
+      statusText: "OK",
+      headers: makeHeaders([["content-type", "application/json"]]),
       text: async () => JSON.stringify({ items: [], total: 0, cursor: null }),
-    });
+    }));
     await runCli(["--json", "list"], {
       stdout: out.stream,
       stderr: err.stream,
@@ -294,29 +297,30 @@ test("zombie list honors --workspace-id override over current_workspace_id", asy
     await saveWorkspaces({
       current_workspace_id: "01900000-0000-7000-8000-000000000001",
       items: [
-        { workspace_id: "01900000-0000-7000-8000-000000000001", created_at: 1 },
-        { workspace_id: "01900000-0000-7000-8000-000000000002", created_at: 2 },
+        { workspace_id: "01900000-0000-7000-8000-000000000001", name: null, created_at: 1 },
+        { workspace_id: "01900000-0000-7000-8000-000000000002", name: null, created_at: 2 },
       ],
     });
     const out = bufferStream();
     const err = bufferStream();
-    const urls = [];
-    const fetchImpl = async (url) => {
+    const urls: string[] = [];
+    const fetchImpl = asFetchOverride(async (url): Promise<ResponseLike> => {
       urls.push(url);
       return {
         ok: true,
         status: 200,
-        headers: new Map([["content-type", "application/json"]]),
+        statusText: "OK",
+        headers: makeHeaders([["content-type", "application/json"]]),
         text: async () => JSON.stringify({ items: [], total: 0, cursor: null }),
       };
-    };
+    });
     await runCli(["list", "--workspace-id", "01900000-0000-7000-8000-000000000002"], {
       stdout: out.stream,
       stderr: err.stream,
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
       fetchImpl,
     });
-    assert.ok(urls[0].includes("/v1/workspaces/01900000-0000-7000-8000-000000000002/zombies"), `expected 01900000-0000-7000-8000-000000000002 URL, got ${urls[0]}`);
+    assert.ok(urls[0]?.includes("/v1/workspaces/01900000-0000-7000-8000-000000000002/zombies"), `expected 01900000-0000-7000-8000-000000000002 URL, got ${urls[0]}`);
   });
 });
 

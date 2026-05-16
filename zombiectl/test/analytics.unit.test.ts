@@ -33,9 +33,10 @@ test("analytics resolveConfig honors explicit env key override when opted in", (
   assert.equal(cfg.key, "phc_test");
 });
 
-test("analytics resolveConfig ignores legacy ZOMBIE_POSTHOG_ENABLED env var", () => {
-  // Pre-M63_006 the on-switch was ZOMBIE_POSTHOG_ENABLED. After the rename it
-  // is dead — setting it neither enables nor disables anything.
+test("analytics resolveConfig ignores the retired ZOMBIE_POSTHOG_ENABLED env var", () => {
+  // The historical on-switch was ZOMBIE_POSTHOG_ENABLED. After the rename to
+  // DISABLE_TELEMETRY the old var is dead — setting it neither enables nor
+  // disables anything.
   const cfg = cliAnalyticsInternals.resolveConfig({ ZOMBIE_POSTHOG_ENABLED: "true" });
   assert.equal(cfg.enabled, false);
 });

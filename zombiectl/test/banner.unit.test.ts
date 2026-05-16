@@ -1,20 +1,4 @@
-/**
- * Unit tests for src/program/banner.ts — printVersion and printPreReleaseWarning.
- *
- * Coverage tiers addressed:
- *   T1  Happy path
- *   T2  Edge cases
- *   T3  Negative / error paths (void functions — suppression paths covered here)
- *   T4  Output fidelity (actual rendered text and ANSI correctness)
- *   T5  Concurrency — N/A (pure write functions, no shared state)
- *   T6  Integration via runCli ttyOnly flag
- *   T7  Regression guards (email, version constants, design-system invariants pinned)
- *   T8  Security — N/A (no user input, no secret handling)
- *   T9  DRY — shared helpers from helpers.js
- *   T10 Constants / magic values flagged
- *   T11 Performance — N/A (simple stream writes, no allocation concern)
- *   T12 CLI contract (--version output, --json suppression, VERSION matches package.json)
- */
+// Unit tests for src/program/banner.ts — printVersion and printPreReleaseWarning.
 
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
@@ -22,21 +6,21 @@ import { makeBufferStream } from "./helpers.ts";
 import { printVersion, printPreReleaseWarning } from "../src/program/banner.ts";
 import { runCli, VERSION } from "../src/cli.ts";
 
-// ── T9: helpers — no magic, no copy-paste ─────────────────────────────────────
+// ── helpers — no magic, no copy-paste ─────────────────────────────────────────
 
 /** Simulate a TTY stream by setting isTTY = true on the underlying writable. */
-function makeTtyBufferStream() {
+function makeTtyBufferStream(): ReturnType<typeof makeBufferStream> {
   const b = makeBufferStream();
   b.stream.isTTY = true;
   return b;
 }
 
 /** Strip all ANSI escape sequences from a string for plain-text assertions. */
-function stripAnsi(str) {
+function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
-// ── T10: constants guard — pin strings that appear in both code paths ─────────
+// ── constants guard — pin strings that appear in both code paths ──────────────
 const CONTACT_EMAIL = "nkishore@megam.io";
 const PRE_RELEASE_TAG = "[PRE-RELEASE]";
 const COLOR_ENV = { TERM: "xterm-256color" };
@@ -54,7 +38,7 @@ const FORBIDDEN_BANNER_CHARS = [
 
 // ── printPreReleaseWarning ─────────────────────────────────────────────────────
 
-describe("printPreReleaseWarning — T1: happy path", () => {
+describe("printPreReleaseWarning — happy path", () => {
   test("default opts writes non-empty output (color mode)", () => {
     const out = makeTtyBufferStream();
     printPreReleaseWarning(out.stream, {});
@@ -80,7 +64,7 @@ describe("printPreReleaseWarning — T1: happy path", () => {
   });
 });
 
-describe("printPreReleaseWarning — T3: suppression paths", () => {
+describe("printPreReleaseWarning — suppression paths", () => {
   test("jsonMode suppresses regardless of noColor", () => {
     for (const noColor of [true, false]) {
       const out = makeBufferStream();
@@ -98,7 +82,7 @@ describe("printPreReleaseWarning — T3: suppression paths", () => {
   });
 });
 
-describe("printPreReleaseWarning — T4: fidelity (color mode)", () => {
+describe("printPreReleaseWarning — fidelity (color mode)", () => {
   test("color output contains warning glyph and email", () => {
     const out = makeTtyBufferStream();
     printPreReleaseWarning(out.stream, { env: COLOR_ENV });
@@ -122,14 +106,14 @@ describe("printPreReleaseWarning — T4: fidelity (color mode)", () => {
 
 // ── printVersion (the new replacement for printBanner) ────────────────────────
 
-describe("printVersion — T1: happy path", () => {
+describe("printVersion — happy path", () => {
   test("color mode writes a single-line version string", () => {
     const out = makeTtyBufferStream();
     printVersion(out.stream, VERSION, {});
     const lines = out.read().split("\n").filter((l) => l !== "");
     expect(lines.length).toBe(1);
-    expect(stripAnsi(lines[0])).toContain(`zombiectl`);
-    expect(stripAnsi(lines[0])).toContain(`v${VERSION}`);
+    expect(stripAnsi(lines[0] ?? "")).toContain(`zombiectl`);
+    expect(stripAnsi(lines[0] ?? "")).toContain(`v${VERSION}`);
   });
 
   test("noColor mode writes the exact plain version line", () => {
@@ -145,7 +129,7 @@ describe("printVersion — T1: happy path", () => {
   });
 });
 
-describe("printVersion — T2: edge cases", () => {
+describe("printVersion — edge cases", () => {
   test("empty version still writes", () => {
     const out = makeBufferStream();
     printVersion(out.stream, "", { noColor: true });
@@ -169,7 +153,7 @@ describe("printVersion — T2: edge cases", () => {
   });
 });
 
-describe("printVersion — T7: design-system regression guards", () => {
+describe("printVersion — design-system regression guards", () => {
   test("color mode output contains no decorative ASCII art", () => {
     const out = makeTtyBufferStream();
     printVersion(out.stream, VERSION, {});
@@ -220,7 +204,7 @@ describe("printVersion — T7: design-system regression guards", () => {
 
 // ── VERSION constant + ttyOnly integration ─────────────────────────────────────
 
-describe("VERSION — T7 + T12: constant matches package.json", () => {
+describe("VERSION — constant matches package.json", () => {
   test("VERSION exported from cli.ts matches package.json version", () => {
     const pkg = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
@@ -233,7 +217,7 @@ describe("VERSION — T7 + T12: constant matches package.json", () => {
   });
 });
 
-describe("ttyOnly flag — T6: integration via runCli", () => {
+describe("ttyOnly flag — integration via runCli", () => {
   test("pre-release warning shown when stderr is a TTY", async () => {
     const out = makeBufferStream();
     const err = makeTtyBufferStream();
@@ -288,7 +272,7 @@ describe("ttyOnly flag — T6: integration via runCli", () => {
   });
 });
 
-describe("ttyOnly flag — T1 + T4: output fidelity via runCli", () => {
+describe("ttyOnly flag — output fidelity via runCli", () => {
   test("--version --json stdout is parseable JSON with correct version", async () => {
     const out = makeBufferStream();
     await runCli(["--json", "--version"], {

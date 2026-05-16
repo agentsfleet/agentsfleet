@@ -137,7 +137,9 @@ describe("parseIdOption", () => {
       throw new Error("should have thrown");
     } catch (err) {
       expect(err).toBeInstanceOf(InvalidArgumentError);
-      expect(err.message).toContain("0192a3b4-c5d6-7e8f-9012-345678901234");
+      if (err instanceof Error) {
+        expect(err.message).toContain("0192a3b4-c5d6-7e8f-9012-345678901234");
+      }
     }
   });
 });
@@ -158,7 +160,7 @@ describe("parseEnumOption", () => {
   });
 
   test("constructor rejects non-array allowed", () => {
-    expect(() => parseEnumOption("not-array")).toThrow("non-empty allowed array");
+    expect(() => parseEnumOption("not-array" as unknown as readonly string[])).toThrow("non-empty allowed array");
   });
 });
 

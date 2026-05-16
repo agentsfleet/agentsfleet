@@ -63,6 +63,24 @@ export const asFetchImpl = (
   impl: (url: string, init?: RequestInit) => Promise<ResponseLike>,
 ): FetchImpl => impl as unknown as FetchImpl;
 
+// runCli's RunCliIo.fetchImpl expects the full `typeof fetch` shape
+// (including `preconnect`). Structural test mocks only implement what
+// production reads — widen at the boundary so internal code paths
+// still face full strict-mode pressure.
+export const asFetchOverride = (
+  impl: (url: string, init?: RequestInit) => Promise<ResponseLike>,
+): typeof fetch => impl as unknown as typeof fetch;
+
+// `Map<string, string>.get` returns `string | undefined`, but ResponseLike's
+// `headers.get` is `string | null`. Wrap a Map so the missing-key shape lines
+// up with the production Headers contract.
+export function makeHeaders(
+  entries: ReadonlyArray<readonly [string, string]>,
+): { get: (name: string) => string | null } {
+  const map = new Map(entries);
+  return { get: (name) => map.get(name) ?? null };
+}
+
 export interface UiTheme {
   ok: (s: string) => string;
   err: (s: string) => string;
