@@ -41,7 +41,7 @@
 
 ## Overview
 
-**Goal (testable):** After M69_004 lands, `src/queue/redis_client.zig` no longer holds a `std.Thread.Mutex` across the network round-trip. Concurrent XADD / PUBLISH / XACK calls from worker threads + HTTP handlers each acquire their own pooled connection (default pool size 8, configurable via `REDIS_POOL_MAX_IDLE`), execute their command without contending on a shared lock, and release. A bench test shows ≥4× throughput improvement on the XADD hot path against a local Redis with 8 concurrent producers vs the pre-change baseline. `src/queue/redis_pubsub.zig` is deleted; its sole consumer (test harness) retargets to a unified `Subscriber` in `redis_subscriber.zig` with an `InitOptions { read_timeout_ms: ?u32 = null }` parameter. Request-path connections honor `REDIS_REQUEST_TIMEOUT_MS` (default 5000 ms) so a frozen Upstash proxy can't pin a worker thread indefinitely. Redis-level error messages (e.g. `READONLY`, `BUSYGROUP`) are logged before being mapped to `error.RedisCommandError` so operators see the underlying cause.
+**Goal (testable):** After M69_004 lands, `src/queue/redis_client.zig` no longer holds a `std.Thread.Mutex` across the network round-trip. Concurrent XADD / PUBLISH / XACK calls from worker threads + HTTP handlers each acquire their own pooled connection (default pool size 8, configurable via `REDIS_POOL_MAX_IDLE`), execute their command without contending on a shared lock, and release. A throughput bench (`tests/bench/redis_xadd_concurrency_bench.zig`) lands in this milestone and captures absolute ops/sec for the new pool against local Redis with 8 concurrent producers — operator-facing evidence, not a ratio assertion (the single-mutex baseline was eliminated by the slice-3 Client swap before any measurement could be taken on this branch; bench is observational from this milestone forward). `src/queue/redis_pubsub.zig` is deleted; its sole consumer (test harness) retargets to a unified `Subscriber` in `redis_subscriber.zig` with an `InitOptions { read_timeout_ms: ?u32 = null }` parameter. Request-path connections honor `REDIS_REQUEST_TIMEOUT_MS` (default 5000 ms) so a frozen Upstash proxy can't pin a worker thread indefinitely. Redis-level error messages (e.g. `READONLY`, `BUSYGROUP`) are logged before being mapped to `error.RedisCommandError` so operators see the underlying cause.
 
 **Problem:** Three problems compounded in one file:
 
@@ -75,7 +75,7 @@
 | `tests/integration/redis_pool_test.zig` | CREATE | Pool acquire/release, max_idle behavior, eager preconnect, retry loop. |
 | `tests/integration/redis_subscriber_unified_test.zig` | CREATE | Subscriber with and without read_timeout_ms. |
 | `tests/integration/redis_request_timeout_test.zig` | CREATE | SO_RCVTIMEO fires when the server doesn't respond. |
-| `tests/bench/redis_xadd_concurrency_bench.zig` | CREATE | Throughput baseline: 8 concurrent producers vs serialized — asserts ≥4× improvement post-pool. |
+| `tests/bench/redis_xadd_concurrency_bench.zig` | CREATE | XADD concurrency bench: 8 producer threads against local Redis. Observational — captures aggregate ops/sec for the new pool. See §8 for the methodology pivot. |
 
 ---
 
@@ -284,18 +284,20 @@ At every `value.deinit(self.alloc)` site in `redis_client.zig` that's preceded b
 
 ### §8 — Bench + integration tests
 
-`tests/bench/redis_xadd_concurrency_bench.zig` runs 8 producer threads, asserts post-pool throughput ≥4× pre-pool baseline.
+`tests/bench/redis_xadd_concurrency_bench.zig` runs 8 producer threads, captures absolute XADD throughput (ops/sec) for the pool-of-8 Client against local Redis. **Observational, single-stage** — the ≥4× ratio framing in earlier drafts assumed a pre-slice-3 baseline measurement on the same branch; the actual EXECUTE-order swapped the single-mutex Client before any baseline could be captured, so this milestone records the new pool's number directly and leaves ratio analysis to operator inspection against the audit-documented bottleneck (~40 ops/sec/connection, spec L8). Both spec-rule-honoring options (rebase to insert pre-slice-3 commit, or split into a follow-up M69_005) were explicitly rejected by Captain in favor of a single-stage observational bench in this milestone.
 
-**Methodology (pinned):**
+**Methodology:**
 
-- Local Redis on `localhost:6379` (no Upstash — masked by network latency).
-- 8 producer threads, each XADDing 1000 events to distinct `bench:{thread_id}:events` streams (no shared key contention to avoid measuring Redis-server lock instead of client-side mutex).
-- Two measurements, captured in separate commits during EXECUTE:
-  1. **First commit** — pre-change baseline. Bench runs against today's single-mutex Client. Record ops/sec.
-  2. **Second commit** — post-pool. Bench runs against the new pool-of-8 Client. Assert ops/sec ≥ 4× the baseline.
-- Both numbers pasted into PR Session Notes with the git SHA of each measurement commit.
+- Local Redis on `localhost:6379` (no Upstash — round-trip latency would mask any client-side effect).
+- 8 producer threads, each XADDing 1000 events to distinct `bench:{thread_id}:events` streams (no shared key contention so the measurement is client-side concurrency, not Redis-server lock).
+- Pool size: default (`eager_min=2`, `max_idle=8`).
+- Bench runs once at HEAD. Records:
+  - Wall-clock elapsed across the 8000-event burst.
+  - Aggregate ops/sec.
+  - Per-thread completion ordering (sanity check — all 8 threads finish within a small spread, confirming no serialization remained).
+- Number pasted into PR Session Notes with the bench commit SHA.
 
-**CI handling:** bench is marked `// skip-in-ci` (no Redis service container in CI today). Local-only evidence — agent runs the bench on their dev machine, pastes output. If a future change adds a CI Redis container, flip the skip and let CI assert continuously.
+**CI handling:** bench is marked `// skip-in-ci` (no Redis service container in CI today). Local-only evidence — agent runs the bench on their dev machine, pastes output. If a future change adds a CI Redis container, flip the skip and let CI re-run continuously.
 
 Integration tests cover: pool acquire/release happy path; pool exhaustion (>max_idle in flight) creates new connection on the fly; release-as-broken closes the connection; subscriber with timeout fires; request timeout surfaces.
 
@@ -496,7 +498,7 @@ try conn.exec(
 | `test_client_command_unchanged_at_call_site` | Existing call sites compile + behave identically to pre-change (regression). |
 | `test_retry_resumable_recycles_conn` | When `Connection.command` returns `error.RedisCommandError`, the connection is released `ok=true` and the next retry uses the same connection. |
 | `test_retry_transport_close_fresh` | When `error.BrokenPipe`, the connection is released `ok=false` (closed) and retry acquires a new one. |
-| `test_xadd_throughput_4x_baseline` | Bench: 8 producer threads XADDing 1000 events each. Pool-of-8 ≥ 4× the pre-pool (single-mutex) baseline. (Local Redis; Upstash latency masks the multiplier — local is the apples-to-apples comparison.) |
+| `test_xadd_pooled_throughput_observation` | Bench: 8 producer threads XADDing 1000 events each at pool-of-8 against local Redis. Records aggregate ops/sec; no ratio assertion (observational — see §8 for the methodology pivot). |
 | `test_subscriber_unified_blocking` | `Subscriber.connect(.{})` blocks `nextMessage` until a message arrives or `EndOfStream`. |
 | `test_subscriber_unified_timeout` | `Subscriber.connect(.{ .read_timeout_ms = 100 })` returns `null` from `nextMessage` after ~100ms when no messages arrive. |
 | `test_redis_pubsub_zig_deleted` | `test ! -f src/queue/redis_pubsub.zig`. |
@@ -524,7 +526,7 @@ try conn.exec(
 ## Acceptance Criteria
 
 - [ ] Every Test Specification row passes — verify: `make test && make test-integration && make memleak`.
-- [ ] Bench ≥4× throughput verified — verify: paste bench output in PR Session Notes.
+- [ ] Bench run clean — verify: `tests/bench/redis_xadd_concurrency_bench.zig` exits 0 against local Redis; aggregate ops/sec pasted in PR Session Notes.
 - [ ] No `std.Thread.Mutex` in `redis_client.zig` — verify: `grep -c "std.Thread.Mutex" src/queue/redis_client.zig` returns `0`.
 - [x] `redis_pubsub.zig` deleted — verify: `test ! -f src/queue/redis_pubsub.zig`.
 - [x] All `redis_pubsub` references gone — verify: `grep -rn "redis_pubsub" src/` returns 0 hits.
@@ -544,9 +546,9 @@ make test 2>&1 | tail -5
 make test-integration 2>&1 | tail -5
 make memleak 2>&1 | tail -5
 
-# E2: contention bench
+# E2: XADD concurrency bench (observational; local Redis required)
 zig build bench-redis 2>&1 | tail -10
-# expect: throughput post-pool >= 4x pre-pool baseline
+# expect: exit 0 + aggregate ops/sec line; paste output into PR Session Notes
 
 # E3: lint + pg-drain + length-gate
 make lint 2>&1 | tail -5
