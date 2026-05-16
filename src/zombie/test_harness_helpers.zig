@@ -9,8 +9,13 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 
-const redis_pubsub = @import("../queue/redis_pubsub.zig");
+const redis_subscriber = @import("../queue/redis_subscriber.zig");
 const activity_publisher = @import("activity_publisher.zig");
+
+/// Subscriber socket read-timeout for harness drains. Must fire well before
+/// the test budget so a hung publisher doesn't pin the drain thread past
+/// the writepath.run completion deadline.
+pub const HARNESS_SUBSCRIBER_READ_TIMEOUT_MS: u32 = 25_000;
 
 /// Env-var read at the top of every harness test that lets a developer
 /// disable the suite without removing the binary from disk.
@@ -31,7 +36,7 @@ pub const ZOMBIE_SOURCE_MD = "---\nname: " ++ ZOMBIE_NAME ++ "\n---\n\nYou are a
 pub const DRAIN_QUIET_MS: u64 = 250;
 
 /// Sleep after Subscriber.subscribe() before assuming SUBSCRIBE landed and
-/// the channel is wired up server-side. Mirrors redis_pubsub_test.zig.
+/// the channel is wired up server-side.
 pub const SUBSCRIBE_SETTLE_MS: u64 = 200;
 
 /// One frame received from the activity channel, tagged with the wall-clock
@@ -45,10 +50,10 @@ pub const FrameList = std.ArrayList(TimedFrame);
 
 /// Connect a dedicated SUBSCRIBE-only Redis client, or return null when the
 /// integration env var is unset (test should skip).
-pub fn connectSubscriber(alloc: Allocator) !?redis_pubsub.Subscriber {
+pub fn connectSubscriber(alloc: Allocator) !?redis_subscriber.Subscriber {
     const tls_url = std.process.getEnvVarOwned(alloc, REDIS_TLS_URL_ENV_VAR) catch return null;
     defer alloc.free(tls_url);
-    return redis_pubsub.Subscriber.connectFromUrl(alloc, tls_url) catch return null;
+    return redis_subscriber.connectFromUrl(alloc, tls_url, .{ .read_timeout_ms = HARNESS_SUBSCRIBER_READ_TIMEOUT_MS }) catch return null;
 }
 
 /// Drain frames from the subscriber until either:
@@ -56,15 +61,15 @@ pub fn connectSubscriber(alloc: Allocator) !?redis_pubsub.Subscriber {
 ///   - DRAIN_QUIET_MS elapses with no new frames, or
 ///   - the overall budget expires.
 /// Each frame is dup-allocated; caller owns the list (use freeFrames).
-pub fn drainFrames(sub: *redis_pubsub.Subscriber, alloc: Allocator, list: *FrameList, budget_ms: u64) !void {
+pub fn drainFrames(sub: *redis_subscriber.Subscriber, alloc: Allocator, list: *FrameList, budget_ms: u64) !void {
     const overall_deadline = std.time.milliTimestamp() + @as(i64, @intCast(budget_ms));
     var last_msg_at = std.time.milliTimestamp();
     while (std.time.milliTimestamp() < overall_deadline) {
-        const msg_opt = try sub.readMessage();
+        const msg_opt = try sub.nextMessage();
         if (msg_opt) |m| {
             var msg = m;
-            defer msg.deinit();
-            const kind = try extractKind(alloc, msg.data);
+            defer msg.deinit(alloc);
+            const kind = try extractKind(alloc, msg.payload);
             const now_ms = std.time.milliTimestamp();
             try list.append(alloc, .{ .kind = kind, .ts_ms = now_ms });
             last_msg_at = now_ms;

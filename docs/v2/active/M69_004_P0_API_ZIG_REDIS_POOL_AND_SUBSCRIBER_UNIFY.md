@@ -526,8 +526,8 @@ try conn.exec(
 - [ ] Every Test Specification row passes — verify: `make test && make test-integration && make memleak`.
 - [ ] Bench ≥4× throughput verified — verify: paste bench output in PR Session Notes.
 - [ ] No `std.Thread.Mutex` in `redis_client.zig` — verify: `grep -c "std.Thread.Mutex" src/queue/redis_client.zig` returns `0`.
-- [ ] `redis_pubsub.zig` deleted — verify: `test ! -f src/queue/redis_pubsub.zig`.
-- [ ] All `redis_pubsub` references gone — verify: `grep -rn "redis_pubsub" src/` returns 0 hits.
+- [x] `redis_pubsub.zig` deleted — verify: `test ! -f src/queue/redis_pubsub.zig`.
+- [x] All `redis_pubsub` references gone — verify: `grep -rn "redis_pubsub" src/` returns 0 hits.
 - [ ] `make lint` clean (includes `make check-pg-drain` and length-gate sweep).
 - [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`.
 - [ ] `gitleaks detect` clean.

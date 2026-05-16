@@ -214,7 +214,6 @@ test {
     _ = @import("http/handlers/memory/shapes_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
-    _ = @import("queue/redis_pubsub_test.zig");
     _ = @import("queue/redis_pool_test.zig");
     _ = @import("queue/redis_connection_test.zig");
     _ = @import("queue/redis_errors_test.zig");

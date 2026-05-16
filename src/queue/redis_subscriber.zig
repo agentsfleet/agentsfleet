@@ -18,6 +18,7 @@ const S_AUTH = "AUTH";
 
 alloc: std.mem.Allocator,
 transport: redis_transport.Transport,
+read_timeout_ms: ?u32,
 
 pub const Message = struct {
     channel: []u8,
@@ -29,18 +30,27 @@ pub const Message = struct {
     }
 };
 
-pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole) !Subscriber {
+/// Per-subscriber config. `read_timeout_ms` non-null installs `SO_RCVTIMEO`
+/// after the SUBSCRIBE ack so `nextMessage` returns `null` on read timeout
+/// (used by SSE handlers and the test harness to interleave heartbeats /
+/// budget checks). Null = block forever (default for callers that drive
+/// their own deadline externally).
+pub const InitOptions = struct {
+    read_timeout_ms: ?u32 = null,
+};
+
+pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Subscriber {
     const url = try redis_config.resolveRedisUrl(alloc, role);
     defer alloc.free(url);
-    return connectFromUrl(alloc, url);
+    return connectFromUrl(alloc, url, options);
 }
 
-fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Subscriber {
+pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Subscriber {
     const cfg = try redis_config.parseRedisUrl(alloc, url);
     defer redis_config.deinitConfig(alloc, cfg);
 
     const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
-    var sub = Subscriber{ .alloc = alloc, .transport = undefined };
+    var sub = Subscriber{ .alloc = alloc, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
 
     if (cfg.use_tls) {
         sub.transport = .{ .tls = undefined };
@@ -78,6 +88,25 @@ pub fn subscribe(self: *Subscriber, channel: []const u8) !void {
     var ack = try redis_protocol.readRespValue(self.alloc, self.transport.reader());
     defer ack.deinit(self.alloc);
     try expectSubscribeAck(ack, channel);
+
+    // Install SO_RCVTIMEO post-ack so the AUTH/SUBSCRIBE handshakes are not
+    // exposed to it. Per-Connection read timeout means `nextMessage` returns
+    // null on timeout (see swallow in nextMessage).
+    if (self.read_timeout_ms) |ms| self.setReadTimeout(ms);
+}
+
+fn setReadTimeout(self: *Subscriber, ms: u32) void {
+    const fd = switch (self.transport) {
+        .plain => |p| p.stream.handle,
+        .tls => |t| t.stream.handle,
+    };
+    const timeout = std.posix.timeval{
+        .sec = @intCast(ms / 1000),
+        .usec = @intCast((ms % 1000) * 1000),
+    };
+    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| {
+        log.warn("setsockopt_failed", .{ .err = @errorName(err) });
+    };
 }
 
 /// Block until the next pub/sub message arrives. Returns null when the

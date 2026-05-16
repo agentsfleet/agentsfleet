@@ -59,7 +59,7 @@ pub fn innerEventsStream(
 
     if (!authorize(hx, workspace_id, zombie_id)) return;
 
-    var subscriber = redis_subscriber.connectFromEnv(hx.alloc, redis_types.RedisRole.api) catch |err| {
+    var subscriber = redis_subscriber.connectFromEnv(hx.alloc, redis_types.RedisRole.api, .{}) catch |err| {
         log.err("subscriber_connect_failed", .{ .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
