@@ -23,6 +23,27 @@ const S_PING = "PING";
 const S_OK = "OK";
 const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
 
+// XADD argv slots for `xaddZombieEvent` — lifted to file scope so the
+// compile-folded prefix is a single comptime slice instead of six slot
+// assignments at runtime. The `MAXLEN ~ 10000` triplet caps the
+// zombie:{id}:events stream's retention (~10k approximate trim); `*`
+// asks Redis to generate the stream entry id (which IS the event_id).
+const XADD_VERB: []const u8 = "XADD";
+const XADD_MAXLEN_KEYWORD: []const u8 = "MAXLEN";
+const XADD_MAXLEN_APPROX: []const u8 = "~";
+const XADD_MAXLEN_ZOMBIE_EVENTS: []const u8 = "10000";
+const XADD_AUTO_ID: []const u8 = "*";
+
+/// Compile-folded tail for `XADD zombie:{id}:events MAXLEN ~ 10000 * …`.
+/// Slot 0 = `XADD`, slot 1 = stream key (runtime), slots 2..6 = this slice.
+const XADD_ZOMBIE_TRIM_TAIL: []const []const u8 = &.{
+    XADD_MAXLEN_KEYWORD,
+    XADD_MAXLEN_APPROX,
+    XADD_MAXLEN_ZOMBIE_EVENTS,
+    XADD_AUTO_ID,
+};
+const XADD_ZOMBIE_PREFIX_LEN: usize = 2 + XADD_ZOMBIE_TRIM_TAIL.len;
+
 /// Per spec retry contract: pool-path operations get 2 attempts total
 /// before the error surfaces to the caller. No backoff at this layer —
 /// the caller (PG-dedup'd XADD, lossy PUBLISH, idempotent XACK) tolerates
@@ -155,15 +176,12 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
     const payload_argv = try envelope.encodeForXAdd(self.alloc);
     defer EventEnvelope.freeXAddArgv(self.alloc, payload_argv);
 
-    var argv = try self.alloc.alloc([]const u8, 6 + payload_argv.len);
+    var argv = try self.alloc.alloc([]const u8, XADD_ZOMBIE_PREFIX_LEN + payload_argv.len);
     defer self.alloc.free(argv);
-    argv[0] = "XADD";
+    argv[0] = XADD_VERB;
     argv[1] = stream_key;
-    argv[2] = "MAXLEN";
-    argv[3] = "~";
-    argv[4] = "10000";
-    argv[5] = "*";
-    @memcpy(argv[6..], payload_argv);
+    @memcpy(argv[2..XADD_ZOMBIE_PREFIX_LEN], XADD_ZOMBIE_TRIM_TAIL);
+    @memcpy(argv[XADD_ZOMBIE_PREFIX_LEN..], payload_argv);
 
     var resp = try self.command(argv);
     defer resp.deinit(self.alloc);

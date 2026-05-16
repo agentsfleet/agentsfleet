@@ -131,10 +131,14 @@ fn transitionTo(self: *Connection, new_state: ConnectionState) void {
 pub fn command(self: *Connection, argv: []const []const u8) Error!redis_protocol.RespValue {
     var value = try self.commandAllowError(argv);
     if (value == .err) {
-        // Resumable: the connection stayed in protocol sync; caller
+        // Surface the server-side error string (READONLY after failover,
+        // BUSYGROUP on consumer-group races, WRONGTYPE, etc.) before
+        // discarding. Resumable: connection stays in protocol sync; caller
         // releases ok=true so the same conn serves the next request.
-        // Per-error logging of `value.err` lands with the broader error
-        // surfacing pass — slice that lands typed XADD/XACK variants.
+        log.warn("redis_command_err_reply", .{
+            .cmd = if (argv.len > 0) argv[0] else "unknown",
+            .server_err = value.err,
+        });
         value.deinit(self.alloc);
         return error.RedisCommandError;
     }
@@ -231,6 +235,8 @@ fn writeArgvToTransport(transport: *redis_transport.Transport, argv: []const []c
 // === Imports ===
 
 const std = @import("std");
+const logging = @import("log");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
 const redis_transport = @import("redis_transport.zig");
+const log = logging.scoped(.redis_queue);
