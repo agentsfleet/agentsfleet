@@ -5,7 +5,7 @@
 
 import { wsZombiesPath, wsZombiePath } from "../lib/api-paths.ts";
 import { loadSkillFromPath, SkillLoadError } from "../lib/load-skill-from-path.ts";
-import { validateRequiredId } from "../program/validate.ts";
+import { validateRequiredId } from "../program/validators.ts";
 import {
   IO_ERROR,
   MISSING_ARGUMENT,

@@ -5,7 +5,7 @@
 // zombie_logs.ts, zombie_events.ts, zombie_steer.ts, zombie_credential.ts).
 
 import { wsZombiesPath, wsZombiePath } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validate.ts";
+import { validateRequiredId } from "../program/validators.ts";
 import {
   MISSING_ARGUMENT,
   NO_WORKSPACE,

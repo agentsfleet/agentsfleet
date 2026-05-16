@@ -8,7 +8,7 @@
 // zombiectl agent delete --workspace <ws> <agent_id>
 
 import { WORKSPACES_PATH } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validate.ts";
+import { validateRequiredId } from "../program/validators.ts";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import { MISSING_ARGUMENT, VALIDATION_ERROR } from "../constants/cli-errors.ts";
 import {

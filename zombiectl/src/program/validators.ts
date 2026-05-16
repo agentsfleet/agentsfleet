@@ -1,18 +1,36 @@
-// Commander option/argument validators. Each parser throws
-// InvalidArgumentError on rejection — commander catches and renders
-// `error: option '--foo <bar>' argument '<value>' is invalid. <message>`
-// then exits with code 2. The factory variants (parseIntOption,
-// parseEnumOption, parsePathOption, parseJsonObjectOption) return a
-// (value) => parsed callback so they wire directly into commander's
-// `.option(flags, description, fn)` signature.
+// zombiectl input validators — two flavors:
 //
-// Direct vs factory split mirrors oracle's options.ts: configurable
-// parsers are factories, parameterless ones are direct callbacks.
+//   1. Commander option/argument parsers (parseStringOption, parseIntOption,
+//      parseIdOption, …). Each parser throws InvalidArgumentError on rejection
+//      — commander catches and renders `error: option '--foo <bar>' argument
+//      '<value>' is invalid. <message>` then exits with code 2. The factory
+//      variants (parseIntOption, parseEnumOption, parsePathOption,
+//      parseJsonObjectOption) return a (value) => parsed callback so they
+//      wire directly into commander's `.option(flags, description, fn)`.
+//      Direct vs factory split mirrors oracle's options.ts.
+//
+//   2. Handler-side type guards / result-bag validators (isValidId,
+//      validateRequiredId). Called by leaf handlers AFTER commander has
+//      handed off, when a positional/flag has to be re-checked before
+//      round-tripping — e.g. workspace.show accepts either a positional or
+//      `--workspace-id`, and the handler chooses which one to validate.
+//      validateRequiredId returns `{ ok, message }` instead of throwing so
+//      the handler can format the failure into a normal `ui.err()` line
+//      without unwinding through commander's exit path.
+//
+// One module = one mental model. The uuidv7 check + EXAMPLE_UUIDV7 literal
+// live exactly once: isValidId is the impl; parseIdOption + validateRequiredId
+// both call it. Single source of truth: server ids are uuidv7
+// (`src/types/id_format.zig → allocUuidV7`); the CLI rejects malformed shape
+// client-side to save a round-trip. `uuid` npm package (Apache-2.0, no
+// postinstall, single dep tree) is vetted supply-chain posture for runtime.
 
 import { InvalidArgumentError } from "commander";
 import path from "node:path";
 import fs from "node:fs";
-import { isValidId, EXAMPLE_UUIDV7 } from "./validate.ts";
+import { validate as isValidUuid, version as uuidVersion } from "uuid";
+
+export const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
 const INTEGER_RE = /^-?\d+$/;
 const NUMBER_RE = /^-?\d+(\.\d+)?([eE][-+]?\d+)?$/;
@@ -152,4 +170,32 @@ export function parseJsonObjectOption(
     }
     return parsed as Record<string, unknown>;
   };
+}
+
+// ── Handler-side type guards / result-bag validators ─────────────────
+
+export type ValidateResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+export function isValidId(value: unknown): value is string {
+  if (!value || typeof value !== "string") return false;
+  if (!isValidUuid(value)) return false;
+  return uuidVersion(value) === 7;
+}
+
+export function validateRequiredId(
+  value: unknown,
+  name: string,
+): ValidateResult {
+  if (!value || typeof value !== "string" || value.trim().length === 0) {
+    return { ok: false, message: `${name} is required` };
+  }
+  if (!isValidId(value)) {
+    return {
+      ok: false,
+      message: `invalid ${name}: expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})`,
+    };
+  }
+  return { ok: true };
 }
