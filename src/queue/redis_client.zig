@@ -209,10 +209,15 @@ pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValu
     while (true) : (attempt += 1) {
         const conn = try self.pool.acquire();
         const resp = conn.command(argv) catch |err| {
-            // OOM is a host-level allocator failure, not a transport
-            // corruption — the conn's RESP framing is intact (see fix in
-            // redis_connection.zig commandAllowError catch block). Release
-            // healthy and propagate the real root cause.
+            // OOM during RESP read poisons the connection (see
+            // redis_connection.zig:commandAllowError — the length/count
+            // header is consumed before the body allocation fires, leaving
+            // partial bytes in the transport buffer). `release(conn, true)`
+            // is safe because `Pool.release` checks `conn.state != .active`
+            // and closes the poisoned connection via the early branch; the
+            // conn is NOT returned to idle. OOM still surfaces verbatim to
+            // the caller (no `ReadFailed` re-tag) so memory pressure shows
+            // up with its real root cause.
             if (err == error.OutOfMemory) {
                 self.pool.release(conn, true);
                 return error.OutOfMemory;

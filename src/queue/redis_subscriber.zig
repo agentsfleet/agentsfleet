@@ -120,9 +120,17 @@ pub fn nextMessage(self: *Subscriber) !?Message {
         const channel = redis_protocol.valueAsString(arr[1]) orelse continue;
         const payload = redis_protocol.valueAsString(arr[2]) orelse continue;
 
+        // Order matters: if the second dupe fails with OOM, the first dupe
+        // must be freed before we propagate. A naked struct-init `.{ .a =
+        // try dupe, .b = try dupe }` leaks `a` when `b` fails — Zig
+        // evaluates field exprs left-to-right but doesn't unwind the first
+        // allocation when the second errors out of the literal.
+        const channel_copy = try self.alloc.dupe(u8, channel);
+        errdefer self.alloc.free(channel_copy);
+        const payload_copy = try self.alloc.dupe(u8, payload);
         return Message{
-            .channel = try self.alloc.dupe(u8, channel),
-            .payload = try self.alloc.dupe(u8, payload),
+            .channel = channel_copy,
+            .payload = payload_copy,
         };
     }
 }
@@ -140,8 +148,13 @@ fn sendCommand(self: *Subscriber, argv: []const []const u8) !void {
         try writer.writeAll(arg);
         try writer.writeAll("\r\n");
     }
-    if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
     try writer.flush();
+    // For TLS, `transport.writer()` is the TLS encryption layer; the
+    // underlying TCP buffer is `transport.tls.stream_writer.interface`.
+    // After `writer.flush()` pushes ciphertext into the TCP buffer, flush
+    // THAT to get the bytes on the wire. No pre-flush — the TCP buffer has
+    // nothing to flush before the TLS layer writes anything new. (Mirrors
+    // the same two-layer sequence in redis_connection.zig writeArgvToTransport.)
     if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
 }
 
