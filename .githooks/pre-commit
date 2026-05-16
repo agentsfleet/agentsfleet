@@ -73,3 +73,10 @@ if [ "$any_needed" -gt 0 ]; then
 else
   echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
 fi
+
+# Force exit 0 on green path. Without this, a trailing `[ X -eq 1 ] && { Y; }`
+# whose test is false leaves $? = 1 as the script's exit code (bash quirk:
+# set -e suspends inside && chains, but the chain's false LHS still records
+# exit 1, and a script's exit code is its last command's). set -e above
+# aborts the script before this line if any make target actually failed.
+exit 0
