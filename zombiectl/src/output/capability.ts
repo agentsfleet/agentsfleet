@@ -4,21 +4,34 @@
 // circuit lives in the command branching, not in the detector.
 //
 // Returns one of: "none" (plain ASCII), "basic16" (8/16-color ANSI),
-// "xterm256" (256-color). Helpers in palette.js gate every escape on this.
+// "xterm256" (256-color). Helpers in palette.ts gate every escape on this.
 
-const MODE_NONE = "none";
-const MODE_BASIC16 = "basic16";
-const MODE_XTERM256 = "xterm256";
+const MODE_NONE = "none" as const;
+const MODE_BASIC16 = "basic16" as const;
+const MODE_XTERM256 = "xterm256" as const;
+
+export type ColorModeValue = typeof MODE_NONE | typeof MODE_BASIC16 | typeof MODE_XTERM256;
+
+export interface IsTtyStream {
+  readonly isTTY?: boolean;
+}
+
+export interface WritableStreamLike extends IsTtyStream {
+  write(chunk: string): unknown;
+}
 
 // One-shot guard so the basic16 fallback notice fires once per process,
 // not on every styled call. Tests can reset via resetCapabilityWarning().
 let warnedBasic16 = false;
 
-export function resetCapabilityWarning() {
+export function resetCapabilityWarning(): void {
   warnedBasic16 = false;
 }
 
-export function detectColorMode(env = process.env, stream = process.stdout) {
+export function detectColorMode(
+  env: NodeJS.ProcessEnv = process.env,
+  stream: IsTtyStream = process.stdout,
+): ColorModeValue {
   // NO_COLOR is the highest-priority disable per no-color.org.
   if (env.NO_COLOR && env.NO_COLOR.length > 0) return MODE_NONE;
 
@@ -43,14 +56,14 @@ export function detectColorMode(env = process.env, stream = process.stdout) {
   return MODE_BASIC16;
 }
 
-export function isTty(stream = process.stdout) {
+export function isTty(stream: IsTtyStream = process.stdout): boolean {
   return Boolean(stream && stream.isTTY === true);
 }
 
 // Emit a one-shot stderr notice when the resolved mode is basic16 — engineers
 // on legacy terminals see a single line, not a stream. Silent in xterm256
-// and none modes. Callers route through palette.js, not directly.
-export function noteBasic16IfFirst(stream = process.stderr) {
+// and none modes. Callers route through palette.ts, not directly.
+export function noteBasic16IfFirst(stream: WritableStreamLike = process.stderr): void {
   if (warnedBasic16) return;
   // Validate the stream BEFORE flipping the flag — otherwise a non-TTY
   // first caller would consume the once-per-process budget without
@@ -64,4 +77,4 @@ export const ColorMode = {
   NONE: MODE_NONE,
   BASIC16: MODE_BASIC16,
   XTERM256: MODE_XTERM256,
-};
+} as const;

@@ -9,8 +9,8 @@ import {
   formatSection,
   formatHelpHeading,
   formatEvidence,
-} from "../src/output/format.js";
-import { ColorMode } from "../src/output/capability.js";
+} from "../src/output/format.ts";
+import { ColorMode } from "../src/output/capability.ts";
 
 const ESC = "\u001b";
 

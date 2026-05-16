@@ -3,7 +3,7 @@
 // banner. The version line is one line — a pulse-cyan dot, the name,
 // the version. Pre-release stays a one-liner with a functional ⚠ glyph.
 
-import { palette, glyph } from "../output/index.js";
+import { palette, glyph } from "../output/index.ts";
 
 export function printVersion(stream, version, opts = {}) {
   if (opts.jsonMode) return;

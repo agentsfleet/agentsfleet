@@ -3,10 +3,26 @@
 // escape sequence inline. Mapping per docs/DESIGN_SYSTEM.md "CLI /
 // zombiectl rendering" section.
 
-import { ColorMode, detectColorMode, noteBasic16IfFirst } from "./capability.js";
+import {
+  ColorMode,
+  detectColorMode,
+  noteBasic16IfFirst,
+  type ColorModeValue,
+  type IsTtyStream,
+  type WritableStreamLike,
+} from "./capability.ts";
+
+export type Token = "pulse" | "evidence" | "success" | "warn" | "error" | "muted" | "subtle";
+
+export interface StyleOpts {
+  readonly env?: NodeJS.ProcessEnv;
+  readonly stream?: IsTtyStream;
+  readonly mode?: ColorModeValue;
+  readonly warnStream?: WritableStreamLike;
+}
 
 // xterm256 codes — the canonical mapping. Indexed by token name.
-const XTERM_256 = {
+const XTERM_256: Record<Token, number> = {
   pulse:     79,   // cyan2 — closest to --pulse #5EEAD4
   evidence:  220,  // gold1 — closest to --evidence #FBBF24
   success:   78,
@@ -21,7 +37,7 @@ const XTERM_256 = {
 // basic16 fallback — used when terminal advertises <256 colors. SGR
 // codes per ECMA-48: 30-37 dim, 90-97 bright. We pick the closest hue
 // match, accepting that 256→16 always loses fidelity.
-const BASIC_16 = {
+const BASIC_16: Record<Token, string> = {
   pulse:    "36",  // cyan
   evidence: "33",  // yellow
   success:  "32",  // green
@@ -36,7 +52,7 @@ const ESC = "[";
 
 // Render a styled string using the given token. mode/stream injection lets
 // tests exercise specific capability paths without setting global env state.
-function styled(token, text, opts = {}) {
+function styled(token: Token, text: unknown, opts: StyleOpts = {}): string {
   const env = opts.env ?? process.env;
   const stream = opts.stream ?? process.stdout;
   const mode = opts.mode ?? detectColorMode(env, stream);
@@ -51,7 +67,7 @@ function styled(token, text, opts = {}) {
 
 // Bold variant — used by helpHeading + version banner brand-mark. Bold
 // sequence layered before the color so basic16 mode still bolds.
-function styledBold(token, text, opts = {}) {
+function styledBold(token: Token, text: unknown, opts: StyleOpts = {}): string {
   const env = opts.env ?? process.env;
   const stream = opts.stream ?? process.stdout;
   const mode = opts.mode ?? detectColorMode(env, stream);
@@ -67,7 +83,7 @@ function styledBold(token, text, opts = {}) {
 // Bold-only (no color) variant. Used for chrome that needs weight but
 // not currency — section titles, table headers. Capability-aware so
 // NO_COLOR / !isTTY mode emits plain text.
-function bold(text, opts = {}) {
+function bold(text: unknown, opts: StyleOpts = {}): string {
   const env = opts.env ?? process.env;
   const stream = opts.stream ?? process.stdout;
   const mode = opts.mode ?? detectColorMode(env, stream);
@@ -75,9 +91,24 @@ function bold(text, opts = {}) {
   return `${ESC}1m${text}${RESET}`;
 }
 
+export type Painter = (text: unknown, opts?: StyleOpts) => string;
+
+export interface Palette {
+  readonly pulse: Painter;
+  readonly evidence: Painter;
+  readonly success: Painter;
+  readonly warn: Painter;
+  readonly error: Painter;
+  readonly muted: Painter;
+  readonly subtle: Painter;
+  readonly text: (text: unknown) => string;
+  readonly bold: Painter;
+  readonly pulseBold: Painter;
+}
+
 // Token helpers — every site that emits color goes through one of these.
 // Add a new token here, not at the call site.
-export const palette = {
+export const palette: Palette = {
   pulse:    (text, opts) => styled("pulse", text, opts),
   evidence: (text, opts) => styled("evidence", text, opts),
   success:  (text, opts) => styled("success", text, opts),
@@ -99,4 +130,4 @@ export const PALETTE_INTERNALS = {
   BASIC_16,
   RESET,
   ESC,
-};
+} as const;

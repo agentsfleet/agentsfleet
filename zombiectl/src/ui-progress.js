@@ -3,7 +3,7 @@
 // !isTTY so log captures stay clean. Success/fail glyphs come from the
 // output/glyph module — no hard-coded ✔/✖ pairs.
 
-import { glyph } from "./output/index.js";
+import { glyph } from "./output/index.ts";
 
 function spinnerFrames(style) {
   if (style === "dotmatrix" || style === "matrix") {

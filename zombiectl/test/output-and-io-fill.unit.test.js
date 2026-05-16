@@ -6,7 +6,7 @@
 import { test, expect } from "bun:test";
 import { Writable } from "node:stream";
 
-import { ui, printSection, printKeyValue, printTable } from "../src/output/index.js";
+import { ui, printSection, printKeyValue, printTable } from "../src/output/index.ts";
 import { writeError } from "../src/program/io.js";
 
 function bufferStream() {

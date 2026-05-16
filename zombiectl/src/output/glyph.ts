@@ -10,7 +10,7 @@
 // Plus operational glyphs the spec carves out as functional (not
 // decorative): ✓ for ok, ✕ for err, ⚠ for warn lines, ⠋..⠏ for spinners.
 
-import { palette } from "./palette.js";
+import { palette, type Painter, type StyleOpts } from "./palette.ts";
 
 const CHAR_DOT_FILLED = "●";
 const CHAR_DOT_OUTLINE = "○";
@@ -18,14 +18,31 @@ const CHAR_X = "✕";
 const CHAR_CHECK = "✓";
 const CHAR_WARN = "⚠";
 
-function bind(char, paint) {
+export interface GlyphInstance {
+  readonly char: string;
+  readonly render: () => string;
+}
+
+export type GlyphFactory = (opts?: StyleOpts) => GlyphInstance;
+
+function bind(char: string, paint: Painter): GlyphFactory {
   return (opts) => ({
     char,
     render: () => paint(char, opts),
   });
 }
 
-export const glyph = {
+export interface GlyphSet {
+  readonly live: GlyphFactory;
+  readonly parked: GlyphFactory;
+  readonly degraded: GlyphFactory;
+  readonly failed: GlyphFactory;
+  readonly ok: GlyphFactory;
+  readonly error: GlyphFactory;
+  readonly warn: GlyphFactory;
+}
+
+export const glyph: GlyphSet = {
   live:     bind(CHAR_DOT_FILLED, palette.pulse),
   parked:   bind(CHAR_DOT_OUTLINE, palette.subtle),
   degraded: bind(CHAR_DOT_FILLED, palette.warn),
@@ -37,6 +54,6 @@ export const glyph = {
 
 // Shorthands — the common "render a glyph + space + message" pattern.
 // Used by the legacy `ui` proxy and a few commands. Same color rule.
-export function withGlyph(g, message, opts) {
+export function withGlyph(g: GlyphFactory, message: string, opts?: StyleOpts): string {
   return `${g(opts).render()} ${message}`;
 }

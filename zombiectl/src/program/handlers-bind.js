@@ -6,7 +6,7 @@
 import { cliAnalytics } from "../lib/analytics.js";
 import { runCommand } from "../lib/run-command.js";
 import { printJson, writeLine } from "./io.js";
-import { ui } from "../output/index.js";
+import { ui } from "../output/index.ts";
 
 import { commandLogin, commandLogout, loginErrorMap, logoutErrorMap } from "../commands/core.js";
 import { commandAuthStatus, authStatusErrorMap } from "../commands/auth.js";

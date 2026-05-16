@@ -11,7 +11,7 @@ import {
   isTty,
   noteBasic16IfFirst,
   resetCapabilityWarning,
-} from "../src/output/capability.js";
+} from "../src/output/capability.ts";
 import { makeBufferStream } from "./helpers.js";
 
 function makeTtyStream() {

@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { ZombieHelp, styleTagline } from "../src/program/help.js";
-import { formatHelpHeading, palette, resetCapabilityWarning } from "../src/output/index.js";
+import { formatHelpHeading, palette, resetCapabilityWarning } from "../src/output/index.ts";
 
 // Three stream shims — one per ColorMode. detectColorMode resolves
 // mode from {env, stream.isTTY}, so the test injects both. Real

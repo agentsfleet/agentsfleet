@@ -8,7 +8,7 @@
 // touching globals.
 
 import { Help } from "commander";
-import { formatHelpHeading, palette } from "../output/index.js";
+import { formatHelpHeading, palette } from "../output/index.ts";
 
 export class ZombieHelp extends Help {
   constructor({ stream, env } = {}) {

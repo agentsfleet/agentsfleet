@@ -4,7 +4,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 
 import { newIdempotencyKey, loadCredentials, saveCredentials, clearCredentials, loadWorkspaces, saveWorkspaces } from "../src/lib/state.js";
-import { printSection, printKeyValue, printTable } from "../src/output/index.js";
+import { printSection, printKeyValue, printTable } from "../src/output/index.ts";
 import {
   wsZombiesPath,
   wsZombiePath,

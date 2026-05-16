@@ -6,8 +6,8 @@
 // rendering" are pinned in PALETTE_INTERNALS — drift breaks the brand.
 
 import { describe, test, expect, beforeEach } from "bun:test";
-import { palette, PALETTE_INTERNALS } from "../src/output/palette.js";
-import { ColorMode, resetCapabilityWarning } from "../src/output/capability.js";
+import { palette, PALETTE_INTERNALS } from "../src/output/palette.ts";
+import { ColorMode, resetCapabilityWarning } from "../src/output/capability.ts";
 import { makeBufferStream } from "./helpers.js";
 
 const ESC = "\u001b";

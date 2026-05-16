@@ -23,9 +23,9 @@ import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth
 import { printJson, writeError, writeLine } from "./program/io.js";
 import { printVersion, printPreReleaseWarning } from "./program/banner.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
-import { ui, printKeyValue, printSection, printTable } from "./output/index.js";
+import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
 import { createSpinner } from "./ui-progress.js";
-import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.js";
+import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.js";
 import { buildHandlers } from "./program/handlers-bind.js";
 import { ROLE_ADMIN } from "./constants/auth-roles.ts";

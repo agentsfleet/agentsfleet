@@ -11,8 +11,8 @@
 //   warn  → ⚠ in warn-amber (256:214)
 
 import { describe, test, expect } from "bun:test";
-import { glyph, withGlyph } from "../src/output/glyph.js";
-import { ColorMode } from "../src/output/capability.js";
+import { glyph, withGlyph } from "../src/output/glyph.ts";
+import { ColorMode } from "../src/output/capability.ts";
 
 const ESC = "\u001b";
 

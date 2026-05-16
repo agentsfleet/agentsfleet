@@ -12,14 +12,16 @@ import { dirname, join, relative } from "node:path";
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = dirname(TEST_DIR);
 const SRC_DIR = join(PKG_ROOT, "src");
-const PALETTE_PATH = join(SRC_DIR, "output", "palette.js");
+const PALETTE_PATH = join(SRC_DIR, "output", "palette.ts");
 
 function* walk(dir) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     const s = statSync(full);
     if (s.isDirectory()) yield* walk(full);
-    else if (s.isFile() && full.endsWith(".js")) yield full;
+    // Walk both .js and .ts during the TypeScript migration; invariants
+    // apply uniformly across both extensions.
+    else if (s.isFile() && (full.endsWith(".js") || full.endsWith(".ts"))) yield full;
   }
 }
 
@@ -34,17 +36,17 @@ describe("pulse-cyan currency rule", () => {
       const { text, path: rel } = readSource(path);
       if (/\bpalette\.pulse(Bold)?\b/.test(text)) callsites.push(rel);
     }
-    // The expected callsites: glyph.js (live glyph) and format.js
+    // The expected callsites: glyph.ts (live glyph) and format.ts
     // (helpHeading + helper internals). Banner.js composes through
     // glyph.live() and never calls palette.pulse directly.
     expect(callsites.length).toBeLessThanOrEqual(3);
-    expect(callsites).toContain("src/output/glyph.js");
-    expect(callsites).toContain("src/output/format.js");
+    expect(callsites).toContain("src/output/glyph.ts");
+    expect(callsites).toContain("src/output/format.ts");
   });
 });
 
-describe("no inline ANSI escapes outside palette.js", () => {
-  test("\\u001b[ literal appears only in src/output/palette.js", () => {
+describe("no inline ANSI escapes outside palette.ts", () => {
+  test("\\u001b[ literal appears only in src/output/palette.ts", () => {
     const violators = [];
     for (const path of walk(SRC_DIR)) {
       if (path === PALETTE_PATH) continue;
@@ -58,7 +60,7 @@ describe("no inline ANSI escapes outside palette.js", () => {
     expect(violators).toEqual([]);
   });
 
-  test("256-color codes (38;5;NNN) appear only in palette.js", () => {
+  test("256-color codes (38;5;NNN) appear only in palette.ts", () => {
     const violators = [];
     for (const path of walk(SRC_DIR)) {
       if (path === PALETTE_PATH) continue;
