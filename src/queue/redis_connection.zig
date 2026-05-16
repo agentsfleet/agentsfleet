@@ -165,12 +165,21 @@ pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redi
         return mapWriteError(err);
     };
     return redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
-        // OOM during RESP parsing is a host-level allocator failure, not a
-        // transport corruption — leave the connection state intact and let
-        // the caller see the real root cause. Otherwise the pool retry
-        // layer poisons the conn, redials, OOMs again, and surfaces a
-        // misleading `ReadFailed` after MAX_ATTEMPTS.
-        if (err == error.OutOfMemory) return error.OutOfMemory;
+        // OOM during RESP parsing must poison the connection: bulk-string
+        // (`$N\r\n<N bytes>\r\n`) and array (`*N\r\n<elements>`) replies
+        // consume the length/count header via `readRespLine` BEFORE the
+        // body allocation fires. If alloc fails, the body bytes (or
+        // unread elements) remain in the transport buffer and the next
+        // RESP read on this conn would start mid-message. Pool.release
+        // sees the poisoned state and closes; the OOM still surfaces
+        // verbatim to the caller (no `ReadFailed` re-tag). Simple-string
+        // and integer replies don't suffer the framing issue, but we
+        // poison unconditionally — the type isn't known at this point
+        // and OOM is rare enough that a forced redial is acceptable.
+        if (err == error.OutOfMemory) {
+            self.transitionTo(.poisoned);
+            return error.OutOfMemory;
+        }
         self.transitionTo(.poisoned);
         return self.mapReadError(err);
     };

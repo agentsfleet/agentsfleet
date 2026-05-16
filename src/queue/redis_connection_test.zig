@@ -93,7 +93,7 @@ test "command round-trips a single RESP reply" {
     try std.testing.expectEqualStrings("PONG", resp.simple);
 }
 
-test "commandAllowError: OOM during RESP read propagates without poisoning the connection" {
+test "commandAllowError: OOM during RESP read propagates and poisons the connection" {
     var srv: PongOnce = undefined;
     try srv.start();
     defer srv.shutdown();
@@ -112,17 +112,19 @@ test "commandAllowError: OOM during RESP read propagates without poisoning the c
     // FailingAllocator with fail_index=0 returns OutOfMemory on every
     // allocation. The argv write path doesn't allocate, so the WRITE
     // round-trip completes; readRespValue's first allocation inside the
-    // RESP parser fails. This is the exact failure mode greptile flagged.
+    // RESP parser fails.
     var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
     conn.alloc = fa.allocator();
 
     const result = conn.commandAllowError(&.{"PING"});
     try std.testing.expectError(error.OutOfMemory, result);
 
-    // Load-bearing assertion: OOM is a host-level allocator failure, NOT
-    // a transport corruption. The connection's framing is intact and the
-    // same `conn` can serve the next request once memory pressure subsides.
-    // Without the short-circuit in commandAllowError, this would be
-    // .poisoned and the pool would close + redial (and OOM again).
-    try std.testing.expect(conn.state == .active);
+    // Load-bearing assertion: OOM during RESP read must poison the
+    // connection because bulk-string (`$N\r\n…`) and array (`*N\r\n…`)
+    // replies consume the length/count header before the body allocation
+    // fires — partial bytes remain in the transport buffer and the next
+    // RESP read would start mid-message. The OOM still surfaces verbatim
+    // (no `ReadFailed` re-tag) AND Pool.release(conn, true) sees the
+    // poisoned state and closes the conn.
+    try std.testing.expect(conn.state == .poisoned);
 }
