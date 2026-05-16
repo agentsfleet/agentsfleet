@@ -23,8 +23,8 @@ ENV=dev ./playbooks/002_preflight/001_gate.sh
 2. Ensure branch is clean and validated:
 
 ```bash
-make lint
-make test
+make lint-all
+make test-unit-all
 ```
 
 3. Ensure `deploy-dev.yml` is present and healthy in `main`.

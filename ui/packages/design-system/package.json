@@ -13,7 +13,8 @@
   "scripts": {
     "lint": "oxlint src && tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "peerDependencies": {
     "react": "^19.2.5",

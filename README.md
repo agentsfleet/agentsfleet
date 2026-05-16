@@ -33,7 +33,7 @@ This repo is the control plane (Zig backend), the worker, the marketing site, an
 | Docker | latest | Postgres + Redis brought up by `make up`. Colima or Docker Desktop both work. |
 | `bun` | `≥1.3` | Workspace install + frontend dev server. |
 | Clerk dev instance | one project, dev keys | Bootstrapped per [`playbooks/001_bootstrap/001_playbook.md`](playbooks/001_bootstrap/001_playbook.md) §1.2. Hand the **Publishable key + Secret key** to the agent — it provisions the rest into the vault. |
-| 1Password CLI (`op`) | latest | Secrets resolve via `pass-cli inject` from the vault. `make env` is a no-op without it. |
+| 1Password CLI (`op`) | latest | Secrets resolve via `pass-cli inject` from the vault. Required for the `.env` step in First Run. |
 
 A coding-agent host (Claude Code / Amp / Codex CLI / OpenCode) running this repo's `AGENTS.md` is recommended — it knows the Clerk bootstrap, vault setup, and gate-firing conventions cold.
 
@@ -44,8 +44,8 @@ git clone https://github.com/usezombie/usezombie.git ~/Projects/usezombie
 cd ~/Projects/usezombie
 
 # 1. Hydrate .env (zombied) from your Proton Pass / 1Password vault.
-#    ENV=local pulls dev-machine defaults; ENV=dev|prod pull deploy targets.
-make env ENV=local
+#    Swap .env.local.tpl for .env.dev.tpl / .env.prod.tpl as needed.
+pass-cli inject -i .env.local.tpl -o .env -f && chmod 600 .env
 
 # 2. Stand up Postgres + Redis + zombied (migrates the DB on first run).
 make up
@@ -63,8 +63,8 @@ There is no separate `.env.example` in `ui/packages/app/` because the only requi
 ## Verification cycle
 
 ```bash
-make lint               # eslint + zig fmt + redocly + spec template audit
-make test               # Tier 1 — Zig unit + zombiectl + website + app vitest
+make lint-all           # zig fmt + zlint + oxlint + redocly + actionlint + schema/workflow gates
+make test-unit-all      # Tier 1 — Zig units + multi-package coverage + agent-skill unit tests
 make test-integration   # Tier 2 — Zig vs real Postgres + Redis (run with services up)
 ```
 
@@ -95,7 +95,7 @@ That wires up two hooks:
 | Hook | What it runs | Source |
 |---|---|---|
 | Pre-commit | `gitleaks` + the doc-read / milestone-id / pub-surface audits | [`.githooks/pre-commit`](.githooks/pre-commit) |
-| Pre-push | `make test` always; `make test-integration-stub` + `make test-integration` + `make memleak` when the push touches Zig | [`.githooks/pre-push`](.githooks/pre-push) |
+| Pre-push | `make test-unit-all` always; `make test-unit-executor` + `make test-integration` + `make memleak` when the push touches Zig | [`.githooks/pre-push`](.githooks/pre-push) |
 
 `git push --no-verify` is documented as discouraged in `AGENTS.md` and exists only for emergencies — don't make it a habit.
 

@@ -57,8 +57,8 @@ jobs:
       - name: Install zombiectl dependencies
         run: bun install --frozen-lockfile
         working-directory: zombiectl
-      - name: Run app and CLI lint gate
-        run: make lint-apps
+      - name: Run app + design-system + zombiectl lint gate
+        run: make lint-apps-ds-ctl
 
   lint-ci:
     runs-on: ubuntu-latest
@@ -72,8 +72,8 @@ jobs:
           curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
             | tar xz -C "$RUNNER_TEMP/bin" actionlint
           echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
-      - name: Run CI lint gate
-        run: make lint-ci
+      - name: Validate GH Actions workflows (actionlint + make-target refs)
+        run: make check-gh-actions-valid
 
   lint-openapi:
     runs-on: ubuntu-latest

@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint lint-zig lint-website lint-apps lint-ci openapi doctor check-pg-drain check-schema-gate _fmt _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _actionlint_check
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl check-openapi check-schema-gate check-gh-actions-valid _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -43,10 +43,19 @@ _zombiectl_lint:
 	@cd zombiectl && node --check src/cli.js && node --check bin/zombiectl.js
 	@echo "✓ [zombiectl] Lint passed"
 
-_pg_drain_check:
+_lint_zig_pg_drain:
 	@echo "→ [zombied] Checking pg query drain discipline..."
 	@python3 lint-zig.py src
 	@echo "✓ [zombied] pg-drain check passed"
+
+_lint_zig_test_depth:
+	@mkdir -p .tmp
+	@unit_count=$$(find src -name '*.zig' -exec grep -hE '^test "' {} + | wc -l | tr -d ' '); \
+	 integration_count=$$(find src -name '*.zig' -exec grep -hE '^test "integration:' {} + | wc -l | tr -d ' '); \
+	 printf 'zombied_test_cases=%s\nzombied_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/zombied-test-depth.txt >/dev/null; \
+	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
+	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
+	 echo "✓ [zombied] test depth gate passed (unit=$$unit_count integration=$$integration_count)"
 
 _zig_target_lint:
 	@echo "→ [ci] Checking Zig target triples for -gnu suffix..."
@@ -142,13 +151,7 @@ _hardcoded_role_check:
 	if [ "$$FAIL" = "1" ]; then exit 1; fi; \
 	echo "✓ [zombied] No hardcoded role constants found"
 
-_actionlint_check:
-	@echo "→ [ci] Running actionlint on GitHub Actions workflows..."
-	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
-	@$(ACTIONLINT) .github/workflows/*.yml
-	@echo "✓ [ci] actionlint passed"
 
-check-pg-drain: _pg_drain_check  ## Check that all conn.query() calls have a .drain()
 
 _schema_gate_check:
 	@echo "→ [zombied] Checking schema/*.sql against pre-v2.0 teardown convention..."
@@ -182,7 +185,7 @@ check-schema-gate: _schema_gate_check  ## Enforce pre-v2.0 teardown convention o
 
 REDOCLY := bun x redocly
 
-openapi:  ## Bundle YAML → openapi.json, lint, check error schema, self-test
+check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks
 	@echo "→ [openapi] Bundling split YAML → public/openapi.json..."
 	@$(REDOCLY) bundle public/openapi/root.yaml -o public/openapi.json >/dev/null
 	@echo "→ [openapi] Redocly lint..."
@@ -207,17 +210,32 @@ _legacy_symbols_check:
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
 	echo "✓ [zombied] No legacy event-substrate symbols in active code"
 
-lint-zig: _fmt_check _zlint_check _pg_drain_check _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint zombied (Zig)
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint zombied (Zig)
 	@echo "✓ [zombied] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 
-lint-apps: _app_lint _design_system_lint _zombiectl_lint  ## Lint app, design-system, and zombiectl
+lint-apps-ds-ctl: _app_lint _design_system_lint _zombiectl_lint  ## Lint app + design-system + zombiectl
 
-lint-ci: _actionlint_check  ## Lint GitHub Actions workflows (actionlint)
 
-lint: lint-zig lint-website lint-apps lint-ci openapi  ## Lint everything (zombied + website + app + design-system + zombiectl + CI + OpenAPI)
+lint-all: lint-zig lint-website lint-apps-ds-ctl check-openapi check-schema-gate check-gh-actions-valid  ## Run all linters + quality gates
 	@echo "✓ All lint checks passed"
 
-doctor:  ## Run zombied doctor (connectivity + config check)
-	@zig build run -- doctor
+check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + run: shellcheck) + make-target ref check
+	@echo "→ [gh-actions] Running actionlint on workflows..."
+	@command -v $(ACTIONLINT) >/dev/null 2>&1 || { echo "actionlint not found. Install via: mise install actionlint"; exit 1; }
+	@$(ACTIONLINT) .github/workflows/*.yml
+	@echo "→ [gh-actions] Verifying make targets referenced in workflows..."
+	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
+	@# -n mode (dry-run propagates through sub-makes), so a self-reference
+	@# fork-bombs: each generation forks N sub-makes that each fork N more.
+	@FAIL=0; \
+	TGTS=$$(grep -hoE 'run:[[:space:]]*make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null | awk '{print $$NF}' | grep -v '^check-gh-actions-valid$$' | sort -u); \
+	for tgt in $$TGTS; do \
+	  if ! $(MAKE) -n "$$tgt" >/dev/null 2>&1; then \
+	    echo "✗ '.github/workflows/' references 'make $$tgt' which is not a known target"; \
+	    FAIL=1; \
+	  fi; \
+	done; \
+	if [ $$FAIL -eq 1 ]; then echo "✗ workflow target reference check failed"; exit 1; fi; \
+	echo "✓ [gh-actions] actionlint + make-target refs all green"

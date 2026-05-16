@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Pre-commit: gitleaks on staged content, plus make lint when lint-relevant files are staged.
+# Pre-commit: gitleaks on staged content, plus surface-aware lint when
+# lint-relevant files are staged. Only runs the linters that match the
+# touched surface (e.g. .zig changes → lint-zig only; ui/packages/app → just
+# lint-apps-ds-ctl), so commits don't pay the full lint-all cost (5-10 min)
+# when only one surface changed.
+#
 # Bypass for emergencies: `git commit --no-verify` (discouraged per AGENTS.md).
 set -euo pipefail
 
@@ -15,35 +20,56 @@ fi
 echo "pre-commit: gitleaks protect --staged"
 gitleaks protect --staged --redact --verbose --no-banner
 
-# --- conditional make harness-verify + make lint -----------------------------
-# Run the gate audits + lint only if staged files could affect them. Keeps
-# fast-path commits (docs, specs, memory) from paying the cost.
-#
-# Order matters: harness-verify is seconds-fast and fails on cheap
-# discipline regressions (UFS, design tokens, error registry, logging,
-# lifecycle, spec template, combined milestone-id / pub / UI audits). It
-# runs first so a token-discipline regression doesn't wait for tsc/oxlint
-# to finish before blocking the commit.
+# --- surface-aware harness-verify + targeted lint ----------------------------
+# Classify staged files into surface flags; run only the matching linters.
+# harness-verify is seconds-fast and runs once if any lint-relevant file is
+# staged (catches token/spec/lifecycle/UI discipline regressions cheaply
+# before the heavier surface linters fire).
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-needs_lint=0
+needs_lint_zig=0
+needs_lint_website=0
+needs_lint_apps_ds_ctl=0
+needs_check_openapi=0
+needs_check_schema_gate=0
+needs_check_gh_actions=0
+
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
-    *.zig)                         needs_lint=1 ;;
-    *.ts|*.tsx|*.js|*.jsx|*.json)  needs_lint=1 ;;
-    ui/packages/*)                 needs_lint=1 ;;
-    scripts/*.sh)                  needs_lint=1 ;;
-    .github/workflows/*.yml|.github/workflows/*.yaml) needs_lint=1 ;;
-    Makefile|make/*.mk)            needs_lint=1 ;;
+    *.zig)
+      needs_lint_zig=1 ;;
+    schema/*.sql)
+      needs_check_schema_gate=1
+      needs_lint_zig=1 ;;
+    public/openapi/*|public/openapi.json)
+      needs_check_openapi=1 ;;
+    ui/packages/website/*)
+      needs_lint_website=1 ;;
+    ui/packages/app/*|ui/packages/design-system/*|zombiectl/*)
+      needs_lint_apps_ds_ctl=1 ;;
+    .github/workflows/*.yml|.github/workflows/*.yaml)
+      needs_check_gh_actions=1 ;;
+    Makefile|make/*.mk)
+      needs_check_gh_actions=1 ;;
+    scripts/*.sh)
+      # No targeted gate yet; relies on shellcheck inside actionlint for workflows.
+      ;;
   esac
 done <<< "$staged"
 
-if [ "$needs_lint" -eq 1 ]; then
+any_needed=$(( needs_lint_zig + needs_lint_website + needs_lint_apps_ds_ctl + needs_check_openapi + needs_check_schema_gate + needs_check_gh_actions ))
+
+if [ "$any_needed" -gt 0 ]; then
   echo "pre-commit: make harness-verify"
   make harness-verify
-  echo "pre-commit: make lint"
-  make lint
+
+  [ "$needs_lint_zig"          -eq 1 ] && { echo "pre-commit: make lint-zig";               make lint-zig; }
+  [ "$needs_lint_website"      -eq 1 ] && { echo "pre-commit: make lint-website";           make lint-website; }
+  [ "$needs_lint_apps_ds_ctl"  -eq 1 ] && { echo "pre-commit: make lint-apps-ds-ctl";       make lint-apps-ds-ctl; }
+  [ "$needs_check_schema_gate" -eq 1 ] && { echo "pre-commit: make check-schema-gate";      make check-schema-gate; }
+  [ "$needs_check_openapi"     -eq 1 ] && { echo "pre-commit: make check-openapi";          make check-openapi; }
+  [ "$needs_check_gh_actions"  -eq 1 ] && { echo "pre-commit: make check-gh-actions-valid"; make check-gh-actions-valid; }
 else
-  echo "pre-commit: no lint-relevant files staged, skipping harness-verify + lint"
+  echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
 fi

@@ -4,7 +4,7 @@
 
 include make/test-unit.mk
 include make/test-integration.mk
-include make/test-e2e.mk
+include make/acceptance.mk
 include make/bench.mk
 
 ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
@@ -17,7 +17,7 @@ BENCH_MODE ?= bench
 MEMLEAK_TARGET ?=
 MEMLEAK_CPU    ?= baseline
 
-.PHONY: test
+.PHONY: test-unit-all
 
-test: test-zombied test-unit-zombiectl test-unit-website test-unit-app test-skill-evals  ## Run all unit tests (zombied + zombiectl + website + app + skill-evals)
-	@echo "✓ All unit tests passed"
+test-unit-all: test-unit-zombied test-coverage-all test-unit-skills  ## Run all unit lanes (Zig + multi-package coverage + agent-skills)
+	@echo "✓ All unit lanes passed"

@@ -2,10 +2,10 @@
 # Pre-push: comprehensive verification before anything leaves the machine.
 #
 # Always runs:
-#   - make test                       (tier 1 — Zig unit + zombiectl + website + app)
+#   - make test-unit-all              (tier 1 — Zig units + multi-package coverage + skill-evals)
 #
 # Conditional on Zig changes since upstream (or main, on first push):
-#   - make test-integration-stub      (tier 2a — executor-side stub-binary contract; fast)
+#   - make test-unit-executor         (tier 2a — executor-side mocked unit tests; fast)
 #   - make test-integration           (tier 2b — worker integration vs real Postgres + Redis)
 #   - make memleak                    (allocator leak gate; valgrind on Linux CI)
 #
@@ -19,8 +19,8 @@ set -euo pipefail
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-echo "pre-push: make test"
-make test
+echo "pre-push: make test-unit-all"
+make test-unit-all
 
 # Tier-2 + memleak fire when this push contains Zig changes — those are the
 # branches that exercise the integration paths and allocator wiring.
@@ -34,8 +34,8 @@ fi
 pushed_zig="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null | grep -E '\.zig$' || true)"
 
 if [ -n "$pushed_zig" ]; then
-  echo "pre-push: make test-integration-stub (Zig changed since $upstream_ref)"
-  make test-integration-stub
+  echo "pre-push: make test-unit-executor (Zig changed since $upstream_ref)"
+  make test-unit-executor
   echo "pre-push: make test-integration (Zig changed since $upstream_ref)"
   make test-integration
   echo "pre-push: make memleak (Zig changed since $upstream_ref)"
