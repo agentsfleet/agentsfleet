@@ -199,6 +199,72 @@ test "integration: zombies list — projects triggers array from config_json" {
     try std.testing.expect(r.bodyContains("\"schedule\":\"*/30 * * * *\""));
 }
 
+// §2 contract: 201 install response carries a `webhook_urls` map keyed by
+// `triggers[].source`. URL pattern is `{api_url}/v1/webhooks/{id}/{source}`.
+// The CLI install-skill consumes this map verbatim when looping `gh api`
+// per declared webhook trigger — a wrong value (or missing field) drops the
+// install skill into the paste-into-GitHub fallback the spec eliminates.
+test "integration: install — 201 returns webhook_urls map keyed by source" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+
+    const body =
+        "{\"source_markdown\":\"---\\nname: webhook-install-pin\\ndescription: pins webhook_urls shape\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: webhook-install-pin\\nx-usezombie:\\n  triggers:\\n    - type: webhook\\n      source: github\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.created);
+
+    try std.testing.expect(r.bodyContains("\"webhook_urls\":{"));
+    try std.testing.expect(r.bodyContains("\"github\":\"http://127.0.0.1/v1/webhooks/"));
+    try std.testing.expect(r.bodyContains("/github\""));
+}
+
+// §Failure Modes row: "Install with no webhook trigger → 201 with
+// `webhook_urls: {}`". A cron-only zombie short-circuits the install-skill's
+// S1.9 `gh api` loop — the empty map is the signal that there is nothing to
+// register on the upstream side, and the skill validates via smoke-test
+// steer at S1.11 instead.
+test "integration: install — cron-only trigger returns empty webhook_urls map" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+
+    const body =
+        "{\"source_markdown\":\"---\\nname: cron-only-install-pin\\ndescription: pins empty webhook_urls\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: cron-only-install-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.created);
+
+    try std.testing.expect(r.bodyContains("\"webhook_urls\":{}"));
+}
+
 // Cross-file `name:` invariant: SKILL.md and TRIGGER.md must agree on identity.
 // Handler enforcement at create.zig fires before workspace authorization, so a
 // USER-role token still surfaces the mismatch error (no escalation needed).
