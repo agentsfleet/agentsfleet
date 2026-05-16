@@ -1,5 +1,5 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.js";
 import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
 import { SIGINT } from "../constants/signals.ts";

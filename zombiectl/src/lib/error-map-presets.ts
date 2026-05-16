@@ -1,6 +1,6 @@
 // error-map-presets — shared UZ-* → user-facing { code, message } maps.
-// Per-command errorMaps in zombiectl/src/commands/*.js compose presets
-// with command-specific entries. The registry unit test
+// Per-command errorMaps in zombiectl/src/commands/*.{js,ts} compose
+// presets with command-specific entries. The registry unit test
 // (zombiectl/test/registry.unit.test.js) pins the shape, UZ-* key
 // format, and AUTH_PRESET coverage on auth-critical routes.
 //
@@ -8,7 +8,7 @@
 // string as a public string (RULE EMS). Refactors must keep the
 // substring search in the failure-modes integration tests valid.
 //
-// Keys reference named ERR_* constants from ../constants/error-codes.js
+// Keys reference named ERR_* constants from ../constants/error-codes.ts
 // (allowlisted by scripts/audit-error-codes.sh) — never raw "UZ-..."
 // literals here, which would trip the raw-literal gate.
 
@@ -32,9 +32,16 @@ import {
   ERR_ZOMBIE_NAME_MISMATCH,
 } from "../constants/error-codes.ts";
 
+export interface PresetEntry {
+  readonly code: string;
+  readonly message: string;
+}
+
+export type PresetMap = Readonly<Record<string, PresetEntry>>;
+
 // Universal auth codes — every authenticated command can hit these.
 // Mirrors src/errors/error_registry.zig UZ-AUTH-001..010.
-export const AUTH_PRESET = Object.freeze({
+export const AUTH_PRESET: PresetMap = Object.freeze({
   [ERR_FORBIDDEN]: {
     code: "FORBIDDEN",
     message: "Access denied — your role does not permit this action.",
@@ -78,7 +85,7 @@ export const AUTH_PRESET = Object.freeze({
 });
 
 // Workspace lifecycle codes that surface to the human operator.
-export const WORKSPACE_PRESET = Object.freeze({
+export const WORKSPACE_PRESET: PresetMap = Object.freeze({
   [ERR_WORKSPACE_NOT_FOUND]: {
     code: "WORKSPACE_NOT_FOUND",
     message: "Workspace not found — check `zombiectl workspace list`.",
@@ -90,7 +97,7 @@ export const WORKSPACE_PRESET = Object.freeze({
 });
 
 // Zombie lifecycle codes that surface from install / list / status etc.
-export const ZOMBIE_PRESET = Object.freeze({
+export const ZOMBIE_PRESET: PresetMap = Object.freeze({
   [ERR_ZOMBIE_NAME_EXISTS]: {
     code: "ZOMBIE_NAME_EXISTS",
     message: "A zombie with this name already exists — pick a different name.",
@@ -115,6 +122,10 @@ export const ZOMBIE_PRESET = Object.freeze({
 
 // Compose helper. Last argument wins, so per-command overrides at the
 // call site shadow preset entries.
-export function compose(...sources) {
-  return Object.freeze(Object.assign({}, ...sources));
+export function compose(...sources: ReadonlyArray<PresetMap>): PresetMap {
+  const merged: Record<string, PresetEntry> = {};
+  for (const src of sources) {
+    Object.assign(merged, src);
+  }
+  return Object.freeze(merged);
 }

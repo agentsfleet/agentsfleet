@@ -4,7 +4,7 @@
 // error analytics triplet stay co-located with the dispatch path.
 
 import { cliAnalytics } from "../lib/analytics.js";
-import { runCommand } from "../lib/run-command.js";
+import { runCommand } from "../lib/run-command.ts";
 import { printJson, writeLine } from "./io.js";
 import { ui } from "../output/index.ts";
 

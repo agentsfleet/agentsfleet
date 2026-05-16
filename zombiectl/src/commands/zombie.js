@@ -26,7 +26,7 @@ import {
   WORKSPACE_PRESET,
   ZOMBIE_PRESET,
   compose,
-} from "../lib/error-map-presets.js";
+} from "../lib/error-map-presets.ts";
 import { ZOMBIE_STATUS } from "../constants/zombie-status.ts";
 
 // Shared by every `zombie.*` route — install/list/status/kill/stop/

@@ -7,7 +7,7 @@ import {
   USAGE_ERROR,
   VALIDATION_ERROR,
 } from "../constants/cli-errors.ts";
-import { AUTH_PRESET, WORKSPACE_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_PRESET, WORKSPACE_PRESET, compose } from "../lib/error-map-presets.ts";
 import { WORKSPACES_COLLECTION_PATH } from "../lib/api-paths.js";
 import {
   EVT_WORKSPACE_ADD_COMPLETED,

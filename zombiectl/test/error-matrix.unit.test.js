@@ -6,7 +6,7 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { ApiError } from "../src/lib/http.ts";
-import { runCommand } from "../src/lib/run-command.js";
+import { runCommand } from "../src/lib/run-command.ts";
 
 const STDERR_STUB = { write: () => {} };
 

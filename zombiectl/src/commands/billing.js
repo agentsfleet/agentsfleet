@@ -7,7 +7,7 @@
 // both charges combined. `--json` emits the raw shape for scripting and
 // includes `next_cursor` so callers can paginate.
 
-import { AUTH_PRESET } from "../lib/error-map-presets.js";
+import { AUTH_PRESET } from "../lib/error-map-presets.ts";
 import { writeError } from "../program/io.js";
 import { CHARGE_TYPE, formatDollars } from "../constants/billing.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.js";

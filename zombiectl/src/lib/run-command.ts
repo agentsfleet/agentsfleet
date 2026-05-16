@@ -1,4 +1,4 @@
-// run-command.js — generic per-command boundary for zombiectl handlers.
+// run-command — generic per-command boundary for zombiectl handlers.
 // Owns ApiError formatting (matching printApiError's
 // `error: <code> <message>` + `request_id:` shape), fetch-failed →
 // API_UNREACHABLE, unknown → UNEXPECTED, and the
@@ -9,16 +9,70 @@
 // ctx.stderr via deps.printJson / deps.writeLine / deps.ui, so callers
 // don't need to pre-wire io.js's positional writeError.
 
-import { ApiError } from "./http.ts";
+import { ApiError, type RetryConfig } from "./http.ts";
 import {
-  trackCliEvent,
+  trackCliEvent as defaultTrackCliEvent,
   getCliAnalyticsContext,
+  type AnalyticsClient,
 } from "./analytics.js";
+import type { PresetMap } from "./error-map-presets.ts";
 
 const API_UNREACHABLE_CODE = "API_UNREACHABLE";
 const UNEXPECTED_CODE = "UNEXPECTED";
 
-function isFetchFailed(err) {
+// Handler context shape — the real Deps shape lands in D39 when
+// commands themselves migrate. runCommand reads a handful of known
+// fields and mutates `retryConfig`; the index signature keeps room for
+// the handler's own state without re-typing at every D38 boundary.
+export interface HandlerCtx {
+  stderr?: NodeJS.WritableStream | null;
+  jsonMode?: boolean;
+  apiUrl?: string;
+  analyticsClient?: AnalyticsClient | null;
+  distinctId?: string;
+  analyticsContext?: Record<string, unknown> | null;
+  retryConfig?: RetryConfig | null;
+  [key: string]: unknown;
+}
+
+export type Handler = (
+  ctx: HandlerCtx,
+) => number | void | Promise<number | void>;
+
+type TrackEventFn = typeof defaultTrackCliEvent;
+
+export interface RunCommandDeps {
+  analyticsClient?: AnalyticsClient | null;
+  distinctId?: string;
+  trackCliEvent?: TrackEventFn;
+  printJson?: (stream: NodeJS.WritableStream, value: unknown) => void;
+  writeLine?: (stream: NodeJS.WritableStream, line: string) => void;
+  ui?: { err?: (s: string) => string } | null;
+}
+
+export interface RunCommandOptions {
+  name: string;
+  handler: Handler;
+  retry?: boolean | RetryConfig | null;
+  instrument?: boolean;
+  errorMap?: PresetMap;
+  ctx?: HandlerCtx | null;
+  deps?: RunCommandDeps;
+}
+
+interface RenderOpts {
+  handlerCtx: HandlerCtx;
+  printJson: RunCommandDeps["printJson"];
+  writeLine: RunCommandDeps["writeLine"];
+  ui: RunCommandDeps["ui"];
+  instrument: boolean;
+  trackEvent: TrackEventFn;
+  analyticsClient: AnalyticsClient | null;
+  distinctId: string;
+  buildProps: () => Record<string, unknown>;
+}
+
+function isFetchFailed(err: unknown): err is TypeError {
   return (
     err instanceof TypeError &&
     typeof err.message === "string" &&
@@ -26,17 +80,19 @@ function isFetchFailed(err) {
   );
 }
 
-function resolveRetryConfig(retry) {
+function resolveRetryConfig(
+  retry: boolean | RetryConfig | null | undefined,
+): RetryConfig | null {
   // retry: undefined → caller (apiRequestWithRetry) picks the default.
   // retry: true → same as undefined.
   // retry: false → collapse to 1 attempt for the handler's scope.
   // retry: { maxAttempts: N } → propagate verbatim.
-  if (retry === undefined || retry === true) return null;
+  if (retry === undefined || retry === null || retry === true) return null;
   if (retry === false) return { maxAttempts: 1 };
   return retry;
 }
 
-function emitCliError(opts, errorCode) {
+function emitCliError(opts: RenderOpts, errorCode: string): void {
   if (!opts.instrument) return;
   opts.trackEvent(opts.analyticsClient, opts.distinctId, "cli_error", {
     ...opts.buildProps(),
@@ -45,7 +101,12 @@ function emitCliError(opts, errorCode) {
   });
 }
 
-function renderApi(opts, code, message, err) {
+function renderApi(
+  opts: RenderOpts,
+  code: string,
+  message: string,
+  err: ApiError,
+): void {
   const { handlerCtx, printJson, writeLine } = opts;
   const stderr = handlerCtx.stderr;
   if (!stderr || typeof writeLine !== "function") return;
@@ -65,7 +126,7 @@ function renderApi(opts, code, message, err) {
   if (err.requestId) writeLine(stderr, `request_id: ${err.requestId}`);
 }
 
-function renderPlain(opts, code, message) {
+function renderPlain(opts: RenderOpts, code: string, message: string): void {
   const { handlerCtx, printJson, writeLine, ui } = opts;
   const stderr = handlerCtx.stderr;
   if (!stderr || typeof writeLine !== "function") return;
@@ -78,11 +139,12 @@ function renderPlain(opts, code, message) {
   // the `error: ` prefix so operators see the visual signal in
   // --no-color and CI environments. Coloring (when ui is present)
   // wraps the full prefixed line.
-  const colorize = ui && typeof ui.err === "function" ? ui.err : (s) => s;
+  const colorize =
+    ui && typeof ui.err === "function" ? ui.err : (s: string) => s;
   writeLine(stderr, colorize(`error: ${message}`));
 }
 
-export async function runCommand(opts) {
+export async function runCommand(opts: RunCommandOptions): Promise<number> {
   const {
     name,
     handler,
@@ -104,28 +166,30 @@ export async function runCommand(opts) {
   // lambdas) — copying would mean retryConfig propagation and
   // setCliAnalyticsContext mutations during the handler don't round-
   // trip into the wrapper's post-handler events.
-  const handlerCtx = ctx ?? {};
+  const handlerCtx: HandlerCtx = ctx ?? {};
   handlerCtx.retryConfig = resolveRetryConfig(retry);
 
-  const analyticsClient = deps.analyticsClient ?? handlerCtx.analyticsClient ?? null;
-  const distinctId = deps.distinctId ?? handlerCtx.distinctId ?? "anonymous";
-  const trackEvent = deps.trackCliEvent ?? trackCliEvent;
+  const analyticsClient: AnalyticsClient | null =
+    deps.analyticsClient ?? handlerCtx.analyticsClient ?? null;
+  const distinctId =
+    deps.distinctId ?? handlerCtx.distinctId ?? "anonymous";
+  const trackEvent = deps.trackCliEvent ?? defaultTrackCliEvent;
   const printJson = deps.printJson;
   const writeLine = deps.writeLine;
-  const ui = deps.ui;
+  const ui = deps.ui ?? null;
 
   // Re-evaluated for every event so handlers that call
   // setCliAnalyticsContext during execution have their additions
   // visible on cli_command_finished and cli_error (matching the
   // pre-migration cli.js behavior of spreading analyticsContext
   // post-handler).
-  const buildProps = () => ({
+  const buildProps = (): Record<string, unknown> => ({
     command: name,
     json_mode: String(handlerCtx.jsonMode ?? false),
     ...getCliAnalyticsContext(handlerCtx),
   });
 
-  const renderOpts = {
+  const renderOpts: RenderOpts = {
     handlerCtx,
     printJson,
     writeLine,
@@ -152,7 +216,7 @@ export async function runCommand(opts) {
     return typeof exitCode === "number" ? exitCode : 0;
   } catch (err) {
     if (err instanceof ApiError) {
-      const remap = errorMap[err.code];
+      const remap = errorMap[err.code ?? ""];
       // Server's UZ-* code stays in stderr/JSON output so support and
       // grep workflows still match. The friendly remap.code is the
       // analytics dimension (cli_error.error_code) — that lets us
@@ -174,7 +238,11 @@ export async function runCommand(opts) {
     }
 
     emitCliError(renderOpts, UNEXPECTED_CODE);
-    renderPlain(renderOpts, UNEXPECTED_CODE, String(err?.message ?? err));
+    const fallback =
+      err instanceof Error && typeof err.message === "string"
+        ? err.message
+        : String(err);
+    renderPlain(renderOpts, UNEXPECTED_CODE, fallback);
     return 1;
   }
 }

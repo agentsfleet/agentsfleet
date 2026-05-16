@@ -1,4 +1,4 @@
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.js";
 import { decodeTokenPayload } from "../program/auth-token.ts";
 import { ERR_FORBIDDEN, ERR_UNAUTHORIZED, ERR_TOKEN_EXPIRED } from "../constants/error-codes.ts";

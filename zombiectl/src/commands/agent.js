@@ -9,7 +9,7 @@
 
 import { WORKSPACES_PATH } from "../lib/api-paths.js";
 import { validateRequiredId } from "../program/validate.js";
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import { MISSING_ARGUMENT, VALIDATION_ERROR } from "../constants/cli-errors.ts";
 import {
   OPT_AGENT_ID,

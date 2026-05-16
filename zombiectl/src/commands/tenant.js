@@ -12,7 +12,7 @@ import {
   formatDollars,
   NANOS_PER_USD,
 } from "../constants/billing.ts";
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import { TENANT_PROVIDER_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
 // <$1 left → warn on reset.

@@ -1,5 +1,5 @@
 import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.js";
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
+import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import {
   ERR_INTERNAL_DB_UNAVAILABLE,
   ERR_INTERNAL_DB_QUERY,

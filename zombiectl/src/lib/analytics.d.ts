@@ -34,7 +34,9 @@ export interface HttpRetryInfo {
 
 export function createCliAnalytics(env?: NodeJS.ProcessEnv): Promise<AnalyticsClient | null>;
 export function cliAnalytics(env?: NodeJS.ProcessEnv): Promise<AnalyticsClient | null>;
-export function getCliAnalyticsContext(distinctId: string): CliAnalyticsContext;
+export function getCliAnalyticsContext(
+  ctx: { analyticsContext?: Record<string, unknown> | null } | null | undefined,
+): Record<string, unknown>;
 export function setCliAnalyticsContext(
   ctx: { analyticsClient?: AnalyticsClient | null; distinctId?: string },
   patch: Record<string, unknown>,
