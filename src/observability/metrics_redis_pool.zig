@@ -32,11 +32,16 @@ pub fn clearRegisteredPool() void {
 /// Returns a fresh `PoolStats` snapshot from the registered Pool, or null if
 /// no Pool has been registered yet (early-boot scrape, or post-teardown).
 /// Caller (`metrics_render.zig`) emits no Redis-pool metric lines when null.
+///
+/// `g_mutex` is held across `pool.stats()` to close a TOCTOU window: without
+/// the lock, a concurrent `clearRegisteredPool()` + `api_queue.deinit()` in
+/// `serve.zig`'s shutdown path could free the Pool between the pointer-read
+/// and the stats() call. Lock ordering is `g_mutex → pool.mutex` (pool's own
+/// methods never acquire `g_mutex`), so no deadlock risk.
 pub fn snapshot() ?PoolStats {
     g_mutex.lock();
-    const pool_opt = g_registered_pool;
-    g_mutex.unlock();
-    const pool = pool_opt orelse return null;
+    defer g_mutex.unlock();
+    const pool = g_registered_pool orelse return null;
     return pool.stats();
 }
 
