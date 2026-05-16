@@ -168,6 +168,39 @@ test "Pool.release(ok=true) over max_idle increments forced_closes_total" {
     try std.testing.expectEqual(@as(usize, 1), pool.stats().idle);
 }
 
+test "Pool.acquire OOM during create does not leak active_count" {
+    // Greptile Issue 2 fix witness: the dial-failure errdefer must decrement
+    // active_count for every failure path, not only the catch-block one. A
+    // pure OOM during `alloc.create(Connection)` is the cheapest, most
+    // deterministic trip — it doesn't depend on syscall ordering or network
+    // state. FailingAllocator(fail_index=0) ensures the very first
+    // post-init alloc fails, which IS the Connection create on line 133.
+    const alloc = std.testing.allocator;
+
+    const host = try alloc.dupe(u8, "127.0.0.1");
+    const cfg: redis_config.Config = .{ .host = host, .port = 1, .use_tls = false };
+
+    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
+    // Restore the real allocator before deinit so cfg.host frees through the
+    // same allocator it was duped with.
+    defer {
+        pool.alloc = std.testing.allocator;
+        pool.deinit();
+    }
+
+    var fa = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    pool.alloc = fa.allocator();
+
+    const result = pool.acquire();
+    try std.testing.expectError(error.OutOfMemory, result);
+
+    // Load-bearing assertion: the errdefer at acquire() line 127 must have
+    // fired and rolled active_count back to 0. Without the fix, this would
+    // remain at 1 (the increment before the dial) and overflow_dials_total
+    // logic would treat the pool as one slot more saturated than reality.
+    try std.testing.expectEqual(@as(usize, 0), pool.stats().active);
+}
+
 test "Pool.release of poisoned conn increments poisoned counter" {
     const alloc = std.testing.allocator;
 
@@ -294,6 +327,84 @@ test "integration: request timeout surfaces RedisRequestTimeout on a hanging BLP
     // Sanity bound: two ~100ms timeouts + one redial fit well under 5s. If
     // this assertion ever trips, the retry loop is hanging — not just slow.
     try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
+}
+
+// Closes the socket after reading the first command. Drives a non-resumable
+// transport error (`error.ReadFailed` via `mapReadError`) into the Client's
+// retry loop — exercises greptile Issue 3 (reconnects_total never incremented).
+const CloseOnCmd = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+
+    fn start(self: *CloseOnCmd) !void {
+        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    fn shutdown(self: *CloseOnCmd) void {
+        self.stop.store(true, .release);
+        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn loop(self: *CloseOnCmd) void {
+        while (!self.stop.load(.acquire)) {
+            const conn = self.server.accept() catch return;
+            if (self.stop.load(.acquire)) {
+                conn.stream.close();
+                return;
+            }
+            // Swallow whatever the client wrote (a RESP-encoded PING), then
+            // close. The client's response read returns EOF → ReadFailed →
+            // non-resumable. The Pool retry layer redials a fresh conn for
+            // attempt 2; this loop accepts that too and closes the same way.
+            var buf: [256]u8 = undefined;
+            _ = conn.stream.read(&buf) catch {};
+            conn.stream.close();
+        }
+    }
+
+    fn config(self: *CloseOnCmd, alloc: std.mem.Allocator) !redis_config.Config {
+        const host = try alloc.dupe(u8, "127.0.0.1");
+        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+    }
+};
+
+test "Client.command bumps reconnects_total on non-resumable transport error" {
+    // Greptile Issue 3 fix witness: a non-resumable transport failure inside
+    // the retry loop must increment reconnects_total before the redial.
+    // Without recordReconnect(), the metric stays at 0 even though the
+    // client did dial fresh — operator dashboards lose visibility into
+    // transient transport churn.
+    const alloc = std.testing.allocator;
+
+    var fake: CloseOnCmd = undefined;
+    try fake.start();
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    const pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    var client: Client = .{ .alloc = alloc, .pool = pool };
+    defer client.deinit();
+
+    try std.testing.expectEqual(@as(u64, 0), client.pool.stats().reconnects_total);
+
+    // Attempt 1: dial fresh (no idle conns), write PING, fake closes →
+    //   ReadFailed (non-resumable) → release(conn, false) → recordReconnect → retry.
+    // Attempt 2: dial fresh again, same failure. attempt+1 >= MAX_ATTEMPTS=2,
+    //   so the error surfaces without a third recordReconnect.
+    const result = client.command(&.{"PING"});
+    try std.testing.expectError(error.ReadFailed, result);
+
+    // Exactly one recordReconnect: the bump between attempt 1's failure
+    // and attempt 2's redial. MAX_ATTEMPTS=2 forbids a third try.
+    try std.testing.expectEqual(@as(u64, 1), client.pool.stats().reconnects_total);
 }
 
 const Client = @import("redis_client.zig");
