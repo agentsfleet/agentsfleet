@@ -236,7 +236,7 @@ test("helpFactory is deferred — not invoked at construction, fires when help r
       return { formatHelp: () => "", visibleCommands: () => [], visibleOptions: () => [] };
     },
   });
-  // Construction alone must not invoke the factory — cli.js needs to
+  // Construction alone must not invoke the factory — cli.ts needs to
   // wire ctx-aware help renderers around it after buildProgram returns.
   expect(factoryCalls).toBe(0);
 

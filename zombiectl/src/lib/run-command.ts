@@ -42,12 +42,12 @@ export type Handler = (
 type TrackEventFn = typeof defaultTrackCliEvent;
 
 export interface RunCommandDeps {
-  analyticsClient?: AnalyticsClient | null;
-  distinctId?: string;
-  trackCliEvent?: TrackEventFn;
-  printJson?: (stream: NodeJS.WritableStream, value: unknown) => void;
-  writeLine?: (stream: NodeJS.WritableStream, line: string) => void;
-  ui?: { err?: (s: string) => string } | null;
+  analyticsClient?: AnalyticsClient | null | undefined;
+  distinctId?: string | undefined;
+  trackCliEvent?: TrackEventFn | undefined;
+  printJson?: ((stream: NodeJS.WritableStream, value: unknown) => void) | undefined;
+  writeLine?: ((stream: NodeJS.WritableStream, line: string) => void) | undefined;
+  ui?: { err?: (s: string) => string } | null | undefined;
 }
 
 export interface RunCommandOptions {
@@ -135,7 +135,7 @@ function renderPlain(opts: RenderOpts, code: string, message: string): void {
     printJson(stderr, { error: { code, message } });
     return;
   }
-  // Mirror cli.js's outer safety net + renderApi: human mode keeps
+  // Mirror cli.ts's outer safety net + renderApi: human mode keeps
   // the `error: ` prefix so operators see the visual signal in
   // --no-color and CI environments. Coloring (when ui is present)
   // wraps the full prefixed line.
@@ -162,7 +162,7 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
   }
 
   // Mutate the caller's ctx in place rather than copying. Handlers
-  // already share this object via closure (see cli.js's registry
+  // already share this object via closure (see cli.ts's registry
   // lambdas) — copying would mean retryConfig propagation and
   // setCliAnalyticsContext mutations during the handler don't round-
   // trip into the wrapper's post-handler events.
@@ -181,7 +181,7 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
   // Re-evaluated for every event so handlers that call
   // setCliAnalyticsContext during execution have their additions
   // visible on cli_command_finished and cli_error (matching the
-  // pre-migration cli.js behavior of spreading analyticsContext
+  // pre-migration cli.ts behavior of spreading analyticsContext
   // post-handler).
   const buildProps = (): Record<string, unknown> => ({
     command: name,

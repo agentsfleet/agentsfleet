@@ -76,7 +76,10 @@ export interface Lifecycle {
   workspaces: Workspaces;
   deps: CommandDeps;
   analyticsClient: AnalyticsClient | null | undefined;
-  distinctId: string;
+  // null until a token is present. run-command.ts applies the
+  // "anonymous" fallback for analytics emission when both
+  // deps.distinctId and handlerCtx.distinctId are unset.
+  distinctId: string | null;
   lastCommand: string | null;
 }
 
@@ -93,7 +96,7 @@ function wrapHandler(
       ctx: lifecycle.ctx,
       deps: {
         analyticsClient: lifecycle.analyticsClient,
-        distinctId: lifecycle.distinctId,
+        distinctId: lifecycle.distinctId ?? undefined,
         trackCliEvent: cliAnalytics.trackCliEvent,
         printJson,
         writeLine,

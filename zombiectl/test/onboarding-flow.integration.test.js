@@ -2,7 +2,7 @@ import { describe, test, expect } from "bun:test";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { runCli } from "../src/cli.js";
+import { runCli } from "../src/cli.ts";
 import { loadCredentials, loadWorkspaces } from "../src/lib/state.ts";
 import { bufferStream, withFreshStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";

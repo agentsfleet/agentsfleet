@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { Writable } from "node:stream";
-import { runCli } from "../src/cli.js";
+import { runCli } from "../src/cli.ts";
 
 function bufferStream() {
   let data = "";

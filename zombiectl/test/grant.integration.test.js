@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 
-import { runCli } from "../src/cli.js";
+import { runCli } from "../src/cli.ts";
 import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 

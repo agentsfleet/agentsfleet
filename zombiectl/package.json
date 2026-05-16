@@ -32,7 +32,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src bin test scripts && node ./scripts/audit-runtime-imports.mjs && tsc --noEmit",
     "lint:fix": "oxlint src bin test scripts --fix && node ./scripts/audit-runtime-imports.mjs && tsc --noEmit",
-    "build": "node --check ./src/cli.js && node --check ./bin/zombiectl.js && tsc --noEmit",
+    "build": "node --check ./bin/zombiectl.js && tsc --noEmit",
     "prepublishOnly": "node ./scripts/prepublish.mjs",
     "postinstall": "node ./scripts/postinstall.mjs"
   },

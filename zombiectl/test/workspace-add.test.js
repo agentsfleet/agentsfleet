@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
-import { runCli } from "../src/cli.js";
+import { runCli } from "../src/cli.ts";
 import { loadWorkspaces } from "../src/lib/state.ts";
 
 function bufferStream() {

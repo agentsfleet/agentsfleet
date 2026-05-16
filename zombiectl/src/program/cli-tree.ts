@@ -1,5 +1,5 @@
 // Single source of truth for the zombiectl command tree. buildProgram
-// returns a configured commander.Command — cli.js wires creds, ctx,
+// returns a configured commander.Command — cli.ts wires creds, ctx,
 // analytics, and the preAction auth-guard around it. Pure construction;
 // no I/O at module load.
 //

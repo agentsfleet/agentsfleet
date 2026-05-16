@@ -234,11 +234,11 @@ test("zombie update: 404 ZOMBIE_NOT_FOUND bubbles up", async () => {
   } catch (e) {
     caught = e;
   }
-  assert.ok(caught, "404 must bubble for cli.js to render");
+  assert.ok(caught, "404 must bubble for cli.ts to render");
   assert.equal(caught.status, 404);
 });
 
-test("zombie update: 503 lock_timeout bubbles up for cli.js retry-hint rendering", async () => {
+test("zombie update: 503 lock_timeout bubbles up for cli.ts retry-hint rendering", async () => {
   const { sampleDir } = setupSampleDir();
   let caught = null;
   try {

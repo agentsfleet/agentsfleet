@@ -1,26 +1,47 @@
 import { spawn } from "node:child_process";
 
-function browserDisabled(env) {
+export interface BrowserResolutionOk {
+  argv: string[];
+  quoteUrl?: boolean;
+  command: string;
+  reason?: undefined;
+}
+
+export interface BrowserResolutionBlocked {
+  argv: null;
+  reason: string;
+  command?: undefined;
+  quoteUrl?: undefined;
+}
+
+export type BrowserResolution = BrowserResolutionOk | BrowserResolutionBlocked;
+
+export interface OpenUrlOptions {
+  env?: NodeJS.ProcessEnv | undefined;
+  platform?: NodeJS.Platform | undefined;
+}
+
+function browserDisabled(env: NodeJS.ProcessEnv): boolean {
   const raw = env.BROWSER;
   if (raw == null) return false;
   const normalized = String(raw).trim().toLowerCase();
   return normalized === "false" || normalized === "0" || normalized === "off" || normalized === "none";
 }
 
-function hasDisplay(env) {
+function hasDisplay(env: NodeJS.ProcessEnv): boolean {
   return Boolean(env.DISPLAY || env.WAYLAND_DISPLAY);
 }
 
-function isSsh(env) {
+function isSsh(env: NodeJS.ProcessEnv): boolean {
   return Boolean(env.SSH_CLIENT || env.SSH_TTY || env.SSH_CONNECTION);
 }
 
-function looksLikeWsl(env) {
+function looksLikeWsl(env: NodeJS.ProcessEnv): boolean {
   const release = `${env.WSL_DISTRO_NAME || ""}${env.WSL_INTEROP || ""}${env.OSTYPE || ""}`.toLowerCase();
   return release.includes("wsl");
 }
 
-function commandExists(command) {
+function commandExists(command: string): Promise<boolean> {
   return new Promise((resolve) => {
     const probe = spawn("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], {
       stdio: "ignore",
@@ -30,7 +51,10 @@ function commandExists(command) {
   });
 }
 
-export async function resolveBrowserCommand(env = process.env, platform = process.platform) {
+export async function resolveBrowserCommand(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+): Promise<BrowserResolution> {
   if (browserDisabled(env)) {
     return { argv: null, reason: "browser-disabled" };
   }
@@ -68,7 +92,7 @@ export async function resolveBrowserCommand(env = process.env, platform = proces
   return { argv: null, reason: "unsupported-platform" };
 }
 
-export async function openUrl(url, opts = {}) {
+export async function openUrl(url: string, opts: OpenUrlOptions = {}): Promise<boolean> {
   const env = opts.env || process.env;
   const platform = opts.platform || process.platform;
 
@@ -76,14 +100,19 @@ export async function openUrl(url, opts = {}) {
   if (!resolved.argv) return false;
 
   return new Promise((resolve) => {
-    const argv = [...resolved.argv];
+    const argv: string[] = [...resolved.argv];
     if (resolved.quoteUrl) {
       argv.push(`"${url}"`);
     } else {
       argv.push(url);
     }
 
-    const child = spawn(argv[0], argv.slice(1), {
+    const head = argv[0];
+    if (!head) {
+      resolve(false);
+      return;
+    }
+    const child = spawn(head, argv.slice(1), {
       detached: true,
       stdio: "ignore",
       windowsVerbatimArguments: resolved.quoteUrl === true,

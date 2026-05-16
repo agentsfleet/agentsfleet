@@ -22,7 +22,10 @@ export interface Credentials {
 
 export interface WorkspaceItem {
   workspace_id: string;
-  name: string;
+  // Server can return name=null on the create-response path
+  // (workspaceShow / workspaceList tolerate this with `name ?? "—"`).
+  // Tightening to non-null here would force every caller to coerce.
+  name: string | null;
   created_at: number | null;
 }
 

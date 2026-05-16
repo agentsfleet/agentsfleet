@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { resolveBrowserCommand } from "../src/lib/browser.js";
+import { resolveBrowserCommand } from "../src/lib/browser.ts";
 
 // Cover every code path through resolveBrowserCommand. The internal
 // helpers (browserDisabled, hasDisplay, isSsh, looksLikeWsl,

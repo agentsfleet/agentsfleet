@@ -22,7 +22,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { runCli } from "../src/cli.js";
+import { runCli } from "../src/cli.ts";
 import { saveWorkspaces } from "../src/lib/state.ts";
 import { bufferStream, withAuthedStateDir, withFreshStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";

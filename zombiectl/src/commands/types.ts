@@ -3,7 +3,7 @@
 // single source of truth for `(ctx, parsed, workspaces, deps)` instead
 // of redeclaring at every call site.
 //
-// The shape mirrors what `cli.js`'s buildDeps() and the lifecycle wrap
+// The shape mirrors what `cli.ts`'s buildDeps() and the lifecycle wrap
 // in handlers-bind.js actually produce. Fields tighten as commands
 // migrate; the open index signatures on CommandCtx / ParsedArgs /
 // Workspaces accept any extra fields handlers read so command-specific
@@ -12,6 +12,7 @@
 import type { HandlerCtx as RunCommandCtx } from "../lib/run-command.ts";
 import type { ApiRequestOptions } from "../lib/http.ts";
 import type { StreamGetCallback, StreamGetOptions } from "../lib/sse.ts";
+import type { Credentials, Workspaces, WorkspaceItem } from "../lib/state.ts";
 import type {
   UiTheme,
   WriteStream,
@@ -19,6 +20,14 @@ import type {
   TableRow,
   KeyValueRows,
 } from "../output/index.ts";
+
+// On-disk shapes re-exported from lib/state.ts. Single source of truth for
+// the worktree (~/.config/zombiectl/credentials.json, workspaces.json) —
+// handlers, cli.ts, and the lifecycle all reference the same interfaces.
+// Previously commands/types.ts declared its own Workspaces + CredentialFile
+// with overlapping-but-inconsistent shapes, which surfaced as cross-file
+// assignability errors the moment cli.ts became typed (D41).
+export type { Credentials, Workspaces, WorkspaceItem };
 
 export type { ApiRequestOptions };
 
@@ -38,7 +47,11 @@ export interface CommandCtx extends RunCommandCtx {
   stdin?: NodeJS.ReadableStream | string | null;
   token?: string | null;
   apiKey?: string | null;
-  apiUrl?: string;
+  // apiUrl is required — cli.ts sets it before any handler runs, and
+  // http-client.ts:HttpRequestContext requires it. Optional here meant
+  // the commands ↔ http-client seam couldn't typecheck (TS exact-optional
+  // rejects the contravariance).
+  apiUrl: string;
   jsonMode?: boolean;
   noOpen?: boolean;
   noInput?: boolean;
@@ -57,20 +70,6 @@ export interface ParsedArgs {
   [key: string]: unknown;
 }
 
-export interface WorkspaceEntry {
-  id: string;
-  label?: string;
-  role?: string;
-  [key: string]: unknown;
-}
-
-export interface Workspaces {
-  current_workspace_id?: string | null;
-  current_workspace_label?: string | null;
-  workspaces?: WorkspaceEntry[];
-  [key: string]: unknown;
-}
-
 // Body returned by deps.request — commands narrow per-endpoint.
 export type ApiResponse = unknown;
 
@@ -78,31 +77,25 @@ export interface SpinnerOptions {
   enabled?: boolean | undefined;
   stream?: NodeJS.WritableStream | null | undefined;
   label?: string | undefined;
+  style?: string | undefined;
 }
 
 export interface SpinnerHandle {
   start: () => void;
   stop: (final?: string) => void;
-  succeed?: () => void;
-  fail?: () => void;
-}
-
-export interface CredentialFile {
-  token?: string | null;
-  saved_at?: number | null;
-  session_id?: string | null;
-  [key: string]: unknown;
+  succeed: (message?: string) => void;
+  fail: (message?: string) => void;
 }
 
 // The deps bag passed to every command. Shape matches buildDeps() in
-// src/cli.js verbatim. writeError is widened to accept any subset of
+// src/cli.ts verbatim. writeError is widened to accept any subset of
 // CommandDeps that the call site assembles (some commands call it with
 // just { printJson, writeLine, ui }, others pass the full deps).
 export interface CommandDeps {
   apiHeaders: (ctx: CommandCtx) => Record<string, string>;
   clearCredentials: () => Promise<void> | void;
-  createSpinner: (options: SpinnerOptions | string) => SpinnerHandle;
-  loadCredentials: () => Promise<CredentialFile | null> | CredentialFile | null;
+  createSpinner: (options: SpinnerOptions) => SpinnerHandle;
+  loadCredentials: () => Promise<Credentials> | Credentials;
   newIdempotencyKey: () => string;
   openUrl: (
     url: string,
@@ -126,7 +119,7 @@ export interface CommandDeps {
     path: string,
     opts?: ApiRequestOptions,
   ) => Promise<ApiResponse>;
-  saveCredentials: (cred: CredentialFile) => Promise<void> | void;
+  saveCredentials: (cred: Credentials) => Promise<void> | void;
   saveWorkspaces: (workspaces: Workspaces) => Promise<void> | void;
   // Optional SSE injector — zombie_steer uses this for the live event
   // tail; tests override it with a fake to assert frame handling. The

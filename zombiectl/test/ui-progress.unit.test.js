@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { createSpinner, withSpinner } from "../src/ui-progress.js";
+import { createSpinner, withSpinner } from "../src/ui-progress.ts";
 
 // Spinner is no-op on a non-TTY stream — that's the contract that
 // keeps log captures clean. createSpinner returns the no-op shape;

@@ -58,7 +58,11 @@ export function queueCliAnalyticsEvent(
   event: string,
   properties?: Record<string, unknown>,
 ): void;
-export function drainCliAnalyticsEvents(client: AnalyticsClient | null): Promise<void>;
+export interface QueuedAnalyticsEvent {
+  event: string;
+  properties?: Record<string, unknown>;
+}
+export function drainCliAnalyticsEvents(ctx: unknown): QueuedAnalyticsEvent[];
 export function trackHttpRequest(
   client: AnalyticsClient | null,
   distinctId: string,
@@ -69,9 +73,11 @@ export function trackHttpRetry(
   distinctId: string,
   info: HttpRetryInfo,
 ): void;
+// distinctId accepts `null` / `undefined` — analytics.js falls back to
+// "anonymous" via `distinctId || "anonymous"` for unauthenticated runs.
 export function trackCliEvent(
   client: AnalyticsClient | null,
-  distinctId: string,
+  distinctId: string | null | undefined,
   event: string,
   properties?: Record<string, unknown>,
 ): void;

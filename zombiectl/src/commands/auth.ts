@@ -15,7 +15,7 @@ import type {
   CommandDeps,
   ParsedArgs,
   Workspaces,
-  CredentialFile,
+  Credentials,
 } from "./types.ts";
 
 export const authStatusErrorMap = compose(AUTH_PRESET);
@@ -189,8 +189,8 @@ export async function commandAuthStatus(
   deps: CommandDeps,
 ): Promise<number> {
   const { loadCredentials } = deps;
-  const creds = ((await loadCredentials()) ?? null) as CredentialFile | null;
-  const fileToken = creds?.token ?? null;
+  const creds: Credentials = await loadCredentials();
+  const fileToken = creds.token ?? null;
   const envToken =
     typeof ctx.env?.["ZOMBIE_TOKEN"] === "string"
       ? (ctx.env["ZOMBIE_TOKEN"] as string)
@@ -209,8 +209,8 @@ export async function commandAuthStatus(
     authenticated: probe.status !== "unauthorized",
     source,
     api_url: ctx.apiUrl,
-    saved_at: source === "file" ? (creds?.saved_at ?? null) : null,
-    session_id: source === "file" ? (creds?.session_id ?? null) : null,
+    saved_at: source === "file" ? (creds.saved_at ?? null) : null,
+    session_id: source === "file" ? (creds.session_id ?? null) : null,
     token: deriveTokenSummary(activeToken),
     server_check: probe,
   };

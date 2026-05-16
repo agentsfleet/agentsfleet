@@ -20,7 +20,7 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { makeBufferStream } from "./helpers.js";
 import { printVersion, printPreReleaseWarning } from "../src/program/banner.ts";
-import { runCli, VERSION } from "../src/cli.js";
+import { runCli, VERSION } from "../src/cli.ts";
 
 // ── T9: helpers — no magic, no copy-paste ─────────────────────────────────────
 
@@ -221,7 +221,7 @@ describe("printVersion — T7: design-system regression guards", () => {
 // ── VERSION constant + ttyOnly integration ─────────────────────────────────────
 
 describe("VERSION — T7 + T12: constant matches package.json", () => {
-  test("VERSION exported from cli.js matches package.json version", () => {
+  test("VERSION exported from cli.ts matches package.json version", () => {
     const pkg = JSON.parse(
       readFileSync(new URL("../package.json", import.meta.url), "utf8"),
     );

@@ -20,6 +20,7 @@ import type {
   CommandDeps,
   ParsedArgs,
   Workspaces,
+  WorkspaceItem,
 } from "./types.ts";
 
 // Covers workspace add/list/use/show/delete/credentials. Auth codes
@@ -27,17 +28,6 @@ import type {
 // `workspace add` can surface paused/free-limit, `workspace use` /
 // `delete` can surface not-found.
 export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET);
-
-interface WorkspaceListEntry {
-  workspace_id: string;
-  name?: string | null;
-  created_at?: number;
-  [key: string]: unknown;
-}
-
-interface WorkspacesWithItems extends Workspaces {
-  items: WorkspaceListEntry[];
-}
 
 interface WorkspaceCreateResponse {
   workspace_id: string;
@@ -55,13 +45,6 @@ function resolveOption(
   return undefined;
 }
 
-function ensureItemsArray(ws: Workspaces): WorkspacesWithItems {
-  if (!Array.isArray((ws as WorkspacesWithItems).items)) {
-    (ws as WorkspacesWithItems).items = [];
-  }
-  return ws as WorkspacesWithItems;
-}
-
 export async function workspaceAdd(
   ctx: CommandCtx,
   parsed: ParsedArgs,
@@ -69,7 +52,7 @@ export async function workspaceAdd(
   deps: CommandDeps,
 ): Promise<number> {
   const { apiHeaders, printJson, printKeyValue, printSection = () => {}, request, saveWorkspaces } = deps;
-  const ws = ensureItemsArray(workspaces);
+  const ws = workspaces;
   const name = parsed.positionals[0] || null;
 
   const body = name ? { name } : {};
@@ -114,7 +97,7 @@ export async function workspaceList(
   deps: CommandDeps,
 ): Promise<number> {
   const { printJson, printTable, ui, writeLine } = deps;
-  const ws = ensureItemsArray(workspaces);
+  const ws = workspaces;
   setCliAnalyticsContext(ctx, {
     workspace_id: ws.current_workspace_id,
     workspace_count: ws.items.length,
@@ -140,7 +123,7 @@ export async function workspaceList(
       { key: "workspace_id", label: "WORKSPACE" },
       { key: "name", label: "NAME" },
     ],
-    ws.items.map((item: WorkspaceListEntry) => ({
+    ws.items.map((item: WorkspaceItem) => ({
       active: item.workspace_id === ws.current_workspace_id ? "*" : "",
       workspace_id: item.workspace_id,
       name: item.name ?? "—",
@@ -156,7 +139,7 @@ export async function workspaceUse(
   deps: CommandDeps,
 ): Promise<number> {
   const { printJson, saveWorkspaces, ui, writeLine } = deps;
-  const ws = ensureItemsArray(workspaces);
+  const ws = workspaces;
   const fromPositional = parsed.positionals[0];
   const fromOpt = resolveOption(parsed.options, "workspaceId", "workspace-id");
   const workspaceId =
@@ -199,7 +182,7 @@ export async function workspaceShow(
   deps: CommandDeps,
 ): Promise<number> {
   const { printJson, printKeyValue, printSection = () => {} } = deps;
-  const ws = ensureItemsArray(workspaces);
+  const ws = workspaces;
   const fromOpt = resolveOption(parsed.options, "workspaceId", "workspace-id");
   const workspaceId =
     (typeof fromOpt === "string" ? fromOpt : null) ??
@@ -265,7 +248,7 @@ export async function workspaceDelete(
   deps: CommandDeps,
 ): Promise<number> {
   const { printJson, saveWorkspaces, ui, writeLine } = deps;
-  const ws = ensureItemsArray(workspaces);
+  const ws = workspaces;
   const fromPositional = parsed.positionals[0];
   const fromOpt = resolveOption(parsed.options, "workspaceId", "workspace-id");
   const workspaceId =
@@ -280,7 +263,7 @@ export async function workspaceDelete(
     return 2;
   }
 
-  ws.items = ws.items.filter((x: WorkspaceListEntry) => x.workspace_id !== workspaceId);
+  ws.items = ws.items.filter((x: WorkspaceItem) => x.workspace_id !== workspaceId);
   if (ws.current_workspace_id === workspaceId) {
     const firstItem = ws.items[0];
     ws.current_workspace_id = firstItem?.workspace_id ?? null;

@@ -136,7 +136,7 @@ describe("validators reject invalid values with clear error stem", () => {
   // <stem>" line on stderr and exits non-zero. The stem is the contract
   // we pin here. Exit code is currently 1 for commander.invalidArgument
   // (commander wraps the InvalidArgumentError and exits 1); a separate
-  // cli.js hygiene PR can map it to POSIX 2 by extending
+  // cli.ts hygiene PR can map it to POSIX 2 by extending
   // COMMANDER_USAGE_CODES.
   const cases = [
     // parseIntOption rejections (commander wraps as "option '--x <n>' argument 'V' is invalid. <stem>")

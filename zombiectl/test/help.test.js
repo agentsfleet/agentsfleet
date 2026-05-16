@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
-import { runCli, VERSION } from "../src/cli.js";
+import { runCli, VERSION } from "../src/cli.ts";
 
 function bufferStream() {
   let data = "";

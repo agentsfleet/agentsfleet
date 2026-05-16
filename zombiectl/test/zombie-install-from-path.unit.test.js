@@ -251,7 +251,7 @@ test("install --from: POST body contains exactly trigger_markdown + source_markd
 
 // ── §2 — Server response handling ─────────────────────────────────────────
 
-test("install --from: 409 conflict bubbles up an ApiError-shaped error for cli.js to render", async () => {
+test("install --from: 409 conflict bubbles up an ApiError-shaped error for cli.ts to render", async () => {
   const { sampleDir } = setupSampleDir();
   let caught = null;
   try {
@@ -279,7 +279,7 @@ test("install --from: 409 conflict bubbles up an ApiError-shaped error for cli.j
 
 test("install --from: 400 ERR_ZOMBIE_INVALID_CONFIG bubbles up (frontmatter parse failure)", async () => {
   // Server-side parse means broken TRIGGER.md (missing name, bad YAML, etc.)
-  // surfaces as ERR_ZOMBIE_INVALID_CONFIG. The CLI just bubbles it; cli.js
+  // surfaces as ERR_ZOMBIE_INVALID_CONFIG. The CLI just bubbles it; cli.ts
   // renders the structured error with request_id.
   const { sampleDir } = setupSampleDir();
   let caught = null;
@@ -301,7 +301,7 @@ test("install --from: 400 ERR_ZOMBIE_INVALID_CONFIG bubbles up (frontmatter pars
   } catch (e) {
     caught = e;
   }
-  assert.ok(caught, "ERR_ZOMBIE_INVALID_CONFIG must bubble for cli.js to render");
+  assert.ok(caught, "ERR_ZOMBIE_INVALID_CONFIG must bubble for cli.ts to render");
   assert.equal(caught.code, "ERR_ZOMBIE_INVALID_CONFIG");
   assert.equal(caught.status, 400);
 });
@@ -323,7 +323,7 @@ test("install --from: non-ApiError network failure surfaces as IO_ERROR exit 1",
   assert.ok(captured.message.includes("ECONNREFUSED"), captured.message);
 });
 
-test("install --from: ApiError re-throws for cli.js printApiError to render", async () => {
+test("install --from: ApiError re-throws for cli.ts printApiError to render", async () => {
   const { sampleDir } = setupSampleDir();
   let caught = null;
   try {

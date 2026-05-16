@@ -10,7 +10,7 @@ import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { runCli, VERSION } from "../src/cli.js";
+import { runCli, VERSION } from "../src/cli.ts";
 import { makeBufferStream } from "./helpers.js";
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));

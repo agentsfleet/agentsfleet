@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
 
-import { runCli } from "../src/cli.js";
+import { runCli } from "../src/cli.ts";
 import { cliAnalytics } from "../src/lib/analytics.js";
 
 function bufferStream() {

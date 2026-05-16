@@ -5,7 +5,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { makeBufferStream, ui } from "./helpers.js";
-import { runCli } from "../src/cli.js";
+import { runCli } from "../src/cli.ts";
 import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";
 

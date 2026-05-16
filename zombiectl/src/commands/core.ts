@@ -227,7 +227,7 @@ async function persistAndHydrate(
     saved_at: Date.now(),
     session_id: sessionId,
     api_url: ctx.apiUrl,
-  } as { token: string; saved_at: number; session_id: string; api_url?: string });
+  });
   ctx.token = token;
   await hydrateWorkspacesAfterLogin(ctx, workspaces, {
     apiHeaders,

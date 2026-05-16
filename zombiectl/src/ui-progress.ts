@@ -4,15 +4,19 @@
 // output/glyph module — no hard-coded ✔/✖ pairs.
 
 import { glyph } from "./output/index.ts";
+import type { SpinnerHandle, SpinnerOptions } from "./commands/types.ts";
 
-function spinnerFrames(style) {
+function spinnerFrames(style: string | undefined): string[] {
   if (style === "dotmatrix" || style === "matrix") {
     return ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"];
   }
   return ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 }
 
-export async function withSpinner(opts, work) {
+export async function withSpinner<T>(
+  opts: SpinnerOptions,
+  work: () => Promise<T>,
+): Promise<T> {
   const spin = createSpinner(opts);
   spin.start();
   try {
@@ -25,39 +29,44 @@ export async function withSpinner(opts, work) {
   }
 }
 
-export function createSpinner(opts = {}) {
-  const stream = opts.stream || process.stderr;
+interface TtyWritableStream extends NodeJS.WritableStream {
+  readonly isTTY?: boolean;
+}
+
+export function createSpinner(opts: SpinnerOptions = {}): SpinnerHandle {
+  const stream = (opts.stream ?? process.stderr) as TtyWritableStream;
   // Spinner only runs when explicitly enabled by caller AND the target
   // stream is a TTY. !isTTY → no spinner, no escape codes; the work
   // still runs, the user just doesn't see frames.
-  const enabled = opts.enabled === true && stream && stream.isTTY === true;
+  const enabled = opts.enabled === true && stream != null && stream.isTTY === true;
   const label = opts.label || "working";
-  const style = opts.style || process.env.ZOMBIE_PROGRESS_STYLE || "spinner";
+  const style = opts.style || process.env["ZOMBIE_PROGRESS_STYLE"] || "spinner";
   const frames = spinnerFrames(style);
   let i = 0;
-  let timer = null;
+  let timer: ReturnType<typeof setInterval> | null = null;
 
   return {
-    start() {
+    start(): void {
       if (!enabled || timer) return;
       timer = setInterval(() => {
-        stream.write(`\r${frames[i % frames.length]} ${label}`);
+        const frame = frames[i % frames.length] ?? "";
+        stream.write(`\r${frame} ${label}`);
         i += 1;
       }, 80);
     },
-    succeed(message) {
+    succeed(message?: string): void {
       if (!enabled) return;
       if (timer) clearInterval(timer);
       timer = null;
       stream.write(`\r${glyph.ok({ stream }).render()} ${message || label}\n`);
     },
-    fail(message) {
+    fail(message?: string): void {
       if (!enabled) return;
       if (timer) clearInterval(timer);
       timer = null;
       stream.write(`\r${glyph.error({ stream }).render()} ${message || label}\n`);
     },
-    stop() {
+    stop(): void {
       if (!enabled) return;
       if (timer) clearInterval(timer);
       timer = null;
