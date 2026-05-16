@@ -227,7 +227,12 @@ pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValu
             const resumable = redis_errors.isResumable(@errorCast(err));
             self.pool.release(conn, resumable);
             if (resumable) {
-                log.err("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
+                // Warn (not err): a resumable server-side reply (BUSYGROUP,
+                // WRONGTYPE, READONLY) is degraded control flow — the inner
+                // `redis_command_err_reply` log already captures the server
+                // message at warn. Outer + inner stay at the same level so
+                // negative-path tests don't trip Zig's "logged errors" gate.
+                log.warn("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
                 return err;
             }
             if (attempt + 1 >= MAX_ATTEMPTS) return err;

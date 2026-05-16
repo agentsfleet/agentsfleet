@@ -377,6 +377,103 @@ const CloseOnCmd = struct {
     }
 };
 
+// Serves `-ERR fake_error\r\n` on the first read, `+PONG\r\n` on the second,
+// then drifts until shutdown — same TCP socket. Lets us prove that a resumable
+// `.err` reply leaves the connection parked back in idle and the caller's
+// follow-up `acquire` reuses it (no redial, no recordReconnect).
+const ErrThenPongOnSameSocket = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+    accepts: std.atomic.Value(u32),
+
+    fn start(self: *ErrThenPongOnSameSocket) !void {
+        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.accepts = std.atomic.Value(u32).init(0);
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    fn shutdown(self: *ErrThenPongOnSameSocket) void {
+        self.stop.store(true, .release);
+        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn loop(self: *ErrThenPongOnSameSocket) void {
+        while (!self.stop.load(.acquire)) {
+            const conn = self.server.accept() catch return;
+            if (self.stop.load(.acquire)) {
+                conn.stream.close();
+                return;
+            }
+            _ = self.accepts.fetchAdd(1, .monotonic);
+
+            var buf: [256]u8 = undefined;
+            // Cmd 1 → -ERR (resumable: protocol frame is whole).
+            const n1 = conn.stream.read(&buf) catch 0;
+            if (n1 > 0) conn.stream.writeAll("-ERR fake_error\r\n") catch {};
+            // Cmd 2 → +PONG on the SAME socket. Blocks until the test
+            // issues its follow-up command after release(ok=true).
+            const n2 = conn.stream.read(&buf) catch 0;
+            if (n2 > 0) conn.stream.writeAll("+PONG\r\n") catch {};
+            while (!self.stop.load(.acquire)) std.Thread.sleep(10 * std.time.ns_per_ms);
+            conn.stream.close();
+        }
+    }
+
+    fn config(self: *ErrThenPongOnSameSocket, alloc: std.mem.Allocator) !redis_config.Config {
+        const host = try alloc.dupe(u8, "127.0.0.1");
+        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+    }
+};
+
+test "Client.command on resumable .err reply parks conn back; follow-up reuses same socket" {
+    // Spec assertion: resumable server-side errors (the `.err` RespValue
+    // path) release `ok=true` so the connection stays in idle and the
+    // caller's retry uses the same conn — no extra dial, no recordReconnect.
+    // `accepts == 1` and `dials_total == 1` prove the same TCP socket
+    // served both cycles; `reconnects_total == 0` proves the retry layer
+    // didn't treat this as transport churn.
+    const alloc = std.testing.allocator;
+
+    var fake: ErrThenPongOnSameSocket = undefined;
+    try fake.start();
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    const pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    var client: Client = .{ .alloc = alloc, .pool = pool };
+    defer client.deinit();
+
+    // Cycle 1: fresh dial, write PING, read -ERR. Client.command returns
+    // RedisCommandError (resumable → release(ok=true)); conn parks in idle.
+    const r1 = client.command(&.{"PING"});
+    try std.testing.expectError(error.RedisCommandError, r1);
+
+    const after_err = client.pool.stats();
+    try std.testing.expectEqual(@as(u64, 0), after_err.reconnects_total);
+    try std.testing.expectEqual(@as(u64, 1), after_err.dials_total);
+    try std.testing.expectEqual(@as(usize, 1), after_err.idle);
+    try std.testing.expectEqual(@as(usize, 0), after_err.active);
+
+    // Cycle 2: caller retries. acquire pops the same conn (idle.popFirst).
+    // Same fake accept → same socket → +PONG on the second read.
+    var r2 = try client.command(&.{"PING"});
+    defer r2.deinit(alloc);
+    try std.testing.expect(r2 == .simple);
+    try std.testing.expectEqualStrings("PONG", r2.simple);
+
+    const after_pong = client.pool.stats();
+    try std.testing.expectEqual(@as(u64, 0), after_pong.reconnects_total);
+    try std.testing.expectEqual(@as(u64, 1), after_pong.dials_total); // no redial
+    try std.testing.expectEqual(@as(u32, 1), fake.accepts.load(.monotonic));
+}
+
 test "Client.command bumps reconnects_total on non-resumable transport error" {
     // Greptile Issue 3 fix witness: a non-resumable transport failure inside
     // the retry loop must increment reconnects_total before the redial.
