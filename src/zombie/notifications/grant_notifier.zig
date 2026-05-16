@@ -14,6 +14,8 @@ const approval_slack = @import("../approval_gate_slack.zig");
 
 const log = logging.scoped(.grant_notifier);
 
+const S_PUNCT_987EAC = "\"}},";
+
 const GRANT_NOTIFY_TTL_SECONDS: u32 = 7200;
 const GRANT_NOTIFY_KEY_PREFIX = "grant:notify:";
 const GRANT_NONCE_KEY_PREFIX = "grant:nonce:";
@@ -71,11 +73,11 @@ fn buildGrantSlackMessage(
     // Header block
     try w.writeAll("{\"type\":\"header\",\"text\":{\"type\":\"plain_text\",\"text\":\"");
     try approval_slack.writeJsonEscaped(w, header);
-    try w.writeAll("\"}},");
+    try w.writeAll(S_PUNCT_987EAC);
     // Reason/scope section
     try w.writeAll("{\"type\":\"section\",\"text\":{\"type\":\"mrkdwn\",\"text\":\"");
     try approval_slack.writeJsonEscaped(w, reason_text);
-    try w.writeAll("\"}},");
+    try w.writeAll(S_PUNCT_987EAC);
     // Approve / Deny actions
     try w.writeAll("{\"type\":\"actions\",\"block_id\":\"grant_");
     try approval_slack.writeJsonEscaped(w, grant_id);

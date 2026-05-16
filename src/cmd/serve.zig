@@ -22,6 +22,12 @@ const model_rate_cache = @import("../state/model_rate_cache.zig");
 
 const log = logging.scoped(.zombied);
 
+const S_STARTUP_CONFIG_LOAD_FAILED = "startup.config_load_failed";
+const S_STARTUP_MODEL_RATE_CACHE_FAILED = "startup.model_rate_cache_failed";
+const S_STARTUP_ARGS_PARSE_FAILED = "startup.args_parse_failed";
+const S_STARTUP_ENV_CHECK_FAILED = "startup.env_check_failed";
+const S_API = "api";
+
 var shutdown_requested = std.atomic.Value(bool).init(false);
 /// Published by run() before listen() begins; signalWatcher reads this to call stop().
 var active_server = std.atomic.Value(?*http_server.Server).init(null);
@@ -63,9 +69,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
 
     const serve_port_override = parseServeArgOverrides() catch |err| {
         switch (err) {
-            serve_args.ServeArgError.InvalidServeArgument => log.err("startup.args_parse_failed", .{ .reason = "invalid_argument" }),
-            serve_args.ServeArgError.MissingPortValue => log.err("startup.args_parse_failed", .{ .reason = "missing_port_value" }),
-            serve_args.ServeArgError.InvalidPortValue => log.err("startup.args_parse_failed", .{ .reason = "invalid_port_value" }),
+            serve_args.ServeArgError.InvalidServeArgument => log.err(S_STARTUP_ARGS_PARSE_FAILED, .{ .reason = "invalid_argument" }),
+            serve_args.ServeArgError.MissingPortValue => log.err(S_STARTUP_ARGS_PARSE_FAILED, .{ .reason = "missing_port_value" }),
+            serve_args.ServeArgError.InvalidPortValue => log.err(S_STARTUP_ARGS_PARSE_FAILED, .{ .reason = "invalid_port_value" }),
         }
         std.process.exit(2);
     };
@@ -74,14 +80,14 @@ pub fn run(alloc: std.mem.Allocator) !void {
     env_vars.enforceFromEnv(alloc) catch |err| {
         const env_code = error_codes.ERR_STARTUP_ENV_CHECK;
         switch (err) {
-            env_vars.EnvVarsErrors.MissingDatabaseUrlApi => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_API not set" }),
-            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_WORKER not set" }),
-            env_vars.EnvVarsErrors.MissingRedisUrlApi => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_API not set" }),
-            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER not set" }),
-            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "DATABASE_URL_API and DATABASE_URL_WORKER must differ" }),
-            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_API and REDIS_URL_WORKER must differ" }),
-            env_vars.EnvVarsErrors.RedisApiTlsRequired => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_API must use rediss://" }),
-            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err("startup.env_check_failed", .{ .error_code = env_code, .err = "REDIS_URL_WORKER must use rediss://" }),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlApi => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "DATABASE_URL_API not set" }),
+            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "DATABASE_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.MissingRedisUrlApi => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_API not set" }),
+            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_WORKER not set" }),
+            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "DATABASE_URL_API and DATABASE_URL_WORKER must differ" }),
+            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_API and REDIS_URL_WORKER must differ" }),
+            env_vars.EnvVarsErrors.RedisApiTlsRequired => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_API must use rediss://" }),
+            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_WORKER must use rediss://" }),
         }
         std.process.exit(1);
     };
@@ -104,9 +110,9 @@ pub fn run(alloc: std.mem.Allocator) !void {
             runtime_config.ValidationError.InvalidReadyMaxQueueAgeMs,
             => {
                 runtime_config.ServeConfig.printValidationError(@errorCast(err));
-                log.err("startup.config_load_failed", .{ .error_code = error_codes.ERR_STARTUP_CONFIG_LOAD, .err = @errorName(err) });
+                log.err(S_STARTUP_CONFIG_LOAD_FAILED, .{ .error_code = error_codes.ERR_STARTUP_CONFIG_LOAD, .err = @errorName(err) });
             },
-            else => log.err("startup.config_load_failed", .{ .error_code = error_codes.ERR_STARTUP_CONFIG_LOAD, .err = @errorName(err) }),
+            else => log.err(S_STARTUP_CONFIG_LOAD_FAILED, .{ .error_code = error_codes.ERR_STARTUP_CONFIG_LOAD, .err = @errorName(err) }),
         }
         std.process.exit(1);
     };
@@ -119,17 +125,17 @@ pub fn run(alloc: std.mem.Allocator) !void {
     const api_pool = preflight.connectDbPool(alloc, .api) catch std.process.exit(1);
     defer api_pool.deinit();
 
-    log.info("startup.redis_connect_start", .{ .role = "api" });
+    log.info("startup.redis_connect_start", .{ .role = S_API });
     var api_queue = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
         log.err("startup.redis_connect_failed", .{
-            .role = "api",
+            .role = S_API,
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,
             .err = @errorName(err),
         });
         std.process.exit(1);
     };
     defer api_queue.deinit();
-    log.info("startup.redis_connect_ok", .{ .role = "api" });
+    log.info("startup.redis_connect_ok", .{ .role = S_API });
 
     const migrate_on_start = preflight.parseMigrateOnStart(alloc) catch std.process.exit(1);
     preflight.checkMigrations(api_pool, migrate_on_start) catch std.process.exit(1);
@@ -137,12 +143,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
     log.info("startup.model_rate_cache_start", .{});
     {
         const cache_conn = api_pool.acquire() catch |err| {
-            log.err("startup.model_rate_cache_failed", .{ .err = @errorName(err) });
+            log.err(S_STARTUP_MODEL_RATE_CACHE_FAILED, .{ .err = @errorName(err) });
             std.process.exit(1);
         };
         defer api_pool.release(cache_conn);
         model_rate_cache.populate(alloc, cache_conn) catch |err| {
-            log.err("startup.model_rate_cache_failed", .{ .err = @errorName(err) });
+            log.err(S_STARTUP_MODEL_RATE_CACHE_FAILED, .{ .err = @errorName(err) });
             std.process.exit(1);
         };
     }

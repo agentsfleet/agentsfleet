@@ -1,16 +1,23 @@
-// Zombie config JSON parser. Runtime keys live under `x-usezombie:`; `name`
-// is the only top-level field. Per-field helpers keep functions ≤50 lines.
+// Zombie config JSON parser.
+//
+// Parses the `config_json` value (server-derived from TRIGGER.md
+// frontmatter) into a ZombieConfig. The runtime keys (`trigger`, `tools`,
+// `credentials`, `network`, `budget`, `gates`) live under the `x-usezombie:`
+// top-level object; `name` is the only top-level field outside that block.
+// Field parsers take the runtime ObjectMap (the inside of `x-usezombie:`),
+// not the root.
+//
+// Decomposed into per-field helpers so every function stays ≤50 lines and
+// so errdefer chains free partial state on mid-parse failure (see
+// ZIG_RULES "Struct Init Partial Leak").
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const logging = @import("log");
 
 const config_types = @import("config_types.zig");
 const config_gates = @import("config_gates.zig");
 const helpers = @import("config_helpers.zig");
 const validate = @import("config_validate.zig");
-
-const log = logging.scoped(.zombie_config);
 
 const ZombieConfig = config_types.ZombieConfig;
 const ZombieConfigError = config_types.ZombieConfigError;
@@ -22,8 +29,23 @@ const ZombieContextBudget = config_types.ZombieContextBudget;
 const freeStringSlice = config_types.freeStringSlice;
 const freeZombieTrigger = config_types.freeZombieTrigger;
 
-/// Caller owns the result; call `.deinit(alloc)`. errdefer chain frees
-/// any field allocated up to a mid-parse failure.
+/// Parse `config_json` into a ZombieConfig. Caller owns the result and
+/// must call `.deinit(alloc)`. On failure, every field allocated up to
+/// the failure point is freed via the errdefer chain.
+const S_CONTEXT = "context";
+const S_CONTEXT_CAP_TOKENS = "context_cap_tokens";
+const S_NETWORK = "network";
+const S_TRIGGER = "trigger";
+const S_SKILL = "skill";
+const S_BUDGET = "budget";
+const S_GATES = "gates";
+const S_MEMORY_CHECKPOINT_EVERY = "memory_checkpoint_every";
+const S_TOOLS = "tools";
+const S_CREDENTIALS = "credentials";
+const S_STAGE_CHUNK_THRESHOLD = "stage_chunk_threshold";
+const S_TOOL_WINDOW = "tool_window";
+const S_MODEL = "model";
+
 pub fn parseZombieConfig(
     alloc: Allocator,
     config_json: []const u8,
@@ -46,11 +68,8 @@ pub fn parseZombieConfig(
     const name = try parseNameField(alloc, root);
     errdefer alloc.free(name);
 
-    const triggers = try parseTriggersField(alloc, runtime);
-    errdefer {
-        for (triggers) |t| freeZombieTrigger(alloc, t);
-        alloc.free(triggers);
-    }
+    const trigger = try parseTriggerField(alloc, runtime);
+    errdefer freeZombieTrigger(alloc, trigger);
 
     const tools = try parseToolsField(alloc, runtime);
     errdefer freeStringSlice(alloc, tools);
@@ -67,8 +86,8 @@ pub fn parseZombieConfig(
 
     try validate.validateCredentials(credentials);
 
-    const skill = try parseSkillRef(alloc, runtime);
-    errdefer if (skill) |s| alloc.free(s);
+    const extended = try parseExtendedFields(alloc, runtime);
+    errdefer if (extended.skill) |s| alloc.free(s);
 
     const model = try parseModelField(alloc, runtime);
     errdefer if (model) |s| alloc.free(s);
@@ -76,31 +95,38 @@ pub fn parseZombieConfig(
 
     return ZombieConfig{
         .name = name,
-        .triggers = triggers,
+        .trigger = trigger,
         .tools = tools,
         .credentials = credentials,
         .network = network,
         .budget = budget,
         .gates = gates,
-        .skill = skill,
+        .skill = extended.skill,
         .model = model,
         .context = ctx,
     };
 }
 
-// Forbidden mirrors `ensureKnownRuntimeKeys` — else a missed indent silently drops keys like `gates:` at root.
+/// Runtime keys must live under `x-usezombie:`. Their presence at the top
+/// level is a structural error pointing the author at the schema doc.
+/// Forbidden set must mirror the `known` set in `ensureKnownRuntimeKeys` —
+/// any key that's accepted under `x-usezombie:` must also be rejected at
+/// top level. Otherwise an author who forgets the indentation gets a
+/// silently-dropped key (e.g. `gates:` at root → no rate limiting installed,
+/// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!void {
     const forbidden = [_][]const u8{
-        "trigger",     "triggers", "tools", "credentials", "network",
-        "budget",      "gates",    "skill", "model",       "context",
+        S_TRIGGER, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,   S_SKILL, S_MODEL,       S_CONTEXT,
     };
     for (forbidden) |k| {
         if (root.get(k) != null) return ZombieConfigError.RuntimeKeysOutsideBlock;
     }
 }
 
-// Distinct from `MissingRequiredField` — author fix is to add the whole
-// namespaced block, not just one key.
+/// Extract the `x-usezombie:` runtime block from the parsed JSON root.
+/// Distinguished from `MissingRequiredField` because the user fix is different:
+/// they need to add a whole namespaced block, not just one missing key.
 fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.ObjectMap {
     const val = root.get("x-usezombie") orelse return ZombieConfigError.UsezombieBlockRequired;
     return switch (val) {
@@ -109,12 +135,12 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.Obje
     };
 }
 
-// Rigid: typos must fail loud. Singular `trigger:` is intentionally absent
-// from `known` — falls through to `UnknownRuntimeKey` (RULE NLG: plural-only).
+/// Rigid: any subkey under `x-usezombie:` outside the known set is an
+/// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        "triggers", "tools", "credentials", "network",
-        "budget",   "gates", "skill",       "model",   "context",
+        S_TRIGGER, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,   S_SKILL, S_MODEL,       S_CONTEXT,
     };
     var it = runtime.iterator();
     while (it.next()) |entry| {
@@ -138,99 +164,51 @@ fn parseNameField(
     };
     if (s.len == 0) return ZombieConfigError.MissingRequiredField;
     try validate.validateSkillName(s);
-    return alloc.dupe(u8, s);
+    return try alloc.dupe(u8, s);
 }
 
-// Enforces length 1..MAX_TRIGGERS_PER_ZOMBIE_LOCAL, ≤1 cron entry, unique
-// `(type, source)` tuple across webhooks. Errfree on partial parse.
-fn parseTriggersField(
+fn parseTriggerField(
     alloc: Allocator,
     root: std.json.ObjectMap,
-) (Allocator.Error || ZombieConfigError)![]const ZombieTrigger {
-    const val = root.get("triggers") orelse return ZombieConfigError.MissingRequiredField;
-    const arr = switch (val) {
-        .array => |a| a,
+) (Allocator.Error || ZombieConfigError)!ZombieTrigger {
+    const val = root.get(S_TRIGGER) orelse return ZombieConfigError.MissingRequiredField;
+    const obj = switch (val) {
+        .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
     };
-    const items = arr.items;
-    if (items.len == 0 or items.len > MAX_TRIGGERS_PER_ZOMBIE_LOCAL) {
-        log.warn("triggers_count_out_of_bounds", .{
-            .count = items.len,
-            .max = MAX_TRIGGERS_PER_ZOMBIE_LOCAL,
-        });
-        return ZombieConfigError.InvalidFieldType;
-    }
-    var out = try alloc.alloc(ZombieTrigger, items.len);
-    var parsed_count: usize = 0;
-    errdefer {
-        for (out[0..parsed_count]) |t| freeZombieTrigger(alloc, t);
-        alloc.free(out);
-    }
-    var cron_count: usize = 0;
-    for (items, 0..) |item, idx| {
-        const obj = switch (item) {
-            .object => |o| o,
-            else => return ZombieConfigError.InvalidFieldType,
-        };
-        const trig = try helpers.parseZombieTrigger(alloc, obj);
-        out[idx] = trig;
-        parsed_count += 1;
-        if (trig == .cron) {
-            cron_count += 1;
-            if (cron_count > 1) {
-                log.warn("multiple_cron_triggers_rejected", .{});
-                return ZombieConfigError.InvalidTriggerType;
-            }
-        }
-        for (out[0..idx]) |existing| {
-            if (std.meta.activeTag(existing) != std.meta.activeTag(trig)) continue;
-            const conflict = switch (trig) {
-                .webhook => |w| std.mem.eql(u8, existing.webhook.source, w.source),
-                .cron => false, // ≤1-cron rule handles this above
-                .api => true,   // api rejected at parseZombieTrigger; unreachable
-            };
-            if (conflict) {
-                log.warn("duplicate_trigger_tuple", .{ .index = idx });
-                return ZombieConfigError.InvalidTriggerType;
-            }
-        }
-    }
-    return out;
+    return helpers.parseZombieTrigger(alloc, obj);
 }
-
-// Identifier matches `config_helpers.MAX_TRIGGERS_PER_ZOMBIE` (RULE UFS).
-const MAX_TRIGGERS_PER_ZOMBIE_LOCAL: usize = 8;
 
 fn parseToolsField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)![]const []const u8 {
-    const val = root.get("tools") orelse return ZombieConfigError.MissingRequiredField;
+    const val = root.get(S_TOOLS) orelse return ZombieConfigError.MissingRequiredField;
     const arr = switch (val) {
         .array => |a| a,
         else => return ZombieConfigError.MissingRequiredField,
     };
     if (arr.items.len == 0) return ZombieConfigError.MissingRequiredField;
-    return helpers.dupeStringArray(alloc, arr.items);
+    return try helpers.dupeStringArray(alloc, arr.items);
 }
 
 fn parseCredentialsField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)![]const []const u8 {
-    const val = root.get("credentials") orelse return alloc.alloc([]const u8, 0);
+    const val = root.get(S_CREDENTIALS) orelse return try alloc.alloc([]const u8, 0);
     const arr = switch (val) {
         .array => |a| a,
         else => return ZombieConfigError.MissingRequiredField,
     };
-    return helpers.dupeStringArray(alloc, arr.items);
+    return try helpers.dupeStringArray(alloc, arr.items);
 }
 
 fn parseNetworkField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?ZombieNetwork {
-    const val = root.get("network") orelse return null;
+    const val = root.get(S_NETWORK) orelse return null;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
@@ -239,7 +217,7 @@ fn parseNetworkField(
 }
 
 fn parseBudgetField(root: std.json.ObjectMap) ZombieConfigError!ZombieBudget {
-    const val = root.get("budget") orelse return ZombieConfigError.MissingRequiredField;
+    const val = root.get(S_BUDGET) orelse return ZombieConfigError.MissingRequiredField;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
@@ -251,7 +229,7 @@ fn parseGatesField(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?config_gates.GatePolicy {
-    const val = root.get("gates") orelse return null;
+    const val = root.get(S_GATES) orelse return null;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.MissingRequiredField,
@@ -262,11 +240,23 @@ fn parseGatesField(
     };
 }
 
+const ExtendedFields = struct {
+    skill: ?[]const u8,
+};
+
+fn parseExtendedFields(
+    alloc: Allocator,
+    root: std.json.ObjectMap,
+) (Allocator.Error || ZombieConfigError)!ExtendedFields {
+    const skill_ref = try parseSkillRef(alloc, root);
+    return .{ .skill = skill_ref };
+}
+
 fn parseSkillRef(
     alloc: Allocator,
     root: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?[]const u8 {
-    const val = root.get("skill") orelse return null;
+    const val = root.get(S_SKILL) orelse return null;
     const s = switch (val) {
         .string => |str| str,
         else => return null,
@@ -275,13 +265,13 @@ fn parseSkillRef(
     return try alloc.dupe(u8, s);
 }
 
-// Empty string → null (self-managed sentinel; executor resolves from
-// `tenant_providers` at trigger time).
+/// Opaque pass-through. Empty string → null (self-managed sentinel; the executor
+/// resolves the model from `tenant_providers` at trigger time).
 fn parseModelField(
     alloc: Allocator,
     runtime: std.json.ObjectMap,
 ) (Allocator.Error || ZombieConfigError)!?[]const u8 {
-    const val = runtime.get("model") orelse return null;
+    const val = runtime.get(S_MODEL) orelse return null;
     const s = switch (val) {
         .string => |str| str,
         else => return ZombieConfigError.InvalidFieldType,
@@ -290,28 +280,35 @@ fn parseModelField(
     return try alloc.dupe(u8, s);
 }
 
-// Zero-defaults — `ContextBudget.applyDefaults` substitutes auto-sentinels
-// downstream.
+/// Optional `x-usezombie.context:` block. Every field zero-defaults so the
+/// executor's `ContextBudget.applyDefaults` can substitute auto-sentinel values.
+/// Absent block → null; present-but-empty block → all-zero struct (still
+/// gets defaulted downstream — same observable behaviour).
 fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieContextBudget {
-    const val = runtime.get("context") orelse return null;
+    const val = runtime.get(S_CONTEXT) orelse return null;
     const obj = switch (val) {
         .object => |o| o,
         else => return ZombieConfigError.InvalidFieldType,
     };
     try ensureKnownContextKeys(obj);
     return ZombieContextBudget{
-        .context_cap_tokens = try readU32(obj, "context_cap_tokens"),
-        .tool_window = try readU32(obj, "tool_window"),
-        .memory_checkpoint_every = try readU32(obj, "memory_checkpoint_every"),
-        .stage_chunk_threshold = try readF32(obj, "stage_chunk_threshold"),
+        .context_cap_tokens = try readU32(obj, S_CONTEXT_CAP_TOKENS),
+        .tool_window = try readU32(obj, S_TOOL_WINDOW),
+        .memory_checkpoint_every = try readU32(obj, S_MEMORY_CHECKPOINT_EVERY),
+        .stage_chunk_threshold = try readF32(obj, S_STAGE_CHUNK_THRESHOLD),
     };
 }
 
-// Typos must fail loud — otherwise the intended override silently zeroes.
+/// Same rigid contract as `ensureKnownRuntimeKeys` but for the nested
+/// `x-usezombie.context:` object. Without this, a typo like
+/// `tool_windw: 30` silently falls through to the zero auto-sentinel
+/// and the operator's intended override is dropped at runtime — the
+/// failure is invisible until somebody traces a confusing budget at
+/// runtime back to a misspelled key in frontmatter.
 fn ensureKnownContextKeys(ctx: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        "context_cap_tokens",      "tool_window",
-        "memory_checkpoint_every", "stage_chunk_threshold",
+        S_CONTEXT_CAP_TOKENS, S_TOOL_WINDOW,
+        S_MEMORY_CHECKPOINT_EVERY, S_STAGE_CHUNK_THRESHOLD,
     };
     var it = ctx.iterator();
     while (it.next()) |entry| {
@@ -331,7 +328,9 @@ fn readU32(obj: std.json.ObjectMap, key: []const u8) ZombieConfigError!u32 {
             if (i < 0 or i > std.math.maxInt(u32)) return ZombieConfigError.InvalidFieldType;
             break :blk @intCast(i);
         },
-        // `tool_window: auto` (bare YAML string) maps to the zero auto-sentinel.
+        // Authoring convenience: `tool_window: auto` (bare YAML string) maps to
+        // the zero-value auto-sentinel. Same observable behaviour as omitting
+        // the key, but keeps the template self-documenting.
         .string => |s| if (std.mem.eql(u8, s, "auto")) 0 else return ZombieConfigError.InvalidFieldType,
         else => return ZombieConfigError.InvalidFieldType,
     };

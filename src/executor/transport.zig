@@ -10,6 +10,8 @@ const pc = @import("progress_callbacks.zig");
 
 const log = logging.scoped(.executor_transport);
 
+const S_RPC_VERSION_MISMATCH = "rpc_version_mismatch";
+
 pub const ConnectionError = error{
     SocketBindFailed,
     SocketConnectFailed,
@@ -165,7 +167,7 @@ pub const Server = struct {
 
     fn handleConnection(self: *Server, conn: std.posix.socket_t) void {
         exchangeHello(self.alloc, conn) catch |err| {
-            log.warn("rpc_version_mismatch", .{ .peer = "client", .err = @errorName(err) });
+            log.warn(S_RPC_VERSION_MISMATCH, .{ .peer = "client", .err = @errorName(err) });
             return;
         };
 
@@ -240,7 +242,7 @@ pub const Client = struct {
         };
 
         exchangeHello(self.alloc, sock) catch |err| {
-            log.warn("rpc_version_mismatch", .{ .peer = "server", .err = @errorName(err) });
+            log.warn(S_RPC_VERSION_MISMATCH, .{ .peer = "server", .err = @errorName(err) });
             return err;
         };
 

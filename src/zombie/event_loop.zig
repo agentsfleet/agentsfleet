@@ -34,6 +34,8 @@ const clearExecutionActive = helpers.clearExecutionActive;
 
 /// Claim a Zombie: load config + session checkpoint from Postgres.
 /// Returns a ZombieSession that the caller owns and must deinit.
+const S_ZOMBIE_LOCAL = "zombie-local";
+
 pub fn claimZombie(
     alloc: Allocator,
     zombie_id_input: []const u8,
@@ -124,8 +126,8 @@ pub fn runEventLoop(
         return;
     };
 
-    const consumer_id = queue_redis.makeConsumerId(alloc) catch "zombie-local";
-    defer if (!std.mem.eql(u8, consumer_id, "zombie-local")) alloc.free(consumer_id);
+    const consumer_id = queue_redis.makeConsumerId(alloc) catch S_ZOMBIE_LOCAL;
+    defer if (!std.mem.eql(u8, consumer_id, S_ZOMBIE_LOCAL)) alloc.free(consumer_id);
 
     log.info("zombie_event_loop.started", .{ .zombie_id = session.zombie_id, .name = session.config.name });
 
@@ -262,9 +264,9 @@ fn writeReloadEventRow(conn: *pg.Conn, session: *ZombieSession, revision: i64) !
 }
 
 test {
-    _ = @import("event_loop_types.zig");
-    _ = @import("event_loop_helpers.zig");
-    _ = @import("event_loop_writepath.zig");
+    _ = types;
+    _ = helpers;
+    _ = writepath;
     _ = @import("event_loop_test.zig");
     _ = @import("event_loop_integration_test.zig");
     _ = @import("event_loop_writepath_integration_test.zig");

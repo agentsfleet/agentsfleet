@@ -14,6 +14,8 @@
 
 pub const Subscriber = @This();
 
+const S_AUTH = "AUTH";
+
 alloc: std.mem.Allocator,
 transport: redis_transport.Transport,
 
@@ -52,9 +54,9 @@ fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Subscriber {
 
     if (cfg.password) |pwd| {
         if (cfg.username) |usr| {
-            try sub.sendCommand(&.{ "AUTH", usr, pwd });
+            try sub.sendCommand(&.{ S_AUTH, usr, pwd });
         } else {
-            try sub.sendCommand(&.{ "AUTH", pwd });
+            try sub.sendCommand(&.{ S_AUTH, pwd });
         }
         var auth = try redis_protocol.readRespValue(alloc, sub.transport.reader());
         defer auth.deinit(alloc);

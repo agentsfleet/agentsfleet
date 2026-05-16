@@ -13,6 +13,8 @@ const log = logging.scoped(.api_keys_list);
 
 const Hx = hx_mod.Hx;
 
+const S_CREATED_AT_DESC_ID_DESC = "created_at DESC, id DESC";
+
 const DEFAULT_PAGE_SIZE: i32 = 25;
 const MAX_PAGE_SIZE: i32 = 100;
 
@@ -28,7 +30,7 @@ const ListRow = struct {
 const ListQuery = struct {
     page: i32 = 1,
     page_size: i32 = DEFAULT_PAGE_SIZE,
-    order_sql: []const u8 = "created_at DESC, id DESC",
+    order_sql: []const u8 = S_CREATED_AT_DESC_ID_DESC,
 };
 
 fn parseListQuery(req: *httpz.Request) ?ListQuery {
@@ -44,7 +46,7 @@ fn parseListQuery(req: *httpz.Request) ?ListQuery {
 
 pub fn sortClauseFor(raw: []const u8) ?[]const u8 {
     if (std.mem.eql(u8, raw, "created_at")) return "created_at ASC, id ASC";
-    if (std.mem.eql(u8, raw, "-created_at")) return "created_at DESC, id DESC";
+    if (std.mem.eql(u8, raw, "-created_at")) return S_CREATED_AT_DESC_ID_DESC;
     if (std.mem.eql(u8, raw, "key_name")) return "key_name ASC, id ASC";
     if (std.mem.eql(u8, raw, "-key_name")) return "key_name DESC, id DESC";
     return null;

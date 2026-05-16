@@ -13,6 +13,8 @@ const hx_mod = @import("../hx.zig");
 /// per-tenant unique partial index on `name` is the only collision source;
 /// a single tenant can't realistically race against itself fast enough to
 /// burn through this many random `<adj>-<noun>-<3digit>` candidates.
+const S_FAILED_TO_CREATE_WORKSPACE = "Failed to create workspace";
+
 const MAX_NAME_ATTEMPTS: u8 = 8;
 
 const log = logging.scoped(.http);
@@ -56,7 +58,7 @@ fn isUniqueViolation(conn: anytype) bool {
 fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, tenant_id: []const u8, name_opt: ?[]const u8, now_ms: i64) ?[]const u8 {
     if (name_opt) |name| {
         insertWorkspaceRow(conn, workspace_id, tenant_id, name, hx.principal.user_id, now_ms) catch {
-            common.internalOperationError(hx.res, "Failed to create workspace", hx.req_id);
+            common.internalOperationError(hx.res, S_FAILED_TO_CREATE_WORKSPACE, hx.req_id);
             return null;
         };
         return name;
@@ -73,7 +75,7 @@ fn insertAndProvision(conn: anytype, hx: hx_mod.Hx, workspace_id: []const u8, te
         } else |err| {
             hx.alloc.free(candidate);
             if (err == error.PG and isUniqueViolation(conn)) continue;
-            common.internalOperationError(hx.res, "Failed to create workspace", hx.req_id);
+            common.internalOperationError(hx.res, S_FAILED_TO_CREATE_WORKSPACE, hx.req_id);
             return null;
         }
     }

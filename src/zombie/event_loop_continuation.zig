@@ -29,13 +29,15 @@ const log = logging.scoped(.zombie_event_loop);
 /// Events tab, and the activity stream's terminal `event_complete`
 /// frame. Notification today is silent — the label is observability
 /// only; an active escalation channel is a follow-up scope item.
-pub const LABEL_CHUNK_CHAIN_ESCALATE_HUMAN = "chunk_chain_escalate_human";
+pub const LABEL_CHUNK_CHAIN_ESCALATE_HUMAN = S_CHUNK_CHAIN_ESCALATE_HUMAN;
 
 /// Count continuation events in the chain ending at `event_id`. Walks
 /// `resumes_event_id` recursively. The current event's row is included
 /// in the count when its own `event_type='continuation'` — i.e., if
 /// stage N just finished and N is itself a continuation, the chain already
 /// carries N continuations and the next would be N+1.
+const S_CHUNK_CHAIN_ESCALATE_HUMAN = "chunk_chain_escalate_human";
+
 fn countPriorContinuationsForChain(
     pool: *pg.Pool,
     zombie_id: []const u8,
@@ -160,7 +162,7 @@ pub fn run(
     switch (verdict) {
         .no_continuation => {},
         .force_stop => |s| {
-            log.warn("chunk_chain_escalate_human", .{
+            log.warn(S_CHUNK_CHAIN_ESCALATE_HUMAN, .{
                 .zombie_id = session.zombie_id,
                 .event_id = event.event_id,
                 .prior_count = s.prior_continuation_count,

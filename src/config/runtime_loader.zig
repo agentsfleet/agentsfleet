@@ -21,6 +21,8 @@ const validate = @import("runtime_validate.zig");
 
 const ValidationError = runtime_types.ValidationError;
 
+const S_T_R_N = " \t\r\n";
+
 const SizesConfig = struct {
     port: u16,
     api_http_threads: i16,
@@ -77,11 +79,11 @@ pub fn loadOidc(alloc: Allocator) !OidcConfig {
     defer if (provider_raw) |v| alloc.free(v);
 
     const requested = jwks_url != null or issuer != null or audience != null or provider_raw != null;
-    const enabled = if (jwks_url) |raw| std.mem.trim(u8, raw, " \t\r\n").len > 0 else false;
+    const enabled = if (jwks_url) |raw| std.mem.trim(u8, raw, S_T_R_N).len > 0 else false;
     if (requested and !enabled) return ValidationError.MissingOidcJwksUrl;
 
     const provider = if (provider_raw) |raw|
-        oidc.parseProvider(std.mem.trim(u8, raw, " \t\r\n")) catch return ValidationError.InvalidOidcProvider
+        oidc.parseProvider(std.mem.trim(u8, raw, S_T_R_N)) catch return ValidationError.InvalidOidcProvider
     else
         oidc.Provider.clerk;
 

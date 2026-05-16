@@ -19,6 +19,9 @@ pub const Context = common.Context;
 // GET /v1/workspaces/{ws}/zombies/{zombie_id}/integration-grants
 // bearer policy — principal set by middleware.
 
+const S_WORKSPACE_ACCESS_DENIED = "Workspace access denied";
+const S_ZOMBIE_NOT_FOUND = "Zombie not found";
+
 const GrantRow = struct {
     grant_id: []const u8,
     service: []const u8,
@@ -37,17 +40,17 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
     defer hx.ctx.pool.release(conn);
 
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
     // Verify zombie belongs to the path workspace (don't leak existence
     // of zombies in other workspaces — return 404, not 403).
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
         return;
     };
     if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
         return;
     }
 
@@ -97,16 +100,16 @@ pub fn innerRevokeGrant(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []co
     defer hx.ctx.pool.release(conn);
 
     if (!common.authorizeWorkspace(conn, hx.principal, workspace_id)) {
-        hx.fail(ec.ERR_FORBIDDEN, "Workspace access denied");
+        hx.fail(ec.ERR_FORBIDDEN, S_WORKSPACE_ACCESS_DENIED);
         return;
     }
     // Verify zombie belongs to the path workspace.
     const zombie_ws_id = common.getZombieWorkspaceId(conn, hx.alloc, zombie_id) orelse {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
         return;
     };
     if (!std.mem.eql(u8, zombie_ws_id, workspace_id)) {
-        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, "Zombie not found");
+        hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
         return;
     }
 

@@ -10,6 +10,8 @@ const std = @import("std");
 
 pub const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";
 
+const S_UZ_INTERNAL_003 = "UZ-INTERNAL-003";
+
 pub const Entry = struct {
     code: []const u8,
     http_status: std.http.Status,
@@ -25,7 +27,7 @@ pub const UNKNOWN = Entry{
     .http_status = .internal_server_error,
     .title = "Unknown error",
     .hint = "This error code is not registered. Report to the operator.",
-    .docs_uri = ERROR_DOCS_BASE ++ "UZ-INTERNAL-003",
+    .docs_uri = ERROR_DOCS_BASE ++ S_UZ_INTERNAL_003,
 };
 
 fn e(
@@ -62,7 +64,7 @@ pub const ENTRIES = [_]Entry{
         "Check that DATABASE_URL is set and the database server is reachable. Run 'zombied doctor' to verify."),
     e("UZ-INTERNAL-002", .internal_server_error, "Database error",
         "A database query failed. Check the err= field and database logs."),
-    e("UZ-INTERNAL-003", .internal_server_error, "Internal operation failed",
+    e(S_UZ_INTERNAL_003, .internal_server_error, "Internal operation failed",
         "An internal operation failed. Check the err= field for details. " ++
         "If persistent, check service connectivity and run 'zombied doctor'."),
     // ── REQUEST ──────────────────────────────────────────────────────────────

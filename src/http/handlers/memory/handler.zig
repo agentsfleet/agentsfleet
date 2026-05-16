@@ -30,6 +30,11 @@ pub const Context = common.Context;
 
 // ── Store ─────────────────────────────────────────────────────────────────
 
+const S_OOM = "OOM";
+const S_MEMORY_BACKEND_ROLE_SWITCH_FAILED = "memory backend role switch failed";
+const S_KEY_MUST_BE_1_255_BYTES = "key must be 1-255 bytes";
+const S_MEMORY_LIST_FAILED = "memory list failed";
+
 const StoreBody = struct {
     key: []const u8,
     content: []const u8,
@@ -52,7 +57,7 @@ pub fn innerStoreMemory(
     };
     const b = parsed.value;
     if (b.key.len == 0 or b.key.len > h.MAX_KEY_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "key must be 1-255 bytes");
+        hx.fail(ec.ERR_INVALID_REQUEST, S_KEY_MUST_BE_1_255_BYTES);
         return;
     }
     // DELETE routes the key as a single path segment, so a stored key
@@ -76,7 +81,7 @@ pub fn innerStoreMemory(
     const instance_id = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
 
     if (!h.setMemoryRole(conn)) {
-        hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory backend role switch failed");
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
         return;
     }
     defer h.resetRole(conn);
@@ -145,7 +150,7 @@ pub fn innerListMemories(
     const instance_id = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
 
     if (!h.setMemoryRole(conn)) {
-        hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory backend role switch failed");
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
         return;
     }
     defer h.resetRole(conn);
@@ -155,11 +160,11 @@ pub fn innerListMemories(
 
     if (query_text) |qt| {
         const escaped = h.escapeLikePattern(hx.alloc, qt) catch {
-            common.internalOperationError(hx.res, "OOM", hx.req_id);
+            common.internalOperationError(hx.res, S_OOM, hx.req_id);
             return;
         };
         const like_pat = std.fmt.allocPrint(hx.alloc, "%{s}%", .{escaped}) catch {
-            common.internalOperationError(hx.res, "OOM", hx.req_id);
+            common.internalOperationError(hx.res, S_OOM, hx.req_id);
             return;
         };
         var q = PgQuery.from(conn.query(
@@ -182,7 +187,7 @@ pub fn innerListMemories(
             \\WHERE instance_id = $1 AND category = $2
             \\ORDER BY updated_at DESC LIMIT $3
         , .{ instance_id, cat, limit }) catch {
-            hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory list failed");
+            hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });
         defer q.deinit();
@@ -194,7 +199,7 @@ pub fn innerListMemories(
             \\WHERE instance_id = $1
             \\ORDER BY updated_at DESC LIMIT $2
         , .{ instance_id, limit }) catch {
-            hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory list failed");
+            hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_LIST_FAILED);
             return;
         });
         defer q.deinit();
@@ -217,7 +222,7 @@ pub fn innerDeleteMemory(
     key: []const u8,
 ) void {
     if (key.len == 0 or key.len > h.MAX_KEY_LEN) {
-        hx.fail(ec.ERR_INVALID_REQUEST, "key must be 1-255 bytes");
+        hx.fail(ec.ERR_INVALID_REQUEST, S_KEY_MUST_BE_1_255_BYTES);
         return;
     }
 
@@ -230,7 +235,7 @@ pub fn innerDeleteMemory(
     const instance_id = h.resolveZombieInWorkspace(hx, conn, workspace_id, zombie_id) orelse return;
 
     if (!h.setMemoryRole(conn)) {
-        hx.fail(ec.ERR_MEM_UNAVAILABLE, "memory backend role switch failed");
+        hx.fail(ec.ERR_MEM_UNAVAILABLE, S_MEMORY_BACKEND_ROLE_SWITCH_FAILED);
         return;
     }
     defer h.resetRole(conn);

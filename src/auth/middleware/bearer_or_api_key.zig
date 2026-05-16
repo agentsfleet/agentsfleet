@@ -29,6 +29,8 @@ pub const TenantApiKey = tenant_api_key_mod.TenantApiKey;
 /// Free fields of `oidc.Principal` that `AuthPrincipal` does not adopt
 /// (mirrors bearer_oidc — duplicated to avoid a shared helper module just
 /// for five frees).
+const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
+
 fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
     alloc.free(p.issuer);
     if (p.org_id) |v| alloc.free(v);
@@ -55,7 +57,7 @@ pub const BearerOrApiKey = struct {
 
     pub fn execute(self: *BearerOrApiKey, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         const provided = bearer.parseBearerToken(req) orelse {
-            ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+            ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;
         };
 
@@ -66,7 +68,7 @@ pub const BearerOrApiKey = struct {
         }
 
         const verifier = self.verifier orelse {
-            ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+            ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;
         };
 
@@ -81,7 +83,7 @@ pub const BearerOrApiKey = struct {
                 return .short_circuit;
             },
             else => {
-                ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+                ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
                 return .short_circuit;
             },
         };

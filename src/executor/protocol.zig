@@ -6,9 +6,13 @@
 const std = @import("std");
 const types = @import("types.zig");
 
-
 const logging = @import("log");
 const log = logging.scoped(.executor_protocol);
+
+const RPC_ID_KEY = "id";
+const RPC_METHOD_KEY = "method";
+const RPC_PARAMS_KEY = "params";
+
 /// RPC method names — the executor API surface (§2.1).
 pub const Method = struct {
     pub const create_execution = "CreateExecution";
@@ -125,10 +129,10 @@ pub fn serializeRequest(alloc: std.mem.Allocator, id: u64, method: []const u8, p
     var obj = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
     defer obj.object.deinit();
 
-    try obj.object.put("id", .{ .integer = @intCast(id) });
-    try obj.object.put("method", .{ .string = method });
+    try obj.object.put(RPC_ID_KEY,.{ .integer = @intCast(id) });
+    try obj.object.put(RPC_METHOD_KEY,.{ .string = method });
     if (params) |p| {
-        try obj.object.put("params", p);
+        try obj.object.put(RPC_PARAMS_KEY,p);
     }
 
     return std.json.Stringify.valueAlloc(alloc, obj, .{});
@@ -158,17 +162,17 @@ pub fn parseRequest(alloc: std.mem.Allocator, payload: []const u8) !ParsedReques
     errdefer parsed.deinit();
 
     const root = parsed.value;
-    const id_val = root.object.get("id") orelse return error.InvalidRequest;
+    const id_val = root.object.get(RPC_ID_KEY) orelse return error.InvalidRequest;
     const id: u64 = switch (id_val) {
         .integer => |i| @intCast(i),
         else => return error.InvalidRequest,
     };
-    const method_val = root.object.get("method") orelse return error.InvalidRequest;
+    const method_val = root.object.get(RPC_METHOD_KEY) orelse return error.InvalidRequest;
     const method: []const u8 = switch (method_val) {
         .string => |s| s,
         else => return error.InvalidRequest,
     };
-    const params = root.object.get("params");
+    const params = root.object.get(RPC_PARAMS_KEY);
 
     return .{
         .id = id,
@@ -195,7 +199,7 @@ pub fn parseResponse(alloc: std.mem.Allocator, payload: []const u8) !ParsedRespo
     errdefer parsed.deinit();
 
     const root = parsed.value;
-    const id_val = root.object.get("id") orelse return error.InvalidRequest;
+    const id_val = root.object.get(RPC_ID_KEY) orelse return error.InvalidRequest;
     const id: u64 = switch (id_val) {
         .integer => |i| @intCast(i),
         else => return error.InvalidRequest,
@@ -227,121 +231,6 @@ pub fn parseResponse(alloc: std.mem.Allocator, payload: []const u8) !ParsedRespo
     };
 }
 
-test "serializeRequest and parseRequest round trip" {
-    const alloc = std.testing.allocator;
-    const serialized = try serializeRequest(alloc, 42, Method.create_execution, null);
-    defer alloc.free(serialized);
-
-    var req = try parseRequest(alloc, serialized);
-    defer req.deinit();
-    try std.testing.expectEqual(@as(u64, 42), req.id);
-    try std.testing.expectEqualStrings(Method.create_execution, req.method);
-}
-
-test "serializeRequest with params round trips" {
-    const alloc = std.testing.allocator;
-    var params = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
-    defer params.object.deinit();
-    try params.object.put("workspace_path", .{ .string = "/tmp/test" });
-
-    const serialized = try serializeRequest(alloc, 1, Method.create_execution, params);
-    defer alloc.free(serialized);
-
-    var req = try parseRequest(alloc, serialized);
-    defer req.deinit();
-    try std.testing.expectEqual(@as(u64, 1), req.id);
-    try std.testing.expect(req.params != null);
-}
-
-test "parseRequest rejects malformed JSON" {
-    const alloc = std.testing.allocator;
-    const result = parseRequest(alloc, "not json at all{{{");
-    try std.testing.expectError(error.SyntaxError, result);
-}
-
-test "parseRequest rejects missing id" {
-    const alloc = std.testing.allocator;
-    const result = parseRequest(alloc, "{\"method\":\"Heartbeat\"}");
-    try std.testing.expectError(error.InvalidRequest, result);
-}
-
-test "parseRequest rejects missing method" {
-    const alloc = std.testing.allocator;
-    const result = parseRequest(alloc, "{\"id\":1}");
-    try std.testing.expectError(error.InvalidRequest, result);
-}
-
-test "parseResponse parses success response" {
-    const alloc = std.testing.allocator;
-    const payload = "{\"id\":1,\"result\":true}";
-    var resp = try parseResponse(alloc, payload);
-    defer resp.deinit();
-    try std.testing.expectEqual(@as(u64, 1), resp.id);
-    try std.testing.expect(resp.result != null);
-    try std.testing.expect(resp.rpc_error == null);
-}
-
-test "parseResponse parses error response" {
-    const alloc = std.testing.allocator;
-    const payload = "{\"id\":2,\"error\":{\"code\":-32601,\"message\":\"Unknown method\"}}";
-    var resp = try parseResponse(alloc, payload);
-    defer resp.deinit();
-    try std.testing.expectEqual(@as(u64, 2), resp.id);
-    try std.testing.expect(resp.rpc_error != null);
-    try std.testing.expectEqual(@as(i32, ErrorCode.method_not_found), resp.rpc_error.?.code);
-    try std.testing.expectEqualStrings("Unknown method", resp.rpc_error.?.message);
-}
-
-test "parseResponse rejects missing id" {
-    const alloc = std.testing.allocator;
-    const result = parseResponse(alloc, "{\"result\":true}");
-    try std.testing.expectError(error.InvalidRequest, result);
-}
-
-// ── T7: Regression — error code values are pinned ────────────────────
-test "ErrorCode values match JSON-RPC spec" {
-    // Standard JSON-RPC 2.0 error codes.
-    try std.testing.expectEqual(@as(i32, -32700), ErrorCode.parse_error);
-    try std.testing.expectEqual(@as(i32, -32600), ErrorCode.invalid_request);
-    try std.testing.expectEqual(@as(i32, -32601), ErrorCode.method_not_found);
-    try std.testing.expectEqual(@as(i32, -32602), ErrorCode.invalid_params);
-    try std.testing.expectEqual(@as(i32, -32603), ErrorCode.internal_error);
-    // Application-specific codes.
-    try std.testing.expectEqual(@as(i32, -1), ErrorCode.execution_failed);
-    try std.testing.expectEqual(@as(i32, -2), ErrorCode.timeout_killed);
-    try std.testing.expectEqual(@as(i32, -3), ErrorCode.oom_killed);
-    try std.testing.expectEqual(@as(i32, -4), ErrorCode.policy_denied);
-    try std.testing.expectEqual(@as(i32, -5), ErrorCode.lease_expired);
-    try std.testing.expectEqual(@as(i32, -6), ErrorCode.landlock_denied);
-    try std.testing.expectEqual(@as(i32, -7), ErrorCode.resource_killed);
-}
-
-// ── T7: Regression — Method name constants are stable ────────────────
-test "Method constants match expected strings" {
-    try std.testing.expectEqualStrings("CreateExecution", Method.create_execution);
-    try std.testing.expectEqualStrings("StartStage", Method.start_stage);
-    try std.testing.expectEqualStrings("StreamEvents", Method.stream_events);
-    try std.testing.expectEqualStrings("CancelExecution", Method.cancel_execution);
-    try std.testing.expectEqualStrings("GetUsage", Method.get_usage);
-    try std.testing.expectEqualStrings("DestroyExecution", Method.destroy_execution);
-    try std.testing.expectEqualStrings("Heartbeat", Method.heartbeat);
-}
-
-// ── T8: Security — MAX_FRAME_SIZE is pinned ──────────────────────────
-test "MAX_FRAME_SIZE is 16 MiB" {
-    try std.testing.expectEqual(@as(u32, 16 * 1024 * 1024), MAX_FRAME_SIZE);
-}
-
-// ── T2: Edge case — parseRequest with empty string ───────────────────
-test "parseRequest rejects empty payload" {
-    const alloc = std.testing.allocator;
-    const result = parseRequest(alloc, "");
-    try std.testing.expectError(error.UnexpectedEndOfInput, result);
-}
-
-// ── T2: Edge case — parseResponse with only whitespace ───────────────
-test "parseResponse rejects whitespace-only payload" {
-    const alloc = std.testing.allocator;
-    const result = parseResponse(alloc, "   ");
-    try std.testing.expectError(error.UnexpectedEndOfInput, result);
+test {
+    _ = @import("protocol_test.zig");
 }

@@ -19,6 +19,8 @@ pub const Context = common.Context;
 
 // Row shape for GET /v1/admin/platform-keys response.
 // Defined at module level so std.ArrayList(PlatformKeyRow) compiles in all build modes.
+const S_PROVIDER_MUST_BE_1_32_CHARS = "provider must be 1–32 chars";
+
 const PlatformKeyRow = struct {
     provider: []const u8,
     source_workspace_id: []const u8,
@@ -50,7 +52,7 @@ pub fn innerPutAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request) void {
     const input = parsed.value;
 
     if (input.provider.len == 0 or input.provider.len > 32) {
-        hx.fail(error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars");
+        hx.fail(error_codes.ERR_INVALID_REQUEST, S_PROVIDER_MUST_BE_1_32_CHARS);
         return;
     }
     if (!common.requireUuidV7Id(hx.res, hx.req_id, input.source_workspace_id, "source_workspace_id")) return;
@@ -114,7 +116,7 @@ pub fn innerDeleteAdminPlatformKey(hx: hx_mod.Hx, req: *httpz.Request, provider:
     if (!common.requireRole(hx.res, hx.req_id, hx.principal, .admin)) return;
 
     if (provider.len == 0 or provider.len > 32) {
-        hx.fail(error_codes.ERR_INVALID_REQUEST, "provider must be 1–32 chars");
+        hx.fail(error_codes.ERR_INVALID_REQUEST, S_PROVIDER_MUST_BE_1_32_CHARS);
         return;
     }
 

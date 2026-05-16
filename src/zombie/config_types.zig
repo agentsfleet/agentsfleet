@@ -7,6 +7,11 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const config_gates = @import("config_gates.zig");
 
+const S_PAUSED = "paused";
+const S_KILLED = "killed";
+const S_STOPPED = "stopped";
+const S_ACTIVE = "active";
+
 pub const ZombieConfigError = error{
     MissingRequiredField,
     InvalidTriggerType,
@@ -40,18 +45,18 @@ pub const ZombieStatus = enum {
 
     pub fn toSlice(self: ZombieStatus) []const u8 {
         return switch (self) {
-            .active => "active",
-            .paused => "paused",
-            .stopped => "stopped",
-            .killed => "killed",
+            .active => S_ACTIVE,
+            .paused => S_PAUSED,
+            .stopped => S_STOPPED,
+            .killed => S_KILLED,
         };
     }
 
     pub fn fromSlice(s: []const u8) ?ZombieStatus {
-        if (std.mem.eql(u8, s, "active")) return .active;
-        if (std.mem.eql(u8, s, "paused")) return .paused;
-        if (std.mem.eql(u8, s, "stopped")) return .stopped;
-        if (std.mem.eql(u8, s, "killed")) return .killed;
+        if (std.mem.eql(u8, s, S_ACTIVE)) return .active;
+        if (std.mem.eql(u8, s, S_PAUSED)) return .paused;
+        if (std.mem.eql(u8, s, S_STOPPED)) return .stopped;
+        if (std.mem.eql(u8, s, S_KILLED)) return .killed;
         return null;
     }
 

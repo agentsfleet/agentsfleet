@@ -14,6 +14,12 @@ pub const YamlError = error{ParseFailure};
 /// Convert YAML frontmatter (the bytes between the `---` fences, already
 /// extracted) to a single-line JSON object string. Caller owns the returned
 /// slice. Empty input returns `"{}"`.
+const S_NULL = "null";
+const S_FALSE = "false";
+const S_TRUE = "true";
+
+const S_PUNCT_FC763C = ", ";
+
 pub fn yamlFrontmatterToJson(alloc: Allocator, source: []const u8) (Allocator.Error || YamlError)![]u8 {
     var doc: yaml.Yaml = .{ .source = source };
     defer doc.deinit(alloc);
@@ -38,13 +44,13 @@ pub fn yamlFrontmatterToJson(alloc: Allocator, source: []const u8) (Allocator.Er
 
 fn writeJsonValue(w: anytype, v: yaml.Yaml.Value) !void {
     switch (v) {
-        .empty => try w.writeAll("null"),
-        .boolean => |b| try w.writeAll(if (b) "true" else "false"),
+        .empty => try w.writeAll(S_NULL),
+        .boolean => |b| try w.writeAll(if (b) S_TRUE else S_FALSE),
         .scalar => |s| try writeScalar(w, s),
         .list => |list| {
             try w.writeByte('[');
             for (list, 0..) |item, i| {
-                if (i > 0) try w.writeAll(", ");
+                if (i > 0) try w.writeAll(S_PUNCT_FC763C);
                 try writeJsonValue(w, item);
             }
             try w.writeByte(']');
@@ -53,7 +59,7 @@ fn writeJsonValue(w: anytype, v: yaml.Yaml.Value) !void {
             try w.writeByte('{');
             var first = true;
             for (map.keys(), map.values()) |k, val| {
-                if (!first) try w.writeAll(", ");
+                if (!first) try w.writeAll(S_PUNCT_FC763C);
                 try writeJsonString(w, k);
                 try w.writeAll(": ");
                 try writeJsonValue(w, val);
@@ -72,12 +78,12 @@ fn writeJsonValue(w: anytype, v: yaml.Yaml.Value) !void {
 // corruption — only the diagnostic specificity suffers. Documented here so
 // future readers don't try to "fix" it without a parser-side hook.
 fn writeScalar(w: anytype, s: []const u8) !void {
-    if (std.mem.eql(u8, s, "true") or std.mem.eql(u8, s, "false")) {
+    if (std.mem.eql(u8, s, S_TRUE) or std.mem.eql(u8, s, S_FALSE)) {
         try w.writeAll(s);
         return;
     }
-    if (std.mem.eql(u8, s, "null") or std.mem.eql(u8, s, "~")) {
-        try w.writeAll("null");
+    if (std.mem.eql(u8, s, S_NULL) or std.mem.eql(u8, s, "~")) {
+        try w.writeAll(S_NULL);
         return;
     }
     if (isNumeric(s)) {
