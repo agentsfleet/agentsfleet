@@ -5,7 +5,7 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { request } from "../src/program/http-client.js";
+import { request } from "../src/program/http-client.ts";
 
 function makeFetchSeq(responses) {
   let i = 0;

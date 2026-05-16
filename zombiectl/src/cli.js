@@ -18,7 +18,7 @@ import {
   saveCredentials,
   saveWorkspaces,
 } from "./lib/state.ts";
-import { apiHeaders, request } from "./program/http-client.js";
+import { apiHeaders, request } from "./program/http-client.ts";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.ts";
 import { printJson, writeError, writeLine } from "./program/io.js";
 import { printVersion, printPreReleaseWarning } from "./program/banner.js";

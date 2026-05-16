@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { streamGet } from "../src/lib/sse.js";
+import { streamGet } from "../src/lib/sse.ts";
 
 // streamGet covers the full GET-stream lifecycle: header injection,
 // frame boundary slicing, JSON-parsed event delivery, error mapping,

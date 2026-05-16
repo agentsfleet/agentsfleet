@@ -1,12 +1,41 @@
+// HTTP transport: fetch wrapper, retry-with-backoff layer, JSON envelope
+// unwrap, AbortController-backed timeout, POST-mode SSE streaming. Every
+// non-OK response surfaces as ApiError; the wrapper's caller never sees
+// a raw Response.
+
 const DEFAULT_TIMEOUT_MS = 15000;
 const DEFAULT_MAX_ATTEMPTS = 3;
 const DEFAULT_BASE_DELAY_MS = 250;
 const DEFAULT_CAP_DELAY_MS = 2000;
 const MAX_ATTEMPTS_HARD_CAP = 10;
-const RETRYABLE_STATUSES = new Set([408, 425, 429, 502, 503, 504]);
+const RETRYABLE_STATUSES = new Set<number>([408, 425, 429, 502, 503, 504]);
+
+// Reasons surfaced on the `onRetry` callback so the analytics layer
+// can attribute the retry to a concrete failure class.
+export type RetryReason =
+  | "timeout"
+  | "429"
+  | "5xx"
+  | "server_marked_retryable"
+  | "network";
+
+export interface ApiErrorDetails {
+  status?: number;
+  code?: string;
+  requestId?: string | null;
+  body?: unknown;
+  retryAfterMs?: number | null;
+}
 
 export class ApiError extends Error {
-  constructor(message, details = {}) {
+  override readonly name: "ApiError";
+  readonly status: number | undefined;
+  readonly code: string | undefined;
+  readonly requestId: string | null | undefined;
+  readonly body: unknown;
+  readonly retryAfterMs: number | null;
+
+  constructor(message: string, details: ApiErrorDetails = {}) {
     super(message);
     this.name = "ApiError";
     this.status = details.status;
@@ -21,13 +50,20 @@ export class ApiError extends Error {
   }
 }
 
-function classifyRetryable(err) {
+function hasRetryOptOut(body: unknown): boolean {
+  if (body === null || typeof body !== "object") return false;
+  const errField = (body as { error?: unknown }).error;
+  if (errField === null || typeof errField !== "object") return false;
+  return (errField as { retry_after_seconds?: unknown }).retry_after_seconds === 0;
+}
+
+function classifyRetryable(err: unknown): RetryReason | null {
   if (err instanceof ApiError) {
     if (err.code === "TIMEOUT") return "timeout";
-    if (err.status && RETRYABLE_STATUSES.has(err.status)) {
+    if (err.status !== undefined && RETRYABLE_STATUSES.has(err.status)) {
       // Server can opt out of retries by sending Retry-After: 0; we
       // surface that on the body so the wrapper can honor it.
-      if (err.body?.error?.retry_after_seconds === 0) return null;
+      if (hasRetryOptOut(err.body)) return null;
       if (err.status === 429) return "429";
       return "5xx";
     }
@@ -36,16 +72,31 @@ function classifyRetryable(err) {
     }
     return null;
   }
-  if (err instanceof TypeError && typeof err.message === "string" && err.message.toLowerCase().includes("fetch failed")) {
+  if (
+    err instanceof TypeError
+    && typeof err.message === "string"
+    && err.message.toLowerCase().includes("fetch failed")
+  ) {
     return "network";
   }
-  if (err && (err.code === "ECONNRESET" || err.code === "ETIMEDOUT" || err.code === "ENOTFOUND")) {
-    return "network";
+  if (err !== null && typeof err === "object") {
+    const code = (err as { code?: unknown }).code;
+    if (code === "ECONNRESET" || code === "ETIMEDOUT" || code === "ENOTFOUND") {
+      return "network";
+    }
   }
   return null;
 }
 
-function backoffDelay({ attempt, baseDelayMs, capDelayMs, retryAfterMs, randomFn }) {
+interface BackoffArgs {
+  attempt: number;
+  baseDelayMs: number;
+  capDelayMs: number;
+  retryAfterMs: number | null;
+  randomFn: () => number;
+}
+
+function backoffDelay({ attempt, baseDelayMs, capDelayMs, retryAfterMs, randomFn }: BackoffArgs): number {
   if (typeof retryAfterMs === "number" && retryAfterMs > 0) {
     // Server-provided floor. Apply +0..20% jitter so a herd of clients
     // doesn't synchronize their next attempt.
@@ -57,7 +108,7 @@ function backoffDelay({ attempt, baseDelayMs, capDelayMs, retryAfterMs, randomFn
   return Math.max(0, base + jitter);
 }
 
-function parseRetryAfterHeaderValue(headerVal) {
+function parseRetryAfterHeaderValue(headerVal: string | null | undefined): number | null {
   if (!headerVal) return null;
   const n = Number(headerVal);
   if (Number.isFinite(n) && n >= 0) return n * 1000;
@@ -65,16 +116,60 @@ function parseRetryAfterHeaderValue(headerVal) {
   return null;
 }
 
-function noRetryEnv(env) {
+function noRetryEnv(env: NodeJS.ProcessEnv | undefined): boolean {
   const v = env?.ZOMBIE_NO_RETRY;
   return v === "1" || v === "true";
 }
 
-function defaultSleep(ms) {
+function defaultSleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function apiRequestWithRetry(url, options = {}) {
+export type FetchImpl = (url: string, init?: RequestInit) => Promise<Response>;
+
+export interface RetryConfig {
+  maxAttempts?: number;
+  baseDelayMs?: number;
+  capDelayMs?: number;
+}
+
+export interface AttemptInfo {
+  attempt: number;
+  status: number | undefined;
+  durationMs: number;
+  retryCount: number;
+  terminal: boolean;
+}
+
+export interface RetryInfo {
+  attempt: number;
+  status: number | undefined;
+  durationMs: number;
+  reason: RetryReason;
+}
+
+export interface ApiRequestOptions {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  timeoutMs?: number;
+  fetchImpl?: FetchImpl | undefined;
+}
+
+export interface ApiRequestWithRetryOptions extends ApiRequestOptions {
+  // null/undefined → use apiRequestWithRetry's defaults.
+  retry?: RetryConfig | null | undefined;
+  env?: NodeJS.ProcessEnv;
+  sleepImpl?: (ms: number) => Promise<void>;
+  randomFn?: () => number;
+  onAttempt?: (info: AttemptInfo) => void;
+  onRetry?: (info: RetryInfo) => void;
+}
+
+export async function apiRequestWithRetry(
+  url: string,
+  options: ApiRequestWithRetryOptions = {},
+): Promise<unknown> {
   const retryCfg = options.retry ?? {};
   const maxAttemptsRaw = retryCfg.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const baseDelayMs = retryCfg.baseDelayMs ?? DEFAULT_BASE_DELAY_MS;
@@ -86,7 +181,7 @@ export async function apiRequestWithRetry(url, options = {}) {
       code: "CONFIG_INVALID",
     });
   }
-  const env = options.env ?? (typeof process !== "undefined" ? process.env : {});
+  const env = options.env ?? (typeof process !== "undefined" ? process.env : undefined);
   const maxAttempts = noRetryEnv(env) ? 1 : maxAttemptsRaw;
   const sleep = options.sleepImpl ?? defaultSleep;
   const randomFn = options.randomFn ?? Math.random;
@@ -94,7 +189,7 @@ export async function apiRequestWithRetry(url, options = {}) {
   const onRetry = options.onRetry;
 
   let attempt = 0;
-  let lastErr = null;
+  let lastErr: unknown = null;
   while (attempt < maxAttempts) {
     attempt += 1;
     const startedAt = Date.now();
@@ -130,9 +225,9 @@ export async function apiRequestWithRetry(url, options = {}) {
   throw lastErr ?? new ApiError("apiRequestWithRetry exhausted without throw", { code: "INTERNAL" });
 }
 
-export async function apiRequest(url, options = {}) {
+export async function apiRequest(url: string, options: ApiRequestOptions = {}): Promise<unknown> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const fetchImpl: FetchImpl | undefined = options.fetchImpl ?? (globalThis.fetch as FetchImpl | undefined);
   if (typeof fetchImpl !== "function") {
     throw new ApiError("fetch is unavailable", { code: "NO_FETCH" });
   }
@@ -141,15 +236,16 @@ export async function apiRequest(url, options = {}) {
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
-    const res = await fetchImpl(url, {
-      method: options.method || "GET",
-      headers: options.headers || {},
-      body: options.body,
+    const init: RequestInit = {
+      method: options.method ?? "GET",
+      headers: options.headers ?? {},
       signal: ctrl.signal,
-    });
+    };
+    if (options.body !== undefined) init.body = options.body;
+    const res = await fetchImpl(url, init);
 
     const text = await res.text();
-    let json = null;
+    let json: unknown = null;
     if (text.length > 0) {
       try {
         json = JSON.parse(text);
@@ -159,9 +255,10 @@ export async function apiRequest(url, options = {}) {
     }
 
     if (!res.ok) {
-      const errorCode = json?.error?.code || `HTTP_${res.status}`;
-      const requestId = json?.error?.request_id ?? json?.request_id ?? null;
-      const message = json?.error?.message || res.statusText || "request failed";
+      const envelope = isErrorEnvelope(json) ? json : null;
+      const errorCode = envelope?.error?.code ?? `HTTP_${res.status}`;
+      const requestId = envelope?.error?.request_id ?? envelope?.request_id ?? null;
+      const message = envelope?.error?.message ?? res.statusText ?? "request failed";
       // Capture Retry-After at the boundary where res.headers is still
       // in scope; ApiError.body intentionally carries only the parsed
       // payload, so the header lives on a dedicated field.
@@ -177,7 +274,7 @@ export async function apiRequest(url, options = {}) {
 
     return json ?? {};
   } catch (err) {
-    if (err.name === "AbortError") {
+    if (err !== null && typeof err === "object" && (err as { name?: unknown }).name === "AbortError") {
       throw new ApiError(`request timed out after ${timeoutMs}ms`, {
         status: 408,
         code: "TIMEOUT",
@@ -189,85 +286,42 @@ export async function apiRequest(url, options = {}) {
   }
 }
 
-/**
- * POST with SSE streaming response. Calls onEvent for each parsed SSE event.
- * Returns when the stream ends or an error occurs.
- */
-export async function streamFetch(url, payload, headers, onEvent, options = {}) {
-  const timeoutMs = options.timeoutMs ?? 30000;
-  const fetchImpl = options.fetchImpl || globalThis.fetch;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-
-  try {
-    const res = await fetchImpl(url, {
-      method: "POST",
-      headers: { ...headers, "Content-Type": "application/json", "Accept": "text/event-stream" },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      let json = null;
-      try { json = JSON.parse(text); } catch { /* ignore */ }
-      const errorCode = json?.error?.code || `HTTP_${res.status}`;
-      const message = json?.error?.message || res.statusText || "request failed";
-      throw new ApiError(message, { status: res.status, code: errorCode, body: json ?? text });
-    }
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-
-      let boundary;
-      while ((boundary = buf.indexOf("\n\n")) !== -1) {
-        const frame = buf.slice(0, boundary);
-        buf = buf.slice(boundary + 2);
-        const event = parseSseFrame(frame);
-        if (event) onEvent(event);
-      }
-    }
-  } catch (err) {
-    if (err.name === "AbortError") {
-      throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
+interface ErrorEnvelope {
+  error?: {
+    code?: string;
+    message?: string;
+    request_id?: string | null;
+  };
+  request_id?: string | null;
 }
 
-function parseSseFrame(frame) {
-  let type = "message";
-  let data = "";
-  for (const line of frame.split("\n")) {
-    if (line.startsWith("event: ")) type = line.slice(7);
-    else if (line.startsWith("data: ")) data = line.slice(6);
-    else if (line.startsWith(":")) continue; // comment/heartbeat
-  }
-  if (!data) return null;
-  try { return { type, data: JSON.parse(data) }; } catch { return { type, data }; }
+function isErrorEnvelope(value: unknown): value is ErrorEnvelope {
+  return value !== null && typeof value === "object";
 }
 
-export function authHeaders(auth) {
-    const headers = {
-        "Content-Type": "application/json",
-    };
+// POST-based SSE streaming consumer lives in stream-fetch.ts (the
+// mirror module to lib/sse.ts which owns the GET transport). Re-export
+// is intentionally NOT added — callers import directly from
+// stream-fetch.ts so the dependency direction stays honest.
 
-    if (auth?.token) {
-        headers.Authorization = `Bearer ${auth.token}`;
-        return headers;
-    }
+export interface AuthCredentials {
+  token?: string | null | undefined;
+  apiKey?: string | null | undefined;
+}
 
-    if (auth?.apiKey) {
-        headers.Authorization = `Bearer ${auth.apiKey}`;
-    }
+export function authHeaders(auth?: AuthCredentials | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
 
+  if (auth?.token) {
+    headers.Authorization = `Bearer ${auth.token}`;
     return headers;
+  }
+
+  if (auth?.apiKey) {
+    headers.Authorization = `Bearer ${auth.apiKey}`;
+  }
+
+  return headers;
 }

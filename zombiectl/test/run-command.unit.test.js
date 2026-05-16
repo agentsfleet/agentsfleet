@@ -5,7 +5,7 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { ApiError } from "../src/lib/http.js";
+import { ApiError } from "../src/lib/http.ts";
 import { runCommand, runCommandInternals } from "../src/lib/run-command.js";
 
 function captureEvents() {

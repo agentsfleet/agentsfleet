@@ -9,7 +9,7 @@
 // ctx.stderr via deps.printJson / deps.writeLine / deps.ui, so callers
 // don't need to pre-wire io.js's positional writeError.
 
-import { ApiError } from "./http.js";
+import { ApiError } from "./http.ts";
 import {
   trackCliEvent,
   getCliAnalyticsContext,

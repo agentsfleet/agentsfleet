@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseSseFrame } from "../src/lib/sse.js";
+import { parseSseFrame } from "../src/lib/sse.ts";
 
 describe("parseSseFrame", () => {
   it("parses a typical M42 chunk frame", () => {

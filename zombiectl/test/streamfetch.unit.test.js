@@ -1,5 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { streamFetch, ApiError } from "../src/lib/http.js";
+import { streamFetch } from "../src/lib/stream-fetch.ts";
+import { ApiError } from "../src/lib/http.ts";
 
 // ── Test helpers ─────────────────────────────────────────────────────────────
 

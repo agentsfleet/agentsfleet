@@ -5,7 +5,7 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { ApiError, apiRequestWithRetry } from "../src/lib/http.js";
+import { ApiError, apiRequestWithRetry } from "../src/lib/http.ts";
 
 function makeFetch(responses) {
   let i = 0;

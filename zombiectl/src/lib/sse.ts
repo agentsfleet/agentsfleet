@@ -1,7 +1,7 @@
 // GET-based Server-Sent Events consumer.
 //
-// `lib/http.js::streamFetch` is POST-only (used by the execute proxy);
-// the M42 events endpoint is GET. We consume frames via fetch +
+// `lib/http.ts::streamFetch` is POST-only (used by the execute proxy);
+// the events endpoint is GET. We consume frames via fetch +
 // ReadableStream, which lets us set Authorization headers (the native
 // EventSource API can not).
 //
@@ -9,13 +9,34 @@
 // JSON.parse()'d if possible. Lines starting with `:` are comments
 // (heartbeats) and skipped.
 
-import { ApiError } from "./http.js";
+import { ApiError, type FetchImpl } from "./http.ts";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
-export async function streamGet(url, headers, onEvent, options = {}) {
+export interface SseFrame {
+  id: string | null;
+  type: string;
+  data: unknown;
+}
+
+export interface StreamGetOptions {
+  timeoutMs?: number;
+  fetchImpl?: FetchImpl;
+  signal?: AbortSignal;
+}
+
+// onEvent may return `false` to stop the stream early. Any other value
+// (including undefined) lets the loop continue.
+export type StreamGetCallback = (event: SseFrame) => boolean | void;
+
+export async function streamGet(
+  url: string,
+  headers: Record<string, string>,
+  onEvent: StreamGetCallback,
+  options: StreamGetOptions = {},
+): Promise<void> {
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const fetchImpl: FetchImpl | undefined = options.fetchImpl ?? (globalThis.fetch as FetchImpl | undefined);
   if (typeof fetchImpl !== "function") {
     throw new ApiError("fetch is unavailable", { code: "NO_FETCH" });
   }
@@ -36,17 +57,21 @@ export async function streamGet(url, headers, onEvent, options = {}) {
     });
     if (!res.ok) {
       const text = await res.text();
-      let json = null;
+      let json: unknown = null;
       try { json = JSON.parse(text); } catch { /* ignore */ }
-      const errorCode = json?.error?.code || json?.error_code || `HTTP_${res.status}`;
-      const message = json?.error?.message || json?.detail || res.statusText || "stream request failed";
+      const errorCode = readNestedString(json, ["error", "code"])
+        ?? readNestedString(json, ["error_code"])
+        ?? `HTTP_${res.status}`;
+      const message = readNestedString(json, ["error", "message"])
+        ?? readNestedString(json, ["detail"])
+        ?? res.statusText
+        ?? "stream request failed";
       throw new ApiError(message, { status: res.status, code: errorCode, body: json ?? text });
     }
 
-    if (!res.body || typeof res.body.getReader !== "function") {
+    if (res.body === null) {
       throw new ApiError("response body is not streamable", { code: "NO_STREAM_BODY" });
     }
-
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "";
@@ -55,8 +80,8 @@ export async function streamGet(url, headers, onEvent, options = {}) {
       const { done, value } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-      let boundary;
-      while ((boundary = buf.indexOf("\n\n")) !== -1) {
+      let boundary = buf.indexOf("\n\n");
+      while (boundary !== -1) {
         const frame = buf.slice(0, boundary);
         buf = buf.slice(boundary + 2);
         const event = parseSseFrame(frame);
@@ -64,10 +89,11 @@ export async function streamGet(url, headers, onEvent, options = {}) {
           const cont = onEvent(event);
           if (cont === false) return;
         }
+        boundary = buf.indexOf("\n\n");
       }
     }
   } catch (err) {
-    if (err.name === "AbortError") {
+    if (err !== null && typeof err === "object" && (err as { name?: unknown }).name === "AbortError") {
       if (externalSignal?.aborted) return; // user-cancelled, not a timeout
       throw new ApiError(`stream timed out after ${timeoutMs}ms`, { status: 408, code: "TIMEOUT" });
     }
@@ -77,8 +103,17 @@ export async function streamGet(url, headers, onEvent, options = {}) {
   }
 }
 
-export function parseSseFrame(frame) {
-  let id = null;
+function readNestedString(value: unknown, path: ReadonlyArray<string>): string | undefined {
+  let cursor: unknown = value;
+  for (const key of path) {
+    if (cursor === null || typeof cursor !== "object") return undefined;
+    cursor = (cursor as Record<string, unknown>)[key];
+  }
+  return typeof cursor === "string" ? cursor : undefined;
+}
+
+export function parseSseFrame(frame: string): SseFrame | null {
+  let id: string | null = null;
   let type = "message";
   let data = "";
   for (const raw of frame.split("\n")) {
@@ -96,7 +131,7 @@ export function parseSseFrame(frame) {
     }
   }
   if (!data) return null;
-  let parsed = data;
+  let parsed: unknown = data;
   try { parsed = JSON.parse(data); } catch { /* keep raw */ }
   return { id, type, data: parsed };
 }

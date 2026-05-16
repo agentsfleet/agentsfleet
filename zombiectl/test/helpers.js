@@ -1,5 +1,5 @@
 import { Writable } from "node:stream";
-import { ApiError } from "../src/lib/http.js";
+import { ApiError } from "../src/lib/http.ts";
 
 import {
   commandInstall,
