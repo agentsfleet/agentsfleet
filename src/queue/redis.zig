@@ -10,6 +10,9 @@ pub const makeConsumerId = redis_client.makeConsumerId;
 pub const Subscriber = redis_subscriber;
 pub const SubscriberMessage = redis_subscriber.Message;
 pub const SubscriberInitOptions = redis_subscriber.InitOptions;
+pub const ClientInitOptions = redis_client.InitOptions;
+pub const REDIS_REQUEST_TIMEOUT_MS_ENV = redis_client.REDIS_REQUEST_TIMEOUT_MS_ENV;
+pub const REDIS_REQUEST_TIMEOUT_MS_DEFAULT = redis_client.REDIS_REQUEST_TIMEOUT_MS_DEFAULT;
 
 pub const testing = struct {
     pub const parseRedisUrl = redis_config.parseRedisUrl;

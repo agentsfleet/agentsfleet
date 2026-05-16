@@ -92,21 +92,7 @@ pub fn subscribe(self: *Subscriber, channel: []const u8) !void {
     // Install SO_RCVTIMEO post-ack so the AUTH/SUBSCRIBE handshakes are not
     // exposed to it. Per-Connection read timeout means `nextMessage` returns
     // null on timeout (see swallow in nextMessage).
-    if (self.read_timeout_ms) |ms| self.setReadTimeout(ms);
-}
-
-fn setReadTimeout(self: *Subscriber, ms: u32) void {
-    const fd = switch (self.transport) {
-        .plain => |p| p.stream.handle,
-        .tls => |t| t.stream.handle,
-    };
-    const timeout = std.posix.timeval{
-        .sec = @intCast(ms / 1000),
-        .usec = @intCast((ms % 1000) * 1000),
-    };
-    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| {
-        log.warn("setsockopt_failed", .{ .err = @errorName(err) });
-    };
+    if (self.read_timeout_ms) |ms| self.transport.setReadTimeout(ms);
 }
 
 /// Block until the next pub/sub message arrives. Returns null when the

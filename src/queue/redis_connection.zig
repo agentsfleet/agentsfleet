@@ -39,6 +39,7 @@ const Error = error{
     ReadFailed,
     WriteFailed,
     RedisCommandError,
+    RedisRequestTimeout,
 };
 
 // === Fields ===
@@ -54,6 +55,11 @@ cfg: *const redis_config.Config,
 /// Embedded link node — only attached when `role == .pooled` and the
 /// connection sits on Pool.idle. Inert for other roles.
 node: std.SinglyLinkedList.Node = .{},
+/// `SO_RCVTIMEO` value installed via `applyReadTimeout`. Non-null re-tags
+/// `error.ReadFailed` from `mapReadError` as `error.RedisRequestTimeout`
+/// so the Pool / Client retry layer treats request-path read timeouts as
+/// non-resumable transport errors (spec §6).
+read_timeout_ms: ?u32 = null,
 
 // === Constructor ===
 
@@ -75,6 +81,16 @@ pub fn init(alloc: std.mem.Allocator, cfg: *const redis_config.Config, role: Rol
 }
 
 // === Lifecycle ===
+
+/// Install (or clear) the request-path read timeout on this connection.
+/// Pool calls this after `init` for pooled connections so every dial picks
+/// up the configured `REDIS_REQUEST_TIMEOUT_MS`. Setting back to `null`
+/// clears the field — the underlying socket option is best-effort cleared
+/// via `Transport.setReadTimeout(null)`.
+pub fn applyReadTimeout(self: *Connection, ms: ?u32) void {
+    self.transport.setReadTimeout(ms);
+    self.read_timeout_ms = ms;
+}
 
 pub fn deinit(self: *Connection) void {
     // .active or .poisoned → .closing → .closed
@@ -140,7 +156,7 @@ pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redi
     };
     return redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
         self.transitionTo(.poisoned);
-        return mapReadError(err);
+        return self.mapReadError(err);
     };
 }
 
@@ -152,14 +168,16 @@ fn mapWriteError(err: anyerror) Error {
     };
 }
 
-fn mapReadError(err: anyerror) Error {
-    // SO_RCVTIMEO surfaces as `error.ReadFailed` at the std.Io.Reader layer
-    // (ZIG_RULES.md "TLS Transport"); slice 5 wires `RedisRequestTimeout`
-    // around that translation when the request-path timeout is set.
+// SO_RCVTIMEO surfaces as `error.ReadFailed` at the std.Io.Reader layer
+// (ZIG_RULES.md "TLS Transport"). When the request-path timeout is
+// armed (`read_timeout_ms != null`), re-tag `ReadFailed` as
+// `RedisRequestTimeout` so callers can distinguish a configured timeout
+// from a peer-side read failure. Both stay non-resumable.
+fn mapReadError(self: *Connection, err: anyerror) Error {
     return switch (err) {
         error.BrokenPipe => error.BrokenPipe,
         error.ConnectionResetByPeer => error.ConnectionResetByPeer,
-        else => error.ReadFailed,
+        else => if (self.read_timeout_ms != null) error.RedisRequestTimeout else error.ReadFailed,
     };
 }
 
