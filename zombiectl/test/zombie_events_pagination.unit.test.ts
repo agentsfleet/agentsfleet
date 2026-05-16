@@ -17,11 +17,31 @@ import {
   ui,
   WS_ID,
 } from "./helpers.ts";
+import type {
+  CommandCtx,
+  CommandDeps,
+  Workspaces,
+} from "../src/commands/types.ts";
+import type { WriteStream } from "../src/output/index.ts";
+
+// writeLine/printSection in CommandDeps accept the narrower `WriteStream`
+// surface from output/index.ts in addition to NodeJS.WritableStream; the
+// alias keeps the override signatures byte-aligned with the contract.
+type StreamArg = WriteStream | NodeJS.WritableStream;
+
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa91";
 const NEXT_CURSOR = "Y3Vyc29yLW9wYXF1ZS10b2tlbi0xMjM0";
 
-function buildItems(count, prefix = "evt") {
-  const items = [];
+interface EventItem {
+  event_id: string;
+  actor: string;
+  status: string;
+  created_at: number;
+  response_text: string;
+}
+
+function buildItems(count: number, prefix = "evt"): EventItem[] {
+  const items: EventItem[] = [];
   for (let i = 0; i < count; i += 1) {
     items.push({
       event_id: `${prefix}-${i}`,
@@ -36,7 +56,13 @@ function buildItems(count, prefix = "evt") {
   return items;
 }
 
-function makeCtx(overrides = {}) {
+interface CtxBundle {
+  ctx: CommandCtx;
+  readStdout: () => string;
+  readStderr: () => string;
+}
+
+function makeCtx(overrides: Partial<CommandCtx> = {}): CtxBundle {
   const out = makeBufferStream();
   const err = makeBufferStream();
   return {
@@ -46,6 +72,7 @@ function makeCtx(overrides = {}) {
       jsonMode: false,
       apiUrl: "https://api.test.invalid",
       token: "test-token",
+      env: {},
       ...overrides,
     },
     readStdout: out.read,
@@ -53,29 +80,49 @@ function makeCtx(overrides = {}) {
   };
 }
 
-const workspaces = { current_workspace_id: WS_ID, items: [] };
-
-test("events: default limit=50 + first page renders 50 rows + next-cursor hint", async () => {
-  let captured = null;
-  const items = buildItems(50);
-  const deps = {
-    request: async (_ctx, url) => {
-      captured = url;
-      return { items, next_cursor: NEXT_CURSOR };
-    },
+function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps {
+  const base = {
+    request: async () => ({}),
     apiHeaders: () => ({}),
+    // zombie_events.ts defensively checks `ui.warn ?? ui.dim`; spread to add
+    // the warn slot that production-shaped `ui` requires.
     ui: { ...ui, warn: ui.dim },
     printJson: () => {},
-    printSection: (stream, title) => stream.write(`= ${title} =\n`),
-    writeLine: (stream, line) => { if (line !== undefined) stream.write(`${line}\n`); else stream.write("\n"); },
+    printSection: () => {},
+    writeLine: () => {},
     writeError: () => {},
+    ...overrides,
   };
+  return base as unknown as CommandDeps;
+}
+
+const workspaces: Workspaces = { current_workspace_id: WS_ID, items: [] };
+
+interface EventsEnvelope {
+  items: ReadonlyArray<EventItem>;
+  next_cursor?: string;
+}
+
+test("events: default limit=50 + first page renders 50 rows + next-cursor hint", async () => {
+  const captured: { url: string | null } = { url: null };
+  const items = buildItems(50);
+  const deps = makeDeps({
+    request: async (_ctx, url) => {
+      captured.url = url;
+      return { items, next_cursor: NEXT_CURSOR };
+    },
+    printSection: (stream: StreamArg, title: string) => stream.write(`= ${title} =\n`),
+    writeLine: (stream: StreamArg, line?: string) => {
+      if (line !== undefined) stream.write(`${line}\n`);
+      else stream.write("\n");
+    },
+  });
   const { ctx, readStdout } = makeCtx();
   const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID]), workspaces, deps);
   assert.equal(code, 0);
 
-  assert.ok(captured.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`), `wrong url: ${captured}`);
-  assert.ok(captured.includes("limit=50"), `expected limit=50: ${captured}`);
+  assert.ok(captured.url?.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`), `wrong url: ${captured.url}`);
+  assert.ok(captured.url?.includes("limit=50"), `expected limit=50: ${captured.url}`);
 
   const out = readStdout();
   // 50 rows + section header + cursor hint. formatRow surfaces
@@ -87,25 +134,23 @@ test("events: default limit=50 + first page renders 50 rows + next-cursor hint",
 });
 
 test("events: --cursor=<token> is forwarded as ?cursor=<token> and 10-row tail renders without next hint", async () => {
-  let captured = null;
+  const captured: { url: string | null } = { url: null };
   const items = buildItems(10, "tail");
-  const deps = {
+  const deps = makeDeps({
     request: async (_ctx, url) => {
-      captured = url;
+      captured.url = url;
       return { items }; // no next_cursor
     },
-    apiHeaders: () => ({}),
-    ui: { ...ui, warn: ui.dim },
-    printJson: () => {},
-    printSection: () => {},
-    writeLine: (stream, line) => { if (line !== undefined) stream.write(`${line}\n`); else stream.write("\n"); },
-    writeError: () => {},
-  };
+    writeLine: (stream: StreamArg, line?: string) => {
+      if (line !== undefined) stream.write(`${line}\n`);
+      else stream.write("\n");
+    },
+  });
   const { ctx, readStdout } = makeCtx();
   const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID, `--cursor=${NEXT_CURSOR}`]), workspaces, deps);
   assert.equal(code, 0);
 
-  assert.ok(captured.includes(`cursor=${NEXT_CURSOR}`), `cursor not forwarded: ${captured}`);
+  assert.ok(captured.url?.includes(`cursor=${NEXT_CURSOR}`), `cursor not forwarded: ${captured.url}`);
 
   const out = readStdout();
   const rowMatches = out.match(/tail-row-\d+/g) ?? [];
@@ -120,7 +165,7 @@ test("events: 60 events split 50 + 10 across two paginated calls", async () => {
   let calls = 0;
   const firstPage = buildItems(50, "p1");
   const secondPage = buildItems(10, "p2");
-  const deps = {
+  const deps = makeDeps({
     request: async (_ctx, url) => {
       calls += 1;
       if (calls === 1) {
@@ -130,13 +175,7 @@ test("events: 60 events split 50 + 10 across two paginated calls", async () => {
       assert.ok(url.includes(`cursor=${NEXT_CURSOR}`), `second call missing cursor: ${url}`);
       return { items: secondPage };
     },
-    apiHeaders: () => ({}),
-    ui: { ...ui, warn: ui.dim },
-    printJson: () => {},
-    printSection: () => {},
-    writeLine: () => {},
-    writeError: () => {},
-  };
+  });
 
   const { ctx: ctx1 } = makeCtx();
   const code1 = await commandEvents(ctx1, buildParsed([ZOMBIE_ID]), workspaces, deps);
@@ -150,34 +189,27 @@ test("events: 60 events split 50 + 10 across two paginated calls", async () => {
 });
 
 test("events: --json mode emits raw envelope and skips human format", async () => {
-  let printed = null;
+  const captured: { json: EventsEnvelope | null } = { json: null };
   const items = buildItems(3);
-  const deps = {
+  const deps = makeDeps({
     request: async () => ({ items, next_cursor: NEXT_CURSOR }),
-    apiHeaders: () => ({}),
-    ui: { ...ui, warn: ui.dim },
-    printJson: (_stream, payload) => { printed = payload; },
+    printJson: (_stream, payload) => { captured.json = payload as EventsEnvelope; },
     printSection: () => { throw new Error("printSection must not fire in --json"); },
     writeLine: () => { throw new Error("writeLine must not fire in --json"); },
-    writeError: () => {},
-  };
+  });
   const { ctx } = makeCtx();
   const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID, "--json"]), workspaces, deps);
   assert.equal(code, 0);
-  assert.deepEqual(printed.items.length, 3);
-  assert.equal(printed.next_cursor, NEXT_CURSOR);
+  assert.deepEqual(captured.json?.items.length, 3);
+  assert.equal(captured.json?.next_cursor, NEXT_CURSOR);
 });
 
 test("events: empty response prints \"No events yet.\" and exits 0", async () => {
-  const deps = {
+  const deps = makeDeps({
     request: async () => ({ items: [] }),
-    apiHeaders: () => ({}),
-    ui: { ...ui, warn: ui.dim },
-    printJson: () => {},
     printSection: () => { throw new Error("printSection must not fire on empty"); },
-    writeLine: (stream, line) => { stream.write(`${line ?? ""}\n`); },
-    writeError: () => {},
-  };
+    writeLine: (stream: StreamArg, line?: string) => { stream.write(`${line ?? ""}\n`); },
+  });
   const { ctx, readStdout } = makeCtx();
   const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID]), workspaces, deps);
   assert.equal(code, 0);
@@ -185,22 +217,16 @@ test("events: empty response prints \"No events yet.\" and exits 0", async () =>
 });
 
 test("events: --actor and --since flags forward to API", async () => {
-  let captured = null;
-  const deps = {
+  const captured: { url: string | null } = { url: null };
+  const deps = makeDeps({
     request: async (_ctx, url) => {
-      captured = url;
+      captured.url = url;
       return { items: [] };
     },
-    apiHeaders: () => ({}),
-    ui: { ...ui, warn: ui.dim },
-    printJson: () => {},
-    printSection: () => {},
-    writeLine: () => {},
-    writeError: () => {},
-  };
+  });
   const { ctx } = makeCtx();
   const code = await commandEvents(ctx, buildParsed([ZOMBIE_ID, "--actor=steer:*", "--since=2h"]), workspaces, deps);
   assert.equal(code, 0);
-  assert.ok(captured.includes("actor=steer"), `actor not forwarded: ${captured}`);
-  assert.ok(captured.includes("since=2h"), `since not forwarded: ${captured}`);
+  assert.ok(captured.url?.includes("actor=steer"), `actor not forwarded: ${captured.url}`);
+  assert.ok(captured.url?.includes("since=2h"), `since not forwarded: ${captured.url}`);
 });
