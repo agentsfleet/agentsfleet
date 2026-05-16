@@ -229,10 +229,25 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 	@# Filter out our own recipe name — GNU make recurses on $(MAKE) even in
 	@# -n mode (dry-run propagates through sub-makes), so a self-reference
 	@# fork-bombs: each generation forks N sub-makes that each fork N more.
+	@#
+	@# Regex covers both `run: make <tgt>` (single-line) and `^<indent>make <tgt>`
+	@# (continuation inside `run: |` blocks). Without the second pattern, multi-
+	@# line shell blocks slip through (e.g. lint.yml's openapi assertion).
+	@#
+	@# Existence check greps stderr for "No rule to make target" rather than
+	@# trusting `$(MAKE) -n`'s exit code. Recipes containing $(MAKE) execute
+	@# even in dry-run (GNU make's recursion-propagation rule), so a target
+	@# whose recipe touches the environment (e.g. valgrind probe) can exit
+	@# non-zero in CI without being "unknown" — that's a false positive for
+	@# the existence check we want here.
 	@FAIL=0; \
-	TGTS=$$(grep -hoE 'run:[[:space:]]*make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null | awk '{print $$NF}' | grep -v '^check-gh-actions-valid$$' | sort -u); \
+	TGTS=$$( \
+	  { grep -hoE 'run:[[:space:]]*make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; \
+	    grep -hoE '^[[:space:]]+make[[:space:]]+[A-Za-z0-9_./-]+' .github/workflows/*.yml .github/workflows/*.yaml 2>/dev/null; \
+	  } | awk '{print $$NF}' | grep -v '^check-gh-actions-valid$$' | sort -u); \
 	for tgt in $$TGTS; do \
-	  if ! $(MAKE) -n "$$tgt" >/dev/null 2>&1; then \
+	  err=$$($(MAKE) -n "$$tgt" 2>&1 >/dev/null || true); \
+	  if echo "$$err" | grep -qE "No rule to make target [\`']?$$tgt[\`']?"; then \
 	    echo "✗ '.github/workflows/' references 'make $$tgt' which is not a known target"; \
 	    FAIL=1; \
 	  fi; \

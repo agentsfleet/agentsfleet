@@ -40,6 +40,12 @@ const Error = error{
     WriteFailed,
     RedisCommandError,
     RedisRequestTimeout,
+    /// Allocator failure during RESP read. NOT a transport error —
+    /// connection state is untouched and OOM propagates to the caller
+    /// so memory pressure surfaces with its real root cause, not a
+    /// misleading `ReadFailed`/`RedisRequestTimeout` after MAX_ATTEMPTS
+    /// of pool-retry poisoning.
+    OutOfMemory,
 };
 
 // === Fields ===
@@ -159,6 +165,12 @@ pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redi
         return mapWriteError(err);
     };
     return redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
+        // OOM during RESP parsing is a host-level allocator failure, not a
+        // transport corruption — leave the connection state intact and let
+        // the caller see the real root cause. Otherwise the pool retry
+        // layer poisons the conn, redials, OOMs again, and surfaces a
+        // misleading `ReadFailed` after MAX_ATTEMPTS.
+        if (err == error.OutOfMemory) return error.OutOfMemory;
         self.transitionTo(.poisoned);
         return self.mapReadError(err);
     };

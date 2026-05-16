@@ -119,15 +119,22 @@ pub fn acquire(self: *Pool) !*Connection {
     self.active_count += 1;
     self.mutex.unlock();
 
-    const conn = try self.alloc.create(Connection);
-    errdefer self.alloc.destroy(conn);
-    conn.* = Connection.init(self.alloc, &self.cfg, .pooled) catch |err| {
+    // Every failure path below must decrement `active_count`, otherwise an
+    // OOM during dial permanently inflates the pool's active count and
+    // starves overflow-decision logic. The errdefer block is the single
+    // chokepoint that fires on any `try`/`catch |err| return err` below.
+    var dial_ok = false;
+    errdefer if (!dial_ok) {
         self.mutex.lock();
         self.active_count -= 1;
         self.mutex.unlock();
-        return err;
     };
+
+    const conn = try self.alloc.create(Connection);
+    errdefer self.alloc.destroy(conn);
+    conn.* = try Connection.init(self.alloc, &self.cfg, .pooled);
     conn.applyReadTimeout(self.read_timeout_ms);
+    dial_ok = true;
 
     self.mutex.lock();
     self.dials_total += 1;
@@ -154,6 +161,7 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
 
     self.mutex.lock();
     if (self.idle_count >= self.max_idle) {
+        self.forced_closes_total += 1;
         self.active_count -= 1;
         self.mutex.unlock();
         conn.deinit();
@@ -167,6 +175,15 @@ pub fn release(self: *Pool, conn: *Connection, ok: bool) void {
 }
 
 // === Observability ===
+
+/// Record a fresh dial performed by the Client retry layer after a
+/// transport-level (non-resumable) failure. Pool exports the counter
+/// via `stats()`; the Client retry loop is the only producer.
+pub fn recordReconnect(self: *Pool) void {
+    self.mutex.lock();
+    defer self.mutex.unlock();
+    self.reconnects_total += 1;
+}
 
 pub fn stats(self: *Pool) PoolStats {
     self.mutex.lock();

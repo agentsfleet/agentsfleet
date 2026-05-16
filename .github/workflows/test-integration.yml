@@ -16,7 +16,7 @@ jobs:
   # redactor contract table. No Postgres / Redis needed; runs in seconds.
   # Carved out so a redactor regression fails fast in its own job, parallel
   # to the heavy worker integration suite.
-  test-integration-stub:
+  test-unit-executor:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     container:

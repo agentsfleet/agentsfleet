@@ -216,6 +216,7 @@ pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValu
                 return err;
             }
             if (attempt + 1 >= MAX_ATTEMPTS) return err;
+            self.pool.recordReconnect();
             continue;
         };
         self.pool.release(conn, true);
@@ -234,6 +235,7 @@ pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protoco
             const resumable = redis_errors.isResumable(err);
             self.pool.release(conn, resumable);
             if (resumable or attempt + 1 >= MAX_ATTEMPTS) return err;
+            self.pool.recordReconnect();
             continue;
         };
         self.pool.release(conn, true);
