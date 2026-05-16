@@ -4,7 +4,7 @@ import {
   makeBufferStream,
   makeNoop,
   ui,
-} from "./helpers.js";
+} from "./helpers.ts";
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 const LOGIN_TOKEN = "tok_123";
 const DEFAULT_WORKSPACE_ID = "ws_signup_default";

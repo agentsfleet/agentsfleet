@@ -20,7 +20,7 @@ import {
   makeBufferStream,
   ui,
   WS_ID,
-} from "./helpers.js";
+} from "./helpers.ts";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa90";
 const EVENT_ID = "1777400000000-0";
 

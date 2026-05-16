@@ -20,7 +20,7 @@ import {
   makeNoop,
   ui,
   WS_ID,
-} from "./helpers.js";
+} from "./helpers.ts";
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = dirname(TEST_DIR);
 

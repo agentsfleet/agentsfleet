@@ -12,7 +12,7 @@ import {
   noteBasic16IfFirst,
   resetCapabilityWarning,
 } from "../src/output/capability.ts";
-import { makeBufferStream } from "./helpers.js";
+import { makeBufferStream } from "./helpers.ts";
 
 function makeTtyStream() {
   const b = makeBufferStream();

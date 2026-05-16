@@ -5,7 +5,7 @@ import {
   makeBufferStream,
   makeNoop,
   ui,
-} from "./helpers.js";
+} from "./helpers.ts";
 import { CHARGE_TYPE, PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.ts";
 const BILLING_PATH = "/v1/tenants/me/billing";
 const CHARGES_PATH_PREFIX = "/v1/tenants/me/billing/charges";

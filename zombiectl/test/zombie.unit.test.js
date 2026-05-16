@@ -13,7 +13,7 @@ import {
   makeNoop,
   ui,
   WS_ID,
-} from "./helpers.js";
+} from "./helpers.ts";
 function makeDeps(overrides = {}) {
   return {
     request: async () => ({}),

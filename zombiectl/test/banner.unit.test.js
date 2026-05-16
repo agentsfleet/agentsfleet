@@ -18,7 +18,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { readFileSync } from "node:fs";
-import { makeBufferStream } from "./helpers.js";
+import { makeBufferStream } from "./helpers.ts";
 import { printVersion, printPreReleaseWarning } from "../src/program/banner.ts";
 import { runCli, VERSION } from "../src/cli.ts";
 
