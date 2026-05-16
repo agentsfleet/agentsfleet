@@ -1,20 +1,36 @@
 //! Redis client. File-as-struct: the file IS the `Client` type.
+//!
+//! Thin façade over `Pool`. `Client.command` acquires a connection from
+//! the pool, runs one RESP round-trip, releases. Transport errors are
+//! non-resumable: the pool closes the connection and `command` retries
+//! once with a fresh dial (MAX_ATTEMPTS = 2). Server-side `.err` replies
+//! are resumable: the connection stays alive in the pool and the caller
+//! surfaces the error.
+//!
+//! No mutex — concurrent callers each take their own pooled connection
+//! and never serialize across the network round-trip (Invariant 1).
+//! Self-heal on idle-drop is a Pool property: a dead idle conn poisons
+//! on first IO error, gets closed by release, and the retry layer dials
+//! fresh.
 
 pub const Client = @This();
 
 const S_PONG = "PONG";
 const S_SET = "SET";
-const S_AUTH = "AUTH";
-const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
 const S_EX = "EX";
 const S_D = "{d}";
 const S_PING = "PING";
 const S_OK = "OK";
+const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
+
+/// Per spec retry contract: pool-path operations get 2 attempts total
+/// before the error surfaces to the caller. No backoff at this layer —
+/// the caller (PG-dedup'd XADD, lossy PUBLISH, idempotent XACK) tolerates
+/// at-least-once delivery.
+const MAX_ATTEMPTS: u8 = 2;
 
 alloc: std.mem.Allocator,
-cfg: redis_config.Config,
-transport: redis_transport.Transport,
-lock: std.Thread.Mutex = .{},
+pool: Pool,
 
 pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole) !Client {
     const url_owned = try redis_config.resolveRedisUrl(alloc, role);
@@ -26,15 +42,15 @@ pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
     const cfg = try redis_config.parseRedisUrl(alloc, url);
     errdefer redis_config.deinitConfig(alloc, cfg);
 
-    var client = Client{ .alloc = alloc, .cfg = cfg, .transport = undefined };
-    client.transport = try dialAndAuth(alloc, cfg);
+    var pool = try Pool.init(alloc, cfg, .{});
+    errdefer pool.deinit();
+
     log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
-    return client;
+    return .{ .alloc = alloc, .pool = pool };
 }
 
 pub fn deinit(self: *Client) void {
-    self.transport.deinit(self.alloc);
-    redis_config.deinitConfig(self.alloc, self.cfg);
+    self.pool.deinit();
 }
 
 pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
@@ -77,29 +93,11 @@ pub fn ping(self: *Client) !void {
     }
 }
 
+/// Liveness probe for `/readyz`. Pool retry handles dead idle conns
+/// transparently — no explicit reconnect plumbing here. PING is
+/// idempotent so the standard 2-attempt retry is safe.
 pub fn readyCheck(self: *Client) !void {
-    // PING-only: the API server doesn't consume any stream itself, so a
-    // consumer-group probe (which would also require XGROUP CREATE perms in
-    // role-based-ACL Redis) adds no signal. Per-zombie streams + groups are
-    // created lazily by the worker via `redis_zombie.ensureZombieEventsGroup`
-    // when a zombie spawns; the control stream by `control_stream.ensureGroup`
-    // at worker boot.
-    //
-    // PING is idempotent, so we retry the full round-trip (write AND read)
-    // after a forced reconnect. `commandUnlocked` only retries write-phase
-    // failures because most callers can't tolerate a duplicate request; here
-    // we know we can.
-    self.ping() catch {
-        self.lock.lock();
-        defer self.lock.unlock();
-        try self.reconnectUnlocked();
-        var resp = try self.commandUnlocked(&.{S_PING});
-        defer resp.deinit(self.alloc);
-        switch (resp) {
-            .simple => |v| if (!std.mem.eql(u8, v, S_PONG)) return error.RedisPingFailed,
-            else => return error.RedisPingFailed,
-        }
-    };
+    try self.ping();
 }
 
 pub fn aclWhoAmI(self: *Client) ![]u8 {
@@ -163,86 +161,44 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
     return owned_id;
 }
 
+/// Pool-backed: acquire → run command → release. Transport errors retry
+/// up to MAX_ATTEMPTS with a fresh dial; server-side `.err` replies are
+/// resumable (no retry) and surface to the caller.
 pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
-    var value = try self.commandAllowError(argv);
-    if (value == .err) {
-        log.err("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
-        value.deinit(self.alloc);
-        return error.RedisCommandError;
+    var attempt: u8 = 0;
+    while (true) : (attempt += 1) {
+        const conn = try self.pool.acquire();
+        const resp = conn.command(argv) catch |err| {
+            const resumable = redis_errors.isResumable(err);
+            self.pool.release(conn, resumable);
+            if (resumable) {
+                log.err("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
+                return err;
+            }
+            if (attempt + 1 >= MAX_ATTEMPTS) return err;
+            continue;
+        };
+        self.pool.release(conn, true);
+        return resp;
     }
-    return value;
 }
 
+/// Same as `command` but surfaces `.err` RespValue intact for callers
+/// that need to inspect the server's error message (XGROUP CREATE
+/// returning BUSYGROUP on a known-created group, etc.).
 pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
-    self.lock.lock();
-    defer self.lock.unlock();
-    return self.commandUnlocked(argv);
-}
-
-fn commandUnlocked(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
-    // Write-phase failures (BrokenPipe, ConnectionResetByPeer, etc.) prove the
-    // server hadn't seen the request — safe to reconnect+resend for any cmd.
-    // Read-phase failures are NOT auto-retried here because the server may have
-    // already processed the write; replaying could double-XADD or double-PUBLISH.
-    // Idempotent callers (e.g. /readyz PING) layer their own read-phase retry.
-    writeArgvToTransport(&self.transport, argv) catch |err| {
-        log.warn("write_failed_reconnecting", .{ .err = @errorName(err) });
-        self.reconnectUnlocked() catch return err;
-        try writeArgvToTransport(&self.transport, argv);
-        return try redis_protocol.readRespValue(self.alloc, self.transport.reader());
-    };
-    return try redis_protocol.readRespValue(self.alloc, self.transport.reader());
-}
-
-fn writeArgvToTransport(transport: *redis_transport.Transport, argv: []const []const u8) !void {
-    const writer = transport.writer();
-    try writer.print("*{d}\r\n", .{argv.len});
-    for (argv) |arg| {
-        try writer.print("${d}\r\n", .{arg.len});
-        try writer.writeAll(arg);
-        try writer.writeAll("\r\n");
+    var attempt: u8 = 0;
+    while (true) : (attempt += 1) {
+        const conn = try self.pool.acquire();
+        const resp = conn.commandAllowError(argv) catch |err| {
+            const resumable = redis_errors.isResumable(err);
+            self.pool.release(conn, resumable);
+            if (resumable or attempt + 1 >= MAX_ATTEMPTS) return err;
+            continue;
+        };
+        self.pool.release(conn, true);
+        return resp;
     }
-    if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
-    try writer.flush();
-    if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
-}
-
-/// Build a fresh authenticated transport. Used at first connect and on
-/// transparent reconnect. On failure the partially-built transport is freed
-/// before returning.
-fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transport.Transport {
-    const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
-
-    var transport: redis_transport.Transport = undefined;
-    if (cfg.use_tls) {
-        transport = .{ .tls = undefined };
-        try transport.tls.initInPlace(alloc, stream, cfg.host);
-    } else {
-        transport = .{ .plain = try redis_transport.PlainTransport.init(alloc, stream) };
-    }
-    errdefer transport.deinit(alloc);
-
-    if (cfg.password) |pwd| {
-        const argv: []const []const u8 = if (cfg.username) |usr|
-            &.{ S_AUTH, usr, pwd }
-        else
-            &.{ S_AUTH, pwd };
-        try writeArgvToTransport(&transport, argv);
-        var resp = try redis_protocol.readRespValue(alloc, transport.reader());
-        defer resp.deinit(alloc);
-        try redis_protocol.ensureSimpleOk(resp);
-    }
-    return transport;
-}
-
-/// Re-dial Redis using the stored config and atomically replace the live
-/// transport. Caller must hold `self.lock`. If the dial or re-AUTH fails the
-/// existing transport is left untouched so the next attempt can retry.
-fn reconnectUnlocked(self: *Client) !void {
-    const new_transport = try dialAndAuth(self.alloc, self.cfg);
-    self.transport.deinit(self.alloc);
-    self.transport = new_transport;
-    log.info("reconnected", .{ .host = self.cfg.host, .port = self.cfg.port });
 }
 
 pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
@@ -258,7 +214,8 @@ const queue_consts = @import("constants.zig");
 const redis_types = @import("redis_types.zig");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
-const redis_transport = @import("redis_transport.zig");
+const redis_errors = @import("redis_errors.zig");
+const Pool = @import("redis_pool.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const EventEnvelope = @import("../zombie/event_envelope.zig");
 const log = logging.scoped(.redis_queue);

@@ -103,12 +103,34 @@ fn transitionTo(self: *Connection, new_state: ConnectionState) void {
 
 // === Command ===
 
-/// Send one RESP request, read exactly one RESP reply.
+/// Send one RESP request, read exactly one RESP reply. `.err` replies
+/// surface as `error.RedisCommandError` — callers that need to inspect
+/// the server's error message use `commandAllowError` and switch on the
+/// returned `RespValue`.
 ///
-/// PIPELINING FORBIDDEN — see spec §Invariants 12. One argv in, one reply
-/// out. Any IO error transitions the connection to `.poisoned`; the caller
-/// (Pool.release / Client retry layer) closes from there.
+/// PIPELINING FORBIDDEN — see Invariants 12 in the file header. One argv
+/// in, one reply out. Any IO error transitions the connection to
+/// `.poisoned`; the caller (Pool.release / Client retry layer) closes
+/// from there.
 pub fn command(self: *Connection, argv: []const []const u8) Error!redis_protocol.RespValue {
+    var value = try self.commandAllowError(argv);
+    if (value == .err) {
+        // Resumable: the connection stayed in protocol sync; caller
+        // releases ok=true so the same conn serves the next request.
+        // Per-error logging of `value.err` lands with the broader error
+        // surfacing pass — slice that lands typed XADD/XACK variants.
+        value.deinit(self.alloc);
+        return error.RedisCommandError;
+    }
+    return value;
+}
+
+/// Like `command` but returns the raw `RespValue` even when the reply is
+/// `.err`. Used by callers that need the server's error message verbatim
+/// (e.g. SET NX returning nil on existing key, XGROUP CREATE returning
+/// BUSYGROUP on already-created group). IO errors still transition the
+/// connection to `.poisoned` and surface as transport-level errors.
+pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redis_protocol.RespValue {
     std.debug.assert(self.fd != INVALID_FD);
     std.debug.assert(self.state == .active);
 
@@ -116,18 +138,10 @@ pub fn command(self: *Connection, argv: []const []const u8) Error!redis_protocol
         self.transitionTo(.poisoned);
         return mapWriteError(err);
     };
-    var value = redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
+    return redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
         self.transitionTo(.poisoned);
         return mapReadError(err);
     };
-    if (value == .err) {
-        // Resumable per spec §4: the connection stayed in protocol sync;
-        // caller releases ok=true so the same conn serves the next request.
-        // Slice 7 will log `value.err` before discarding it.
-        value.deinit(self.alloc);
-        return error.RedisCommandError;
-    }
-    return value;
 }
 
 fn mapWriteError(err: anyerror) Error {
