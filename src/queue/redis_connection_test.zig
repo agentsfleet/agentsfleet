@@ -93,6 +93,58 @@ test "command round-trips a single RESP reply" {
     try std.testing.expectEqualStrings("PONG", resp.simple);
 }
 
+test "post-deinit Connection has INVALID_FD and .closed state — IO call paths assert in debug" {
+    // Spec invariant 13: after `deinit`, every subsequent IO path must
+    // assert. The IO entry points (`command` → `commandAllowError`) start
+    // with `std.debug.assert(self.fd != INVALID_FD)` and
+    // `std.debug.assert(self.state == .active)`. We can't catch panics in
+    // a zig 0.15 unit test (no `expectPanic`), but we CAN verify both
+    // guarded preconditions hold post-deinit — calling `commandAllowError`
+    // here would fire either assert deterministically in debug builds.
+    var srv: PongOnce = undefined;
+    try srv.start();
+    defer srv.shutdown();
+
+    const cfg = try srv.config(std.testing.allocator);
+    defer redis_config.deinitConfig(std.testing.allocator, cfg);
+
+    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    try std.testing.expect(conn.fd != Connection.INVALID_FD);
+    try std.testing.expect(conn.state == .active);
+
+    conn.deinit();
+
+    try std.testing.expectEqual(Connection.INVALID_FD, conn.fd);
+    try std.testing.expect(conn.state == .closed);
+}
+
+test "post-deinit Connection has .closed state — double-deinit asserts in debug" {
+    // Spec invariant 14: `.closed` is reachable exactly once per Connection
+    // lifetime. `deinit`'s state switch lists `.closed => std.debug.assert(false)` —
+    // a second call would fire that assert in debug. Same constraint as the
+    // IO test above: we can't catch the panic from inside the same process,
+    // so we verify the post-first-deinit state is `.closed`, which is the
+    // precondition the second-deinit assert checks. `transitionTo` itself
+    // guards `.closed` as a terminal state (Invariant 14): no transition
+    // out of `.closed` is legal, so even bypassing deinit's switch via the
+    // direct mutation path lands on the same assertion gate.
+    var srv: PongOnce = undefined;
+    try srv.start();
+    defer srv.shutdown();
+
+    const cfg = try srv.config(std.testing.allocator);
+    defer redis_config.deinitConfig(std.testing.allocator, cfg);
+
+    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    try std.testing.expect(conn.state == .active);
+
+    conn.deinit();
+    try std.testing.expect(conn.state == .closed);
+    // A subsequent `conn.deinit()` would hit `.closed => std.debug.assert(false)`
+    // at redis_connection.zig and panic the test runner; the single-transition
+    // invariant is enforced by the precondition observable here.
+}
+
 test "commandAllowError: OOM during RESP read propagates and poisons the connection" {
     var srv: PongOnce = undefined;
     try srv.start();
