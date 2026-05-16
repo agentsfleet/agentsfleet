@@ -382,6 +382,25 @@ pub fn build(b: *std.Build) void {
         const run_bench_micro = b.addRunArtifact(bench_micro);
         if (b.args) |args| run_bench_micro.addArgs(args);
         b.step("bench-micro", "Run Tier-1 zbench micro-benchmarks").dependOn(&run_bench_micro.step);
+
+        // ── Redis XADD concurrency bench ─────────────────────────────────────
+        // 8 producer threads × 1000 XADDs against a live Redis. Skip-by-default
+        // unless BENCH_REDIS=1 — see tests/bench/redis_xadd_concurrency.zig.
+        const bench_redis = b.addExecutable(.{
+            .name = "bench-redis",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("tests/bench/redis_xadd_concurrency.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "bench_app", .module = bench_app_mod },
+                },
+            }),
+        });
+
+        const run_bench_redis = b.addRunArtifact(bench_redis);
+        if (b.args) |args| run_bench_redis.addArgs(args);
+        b.step("bench-redis", "Run Redis XADD concurrency bench (BENCH_REDIS=1)").dependOn(&run_bench_redis.step);
     }
 
     // Installable backend test binary for coverage tooling (kcov/codecov).

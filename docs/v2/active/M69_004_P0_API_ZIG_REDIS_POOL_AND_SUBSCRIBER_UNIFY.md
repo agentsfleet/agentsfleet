@@ -536,7 +536,7 @@ try conn.exec(
 ## Acceptance Criteria
 
 - [ ] Every Test Specification row passes — verify: `make test && make test-integration && make memleak`.
-- [ ] Bench run clean — verify: `BENCH_REDIS=1 make bench-redis` exits 0 against local Redis; aggregate ops/sec pasted in PR Session Notes.
+- [x] Bench run clean — verify: `BENCH_REDIS=1 make bench-redis` exits 0 against local Redis; aggregate ops/sec pasted in PR Session Notes.
 - [ ] No `std.Thread.Mutex` in `redis_client.zig` — verify: `grep -c "std.Thread.Mutex" src/queue/redis_client.zig` returns `0`.
 - [x] `redis_pubsub.zig` deleted — verify: `test ! -f src/queue/redis_pubsub.zig`.
 - [x] All `redis_pubsub` references gone — verify: `grep -rn "redis_pubsub" src/` returns 0 hits.
