@@ -71,14 +71,18 @@ describe("validateRequiredId", () => {
   test("empty string returns error with name", () => {
     const result = validateRequiredId("", "workspace_id");
     expect(result.ok).toBe(false);
-    expect(result.message).toContain("workspace_id");
+    if (!result.ok) {
+      expect(result.message).toContain("workspace_id");
+    }
   });
 
   test("invalid format returns helpful message naming uuidv7", () => {
     const result = validateRequiredId("!@#", "run_id");
     expect(result.ok).toBe(false);
-    expect(result.message).toContain("run_id");
-    expect(result.message.toLowerCase()).toContain("uuidv7");
+    if (!result.ok) {
+      expect(result.message).toContain("run_id");
+      expect(result.message.toLowerCase()).toContain("uuidv7");
+    }
   });
 
   test("uuidv4 returns error (rejected post-tightening)", () => {

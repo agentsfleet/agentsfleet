@@ -5,8 +5,21 @@ import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { runCli } from "../src/cli.ts";
+import { asFetchOverride, makeHeaders, type ResponseLike } from "./helpers.ts";
 
-function bufferStream() {
+interface DoctorCheck {
+  name: string;
+  ok: boolean;
+  detail?: string;
+}
+
+interface DoctorResult {
+  ok: boolean;
+  api_url: string;
+  checks: DoctorCheck[];
+}
+
+function bufferStream(): { stream: Writable; read: () => string } {
   let data = "";
   return {
     stream: new Writable({
@@ -19,7 +32,10 @@ function bufferStream() {
   };
 }
 
-async function withStateDir(opts, fn) {
+async function withStateDir<T>(
+  opts: { workspace?: string },
+  fn: () => Promise<T>,
+): Promise<T> {
   const previous = process.env.ZOMBIE_STATE_DIR;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-doctor-"));
   process.env.ZOMBIE_STATE_DIR = dir;
@@ -39,11 +55,12 @@ async function withStateDir(opts, fn) {
   }
 }
 
-function jsonResponse(body, status = 200) {
+function jsonResponse(body: unknown, status = 200): ResponseLike {
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? "OK" : "ERR",
+    headers: makeHeaders([]),
     text: async () => JSON.stringify(body),
   };
 }
@@ -52,11 +69,11 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
   await withStateDir({ workspace: "ws_test" }, async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const fetchImpl = async (url) => {
+    const fetchImpl = asFetchOverride(async (url) => {
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok", service: "zombied" });
       if (url.includes("/v1/workspaces/ws_test/zombies")) return jsonResponse({ items: [] });
       return jsonResponse({ error: { code: "NOT_FOUND" } }, 404);
-    };
+    });
     const code = await runCli(["--json", "doctor"], {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,
@@ -64,7 +81,7 @@ test("doctor --json: all checks pass → ok=true, exit 0, 3 named checks", async
       fetchImpl,
     });
     assert.equal(code, 0);
-    const parsed = JSON.parse(out.read());
+    const parsed = JSON.parse(out.read()) as DoctorResult;
     assert.equal(parsed.ok, true);
     assert.equal(typeof parsed.api_url, "string");
     const names = parsed.checks.map((c) => c.name);
@@ -77,9 +94,9 @@ test("doctor --json: server unreachable → server_reachable false, exit 1", asy
   await withStateDir({ workspace: "ws_test" }, async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const fetchImpl = async () => {
+    const fetchImpl = asFetchOverride(async () => {
       throw new Error("connect ECONNREFUSED");
-    };
+    });
     const code = await runCli(["--json", "doctor"], {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,
@@ -87,11 +104,11 @@ test("doctor --json: server unreachable → server_reachable false, exit 1", asy
       fetchImpl,
     });
     assert.equal(code, 1);
-    const parsed = JSON.parse(out.read());
+    const parsed = JSON.parse(out.read()) as DoctorResult;
     assert.equal(parsed.ok, false);
     const reachable = parsed.checks.find((c) => c.name === "server_reachable");
-    assert.equal(reachable.ok, false);
-    assert.match(reachable.detail, /ECONNREFUSED/);
+    assert.equal(reachable?.ok, false);
+    assert.match(reachable?.detail ?? "", /ECONNREFUSED/);
   });
 });
 
@@ -99,10 +116,10 @@ test("doctor --json: no workspace selected → workspace_selected false, binding
   await withStateDir({}, async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const fetchImpl = async (url) => {
+    const fetchImpl = asFetchOverride(async (url) => {
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok" });
       throw new Error("unexpected request: " + url);
-    };
+    });
     const code = await runCli(["--json", "doctor"], {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,
@@ -110,12 +127,12 @@ test("doctor --json: no workspace selected → workspace_selected false, binding
       fetchImpl,
     });
     assert.equal(code, 1);
-    const parsed = JSON.parse(out.read());
+    const parsed = JSON.parse(out.read()) as DoctorResult;
     const selected = parsed.checks.find((c) => c.name === "workspace_selected");
     const binding = parsed.checks.find((c) => c.name === "workspace_binding_valid");
-    assert.equal(selected.ok, false);
-    assert.equal(binding.ok, false);
-    assert.match(binding.detail, /skipped/);
+    assert.equal(selected?.ok, false);
+    assert.equal(binding?.ok, false);
+    assert.match(binding?.detail ?? "", /skipped/);
   });
 });
 
@@ -123,13 +140,13 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
   await withStateDir({ workspace: "ws_test" }, async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const fetchImpl = async (url) => {
+    const fetchImpl = asFetchOverride(async (url) => {
       if (url.endsWith("/healthz")) return jsonResponse({ status: "ok" });
       if (url.includes("/v1/workspaces/ws_test/zombies")) {
         return jsonResponse({ error: { code: "FORBIDDEN", message: "Workspace access denied" } }, 403);
       }
       throw new Error("unexpected request: " + url);
-    };
+    });
     const code = await runCli(["--json", "doctor"], {
       env: { ...process.env, ZOMBIE_TOKEN: "header.payload.sig" },
       stdout: out.stream,
@@ -137,10 +154,10 @@ test("doctor --json: token bound to wrong workspace → binding false, exit 1", 
       fetchImpl,
     });
     assert.equal(code, 1);
-    const parsed = JSON.parse(out.read());
+    const parsed = JSON.parse(out.read()) as DoctorResult;
     const binding = parsed.checks.find((c) => c.name === "workspace_binding_valid");
-    assert.equal(binding.ok, false);
-    assert.match(binding.detail, /workspace list/);
+    assert.equal(binding?.ok, false);
+    assert.match(binding?.detail ?? "", /workspace list/);
   });
 });
 
@@ -149,10 +166,10 @@ test("doctor without local auth → AUTH_REQUIRED before any HTTP", async () => 
     const out = bufferStream();
     const err = bufferStream();
     let fetchCalls = 0;
-    const fetchImpl = async () => {
+    const fetchImpl = asFetchOverride(async () => {
       fetchCalls += 1;
       throw new Error("should not be called");
-    };
+    });
     const env = { ...process.env };
     delete env.ZOMBIE_TOKEN;
     delete env.API_KEY;
@@ -165,7 +182,7 @@ test("doctor without local auth → AUTH_REQUIRED before any HTTP", async () => 
     });
     assert.equal(code, 1);
     assert.equal(fetchCalls, 0);
-    const parsed = JSON.parse(err.read());
+    const parsed = JSON.parse(err.read()) as { error: { code: string } };
     assert.equal(parsed.error.code, "AUTH_REQUIRED");
   });
 });
