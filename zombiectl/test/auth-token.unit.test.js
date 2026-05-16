@@ -1,6 +1,6 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { decodeTokenPayload, extractDistinctIdFromToken, extractRoleFromToken } from "../src/program/auth-token.js";
+import { decodeTokenPayload, extractDistinctIdFromToken, extractRoleFromToken } from "../src/program/auth-token.ts";
 
 function makeToken(payload) {
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");

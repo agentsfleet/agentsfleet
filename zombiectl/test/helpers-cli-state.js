@@ -29,7 +29,7 @@ import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
 
-import { saveCredentials, saveWorkspaces } from "../src/lib/state.js";
+import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
 
 /** Discard-all writable stream — handy when a test only cares about return code or stderr. */
 export function makeNoop() {

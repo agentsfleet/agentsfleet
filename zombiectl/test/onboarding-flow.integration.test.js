@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { runCli } from "../src/cli.js";
-import { loadCredentials, loadWorkspaces } from "../src/lib/state.js";
+import { loadCredentials, loadWorkspaces } from "../src/lib/state.ts";
 import { bufferStream, withFreshStateDir } from "./helpers-cli-state.js";
 import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
 

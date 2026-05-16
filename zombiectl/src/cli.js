@@ -17,9 +17,9 @@ import {
   newIdempotencyKey,
   saveCredentials,
   saveWorkspaces,
-} from "./lib/state.js";
+} from "./lib/state.ts";
 import { apiHeaders, request } from "./program/http-client.js";
-import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.js";
+import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.ts";
 import { printJson, writeError, writeLine } from "./program/io.js";
 import { printVersion, printPreReleaseWarning } from "./program/banner.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
