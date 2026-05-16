@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
-# Pre-push: comprehensive verification before anything leaves the machine.
+# Pre-push: fast smoke verification. Heavy lanes live in CI.
 #
 # Always runs:
-#   - make test-unit-all              (tier 1 — Zig units + multi-package coverage + skill-evals)
+#   - make test-unit-all              (tier 1 — Zig units + multi-package coverage)
 #
 # Conditional on Zig changes since upstream (or main, on first push):
-#   - make test-unit-executor         (tier 2a — executor-side mocked unit tests; fast)
-#   - make test-integration           (tier 2b — worker integration vs real Postgres + Redis)
-#   - make memleak                    (allocator leak gate; valgrind on Linux CI)
+#   - make test-unit-executor         (tier 2a — executor-side mocked unit tests; ~30s)
 #
-# Stub-contract first: it's seconds-fast and fails on a redactor regression
-# without paying for postgres/redis startup. test-integration is the heavy
-# pass that follows.
+# Moved to CI (was here, now in .github/workflows/{test-integration,memleak}.yml):
+#   - make test-integration           — worker integration vs real Postgres + Redis
+#   - make memleak                    — allocator leak gate (valgrind)
+# Pre-push is the fast-smoke floor; CI is the comprehensive gate. The prior
+# behaviour held the SSH session idle for 15-20 min during tier-2 + memleak,
+# which github.com regularly dropped — the pack-write at end-of-hook then
+# failed even though all tests passed locally. Pushing heavy lanes to CI
+# eliminates that whole class of failure.
 #
 # Bypass for emergencies: `git push --no-verify` (discouraged per AGENTS.md).
 set -euo pipefail
@@ -22,8 +25,9 @@ cd "$repo_root"
 echo "pre-push: make test-unit-all"
 make test-unit-all
 
-# Tier-2 + memleak fire when this push contains Zig changes — those are the
-# branches that exercise the integration paths and allocator wiring.
+# test-unit-executor stays in pre-push: it's the seconds-fast stub-contract
+# check that catches redactor / wire-schema regressions without paying for
+# Postgres/Redis startup. CI re-runs it as part of test-integration anyway.
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   upstream_ref='@{u}'
 else
@@ -36,10 +40,6 @@ pushed_zig="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null | grep -E '
 if [ -n "$pushed_zig" ]; then
   echo "pre-push: make test-unit-executor (Zig changed since $upstream_ref)"
   make test-unit-executor
-  echo "pre-push: make test-integration (Zig changed since $upstream_ref)"
-  make test-integration
-  echo "pre-push: make memleak (Zig changed since $upstream_ref)"
-  make memleak
 else
-  echo "pre-push: no Zig changes since $upstream_ref — skipping tier-2 + memleak"
+  echo "pre-push: no Zig changes since $upstream_ref — skipping test-unit-executor"
 fi
