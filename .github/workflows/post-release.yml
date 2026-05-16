@@ -4,16 +4,10 @@ on:
   workflow_run:
     workflows: [Release]
     types: [completed]
-  schedule:
-    # Daily 13:00 UTC — backend changes that ship without a CLI release still
-    # re-exercise the published CLI against live PROD once per day. WS-E #C2
-    # secret-load posture identical to the post-publish run.
-    - cron: "0 13 * * *"
 
 jobs:
   verify-npm:
-    # Run after a successful Release, OR on the daily cron schedule.
-    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule'
+    if: github.event.workflow_run.conclusion == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -66,7 +60,7 @@ jobs:
   # key. lifecycle-after-login is skipped on PROD (no dashboard URL is
   # provided — per spec §5 disposition).
   cli-acceptance-prod:
-    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'schedule'
+    if: github.event.workflow_run.conclusion == 'success'
     needs: verify-npm
     runs-on: ubuntu-latest
     name: CLI acceptance — api.usezombie.com
