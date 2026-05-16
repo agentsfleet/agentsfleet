@@ -158,6 +158,10 @@ pub fn run(alloc: std.mem.Allocator) !void {
         std.process.exit(1);
     };
     defer api_queue.deinit();
+    metrics.registerRedisPool(&api_queue.pool);
+    // Defer order: clear FIRST at scope exit so a mid-shutdown /metrics
+    // scrape can't dereference a deinit'd Pool.
+    defer metrics.clearRegisteredRedisPool();
     log.info("startup.redis_connect_ok", .{ .role = S_API });
 
     const migrate_on_start = preflight.parseMigrateOnStart(alloc) catch std.process.exit(1);

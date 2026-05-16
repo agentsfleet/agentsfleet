@@ -181,6 +181,7 @@ test {
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
     _ = @import("observability/trace.zig");
+    _ = @import("observability/metrics_redis_pool.zig");
     _ = otel_logs;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/heroku_names.zig");
