@@ -39,12 +39,33 @@ export function shutdownCliAnalytics(client: AnalyticsClient | null | undefined)
 // (not a function). Mirrors the literal object at the bottom of
 // src/lib/analytics.js so the call sites `cliAnalytics.trackCliEvent(...)`
 // + `cliAnalytics.shutdownCliAnalytics(...)` typecheck honestly.
+// Members are mutable — the analytics.js runtime literal is not frozen,
+// and tests stub members in place for dependency-injection.
 export const cliAnalytics: {
-  readonly createCliAnalytics: typeof createCliAnalytics;
-  readonly trackCliEvent: typeof trackCliEvent;
-  readonly trackHttpRequest: typeof trackHttpRequest;
-  readonly trackHttpRetry: typeof trackHttpRetry;
-  readonly shutdownCliAnalytics: typeof shutdownCliAnalytics;
+  createCliAnalytics: typeof createCliAnalytics;
+  trackCliEvent: typeof trackCliEvent;
+  trackHttpRequest: typeof trackHttpRequest;
+  trackHttpRetry: typeof trackHttpRetry;
+  shutdownCliAnalytics: typeof shutdownCliAnalytics;
+};
+
+// Internal helpers re-exported for testing only. Tests against
+// resolveConfig/sanitizeProperties + the bundled posthog key bypass
+// the public `cliAnalytics` namespace.
+export const cliAnalyticsInternals: {
+  DEFAULT_POSTHOG_KEY: string;
+  drainCliAnalyticsEvents: typeof drainCliAnalyticsEvents;
+  getCliAnalyticsContext: typeof getCliAnalyticsContext;
+  queueCliAnalyticsEvent: typeof queueCliAnalyticsEvent;
+  resolveConfig: (env?: NodeJS.ProcessEnv) => {
+    key: string;
+    host: string;
+    enabled: boolean;
+  };
+  sanitizeProperties: (
+    properties?: Record<string, unknown>,
+  ) => Record<string, string>;
+  setCliAnalyticsContext: typeof setCliAnalyticsContext;
 };
 export function getCliAnalyticsContext(
   ctx: { analyticsContext?: Record<string, unknown> | null } | null | undefined,

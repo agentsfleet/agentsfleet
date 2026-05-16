@@ -14,16 +14,16 @@ import {
 test("install accepts --from <path>", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["install", "--from", "/tmp/skill"], handlers);
-  expect(calls[0].name).toBe("zombie.install");
-  expect(calls[0].frame.parsed.options.from).toBe("/tmp/skill");
+  expect(calls[0]?.name).toBe("zombie.install");
+  expect(calls[0]?.frame.parsed.options.from).toBe("/tmp/skill");
 });
 
 test("zombie update <id> accepts --from <path>", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["zombie", "update", VALID_ID, "--from", "/tmp/skill"], handlers);
-  expect(calls[0].name).toBe("zombie.update");
-  expect(calls[0].frame.parsed.positionals[0]).toBe(VALID_ID);
-  expect(calls[0].frame.parsed.options.from).toBe("/tmp/skill");
+  expect(calls[0]?.name).toBe("zombie.update");
+  expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.from).toBe("/tmp/skill");
 });
 
 test("list accepts --workspace-id / --cursor / --limit", async () => {
@@ -34,24 +34,24 @@ test("list accepts --workspace-id / --cursor / --limit", async () => {
     "--cursor", "tok-1",
     "--limit", "50",
   ], handlers);
-  expect(calls[0].name).toBe("zombie.list");
-  expect(calls[0].frame.parsed.options.workspaceId).toBe(VALID_ID);
-  expect(calls[0].frame.parsed.options["workspace-id"]).toBe(VALID_ID);
-  expect(calls[0].frame.parsed.options.cursor).toBe("tok-1");
-  expect(calls[0].frame.parsed.options.limit).toBe(50);
+  expect(calls[0]?.name).toBe("zombie.list");
+  expect(calls[0]?.frame.parsed.options.workspaceId).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options["workspace-id"]).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.cursor).toBe("tok-1");
+  expect(calls[0]?.frame.parsed.options.limit).toBe(50);
 });
 
 test("status [zombie_id] dispatches with no positional (workspace-wide)", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["status"], handlers);
-  expect(calls[0].name).toBe("zombie.status");
-  expect(calls[0].frame.parsed.positionals).toHaveLength(0);
+  expect(calls[0]?.name).toBe("zombie.status");
+  expect(calls[0]?.frame.parsed.positionals).toHaveLength(0);
 });
 
 test("status <zombie_id> dispatches with positional", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["status", VALID_ID], handlers);
-  expect(calls[0].frame.parsed.positionals[0]).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
 });
 
 test("stop / resume / kill / delete each dispatch with required positional", async () => {
@@ -59,8 +59,8 @@ test("stop / resume / kill / delete each dispatch with required positional", asy
     const { handlers, calls } = makeSpyTree();
     await dispatch([cmd, VALID_ID], handlers);
     expect(calls).toHaveLength(1);
-    expect(calls[0].name).toBe(`zombie.${cmd}`);
-    expect(calls[0].frame.parsed.positionals[0]).toBe(VALID_ID);
+    expect(calls[0]?.name).toBe(`zombie.${cmd}`);
+    expect(calls[0]?.frame.parsed.positionals[0]).toBe(VALID_ID);
   }
 });
 
@@ -72,9 +72,9 @@ test("logs accepts --zombie / --limit / --cursor", async () => {
     "--limit", "100",
     "--cursor", "next-tok",
   ], handlers);
-  expect(calls[0].name).toBe("zombie.logs");
-  expect(calls[0].frame.parsed.options.zombie).toBe(VALID_ID);
-  expect(calls[0].frame.parsed.options.limit).toBe(100);
+  expect(calls[0]?.name).toBe("zombie.logs");
+  expect(calls[0]?.frame.parsed.options.zombie).toBe(VALID_ID);
+  expect(calls[0]?.frame.parsed.options.limit).toBe(100);
 });
 
 test("events <id> accepts --actor / --since / --cursor / --limit", async () => {
@@ -86,17 +86,17 @@ test("events <id> accepts --actor / --since / --cursor / --limit", async () => {
     "--cursor", "next",
     "--limit", "200",
   ], handlers);
-  expect(calls[0].name).toBe("zombie.events");
-  expect(calls[0].frame.parsed.options.actor).toBe("human:*");
-  expect(calls[0].frame.parsed.options.since).toBe("2h");
-  expect(calls[0].frame.parsed.options.limit).toBe(200);
+  expect(calls[0]?.name).toBe("zombie.events");
+  expect(calls[0]?.frame.parsed.options.actor).toBe("human:*");
+  expect(calls[0]?.frame.parsed.options.since).toBe("2h");
+  expect(calls[0]?.frame.parsed.options.limit).toBe(200);
 });
 
 test("steer <id> <message> dispatches with two positionals", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch(["steer", VALID_ID, "hello there"], handlers);
-  expect(calls[0].name).toBe("zombie.steer");
-  expect(calls[0].frame.parsed.positionals).toEqual([VALID_ID, "hello there"]);
+  expect(calls[0]?.name).toBe("zombie.steer");
+  expect(calls[0]?.frame.parsed.positionals).toEqual([VALID_ID, "hello there"]);
 });
 
 test("credential add <name> accepts --data / --force", async () => {
@@ -106,28 +106,28 @@ test("credential add <name> accepts --data / --force", async () => {
     "--data", '{"api_key":"sk-test"}',
     "--force",
   ], handlers);
-  expect(calls[0].name).toBe("zombie.credential.add");
-  expect(calls[0].frame.parsed.positionals[0]).toBe("openai");
-  expect(calls[0].frame.parsed.options.data).toBe('{"api_key":"sk-test"}');
-  expect(calls[0].frame.parsed.options.force).toBe(true);
+  expect(calls[0]?.name).toBe("zombie.credential.add");
+  expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
+  expect(calls[0]?.frame.parsed.options.data).toBe('{"api_key":"sk-test"}');
+  expect(calls[0]?.frame.parsed.options.force).toBe(true);
 });
 
 test("credential show / list / delete each dispatch with the right shape", async () => {
   {
     const { handlers, calls } = makeSpyTree();
     await dispatch(["credential", "show", "openai"], handlers);
-    expect(calls[0].name).toBe("zombie.credential.show");
-    expect(calls[0].frame.parsed.positionals[0]).toBe("openai");
+    expect(calls[0]?.name).toBe("zombie.credential.show");
+    expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
   }
   {
     const { handlers, calls } = makeSpyTree();
     await dispatch(["credential", "list"], handlers);
-    expect(calls[0].name).toBe("zombie.credential.list");
+    expect(calls[0]?.name).toBe("zombie.credential.list");
   }
   {
     const { handlers, calls } = makeSpyTree();
     await dispatch(["credential", "delete", "openai"], handlers);
-    expect(calls[0].name).toBe("zombie.credential.delete");
-    expect(calls[0].frame.parsed.positionals[0]).toBe("openai");
+    expect(calls[0]?.name).toBe("zombie.credential.delete");
+    expect(calls[0]?.frame.parsed.positionals[0]).toBe("openai");
   }
 });

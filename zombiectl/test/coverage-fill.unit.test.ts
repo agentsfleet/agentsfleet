@@ -23,9 +23,9 @@ function tmpDir() {
   return path.join(os.tmpdir(), `zctl-cov-${Date.now()}-${Math.random().toString(16).slice(2)}`);
 }
 
-function captureStream() {
-  const chunks = [];
-  return { write(s) { chunks.push(s); }, get text() { return chunks.join(""); } };
+function captureStream(): { write: (s: string) => void; readonly text: string } {
+  const chunks: string[] = [];
+  return { write(s: string) { chunks.push(s); }, get text() { return chunks.join(""); } };
 }
 
 // ── state.js ────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ test("save/load Workspaces roundtrip persists current_workspace_id + items[]", a
   const dir = tmpDir();
   process.env.ZOMBIE_STATE_DIR = dir;
   try {
-    await saveWorkspaces({ current_workspace_id: "ws_1", items: [{ id: "ws_1", name: "main" }] });
+    await saveWorkspaces({ current_workspace_id: "ws_1", items: [{ workspace_id: "ws_1", name: "main", created_at: null }] });
     const after = await loadWorkspaces();
     expect(after.current_workspace_id).toBe("ws_1");
     expect(after.items).toHaveLength(1);

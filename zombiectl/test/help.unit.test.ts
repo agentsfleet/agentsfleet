@@ -58,8 +58,11 @@ describe("ZombieHelp.styleTitle", () => {
 
   test("constructor defaults to process.stdout + process.env when unset", () => {
     const help = new ZombieHelp();
-    expect(help.styleOpts.stream).toBe(process.stdout);
-    expect(help.styleOpts.env).toBe(process.env);
+    // Reach into the private resolved opts via a typed unwrap. The defaults
+    // contract is part of the test surface even though styleOpts is private.
+    const opts = (help as unknown as { styleOpts: { stream: NodeJS.WritableStream; env: NodeJS.ProcessEnv } }).styleOpts;
+    expect(opts.stream).toBe(process.stdout);
+    expect(opts.env).toBe(process.env);
   });
 });
 

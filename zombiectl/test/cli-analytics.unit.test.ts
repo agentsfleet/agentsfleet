@@ -6,9 +6,20 @@ import path from "node:path";
 import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.ts";
-import { cliAnalytics } from "../src/lib/analytics.js";
+import {
+  cliAnalytics,
+  type AnalyticsClient,
+} from "../src/lib/analytics.js";
+import { asFetchOverride, type ResponseLike } from "./helpers.ts";
 
-function bufferStream() {
+interface TrackedEvent {
+  client: AnalyticsClient | null;
+  distinctId: string | null | undefined;
+  event: string;
+  properties: Record<string, unknown>;
+}
+
+function bufferStream(): { stream: Writable; read: () => string } {
   let data = "";
   return {
     stream: new Writable({
@@ -21,29 +32,27 @@ function bufferStream() {
   };
 }
 
-function makeToken(payload) {
+function makeToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${header}.${body}.sig`;
 }
 
-function withAnalyticsStub(fn) {
+async function withAnalyticsStub(fn: () => Promise<void>): Promise<void> {
   const originalCreate = cliAnalytics.createCliAnalytics;
   const originalTrack = cliAnalytics.trackCliEvent;
   const originalShutdown = cliAnalytics.shutdownCliAnalytics;
 
-  return (async () => {
-    try {
-      await fn();
-    } finally {
-      cliAnalytics.createCliAnalytics = originalCreate;
-      cliAnalytics.trackCliEvent = originalTrack;
-      cliAnalytics.shutdownCliAnalytics = originalShutdown;
-    }
-  })();
+  try {
+    await fn();
+  } finally {
+    cliAnalytics.createCliAnalytics = originalCreate;
+    cliAnalytics.trackCliEvent = originalTrack;
+    cliAnalytics.shutdownCliAnalytics = originalShutdown;
+  }
 }
 
-async function withStateDir(fn) {
+async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   const previous = process.env.ZOMBIE_STATE_DIR;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-analytics-"));
   process.env.ZOMBIE_STATE_DIR = dir;
@@ -59,8 +68,8 @@ async function withStateDir(fn) {
 test("runCli tracks login success with post-login distinct id and shuts down analytics", async () => {
   await withStateDir(async () => {
     await withAnalyticsStub(async () => {
-      const events = [];
-      let shutdownClient = null;
+      const events: TrackedEvent[] = [];
+      let shutdownClient: AnalyticsClient | null | undefined = null;
       const analyticsClient = { name: "test-client" };
       const clerkToken = makeToken({ sub: "user_login_123" });
 
@@ -75,21 +84,25 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
       const stdout = bufferStream();
       const stderr = bufferStream();
       let pollCount = 0;
-      const fetchImpl = async (url, options = {}) => {
-        if (options.method === "POST") {
+      const fetchImpl = asFetchOverride(async (url, options): Promise<ResponseLike> => {
+        if (options?.method === "POST") {
           return {
             ok: true,
             status: 201,
+            statusText: "Created",
+            headers: { get: () => null },
             text: async () => JSON.stringify({ session_id: "sess_analytics", login_url: "https://login.test" }),
           };
         }
         // After login completes the CLI hydrates the local workspace list
         // via GET /v1/tenants/me/workspaces — return an empty list so this
         // test stays focused on analytics events, not workspace shape.
-        if (typeof url === "string" && url.endsWith("/v1/tenants/me/workspaces")) {
+        if (url.endsWith("/v1/tenants/me/workspaces")) {
           return {
             ok: true,
             status: 200,
+            statusText: "OK",
+            headers: { get: () => null },
             text: async () => JSON.stringify({ items: [], total: 0 }),
           };
         }
@@ -97,9 +110,11 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
         return {
           ok: true,
           status: 200,
+          statusText: "OK",
+          headers: { get: () => null },
           text: async () => JSON.stringify({ status: "complete", token: clerkToken }),
         };
-      };
+      });
 
       const code = await runCli(["login", "--no-open"], {
         env: { ...process.env, NO_COLOR: "1", BROWSER: "false" },
@@ -149,7 +164,7 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
 test("runCli tracks workspace creation with existing distinct id", async () => {
   await withStateDir(async () => {
     await withAnalyticsStub(async () => {
-      const events = [];
+      const events: TrackedEvent[] = [];
       const analyticsClient = { name: "workspace-client" };
       const clerkToken = makeToken({ sub: "user_workspace_456" });
 
@@ -161,16 +176,18 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
 
       const stdout = bufferStream();
       const stderr = bufferStream();
-      const fetchImpl = async () => ({
+      const fetchImpl = asFetchOverride(async (): Promise<ResponseLike> => ({
         ok: true,
         status: 201,
+        statusText: "Created",
+        headers: { get: () => null },
         text: async () =>
           JSON.stringify({
             workspace_id: "ws_123456789abc",
             name: "jolly-harbor-482",
             request_id: "req_workspace",
           }),
-      });
+      }));
 
       const code = await runCli(["workspace", "add"], {
         env: { ...process.env, NO_COLOR: "1", BROWSER: "false", ZOMBIE_TOKEN: clerkToken },
@@ -229,10 +246,15 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
 test("runCli tracks unknown-command errors and still shuts down analytics when tracking throws", async () => {
   await withStateDir(async () => {
     await withAnalyticsStub(async () => {
-      const events = [];
+      const events: Array<Omit<TrackedEvent, "client">> = [];
       let shutdownCalls = 0;
+      interface CaptureArg {
+        distinctId: string | null | undefined;
+        event: string;
+        properties: Record<string, unknown>;
+      }
       const analyticsClient = {
-        capture({ distinctId, event, properties }) {
+        capture({ distinctId, event, properties }: CaptureArg) {
           events.push({ distinctId, event, properties });
           throw new Error("capture failed");
         },
@@ -255,8 +277,8 @@ test("runCli tracks unknown-command errors and still shuts down analytics when t
       assert.equal(code, 2);
       assert.match(stderr.read(), /unknown command.*runx/);
       assert.equal(events.length, 1);
-      assert.equal(events[0].event, "cli_error");
-      assert.equal(events[0].distinctId, "anonymous");
+      assert.equal(events[0]?.event, "cli_error");
+      assert.equal(events[0]?.distinctId, "anonymous");
       assert.equal(shutdownCalls, 1);
     });
   });
@@ -268,7 +290,7 @@ test("runCli honors analytics opt-out with bundled key", async () => {
     let trackCalls = 0;
     let shutdownCalls = 0;
 
-    cliAnalytics.createCliAnalytics = async (env) => {
+    cliAnalytics.createCliAnalytics = async (env = process.env) => {
       createCalls += 1;
       assert.equal(env.DISABLE_TELEMETRY, "1");
       return null;
