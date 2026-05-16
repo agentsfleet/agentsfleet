@@ -94,8 +94,8 @@ That wires up two hooks:
 
 | Hook | What it runs | Source |
 |---|---|---|
-| Pre-commit | `gitleaks` + the doc-read / milestone-id / pub-surface audits | [`.githooks/pre-commit`](.githooks/pre-commit) |
-| Pre-push | `make test-unit-all` always; `make test-unit-executor` + `make test-integration` + `make memleak` when the push touches Zig | [`.githooks/pre-push`](.githooks/pre-push) |
+| Pre-commit | `gitleaks --staged` (always), then `make harness-verify` and the matching `lint-*` / `check-*` targets in parallel based on which surfaces are staged (`*.zig` → `lint-zig`, `ui/packages/website/*` → `lint-website`, `ui/packages/app/*` → `lint-app`, `ui/packages/design-system/*` → `lint-design-system` + `lint-app`, `zombiectl/*` → `lint-zombiectl`, `scripts/*.sh` → `lint-shell`, `schema/*.sql` → `check-schema-gate` + `lint-zig`, `public/openapi/*` → `check-openapi`, `.github/workflows/*` or `Makefile`/`make/*.mk` → `check-gh-actions-valid`). Pure-docs commits skip the lint pass entirely. | [`.githooks/pre-commit`](.githooks/pre-commit) |
+| Pre-push | Surface-aware `test-unit-*` lanes in parallel (`*.zig` → `test-unit-zombied` — which internally chains `test-unit-executor`; `zombiectl/*` → `test-unit-zombiectl`; `ui/packages/website/*` → `test-unit-website`; `ui/packages/app/*` → `test-unit-app`; `ui/packages/design-system/*` → `test-unit-design-system` + `test-unit-app`; `tests/skill-evals/*` or `skills/*` → `test-unit-skills`). Pure-docs/pure-hook pushes run nothing. `test-integration` and `memleak` run in CI only — they no longer block pushes. | [`.githooks/pre-push`](.githooks/pre-push) |
 
 `git push --no-verify` is documented as discouraged in `AGENTS.md` and exists only for emergencies — don't make it a habit.
 
