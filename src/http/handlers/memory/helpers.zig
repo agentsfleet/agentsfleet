@@ -14,6 +14,9 @@ const log = logging.scoped(.memory_http_helpers);
 
 pub const Hx = hx_mod.Hx;
 
+const S_ZOMBIE_NOT_FOUND = "zombie not found";
+const S_COLLECT_TRUNCATED = "collect_truncated";
+
 pub const MAX_KEY_LEN: usize = 255;
 pub const MAX_CONTENT_LEN: usize = 16 * 1024; // 16KB
 pub const MAX_RECALL_LIMIT: i64 = 100;
@@ -59,7 +62,7 @@ pub fn resolveZombieInWorkspace(
         common.internalDbError(hx.res, hx.req_id);
         return null;
     }) orelse {
-        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, "zombie not found");
+        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
         return null;
     };
 
@@ -69,7 +72,7 @@ pub fn resolveZombieInWorkspace(
     };
     if (!std.mem.eql(u8, workspace_id, zombie_ws)) {
         // 404 not 403 — don't leak existence across workspaces.
-        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, "zombie not found");
+        hx.fail(ec.ERR_MEM_ZOMBIE_NOT_FOUND, S_ZOMBIE_NOT_FOUND);
         return null;
     }
 
@@ -146,19 +149,19 @@ pub fn collectEntries(
         const row = q.next() catch break :collect;
         const r = row orelse break :collect;
         const key = alloc.dupe(u8, r.get([]const u8, 0) catch continue) catch {
-            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_key", .collected = entries.items.len });
+            log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_key", .collected = entries.items.len });
             break :collect;
         };
         const content = alloc.dupe(u8, r.get([]const u8, 1) catch continue) catch {
-            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_content", .collected = entries.items.len });
+            log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_content", .collected = entries.items.len });
             break :collect;
         };
         const category = alloc.dupe(u8, r.get([]const u8, 2) catch continue) catch {
-            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_category", .collected = entries.items.len });
+            log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_category", .collected = entries.items.len });
             break :collect;
         };
         const updated_at = alloc.dupe(u8, r.get([]const u8, 3) catch continue) catch {
-            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_updated_at", .collected = entries.items.len });
+            log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_updated_at", .collected = entries.items.len });
             break :collect;
         };
         entries.append(alloc, .{
@@ -167,7 +170,7 @@ pub fn collectEntries(
             .category = category,
             .updated_at = updated_at,
         }) catch {
-            log.warn("collect_truncated", .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_append", .collected = entries.items.len });
+            log.warn(S_COLLECT_TRUNCATED, .{ .error_code = ec.ERR_INTERNAL_OPERATION_FAILED, .reason = "oom_append", .collected = entries.items.len });
             break :collect;
         };
     }

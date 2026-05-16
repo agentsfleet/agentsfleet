@@ -22,6 +22,13 @@ const network = @import("network.zig");
 
 const log = logging.scoped(.sandbox_executor);
 
+const S_INFO = "info";
+const S_DEBUG = "debug";
+const S_ERR = "err";
+const S_WARN = "warn";
+const S_WARNING = "warning";
+const S_ERROR = "error";
+
 var runtime_log_level = std.atomic.Value(u8).init(@intFromEnum(if (builtin.mode == .Debug) std.log.Level.debug else std.log.Level.info));
 
 // pub: consumed by std at comptime via @import("root").std_options.
@@ -39,10 +46,10 @@ pub const std_options: std.Options = .{
 };
 
 fn parseLogLevel(level_raw: []const u8) ?std.log.Level {
-    if (std.ascii.eqlIgnoreCase(level_raw, "debug")) return .debug;
-    if (std.ascii.eqlIgnoreCase(level_raw, "info")) return .info;
-    if (std.ascii.eqlIgnoreCase(level_raw, "warn") or std.ascii.eqlIgnoreCase(level_raw, "warning")) return .warn;
-    if (std.ascii.eqlIgnoreCase(level_raw, "err") or std.ascii.eqlIgnoreCase(level_raw, "error")) return .err;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_DEBUG)) return .debug;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_INFO)) return .info;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_WARN) or std.ascii.eqlIgnoreCase(level_raw, S_WARNING)) return .warn;
+    if (std.ascii.eqlIgnoreCase(level_raw, S_ERR) or std.ascii.eqlIgnoreCase(level_raw, S_ERROR)) return .err;
     return null;
 }
 
@@ -67,10 +74,10 @@ fn executorLog(
 ) void {
     if (!shouldLog(level)) return;
     const level_str = comptime switch (level) {
-        .err => "err",
-        .warn => "warn",
-        .info => "info",
-        .debug => "debug",
+        .err => S_ERR,
+        .warn => S_WARN,
+        .info => S_INFO,
+        .debug => S_DEBUG,
     };
     const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
     const ts = std.time.milliTimestamp();
@@ -208,25 +215,25 @@ fn parseU64Env(alloc: std.mem.Allocator, name: []const u8, default: u64) u64 {
 
 // Pull in tests from all executor modules.
 test {
-    _ = @import("types.zig");
+    _ = types;
     _ = @import("context_budget.zig");
     _ = @import("protocol.zig");
-    _ = @import("transport.zig");
-    _ = @import("session.zig");
+    _ = transport;
+    _ = Session;
     _ = @import("session_test.zig");
-    _ = @import("runtime/session_store.zig");
+    _ = SessionStore;
     _ = @import("runtime/secret_substitution.zig");
     _ = @import("runtime/policy_http_request.zig");
     _ = @import("runtime/policy_http_request_test.zig");
     _ = @import("runner_progress.zig");
     _ = @import("runner_progress_test.zig");
     _ = @import("runner_progress_redact_test.zig");
-    _ = @import("handler.zig");
+    _ = handler_mod;
     _ = @import("handler_create_execution_test.zig");
-    _ = @import("lease.zig");
-    _ = @import("landlock.zig");
-    _ = @import("cgroup.zig");
-    _ = @import("network.zig");
+    _ = lease_mod;
+    _ = landlock;
+    _ = cgroup;
+    _ = network;
     _ = @import("executor_network_policy.zig");
     _ = @import("executor_metrics.zig");
     _ = @import("json_helpers.zig");

@@ -17,15 +17,21 @@
 #   fails on the cheapest discipline regressions before paying for oxlint /
 #   tsc / zlint / actionlint / redocly.
 #
-# Scope:
-#   Each script's "diff scope" flag is passed so the audit operates on the
-#   staged delta (not the whole repo). Flag conventions differ per script —
-#   `audit-ufs.sh` post-M70 only supports `--all` (the `--diff` mode was
-#   retired); `audit-design-tokens.sh` and `audit-msid-ui.sh` accept both
-#   `--diff` and `--staged`, and the pre-commit context wants `--staged` so
-#   that staged-but-uncommitted changes are seen. The rest of the audits
-#   use `--staged`. The flag passed to each call below matches what's
-#   correct for the pre-commit invocation, not the script's *default*.
+# Scope (M70):
+#   Every script except audit-combined.sh now defaults to a full-codebase
+#   scan via `git ls-files` — which reports the index, so staged-not-yet-
+#   committed content is in scope automatically. Pre-commit no longer
+#   needs to pass `--staged` or `--diff`; we invoke each script with no
+#   args and let its default scope do the right thing.
+#
+#   audit-combined.sh is the lone exception. It is diff-shaped by
+#   construction (asserts on *added* lines, not file state) and stays on
+#   `--staged` for pre-commit context. The script's docstring documents
+#   per-check rationale.
+#
+#   M68 commit 02c1f3cf (the orphan-cleanup slip) was the forcing
+#   function — pre-commit `HEAD` is the prior commit, so a `BASE...HEAD`
+#   check was blind to a fix the agent staged but had not yet committed.</
 #
 # Adding a gate:
 #   1. Drop scripts/audit-<gate>.sh on disk (or symlink from dotfiles).
@@ -61,28 +67,31 @@ else \
 fi
 endef
 
-harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; --staged)
-	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · staged scope$(C_RESET)\n"
-	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh --all)
-	$(call HARNESS_RUN,DESIGN TOKEN,scripts/audit-design-tokens.sh --staged)
-	$(call HARNESS_RUN,SPEC TEMPLATE,scripts/audit-spec-template.sh --staged)
-	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh --staged)
-	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh --staged)
-	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh --staged)
-	$(call HARNESS_RUN,COMBINED,scripts/audit-msid-ui.sh --staged)
+harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIFY layer; full-codebase scope)
+	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · full-codebase scope$(C_RESET)\n"
+	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh)
+	$(call HARNESS_RUN,DESIGN TOKEN,scripts/audit-design-tokens.sh)
+	$(call HARNESS_RUN,SPEC TEMPLATE,scripts/audit-spec-template.sh)
+	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
+	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
+	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
+	# audit-msid-ui.sh is diff-shaped by construction — it asserts on
+	# *added* lines, not file state. Stays on --staged for pre-commit
+	# context. See scripts/audit-msid-ui.sh "Per-check scope" docstring.
+	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --staged)</
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 
 harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	@printf "\n$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)HARNESS VERIFY$(C_RESET) $(C_GREY)── deterministic gates · whole worktree$(C_RESET)\n"
-	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh --all)
-	$(call HARNESS_RUN,DESIGN TOKEN,scripts/audit-design-tokens.sh --all)
-	$(call HARNESS_RUN,SPEC TEMPLATE,scripts/audit-spec-template.sh --all)
-	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh --all)
-	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh --all)
-	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh --all)
-	# COMBINED is diff-shaped by construction — it asserts on *added* lines
-	# (`^\+` in a unified diff), not on file state. There's no "whole-worktree"
-	# semantic that makes sense; --diff (vs origin/main) is the broadest
-	# meaningful scope. The script intentionally rejects --all (exit 2).
-	$(call HARNESS_RUN,COMBINED,scripts/audit-msid-ui.sh --diff)
+	# After M70 every audit defaults to full-codebase, so harness-verify-all
+	# differs from harness-verify only in the COMBINED check's scope:
+	# `--diff` (vs origin/main) is the broadest meaningful scope for that
+	# diff-shaped script.
+	$(call HARNESS_RUN,UFS,scripts/audit-ufs.sh)
+	$(call HARNESS_RUN,DESIGN TOKEN,scripts/audit-design-tokens.sh)
+	$(call HARNESS_RUN,SPEC TEMPLATE,scripts/audit-spec-template.sh)
+	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
+	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
+	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
+	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --diff)</
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"

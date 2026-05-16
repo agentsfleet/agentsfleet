@@ -8,6 +8,10 @@ const log = logging.scoped(.balance_policy);
 
 const ENV_VAR_NAME = "BALANCE_EXHAUSTED_POLICY";
 
+const S_CONTINUE = "continue";
+const S_STOP = "stop";
+const S_WARN = "warn";
+
 pub const Policy = enum {
     /// Log + let the run proceed. Zero nanos deducted.
     @"continue",
@@ -18,9 +22,9 @@ pub const Policy = enum {
 
     pub fn label(self: Policy) []const u8 {
         return switch (self) {
-            .@"continue" => "continue",
-            .warn => "warn",
-            .stop => "stop",
+            .@"continue" => S_CONTINUE,
+            .warn => S_WARN,
+            .stop => S_STOP,
         };
     }
 };
@@ -28,9 +32,9 @@ pub const Policy = enum {
 pub const DEFAULT: Policy = .warn;
 
 pub fn parse(raw: []const u8) ?Policy {
-    if (std.ascii.eqlIgnoreCase(raw, "continue")) return .@"continue";
-    if (std.ascii.eqlIgnoreCase(raw, "warn")) return .warn;
-    if (std.ascii.eqlIgnoreCase(raw, "stop")) return .stop;
+    if (std.ascii.eqlIgnoreCase(raw, S_CONTINUE)) return .@"continue";
+    if (std.ascii.eqlIgnoreCase(raw, S_WARN)) return .warn;
+    if (std.ascii.eqlIgnoreCase(raw, S_STOP)) return .stop;
     return null;
 }
 
@@ -63,10 +67,22 @@ pub fn resolveFromEnv(alloc: std.mem.Allocator) Policy {
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
-test "parse: accepts known values, case-insensitive" {
-    try std.testing.expectEqual(Policy.@"continue", parse("continue").?);
-    try std.testing.expectEqual(Policy.warn, parse("warn").?);
-    try std.testing.expectEqual(Policy.stop, parse("stop").?);
+test "wire labels are the contract" {
+    // pin test: literal is the contract
+    try std.testing.expectEqualStrings("continue", Policy.@"continue".label());
+    // pin test: literal is the contract
+    try std.testing.expectEqualStrings("warn", Policy.warn.label());
+    // pin test: literal is the contract
+    try std.testing.expectEqualStrings("stop", Policy.stop.label());
+}
+
+test "parse: every variant round-trips through its label" {
+    inline for (.{ Policy.@"continue", Policy.warn, Policy.stop }) |p| {
+        try std.testing.expectEqual(p, parse(p.label()).?);
+    }
+}
+
+test "parse: case-insensitive" {
     try std.testing.expectEqual(Policy.@"continue", parse("CONTINUE").?);
     try std.testing.expectEqual(Policy.warn, parse("Warn").?);
 }
@@ -81,12 +97,6 @@ test "DEFAULT is warn" {
     try std.testing.expectEqual(Policy.warn, DEFAULT);
 }
 
-test "label round-trips" {
-    try std.testing.expectEqualStrings("continue", Policy.@"continue".label());
-    try std.testing.expectEqualStrings("warn", Policy.warn.label());
-    try std.testing.expectEqualStrings("stop", Policy.stop.label());
-}
-
 // ── resolve ───────────────────────────────────────────────────────────────
 //
 // resolve() is the pure env→Policy core consumed by worker.zig at startup.
@@ -99,10 +109,13 @@ test "resolve: null raw returns DEFAULT (env-absent branch)" {
     try std.testing.expectEqual(DEFAULT, resolve(null));
 }
 
-test "resolve: known tokens parse case-insensitively" {
-    try std.testing.expectEqual(Policy.stop, resolve("stop"));
-    try std.testing.expectEqual(Policy.warn, resolve("warn"));
-    try std.testing.expectEqual(Policy.@"continue", resolve("continue"));
+test "resolve: every variant decodes from its label" {
+    inline for (.{ Policy.@"continue", Policy.warn, Policy.stop }) |p| {
+        try std.testing.expectEqual(p, resolve(p.label()));
+    }
+}
+
+test "resolve: case-insensitive" {
     try std.testing.expectEqual(Policy.stop, resolve("STOP"));
     try std.testing.expectEqual(Policy.@"continue", resolve("Continue"));
 }

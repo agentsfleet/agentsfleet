@@ -11,9 +11,15 @@
 
 const std = @import("std");
 
+const S_APPROVALS = "approvals";
+const S_WORKSPACES = "workspaces";
+const S_WEBHOOKS = "webhooks";
+const S_ZOMBIES = "zombies";
+
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
 const RESERVED_SVIX = "svix";
+const RESERVED_CLERK = "clerk";
 const RESERVED_APPROVAL = "approval";
 const RESERVED_GRANT_APPROVAL = "grant-approval";
 
@@ -111,7 +117,7 @@ pub fn matchTenantApiKeyById(p: Path) ?[]const u8 {
 
 pub fn matchWorkspaceSuffix(p: Path, suffix: []const u8) ?[]const u8 {
     if (p.segs.len != 3) return null;
-    if (!p.eq(0, "workspaces")) return null;
+    if (!p.eq(0, S_WORKSPACES)) return null;
     if (!p.eq(2, suffix)) return null;
     return p.param(1);
 }
@@ -125,7 +131,7 @@ pub const WorkspaceCredentialRoute = struct {
 
 pub fn matchWorkspaceCredential(p: Path) ?WorkspaceCredentialRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "credentials")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "credentials")) return null;
     const ws = p.param(1) orelse return null;
     const name = p.param(3) orelse return null;
     return .{ .workspace_id = ws, .credential_name = name };
@@ -140,7 +146,7 @@ pub const WorkspaceAgentRoute = struct {
 
 pub fn matchWorkspaceAgentDelete(p: Path) ?WorkspaceAgentRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "agent-keys")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, "agent-keys")) return null;
     const ws = p.param(1) orelse return null;
     const agent_id = p.param(3) orelse return null;
     return .{ .workspace_id = ws, .agent_id = agent_id };
@@ -155,7 +161,7 @@ pub const WorkspaceZombieRoute = struct {
 
 pub fn matchWorkspaceZombie(p: Path) ?WorkspaceZombieRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
     return .{ .workspace_id = ws, .zombie_id = zid };
@@ -167,7 +173,7 @@ pub fn matchWorkspaceZombie(p: Path) ?WorkspaceZombieRoute {
 
 pub fn matchWorkspaceZombieAction(p: Path, action: []const u8) ?WorkspaceZombieRoute {
     if (p.segs.len != 5) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
     if (!p.eq(4, action)) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
@@ -179,7 +185,7 @@ pub fn matchWorkspaceZombieAction(p: Path, action: []const u8) ?WorkspaceZombieR
 
 pub fn matchWorkspaceZombieEventsStream(p: Path) ?WorkspaceZombieRoute {
     if (p.segs.len != 6) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
     if (!p.eq(4, "events") or !p.eq(5, "stream")) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
@@ -199,7 +205,7 @@ const ZombieLeafView = struct {
 
 fn matchZombieLeaf(p: Path, leaf_segment: []const u8) ?ZombieLeafView {
     if (p.segs.len != 6) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "zombies")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_ZOMBIES)) return null;
     if (!p.eq(4, leaf_segment)) return null;
     const ws = p.param(1) orelse return null;
     const zid = p.param(3) orelse return null;
@@ -255,7 +261,7 @@ fn approvalDecisionFromLeaf(leaf: []const u8) ?ApprovalResolveDecision {
 
 pub fn matchWorkspaceApprovalResolve(p: Path) ?ApprovalResolveRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "approvals")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_APPROVALS)) return null;
     const ws = p.param(1) orelse return null;
     const leaf = p.param(3) orelse return null;
     const decision = approvalDecisionFromLeaf(leaf) orelse return null;
@@ -268,7 +274,7 @@ pub fn matchWorkspaceApprovalResolve(p: Path) ?ApprovalResolveRoute {
 
 pub fn matchWorkspaceApprovalGate(p: Path) ?ApprovalGateRoute {
     if (p.segs.len != 4) return null;
-    if (!p.eq(0, "workspaces") or !p.eq(2, "approvals")) return null;
+    if (!p.eq(0, S_WORKSPACES) or !p.eq(2, S_APPROVALS)) return null;
     const ws = p.param(1) orelse return null;
     const leaf = p.param(3) orelse return null;
     if (approvalDecisionFromLeaf(leaf) != null) return null;
@@ -278,24 +284,23 @@ pub fn matchWorkspaceApprovalGate(p: Path) ?ApprovalGateRoute {
 
 // ── /webhooks/* family ─────────────────────────────────────────────────────
 //
-// Five shapes share the prefix; reserved second segment (svix) and reserved
-// trailing actions (approval, grant-approval) are excluded from the catch-all
-// matchers so any two matchers are mutually exclusive at the segment level.
-// (Clerk's user.created event lives on /v1/auth/identity-events/clerk now,
-// outside the /v1/webhooks/ namespace — no reserved literal needed.)
+// Five shapes share the prefix; reserved second segments (svix, clerk) and
+// reserved trailing actions (approval, grant-approval) are excluded from the
+// catch-all matchers so any two matchers are mutually exclusive at the
+// segment level.
 
 pub fn matchWebhookAction(p: Path, action: []const u8) ?[]const u8 {
     if (p.segs.len != 3) return null;
-    if (!p.eq(0, "webhooks")) return null;
+    if (!p.eq(0, S_WEBHOOKS)) return null;
     if (!p.eq(2, action)) return null;
-    if (p.eq(1, RESERVED_SVIX)) return null;
+    if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
     if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
     return p.param(1);
 }
 
 pub fn matchSvixWebhook(p: Path) ?[]const u8 {
     if (p.segs.len != 3) return null;
-    if (!p.eq(0, "webhooks") or !p.eq(1, RESERVED_SVIX)) return null;
+    if (!p.eq(0, S_WEBHOOKS) or !p.eq(1, RESERVED_SVIX)) return null;
     return p.param(2);
 }
 
@@ -305,8 +310,8 @@ pub fn matchSvixWebhook(p: Path) ?[]const u8 {
 /// URL-embedded-secret variant was removed in M43.
 pub fn matchWebhook(p: Path) ?[]const u8 {
     if (p.segs.len != 2) return null;
-    if (!p.eq(0, "webhooks")) return null;
-    if (p.eq(1, RESERVED_SVIX)) return null;
+    if (!p.eq(0, S_WEBHOOKS)) return null;
+    if (p.eq(1, RESERVED_SVIX) or p.eq(1, RESERVED_CLERK)) return null;
     if (p.eq(1, RESERVED_APPROVAL) or p.eq(1, RESERVED_GRANT_APPROVAL)) return null;
     return p.param(1);
 }

@@ -49,6 +49,8 @@ const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
 const ERR_EXEC_RUNNER_AGENT_RUN = client_errors.ERR_EXEC_RUNNER_AGENT_RUN;
 const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 
+const S_SECRETS_LLM_API_KEY = "${secrets.llm.api_key}";
+
 pub const RunnerError = error{
     InvalidConfig,
     AgentInitFailed,
@@ -277,10 +279,10 @@ pub const composeMessage = runner_helpers.composeMessage;
 /// reviewers should add a row to those tests for every new slot.
 pub fn collectSecrets(agent_config: ?std.json.Value) [1]runner_progress.Secret {
     const ac = agent_config orelse return .{
-        .{ .value = "", .placeholder = "${secrets.llm.api_key}" },
+        .{ .value = "", .placeholder = S_SECRETS_LLM_API_KEY },
     };
     return .{
-        .{ .value = json.getStr(ac, wire.api_key) orelse "", .placeholder = "${secrets.llm.api_key}" },
+        .{ .value = json.getStr(ac, wire.api_key) orelse "", .placeholder = S_SECRETS_LLM_API_KEY },
     };
 }
 

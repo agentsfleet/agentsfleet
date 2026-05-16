@@ -26,6 +26,8 @@ pub const AuthCtx = auth_ctx.AuthCtx;
 /// Free fields of `oidc.Principal` that `AuthPrincipal` does not adopt.
 /// `AuthPrincipal` keeps subject/tenant_id/workspace_id; everything else
 /// (issuer, org_id, role, audience, scopes) would otherwise leak.
+const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
+
 fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
     alloc.free(p.issuer);
     if (p.org_id) |v| alloc.free(v);
@@ -48,7 +50,7 @@ pub const BearerOidc = struct {
 
     pub fn execute(self: *BearerOidc, ctx: *AuthCtx, req: *httpz.Request) !chain.Outcome {
         if (bearer.parseBearerToken(req) == null) {
-            ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+            ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
             return .short_circuit;
         }
         const auth_header = req.header("authorization").?;
@@ -62,7 +64,7 @@ pub const BearerOidc = struct {
                 return .short_circuit;
             },
             else => {
-                ctx.fail(errors.ERR_UNAUTHORIZED, "Invalid or missing token");
+                ctx.fail(errors.ERR_UNAUTHORIZED, S_INVALID_OR_MISSING_TOKEN);
                 return .short_circuit;
             },
         };

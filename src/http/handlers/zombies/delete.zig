@@ -37,6 +37,8 @@ const Hx = hx_mod.Hx;
 
 const DeleteOutcome = enum { purged, not_killed, not_found };
 
+const S_ROLLBACK = "ROLLBACK";
+
 pub fn innerDeleteZombie(hx: Hx, _: *httpz.Request, workspace_id: []const u8, zombie_id: []const u8) void {
     if (!id_format.isSupportedWorkspaceId(workspace_id)) {
         hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_WORKSPACE_ID_REQUIRED);
@@ -106,7 +108,7 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     }
 
     _ = try conn.exec("BEGIN", .{});
-    errdefer _ = conn.exec("ROLLBACK", .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+    errdefer _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 
     _ = try conn.exec(
         "DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1 AND zombie_id = $2",
@@ -136,7 +138,7 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     defer del.deinit();
     const purged = (try del.next()) != null;
     if (!purged) {
-        _ = conn.exec("ROLLBACK", .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+        _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
         return .not_killed;
     }
     _ = try conn.exec("COMMIT", .{});

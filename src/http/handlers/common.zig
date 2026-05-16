@@ -22,6 +22,11 @@ pub const TraceContext = trace_ctx.TraceContext;
 pub const HEADER_CONTENT_TYPE = "Content-Type";
 pub const CONTENT_TYPE_PROBLEM_JSON = "application/problem+json";
 
+const S_AUTHORIZATION = "authorization";
+const S_PAYLOAD_TOO_LARGE_MAX_2MB = "Payload too large: max 2MB";
+
+const S_PUNCT_99914B = "{}";
+
 pub const Context = struct {
     pool: *pg.Pool,
     queue: *queue_redis.Client,
@@ -69,7 +74,7 @@ pub fn writeJson(res: *httpz.Response, status: std.http.Status, value: anytype) 
     res.status = @intFromEnum(status);
     res.json(value, .{}) catch {
         res.status = 500;
-        res.body = "{}";
+        res.body = S_PUNCT_99914B;
     };
 }
 
@@ -96,7 +101,7 @@ pub fn errorResponse(
     const json_formatter = std.json.fmt(body, .{});
     json_formatter.format(&res.buffer.writer) catch {
         res.status = 500;
-        res.body = "{}";
+        res.body = S_PUNCT_99914B;
     };
 }
 
@@ -122,12 +127,12 @@ pub fn checkBodySize(req: *httpz.Request, res: *httpz.Response, body: []const u8
     if (req.header("content-length")) |cl_str| {
         const cl = std.fmt.parseInt(usize, cl_str, 10) catch 0;
         if (cl > MAX_BODY_SIZE) {
-            errorResponse(res, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
+            errorResponse(res, error_codes.ERR_PAYLOAD_TOO_LARGE, S_PAYLOAD_TOO_LARGE_MAX_2MB, request_id);
             return false;
         }
     }
     if (body.len >= MAX_BODY_SIZE) {
-        errorResponse(res, error_codes.ERR_PAYLOAD_TOO_LARGE, "Payload too large: max 2MB", request_id);
+        errorResponse(res, error_codes.ERR_PAYLOAD_TOO_LARGE, S_PAYLOAD_TOO_LARGE_MAX_2MB, request_id);
         return false;
     }
     return true;
@@ -141,7 +146,7 @@ pub fn requestId(alloc: std.mem.Allocator) []const u8 {
 }
 
 fn parseBearerToken(req: *httpz.Request) ?[]const u8 {
-    const auth = req.header("authorization") orelse return null;
+    const auth = req.header(S_AUTHORIZATION) orelse return null;
     const prefix = "Bearer ";
     if (!std.mem.startsWith(u8, auth, prefix)) return null;
     const provided = auth[prefix.len..];
@@ -153,7 +158,7 @@ pub fn authenticate(alloc: std.mem.Allocator, req: *httpz.Request, ctx: *Context
     _ = parseBearerToken(req) orelse return AuthError.Unauthorized;
 
     if (ctx.oidc) |verifier| {
-        const auth = req.header("authorization") orelse return AuthError.Unauthorized;
+        const auth = req.header(S_AUTHORIZATION) orelse return AuthError.Unauthorized;
         const principal = verifier.verifyAuthorization(alloc, auth) catch |err| switch (err) {
             error.TokenExpired => return AuthError.TokenExpired,
             error.JwksFetchFailed, error.JwksParseFailed => return AuthError.AuthServiceUnavailable,
