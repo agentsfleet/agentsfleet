@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 
-import { stateInternals } from "../src/lib/state.js";
+import { stateInternals } from "../src/lib/state.ts";
 
 test("resolveStatePaths defaults to XDG-style zombiectl config directory", () => {
   const previous = process.env.ZOMBIE_STATE_DIR;

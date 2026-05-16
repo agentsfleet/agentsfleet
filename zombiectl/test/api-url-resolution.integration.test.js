@@ -5,7 +5,7 @@ import path from "node:path";
 import { Writable } from "node:stream";
 
 import { runCli } from "../src/cli.js";
-import { saveCredentials } from "../src/lib/state.js";
+import { saveCredentials } from "../src/lib/state.ts";
 
 function bufferStream() {
   let data = "";

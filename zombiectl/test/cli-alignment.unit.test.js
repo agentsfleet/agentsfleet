@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
 import { runCli } from "../src/cli.js";
-import { loadWorkspaces, saveWorkspaces } from "../src/lib/state.js";
+import { loadWorkspaces, saveWorkspaces } from "../src/lib/state.ts";
 
 function bufferStream() {
   let data = "";
