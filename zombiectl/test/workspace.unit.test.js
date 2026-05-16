@@ -5,7 +5,7 @@ import {
   makeNoop,
   ui,
   WS_ID,
-} from "./helpers.js";
+} from "./helpers.ts";
 const WS_ID_2 = "0195b4ba-8d3a-7f13-8abc-000000000099";
 
 function makeDeps(overrides = {}) {

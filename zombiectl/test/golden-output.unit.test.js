@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runCli, VERSION } from "../src/cli.ts";
-import { makeBufferStream } from "./helpers.js";
+import { makeBufferStream } from "./helpers.ts";
 
 const TEST_DIR = dirname(fileURLToPath(import.meta.url));
 const GOLDEN_DIR = join(TEST_DIR, "golden");

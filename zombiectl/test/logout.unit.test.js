@@ -4,7 +4,7 @@ import {
   makeBufferStream,
   makeNoop,
   ui,
-} from "./helpers.js";
+} from "./helpers.ts";
 function makeDeps(overrides = {}) {
   return {
     clearCredentials: async () => {},

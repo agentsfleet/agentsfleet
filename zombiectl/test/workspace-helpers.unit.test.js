@@ -18,7 +18,7 @@ import {
   makeNoop,
   ui,
   WS_ID,
-} from "./helpers.js";
+} from "./helpers.ts";
 const INVALID_ID = "@@@@";
 
 function makeDeps(overrides = {}) {

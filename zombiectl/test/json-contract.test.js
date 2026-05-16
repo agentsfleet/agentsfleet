@@ -4,7 +4,7 @@
 // surface UNKNOWN_COMMAND instead of resolving silently.
 
 import { describe, test, expect } from "bun:test";
-import { makeBufferStream, ui } from "./helpers.js";
+import { makeBufferStream, ui } from "./helpers.ts";
 import { runCli } from "../src/cli.ts";
 import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";

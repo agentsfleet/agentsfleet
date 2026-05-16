@@ -1,6 +1,6 @@
 import { test, expect } from "bun:test";
 import { commandSteer } from "../src/commands/zombie_steer.ts";
-import { buildParsed } from "./helpers.js";
+import { buildParsed } from "./helpers.ts";
 
 // Internals (eventIdToSince / isTerminal / buildBearer) are exercised
 // indirectly through commandSteer. We drive every uncovered branch:

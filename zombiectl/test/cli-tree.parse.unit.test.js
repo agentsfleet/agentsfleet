@@ -11,7 +11,7 @@ import {
   makeSpyTree,
   buildSilent,
   dispatch,
-} from "./helpers-cli-tree.js";
+} from "./helpers-cli-tree.ts";
 import { buildProgram } from "../src/program/cli-tree.ts";
 
 // ── User commands ───────────────────────────────────────────────────────

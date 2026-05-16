@@ -9,7 +9,7 @@ import {
   VALID_ID,
   makeSpyTree,
   dispatch,
-} from "./helpers-cli-tree.js";
+} from "./helpers-cli-tree.ts";
 
 test("install accepts --from <path>", async () => {
   const { handlers, calls } = makeSpyTree();

@@ -8,7 +8,7 @@
 import { describe, test, expect, beforeEach } from "bun:test";
 import { palette, PALETTE_INTERNALS } from "../src/output/palette.ts";
 import { ColorMode, resetCapabilityWarning } from "../src/output/capability.ts";
-import { makeBufferStream } from "./helpers.js";
+import { makeBufferStream } from "./helpers.ts";
 
 const ESC = "\u001b";
 

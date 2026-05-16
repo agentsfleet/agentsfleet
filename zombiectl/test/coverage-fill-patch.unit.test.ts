@@ -31,7 +31,7 @@ import type {
   CommandDeps,
   Workspaces,
 } from "../src/commands/types.ts";
-import { buildParsed } from "./helpers.js";
+import { buildParsed } from "./helpers.ts";
 
 // Discard-all writable — strict CommandCtx requires real NodeJS.WritableStream
 // shapes for stdout/stderr. Use one per test to avoid cross-test buffering.
