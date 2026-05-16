@@ -40,6 +40,23 @@ fn defaultStopServer() void {
     if (active_server.load(.acquire)) |s| s.stop();
 }
 
+/// Boot-path read of the request-path Redis read-timeout knob (spec §6).
+/// Absent env → default; present-but-malformed → fail loud (env hygiene
+/// matches DATABASE_URL / REDIS_URL validation upstream).
+fn readRedisRequestTimeoutMs(alloc: std.mem.Allocator) u32 {
+    const raw = std.process.getEnvVarOwned(alloc, queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV) catch {
+        return queue_redis.REDIS_REQUEST_TIMEOUT_MS_DEFAULT;
+    };
+    defer alloc.free(raw);
+    return std.fmt.parseInt(u32, raw, 10) catch {
+        log.err(S_STARTUP_ENV_CHECK_FAILED, .{
+            .error_code = error_codes.ERR_STARTUP_ENV_CHECK,
+            .err = queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV ++ " must parse as a non-negative integer (ms)",
+        });
+        std.process.exit(1);
+    };
+}
+
 const webhook_sig = auth_mw.webhook_sig_mod;
 const svix_signature = auth_mw.svix_signature_mod;
 
@@ -128,7 +145,11 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer api_pool.deinit();
 
     log.info("startup.redis_connect_start", .{ .role = S_API });
-    var api_queue = queue_redis.Client.connectFromEnv(alloc, .api) catch |err| {
+    const redis_request_timeout_ms = readRedisRequestTimeoutMs(alloc);
+    log.info("startup.redis_request_timeout_resolved", .{ .ms = redis_request_timeout_ms });
+    var api_queue = queue_redis.Client.connectFromEnvWithOptions(alloc, .api, .{
+        .read_timeout_ms = redis_request_timeout_ms,
+    }) catch |err| {
         log.err("startup.redis_connect_failed", .{
             .role = S_API,
             .error_code = error_codes.ERR_STARTUP_REDIS_CONNECT,

@@ -17,6 +17,10 @@ const Pool = @This();
 pub const InitOptions = struct {
     max_idle: usize = 8,
     eager_min: usize = 2,
+    /// `SO_RCVTIMEO` applied to every pooled Connection's transport (spec
+    /// §6). Null = no request-path timeout (legacy block-forever). Boot
+    /// reads `REDIS_REQUEST_TIMEOUT_MS` in `serve.zig` and threads through.
+    read_timeout_ms: ?u32 = null,
 };
 
 pub const PoolStats = struct {
@@ -40,6 +44,7 @@ alloc: std.mem.Allocator,
 cfg: redis_config.Config,
 max_idle: usize,
 eager_min: usize,
+read_timeout_ms: ?u32,
 
 idle: std.SinglyLinkedList = .{},
 idle_count: usize = 0,
@@ -63,6 +68,7 @@ pub fn init(alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOpt
         .cfg = cfg,
         .max_idle = options.max_idle,
         .eager_min = options.eager_min,
+        .read_timeout_ms = options.read_timeout_ms,
     };
     errdefer redis_config.deinitConfig(alloc, pool.cfg);
 
@@ -78,6 +84,7 @@ pub fn init(alloc: std.mem.Allocator, cfg: redis_config.Config, options: InitOpt
         const conn = try alloc.create(Connection);
         errdefer alloc.destroy(conn);
         conn.* = try Connection.init(alloc, &pool.cfg, .pooled);
+        conn.applyReadTimeout(pool.read_timeout_ms);
         pool.idle.prepend(&conn.node);
         pool.idle_count += 1;
         pool.dials_total += 1;
@@ -120,6 +127,7 @@ pub fn acquire(self: *Pool) !*Connection {
         self.mutex.unlock();
         return err;
     };
+    conn.applyReadTimeout(self.read_timeout_ms);
 
     self.mutex.lock();
     self.dials_total += 1;

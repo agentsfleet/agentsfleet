@@ -29,20 +29,42 @@ const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
 /// at-least-once delivery.
 const MAX_ATTEMPTS: u8 = 2;
 
+/// Boot-path env knob for the request-path read timeout (spec §6).
+/// Read in `serve.zig` and threaded through `connectFromEnvWithOptions`.
+/// Constant lives here because the queue layer owns the semantics; the
+/// env-name string is shared with operator docs verbatim.
+pub const REDIS_REQUEST_TIMEOUT_MS_ENV = "REDIS_REQUEST_TIMEOUT_MS";
+pub const REDIS_REQUEST_TIMEOUT_MS_DEFAULT: u32 = 5000;
+
+pub const InitOptions = struct {
+    /// `SO_RCVTIMEO` for every pooled Connection. Null = block forever
+    /// (legacy / test harness). Production callers pass the env-derived
+    /// value so a frozen Upstash proxy can't pin a worker thread.
+    read_timeout_ms: ?u32 = null,
+};
+
 alloc: std.mem.Allocator,
 pool: Pool,
 
 pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole) !Client {
+    return connectFromEnvWithOptions(alloc, role, .{});
+}
+
+pub fn connectFromEnvWithOptions(alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Client {
     const url_owned = try redis_config.resolveRedisUrl(alloc, role);
     defer alloc.free(url_owned);
-    return connectFromUrl(alloc, url_owned);
+    return connectFromUrlWithOptions(alloc, url_owned, options);
 }
 
 pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
+    return connectFromUrlWithOptions(alloc, url, .{});
+}
+
+pub fn connectFromUrlWithOptions(alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Client {
     const cfg = try redis_config.parseRedisUrl(alloc, url);
     errdefer redis_config.deinitConfig(alloc, cfg);
 
-    var pool = try Pool.init(alloc, cfg, .{});
+    var pool = try Pool.init(alloc, cfg, .{ .read_timeout_ms = options.read_timeout_ms });
     errdefer pool.deinit();
 
     log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
