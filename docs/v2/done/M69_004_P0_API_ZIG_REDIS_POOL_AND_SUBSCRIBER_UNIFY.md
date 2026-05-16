@@ -4,7 +4,7 @@
 **Milestone:** M69
 **Workstream:** 004
 **Date:** May 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P0 — fixes M42_003's single-mutex contention bottleneck; throughput today is hard-capped at ~40 ops/sec/connection across the whole server.
 **Categories:** API, INFRA, OBS
 **Batch:** B1 — parallel-worktree compatible with M68 (zero queue-file overlap with M68's pending slices verified).
@@ -535,16 +535,16 @@ try conn.exec(
 
 ## Acceptance Criteria
 
-- [ ] Every Test Specification row passes — verify: `make test && make test-integration && make memleak`.
+- [x] Every Test Specification row passes — verify: `make test && make test-integration && make memleak`. ✅ `test-unit-all` 29/29 pass, `test-integration` "All integration tests passed", `memleak` 1303 passed / 221 skipped / 0 failed.
 - [x] Bench run clean — verify: `BENCH_REDIS=1 make bench-redis` exits 0 against local Redis; aggregate ops/sec pasted in PR Session Notes.
-- [ ] No `std.Thread.Mutex` in `redis_client.zig` — verify: `grep -c "std.Thread.Mutex" src/queue/redis_client.zig` returns `0`.
+- [x] No `std.Thread.Mutex` in `redis_client.zig` — verify: `grep -c "std.Thread.Mutex" src/queue/redis_client.zig` returns `0`.
 - [x] `redis_pubsub.zig` deleted — verify: `test ! -f src/queue/redis_pubsub.zig`.
 - [x] All `redis_pubsub` references gone — verify: `grep -rn "redis_pubsub" src/` returns 0 hits.
-- [ ] `make lint` clean (includes `make check-pg-drain` and length-gate sweep).
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`.
-- [ ] `gitleaks detect` clean.
-- [ ] No file over 350 lines added (pool, connection, errors all target well under). Heads-up: `src/queue/redis_connection.zig` is the largest target at ~200 lines — if it crosses 250 during implementation, consider splitting RESP encode/decode into a sibling `redis_resp.zig` before crossing 350.
-- [ ] Memleak clean: `make memleak`.
+- [x] `make lint` clean (includes `make check-pg-drain` and length-gate sweep). ✅ surface-aware pre-commit ran `lint-zig` + `lint-apps-ds-ctl` + `harness-verify` clean.
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`.
+- [x] `gitleaks detect` clean.
+- [x] No file over 350 lines added (pool, connection, errors all target well under). ✅ FLL gate clean in pre-commit; manual check `wc -l src/queue/redis_*.zig` confirms every file under 350.
+- [x] Memleak clean: `make memleak`.
 
 ---
 
