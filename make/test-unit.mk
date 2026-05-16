@@ -2,7 +2,7 @@
 # TEST-UNIT — zombied, zombiectl, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-zombied test-unit-zombiectl test-unit-website test-unit-skills test-coverage-all _test-coverage-zombied
+.PHONY: test-unit-zombied test-unit-zombiectl test-unit-website test-unit-app test-unit-design-system test-unit-skills test-coverage-all _test-coverage-zombied
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -30,6 +30,16 @@ test-unit-website:  ## Run website unit tests (vitest)
 	@echo "→ [website] Running Vitest unit tests..."
 	@cd ui/packages/website && bun run test
 	@echo "✓ [website] Unit tests passed"
+
+test-unit-app:  ## Run app unit tests (vitest, no coverage)
+	@echo "→ [app] Running Vitest unit tests..."
+	@cd ui/packages/app && bun run test
+	@echo "✓ [app] Unit tests passed"
+
+test-unit-design-system:  ## Run design-system unit tests (vitest, no coverage)
+	@echo "→ [design-system] Running Vitest unit tests..."
+	@cd ui/packages/design-system && bun run test
+	@echo "✓ [design-system] Unit tests passed"
 
 test-unit-skills:  ## Run agent-skill substitution + invariant unit tests (node --test, deterministic subset)
 	@echo "→ [skills] Running agent-skill substitution + invariant suite..."
