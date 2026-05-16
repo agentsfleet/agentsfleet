@@ -31,38 +31,47 @@ import path from "node:path";
 import {
   EMPTY_LIST_CONVENTIONS,
   READ_ONLY_COMMANDS,
-} from "./fixtures/command-matrix.js";
+} from "./fixtures/command-matrix.ts";
 import { composeEnv, runZombiectl, spawnZombiectl } from "./fixtures/cli.js";
-import { assertNoSecretLeak } from "./fixtures/negatives.js";
+import type { RunResult } from "./fixtures/cli.js";
+import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
   resolveAcceptanceEnv,
   resolveClerkSecret,
   resolveFixtureEmail,
-} from "./global-setup.js";
-import { attachJwt } from "./fixtures/clerk-admin.js";
-import { completeCliAuthHandoff } from "./fixtures/browser.js";
-import { installPlatformOpsZombie } from "./fixtures/seed.js";
-import { cleanWorkspaceZombies } from "./fixtures/teardown.js";
+} from "./global-setup.ts";
+import { attachJwt } from "./fixtures/clerk-admin.ts";
+import { completeCliAuthHandoff } from "./fixtures/browser.ts";
+import { installPlatformOpsZombie } from "./fixtures/seed.ts";
+import { cleanWorkspaceZombies } from "./fixtures/teardown.ts";
 import {
   expectStatus,
   killZombie,
   resumeZombie,
   stopZombie,
-} from "./fixtures/lifecycle.js";
+} from "./fixtures/lifecycle.ts";
+
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 const target = process.env.ZOMBIE_ACCEPTANCE_TARGET ?? "";
 const dashboardUrl = process.env.ZOMBIE_ACCEPTANCE_DASHBOARD_URL ?? "";
 const isLive = target.startsWith("https://");
 const hasDashboard = dashboardUrl.startsWith("https://") || dashboardUrl.startsWith("http://localhost");
 
-function parseLoginUrl(stdout) {
+interface ExitCapture {
+  readonly code: number | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+function parseLoginUrl(stdout: string): string {
   // The CLI prints "login_url: <URL>" inside the Login session block.
   const match = stdout.match(/login_url:\s*(https?:\/\/\S+)/i);
-  if (!match) throw new Error(`could not find login_url in CLI stdout: ${stdout.slice(0, 400)}`);
+  if (!match || !match[1]) throw new Error(`could not find login_url in CLI stdout: ${stdout.slice(0, 400)}`);
   return match[1];
 }
 
-function rewriteHost(loginUrl, dashboardBase) {
+function rewriteHost(loginUrl: string, dashboardBase: string): string {
   // The CLI's login_url is the API-host shape (api-dev.usezombie.com). The
   // dashboard's CLI-auth handoff page lives on the dashboard host. We swap
   // the host while preserving path + query (which carries session_id).
@@ -73,14 +82,18 @@ function rewriteHost(loginUrl, dashboardBase) {
   return src.toString();
 }
 
-function waitForLine(child, predicate, timeoutMs) {
+function waitForLine(
+  child: ChildProcessWithoutNullStreams,
+  predicate: (line: string) => boolean,
+  timeoutMs: number,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let buffer = "";
     const timer = setTimeout(() => {
       child.stdout.off("data", onData);
       reject(new Error(`timed out waiting for stdout line; saw: ${buffer.slice(0, 400)}`));
     }, timeoutMs);
-    function onData(chunk) {
+    function onData(chunk: Buffer | string): void {
       buffer += String(chunk);
       const lines = buffer.split(/\r?\n/);
       for (const line of lines) {
@@ -96,30 +109,30 @@ function waitForLine(child, predicate, timeoutMs) {
   });
 }
 
-function awaitExit(child) {
+function awaitExit(child: ChildProcessWithoutNullStreams): Promise<ExitCapture> {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (c) => { stdout += String(c); });
-    child.stderr.on("data", (c) => { stderr += String(c); });
-    child.on("close", (code) => resolve({ code, stdout, stderr }));
+    child.stdout.on("data", (c: Buffer | string) => { stdout += String(c); });
+    child.stderr.on("data", (c: Buffer | string) => { stderr += String(c); });
+    child.on("close", (code: number | null) => resolve({ code, stdout, stderr }));
   });
 }
 
 if (!isLive || !hasDashboard) {
-  describe("lifecycle-after-login.spec.js", () => {
+  describe("lifecycle-after-login.spec.ts", () => {
     it.skip("requires https ZOMBIE_ACCEPTANCE_TARGET + ZOMBIE_ACCEPTANCE_DASHBOARD_URL (dashboard /cli-auth route)", () => {});
   });
 } else {
   describe("lifecycle-after-login — real login → persisted credentials", () => {
-    let apiUrl;
-    let sessionJwt;
-    let cookieJwt;
-    let stateDir;
-    let baseEnv;
-    let credentialsPath;
+    let apiUrl: string = "";
+    let sessionJwt: string = "";
+    let cookieJwt: string = "";
+    let stateDir: string = "";
+    let baseEnv: Record<string, string> = {};
+    let credentialsPath: string = "";
 
-    async function spawn(args, extraEnv) {
+    async function spawn(args: ReadonlyArray<string>, extraEnv?: Record<string, string>): Promise<RunResult> {
       const env = extraEnv ? { ...baseEnv, ...extraEnv } : baseEnv;
       const result = await runZombiectl(args, { env });
       assertNoSecretLeak(result, sessionJwt);
@@ -146,7 +159,7 @@ if (!isLive || !hasDashboard) {
     });
 
     afterAll(async () => {
-      try { await cleanWorkspaceZombies(baseEnv); } catch {}
+      try { await cleanWorkspaceZombies(baseEnv); } catch { /* best-effort teardown */ }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
@@ -159,7 +172,7 @@ if (!isLive || !hasDashboard) {
           "--poll-ms", "500",
         ];
         const child = spawnZombiectl(args, { env: baseEnv });
-        const seen = await waitForLine(child, (line) => /login_url/i.test(line), 30_000);
+        const seen = await waitForLine(child, (line: string) => /login_url/i.test(line), 30_000);
         const apiLoginUrl = parseLoginUrl(seen);
         const handoffUrl = rewriteHost(apiLoginUrl, dashboardUrl);
 
@@ -171,7 +184,7 @@ if (!isLive || !hasDashboard) {
         const stat = await fs.stat(credentialsPath);
         assert.equal(stat.mode & 0o777, 0o600, `credentials.json mode is ${(stat.mode & 0o777).toString(8)} — expected 600 (WS-E #C3)`);
 
-        const creds = JSON.parse(await fs.readFile(credentialsPath, "utf8"));
+        const creds = JSON.parse(await fs.readFile(credentialsPath, "utf8")) as { token: string };
         assert.equal(typeof creds.token, "string");
         assert.equal(creds.token.split(".").length, 3, `token is not a 3-segment JWT: ${creds.token}`);
 
@@ -186,14 +199,14 @@ if (!isLive || !hasDashboard) {
         const label = row.label ?? row.args.join(" ");
         it(`${label} exits 0 against persisted credentials.json`, async () => {
           // Helper guards: env constructed here MUST NOT carry ZOMBIE_TOKEN.
-          assert.equal(baseEnv.ZOMBIE_TOKEN, undefined, "baseEnv must not contain ZOMBIE_TOKEN");
+          assert.equal(baseEnv["ZOMBIE_TOKEN"], undefined, "baseEnv must not contain ZOMBIE_TOKEN");
           const result = await spawn(row.args);
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
-          const parsed = JSON.parse(result.stdout.trim());
+          const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
           if (row.requiredKey) {
             assert.ok(row.requiredKey in parsed, `${label}: missing ${row.requiredKey} in ${result.stdout}`);
           }
-          if (row.isList) {
+          if (row.isList && row.itemsKey) {
             assert.ok(Array.isArray(parsed[row.itemsKey]), `${label}: ${row.itemsKey} not an array`);
           }
         });
@@ -209,7 +222,7 @@ if (!isLive || !hasDashboard) {
       it(`zombie list --json: items array empty`, async () => {
         const result = await spawn(["list", "--json"]);
         assert.equal(result.code, 0);
-        const parsed = JSON.parse(result.stdout.trim());
+        const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
         assert.ok(Array.isArray(parsed.items) && parsed.items.length === 0,
           `expected empty items: ${result.stdout}`);
       });
@@ -218,18 +231,20 @@ if (!isLive || !hasDashboard) {
         const result = await spawn(["list"]);
         assert.equal(result.code, 0);
         const stem = EMPTY_LIST_CONVENTIONS["list"];
+        if (!stem) throw new Error("no empty-list stem registered for `list`");
         assert.match(result.stdout.toLowerCase(), new RegExp(stem.toLowerCase()));
       });
     });
 
     // §5c — persisted-credentials install + lifecycle
     describe("§5c install + lifecycle (no ZOMBIE_TOKEN)", () => {
-      let zombieId;
+      let zombieId: string = "";
 
       it("install platform-ops uses persisted creds", async () => {
         const installed = await installPlatformOpsZombie({ env: baseEnv });
-        zombieId = installed.id ?? installed.zombie_id;
-        assert.ok(zombieId, `install missing id: ${JSON.stringify(installed)}`);
+        const id = installed.id ?? installed.zombie_id;
+        assert.ok(id, `install missing id: ${JSON.stringify(installed)}`);
+        zombieId = id as string;
       });
 
       it("status → stop → resume → kill walks state", async () => {

@@ -1,5 +1,5 @@
 /**
- * Minimal JS twin of `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts`.
+ * Minimal TS twin of `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts`.
  *
  * Three-phase chain: `provisionUser` → (dashboard suite's bootstrap path
  * already ran for the shared `regular` fixture) → `attachJwt` → `mintTokens`.
@@ -18,9 +18,53 @@ import {
   IS_TEST_FIXTURE_METADATA_KEY,
   JWT_TEMPLATE,
   SESSION_TOKEN_TTL_SECONDS,
-} from "./constants.js";
+} from "./constants.ts";
 
-function authHeaders(clerkSecret) {
+type ClerkMethod = "GET" | "POST";
+
+interface ClerkUser {
+  readonly id: string;
+  readonly [key: string]: unknown;
+}
+
+interface ClerkSession {
+  readonly id: string;
+  readonly [key: string]: unknown;
+}
+
+interface ClerkToken {
+  readonly jwt: string;
+  readonly [key: string]: unknown;
+}
+
+export interface MintedTokens {
+  readonly sessionId: string;
+  readonly sessionJwt: string;
+  readonly cookieJwt: string;
+}
+
+export interface AttachedJwt extends MintedTokens {
+  readonly clerkUserId: string;
+  readonly email: string;
+}
+
+export interface ProvisionUserOptions {
+  readonly email: string;
+  readonly password?: string | undefined;
+  readonly role?: string | undefined;
+}
+
+export interface MintTokensOptions {
+  readonly ttlSeconds?: number | undefined;
+}
+
+export interface AttachJwtOptions {
+  readonly email: string;
+  readonly password?: string | undefined;
+  readonly ttlSeconds?: number | undefined;
+}
+
+function authHeaders(clerkSecret: string): Record<string, string> {
   if (!clerkSecret) throw new Error("clerkSecret missing — pass CLERK_SECRET_KEY explicitly");
   return {
     Authorization: `Bearer ${clerkSecret}`,
@@ -28,7 +72,12 @@ function authHeaders(clerkSecret) {
   };
 }
 
-async function clerkRequest(clerkSecret, method, pathSuffix, body) {
+async function clerkRequest(
+  clerkSecret: string,
+  method: ClerkMethod,
+  pathSuffix: string,
+  body?: unknown,
+): Promise<unknown> {
   const res = await fetch(`${CLERK_API_BASE}${pathSuffix}`, {
     method,
     headers: authHeaders(clerkSecret),
@@ -41,14 +90,17 @@ async function clerkRequest(clerkSecret, method, pathSuffix, body) {
   return res.json();
 }
 
-async function findUserByEmail(clerkSecret, email) {
+async function findUserByEmail(clerkSecret: string, email: string): Promise<ClerkUser | null> {
   const params = new URLSearchParams({ email_address: email });
   const list = await clerkRequest(clerkSecret, "GET", `/users?${params.toString()}`);
-  return Array.isArray(list) && list.length > 0 ? list[0] : null;
+  if (Array.isArray(list) && list.length > 0) {
+    return list[0] as ClerkUser;
+  }
+  return null;
 }
 
-async function createUser(clerkSecret, opts) {
-  return clerkRequest(clerkSecret, "POST", "/users", {
+async function createUser(clerkSecret: string, opts: ProvisionUserOptions): Promise<ClerkUser> {
+  const result = await clerkRequest(clerkSecret, "POST", "/users", {
     email_address: [opts.email],
     password: opts.password,
     skip_password_checks: true,
@@ -59,9 +111,13 @@ async function createUser(clerkSecret, opts) {
       role: opts.role ?? "regular",
     },
   });
+  return result as ClerkUser;
 }
 
-export async function provisionUser(clerkSecret, opts) {
+export async function provisionUser(
+  clerkSecret: string,
+  opts: ProvisionUserOptions,
+): Promise<ClerkUser> {
   const existing = await findUserByEmail(clerkSecret, opts.email);
   if (existing) return existing;
   if (!opts.password) {
@@ -70,8 +126,12 @@ export async function provisionUser(clerkSecret, opts) {
   return createUser(clerkSecret, opts);
 }
 
-export async function mintTokens(clerkSecret, clerkUserId, opts) {
-  const session = await clerkRequest(clerkSecret, "POST", "/sessions", { user_id: clerkUserId });
+export async function mintTokens(
+  clerkSecret: string,
+  clerkUserId: string,
+  opts?: MintTokensOptions,
+): Promise<MintedTokens> {
+  const session = await clerkRequest(clerkSecret, "POST", "/sessions", { user_id: clerkUserId }) as ClerkSession;
   const ttl = opts?.ttlSeconds ?? SESSION_TOKEN_TTL_SECONDS;
   // Two tokens per session: the template-minted JWT goes to the backend as
   // Bearer auth (ZOMBIE_TOKEN), and the default (no-template) JWT goes into
@@ -79,23 +139,23 @@ export async function mintTokens(clerkSecret, clerkUserId, opts) {
   // Parallel mint matches the dashboard suite's posture verbatim.
   const [template, standard] = await Promise.all([
     clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
-      { expires_in_seconds: ttl }),
+      { expires_in_seconds: ttl }) as Promise<ClerkToken>,
     clerkRequest(clerkSecret, "POST", `/sessions/${session.id}/tokens`,
-      { expires_in_seconds: ttl }),
+      { expires_in_seconds: ttl }) as Promise<ClerkToken>,
   ]);
   return { sessionId: session.id, sessionJwt: template.jwt, cookieJwt: standard.jwt };
 }
 
-export async function attachJwt(clerkSecret, opts) {
+export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
   const user = await provisionUser(clerkSecret, { email: opts.email, password: opts.password });
   const tokens = await mintTokens(clerkSecret, user.id, { ttlSeconds: opts.ttlSeconds });
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }
 
-export async function revokeSession(clerkSecret, sessionId) {
+export async function revokeSession(clerkSecret: string, sessionId: string): Promise<void> {
   try {
     await clerkRequest(clerkSecret, "POST", `/sessions/${sessionId}/revoke`);
-  } catch (err) {
+  } catch (err: unknown) {
     if (err instanceof Error && /4\d\d/.test(err.message)) return;
     throw err;
   }

@@ -20,11 +20,14 @@ import path from "node:path";
 import url from "node:url";
 
 import { runZombiectl, spawnZombiectl, composeEnv } from "./fixtures/cli.js";
-import { UNROUTABLE_API_URL } from "./fixtures/constants.js";
-import { makeStubbedStateDir } from "./fixtures/state-dir.js";
-import { startLocalStubServer } from "./fixtures/local-stub-server.js";
-import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.js";
-import { attachJwt } from "./fixtures/clerk-admin.js";
+import type { RunResult } from "./fixtures/cli.js";
+import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
+import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import { startLocalStubServer, type LocalStubHandle } from "./fixtures/local-stub-server.ts";
+import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
+import { attachJwt } from "./fixtures/clerk-admin.ts";
+
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
@@ -33,35 +36,46 @@ const ANSI_RE = /\x1b\[/;
 const SIGINT_POLL_MS = 250;
 const SIGINT_DEADLINE_SEC = 60;
 
-let pkgVersion;
+interface ExitResult {
+  readonly code: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+let pkgVersion: string;
 
 beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
-  pkgVersion = JSON.parse(pkgRaw).version;
+  pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
 });
 
-function emptyEnv(extra) {
+function emptyEnv(extra?: Record<string, string>): Record<string, string> {
   return composeEnv({ ZOMBIE_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
 }
 
-function waitForExit(child) {
+function waitForExit(child: ChildProcessWithoutNullStreams): Promise<ExitResult> {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
-    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
-    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
-    child.on("close", (code, signal) => resolve({ code, signal, stdout, stderr }));
+    child.stdout.on("data", (chunk: Buffer | string) => { stdout += String(chunk); });
+    child.stderr.on("data", (chunk: Buffer | string) => { stderr += String(chunk); });
+    child.on("close", (code: number | null, signal: NodeJS.Signals | null) => resolve({ code, signal, stdout, stderr }));
   });
 }
 
-function waitForLine(child, predicate, timeoutMs) {
+function waitForLine(
+  child: ChildProcessWithoutNullStreams,
+  predicate: (line: string) => boolean,
+  timeoutMs: number,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let buffer = "";
     const timer = setTimeout(() => {
       child.stdout.off("data", onData);
       reject(new Error(`timed out waiting for stdout line; saw: ${buffer.slice(0, 300)}`));
     }, timeoutMs);
-    function onData(chunk) {
+    function onData(chunk: Buffer | string): void {
       buffer += String(chunk);
       const lines = buffer.split(/\r?\n/);
       for (const line of lines) {
@@ -115,8 +129,8 @@ describe("NO_COLOR semantics", () => {
 });
 
 describe("--no-open suppresses browser spawn (stub backend)", () => {
-  let stub;
-  let stateDir;
+  let stub: LocalStubHandle | null = null;
+  let stateDir: StubbedStateDir | null = null;
 
   beforeAll(async () => {
     stub = await startLocalStubServer();
@@ -129,6 +143,7 @@ describe("--no-open suppresses browser spawn (stub backend)", () => {
   });
 
   it("emits a login_url on stdout and does not spawn a browser", async () => {
+    if (!stub || !stateDir) throw new Error("fixtures not initialised");
     const env = composeEnv({
       ZOMBIE_API_URL: stub.baseUrl,
       ZOMBIE_STATE_DIR: stateDir.dir,
@@ -151,8 +166,8 @@ describe("--no-open suppresses browser spawn (stub backend)", () => {
 });
 
 describe("SIGINT during login (stub backend)", () => {
-  let stub;
-  let stateDir;
+  let stub: LocalStubHandle | null = null;
+  let stateDir: StubbedStateDir | null = null;
 
   beforeAll(async () => {
     stub = await startLocalStubServer();
@@ -164,7 +179,8 @@ describe("SIGINT during login (stub backend)", () => {
     if (stateDir) await stateDir.cleanup();
   });
 
-  async function spawnLoginAndInterrupt(extraArgs) {
+  async function spawnLoginAndInterrupt(extraArgs?: ReadonlyArray<string>): Promise<ExitResult> {
+    if (!stub || !stateDir) throw new Error("fixtures not initialised");
     const env = composeEnv({
       ZOMBIE_API_URL: stub.baseUrl,
       ZOMBIE_STATE_DIR: stateDir.dir,
@@ -180,9 +196,9 @@ describe("SIGINT during login (stub backend)", () => {
       ...(extraArgs ?? []),
     ];
     const child = spawnZombiectl(args, { env });
-    await waitForLine(child, (line) => /login_url|127\.0\.0\.1/i.test(line), 10_000);
+    await waitForLine(child, (line: string) => /login_url|127\.0\.0\.1/i.test(line), 10_000);
     // Give the CLI time to enter the poll loop.
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise<void>((r) => setTimeout(r, 400));
     child.kill("SIGINT");
     const result = await waitForExit(child);
     return result;
@@ -200,13 +216,14 @@ describe("SIGINT during login (stub backend)", () => {
   it("`--no-open` poll: SIGINT exits non-zero, no credentials.json written", async () => {
     const result = await spawnLoginAndInterrupt(["--no-open"]);
     assert.notEqual(result.code, 0, `expected non-zero exit, got ${result.code}; stdout=${result.stdout}; stderr=${result.stderr}`);
+    if (!stateDir) throw new Error("stateDir not initialised");
     const credsPath = path.join(stateDir.dir, "credentials.json");
     const credsRaw = await fs.readFile(credsPath, "utf8").catch(() => null);
     if (credsRaw) {
       // Stubbed state-dir pre-seeds a syntactically-valid token; the SIGINT
       // path must not have overwritten it with a "complete" session token
       // (no `complete` ever arrived from the stub server).
-      const parsed = JSON.parse(credsRaw);
+      const parsed = JSON.parse(credsRaw) as { token: string };
       assert.equal(parsed.token, "header.payload.sig", `SIGINT path wrote a real token: ${credsRaw}`);
     }
   });
@@ -226,7 +243,7 @@ describe("SIGINT during login (stub backend)", () => {
       // session JWT once per describe so the auth-guard passes and the
       // tests actually exercise URL precedence instead of exiting on
       // "not authenticated".
-      let sessionJwt;
+      let sessionJwt: string = "";
       beforeAll(async () => {
         const minted = await attachJwt(resolveClerkSecret(), {
           email: resolveFixtureEmail("regular"),
@@ -240,7 +257,7 @@ describe("SIGINT during login (stub backend)", () => {
           ZOMBIE_TOKEN: sessionJwt,
           NO_COLOR: "1",
         });
-        const result = await runZombiectl(
+        const result: RunResult = await runZombiectl(
           ["--api", target, "workspace", "list", "--json"],
           { env },
         );
@@ -254,7 +271,7 @@ describe("SIGINT during login (stub backend)", () => {
           ZOMBIE_TOKEN: sessionJwt,
           NO_COLOR: "1",
         });
-        const result = await runZombiectl(["workspace", "list", "--json"], { env });
+        const result: RunResult = await runZombiectl(["workspace", "list", "--json"], { env });
         assert.equal(result.code, 0, `expected exit 0; stderr=${result.stderr}`);
         assert.doesNotThrow(() => JSON.parse(result.stdout.trim()));
       });

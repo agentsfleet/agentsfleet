@@ -36,30 +36,31 @@ import {
   READ_ONLY_COMMANDS,
   REQUIRES_IDENTIFIER,
   REQUIRES_POSITIONAL_ARG,
-} from "./fixtures/command-matrix.js";
-import { UNROUTABLE_API_URL } from "./fixtures/constants.js";
+} from "./fixtures/command-matrix.ts";
+import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { composeEnv, runZombiectl } from "./fixtures/cli.js";
+import type { RunResult } from "./fixtures/cli.js";
 import {
   expectInvalidArgValue,
   expectMissingArg,
   assertNoConnectionError,
   assertNoSecretLeak,
-} from "./fixtures/negatives.js";
+} from "./fixtures/negatives.ts";
 import {
   resolveAcceptanceEnv,
   resolveClerkSecret,
   resolveFixtureEmail,
-} from "./global-setup.js";
-import { attachJwt } from "./fixtures/clerk-admin.js";
-import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.js";
-import { installPlatformOpsZombie } from "./fixtures/seed.js";
-import { cleanWorkspaceZombies } from "./fixtures/teardown.js";
+} from "./global-setup.ts";
+import { attachJwt } from "./fixtures/clerk-admin.ts";
+import { hydrateWorkspacesForToken } from "./fixtures/workspace-hydration.ts";
+import { installPlatformOpsZombie } from "./fixtures/seed.ts";
+import { cleanWorkspaceZombies } from "./fixtures/teardown.ts";
 import {
   killZombie,
   resumeZombie,
   stopZombie,
   expectStatus,
-} from "./fixtures/lifecycle.js";
+} from "./fixtures/lifecycle.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
@@ -67,11 +68,20 @@ const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
 const target = process.env.ZOMBIE_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
+interface ValidateResult {
+  readonly ok: boolean;
+  readonly message: string;
+}
+
+interface ValidateModule {
+  validateRequiredId(value: string, label: string): ValidateResult;
+}
+
 // Random uuidv7 for §4c1 — backend's `isUuidV7` rejects v4, so
 // crypto.randomUUID() would surface as a 400/validation error instead
 // of 404. Hand-roll a v7 with valid version+variant bits and random
 // payload so the server's not-found branch fires.
-function randomUuidv7() {
+function randomUuidv7(): string {
   const bytes = crypto.randomBytes(16);
   const tsMs = BigInt(Date.now());
   bytes[0] = Number((tsMs >> 40n) & 0xffn);
@@ -80,27 +90,30 @@ function randomUuidv7() {
   bytes[3] = Number((tsMs >> 16n) & 0xffn);
   bytes[4] = Number((tsMs >> 8n) & 0xffn);
   bytes[5] = Number(tsMs & 0xffn);
-  bytes[6] = (bytes[6] & 0x0f) | 0x70;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  bytes[6] = ((bytes[6] ?? 0) & 0x0f) | 0x70;
+  bytes[8] = ((bytes[8] ?? 0) & 0x3f) | 0x80;
   const hex = bytes.toString("hex");
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-let validateModule;
+let validateModule: ValidateModule;
 
 if (!isLive) {
-  describe("lifecycle-with-token.spec.js", () => {
+  describe("lifecycle-with-token.spec.ts", () => {
     it.skip("requires ZOMBIE_ACCEPTANCE_TARGET to be an https URL", () => {});
   });
 } else {
   describe("lifecycle-with-token — ZOMBIE_TOKEN injection", () => {
-    let apiUrl;
-    let sessionJwt;
-    let stateDir;
-    let env;
-    let workspaceId;
+    let apiUrl: string = "";
+    let sessionJwt: string = "";
+    let stateDir: string = "";
+    let env: Record<string, string> = {};
+    let workspaceId: string = "";
 
-    async function spawn(args, extraEnv) {
+    async function runWithEnv(
+      args: ReadonlyArray<string>,
+      extraEnv?: Record<string, string>,
+    ): Promise<RunResult> {
       const composed = extraEnv ? { ...env, ...extraEnv } : env;
       const result = await runZombiectl(args, { env: composed });
       assertNoSecretLeak(result, sessionJwt);
@@ -124,24 +137,26 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validators.ts"));
+      validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validators.ts")) as ValidateModule;
     });
 
     afterAll(async () => {
       if (env && workspaceId) {
-        try { await cleanWorkspaceZombies(env, workspaceId); } catch {}
+        try { await cleanWorkspaceZombies(env, workspaceId); } catch { /* best-effort teardown */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
     // §4a — full lifecycle walk
     describe("§4a lifecycle walk", () => {
-      let zombieId;
+      let zombieId: string = "";
 
       it("install platform-ops bundle", async () => {
         const installed = await installPlatformOpsZombie({ env });
         assert.ok(installed.id || installed.zombie_id, `install response missing id: ${JSON.stringify(installed)}`);
-        zombieId = installed.id ?? installed.zombie_id;
+        const id = installed.id ?? installed.zombie_id;
+        if (!id) throw new Error("install missing id");
+        zombieId = id;
       });
 
       // Per-zombie read-only sweep — runs against the live zombieId so
@@ -152,13 +167,13 @@ if (!isLive) {
         const label = `${row.argsHead.join(" ")} --zombie <id>`;
         it(`${label} exits 0 with parseable JSON`, async () => {
           const args = [...row.argsHead, "--zombie", zombieId, "--json"];
-          const result = await spawn(args);
+          const result = await runWithEnv(args);
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
-          const parsed = JSON.parse(result.stdout.trim());
+          const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
           if (row.requiredKey) {
             assert.ok(row.requiredKey in parsed, `${label}: missing ${row.requiredKey} in ${result.stdout}`);
           }
-          if (row.isList) {
+          if (row.isList && row.itemsKey) {
             assert.ok(Array.isArray(parsed[row.itemsKey]), `${label}: ${row.itemsKey} not an array`);
           }
         });
@@ -174,14 +189,14 @@ if (!isLive) {
         // `--zombie`, `--limit`, `--cursor`); commander would exit 1 on
         // an unknown flag. The recency bound here was misplaced — the
         // intent is just to exercise the read path on a real zombie.
-        const result = await spawn(["logs", zombieId, "--json"]);
+        const result = await runWithEnv(["logs", zombieId, "--json"]);
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}");
         assert.equal(typeof parsed, "object");
       });
 
       it("billing show --json returns a balance field", async () => {
-        const result = await spawn(["billing", "show", "--json"]);
+        const result = await runWithEnv(["billing", "show", "--json"]);
         assert.equal(result.code, 0, `billing show exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim());
         assert.ok("balance" in parsed, `billing response missing balance: ${result.stdout}`);
@@ -197,7 +212,7 @@ if (!isLive) {
       });
 
       it("kill is idempotent on a terminal zombie", async () => {
-        const result = await spawn(["kill", zombieId, "--json"]);
+        const result = await runWithEnv(["kill", zombieId, "--json"]);
         // Either succeed silently, or surface UZ-ZMB-010 (already terminal).
         // Both are acceptable — what's NOT acceptable is exiting 0 then re-emitting
         // a `status: active` later. The status assertion below catches that.
@@ -213,13 +228,13 @@ if (!isLive) {
       for (const row of READ_ONLY_COMMANDS) {
         const label = row.label ?? row.args.join(" ");
         it(`${label} exits 0 with parseable JSON`, async () => {
-          const result = await spawn(row.args);
+          const result = await runWithEnv(row.args);
           assert.equal(result.code, 0, `${label} exited ${result.code}: ${result.stderr}`);
-          const parsed = JSON.parse(result.stdout.trim());
+          const parsed = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
           if (row.requiredKey) {
             assert.ok(row.requiredKey in parsed, `${label}: missing ${row.requiredKey} in ${result.stdout}`);
           }
-          if (row.isList) {
+          if (row.isList && row.itemsKey) {
             assert.ok(Array.isArray(parsed[row.itemsKey]), `${label}: ${row.itemsKey} not an array`);
           }
         });
@@ -238,18 +253,18 @@ if (!isLive) {
         await cleanWorkspaceZombies(env, workspaceId);
       });
 
-      const stem = EMPTY_LIST_CONVENTIONS["list"];
+      const stem = EMPTY_LIST_CONVENTIONS["list"] ?? "";
 
       it(`zombie list --json: items array is empty`, async () => {
-        const result = await spawn(["list", "--json"]);
+        const result = await runWithEnv(["list", "--json"]);
         assert.equal(result.code, 0, `list --json exited ${result.code}: ${result.stderr}`);
-        const parsed = JSON.parse(result.stdout.trim());
+        const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
         assert.ok(Array.isArray(parsed.items) && parsed.items.length === 0,
           `expected empty items array; got: ${result.stdout}`);
       });
 
       it(`zombie list (non-JSON) emits "${stem}"`, async () => {
-        const result = await spawn(["list"]);
+        const result = await runWithEnv(["list"]);
         assert.equal(result.code, 0, `list exited ${result.code}: ${result.stderr}`);
         assert.match(result.stdout.toLowerCase(), new RegExp(stem.toLowerCase()),
           `missing stem "${stem}" in: ${result.stdout}`);
@@ -318,9 +333,10 @@ if (!isLive) {
     // (workspace-wide read-only sweep + per-zombie sweep together cover
     // workspace/agent/grant/tenant/billing/zombie).
     it("touch every COMMAND_GROUP via the read-only sweep", () => {
-      const exercised = new Set();
+      const exercised = new Set<string>();
       for (const row of READ_ONLY_COMMANDS) {
         const head = row.args[0];
+        if (!head) continue;
         if (head === "list" || head === "doctor") exercised.add("zombie");
         if (COMMAND_GROUPS.includes(head)) exercised.add(head);
       }
