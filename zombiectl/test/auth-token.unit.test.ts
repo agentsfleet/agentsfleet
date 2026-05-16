@@ -2,7 +2,7 @@ import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { decodeTokenPayload, extractDistinctIdFromToken, extractRoleFromToken } from "../src/program/auth-token.ts";
 
-function makeToken(payload) {
+function makeToken(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString("base64url");
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return `${header}.${body}.sig`;
@@ -91,6 +91,7 @@ test("extractRoleFromToken reads namespaced metadata claims", () => {
 test("decodeTokenPayload returns parsed payload object", () => {
   const payload = { sub: "user_1", role: "admin", iat: 1000 };
   const result = decodeTokenPayload(makeToken(payload));
+  assert.ok(result, "expected non-null decoded payload");
   assert.equal(result.sub, "user_1");
   assert.equal(result.role, "admin");
   assert.equal(result.iat, 1000);

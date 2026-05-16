@@ -111,6 +111,16 @@ type TestDeps = Partial<CommandDeps> & {
 
 type CoreHandler = (args?: readonly string[]) => Promise<number>;
 
+// Named-member return shape (vs `Record<string, CoreHandler>`) so call
+// sites like `core.commandLogin()` typecheck under
+// `noUncheckedIndexedAccess` without a `!` non-null assertion.
+export interface CoreHandlers {
+  commandLogin: CoreHandler;
+  commandLogout: CoreHandler;
+  commandDoctor: CoreHandler;
+  commandWorkspace: CoreHandler;
+}
+
 // Test-only shim that re-creates the old createCoreHandlers return shape
 // from the new top-level exports — direct-handler tests keep their
 // `handlers.commandLogin(args)` / `handlers.commandWorkspace(args)`
@@ -119,7 +129,7 @@ export function createCoreHandlers(
   ctx: CommandCtx,
   workspaces: Workspaces,
   deps: CommandDeps,
-): Record<string, CoreHandler> {
+): CoreHandlers {
   return {
     commandLogin:  (args = []) => commandLogin(ctx,  buildParsed(args), workspaces, deps),
     commandLogout: (args = []) => commandLogout(ctx, buildParsed(args), workspaces, deps),
