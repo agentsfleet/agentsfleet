@@ -1,5 +1,5 @@
 import { wsZombieEventsPath } from "../lib/api-paths.ts";
-import { validateRequiredId } from "../program/validate.ts";
+import { validateRequiredId } from "../program/validators.ts";
 import {
   MISSING_ARGUMENT,
   NO_WORKSPACE,

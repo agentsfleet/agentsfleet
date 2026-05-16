@@ -5,7 +5,7 @@
 
 import { wsGrantsListPath, wsGrantPath } from "../lib/api-paths.ts";
 import { writeError as ioWriteError } from "../program/io.ts";
-import { validateRequiredId } from "../program/validate.ts";
+import { validateRequiredId } from "../program/validators.ts";
 import { MISSING_ARGUMENT, NO_WORKSPACE, VALIDATION_ERROR } from "../constants/cli-errors.ts";
 import { OPT_ZOMBIE } from "../constants/cli-flags.ts";
 import { ERR_GRANT_NOT_FOUND, ERR_GRANT_PENDING } from "../constants/error-codes.ts";
