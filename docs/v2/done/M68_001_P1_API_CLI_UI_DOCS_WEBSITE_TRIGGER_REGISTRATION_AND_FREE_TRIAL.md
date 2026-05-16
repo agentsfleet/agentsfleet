@@ -5,6 +5,7 @@
 **Workstream:** 001
 **Date:** May 13, 2026
 **Status:** DONE
+**Amended:** May 17, 2026 — `/write-unit-test` audit surfaced four dimensions that were marked complete in error: the Trigger panel shipped as a 2-tab UI rather than the multi-card variant, `provider-guidance.ts` / `GuidedTriggerCard.tsx` / `CronCard.tsx` never landed, and `OnboardingFlow.tsx` was supplanted in practice by `FeatureFlow.tsx` (different shape, same slot). See [Post-Close Amendments](#post-close-amendments) at the bottom of this spec; each deferral is mirrored into [`docs/v2/pending/M71_001_*.md`](../pending/M71_001_P2_CLI_LOGIN_RESILIENCE_AND_UX_POLISH.md) under "Deferred from M68".
 **Priority:** P1 — wedge-launch DX blocker (cannot demo install→wire→talk in the dashboard today; pricing copy contradicts the planned launch posture).
 **Categories:** API, CLI, UI, DOCS, WEBSITE, SKILL
 **Batch:** B1 — single-PR landing; spec → implementation → architecture-doc updates → companion `~/Projects/docs/` Pull Request (PR).
@@ -994,3 +995,42 @@ To be filled at CHORE(close) after `git diff --name-only origin/main` and cross-
 - Self-managed posture changes (M66's footprint already covers this; the strike-through banner mentions self-managed as a recommendation, no behaviour change).
 - Approval-gate rendering inside the chat surface (Pending Approvals stays its own section per `[id]/page.tsx:91`; ZombieThread shows an inline system-chip *link* when approval is required, full flow remains on the Approvals panel).
 - Bundle-budget enforcement infrastructure (the 220 kB ceiling is asserted in CI but the CI plumbing itself, if not present, lands in a sibling spec — record in Discovery whether the existing CI check covers it).
+
+---
+
+## Post-Close Amendments
+
+Recorded May 17, 2026, during the post-CHORE(close) `/write-unit-test` Path-C audit. The auditor flagged the following test files as missing; the deeper finding was that the underlying *components* were never built in the shape the spec described. Spec `Status` remains `DONE` (every other dimension landed), but the four dimensions below are explicitly deferred to [`M71_001`](../pending/M71_001_P2_CLI_LOGIN_RESILIENCE_AND_UX_POLISH.md) so the carry-forward is auditable. The deferral has been mirrored into M71_001's "Deferred from M68" section with full design prose preserved verbatim.
+
+**Why the audit didn't catch this at CHORE(close):** the four deferred dimensions involve files the original spec named as `NEW` (E2, E3, E4, G5, G6, F3) or as `EDIT`s with a specific intent (E1, G7, G11). A presence-grep for the named files showed misses, but the CHORE(close) audit grepped for "missing test files" rather than "missing implementation files"; the components-don't-exist root cause was uncovered later when the test author tried to find a thing to test. Captain decision (this session): defer rather than re-open M68; M71_001 absorbs the design.
+
+| § | Dimension | What spec named | What shipped | Disposition |
+|---|---|---|---|---|
+| D / E1 | Trigger panel multi-card switch | `TriggerPanel.tsx` rendering `zombie.triggers.map(t => <Card variant={t.type, t.source} t={t} />)` with per-trigger cards + "edit TRIGGER.md and re-install" footer prose | 78-line 2-tab UI (Webhook / Schedule), single URL with Copy button, "Cron scheduling is CLI-only for V1" placeholder. Existing tests at `ui/packages/app/tests/zombies.test.ts:690` cover the shipped Tabs UI. | **DEFERRED to M71_001** — multi-card switch + footer prose, plus the §F4 multi-card variant tests, move to M71_001 §6. The 2-tab UI stays as the v1 surface until M71_001 lands. |
+| E2 | `provider-guidance.ts` | Static `PROVIDER_GUIDANCE: Record<Source, GuidanceCard>` with entries for `github`/`linear`/`jira`/`grafana`/`slack`/`agentmail`. Each: title, events-label formatter, terminal-command template (the `gh api repos/.../hooks` one-liner with placeholders), web-UI deep-link template, variable list. | Nothing — file does not exist. | **DEFERRED to M71_001** — full table + schema moves to M71_001 §7 with the verbatim provider entries from §"`provider-guidance.ts` schema" of this spec (line 371 onward). |
+| E3 | `GuidedTriggerCard.tsx` | Renders State B (known provider). Composes events label, webhook URL + Copy, rendered command block + Copy, web-UI deep link, last-delivery line. Pure presentational. | Nothing — file does not exist. | **DEFERRED to M71_001** — design preserved in M71_001 §8. |
+| E4 | `CronCard.tsx` | Schedule + client-side next-fire (timezone-aware) + Recent-Activity link filtered `actor LIKE 'cron:%'`. ~50 lines. | Nothing — file does not exist. Cron triggers fall back to the §E1 "Cron scheduling is CLI-only for V1" placeholder. | **DEFERRED to M71_001** — design preserved in M71_001 §9. |
+| F3 | `provider-guidance.test.ts` | Per-provider snapshot test of rendered command + deep-link. Pins prose. | Not applicable — no source to test. | **DEFERRED to M71_001** — fate-shared with E2. |
+| F4 | `TriggerPanel.test.ts` (multi-card variants) | (a) one card per trigger, (b) unknown source → `CopyUrlCard` fallback, (c) last-delivery line via `listZombieEvents(actor_prefix, limit:1)`. | Existing `tests/zombies.test.ts:690` (`describe("TriggerPanel interactions")`) covers the shipped Tabs UI — three tests around copy semantics + the cron placeholder. The multi-card-variant rows from the spec are moot until E1's multi-card switch lands. | **DEFERRED to M71_001** — multi-card variant rows move with E1; the existing Tabs-UI tests stay where they are and remain in scope. |
+| G5 / G6 | `OnboardingFlow.tsx` + `OnboardingFlow.test.tsx` | 4-step pictorial DX section (~180 LOC) under Pricing: (1) `npm install -g @usezombie/zombiectl` + `npx skills add`, (2) run `/usezombie-install-platform-ops` in Claude or paste in Dashboard, (3) wire the webhook with pre-rendered `gh api` one-liner, (4) steer ("howdy"). Snapshot tests for the four cards. | `FeatureFlow.tsx` shipped instead — a 3-row alternating evidence layout (install / event-trace / mission-control) mounted in `Home.tsx`. Different design intent (evidence-rows, not pictorial steps), different step count (3 vs 4), no `gh api` one-liner card. | **DEFERRED to M71_001** — the named `OnboardingFlow` component + its 4-card pictorial design preserved in M71_001 §10; whether it ships alongside `FeatureFlow` or replaces it is a M71 design call (FeatureFlow is wedge-launch-acceptable as the website's onboarding surface). |
+| G7 | `Home.tsx` mount of `<OnboardingFlow />` under `<Pricing />` | One-line mount immediately under Pricing. | `Home.tsx:40` mounts `<FeatureFlow />` instead. Pricing → FeatureFlow ordering is preserved (FeatureFlow renders below Pricing's slot). | **DEFERRED to M71_001** — fate-shared with G5/G6. M71_001 decides mount order if both ship. |
+| G11 | `Hero.tsx:64-70` primary CTA — onClick to clipboard + toast + smooth-scroll to `#onboarding-flow` | Replace the `<a href={DOCS_QUICKSTART_URL}>` with a `<button>` whose onClick (a) copies the install command, (b) shows a 2-second toast, (c) smooth-scrolls to `#onboarding-flow` anchor. | The CTA shape did not land — no `#onboarding-flow` anchor exists anywhere in the website (Hero still points at `DOCS_QUICKSTART_URL` per pre-spec behavior). Fate-shared with G5/G6 — the anchor target was supposed to be OnboardingFlow's section id. | **DEFERRED to M71_001** — full CTA redesign moves to M71_001 §11 with G5/G6. |
+
+### Test Specification rows superseded by these deferrals
+
+Move the following rows out of M68's §Test Specification (lines 884, 890, 891, 899) and §Acceptance (lines 907, 908) and into M71_001's §Test Specification at landing:
+
+- `test_provider_guidance_github` (line 884) — fate-shared with E2.
+- `test_trigger_panel_renders_one_card_per_trigger` (line 890) — fate-shared with E1.
+- `test_trigger_panel_unknown_source_falls_back` (line 891) — fate-shared with E1.
+- `test_onboarding_flow_four_cards` (line 899) — fate-shared with G5/G6.
+- `acceptance/trigger-panel-github-card` (line 907) — fate-shared with E1+E3 (depends on `GuidedTriggerCard`).
+- `acceptance/onboarding-flow-renders-on-home` (line 908) — fate-shared with G5/G6/G7.
+
+### Out-of-Scope clarification (post-amendment)
+
+The original Out of Scope list (line 989) notes "A 'Test this trigger' affordance on TriggerPanel" — that line stays. The "ApiCard.tsx is not built" clarification at line 991 stays correct; ApiCard was always Out of Scope for v1. The deferrals above narrow the *shipped* TriggerPanel surface further than the spec described — operators see only the Tabs UI until M71_001 lands the multi-card variant.
+
+### Goal-section discrepancies (lines 915–917)
+
+The Overview "Goal (testable)" section says (line 915) "TriggerPanel renders a per-trigger card list" and (line 916) "TriggerPanel renders one `GuidedTriggerCard` + one `CronCard`". Those goal statements describe the post-M71_001 state; the post-M68 state is the simpler 2-tab UI documented in this amendments section. The Goal prose was not edited to avoid mutating the spec's historical record; readers of M68 should treat lines 915–917 as deferred goals carried into M71_001.

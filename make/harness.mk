@@ -75,6 +75,7 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
 	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
 	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
+	$(call HARNESS_RUN,CROSS-TIER RATES,scripts/audit-cross-tier-rates.sh)
 	# audit-msid-ui.sh is diff-shaped by construction — it asserts on
 	# *added* lines, not file state. Stays on --staged for pre-commit
 	# context. See scripts/audit-msid-ui.sh "Per-check scope" docstring.
@@ -93,5 +94,6 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
 	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
 	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
+	$(call HARNESS_RUN,CROSS-TIER RATES,scripts/audit-cross-tier-rates.sh)
 	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --diff)</
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"

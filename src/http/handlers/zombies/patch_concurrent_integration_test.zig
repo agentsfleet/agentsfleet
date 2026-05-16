@@ -270,6 +270,34 @@ const Worker = struct {
             .elapsed_ms = std.time.milliTimestamp() - t0,
         };
     }
+
+    // Fires one raw INSERT into core.zombie_events with FK ref to `zid`.
+    // The FK validation acquires FOR KEY SHARE on the parent row — that
+    // lock waits on any in-flight FOR UPDATE the PATCH handler holds
+    // inside its row-lock/field-merge txn, so concurrent execution must
+    // serialize cleanly. Errors are captured in `slot.body` (errorName)
+    // for the test to assert against; status=200 = exec OK, status=500
+    // = exec returned an error.
+    fn runInsertEvent(h: *TestHarness, zid: []const u8, event_id: []const u8, slot: *Outcome) void {
+        const t0 = std.time.milliTimestamp();
+        const conn = h.acquireConn() catch |err| {
+            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = std.time.milliTimestamp() - t0 };
+            return;
+        };
+        defer h.releaseConn(conn);
+        const now = std.time.milliTimestamp();
+        _ = conn.exec(
+            \\INSERT INTO core.zombie_events
+            \\  (zombie_id, event_id, workspace_id, actor, event_type, status,
+            \\   request_json, created_at, updated_at)
+            \\VALUES ($1::uuid, $2, $3::uuid, 'steer:test', 'message', 'received',
+            \\        '{}'::jsonb, $4, $4)
+        , .{ zid, event_id, TEST_WORKSPACE_ID, now }) catch |err| {
+            slot.* = .{ .status = 500, .body = ALLOC.dupe(u8, @errorName(err)) catch null, .elapsed_ms = std.time.milliTimestamp() - t0 };
+            return;
+        };
+        slot.* = .{ .status = 200, .body = null, .elapsed_ms = std.time.milliTimestamp() - t0 };
+    }
 };
 
 fn bodyContainsDeadlock(out: Outcome) bool {
@@ -528,6 +556,64 @@ test "integration: PATCH against held lock → 503 in <5.5s, no hang" {
     try std.testing.expect(elapsed < 5_500);
     try std.testing.expectEqual(@as(u16, 503), outcome.status);
     try std.testing.expect(!bodyContainsDeadlock(outcome));
+}
+
+// ── §7 — Concurrent PATCH + INSERT into zombie_events serialize cleanly ──
+
+// PATCH handler takes SELECT FOR UPDATE on the zombie row inside its txn;
+// an INSERT into core.zombie_events with FK ref to core.zombies(id) needs
+// FOR KEY SHARE on the same parent. The lock modes are incompatible, so
+// PG serializes the INSERT after the PATCH commit. Both must succeed; no
+// `40P01 deadlock_detected` in either; the inserted row must be visible.
+test "integration: concurrent PATCH + INSERT into zombie_events — both succeed, no deadlock" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    const c_init = try h.acquireConn();
+    defer h.releaseConn(c_init);
+    defer cleanup(c_init);
+
+    const body_patch = "{\"trigger_markdown\":" ++ TRIGGER_VARIANT_A_JSON ++ "}";
+    const evt_id = "evt_conc_patch_insert_1";
+
+    var patch_out: Outcome = .{};
+    var insert_out: Outcome = .{};
+    defer if (patch_out.body) |b| ALLOC.free(b);
+    defer if (insert_out.body) |b| ALLOC.free(b);
+
+    var threads: [2]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, Worker.run, .{ h, body_patch, ZOMBIE_A, &patch_out });
+    threads[1] = try std.Thread.spawn(.{}, Worker.runInsertEvent, .{ h, ZOMBIE_A, evt_id, &insert_out });
+    for (threads) |t| t.join();
+
+    try std.testing.expectEqual(@as(u16, 200), patch_out.status);
+    try std.testing.expectEqual(@as(u16, 200), insert_out.status);
+    try std.testing.expect(!bodyContainsDeadlock(patch_out));
+    try std.testing.expect(!bodyContainsDeadlock(insert_out));
+
+    // INSERT row must be visible — proves FK didn't fail and PATCH didn't
+    // CASCADE-delete the parent. Final config_json reflects PATCH variant A.
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    var q_evt = PgQuery.from(try conn.query(
+        "SELECT COUNT(*)::bigint FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2",
+        .{ ZOMBIE_A, evt_id },
+    ));
+    defer q_evt.deinit();
+    const row_evt = (try q_evt.next()) orelse return error.RowNotFound;
+    const evt_count = try row_evt.get(i64, 0);
+    try std.testing.expectEqual(@as(i64, 1), evt_count);
+
+    var q_cfg = PgQuery.from(try conn.query(
+        "SELECT config_json::text FROM core.zombies WHERE id = $1::uuid",
+        .{ZOMBIE_A},
+    ));
+    defer q_cfg.deinit();
+    const row_cfg = (try q_cfg.next()) orelse return error.RowNotFound;
+    const cfg = try row_cfg.get([]const u8, 0);
+    try std.testing.expect(std.mem.indexOf(u8, cfg, "*/15 * * * *") != null);
 }
 
 // Comptime JSON-string-encode a multi-line literal. See

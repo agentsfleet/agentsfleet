@@ -5,12 +5,12 @@
 **Workstream:** 001
 **Date:** May 17, 2026
 **Status:** PENDING
-**Priority:** P2 — production login already works; this hardens the poll loop, error taxonomy, and UX prose for operators on flaky networks. Not blocking shipping the M68 trigger DX surface.
-**Categories:** CLI
+**Priority:** P2 — production login already works; this hardens the poll loop, error taxonomy, and UX prose for operators on flaky networks. Not blocking shipping the M68 trigger DX surface. Sections §6–§11 carry the deferred dashboard / website trigger DX work from M68's post-close amendment (May 17, 2026); those are independent of §1–§5 (the CLI-login work) and can ship in either order.
+**Categories:** CLI, UI, WEBSITE
 **Batch:** B1
 **Branch:** feat/m71-001-cli-login-resilience (to be created at CHORE(open))
-**Depends on:** M68_001 (DONE) — §13 D27 decomposition landed the named-stage skeleton this spec extends.
-**Provenance:** agent-generated (deferred from `docs/v2/done/M68_001*.md` §13 during CHORE(close) on May 17, 2026).
+**Depends on:** M68_001 (DONE) — §13 D27 decomposition landed the named-stage skeleton this spec's §1–§5 extends; §6–§11 inherit the unfinished M68 §D / §E / §G surface (see "Deferred from M68" below).
+**Provenance:** agent-generated. §1–§5 deferred from `docs/v2/done/M68_001*.md` §13 during CHORE(close) on May 17, 2026; §6–§11 deferred from the same spec during the `/write-unit-test` Path-C audit on May 17, 2026 (see [M68 Post-Close Amendments](../done/M68_001_P1_API_CLI_UI_DOCS_WEBSITE_TRIGGER_REGISTRATION_AND_FREE_TRIAL.md#post-close-amendments)).
 
 **Canonical architecture:** `docs/ARCHITECTURE.md` §CLI — zombiectl login flow (Clerk JWT path; OAuth-poll handshake).
 
@@ -56,6 +56,23 @@
 | `zombiectl/test/login.acceptance.spec.ts` *(if it exists post-D42 acceptance migration)* | EDIT | One acceptance case: the full poll loop survives a single injected 503 and produces a successful login. Mirrors the §13 D31 acceptance pattern. |
 
 > **Anti-pattern guard:** every other file in `zombiectl/src/` stays untouched. If a dimension demands cross-file work, it doesn't belong here — surface to spec author before reaching for new surface.
+
+The CLI section (§1–§5) is bounded to the four rows above. The deferred-from-M68 surface (§6–§11) adds the following files; their full design lives in those sections:
+
+| File | Action | § | Why |
+|------|--------|---|-----|
+| `ui/packages/app/app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx` | EDIT | §6 | Tabs UI → per-trigger card list. |
+| `ui/packages/app/app/(dashboard)/zombies/[id]/components/TriggerPanel.test.ts` | EDIT or NEW | §6 | Multi-card variant rows. |
+| `ui/packages/app/app/(dashboard)/zombies/[id]/components/provider-guidance.ts` | NEW | §7 | Per-provider data table (six or seven entries). |
+| `ui/packages/app/app/(dashboard)/zombies/[id]/components/provider-guidance.test.ts` | NEW | §7 | Per-provider snapshot tests. |
+| `ui/packages/app/app/(dashboard)/zombies/[id]/components/GuidedTriggerCard.tsx` | NEW | §8 | State-B (known provider) card. |
+| `ui/packages/app/app/(dashboard)/zombies/[id]/components/CronCard.tsx` | NEW | §9 | Read-only cron card. |
+| `ui/packages/website/src/components/OnboardingFlow.tsx` | NEW | §10 | 4-step pictorial. |
+| `ui/packages/website/src/components/OnboardingFlow.test.tsx` | NEW | §10 | Snapshot. |
+| `ui/packages/website/src/pages/Home.tsx` | EDIT | §10 | Mount OnboardingFlow (disposition a or b). |
+| `ui/packages/website/src/components/FeatureFlow.tsx` + `FeatureFlow.test.tsx` | DELETE (disposition a only) | §10 | Replaced by OnboardingFlow. |
+| `ui/packages/website/src/components/Hero.tsx` | EDIT | §11 | Primary CTA redesign — clipboard + toast + smooth-scroll to `#onboarding-flow`. |
+| `ui/packages/website/src/components/Hero.test.tsx` | EDIT | §11 | New CTA assertions. |
 
 ---
 
@@ -105,6 +122,149 @@ A single 503 or network blip mid-poll today kills the entire login. Treat one (1
 The 1-blip budget is intentionally conservative — bigger budgets mask real outages. The acceptance test makes this contract visible: inject one 503, the login completes; inject two, the login surfaces `NetworkError`.
 
 **Implementation default:** carry `transientCount: number = 0` in the `pollUntilComplete` local state. The same `RetryConfig`-style contract used by HTTP client retries is the wrong shape here — this is a much smaller, login-specific budget. Inline it.
+
+---
+
+### §6 — Deferred from M68 §D / §E1 / §F4: Trigger panel multi-card switch
+
+**Provenance:** M68_001 §D narrative (line 73) + §E1 (line 128) + §F4 (line 141). Spec intent preserved verbatim below; implementing agent has the design ready.
+
+**What M68 said the trigger panel should do:** "`TriggerPanel.tsx` renders one card per declared trigger in `zombie.triggers[]`. Card variants: `GuidedTriggerCard` (known webhook provider; pre-renders terminal registration command), `CopyUrlCard` (unknown source; today's behaviour as fallback), `CronCard` (schedule + next fire), `ApiCard` (catch-all `POST /v1/zombies/{id}/events` ingress)." `type: api` was carved out (§E5 / Out of Scope); `ApiCard.tsx` is **not** in scope for this spec either — it lands with the workspace-API-tokens spec. The four in-scope variants for M71_001 are `GuidedTriggerCard`, `CopyUrlCard` (already conceptually in the shipped Tabs UI as the default Webhook tab), `CronCard`, and the per-trigger loop in `TriggerPanel.tsx` itself.
+
+**What shipped in M68:** a 78-line 2-tab UI (Webhook tab with one URL + Copy button; Schedule tab with "Cron scheduling is CLI-only for V1" placeholder). Tested at `ui/packages/app/tests/zombies.test.ts:690` (`describe("TriggerPanel interactions")` with three rows — copy semantics + cron-placeholder visibility). Those existing tests stay green after this section lands (the Tabs UI either remains as the "no triggers declared" fallback or its assertions move to assert the new per-card layout — implementing agent decides at design time).
+
+**What this section delivers:**
+
+| Sub-dim | File | Action | Why |
+|---|---|---|---|
+| 6.1 | `ui/packages/app/app/(dashboard)/zombies/[id]/components/TriggerPanel.tsx` | EDIT | Switch from `<Tabs defaultValue="webhook">…</Tabs>` to `<>{zombie.triggers.map(t => <Card variant={t.type, t.source} t={t} />)}</>`. Footer prose: "Edit `TRIGGER.md` and reinstall to change triggers — the source markdown is the source of truth." Prop signature changes from `{ zombieId: string }` to `{ zombieId: string; triggers: ZombieTrigger[] }` (parent page already has `zombie.triggers` from the M68 list-projection change). |
+| 6.2 | `ui/packages/app/app/(dashboard)/zombies/[id]/components/TriggerPanel.test.ts` | EDIT (move from `tests/zombies.test.ts:690` *or* extend in place) | Multi-card-variant rows: (a) 3-trigger zombie → 3 cards in order; (b) `source: "weirdco"` → falls back to `CopyUrlCard`; (c) last-delivery line populates from `listZombieEvents(actor_prefix, limit:1)`. Preserve the existing Tabs-UI test assertions if those code paths remain. |
+
+**Acceptance:** an authenticated user installs a zombie with `triggers: [{type: webhook, source: github, events: ["push"]}, {type: cron, schedule: "*/15 * * * *"}]` → `/zombies/{id}` renders TriggerPanel with exactly two cards in order: a `GuidedTriggerCard` for the github webhook (uses §8) and a `CronCard` for the cron (uses §9).
+
+### §7 — Deferred from M68 §E2 / §F3: `provider-guidance.ts` data table + tests
+
+**Provenance:** M68_001 §E2 (line 129) + §F3 (line 140) + §"`provider-guidance.ts` schema" (line 371). Verbatim design carried forward; M71 implementer ships the table.
+
+**What M68 said:** "Static `PROVIDER_GUIDANCE: Record<Source, GuidanceCard>` map. Entries for `github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`. Each defines: title, events-label formatter, terminal-command template, web-User-Interface deep-link template, user-input variable list (e.g. `OWNER/REPO`, `TEAM_ID`, `WORKSPACE`)." Note: M68 also planned a `clerk` entry as a deep-link-only variant (line 371) — that brings the count to seven providers if the M71 implementer chooses to include it; minimum six per the §E2 row.
+
+**Schema** (TypeScript — copy verbatim from M68 §371 onward when implementing):
+
+```typescript
+type Source = "github" | "linear" | "jira" | "grafana" | "slack" | "agentmail" | "clerk";
+
+type GuidanceCard = {
+  title: string;
+  eventsLabel: (events: string[]) => string;        // e.g. ["push","pull_request"] → "On push, pull_request"
+  command: (vars: Record<string, string>, webhookUrl: string) => string;
+  webUiDeepLink: (vars: Record<string, string>) => string;
+  variables: Array<{ name: string; example: string; required: boolean }>;
+};
+
+export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard>;
+```
+
+**Per-provider verbatim content** lives in M68 §"`provider-guidance.ts` schema" (line 371 onward). Implementer copies that block into the new file.
+
+**Files:**
+
+| Sub-dim | File | Action | Why |
+|---|---|---|---|
+| 7.1 | `ui/packages/app/app/(dashboard)/zombies/[id]/components/provider-guidance.ts` | NEW | The data table. RULE FLL — if it crosses 350 lines, split per provider into `provider-guidance/{github,linear,jira,grafana,slack,agentmail,clerk}.ts` with a `mod.ts` aggregator (M68's note at §line 315 stays binding). |
+| 7.2 | `ui/packages/app/app/(dashboard)/zombies/[id]/components/provider-guidance.test.ts` | NEW | Per-provider snapshot test: given `triggers[0] = {source, events}` + webhook URL, the rendered command + deep-link strings match a fixture. Pins prose. Six (or seven) fixture files alongside. |
+
+**Acceptance:** `PROVIDER_GUIDANCE.github` rendering a `gh api repos/OWNER/REPO/hooks` command with the M68 webhook URL substituted matches the fixture byte-for-byte.
+
+### §8 — Deferred from M68 §E3: `GuidedTriggerCard.tsx`
+
+**Provenance:** M68_001 §E3 (line 130).
+
+**What M68 said:** "Renders State B (known provider). Composes events label, webhook URL with Copy button, rendered command block with Copy button, web-UI deep link, last-delivery line. Pure presentational."
+
+**File:** `ui/packages/app/app/(dashboard)/zombies/[id]/components/GuidedTriggerCard.tsx` — NEW.
+
+**Props (suggested):**
+
+```typescript
+type Props = {
+  trigger: ZombieTrigger;          // type === "webhook"
+  webhookUrl: string;
+  guidance: GuidanceCard;          // PROVIDER_GUIDANCE[trigger.source]
+  lastDeliveryAt?: number | null;  // from listZombieEvents(actor_prefix, limit:1)
+};
+```
+
+**Composition** (top-to-bottom in the card):
+
+1. Header: `guidance.title` + `guidance.eventsLabel(trigger.events ?? [])`.
+2. Webhook URL row: copyable code block (use the M68 shipped TriggerPanel's copy-button pattern — `useState<boolean>` + `navigator.clipboard.writeText` + 1.5s reset).
+3. Rendered command block: variable inputs above (one per `guidance.variables`), the rendered `guidance.command(vars, webhookUrl)` below, Copy button. The command re-renders client-side as the user types into the variable inputs.
+4. Web-UI deep link: `<a href={guidance.webUiDeepLink(vars)} target="_blank" rel="noreferrer">` with the provider name.
+5. Last-delivery line: `Last delivery: <relative-time>` if `lastDeliveryAt`; otherwise `Last delivery: never`.
+
+**Pure presentational** — no data fetching inside; the parent (`TriggerPanel.tsx`) passes `webhookUrl` + `guidance` + `lastDeliveryAt` down.
+
+### §9 — Deferred from M68 §E4: `CronCard.tsx`
+
+**Provenance:** M68_001 §E4 (line 131).
+
+**What M68 said:** "Renders cron triggers. Shows the schedule, next-fire computed client-side (timezone-aware), and links the user to Recent Activity filtered `actor LIKE 'cron:%'`. ~50 lines."
+
+**File:** `ui/packages/app/app/(dashboard)/zombies/[id]/components/CronCard.tsx` — NEW.
+
+**Props:** `{ trigger: ZombieTrigger /* type === "cron" */; zombieId: string }`.
+
+**Composition:**
+
+1. Header: `Cron — ${trigger.schedule}` (the raw cron expression).
+2. Next-fire line: computed client-side from the cron expression + `Date.now()` + IANA tz from `Intl.DateTimeFormat().resolvedOptions().timeZone`. Implementer picks a lightweight cron-parsing dep (`cron-parser` is ~9 kB minified; check bundle budget against M68's 220 kB asserted ceiling).
+3. "Cron is read-only in the Dashboard" prose: "Declared in TRIGGER.md, runtime-managed by NullClaw's `cron_add` tool. Edit `TRIGGER.md` and reinstall to change the schedule." Mirrors the Out-of-Scope note from M68 line 993.
+4. Recent-activity filter link: `<Link href={\`/zombies/${zombieId}?actor_prefix=cron:\`}>View cron deliveries →</Link>`.
+
+### §10 — Deferred from M68 §G5 / §G6 / §G7: website `OnboardingFlow`
+
+**Provenance:** M68_001 §G5 (line 153) + §G6 (line 154) + §G7 (line 155) + §"`OnboardingFlow.tsx` design" (line 398).
+
+**Coexistence with `FeatureFlow.tsx`** (M71-specific decision the implementer makes at PLAN time):
+
+`FeatureFlow.tsx` shipped at M68 in the slot OnboardingFlow was supposed to fill (`Home.tsx:40`). FeatureFlow is a 3-row alternating evidence layout (install / event-trace / mission-control); OnboardingFlow as spec'd is a 4-card horizontally-laid pictorial step-by-step (install / run skill / wire webhook / steer). Two valid M71 dispositions:
+
+- **(a) Replace** `FeatureFlow` with `OnboardingFlow` on `Home.tsx` (the original M68 intent); delete `FeatureFlow.tsx` and its tests; reroute any other call sites of `FeatureFlow` to OnboardingFlow.
+- **(b) Coexist** — keep `FeatureFlow` as the evidence section, mount `OnboardingFlow` either above it (between Hero and FeatureFlow) or below Pricing per M68's original placement. Two distinct sections with different user goals (evidence-of-product vs step-by-step-getting-started).
+
+Disposition (a) is closer to the M68 design intent; disposition (b) preserves the post-M68 shipped state and adds the missing pictorial. Implementer picks at PLAN with `plan-ceo-review` or `plan-design-review` input; default is (a).
+
+**File spec (carried forward from M68 §line 398):** "`OnboardingFlow.tsx` renders four horizontally-laid cards on desktop, stacked on mobile. Each card carries: an icon, a 1-line label, a code snippet (real shell command — `npm install -g @usezombie/zombiectl`, `npx skills add usezombie/usezombie`, `gh api repos/OWNER/REPO/hooks -F …`, `zombiectl steer zom_… 'howdy'`), and a sub-caption (≤2 lines explaining when the user runs it). ~180 LOC, no images — typography + design-system tokens only."
+
+The four cards (verbatim from M68 §G5):
+
+1. `npm install -g @usezombie/zombiectl` + `npx skills add usezombie/usezombie`.
+2. Run `/usezombie-install-platform-ops` in Claude (or paste `TRIGGER.md` + `SKILL.md` in the Dashboard).
+3. Wire the webhook (`gh api` one-liner pre-rendered; or copy the command from the Dashboard).
+4. Steer the zombie ("howdy" from terminal `zombiectl steer` or from the Dashboard chat composer).
+
+**Files:**
+
+| Sub-dim | File | Action |
+|---|---|---|
+| 10.1 | `ui/packages/website/src/components/OnboardingFlow.tsx` | NEW (~180 LOC). |
+| 10.2 | `ui/packages/website/src/components/OnboardingFlow.test.tsx` | NEW — snapshot test for the four cards; deterministic rendering. Asserts (a) four cards rendered in numbered order, (b) each card contains the expected code snippet text. |
+| 10.3 | `ui/packages/website/src/pages/Home.tsx` | EDIT — mount `<OnboardingFlow />` per the chosen disposition (a) or (b). |
+| 10.4 | `ui/packages/website/src/components/FeatureFlow.tsx` + `FeatureFlow.test.tsx` (if disposition (a)) | DELETE — only if FeatureFlow is fully replaced; carry FeatureFlow's existing tests into the OnboardingFlow test surface where they overlap (the install-command card is in both). |
+
+**Anchor:** the section's outer container gets `id="onboarding-flow"` so M68 §G11's smooth-scroll target works after §11 lands.
+
+### §11 — Deferred from M68 §G11: `Hero.tsx` primary-CTA redesign
+
+**Provenance:** M68_001 §G11 (line 159).
+
+**What M68 said:** Replace the `<a href={DOCS_QUICKSTART_URL}>` "→ install in Claude Code" button with a `<button>` whose onClick (a) writes `npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie` to `navigator.clipboard`, (b) shows a 2-second "Copied — paste into your terminal" toast (existing design-system `<Toast>` or an `aria-live` region fallback), (c) smooth-scrolls to the `#onboarding-flow` anchor on the same page. Keep `DOCS_QUICKSTART_URL` as a small tertiary "read the full quickstart →" link inside OnboardingFlow itself (§10). Update `Hero.test.tsx:52-56` accordingly.
+
+**Depends on §10** — the `#onboarding-flow` anchor must exist before the scroll target makes sense. Land §10 first or in the same PR.
+
+**File:** `ui/packages/website/src/components/Hero.tsx` — EDIT lines around 64–70 (per M68's pinned range; verify line numbers at PLAN time since intervening edits may have shifted them).
+
+**Tests:** `Hero.test.tsx:52-56` — assert (a) clicking the CTA writes the install command to a mocked clipboard, (b) the toast appears for ~2s then disappears, (c) `scrollIntoView` is called on the `#onboarding-flow` element.
 
 ---
 
