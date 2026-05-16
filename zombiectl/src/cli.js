@@ -28,8 +28,8 @@ import { createSpinner } from "./ui-progress.js";
 import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.js";
 import { buildProgram } from "./program/cli-tree.js";
 import { buildHandlers } from "./program/handlers-bind.js";
-import { ROLE_ADMIN } from "./constants/auth-roles.js";
-import { EVT_USER_AUTHENTICATED, EVT_WORKSPACE_CREATED } from "./constants/analytics-events.js";
+import { ROLE_ADMIN } from "./constants/auth-roles.ts";
+import { EVT_USER_AUTHENTICATED, EVT_WORKSPACE_CREATED } from "./constants/analytics-events.ts";
 
 // VERSION is the source-of-truth `package.json` field, read once at module
 // load. `make sync-version` writes package.json + build.zig.zon together;

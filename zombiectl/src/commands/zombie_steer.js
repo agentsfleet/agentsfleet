@@ -15,7 +15,7 @@
 
 import { wsZombieMessagesPath, wsZombieEventsPath, wsZombieEventsStreamPath } from "../lib/api-paths.js";
 import { streamGet as defaultStreamGet } from "../lib/sse.js";
-import { EVENT_STATUS } from "../constants/event-status.js";
+import { EVENT_STATUS } from "../constants/event-status.ts";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;

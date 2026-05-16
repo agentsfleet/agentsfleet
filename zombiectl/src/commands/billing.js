@@ -9,7 +9,7 @@
 
 import { AUTH_PRESET } from "../lib/error-map-presets.js";
 import { writeError } from "../program/io.js";
-import { CHARGE_TYPE, formatDollars } from "../constants/billing.js";
+import { CHARGE_TYPE, formatDollars } from "../constants/billing.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.js";
 
 // Billing show hits /v1/tenants/me/billing (GET) + charges (GET).

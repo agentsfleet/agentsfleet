@@ -12,22 +12,22 @@ import {
   MISSING_ARGUMENT,
   NO_WORKSPACE,
   VALIDATION_ERROR,
-} from "../constants/cli-errors.js";
-import { OPT_FROM } from "../constants/cli-flags.js";
+} from "../constants/cli-errors.ts";
+import { OPT_FROM } from "../constants/cli-flags.ts";
 import {
   ERR_CRED_PLATFORM_KEY_MISSING,
   ERR_CRED_ANTHROPIC_KEY_MISSING,
   ERR_VAULT_DATA_INVALID,
   ERR_EXEC_RUNNER_AGENT_RUN,
   ERR_INTERNAL_DB_UNAVAILABLE,
-} from "../constants/error-codes.js";
+} from "../constants/error-codes.ts";
 import {
   AUTH_PRESET,
   WORKSPACE_PRESET,
   ZOMBIE_PRESET,
   compose,
 } from "../lib/error-map-presets.js";
-import { ZOMBIE_STATUS } from "../constants/zombie-status.js";
+import { ZOMBIE_STATUS } from "../constants/zombie-status.ts";
 
 // Shared by every `zombie.*` route — install/list/status/kill/stop/
 // resume/delete/logs/steer/events/credential all hit the same workspace

@@ -43,6 +43,6 @@ const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 4,
 });
 
-export function formatDollars(nanos) {
+export function formatDollars(nanos: number | null | undefined): string {
   return USD_FORMATTER.format((nanos ?? 0) / NANOS_PER_USD);
 }

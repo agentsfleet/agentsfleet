@@ -525,6 +525,28 @@ Deferred to **cli-auth handshake hardening** sibling spec (`HANDOFF_SUPABASE_HAR
 - **D26 — TTY-priority env resolution (G).** Same reason as D25 — `ZMB_TOKEN`/`ZOMBIE_TOKEN` env-token reading doesn't exist in commandLogin today; it lands with the new pathways.
 - **D32 — `zombiectl logout --all` (M).** Needs the server-side revocation design the sibling spec resolves (Clerk JWTs are stateless; revocation is non-trivial).
 
+### §14 — TypeScript strict migration (zombiectl + cross-package alignment)
+
+**Why now:** zombiectl is plain JS with no type checker — the D31 review surfaced `probe.status` could-be-null risk that no static check would catch. Captain elevated this to in-PR scope (nearing production; null/undefined bugs must be statically caught). Strict TypeScript across the whole CLI is the production-readiness gate. Cross-package `package.json` versions also drifted (`design-system` had caret `^6.0.3` vs exact `6.0.3` elsewhere; `website` was missing `@types/node`); aligning them is part of this workstream so the type-engine surface is consistent.
+
+Mechanic: tsc as the static checker (matches the UI packages' engine). Source uses `.ts` extensions in relative imports; `allowImportingTsExtensions: true` + `rewriteRelativeImportExtensions: true` in `tsconfig.json` means the eventual emit will rewrite to `.js` for Node ESM distribution. Worktree dev/test loop spawns the CLI via `bun` (handles mixed `.js`/`.ts` imports transparently during the migration); global/published mode keeps using plain `node` against the emitted artifact.
+
+Strict settings: `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, `noImplicitReturns: true`, `noUnusedLocals: true`, `noUnusedParameters: true`, `useUnknownInCatchVariables: true`. Catches the bug classes Captain called out (`probe.status` on possibly-null `probe`, `array[i]` on possibly-undefined, missing `?.` chains).
+
+- **D33 — Foundation + cross-package alignment. — DONE.** Added `typescript@6.0.3`, `@types/node@^25.8.0`, `@types/uuid@^11.0.0`, `bun-types@^1.3.13` as devDeps to `zombiectl/package.json`. Added `typecheck` script + wired `tsc --noEmit` into `lint`/`lint:fix`/`build`. Created `zombiectl/tsconfig.json` with the full strict set above. Aligned `design-system/package.json` (pinned `typescript`/`@types/react`/`@types/react-dom` to exact versions matching app/website; added `typecheck` script; added `@types/node`). Added `@types/node` to `website/package.json`. Both `bun.lock`s regenerated.
+- **D34 — `src/constants/**/*.{js,ts}` migration. — DONE.** Renamed all ten constants files (`analytics-events`, `auth-roles`, `billing`, `cli-errors`, `cli-flags`, `doctor-checks`, `error-codes`, `event-status`, `signals`, `zombie-status`) from `.js` to `.ts` via `git mv` (history preserved). Added types where strict mode required: `formatDollars(nanos: number | null | undefined): string`. Updated 17 consumer files across `src/`, `test/`, `bin/` to import via `.ts` extension. Worktree-mode CLI spawner switched from `node` to `bun` in `test/acceptance/fixtures/cli.js` (cross-extension import resolution). `scripts/audit-runtime-imports.mjs` extended to walk `.ts` files and accept `.ts` as a valid Node-ESM-equivalent extension during the migration window. 633/633 tests + lint + typecheck all green.
+- **D35 — `src/util/**` + `src/output/**` migration.** Pending.
+- **D36 — `src/program/auth-token` + `src/lib/state` migration.** Pending. These two are the load-bearing types other waves depend on (token-payload shape + credentials/workspaces persistence).
+- **D37 — `src/lib/http` + `src/lib/sse` + `src/program/http-client` migration.** Pending. Networking surface; defines `ApiError`, `Bearer` resolution, fetch wrapper.
+- **D38 — `src/lib/error-map-presets` + `src/lib/error-codes` + `src/lib/run-command` migration.** Pending. Error taxonomy + dispatch wrapper.
+- **D39 — `src/commands/**` migration (each command).** Pending. Largest cluster (~14 files). Depends on D36–D38 so the shared `Deps` shape can be typed once and consumed everywhere.
+- **D40 — `src/program/**` migration.** Pending. cli-tree, handlers-bind, help, io, validate, validators, banner, auth-guard.
+- **D41 — `src/cli.js` + `bin/zombiectl.js` migration.** Pending. Entry points; bin stays minimal shim.
+- **D42 — `test/**` migration.** Pending.
+- **D43 — Build pipeline: tsc emit to `dist/`, update `bin` + `files` in `package.json`, switch acceptance spawner to compiled output for global mode.** Pending. After this lands, the published artifact is pure `.js`; `audit-runtime-imports.mjs` can be narrowed back to `.js`-only walk.
+
+Out of M68 (handoff to follow-up): converting `zombied/scripts/**/*.mjs` (Zig-tree side scripts) and the e2e harness at `ui/packages/app/tests/e2e/cli-acceptance/`. The Zig side is unaffected — only the JS surface migrates.
+
 ---
 
 ## Interfaces

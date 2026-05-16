@@ -30,7 +30,7 @@ import {
   ERR_ZOMBIE_NOT_FOUND,
   ERR_ZOMBIE_ALREADY_TERMINAL,
   ERR_ZOMBIE_NAME_MISMATCH,
-} from "../constants/error-codes.js";
+} from "../constants/error-codes.ts";
 
 // Universal auth codes — every authenticated command can hit these.
 // Mirrors src/errors/error_registry.zig UZ-AUTH-001..010.

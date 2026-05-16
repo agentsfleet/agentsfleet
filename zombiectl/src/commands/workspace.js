@@ -6,7 +6,7 @@ import {
   UNKNOWN_WORKSPACE,
   USAGE_ERROR,
   VALIDATION_ERROR,
-} from "../constants/cli-errors.js";
+} from "../constants/cli-errors.ts";
 import { AUTH_PRESET, WORKSPACE_PRESET, compose } from "../lib/error-map-presets.js";
 import { WORKSPACES_COLLECTION_PATH } from "../lib/api-paths.js";
 import {
@@ -14,7 +14,7 @@ import {
   EVT_WORKSPACE_LIST_VIEWED,
   EVT_WORKSPACE_USED,
   EVT_WORKSPACE_DELETED,
-} from "../constants/analytics-events.js";
+} from "../constants/analytics-events.ts";
 
 // Covers workspace add/list/use/show/delete/credentials. Auth codes
 // because every sub-command is authenticated; workspace codes because

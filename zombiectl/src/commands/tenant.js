@@ -11,7 +11,7 @@ import {
   PROVIDER_MODE,
   formatDollars,
   NANOS_PER_USD,
-} from "../constants/billing.js";
+} from "../constants/billing.ts";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import { TENANT_PROVIDER_PATH, TENANT_BILLING_PATH } from "../lib/api-paths.js";
 

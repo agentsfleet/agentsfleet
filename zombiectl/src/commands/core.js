@@ -1,8 +1,8 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.js";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.js";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.js";
-import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.js";
-import { SIGINT } from "../constants/signals.js";
+import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
+import { SIGINT } from "../constants/signals.ts";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 

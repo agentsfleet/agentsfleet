@@ -38,7 +38,11 @@ function listJavaScriptFiles(paths) {
 function walk(path, files) {
   const stat = statSync(path);
   if (stat.isFile()) {
-    if (path.endsWith(".js") || path.endsWith(".mjs")) files.push(path);
+    // Walk both .js and .ts during the TypeScript migration. After the
+    // migration completes and the build emits .js to dist/, the published
+    // artifact will be pure .js — at that point this audit can be narrowed
+    // back to scan the emit output only.
+    if (path.endsWith(".js") || path.endsWith(".mjs") || path.endsWith(".ts")) files.push(path);
     return;
   }
   for (const entry of readdirSync(path)) {
@@ -63,7 +67,10 @@ function auditSpecifier(file, specifier) {
 
 function auditRelativeSpecifier(file, specifier) {
   const extension = extname(specifier);
-  if (![".js", ".mjs", ".json"].includes(extension)) {
+  // `.ts` accepted during the TypeScript migration. tsc's
+  // `rewriteRelativeImportExtensions: true` rewrites these to `.js` on emit
+  // so the published artifact still has Node-resolvable extensions.
+  if (![".js", ".mjs", ".json", ".ts"].includes(extension)) {
     failures.push(`${relative(file)} imports ${specifier} without a Node ESM extension`);
   }
 }

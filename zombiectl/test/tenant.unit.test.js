@@ -6,7 +6,7 @@ import {
   makeNoop,
   ui,
 } from "./helpers.js";
-import { PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.js";
+import { PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.ts";
 const TENANT_PROVIDER_PATH = "/v1/tenants/me/provider";
 const ONE_CENT_NANOS = NANOS_PER_USD / 100;
 

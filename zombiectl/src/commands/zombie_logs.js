@@ -4,7 +4,7 @@ import {
   MISSING_ARGUMENT,
   NO_WORKSPACE,
   VALIDATION_ERROR,
-} from "../constants/cli-errors.js";
+} from "../constants/cli-errors.ts";
 
 const DEFAULT_LOGS_LIMIT = "20";
 

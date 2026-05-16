@@ -35,7 +35,12 @@ function resolveBinary(opts) {
   const requested = opts?.binary ?? process.env[ACCEPTANCE_BINARY_ENV] ?? ACCEPTANCE_BINARY.worktree;
   if (requested === ACCEPTANCE_BINARY.global) return { command: "zombiectl", prefixArgs: [] };
   if (requested === ACCEPTANCE_BINARY.worktree) {
-    return { command: process.execPath, prefixArgs: [WORKTREE_ENTRY] };
+    // Worktree mode runs source directly; some files under src/ are now .ts
+    // (TypeScript migration in progress). bun handles mixed .js/.ts imports
+    // transparently; raw node would ERR_MODULE_NOT_FOUND on .js → .ts.
+    // Global mode (CI post-`npm i -g`) keeps using plain `zombiectl` from
+    // PATH, which is the tsc-emitted .js output.
+    return { command: "bun", prefixArgs: [WORKTREE_ENTRY] };
   }
   throw new Error(`unknown ZOMBIE_ACCEPTANCE_BINARY: ${requested}`);
 }

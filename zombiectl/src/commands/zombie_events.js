@@ -7,7 +7,7 @@
 // short response preview. `--json` emits the raw envelope for piping.
 
 import { wsZombieEventsPath } from "../lib/api-paths.js";
-import { EVENT_STATUS } from "../constants/event-status.js";
+import { EVENT_STATUS } from "../constants/event-status.ts";
 
 const DEFAULT_LIMIT = 50;
 

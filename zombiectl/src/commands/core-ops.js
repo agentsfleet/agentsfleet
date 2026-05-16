@@ -4,8 +4,8 @@ import {
   ERR_INTERNAL_DB_UNAVAILABLE,
   ERR_INTERNAL_DB_QUERY,
   ERR_INTERNAL_OPERATION_FAILED,
-} from "../constants/error-codes.js";
-import { DOCTOR_CHECK } from "../constants/doctor-checks.js";
+} from "../constants/error-codes.ts";
+import { DOCTOR_CHECK } from "../constants/doctor-checks.ts";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 

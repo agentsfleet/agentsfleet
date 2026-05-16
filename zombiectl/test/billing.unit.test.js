@@ -6,7 +6,7 @@ import {
   makeNoop,
   ui,
 } from "./helpers.js";
-import { CHARGE_TYPE, PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.js";
+import { CHARGE_TYPE, PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.ts";
 const BILLING_PATH = "/v1/tenants/me/billing";
 const CHARGES_PATH_PREFIX = "/v1/tenants/me/billing/charges";
 

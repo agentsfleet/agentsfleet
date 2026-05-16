@@ -77,9 +77,11 @@ describe("golden — --help under NO_COLOR is byte-exact", () => {
   });
 });
 
-// To regenerate: NO_COLOR=1 node zombiectl/bin/zombiectl.js --help \
-//   > zombiectl/test/golden/help-no-color.txt && \
-//   NO_COLOR=1 node zombiectl/bin/zombiectl.js --version \
-//   > zombiectl/test/golden/version-no-color.txt
+// To regenerate (worktree mode runs source via bun because src/ is mixed .js/.ts
+// during the TypeScript migration; plain `node` resolves only .js extensions):
+//   NO_COLOR=1 bun zombiectl/bin/zombiectl.js --help \
+//     > zombiectl/test/golden/help-no-color.txt && \
+//   NO_COLOR=1 bun zombiectl/bin/zombiectl.js --version \
+//     > zombiectl/test/golden/version-no-color.txt
 // Then bump FIXTURE_VERSION above to match the current VERSION,
 // verify the diff is intentional, and commit.
