@@ -26,9 +26,9 @@
     "bun": ">=1.3.0"
   },
   "scripts": {
-    "test": "node ./scripts/run-tests.mjs",
+    "test": "bun test",
     "test:coverage": "bun test --coverage",
-    "test:acceptance": "node ./scripts/run-acceptance.mjs",
+    "test:acceptance": "bun test test/acceptance",
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src bin test scripts && node ./scripts/audit-runtime-imports.mjs && tsc --noEmit",
     "lint:fix": "oxlint src bin test scripts --fix && node ./scripts/audit-runtime-imports.mjs && tsc --noEmit",

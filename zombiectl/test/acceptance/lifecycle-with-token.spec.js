@@ -20,7 +20,7 @@
  * tests are skipped — matches the unit-test runner's local invariant.
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
@@ -107,7 +107,7 @@ if (!isLive) {
       return result;
     }
 
-    before(async () => {
+    beforeAll(async () => {
       apiUrl = resolveAcceptanceEnv().apiUrl;
       const clerkSecret = resolveClerkSecret();
       const email = resolveFixtureEmail("regular");
@@ -127,7 +127,7 @@ if (!isLive) {
       validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validate.js"));
     });
 
-    after(async () => {
+    afterAll(async () => {
       if (env && workspaceId) {
         try { await cleanWorkspaceZombies(env, workspaceId); } catch {}
       }
@@ -234,7 +234,7 @@ if (!isLive) {
     // tenant identity) — those rows surface as Discovery once a per-suite
     // tenant teardown lands.
     describe("§4b' empty-list message (zombie list)", () => {
-      before(async () => {
+      beforeAll(async () => {
         await cleanWorkspaceZombies(env, workspaceId);
       });
 

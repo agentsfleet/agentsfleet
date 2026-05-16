@@ -22,7 +22,7 @@
  * WS-E #C1 regression: assertNoSecretLeak fires after every spawn.
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -126,7 +126,7 @@ if (!isLive || !hasDashboard) {
       return result;
     }
 
-    before(async () => {
+    beforeAll(async () => {
       apiUrl = resolveAcceptanceEnv().apiUrl;
       const clerkSecret = resolveClerkSecret();
       const email = resolveFixtureEmail("regular");
@@ -145,7 +145,7 @@ if (!isLive || !hasDashboard) {
       });
     });
 
-    after(async () => {
+    afterAll(async () => {
       try { await cleanWorkspaceZombies(baseEnv); } catch {}
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
@@ -202,7 +202,7 @@ if (!isLive || !hasDashboard) {
 
     // §5b' — empty-list parity (zombie list — guaranteed empty post-teardown)
     describe("§5b' empty-list parity (zombie list)", () => {
-      before(async () => {
+      beforeAll(async () => {
         await cleanWorkspaceZombies(baseEnv);
       });
 

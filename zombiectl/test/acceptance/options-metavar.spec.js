@@ -19,7 +19,7 @@
  * (validator + wire request).
  */
 
-import { describe, it, before, after } from "node:test";
+import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import fs from "node:fs/promises";
@@ -78,7 +78,7 @@ let pkgVersion;
 let stateDir;
 let workspaceUuid;
 
-before(async () => {
+beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
   pkgVersion = JSON.parse(pkgRaw).version;
   // Seed the state dir with a uuidv7 workspace id so handlers that
@@ -89,7 +89,7 @@ before(async () => {
   stateDir = await makeStubbedStateDir({ workspaceId: workspaceUuid });
 });
 
-after(async () => {
+afterAll(async () => {
   if (stateDir) await stateDir.cleanup();
 });
 
@@ -165,8 +165,8 @@ describe("validators reject invalid values with clear error stem", () => {
 
 describe("option values flow end-to-end into the wire request", () => {
   let stub;
-  before(async () => { stub = await startCapturingStub(); });
-  after(async () => { if (stub) await stub.close(); });
+  beforeAll(async () => { stub = await startCapturingStub(); });
+  afterAll(async () => { if (stub) await stub.close(); });
 
   function clear() { stub.captured.length = 0; }
   function apiEnv(extra) { return runEnv({ ZOMBIE_API_URL: stub.baseUrl, ...(extra ?? {}) }); }
