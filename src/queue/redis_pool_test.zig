@@ -185,3 +185,88 @@ test "Pool.stats surfaces every PoolStats field" {
     _ = s.forced_closes_total;
     _ = s.acquire_timeouts_total;
 }
+
+// ── Integration tests (real Redis via TEST_REDIS_TLS_URL) ───────────────
+//
+// Pattern lifted from `redis_test.zig` "integration: rediss ping" — skip
+// when the env var is unset so unit-test runs in CI / dev stay deterministic
+// without a live broker. Exercises behaviors that only a real RESP server
+// can prove: PING round-trip through the pool, over-`max_idle` dial path,
+// and `SO_RCVTIMEO` re-tag of `ReadFailed` into `RedisRequestTimeout`.
+
+const TLS_URL_ENV = "TEST_REDIS_TLS_URL";
+const REDISS_SCHEME = "rediss://";
+
+fn tlsUrlOrSkip(alloc: std.mem.Allocator) ![]u8 {
+    const url = std.process.getEnvVarOwned(alloc, TLS_URL_ENV) catch return error.SkipZigTest;
+    if (!std.mem.startsWith(u8, url, REDISS_SCHEME)) {
+        alloc.free(url);
+        return error.SkipZigTest;
+    }
+    return url;
+}
+
+test "integration: pool acquires, parks idle, and over-cap dial increments overflow_dials_total" {
+    const alloc = std.testing.allocator;
+    const tls_url = try tlsUrlOrSkip(alloc);
+    defer alloc.free(tls_url);
+
+    const cfg = try redis_config.parseRedisUrl(alloc, tls_url);
+    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 1 });
+    defer pool.deinit();
+
+    // Happy path: one acquire, one real PING round-trip, release(ok=true).
+    // Confirms RESP travels end-to-end through the pool against a live server.
+    const first = try pool.acquire();
+    var pong = try first.command(&.{"PING"});
+    pong.deinit(alloc);
+    pool.release(first, true);
+    try std.testing.expectEqual(@as(usize, 1), pool.stats().idle);
+
+    // Burst beyond `max_idle = 2`: hold 4 connections simultaneously. Acquires
+    // 3 and 4 see `active_count >= max_idle` at the dial decision point, so
+    // each increments `overflow_dials_total`. The pool grows transparently
+    // without an exhaustion error (no hard cap; over-`max_idle` connections
+    // close on release rather than parking back into idle).
+    var held: [4]*Connection = undefined;
+    for (&held) |*slot| slot.* = try pool.acquire();
+
+    const peak = pool.stats();
+    try std.testing.expectEqual(@as(usize, 0), peak.idle);
+    try std.testing.expectEqual(@as(usize, 4), peak.active);
+    try std.testing.expect(peak.overflow_dials_total >= 2);
+
+    for (held) |c| pool.release(c, true);
+
+    // After release: idle is capped at `max_idle = 2`; the other 2 closed.
+    const settled = pool.stats();
+    try std.testing.expectEqual(@as(usize, 2), settled.idle);
+    try std.testing.expectEqual(@as(usize, 0), settled.active);
+}
+
+test "integration: request timeout surfaces RedisRequestTimeout on a hanging BLPOP" {
+    const alloc = std.testing.allocator;
+    const tls_url = try tlsUrlOrSkip(alloc);
+    defer alloc.free(tls_url);
+
+    // `read_timeout_ms = 100` arms `SO_RCVTIMEO` on every pooled Connection.
+    // BLPOP with a 5s server-side wait on a never-populated key holds the
+    // socket idle past the budget; the kernel returns EAGAIN, std.Io.Reader
+    // surfaces `error.ReadFailed`, and `Connection.mapReadError` re-tags it
+    // as `error.RedisRequestTimeout` because `read_timeout_ms != null`.
+    // Pool retry dials a fresh conn for attempt 2 — it also times out — so
+    // the error surfaces to the caller after MAX_ATTEMPTS.
+    var client = try Client.connectFromUrlWithOptions(alloc, tls_url, .{ .read_timeout_ms = 100 });
+    defer client.deinit();
+
+    const start = std.time.nanoTimestamp();
+    const result = client.command(&.{ "BLPOP", "test:blpop:never-populated", "5" });
+    const elapsed_ns = std.time.nanoTimestamp() - start;
+
+    try std.testing.expectError(error.RedisRequestTimeout, result);
+    // Sanity bound: two ~100ms timeouts + one redial fit well under 5s. If
+    // this assertion ever trips, the retry loop is hanging — not just slow.
+    try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
+}
+
+const Client = @import("redis_client.zig");
