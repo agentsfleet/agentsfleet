@@ -568,6 +568,15 @@ Strict settings: `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptiona
 
 Out of M68 (handoff to follow-up): converting `zombied/scripts/**/*.mjs` (Zig-tree side scripts) and the e2e harness at `ui/packages/app/tests/e2e/cli-acceptance/`. The Zig side is unaffected — only the JS surface migrates.
 
+**§14 Risks & Gotchas (carry into D38–D43):**
+
+- **`bun test` now picks up `*.spec.*` files.** The 5 acceptance specs in `test/acceptance/` run on every `bun test` invocation (~7s overhead — stub-mode without `ZOMBIE_ACCEPTANCE_TARGET` yields 51 pass + 2 skip). If overhead becomes a problem, rename the specs or narrow the `bun test` glob. `coveragePathIgnorePatterns` was widened from `test/acceptance/**` to exclude acceptance from coverage math — keep that exclusion when adding new acceptance suites.
+- **Ambient `.d.ts` files lie if they drift.** D37 introduced `src/lib/analytics.d.ts` as the TS→JS bridge for the still-JS `analytics.js`. The compiler trusts the `.d.ts` blindly; if `analytics.js` adds/removes/renames an export the `.d.ts` MUST be updated in the same commit. When the JS file migrates (D38+), delete its `.d.ts`. Do not keep both. Same pattern applies when D38 introduces a `.d.ts` for `lib/run-command.js` if consumers need typed imports before the file itself migrates.
+- **`exactOptionalPropertyTypes` widens parameter types, not field types.** Parameter shapes that accept caller-produced values should be `string | null | undefined` (not `string | null`) so callers can pass already-`undefined`-typed expressions without an extra guard at every call site. Tighten at the boundary if a narrower internal type makes sense (e.g. `apiRequestWithRetry` converts `null` to `{}` internally). Pattern baked into `AuthCredentials.{token,apiKey}`, `ApiRequestWithRetryOptions.retry`, `fetchImpl?` — propagate to D38–D41 wherever a parameter shape repeats the trap.
+- **`src/lib/http.ts` is at 327 / 350 lines — 23 lines of FLL headroom.** D38–D43 must NOT add code to `http.ts`. Net-new transport code belongs in `stream-fetch.ts` (POST/SSE) or `sse.ts` (GET/SSE) or a new sibling module. The split happened because Captain rejected trimming in place when the gate fired at 412L; respect the verdict.
+- **No re-export shims.** When D37 carved `streamFetch` out of `http.js` into `stream-fetch.ts`, Captain explicitly rejected adding a re-export from `http.ts`. Callers import from the owning module directly. The principle: each module is one honest surface, not a façade hiding a split. Apply to any future surface decomposition in D38–D43 — if D39 splits a command, callers import from the new file, not via a shim in the old one.
+- **Acceptance fixture spawner uses `bun`, not `node`, until D43.** `test/acceptance/fixtures/cli.js` invokes `bun` to run the CLI because the source tree mixes `.js` and `.ts` and only Bun resolves cross-extension imports at runtime. After D43 emits compiled `.js` to `dist/`, the spawner switches back to `node` against the compiled output, and `scripts/audit-runtime-imports.mjs` can narrow its walk back to `.js`-only. Do not "fix" the `bun` spawn before D43 lands.
+
 ---
 
 ## Interfaces
