@@ -2,7 +2,7 @@
 # QUALITY — code quality, formatting, analysis
 # =============================================================================
 
-.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-shell check-openapi check-schema-gate check-gh-actions-valid _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _shell_lint
+.PHONY: lint-all lint-zig lint-website lint-apps-ds-ctl lint-app lint-design-system lint-zombiectl lint-shell check-openapi check-schema-gate check-gh-actions-valid _fmt _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check _website_lint _app_lint _design_system_lint _zombiectl_lint _shell_lint
 
 ZLINT ?= zlint
 ACTIONLINT ?= actionlint
@@ -229,6 +229,12 @@ lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schem
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 
 lint-apps-ds-ctl: _app_lint _design_system_lint _zombiectl_lint  ## Lint app + design-system + zombiectl
+
+lint-app: _app_lint  ## Lint ui/packages/app only (Oxlint + tsc)
+
+lint-design-system: _design_system_lint  ## Lint ui/packages/design-system only (Oxlint + tsc)
+
+lint-zombiectl: _zombiectl_lint  ## Lint zombiectl CLI only (node --check)
 
 lint-shell: _shell_lint  ## Lint scripts/*.sh via shellcheck (follows dotfiles symlinks)
 
