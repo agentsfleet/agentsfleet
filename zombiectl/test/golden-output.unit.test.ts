@@ -22,7 +22,7 @@ const GOLDEN_DIR = join(TEST_DIR, "golden");
 // VERSION bump without immediately breaking this test on the same diff.
 const FIXTURE_VERSION = "0.34.0";
 
-function golden(name) {
+function golden(name: string): string {
   const raw = readFileSync(join(GOLDEN_DIR, name), "utf8");
   // Substitute `zombiectl vX.Y.Z` with the current VERSION so a
   // version-only bump (no rendering changes) doesn't break the byte-exact

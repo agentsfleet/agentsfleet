@@ -14,7 +14,7 @@ const PKG_ROOT = dirname(TEST_DIR);
 const SRC_DIR = join(PKG_ROOT, "src");
 const PALETTE_PATH = join(SRC_DIR, "output", "palette.ts");
 
-function* walk(dir) {
+function* walk(dir: string): Generator<string> {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     const s = statSync(full);
@@ -25,13 +25,13 @@ function* walk(dir) {
   }
 }
 
-function readSource(path) {
+function readSource(path: string): { path: string; text: string } {
   return { path: relative(PKG_ROOT, path), text: readFileSync(path, "utf8") };
 }
 
 describe("pulse-cyan currency rule", () => {
   test("palette.pulse / palette.pulseBold called from at most 3 source files", () => {
-    const callsites = [];
+    const callsites: string[] = [];
     for (const path of walk(SRC_DIR)) {
       const { text, path: rel } = readSource(path);
       if (/\bpalette\.pulse(Bold)?\b/.test(text)) callsites.push(rel);

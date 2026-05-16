@@ -626,7 +626,12 @@ Strict settings: `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptiona
       - **`helpers.d.ts` deleted** — the ambient declarations created in D42-fixup dissolved cleanly the moment `helpers.ts` carried real types.
       - **21 dependent `.js` unit tests' helper imports rewritten** via bulk sed — `./helpers.js` → `./helpers.ts`, `./helpers-cli-tree.js` → `./helpers-cli-tree.ts`. The dependent files stay `.js` until their own D42c sub-batch lands; cross-extension import resolution is the same pattern other `.js` tests already use against `.ts` source modules (per D34 spawner switch + `audit-runtime-imports.mjs` extension support).
       - **Verified end-state:** 702 pass + 2 skip + 0 fail; lint 0/0 across 144 files; typecheck clean; all harness gates green.
-    - **D42c-output** — `test/output-*.unit.test.js` + `ui-progress` + `golden-output` (~8 files). Pending.
+    - **D42c-output — `test/output-*.unit.test.{js → ts}` + `ui-progress` + `golden-output` (8 files).** DONE this batch.
+      - Added `TestStream = Writable & { isTTY?: boolean }` to `helpers.ts` + `helpers-cli-state.ts` — `output-capability` / `output-palette` mutate `stream.isTTY = true` to flip color-detection code paths; the intersection captures that pattern without a per-call-site `as` cast.
+      - `output-format`: `align: "right" as const` to narrow `string → "left" | "right"` (literal union from `TableColumn`); `stripAnsi(str: string): string` annotated.
+      - `output-invariants`: typed `walk(dir: string): Generator<string>` + `readSource(path: string)` (recursive generator needed explicit return type under `noUnusedLocals` no-implicit-return-types pressure); `callsites: string[]` annotated.
+      - `output-capability:137` (`isTty(null)`): defensive null-coercion test pattern — `null as unknown as undefined` at the boundary, with comment explaining the public type doesn't include `null` but the impl coerces.
+      - `ui-progress`: `FakeStream` interface + `asWritable(s)` widening helper at top of file; all 8 test sites use `stream: asWritable(stream)` instead of inline-casting. Same pattern as D42b's `asFetchOverride` widener.
     - **D42c-net** — `test/{http-retry,request-retry,streamfetch,sse,sse-parser,sse-streamget,run-command}.unit.test.js` (~7 files). Pending.
     - **D42c-auth** — `test/{auth-status,auth-token,login,logout,state,error-codes,error-matrix}.unit.test.js` (~7 files). Pending.
     - **D42c-commands** — `test/{tenant,billing,workspace,workspace-helpers,zombie*}.unit.test.js` (~10 files). Pending.

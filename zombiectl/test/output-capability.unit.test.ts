@@ -134,7 +134,10 @@ describe("isTty", () => {
   });
 
   test("returns false when stream is null", () => {
-    expect(isTty(null)).toBe(false);
+    // `isTty(stream: IsTtyStream = process.stdout)` defaults to process.stdout
+    // but defensively coerces missing/null. Test that path; cast at boundary
+    // because the public type does not include `null`.
+    expect(isTty(null as unknown as undefined)).toBe(false);
   });
 });
 

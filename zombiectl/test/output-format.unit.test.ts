@@ -17,7 +17,7 @@ const ESC = "\u001b";
 const PLAIN = { mode: ColorMode.NONE };
 const STYLED = { mode: ColorMode.XTERM256 };
 
-function stripAnsi(str) {
+function stripAnsi(str: string): string {
   return str.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -151,7 +151,7 @@ describe("formatTable — alignment", () => {
   });
 
   test("explicit align='right' override", () => {
-    const COLUMNS = [{ key: "v", label: "V", align: "right" }];
+    const COLUMNS = [{ key: "v", label: "V", align: "right" as const }];
     const ROWS = [{ v: "abc" }, { v: "longer" }];
     const out = formatTable(COLUMNS, ROWS, { ...PLAIN, widthHint: 100 });
     const lines = out.split("\n").filter((l) => l !== "");

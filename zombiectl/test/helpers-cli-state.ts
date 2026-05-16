@@ -31,8 +31,12 @@ import { Writable } from "node:stream";
 
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
 
+// Mirror of helpers.ts:TestStream — Writable + optional isTTY so tests
+// can flip TTY-dependent code paths without an `as` cast at every site.
+export type TestStream = Writable & { isTTY?: boolean };
+
 /** Discard-all writable stream — handy when a test only cares about return code or stderr. */
-export function makeNoop(): Writable {
+export function makeNoop(): TestStream {
   return new Writable({ write(_c, _e, cb) { cb(); } });
 }
 
@@ -40,7 +44,7 @@ export function makeNoop(): Writable {
  * Writable that buffers everything into a string. Use one per test to
  * avoid leaking output between cases.
  */
-export function bufferStream(): { stream: Writable; read: () => string } {
+export function bufferStream(): { stream: TestStream; read: () => string } {
   let data = "";
   return {
     stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),

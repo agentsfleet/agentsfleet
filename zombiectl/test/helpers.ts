@@ -53,13 +53,19 @@ export interface UiTheme {
   head: (s: string) => string;
 }
 
+// Tests mutate `stream.isTTY = true` to flip color/spinner code paths
+// (capability.ts reads it for !isTTY → NONE). The Node `Writable` class
+// has no `isTTY` field; the intersection makes the test-set safe under
+// strict types without an `as` cast at every assignment site.
+export type TestStream = Writable & { isTTY?: boolean };
+
 /** Discard-all writable stream (use one per test to avoid state leaks). */
-export function makeNoop(): Writable {
+export function makeNoop(): TestStream {
   return new Writable({ write(_c, _e, cb) { cb(); } });
 }
 
 /** Writable that buffers output; call .read() to inspect. */
-export function makeBufferStream(): { stream: Writable; read: () => string } {
+export function makeBufferStream(): { stream: TestStream; read: () => string } {
   let data = "";
   return {
     stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
