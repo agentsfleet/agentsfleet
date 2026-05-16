@@ -5,7 +5,7 @@ import path from "node:path";
 import { Writable } from "node:stream";
 import { runCli, VERSION } from "../src/cli.ts";
 
-function bufferStream() {
+function bufferStream(): { stream: Writable; read: () => string } {
   let data = "";
   return {
     stream: new Writable({
@@ -18,7 +18,9 @@ function bufferStream() {
   };
 }
 
-async function withIsolatedStateDir(run) {
+async function withIsolatedStateDir<T>(
+  run: (stateDir: string) => Promise<T>,
+): Promise<T> {
   const stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-help-"));
   const previousStateDir = process.env.ZOMBIE_STATE_DIR;
   process.env.ZOMBIE_STATE_DIR = stateDir;
@@ -139,7 +141,7 @@ describe("version output", () => {
       env: { ...process.env },
     });
     expect(code).toBe(0);
-    const parsed = JSON.parse(out.read());
+    const parsed = JSON.parse(out.read()) as { version: string };
     expect(parsed.version).toBe(VERSION);
   });
 
