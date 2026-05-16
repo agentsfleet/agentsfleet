@@ -1,13 +1,21 @@
 import {
   apiRequestWithRetry,
   authHeaders,
-  type ApiRequestOptions,
+  type ApiRequestWithRetryOptions,
   type AttemptInfo,
   type FetchImpl,
   type RetryConfig,
   type RetryInfo,
 } from "../lib/http.ts";
 import { trackHttpRequest, trackHttpRetry } from "../lib/analytics.js";
+
+// request() always overrides fetchImpl / retry / onAttempt / onRetry from ctx,
+// so callers cannot pass them. sleepImpl / randomFn / env flow through to
+// apiRequestWithRetry — needed by tests to keep backoff deterministic.
+export type RequestOptions = Omit<
+  ApiRequestWithRetryOptions,
+  "fetchImpl" | "retry" | "onAttempt" | "onRetry"
+>;
 
 // Subset of the runtime CLI context that the HTTP layer reads. Commands
 // pass a richer object (workspace, env, streams, etc.); structural
@@ -36,7 +44,7 @@ export function apiHeaders(ctx: HttpRequestContext): Record<string, string> {
 export async function request(
   ctx: HttpRequestContext,
   reqPath: string,
-  options: ApiRequestOptions = {},
+  options: RequestOptions = {},
 ): Promise<unknown> {
   const url = `${ctx.apiUrl}${reqPath}`;
   const method = options.method ?? "GET";

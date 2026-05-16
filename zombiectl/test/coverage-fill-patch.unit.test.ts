@@ -31,7 +31,7 @@ import type {
   CommandDeps,
   Workspaces,
 } from "../src/commands/types.ts";
-import { buildParsed } from "./helpers.ts";
+import { buildParsed, asFetchImpl } from "./helpers.ts";
 
 // Discard-all writable — strict CommandCtx requires real NodeJS.WritableStream
 // shapes for stdout/stderr. Use one per test to avoid cross-test buffering.
@@ -105,18 +105,6 @@ test("apiRequest surfaces TIMEOUT when fetch aborts", async () => {
     apiRequest("https://x", { fetchImpl, timeoutMs: 5 }),
   ).rejects.toMatchObject({ code: "TIMEOUT", status: 408 });
 });
-
-// Structural Response mocks are minimal — apiRequest only reads ok/status/
-// statusText/headers.get/text. Double-cast widens to FetchImpl at boundary.
-type ResponseLike = {
-  ok: boolean;
-  status: number;
-  statusText: string;
-  headers: { get: (name: string) => string | null };
-  text: () => Promise<string>;
-};
-const asFetchImpl = (impl: (url: string) => Promise<ResponseLike>): FetchImpl =>
-  impl as unknown as FetchImpl;
 
 test("apiRequest tolerates non-JSON response body", async () => {
   const fetchImpl = asFetchImpl(async () => ({
