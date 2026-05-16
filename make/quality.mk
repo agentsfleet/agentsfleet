@@ -40,7 +40,7 @@ _design_system_lint:
 
 _zombiectl_lint:
 	@echo "→ [zombiectl] Checking CLI syntax..."
-	@cd zombiectl && node --check bin/zombiectl.js && bun run typecheck >/dev/null
+	@cd zombiectl && bun run typecheck >/dev/null
 	@echo "✓ [zombiectl] Lint passed"
 
 _pg_drain_check:

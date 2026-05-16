@@ -39,7 +39,6 @@
   "include": [
     "src/**/*.ts",
     "test/**/*.ts",
-    "bin/**/*.ts",
     "scripts/**/*.ts"
   ],
   "exclude": [
@@ -47,6 +46,7 @@
     "samples",
     "skills",
     ".tmp",
-    "coverage"
+    "coverage",
+    "dist"
   ]
 }
