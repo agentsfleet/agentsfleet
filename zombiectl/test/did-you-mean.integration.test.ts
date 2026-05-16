@@ -1,19 +1,6 @@
 import { describe, test, expect } from "bun:test";
-import { Writable } from "node:stream";
 import { runCli } from "../src/cli.ts";
-
-function bufferStream() {
-  let data = "";
-  return {
-    stream: new Writable({
-      write(chunk, _enc, cb) {
-        data += String(chunk);
-        cb();
-      },
-    }),
-    read: () => data,
-  };
-}
+import { bufferStream } from "./helpers-cli-state.ts";
 
 describe("did-you-mean integration", () => {
   test("'docto' suggests 'doctor'", async () => {

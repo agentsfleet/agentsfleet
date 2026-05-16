@@ -1,18 +1,19 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
-import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000a6e711";
 const ZOMBIE_ID = "01900000-0000-7000-8000-000000a67e57";
-const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_agent" }, fn);
+const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
+  withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_agent" }, fn);
 
 describe("agent (external API key) commands", () => {
   test("`agent add` POSTs the new key and prints the raw value exactly once (shown-once contract)", async () => {
     await authedScope(async () => {
-      let postBody = null;
-      const routes = {
+      let postBody: string | null = null;
+      const routes: MockRoutes = {
         [`POST /v1/workspaces/${WS_ID}/agent-keys`]: async (_req, _url, body) => {
           postBody = body;
           return jsonResponse(201, {
@@ -43,7 +44,11 @@ describe("agent (external API key) commands", () => {
         expect(text).toMatch(/shown once/i);
 
         // POST body shape contract: zombie_id + name + description.
-        const parsed = JSON.parse(postBody);
+        const parsed = JSON.parse(postBody ?? "{}") as {
+          zombie_id?: string;
+          name?: string;
+          description?: string;
+        };
         expect(parsed.zombie_id).toBe(ZOMBIE_ID);
         expect(parsed.name).toBe("langgraph-bot");
         expect(parsed.description).toBe("external orchestration");
@@ -55,7 +60,7 @@ describe("agent (external API key) commands", () => {
 
   test("`agent list` GETs the workspace's external agent keys and prints a table", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/agent-keys`]: () => jsonResponse(200, {
           items: [
             { agent_id: "agent_a", name: "langgraph-bot", description: "alpha", last_used_at: 1700000000000 },
@@ -86,7 +91,7 @@ describe("agent (external API key) commands", () => {
 
   test("`agent delete <id>` DELETEs the key and prints invalidation confirmation", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`DELETE /v1/workspaces/${WS_ID}/agent-keys/01900000-0000-7000-8000-0000a6e7de7e`]:
           () => jsonResponse(204, {}),
       };

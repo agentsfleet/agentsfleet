@@ -4,14 +4,14 @@ import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
 import { loadCredentials, loadWorkspaces } from "../src/lib/state.ts";
-import { bufferStream, withFreshStateDir } from "./helpers-cli-state.js";
-import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
+import { bufferStream, withFreshStateDir } from "./helpers-cli-state.ts";
+import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 const DEFAULT_WORKSPACE_ID = "ws_signup_default";
 const DEFAULT_WORKSPACE_NAME = "jolly-harbor-482";
 
-const completeLoginRoutes = (token = "fake-jwt-token") => ({
+const completeLoginRoutes = (token = "fake-jwt-token"): MockRoutes => ({
   "POST /v1/auth/sessions": () => jsonResponse(201, {
     session_id: "sess_onboard",
     login_url: "https://login.test/sess_onboard",
@@ -56,9 +56,9 @@ describe("first-time user onboarding", () => {
 
   test("login from a fresh state dir selects the signup-created workspace", async () => {
     await withFreshStateDir(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         ...completeLoginRoutes("jwt_with_workspace"),
-        [`GET ${TENANT_WORKSPACES_PATH}`]: (_req) => jsonResponse(200, {
+        [`GET ${TENANT_WORKSPACES_PATH}`]: () => jsonResponse(200, {
           items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, created_at: 1234 }],
           total: 1,
         }),
@@ -79,16 +79,16 @@ describe("first-time user onboarding", () => {
           { workspace_id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, created_at: 1234 },
         ]);
         const workspaceFetch = calls.find((call) => call.path === TENANT_WORKSPACES_PATH);
-        expect(workspaceFetch.headers.authorization).toBe("Bearer jwt_with_workspace");
+        expect(workspaceFetch?.headers.authorization).toBe("Bearer jwt_with_workspace");
       });
     });
   });
 
   test("login on a fresh state dir leaves doctor green end-to-end", async () => {
     await withFreshStateDir(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         ...completeLoginRoutes("jwt_doctor_e2e"),
-        [`GET ${TENANT_WORKSPACES_PATH}`]: (_req) => jsonResponse(200, {
+        [`GET ${TENANT_WORKSPACES_PATH}`]: () => jsonResponse(200, {
           items: [{ id: DEFAULT_WORKSPACE_ID, name: DEFAULT_WORKSPACE_NAME, created_at: 1234 }],
           total: 1,
         }),
@@ -109,12 +109,14 @@ describe("first-time user onboarding", () => {
           stdout: out.stream, stderr: err.stream, env,
         });
         expect(doctorCode).toBe(0);
-        const report = JSON.parse(out.read());
+        interface DoctorCheck { name: string; ok: boolean; detail?: string }
+        interface DoctorReport { ok: boolean; checks: DoctorCheck[] }
+        const report = JSON.parse(out.read()) as DoctorReport;
         expect(report.ok).toBe(true);
         const wsCheck = report.checks.find((c) => c.name === "workspace_selected");
         expect(wsCheck).toMatchObject({ ok: true, detail: DEFAULT_WORKSPACE_ID });
         const bindingCheck = report.checks.find((c) => c.name === "workspace_binding_valid");
-        expect(bindingCheck.ok).toBe(true);
+        expect(bindingCheck?.ok).toBe(true);
       });
     });
   });
@@ -144,7 +146,7 @@ describe("first-time user onboarding", () => {
 
   test("login then workspace add creates workspaces.json with the new id as current", async () => {
     await withFreshStateDir(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         ...completeLoginRoutes("jwt_for_workspace"),
         "POST /v1/workspaces": () => jsonResponse(201, {
           workspace_id: "ws_onboard_001",
@@ -173,14 +175,14 @@ describe("first-time user onboarding", () => {
         const ws = await loadWorkspaces();
         expect(ws.current_workspace_id).toBe("ws_onboard_001");
         expect(ws.items).toHaveLength(1);
-        expect(ws.items[0].workspace_id).toBe("ws_onboard_001");
+        expect(ws.items[0]?.workspace_id).toBe("ws_onboard_001");
       });
     });
   });
 
   test("login flow exits 1 cleanly when the auth session expires", async () => {
     await withFreshStateDir(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         "POST /v1/auth/sessions": () => jsonResponse(201, {
           session_id: "sess_expire", login_url: "https://login.test/sess_expire",
         }),
@@ -204,7 +206,7 @@ describe("first-time user onboarding", () => {
 
   test("login flow exits 1 cleanly when the polling deadline elapses", async () => {
     await withFreshStateDir(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         "POST /v1/auth/sessions": () => jsonResponse(201, {
           session_id: "sess_timeout", login_url: "https://login.test/sess_timeout",
         }),

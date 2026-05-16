@@ -8,12 +8,31 @@
 // `calls` is shared with the test as an ordered log of every request that
 // hit the mock — a fully-typed side-effect ledger you can assert against.
 //
-// See helpers-cli-state.js for the matching ZOMBIE_STATE_DIR scope helper
+// See helpers-cli-state.ts for the matching ZOMBIE_STATE_DIR scope helper
 // and the documented serial-execution assumption that lets these tests
 // share `process.env` mutations safely under `bun test`.
 
-export async function withMockApi(routes, fn) {
-  const calls = [];
+export interface MockCall {
+  method: string;
+  path: string;
+  search: string;
+  body: string | null;
+  headers: Record<string, string>;
+}
+
+export type MockRouteHandler = (
+  req: Request,
+  url: URL,
+  body: string | null,
+) => Response | Promise<Response>;
+
+export type MockRoutes = Record<string, MockRouteHandler>;
+
+export async function withMockApi<T>(
+  routes: MockRoutes,
+  fn: (baseUrl: string, calls: MockCall[]) => Promise<T>,
+): Promise<T> {
+  const calls: MockCall[] = [];
   const server = Bun.serve({
     port: 0,
     hostname: "127.0.0.1",
@@ -46,7 +65,7 @@ export async function withMockApi(routes, fn) {
   }
 }
 
-export function jsonResponse(status, payload) {
+export function jsonResponse(status: number, payload: unknown): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { "content-type": "application/json" },

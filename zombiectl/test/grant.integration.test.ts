@@ -1,17 +1,18 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.js";
-import { withMockApi, jsonResponse } from "./helpers-mock-api.js";
+import { bufferStream, withAuthedStateDir } from "./helpers-cli-state.ts";
+import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const ZOMBIE_ID = "01900000-0000-7000-8000-0000007670f7";
-const authedScope = (fn) => withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_grant" }, fn);
+const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
+  withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_grant" }, fn);
 
 describe("grant (integration grant) commands", () => {
   test("`grant list --zombie <id>` GETs the grants for the zombie and prints the table", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`GET /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/integration-grants`]:
           () => jsonResponse(200, {
             items: [
@@ -46,7 +47,7 @@ describe("grant (integration grant) commands", () => {
 
   test("`grant delete --zombie <id> <grant_id>` DELETEs the grant and prints the revocation note", async () => {
     await authedScope(async () => {
-      const routes = {
+      const routes: MockRoutes = {
         [`DELETE /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/integration-grants/01900000-0000-7000-8000-000000067a01`]:
           () => jsonResponse(204, {}),
       };

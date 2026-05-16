@@ -1,7 +1,7 @@
 // Shared test scaffolding for CLI integration tests.
 //
-// Five sibling *.integration.test.js files were each carrying their own
-// copy of (a) a Writable buffer that captures stdout/stderr, (b) a
+// Five sibling *.integration.test.{js,ts} files were each carrying their
+// own copy of (a) a Writable buffer that captures stdout/stderr, (b) a
 // mkdtemp-based ZOMBIE_STATE_DIR scope guard, and (c) an authed variant
 // of the same that pre-seeds credentials.json + workspaces.json so
 // auth-required commands don't bounce off the auth guard. Hoisting them
@@ -21,7 +21,7 @@
 // ZOMBIE_STATE_DIR mid-flight and one test would see the other's
 // pre-seeded credentials. The clean fix at that point is to thread
 // ZOMBIE_STATE_DIR through `runCli`'s `io` param (a one-line change in
-// state.js to read from caller-provided env first) instead of relying
+// state.ts to read from caller-provided env first) instead of relying
 // on the process-global. Until then this comment is the warning sign.
 
 import fs from "node:fs/promises";
@@ -32,7 +32,7 @@ import { Writable } from "node:stream";
 import { saveCredentials, saveWorkspaces } from "../src/lib/state.ts";
 
 /** Discard-all writable stream — handy when a test only cares about return code or stderr. */
-export function makeNoop() {
+export function makeNoop(): Writable {
   return new Writable({ write(_c, _e, cb) { cb(); } });
 }
 
@@ -40,7 +40,7 @@ export function makeNoop() {
  * Writable that buffers everything into a string. Use one per test to
  * avoid leaking output between cases.
  */
-export function bufferStream() {
+export function bufferStream(): { stream: Writable; read: () => string } {
   let data = "";
   return {
     stream: new Writable({ write(chunk, _enc, cb) { data += String(chunk); cb(); } }),
@@ -53,11 +53,10 @@ export function bufferStream() {
  * created empty (no credentials, no workspaces). Restores the previous
  * value of process.env.ZOMBIE_STATE_DIR + removes the temp dir on exit,
  * regardless of whether `fn` threw.
- *
- * @param {(stateDir: string) => Promise<T>} fn
- * @returns {Promise<T>}
  */
-export async function withFreshStateDir(fn) {
+export async function withFreshStateDir<T>(
+  fn: (stateDir: string) => Promise<T>,
+): Promise<T> {
   const previous = process.env.ZOMBIE_STATE_DIR;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-test-"));
   process.env.ZOMBIE_STATE_DIR = dir;
@@ -70,17 +69,24 @@ export async function withFreshStateDir(fn) {
   }
 }
 
+export interface AuthedStateDirOpts {
+  workspaceId: string;
+  workspaceName?: string;
+  sessionId?: string;
+  token?: string;
+  apiUrl?: string | null;
+}
+
 /**
  * Like withFreshStateDir, but pre-seeds the dir so the auth guard passes
  * and workspace-scoped commands have a workspace context. Intended for
  * tests that want to drive an authed CLI invocation without going
  * through the login flow.
- *
- * @param {{ workspaceId: string, workspaceName?: string, sessionId?: string, token?: string, apiUrl?: string | null }} opts
- * @param {(stateDir: string) => Promise<T>} fn
- * @returns {Promise<T>}
  */
-export async function withAuthedStateDir(opts, fn) {
+export async function withAuthedStateDir<T>(
+  opts: AuthedStateDirOpts,
+  fn: (stateDir: string) => Promise<T>,
+): Promise<T> {
   const {
     workspaceId,
     workspaceName = "test-ws",
