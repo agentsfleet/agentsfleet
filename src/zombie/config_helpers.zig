@@ -22,6 +22,7 @@ const MAX_SIGNATURE_HEADER_LEN = config_types.MAX_SIGNATURE_HEADER_LEN;
 // type module stays free of validation knobs; tests reach in via the
 // parser's behaviour, not the constants. RULE NSQ: every limit is a
 // named constant — no inline `8`/`16`/`64` at validation sites.
+pub const MAX_TRIGGERS_PER_ZOMBIE: usize = 8;
 const MAX_EVENTS_PER_TRIGGER: usize = 16;
 const MAX_EVENT_NAME_LEN: usize = 64;
 
@@ -73,6 +74,52 @@ pub fn parseZombieTrigger(alloc: Allocator, obj: std.json.ObjectMap) (Allocator.
 ///   * at most one cron entry
 ///   * unique `(type, source)` tuple across webhook entries
 /// On error every successfully-parsed trigger is freed before propagating.
+pub fn parseZombieTriggers(
+    alloc: Allocator,
+    items: []const std.json.Value,
+) (Allocator.Error || ZombieConfigError)![]const ZombieTrigger {
+    if (items.len == 0 or items.len > MAX_TRIGGERS_PER_ZOMBIE) {
+        log.warn("triggers_count_out_of_bounds", .{ .count = items.len, .max = MAX_TRIGGERS_PER_ZOMBIE });
+        return ZombieConfigError.InvalidFieldType;
+    }
+    var out = try alloc.alloc(ZombieTrigger, items.len);
+    var parsed_count: usize = 0;
+    errdefer {
+        for (out[0..parsed_count]) |t| config_types.freeZombieTrigger(alloc, t);
+        alloc.free(out);
+    }
+    var cron_count: usize = 0;
+    for (items, 0..) |item, idx| {
+        const obj = switch (item) {
+            .object => |o| o,
+            else => return ZombieConfigError.InvalidFieldType,
+        };
+        const trig = try parseZombieTrigger(alloc, obj);
+        out[idx] = trig;
+        parsed_count += 1;
+        if (trig == .cron) {
+            cron_count += 1;
+            if (cron_count > 1) {
+                log.warn("multiple_cron_triggers_rejected", .{});
+                return ZombieConfigError.InvalidTriggerType;
+            }
+        }
+        for (out[0..idx]) |existing| {
+            if (std.meta.activeTag(existing) != std.meta.activeTag(trig)) continue;
+            const conflict = switch (trig) {
+                .webhook => |w| std.mem.eql(u8, existing.webhook.source, w.source),
+                .cron => false, // ≤1-cron rule handles this above
+                .api => true, // api rejected at parseZombieTrigger; unreachable
+            };
+            if (conflict) {
+                log.warn("duplicate_trigger_tuple", .{ .index = idx });
+                return ZombieConfigError.InvalidTriggerType;
+            }
+        }
+    }
+    return out;
+}
+
 fn parseEvents(
     alloc: Allocator,
     obj: std.json.ObjectMap,

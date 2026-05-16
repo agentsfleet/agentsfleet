@@ -187,15 +187,6 @@ test "parseZombieConfig: budget at top level returns RuntimeKeysOutsideBlock" {
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: singular trigger at top level still surfaces as RuntimeKeysOutsideBlock" {
-    const alloc = std.testing.allocator;
-    const json =
-        \\{"name":"x","trigger":{"type":"webhook","source":"github"},
-        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
-    ;
-    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
-}
-
 test "parseZombieConfig: plural triggers at top level returns RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =

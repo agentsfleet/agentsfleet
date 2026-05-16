@@ -98,7 +98,17 @@ pub const ENTRIES = [_]Entry{
         "Workspace not found. Verify the workspace ID."),
     e("UZ-WORKSPACE-002", .payment_required, "Workspace paused",
         "Workspace is paused due to billing. Update payment method."),
+    e("UZ-WORKSPACE-003", .payment_required, "Free tier limit reached",
+        "Workspace has reached its free-tier limit. Add a payment method to continue."),
     // ── BILLING ──────────────────────────────────────────────────────────────
+    e("UZ-BILLING-001", .service_unavailable, "Billing unavailable",
+        "Billing service is temporarily unavailable. Retry shortly."),
+    e("UZ-BILLING-002", .conflict, "Billing state missing",
+        "No billing state recorded for this workspace. Contact support."),
+    e("UZ-BILLING-003", .unprocessable_entity, "Billing state invalid",
+        "Billing state is in an invalid shape. Contact support."),
+    e("UZ-BILLING-004", .bad_request, "Invalid billing event",
+        "Billing event payload could not be processed."),
     e("UZ-BILLING-005", .payment_required, "Credit exhausted",
         "Workspace credits are exhausted. Add credits or upgrade plan."),
     // ── AGENT ────────────────────────────────────────────────────────────────

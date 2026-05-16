@@ -222,13 +222,13 @@ fn debitAndInsert(
                 _ = tenant_billing.markExhausted(conn, tenant_id) catch |mark_err| {
                     log.warn("mark_exhausted_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(mark_err) });
                 };
-                _ = conn.exec(S_COMMIT, .{}) catch |err| log.warn("commit_fail", .{ .err = @errorName(err) });
+                _ = conn.exec(S_COMMIT, .{}) catch |commit_err| log.warn("commit_fail", .{ .err = @errorName(commit_err) });
                 tx_open = false;
                 onExhaustedDebit(ctx.zombie_id, tenant_id, charge_type, nanos, policy);
                 return .{ .exhausted = {} };
             },
             error.TenantBillingMissing => {
-                conn.rollback() catch |err| log.warn("rollback_fail", .{ .err = @errorName(err) });
+                conn.rollback() catch |rollback_err| log.warn("rollback_fail", .{ .err = @errorName(rollback_err) });
                 tx_open = false;
                 log.err("missing_tenant_billing", .{
                     .zombie_id = ctx.zombie_id,
@@ -239,7 +239,7 @@ fn debitAndInsert(
                 return .{ .missing_tenant_billing = {} };
             },
             else => {
-                conn.rollback() catch |err| log.warn("rollback_fail", .{ .err = @errorName(err) });
+                conn.rollback() catch |rollback_err| log.warn("rollback_fail", .{ .err = @errorName(rollback_err) });
                 tx_open = false;
                 log.warn("debit_fail", .{ .zombie_id = ctx.zombie_id, .tenant_id = tenant_id, .err = @errorName(err) });
                 return .{ .db_error = {} };
