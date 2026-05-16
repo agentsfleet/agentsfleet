@@ -26,7 +26,9 @@ fn tlsUrlOrSkip(alloc: std.mem.Allocator) ![]u8 {
 
 // In-process fake that:
 //   1. accepts one TCP connection
-//   2. drains the SUBSCRIBE command bytes
+//   2. drains the SUBSCRIBE command bytes (assumes no AUTH precedes it —
+//      the test URL must be credential-less; otherwise the first `read()`
+//      consumes AUTH instead of SUBSCRIBE and the subscriber hangs)
 //   3. writes a `*3\r\n$9\r\nsubscribe\r\n$<n>\r\n<chan>\r\n:1\r\n` ack
 //   4. sleeps `publish_delay_ms` (simulates a publisher pushing after a delay)
 //   5. writes a `*3\r\n$7\r\nmessage\r\n$<n>\r\n<chan>\r\n$<n>\r\n<payload>\r\n` push
@@ -142,6 +144,66 @@ test "Subscriber.nextMessage with read_timeout_ms=null blocks until message arri
     // Elapsed proves we actually blocked through the publisher's delay
     // (lower bound generous for CI jitter; upper bound catches retry / spin
     // bugs in the read loop).
+    try std.testing.expect(elapsed_ns >= 50 * std.time.ns_per_ms);
+    try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
+}
+
+test "integration: subscriber receives a real PUBLISH from a sibling connection" {
+    // Real-Redis sibling for the in-process #9 unit test. Proves the
+    // SUBSCRIBE ack handshake + message-frame parsing against the real
+    // server's wire format (not a hand-crafted fake). A publisher Client
+    // on a separate connection PUBLISHes after 100ms; the subscriber
+    // blocks past the ack and returns the delivered payload.
+    const alloc = std.testing.allocator;
+    const tls_url = try tlsUrlOrSkip(alloc);
+    defer alloc.free(tls_url);
+
+    var channel_buf: [64]u8 = undefined;
+    const channel = try std.fmt.bufPrint(&channel_buf, "uz:m69:pub:{d}", .{std.time.nanoTimestamp()});
+    const payload = "real-redis-publish";
+
+    var sub = try Subscriber.connectFromUrl(alloc, tls_url, .{ .read_timeout_ms = null });
+    defer sub.deinit();
+    try sub.subscribe(channel);
+
+    // Publisher runs in a sibling thread on its own Client so the SUBSCRIBE
+    // and PUBLISH ride independent TCP connections (the SUBSCRIBE socket
+    // can't issue commands besides UNSUBSCRIBE per Redis pub/sub semantics).
+    const PublishCtx = struct {
+        url: []const u8,
+        channel: []const u8,
+        payload: []const u8,
+        alloc: std.mem.Allocator,
+        delay_ms: u64,
+
+        fn run(ctx: *const @This()) void {
+            std.Thread.sleep(ctx.delay_ms * std.time.ns_per_ms);
+            const Client = @import("redis_client.zig");
+            var client = Client.connectFromUrl(ctx.alloc, ctx.url) catch return;
+            defer client.deinit();
+            client.publish(ctx.channel, ctx.payload) catch {};
+        }
+    };
+    var ctx = PublishCtx{
+        .url = tls_url,
+        .channel = channel,
+        .payload = payload,
+        .alloc = alloc,
+        .delay_ms = 100,
+    };
+    const pub_thread = try std.Thread.spawn(.{}, PublishCtx.run, .{&ctx});
+
+    const start = std.time.nanoTimestamp();
+    const maybe_msg = try sub.nextMessage();
+    const elapsed_ns = std.time.nanoTimestamp() - start;
+    pub_thread.join();
+
+    try std.testing.expect(maybe_msg != null);
+    var got = maybe_msg.?;
+    defer got.deinit(alloc);
+    try std.testing.expectEqualStrings(channel, got.channel);
+    try std.testing.expectEqualStrings(payload, got.payload);
+
     try std.testing.expect(elapsed_ns >= 50 * std.time.ns_per_ms);
     try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
 }

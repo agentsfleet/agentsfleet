@@ -304,6 +304,45 @@ test "integration: pool acquires, parks idle, and over-cap dial increments overf
     try std.testing.expectEqual(@as(usize, 0), settled.active);
 }
 
+test "integration: client.command on real WRONGTYPE reply recycles conn (no reconnect)" {
+    // Real-Redis sibling for the in-process #6 unit test. Proves the
+    // resumable-error path against a real RESP `.err` reply (server-side
+    // WRONGTYPE on LPUSH-into-string). The unit test uses hand-crafted
+    // `-ERR fake_error\r\n`; real-server error strings carry additional
+    // detail and have caused parser-edge regressions before.
+    //
+    // Flow: SET key="<unique>" "v" → +OK; LPUSH same key "x" → WRONGTYPE
+    // → RedisCommandError; DEL key → :1. The DEL succeeds on the SAME
+    // pooled conn that the WRONGTYPE was returned on — proving the conn
+    // was parked back in idle and reused. `reconnects_total` stays at 0
+    // (resumable doesn't redial).
+    const alloc = std.testing.allocator;
+    const tls_url = try tlsUrlOrSkip(alloc);
+    defer alloc.free(tls_url);
+
+    var client = try Client.connectFromUrlWithOptions(alloc, tls_url, .{ .read_timeout_ms = 5000 });
+    defer client.deinit();
+
+    // Unique key per run keeps tests state-isolated across parallel CI runs.
+    var key_buf: [64]u8 = undefined;
+    const key = try std.fmt.bufPrint(&key_buf, "uz:m69:wrongtype:{d}", .{std.time.nanoTimestamp()});
+
+    var set_resp = try client.command(&.{ "SET", key, "v" });
+    set_resp.deinit(alloc);
+
+    const wrongtype = client.command(&.{ "LPUSH", key, "x" });
+    try std.testing.expectError(error.RedisCommandError, wrongtype);
+
+    try std.testing.expectEqual(@as(u64, 0), client.pool.stats().reconnects_total);
+
+    var del_resp = try client.command(&.{ "DEL", key });
+    defer del_resp.deinit(alloc);
+    try std.testing.expect(del_resp == .integer);
+    try std.testing.expectEqual(@as(i64, 1), del_resp.integer);
+
+    try std.testing.expectEqual(@as(u64, 0), client.pool.stats().reconnects_total);
+}
+
 test "integration: request timeout surfaces ReadFailed on a hanging BLPOP" {
     const alloc = std.testing.allocator;
     const tls_url = try tlsUrlOrSkip(alloc);
