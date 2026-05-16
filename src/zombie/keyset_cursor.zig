@@ -3,7 +3,7 @@
 // Composite form: "{created_at_ms}:{uuid}" — the composite key prevents
 // silent skips when multiple rows land on the same millisecond. Kept as
 // a leaf module with no DB dependency so it is usable from micro-benchmarks
-// (src/zbench_micro.zig) alongside the request path.
+// (tests/bench/micro.zig) alongside the request path.
 
 const std = @import("std");
 

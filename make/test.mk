@@ -5,7 +5,7 @@
 include make/test-unit.mk
 include make/test-integration.mk
 include make/test-e2e.mk
-include make/test-bench.mk
+include make/bench.mk
 
 ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache
 ZIG_LOCAL_CACHE_DIR  ?= $(CURDIR)/.tmp/zig-local-cache

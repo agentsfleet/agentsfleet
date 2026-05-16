@@ -1,8 +1,8 @@
 # =============================================================================
-# TEST-BENCH — API benchmark and memory leak gates (M24_001)
+# BENCH — API benchmark and memory leak gates.
 #
 # `make bench` runs two tiers:
-#   Tier-1  zbench micro-benchmarks   (src/zbench_micro.zig — ReleaseFast)
+#   Tier-1  zbench micro-benchmarks   (tests/bench/micro.zig — ReleaseFast)
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
 # =============================================================================
 
@@ -35,7 +35,7 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	esac
 	@echo "✓ [zombied] memleak gate passed"
 
-bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen (M24_001).
+bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen.
 	@$(MAKE) _bench-micro
 	@$(MAKE) _bench-loadgen
 
