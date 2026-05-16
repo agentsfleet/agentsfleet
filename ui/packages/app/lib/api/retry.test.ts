@@ -13,10 +13,6 @@ vi.stubGlobal("fetch", fetchMock);
 beforeEach(() => fetchMock.mockReset());
 afterEach(() => fetchMock.mockReset());
 
-const NOOP_HEADERS = {
-  get: () => null,
-};
-
 function jsonResponse(status: number, body: unknown, retryAfter?: string) {
   return {
     ok: status >= 200 && status < 300,
