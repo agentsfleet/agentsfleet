@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { commandAuthStatus } from "../src/commands/auth.js";
+import { commandAuthStatus } from "../src/commands/auth.ts";
 import { makeBufferStream, makeNoop, ui } from "./helpers.js";
 
 const TENANT_BILLING_PATH = "/v1/tenants/me/billing";

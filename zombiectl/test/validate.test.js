@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { isValidId, validateRequiredId } from "../src/program/validate.js";
+import { isValidId, validateRequiredId } from "../src/program/validate.ts";
 
 // Sample valid uuidv7 — backend's allocUuidV7 emits this shape; CLI
 // validator must accept v7 (and ONLY v7, post-RULE-NLG swap).

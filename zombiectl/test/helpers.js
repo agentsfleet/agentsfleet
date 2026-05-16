@@ -2,26 +2,25 @@ import { Writable } from "node:stream";
 import { ApiError } from "../src/lib/http.ts";
 
 import {
-  commandInstall,
-  commandUpdate,
   commandStatus,
   commandStop,
   commandResume,
   commandKill,
   commandDelete as commandZombieDeleteLeaf,
-} from "../src/commands/zombie.js";
-import { commandList as commandZombieList } from "../src/commands/zombie_list.js";
-import { commandLogs as commandZombieLogs } from "../src/commands/zombie_logs.js";
-import { commandEvents as commandZombieEvents } from "../src/commands/zombie_events.js";
-import { commandSteer as commandZombieSteer } from "../src/commands/zombie_steer.js";
+} from "../src/commands/zombie.ts";
+import { commandInstall, commandUpdate } from "../src/commands/zombie_install.ts";
+import { commandList as commandZombieList } from "../src/commands/zombie_list.ts";
+import { commandLogs as commandZombieLogs } from "../src/commands/zombie_logs.ts";
+import { commandEvents as commandZombieEvents } from "../src/commands/zombie_events.ts";
+import { commandSteer as commandZombieSteer } from "../src/commands/zombie_steer.ts";
 import {
   commandCredentialAdd,
   commandCredentialShow,
   commandCredentialList,
   commandCredentialDelete,
-} from "../src/commands/zombie_credential.js";
-import { commandLogin, commandLogout } from "../src/commands/core.js";
-import { commandDoctor } from "../src/commands/core-ops.js";
+} from "../src/commands/zombie_credential.ts";
+import { commandLogin, commandLogout } from "../src/commands/core.ts";
+import { commandDoctor } from "../src/commands/core-ops.ts";
 import {
   workspaceAdd,
   workspaceList,
@@ -29,13 +28,13 @@ import {
   workspaceShow,
   workspaceCredentials,
   workspaceDelete,
-} from "../src/commands/workspace.js";
-import { commandBillingShow } from "../src/commands/billing.js";
+} from "../src/commands/workspace.ts";
+import { commandBillingShow } from "../src/commands/billing.ts";
 import {
   commandTenantProviderShow,
   commandTenantProviderAdd,
   commandTenantProviderDelete,
-} from "../src/commands/tenant.js";
+} from "../src/commands/tenant.ts";
 
 export { ApiError };
 

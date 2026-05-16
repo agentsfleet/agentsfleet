@@ -20,7 +20,7 @@ import {
 } from "./lib/state.ts";
 import { apiHeaders, request } from "./program/http-client.ts";
 import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.ts";
-import { printJson, writeError, writeLine } from "./program/io.js";
+import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion, printPreReleaseWarning } from "./program/banner.js";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.js";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";

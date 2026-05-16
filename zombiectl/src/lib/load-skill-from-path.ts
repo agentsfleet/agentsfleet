@@ -7,14 +7,33 @@ import { join, basename } from "node:path";
 const SKILL_FILENAME = "SKILL.md";
 const TRIGGER_FILENAME = "TRIGGER.md";
 
+export type SkillLoadErrorCode =
+  | "ERR_PATH_NOT_FOUND"
+  | "ERR_PATH_DENIED"
+  | "ERR_SKILL_MISSING"
+  | "ERR_TRIGGER_MISSING";
+
 export class SkillLoadError extends Error {
-  constructor(code, detail) {
+  readonly code: SkillLoadErrorCode;
+
+  constructor(code: SkillLoadErrorCode, detail: string) {
     super(detail);
     this.code = code;
+    this.name = "SkillLoadError";
   }
 }
 
-export function loadSkillFromPath(path) {
+export interface LoadedSkill {
+  skill_md: string;
+  trigger_md: string;
+  fallback_name: string;
+}
+
+function isNodeErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && typeof (err as NodeJS.ErrnoException).code === "string";
+}
+
+export function loadSkillFromPath(path: string): LoadedSkill {
   if (typeof path !== "string" || path === "") {
     throw new SkillLoadError("ERR_PATH_NOT_FOUND", "<no path provided>");
   }
@@ -22,7 +41,9 @@ export function loadSkillFromPath(path) {
   try {
     stat = statSync(path);
   } catch (err) {
-    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", path);
+    if (isNodeErrnoException(err) && err.code === "EACCES") {
+      throw new SkillLoadError("ERR_PATH_DENIED", path);
+    }
     throw new SkillLoadError("ERR_PATH_NOT_FOUND", path);
   }
   if (!stat.isDirectory()) {
@@ -32,19 +53,23 @@ export function loadSkillFromPath(path) {
   const skillPath = join(path, SKILL_FILENAME);
   const triggerPath = join(path, TRIGGER_FILENAME);
 
-  let skill_md;
+  let skill_md: string;
   try {
     skill_md = readFileSync(skillPath, "utf-8");
   } catch (err) {
-    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", skillPath);
+    if (isNodeErrnoException(err) && err.code === "EACCES") {
+      throw new SkillLoadError("ERR_PATH_DENIED", skillPath);
+    }
     throw new SkillLoadError("ERR_SKILL_MISSING", skillPath);
   }
 
-  let trigger_md;
+  let trigger_md: string;
   try {
     trigger_md = readFileSync(triggerPath, "utf-8");
   } catch (err) {
-    if (err.code === "EACCES") throw new SkillLoadError("ERR_PATH_DENIED", triggerPath);
+    if (isNodeErrnoException(err) && err.code === "EACCES") {
+      throw new SkillLoadError("ERR_PATH_DENIED", triggerPath);
+    }
     throw new SkillLoadError("ERR_TRIGGER_MISSING", triggerPath);
   }
 

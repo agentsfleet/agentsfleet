@@ -17,7 +17,7 @@ import {
   wsGrantRequestPath,
   wsGrantsListPath,
   wsGrantPath,
-} from "../src/lib/api-paths.js";
+} from "../src/lib/api-paths.ts";
 
 function tmpDir() {
   return path.join(os.tmpdir(), `zctl-cov-${Date.now()}-${Math.random().toString(16).slice(2)}`);

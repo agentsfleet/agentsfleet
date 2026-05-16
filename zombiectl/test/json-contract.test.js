@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import { makeBufferStream, ui } from "./helpers.js";
 import { runCli } from "../src/cli.js";
-import { writeError } from "../src/program/io.js";
+import { writeError } from "../src/program/io.ts";
 import { buildProgram } from "../src/program/cli-tree.js";
 
 function tryParseJson(str) {

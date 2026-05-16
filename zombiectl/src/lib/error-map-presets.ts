@@ -31,6 +31,10 @@ import {
   ERR_ZOMBIE_ALREADY_TERMINAL,
   ERR_ZOMBIE_NAME_MISMATCH,
 } from "../constants/error-codes.ts";
+import {
+  TOKEN_EXPIRED,
+  UNAUTHORIZED,
+} from "../constants/cli-errors.ts";
 
 export interface PresetEntry {
   readonly code: string;
@@ -47,11 +51,11 @@ export const AUTH_PRESET: PresetMap = Object.freeze({
     message: "Access denied — your role does not permit this action.",
   },
   [ERR_UNAUTHORIZED]: {
-    code: "UNAUTHORIZED",
+    code: UNAUTHORIZED,
     message: "Not authenticated — run `zombiectl login` to start a session.",
   },
   [ERR_TOKEN_EXPIRED]: {
-    code: "TOKEN_EXPIRED",
+    code: TOKEN_EXPIRED,
     message: "Token expired — run `zombiectl login` to refresh.",
   },
   [ERR_AUTH_UNAVAILABLE]: {

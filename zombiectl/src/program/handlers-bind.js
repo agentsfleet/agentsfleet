@@ -5,12 +5,12 @@
 
 import { cliAnalytics } from "../lib/analytics.js";
 import { runCommand } from "../lib/run-command.ts";
-import { printJson, writeLine } from "./io.js";
+import { printJson, writeLine } from "./io.ts";
 import { ui } from "../output/index.ts";
 
-import { commandLogin, commandLogout, loginErrorMap, logoutErrorMap } from "../commands/core.js";
-import { commandAuthStatus, authStatusErrorMap } from "../commands/auth.js";
-import { commandDoctor, doctorErrorMap } from "../commands/core-ops.js";
+import { commandLogin, commandLogout, loginErrorMap, logoutErrorMap } from "../commands/core.ts";
+import { commandAuthStatus, authStatusErrorMap } from "../commands/auth.ts";
+import { commandDoctor, doctorErrorMap } from "../commands/core-ops.ts";
 import {
   workspaceAdd,
   workspaceList,
@@ -19,48 +19,47 @@ import {
   workspaceCredentials,
   workspaceDelete,
   errorMap as workspaceErrorMap,
-} from "../commands/workspace.js";
+} from "../commands/workspace.ts";
 import {
   commandAgentAdd,
   commandAgentList,
   commandAgentDelete,
   errorMap as agentErrorMap,
-} from "../commands/agent.js";
+} from "../commands/agent.ts";
 import {
   commandGrantList,
   commandGrantDelete,
   errorMap as grantErrorMap,
-} from "../commands/grant.js";
+} from "../commands/grant.ts";
 import {
   commandTenantProviderShow,
   commandTenantProviderAdd,
   commandTenantProviderDelete,
   errorMap as tenantErrorMap,
-} from "../commands/tenant.js";
+} from "../commands/tenant.ts";
 import {
   commandBillingShow,
   errorMap as billingErrorMap,
-} from "../commands/billing.js";
+} from "../commands/billing.ts";
 import {
-  commandInstall,
-  commandUpdate,
   commandStatus,
   commandStop,
   commandResume,
   commandKill,
   commandDelete as commandZombieDelete,
   errorMap as zombieErrorMap,
-} from "../commands/zombie.js";
-import { commandList as commandZombieList } from "../commands/zombie_list.js";
-import { commandLogs as commandZombieLogs } from "../commands/zombie_logs.js";
-import { commandEvents as commandZombieEvents } from "../commands/zombie_events.js";
-import { commandSteer as commandZombieSteer } from "../commands/zombie_steer.js";
+} from "../commands/zombie.ts";
+import { commandInstall, commandUpdate } from "../commands/zombie_install.ts";
+import { commandList as commandZombieList } from "../commands/zombie_list.ts";
+import { commandLogs as commandZombieLogs } from "../commands/zombie_logs.ts";
+import { commandEvents as commandZombieEvents } from "../commands/zombie_events.ts";
+import { commandSteer as commandZombieSteer } from "../commands/zombie_steer.ts";
 import {
   commandCredentialAdd,
   commandCredentialShow,
   commandCredentialList,
   commandCredentialDelete,
-} from "../commands/zombie_credential.js";
+} from "../commands/zombie_credential.ts";
 
 function wrapHandler(name, errorMap, handler, lifecycle) {
   return async (frame) => {

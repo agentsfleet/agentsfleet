@@ -10,7 +10,7 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { commandEvents } from "../src/commands/zombie_events.js";
+import { commandEvents } from "../src/commands/zombie_events.ts";
 import {
   buildParsed,
   makeBufferStream,

@@ -15,13 +15,20 @@ import { validate as isValidUuid, version as uuidVersion } from "uuid";
 
 const EXAMPLE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
-export function isValidId(value) {
+export type ValidateResult =
+  | { ok: true }
+  | { ok: false; message: string };
+
+export function isValidId(value: unknown): value is string {
   if (!value || typeof value !== "string") return false;
   if (!isValidUuid(value)) return false;
   return uuidVersion(value) === 7;
 }
 
-export function validateRequiredId(value, name) {
+export function validateRequiredId(
+  value: unknown,
+  name: string,
+): ValidateResult {
   if (!value || typeof value !== "string" || value.trim().length === 0) {
     return { ok: false, message: `${name} is required` };
   }

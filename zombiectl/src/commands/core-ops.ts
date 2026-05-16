@@ -1,4 +1,4 @@
-import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.js";
+import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.ts";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import {
   ERR_INTERNAL_DB_UNAVAILABLE,
@@ -6,6 +6,13 @@ import {
   ERR_INTERNAL_OPERATION_FAILED,
 } from "../constants/error-codes.ts";
 import { DOCTOR_CHECK } from "../constants/doctor-checks.ts";
+import { REQUEST_FAILED } from "../constants/cli-errors.ts";
+import type {
+  CommandCtx,
+  CommandDeps,
+  ParsedArgs,
+  Workspaces,
+} from "./types.ts";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 
@@ -28,34 +35,44 @@ export const doctorErrorMap = compose(AUTH_PRESET, {
   },
 });
 
-export async function commandDoctor(ctx, _parsed, workspaces, deps) {
-  const {
-    apiHeaders,
-    printJson,
-    printSection,
-    request,
-    ui,
-    writeLine,
-  } = deps;
+interface DoctorCheck {
+  name: string;
+  ok: boolean;
+  detail: string;
+}
 
-  const checks = [];
+export async function commandDoctor(
+  ctx: CommandCtx,
+  _parsed: ParsedArgs,
+  workspaces: Workspaces,
+  deps: CommandDeps,
+): Promise<number> {
+  const { apiHeaders, printJson, printSection = () => {}, request, ui, writeLine } = deps;
+
+  const checks: DoctorCheck[] = [];
 
   try {
-    const healthz = await request(ctx, HEALTHZ_PATH, {
+    const healthz = (await request(ctx, HEALTHZ_PATH, {
       method: "GET",
       timeoutMs: PER_CHECK_TIMEOUT_MS,
-    });
+    })) as { status?: string } | null;
     const ok = healthz?.status === HEALTHZ_STATUS_OK;
     checks.push({
       name: DOCTOR_CHECK.SERVER_REACHABLE,
       ok,
-      detail: ok ? `${ctx.apiUrl}${HEALTHZ_PATH}` : `unexpected payload: ${JSON.stringify(healthz)}`,
+      detail: ok
+        ? `${ctx.apiUrl}${HEALTHZ_PATH}`
+        : `unexpected payload: ${JSON.stringify(healthz)}`,
     });
   } catch (err) {
+    const message =
+      err instanceof Error && typeof err.message === "string"
+        ? err.message
+        : String(err);
     checks.push({
       name: DOCTOR_CHECK.SERVER_REACHABLE,
       ok: false,
-      detail: `${ctx.apiUrl}${HEALTHZ_PATH}: ${err?.message ?? String(err)}`,
+      detail: `${ctx.apiUrl}${HEALTHZ_PATH}: ${message}`,
     });
   }
 
@@ -64,10 +81,12 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
   checks.push({
     name: DOCTOR_CHECK.WORKSPACE_SELECTED,
     ok: wsSelected,
-    detail: wsSelected ? wsId : "no workspace selected. Run: zombiectl workspace add",
+    detail: wsSelected
+      ? String(wsId)
+      : "no workspace selected. Run: zombiectl workspace add",
   });
 
-  if (!wsSelected) {
+  if (!wsSelected || !wsId) {
     checks.push({
       name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
       ok: false,
@@ -86,7 +105,10 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
         detail: `token bound to ${wsId}`,
       });
     } catch (err) {
-      const code = err?.code || "REQUEST_FAILED";
+      const code =
+        err && typeof err === "object" && typeof (err as Record<string, unknown>)["code"] === "string"
+          ? ((err as Record<string, unknown>)["code"] as string)
+          : REQUEST_FAILED;
       checks.push({
         name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
         ok: false,
@@ -98,9 +120,9 @@ export async function commandDoctor(ctx, _parsed, workspaces, deps) {
   const ok = checks.every((c) => c.ok);
   const report = { ok, api_url: ctx.apiUrl, checks };
 
-  if (ctx.jsonMode) {
+  if (ctx.jsonMode && ctx.stdout) {
     printJson(ctx.stdout, report);
-  } else {
+  } else if (ctx.stdout) {
     printSection(ctx.stdout, "zombiectl doctor");
     for (const c of checks) {
       const tag = c.ok ? "[OK]" : "[FAIL]";

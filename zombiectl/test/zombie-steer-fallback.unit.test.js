@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { commandSteer } from "../src/commands/zombie_steer.js";
+import { commandSteer } from "../src/commands/zombie_steer.ts";
 import { buildParsed } from "./helpers.js";
 
 // Internals (eventIdToSince / isTerminal / buildBearer) are exercised

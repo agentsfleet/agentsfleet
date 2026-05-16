@@ -1,13 +1,13 @@
 // Targeted coverage fills for the `ui` proxy in src/output/index.js (all
 // seven members are exported as inline arrow functions, so every member
 // has to be invoked to count) and the writeError fallback branch in
-// src/program/io.js (the `(s) => s` default ui.err escape hatch).
+// src/program/io.ts (the `(s) => s` default ui.err escape hatch).
 
 import { test, expect } from "bun:test";
 import { Writable } from "node:stream";
 
 import { ui, printSection, printKeyValue, printTable } from "../src/output/index.ts";
-import { writeError } from "../src/program/io.js";
+import { writeError } from "../src/program/io.ts";
 
 function bufferStream() {
   let data = "";

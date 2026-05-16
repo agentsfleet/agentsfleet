@@ -42,7 +42,7 @@ let validateModule;
 beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
   pkgVersion = JSON.parse(pkgRaw).version;
-  validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validate.js"));
+  validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validate.ts"));
 });
 
 function emptyEnv(extra) {

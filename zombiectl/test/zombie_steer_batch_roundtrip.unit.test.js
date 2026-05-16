@@ -14,7 +14,7 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { commandSteer } from "../src/commands/zombie_steer.js";
+import { commandSteer } from "../src/commands/zombie_steer.ts";
 import {
   buildParsed,
   makeBufferStream,

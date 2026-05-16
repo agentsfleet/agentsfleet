@@ -124,7 +124,7 @@ if (!isLive) {
       const hydrated = await hydrateWorkspacesForToken({ apiUrl, token: sessionJwt, stateDir });
       workspaceId = hydrated.currentWorkspaceId;
 
-      validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validate.js"));
+      validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validate.ts"));
     });
 
     afterAll(async () => {
