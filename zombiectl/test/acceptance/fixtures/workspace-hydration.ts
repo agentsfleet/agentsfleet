@@ -2,7 +2,7 @@
  * Hydrate workspaces.json for the ZOMBIE_TOKEN-injection suite.
  *
  * The CLI populates workspaces.json only inside `commandLogin`'s
- * post-success branch (`hydrateWorkspacesAfterLogin` in src/commands/core.js).
+ * post-success branch (`hydrateWorkspacesAfterLogin` in src/commands/core.ts).
  * §4 injects a minted JWT directly via `ZOMBIE_TOKEN`, so it never walks
  * that path — without help the read-only sweep sees an empty local list
  * even though the tenant has workspaces.
@@ -24,7 +24,34 @@ import path from "node:path";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
-function normalizeWorkspace(item, fallbackCreatedAt) {
+export interface HydratedWorkspace {
+  readonly workspace_id: string;
+  readonly name: string | null;
+  readonly created_at: number;
+}
+
+export interface HydrateOptions {
+  readonly apiUrl: string;
+  readonly token: string;
+  readonly stateDir: string;
+}
+
+export interface HydrateResult {
+  readonly currentWorkspaceId: string;
+  readonly workspaces: ReadonlyArray<HydratedWorkspace>;
+}
+
+interface RawWorkspaceItem {
+  workspace_id?: unknown;
+  id?: unknown;
+  name?: unknown;
+  created_at?: unknown;
+}
+
+function normalizeWorkspace(
+  item: RawWorkspaceItem | null | undefined,
+  fallbackCreatedAt: number,
+): HydratedWorkspace | null {
   if (!item || typeof item !== "object") return null;
   const workspaceId = typeof item.workspace_id === "string"
     ? item.workspace_id
@@ -33,11 +60,11 @@ function normalizeWorkspace(item, fallbackCreatedAt) {
   return {
     workspace_id: workspaceId,
     name: typeof item.name === "string" ? item.name : null,
-    created_at: Number.isFinite(item.created_at) ? item.created_at : fallbackCreatedAt,
+    created_at: Number.isFinite(item.created_at) ? item.created_at as number : fallbackCreatedAt,
   };
 }
 
-export async function hydrateWorkspacesForToken(opts) {
+export async function hydrateWorkspacesForToken(opts: HydrateOptions): Promise<HydrateResult> {
   const { apiUrl, token, stateDir } = opts;
   if (!apiUrl) throw new Error("hydrateWorkspacesForToken: apiUrl required");
   if (!token) throw new Error("hydrateWorkspacesForToken: token required");
@@ -54,15 +81,17 @@ export async function hydrateWorkspacesForToken(opts) {
     const detail = await res.text().catch(() => "");
     throw new Error(`workspace hydrate ${res.status}: ${detail.slice(0, 200)}`);
   }
-  const body = await res.json();
+  const body = await res.json() as { items?: unknown };
   const fallbackCreatedAt = Date.now();
-  const items = (Array.isArray(body?.items) ? body.items : [])
+  const rawItems: RawWorkspaceItem[] = Array.isArray(body?.items) ? body.items as RawWorkspaceItem[] : [];
+  const items: HydratedWorkspace[] = rawItems
     .map((item) => normalizeWorkspace(item, fallbackCreatedAt))
-    .filter(Boolean);
-  if (items.length === 0) {
+    .filter((w): w is HydratedWorkspace => w !== null);
+  const first = items[0];
+  if (!first) {
     throw new Error("hydrateWorkspacesForToken: tenant has no workspaces — fixture identity is mis-bootstrapped");
   }
-  const current_workspace_id = items[0].workspace_id;
+  const current_workspace_id = first.workspace_id;
   const payload = { current_workspace_id, items };
 
   await fs.mkdir(stateDir, { recursive: true });

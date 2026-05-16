@@ -1,7 +1,7 @@
 /**
  * Playwright Chromium wrapper for §5's CLI-auth handshake.
  *
- * Used only by `lifecycle-after-login.spec.js`. We deliberately avoid
+ * Used only by `lifecycle-after-login.spec.ts`. We deliberately avoid
  * `@playwright/test` — the spec orchestrates the CLI subprocess itself,
  * and a parallel test-runner framework on top would add no value. One
  * `chromium.launch()` per call, closed in `finally`.
@@ -20,15 +20,22 @@
 const APPROVE_SELECTOR = "[data-testid=\"cli-auth-approve\"]";
 const DEFAULT_TIMEOUT_MS = 30_000;
 
-function decodeJwtIat(jwt) {
+interface CookieAttrs {
+  readonly domain: string;
+  readonly path: "/";
+  readonly sameSite: "Lax";
+  readonly secure: boolean;
+}
+
+function decodeJwtIat(jwt: string): number {
   const payload = jwt.split(".")[1];
   if (!payload) throw new Error("malformed cookieJwt (no payload segment)");
-  const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+  const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { iat?: unknown };
   if (typeof json.iat !== "number") throw new Error("cookieJwt missing iat claim");
   return json.iat;
 }
 
-function cookieAttrs(loginUrl) {
+function cookieAttrs(loginUrl: string): CookieAttrs {
   const url = new URL(loginUrl);
   return {
     domain: url.hostname,
@@ -38,16 +45,16 @@ function cookieAttrs(loginUrl) {
   };
 }
 
+export interface CliAuthHandoffOptions {
+  readonly loginUrl: string;
+  readonly cookieJwt: string;
+  readonly timeoutMs?: number;
+}
+
 /**
  * Drive a Playwright Chromium context through the CLI-auth approve action.
- *
- * @param {object} opts
- * @param {string} opts.loginUrl - the URL the CLI emitted on stdout
- * @param {string} opts.cookieJwt - default Clerk session JWT (no template)
- * @param {number} [opts.timeoutMs] - per-action timeout (default 30s)
- * @returns {Promise<void>}
  */
-export async function completeCliAuthHandoff(opts) {
+export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<void> {
   if (!opts?.loginUrl) throw new Error("completeCliAuthHandoff: loginUrl required");
   if (!opts?.cookieJwt) throw new Error("completeCliAuthHandoff: cookieJwt required");
 

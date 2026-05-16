@@ -10,7 +10,7 @@
  * and the spec sweeps pick it up automatically.
  */
 
-export const COMMAND_GROUPS = [
+export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "workspace",
   "agent",
   "grant",
@@ -18,6 +18,14 @@ export const COMMAND_GROUPS = [
   "billing",
   "zombie",
 ];
+
+export interface ReadOnlyCommandRow {
+  readonly args: ReadonlyArray<string>;
+  readonly label?: string;
+  readonly requiredKey?: string;
+  readonly isList?: boolean;
+  readonly itemsKey?: string;
+}
 
 // Per-row fields:
 //   args      — argv passed to the CLI (always includes --json).
@@ -28,7 +36,7 @@ export const COMMAND_GROUPS = [
 //                 server-passthrough shape per command).
 //   isList    — list command. itemsKey names the array field whose
 //                length the §4b' / §5b' empty-list sweep inspects.
-export const READ_ONLY_COMMANDS = [
+export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["doctor", "--json"], requiredKey: "checks" },
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
@@ -38,14 +46,31 @@ export const READ_ONLY_COMMANDS = [
   { args: ["list", "--json"], isList: true, itemsKey: "items", label: "zombie list" },
 ];
 
+export interface PerZombieReadOnlyCommandRow {
+  readonly argsHead: ReadonlyArray<string>;
+  readonly isList?: boolean;
+  readonly itemsKey?: string;
+  readonly requiredKey?: string;
+  readonly group?: string;
+}
+
 // Read-only commands scoped to a live zombie_id. The spec interpolates
 // the §4a-installed zombieId via `--zombie <id>` before running. Kept
 // separate from READ_ONLY_COMMANDS (which is workspace-scoped) because
 // `grant list` requires `--zombie <id>`; the §4b read-only sweep cannot
 // thread fixture state into a static argv.
-export const PER_ZOMBIE_READ_ONLY_COMMANDS = [
+export const PER_ZOMBIE_READ_ONLY_COMMANDS: ReadonlyArray<PerZombieReadOnlyCommandRow> = [
   { argsHead: ["grant", "list"], isList: true, itemsKey: "items", group: "grant" },
 ];
+
+export interface RequiresIdentifierRow {
+  readonly args: ReadonlyArray<string>;
+  readonly argName: string;
+  readonly apiHits: boolean;
+  readonly validatesClient: boolean;
+  readonly expectedErrorCode?: string;
+  readonly clientRejectCode?: string | null;
+}
 
 // Per-row flags:
 //   apiHits  — `true` iff the CLI dispatches to the live API on a
@@ -63,7 +88,7 @@ export const PER_ZOMBIE_READ_ONLY_COMMANDS = [
 //              the time of writing — kept in sync with §4c1.
 //   clientRejectCode — CLI-emitted error code when local validation /
 //              local lookup rejects the request (apiHits: false rows).
-export const REQUIRES_IDENTIFIER = [
+export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   // status is the only zombie verb that does NOT run validateRequiredId
   // (it accepts an optional positional and falls back to workspace-wide).
   { args: ["status"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
@@ -80,6 +105,11 @@ export const REQUIRES_IDENTIFIER = [
   { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: true, validatesClient: true },
 ];
 
+export interface RequiresPositionalArgRow {
+  readonly args: ReadonlyArray<string>;
+  readonly missingArgName: string;
+}
+
 // Commands whose first positional is `<required>` in cli-tree and so
 // produce commander's "missing required argument" rejection (matched by
 // `expectMissingArg`'s /missing|required|usage|expected/ regex).
@@ -89,7 +119,7 @@ export const REQUIRES_IDENTIFIER = [
 // exits 2 with a domain-specific stem ("logs requires --zombie <id>")
 // that the generic missing-arg regex does not match. They are
 // exercised in §4a's lifecycle walk with a real zombieId instead.
-export const REQUIRES_POSITIONAL_ARG = [
+export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
   { args: ["agent", "delete"], missingArgName: "key_id" },
@@ -99,7 +129,7 @@ export const REQUIRES_POSITIONAL_ARG = [
   { args: ["resume"], missingArgName: "zombie_id" },
 ];
 
-export const INVALID_ID_SAMPLES = [
+export const INVALID_ID_SAMPLES: ReadonlyArray<string> = [
   "not-a-uuid",
   "foo",
   "abc def",
@@ -114,14 +144,14 @@ export const INVALID_ID_SAMPLES = [
  * Stems read with substring match — if the CLI tightens its wording, the
  * test still passes as long as the kebab/space stem is present.
  */
-export const EMPTY_LIST_CONVENTIONS = {
+export const EMPTY_LIST_CONVENTIONS: Readonly<Record<string, string>> = {
   "workspace list": "no workspaces",
   "agent list": "no agent",
   "grant list": "no grant",
   "list": "no zombies",
 };
 
-export const AUTH_REQUIRED_REPRESENTATIVE = [
+export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> = [
   ["doctor"],
   ["workspace", "list"],
   ["billing", "show"],

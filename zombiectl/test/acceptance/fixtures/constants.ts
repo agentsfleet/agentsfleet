@@ -17,7 +17,7 @@ export const IS_TEST_FIXTURE_METADATA_KEY = "is_test_fixture";
 export const FIXTURE_EMAIL_VAULT_PATHS = {
   regular: "op://VAULT/e2e-fixtures/regular/email",
   admin: "op://VAULT/e2e-fixtures/admin/email",
-};
+} as const;
 
 export const ZOMBIE_STATUS = {
   active: "active",
@@ -26,13 +26,13 @@ export const ZOMBIE_STATUS = {
   killed: "killed",
   errored: "errored",
   terminated: "terminated",
-};
+} as const;
 
 // `terminated` is a third post-kill resting state alongside `killed` /
-// `errored` — lifecycle-with-token.spec.js §4a accepts any of the three
+// `errored` — lifecycle-with-token.spec.ts §4a accepts any of the three
 // after `killZombie`. Omitting it would land terminated zombies in the
 // teardown `live` list, where the kill retry trips UZ-ZMB-010.
-export const TERMINAL_STATUSES = [
+export const TERMINAL_STATUSES: ReadonlyArray<string> = [
   ZOMBIE_STATUS.killed,
   ZOMBIE_STATUS.errored,
   ZOMBIE_STATUS.terminated,
@@ -51,7 +51,7 @@ export const FIXTURE_JWT_FILE = "test/acceptance/.fixture-jwt";
 export const ACCEPTANCE_BINARY = {
   worktree: "worktree",
   global: "global",
-};
+} as const;
 
 export const ACCEPTANCE_TARGET_ENV = "ZOMBIE_ACCEPTANCE_TARGET";
 

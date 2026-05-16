@@ -22,15 +22,10 @@
 import { describe, it, beforeAll, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import http from "node:http";
-import fs from "node:fs/promises";
-import path from "node:path";
-import url from "node:url";
 
 import { runZombiectl, composeEnv } from "./fixtures/cli.js";
-import { makeStubbedStateDir } from "./fixtures/state-dir.js";
-
-const HERE = path.dirname(url.fileURLToPath(import.meta.url));
-const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
+import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
+import type { AddressInfo } from "node:net";
 
 // Any valid uuidv7 satisfies parseIdOption. Reusing the example string
 // the validator embeds in its error message keeps the test fixture in
@@ -38,22 +33,35 @@ const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
 const FIXTURE_UUIDV7 = "0192a3b4-c5d6-7e8f-9012-345678901234";
 const FIXTURE_UUIDV7_B = "0192a3b4-c5d6-7e8f-9012-345678901235";
 
+interface CapturedRequest {
+  readonly method: string | undefined;
+  readonly url: string;
+  readonly body: string;
+}
+
+interface CapturingStub {
+  readonly baseUrl: string;
+  readonly captured: CapturedRequest[];
+  close(): Promise<void>;
+}
+
 /**
  * Tiny capturing HTTP stub. Records every `(method, url, body)` it
  * receives and replies from a route table. Anything unmatched returns
  * an empty `{items: []}` envelope so the CLI keeps walking — the spec
  * cares about the captured request, not the rendered response.
  */
-function startCapturingStub(routes = {}) {
-  const captured = [];
+function startCapturingStub(routes: Readonly<Record<string, unknown>> = {}): Promise<CapturingStub> {
+  const captured: CapturedRequest[] = [];
   const server = http.createServer((req, res) => {
     let body = "";
-    req.on("data", (c) => { body += c.toString("utf8"); });
+    req.on("data", (c: Buffer | string) => { body += c.toString("utf8"); });
     req.on("end", () => {
-      captured.push({ method: req.method, url: req.url, body });
-      const key = `${req.method} ${req.url.split("?")[0]}`;
+      const reqUrl = req.url ?? "";
+      captured.push({ method: req.method, url: reqUrl, body });
+      const key = `${req.method} ${reqUrl.split("?")[0] ?? ""}`;
       const entry = routes[key];
-      const payload = entry ? JSON.stringify(entry) : JSON.stringify({ items: [] });
+      const payload = entry !== undefined ? JSON.stringify(entry) : JSON.stringify({ items: [] });
       res.writeHead(200, {
         "content-type": "application/json",
         "content-length": Buffer.byteLength(payload),
@@ -61,26 +69,23 @@ function startCapturingStub(routes = {}) {
       res.end(payload);
     });
   });
-  return new Promise((resolve, reject) => {
+  return new Promise<CapturingStub>((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
-      const { port } = server.address();
+      const address = server.address() as AddressInfo;
       resolve({
-        baseUrl: `http://127.0.0.1:${port}`,
+        baseUrl: `http://127.0.0.1:${address.port}`,
         captured,
-        close: () => new Promise((r) => server.close(() => r())),
+        close: () => new Promise<void>((r) => server.close(() => r())),
       });
     });
   });
 }
 
-let pkgVersion;
-let stateDir;
-let workspaceUuid;
+let stateDir: StubbedStateDir;
+let workspaceUuid: string;
 
 beforeAll(async () => {
-  const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
-  pkgVersion = JSON.parse(pkgRaw).version;
   // Seed the state dir with a uuidv7 workspace id so handlers that
   // build paths from `workspaces.current_workspace_id` produce URLs
   // an operator would actually see — keeps the captured-request
@@ -93,11 +98,11 @@ afterAll(async () => {
   if (stateDir) await stateDir.cleanup();
 });
 
-function helpEnv() {
+function helpEnv(): Record<string, string> {
   return composeEnv({ NO_COLOR: "1" });
 }
 
-function runEnv(extra) {
+function runEnv(extra?: Record<string, string>): Record<string, string> {
   return composeEnv({
     ZOMBIE_STATE_DIR: stateDir.dir,
     NO_COLOR: "1",
@@ -106,7 +111,8 @@ function runEnv(extra) {
 }
 
 describe("--help bodies use angle-bracket metavar convention", () => {
-  const cases = [
+  type HelpCase = readonly [string, ReadonlyArray<string>, ReadonlyArray<string>];
+  const cases: ReadonlyArray<HelpCase> = [
     ["zombiectl list --help",                 ["list", "--help"],                 ["--limit <n>", "--cursor <token>", "--workspace-id <id>"]],
     ["zombiectl logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--zombie <id>"]],
     ["zombiectl events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
@@ -132,13 +138,14 @@ describe("--help bodies use angle-bracket metavar convention", () => {
 });
 
 describe("validators reject invalid values with clear error stem", () => {
+  type ValidatorCase = readonly [string, ReadonlyArray<string>, RegExp];
   // The CLI surfaces commander's "option '--X <v>' argument 'Y' is invalid.
   // <stem>" line on stderr and exits non-zero. The stem is the contract
   // we pin here. Exit code is currently 1 for commander.invalidArgument
   // (commander wraps the InvalidArgumentError and exits 1); a separate
   // cli.ts hygiene PR can map it to POSIX 2 by extending
   // COMMANDER_USAGE_CODES.
-  const cases = [
+  const cases: ReadonlyArray<ValidatorCase> = [
     // parseIntOption rejections (commander wraps as "option '--x <n>' argument 'V' is invalid. <stem>")
     ["list --limit 0",        ["list", "--limit", "0"],          /must be ≥ 1/],
     ["list --limit abc",      ["list", "--limit", "abc"],        /must be an integer/],
@@ -164,19 +171,26 @@ describe("validators reject invalid values with clear error stem", () => {
 });
 
 describe("option values flow end-to-end into the wire request", () => {
-  let stub;
+  let stub: CapturingStub | null = null;
   beforeAll(async () => { stub = await startCapturingStub(); });
   afterAll(async () => { if (stub) await stub.close(); });
 
-  function clear() { stub.captured.length = 0; }
-  function apiEnv(extra) { return runEnv({ ZOMBIE_API_URL: stub.baseUrl, ...(extra ?? {}) }); }
+  function requireStub(): CapturingStub {
+    if (!stub) throw new Error("capturing stub not initialised");
+    return stub;
+  }
+  function clear(): void { requireStub().captured.length = 0; }
+  function apiEnv(extra?: Record<string, string>): Record<string, string> {
+    return runEnv({ ZOMBIE_API_URL: requireStub().baseUrl, ...(extra ?? {}) });
+  }
 
   it("zombie list --limit 25 --cursor abc123 → GET .../zombies?cursor=abc123&limit=25", async () => {
     clear();
     const result = await runZombiectl(["list", "--limit", "25", "--cursor", "abc123", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const hit = stub.captured.find((c) => c.url.includes("/zombies") && c.method === "GET");
-    assert.ok(hit, `no /zombies GET captured: ${JSON.stringify(stub.captured)}`);
+    const captured = requireStub().captured;
+    const hit = captured.find((c) => c.url.includes("/zombies") && c.method === "GET");
+    assert.ok(hit, `no /zombies GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=25(&|$)/);
     assert.match(hit.url, /[?&]cursor=abc123(&|$)/);
   });
@@ -185,8 +199,9 @@ describe("option values flow end-to-end into the wire request", () => {
     clear();
     const result = await runZombiectl(["logs", FIXTURE_UUIDV7, "--limit", "50", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const hit = stub.captured.find((c) => c.url.includes(`/zombies/${FIXTURE_UUIDV7}/events`));
-    assert.ok(hit, `no per-zombie events GET captured: ${JSON.stringify(stub.captured)}`);
+    const captured = requireStub().captured;
+    const hit = captured.find((c) => c.url.includes(`/zombies/${FIXTURE_UUIDV7}/events`));
+    assert.ok(hit, `no per-zombie events GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=50(&|$)/);
   });
 
@@ -197,8 +212,9 @@ describe("option values flow end-to-end into the wire request", () => {
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const hit = stub.captured.find((c) => c.url.includes(`/zombies/${FIXTURE_UUIDV7}/events`));
-    assert.ok(hit, `no per-zombie events GET captured: ${JSON.stringify(stub.captured)}`);
+    const captured = requireStub().captured;
+    const hit = captured.find((c) => c.url.includes(`/zombies/${FIXTURE_UUIDV7}/events`));
+    assert.ok(hit, `no per-zombie events GET captured: ${JSON.stringify(captured)}`);
     assert.match(hit.url, /[?&]limit=100(&|$)/);
     assert.match(hit.url, /[?&]since=2h(&|$)/);
     assert.match(hit.url, /[?&]actor=steer(%3A|:)\*/);
@@ -208,9 +224,10 @@ describe("option values flow end-to-end into the wire request", () => {
     clear();
     const result = await runZombiectl(["billing", "show", "--limit", "5", "--cursor", "xyz", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const charges = stub.captured.find((c) => c.url.includes("/billing/charges"));
-    assert.ok(charges, `no billing charges GET captured: ${JSON.stringify(stub.captured)}`);
-    // billing.js doubles the limit (each event has up to 2 charge rows)
+    const captured = requireStub().captured;
+    const charges = captured.find((c) => c.url.includes("/billing/charges"));
+    assert.ok(charges, `no billing charges GET captured: ${JSON.stringify(captured)}`);
+    // billing.ts doubles the limit (each event has up to 2 charge rows)
     // and forwards the operator's cursor verbatim. We assert both.
     assert.match(charges.url, /[?&]limit=10(&|$)/);
     assert.match(charges.url, /[?&]cursor=xyz(&|$)/);
@@ -223,10 +240,11 @@ describe("option values flow end-to-end into the wire request", () => {
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const post = stub.captured.find((c) => c.method === "POST" && c.url.includes("/agent-keys"));
-    assert.ok(post, `no agent-keys POST captured: ${JSON.stringify(stub.captured)}`);
+    const captured = requireStub().captured;
+    const post = captured.find((c) => c.method === "POST" && c.url.includes("/agent-keys"));
+    assert.ok(post, `no agent-keys POST captured: ${JSON.stringify(captured)}`);
     assert.ok(post.url.includes(`/workspaces/${workspaceUuid}/agent-keys`), `wrong workspace in URL: ${post.url}`);
-    const body = JSON.parse(post.body);
+    const body = JSON.parse(post.body) as { name?: string; zombie_id?: string };
     assert.equal(body.name, "fred", `expected name=fred in POST body; body=${post.body}`);
     assert.equal(body.zombie_id, FIXTURE_UUIDV7_B, `expected zombie_id in POST body; body=${post.body}`);
   });
@@ -238,9 +256,10 @@ describe("option values flow end-to-end into the wire request", () => {
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
-    const put = stub.captured.find((c) => c.method === "PUT" && c.url.includes("/tenants/me/provider"));
-    assert.ok(put, `no provider PUT captured: ${JSON.stringify(stub.captured)}`);
-    const body = JSON.parse(put.body);
+    const captured = requireStub().captured;
+    const put = captured.find((c) => c.method === "PUT" && c.url.includes("/tenants/me/provider"));
+    assert.ok(put, `no provider PUT captured: ${JSON.stringify(captured)}`);
+    const body = JSON.parse(put.body) as { credential_ref?: string; model?: string };
     assert.equal(body.credential_ref, "keyname", `expected credential_ref=keyname in body; body=${put.body}`);
     assert.equal(body.model, "gpt-x", `expected model=gpt-x in body; body=${put.body}`);
   });

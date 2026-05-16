@@ -14,7 +14,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import url from "node:url";
 
-import { ACCEPTANCE_BINARY, ACCEPTANCE_BINARY_ENV } from "./constants.js";
+import { ACCEPTANCE_BINARY, ACCEPTANCE_BINARY_ENV } from "./constants.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..", "..");

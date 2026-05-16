@@ -6,18 +6,29 @@
  */
 
 import { runZombiectl } from "./cli.js";
+import type { RunResult } from "./cli.js";
 
-function lastJsonObject(stdout) {
+type Env = Readonly<Record<string, string>>;
+
+interface ErrorEnvelope {
+  error?: { code?: string };
+}
+
+export interface InvalidArgEnvelope extends RunResult {
+  readonly envelope: ErrorEnvelope;
+}
+
+function lastJsonObject(stdout: string): ErrorEnvelope | null {
   const trimmed = stdout.trim();
   if (!trimmed) return null;
   try {
-    return JSON.parse(trimmed);
+    return JSON.parse(trimmed) as ErrorEnvelope;
   } catch {
     return null;
   }
 }
 
-export async function expectInvalidSubcommand(group, env) {
+export async function expectInvalidSubcommand(group: string, env: Env): Promise<RunResult> {
   const result = await runZombiectl([group, "pogo"], { env });
   if (result.code === 0) {
     throw new Error(`expected non-zero for "${group} pogo"; got 0; stdout: ${result.stdout}`);
@@ -29,7 +40,7 @@ export async function expectInvalidSubcommand(group, env) {
   return result;
 }
 
-export async function expectMissingArg(args, env) {
+export async function expectMissingArg(args: ReadonlyArray<string>, env: Env): Promise<RunResult> {
   const result = await runZombiectl(args, { env });
   if (result.code === 0) {
     throw new Error(`expected non-zero for "${args.join(" ")}"; got 0; stdout: ${result.stdout}`);
@@ -41,7 +52,11 @@ export async function expectMissingArg(args, env) {
   return result;
 }
 
-export async function expectInvalidArgValue(args, env, expectedErrorCode) {
+export async function expectInvalidArgValue(
+  args: ReadonlyArray<string>,
+  env: Env,
+  expectedErrorCode?: string | null,
+): Promise<RunResult | InvalidArgEnvelope> {
   const result = await runZombiectl(args, { env });
   if (result.code === 0) {
     throw new Error(`expected non-zero for "${args.join(" ")}"; got 0; stdout: ${result.stdout}`);
@@ -62,7 +77,12 @@ export async function expectInvalidArgValue(args, env, expectedErrorCode) {
   return { ...result, envelope };
 }
 
-export function assertNoConnectionError(captured, args) {
+export interface CapturedOutput {
+  readonly stderr: string;
+  readonly stdout: string;
+}
+
+export function assertNoConnectionError(captured: CapturedOutput, args: ReadonlyArray<string>): void {
   const merged = `${captured.stderr}\n${captured.stdout}`;
   if (/ECONNREFUSED|ENOTFOUND|EAI_AGAIN|fetch failed/.test(merged)) {
     throw new Error(
@@ -72,7 +92,7 @@ export function assertNoConnectionError(captured, args) {
   }
 }
 
-export function assertNoSecretLeak(captured, secret) {
+export function assertNoSecretLeak(captured: CapturedOutput, secret: string | null | undefined): void {
   if (!secret) return;
   if (captured.stdout.includes(secret) || captured.stderr.includes(secret)) {
     throw new Error("WS-E #C1 regression: minted JWT leaked into captured stdout/stderr");

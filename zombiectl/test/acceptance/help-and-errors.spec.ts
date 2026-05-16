@@ -18,48 +18,59 @@ import url from "node:url";
 import {
   COMMAND_GROUPS,
   AUTH_REQUIRED_REPRESENTATIVE,
-} from "./fixtures/command-matrix.js";
-import { UNROUTABLE_API_URL } from "./fixtures/constants.js";
+} from "./fixtures/command-matrix.ts";
+import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { runZombiectl, composeEnv } from "./fixtures/cli.js";
-import { makeStubbedStateDir } from "./fixtures/state-dir.js";
+import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import {
   expectInvalidSubcommand,
   assertNoConnectionError,
-} from "./fixtures/negatives.js";
+} from "./fixtures/negatives.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
 
 const ANSI_RE = /\x1b\[[0-9;]*m/g;
 
-function stripAnsi(text) {
+function stripAnsi(text: string): string {
   return text.replace(ANSI_RE, "").replace(/\s+$/gm, "");
 }
 
-let pkgVersion;
-let validateModule;
+interface ValidateResult {
+  readonly ok: boolean;
+  readonly message: string;
+}
+
+interface ValidateModule {
+  validateRequiredId(value: string, label: string): ValidateResult;
+}
+
+let pkgVersion: string;
+let validateModule: ValidateModule;
 
 beforeAll(async () => {
   const pkgRaw = await fs.readFile(path.join(ZOMBIECTL_ROOT, "package.json"), "utf8");
-  pkgVersion = JSON.parse(pkgRaw).version;
-  validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validators.ts"));
+  pkgVersion = (JSON.parse(pkgRaw) as { version: string }).version;
+  validateModule = await import(path.join(ZOMBIECTL_ROOT, "src/program/validators.ts")) as ValidateModule;
 });
 
-function emptyEnv(extra) {
+function emptyEnv(extra?: Record<string, string>): Record<string, string> {
   return composeEnv({ ZOMBIE_API_URL: UNROUTABLE_API_URL, NO_COLOR: "1", ...(extra ?? {}) });
 }
 
 describe("help triplet", () => {
-  const invocations = [[], ["help"], ["-h"], ["--help"]];
+  const invocations: ReadonlyArray<ReadonlyArray<string>> = [[], ["help"], ["-h"], ["--help"]];
 
   it("all four forms exit 0 and contain the help banner", async () => {
     const results = await Promise.all(
       invocations.map((args) => runZombiectl(args, { env: emptyEnv() })),
     );
-    for (let i = 0; i < invocations.length; i += 1) {
-      assert.equal(results[i].code, 0, `${JSON.stringify(invocations[i])} exited ${results[i].code}; stderr=${results[i].stderr}`);
-      assert.match(results[i].stdout, /zombiectl/i, `${JSON.stringify(invocations[i])} missing banner`);
-    }
+    invocations.forEach((args, i) => {
+      const r = results[i];
+      if (!r) throw new Error(`missing result index ${i}`);
+      assert.equal(r.code, 0, `${JSON.stringify(args)} exited ${r.code}; stderr=${r.stderr}`);
+      assert.match(r.stdout, /zombiectl/i, `${JSON.stringify(args)} missing banner`);
+    });
   });
 
   it("all four forms emit byte-identical stripped stdout", async () => {
@@ -67,10 +78,12 @@ describe("help triplet", () => {
       invocations.map((args) => runZombiectl(args, { env: emptyEnv() })),
     );
     const stripped = results.map((r) => stripAnsi(r.stdout));
+    const first = stripped[0];
+    if (first === undefined) throw new Error("no help invocations recorded");
     for (let i = 1; i < stripped.length; i += 1) {
       assert.equal(
         stripped[i],
-        stripped[0],
+        first,
         `help-form ${JSON.stringify(invocations[i])} drifted from bare zombiectl`,
       );
     }
@@ -96,13 +109,13 @@ describe("--version", () => {
   it("--version --json emits parseable JSON with the version field", async () => {
     const result = await runZombiectl(["--version", "--json"], { env: emptyEnv() });
     assert.equal(result.code, 0);
-    const parsed = JSON.parse(result.stdout.trim());
+    const parsed = JSON.parse(result.stdout.trim()) as { version: string };
     assert.equal(parsed.version, pkgVersion);
   });
 });
 
 describe("unknown commands", () => {
-  let stubState;
+  let stubState: StubbedStateDir | null = null;
 
   beforeAll(async () => {
     stubState = await makeStubbedStateDir();
@@ -126,6 +139,7 @@ describe("unknown commands", () => {
   // fires before any network attempt.
   for (const group of COMMAND_GROUPS) {
     it(`unknown subcommand on "${group}" exits non-zero (no network)`, async () => {
+      if (!stubState) throw new Error("stubState not initialised");
       const env = emptyEnv({ ZOMBIE_STATE_DIR: stubState.dir });
       const result = await expectInvalidSubcommand(group, env);
       assertNoConnectionError(result, [group, "pogo"]);

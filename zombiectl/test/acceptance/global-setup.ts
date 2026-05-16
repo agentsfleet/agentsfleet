@@ -7,7 +7,7 @@
  * to `test/acceptance/.fixture-jwt` (mode 0600) so per-spec spawns can
  * read it without re-minting.
  *
- * Specs that don't need a JWT (e.g. `help-and-errors.spec.js`) can skip
+ * Specs that don't need a JWT (e.g. `help-and-errors.spec.ts`) can skip
  * `ensureFixtureJwt` and only call `resolveAcceptanceEnv` for the API URL.
  */
 
@@ -18,14 +18,29 @@ import url from "node:url";
 import {
   ACCEPTANCE_TARGET_ENV,
   FIXTURE_JWT_FILE,
-} from "./fixtures/constants.js";
-import { attachJwt } from "./fixtures/clerk-admin.js";
+} from "./fixtures/constants.ts";
+import { attachJwt } from "./fixtures/clerk-admin.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
 const JWT_PATH = path.join(ZOMBIECTL_ROOT, FIXTURE_JWT_FILE);
 
-export function resolveAcceptanceEnv() {
+const JWT_TTL_SECONDS = 800;
+
+export interface AcceptanceEnv {
+  readonly apiUrl: string;
+}
+
+export interface FixtureJwtRecord {
+  readonly sessionId: string;
+  readonly sessionJwt: string;
+  readonly clerkUserId: string;
+  readonly mintedAt: number;
+}
+
+export type FixtureKey = "admin" | "regular";
+
+export function resolveAcceptanceEnv(): AcceptanceEnv {
   const target = process.env[ACCEPTANCE_TARGET_ENV];
   if (!target) {
     throw new Error(`${ACCEPTANCE_TARGET_ENV} unset — acceptance suite requires an API URL`);
@@ -33,13 +48,13 @@ export function resolveAcceptanceEnv() {
   return { apiUrl: target };
 }
 
-export function resolveClerkSecret() {
+export function resolveClerkSecret(): string {
   const secret = process.env.CLERK_SECRET_KEY;
   if (!secret) throw new Error("CLERK_SECRET_KEY missing — op:// resolution must run at the workflow layer");
   return secret;
 }
 
-export function resolveFixtureEmail(key) {
+export function resolveFixtureEmail(key: FixtureKey): string {
   const envName = key === "admin" ? "AUTH_E2E_ADMIN_EMAIL" : "AUTH_E2E_REGULAR_EMAIL";
   const value = process.env[envName];
   if (!value) {
@@ -51,13 +66,13 @@ export function resolveFixtureEmail(key) {
   return value;
 }
 
-export async function ensureFixtureJwt() {
+export async function ensureFixtureJwt(): Promise<FixtureJwtRecord> {
   const cached = await readCachedJwt();
   if (cached && !isExpired(cached)) return cached;
   const clerkSecret = resolveClerkSecret();
   const email = resolveFixtureEmail("regular");
   const minted = await attachJwt(clerkSecret, { email });
-  const record = {
+  const record: FixtureJwtRecord = {
     sessionId: minted.sessionId,
     sessionJwt: minted.sessionJwt,
     clerkUserId: minted.clerkUserId,
@@ -68,20 +83,20 @@ export async function ensureFixtureJwt() {
   return record;
 }
 
-async function readCachedJwt() {
+async function readCachedJwt(): Promise<FixtureJwtRecord | null> {
   try {
     const raw = await fs.readFile(JWT_PATH, "utf8");
-    return JSON.parse(raw);
+    return JSON.parse(raw) as FixtureJwtRecord;
   } catch {
     return null;
   }
 }
 
-function isExpired(record) {
+function isExpired(record: FixtureJwtRecord): boolean {
   const ageSec = (Date.now() - (record.mintedAt ?? 0)) / 1000;
-  return ageSec >= 800;
+  return ageSec >= JWT_TTL_SECONDS;
 }
 
-export function fixtureJwtPath() {
+export function fixtureJwtPath(): string {
   return JWT_PATH;
 }

@@ -20,7 +20,21 @@ import path from "node:path";
 
 const STUB_TOKEN = "header.payload.sig";
 
-export async function makeStubbedStateDir(opts) {
+export interface StubbedStateDirOptions {
+  readonly workspaceId?: string;
+  readonly workspaceName?: string;
+  readonly token?: string;
+  readonly sessionId?: string;
+  readonly apiUrl?: string | null;
+}
+
+export interface StubbedStateDir {
+  readonly dir: string;
+  readonly workspaceId: string;
+  cleanup(): Promise<void>;
+}
+
+export async function makeStubbedStateDir(opts?: StubbedStateDirOptions): Promise<StubbedStateDir> {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-accept-"));
   const credsPath = path.join(dir, "credentials.json");
   const workspacesPath = path.join(dir, "workspaces.json");
