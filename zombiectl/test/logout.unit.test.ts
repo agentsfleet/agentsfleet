@@ -5,23 +5,30 @@ import {
   makeNoop,
   ui,
 } from "./helpers.ts";
-function makeDeps(overrides = {}) {
-  return {
+import type {
+  CommandCtx,
+  CommandDeps,
+  Workspaces,
+} from "../src/commands/types.ts";
+
+function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps {
+  const base = {
     clearCredentials: async () => {},
-    createSpinner: () => ({ start() {}, succeed() {}, fail() {} }),
+    createSpinner: () => ({ start() {}, stop() {}, succeed() {}, fail() {} }),
     newIdempotencyKey: () => "idem_test",
     openUrl: async () => false,
-    printJson: (_s, v) => {},
+    printJson: (_s: NodeJS.WritableStream, _v: unknown) => {},
     printKeyValue: () => {},
     printTable: () => {},
     request: async () => ({}),
     saveCredentials: async () => {},
     saveWorkspaces: async () => {},
     ui,
-    writeLine: (stream, line = "") => stream.write(`${line}\n`),
+    writeLine: (stream: NodeJS.WritableStream, line = "") => stream.write(`${line}\n`),
     apiHeaders: () => ({}),
     ...overrides,
   };
+  return base as unknown as CommandDeps;
 }
 
 describe("commandLogout", () => {
@@ -31,8 +38,14 @@ describe("commandLogout", () => {
     const deps = makeDeps({
       clearCredentials: async () => { cleared = true; },
     });
-    const ctx = { stdout: out.stream, stderr: makeNoop(), jsonMode: false, env: {} };
-    const workspaces = { current_workspace_id: null, items: [] };
+    const ctx: CommandCtx = {
+      stdout: out.stream,
+      stderr: makeNoop(),
+      jsonMode: false,
+      apiUrl: "https://api.test",
+      env: {},
+    };
+    const workspaces: Workspaces = { current_workspace_id: null, items: [] };
     const core = createCoreHandlers(ctx, workspaces, deps);
     const code = await core.commandLogout();
     expect(code).toBe(0);
@@ -41,12 +54,18 @@ describe("commandLogout", () => {
   });
 
   test("JSON mode output", async () => {
-    let printed = null;
+    let printed: unknown = null;
     const deps = makeDeps({
       printJson: (_s, v) => { printed = v; },
     });
-    const ctx = { stdout: makeNoop(), stderr: makeNoop(), jsonMode: true, env: {} };
-    const workspaces = { current_workspace_id: null, items: [] };
+    const ctx: CommandCtx = {
+      stdout: makeNoop(),
+      stderr: makeNoop(),
+      jsonMode: true,
+      apiUrl: "https://api.test",
+      env: {},
+    };
+    const workspaces: Workspaces = { current_workspace_id: null, items: [] };
     const core = createCoreHandlers(ctx, workspaces, deps);
     const code = await core.commandLogout();
     expect(code).toBe(0);

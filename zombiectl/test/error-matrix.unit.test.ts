@@ -1,4 +1,4 @@
-// error-matrix.unit.test.js — walks the status × error_code × json-mode
+// error-matrix unit test — walks the status × error_code × json-mode
 // matrix through runCommand and asserts the (exit code, rendered code,
 // analytics error_code) tuple. The wrapper renders directly to
 // stderr via writeLine/printJson; we capture both.
@@ -6,12 +6,20 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { ApiError } from "../src/lib/http.ts";
-import { runCommand } from "../src/lib/run-command.ts";
+import { runCommand, type Handler } from "../src/lib/run-command.ts";
 
-const STDERR_STUB = { write: () => {} };
+// Handler-side only reads `.write`; full WritableStream is overkill.
+const STDERR_STUB = { write: () => true } as unknown as NodeJS.WritableStream;
 
-const CASES = [
-  // [status, errorCode, expectedPrintedCode, expectedAnalyticsCode, errCtor]
+interface MatrixCase {
+  name: string;
+  handler: Handler;
+  expectExit: number;
+  expectAnalytics: string;
+  expectCode: string | null;
+}
+
+const CASES: readonly MatrixCase[] = [
   { name: "200 happy",        handler: () => 0,                                                        expectExit: 0, expectAnalytics: "cli_command_finished", expectCode: null },
   { name: "400 UZ-VAL-001",   handler: () => { throw new ApiError("bad input", { status: 400, code: "UZ-VALIDATION-001" }); },  expectExit: 1, expectAnalytics: "cli_error", expectCode: "UZ-VALIDATION-001" },
   { name: "401 UZ-AUTH-001",  handler: () => { throw new ApiError("nope", { status: 401, code: "UZ-AUTH-001" }); },             expectExit: 1, expectAnalytics: "cli_error", expectCode: "UZ-AUTH-001" },
@@ -25,18 +33,34 @@ const CASES = [
   { name: "unknown throw",    handler: () => { throw new Error("kaboom"); },                                                    expectExit: 1, expectAnalytics: "cli_error", expectCode: "UNEXPECTED" },
 ];
 
-const JSON_MODES = [false, true];
+const JSON_MODES = [false, true] as const;
+
+interface TrackedEvent {
+  event: string;
+  props: Record<string, unknown>;
+}
+
+interface JsonErrorPayload {
+  error: { code?: string; message?: string };
+}
 
 for (const c of CASES) {
   for (const jsonMode of JSON_MODES) {
     test(`error matrix: ${c.name} (json_mode=${jsonMode})`, async () => {
-      const events = [];
-      const lines = [];
-      const jsonPayloads = [];
-      const trackCliEvent = (_, __, event, props) => events.push({ event, props });
-      const writeLine = (_stream, line = "") => lines.push(line);
-      const printJson = (_stream, value) => jsonPayloads.push(value);
-      const ui = { err: (s) => s };
+      const events: TrackedEvent[] = [];
+      const lines: string[] = [];
+      const jsonPayloads: JsonErrorPayload[] = [];
+      const trackCliEvent = (
+        _client: unknown,
+        _id: string | null | undefined,
+        event: string,
+        props?: Record<string, unknown>,
+      ): void => { events.push({ event, props: props ?? {} }); };
+      const writeLine = (_stream: NodeJS.WritableStream, line = ""): void => { lines.push(line); };
+      const printJson = (_stream: NodeJS.WritableStream, value: unknown): void => {
+        jsonPayloads.push(value as JsonErrorPayload);
+      };
+      const ui = { err: (s: string) => s };
 
       const code = await runCommand({
         name: "matrix",
@@ -47,16 +71,17 @@ for (const c of CASES) {
 
       assert.equal(code, c.expectExit, `exit code for ${c.name}`);
       const last = events.at(-1);
+      assert.ok(last, `expected analytics event for ${c.name}`);
       assert.equal(last.event, c.expectAnalytics, `analytics event for ${c.name}`);
-      assert.equal(last.props.json_mode, String(jsonMode));
+      assert.equal(last.props["json_mode"], String(jsonMode));
       if (c.expectCode != null) {
-        assert.equal(last.props.error_code, c.expectCode, `analytics error_code for ${c.name}`);
+        assert.equal(last.props["error_code"], c.expectCode, `analytics error_code for ${c.name}`);
         if (jsonMode) {
           assert.equal(jsonPayloads.length, 1, `json payload count for ${c.name}`);
-          assert.equal(jsonPayloads[0].error.code, c.expectCode, `json error.code for ${c.name}`);
+          assert.equal(jsonPayloads[0]?.error.code, c.expectCode, `json error.code for ${c.name}`);
         } else {
           // Human mode: ApiError → "error: <code> <message>"; plain → bare message.
-          const found = lines.some((l) => l.includes(c.expectCode));
+          const found = lines.some((l) => l.includes(c.expectCode as string));
           if (c.expectCode.startsWith("UZ-") || c.expectCode === "TIMEOUT" || c.expectCode === "RATE_LIMITED" || c.expectCode.startsWith("HTTP_")) {
             assert.ok(found, `expected human-mode line containing ${c.expectCode} in ${c.name}, got ${JSON.stringify(lines)}`);
           }
