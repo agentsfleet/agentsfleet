@@ -1,16 +1,9 @@
-//! POST /v1/workspaces/{ws}/zombies — create a zombie.
-//!
-//! Atomic install path: INSERT into core.zombies → XGROUP CREATE MKSTREAM
-//! zombie:{id}:events zombie_workers 0 → XADD zombie:control zombie_created.
-//! All three happen synchronously before the 201 returns. Invariant 1 from
-//! the worker substrate spec: by the time the 201 reaches the caller, both
-//! the per-zombie data stream + group AND the control-stream signal exist.
-//! A webhook arriving 1ms after the 201 finds the group already.
-//!
-//! Failure semantics: if XGROUP CREATE or XADD fails after the INSERT
-//! committed, the row is in core.zombies but the worker will never claim
-//! it. Return 500 with a rollback hint; a reconcile job (out of scope here)
-//! cleans up orphan rows.
+//! POST /v1/workspaces/{ws}/zombies — atomic install. INSERT core.zombies →
+//! XGROUP CREATE MKSTREAM zombie:{id}:events → XADD zombie:control synchronously
+//! before the 201, so a webhook 1ms later finds the consumer group already
+//! (worker-substrate Invariant 1). Post-INSERT publish failure rolls the
+//! PG row back; a reconcile job (out of scope) heals any orphan from a
+//! double-fault rollback failure.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -146,12 +139,43 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
         return;
     };
 
+    var webhook_urls = std.json.ObjectMap.init(hx.alloc);
+    defer {
+        var it = webhook_urls.iterator();
+        while (it.next()) |entry| hx.alloc.free(entry.value_ptr.string);
+        webhook_urls.deinit();
+    }
+    populateWebhookUrls(&webhook_urls, hx.alloc, hx.ctx.api_url, zombie_id, parsed.config.triggers) catch {
+        common.internalOperationError(hx.res, "webhook_urls generation failed", hx.req_id);
+        return;
+    };
+
     log.info("created", .{ .id = zombie_id, .name = parsed.config.name, .workspace = workspace_id });
     hx.ok(.created, .{
         .zombie_id = zombie_id,
         .name = parsed.config.name,
         .status = zombie_config.ZombieStatus.active.toSlice(),
+        .webhook_urls = std.json.Value{ .object = webhook_urls },
     });
+}
+
+/// `{ <source>: "<api_url>/v1/webhooks/<zombie_id>/<source>" }` per webhook
+/// trigger; empty when no webhook variants are declared. Caller owns `map`.
+fn populateWebhookUrls(
+    map: *std.json.ObjectMap,
+    alloc: std.mem.Allocator,
+    api_url: []const u8,
+    zombie_id: []const u8,
+    triggers: []const zombie_config.ZombieTrigger,
+) !void {
+    for (triggers) |t| switch (t) {
+        .webhook => |w| {
+            const url = try std.fmt.allocPrint(alloc, "{s}/v1/webhooks/{s}/{s}", .{ api_url, zombie_id, w.source });
+            errdefer alloc.free(url);
+            try map.put(w.source, .{ .string = url });
+        },
+        .cron, .api => {},
+    };
 }
 
 fn insertZombieOnConn(
@@ -245,31 +269,16 @@ test "isUniqueViolation always returns false (no SQLSTATE introspection)" {
     try std.testing.expect(!isUniqueViolation(error.OutOfMemory));
 }
 
-// ─── installBackoffMs schedule (greptile-caught dead-entry regression) ───
-//
-// The pre-fix retry loop guarded with `attempt + 1 >= len` so the third
-// `1500ms` sleep was never reached — three attempts, two sleeps, dead
-// final entry. These tests pin the corrected 4-attempt / 3-sleep
-// schedule (every entry must be reachable) and assert the exhaustion
-// boundary. The function is a pure lookup — no Redis mock needed.
+// installBackoffMs is the corrected 4-attempt / 3-sleep schedule — the
+// pre-fix guard `attempt + 1 >= len` left the third 1500ms entry unreachable
+// (greptile-caught). Table-driven pin: every entry reachable + exhaustion
+// boundary holds + no integer wraparound past the schedule end.
 
-test "installBackoffMs: attempt 0 returns the first delay (100ms)" {
+test "installBackoffMs: schedule shape + exhaustion + wraparound" {
     try std.testing.expectEqual(@as(?u32, 100), installBackoffMs(0));
-}
-
-test "installBackoffMs: attempt 1 returns the second delay (500ms)" {
     try std.testing.expectEqual(@as(?u32, 500), installBackoffMs(1));
-}
-
-test "installBackoffMs: attempt 2 returns the third delay (1500ms — was unreachable pre-fix)" {
     try std.testing.expectEqual(@as(?u32, 1500), installBackoffMs(2));
-}
-
-test "installBackoffMs: attempt 3 exhausts (caller returns err)" {
     try std.testing.expectEqual(@as(?u32, null), installBackoffMs(3));
-}
-
-test "installBackoffMs: attempts past the schedule stay exhausted (no integer wraparound)" {
     try std.testing.expectEqual(@as(?u32, null), installBackoffMs(100));
     try std.testing.expectEqual(@as(?u32, null), installBackoffMs(std.math.maxInt(usize)));
 }

@@ -171,14 +171,14 @@ fn setReadTimeout(fd: std.posix.fd_t, ms: u32) void {
         .sec = @intCast(ms / 1000),
         .usec = @intCast((ms % 1000) * 1000),
     };
-    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch {};
+    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 const Linger = extern struct { onoff: c_int, linger: c_int };
 
 fn forceRstOnClose(fd: std.posix.fd_t) void {
     const opt = Linger{ .onoff = 1, .linger = 0 };
-    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.LINGER, std.mem.asBytes(&opt)) catch {};
+    std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.LINGER, std.mem.asBytes(&opt)) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 const std = @import("std");

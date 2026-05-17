@@ -138,6 +138,7 @@ test "concurrent generation produces no duplicates" {
     const total = num_threads * ids_per_thread;
 
     const Context = struct {
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         ids: [total][]const u8 = undefined,
 
         fn worker(self: *@This(), base: usize) void {

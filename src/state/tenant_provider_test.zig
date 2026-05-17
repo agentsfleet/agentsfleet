@@ -35,9 +35,9 @@ fn setEncryptionKey() void {
 }
 
 fn cleanupTeardown(conn: *pg.Conn, ws_id: []const u8) void {
-    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE source_workspace_id = $1::uuid", .{ws_id}) catch {};
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{ws_id}) catch {};
+    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{uc1.TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE source_workspace_id = $1::uuid", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{ws_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     uc1.teardown(conn, ws_id);
 }
 

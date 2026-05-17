@@ -7,7 +7,6 @@
 // All tests require TEST_DATABASE_URL or DATABASE_URL (skipped otherwise).
 
 const std = @import("std");
-const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 const event_loop = @import("event_loop.zig");
 const helpers = @import("event_loop_helpers.zig");
@@ -21,7 +20,7 @@ const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb01";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bbb10";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"steer-bot","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"steer-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---

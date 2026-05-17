@@ -1,0 +1,348 @@
+import { test } from "bun:test";
+import assert from "node:assert/strict";
+import {
+  commandBilling,
+  makeBufferStream,
+  makeNoop,
+  ui,
+} from "./helpers.ts";
+import { CHARGE_TYPE, PROVIDER_MODE, NANOS_PER_USD } from "../src/constants/billing.ts";
+import type {
+  CommandCtx,
+  CommandDeps,
+  ParsedArgs,
+  Workspaces,
+} from "../src/commands/types.ts";
+
+const BILLING_PATH = "/v1/tenants/me/billing";
+const CHARGES_PATH_PREFIX = "/v1/tenants/me/billing/charges";
+
+// 1¢ in nanos. Test fixtures use named multiples of this so the arithmetic
+// stays readable rather than counting zeros.
+const ONE_CENT_NANOS = NANOS_PER_USD / 100;
+
+type ParseFlagsFn = (tokens: readonly string[]) => ParsedArgs;
+type RequestFn = CommandDeps["request"];
+
+interface MakeDepsOpts {
+  requestImpl?: RequestFn;
+  parseFlagsImpl?: ParseFlagsFn;
+}
+
+function defaultParse(tokens: readonly string[]): ParsedArgs {
+  const options: ParsedArgs["options"] = {};
+  const positionals: string[] = [];
+  for (let i = 0; i < tokens.length; i += 1) {
+    const t = tokens[i];
+    if (t === undefined) continue;
+    if (t.startsWith("--")) {
+      const key = t.slice(2);
+      const next = tokens[i + 1];
+      if (next !== undefined && !next.startsWith("--")) {
+        options[key] = next;
+        i += 1;
+      } else {
+        options[key] = true;
+      }
+    } else {
+      positionals.push(t);
+    }
+  }
+  return { options, positionals };
+}
+
+function makeDeps({ requestImpl, parseFlagsImpl }: MakeDepsOpts = {}): CommandDeps {
+  const base = {
+    parseFlags: parseFlagsImpl ?? defaultParse,
+    request: requestImpl ?? (async () => ({})),
+    apiHeaders: () => ({ Authorization: "Bearer token" }),
+    ui,
+    printJson: (stream: NodeJS.WritableStream, obj: unknown) => stream.write(JSON.stringify(obj)),
+    printTable: (stream: NodeJS.WritableStream, _cols: unknown, rows: ReadonlyArray<unknown>) =>
+      stream.write(`TABLE:${rows.length}\n`),
+    writeLine: (stream: NodeJS.WritableStream, line?: string) => {
+      if (stream && line !== undefined) stream.write(`${line}\n`);
+      else if (stream) stream.write("\n");
+    },
+  };
+  return base as unknown as CommandDeps;
+}
+
+function makeCtx(over: Partial<CommandCtx> = {}): CommandCtx {
+  return {
+    stdout: makeNoop(),
+    stderr: makeNoop(),
+    jsonMode: false,
+    apiUrl: "https://api.test",
+    env: {},
+    ...over,
+  };
+}
+
+const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
+
+interface ErrorEnvelope {
+  error: { code: string; message?: string };
+}
+
+interface BillingJsonBody {
+  balance_nanos: number;
+  is_exhausted: boolean;
+  events: ReadonlyArray<{
+    event_id: string;
+    receive_nanos: number;
+    stage_nanos: number;
+    total_nanos: number;
+    token_count_input: number;
+    token_count_output: number;
+  }>;
+  next_cursor?: string;
+}
+
+const RECEIVE_ROW = {
+  event_id: "evt_1", charge_type: CHARGE_TYPE.receive, posture: PROVIDER_MODE.platform, model: "kimi-k2.6",
+  credit_deducted_nanos: ONE_CENT_NANOS, token_count_input: null, token_count_output: null,
+  recorded_at: 1_000_000,
+};
+const STAGE_ROW = {
+  event_id: "evt_1", charge_type: CHARGE_TYPE.stage, posture: PROVIDER_MODE.platform, model: "kimi-k2.6",
+  credit_deducted_nanos: 2 * ONE_CENT_NANOS, token_count_input: 820, token_count_output: 1040,
+  recorded_at: 1_000_005,
+};
+
+// ── routing / unknown action ─────────────────────────────────────────────────
+
+test("billing without action: prints usage and exits 2", async () => {
+  const stderr = makeBufferStream();
+  const ctx = makeCtx({ stderr: stderr.stream });
+  const code = await commandBilling(ctx, [], EMPTY_WORKSPACES, makeDeps());
+  assert.equal(code, 2);
+  assert.match(stderr.read(), /usage: zombiectl billing show/);
+  // commander/POSIX convention: `<token>` is the literal-placeholder form
+  // (operator types a real token in that slot). The pre-commander shim
+  // emitted `--cursor TOKEN`; the new metavar follows the rest of the tree.
+  assert.match(stderr.read(), /--cursor <token>/);
+});
+
+test("billing unknown action: --json emits UNKNOWN_COMMAND error", async () => {
+  const stderr = makeBufferStream();
+  const ctx = makeCtx({ stderr: stderr.stream, jsonMode: true });
+  const code = await commandBilling(ctx, ["bogus"], EMPTY_WORKSPACES, makeDeps());
+  assert.equal(code, 2);
+  const body = JSON.parse(stderr.read()) as ErrorEnvelope;
+  assert.equal(body.error.code, "UNKNOWN_COMMAND");
+});
+
+// ── billing show: API contract ──────────────────────────────────────────────
+
+interface UrlCall {
+  url: string;
+  method: string;
+}
+
+test("billing show: GETs balance + usage in parallel, default limit=10 → usage limit=20", async () => {
+  const calls: UrlCall[] = [];
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url, opts) => {
+      calls.push({ url, method: opts?.method ?? "GET" });
+      if (url === BILLING_PATH) return { balance_nanos: 471 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [] };
+    },
+  });
+  const code = await commandBilling(makeCtx(), ["show"], EMPTY_WORKSPACES, deps);
+  assert.equal(code, 0);
+  const urls = calls.map((c) => c.url).sort();
+  assert.deepEqual(urls, [BILLING_PATH, `${CHARGES_PATH_PREFIX}?limit=20`]);
+});
+
+test("billing show --limit 5: requests usage with limit=10 (limit*2)", async () => {
+  const captured: { url: string | null } = { url: null };
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url.startsWith(CHARGES_PATH_PREFIX)) captured.url = url;
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [] };
+    },
+  });
+  const code = await commandBilling(makeCtx(), ["show", "--limit", "5"], EMPTY_WORKSPACES, deps);
+  assert.equal(code, 0);
+  assert.equal(captured.url, `${CHARGES_PATH_PREFIX}?limit=10`);
+});
+
+test("billing show: rejects --limit 0 with exit 2", async () => {
+  const stderr = makeBufferStream();
+  const code = await commandBilling(makeCtx({ stderr: stderr.stream }), ["show", "--limit", "0"], EMPTY_WORKSPACES, makeDeps());
+  assert.equal(code, 2);
+  assert.match(stderr.read(), /--limit must be an integer between 1 and 100/);
+});
+
+test("billing show: rejects non-numeric --limit", async () => {
+  const stderr = makeBufferStream();
+  const code = await commandBilling(makeCtx({ stderr: stderr.stream }), ["show", "--limit", "lots"], EMPTY_WORKSPACES, makeDeps());
+  assert.equal(code, 2);
+  assert.match(stderr.read(), /--limit must be an integer between 1 and 100/);
+});
+
+test("billing show: rejects bare --limit (no value) with usage hint", async () => {
+  const stderr = makeBufferStream();
+  // buildParsed treats `--limit` followed by `--json` (a flag) as boolean true.
+  const code = await commandBilling(makeCtx({ stderr: stderr.stream }), ["show", "--limit", "--json"], EMPTY_WORKSPACES, makeDeps());
+  assert.equal(code, 2);
+  assert.match(stderr.read(), /--limit requires a value/);
+});
+
+test("billing show: rejects bare --cursor (no value)", async () => {
+  const stderr = makeBufferStream();
+  const code = await commandBilling(makeCtx({ stderr: stderr.stream }), ["show", "--cursor"], EMPTY_WORKSPACES, makeDeps());
+  assert.equal(code, 2);
+  assert.match(stderr.read(), /--cursor requires a value/);
+});
+
+test("billing show: rejects empty --cursor with JSON error code", async () => {
+  const stderr = makeBufferStream();
+  // buildParsed (via the commandBilling test shim) resolves `--cursor=`
+  // to options.cursor="".
+  const code = await commandBilling(
+    makeCtx({ stderr: stderr.stream, jsonMode: true }),
+    ["show", "--cursor=", "--json"],
+    EMPTY_WORKSPACES,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
+  assert.equal((JSON.parse(stderr.read()) as ErrorEnvelope).error.code, "INVALID_CURSOR");
+});
+
+test("billing show: rejects --limit above max with JSON error code", async () => {
+  const stderr = makeBufferStream();
+  const code = await commandBilling(makeCtx({ stderr: stderr.stream, jsonMode: true }), ["show", "--limit", "9999"], EMPTY_WORKSPACES, makeDeps());
+  assert.equal(code, 2);
+  assert.equal((JSON.parse(stderr.read()) as ErrorEnvelope).error.code, "INVALID_LIMIT");
+});
+
+// ── billing show: text-mode rendering ───────────────────────────────────────
+
+test("billing show: text mode prints formatted balance and footer pointer", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_nanos: 471 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [] };
+    },
+  });
+  await commandBilling(makeCtx({ stdout: stdout.stream }), ["show"], EMPTY_WORKSPACES, deps);
+  const out = stdout.read();
+  assert.match(out, /Tenant balance: {4}\$4\.71/);
+  assert.match(out, /No billable events recorded yet\./);
+  assert.match(out, /Out of credits\? See https:\/\/app\.usezombie\.com\/settings\/billing/);
+});
+
+test("billing show: surfaces exhausted balance with explicit warning", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_nanos: 0, is_exhausted: true };
+      return { items: [] };
+    },
+  });
+  await commandBilling(makeCtx({ stdout: stdout.stream }), ["show"], EMPTY_WORKSPACES, deps);
+  assert.match(stdout.read(), /⚠ Out of credits\. See https:\/\/app\.usezombie\.com/);
+});
+
+test("billing show: groups receive+stage rows by event_id and sums totals", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_nanos: 500 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [STAGE_ROW, RECEIVE_ROW] }; // out-of-order on purpose
+    },
+  });
+  await commandBilling(makeCtx({ stdout: stdout.stream }), ["show"], EMPTY_WORKSPACES, deps);
+  const out = stdout.read();
+  assert.match(out, /Last 1 events drained credits:/);
+  assert.match(out, /TABLE:1/);
+});
+
+// ── billing show: JSON-mode contract ────────────────────────────────────────
+
+test("billing show --json: emits balance + grouped events array", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_nanos: 250 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [RECEIVE_ROW, STAGE_ROW] };
+    },
+  });
+  const code = await commandBilling(makeCtx({ stdout: stdout.stream, jsonMode: true }), ["show", "--json"], EMPTY_WORKSPACES, deps);
+  assert.equal(code, 0);
+  const body = JSON.parse(stdout.read()) as BillingJsonBody;
+  assert.equal(body.balance_nanos, 250 * ONE_CENT_NANOS);
+  assert.equal(body.is_exhausted, false);
+  assert.equal(body.events.length, 1);
+  const ev = body.events[0];
+  if (!ev) throw new Error("expected grouped event");
+  assert.equal(ev.event_id, "evt_1");
+  assert.equal(ev.receive_nanos, ONE_CENT_NANOS);
+  assert.equal(ev.stage_nanos, 2 * ONE_CENT_NANOS);
+  assert.equal(ev.total_nanos, 3 * ONE_CENT_NANOS);
+  assert.equal(ev.token_count_input, 820);
+  assert.equal(ev.token_count_output, 1040);
+});
+
+test("billing show: forwards --cursor verbatim (URI-encoded) to the charges endpoint", async () => {
+  const calls: string[] = [];
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      calls.push(url);
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [], next_cursor: null };
+    },
+  });
+  await commandBilling(makeCtx(), ["show", "--cursor", "abc/=def"], EMPTY_WORKSPACES, deps);
+  const usageUrl = calls.find((u) => u.startsWith(CHARGES_PATH_PREFIX));
+  if (!usageUrl) throw new Error("expected charges call");
+  assert.match(usageUrl, /[?&]cursor=abc%2F%3Ddef/);
+});
+
+test("billing show: surfaces next_cursor in text mode footer when present", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [RECEIVE_ROW, STAGE_ROW], next_cursor: "next_token_xyz" };
+    },
+  });
+  await commandBilling(makeCtx({ stdout: stdout.stream }), ["show"], EMPTY_WORKSPACES, deps);
+  assert.match(stdout.read(), /more events available — re-run with --cursor next_token_xyz/);
+});
+
+test("billing show --json: surfaces next_cursor in the body for scripting", async () => {
+  const stdout = makeBufferStream();
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_nanos: 100 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items: [], next_cursor: "tok_for_page_2" };
+    },
+  });
+  await commandBilling(makeCtx({ stdout: stdout.stream, jsonMode: true }), ["show", "--json"], EMPTY_WORKSPACES, deps);
+  const body = JSON.parse(stdout.read()) as BillingJsonBody;
+  assert.equal(body.next_cursor, "tok_for_page_2");
+});
+
+test("billing show --json: limit slices grouped events not raw rows", async () => {
+  const stdout = makeBufferStream();
+  // Three events, two rows each → 6 raw rows. limit=2 should yield 2 events.
+  const items: Record<string, unknown>[] = [];
+  for (const eid of ["evt_a", "evt_b", "evt_c"]) {
+    items.push({ ...RECEIVE_ROW, event_id: eid, recorded_at: items.length });
+    items.push({ ...STAGE_ROW,   event_id: eid, recorded_at: items.length });
+  }
+  const deps = makeDeps({
+    requestImpl: async (_ctx, url) => {
+      if (url === BILLING_PATH) return { balance_nanos: 1000 * ONE_CENT_NANOS, is_exhausted: false };
+      return { items };
+    },
+  });
+  await commandBilling(makeCtx({ stdout: stdout.stream, jsonMode: true }), ["show", "--limit", "2", "--json"], EMPTY_WORKSPACES, deps);
+  const body = JSON.parse(stdout.read()) as BillingJsonBody;
+  assert.equal(body.events.length, 2);
+});

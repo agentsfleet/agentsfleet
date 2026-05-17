@@ -94,14 +94,14 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("SET ROLE memory_runtime", .{}) catch {};
+    _ = conn.exec("SET ROLE memory_runtime", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         "DELETE FROM memory.memory_entries WHERE instance_id IN ($1, $2)",
         .{ "zmb:" ++ ZOMBIE_LOCAL, "zmb:" ++ ZOMBIE_OTHER_WS },
-    ) catch {};
-    _ = conn.exec("RESET ROLE", .{}) catch {};
-    _ = conn.exec("DELETE FROM core.zombies WHERE id IN ($1, $2)", .{ ZOMBIE_LOCAL, ZOMBIE_OTHER_WS }) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch {};
+    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("RESET ROLE", .{}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE id IN ($1, $2)", .{ ZOMBIE_LOCAL, ZOMBIE_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn memoriesUrl(ws: []const u8, zid: []const u8) ![]u8 {
@@ -115,7 +115,7 @@ fn memoryKeyUrl(ws: []const u8, zid: []const u8, key: []const u8) ![]u8 {
 // ── Happy path round-trip ───────────────────────────────────────────────────
 
 test "integration: memories POST happy path returns 201 with key + category" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -130,7 +130,7 @@ test "integration: memories POST happy path returns 201 with key + category" {
 }
 
 test "integration: memories GET list returns previously stored entry" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -148,7 +148,7 @@ test "integration: memories GET list returns previously stored entry" {
 }
 
 test "integration: memories GET ?query= finds entry by content match" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -167,7 +167,7 @@ test "integration: memories GET ?query= finds entry by content match" {
 }
 
 test "integration: memories DELETE returns 204 with empty body" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const collection = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -187,7 +187,7 @@ test "integration: memories DELETE returns 204 with empty body" {
 }
 
 test "integration: memories DELETE on missing key is idempotent 204" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoryKeyUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL, "never-existed");
@@ -201,7 +201,7 @@ test "integration: memories DELETE on missing key is idempotent 204" {
 // ── Validation / failure paths ─────────────────────────────────────────────
 
 test "integration: memories POST without bearer returns 401" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -212,7 +212,7 @@ test "integration: memories POST without bearer returns 401" {
 }
 
 test "integration: memories POST missing key field returns 400" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -223,7 +223,7 @@ test "integration: memories POST missing key field returns 400" {
 }
 
 test "integration: memories POST missing content field returns 400" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -234,7 +234,7 @@ test "integration: memories POST missing content field returns 400" {
 }
 
 test "integration: memories POST key containing '/' returns 400" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -247,7 +247,7 @@ test "integration: memories POST key containing '/' returns 400" {
 }
 
 test "integration: memories POST oversized content returns 400" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);
@@ -265,7 +265,7 @@ test "integration: memories POST oversized content returns 400" {
 //       404 (don't-leak-existence pattern)
 
 test "integration: memories POST cross-workspace URL returns 403" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(OTHER_WS_ID, ZOMBIE_OTHER_WS);
@@ -278,7 +278,7 @@ test "integration: memories POST cross-workspace URL returns 403" {
 }
 
 test "integration: memories POST zombie-in-foreign-ws returns 404" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS);
@@ -291,7 +291,7 @@ test "integration: memories POST zombie-in-foreign-ws returns 404" {
 }
 
 test "integration: memories DELETE zombie-in-foreign-ws returns 404" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoryKeyUrl(TEST_WORKSPACE_ID, ZOMBIE_OTHER_WS, "any");
@@ -304,7 +304,7 @@ test "integration: memories DELETE zombie-in-foreign-ws returns 404" {
 // ── Same-key overwrite invariant (PUT-like ON CONFLICT semantics) ─────────
 
 test "integration: memories POST same key twice overwrites, GET reflects last write" {
-    const f = fixture() catch |e| return e;
+    const f = try fixture();
     defer f.deinit();
 
     const url = try memoriesUrl(TEST_WORKSPACE_ID, ZOMBIE_LOCAL);

@@ -1,9 +1,13 @@
 // POST /v1/webhooks/{zombie_id}
 //
 // Auth: per-zombie HMAC signature only (scheme + secret resolved from the
-//       workspace credential keyed by `trigger.source`). Verified upstream
-//       by the `webhook_sig` middleware before this handler runs. No
-//       Bearer fallback — every inbound webhook MUST be signed.
+//       workspace credential keyed by the first webhook trigger's `source`).
+//       Verified upstream by the `webhook_sig` middleware before this
+//       handler runs. No Bearer fallback — every inbound webhook MUST be
+//       signed. Multi-webhook-per-zombie URL routing (`{source}` segment)
+//       lands in the install + list response slice; until then the URL
+//       carries `zombie_id` alone and the SQL pulls the first webhook
+//       trigger from the array.
 // Idempotency: Redis SET NX EX on "webhook:dedup:{zombie_id}:{event_id}".
 // On success: event enqueued to zombie:{zombie_id}:events stream, returns 202.
 
@@ -47,9 +51,12 @@ fn fetchZombieById(pool: *pg.Pool, alloc: std.mem.Allocator, zombie_id: []const 
     const conn = try pool.acquire();
     defer pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text, status,
-        \\       config_json->'x-usezombie'->'trigger'->>'source'
-        \\FROM core.zombies WHERE id = $1::uuid
+        \\SELECT z.workspace_id::text, z.status,
+        \\       (SELECT trig->>'source'
+        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          WHERE trig->>'type' = 'webhook'
+        \\          LIMIT 1)
+        \\FROM core.zombies z WHERE z.id = $1::uuid
     , .{zombie_id}));
     defer q.deinit();
     const row = try q.next() orelse return null;

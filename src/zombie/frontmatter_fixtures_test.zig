@@ -69,8 +69,9 @@ test "fixture trigger/full.md parses with full webhook signature" {
     var cfg = try config.parseZombieFromTriggerMarkdown(alloc, md);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("full-skill", cfg.name);
-    try std.testing.expectEqualStrings("github", cfg.trigger.webhook.source);
-    try std.testing.expect(cfg.trigger.webhook.signature != null);
+    try std.testing.expectEqual(@as(usize, 1), cfg.triggers.len);
+    try std.testing.expectEqualStrings("github", cfg.triggers[0].webhook.source);
+    try std.testing.expect(cfg.triggers[0].webhook.signature != null);
     try std.testing.expect(cfg.network != null);
     try std.testing.expectEqual(@as(usize, 2), cfg.network.?.allow.len);
     try std.testing.expectEqual(@as(usize, 3), cfg.tools.len);
@@ -136,7 +137,8 @@ test "fixture bundles/platform_ops_installed_default — post-substitution TRIGG
     try std.testing.expectEqualStrings("platform-ops-zombie", cfg.name);
     try std.testing.expectEqualStrings("accounts/fireworks/models/kimi-k2.6", cfg.model.?);
     try std.testing.expectEqual(@as(u32, 256000), cfg.context.?.context_cap_tokens);
-    try std.testing.expectEqualStrings("github", cfg.trigger.webhook.source);
+    try std.testing.expectEqual(@as(usize, 1), cfg.triggers.len);
+    try std.testing.expectEqualStrings("github", cfg.triggers[0].webhook.source);
 }
 
 test "fixture bundles/platform_ops_installed_self_managed — sentinel model/cap parses to null/zero" {

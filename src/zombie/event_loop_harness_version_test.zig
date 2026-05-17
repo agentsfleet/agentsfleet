@@ -15,7 +15,6 @@
 // Requires the harness binary; this test does not seed Postgres or Redis.
 
 const std = @import("std");
-const Allocator = std.mem.Allocator;
 
 const transport = @import("../executor/transport.zig");
 const Harness = @import("test_executor_harness.zig");

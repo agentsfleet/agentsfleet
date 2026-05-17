@@ -1,0 +1,394 @@
+// Zombie CLI unit tests — covers non-install/up subcommands.
+//
+// The install/up coverage that used to live here was retired when those
+// commands collapsed into `zombiectl install --from <path>`. That flow's
+// dims live in `zombie-install-from-path.unit.test.ts`.
+//
+// Covers: credential add/list, status, kill, logs, unknown subcommand.
+
+import { test } from "bun:test";
+import assert from "node:assert/strict";
+import {
+  commandZombieDispatch as commandZombie,
+  makeNoop,
+  ui,
+  WS_ID,
+} from "./helpers.ts";
+import type {
+  CommandCtx,
+  CommandDeps,
+  Workspaces,
+} from "../src/commands/types.ts";
+
+function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps {
+  const base = {
+    request: async () => ({}),
+    apiHeaders: () => ({}),
+    ui,
+    printJson: () => {},
+    printKeyValue: () => {},
+    printSection: () => {},
+    writeLine: () => {},
+    writeError: () => {},
+    ...overrides,
+  };
+  return base as unknown as CommandDeps;
+}
+
+function makeCtx(overrides: Partial<CommandCtx> = {}): CommandCtx {
+  return {
+    stdout: makeNoop(),
+    stderr: makeNoop(),
+    jsonMode: false,
+    noInput: false,
+    apiUrl: "https://api.test",
+    env: {},
+    ...overrides,
+  };
+}
+
+const workspaces: Workspaces = { current_workspace_id: WS_ID, items: [] };
+const noWorkspaces: Workspaces = { current_workspace_id: null, items: [] };
+
+// ── credential add/list/delete ─────────────────────────────────────────
+
+function asString(body: unknown): string {
+  if (typeof body !== "string") throw new Error("expected string body");
+  return body;
+}
+
+interface PostRecord {
+  url: string;
+  method: string;
+  body: { name?: string; data?: Record<string, unknown>; value?: unknown };
+}
+
+test("credential add stores via API with structured data", async () => {
+  const captured: { post: PostRecord | null } = { post: null };
+  const deps = makeDeps({
+    request: async (_ctx, url, opts) => {
+      // Skip-if-exists guard does GET first — return empty list so add proceeds.
+      if (opts?.method === "GET") return { credentials: [] };
+      captured.post = {
+        url,
+        method: opts?.method ?? "POST",
+        body: JSON.parse(asString(opts?.body)) as PostRecord["body"],
+      };
+      return {};
+    },
+  });
+
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", '--data={"host":"api.machines.dev","api_token":"FLY_TOKEN"}'],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  const post = captured.post;
+  if (!post) throw new Error("expected POST to fire");
+  assert.equal(post.method, "POST");
+  assert.ok(post.url.includes(`/v1/workspaces/${WS_ID}/credentials`));
+  assert.equal(post.body.name, "fly");
+  assert.deepEqual(post.body.data, { host: "api.machines.dev", api_token: "FLY_TOKEN" });
+  assert.equal(post.body.value, undefined);
+});
+
+test("credential add skips when name already exists (default)", async () => {
+  let postCalls = 0;
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts?.method === "GET") {
+        return { credentials: [{ name: "fly", created_at: 12345 }] };
+      }
+      postCalls += 1;
+      return {};
+    },
+  });
+
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", '--data={"host":"x","api_token":"y"}'],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0, "exits 0 on skip — re-running an install flow is non-destructive");
+  assert.equal(postCalls, 0, "no POST issued when credential already exists");
+});
+
+test("credential add --force overwrites without skip-if-exists check", async () => {
+  let postCalls = 0;
+  let getCalls = 0;
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts?.method === "GET") { getCalls += 1; return { credentials: [{ name: "fly", created_at: 1 }] }; }
+      postCalls += 1;
+      return {};
+    },
+  });
+
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", '--data={"host":"x","api_token":"y"}', "--force"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.equal(getCalls, 0, "--force skips the existence GET");
+  assert.equal(postCalls, 1, "POST runs once");
+});
+
+test("credential add --data=@- reads JSON from stdin", async () => {
+  const captured: { body: Record<string, unknown> | null } = { body: null };
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts?.method === "GET") return { credentials: [] };
+      captured.body = JSON.parse(asString(opts?.body)) as Record<string, unknown>;
+      return {};
+    },
+  });
+
+  const ctx = makeCtx({ stdin: '{"webhook_secret":"whsec_abc","api_token":"ghp_xyz"}' });
+  const code = await commandZombie(
+    ctx,
+    ["credential", "add", "github", "--data=@-"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  const body = captured.body;
+  if (!body) throw new Error("expected POST body");
+  assert.deepEqual(body["data"], { webhook_secret: "whsec_abc", api_token: "ghp_xyz" });
+});
+
+test("credential add --data=@- with empty stdin exits 2", async () => {
+  const deps = makeDeps({
+    request: async (_ctx, _url, opts) => {
+      if (opts?.method === "GET") return { credentials: [] };
+      return {};
+    },
+  });
+
+  const ctx = makeCtx({ stdin: "" });
+  const code = await commandZombie(ctx, ["credential", "add", "github", "--data=@-"], workspaces, deps);
+  assert.equal(code, 2);
+});
+
+test("credential show returns existence + created_at without secret bytes", async () => {
+  const captured: { json: unknown } = { json: null };
+  const deps = makeDeps({
+    request: async () => ({ credentials: [{ name: "github", created_at: 99 }] }),
+    printJson: (_s, obj) => { captured.json = obj; },
+  });
+  const code = await commandZombie(makeCtx({ jsonMode: true }), ["credential", "show", "github"], workspaces, deps);
+  assert.equal(code, 0);
+  assert.deepEqual(captured.json, { name: "github", exists: true, created_at: 99 });
+});
+
+test("credential show returns exists:false on miss (json) and exit 1", async () => {
+  const captured: { json: unknown } = { json: null };
+  const deps = makeDeps({
+    request: async () => ({ credentials: [] }),
+    printJson: (_s, obj) => { captured.json = obj; },
+  });
+  const code = await commandZombie(makeCtx({ jsonMode: true }), ["credential", "show", "missing"], workspaces, deps);
+  assert.equal(code, 1);
+  assert.deepEqual(captured.json, { name: "missing", exists: false });
+});
+
+test("credential add without name returns exit 2", async () => {
+  const code = await commandZombie(makeCtx(), ["credential", "add"], workspaces, makeDeps());
+  assert.equal(code, 2);
+});
+
+test("credential add without --data returns exit 2", async () => {
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "agentmail"],
+    workspaces,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
+});
+
+test("credential add rejects invalid JSON", async () => {
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", "--data=not-json"],
+    workspaces,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
+});
+
+test("credential add rejects non-object JSON (string)", async () => {
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", '--data="bare-string"'],
+    workspaces,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
+});
+
+test("credential add rejects empty object", async () => {
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "add", "fly", "--data={}"],
+    workspaces,
+    makeDeps(),
+  );
+  assert.equal(code, 2);
+});
+
+test("credential list returns credentials", async () => {
+  const captured: { json: { credentials: ReadonlyArray<unknown> } | null } = { json: null };
+  const deps = makeDeps({
+    request: async () => ({ credentials: [{ name: "fly", created_at: "2026-04-26" }] }),
+    printJson: (_s, v) => { captured.json = v as { credentials: ReadonlyArray<unknown> }; },
+  });
+
+  const code = await commandZombie(
+    makeCtx({ jsonMode: true }),
+    ["credential", "list"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.ok((captured.json?.credentials.length ?? 0) > 0);
+});
+
+test("credential delete sends DELETE to per-credential URL", async () => {
+  const captured: { url: string | null; method: string | null } = { url: null, method: null };
+  const deps = makeDeps({
+    request: async (_ctx, url, opts) => {
+      captured.url = url;
+      captured.method = opts?.method ?? null;
+      return {};
+    },
+  });
+
+  const code = await commandZombie(
+    makeCtx(),
+    ["credential", "delete", "fly"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.equal(captured.method, "DELETE");
+  assert.ok(captured.url?.endsWith(`/v1/workspaces/${WS_ID}/credentials/fly`));
+});
+
+test("credential delete without name returns exit 2", async () => {
+  const code = await commandZombie(makeCtx(), ["credential", "delete"], workspaces, makeDeps());
+  assert.equal(code, 2);
+});
+
+// ── status ────────────────────────────────────────────────────────────
+
+test("status shows zombie info", async () => {
+  const captured: { json: { zombies: ReadonlyArray<{ name: string }> } | null } = { json: null };
+  const deps = makeDeps({
+    request: async () => ({
+      zombies: [{
+        name: "platform-ops",
+        status: "active",
+        events_processed: 42,
+        budget_used_dollars: 1.23,
+      }],
+    }),
+    printJson: (_s, v) => { captured.json = v as { zombies: ReadonlyArray<{ name: string }> }; },
+  });
+
+  const code = await commandZombie(
+    makeCtx({ jsonMode: true }),
+    ["status"],
+    workspaces,
+    deps,
+  );
+  assert.equal(code, 0);
+  assert.equal(captured.json?.zombies[0]?.name, "platform-ops");
+});
+
+test("status with no zombies shows info message", async () => {
+  const deps = makeDeps({
+    request: async () => ({ zombies: [] }),
+  });
+
+  const code = await commandZombie(makeCtx(), ["status"], workspaces, deps);
+  assert.equal(code, 0);
+});
+
+test("status without workspace returns exit 1", async () => {
+  const code = await commandZombie(makeCtx(), ["status"], noWorkspaces, makeDeps());
+  assert.equal(code, 1);
+});
+
+// ── kill ───────────────────────────────────────────────────────────────
+
+test("kill sends PATCH /zombies/{id} with body status=killed", async () => {
+  const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+  const captured: { method: string | null; url: string | null; body: string | null } = {
+    method: null, url: null, body: null,
+  };
+  const deps = makeDeps({
+    request: async (_ctx, url, opts) => {
+      captured.method = opts?.method ?? null;
+      captured.url = url;
+      captured.body = typeof opts?.body === "string" ? opts.body : null;
+      return {};
+    },
+  });
+
+  const code = await commandZombie(makeCtx(), ["kill", ZOMBIE_ID], workspaces, deps);
+  assert.equal(code, 0);
+  assert.equal(captured.method, "PATCH");
+  assert.ok(captured.url?.endsWith(`/zombies/${ZOMBIE_ID}`), `expected zombie path, got: ${captured.url}`);
+  assert.deepEqual(JSON.parse(captured.body ?? ""), { status: "killed" });
+});
+
+test("kill without zombie_id returns MISSING_ARGUMENT", async () => {
+  const captured: { code: string | null } = { code: null };
+  const deps = makeDeps({
+    writeError: (_ctx, code) => {
+      captured.code = code;
+    },
+  });
+  const code = await commandZombie(makeCtx(), ["kill"], workspaces, deps);
+  assert.equal(code, 2);
+  assert.equal(captured.code, "MISSING_ARGUMENT");
+});
+
+// ── logs ───────────────────────────────────────────────────────────────
+
+test("logs fetches per-zombie events stream (M42: activity → events repoint)", async () => {
+  const captured: { url: string | null } = { url: null };
+  const deps = makeDeps({
+    request: async (_ctx, url) => {
+      captured.url = url;
+      return { items: [{ actor: "webhook:github", status: "processed", response_text: "ok", created_at: 1745539200000 }] };
+    },
+  });
+
+  const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0a6f11";
+  const code = await commandZombie(makeCtx(), ["logs", "--zombie", ZOMBIE_ID], workspaces, deps);
+  assert.equal(code, 0);
+  assert.ok(captured.url?.includes(`/v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/events`));
+});
+
+test("logs without --zombie returns exit 2", async () => {
+  const code = await commandZombie(makeCtx(), ["logs"], workspaces, makeDeps());
+  assert.equal(code, 2);
+});
+
+// ── unknown subcommand ─────────────────────────────────────────────────
+
+test("unknown subcommand returns exit 2", async () => {
+  const code = await commandZombie(makeCtx(), ["badcmd"], workspaces, makeDeps());
+  assert.equal(code, 2);
+});
+
+test("no subcommand returns exit 2", async () => {
+  const code = await commandZombie(makeCtx(), [], workspaces, makeDeps());
+  assert.equal(code, 2);
+});

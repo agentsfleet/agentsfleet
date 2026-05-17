@@ -5,7 +5,7 @@
 //! selects this middleware statically; no per-request provider switch.
 //!
 //! Crypto core lives in the sibling `auth/crypto/svix_verify.zig` and is
-//! shared with the `/v1/webhooks/clerk` handler. This file is a thin adapter
+//! shared with the `/v1/auth/identity-events/clerk` handler. This file is a thin adapter
 //! that bridges the pure verifier to the middleware chain: vault secret
 //! lookup, `*AuthCtx` fail-write, and the typed-handle pattern.
 //!

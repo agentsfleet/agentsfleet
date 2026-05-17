@@ -1,5 +1,4 @@
 const std = @import("std");
-const db = @import("../db/pool.zig");
 const runtime_config = @import("../config/runtime.zig");
 const env_vars = @import("../config/env_vars.zig");
 const events_bus = @import("../events/bus.zig");
@@ -14,7 +13,6 @@ const metrics = @import("../observability/metrics.zig");
 const logging = @import("log");
 const telemetry_mod = @import("../observability/telemetry.zig");
 const preflight = @import("preflight.zig");
-const common = @import("common.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const serve_args = @import("serve_args.zig");
 const pg = @import("pg");
@@ -192,10 +190,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .oidc = null,
         .auth_sessions = &sessions,
         .app_url = serve_cfg.app_url,
+        .api_url = serve_cfg.api_url,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
+        // SAFETY: written by surrounding init logic before any read of this storage.
         .telemetry = undefined,
     };
     metrics.setApiInFlightRequests(0);

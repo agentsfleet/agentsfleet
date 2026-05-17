@@ -18,7 +18,7 @@ fn setEncryptionKey() void {
 }
 
 fn cleanupTestRows(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch {};
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     base.teardownWorkspace(conn, TEST_WS_ID);
     base.teardownTenant(conn);
 }

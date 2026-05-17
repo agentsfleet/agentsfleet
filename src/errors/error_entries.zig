@@ -93,47 +93,27 @@ pub const ENTRIES = [_]Entry{
         "Your role does not have sufficient permissions for this action."),
     e("UZ-AUTH-010", .forbidden, "Unsupported role",
         "The specified role is not supported."),
-    // ── API / QUEUE ──────────────────────────────────────────────────────────
-    e("UZ-API-001", .service_unavailable, "API saturated",
-        "API is at capacity. Retry with exponential backoff."),
-    e("UZ-API-002", .service_unavailable, "Queue unavailable",
-        "Event queue is unavailable. Check Redis connectivity."),
     // ── WORKSPACE ────────────────────────────────────────────────────────────
     e("UZ-WORKSPACE-001", .not_found, "Workspace not found",
         "Workspace not found. Verify the workspace ID."),
     e("UZ-WORKSPACE-002", .payment_required, "Workspace paused",
         "Workspace is paused due to billing. Update payment method."),
-    e("UZ-WORKSPACE-003", .payment_required, "Credit pool exhausted",
-        "Tenant credit pool exhausted. Top up your balance to resume execution."),
+    e("UZ-WORKSPACE-003", .payment_required, "Free tier limit reached",
+        "Workspace has reached its free-tier limit. Add a payment method to continue."),
     // ── BILLING ──────────────────────────────────────────────────────────────
-    e("UZ-BILLING-001", .bad_request, "Invalid subscription ID",
-        "The subscription ID is invalid or malformed."),
-    e("UZ-BILLING-002", .internal_server_error, "Billing state missing",
-        "Billing state record is missing. Contact support."),
-    e("UZ-BILLING-003", .internal_server_error, "Billing state invalid",
-        "Billing state is in an invalid state. Contact support."),
+    e("UZ-BILLING-001", .service_unavailable, "Billing unavailable",
+        "Billing service is temporarily unavailable. Retry shortly."),
+    e("UZ-BILLING-002", .conflict, "Billing state missing",
+        "No billing state recorded for this workspace. Contact support."),
+    e("UZ-BILLING-003", .unprocessable_entity, "Billing state invalid",
+        "Billing state is in an invalid shape. Contact support."),
     e("UZ-BILLING-004", .bad_request, "Invalid billing event",
-        "The billing event payload is invalid."),
+        "Billing event payload could not be processed."),
     e("UZ-BILLING-005", .payment_required, "Credit exhausted",
         "Workspace credits are exhausted. Add credits or upgrade plan."),
-    // ── SCORING ──────────────────────────────────────────────────────────────
-    e("UZ-SCORING-001", .bad_request, "Invalid scoring context",
-        "Scoring context tokens are invalid. Check the context_tokens field."),
-    // ── ENTITLEMENT ──────────────────────────────────────────────────────────
-    e("UZ-ENTL-001", .service_unavailable, "Entitlement service unavailable",
-        "Entitlement service is temporarily unavailable. Retry shortly."),
-    e("UZ-ENTL-003", .payment_required, "Stage limit reached",
-        "Stage limit reached for your plan. Upgrade to add more."),
-    e("UZ-ENTL-004", .forbidden, "Skill not allowed",
-        "This skill is not allowed on your current plan."),
     // ── AGENT ────────────────────────────────────────────────────────────────
     e("UZ-AGENT-001", .not_found, "Agent not found",
         "Agent not found. Verify the agent_id."),
-    // ── PROFILE ──────────────────────────────────────────────────────────────
-    e("UZ-PROFILE-001", .not_found, "Profile not found",
-        "Profile not found. Verify the profile_id."),
-    e("UZ-PROFILE-002", .bad_request, "Invalid profile",
-        "Profile data is invalid. Check required fields."),
     // ── WEBHOOK ──────────────────────────────────────────────────────────────
     e("UZ-WH-001", .not_found, "Zombie not found for webhook",
         "No zombie is registered for this webhook endpoint."),
@@ -156,18 +136,8 @@ pub const ENTRIES = [_]Entry{
         "Webhook body exceeds the 1 MiB ingest limit. Reduce the payload size " ++
         "or filter at the source."),
     // ── TOOL ─────────────────────────────────────────────────────────────────
-    e("UZ-TOOL-001", .failed_dependency, "Tool credential missing",
-        "A required credential is not in the vault. Add it with: zombiectl credential add <skill_name>"),
-    e("UZ-TOOL-002", .bad_gateway, "Tool API call failed",
-        "Tool API call failed. Check the target service status and credential permissions."),
-    e("UZ-TOOL-003", .bad_gateway, "Tool git operation failed",
-        "Git operation failed. Check repo URL, branch name, and credential permissions."),
-    e("UZ-TOOL-004", .bad_request, "Tool not attached",
-        "The tool is not in this Zombie's tools list. Add it to the TRIGGER.md tools: section."),
     e("UZ-TOOL-005", .bad_request, "Unknown tool",
         "Unknown tool name. Check spelling against the known tools list."),
-    e("UZ-TOOL-006", .gateway_timeout, "Tool call timed out",
-        "Tool call timed out. Check network connectivity and target service status."),
     // ── ZOMBIE ───────────────────────────────────────────────────────────────
     e("UZ-ZMB-001", .payment_required, "Zombie budget exceeded",
         "Zombie hit its daily budget. Increase with: zombiectl config set budget.daily_dollars <amount>"),
@@ -217,9 +187,6 @@ pub const ENTRIES = [_]Entry{
     e("UZ-GATE-003", .internal_server_error, "Gate repair attempts exhausted",
         "Agent exhausted all repair attempts without passing gates. " ++
         "Review gate results for the repeated failure pattern."),
-    e("UZ-GATE-004", .internal_server_error, "Gate persist failed",
-        "Gate results could not be written to the database. " ++
-        "Check DB connectivity and that the gate_results table exists."),
     // ── STARTUP ──────────────────────────────────────────────────────────────
     e("UZ-STARTUP-001", .internal_server_error, "Environment check failed",
         "Required environment variables are missing. Run 'zombied doctor' to see which ones."),
@@ -233,8 +200,6 @@ pub const ENTRIES = [_]Entry{
         "and the Redis server accepts connections. Run 'zombied doctor' to verify."),
     e("UZ-STARTUP-005", .internal_server_error, "Migration check failed",
         "Database migration state could not be verified. Check DB connectivity."),
-    e("UZ-STARTUP-006", .internal_server_error, "OIDC init failed",
-        "OIDC provider initialization failed. Check OIDC configuration."),
     e("UZ-STARTUP-007", .internal_server_error, "Redis group creation failed",
         "Redis connected but consumer group creation failed. " ++
         "Check Redis ACL permissions allow XGROUP CREATE."),

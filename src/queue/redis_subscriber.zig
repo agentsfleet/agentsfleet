@@ -50,9 +50,11 @@ pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8, options: InitOp
     defer redis_config.deinitConfig(alloc, cfg);
 
     const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
+    // SAFETY: written by surrounding init logic before any read of this storage.
     var sub = Subscriber{ .alloc = alloc, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
 
     if (cfg.use_tls) {
+        // SAFETY: written by surrounding init logic before any read of this storage.
         sub.transport = .{ .tls = undefined };
         try sub.transport.tls.initInPlace(alloc, stream, cfg.host);
     } else {

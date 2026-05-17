@@ -95,7 +95,7 @@ pub fn fmt(self: *StringBuilder, comptime comptime_fmt: []const u8, args: anytyp
     std.debug.assert(self.ptr != null);
 
     const buf = self.ptr.?[self.len..self.cap];
-    const out = std.fmt.bufPrint(buf, comptime_fmt, args) catch unreachable;
+    const out = std.fmt.bufPrint(buf, comptime_fmt, args) catch @panic("bufPrint failed: stack buffer sized incorrectly at compile time");
     self.len += out.len;
 
     std.debug.assert(self.len <= self.cap);

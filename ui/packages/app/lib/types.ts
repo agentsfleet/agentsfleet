@@ -55,6 +55,14 @@ export const EVENT_NANOS = 0;
 export const STAGE_PLATFORM_NANOS = 1_000_000;
 export const STAGE_SELF_MANAGED_NANOS = 100_000;
 
+// Promotional free-trial window. While `now_ms < FREE_TRIAL_END_MS`, the
+// server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS regardless
+// of posture / model / tokens. The dashboard billing panel surfaces the
+// active state from `GET /v1/tenants/me/billing.free_trial`. Customer-
+// facing live state lives on usezombie.com/#pricing.
+export const FREE_TRIAL_END_MS = 1_785_542_400_000; // 2026-08-01T00:00:00Z
+export const FREE_TRIAL_STAGE_NANOS = 0;
+
 // Unix-epoch timestamps on this type are **milliseconds**, matching the
 // server's `*_at_ms` fields (src/state/tenant_billing.zig). Pass them
 // straight to `new Date(n)`; never multiply by 1000.

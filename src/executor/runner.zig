@@ -25,7 +25,6 @@ const nullclaw = @import("nullclaw");
 
 const Config = nullclaw.config.Config;
 const Agent = nullclaw.agent.Agent;
-const providers = nullclaw.providers;
 const tools_mod = nullclaw.tools;
 const memory_mod = nullclaw.memory;
 
@@ -35,7 +34,6 @@ const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const types = @import("types.zig");
 const executor_metrics = @import("executor_metrics.zig");
-const tool_bridge = @import("tool_bridge.zig");
 const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -47,7 +45,6 @@ const client_errors = @import("client_errors.zig");
 
 const log = logging.scoped(.executor_runner);
 
-const ERROR_DOCS_BASE = "https://docs.usezombie.com/error-codes#";
 const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
 const ERR_EXEC_RUNNER_AGENT_RUN = client_errors.ERR_EXEC_RUNNER_AGENT_RUN;
 const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
@@ -210,6 +207,7 @@ fn executeInner(
     // call sites and tests).
     var obs_runtime = runner_observer.init(alloc);
     var secrets_list = collectSecrets(agent_config);
+    // SAFETY: written by surrounding init logic before any read of this storage.
     var adapter: runner_progress.Adapter = undefined;
     const checkpoint_every: u32 = if (policy) |p| p.context.memory_checkpoint_every else 0;
     const tool_window: u32 = if (policy) |p| p.context.tool_window else 0;

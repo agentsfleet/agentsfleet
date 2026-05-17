@@ -340,6 +340,69 @@ The three Redis surfaces above ride on **two distinct connection patterns** insi
 
 **Sizing the fleet.** This topology determines connection budget and Upstash-billing math at scale. See [`scaling.md`](./scaling.md) for the worked 100-zombie / 10-worker example, the tuneup-knob table (`REDIS_POOL_MAX_IDLE`, `XREADGROUP BLOCK` duration, etc.), Upstash plan-ceiling considerations, and failover-storm behavior.
 
+## Synthetic system events
+
+Most events on `zombie:{id}:events` come from outside the zombie: a steer the user typed, a webhook the platform received, a cron tick. The runtime also produces a smaller class of events on its **own** behalf — synthetic `system:*` rows that record state changes the worker has just *applied*, not events it was asked to handle. `config_updated` (ack of a `PATCH /v1/.../zombies/{id}` reload) is the first kind; future kinds (`balance_exhausted`, `manual_pause`, `kill_received`) follow the same shape.
+
+These rows sit in the same durable + ephemeral surfaces as any other event, with three differences:
+
+- The durable record lands in `core.zombie_events` with `actor='system:<change>'`, `event_type='system'`, `status='processed'`, `event_id='<kind>-<natural-key>'`. The deterministic event_id collides on the `(zombie_id, event_id)` primary key under retry, so re-emission on the same key is a no-op INSERT.
+- The live frame lands on `zombie:{id}:activity` with `kind: '<change>'`, **gated on the INSERT actually writing a row** — never publish without a durable record.
+- There is *no* entry on `zombie:{id}:events` and *no* XACK cycle. Synthetic system events are not events the worker reasons over; they record state transitions, not work to do. They never enter `zombie_execution_telemetry`.
+
+### Single-publisher invariant
+
+Only the worker that owns a zombie's event loop may publish to `zombie:{id}:activity` (declared at the top of `src/zombie/activity_publisher.zig`). HTTP handlers therefore **cannot** synthesise these acks themselves — the user-visible signal must originate worker-side, *after* the state change has been applied, not at the moment the API accepted the PATCH.
+
+Why this matters: PATCH `/v1/.../zombies/{id}` succeeds the moment the row is written and the `config_changed` signal is XADDed to `zombie:control`. The worker may not pick that signal up for milliseconds; the per-zombie thread may be mid-stage with `reload_pending` flipped but not yet applied; `reloadZombieConfig` may fail (bad triggers, vault permission denied). An API-side ack would lie. The worker-emitted ack ties the activity-channel frame to operational reality — if the user sees "Configuration updated to revision N", the new triggers are armed, the new credential names are resolved, and the zombie's next event will use them.
+
+### `config_updated` flow end-to-end
+
+```
+   user / dashboard / CLI
+    │  PATCH /v1/workspaces/{ws}/zombies/{id}  body: { config_json }
+    ▼
+  zombied-api (PATCH handler)
+    │
+    ├─► [PG]    UPDATE core.zombies SET config_json=$1, updated_at=now()
+    ├─► [Redis] XADD zombie:control * type=config_changed zombie_id=Z
+    └─► 200 OK    (revision = the new updated_at, an i64 epoch_ms)
+
+  zombied-worker watcher  ── XREADGROUP zombie:control ─►  type=config_changed
+    │
+    └─► per-zombie session reload_pending.store(true, .release)
+        XACK zombie:control
+
+  zombied-worker per-zombie thread  (next loop iteration)
+    │  reload_pending.swap(false, .acq_rel) == true
+    ├─► reloadZombieConfig(alloc, session, pool)
+    │     │
+    │     ├─► [PG] SELECT config_json FROM core.zombies WHERE id=Z
+    │     └─► session.config := parsed
+    │
+    └─► system_events.emitConfigUpdated(alloc, session, cfg)
+          │
+          ├─► [PG] SELECT updated_at FROM core.zombies WHERE id=Z   → revision
+          ├─► [PG] INSERT core.zombie_events
+          │         (zombie_id=Z, event_id='cfg-{revision}',
+          │          actor='system:config_update', event_type='system',
+          │          status='processed', request_json={revision},
+          │          response_text=<summary>)
+          │         ON CONFLICT (zombie_id, event_id) DO NOTHING RETURNING 1
+          │
+          └─► (only if RETURNING produced a row)
+              [Redis] PUBLISH zombie:Z:activity {kind:'config_updated',
+                                                  revision, summary}
+```
+
+The `RETURNING 1`-gated PUBLISH is the load-bearing detail. Reload can re-fire — `reload_pending` is a coalescing atomic, but multiple `config_changed` signals can land before the per-zombie thread services any of them, and the watcher's reconcile sweep emits another `config_changed` on restart. The deterministic `event_id` makes those retries idempotent at the durable layer; the gated PUBLISH keeps them idempotent at the live-tail layer too. Subscribers don't see ghost "Configuration updated" toasts.
+
+### Why this isn't a fourth trigger type
+
+Webhook, cron, steer, and continuation are *triggers*: external or user-initiated signals that produce work the zombie reasons over. They land on `zombie:{id}:events`, get XREADGROUPed, become an executor stage, and end with an XACK. They consume tokens; they pay rent in `zombie_execution_telemetry`.
+
+A `system:*` event is the opposite — it is the worker telling the user "something I had to apply just got applied." It belongs in `core.zombie_events` for audit (`zombiectl events {id} --actor=system` shows the operational timeline alongside the work timeline) and on the activity channel for live UIs — but it is not work, so it never enters the worker's reasoning path. The `type: api` catch-all reserved in [`user_flow.md` §8.3](./user_flow.md#83-triggering-the-zombie) is the same shape as webhook/cron/steer (work to reason over). The `type: system` ack is a distinct kind: the worker's own diagnostic surface, not an ingress.
+
 ## Why a single zombie:control instead of per-tenant control
 
 Considered alternatives:
@@ -411,13 +474,34 @@ Considered alternatives:
                                                    to filter SSE frames
 
    WEBHOOK   GH Actions posts workflow_run failure
-               → POST /v1/webhooks/{zombie_id}   (HMAC-SHA256 verified
-                 against workspace credential `github`.webhook_secret)
+               → POST /v1/webhooks/{zombie_id}/github   (HMAC-SHA256
+                 verified against workspace credential
+                 `github`.webhook_secret)
                → XADD zombie:{id}:events *
                       actor=webhook:github  type=webhook
                       workspace_id=<ws>     request=<normalized-json>
                       created_at=<ms>
                → 202
+
+               Receiver path carries a static `/{source}` suffix per provider
+               (`/github`, `/linear`, `/jira`, `/grafana`, `/agentmail`,
+               `/svix/{zombie_id}` for Clerk). M28's signature middleware
+               dispatches on the path, not on runtime config.
+
+               A zombie's TRIGGER.md declares `triggers: [...]` as an array
+               (length 1–8, unique on `(type, source)` tuple). Each webhook
+               entry carries `events: [...]` — the provider-specific
+               subscription list the install-skill forwards to the provider
+               (e.g. `gh api repos/.../hooks --field 'events[]=workflow_run'`).
+               The receiver itself doesn't read `events[]`; M43's normaliser
+               filters server-side on the event's own semantics
+               (`conclusion=failure` for `workflow_run`). Declaration shape
+               and wire-side filtering are separate concerns.
+
+               The internal Clerk endpoint that bootstraps our own tenants
+               on `user.created` is NOT this surface — it lives in the auth
+               plane at `POST /v1/auth/identity-events/clerk` (M68). The
+               `/v1/webhooks/` namespace is customer-data-plane only.
 
    CRON      NullClaw cron-tool fires on schedule (in-executor)
                → XADD zombie:{id}:events *
@@ -448,10 +532,10 @@ Considered alternatives:
 inbound rejection into one of three error codes, each with a distinct
 user action:
 
-- `UZ-WH-020 webhook_credential_not_configured` — the zombie's
-  `trigger.source` is unknown to the provider registry, OR the workspace
-  has no `zombie:<source>` vault credential (vault row missing OR
-  `webhook_secret` field absent). User-recoverable misconfig — fix
+- `UZ-WH-020 webhook_credential_not_configured` — the matching
+  `triggers[].source` is unknown to the provider registry, OR the
+  workspace has no `zombie:<source>` vault credential (vault row missing
+  OR `webhook_secret` field absent). User-recoverable misconfig — fix
   with `zombiectl credential set <source> --data @-` and pipe JSON on stdin.
 - `UZ-WH-010 invalid_signature` — provider + secret both configured but
   the request is unsigned, mis-signed, or the body was tampered with.

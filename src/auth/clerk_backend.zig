@@ -124,7 +124,7 @@ fn writeJsonEscaped(w: anytype, value: []const u8) !void {
         // escape defensively.
         0x00...0x08, 0x0B, 0x0C, 0x0E...0x1F, 0x7F => {
             var buf: [7]u8 = undefined;
-            const hex = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch unreachable;
+            const hex = std.fmt.bufPrint(&buf, "\\u{x:0>4}", .{c}) catch @panic("bufPrint failed: stack buffer sized incorrectly at compile time");
             try w.writeAll(hex);
         },
         else => try w.writeAll(&[_]u8{c}),
@@ -207,7 +207,9 @@ fn prepareFetchJob(
 
     job.* = .{
         .url = stable.dupe(u8, url) catch return PatchError.OutOfMemory,
+        // SAFETY: written by surrounding init logic before any read of this storage.
         .auth_header = undefined,
+        // SAFETY: written by surrounding init logic before any read of this storage.
         .payload = undefined,
     };
     errdefer stable.free(job.url);

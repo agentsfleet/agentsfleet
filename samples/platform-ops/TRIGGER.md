@@ -14,16 +14,16 @@ x-usezombie:
     memory_checkpoint_every: 5
     stage_chunk_threshold: 0.75
 
-  trigger:
-    type: webhook
-    source: github
-    # Default credential lookup: vault `github`, field `webhook_secret`. The
-    # install-skill rewrites `credential_name:` to `github-{zombie_slug}` only
-    # when the operator picks per-zombie scoping at second-install time.
-    signature:
-      secret_ref: github_secret
-      header: x-hub-signature-256
-      prefix: "sha256="
+  triggers:
+    - type: webhook
+      source: github
+      # Default credential lookup: vault `github`, field `webhook_secret`. The
+      # install-skill rewrites `credential_name:` to `github-{zombie_slug}` only
+      # when the operator picks per-zombie scoping at second-install time.
+      signature:
+        secret_ref: github_secret
+        header: x-hub-signature-256
+        prefix: "sha256="
 
   tools:
     - http_request

@@ -1,4 +1,5 @@
 import { API_ORIGIN, request } from "./client";
+import { requestWithRetry, type RetryOptions } from "./retry";
 import { ApiError } from "./errors";
 import type {
   InstallZombieRequest,
@@ -117,4 +118,28 @@ export async function deleteZombie(
 
 export function webhookUrlFor(zombieId: string): string {
   return `${API_ORIGIN}/v1/webhooks/${zombieId}`;
+}
+
+// POST /v1/workspaces/{ws}/zombies/{id}/messages
+// Submits a steer message — the user's natural-language nudge during a
+// running stage or to start a new one. Returns the synthesized event_id
+// so the caller can reconcile its optimistic UI frame against the live
+// SSE stream's matching EVENT_RECEIVED.
+export async function steerZombie(
+  workspaceId: string,
+  zombieId: string,
+  message: string,
+  token: string,
+  retry?: RetryOptions,
+): Promise<{ event_id: string }> {
+  return requestWithRetry<{ event_id: string }>(
+    `/v1/workspaces/${workspaceId}/zombies/${zombieId}/messages`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message }),
+    },
+    token,
+    retry,
+  );
 }

@@ -142,10 +142,8 @@ test "matchWebhook: HMAC-only 2-segment form" {
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/a/b/c", &buf)) == null);
 }
 
-test "matchWebhook: rejects reserved second segments (svix, clerk) and reserved actions" {
+test "matchWebhook: rejects reserved second segment (svix) and reserved actions" {
     var buf: [matchers.PATH_MAX_SEGMENTS][]const u8 = undefined;
-    // /v1/webhooks/clerk routes to clerk_webhook, not the catch-all.
-    try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/clerk", &buf)) == null);
     // /v1/webhooks/svix/{id} routes to receive_svix_webhook.
     try std.testing.expect(matchers.matchWebhook(parse("/v1/webhooks/svix/zid", &buf)) == null);
     // /v1/webhooks/{id}/approval and /grant-approval route to dedicated handlers.

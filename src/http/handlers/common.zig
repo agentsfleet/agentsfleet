@@ -6,7 +6,6 @@ const oidc = @import("../../auth/oidc.zig");
 const auth_sessions = @import("../../auth/sessions.zig");
 const queue_redis = @import("../../queue/redis.zig");
 const metrics = @import("../../observability/metrics.zig");
-const logging = @import("log");
 const telemetry_mod = @import("../../observability/telemetry.zig");
 const trace_ctx = @import("../../observability/trace.zig");
 const db = @import("../../db/pool.zig");
@@ -35,6 +34,7 @@ pub const Context = struct {
     oidc: ?*oidc.Verifier,
     auth_sessions: *auth_sessions.SessionStore,
     app_url: []const u8,
+    api_url: []const u8,
     api_in_flight_requests: std.atomic.Value(u32),
     api_max_in_flight_requests: u32,
     ready_max_queue_depth: ?i64,

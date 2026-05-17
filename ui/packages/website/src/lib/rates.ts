@@ -27,9 +27,19 @@ export const EVENT_NANOS = 0n;
 export const STAGE_PLATFORM_NANOS = 1_000_000n;
 export const STAGE_SELF_MANAGED_NANOS = 100_000n;
 
+// Promotional free-trial window. While `now_ms < FREE_TRIAL_END_MS` the
+// server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS regardless
+// of posture / model / tokens. Identifier names match the Zig + JS mirrors.
+// Customer surface for live rates + window state: usezombie.com/#pricing.
+export const FREE_TRIAL_END_MS = 1_785_542_400_000n; // 2026-08-01T00:00:00Z
+export const FREE_TRIAL_STAGE_NANOS = 0n;
+
 export const RATES_DISPLAY = {
   STARTER_CREDIT: "$5",
   EVENT_RATE: "free",
   STAGE_PLATFORM: "$0.001",
   STAGE_SELF_MANAGED: "$0.0001",
+  HEADLINE: "Try for free",
+  FREE_TRIAL_BANNER:
+    "Free until July 31, 2026 — every event receipt and stage execution is on us while we gather traction. Self-managed posture still recommended for production-grade isolation.",
 } as const;

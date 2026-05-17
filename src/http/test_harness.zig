@@ -104,11 +104,16 @@ pub const TestHarness = struct {
                 .audience = cfg.audience,
                 .inline_jwks_json = cfg.inline_jwks_json,
             }),
+            // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .queue = undefined,
             .telemetry = telemetry_mod.Telemetry.initTest(),
+            // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .registry = undefined,
+            // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .ctx = undefined,
+            // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .server = undefined,
+            // SAFETY: test fixture; field is populated by the surrounding builder before any read.
             .thread = undefined,
             .port = port,
         };
@@ -119,6 +124,7 @@ pub const TestHarness = struct {
             .oidc = &h.verifier,
             .auth_sessions = &h.session_store,
             .app_url = "http://127.0.0.1",
+            .api_url = "http://127.0.0.1",
             .api_in_flight_requests = std.atomic.Value(u32).init(0),
             .api_max_in_flight_requests = 64,
             .ready_max_queue_depth = null,
@@ -196,6 +202,7 @@ fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
     _ = cfg;
     return .{
         .bearer_or_api_key = .{ .verifier = &h.verifier },
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKey },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
@@ -244,7 +251,9 @@ pub const Request = struct {
     harness: *TestHarness,
     method: std.http.Method,
     path: []const u8,
+    // SAFETY: test fixture; field is populated by the surrounding builder before any read.
     hdr_names: [MAX_HEADERS][]const u8 = undefined,
+    // SAFETY: test fixture; field is populated by the surrounding builder before any read.
     hdr_values: [MAX_HEADERS][]const u8 = undefined,
     hdr_count: usize = 0,
     body: ?[]const u8 = null,
@@ -333,7 +342,7 @@ pub const Response = struct {
         const got = self.status;
         const want: u16 = @intFromEnum(expected);
         if (got != want) {
-            std.debug.print("expectStatus: want {d}, got {d}; body={s}\n", .{ want, got, self.body });
+            std.log.warn("expectStatus: want {d}, got {d}; body={s}", .{ want, got, self.body });
             return error.UnexpectedStatus;
         }
     }
@@ -346,7 +355,7 @@ pub const Response = struct {
         const needle = try std.fmt.allocPrint(self.alloc, "\"error_code\":\"{s}\"", .{code});
         defer self.alloc.free(needle);
         if (std.mem.indexOf(u8, self.body, needle) == null) {
-            std.debug.print("expectErrorCode: {s} not in body={s}\n", .{ code, self.body });
+            std.log.warn("expectErrorCode: {s} not in body={s}", .{ code, self.body });
             return error.ErrorCodeMismatch;
         }
     }
@@ -372,14 +381,23 @@ pub const Response = struct {
 fn fakeHarness(alloc: std.mem.Allocator) TestHarness {
     return TestHarness{
         .alloc = alloc,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .pool = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .session_store = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .verifier = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .queue = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .telemetry = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .registry = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .ctx = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .server = undefined,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .thread = undefined,
         .port = 0,
     };

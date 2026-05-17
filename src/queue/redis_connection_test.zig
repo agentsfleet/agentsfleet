@@ -449,9 +449,11 @@ const TlsGarbageHandshake = struct {
         // a coherent protocol. std.crypto.tls's record parser will
         // reject this during the first read of the ServerHello.
         var buf: [4096]u8 = undefined;
-        _ = conn.stream.read(&buf) catch {};
+        // Drain ClientHello; partial reads / EOF are expected on a fake
+        // that returns garbage — we want the WRITE below to fire regardless.
+        if (conn.stream.read(&buf)) |_| {} else |_| {}
         const garbage = "GARBAGE-NOT-A-TLS-SERVERHELLO-FRAME-AT-ALL-NO-RECORD-LAYER-XYZ\n";
-        conn.stream.writeAll(garbage) catch {};
+        if (conn.stream.writeAll(garbage)) |_| {} else |_| {}
         // Close IMMEDIATELY after the garbage. Without this, `std.crypto.tls`
         // can block forever on a subsequent record read (it's reading
         // length-prefixed records and the partial garbage doesn't terminate

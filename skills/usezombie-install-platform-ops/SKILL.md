@@ -13,7 +13,7 @@ metadata:
   homepage: https://usezombie.com/docs/skills
   source: https://github.com/usezombie/usezombie
   requires:
-    bins: [zombiectl, openssl, curl]
+    bins: [zombiectl, gh, openssl, curl]
     optional_bins: [op]
 inputs:
   - name: slack_channel
@@ -33,31 +33,33 @@ references:
 
 # usezombie-install-platform-ops
 
-## Installation
+## 0. Preconditions (run once per cold machine)
 
-Before invoking this skill, the user needs `zombiectl` on their PATH and
-the `/usezombie-*` skills symlinked into the host's skill directory. Walk
-the user through this once on a cold machine:
-
-```bash
-zombiectl --version
-```
-
-If the binary is not found:
+Four one-liners install the binary, register the skill, authenticate
+with usezombie, and authorize `gh` for webhook registration on the
+user's machine:
 
 ```bash
-npm install -g @usezombie/zombiectl
+npm install -g @usezombie/zombiectl     # CLI + bundled samples (postinstall copies ~/.config/usezombie/samples/)
+npx skills add usezombie/usezombie      # symlinks /usezombie-* into the host's skill paths
+zombiectl auth login                     # Clerk OAuth → token in ~/.config/usezombie/auth.json
+gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks via `gh api`
 ```
 
-If `/usezombie-install-platform-ops` does not show up as a slash-command
-in the host:
+The skill's **first action** (step 1 below) is the precondition check:
 
 ```bash
-npx skills add usezombie/usezombie
+which zombiectl && which gh && zombiectl doctor --json
 ```
 
-Manual symlink fallback (when `npx skills` is unavailable or the host is
-not in the registry):
+Any miss → print the exact one-liner above to fix it and stop. The
+four commands are deliberately separate so a user with most of the
+chain already in place skips what they already have. **No paste-into-
+github.com step exists** — webhook registration runs from the user's
+machine via their own `gh` auth (steps 9–10).
+
+Manual symlink fallback (when `npx skills` is unavailable or the host
+is not in the registry):
 
 ```bash
 ln -s "$(npm root -g)/@usezombie/zombiectl/skills/usezombie-install-platform-ops" \
@@ -152,22 +154,17 @@ surface the diagnostic and let the user fix it before retrying.
    is skip-if-exists; the skill relies on this to avoid clobbering a
    workspace-shared `github.webhook_secret` on a second install. Never
    pass `--force` unless the user explicitly asked to rotate.
-7. **Read the canonical template** from
-   `~/.config/usezombie/samples/platform-ops/`. If the directory is
-   missing, the npm install was corrupted or postinstall was skipped —
-   print:
+7. **Generate the per-repo files + install.** Read the canonical
+   template from `~/.config/usezombie/samples/platform-ops/`. If the
+   directory is missing, the npm install was corrupted or postinstall
+   was skipped — print `Cannot find platform-ops template at
+   ~/.config/usezombie/samples/platform-ops/. Reinstall: npm install
+   -g @usezombie/zombiectl` and exit. Never fetch from a URL. Never
+   cache. The npm package version *is* the template version.
 
-   ```
-   Cannot find platform-ops template at ~/.config/usezombie/samples/platform-ops/.
-   Reinstall: npm install -g @usezombie/zombiectl
-   ```
-
-   and exit. Never fetch from a URL. Never cache. The npm package
-   version *is* the template version.
-8. **Generate the per-repo zombie files.** Substitute the five
-   placeholders into `~/.config/usezombie/samples/platform-ops/SKILL.md`
-   and `TRIGGER.md`, then write the output to
-   `.usezombie/platform-ops/` in the user's CWD:
+   Substitute the five placeholders into the template's `SKILL.md`
+   and `TRIGGER.md`, then write the output to `.usezombie/platform-ops/`
+   in the user's CWD:
 
    | Placeholder | Source |
    |---|---|
@@ -179,35 +176,73 @@ surface the diagnostic and let the user fix it before retrying.
 
    If `.usezombie/platform-ops/` already exists, prompt overwrite
    (default `N`). On `N`, exit cleanly with no changes to disk.
-9. **Install the zombie.** Run
-   `zombiectl zombie install --from .usezombie/platform-ops/ --json`.
-   Capture `zombie_id` and `webhook_url` from the response. If the
-   response lacks `webhook_url`, surface the captured JSON and exit
-   with "install JSON missing webhook_url — file an issue".
-10. **Self-verify the webhook before the user pastes it into GitHub.**
-    Compute HMAC-SHA256 of a synthetic payload using the secret from
-    step 5, then curl the receiver:
+
+   Run `zombiectl zombie install --from .usezombie/platform-ops/ --json`.
+   Capture `zombie_id` and the `webhook_urls` map from the response.
+   The map is keyed by `<source>` (`github`, `linear`, `jira`, etc.)
+   with `<receiver-URL>` values. Cron-only / api-only installs return
+   `webhook_urls: {}` and skip steps 8–10. If the response lacks
+   `webhook_urls`, surface the captured JSON and exit with "install
+   JSON missing webhook_urls — file an issue".
+8. **Parse the rendered TRIGGER.md.** Read
+   `.usezombie/platform-ops/TRIGGER.md` (the file just written in
+   step 7), extract `x-usezombie.triggers[]`, and for each `webhook`
+   entry capture `source`, `events` (default empty = "all events for
+   this provider"), and the optional `credential_name` override.
+   These drive the gh-api loop in step 9. Skip non-webhook entries
+   (cron / api) — they need no provider-side registration.
+9. **Register webhook(s) on the upstream provider via the user's
+   local `gh`.** For each webhook trigger from step 8, look up
+   `${WEBHOOK_URL}` as `webhook_urls[trigger.source]` from step 7's
+   capture. Compute the `gh api` command from the trigger:
+
+   ```bash
+   gh api -X POST "repos/${GH_REPO}/hooks" \
+     --field name=web --field active=true \
+     $(for e in "${EVENTS[@]}"; do printf -- '--field events[]=%s ' "$e"; done) \
+     --field "config[url]=${WEBHOOK_URL}" \
+     --field 'config[content_type]=json' \
+     --field "config[secret]=${WEBHOOK_SECRET}"
+   ```
+
+   `${GH_REPO}` comes from `gh repo view --json nameWithOwner -q
+   .nameWithOwner` (step 3 already detected the workflow); `${EVENTS[@]}`
+   is the parsed `events:` list. The user's `gh auth` does the work —
+   the platform never holds the user's GitHub Personal Access Token
+   (PAT) for this step.
+
+   Failure modes:
+   - `403` / `401` (missing scope) → print
+     `gh auth refresh -s admin:repo_hook` and stop.
+   - `404` → repo or token wrong; print response verbatim and stop.
+   - `422 Hook already exists` → idempotent: `gh api
+     repos/${GH_REPO}/hooks` (GET), find the hook whose `config.url`
+     matches `${WEBHOOK_URL}`, treat as registered, advance.
+   - `5xx` → retry once with 2s backoff; stop on second 5xx.
+
+   Record each registered `hook_id` for the step 11 summary.
+10. **HMAC self-verify each registered URL.** For every entry in
+    `webhook_urls`, compute HMAC-SHA256 of a synthetic payload using
+    the workspace's `webhook_secret` (step 5) and curl the receiver:
 
     ```bash
     PAYLOAD='{"zen":"install-test"}'
     SIG=$(printf %s "$PAYLOAD" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | awk '{print $2}')
-    curl -fsS -X POST "https://api.usezombie.com/v1/webhooks/${ZOMBIE_ID}" \
+    curl -fsS -X POST "${WEBHOOK_URL}" \
       -H "X-Hub-Signature-256: sha256=${SIG}" \
       -H "Content-Type: application/json" \
+      -H "X-GitHub-Event: workflow_run" \
       -d "$PAYLOAD"
     ```
 
-    Expect HTTP `202`. On non-202, network failure, or HMAC mismatch,
-    print the response verbatim and stop — **do not** advance to the
-    GitHub-paste step. A broken webhook the user discovers hours later
-    when production CD actually fails destroys the wedge demo.
-11. **Print the post-install summary** including the webhook URL
-    (`https://api.usezombie.com/v1/webhooks/{zombie_id}`), the
-    one-time secret (only on the first-install path from step 5), and
-    GitHub-config instructions: payload URL, content type
-    `application/json`, secret, events `Workflow runs`. Tell the user
-    exactly where to paste it (`Settings → Webhooks → Add webhook` on
-    the repo).
+    Expect HTTP `202` per source. On non-202, network failure, or
+    HMAC mismatch, print the response verbatim and stop. The user
+    never finds out hours later that HMAC is wrong.
+11. **Post-install summary.** Print the `zombie_id`, the registered
+    `hook_id` per source (e.g. `webhook:github → hook 482389123`),
+    the HMAC-verified status per source, and the credentials stored
+    in the workspace vault. **No paste-into-GitHub prose** — the
+    user's `gh` already did the registration in step 9.
 12. **Smoke test.** Run
     `zombiectl steer {zombie_id} "morning health check"` and stream
     the response inline. If the round-trip exceeds 60 seconds, print
@@ -223,7 +258,7 @@ surface the diagnostic and let the user fix it before retrying.
 | 1 | Skipping `zombiectl doctor` and going straight to install | Doctor is the only sanctioned readiness check. Always run it first. |
 | 2 | Passing the JSON body via `--data '<JSON>'` instead of `--data @-` | Secret bytes leak into shell history and `ps` output. Always pipe JSON on stdin. |
 | 3 | Re-running the skill on a second repo and overwriting `github.webhook_secret` | The credential `add` default skip-if-exists prevents this. Don't pass `--force` unless rotating. The skill prompts reuse-vs-scope on second install (step 5). |
-| 4 | Asking the user to paste the webhook into GitHub before verifying it works | Always self-verify with `openssl dgst -sha256 -hmac` + `curl` to the receiver first (step 10). |
+| 4 | Asking the user to paste the webhook into GitHub Settings → Webhooks | The skill registers the webhook via `gh api repos/.../hooks` in step 9. There is no paste-into-github.com step in this flow. Self-verify with `openssl dgst -sha256 -hmac` + `curl` to the receiver (step 10) before declaring success. |
 | 5 | Hard-coding Claude Code's `AskUserQuestion` in the body prose | Use the host's question primitive when present, or inline natural-language prompts otherwise. This skill must work in Amp, Codex CLI, and OpenCode too. |
 | 6 | Calling the model-caps endpoint directly | Doctor's `tenant_provider` block already carries resolved values. Never add a network dependency for what doctor already has. |
 | 7 | Asking the user about LLM model or self-managed key | Out-of-band — see [`references/self-managed-handoff.md`](references/self-managed-handoff.md). The skill never holds an LLM api_key. |

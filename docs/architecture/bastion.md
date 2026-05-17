@@ -26,6 +26,7 @@ This is post-MVP. It's the shape that competes structurally with Atlassian Statu
 - The sandbox boundary (Landlock + cgroups + bwrap).
 - The trigger model (webhook, cron, steer).
 - The credential vault, network policy, budget caps, context lifecycle.
+- The split between work-events and worker-emitted `system:*` acks (see [`data_flow.md` §Synthetic system events](./data_flow.md#synthetic-system-events)). Bastion-stage audience routing applies to work-events only — `system:*` rows stay on the internal operator timeline regardless of how broadly the zombie is configured to broadcast.
 
 The bastion is a `SKILL.md` authoring pattern plus a few new tool primitives plus a new rendering surface. It is not a different product. The MVP's job is to earn enough trust on internal-only diagnoses that customers feel safe letting the same zombie talk to *their* customers.
 

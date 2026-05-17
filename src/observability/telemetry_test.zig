@@ -1,7 +1,5 @@
 const std = @import("std");
 const telemetry = @import("telemetry.zig");
-const events = @import("telemetry_events.zig");
-const posthog = @import("posthog");
 
 // ── T1: Happy path ──────────────────────────────────────────────────
 

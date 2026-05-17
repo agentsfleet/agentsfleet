@@ -11,7 +11,6 @@ const handler_mod = @import("handler.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
-const types = @import("types.zig");
 
 const TEST_SOCKET = "/tmp/zombie-executor-integration-test.sock";
 

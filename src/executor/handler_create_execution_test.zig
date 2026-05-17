@@ -6,7 +6,6 @@ const std = @import("std");
 const handler_mod = @import("handler.zig");
 const protocol = @import("protocol.zig");
 const types = @import("types.zig");
-const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 
 /// JSON-RPC params for a fully-populated CreateExecution request. Returned

@@ -16,16 +16,7 @@ For the full end-to-end install + first-trigger walkthroughs (platform-managed a
 
 ## §8.0 The wedge surface: `/usezombie-install-platform-ops` skill
 
-The MVP's user-facing wedge is not raw `zombiectl install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
-
-There are **two install paths, chosen by audience**:
-
-| Audience | Path | Why |
-|----------|------|-----|
-| **Humans** at `https://usezombie.sh` | Copy-paste install — fetch `https://usezombie.sh/skills.md` (single-file render of the skill body) or drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path). | Zero tooling assumption. Visitor reads the landing page, copies a snippet, pastes into their host. |
-| **Agents** (Claude Code, Codex, Amp, OpenCode) | `npm install -g @usezombie/zombiectl && npx skills add usezombie/skills` (post-M69_001). The skills repo is `github.com/usezombie/skills`; `npx skills add` clones and symlinks every top-level `<skill-name>/` directory into all four host skill paths in one command. | Agents already have Node/npm/npx in their environment; the two-command flow is faster than copy-paste and resolves cross-host install (Claude + Codex + Amp + OpenCode) in one shot. |
-
-No plugin manifest, no per-host packaging fork. Both paths land the same skill body at the same host paths; the difference is procurement, not artifact.
+The MVP's user-facing wedge is not raw `zombiectl install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path), or fetch it from `https://usezombie.sh/skills.md`. No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
 
 The skill is the install UX; `zombiectl install --from <path>` is the substrate it drives.
 
@@ -36,7 +27,7 @@ What the skill does, in order:
 3. **Resolves credentials in order**: 1Password CLI (`op read`) → environment variables → interactive prompt. The skill never asks again for what `op` already has.
 4. **Calls `zombiectl doctor --json` first** (see §8.2) to verify auth + workspace binding before any write.
 5. **Generates `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md`** in the user's repo with substituted values, refusing to overwrite without `--force`. These files are committed by the user — they are the configuration, version-controlled by design.
-6. **Drives `zombiectl install --from .usezombie/platform-ops/`** then runs a batch `zombiectl steer <zombie_id> "morning health check"` smoke test.
+6. **Drives `zombiectl install --from .usezombie/platform-ops/`** then runs a batch `zombiectl steer {id} "morning health check"` smoke test.
 
 This matters architecturally for two reasons. First, the skill artifact is portable — it is a markdown file, not a Claude-specific binary. The same wedge installs from any agent CLI that can read SKILL.md. Second, the skill is the only place where repo detection, secret resolution, and ≤4 question discipline are enforced. The runtime stays prompt-driven; the install UX is what makes the prompt-driven runtime tractable for a first-time user.
 
@@ -73,52 +64,76 @@ This keeps the operational logic editable by changing instructions, not by rewri
 
 Once the files are ready, the user installs the zombie into the workspace.
 
-Conceptually, the workflow is:
+### §8.2.1 Cold-machine bootstrap (run once per machine)
+
+```bash
+npm install -g @usezombie/zombiectl     # CLI binary + bundled samples/skills postinstall
+npx skills add usezombie/usezombie      # symlinks /usezombie-* into host skill paths
+zombiectl auth login                     # Clerk OAuth → token in ~/.config/usezombie/auth.json
+gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
+```
+
+The install-skill's first action (§8.2.2 step 1) is a `which zombiectl && which gh && zombiectl doctor --json` precondition check; on any miss it prints the exact one-liner above and stops. The four commands are deliberately separate so a user with most of the chain already in place skips what they already have.
+
+### §8.2.2 Per-zombie install flow
 
 1. Claude (or another agent), typically driven by the `/usezombie-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
-2. **`zombiectl doctor --json` runs first** as the deterministic readiness gate after login. Doctor is auth-gated, fast, and verifies token validity, server reachability, an active workspace, workspace binding, and tenant provider readiness for the current CLI. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
-3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the API. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter, derives `name` + `config_json`, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201. The dashboard install form uses the same wire shape by pasting `TRIGGER.md` + `SKILL.md`. See [`data_flow.md`](./data_flow.md) for the install-to-worker claim sequence.
-4. The API stores the zombie config, linked credentials reference, approval policy, and trigger settings.
-5. The worker runtime becomes responsible for future triggers — no worker restart required (the watcher thread on `zombie:control` claims the new zombie within milliseconds).
+2. **`zombiectl doctor --json` runs first** as the deterministic readiness gate after login. Doctor is auth-gated, fast, and verifies token validity, server reachability, an active workspace, workspace binding, tenant provider readiness, and (M68) free-trial state. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
+3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the dashboard install form at `/zombies/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/zombies`; the API parses frontmatter, derives `name` + `config_json`, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-worker claim sequence.
+4. The API stores the zombie config, linked credentials reference, approval policy, and trigger declarations (`triggers: [...]` array).
+5. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's PAT for this step; the registration is logged on the provider side by the user. For UI-only installs, the Trigger panel on `/zombies/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
+6. The worker runtime becomes responsible for future triggers — no worker restart required (the watcher thread on `zombie:control` claims the new zombie within milliseconds).
 
 After install, the zombie is no longer tied to the interactive Claude session that created it.
 
 ## §8.3 Triggering the zombie
 
-For the MVP, the zombie is triggerable in three ways:
+A zombie's `TRIGGER.md` declares `triggers: [...]` — an array of 1–8 trigger entries (unique on `(type, source)` tuple). Each entry is one of:
 
-- **Webhook input**: an external system (most importantly GitHub Actions on `workflow_run.conclusion == failure`) sends an event to the zombie's webhook ingest URL, which on `main` is `POST /v1/webhooks/{zombie_id}`. The receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`), normalizes the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:github`.
-- **Cron input**: NullClaw's `cron_add` tool persists a schedule. Each fire arrives as a synthetic event with `actor=cron:<schedule>`.
-- **User steer**: the user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer <zombie_id> "<message>"` (or the dashboard chat widget), which `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
+- **Webhook trigger.** Type `webhook`, `source` from M28's `PROVIDER_REGISTRY` (`github`, `linear`, `jira`, `grafana`, `slack`, `agentmail`, `clerk`), and `events: [...]` listing the provider-specific subscriptions. An external system POSTs to `POST /v1/webhooks/{zombie_id}/{source}`. The receiver verifies the HMAC signature via M28's middleware (per provider), normalises the payload, and lands a synthetic event on `zombie:{id}:events` with `actor=webhook:<source>`.
+- **Cron trigger.** Type `cron`, `schedule` as a 5-field cron expression. NullClaw's in-executor cron tool fires on time. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. At most one cron entry per zombie.
 
-All three flow through the same runtime path. The zombie's reasoning loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the install-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
+In addition to the declared triggers, every zombie always accepts:
 
-## §8.4 Working from Claude
+- **User steer.** The user, while in Claude, asks to run an operational task. Claude invokes `zombiectl steer {id} "<message>"` or types into the dashboard's chat composer on `/zombies/{id}`, which POSTs to `/v1/workspaces/{ws}/zombies/{id}/messages` and `XADD`s directly to `zombie:{id}:events` with `actor=steer:<user>` — the same single-ingress path webhook and cron use.
+
+All actors flow through the same runtime path. The zombie's reasoning loop does not branch on actor type — the same `http_request`-driven evidence gathering and Slack post happen regardless of how the work was triggered. The "morning health check" steer that ships as the install-time smoke test produces a real first-pass evidence sweep, not a canned response — the SKILL.md prose is what dictates behaviour, not the actor field.
+
+`type: api` (catch-all JSON ingress at `POST /v1/zombies/{id}/events`) is reserved by the architecture but **not accepted in `TRIGGER.md` in v1** — admission lands with the workspace-API-tokens spec that builds the `/v1/auth/tokens` surface. Webhook and cron cover the wedge.
+
+Beyond the three trigger ingresses, the runtime emits its own `system:*` events on the activity channel when state changes apply (`config_updated` after a PATCH reload; more kinds to follow). These are not triggers — they are the worker telling the user "what I just had to apply got applied" — see [`data_flow.md` §Synthetic system events](./data_flow.md#synthetic-system-events). They surface in the same activity tail and in `zombiectl events {id} --actor=system`, so the user sees them alongside the work the zombie does.
+
+## §8.4 Working from Claude or the dashboard
 
 The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like this:
 
 1. The user is already in their project.
 2. The user asks Claude to create or refine an operational zombie.
 3. Claude edits `SKILL.md`, `TRIGGER.md`, and related project instructions.
-4. Claude installs or updates the zombie.
+4. Claude installs or updates the zombie. The skill captures `webhook_urls` from the install response, parses the rendered `TRIGGER.md` for `triggers[].events`, and shells out to `gh api repos/.../hooks` per webhook trigger — registration happens without leaving the terminal.
 5. Claude can also manually invoke the zombie via `zombiectl steer` for one-off user-triggered tasks.
 6. Later, the zombie wakes on webhook or cron without the user staying in the terminal.
 7. When the user returns to Claude, they inspect what happened from durable history (`zombiectl events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
 
-This matters because the zombie is not replacing Claude. It extends Claude from an interactive assistant into a durable operational worker.
+The dashboard equivalent surface on `/zombies/{id}` matches the CLI path:
+
+- The **Trigger panel** renders one card per declared trigger. Known providers get a pre-rendered terminal command (e.g. `gh api repos/.../hooks ...` for GitHub, `curl https://api.linear.app/graphql ...` for Linear) the user copies and runs locally. The card shows the registered hook id and last delivery once a real event arrives. The dashboard never holds the user's provider PAT.
+- The **chat surface** (composed via `@assistant-ui/react`) shows webhook / cron / continuation events as system chips, agent reasoning as streaming assistant bubbles, and the steer composer at the bottom turns user input into an event on the zombie's stream.
+
+This matters because the zombie is not replacing Claude. It extends Claude from an interactive assistant into a durable operational worker — and the dashboard mirrors the same primitives so a user who lives in the browser sees an equivalent surface.
 
 ## §8.5 Example: Platform-Ops with GH Actions trigger
 
 While working in Claude, the user defines a `platform-ops` zombie that:
 
 - wakes on GitHub Actions deploy-failure webhooks (primary)
-- wakes on a periodic production health cron (secondary)
+- wakes on a periodic production health cron (secondary; declared in `triggers[]` or added by NullClaw's `cron_add` tool at runtime)
 - can also be steered manually by the user
 
 When a GH Actions deploy fails:
 
-1. GitHub posts to the zombie's webhook ingest URL, which on `main` is `POST /v1/webhooks/{zombie_id}` with the failed `workflow_run` payload.
-2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every zombie in the workspace using `trigger.source: github` shares it; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)`; an optional `x-usezombie.trigger.credential_name:` frontmatter override addresses the rare multi-org case.
+1. GitHub posts to the zombie's webhook ingest URL `POST /v1/webhooks/{zombie_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the install-skill running `gh api repos/{repo}/hooks` from the user's machine; the platform never held the user's PAT for that step.
+2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every zombie in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-usezombie.triggers[].credential_name:` frontmatter override scopes a distinct vault row per zombie for the per-zombie credential-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-usezombie).
 3. The receiver normalizes the payload into a synthetic event and `XADD`s to `zombie:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
 4. The worker's per-zombie thread unblocks from `XREADGROUP`, processes the event:
    - INSERT `core.zombie_events` (status='received')
@@ -138,7 +153,7 @@ When a GH Actions deploy fails:
 
 When the user opens Claude later, they see the outcome trail in `core.zombie_events` keyed by actor — they can filter "show me all webhook:github events from the last 24h" or "show me what kishore steered last Tuesday." They never reconstruct from memory; the durable log is authoritative.
 
-The same zombie also responds to manual `zombiectl steer <zombie_id> "morning health check"` — same reasoning loop, different `actor=steer:kishore`.
+The same zombie also responds to manual `zombiectl steer {id} "morning health check"` — same reasoning loop, different `actor=steer:kishore`.
 
 ## §8.6 Why Claude is the starting point
 
@@ -164,15 +179,46 @@ Two things travel together: the **model** the executor invokes, and the **`conte
 
 The install-skill's job in both postures is the same shape: **call `zombiectl doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `zombiectl auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
-| Stage | Platform-managed (John Doe, default) | Self-managed (John Doe, post-flip) |
-|---|---|---|
-| **Install-skill calls `doctor --json`** | `auth_token_present: true` ✓<br>`workspace_bound: true` ✓<br>`tenant_provider: { mode=platform, model=accounts/fireworks/models/kimi-k2.6, context_cap_tokens=256000 }` | `auth_token_present: true` ✓<br>`workspace_bound: true` ✓<br>`tenant_provider: { mode=self_managed, provider=fireworks, model=accounts/fireworks/models/kimi-k2.6, context_cap_tokens=256000 }` |
-| **Auth failure short-circuit** | If any auth check fails → print `zombiectl auth login` hint, STOP. | Same short-circuit. |
-| **Install-skill writes frontmatter** | Pins resolved values:<br>`model: accounts/fireworks/models/kimi-k2.6`<br>`context_cap_tokens: 256000` | Pins visible sentinels (inherit-from-tenant marker):<br>`model: ""`<br>`context_cap_tokens: 0` |
-| **`tenant provider set` time** | (nothing — synth-default stays in place) | `zombiectl tenant provider set --credential account-fireworks-key` → API loads vault row → API GETs `/_um/.../model-caps.json` → upsert `tenant_providers` row `{ mode=self_managed, provider, model, context_cap_tokens, credential_ref }` |
-| **Trigger fires → `processEvent`** | `resolveActiveProvider()` → no row → synth-default. Frontmatter carries resolved cap; use directly. | `resolveActiveProvider()` → follows `credential_ref` into vault → returns `{ mode=self_managed, cap, api_key }`. Sentinels in frontmatter overlay from `tenant_providers`. |
-| **`executor.createExecution`** | `context_cap_tokens = 256000`<br>`model = accounts/fireworks/models/kimi-k2.6`<br>`api_key = <admin workspace vault>` | `context_cap_tokens = 256000`<br>`model = accounts/fireworks/models/kimi-k2.6`<br>`api_key = <fw_LIVE_… from user's vault>` |
-| **L3 stage chunking threshold** | `0.75 × 256000 = 192000` tokens | `0.75 × 256000 = 192000` tokens |
+```
+                     PLATFORM-MANAGED (John Doe)                self-managed (John Doe, post-flip)
+                  ─────────────────────────────────       ─────────────────────────────────
+install-skill →   doctor --json                           doctor --json
+                    auth_token_present: true ✓              auth_token_present: true ✓
+                    workspace_bound: true   ✓              workspace_bound: true   ✓
+                    tenant_provider:                       tenant_provider:
+                      {mode=platform,                        {mode=self_managed,
+                       model=accounts/fireworks/models/kimi-k2.6,               provider=fireworks,
+                       context_cap_tokens=256000}             model=accounts/.../kimi-k2.6,
+                  ─ if any auth check fails: print           context_cap_tokens=256000}
+                    `zombiectl auth login` and STOP. ─    ─ same auth-fail short-circuit ─
+                  branch on mode → write frontmatter      branch on mode → write frontmatter
+                  pin into frontmatter (resolved):        pin into frontmatter (sentinels):
+                    model: accounts/fireworks/models/kimi-k2.6                model: ""
+                    context_cap_tokens: 256000              context_cap_tokens: 0
+
+tenant provider → (nothing — synth-default                → zombiectl tenant provider set
+set                stays in place)                            --credential account-fireworks-key
+                                                              → API loads vault row
+                                                              → API GETs /_um/.../model-caps.json
+                                                              → upsert tenant_providers row
+                                                                {mode=self_managed, provider, model,
+                                                                 context_cap_tokens, credential_ref}
+
+trigger fires  → processEvent:                            → processEvent:
+                   resolveActiveProvider()                    resolveActiveProvider()
+                     no row → synth-default                    follows credential_ref to vault
+                   frontmatter has resolved cap →              returns mode=self_managed + cap + key
+                   use it directly.                          frontmatter sentinels overlay:
+                                                               model "" or absent → overlay
+                                                               cap 0   or absent → overlay
+
+createExecution → context_cap_tokens=256000               → context_cap_tokens=256000
+                  model=accounts/fireworks/models/kimi-k2.6                   model=accounts/.../kimi-k2.6
+                  api_key=<from admin workspace vault>                   api_key=<fw_LIVE_…>
+
+L3 stage chunking
+                → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
+```
 
 **Worker overlay rule (per-field, independent):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
 

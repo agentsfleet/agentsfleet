@@ -64,14 +64,16 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
 
         // Webhooks — receive_webhook uses webhookSig middleware (HMAC-only:
         // scheme + secret resolved per-zombie from the workspace credential
-        // keyed by `trigger.source`).
+        // keyed by the matching `triggers[].source`).
         .receive_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeReceiveWebhook },
         .github_webhook => .{ .middlewares = registry.webhookSig(), .invoke = invoke.invokeGithubWebhook },
         // Clerk via Svix — dedicated middleware, shared handler.
         .receive_svix_webhook => .{ .middlewares = registry.svix(), .invoke = invoke.invokeReceiveSvixWebhook },
-        // Clerk signup webhook — no zombie-scoped vault lookup; the handler
-        // verifies Svix inline against env CLERK_WEBHOOK_SECRET.
-        .clerk_webhook => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeClerkWebhook },
+        // Clerk user.created auth-plane event — no zombie context; handler
+        // verifies Svix inline against env CLERK_WEBHOOK_SECRET. Path moved
+        // out of /v1/webhooks/ into /v1/auth/identity-events/ pre-v2 so the
+        // customer data plane stays separated from auth-plane signals.
+        .auth_identity_event_clerk => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeClerkWebhook },
         // approval_webhook: HMAC middleware + handler also verifies (double-check OK).
         .approval_webhook => .{ .middlewares = registry.webhookHmac(), .invoke = invoke.invokeApprovalWebhook },
         // grant_approval_webhook uses Redis nonce; no standard policy fits.
@@ -143,7 +145,7 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .delete_admin_platform_key = "anthropic" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .receive_svix_webhook = "z1" }, &reg) != null);
-    try testing.expect(specFor(.clerk_webhook, &reg) != null);
+    try testing.expect(specFor(.auth_identity_event_clerk, &reg) != null);
     try testing.expect(specFor(.{ .approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .grant_approval_webhook = "z1" }, &reg) != null);
     try testing.expect(specFor(.{ .github_webhook = "z1" }, &reg) != null);

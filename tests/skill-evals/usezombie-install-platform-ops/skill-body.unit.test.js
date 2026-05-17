@@ -36,7 +36,7 @@ test("frontmatter declares all three operator inputs", () => {
 
 test("frontmatter declares required + optional binaries", () => {
   const fm = frontmatter(skillBody);
-  assert.match(fm, /bins: \[zombiectl, openssl, curl\]/);
+  assert.match(fm, /bins: \[zombiectl, gh, openssl, curl\]/);
   assert.match(fm, /optional_bins: \[op\]/);
 });
 
@@ -100,7 +100,7 @@ test("references docs cover the three contracts", () => {
   }
   const failModes = readFileSync(resolve(skillDir, "references/failure-modes.md"), "utf8");
   // Every numbered step the skill body documents should have a row.
-  for (const step of ["1 — doctor", "3 — repo", "5 — webhook", "7 — template", "9 — install", "10 — webhook self-test", "12 — smoke"]) {
+  for (const step of ["1 — doctor", "3 — repo", "5 — webhook", "7 — template", "9 — gh api hook register", "10 — webhook self-test", "12 — smoke"]) {
     assert.ok(failModes.includes(step), `failure-modes.md missing row for ${step}`);
   }
   const selfManagedHandoff = readFileSync(resolve(skillDir, "references/self-managed-handoff.md"), "utf8");

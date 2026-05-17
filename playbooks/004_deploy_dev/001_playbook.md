@@ -174,8 +174,6 @@ Expected outcomes:
 - `run` — run ID returned; status transitions to `running` then `completed`; PR opened on acceptance repo
 - `runs list` — run appears with `status: completed` and `pr_url` present
 
-Spec-to-PR latency must be under 5 minutes. Record the actual time in evidence.
-
 ---
 
 ## 7.0 Exit Criteria

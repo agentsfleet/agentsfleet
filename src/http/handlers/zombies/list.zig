@@ -53,9 +53,67 @@ pub fn innerListZombies(hx: Hx, req: *httpz.Request, workspace_id: []const u8) v
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
+    defer {
+        for (page.rows) |r| {
+            hx.alloc.free(r.id);
+            hx.alloc.free(r.name);
+            hx.alloc.free(r.status);
+            if (r.triggers_raw) |t| hx.alloc.free(t);
+        }
+        hx.alloc.free(page.rows);
+        if (page.next_cursor) |nc| hx.alloc.free(nc);
+    }
 
-    hx.ok(.ok, .{ .items = page.rows, .total = page.rows.len, .cursor = page.next_cursor });
+    writeListResponse(hx, page);
 }
+
+fn writeListResponse(hx: Hx, page: ZombiePage) void {
+    // Per-row Parsed handles outlive the response emit; freed when this scope exits.
+    var parsed_triggers = hx.alloc.alloc(?std.json.Parsed(std.json.Value), page.rows.len) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    defer {
+        for (parsed_triggers) |maybe_p| if (maybe_p) |p| p.deinit();
+        hx.alloc.free(parsed_triggers);
+    }
+
+    var items = hx.alloc.alloc(ZombieListItem, page.rows.len) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.alloc.free(items);
+
+    for (page.rows, 0..) |row, i| {
+        parsed_triggers[i] = if (row.triggers_raw) |raw|
+            std.json.parseFromSlice(std.json.Value, hx.alloc, raw, .{}) catch null
+        else
+            null;
+        items[i] = .{
+            .id = row.id,
+            .name = row.name,
+            .status = row.status,
+            .created_at = row.created_at,
+            .updated_at = row.updated_at,
+            .triggers = if (parsed_triggers[i]) |p| p.value else null,
+        };
+    }
+
+    hx.ok(.ok, .{ .items = items, .total = items.len, .cursor = page.next_cursor });
+}
+
+/// Wire shape per row — `triggers` projects `config_json->'x-usezombie'->'triggers'`
+/// from the stored config so consumers can render a per-trigger card without a
+/// follow-up fetch. `null` means the column has no triggers entry yet (legacy
+/// rows pre-§1 reshape — should not exist post-v2.0 but the field stays optional).
+const ZombieListItem = struct {
+    id: []const u8,
+    name: []const u8,
+    status: []const u8,
+    created_at: i64,
+    updated_at: i64,
+    triggers: ?std.json.Value,
+};
 
 fn parseLimitFromQs(qs: anytype) u32 {
     const limit_str = qs.get("limit") orelse return DEFAULT_LIST_PAGE_LIMIT;
@@ -71,6 +129,9 @@ const ZombieListRow = struct {
     status: []const u8,
     created_at: i64,
     updated_at: i64,
+    /// Raw JSONB projected from `config_json->'x-usezombie'->'triggers'`. `null`
+    /// when the column has no entry (should not occur post-§1 reshape).
+    triggers_raw: ?[]const u8 = null,
 };
 
 const ZombiePage = struct {
@@ -99,7 +160,8 @@ fn fetchZombiePageFirst(
     limit: u32,
 ) !ZombiePage {
     var q = PgQuery.from(try conn.query(
-        \\SELECT id::text, name, status, created_at, updated_at
+        \\SELECT id::text, name, status, created_at, updated_at,
+        \\       (config_json->'x-usezombie'->'triggers')::text
         \\FROM core.zombies
         \\WHERE workspace_id = $1::uuid
         \\ORDER BY created_at DESC, id DESC
@@ -119,7 +181,8 @@ fn fetchZombiePageAfter(
     const parsed = keyset_cursor.parse(cursor) catch return error.InvalidCursor;
 
     var q = PgQuery.from(try conn.query(
-        \\SELECT id::text, name, status, created_at, updated_at
+        \\SELECT id::text, name, status, created_at, updated_at,
+        \\       (config_json->'x-usezombie'->'triggers')::text
         \\FROM core.zombies
         \\WHERE workspace_id = $1::uuid
         \\  AND (created_at < $2 OR (created_at = $2 AND id::text < $3))
@@ -137,6 +200,7 @@ fn collectZombiePage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !ZombieP
             alloc.free(r.id);
             alloc.free(r.name);
             alloc.free(r.status);
+            if (r.triggers_raw) |t| alloc.free(t);
         }
         rows.deinit(alloc);
     }
@@ -147,12 +211,18 @@ fn collectZombiePage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !ZombieP
         errdefer alloc.free(name);
         const status = try alloc.dupe(u8, try row.get([]const u8, 2));
         errdefer alloc.free(status);
+        const created_at = try row.get(i64, 3);
+        const updated_at = try row.get(i64, 4);
+        const triggers_raw_opt = try row.get(?[]const u8, 5);
+        const triggers_raw: ?[]const u8 = if (triggers_raw_opt) |raw| try alloc.dupe(u8, raw) else null;
+        errdefer if (triggers_raw) |t| alloc.free(t);
         try rows.append(alloc, .{
             .id = id,
             .name = name,
             .status = status,
-            .created_at = try row.get(i64, 3),
-            .updated_at = try row.get(i64, 4),
+            .created_at = created_at,
+            .updated_at = updated_at,
+            .triggers_raw = triggers_raw,
         });
     }
     const owned = try rows.toOwnedSlice(alloc);
@@ -161,6 +231,7 @@ fn collectZombiePage(alloc: std.mem.Allocator, q: *PgQuery, limit: u32) !ZombieP
             alloc.free(r.id);
             alloc.free(r.name);
             alloc.free(r.status);
+            if (r.triggers_raw) |t| alloc.free(t);
         }
         alloc.free(owned);
     }

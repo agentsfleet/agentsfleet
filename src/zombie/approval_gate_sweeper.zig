@@ -100,7 +100,7 @@ fn fetchExpired(pool: *pg.Pool, alloc: Allocator) ![][]const u8 {
         try ids.append(alloc, owned);
     }
 
-    return try ids.toOwnedSlice(alloc);
+    return ids.toOwnedSlice(alloc);
 }
 
 fn freeExpired(alloc: Allocator, ids: [][]const u8) void {

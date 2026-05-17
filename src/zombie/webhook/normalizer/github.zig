@@ -116,7 +116,7 @@ fn formatRfc3339(buf: []u8, unix_seconds: i64) []const u8 {
         ds.getHoursIntoDay(),
         ds.getMinutesIntoHour(),
         ds.getSecondsIntoMinute(),
-    }) catch unreachable;
+    }) catch @panic("bufPrint failed: stack buffer sized incorrectly at compile time");
 }
 
 test {

@@ -37,7 +37,6 @@
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const Allocator = std.mem.Allocator;
 
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
@@ -62,10 +61,11 @@ const STREAM_KEY = "zombie:" ++ TEST_ZOMBIE_ID ++ ":events";
 const ZOMBIE_NAME = "context-lifecycle-bot";
 // Post-M46: runtime keys live under x-usezombie:. `chat` trigger type isn't
 // in the parser's accepted set yet (api/webhook/cron/chain only), so this
-// fixture uses `api` — the test exercises config swap mechanics, not trigger
-// dispatch.
+// fixture uses a cron trigger — the test exercises config swap mechanics,
+// not trigger dispatch. (Pre-§1 used `type: api`; the parser now rejects
+// that until the workspace-API-token surface lands.)
 const ZOMBIE_CONFIG_JSON =
-    \\{"name":"context-lifecycle-bot","x-usezombie":{"trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":1.0}}}
+    \\{"name":"context-lifecycle-bot","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["http_request"],"budget":{"daily_dollars":1.0}}}
 ;
 const ZOMBIE_SOURCE_MD =
     \\---
@@ -81,7 +81,7 @@ fn deleteEventStream(redis: *queue_redis.Client) void {
 }
 
 fn cleanupZombieEventsRows(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 /// Insert a row into core.zombie_events at a chosen chain position. Pass null
@@ -153,6 +153,7 @@ fn buildSession() types.ZombieSession {
     return .{
         .zombie_id = TEST_ZOMBIE_ID,
         .workspace_id = TEST_WORKSPACE_ID,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .config = undefined,
         .instructions = "",
         .context_json = "",
@@ -304,10 +305,10 @@ test "integration: 11th continuation force-stops with chunk_chain_escalate_human
 const NAME_SEEDED = "ctx-bot-seeded";
 const NAME_RELOADED = "ctx-bot-reloaded";
 const CONFIG_SEEDED =
-    \\{"name":"ctx-bot-seeded","x-usezombie":{"trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":1.0}}}
+    \\{"name":"ctx-bot-seeded","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["http_request"],"budget":{"daily_dollars":1.0}}}
 ;
 const CONFIG_RELOADED =
-    \\{"name":"ctx-bot-reloaded","x-usezombie":{"trigger":{"type":"api"},"tools":["http_request"],"budget":{"daily_dollars":2.0}}}
+    \\{"name":"ctx-bot-reloaded","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["http_request"],"budget":{"daily_dollars":2.0}}}
 ;
 
 test "integration: reloadZombieConfig swaps session.config after DB row UPDATE" {
