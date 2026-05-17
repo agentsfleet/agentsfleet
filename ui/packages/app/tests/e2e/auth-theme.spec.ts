@@ -22,7 +22,7 @@ async function getCss(locator: Locator, property: string) {
 }
 
 test.describe("Auth theming", () => {
-  test("sign-in uses mission control token colors", async ({ page }) => {
+  test("sign-in uses dashboard token colors", async ({ page }) => {
     await page.goto("/sign-in");
 
     const heading = page.getByRole("heading", { level: 1, name: /sign in/i });

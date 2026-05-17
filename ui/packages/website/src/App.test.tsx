@@ -49,14 +49,14 @@ describe("App", () => {
     );
   });
 
-  it("renders the install CTA in topbar pointing at APP_BASE_URL", () => {
+  it("renders the early-access CTA in topbar pointing at APP_BASE_URL", () => {
     renderApp();
     const cta = screen.getByTestId("header-install-cta");
     expect(cta).toHaveAttribute("href", APP_BASE_URL);
-    expect(cta.textContent).toMatch(/install/i);
+    expect(cta.textContent).toMatch(/get early access/i);
   });
 
-  it("clicking the install CTA fires trackSignupStarted with header_install source", () => {
+  it("clicking the early-access CTA fires trackSignupStarted with header_install source", () => {
     renderApp();
     fireEvent.click(screen.getByTestId("header-install-cta"));
     expect(analytics.trackSignupStarted).toHaveBeenCalledWith(

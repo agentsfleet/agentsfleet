@@ -27,11 +27,11 @@ describe("Home", () => {
     expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
   });
 
-  it("renders primary install CTA pointing at the docs quickstart", () => {
+  it("renders primary early-access CTA pointing at the docs quickstart", () => {
     renderHome();
     const cta = screen.getByTestId("hero-cta-primary");
     expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
-    expect(cta.textContent).toMatch(/install in claude code/i);
+    expect(cta.textContent).toMatch(/get early access/i);
   });
 
   it("does not render Talk to us CTA", () => {

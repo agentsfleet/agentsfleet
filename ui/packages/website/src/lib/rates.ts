@@ -39,7 +39,7 @@ export const RATES_DISPLAY = {
   EVENT_RATE: "free",
   STAGE_PLATFORM: "$0.001",
   STAGE_SELF_MANAGED: "$0.0001",
-  HEADLINE: "Try for free",
+  HEADLINE: "Get early access",
   FREE_TRIAL_BANNER:
     "Free until July 31, 2026 — every event receipt and stage execution is on us while we gather traction. Self-managed posture still recommended for production-grade isolation.",
 } as const;

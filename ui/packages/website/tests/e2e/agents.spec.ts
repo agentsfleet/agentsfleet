@@ -21,7 +21,7 @@ test.describe("Agents page (/agents)", () => {
   test("renders install block action buttons (lowercase)", async ({ page }) => {
     await expect(page.getByRole("link", { name: /start an agent/i })).toBeVisible();
     await expect(page.getByRole("link", { name: /read the docs/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /open mission control/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /open dashboard/i })).toBeVisible();
   });
 
   test("renders bootstrap commands", async ({ page }) => {
