@@ -2,7 +2,7 @@
 # DEV — local development
 # =============================================================================
 
-.PHONY: dev up down _clean env _prepare_local_zombied_binary
+.PHONY: up down _clean _prepare_local_zombied_binary
 
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo "0.1.0")
 LOCAL_UNAME_M := $(shell uname -m)
@@ -29,18 +29,11 @@ up: _prepare_local_zombied_binary ## Start all services and tail app logs
 		TARGETARCH=$(LOCAL_DOCKER_ARCH) docker compose logs -f zombied; \
 	fi
 
-dev: up  ## Alias for 'make up'
-
 down:  ## Stop all services, remove volumes, and cleanup
 	@echo "Stopping all services..."
 	@docker compose down --volumes
 	@$(MAKE) _clean --no-print-directory
 	@echo "Cleanup complete."
-
-env:  ## Generate .env from Proton Pass vault (ENV=local|dev|prod)
-	@pass-cli inject -i .env.$(or $(ENV),local).tpl -o .env -f
-	@chmod 600 .env
-	@echo "✔ Generated .env from .env.$(or $(ENV),local).tpl"
 
 _prepare_local_zombied_binary:
 	@mkdir -p dist

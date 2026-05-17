@@ -247,12 +247,12 @@ test "test_args_redacted_no_secret_leak" {
     var frame_count: u32 = 0;
     var saw_placeholder = false;
     while (std.time.milliTimestamp() < overall_deadline) {
-        const msg_opt = try subscriber.readMessage();
+        const msg_opt = try subscriber.nextMessage();
         if (msg_opt) |m| {
             var msg = m;
-            defer msg.deinit();
-            try std.testing.expect(std.mem.indexOf(u8, msg.data, SYNTHETIC_SECRET) == null);
-            if (std.mem.indexOf(u8, msg.data, PLACEHOLDER) != null) saw_placeholder = true;
+            defer msg.deinit(ALLOC);
+            try std.testing.expect(std.mem.indexOf(u8, msg.payload, SYNTHETIC_SECRET) == null);
+            if (std.mem.indexOf(u8, msg.payload, PLACEHOLDER) != null) saw_placeholder = true;
             frame_count += 1;
             last_msg_at = std.time.milliTimestamp();
             continue;

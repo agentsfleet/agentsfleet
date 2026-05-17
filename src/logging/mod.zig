@@ -14,6 +14,8 @@
 //! Plus `fatalStderr` for pre-init startup output (see its docstring).
 
 const std = @import("std");
+const builtin = @import("builtin");
+pub const sinks = @import("sinks.zig");
 
 // ---------------------------------------------------------------------------
 // Section 1 — `obs.scoped` API (LOGGING_STANDARD §7).
@@ -104,6 +106,21 @@ fn emit(
 ) void {
     var buf: [4096]u8 = undefined;
     const msg = buildLogfmtLine(&buf, event, fields);
+    // In test builds, ALWAYS route through the sink registry — never
+    // fall through to std.log.scoped. The previous `is_test and
+    // sinksRegistered()` guard was racy: between one test's
+    // `defer clearSinks()` and the next test's `registerSink()`, any
+    // background-thread emit (still-joining workers, otel flush
+    // threads) would hit `sinksRegistered() == false` and land on
+    // std.log's default test logFn, which prints err/warn to stderr
+    // and FAILS the test. Routing unconditionally means a no-sink
+    // window silently drops emits inside `emitToSinks` (early-return
+    // under lock) — the correct test-time behavior.
+    if (builtin.is_test) {
+        const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
+        sinks.emitToSinks(level, scope_str, std.time.milliTimestamp(), msg);
+        return;
+    }
     const log = std.log.scoped(scope);
     switch (level) {
         .err => log.err(S_S, .{msg}),

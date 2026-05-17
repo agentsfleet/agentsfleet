@@ -1,10 +1,10 @@
-// M25_001: Shared fixtures for Tier-1 zbench micro-benchmarks.
+// Shared fixtures for the Tier-1 micro-bench runner (micro.zig).
 //
-// All inputs live here so each bench_xxx fn in zbench_micro.zig stays under
+// All inputs live here so each bench_xxx fn in micro.zig stays under
 // 30 lines and the fixtures themselves can be audited in one place.
 
 const std = @import("std");
-const webhook_verify = @import("zombie/webhook_verify.zig");
+const webhook_verify = @import("bench_app").webhook_verify;
 const HmacSha256 = std.crypto.auth.hmac.sha2.HmacSha256;
 
 // ── activity_chunk_encode ─────────────────────────────────────────────────
@@ -34,7 +34,7 @@ pub const PROGRESS_FRAME_BYTES =
     \\{"jsonrpc":"2.0","id":1,"method":"Progress","params":{"kind":"agent_response_chunk","text":"hello world streaming chunk payload of moderate size for the bench"}}
 ;
 
-// ── 1.1 route_match ────────────────────────────────────────────────────────
+// ── route_match ───────────────────────────────────────────────────────────
 // Representative paths covering every Route arm (one per group). Enough
 // diversity that the worst-case fall-through path is exercised on each sweep.
 pub const ROUTE_PATHS = [_][]const u8{
@@ -50,7 +50,7 @@ pub const ROUTE_PATHS = [_][]const u8{
     "/v1/workspaces/019abcde-1234-7aaa-8bbb-abcdef012345/zombies/019abcde-5678-7ccc-8ddd-abcdef012345/memories",
 };
 
-// ── 1.2 error_registry_lookup ──────────────────────────────────────────────
+// ── error_registry_lookup ─────────────────────────────────────────────────
 // Mix of real registered codes + 2 unknowns so both the hit and UNKNOWN
 // paths are exercised.
 pub const ERROR_CODES = [_][]const u8{
@@ -62,7 +62,7 @@ pub const ERROR_CODES = [_][]const u8{
     "UZ-DOES-NOT-EXIST-001", "UZ-ALSO-MISSING-002",
 };
 
-// ── 1.3 keyset_cursor_roundtrip ──────────────────────────────────────────
+// ── keyset_cursor_roundtrip ───────────────────────────────────────────────
 // 100 synthetic cursors. Variety in timestamp width and id length keeps the
 // decimal parse from benchmarking a single register-fit case.
 fn buildCursors(comptime n: usize) [n][]const u8 {
@@ -77,7 +77,7 @@ fn buildCursors(comptime n: usize) [n][]const u8 {
 }
 pub const CURSORS = buildCursors(100);
 
-// ── 1.4 json_encode_response ───────────────────────────────────────────────
+// ── json_encode_response ──────────────────────────────────────────────────
 pub const ZombieRow = struct {
     id: []const u8,
     workspace_id: []const u8,
@@ -100,7 +100,7 @@ pub const ZOMBIE_PAGE = [_]ZombieRow{
     .{ .id = "019abcde-000a-7aaa-8bbb-abcdef012345", .workspace_id = S_N_019WSPS_7AAA_8BBB_ABCDEF012345, .name = "zombie-kappa",   .status = S_RUNNING,  .created_at = 1_700_000_009_000, .updated_at = 1_700_000_039_000 },
 };
 
-// ── 1.7 webhook_signature_verify ───────────────────────────────────────────
+// ── webhook_signature_verify ──────────────────────────────────────────────
 // A ~1 KB random-ish payload — real webhooks range from a few hundred bytes
 // to ~64 KiB; 1 KB is representative of Slack/GitHub event bodies.
 pub const WEBHOOK_SECRET = "test_signing_secret_not_real_for_bench_0000";

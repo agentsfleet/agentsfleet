@@ -10,6 +10,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const logging = @import("log");
+const log_sinks = logging.sinks;
 const otel_logs = @import("observability/otel_logs.zig");
 
 const cli_commands = @import("cli/commands.zig");
@@ -64,32 +65,75 @@ fn zombiedLog(
 ) void {
     if (!shouldLog(level)) return;
 
-    const level_str = comptime switch (level) {
+    const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
+    const ts = std.time.milliTimestamp();
+    var msg_buf: [4096]u8 = undefined;
+    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch return;
+
+    // Pre-init fallback: until `main()` registers the production sinks
+    // (stderr + OTLP), route directly to stderr so the very-early
+    // emits during `applyEnvSources` and the GPA bootstrap remain
+    // observable. Once sinks are installed, the registry path takes
+    // over and this branch never fires again.
+    if (!log_sinks.sinksRegistered()) {
+        writePreInitStderr(level, scope_str, ts, msg);
+        return;
+    }
+
+    log_sinks.emitToSinks(level, scope_str, ts, msg);
+}
+
+fn writePreInitStderr(level: std.log.Level, scope_str: []const u8, ts: i64, msg: []const u8) void {
+    const level_str = switch (level) {
         .err => S_ERR,
         .warn => S_WARN,
         .info => S_INFO,
         .debug => S_DEBUG,
     };
-    const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
-    const ts = std.time.milliTimestamp();
-    var msg_buf: [4096]u8 = undefined;
-    const msg = std.fmt.bufPrint(&msg_buf, fmt, args) catch return;
     var line_buf: [8192]u8 = undefined;
     const line = if (logging.isPretty())
         logging.formatPretty(&line_buf, ts, level, scope_str, msg)
     else
-        // `msg` already arrives as a properly-quoted logfmt body
-        // (`event=<n> key=value …`) from `logging.scoped(.x).<level>`.
-        // The envelope helper splices it as top-level keys (matches
-        // LOGGING_STANDARD §3 line 41) and scrubs any raw `\n` / `\r`
-        // in the body so a stray newline in a field value can't split
-        // the record into two envelope-less lines.
         logging.writeLogfmtEnvelope(&line_buf, ts, level_str, scope_str, msg);
     const stderr = std.fs.File.stderr();
     stderr.writeAll(line) catch {};
+}
 
-    // Dual-write: enqueue to OTLP log exporter (no-op when not installed)
-    otel_logs.enqueue(level_str, scope_str, msg);
+fn stderrSinkEmit(
+    ctx: *anyopaque,
+    level: std.log.Level,
+    scope: []const u8,
+    ts_ms: i64,
+    body: []const u8,
+) void {
+    _ = ctx;
+    writePreInitStderr(level, scope, ts_ms, body);
+}
+
+fn otlpSinkEmit(
+    ctx: *anyopaque,
+    level: std.log.Level,
+    scope: []const u8,
+    ts_ms: i64,
+    body: []const u8,
+) void {
+    _ = ctx;
+    _ = ts_ms;
+    const level_str = switch (level) {
+        .err => S_ERR,
+        .warn => S_WARN,
+        .info => S_INFO,
+        .debug => S_DEBUG,
+    };
+    // `msg` already arrives as a properly-quoted logfmt body
+    // (`event=<n> key=value …`) from `logging.scoped(.x).<level>`.
+    // OTLP receives the body verbatim — exporter splices envelope keys.
+    otel_logs.enqueue(level_str, scope, body);
+}
+
+fn registerProductionSinks() void {
+    log_sinks.registerSink(.{ .emit = stderrSinkEmit, .ctx = log_sinks.statelessCtx() });
+    log_sinks.registerSink(.{ .emit = otlpSinkEmit, .ctx = log_sinks.statelessCtx() });
 }
 
 pub fn main() !void {
@@ -102,6 +146,11 @@ pub fn main() !void {
     };
     initRuntimeLogLevel(alloc);
     logging.initPrettyMode(alloc);
+    // Production log sinks (stderr + OTLP). Until this call, zombiedLog
+    // falls through to direct stderr write so the env-load logs above
+    // still reach the operator. After this, every emit fans out through
+    // the registry — same observable behavior, plus a hook for tests.
+    registerProductionSinks();
 
     if (builtin.mode == .Debug) {
         log.warn("startup.debug_build hint=not_for_production", .{});
@@ -181,7 +230,9 @@ test {
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
     _ = @import("observability/trace.zig");
+    _ = @import("observability/metrics_redis_pool.zig");
     _ = otel_logs;
+    _ = log_sinks;
     _ = @import("state/tenant_billing.zig");
     _ = @import("state/heroku_names.zig");
     _ = @import("state/heroku_names_test.zig");
@@ -214,7 +265,10 @@ test {
     _ = @import("http/handlers/memory/shapes_test.zig");
     _ = @import("cmd/serve_test.zig");
     _ = @import("queue/redis.zig");
-    _ = @import("queue/redis_pubsub_test.zig");
+    _ = @import("queue/redis_pool_test.zig");
+    _ = @import("queue/redis_connection_test.zig");
+    _ = @import("queue/redis_errors_test.zig");
+    _ = @import("queue/redis_subscriber_test.zig");
     _ = @import("reliability/backoff.zig");
     // M14_001: Persistent Zombie Memory — role isolation tests + executor unit tests
     _ = @import("memory/zombie_memory_role_test.zig");

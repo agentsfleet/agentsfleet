@@ -14,12 +14,12 @@ When a deploy fails, an inference endpoint starts returning errors, or productio
 
 For v2, the sharpest wedge is deploy-failure and production-triage work:
 
-- gather evidence from CI, infrastructure, logs, and chat surfaces
+- gather evidence from Continuous Integration (CI), infrastructure, logs, and chat surfaces
 - preserve the timeline with actor provenance
 - keep going after the original interactive session is gone
 - ask for approval when the next action is risky
 
-The wedge is intentionally narrower than "AI for SRE." It is a durable operational runtime for one concrete outcome.
+The wedge is intentionally narrower than "AI for Site Reliability Engineering (SRE)." It is a durable operational runtime for one concrete outcome.
 
 ## Demand honesty
 
@@ -39,7 +39,7 @@ The primary user is a high-agency operator who owns infrastructure outcomes dire
 
 - SRE or platform engineer at a small team
 - founder-operator or strong indie engineer
-- teams that cannot or do not want to pipe their entire ops stack into another SaaS
+- teams that cannot or do not want to pipe their entire ops stack into another Software-as-a-Service (SaaS) tool
 - teams that value open source, self-managed provider key, and prompt-defined behaviour over a heavy workflow builder
 
 The broader category includes AI-infra teams, GPU-cloud operators, regulated mid-market teams, and agentic-operations teams, but the v2 wedge should stay grounded in the small-team operator who feels this pain acutely today.

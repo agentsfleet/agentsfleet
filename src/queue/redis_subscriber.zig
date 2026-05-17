@@ -18,6 +18,7 @@ const S_AUTH = "AUTH";
 
 alloc: std.mem.Allocator,
 transport: redis_transport.Transport,
+read_timeout_ms: ?u32,
 
 pub const Message = struct {
     channel: []u8,
@@ -29,19 +30,28 @@ pub const Message = struct {
     }
 };
 
-pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole) !Subscriber {
+/// Per-subscriber config. `read_timeout_ms` non-null installs `SO_RCVTIMEO`
+/// after the SUBSCRIBE ack so `nextMessage` returns `null` on read timeout
+/// (used by SSE handlers and the test harness to interleave heartbeats /
+/// budget checks). Null = block forever (default for callers that drive
+/// their own deadline externally).
+pub const InitOptions = struct {
+    read_timeout_ms: ?u32 = null,
+};
+
+pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Subscriber {
     const url = try redis_config.resolveRedisUrl(alloc, role);
     defer alloc.free(url);
-    return connectFromUrl(alloc, url);
+    return connectFromUrl(alloc, url, options);
 }
 
-fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Subscriber {
+pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Subscriber {
     const cfg = try redis_config.parseRedisUrl(alloc, url);
     defer redis_config.deinitConfig(alloc, cfg);
 
     const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
     // SAFETY: written by surrounding init logic before any read of this storage.
-    var sub = Subscriber{ .alloc = alloc, .transport = undefined };
+    var sub = Subscriber{ .alloc = alloc, .transport = undefined, .read_timeout_ms = options.read_timeout_ms };
 
     if (cfg.use_tls) {
         // SAFETY: written by surrounding init logic before any read of this storage.
@@ -80,6 +90,11 @@ pub fn subscribe(self: *Subscriber, channel: []const u8) !void {
     var ack = try redis_protocol.readRespValue(self.alloc, self.transport.reader());
     defer ack.deinit(self.alloc);
     try expectSubscribeAck(ack, channel);
+
+    // Install SO_RCVTIMEO post-ack so the AUTH/SUBSCRIBE handshakes are not
+    // exposed to it. Per-Connection read timeout means `nextMessage` returns
+    // null on timeout (see swallow in nextMessage).
+    if (self.read_timeout_ms) |ms| self.transport.setReadTimeout(ms);
 }
 
 /// Block until the next pub/sub message arrives. Returns null when the
@@ -107,9 +122,17 @@ pub fn nextMessage(self: *Subscriber) !?Message {
         const channel = redis_protocol.valueAsString(arr[1]) orelse continue;
         const payload = redis_protocol.valueAsString(arr[2]) orelse continue;
 
+        // Order matters: if the second dupe fails with OOM, the first dupe
+        // must be freed before we propagate. A naked struct-init `.{ .a =
+        // try dupe, .b = try dupe }` leaks `a` when `b` fails — Zig
+        // evaluates field exprs left-to-right but doesn't unwind the first
+        // allocation when the second errors out of the literal.
+        const channel_copy = try self.alloc.dupe(u8, channel);
+        errdefer self.alloc.free(channel_copy);
+        const payload_copy = try self.alloc.dupe(u8, payload);
         return Message{
-            .channel = try self.alloc.dupe(u8, channel),
-            .payload = try self.alloc.dupe(u8, payload),
+            .channel = channel_copy,
+            .payload = payload_copy,
         };
     }
 }
@@ -127,8 +150,13 @@ fn sendCommand(self: *Subscriber, argv: []const []const u8) !void {
         try writer.writeAll(arg);
         try writer.writeAll("\r\n");
     }
-    if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
     try writer.flush();
+    // For TLS, `transport.writer()` is the TLS encryption layer; the
+    // underlying TCP buffer is `transport.tls.stream_writer.interface`.
+    // After `writer.flush()` pushes ciphertext into the TCP buffer, flush
+    // THAT to get the bytes on the wire. No pre-flush — the TCP buffer has
+    // nothing to flush before the TLS layer writes anything new. (Mirrors
+    // the same two-layer sequence in redis_connection.zig writeArgvToTransport.)
     if (self.transport == .tls) try self.transport.tls.stream_writer.interface.flush();
 }
 
