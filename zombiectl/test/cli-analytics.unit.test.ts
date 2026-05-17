@@ -178,13 +178,23 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
         client: analyticsClient,
         distinctId: "user_login_123",
         event: "user_authenticated",
-        properties: { command: "login", session_id: "sess_analytics" },
+        properties: {
+          command: "login",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+          session_id: "sess_analytics",
+        },
       });
       assert.deepEqual(events[3], {
         client: analyticsClient,
         distinctId: "user_login_123",
         event: "login_completed",
-        properties: { command: "login", session_id: "sess_analytics" },
+        properties: {
+          command: "login",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+          session_id: "sess_analytics",
+        },
       });
       assert.equal(shutdownClient, analyticsClient);
     });
@@ -265,6 +275,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         event: "workspace_created",
         properties: {
           command: "workspace.add",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
           workspace_id: "ws_123456789abc",
         },
       });
@@ -274,6 +286,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         event: "workspace_add_completed",
         properties: {
           command: "workspace.add",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
           workspace_id: "ws_123456789abc",
         },
       });

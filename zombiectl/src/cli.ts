@@ -179,7 +179,11 @@ function errMessage(err: unknown): string {
   return String(err);
 }
 
-async function runPostActionAnalytics(lifecycle: Lifecycle, state: ProgramState): Promise<void> {
+async function runPostActionAnalytics(
+  lifecycle: Lifecycle,
+  state: ProgramState,
+  baseEventProps: Record<string, unknown>,
+): Promise<void> {
   const { ctx, analyticsClient, distinctId } = lifecycle;
   const analyticsContext = getCliAnalyticsContext(ctx);
   let eventDistinctId = distinctId;
@@ -190,18 +194,21 @@ async function runPostActionAnalytics(lifecycle: Lifecycle, state: ProgramState)
     eventDistinctId = extractDistinctIdFromToken(latestCreds.token ?? null) || distinctId;
     cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, EVT_USER_AUTHENTICATED, {
       command: lifecycle.lastCommand,
+      ...baseEventProps,
       ...analyticsContext,
     });
   }
   if (state.exitCode === 0 && lifecycle.lastCommand === "workspace.add") {
     cliAnalytics.trackCliEvent(analyticsClient, distinctId, EVT_WORKSPACE_CREATED, {
       command: lifecycle.lastCommand,
+      ...baseEventProps,
       ...analyticsContext,
     });
   }
   for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
     cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
       command: lifecycle.lastCommand || "unknown",
+      ...baseEventProps,
       ...analyticsContext,
       ...queuedEvent.properties,
     });
@@ -225,10 +232,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   if (maybePrintVersion(argv, stdout, jsonMode, env)) return 0;
 
-  // Bare `zombiectl` (no args) — commander defaults to a "missing
-  // command" error on stderr; tests + operators expect help on stdout
-  // with exit 0. Promote empty argv to `--help` so it routes through
-  // commander's normal help path.
+  // Bare `zombiectl` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
   const [creds, workspaces, session] = await Promise.all([
@@ -291,11 +295,8 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   installPreAction(program, ctx, state);
 
-  // commander-level errors bypass runCommand; mirror its session base props.
-  const baseEventProps: Record<string, unknown> = {
-    ...(ctx.cliSessionId ? { cli_session_id: ctx.cliSessionId } : {}),
-    ...(ctx.cliDeviceId ? { cli_device_id: ctx.cliDeviceId } : {}),
-  };
+  // commander + post-action events bypass runCommand; mirror its session base props.
+  const baseEventProps: Record<string, unknown> = { ...(ctx.cliSessionId ? { cli_session_id: ctx.cliSessionId } : {}), ...(ctx.cliDeviceId ? { cli_device_id: ctx.cliDeviceId } : {}) };
 
   try {
     await program.parseAsync(effectiveArgv, { from: "user" });
@@ -338,7 +339,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     return 1;
   } finally {
     try {
-      await runPostActionAnalytics(lifecycle, state);
+      await runPostActionAnalytics(lifecycle, state, baseEventProps);
     } finally {
       await cliAnalytics.shutdownCliAnalytics(analyticsClient);
     }
