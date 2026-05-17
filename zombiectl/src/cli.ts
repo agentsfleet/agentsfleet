@@ -42,9 +42,8 @@ import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
 
-// VERSION is the source-of-truth `package.json` field, read once at module
-// load. `make sync-version` writes package.json + build.zig.zon together;
-// no manual edits to cli.ts to bump.
+// VERSION: source-of-truth package.json, read once. `make sync-version`
+// writes package.json + build.zig.zon together; no manual edits here.
 const PKG_JSON_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
 const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as { version: string };
 export const VERSION: string = pkgJson.version;
@@ -237,8 +236,10 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     loadWorkspaces().catch(() => EMPTY_WORKSPACES),
     loadSession().catch(() => EMPTY_SESSION),
   ]);
-  // Persist rotated/fresh session + sweep expired traces. Fire-and-forget.
-  void saveSession({ ...session, last_activity: Date.now() }).catch(() => {});
+  // Await so fast-exit paths flush device_id before process.exit. Skip
+  // on EMPTY_SESSION so we never clobber an unreadable session.json.
+  if (session.device_id !== "")
+    await saveSession({ ...session, last_activity: Date.now() }).catch(() => {});
   void cleanupTraces();
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
@@ -290,6 +291,12 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   installPreAction(program, ctx, state);
 
+  // commander-level errors bypass runCommand; mirror its session base props.
+  const baseEventProps: Record<string, unknown> = {
+    ...(ctx.cliSessionId ? { cli_session_id: ctx.cliSessionId } : {}),
+    ...(ctx.cliDeviceId ? { cli_device_id: ctx.cliDeviceId } : {}),
+  };
+
   try {
     await program.parseAsync(effectiveArgv, { from: "user" });
   } catch (err) {
@@ -301,6 +308,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
             command: lifecycle.lastCommand || "unknown",
             error_code: err.code === "commander.unknownCommand" ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
             exit_code: String(exitCode),
+            ...baseEventProps,
             ...getCliAnalyticsContext(ctx),
           });
         } catch {
@@ -318,6 +326,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
       command: lifecycle.lastCommand || "unknown",
       error_code: "UNEXPECTED",
       exit_code: "1",
+      ...baseEventProps,
       ...getCliAnalyticsContext(ctx),
     });
     const message = errMessage(err);

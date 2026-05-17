@@ -262,10 +262,10 @@ test("runCommand: session_id + device_id appear on started + finished events as 
       deps: { trackCliEvent },
     });
     assert.equal(code, 0);
-    assert.equal(events[0]?.props.session_id, "ses_X");
-    assert.equal(events[0]?.props.device_id, "dev_Y");
-    assert.equal(events[1]?.props.session_id, "ses_X");
-    assert.equal(events[1]?.props.device_id, "dev_Y");
+    assert.equal(events[0]?.props.cli_session_id, "ses_X");
+    assert.equal(events[0]?.props.cli_device_id, "dev_Y");
+    assert.equal(events[1]?.props.cli_session_id, "ses_X");
+    assert.equal(events[1]?.props.cli_device_id, "dev_Y");
   });
 });
 
@@ -285,8 +285,8 @@ test("runCommand: writes one NDJSON trace line on success path", async () => {
     const rec = JSON.parse(lines[0]!);
     assert.equal(rec.command, "trace-ok");
     assert.equal(rec.exit_code, 0);
-    assert.equal(rec.session_id, "ses_T");
-    assert.equal(rec.device_id, "dev_T");
+    assert.equal(rec.cli_session_id, "ses_T");
+    assert.equal(rec.cli_device_id, "dev_T");
     assert.equal(typeof rec.duration_ms, "number");
     assert.ok(rec.duration_ms >= 0);
     assert.match(rec.ts, /^\d{4}-\d{2}-\d{2}T/);

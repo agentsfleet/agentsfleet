@@ -195,8 +195,12 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
       command: name,
       json_mode: String(handlerCtx.jsonMode ?? false),
     };
-    if (handlerCtx.cliSessionId) base["session_id"] = handlerCtx.cliSessionId;
-    if (handlerCtx.cliDeviceId) base["device_id"] = handlerCtx.cliDeviceId;
+    // cli_session_id / cli_device_id are intentionally NAMESPACED so
+    // they never collide with handler-set analyticsContext keys (e.g.,
+    // login sets `session_id` to mean the auth-session row id — same
+    // string, different concept). Two separate dimensions in PostHog.
+    if (handlerCtx.cliSessionId) base["cli_session_id"] = handlerCtx.cliSessionId;
+    if (handlerCtx.cliDeviceId) base["cli_device_id"] = handlerCtx.cliDeviceId;
     return { ...base, ...getCliAnalyticsContext(handlerCtx) };
   };
 
@@ -216,7 +220,10 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
     trackEvent(analyticsClient, distinctId, "cli_command_started", buildProps());
   }
 
-  const startMs = Date.now();
+  // performance.now() is monotonic — Date.now() can jump backward on
+  // NTP slew / VM clock corrections, which would produce negative or
+  // inflated duration_ms in the trace record.
+  const startMs = performance.now();
   let finalExit = 1;
   try {
     const exitCode = await handler(handlerCtx);
@@ -263,12 +270,14 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
     return 1;
   } finally {
     if (instrument) {
-      const durationMs = Date.now() - startMs;
+      // performance.now() returns fractional ms; round to integer for
+      // a stable JSON record shape.
+      const durationMs = Math.round(performance.now() - startMs);
       await appendTrace({
         ts: new Date().toISOString(),
         command: name,
-        session_id: handlerCtx.cliSessionId ?? null,
-        device_id: handlerCtx.cliDeviceId ?? null,
+        cli_session_id: handlerCtx.cliSessionId ?? null,
+        cli_device_id: handlerCtx.cliDeviceId ?? null,
         exit_code: finalExit,
         duration_ms: durationMs,
       });

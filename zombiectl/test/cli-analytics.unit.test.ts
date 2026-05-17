@@ -65,12 +65,11 @@ async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
-// Pre-write session.json so the runCli loadSession() returns known
-// device_id/session_id. Otherwise the IDs are random UUIDs per run and
-// the deepEqual assertions below can't pin a stable shape. Mirrors what
-// every consumer of withStateDir below needs.
-const PINNED_DEVICE = "dev_test_fixed";
-const PINNED_SESSION = "ses_test_fixed";
+// Pre-write session.json with known UUIDs so loadSession returns
+// stable IDs. validUuid (state.ts) requires canonical UUID format —
+// arbitrary strings get regenerated. These are fixed v4 fixtures.
+const PINNED_DEVICE = "11111111-1111-4111-8111-111111111111";
+const PINNED_SESSION = "22222222-2222-4222-8222-222222222222";
 async function pinSession(dir: string): Promise<void> {
   await fs.writeFile(
     path.join(dir, "session.json"),
@@ -154,13 +153,14 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
         properties: {
           command: "login",
           json_mode: "false",
-          session_id: PINNED_SESSION,
-          device_id: PINNED_DEVICE,
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
         },
       });
-      // login's setCliAnalyticsContext({session_id: "sess_analytics"})
-      // overlays the CLI session_id during the handler — same key, login
-      // wins. device_id stays from the base since login doesn't touch it.
+      // Wire keys are now namespaced: cli_session_id is the CLI
+      // telemetry session (stable across the invocation), session_id is
+      // the auth session set by login's setCliAnalyticsContext. Two
+      // different concepts, two different keys — no collision.
       assert.deepEqual(events[1], {
         client: analyticsClient,
         distinctId: "anonymous",
@@ -169,8 +169,9 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
           command: "login",
           json_mode: "false",
           exit_code: "0",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
           session_id: "sess_analytics",
-          device_id: PINNED_DEVICE,
         },
       });
       assert.deepEqual(events[2], {
@@ -241,8 +242,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         properties: {
           command: "workspace.add",
           json_mode: "false",
-          session_id: PINNED_SESSION,
-          device_id: PINNED_DEVICE,
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
         },
       });
       assert.deepEqual(events[1], {
@@ -253,8 +254,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
           command: "workspace.add",
           json_mode: "false",
           exit_code: "0",
-          session_id: PINNED_SESSION,
-          device_id: PINNED_DEVICE,
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
           workspace_id: "ws_123456789abc",
         },
       });

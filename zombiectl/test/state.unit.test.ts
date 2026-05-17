@@ -71,8 +71,8 @@ test("loadSession first-run generates UUID device_id and session_id", async () =
 test("loadSession keeps device_id and session_id when within TTL", async () => {
   await withTempStateDir(async (dir) => {
     const pinned = {
-      device_id: "dev_pinned_42",
-      session_id: "ses_pinned_42",
+      device_id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      session_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       last_activity: Date.now() - 60_000, // 1 min ago, well inside 30 min TTL
     };
     await fs.writeFile(path.join(dir, "session.json"), JSON.stringify(pinned), { mode: 0o600 });
@@ -85,15 +85,17 @@ test("loadSession keeps device_id and session_id when within TTL", async () => {
 
 test("loadSession rotates session_id when last_activity is past TTL, keeps device_id", async () => {
   await withTempStateDir(async (dir) => {
+    const keepDevice = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const oldSession = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
     const stale = {
-      device_id: "dev_keep_me",
-      session_id: "ses_should_rotate",
+      device_id: keepDevice,
+      session_id: oldSession,
       last_activity: Date.now() - SESSION_TIMEOUT_MS - 60_000,
     };
     await fs.writeFile(path.join(dir, "session.json"), JSON.stringify(stale), { mode: 0o600 });
     const s = await loadSession();
-    assert.equal(s.device_id, "dev_keep_me");
-    assert.notEqual(s.session_id, "ses_should_rotate");
+    assert.equal(s.device_id, keepDevice);
+    assert.notEqual(s.session_id, oldSession);
     assert.match(s.session_id, UUID_RE);
   });
 });
@@ -104,6 +106,48 @@ test("loadSession recovers from corrupt session.json with a fresh identity", asy
     const s = await loadSession();
     assert.match(s.device_id, UUID_RE);
     assert.match(s.session_id, UUID_RE);
+  });
+});
+
+test("loadSession regenerates non-UUID device_id (defensive — poisoned session.json)", async () => {
+  await withTempStateDir(async (dir) => {
+    const poisoned = { device_id: "not-a-uuid", session_id: "also-bad", last_activity: Date.now() };
+    await fs.writeFile(path.join(dir, "session.json"), JSON.stringify(poisoned), { mode: 0o600 });
+    const s = await loadSession();
+    assert.match(s.device_id, UUID_RE, "device_id should be regenerated to a valid UUID");
+    assert.match(s.session_id, UUID_RE, "session_id should be regenerated to a valid UUID");
+    assert.notEqual(s.device_id, "not-a-uuid");
+  });
+});
+
+test("loadSession propagates permission errors (does NOT silently regenerate device_id)", async () => {
+  await withTempStateDir(async (dir) => {
+    if (process.getuid?.() === 0) return; // root bypasses chmod restrictions
+    const sessionPath = path.join(dir, "session.json");
+    await fs.writeFile(sessionPath, JSON.stringify({
+      device_id: "11111111-1111-4111-8111-111111111111",
+      session_id: "22222222-2222-4222-8222-222222222222",
+      last_activity: Date.now(),
+    }), { mode: 0o000 });
+    let thrown: unknown = null;
+    try { await loadSession(); } catch (e) { thrown = e; }
+    assert.ok(thrown, "loadSession must propagate EACCES rather than swallow it and rotate device_id");
+    await fs.chmod(sessionPath, 0o600).catch(() => {});
+  });
+});
+
+test("appendTrace refuses to follow a planted symlink (security guard)", async () => {
+  await withTempStateDir(async (dir) => {
+    const tracesDir = path.join(dir, "traces");
+    await fs.mkdir(tracesDir, { recursive: true });
+    const today = new Date().toISOString().slice(0, 10);
+    const tracePath = path.join(tracesDir, `${today}.ndjson`);
+    const sinkPath = path.join(dir, "sink.txt");
+    await fs.writeFile(sinkPath, "pre-existing sink content\n");
+    await fs.symlink(sinkPath, tracePath);
+    await appendTrace({ ts: "x", command: "y", exit_code: 0, duration_ms: 0 });
+    const sinkBody = await fs.readFile(sinkPath, "utf8");
+    assert.equal(sinkBody, "pre-existing sink content\n", "appendTrace must not write through the symlink");
   });
 });
 

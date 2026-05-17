@@ -135,8 +135,13 @@ function freshSession(): Session {
   };
 }
 
-function validString(v: unknown): string | null {
-  return typeof v === "string" && v.length > 0 ? v : null;
+// Strict UUID validation. randomUUID() produces v4, but we accept any
+// canonical UUID variant on read (some test fixtures use v7). Length +
+// hex-with-dashes pattern protects PostHog and the trace file from
+// arbitrary payloads if session.json is hand-edited or poisoned.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function validUuid(v: unknown): string | null {
+  return typeof v === "string" && UUID_RE.test(v) ? v : null;
 }
 
 function validFiniteNumber(v: unknown): number | null {
@@ -148,22 +153,20 @@ function isExpiredSession(lastActivity: number | null, nowMs: number): boolean {
   return nowMs - lastActivity > SESSION_TIMEOUT_MS;
 }
 
-// loadSession is best-effort: corrupt or unreadable session.json falls
-// back to a fresh identity (and the next saveSession re-creates the file
-// at 0o600). Caller decides when to persist; run-command bumps
-// last_activity per invocation by saving an updated session.
+// loadSession returns a usable Session for ENOENT (first run) and
+// SyntaxError (corrupt JSON) — those collapse to a fresh identity via
+// readJson's fallback. Other errors (EACCES, EISDIR, etc.) propagate
+// to the caller — silently regenerating device_id on a transient
+// permission glitch would defeat the "permanent" guarantee. Caller
+// (cli.ts) catches and degrades to EMPTY_SESSION but does NOT save
+// over the original file when load failed.
 export async function loadSession(): Promise<Session> {
   const { sessionPath } = resolveStatePaths();
   const fresh = freshSession();
-  let raw: Partial<Session>;
-  try {
-    raw = await readJson<Partial<Session>>(sessionPath, fresh);
-  } catch {
-    raw = fresh;
-  }
-  const deviceId = validString(raw.device_id) ?? fresh.device_id;
+  const raw = await readJson<Partial<Session>>(sessionPath, fresh);
+  const deviceId = validUuid(raw.device_id) ?? fresh.device_id;
   const lastActivity = validFiniteNumber(raw.last_activity);
-  const existingSessionId = validString(raw.session_id);
+  const existingSessionId = validUuid(raw.session_id);
   const expired = existingSessionId !== null && isExpiredSession(lastActivity, Date.now());
   const sessionId = existingSessionId === null || expired ? randomUUID() : existingSessionId;
   return { device_id: deviceId, session_id: sessionId, last_activity: lastActivity };
@@ -177,16 +180,27 @@ export async function saveSession(next: Session): Promise<void> {
 // Append one JSON line to today's trace file. Best-effort: silently
 // drops the record on disk-full / permission-denied / EROFS so the CLI
 // boundary path never throws on telemetry. Caller passes a fully formed
-// record (no shape coercion happens here). `fs.appendFile`'s `mode`
-// option is only honored on file creation; chmod after the append
-// guarantees STATE_FILE_MODE even when the trace file was previously
-// widened by an operator or another tool.
+// record (no shape coercion happens here).
+//
+// Symlink guard: refuse to write through a pre-existing symlink so an
+// attacker who plants `traces/YYYY-MM-DD.ndjson` -> /etc/something can't
+// trick this code into appending and chmod'ing an arbitrary file.
+//
+// Mode enforcement: `fs.appendFile`'s `mode` option is only honored on
+// creation; explicit chmod after the append guarantees STATE_FILE_MODE
+// even when the trace file was previously widened.
 export async function appendTrace(record: Record<string, unknown>): Promise<void> {
   const { tracesDir } = resolveStatePaths();
   const today = new Date().toISOString().slice(0, 10);
   const tracePath = path.join(tracesDir, `${today}.ndjson`);
   try {
     await fs.mkdir(tracesDir, { recursive: true });
+    try {
+      const lst = await fs.lstat(tracePath);
+      if (lst.isSymbolicLink()) return; // never follow planted symlinks
+    } catch {
+      // ENOENT is fine — file will be created by appendFile.
+    }
     await fs.appendFile(tracePath, `${JSON.stringify(record)}\n`, { mode: STATE_FILE_MODE });
     await fs.chmod(tracePath, STATE_FILE_MODE);
   } catch {
