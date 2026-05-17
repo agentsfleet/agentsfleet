@@ -4,11 +4,11 @@
 **Milestone:** M69
 **Workstream:** 001
 **Date:** May 14, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — unblocks independent skill iteration without main-repo PR ceremony; reverses an M49 decision that has aged out.
 **Categories:** SKILL, INFRA, DOCS
 **Batch:** B1 — independent of M68 and other M69 workstreams.
-**Branch:** {feat/m69-public-skills-repo — added when work begins}
+**Branch:** feat/m69-001-public-skills-repo
 **Depends on:** M49_001 (reverses its "no separate repo" decision; M49 stays in `done/` as historical record).
 **Provenance:** LLM-drafted (claude-opus-4-7, 2026-05-14) from Captain Q&A scoping session 2026-05-14.
 
