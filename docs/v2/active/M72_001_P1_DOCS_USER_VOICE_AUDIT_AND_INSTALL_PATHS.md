@@ -14,11 +14,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M72
 **Workstream:** 001
 **Date:** May 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operator-facing docs drift from architectural source-of-truth; cold-start install instructions undersell the simpler path.
 **Categories:** DOCS
 **Batch:** B1
-**Branch:** feat/m72-docs-user-voice-audit (to be created)
+**Branch:** chore/m72-docs-user-voice-audit-changelog (own-branch on `~/Projects/docs/`, per AGENTS.md docs-repo flow)
 **Depends on:** None. M68_001 (trigger DX + free trial) and M49_001 (install-skill) already DONE — this spec reconciles the docs against what shipped.
 **Provenance:** human-written (Kishore, May 17, 2026) — audit driven by direct request, drift surfaced manually against `docs/architecture/*.md`.
 
