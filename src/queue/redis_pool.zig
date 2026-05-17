@@ -35,6 +35,11 @@ pub const PoolStats = struct {
     poisoned_connections_total: u64,
     reconnects_total: u64,
     forced_closes_total: u64,
+    /// Currently always 0 — `Pool.acquire` has no timeout path (it
+    /// either pops idle instantly or dials synchronously). Field kept
+    /// in the Prometheus contract so operator dashboards don't break
+    /// when the timeout-aware acquire (planned alongside the
+    /// `acquire_wait_ns_p99` histogram in slice 7) wires in.
     acquire_timeouts_total: u64,
 };
 
@@ -57,6 +62,8 @@ overflow_dials_total: u64 = 0,
 poisoned_connections_total: u64 = 0,
 reconnects_total: u64 = 0,
 forced_closes_total: u64 = 0,
+// Always 0 today — Pool.acquire never blocks; the timeout-aware
+// acquire path wires in slice 7 alongside the p99 wait histogram.
 acquire_timeouts_total: u64 = 0,
 
 // === Lifecycle ===
