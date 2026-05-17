@@ -1,12 +1,12 @@
 # =============================================================================
-# TEST-BENCH — API benchmark and memory leak gates (M24_001)
+# BENCH — API benchmark and memory leak gates.
 #
 # `make bench` runs two tiers:
-#   Tier-1  zbench micro-benchmarks   (src/zbench_micro.zig — ReleaseFast)
+#   Tier-1  zbench micro-benchmarks   (tests/bench/micro.zig — ReleaseFast)
 #   Tier-2  hey HTTP loadgen          (requires `hey` in PATH — mise installs it)
 # =============================================================================
 
-.PHONY: memleak bench _bench-micro _bench-loadgen _ensure-test-bin
+.PHONY: memleak bench bench-redis _bench-micro _bench-loadgen _ensure-test-bin
 
 memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	@echo "→ [zombied] Running allocator leak guard tests..."
@@ -35,9 +35,22 @@ memleak:  ## Run Zig memory leak gates (allocator tests + Linux valgrind pass)
 	esac
 	@echo "✓ [zombied] memleak gate passed"
 
-bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen (M24_001).
+bench:  ## Run Tier-1 zbench micro + Tier-2 hey HTTP loadgen.
 	@$(MAKE) _bench-micro
 	@$(MAKE) _bench-loadgen
+
+bench-redis:  ## Redis XADD concurrency bench (skip-by-default unless BENCH_REDIS=1; needs local Redis).
+	@mkdir -p .tmp "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@if [ -z "$$BENCH_REDIS" ]; then \
+	  echo "→ [zombied] bench-redis skipped — set BENCH_REDIS=1 against a live Redis (override REDIS_URL to point elsewhere)."; \
+	  exit 0; \
+	fi
+	@echo "→ [zombied] bench-redis: 8 producer threads against $${REDIS_URL:-redis://localhost:6379} (ReleaseFast)..."
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 BENCH_REDIS="$$BENCH_REDIS" REDIS_URL="$$REDIS_URL" \
+	 zig build -Dwith-bench-tools=true -Doptimize=ReleaseFast bench-redis
+	@echo "✓ [zombied] bench-redis done"
 
 _bench-micro:  ## Internal: zbench-backed code micro-benchmarks (Tier-1).
 	@mkdir -p .tmp "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"

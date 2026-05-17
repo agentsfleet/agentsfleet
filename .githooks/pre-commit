@@ -1,6 +1,24 @@
 #!/usr/bin/env bash
-# Pre-commit: gitleaks on staged content, plus make lint when lint-relevant files are staged.
-# Bypass for emergencies: `git commit --no-verify` (discouraged per AGENTS.md).
+# Pre-commit: gitleaks first, then harness-verify, then PARALLEL lint lanes
+# scoped to which surfaces changed. Bypass for emergencies (discouraged per
+# AGENTS.md): `git commit --no-verify`.
+#
+# Stage shape:
+#   1. gitleaks --staged              (serial, always)
+#   2. classify staged files into 9 surface flags
+#   3. make harness-verify             (serial, fast — must run before lints)
+#   4. parallel matching lint lanes    (one process per surface)
+#
+# Surfaces:
+#   - lint-zig                 (*.zig, schema/*.sql)
+#   - lint-website             (ui/packages/website/*)
+#   - lint-app                 (ui/packages/app/*, design-system/* triggers both)
+#   - lint-design-system       (ui/packages/design-system/*)
+#   - lint-zombiectl           (zombiectl/*)
+#   - lint-shell               (scripts/*.sh)
+#   - check-schema-gate        (schema/*.sql)
+#   - check-openapi            (public/openapi/*, public/openapi.json)
+#   - check-gh-actions-valid   (.github/workflows/*, Makefile, make/*.mk)
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
@@ -15,35 +33,104 @@ fi
 echo "pre-commit: gitleaks protect --staged"
 gitleaks protect --staged --redact --verbose --no-banner
 
-# --- conditional make harness-verify + make lint -----------------------------
-# Run the gate audits + lint only if staged files could affect them. Keeps
-# fast-path commits (docs, specs, memory) from paying the cost.
-#
-# Order matters: harness-verify is seconds-fast and fails on cheap
-# discipline regressions (UFS, design tokens, error registry, logging,
-# lifecycle, spec template, combined milestone-id / pub / UI audits). It
-# runs first so a token-discipline regression doesn't wait for tsc/oxlint
-# to finish before blocking the commit.
+# --- Classify staged files into per-surface flags ----------------------------
+# Each flag triggers exactly one make target; design-system additionally
+# triggers app (DS is consumed by app, so a DS change might break app's tsc).
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
-needs_lint=0
+needs_lint_zig=0
+needs_lint_website=0
+needs_lint_app=0
+needs_lint_design_system=0
+needs_lint_zombiectl=0
+needs_lint_shell=0
+needs_check_openapi=0
+needs_check_schema_gate=0
+needs_check_gh_actions=0
+
 while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
-    *.zig)                         needs_lint=1 ;;
-    *.ts|*.tsx|*.js|*.jsx|*.json)  needs_lint=1 ;;
-    ui/packages/*)                 needs_lint=1 ;;
-    scripts/*.sh)                  needs_lint=1 ;;
-    .github/workflows/*.yml|.github/workflows/*.yaml) needs_lint=1 ;;
-    Makefile|make/*.mk)            needs_lint=1 ;;
+    *.zig)
+      needs_lint_zig=1 ;;
+    schema/*.sql)
+      needs_check_schema_gate=1
+      needs_lint_zig=1 ;;
+    public/openapi/*|public/openapi.json)
+      needs_check_openapi=1 ;;
+    ui/packages/website/*)
+      needs_lint_website=1 ;;
+    ui/packages/app/*)
+      needs_lint_app=1 ;;
+    ui/packages/design-system/*)
+      # DS is consumed by app — lint both when DS changes.
+      needs_lint_design_system=1
+      needs_lint_app=1 ;;
+    zombiectl/*)
+      needs_lint_zombiectl=1 ;;
+    .github/workflows/*.yml|.github/workflows/*.yaml|Makefile|make/*.mk)
+      needs_check_gh_actions=1 ;;
+    scripts/*.sh)
+      needs_lint_shell=1 ;;
+    *.json|*.yaml|*.yml)
+      # Catch-all for stray config/manifest files staged outside a known
+      # surface prefix (root-level `package.json`, ad-hoc CI overlays,
+      # etc.). The old pre-classifier hook triggered on these
+      # unconditionally — route them through harness-verify so discipline
+      # gates still run instead of silently skipping all lint lanes.
+      needs_check_gh_actions=1 ;;
   esac
 done <<< "$staged"
 
-if [ "$needs_lint" -eq 1 ]; then
-  echo "pre-commit: make harness-verify"
-  make harness-verify
-  echo "pre-commit: make lint"
-  make lint
-else
-  echo "pre-commit: no lint-relevant files staged, skipping harness-verify + lint"
+any_needed=$(( needs_lint_zig + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_zombiectl + needs_lint_shell + needs_check_openapi + needs_check_schema_gate + needs_check_gh_actions ))
+
+if [ "$any_needed" -eq 0 ]; then
+  echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
+  exit 0
 fi
+
+# --- harness-verify (serial, fast — full-state gates) ------------------------
+echo "pre-commit: make harness-verify"
+make harness-verify
+
+# --- Parallel lint lanes -----------------------------------------------------
+# Each launched lane runs in its own subshell. Output may interleave across
+# lanes; each lint target prefixes its own lines ([zombied]/[app]/etc.) so
+# the source is identifiable. Failures are collected; we exit non-zero if ANY
+# lane failed (and report the lane names).
+pids=()
+names=()
+
+launch() {
+  local name="$1"; shift
+  echo "pre-commit: $* (parallel)"
+  "$@" &
+  pids+=("$!")
+  names+=("$name")
+}
+
+[ "$needs_lint_zig"           = 1 ] && launch lint-zig            make lint-zig
+[ "$needs_lint_website"       = 1 ] && launch lint-website        make lint-website
+[ "$needs_lint_app"           = 1 ] && launch lint-app            make lint-app
+[ "$needs_lint_design_system" = 1 ] && launch lint-design-system  make lint-design-system
+[ "$needs_lint_zombiectl"     = 1 ] && launch lint-zombiectl      make lint-zombiectl
+[ "$needs_lint_shell"         = 1 ] && launch lint-shell          make lint-shell
+[ "$needs_check_schema_gate"  = 1 ] && launch check-schema-gate   make check-schema-gate
+[ "$needs_check_openapi"      = 1 ] && launch check-openapi       make check-openapi
+[ "$needs_check_gh_actions"   = 1 ] && launch check-gh-actions    make check-gh-actions-valid
+
+failed_names=()
+for i in "${!pids[@]}"; do
+  if ! wait "${pids[$i]}"; then
+    failed_names+=("${names[$i]}")
+  fi
+done
+
+if [ "${#failed_names[@]}" -gt 0 ]; then
+  echo "✗ pre-commit: failed lanes — ${failed_names[*]}"
+  exit 1
+fi
+
+# Force exit 0 even if a stray short-circuit ended on a falsy test (bash
+# `[ X -eq 1 ] && { … }` final-statement quirk under set -e).
+exit 0

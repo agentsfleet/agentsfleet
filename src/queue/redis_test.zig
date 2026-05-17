@@ -103,10 +103,17 @@ const redis_transport = @import("redis_transport.zig");
 /// Fake Redis server: each accepted connection eats whatever the client
 /// sends, replies `+PONG\r\n`, and closes. The reset on the second client
 /// call is what proves the reconnect path works.
+///
+/// Per-connection handler threads: the pool dials `eager_min` connections
+/// in parallel from one process, so a single-threaded accept-then-read
+/// loop deadlocks (iter1 blocks reading conn-A; conn-B sits in the TCP
+/// backlog; if the first command lands on conn-B, neither side advances).
+/// Spawning a detached handler per accept decouples the conns at the
+/// cost of one short-lived thread per dial — fine for a test fake.
 const PingFake = struct {
     server: std.net.Server,
     addr: std.net.Address,
-    thread: std.Thread,
+    accept_thread: std.Thread,
     stop: std.atomic.Value(bool),
     accepts: std.atomic.Value(u32),
 
@@ -116,7 +123,7 @@ const PingFake = struct {
         self.addr = self.server.listen_address;
         self.stop = std.atomic.Value(bool).init(false);
         self.accepts = std.atomic.Value(u32).init(0);
-        self.thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
+        self.accept_thread = try std.Thread.spawn(.{}, acceptLoop, .{self});
     }
 
     fn shutdown(self: *PingFake) void {
@@ -125,23 +132,33 @@ const PingFake = struct {
         // listener may already be torn down by the loop on error paths).
         const addr = self.addr;
         if (std.net.tcpConnectToAddress(addr)) |s| s.close() else |_| {}
-        self.thread.join();
+        self.accept_thread.join();
         self.server.deinit();
     }
 
     fn acceptLoop(self: *PingFake) void {
         while (!self.stop.load(.acquire)) {
             const conn = self.server.accept() catch return;
-            defer conn.stream.close();
-            if (self.stop.load(.acquire)) return;
+            if (self.stop.load(.acquire)) {
+                conn.stream.close();
+                return;
+            }
             _ = self.accepts.fetchAdd(1, .monotonic);
-
-            var buf: [256]u8 = undefined;
-            const n = conn.stream.read(&buf) catch 0;
-            if (n == 0) continue;
-            conn.stream.writeAll("+PONG\r\n") catch {};
-            // Drop the connection — emulates Upstash idle-drop / restart.
+            const t = std.Thread.spawn(.{}, handleConn, .{conn.stream}) catch {
+                conn.stream.close();
+                continue;
+            };
+            t.detach();
         }
+    }
+
+    fn handleConn(stream: std.net.Stream) void {
+        defer stream.close();
+        var buf: [256]u8 = undefined;
+        const n = stream.read(&buf) catch 0;
+        if (n == 0) return;
+        stream.writeAll("+PONG\r\n") catch {};
+        // Drop the connection — emulates Upstash idle-drop / restart.
     }
 
     fn url(self: *PingFake, alloc: std.mem.Allocator) ![]u8 {
@@ -216,15 +233,20 @@ test "Client.readyCheck self-heals when the server drops the connection" {
     var client = try redis.testing.connectFromUrl(alloc, url);
     defer client.deinit();
 
-    // First probe goes through cleanly on the original socket.
+    // Two consecutive readyChecks against a fake that drops after every
+    // reply. Both must succeed: the first uses a live pre-warmed conn,
+    // the second hits a now-dead idle conn → pool retry dials fresh and
+    // succeeds. This is the Upstash idle-drop scenario the pool layer
+    // recovers from transparently — without retry, /readyz would flip
+    // queue:false on the second probe and stay there until restart.
     try client.readyCheck();
-    try std.testing.expectEqual(@as(u32, 1), fake.accepts.load(.monotonic));
+    try client.readyCheck();
 
-    // The fake closed the socket after replying — the next probe MUST
-    // transparently re-dial and succeed via the idempotent retry layer
-    // in readyCheck. Without the patch this would surface as RedisPingFailed
-    // and /readyz would return queue:false until process restart.
-    try client.readyCheck();
+    // At least two server-side accepts: the eager pre-warm dials plus
+    // the redial during the second probe's retry path push this past
+    // 2 in practice; assert the lower bound only so the test stays
+    // robust against accept-ordering races between the fake's
+    // single-threaded accept loop and the pool's parallel dials.
     try std.testing.expect(fake.accepts.load(.monotonic) >= 2);
 }
 
