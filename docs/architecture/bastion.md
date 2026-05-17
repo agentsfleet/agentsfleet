@@ -18,7 +18,7 @@ This is post-MVP. It's the shape that competes structurally with Atlassian Statu
 2. **Status-page rendering surface.** A hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary. Updates as new events land.
 3. **Broadcast channels.** The zombie's `tools:` list grows to include `email_send`, `sms_send` (gated, approval-required for the first incident), `webhook_post` (for downstream Statuspage / PagerDuty / etc.).
 4. **Approval gating per audience.** The `SKILL.md` prose can require human approval before posting to customer-facing audiences while letting internal Slack go through automatically. The M47 approval inbox handles the mechanic.
-5. **Retention and replay for compliance.** Customer-facing communications have stricter retention requirements (Sarbanes-Oxley, General Data Protection Regulation). `core.zombie_events` retention policy becomes per-actor configurable.
+5. **Retention and replay for compliance.** Customer-facing communications have stricter retention requirements (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)). `core.zombie_events` retention policy becomes per-actor configurable.
 
 ## What does not change
 
@@ -30,6 +30,3 @@ This is post-MVP. It's the shape that competes structurally with Atlassian Statu
 
 The bastion is a `SKILL.md` authoring pattern plus a few new tool primitives plus a new rendering surface. It is not a different product. The MVP's job is to earn enough trust on internal-only diagnoses that customers feel safe letting the same zombie talk to *their* customers.
 
----
-
-> Next: [`ship_reflection.md`](./ship_reflection.md) — §14 post-launch reflection appendix (PENDING SHIP until v2 launches; populated with real evidence post-ship).

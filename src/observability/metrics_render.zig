@@ -4,6 +4,7 @@ const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const mw = @import("metrics_workspace.zig");
 const em = @import("../executor/executor_metrics.zig");
+const mrp = @import("metrics_redis_pool.zig");
 
 const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
 const S_REASON = "reason";
@@ -191,7 +192,21 @@ pub fn renderPrometheus(
         try writer.print("zombie_execution_seconds_count {d}\n", .{zh.count});
     }
 
-    // M28_001 §2.5: per-workspace metrics.
+    // Redis request-path pool — emitted only when a Pool has been registered
+    // (early-boot scrapes pre-registration emit no lines; downstream scrapers
+    // treat absent series as zero, matching the no-pool-yet reality).
+    if (mrp.snapshot()) |rps| {
+        try appendMetric(writer, "zombie_redis_pool_active", S_GAUGE, "Pooled Redis connections currently leased to a caller.", rps.active);
+        try appendMetric(writer, "zombie_redis_pool_idle", S_GAUGE, "Pooled Redis connections sitting idle, ready to lease.", rps.idle);
+        try appendMetric(writer, "zombie_redis_pool_dials_total", S_COUNTER, "Total successful TCP dials performed by the Redis pool.", rps.dials_total);
+        try appendMetric(writer, "zombie_redis_pool_overflow_dials_total", S_COUNTER, "Dials that occurred while active connections were at or over max_idle (transient burst).", rps.overflow_dials_total);
+        try appendMetric(writer, "zombie_redis_pool_poisoned_connections_total", S_COUNTER, "Connections released after entering the .poisoned state (transport error in flight).", rps.poisoned_connections_total);
+        try appendMetric(writer, "zombie_redis_pool_reconnects_total", S_COUNTER, "Fresh dials performed by the Client retry layer after a transport-level failure.", rps.reconnects_total);
+        try appendMetric(writer, "zombie_redis_pool_forced_closes_total", S_COUNTER, "Connections closed by release because the idle list was already at max_idle (over-cap overflow).", rps.forced_closes_total);
+        try appendMetric(writer, "zombie_redis_pool_acquire_timeouts_total", S_COUNTER, "Acquire calls that timed out waiting for a slot (currently always 0 — Pool acquires never block).", rps.acquire_timeouts_total);
+    }
+
+    // Per-workspace metrics.
     try mw.renderPrometheus(writer);
 
     try writer.writeAll("\n");
