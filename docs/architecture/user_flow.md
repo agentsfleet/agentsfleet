@@ -41,7 +41,7 @@ Practically, this means:
 
 - v2 launch claim is **OSS + self-managed + markdown-defined**. Not "self-hostable."
 - The `/self-host` runbook page does not exist on `docs.usezombie.com` for v2.
-- Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours_v2.md`](./office_hours_v2.md) P1 are v3 customers, not v2.
+- Users who need self-host today are out of scope; the AI-infra / GPU-cloud / regulated mid-market personas in [`office_hours.md`](./office_hours.md) P1 are v3 customers, not v2.
 - self-managed still ships in v2 — it sits on top of the hosted posture and removes the inference-cost lock-in independently of where the runtime runs. See [`capabilities.md`](./capabilities.md) and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md).
 
 ## §8.1 Authoring the zombie
