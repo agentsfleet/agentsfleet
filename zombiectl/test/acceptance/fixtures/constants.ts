@@ -15,8 +15,8 @@ export const JWT_TEMPLATE = "api";
 export const IS_TEST_FIXTURE_METADATA_KEY = "is_test_fixture";
 
 export const FIXTURE_EMAIL_VAULT_PATHS = {
-  regular: "op://VAULT/e2e-fixtures/regular/email",
-  admin: "op://VAULT/e2e-fixtures/admin/email",
+  regular: "op://VAULT/e2e-fixtures-email/regular",
+  admin: "op://VAULT/e2e-fixtures-email/admin",
 } as const;
 
 export const ZOMBIE_STATUS = {

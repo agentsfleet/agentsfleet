@@ -292,11 +292,9 @@ The OpenAI-compatible client routes the call to `https://api.fireworks.ai/infere
 
 ## 10. The model-caps endpoint (cryptic-prefix, public-but-unguessable)
 
-The single source of truth for model context caps **and per-model token rates**. Both postures resolve through it:
+The single source of truth for model context caps **and per-model token rates**. The install-time vs trigger-time resolution flow — which posture reads what, when, and how the frontmatter overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the endpoint *is* and how it is hosted.
 
-- **Platform-managed context cap.** The install-skill reads the resolved cap via `zombiectl doctor --json`'s `tenant_provider` block; the platform-side resolver hardcodes the synth-default values for tenants with no `tenant_providers` row.
-- **self-managed context cap.** `zombiectl tenant provider set` calls the endpoint and writes the cap into `core.tenant_providers.context_cap_tokens`.
-- **Per-model token rates.** The API server reads the endpoint at boot and on a periodic refresh; `computeStageCharge` consults the cached rates.
+For billing specifically: the API server reads the endpoint at boot and on a periodic refresh; `computeStageCharge` consults the cached per-model token rates — never makes a network call on the hot path.
 
 Endpoint shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-zombie reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
 

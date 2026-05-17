@@ -94,8 +94,8 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLERK_SECRET_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/secret-key
-          AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures/regular/email
-          AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures/admin/email
+          AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures-email/regular
+          AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_PROD }}/e2e-fixtures-email/admin
 
       - name: Run CLI acceptance against api.usezombie.com
         run: bun run test:acceptance

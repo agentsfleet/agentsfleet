@@ -2,11 +2,9 @@
 
 > Parent: [`README.md`](./README.md)
 >
-> Status: Internal validation note, cleaned for durable reference.
-> Use this file for what must be tested around the platform-ops wedge.
-> Do not use it as the source of truth for active milestone status or dated launch sequencing.
+> **Status: Historical — pre-launch engineering-review record.** This is the review pass that produced the substrate-tier vs packaging-tier split and the platform-ops validation bar. Preserved for the test framing it locked in. **Not enforceable canon.** Current canon for architecture lives in the topic files of this directory (`data_flow.md`, `capabilities.md`, `direction.md`); current QA gates and verification commands live in [`../VERIFY_TIERS.md`](../VERIFY_TIERS.md). Read this for the original testing rationale; read those when you need to know what runs today.
 
-This file is consumed by `/qa` and `/qa-only` as primary test input.
+This file is consumed by `/qa` and `/qa-only` as primary test input for the platform-ops scenario.
 
 ---
 
@@ -165,4 +163,4 @@ Do not use this file as:
 - a dated launch checklist
 - a source of product positioning
 
-For product positioning, use [`office_hours_v2.md`](./office_hours_v2.md) plus the core architecture files.
+For product positioning, use [`office_hours.md`](./office_hours.md) plus the core architecture files.

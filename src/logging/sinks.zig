@@ -22,8 +22,9 @@
 //! Safety properties:
 //!   • `snapshot` returns OWNED bytes (caller frees with bs.alloc) —
 //!     a live-slice return raced with concurrent ArrayList realloc.
-//!   • `deinit` unregisters then drains `emit_in_flight` before
-//!     freeing — closes the snapshot-then-emit UAF window.
+//!   • `deinit` unregisters, snapshots the started-ticket counter,
+//!     then waits until completed catches up — bounded to the pre-
+//!     removal in-flight set, not the global emit load.
 
 const std = @import("std");
 
@@ -51,9 +52,13 @@ const MAX_SINKS: usize = 4;
 var sinks_buf: [MAX_SINKS]Sink = undefined;
 var sinks_len: usize = 0;
 var sinks_mutex: std.Thread.Mutex = .{};
-// In-flight emits — bumped under sinks_mutex (atomic w/ snapshot),
-// drained by unregisterByCtx so deinit can't free a snapshotted ctx.
-var emit_in_flight: std.atomic.Value(usize) = .{ .raw = 0 };
+// Monotonic emit tickets. Bumped under sinks_mutex at snapshot time;
+// drained when fan-out returns. unregisterByCtx snapshots `started`
+// after compaction and waits for `completed` to catch up, bounding
+// the wait to the pre-removal in-flight set instead of all live
+// emits.
+var emit_started: std.atomic.Value(u64) = .{ .raw = 0 };
+var emit_completed: std.atomic.Value(u64) = .{ .raw = 0 };
 
 /// Sentinel pointer for stateless sinks (stderr, OTLP). Never read by
 /// the emit fn — just satisfies the `*anyopaque` non-null contract.
@@ -97,10 +102,13 @@ fn unregisterByCtx(ctx: *const anyopaque) void {
         }
     }
     sinks_len = write_idx;
+    // Snapshot the started high-water mark while we still hold
+    // sinks_mutex — emits that incremented before this took their
+    // registry snapshot pre-compaction and may still hold the
+    // removed ctx. Emits that increment after unlock cannot.
+    const drain_target = emit_started.load(.acquire);
     sinks_mutex.unlock();
-    // Future emits see the compacted registry (took mutex after us);
-    // prior snapshots are reflected in emit_in_flight — spin until 0.
-    while (emit_in_flight.load(.acquire) > 0) std.atomic.spinLoopHint();
+    while (emit_completed.load(.acquire) < drain_target) std.atomic.spinLoopHint();
 }
 
 pub fn emitToSinks(
@@ -122,11 +130,11 @@ pub fn emitToSinks(
     var snapshot_arr: [MAX_SINKS]Sink = undefined;
     const n = sinks_len;
     for (sinks_buf[0..n], 0..) |s, i| snapshot_arr[i] = s;
-    // Increment INSIDE the lock — atomic with snapshot, so
-    // unregisterByCtx can't miss us between snapshot and drain.
-    _ = emit_in_flight.fetchAdd(1, .acq_rel);
+    // Increment INSIDE the lock — atomic with snapshot so
+    // unregisterByCtx's drain_target read can't miss us.
+    _ = emit_started.fetchAdd(1, .acq_rel);
     sinks_mutex.unlock();
-    defer _ = emit_in_flight.fetchSub(1, .release);
+    defer _ = emit_completed.fetchAdd(1, .release);
     for (snapshot_arr[0..n]) |s| s.emit(s.ctx, level, scope, ts_ms, body);
 }
 
@@ -145,10 +153,10 @@ pub const BufferedSink = struct {
 
     pub fn deinit(self: *BufferedSink) void {
         // unregisterByCtx (1) removes our entries from the registry so
-        // no future emit targets us AND (2) drains the global
-        // emit_in_flight counter, blocking until any prior snapshot has
-        // finished fan-out. After it returns, no thread holds a
-        // dangling pointer to self — safe to free the backing buffer.
+        // no future emit targets us AND (2) waits for the pre-removal
+        // in-flight emits to complete before returning. After it
+        // returns, no thread holds a dangling pointer to self — safe
+        // to free the backing buffer.
         unregisterByCtx(@ptrCast(self));
         self.buf.deinit(self.alloc);
     }
@@ -186,164 +194,22 @@ pub const BufferedSink = struct {
     }
 };
 
-test "registerSink + emitToSinks fans out to every registered sink" {
-    var bs = BufferedSink.init(std.testing.allocator);
-    defer bs.deinit();
-
-    clearSinks();
-    defer clearSinks();
-    registerSink(bs.sink());
-
-    emitToSinks(.warn, "test_scope", 1234, "event=hello x=1");
-    emitToSinks(.err, "test_scope", 5678, "event=goodbye");
-
-    const captured = try bs.snapshot();
-    defer std.testing.allocator.free(captured);
-    try std.testing.expect(std.mem.indexOf(u8, captured, "event=hello") != null);
-    try std.testing.expect(std.mem.indexOf(u8, captured, "event=goodbye") != null);
+/// Test-only window into the emit ticket counters. Used by
+/// sinks_test.zig to pin the bounded-drain property after compaction;
+/// production callers have no use for these and should not introduce
+/// one.
+pub fn emitTicketsForTest() struct { started: u64, completed: u64 } {
+    return .{
+        .started = emit_started.load(.acquire),
+        .completed = emit_completed.load(.acquire),
+    };
 }
 
-test "clearSinks: subsequent emit fans out to nobody" {
-    var bs = BufferedSink.init(std.testing.allocator);
-    defer bs.deinit();
-
-    clearSinks();
-    registerSink(bs.sink());
-    emitToSinks(.info, "s", 0, "event=first");
-    clearSinks();
-    emitToSinks(.info, "s", 0, "event=dropped");
-
-    const captured = try bs.snapshot();
-    defer std.testing.allocator.free(captured);
-    try std.testing.expect(std.mem.indexOf(u8, captured, "event=first") != null);
-    try std.testing.expect(std.mem.indexOf(u8, captured, "event=dropped") == null);
-}
-
-test "registerSink: capacity capped at MAX_SINKS, extra registrations drop" {
-    clearSinks();
-    defer clearSinks();
-
-    var bs = BufferedSink.init(std.testing.allocator);
-    defer bs.deinit();
-    // Fill up.
-    var i: usize = 0;
-    while (i < MAX_SINKS) : (i += 1) registerSink(bs.sink());
-    try std.testing.expect(sinksRegistered());
-
-    // Overflow drops silently — never realloc, never crash. The cap is
-    // a static array; growth at runtime would require a thread-safe
-    // realloc dance that's not worth the complexity for 4 sinks total.
-    registerSink(bs.sink());
-
-    // Emit once and confirm we still got exactly MAX_SINKS deliveries
-    // (each appends one body+newline) — no overflow corruption.
-    emitToSinks(.info, "s", 0, "x");
-    const captured = try bs.snapshot();
-    defer std.testing.allocator.free(captured);
-    var newlines: usize = 0;
-    for (captured) |c| {
-        if (c == '\n') newlines += 1;
-    }
-    try std.testing.expectEqual(MAX_SINKS, newlines);
-}
-
-test "BufferedSink.deinit unregisters itself from the global registry" {
-    // Safety invariant: bs.deinit() must remove its own entries from
-    // the registry before freeing self.buf. Without that, defer
-    // ordering (deinit declared after clearSinks → deinit runs first
-    // per LIFO) leaves a stack-pointer ctx in sinks_buf that the next
-    // emit dereferences. This test pins the property explicitly.
-    clearSinks();
-    defer clearSinks();
-
-    var bs = BufferedSink.init(std.testing.allocator);
-    registerSink(bs.sink());
-    try std.testing.expect(sinksRegistered());
-
-    bs.deinit();
-    try std.testing.expect(!sinksRegistered());
-}
-
-test "unregisterByCtx leaves unrelated sinks intact" {
-    // Two BufferedSinks registered side by side; deinit-ing one must
-    // not pull the other out of the registry.
-    clearSinks();
-    defer clearSinks();
-
-    var bs_a = BufferedSink.init(std.testing.allocator);
-    var bs_b = BufferedSink.init(std.testing.allocator);
-    defer bs_b.deinit();
-
-    registerSink(bs_a.sink());
-    registerSink(bs_b.sink());
-
-    bs_a.deinit();
-
-    // bs_b's emit still fires; bs_a's would crash if it were still in
-    // the registry (stack-freed ctx).
-    emitToSinks(.info, "s", 0, "event=after_a_deinit");
-    const captured = try bs_b.snapshot();
-    defer std.testing.allocator.free(captured);
-    try std.testing.expect(std.mem.indexOf(u8, captured, "event=after_a_deinit") != null);
-}
-
-test "snapshot returns owned copy — later emits do not mutate prior snapshot" {
-    // This pins the core safety property of the snapshot owned-copy
-    // fix. Before the fix, snapshot returned `self.buf.items` directly
-    // — a slice aliasing the live ArrayList backing storage. An emit
-    // that triggered realloc would free that backing buffer mid-read,
-    // turning a caller's `indexOf` into a use-after-free. The owned
-    // dupe pattern means snap1 captures bytes at the point of call;
-    // subsequent emits grow self.buf without touching snap1's memory.
-    clearSinks();
-    defer clearSinks();
-
-    var bs = BufferedSink.init(std.testing.allocator);
-    defer bs.deinit();
-    registerSink(bs.sink());
-
-    emitToSinks(.info, "s", 0, "event=first");
-    const snap1 = try bs.snapshot();
-    defer std.testing.allocator.free(snap1);
-    const snap1_len = snap1.len;
-
-    // Drive enough emits to force ArrayList realloc (initial cap is
-    // typically tiny — 100 emits of a ~40-byte body easily exceeds it).
-    var i: usize = 0;
-    while (i < 100) : (i += 1) {
-        emitToSinks(.info, "s", 0, "event=growth_after_snapshot_xxxxxxxxx");
-    }
-
-    // snap1 must still be readable AND must NOT reflect any post-
-    // snapshot growth. Length unchanged + no new event substring.
-    try std.testing.expectEqual(snap1_len, snap1.len);
-    try std.testing.expect(std.mem.indexOf(u8, snap1, "event=first") != null);
-    try std.testing.expect(std.mem.indexOf(u8, snap1, "event=growth") == null);
-}
-
-test "emit after BufferedSink.deinit does not crash — sink is unregistered" {
-    // Safety pin: even if callers forget `defer clearSinks()`, the
-    // self-unregister in BufferedSink.deinit guarantees subsequent
-    // emits don't reach the freed sink. Without unregisterByCtx in
-    // deinit, this emit would dereference a stack-freed ctx and
-    // either crash, corrupt nearby memory, or — worst case — appear
-    // to "work" in debug mode while breaking under ReleaseSafe.
-    clearSinks();
-
-    {
-        var bs = BufferedSink.init(std.testing.allocator);
-        registerSink(bs.sink());
-        try std.testing.expect(sinksRegistered());
-        bs.deinit();
-    }
-
-    // bs is out of scope; its stack memory is now reclaimable. An emit
-    // through the registry must NOT call into the freed sink. The
-    // deinit-unregisters invariant from the previous test combined
-    // with emitToSinks's snapshot-then-emit pattern means this emit
-    // sees sinks_len == 0 and early-returns under lock.
-    emitToSinks(.info, "s", 0, "event=should_be_dropped");
-
-    // Registry confirms empty after the emit.
-    try std.testing.expect(!sinksRegistered());
+// Tests live in sinks_test.zig — kept here so this source file stays
+// under the 350-line cap. The reference lives inside sinks.zig (not
+// main.zig) so the test file lands in the `log` module alongside
+// sinks.zig and can `@import("sinks.zig")` directly without crossing
+// a module boundary.
+test {
+    _ = @import("sinks_test.zig");
 }

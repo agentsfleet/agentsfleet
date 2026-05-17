@@ -18,36 +18,36 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Priority:** P1 — operator-facing docs drift from architectural source-of-truth; cold-start install instructions undersell the simpler path.
 **Categories:** DOCS
 **Batch:** B1
-**Branch:** chore/m72-docs-user-voice-audit-changelog (own-branch on `~/Projects/docs/`, per AGENTS.md docs-repo flow)
+**Branch:** chore/m72-docs-user-voice-audit-changelog (own-branch on `<docs-repo>/`, per AGENTS.md docs-repo flow)
 **Depends on:** None. M68_001 (trigger DX + free trial) and M49_001 (install-skill) already DONE — this spec reconciles the docs against what shipped.
 **Provenance:** human-written (Kishore, May 17, 2026) — audit driven by direct request, drift surfaced manually against `docs/architecture/*.md`.
 
-**Canonical architecture:** `~/Projects/usezombie/docs/architecture/user_flow.md` §8.0 / §8.2.1 / §8.7, `high_level.md` §1, `direction.md`, `capabilities.md` §1.
+**Canonical architecture:** `docs/architecture/user_flow.md` §8.0 / §8.2.1 / §8.7, `high_level.md` §1, `direction.md`, `capabilities.md` §1.
 
 ---
 
 ## Implementing agent — read these first
 
-1. `~/Projects/usezombie/docs/architecture/user_flow.md` — the canonical user-side narrative. §8.0 (wedge surface), §8.2.1 (cold-machine bootstrap with both install paths), §8.2.2 (per-zombie install flow), §8.7 (model + posture origin). The spec's reconciliation targets all derive from this file.
-2. `~/Projects/usezombie/docs/architecture/high_level.md` §1–§4 — product framing. Sets the lead voice ("Operational outcomes do not fall into limbo") and the three structural pillars (open source / self-managed provider keys / markdown-defined). Docs lead today with the noun "always-on agent runtime" instead of the user-facing promise.
-3. `~/Projects/usezombie/docs/architecture/capabilities.md` §1 — the binding distinction between `SKILL.md` (advisory prose) and `TRIGGER.md` (executor-enforced). Concepts page currently calls a tool a "Skill" — a category error against this doc.
-4. `~/Projects/docs/` — the user-facing docs repo. Walk every file listed in *Files Changed* before editing. The Mintlify changelog voice rules in `~/Projects/docs/docs/CHANGELOG_VOICE.md` apply to the changelog entry that lands with this milestone.
-5. `~/Projects/usezombie/docs/v2/done/M68_001_P1_API_CLI_DOCS_UI_WEBSITE_TRIGGER_REGISTRATION_AND_FREE_TRIAL.md` and `M49_001_P1_SKILL_DOCS_INSTALL_SKILL.md` — what shipped. Spec amendments to the docs must match the shipped behavior, not the pre-ship plan.
+1. `docs/architecture/user_flow.md` — the canonical user-side narrative. §8.0 (wedge surface), §8.2.1 (cold-machine bootstrap with both install paths), §8.2.2 (per-zombie install flow), §8.7 (model + posture origin). The spec's reconciliation targets all derive from this file.
+2. `docs/architecture/high_level.md` §1–§4 — product framing. Sets the lead voice ("Operational outcomes do not fall into limbo") and the three structural pillars (open source / self-managed provider keys / markdown-defined). Docs lead today with the noun "always-on agent runtime" instead of the user-facing promise.
+3. `docs/architecture/capabilities.md` §1 — the binding distinction between `SKILL.md` (advisory prose) and `TRIGGER.md` (executor-enforced). Concepts page currently calls a tool a "Skill" — a category error against this doc.
+4. `<docs-repo>/` — the user-facing docs repo. Walk every file listed in *Files Changed* before editing. The Mintlify changelog voice rules in `<docs-repo>/docs/CHANGELOG_VOICE.md` apply to the changelog entry that lands with this milestone.
+5. `docs/v2/done/M68_001_P1_API_CLI_DOCS_UI_WEBSITE_TRIGGER_REGISTRATION_AND_FREE_TRIAL.md` and `M49_001_P1_SKILL_DOCS_INSTALL_SKILL.md` — what shipped. Spec amendments to the docs must match the shipped behavior, not the pre-ship plan.
 
 ---
 
 ## Applicable Rules
 
 - `docs/greptile-learnings/RULES.md` — universal coding/docs discipline. Specifically RULE NDC (no dead code/links) and RULE NLR (touch-it-fix-it cleanup): when an MDX file gets touched for the audit, fix unrelated voice/stale-claim issues in the same file rather than leaving partial work.
-- `~/Projects/docs/docs/CHANGELOG_VOICE.md` — Mintlify changelog voice. The `<Update>` entry that lands with this milestone must follow the headline + lead-paragraph + `**Bold lead-noun**` bullet structure; banned vocabulary list applies.
-- `~/Projects/docs/AGENTS.md` — docs-repo agent contract. Confirm before editing.
+- `<docs-repo>/docs/CHANGELOG_VOICE.md` — Mintlify changelog voice. The `<Update>` entry that lands with this milestone must follow the headline + lead-paragraph + `**Bold lead-noun**` bullet structure; banned vocabulary list applies.
+- `<docs-repo>/AGENTS.md` — docs-repo agent contract. Confirm before editing.
 - `docs/SCHEMA_CONVENTIONS.md`, `docs/ZIG_RULES.md`, `docs/REST_API_DESIGN_GUIDELINES.md` — N/A. DOCS-only spec; no code paths touched.
 
 ---
 
 ## Overview
 
-**Goal (testable):** Every page under `~/Projects/docs/` that names an install path lists both `npx skills add usezombie/usezombie` (the one-liner) and the `https://usezombie.sh/skills.md` curl fallback in that order, and every page under `~/Projects/docs/` opens with the user-facing problem ("a deploy fails at 2am, evidence is scattered, the on-call engineer is asleep") before introducing the platform's nouns — verified by per-file grep assertions in §Acceptance Criteria.
+**Goal (testable):** Every page under `<docs-repo>/` that names an install path lists both `npx skills add usezombie/usezombie` (the one-liner) and the `https://usezombie.sh/skills.md` curl fallback in that order, and every page under `<docs-repo>/` opens with the user-facing problem ("a deploy fails at 2am, evidence is scattered, the on-call engineer is asleep") before introducing the platform's nouns — verified by per-file grep assertions in §Acceptance Criteria.
 
 **Problem:** Three observable drifts between the architecture source-of-truth and the published docs:
 
@@ -57,13 +57,13 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 3. **Concept drift.** `concepts.mdx` calls a tool (`http_request`, `memory_store`) a "Skill" — directly contradicting `capabilities.md` §1, which binds `SKILL.md` to *prose policy* and tools to *executor-enforced primitives*. `cli/install.mdx` describes `doctor` as a three-check command (`server_reachable`, `workspace_selected`, `workspace_binding_valid`); `user_flow.md` §8.2.2 adds `auth_token_present` and the `tenant_provider` block (mode + model + context_cap_tokens + M68 free-trial state). `concepts.mdx` Trigger accordion still shows the pre-migration webhook URL `https://api.usezombie.com/v1/webhooks/{zombie_id}` (no source suffix) — the M43/M68 migration has already shipped at `{zombie_id}/{source}` everywhere else.
 
-**Solution summary:** One reconciliation pass over the docs repo. Each touched file gets three things in order: (1) opening reframed to lead with the user's problem, then the platform's response, then the nouns; (2) install commands updated to list both paths with the one-liner first; (3) stale claims (doctor checks, webhook URL shape, tool-vs-skill distinction, lifecycle verbs, posture-flip flow) corrected against the named architecture sections. The spec ships as one PR against `~/Projects/docs/`, with a single Mintlify `<Update>` entry summarising the user-visible changes. No code paths touched.
+**Solution summary:** One reconciliation pass over the docs repo. Each touched file gets three things in order: (1) opening reframed to lead with the user's problem, then the platform's response, then the nouns; (2) install commands updated to list both paths with the one-liner first; (3) stale claims (doctor checks, webhook URL shape, tool-vs-skill distinction, lifecycle verbs, posture-flip flow) corrected against the named architecture sections. The spec ships as one PR against `<docs-repo>/`, with a single Mintlify `<Update>` entry summarising the user-visible changes. No code paths touched.
 
 ---
 
 ## Files Changed (blast radius)
 
-> All paths relative to `~/Projects/docs/` unless otherwise noted.
+> All paths relative to `<docs-repo>/` unless otherwise noted.
 
 | File | Action | Why |
 |------|--------|-----|
@@ -78,7 +78,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `zombies/authoring.mdx` | EDIT | Audit-pass only — confirm `SKILL.md` framing matches `capabilities.md` §1; no large rewrite expected. |
 | `memory.mdx` | EDIT | Audit-pass only — confirm category framing matches what shipped in M14_001; correct any stale claims. |
 | `changelog.mdx` | EDIT | New `<Update>` entry (top of file), one headline + lead paragraph + bullets per `CHANGELOG_VOICE.md`. |
-| `~/Projects/usezombie/docs/v2/pending/M72_001_*.md` | CREATE | This spec. |
+| `docs/v2/pending/M72_001_*.md` | CREATE | This spec. |
 
 ---
 
@@ -118,7 +118,7 @@ The user-visible claim each touched page makes: *"`npx skills add usezombie/usez
 
 ### §6 — Changelog entry
 
-One Mintlify `<Update>` at the top of `~/Projects/docs/changelog.mdx`. Headline + lead paragraph + 3–5 `**Bold lead-noun** — consequence-first` bullets per `CHANGELOG_VOICE.md`. The user-visible change is: docs now lead with the operational-outcome problem, install instructions show the one-liner first, and the posture-flip surface is documented. Internal cleanup (audit pass, vocabulary reconciliation) gets aggressive trimming or omission per voice rules.
+One Mintlify `<Update>` at the top of `<docs-repo>/changelog.mdx`. Headline + lead paragraph + 3–5 `**Bold lead-noun** — consequence-first` bullets per `CHANGELOG_VOICE.md`. The user-visible change is: docs now lead with the operational-outcome problem, install instructions show the one-liner first, and the posture-flip surface is documented. Internal cleanup (audit pass, vocabulary reconciliation) gets aggressive trimming or omission per voice rules.
 
 ---
 
@@ -161,7 +161,7 @@ If the implementing agent finds any of these shapes differ from what is currentl
 | Mintlify build break | A reordered hero or new `<Tabs>` block breaks docs.json navigation or component rendering. | Run `mintlify dev` locally before commit; the build must render with no errors. CI surfaces broken links and component errors. |
 | Stale-claim cascade | The audit surfaces a stale claim that requires a code/architecture fix, not a docs fix (e.g., a doctor check name the code uses differs from arch). | STOP and surface to Captain. Architecture Consult Guard fires — the doc wins until reconciled, but if arch and code disagree, this is a separate spec. Do not patch the doc to match incorrect code. |
 | `<Update>` entry voice drift | The changelog entry slips into marketing language banned by `CHANGELOG_VOICE.md` ("seamless", "powerful", "magical"). | Lint-pass before commit. The voice rules ship with a grep allowlist; fail closed. |
-| Cross-repo write friction | This spec lives in `~/Projects/usezombie/` but the edits land in `~/Projects/docs/`. Implementer must use the docs repo's own branch flow. | Per `AGENTS.md` Operational defaults: `cd ~/Projects/docs && git status`, branch off main (`chore/m72-docs-user-voice-audit-changelog` or similar), commit there. The spec stays in usezombie; the docs PR carries the audit. |
+| Cross-repo write friction | This spec lives in the usezombie repo but the edits land in the `usezombie/docs` repo. Implementer must use the docs repo's own branch flow. | Per `AGENTS.md` Operational defaults: in the docs repo, `git status`, branch off main (`chore/m72-docs-user-voice-audit-changelog` or similar), commit there. The spec stays in usezombie; the docs PR carries the audit. |
 
 ---
 
@@ -193,11 +193,11 @@ If the implementing agent finds any of these shapes differ from what is currentl
 ## Acceptance Criteria
 
 - [ ] Every file in *Files Changed* (except the spec itself) has been edited per §1–§6, with the diff scoped to voice / install paths / stale claims — no opportunistic refactors. Verify: `git diff --stat origin/main -- ':(exclude)docs/v2/pending/'` lists exactly the files in the table.
-- [ ] Install-path primary-first ordering. Verify: `grep -rn 'usezombie.sh/skills.md\|skills add usezombie' ~/Projects/docs/*.mdx ~/Projects/docs/zombies/*.mdx ~/Projects/docs/cli/*.mdx` shows `skills add` line numbers strictly lower than `skills.md` line numbers in every file that contains both.
-- [ ] No stale webhook URL. Verify: `! grep -rn 'webhooks/{zombie_id}"' ~/Projects/docs/*.mdx ~/Projects/docs/zombies/*.mdx ~/Projects/docs/cli/*.mdx | grep -v '/{source}\|/{url_secret}'`
-- [ ] Doctor table complete. Verify: `grep -c 'auth_token_present\|server_reachable\|workspace_selected\|workspace_binding_valid\|tenant_provider' ~/Projects/docs/cli/install.mdx` returns `5`.
-- [ ] Mintlify build clean. Verify: `cd ~/Projects/docs && mintlify build 2>&1 | grep -E 'error|warning' | head` empty.
-- [ ] Changelog entry lands at the top of `changelog.mdx`, passes voice lint. Verify: `head -50 ~/Projects/docs/changelog.mdx | grep -E 'seamless\|powerful\|magical\|robust'` empty.
+- [ ] Install-path primary-first ordering. Verify: `grep -rn 'usezombie.sh/skills.md\|skills add usezombie' <docs-repo>/*.mdx <docs-repo>/zombies/*.mdx <docs-repo>/cli/*.mdx` shows `skills add` line numbers strictly lower than `skills.md` line numbers in every file that contains both.
+- [ ] No stale webhook URL. Verify: `! grep -rn 'webhooks/{zombie_id}"' <docs-repo>/*.mdx <docs-repo>/zombies/*.mdx <docs-repo>/cli/*.mdx | grep -v '/{source}\|/{url_secret}'`
+- [ ] Doctor table complete. Verify: `grep -c 'auth_token_present\|server_reachable\|workspace_selected\|workspace_binding_valid\|tenant_provider' <docs-repo>/cli/install.mdx` returns `5`.
+- [ ] Mintlify build clean. Verify: `cd "$DOCS_REPO" && mintlify build 2>&1 | grep -E 'error|warning' | head` empty.
+- [ ] Changelog entry lands at the top of `changelog.mdx`, passes voice lint. Verify: `head -50 <docs-repo>/changelog.mdx | grep -E 'seamless\|powerful\|magical\|robust'` empty.
 - [ ] Each command shown in the published docs has been confirmed against `--help` output of the corresponding shipped binary. Recorded in PR Session Notes one-per-command.
 - [ ] No file in the docs repo grows past 350 lines as a result of these edits.
 
@@ -207,31 +207,31 @@ If the implementing agent finds any of these shapes differ from what is currentl
 
 ```bash
 # E1: install-path primary-first
-cd ~/Projects/docs && for f in $(grep -l 'usezombie\.sh/skills\.md' index.mdx quickstart.mdx zombies/*.mdx cli/*.mdx 2>/dev/null); do
+cd "$DOCS_REPO" && for f in $(grep -l 'usezombie\.sh/skills\.md' index.mdx quickstart.mdx zombies/*.mdx cli/*.mdx 2>/dev/null); do
   a=$(grep -n 'skills add usezombie' "$f" | head -1 | cut -d: -f1)
   b=$(grep -n 'usezombie\.sh/skills\.md' "$f" | head -1 | cut -d: -f1)
   [ -n "$a" ] && [ -n "$b" ] && [ "$a" -gt "$b" ] && echo "FAIL $f: skills.md at $b before skills add at $a"
 done
 
 # E2: no unsuffixed webhook URL
-cd ~/Projects/docs && grep -rn 'webhooks/{zombie_id}"' *.mdx zombies/*.mdx cli/*.mdx 2>/dev/null \
+cd "$DOCS_REPO" && grep -rn 'webhooks/{zombie_id}"' *.mdx zombies/*.mdx cli/*.mdx 2>/dev/null \
   | grep -v '/{source}\|/{url_secret}' \
   && echo "FAIL: stale webhook URL" || echo "PASS"
 
 # E3: doctor checks complete
-cd ~/Projects/docs && for c in auth_token_present server_reachable workspace_selected workspace_binding_valid tenant_provider; do
+cd "$DOCS_REPO" && for c in auth_token_present server_reachable workspace_selected workspace_binding_valid tenant_provider; do
   grep -q "$c" cli/install.mdx || echo "FAIL: missing doctor check $c"
 done
 
 # E4: Mintlify build clean
-cd ~/Projects/docs && mintlify build 2>&1 | tail -20
+cd "$DOCS_REPO" && mintlify build 2>&1 | tail -20
 
 # E5: 350-line gate
-cd ~/Projects/docs && wc -l index.mdx quickstart.mdx concepts.mdx zombies/*.mdx cli/*.mdx changelog.mdx \
+cd "$DOCS_REPO" && wc -l index.mdx quickstart.mdx concepts.mdx zombies/*.mdx cli/*.mdx changelog.mdx \
   | awk '$1 > 350 { print "OVER: " $2 ": " $1 " lines" }'
 
 # E6: changelog voice lint
-head -60 ~/Projects/docs/changelog.mdx \
+head -60 <docs-repo>/changelog.mdx \
   | grep -iE 'seamless|powerful|magical|robust|effortless|game-chang' \
   && echo "FAIL: banned vocabulary in new changelog entry" || echo "PASS"
 
@@ -246,7 +246,7 @@ which npx && npx skills --help 2>&1 | head -20
 
 No files deleted by this spec. N/A — no orphaned references expected.
 
-If §3 (tool-vs-skill reconciliation) introduces a renamed internal anchor (e.g., `concepts.mdx#skill` → `concepts.mdx#tool`), grep the docs repo for inbound links and update them in the same diff. Verify: `grep -rn '/concepts#skill\|/concepts/skill' ~/Projects/docs/` returns zero after the edit.
+If §3 (tool-vs-skill reconciliation) introduces a renamed internal anchor (e.g., `concepts.mdx#skill` → `concepts.mdx#tool`), grep the docs repo for inbound links and update them in the same diff. Verify: `grep -rn '/concepts#skill\|/concepts/skill' <docs-repo>/` returns zero after the edit.
 
 ---
 
@@ -255,7 +255,7 @@ If §3 (tool-vs-skill reconciliation) introduces a renamed internal anchor (e.g.
 | When | Skill | What it does | Required output |
 |------|-------|--------------|-----------------|
 | After implementation, before CHORE(close) | `/write-unit-test` | DOCS spec — runs as a structural audit: does every claim in §Test Specification have a verifying grep/build check? No code tests are generated. | Audit report attached to PR Session Notes. |
-| After audit pass, still before CHORE(close) | `/review` | Adversarial pass against `~/Projects/usezombie/docs/architecture/*.md` — every claim in the touched docs must trace to an architecture section. Catches voice drift and invented CLI surface. | Findings dispositioned (fix / defer with reason). |
+| After audit pass, still before CHORE(close) | `/review` | Adversarial pass against `docs/architecture/*.md` — every claim in the touched docs must trace to an architecture section. Catches voice drift and invented CLI surface. | Findings dispositioned (fix / defer with reason). |
 | After `gh pr create` | `/review-pr` | Re-runs the review against the immutable PR diff. Catches anything `/review` missed once the changelog entry and final ordering land. | Comments addressed before requesting human review. |
 
 ---
