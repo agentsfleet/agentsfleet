@@ -58,7 +58,7 @@ export function resolveFixtureEmail(key: FixtureKey): string {
   const envName = key === "admin" ? "AUTH_E2E_ADMIN_EMAIL" : "AUTH_E2E_REGULAR_EMAIL";
   const value = process.env[envName];
   if (!value) {
-    throw new Error(`${envName} unset — workflow must resolve op://VAULT/e2e-fixtures/${key}/email`);
+    throw new Error(`${envName} unset — workflow must resolve op://VAULT/e2e-fixtures-email/${key}`);
   }
   if (/@mailinator\./i.test(value)) {
     throw new Error(`${envName} resolved to a mailinator domain — fixture-vault merge-gate violated`);

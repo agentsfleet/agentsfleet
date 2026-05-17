@@ -47,6 +47,7 @@ needs_lint_shell=0
 needs_check_openapi=0
 needs_check_schema_gate=0
 needs_check_gh_actions=0
+needs_harness_only=0
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
@@ -74,15 +75,16 @@ while IFS= read -r f; do
       needs_lint_shell=1 ;;
     *.json|*.yaml|*.yml)
       # Catch-all for stray config/manifest files staged outside a known
-      # surface prefix (root-level `package.json`, ad-hoc CI overlays,
-      # etc.). The old pre-classifier hook triggered on these
-      # unconditionally — route them through harness-verify so discipline
-      # gates still run instead of silently skipping all lint lanes.
-      needs_check_gh_actions=1 ;;
+      # surface prefix (root-level `package.json`, `docker-compose.yml`,
+      # `build.zig.zon`, ad-hoc CI overlays, etc.). These can't affect
+      # workflow YAML, so route them through harness-verify only —
+      # actionlint + the make-target-ref sweep cost ~30s and would
+      # always be wasted work for these files.
+      needs_harness_only=1 ;;
   esac
 done <<< "$staged"
 
-any_needed=$(( needs_lint_zig + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_zombiectl + needs_lint_shell + needs_check_openapi + needs_check_schema_gate + needs_check_gh_actions ))
+any_needed=$(( needs_lint_zig + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_zombiectl + needs_lint_shell + needs_check_openapi + needs_check_schema_gate + needs_check_gh_actions + needs_harness_only ))
 
 if [ "$any_needed" -eq 0 ]; then
   echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
