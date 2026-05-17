@@ -53,7 +53,7 @@ describe("Hero", () => {
     renderHero();
     const cta = screen.getByTestId("hero-cta-primary");
     expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
-    expect(cta.textContent).toMatch(/install in claude code/i);
+    expect(cta.textContent).toMatch(/get early access/i);
   });
 
   it("renders the secondary CTA pointing at /agents", () => {

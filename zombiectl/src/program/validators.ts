@@ -138,13 +138,14 @@ export function parseDurationOption(value: unknown): number {
     throw new InvalidArgumentError("expected a duration like 30m, 10s, 500ms, or 2h");
   }
   const digits = match[1] ?? "";
-  const unit = match[2] as "ms" | "s" | "m" | "h" | undefined;
+  // DURATION_RE constrains match[2] to keyof DURATION_FACTOR — the
+  // earlier null/`unit in DURATION_FACTOR` guard was dead code (regex
+  // can't produce any other unit). If a future regex change adds a
+  // new unit, extend DURATION_FACTOR in the same diff.
+  const unit = match[2] as keyof typeof DURATION_FACTOR;
   const n = Number.parseInt(digits, 10);
   if (n <= 0) {
     throw new InvalidArgumentError("duration must be positive");
-  }
-  if (!unit || !(unit in DURATION_FACTOR)) {
-    throw new InvalidArgumentError("expected a duration like 30m, 10s, 500ms, or 2h");
   }
   return n * DURATION_FACTOR[unit];
 }

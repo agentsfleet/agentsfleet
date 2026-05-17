@@ -84,7 +84,7 @@ export default function Agents() {
             actions={[
               { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },
               { label: "read the docs", to: DOCS_URL, variant: "ghost" },
-              { label: "open mission control", to: APP_BASE_URL, variant: "default" },
+              { label: "open dashboard", to: APP_BASE_URL, variant: "default" },
             ]}
           />
         </div>

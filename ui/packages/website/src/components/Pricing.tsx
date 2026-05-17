@@ -108,7 +108,7 @@ export default function Pricing() {
                 })
               }
             >
-              → install
+              → get early access
             </a>
           </Button>
         </Card>

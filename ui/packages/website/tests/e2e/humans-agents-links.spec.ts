@@ -86,7 +86,7 @@ test.describe("Cross-page link coverage", () => {
       page.locator('a[href="https://docs.usezombie.com"]').filter({ hasText: /read the docs/i }),
     ).toHaveCount(1);
     await expect(
-      page.locator("a").filter({ hasText: /open mission control/i }),
+      page.locator("a").filter({ hasText: /open dashboard/i }),
     ).toHaveAttribute("href", /app\.(dev\.)?usezombie\.com/);
 
     await expect(page.getByTestId("agents-openapi-link")).toHaveAttribute("href", "/openapi.json");

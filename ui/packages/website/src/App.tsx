@@ -67,7 +67,7 @@ export default function App() {
                 trackSignupStarted({ source: "header_install", surface: "header", mode: "humans" })
               }
             >
-              → install
+              → get early access
             </a>
           </Button>
         </div>

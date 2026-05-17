@@ -165,15 +165,15 @@ describe("Pricing component", () => {
     expect(screen.getByText(/priority support/i)).toBeInTheDocument();
   });
 
-  it("renders a single install CTA pointing at APP_BASE_URL", () => {
+  it("renders a single early-access CTA pointing at APP_BASE_URL", () => {
     renderPricing();
     const cta = screen.getByTestId("pricing-install-cta");
     expect(cta).toHaveAttribute("href", "https://app.dev.usezombie.com");
-    expect(cta.textContent).toMatch(/install/i);
+    expect(cta.textContent).toMatch(/get early access/i);
     expect(screen.queryByRole("link", { name: /upgrade/i })).not.toBeInTheDocument();
   });
 
-  it("install CTA hugs its content (self-start) instead of stretching to card width", () => {
+  it("early-access CTA hugs its content (self-start) instead of stretching to card width", () => {
     renderPricing();
     const cta = screen.getByTestId("pricing-install-cta");
     // The Slot composes the Button's classes onto the <a>. self-start
@@ -181,7 +181,7 @@ describe("Pricing component", () => {
     expect(cta.className).toMatch(/\bself-start\b/);
   });
 
-  it("install CTA fires trackSignupStarted (NOT signupCompleted — funnel hygiene) with pricing_install source", () => {
+  it("early-access CTA fires trackSignupStarted (NOT signupCompleted — funnel hygiene) with pricing_install source", () => {
     renderPricing();
     fireEvent.click(screen.getByTestId("pricing-install-cta"));
     expect(analytics.trackSignupStarted).toHaveBeenCalledWith({

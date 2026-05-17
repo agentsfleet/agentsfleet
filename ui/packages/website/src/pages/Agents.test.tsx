@@ -38,7 +38,7 @@ describe("Agents", () => {
       "href",
       "https://docs.usezombie.com",
     );
-    expect(screen.getByRole("link", { name: /open mission control/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open dashboard/i })).toBeInTheDocument();
   });
 
   it("renders bootstrap commands", () => {

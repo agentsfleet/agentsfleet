@@ -12,13 +12,17 @@ import {
   type AnalyticsClient,
 } from "./lib/analytics.ts";
 import {
+  cleanupTraces,
   clearCredentials,
   loadCredentials,
+  loadSession,
   loadWorkspaces,
   newIdempotencyKey,
   saveCredentials,
+  saveSession,
   saveWorkspaces,
   type Credentials,
+  type Session,
   type Workspaces,
 } from "./lib/state.ts";
 import { apiHeaders, request } from "./program/http-client.ts";
@@ -38,9 +42,8 @@ import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
 
-// VERSION is the source-of-truth `package.json` field, read once at module
-// load. `make sync-version` writes package.json + build.zig.zon together;
-// no manual edits to cli.ts to bump.
+// VERSION: source-of-truth package.json, read once. `make sync-version`
+// writes package.json + build.zig.zon together; no manual edits here.
 const PKG_JSON_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
 const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as { version: string };
 export const VERSION: string = pkgJson.version;
@@ -176,7 +179,11 @@ function errMessage(err: unknown): string {
   return String(err);
 }
 
-async function runPostActionAnalytics(lifecycle: Lifecycle, state: ProgramState): Promise<void> {
+async function runPostActionAnalytics(
+  lifecycle: Lifecycle,
+  state: ProgramState,
+  baseEventProps: Record<string, unknown>,
+): Promise<void> {
   const { ctx, analyticsClient, distinctId } = lifecycle;
   const analyticsContext = getCliAnalyticsContext(ctx);
   let eventDistinctId = distinctId;
@@ -187,18 +194,21 @@ async function runPostActionAnalytics(lifecycle: Lifecycle, state: ProgramState)
     eventDistinctId = extractDistinctIdFromToken(latestCreds.token ?? null) || distinctId;
     cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, EVT_USER_AUTHENTICATED, {
       command: lifecycle.lastCommand,
+      ...baseEventProps,
       ...analyticsContext,
     });
   }
   if (state.exitCode === 0 && lifecycle.lastCommand === "workspace.add") {
     cliAnalytics.trackCliEvent(analyticsClient, distinctId, EVT_WORKSPACE_CREATED, {
       command: lifecycle.lastCommand,
+      ...baseEventProps,
       ...analyticsContext,
     });
   }
   for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
     cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
       command: lifecycle.lastCommand || "unknown",
+      ...baseEventProps,
       ...analyticsContext,
       ...queuedEvent.properties,
     });
@@ -207,6 +217,7 @@ async function runPostActionAnalytics(lifecycle: Lifecycle, state: ProgramState)
 
 const EMPTY_CREDS: Credentials = { token: null, saved_at: null, session_id: null, api_url: null };
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
+const EMPTY_SESSION: Session = { device_id: "", session_id: "", last_activity: null };
 
 export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promise<number> {
   const stdout = (io.stdout ?? process.stdout) as WritableStreamLike;
@@ -221,14 +232,19 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   if (maybePrintVersion(argv, stdout, jsonMode, env)) return 0;
 
-  // Bare `zombiectl` (no args) — commander defaults to a "missing
-  // command" error on stderr; tests + operators expect help on stdout
-  // with exit 0. Promote empty argv to `--help` so it routes through
-  // commander's normal help path.
+  // Bare `zombiectl` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
-  const creds = await loadCredentials().catch(() => EMPTY_CREDS);
-  const workspaces = await loadWorkspaces().catch(() => EMPTY_WORKSPACES);
+  const [creds, workspaces, session] = await Promise.all([
+    loadCredentials().catch(() => EMPTY_CREDS),
+    loadWorkspaces().catch(() => EMPTY_WORKSPACES),
+    loadSession().catch(() => EMPTY_SESSION),
+  ]);
+  // Await so fast-exit paths flush device_id before process.exit. Skip
+  // on EMPTY_SESSION so we never clobber an unreadable session.json.
+  if (session.device_id !== "")
+    await saveSession({ ...session, last_activity: Date.now() }).catch(() => {});
+  void cleanupTraces();
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
@@ -242,6 +258,8 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     jsonMode,
     noOpen: false,
     noInput: false,
+    cliSessionId: session.session_id || null,
+    cliDeviceId: session.device_id || null,
     // Tests inject partial WritableStreamLike mocks (just `.write` + `isTTY`);
     // CommandCtx declares the field as the richer NodeJS.WritableStream because
     // that matches the production runtime. Narrowing the field type would
@@ -277,6 +295,9 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   installPreAction(program, ctx, state);
 
+  // commander + post-action events bypass runCommand; mirror its session base props.
+  const baseEventProps: Record<string, unknown> = { ...(ctx.cliSessionId ? { cli_session_id: ctx.cliSessionId } : {}), ...(ctx.cliDeviceId ? { cli_device_id: ctx.cliDeviceId } : {}) };
+
   try {
     await program.parseAsync(effectiveArgv, { from: "user" });
   } catch (err) {
@@ -288,6 +309,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
             command: lifecycle.lastCommand || "unknown",
             error_code: err.code === "commander.unknownCommand" ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
             exit_code: String(exitCode),
+            ...baseEventProps,
             ...getCliAnalyticsContext(ctx),
           });
         } catch {
@@ -305,6 +327,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
       command: lifecycle.lastCommand || "unknown",
       error_code: "UNEXPECTED",
       exit_code: "1",
+      ...baseEventProps,
       ...getCliAnalyticsContext(ctx),
     });
     const message = errMessage(err);
@@ -316,7 +339,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     return 1;
   } finally {
     try {
-      await runPostActionAnalytics(lifecycle, state);
+      await runPostActionAnalytics(lifecycle, state, baseEventProps);
     } finally {
       await cliAnalytics.shutdownCliAnalytics(analyticsClient);
     }
