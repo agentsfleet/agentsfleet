@@ -72,6 +72,13 @@ while IFS= read -r f; do
       needs_check_gh_actions=1 ;;
     scripts/*.sh)
       needs_lint_shell=1 ;;
+    *.json|*.yaml|*.yml)
+      # Catch-all for stray config/manifest files staged outside a known
+      # surface prefix (root-level `package.json`, ad-hoc CI overlays,
+      # etc.). The old pre-classifier hook triggered on these
+      # unconditionally — route them through harness-verify so discipline
+      # gates still run instead of silently skipping all lint lanes.
+      needs_check_gh_actions=1 ;;
   esac
 done <<< "$staged"
 

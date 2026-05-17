@@ -750,8 +750,11 @@ const ReadonlyThenPongOnNewSocket = struct {
             var buf: [256]u8 = undefined;
             const r = conn.stream.read(&buf) catch 0;
             if (r > 0) {
-                // Odd accepts (1st, 3rd, 5th…) return -READONLY then close →
-                // drives the retry layer. Even accepts (2nd, 4th…) reply +PONG
+                // `n` is the value `fetchAdd` returned BEFORE incrementing —
+                // 0-indexed accept counter. `n % 2 == 0` fires on n=0, 2, 4…
+                // which are the 1st, 3rd, 5th accepts. Those return
+                // -READONLY then close → drives the retry layer. The
+                // intervening 2nd, 4th, 6th accepts (n=1, 3, 5) reply +PONG
                 // on a fresh socket → completes the call.
                 if (n % 2 == 0) {
                     // pin test: literal is the contract — RESP error frame
@@ -925,7 +928,13 @@ const SigtermCtx = struct {
     }
 };
 
-test "Pool: deinit waits for in-flight workers to release before tearing down idle list" {
+test "Pool: deinit cleans up idle connections after in-flight workers have released" {
+    // Pool.deinit() has NO internal synchronization for active connections
+    // — it only drains the idle list. Caller discipline is mandatory:
+    // join every worker that may still hold a conn BEFORE calling deinit.
+    // This test exercises that discipline (worker_thread.join() preceding
+    // pool.deinit()) and asserts the active count is zero at the
+    // deinit barrier so the ordering invariant is explicit.
     const alloc = std.testing.allocator;
 
     var fake: PingFake = undefined;
@@ -948,11 +957,15 @@ test "Pool: deinit waits for in-flight workers to release before tearing down id
     // Wait for worker to have acquired before we begin teardown.
     while (!started.load(.acquire)) std.Thread.sleep(1 * std.time.ns_per_ms);
 
-    // Tell worker to finish, then deinit. Pool.deinit needs the conn
-    // returned before it can close idle. Without proper teardown
-    // discipline this would deadlock or leak.
+    // Signal worker, join it, THEN deinit. The join is what makes deinit
+    // safe — deinit itself does not wait for in-flight workers.
     keep_going.store(false, .release);
     worker_thread.join();
+    // Load-bearing ordering assertion: by the time we reach deinit, the
+    // worker has released its conn back to idle and active == 0. If a
+    // future refactor reorders join after deinit, this fires before the
+    // leak audit does.
+    try std.testing.expectEqual(@as(u32, 0), pool.stats().active);
     pool.deinit();
 
     // std.testing.allocator audit at scope-exit catches any leaked

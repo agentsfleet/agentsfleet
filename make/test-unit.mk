@@ -22,6 +22,8 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@$(MAKE) _lint_zig_test_depth
 
 test-unit-zombiectl:  ## Run zombiectl CLI unit tests (bun)
+	@echo "→ [zombiectl] Building dist/ (tests spawn dist/bin/zombiectl.js)..."
+	@cd zombiectl && bun run build >/dev/null
 	@echo "→ [zombiectl] Running Bun unit tests..."
 	@cd zombiectl && bun test
 	@echo "✓ [zombiectl] Unit tests passed"
