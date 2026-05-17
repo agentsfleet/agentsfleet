@@ -4,11 +4,11 @@
 **Milestone:** M71
 **Workstream:** 001
 **Date:** May 16, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — every operator session is a blind spot in analytics without session continuity; consent UX is frustrating (env-var-only)
 **Categories:** CLI
 **Batch:** B1 — solo workstream, no sibling dependencies
-**Branch:** feat/m71-cli-command-effects (to be created)
+**Branch:** feat/m71-001-cli-command-effects
 **Depends on:** M63_002_P1_CLI_TELEMETRY_CONSENT (analytics consent baseline), M63_006_P2_CLI_OBS_RUNCOMMAND_MIGRATION (runCommand boundary)
 **Provenance:** human-written (spec authored from Supabase CLI codebase audit)
 
