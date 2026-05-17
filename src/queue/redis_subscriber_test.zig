@@ -279,3 +279,100 @@ test "integration: subscriber with 100ms read_timeout returns null on a quiet ch
     try std.testing.expect(elapsed_ns >= RCVTIMEO_FLOOR_NS);
     try std.testing.expect(elapsed_ns < RCVTIMEO_CEILING_NS);
 }
+
+// ── #26: subscriber disconnect storm — 50 subscribers, no leak ─────────
+//
+// 50 subscribers connect to an in-process fake server in parallel
+// std.Threads, each subscribed to a channel. The fake accepts every
+// connection, sends a subscribe-ack, then closes the socket
+// (simulating broker death). Every nextMessage() returns null
+// (timeout/EOF) cleanly; every deinit() runs without leaking;
+// std.testing.allocator's scope-exit audit is the load-bearing
+// assertion. Trimmed from 100 to 50 to keep CPU-starved CI hosts
+// from flaking on thread-spawn pile-up.
+const AckThenCloseStorm = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+    accepts: std.atomic.Value(u32),
+
+    fn start(self: *AckThenCloseStorm) !void {
+        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.accepts = std.atomic.Value(u32).init(0);
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    fn shutdown(self: *AckThenCloseStorm) void {
+        self.stop.store(true, .release);
+        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn loop(self: *AckThenCloseStorm) void {
+        while (!self.stop.load(.acquire)) {
+            const conn = self.server.accept() catch return;
+            if (self.stop.load(.acquire)) {
+                conn.stream.close();
+                return;
+            }
+            _ = self.accepts.fetchAdd(1, .monotonic);
+            var buf: [256]u8 = undefined;
+            _ = conn.stream.read(&buf) catch {};
+            // pin test: literal is the contract — a valid RESP
+            // subscribe-ack array for channel "ch". The subscriber's
+            // ack parser advances past this; the immediate close
+            // afterwards surfaces as null on nextMessage.
+            conn.stream.writeAll("*3\r\n$9\r\nsubscribe\r\n$2\r\nch\r\n:1\r\n") catch {};
+            conn.stream.close();
+        }
+    }
+
+    fn url(self: *AckThenCloseStorm, alloc: std.mem.Allocator) ![]u8 {
+        return try std.fmt.allocPrint(alloc, "redis://127.0.0.1:{d}", .{self.addr.in.getPort()});
+    }
+};
+
+const SubscriberStormCtx = struct {
+    url: []const u8,
+    alloc: std.mem.Allocator,
+    ok: *std.atomic.Value(u32),
+
+    fn worker(self: *SubscriberStormCtx) void {
+        var sub = Subscriber.connectFromUrl(self.alloc, self.url, .{ .read_timeout_ms = 200 }) catch return;
+        defer sub.deinit();
+        sub.subscribe("ch") catch return;
+        if (sub.nextMessage()) |maybe| {
+            if (maybe) |m| {
+                var mm = m;
+                mm.deinit(self.alloc);
+            }
+        } else |_| {}
+        _ = self.ok.fetchAdd(1, .monotonic);
+    }
+};
+
+test "Subscriber storm: 50 subscribers against a closing broker — no leak, all teardown clean" {
+    const alloc = std.testing.allocator;
+
+    var fake: AckThenCloseStorm = undefined;
+    try fake.start();
+    defer fake.shutdown();
+
+    const url = try fake.url(alloc);
+    defer alloc.free(url);
+
+    var ok_count = std.atomic.Value(u32).init(0);
+    var ctx = SubscriberStormCtx{ .url = url, .alloc = alloc, .ok = &ok_count };
+
+    var threads: [50]std.Thread = undefined;
+    for (&threads) |*t| t.* = try std.Thread.spawn(.{}, SubscriberStormCtx.worker, .{&ctx});
+    for (threads) |t| t.join();
+
+    try std.testing.expectEqual(@as(u32, 50), ok_count.load(.monotonic));
+    try std.testing.expectEqual(@as(u32, 50), fake.accepts.load(.monotonic));
+}

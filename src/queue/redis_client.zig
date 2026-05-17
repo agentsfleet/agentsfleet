@@ -57,6 +57,20 @@ const MAX_ATTEMPTS: u8 = 2;
 pub const REDIS_REQUEST_TIMEOUT_MS_ENV = "REDIS_REQUEST_TIMEOUT_MS";
 pub const REDIS_REQUEST_TIMEOUT_MS_DEFAULT: u32 = 5000;
 
+/// Typed parse error for `parseRequestTimeoutMs`. `std.fmt.parseInt`'s
+/// variants leak across crates and don't carry the env-var identity;
+/// wrapping in a queue-layer error keeps the boot-path log site honest
+/// about which env knob misparsed.
+pub const ParseRequestTimeoutError = error{InvalidRequestTimeout};
+
+/// Parse a raw env-string into a request-timeout millisecond value.
+/// Pure helper — serve.zig wraps the env-read + log-and-exit ceremony
+/// around this. Tests can exercise the parser directly without env
+/// state or process-exit side effects.
+pub fn parseRequestTimeoutMs(raw: []const u8) ParseRequestTimeoutError!u32 {
+    return std.fmt.parseInt(u32, raw, 10) catch error.InvalidRequestTimeout;
+}
+
 pub const InitOptions = struct {
     /// `SO_RCVTIMEO` for every pooled Connection. Null = block forever
     /// (legacy / test harness). Production callers pass the env-derived
