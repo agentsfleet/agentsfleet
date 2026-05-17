@@ -150,13 +150,13 @@ pub const TestHarness = struct {
         // Wire the queue upfront so handlers that publish (PATCH zombie
         // status, webhooks, approvals, etc.) don't dereference undefined
         // memory. `make test-integration` always exports REDIS_URL_API.
-        // Failure is hard — silent skip would mask coverage gaps.
-        if (!h.tryConnectRedis()) {
-            h.server.stop();
-            h.thread.join();
-            h.server.deinit();
-            return error.RedisRequiredForTestHarness;
-        }
+        // Failure is hard — silent skip would mask coverage gaps. Return
+        // the error directly; the errdefer above owns the server+thread
+        // teardown. A manual stop+join+deinit here would double-call
+        // server.stop() (once explicit, once via errdefer) — the second
+        // write to a closed close_fd is a segfault under httpz's eventfd-
+        // based shutdown signalling (CI run on commit a446c2a7).
+        if (!h.tryConnectRedis()) return error.RedisRequiredForTestHarness;
         return h;
     }
 
