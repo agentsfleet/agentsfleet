@@ -12,13 +12,17 @@ import {
   type AnalyticsClient,
 } from "./lib/analytics.ts";
 import {
+  cleanupTraces,
   clearCredentials,
   loadCredentials,
+  loadSession,
   loadWorkspaces,
   newIdempotencyKey,
   saveCredentials,
+  saveSession,
   saveWorkspaces,
   type Credentials,
+  type Session,
   type Workspaces,
 } from "./lib/state.ts";
 import { apiHeaders, request } from "./program/http-client.ts";
@@ -207,6 +211,7 @@ async function runPostActionAnalytics(lifecycle: Lifecycle, state: ProgramState)
 
 const EMPTY_CREDS: Credentials = { token: null, saved_at: null, session_id: null, api_url: null };
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
+const EMPTY_SESSION: Session = { device_id: "", session_id: "", last_activity: null };
 
 export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promise<number> {
   const stdout = (io.stdout ?? process.stdout) as WritableStreamLike;
@@ -227,8 +232,14 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // commander's normal help path.
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
-  const creds = await loadCredentials().catch(() => EMPTY_CREDS);
-  const workspaces = await loadWorkspaces().catch(() => EMPTY_WORKSPACES);
+  const [creds, workspaces, session] = await Promise.all([
+    loadCredentials().catch(() => EMPTY_CREDS),
+    loadWorkspaces().catch(() => EMPTY_WORKSPACES),
+    loadSession().catch(() => EMPTY_SESSION),
+  ]);
+  // Persist rotated/fresh session + sweep expired traces. Fire-and-forget.
+  void saveSession({ ...session, last_activity: Date.now() }).catch(() => {});
+  void cleanupTraces();
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
@@ -242,6 +253,8 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     jsonMode,
     noOpen: false,
     noInput: false,
+    session_id: session.session_id || null,
+    device_id: session.device_id || null,
     // Tests inject partial WritableStreamLike mocks (just `.write` + `isTTY`);
     // CommandCtx declares the field as the richer NodeJS.WritableStream because
     // that matches the production runtime. Narrowing the field type would

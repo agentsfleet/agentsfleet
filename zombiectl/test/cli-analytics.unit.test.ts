@@ -65,8 +65,23 @@ async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
+// Pre-write session.json so the runCli loadSession() returns known
+// device_id/session_id. Otherwise the IDs are random UUIDs per run and
+// the deepEqual assertions below can't pin a stable shape. Mirrors what
+// every consumer of withStateDir below needs.
+const PINNED_DEVICE = "dev_test_fixed";
+const PINNED_SESSION = "ses_test_fixed";
+async function pinSession(dir: string): Promise<void> {
+  await fs.writeFile(
+    path.join(dir, "session.json"),
+    JSON.stringify({ device_id: PINNED_DEVICE, session_id: PINNED_SESSION, last_activity: Date.now() }),
+    { mode: 0o600 },
+  );
+}
+
 test("runCli tracks login success with post-login distinct id and shuts down analytics", async () => {
-  await withStateDir(async () => {
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
     await withAnalyticsStub(async () => {
       const events: TrackedEvent[] = [];
       let shutdownClient: AnalyticsClient | null | undefined = null;
@@ -136,13 +151,27 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
         client: analyticsClient,
         distinctId: "anonymous",
         event: "cli_command_started",
-        properties: { command: "login", json_mode: "false" },
+        properties: {
+          command: "login",
+          json_mode: "false",
+          session_id: PINNED_SESSION,
+          device_id: PINNED_DEVICE,
+        },
       });
+      // login's setCliAnalyticsContext({session_id: "sess_analytics"})
+      // overlays the CLI session_id during the handler — same key, login
+      // wins. device_id stays from the base since login doesn't touch it.
       assert.deepEqual(events[1], {
         client: analyticsClient,
         distinctId: "anonymous",
         event: "cli_command_finished",
-        properties: { command: "login", json_mode: "false", exit_code: "0", session_id: "sess_analytics" },
+        properties: {
+          command: "login",
+          json_mode: "false",
+          exit_code: "0",
+          session_id: "sess_analytics",
+          device_id: PINNED_DEVICE,
+        },
       });
       assert.deepEqual(events[2], {
         client: analyticsClient,
@@ -162,7 +191,8 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
 });
 
 test("runCli tracks workspace creation with existing distinct id", async () => {
-  await withStateDir(async () => {
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
     await withAnalyticsStub(async () => {
       const events: TrackedEvent[] = [];
       const analyticsClient = { name: "workspace-client" };
@@ -208,7 +238,12 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         client: analyticsClient,
         distinctId: "user_workspace_456",
         event: "cli_command_started",
-        properties: { command: "workspace.add", json_mode: "false" },
+        properties: {
+          command: "workspace.add",
+          json_mode: "false",
+          session_id: PINNED_SESSION,
+          device_id: PINNED_DEVICE,
+        },
       });
       assert.deepEqual(events[1], {
         client: analyticsClient,
@@ -218,6 +253,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
           command: "workspace.add",
           json_mode: "false",
           exit_code: "0",
+          session_id: PINNED_SESSION,
+          device_id: PINNED_DEVICE,
           workspace_id: "ws_123456789abc",
         },
       });

@@ -15,6 +15,7 @@ import {
   getCliAnalyticsContext,
   type AnalyticsClient,
 } from "./analytics.ts";
+import { appendTrace } from "./state.ts";
 import type { PresetMap } from "./error-map-presets.ts";
 
 const API_UNREACHABLE_CODE = "API_UNREACHABLE";
@@ -32,6 +33,8 @@ export interface HandlerCtx {
   distinctId?: string;
   analyticsContext?: Record<string, unknown> | null;
   retryConfig?: RetryConfig | null;
+  session_id?: string | null;
+  device_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -182,12 +185,17 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
   // setCliAnalyticsContext during execution have their additions
   // visible on cli_command_finished and cli_error (matching the
   // pre-migration cli.ts behavior of spreading analyticsContext
-  // post-handler).
-  const buildProps = (): Record<string, unknown> => ({
-    command: name,
-    json_mode: String(handlerCtx.jsonMode ?? false),
-    ...getCliAnalyticsContext(handlerCtx),
-  });
+  // post-handler). session_id/device_id flow through every emit so
+  // PostHog dashboards can correlate events to a CLI session.
+  const buildProps = (): Record<string, unknown> => {
+    const base: Record<string, unknown> = {
+      command: name,
+      json_mode: String(handlerCtx.jsonMode ?? false),
+    };
+    if (handlerCtx.session_id) base["session_id"] = handlerCtx.session_id;
+    if (handlerCtx.device_id) base["device_id"] = handlerCtx.device_id;
+    return { ...base, ...getCliAnalyticsContext(handlerCtx) };
+  };
 
   const renderOpts: RenderOpts = {
     handlerCtx,
@@ -205,15 +213,18 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
     trackEvent(analyticsClient, distinctId, "cli_command_started", buildProps());
   }
 
+  const startMs = Date.now();
+  let finalExit = 1;
   try {
     const exitCode = await handler(handlerCtx);
+    finalExit = typeof exitCode === "number" ? exitCode : 0;
     if (instrument) {
       trackEvent(analyticsClient, distinctId, "cli_command_finished", {
         ...buildProps(),
-        exit_code: String(exitCode ?? 0),
+        exit_code: String(finalExit),
       });
     }
-    return typeof exitCode === "number" ? exitCode : 0;
+    return finalExit;
   } catch (err) {
     if (err instanceof ApiError) {
       const remap = errorMap[err.code ?? ""];
@@ -227,6 +238,7 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
       const finalMessage = remap?.message ?? err.message;
       emitCliError(renderOpts, analyticsCode);
       renderApi(renderOpts, displayCode, finalMessage, err);
+      finalExit = 1;
       return 1;
     }
 
@@ -234,6 +246,7 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
       const message = `cannot reach usezombie API at ${handlerCtx.apiUrl}`;
       emitCliError(renderOpts, API_UNREACHABLE_CODE);
       renderPlain(renderOpts, API_UNREACHABLE_CODE, message);
+      finalExit = 1;
       return 1;
     }
 
@@ -243,7 +256,20 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
         ? err.message
         : String(err);
     renderPlain(renderOpts, UNEXPECTED_CODE, fallback);
+    finalExit = 1;
     return 1;
+  } finally {
+    if (instrument) {
+      const durationMs = Date.now() - startMs;
+      await appendTrace({
+        ts: new Date().toISOString(),
+        command: name,
+        session_id: handlerCtx.session_id ?? null,
+        device_id: handlerCtx.device_id ?? null,
+        exit_code: finalExit,
+        duration_ms: durationMs,
+      });
+    }
   }
 }
 

@@ -1,9 +1,32 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { stateInternals } from "../src/lib/state.ts";
+import {
+  SESSION_TIMEOUT_MS,
+  appendTrace,
+  cleanupTraces,
+  loadSession,
+  saveSession,
+  stateInternals,
+} from "../src/lib/state.ts";
+
+async function withTempStateDir(fn: (dir: string) => Promise<void>): Promise<void> {
+  const previous = process.env.ZOMBIE_STATE_DIR;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-state-"));
+  process.env.ZOMBIE_STATE_DIR = dir;
+  try {
+    await fn(dir);
+  } finally {
+    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
+    else process.env.ZOMBIE_STATE_DIR = previous;
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 test("resolveStatePaths defaults to XDG-style zombiectl config directory", () => {
   const previous = process.env.ZOMBIE_STATE_DIR;
@@ -27,8 +50,118 @@ test("resolveStatePaths honors ZOMBIE_STATE_DIR override", () => {
     assert.equal(paths.baseDir, "/tmp/zombiectl-state-test");
     assert.equal(paths.credentialsPath, "/tmp/zombiectl-state-test/credentials.json");
     assert.equal(paths.workspacesPath, "/tmp/zombiectl-state-test/workspaces.json");
+    assert.equal(paths.sessionPath, "/tmp/zombiectl-state-test/session.json");
+    assert.equal(paths.tracesDir, "/tmp/zombiectl-state-test/traces");
   } finally {
     if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
     else process.env.ZOMBIE_STATE_DIR = previous;
   }
+});
+
+test("loadSession first-run generates UUID device_id and session_id", async () => {
+  await withTempStateDir(async () => {
+    const s = await loadSession();
+    assert.match(s.device_id, UUID_RE);
+    assert.match(s.session_id, UUID_RE);
+    assert.notEqual(s.device_id, s.session_id);
+    assert.equal(s.last_activity, null);
+  });
+});
+
+test("loadSession keeps device_id and session_id when within TTL", async () => {
+  await withTempStateDir(async (dir) => {
+    const pinned = {
+      device_id: "dev_pinned_42",
+      session_id: "ses_pinned_42",
+      last_activity: Date.now() - 60_000, // 1 min ago, well inside 30 min TTL
+    };
+    await fs.writeFile(path.join(dir, "session.json"), JSON.stringify(pinned), { mode: 0o600 });
+    const s = await loadSession();
+    assert.equal(s.device_id, pinned.device_id);
+    assert.equal(s.session_id, pinned.session_id);
+    assert.equal(s.last_activity, pinned.last_activity);
+  });
+});
+
+test("loadSession rotates session_id when last_activity is past TTL, keeps device_id", async () => {
+  await withTempStateDir(async (dir) => {
+    const stale = {
+      device_id: "dev_keep_me",
+      session_id: "ses_should_rotate",
+      last_activity: Date.now() - SESSION_TIMEOUT_MS - 60_000,
+    };
+    await fs.writeFile(path.join(dir, "session.json"), JSON.stringify(stale), { mode: 0o600 });
+    const s = await loadSession();
+    assert.equal(s.device_id, "dev_keep_me");
+    assert.notEqual(s.session_id, "ses_should_rotate");
+    assert.match(s.session_id, UUID_RE);
+  });
+});
+
+test("loadSession recovers from corrupt session.json with a fresh identity", async () => {
+  await withTempStateDir(async (dir) => {
+    await fs.writeFile(path.join(dir, "session.json"), "{ this is not valid json", { mode: 0o600 });
+    const s = await loadSession();
+    assert.match(s.device_id, UUID_RE);
+    assert.match(s.session_id, UUID_RE);
+  });
+});
+
+test("saveSession writes file at 0o600", async () => {
+  await withTempStateDir(async (dir) => {
+    await saveSession({ device_id: "d", session_id: "s", last_activity: 123 });
+    const stat = await fs.stat(path.join(dir, "session.json"));
+    assert.equal(stat.mode & 0o777, 0o600);
+  });
+});
+
+test("appendTrace writes one JSON line per call to today's NDJSON file", async () => {
+  await withTempStateDir(async (dir) => {
+    await appendTrace({ ts: "2026-05-17T12:00:00Z", command: "first", exit_code: 0, duration_ms: 1 });
+    await appendTrace({ ts: "2026-05-17T12:00:01Z", command: "second", exit_code: 1, duration_ms: 2 });
+    const today = new Date().toISOString().slice(0, 10);
+    const tracePath = path.join(dir, "traces", `${today}.ndjson`);
+    const body = await fs.readFile(tracePath, "utf8");
+    const lines = body.trim().split("\n");
+    assert.equal(lines.length, 2);
+    const first = JSON.parse(lines[0]!);
+    const second = JSON.parse(lines[1]!);
+    assert.equal(first.command, "first");
+    assert.equal(second.command, "second");
+    assert.equal(second.exit_code, 1);
+  });
+});
+
+test("appendTrace never throws even if mkdir or write fails (read-only baseDir)", async () => {
+  await withTempStateDir(async (dir) => {
+    // Pre-create traces as a regular file (not a dir) so mkdir recursive
+    // succeeds but appendFile rejects with EISDIR/EEXIST/etc. Either way
+    // the call must resolve.
+    await fs.writeFile(path.join(dir, "traces"), "not-a-dir");
+    await appendTrace({ ts: "x", command: "y", exit_code: 0, duration_ms: 0 }); // no throw
+  });
+});
+
+test("cleanupTraces removes files older than 7 days, preserves recent ones", async () => {
+  await withTempStateDir(async (dir) => {
+    const tracesDir = path.join(dir, "traces");
+    await fs.mkdir(tracesDir, { recursive: true });
+    const today = new Date().toISOString().slice(0, 10);
+    const oldDate = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const recentDate = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    await fs.writeFile(path.join(tracesDir, `${oldDate}.ndjson`), "");
+    await fs.writeFile(path.join(tracesDir, `${recentDate}.ndjson`), "");
+    await fs.writeFile(path.join(tracesDir, `${today}.ndjson`), "");
+    // Unparseable name — must be left alone.
+    await fs.writeFile(path.join(tracesDir, "not-a-trace.txt"), "");
+    await cleanupTraces();
+    const remaining = (await fs.readdir(tracesDir)).sort();
+    assert.deepEqual(remaining, [`${recentDate}.ndjson`, `${today}.ndjson`, "not-a-trace.txt"].sort());
+  });
+});
+
+test("cleanupTraces resolves without throwing when traces dir does not exist", async () => {
+  await withTempStateDir(async () => {
+    await cleanupTraces(); // no throw, no traces dir
+  });
 });

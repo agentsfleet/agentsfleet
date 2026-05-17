@@ -5,6 +5,9 @@
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import { ApiError } from "../src/lib/http.ts";
 import {
   runCommand,
@@ -230,4 +233,113 @@ test("resolveRetryConfig: covers all four input shapes", () => {
   assert.equal(runCommandInternals.resolveRetryConfig(true), null);
   assert.deepEqual(runCommandInternals.resolveRetryConfig(false), { maxAttempts: 1 });
   assert.deepEqual(runCommandInternals.resolveRetryConfig({ maxAttempts: 7 }), { maxAttempts: 7 });
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// §1 / §4 — session_id + device_id base props, NDJSON trace writes
+// ─────────────────────────────────────────────────────────────────────
+
+async function withTempStateDir(fn: (dir: string) => Promise<void>): Promise<void> {
+  const previous = process.env.ZOMBIE_STATE_DIR;
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "zombiectl-rc-"));
+  process.env.ZOMBIE_STATE_DIR = dir;
+  try {
+    await fn(dir);
+  } finally {
+    if (previous === undefined) delete process.env.ZOMBIE_STATE_DIR;
+    else process.env.ZOMBIE_STATE_DIR = previous;
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+}
+
+test("runCommand: session_id + device_id appear on started + finished events as base props", async () => {
+  await withTempStateDir(async () => {
+    const { events, trackCliEvent } = captureEvents();
+    const code = await runCommand({
+      name: "telecmd",
+      handler: async () => 0,
+      ctx: { jsonMode: false, apiUrl: "http://x", session_id: "ses_X", device_id: "dev_Y" },
+      deps: { trackCliEvent },
+    });
+    assert.equal(code, 0);
+    assert.equal(events[0]?.props.session_id, "ses_X");
+    assert.equal(events[0]?.props.device_id, "dev_Y");
+    assert.equal(events[1]?.props.session_id, "ses_X");
+    assert.equal(events[1]?.props.device_id, "dev_Y");
+  });
+});
+
+test("runCommand: writes one NDJSON trace line on success path", async () => {
+  await withTempStateDir(async (dir) => {
+    const { trackCliEvent } = captureEvents();
+    await runCommand({
+      name: "trace-ok",
+      handler: async () => 0,
+      ctx: { jsonMode: false, apiUrl: "http://x", session_id: "ses_T", device_id: "dev_T" },
+      deps: { trackCliEvent },
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const body = await fs.readFile(path.join(dir, "traces", `${today}.ndjson`), "utf8");
+    const lines = body.trim().split("\n");
+    assert.equal(lines.length, 1);
+    const rec = JSON.parse(lines[0]!);
+    assert.equal(rec.command, "trace-ok");
+    assert.equal(rec.exit_code, 0);
+    assert.equal(rec.session_id, "ses_T");
+    assert.equal(rec.device_id, "dev_T");
+    assert.equal(typeof rec.duration_ms, "number");
+    assert.ok(rec.duration_ms >= 0);
+    assert.match(rec.ts, /^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+test("runCommand: trace line on ApiError path has exit_code=1", async () => {
+  await withTempStateDir(async (dir) => {
+    const { trackCliEvent } = captureEvents();
+    const w = captureWriter();
+    await runCommand({
+      name: "trace-err",
+      handler: async () => { throw new ApiError("boom", { status: 400, code: "UZ-VAL-001" }); },
+      ctx: { stderr: STDERR_STUB, jsonMode: false, apiUrl: "http://x", session_id: "ses_E", device_id: "dev_E" },
+      deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
+    });
+    const today = new Date().toISOString().slice(0, 10);
+    const body = await fs.readFile(path.join(dir, "traces", `${today}.ndjson`), "utf8");
+    const rec = JSON.parse(body.trim());
+    assert.equal(rec.command, "trace-err");
+    assert.equal(rec.exit_code, 1);
+  });
+});
+
+test("runCommand: trace write failure does not break exit-code contract", async () => {
+  await withTempStateDir(async (dir) => {
+    // Pre-create traces as a regular file so appendFile inside appendTrace
+    // rejects; appendTrace swallows; runCommand returns the handler's 0.
+    await fs.writeFile(path.join(dir, "traces"), "blocking");
+    const { trackCliEvent } = captureEvents();
+    const code = await runCommand({
+      name: "trace-blocked",
+      handler: async () => 0,
+      ctx: { jsonMode: false, apiUrl: "http://x" },
+      deps: { trackCliEvent },
+    });
+    assert.equal(code, 0);
+  });
+});
+
+test("runCommand: instrument=false suppresses trace writes", async () => {
+  await withTempStateDir(async (dir) => {
+    const { trackCliEvent } = captureEvents();
+    await runCommand({
+      name: "silent",
+      handler: async () => 0,
+      instrument: false,
+      ctx: { jsonMode: false, apiUrl: "http://x", session_id: "ses_S", device_id: "dev_S" },
+      deps: { trackCliEvent },
+    });
+    const tracesDir = path.join(dir, "traces");
+    let exists = true;
+    try { await fs.stat(tracesDir); } catch { exists = false; }
+    assert.equal(exists, false, "no traces dir should exist when instrument=false");
+  });
 });
