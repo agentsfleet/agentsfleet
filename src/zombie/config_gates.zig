@@ -5,11 +5,9 @@
 // Types are re-exported by config.zig for use by approval_gate.zig.
 
 const std = @import("std");
-const logging = @import("log");
 const Allocator = std.mem.Allocator;
 const ec = @import("../errors/error_registry.zig");
 
-const log = logging.scoped(.zombie_config_gates);
 
 pub const GateBehavior = enum { approve, auto_kill };
 

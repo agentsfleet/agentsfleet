@@ -1,4 +1,5 @@
 import { request } from "./client";
+import { requestWithRetry, type RetryOptions } from "./retry";
 
 // Operator-visible event rows from `core.zombie_events`. Mirrors the
 // server's `EventRow` envelope verbatim (no shim, no rename) — the
@@ -59,11 +60,13 @@ export async function listZombieEvents(
   zombieId: string,
   token: string,
   opts?: Omit<EventsQuery, "zombie_id">,
+  retry?: RetryOptions,
 ): Promise<EventsPage> {
-  return request<EventsPage>(
+  return requestWithRetry<EventsPage>(
     `/v1/workspaces/${workspaceId}/zombies/${zombieId}/events${buildQuery(opts)}`,
     { method: "GET" },
     token,
+    retry,
   );
 }
 

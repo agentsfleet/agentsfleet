@@ -17,7 +17,7 @@ jobs:
     container:
       image: ghcr.io/usezombie/ci-zig-ubuntu:0.15.2
     env:
-      ZLINT_VERSION: v0.7.9
+      ZLINT_VERSION: v0.8.1
     steps:
       - uses: actions/checkout@v6
       - name: Install ZLint

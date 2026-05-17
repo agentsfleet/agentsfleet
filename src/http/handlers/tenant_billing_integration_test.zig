@@ -12,7 +12,6 @@ const auth_mw = @import("../../auth/middleware/mod.zig");
 
 const tenant_billing = @import("../../state/tenant_billing.zig");
 const metering = @import("../../zombie/metering.zig");
-const balance_policy = @import("../../config/balance_policy.zig");
 
 const harness_mod = @import("../test_harness.zig");
 const TestHarness = harness_mod.TestHarness;
@@ -70,10 +69,10 @@ fn seedTenantAndWorkspace(conn: *pg.Conn, tenant_id: []const u8, now_ms: i64) !v
 }
 
 fn teardown(conn: *pg.Conn, tenant_id: []const u8) void {
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{tenant_id}) catch {};
-    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch {};
+    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM tenants WHERE tenant_id = $1::uuid", .{tenant_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 
@@ -102,16 +101,28 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         .stop,
     ));
 
-    // Drain the entire starter grant; stop policy must now block.
-    _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
-    try std.testing.expect(!metering.balanceCoversEstimate(
-        db_ctx.pool,
-        alloc,
-        TEST_TENANT_ID,
-        .self_managed,
-        "any-model",
-        .stop,
-    ));
+    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS,
+    // so the "drained balance + stop policy must block" assertion below is
+    // unreachable — drain leaves balance=0 and est_total=0, so balanceCovers
+    // Estimate returns true. Skip that half until post-trial; the fail-open
+    // half (.warn / .@"continue" below) still exercises today.
+    const trial_active = blk: {
+        const b = (try tenant_billing.getBilling(db_ctx.conn, alloc, TEST_TENANT_ID)).?;
+        defer alloc.free(@constCast(b.grant_source));
+        break :blk b.free_trial_active;
+    };
+    if (!trial_active) {
+        // Drain the entire starter grant; stop policy must now block.
+        _ = try tenant_billing.debit(db_ctx.conn, TEST_TENANT_ID, tenant_billing.STARTER_CREDIT_NANOS);
+        try std.testing.expect(!metering.balanceCoversEstimate(
+            db_ctx.pool,
+            alloc,
+            TEST_TENANT_ID,
+            .self_managed,
+            "any-model",
+            .stop,
+        ));
+    }
 
     // Non-stop policies fail-open — the event passes the gate even at 0¢.
     try std.testing.expect(metering.balanceCoversEstimate(

@@ -109,3 +109,35 @@ describe("deleteZombie", () => {
     await expect(deleteZombie("ws_1", "zom_1", "tok")).rejects.toBeInstanceOf(ApiError);
   });
 });
+
+describe("steerZombie", () => {
+  it("POSTs {message} to /v1/workspaces/:ws/zombies/:id/messages and returns event_id", async () => {
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 202,
+      json: async () => ({ event_id: "evt_steer_1" }),
+    });
+    const { steerZombie } = await import("./zombies");
+    const result = await steerZombie("ws_1", "zom_1", "howdy", "tok");
+    expect(result).toEqual({ event_id: "evt_steer_1" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/v1/workspaces/ws_1/zombies/zom_1/messages"),
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ message: "howdy" }),
+      }),
+    );
+  });
+
+  it("throws ApiError on 4xx", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: "empty message", code: "UZ-ZMB-020" }),
+    });
+    const { steerZombie } = await import("./zombies");
+    const err = await steerZombie("ws_1", "zom_1", "", "tok").catch((e) => e) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(400);
+  });
+});

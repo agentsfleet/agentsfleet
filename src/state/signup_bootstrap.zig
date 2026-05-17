@@ -132,7 +132,7 @@ pub fn bootstrapTransaction(
         // short-circuits when the connection is in FAIL state after a
         // unique-violation, leaving the session stuck in an aborted tx.
         // rollback() uses execIgnoringState specifically for this case.
-        conn.rollback() catch {};
+        conn.rollback() catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     };
 
     const now_ms = std.time.milliTimestamp();

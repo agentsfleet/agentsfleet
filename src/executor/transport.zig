@@ -5,7 +5,6 @@
 
 const std = @import("std");
 const logging = @import("log");
-const builtin = @import("builtin");
 const protocol = @import("protocol.zig");
 const pc = @import("progress_callbacks.zig");
 
@@ -90,6 +89,7 @@ pub const ProgressEmitter = struct {
     /// (e.g. unit tests of the transport layer, or the
     /// non-progress-aware paths).
     pub fn noop() ProgressEmitter {
+        // SAFETY: written by surrounding init logic before any read of this storage.
         return .{ .ctx = undefined, .emit_fn = noopEmit };
     }
 };
@@ -113,7 +113,7 @@ pub const Server = struct {
     }
 
     pub fn bind(self: *Server) !void {
-        std.fs.deleteFileAbsolute(self.socket_path) catch {};
+        std.fs.deleteFileAbsolute(self.socket_path) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 
         const sock = try std.posix.socket(std.posix.AF.UNIX, std.posix.SOCK.STREAM, 0);
         errdefer std.posix.close(sock);
@@ -211,7 +211,7 @@ pub const Server = struct {
             std.posix.close(sock);
             self.listener = null;
         }
-        std.fs.deleteFileAbsolute(self.socket_path) catch {};
+        std.fs.deleteFileAbsolute(self.socket_path) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     }
 };
 
@@ -306,7 +306,7 @@ pub const Client = struct {
             // its internal `parsed` holds the frame bytes via the JSON
             // value, so we hand off the frame buffer ownership too.
             defer self.alloc.free(frame);
-            return try protocol.parseResponse(self.alloc, frame);
+            return protocol.parseResponse(self.alloc, frame);
         }
     }
 

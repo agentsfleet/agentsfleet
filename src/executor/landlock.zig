@@ -11,7 +11,6 @@
 const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
-const executor_metrics = @import("executor_metrics.zig");
 
 const log = logging.scoped(.executor_landlock);
 

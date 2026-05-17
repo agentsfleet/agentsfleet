@@ -71,7 +71,7 @@ fn tryAcquireMigrationLock(conn: *Conn) !bool {
     var result = PgQuery.from(try conn.query("SELECT pg_try_advisory_lock($1)", .{MigrationAdvisoryLockKey}));
     defer result.deinit();
     const row = try result.next() orelse return false;
-    return try row.get(bool, 0);
+    return row.get(bool, 0);
 }
 
 fn acquireMigrationLock(conn: *Conn) !void {
@@ -93,11 +93,11 @@ fn markMigrationFailure(conn: *Conn, version: i32, err: anyerror) void {
         \\ON CONFLICT (version) DO UPDATE
         \\SET failed_at = EXCLUDED.failed_at,
         \\    error_text = EXCLUDED.error_text
-    , .{ version, ts, @errorName(err) }) catch {};
+    , .{ version, ts, @errorName(err) }) catch |xerr| log.warn("ignored_error", .{ .err = @errorName(xerr) });
 }
 
 fn clearMigrationFailure(conn: *Conn, version: i32) void {
-    _ = conn.exec("DELETE FROM audit.schema_migration_failures WHERE version = $1", .{version}) catch {};
+    _ = conn.exec("DELETE FROM audit.schema_migration_failures WHERE version = $1", .{version}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 }
 
 /// Delete rows in audit.schema_migrations + schema_migration_failures whose
@@ -125,7 +125,7 @@ fn reapOrphanedMigrationRows(conn: *Conn, migrations: []const Migration) !void {
         .{canonical_list},
     );
     defer allocator.free(reap_migrations_sql);
-    const reaped = conn.exec(reap_migrations_sql, .{}) catch |err| return err;
+    const reaped = try conn.exec(reap_migrations_sql, .{});
     if (reaped != null and reaped.? > 0) {
         log.info("migration_reap", .{ .reaped = reaped.?, .scope = "orphan_rows" });
     }
@@ -136,14 +136,14 @@ fn reapOrphanedMigrationRows(conn: *Conn, migrations: []const Migration) !void {
         .{canonical_list},
     );
     defer allocator.free(reap_failures_sql);
-    _ = conn.exec(reap_failures_sql, .{}) catch |err| return err;
+    _ = try conn.exec(reap_failures_sql, .{});
 }
 
 fn maxAppliedMigrationVersion(conn: *Conn) !i32 {
     var result = PgQuery.from(try conn.query("SELECT COALESCE(MAX(version), 0) FROM audit.schema_migrations", .{}));
     defer result.deinit();
     const row = try result.next() orelse return 0;
-    return try row.get(i32, 0);
+    return row.get(i32, 0);
 }
 
 fn logPgErrorContext(conn: *Conn, op: []const u8) void {
@@ -215,7 +215,7 @@ fn commitTx(conn: *Conn) !void {
 fn rollbackTx(conn: *Conn) void {
     // conn.rollback() handles the FAIL-state case where exec("ROLLBACK")
     // would silently no-op and leave the session in an aborted tx.
-    conn.rollback() catch {};
+    conn.rollback() catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 }
 
 pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !MigrationState {

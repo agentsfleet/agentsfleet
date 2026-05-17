@@ -2,8 +2,6 @@ const std = @import("std");
 const control_stream = @import("control_stream.zig");
 const redis_protocol = @import("../queue/redis_protocol.zig");
 
-const Decoded = control_stream.Decoded;
-const ControlMessage = control_stream.ControlMessage;
 const MessageType = control_stream.MessageType;
 const ZombieStatus = control_stream.ZombieStatus;
 const RespValue = redis_protocol.RespValue;

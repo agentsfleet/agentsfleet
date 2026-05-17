@@ -1,7 +1,6 @@
 //! Approval inbox invokes — kept in a sibling file so route_table_invoke.zig
 //! stays under the file-length budget.
 
-const std = @import("std");
 const httpz = @import("httpz");
 const router = @import("router.zig");
 const common = @import("handlers/common.zig");

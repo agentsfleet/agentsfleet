@@ -19,6 +19,9 @@
 const std = @import("std");
 const pg = @import("pg");
 
+
+const logging = @import("log");
+const log = logging.scoped(.pg_query);
 pub const PgQuery = struct {
     inner: *pg.Result,
 
@@ -54,7 +57,7 @@ pub const PgQuery = struct {
     /// caller already touches indirectly.
     pub fn drain(self: *PgQuery) void {
         if (self.inner._conn._state != .query) return;
-        self.inner.drain() catch {};
+        self.inner.drain() catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     }
 
     /// Drain remaining rows then release the result. Always call via defer.

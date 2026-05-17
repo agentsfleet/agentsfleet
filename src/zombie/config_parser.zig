@@ -1,7 +1,7 @@
 // Zombie config JSON parser.
 //
 // Parses the `config_json` value (server-derived from TRIGGER.md
-// frontmatter) into a ZombieConfig. The runtime keys (`trigger`, `tools`,
+// frontmatter) into a ZombieConfig. The runtime keys (`triggers`, `tools`,
 // `credentials`, `network`, `budget`, `gates`) live under the `x-usezombie:`
 // top-level object; `name` is the only top-level field outside that block.
 // Field parsers take the runtime ObjectMap (the inside of `x-usezombie:`),
@@ -35,7 +35,7 @@ const freeZombieTrigger = config_types.freeZombieTrigger;
 const S_CONTEXT = "context";
 const S_CONTEXT_CAP_TOKENS = "context_cap_tokens";
 const S_NETWORK = "network";
-const S_TRIGGER = "trigger";
+const S_TRIGGERS = "triggers";
 const S_SKILL = "skill";
 const S_BUDGET = "budget";
 const S_GATES = "gates";
@@ -68,8 +68,11 @@ pub fn parseZombieConfig(
     const name = try parseNameField(alloc, root);
     errdefer alloc.free(name);
 
-    const trigger = try parseTriggerField(alloc, runtime);
-    errdefer freeZombieTrigger(alloc, trigger);
+    const triggers = try parseTriggersField(alloc, runtime);
+    errdefer {
+        for (triggers) |t| freeZombieTrigger(alloc, t);
+        alloc.free(triggers);
+    }
 
     const tools = try parseToolsField(alloc, runtime);
     errdefer freeStringSlice(alloc, tools);
@@ -86,8 +89,8 @@ pub fn parseZombieConfig(
 
     try validate.validateCredentials(credentials);
 
-    const extended = try parseExtendedFields(alloc, runtime);
-    errdefer if (extended.skill) |s| alloc.free(s);
+    const skill = try parseSkillRef(alloc, runtime);
+    errdefer if (skill) |s| alloc.free(s);
 
     const model = try parseModelField(alloc, runtime);
     errdefer if (model) |s| alloc.free(s);
@@ -95,13 +98,13 @@ pub fn parseZombieConfig(
 
     return ZombieConfig{
         .name = name,
-        .trigger = trigger,
+        .triggers = triggers,
         .tools = tools,
         .credentials = credentials,
         .network = network,
         .budget = budget,
         .gates = gates,
-        .skill = extended.skill,
+        .skill = skill,
         .model = model,
         .context = ctx,
     };
@@ -116,8 +119,8 @@ pub fn parseZombieConfig(
 /// no error surfaced).
 fn ensureRuntimeKeysNotAtTopLevel(root: std.json.ObjectMap) ZombieConfigError!void {
     const forbidden = [_][]const u8{
-        S_TRIGGER, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
-        S_GATES,   S_SKILL, S_MODEL,       S_CONTEXT,
+        S_TRIGGERS, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_GATES,    S_SKILL, S_MODEL,       S_CONTEXT,
     };
     for (forbidden) |k| {
         if (root.get(k) != null) return ZombieConfigError.RuntimeKeysOutsideBlock;
@@ -139,7 +142,7 @@ fn extractRuntimeBlock(root: std.json.ObjectMap) ZombieConfigError!std.json.Obje
 /// authoring error. Typos must fail loud.
 fn ensureKnownRuntimeKeys(runtime: std.json.ObjectMap) ZombieConfigError!void {
     const known = [_][]const u8{
-        S_TRIGGER, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
+        S_TRIGGERS, S_TOOLS, S_CREDENTIALS, S_NETWORK, S_BUDGET,
         S_GATES,   S_SKILL, S_MODEL,       S_CONTEXT,
     };
     var it = runtime.iterator();
@@ -167,16 +170,16 @@ fn parseNameField(
     return try alloc.dupe(u8, s);
 }
 
-fn parseTriggerField(
+fn parseTriggersField(
     alloc: Allocator,
     root: std.json.ObjectMap,
-) (Allocator.Error || ZombieConfigError)!ZombieTrigger {
-    const val = root.get(S_TRIGGER) orelse return ZombieConfigError.MissingRequiredField;
-    const obj = switch (val) {
-        .object => |o| o,
+) (Allocator.Error || ZombieConfigError)![]const ZombieTrigger {
+    const val = root.get(S_TRIGGERS) orelse return ZombieConfigError.MissingRequiredField;
+    const arr = switch (val) {
+        .array => |a| a,
         else => return ZombieConfigError.MissingRequiredField,
     };
-    return helpers.parseZombieTrigger(alloc, obj);
+    return helpers.parseZombieTriggers(alloc, arr.items);
 }
 
 fn parseToolsField(
@@ -238,18 +241,6 @@ fn parseGatesField(
         error.OutOfMemory => return error.OutOfMemory,
         else => return ZombieConfigError.MissingRequiredField,
     };
-}
-
-const ExtendedFields = struct {
-    skill: ?[]const u8,
-};
-
-fn parseExtendedFields(
-    alloc: Allocator,
-    root: std.json.ObjectMap,
-) (Allocator.Error || ZombieConfigError)!ExtendedFields {
-    const skill_ref = try parseSkillRef(alloc, root);
-    return .{ .skill = skill_ref };
 }
 
 fn parseSkillRef(
