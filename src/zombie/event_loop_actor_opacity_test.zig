@@ -175,6 +175,17 @@ test "actor opacity: writepath SQL binds actor as a single positional parameter"
         "position(",
         "starts_with(actor",
         "left(actor",
+        // Additional PG string-introspection functions a future regression
+        // could reach for; each would let the platform peek at the actor
+        // prefix and break opacity. Extend if PG adds new actor-aware
+        // string ops in a future release.
+        "split_part(actor",
+        "substr(actor",
+        "substring(actor",
+        "regexp_match",
+        "regexp_replace(actor",
+        "octet_length(actor",
+        "char_length(actor",
     };
     for (ANTI_PATTERNS) |pat| {
         if (std.mem.indexOf(u8, writepath_src, pat) != null) {
