@@ -20,12 +20,10 @@
 //! cannot block log emit on a different thread.
 //!
 //! Safety properties:
-//!   • `snapshot` returns an OWNED copy — caller frees with bs.alloc.
-//!     A live-slice return raced with concurrent emits' ArrayList
-//!     realloc, turning indexOf into use-after-free.
-//!   • `deinit` self-unregisters then drains its per-sink mutex, so
-//!     the API is safe against defer-ordering bugs that would leave
-//!     a stack-freed ctx in the global registry.
+//!   • `snapshot` returns OWNED bytes (caller frees with bs.alloc) —
+//!     a live-slice return raced with concurrent ArrayList realloc.
+//!   • `deinit` unregisters then drains `emit_in_flight` before
+//!     freeing — closes the snapshot-then-emit UAF window.
 
 const std = @import("std");
 
@@ -53,6 +51,9 @@ const MAX_SINKS: usize = 4;
 var sinks_buf: [MAX_SINKS]Sink = undefined;
 var sinks_len: usize = 0;
 var sinks_mutex: std.Thread.Mutex = .{};
+// In-flight emits — bumped under sinks_mutex (atomic w/ snapshot),
+// drained by unregisterByCtx so deinit can't free a snapshotted ctx.
+var emit_in_flight: std.atomic.Value(usize) = .{ .raw = 0 };
 
 /// Sentinel pointer for stateless sinks (stderr, OTLP). Never read by
 /// the emit fn — just satisfies the `*anyopaque` non-null contract.
@@ -81,13 +82,13 @@ pub fn sinksRegistered() bool {
     return sinks_len > 0;
 }
 
-// Remove every entry whose `ctx` matches. Used by `BufferedSink.deinit`
-// so a single bs.deinit() pulls all of its registrations out of the
-// registry, regardless of how many times the same sink was registered.
-// Compacts in place so other sinks keep their positions.
+// Remove every entry whose `ctx` matches AND drain any concurrent
+// `emitToSinks` that snapshotted the registry before our removal. Used
+// by `BufferedSink.deinit` so a single bs.deinit() (1) pulls all the
+// caller's registrations out and (2) blocks until any prior snapshot
+// has finished fan-out, making the ctx safe to free.
 fn unregisterByCtx(ctx: *const anyopaque) void {
     sinks_mutex.lock();
-    defer sinks_mutex.unlock();
     var write_idx: usize = 0;
     for (sinks_buf[0..sinks_len]) |s| {
         if (@as(*const anyopaque, s.ctx) != ctx) {
@@ -96,6 +97,10 @@ fn unregisterByCtx(ctx: *const anyopaque) void {
         }
     }
     sinks_len = write_idx;
+    sinks_mutex.unlock();
+    // Future emits see the compacted registry (took mutex after us);
+    // prior snapshots are reflected in emit_in_flight — spin until 0.
+    while (emit_in_flight.load(.acquire) > 0) std.atomic.spinLoopHint();
 }
 
 pub fn emitToSinks(
@@ -117,7 +122,11 @@ pub fn emitToSinks(
     var snapshot_arr: [MAX_SINKS]Sink = undefined;
     const n = sinks_len;
     for (sinks_buf[0..n], 0..) |s, i| snapshot_arr[i] = s;
+    // Increment INSIDE the lock — atomic with snapshot, so
+    // unregisterByCtx can't miss us between snapshot and drain.
+    _ = emit_in_flight.fetchAdd(1, .acq_rel);
     sinks_mutex.unlock();
+    defer _ = emit_in_flight.fetchSub(1, .release);
     for (snapshot_arr[0..n]) |s| s.emit(s.ctx, level, scope, ts_ms, body);
 }
 
@@ -135,22 +144,12 @@ pub const BufferedSink = struct {
     }
 
     pub fn deinit(self: *BufferedSink) void {
-        // Step 1: pull ourselves out of the global registry so no NEW
-        // emit can target this BufferedSink. Without this, defer
-        // ordering bugs (`defer bs.deinit()` declared before
-        // `defer clearSinks()` runs bs.deinit FIRST per LIFO) leave a
-        // dangling stack-pointer ctx in the registry that the next
-        // emit dereferences.
+        // unregisterByCtx (1) removes our entries from the registry so
+        // no future emit targets us AND (2) drains the global
+        // emit_in_flight counter, blocking until any prior snapshot has
+        // finished fan-out. After it returns, no thread holds a
+        // dangling pointer to self — safe to free the backing buffer.
         unregisterByCtx(@ptrCast(self));
-        // Step 2: drain any in-flight `BufferedSink.emit` call by
-        // taking the per-sink mutex. After unregisterByCtx no new
-        // emits target self, but emit calls already past their
-        // snapshot in emitToSinks may still be inside BufferedSink.emit
-        // (which takes self.mutex). Acquiring + releasing here is a
-        // serialization point — after we own the lock once, all
-        // in-flight emits have completed and it's safe to free.
-        self.mutex.lock();
-        self.mutex.unlock();
         self.buf.deinit(self.alloc);
     }
 
