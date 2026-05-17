@@ -627,3 +627,68 @@ test "Client.command bumps reconnects_total on non-resumable transport error" {
 }
 
 const Client = @import("redis_client.zig");
+const metrics_redis_pool = @import("../observability/metrics_redis_pool.zig");
+const metrics_render = @import("../observability/metrics_render.zig");
+
+test "metrics: registerPool + activity renders all 8 zombie_redis_pool_* lines in Prometheus output" {
+    // Spec coverage: prove the scrape path emits a line per `PoolStats`
+    // field after a Pool is registered. The render layer treats `mrp`
+    // as the single source of truth — a regression that drops a counter
+    // from the renderer would show up here as a missing metric name.
+    const alloc = std.testing.allocator;
+
+    var fake: PingFake = undefined;
+    try fake.start(true);
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 2, .eager_min = 0 });
+    defer pool.deinit();
+
+    // Register on the singleton; clear on the way out so subsequent tests
+    // see `snapshot() == null`. Without the deferred clear, a parallel
+    // test scraping /metrics would observe this Pool's stale stats.
+    metrics_redis_pool.registerPool(&pool);
+    defer metrics_redis_pool.clearRegisteredPool();
+
+    // Drive: 3 acquire/command/release cycles → dials_total=1, idle=1
+    // (first acquire dials; subsequent reuse). Force one poisoned release
+    // to bump poisoned_connections_total via release(ok=false).
+    inline for (0..3) |_| {
+        const c = try pool.acquire();
+        var resp = try c.command(&.{"PING"});
+        resp.deinit(alloc);
+        pool.release(c, true);
+    }
+    const poison_conn = try pool.acquire();
+    pool.release(poison_conn, false);
+
+    const text = try metrics_render.renderPrometheus(alloc, true);
+    defer alloc.free(text);
+
+    // Every Pool-stats line that ships in metrics_render.zig must appear.
+    // Match the metric NAMES (not values) — values drift with timing and
+    // the renderer's order; names are the contract scrapers depend on.
+    const expected_metric_names = [_][]const u8{
+        "zombie_redis_pool_active",
+        "zombie_redis_pool_idle",
+        "zombie_redis_pool_dials_total",
+        "zombie_redis_pool_overflow_dials_total",
+        "zombie_redis_pool_poisoned_connections_total",
+        "zombie_redis_pool_reconnects_total",
+        "zombie_redis_pool_forced_closes_total",
+        "zombie_redis_pool_acquire_timeouts_total",
+    };
+    inline for (expected_metric_names) |name| {
+        if (std.mem.indexOf(u8, text, name) == null) {
+            std.debug.print("FAIL: metric `{s}` missing from rendered Prometheus output\n", .{name});
+            return error.MetricNameMissing;
+        }
+    }
+
+    // Load-bearing value assertions: prove the snapshot path actually
+    // pulls live stats (not zeroed defaults). 4 successful dials would
+    // hit the cap of 2 in idle; the 4th acquire forced an over-cap dial.
+    try std.testing.expect(std.mem.indexOf(u8, text, "zombie_redis_pool_dials_total 4") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "zombie_redis_pool_poisoned_connections_total 1") != null);
+}
