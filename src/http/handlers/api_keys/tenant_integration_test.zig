@@ -43,6 +43,7 @@ const TOKEN_OPERATOR =
 // single process, so reassigning across tests is safe (each reassignment
 // happens after the previous harness's deinit sets the chain pointer stale).
 // If the test runner ever parallelizes, move into TestHarness as an extension.
+// SAFETY: test fixture; field is populated by the surrounding builder before any read.
 var api_key_ctx: api_key_lookup.Ctx = undefined;
 
 fn configureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
@@ -85,7 +86,7 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupApiKeys(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.api_keys WHERE tenant_id IN ($1::uuid, $2::uuid)", .{ TEST_TENANT_ID, OTHER_TENANT_ID }) catch {};
+    _ = conn.exec("DELETE FROM core.api_keys WHERE tenant_id IN ($1::uuid, $2::uuid)", .{ TEST_TENANT_ID, OTHER_TENANT_ID }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn finalCleanup(h: *TestHarness) void {

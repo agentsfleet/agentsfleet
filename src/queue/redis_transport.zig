@@ -30,13 +30,13 @@ fn applyKeepalive(stream: std.net.Stream) void {
             const TCP_KEEPIDLE: u32 = 4;
             const TCP_KEEPINTVL: u32 = 5;
             const TCP_KEEPCNT: u32 = 6;
-            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPIDLE, std.mem.asBytes(&idle)) catch {};
-            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPINTVL, std.mem.asBytes(&intvl)) catch {};
-            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPCNT, std.mem.asBytes(&cnt)) catch {};
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPIDLE, std.mem.asBytes(&idle)) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPINTVL, std.mem.asBytes(&intvl)) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPCNT, std.mem.asBytes(&cnt)) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
         },
         .macos, .ios, .tvos, .watchos => {
             const TCP_KEEPALIVE: u32 = 0x10;
-            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPALIVE, std.mem.asBytes(&idle)) catch {};
+            std.posix.setsockopt(sock, std.posix.IPPROTO.TCP, TCP_KEEPALIVE, std.mem.asBytes(&idle)) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
         },
         else => {},
     }
@@ -127,6 +127,7 @@ const TlsTransport = struct {
             .stream = stream,
             .stream_reader = stream_reader,
             .stream_writer = stream_writer,
+            // SAFETY: written by surrounding init logic before any read of this storage.
             .tls_client = undefined,
             .socket_read_buffer = socket_read_buffer,
             .socket_write_buffer = socket_write_buffer,

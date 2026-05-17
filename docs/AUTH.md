@@ -327,7 +327,7 @@ The acceptance e2e harness (`ui/packages/app/tests/e2e/acceptance/`) uses the **
 globalSetup
   ├─ provisionUser    → idempotent: GET /v1/users by email (Clerk admin API),
   │                     create if missing.
-  ├─ bootstrapTenant  → POST /v1/webhooks/clerk with a locally-Svix-signed
+  ├─ bootstrapTenant  → POST /v1/auth/identity-events/clerk with a locally-Svix-signed
   │                     `user.created` payload (uses CLERK_WEBHOOK_SECRET).
   │                     zombied creates the tenant + default workspace +
   │                     starter credit, then PATCHes Clerk publicMetadata
@@ -462,8 +462,8 @@ Adding a new provider is one new `VerifyConfig` const + one entry in the registr
 
 The middleware itself is provider-agnostic. The host supplies a `lookup_fn` (`src/cmd/serve_webhook_lookup.zig:lookup`) that, given the URL's `{zombie_id}`, returns:
 
-1. **`signature_scheme`** — populated whenever the zombie's `trigger.source` matches a registry entry, even if the vault credential is missing. This is what makes "credential not configured" fail closed instead of silently falling back to anything else.
-2. **`signature_secret`** — the HMAC key, resolved from `vault.secrets[workspace_id, key_name=zombie:<source>]` and parsed as JSON (`{ "webhook_secret": "<key>", ... }`). The vault key name defaults to the source value but can be overridden by the zombie's `x-usezombie.trigger.credential_name` frontmatter for the rare multi-org case where one workspace integrates with two GitHub orgs.
+1. **`signature_scheme`** — populated whenever one of the zombie's `triggers[].source` entries matches a registry entry, even if the vault credential is missing. This is what makes "credential not configured" fail closed instead of silently falling back to anything else.
+2. **`signature_secret`** — the HMAC key, resolved from `vault.secrets[workspace_id, key_name=zombie:<source>]` and parsed as JSON (`{ "webhook_secret": "<key>", ... }`). The vault key name defaults to the matching trigger's `source` value but can be overridden by the zombie's `x-usezombie.triggers[].credential_name` frontmatter for the per-zombie credential-scoping case — two zombies subscribing to the same source within one workspace can each point at distinct vault rows (e.g. multi-org GitHub, multi-app Slack, multi-tenant B2B-on-usezombie).
 
 The credential being workspace-scoped (not zombie-scoped) means rotating the secret once rotates it for every zombie in that workspace using the same source — single point of rotation, the property the architecture wants.
 

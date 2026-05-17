@@ -15,10 +15,8 @@ const handler_mod = @import("handler.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
-const types = @import("types.zig");
 const client_mod = @import("client.zig");
 const executor_metrics = @import("executor_metrics.zig");
-const lease_mod = @import("lease.zig");
 
 // ─────────────────────────────────────────────────────────────────────────
 // 1. Socket not available — client connect fails with clear error

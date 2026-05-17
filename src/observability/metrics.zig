@@ -3,7 +3,6 @@
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const mr = @import("metrics_render.zig");
-const mw = @import("metrics_workspace.zig");
 const em = @import("../executor/executor_metrics.zig");
 
 pub const DurationBuckets = mc.DurationBuckets;
@@ -28,8 +27,6 @@ pub const snapshot = mc.snapshot;
 pub const renderPrometheus = mr.renderPrometheus;
 
 // Per-(workspace, zombie) token counter.
-const wsAddTokens = mw.addTokens;
-const wsRenderPrometheus = mw.renderPrometheus;
 
 // Executor metrics re-exports (§5.2).
 pub const incExecutorSessionsCreated = em.incExecutorSessionsCreated;

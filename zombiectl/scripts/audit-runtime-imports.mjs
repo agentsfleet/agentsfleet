@@ -1,5 +1,10 @@
 #!/usr/bin/env node
 
+// Belt-and-suspenders dev-dep purity audit. oxlint catches missing-extension
+// errors via `import/extensions`, but doesn't currently flag devDependency
+// imports from src/. This script does. Scope: src/ only (the tsc-emitted
+// artifact at dist/ is derived from src/ — keep the check at the source).
+
 import { builtinModules } from "node:module";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { extname, join, resolve } from "node:path";
@@ -9,7 +14,7 @@ const PACKAGE_JSON = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")
 const RUNTIME_DEPS = new Set(Object.keys(PACKAGE_JSON.dependencies ?? {}));
 const DEV_DEPS = new Set(Object.keys(PACKAGE_JSON.devDependencies ?? {}));
 const BUILTINS = new Set([...builtinModules, ...builtinModules.map((name) => `node:${name}`)]);
-const SOURCE_DIRS = ["src", "bin"];
+const SOURCE_DIRS = ["src"];
 const IMPORT_PATTERN = /(?:import\s+(?:[^'"]*?\s+from\s+)?|import\s*\()\s*["']([^"']+)["']/g;
 
 const failures = [];
@@ -38,7 +43,7 @@ function listJavaScriptFiles(paths) {
 function walk(path, files) {
   const stat = statSync(path);
   if (stat.isFile()) {
-    if (path.endsWith(".js") || path.endsWith(".mjs")) files.push(path);
+    if (path.endsWith(".ts")) files.push(path);
     return;
   }
   for (const entry of readdirSync(path)) {
@@ -63,8 +68,12 @@ function auditSpecifier(file, specifier) {
 
 function auditRelativeSpecifier(file, specifier) {
   const extension = extname(specifier);
-  if (![".js", ".mjs", ".json"].includes(extension)) {
-    failures.push(`${relative(file)} imports ${specifier} without a Node ESM extension`);
+  // Source is pure TS; tsc's `rewriteRelativeImportExtensions: true` rewrites
+  // these to `.js` on emit so the published artifact still has Node-resolvable
+  // extensions. oxlint's `import/extensions` rule is the primary guard here;
+  // this audit's main job is the dev-dep purity check below.
+  if (![".ts", ".json"].includes(extension)) {
+    failures.push(`${relative(file)} imports ${specifier} without an accepted source extension`);
   }
 }
 

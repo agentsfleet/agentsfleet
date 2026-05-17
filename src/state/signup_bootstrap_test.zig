@@ -28,22 +28,22 @@ fn cleanupBootstrappedAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
         \\WHERE tenant_id IN (
         \\  SELECT u.tenant_id FROM core.users u WHERE u.oidc_subject = $1
         \\)
-    , .{oidc_subject}) catch {};
+    , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\DELETE FROM core.memberships
         \\WHERE user_id IN (SELECT user_id FROM core.users WHERE oidc_subject = $1)
-    , .{oidc_subject}) catch {};
+    , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\WITH doomed_users AS (
         \\    DELETE FROM core.users WHERE oidc_subject = $1 RETURNING tenant_id
         \\)
         \\DELETE FROM core.tenants WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
-    , .{oidc_subject}) catch {};
+    , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn cleanupCollisionFixture(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.workspaces WHERE tenant_id = $1::uuid", .{COLLISION_TENANT_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{COLLISION_TENANT_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.workspaces WHERE tenant_id = $1::uuid", .{COLLISION_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenants WHERE tenant_id = $1::uuid", .{COLLISION_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn countTenantsForOidc(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
@@ -54,7 +54,7 @@ fn countTenantsForOidc(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
     , .{oidc_subject}));
     defer q.deinit();
     const row = (try q.next()) orelse return 0;
-    return try row.get(i64, 0);
+    return row.get(i64, 0);
 }
 
 fn countUsersForOidc(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
@@ -64,7 +64,7 @@ fn countUsersForOidc(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
     ));
     defer q.deinit();
     const row = (try q.next()) orelse return 0;
-    return try row.get(i64, 0);
+    return row.get(i64, 0);
 }
 
 test "derivePersonalTenantName: email local-part wins; empty falls back to personal" {

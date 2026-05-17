@@ -12,12 +12,12 @@ const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
+const types = @import("types.zig");
 const transport = @import("transport.zig");
 const handler_mod = @import("handler.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const lease_mod = @import("lease.zig");
-const types = @import("types.zig");
 const landlock = @import("landlock.zig");
 const cgroup = @import("cgroup.zig");
 const network = @import("network.zig");
@@ -160,6 +160,7 @@ pub fn main() !void {
     // progress notifications back; tests bypass the transport entirely
     // and call `handleFrame` directly with the 2-arg form.
     const frame_handler = struct {
+        // SAFETY: written by surrounding init logic before any read of this storage.
         var g_handler: *handler_mod.Handler = undefined;
         fn handle(a: std.mem.Allocator, payload: []const u8, conn_fd: ?std.posix.socket_t) anyerror![]u8 {
             return g_handler.handleFrameWithFd(a, payload, conn_fd);
@@ -176,7 +177,9 @@ pub fn main() !void {
 
     // Install signal handler for graceful shutdown.
     const posix_handler = struct {
+        // SAFETY: written by surrounding init logic before any read of this storage.
         var g_server: *transport.Server = undefined;
+        // SAFETY: written by surrounding init logic before any read of this storage.
         var g_lease: *lease_mod.LeaseManager = undefined;
 
         fn onSignal(sig: i32) callconv(.c) void {

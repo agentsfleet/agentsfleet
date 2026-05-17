@@ -29,6 +29,7 @@ const ALL_RUNTIME_ENV_VARS = [_][]const u8{
     "OIDC_ISSUER",                "OIDC_AUDIENCE",
     "OIDC_PROVIDER",              "API_KEY",
     "ENCRYPTION_MASTER_KEY",      "APP_URL",
+    "API_URL",
 };
 
 fn clearAllRuntimeEnv() void {

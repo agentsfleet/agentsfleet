@@ -10,7 +10,7 @@ test "parseZombieConfig: valid config parses all fields" {
     const json =
         \\{"name":"platform-ops",
         \\ "x-usezombie":{
-        \\   "trigger":{"type":"webhook","source":"agentmail","event":"message.received"},
+        \\   "triggers":[{"type":"webhook","source":"agentmail","events":["message.received"]}],
         \\   "tools":["agentmail"],"credentials":["agentmail_api_key"],
         \\   "network":{"allow":["api.agentmail.to"]},"budget":{"daily_dollars":5.0}
         \\ }}
@@ -18,7 +18,9 @@ test "parseZombieConfig: valid config parses all fields" {
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
     try std.testing.expectEqualStrings("platform-ops", cfg.name);
-    try std.testing.expectEqualStrings("agentmail", cfg.trigger.webhook.source);
+    try std.testing.expectEqual(@as(usize, 1), cfg.triggers.len);
+    try std.testing.expectEqualStrings("agentmail", cfg.triggers[0].webhook.source);
+    try std.testing.expectEqualStrings("message.received", cfg.triggers[0].webhook.events.?[0]);
     try std.testing.expectApproxEqAbs(@as(f64, 5.0), cfg.budget.daily_dollars, 0.001);
     try std.testing.expect(cfg.skill == null);
 }
@@ -26,7 +28,7 @@ test "parseZombieConfig: valid config parses all fields" {
 test "parseZombieConfig: missing name returns MissingRequiredField" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},
+        \\{"x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],
         \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
@@ -35,7 +37,7 @@ test "parseZombieConfig: missing name returns MissingRequiredField" {
 test "parseZombieConfig: invalid trigger type returns InvalidTriggerType" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","x-usezombie":{"trigger":{"type":"invalid"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\{"name":"x","x-usezombie":{"triggers":[{"type":"invalid"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidTriggerType, parseZombieConfig(alloc, json));
 }
@@ -49,7 +51,7 @@ test "parseZombieConfig: invalid trigger type returns InvalidTriggerType" {
 test "parseZombieConfig: chain trigger type rejected as InvalidTriggerType" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","x-usezombie":{"trigger":{"type":"chain","source":"upstream-zombie"},
+        \\{"name":"x","x-usezombie":{"triggers":[{"type":"chain","source":"upstream-zombie"}],
         \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidTriggerType, parseZombieConfig(alloc, json));
@@ -59,7 +61,7 @@ test "parseZombieConfig: skill field parsed from runtime block" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"enricher",
-        \\ "x-usezombie":{"trigger":{"type":"api"},
+        \\ "x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],
         \\   "tools":["agentmail"],"skill":"clawhub://queen/lead-hunter@1.0.1",
         \\   "budget":{"daily_dollars":2.0}}}
     ;
@@ -72,26 +74,53 @@ test "parseZombieConfig: cron trigger defaults" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"nightly",
-        \\ "x-usezombie":{"trigger":{"type":"cron","schedule":"0 3 * * *"},
+        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 3 * * *"}],
         \\   "tools":["agentmail"],"budget":{"daily_dollars":0.5}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
-    try std.testing.expectEqualStrings("0 3 * * *", cfg.trigger.cron.schedule);
+    try std.testing.expectEqual(@as(usize, 1), cfg.triggers.len);
+    try std.testing.expectEqualStrings("0 3 * * *", cfg.triggers[0].cron.schedule);
     try std.testing.expectEqual(@as(usize, 0), cfg.credentials.len);
     try std.testing.expect(cfg.network == null);
     try std.testing.expect(cfg.gates == null);
 }
 
-test "parseZombieConfig: api trigger has no payload" {
+test "parseZombieConfig: api trigger is rejected with InvalidTriggerType" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"api-agent",
-        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\ "x-usezombie":{"triggers":[{"type":"api"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.InvalidTriggerType, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: singular trigger key inside x-usezombie returns UnknownRuntimeKey" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "trigger":{"type":"webhook","source":"github"},
+        \\  "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.UnknownRuntimeKey, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: triggers array parsed under x-usezombie" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","x-usezombie":{
+        \\  "triggers":[
+        \\    {"type":"webhook","source":"github","events":["workflow_run"]},
+        \\    {"type":"cron","schedule":"0 3 * * *"}
+        \\  ],
+        \\  "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
-    try std.testing.expectEqual(config_types.ZombieTriggerType.api, @as(config_types.ZombieTriggerType, cfg.trigger));
+    try std.testing.expectEqual(@as(usize, 2), cfg.triggers.len);
+    try std.testing.expectEqualStrings("github", cfg.triggers[0].webhook.source);
+    try std.testing.expectEqualStrings("workflow_run", cfg.triggers[0].webhook.events.?[0]);
+    try std.testing.expectEqualStrings("0 3 * * *", cfg.triggers[1].cron.schedule);
 }
 
 test "parseZombieConfig: malformed JSON returns MissingRequiredField" {
@@ -99,7 +128,7 @@ test "parseZombieConfig: malformed JSON returns MissingRequiredField" {
     try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, "not json"));
 }
 
-test "parseZombieConfig: root is array not object → MissingRequiredField" {
+test "parseZombieConfig: root is array not object returns MissingRequiredField" {
     const alloc = std.testing.allocator;
     try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, "[]"));
 }
@@ -107,7 +136,7 @@ test "parseZombieConfig: root is array not object → MissingRequiredField" {
 test "parseZombieConfig: empty tools array rejected" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","x-usezombie":{"trigger":{"type":"api"},"tools":[],"budget":{"daily_dollars":1.0}}}
+        \\{"name":"x","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":[],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.MissingRequiredField, parseZombieConfig(alloc, json));
 }
@@ -116,64 +145,73 @@ test "parseZombieConfig: partial-build leak check (invalid budget after valid to
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x",
-        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],
+        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],
         \\   "credentials":["ok_cred"],"budget":{"daily_dollars":-1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidBudget, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: tools at top level → RuntimeKeysOutsideBlock" {
+test "parseZombieConfig: tools at top level returns RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","tools":["agentmail"],
-        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: gates at top level → RuntimeKeysOutsideBlock" {
+test "parseZombieConfig: gates at top level returns RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","gates":{"daily":{"max":1}},"x-usezombie":{"trigger":{"type":"api"},
+        \\{"name":"x","gates":{"daily":{"max":1}},"x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],
         \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: skill at top level → RuntimeKeysOutsideBlock" {
+test "parseZombieConfig: skill at top level returns RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","skill":"clawhub://q/s@1","x-usezombie":{"trigger":{"type":"api"},
+        \\{"name":"x","skill":"clawhub://q/s@1","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],
         \\ "tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: budget at top level → RuntimeKeysOutsideBlock" {
+test "parseZombieConfig: budget at top level returns RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","budget":{"daily_dollars":1.0},
-        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: missing x-usezombie block → UsezombieBlockRequired" {
+test "parseZombieConfig: plural triggers at top level returns RuntimeKeysOutsideBlock" {
+    const alloc = std.testing.allocator;
+    const json =
+        \\{"name":"x","triggers":[{"type":"webhook","source":"github"}],
+        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+    ;
+    try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
+}
+
+test "parseZombieConfig: missing x-usezombie block returns UsezombieBlockRequired" {
     const alloc = std.testing.allocator;
     const json = "{\"name\":\"x\"}";
     try std.testing.expectError(ZombieConfigError.UsezombieBlockRequired, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: x-usezombie present but not an object → UsezombieBlockRequired" {
+test "parseZombieConfig: x-usezombie present but not an object returns UsezombieBlockRequired" {
     const alloc = std.testing.allocator;
     const json = "{\"name\":\"x\",\"x-usezombie\":\"oops-string-not-object\"}";
     try std.testing.expectError(ZombieConfigError.UsezombieBlockRequired, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: typo under x-usezombie → UnknownRuntimeKey" {
+test "parseZombieConfig: typo under x-usezombie returns UnknownRuntimeKey" {
     const alloc = std.testing.allocator;
     const json =
-        \\{"name":"x","x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],
+        \\{"name":"x","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],
         \\ "budget":{"daily_dollars":1.0},"contxt":{"foo":"bar"}}}
     ;
     try std.testing.expectError(ZombieConfigError.UnknownRuntimeKey, parseZombieConfig(alloc, json));
@@ -183,7 +221,7 @@ test "parseZombieConfig: unknown top-level key passes (permissive top level)" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","tags":["foo"],"x-amp":{"v":1},
-        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
@@ -194,7 +232,7 @@ test "parseZombieConfig: x-usezombie.model populates ZombieConfig.model verbatim
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "model":"accounts/fireworks/models/kimi-k2.6"}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
@@ -206,7 +244,7 @@ test "parseZombieConfig: empty x-usezombie.model becomes null (self-managed sent
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "model":""}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
@@ -218,7 +256,7 @@ test "parseZombieConfig: x-usezombie.context populates every knob" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"context_cap_tokens":256000,"tool_window":30,"memory_checkpoint_every":7,"stage_chunk_threshold":0.8}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
@@ -234,7 +272,7 @@ test "parseZombieConfig: tool_window auto-string maps to 0 (auto-sentinel)" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"tool_window":"auto"}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
@@ -242,11 +280,11 @@ test "parseZombieConfig: tool_window auto-string maps to 0 (auto-sentinel)" {
     try std.testing.expectEqual(@as(u32, 0), cfg.context.?.tool_window);
 }
 
-test "parseZombieConfig: missing context block → null (auto downstream)" {
+test "parseZombieConfig: missing context block returns null (auto downstream)" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     var cfg = try parseZombieConfig(alloc, json);
     defer cfg.deinit(alloc);
@@ -254,11 +292,11 @@ test "parseZombieConfig: missing context block → null (auto downstream)" {
     try std.testing.expect(cfg.model == null);
 }
 
-test "parseZombieConfig: context with non-numeric tool_window → InvalidFieldType (not MissingRequiredField)" {
+test "parseZombieConfig: context with non-numeric tool_window returns InvalidFieldType (not MissingRequiredField)" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"tool_window":true}}}
     ;
     // Distinguishes "you forgot a key" (MissingRequiredField) from "you got
@@ -268,41 +306,41 @@ test "parseZombieConfig: context with non-numeric tool_window → InvalidFieldTy
     try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: negative tool_window → InvalidFieldType" {
+test "parseZombieConfig: negative tool_window returns InvalidFieldType" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"tool_window":-1}}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: context block as string (not object) → InvalidFieldType" {
+test "parseZombieConfig: context block as string (not object) returns InvalidFieldType" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":"oops-not-an-object"}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: model field as integer (not string) → InvalidFieldType" {
+test "parseZombieConfig: model field as integer (not string) returns InvalidFieldType" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "model":42}}
     ;
     try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: tool_window string other than 'auto' → InvalidFieldType (not silently coerced)" {
+test "parseZombieConfig: tool_window string other than 'auto' returns InvalidFieldType (not silently coerced)" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"tool_window":"AUTO"}}}
     ;
     // Tight contract: the auto-sentinel is exactly "auto" — case-sensitive,
@@ -311,16 +349,16 @@ test "parseZombieConfig: tool_window string other than 'auto' → InvalidFieldTy
     try std.testing.expectError(ZombieConfigError.InvalidFieldType, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: model at top level → RuntimeKeysOutsideBlock" {
+test "parseZombieConfig: model at top level returns RuntimeKeysOutsideBlock" {
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","model":"oops",
-        \\ "x-usezombie":{"trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
+        \\ "x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0}}}
     ;
     try std.testing.expectError(ZombieConfigError.RuntimeKeysOutsideBlock, parseZombieConfig(alloc, json));
 }
 
-test "parseZombieConfig: typo inside x-usezombie.context → UnknownRuntimeKey (not silent default)" {
+test "parseZombieConfig: typo inside x-usezombie.context returns UnknownRuntimeKey (not silent default)" {
     const alloc = std.testing.allocator;
     // `tool_windw` (typo, missing 'o') — without the guard, this silently
     // falls through to the zero auto-sentinel and the operator's intended
@@ -328,7 +366,7 @@ test "parseZombieConfig: typo inside x-usezombie.context → UnknownRuntimeKey (
     // surfaces the typo where the operator can fix it.
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{"tool_windw":30}}}
     ;
     try std.testing.expectError(ZombieConfigError.UnknownRuntimeKey, parseZombieConfig(alloc, json));
@@ -338,7 +376,7 @@ test "parseZombieConfig: every documented context key accepted (no false positiv
     const alloc = std.testing.allocator;
     const json =
         \\{"name":"x","x-usezombie":{
-        \\  "trigger":{"type":"api"},"tools":["agentmail"],"budget":{"daily_dollars":1.0},
+        \\  "triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["agentmail"],"budget":{"daily_dollars":1.0},
         \\  "context":{
         \\    "context_cap_tokens":256000,
         \\    "tool_window":30,

@@ -61,7 +61,7 @@ fn driveRedactionRun(alloc: Allocator) !RedactionRun {
         },
     });
     defer alloc.free(execution_id);
-    defer harness.executor.destroyExecution(execution_id) catch {};
+    defer harness.executor.destroyExecution(execution_id) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 
     // The stub provider's canned response will fire tool_use + chunk
     // observer events containing SYNTHETIC_SECRET. Tool dispatch may
@@ -134,7 +134,7 @@ const ACTIVITY_DRAIN_BUDGET_MS: u64 = 5_000;
 const REDACTION_ZOMBIE_NAME = "redaction-bot";
 const REDACTION_ZOMBIE_CONFIG_JSON =
     "{\"name\":\"" ++ REDACTION_ZOMBIE_NAME ++
-    "\",\"x-usezombie\":{\"trigger\":{\"type\":\"webhook\",\"source\":\"agentmail\"}," ++
+    "\",\"x-usezombie\":{\"triggers\":[{\"type\":\"webhook\",\"source\":\"agentmail\"}]," ++
     "\"tools\":[\"agentmail\"],\"budget\":{\"daily_dollars\":5.0}," ++
     "\"credentials\":[\"llm_key\"]}}";
 const REDACTION_ZOMBIE_SOURCE_MD = "---\nname: " ++ REDACTION_ZOMBIE_NAME ++ "\n---\n\nYou are a redaction bot.\n";
@@ -145,7 +145,7 @@ fn deleteEventStream(redis: *queue_redis.Client) void {
 }
 
 fn cleanupZombieEventsRows(conn: *@import("pg").Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 test "test_args_redacted_no_secret_leak" {

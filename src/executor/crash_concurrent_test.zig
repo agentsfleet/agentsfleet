@@ -16,14 +16,10 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
-const transport = @import("transport.zig");
 const handler_mod = @import("handler.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
-const types = @import("types.zig");
-const client_mod = @import("client.zig");
-const executor_metrics = @import("executor_metrics.zig");
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Concurrent CreateExecution → unique execution IDs

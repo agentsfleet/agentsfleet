@@ -14,10 +14,16 @@ This document is the lookup table the agent loads when an exit happens.
 | 5 — webhook secret | `zombiectl credential show github --json` fails | API down or vault unreachable | `zombiectl credential show github` stderr verbatim | Resolve the API/vault issue, retry |
 | 6 — credential add | `zombiectl credential add` fails | API down or auth expired | `zombiectl credential add <name>` stderr verbatim | Resolve, retry |
 | 6 — credential add | User aborts at masked prompt | User chose to stop | Empty value detected; re-prompt up to 2× then exit | Run skill again with creds in `op` or env to skip prompts |
+| 0 — preconditions | `which zombiectl` empty | npm install missing | Exact one-liner: `npm install -g @usezombie/zombiectl` | Run the one-liner, retry skill |
+| 0 — preconditions | `which gh` empty | `gh` CLI missing | Install via `brew install gh` or platform equivalent | Install `gh`, retry skill |
+| 0 — preconditions | `gh auth status` lacks `admin:repo_hook` | gh token narrowed | `gh auth refresh -s admin:repo_hook` | Run the refresh (opens browser), retry skill |
 | 7 — template read | `~/.config/usezombie/samples/platform-ops/` missing | npm postinstall skipped or install corrupted | `Cannot find platform-ops template at ~/.config/usezombie/samples/platform-ops/. Reinstall: npm install -g @usezombie/zombiectl` | `npm install -g @usezombie/zombiectl`, retry |
-| 8 — substitution | `.usezombie/platform-ops/` already exists | Re-running on same repo | Prompt overwrite (default `N`) | Choose `Y` to overwrite, or exit and remove the directory manually |
-| 9 — install | Response missing `webhook_url` | API contract regression | Captured JSON verbatim, then `install JSON missing webhook_url — file an issue` | File issue with the JSON; retry once a fix ships |
-| 9 — install | HTTP 5xx from API | API outage | `zombiectl zombie install` stderr verbatim | Wait for status page, retry |
+| 7 — substitution | `.usezombie/platform-ops/` already exists | Re-running on same repo | Prompt overwrite (default `N`) | Choose `Y` to overwrite, or exit and remove the directory manually |
+| 7 — install | Response missing `webhook_urls` | API contract regression | Captured JSON verbatim, then `install JSON missing webhook_urls — file an issue` | File issue with the JSON; retry once a fix ships |
+| 7 — install | HTTP 5xx from API | API outage | `zombiectl zombie install` stderr verbatim | Wait for status page, retry |
+| 9 — gh api hook register | `gh api` 403 / 401 (missing scope) | User's `gh` token lacks `admin:repo_hook` | `gh auth refresh -s admin:repo_hook` (exact command) | Run the refresh command (opens browser), retry skill |
+| 9 — gh api hook register | `gh api` 422 hook already exists | Re-install on same repo | Idempotent: skill calls `gh api repos/${GH_REPO}/hooks` (GET), matches `config.url`, treats as registered, advances | No user action; skill proceeds |
+| 9 — gh api hook register | `gh api` 404 | Repo name wrong or token lacks repo access | `gh api` response body verbatim | Verify `${GH_REPO}` (`gh repo view --json nameWithOwner`), confirm token has access |
 | 10 — webhook self-test | Receiver returns non-202 | HMAC mismatch, receiver bug, or wrong zombie_id | Receiver's response body verbatim, plus the curl command that was run | Re-run skill (often a transient credential-write race); if persistent, file with the response body |
 | 10 — webhook self-test | Network error to api.usezombie.com | DNS, captive portal, firewall | `curl` stderr verbatim | Resolve network, retry |
 | 10 — webhook self-test | HMAC mismatch with stored secret | Race between `credential add` and `credential show` cache, or local CSPRNG bug | Computed signature verbatim alongside the receiver's expected | Retry once; if persistent, regenerate via `--force` |
@@ -36,8 +42,12 @@ This document is the lookup table the agent loads when an exit happens.
 - **Never print a credential value.** The webhook_secret is the only
   generated value the user ever sees, and it appears once in the
   step-11 post-install summary. Never re-display it after.
-- **Never advance to the GitHub-paste step on a failed self-test.**
-  Step 10's verification is a hard gate on step 11.
+- **Never advance to the post-install summary on a failed self-test.**
+  Step 10's HMAC verification is a hard gate on step 11. The webhook
+  was registered via `gh api` in step 9, so a failed self-test means
+  either the receiver is wrong, the secret-write raced, or the local
+  CSPRNG bug bit — none of which the user wants surfaced for the first
+  time hours later when production CD actually fails.
 
 ## What the user should always check first
 

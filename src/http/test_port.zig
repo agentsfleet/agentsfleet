@@ -27,6 +27,7 @@ pub fn allocFreePort() !u16 {
     const addr = try std.net.Address.parseIp4("127.0.0.1", 0);
     try posix.bind(sock, &addr.any, addr.getOsSockLen());
 
+    // SAFETY: test fixture; field is populated by the surrounding builder before any read.
     var bound: std.net.Address = undefined;
     var len: posix.socklen_t = @sizeOf(std.net.Address);
     try posix.getsockname(sock, &bound.any, &len);

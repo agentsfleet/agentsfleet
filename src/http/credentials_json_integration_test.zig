@@ -67,7 +67,7 @@ fn setupSeedData(conn: *pg.Conn) !void {
 }
 
 fn cleanupRows(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch {};
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1", .{TEST_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn seedAndHarness(alloc: std.mem.Allocator) !*TestHarness {

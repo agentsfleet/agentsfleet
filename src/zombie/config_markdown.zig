@@ -198,7 +198,7 @@ fn dupeRequiredString(
         else => return ZombieConfigError.MissingRequiredField,
     };
     if (s.len == 0) return ZombieConfigError.MissingRequiredField;
-    return try alloc.dupe(u8, s);
+    return alloc.dupe(u8, s);
 }
 
 fn dupeOptionalString(
@@ -220,10 +220,10 @@ fn dupeOptionalStringArray(
     root: std.json.ObjectMap,
     key: []const u8,
 ) (Allocator.Error || ZombieConfigError)![]const []const u8 {
-    const val = root.get(key) orelse return try alloc.alloc([]const u8, 0);
+    const val = root.get(key) orelse return alloc.alloc([]const u8, 0);
     const arr = switch (val) {
         .array => |a| a,
-        else => return try alloc.alloc([]const u8, 0),
+        else => return alloc.alloc([]const u8, 0),
     };
     var out = try alloc.alloc([]const u8, arr.items.len);
     errdefer alloc.free(out);
@@ -249,8 +249,9 @@ test "parseTriggerMarkdownWithJson: returns both parsed config and owned JSON" {
         \\---
         \\name: test-zombie
         \\x-usezombie:
-        \\  trigger:
-        \\    type: api
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: "0 0 * * *"
         \\  tools:
         \\    - agentmail
         \\  budget:
@@ -280,8 +281,9 @@ test "parseTriggerMarkdownWithJson: parse failure inside frontmatter → JSON fr
     const trigger_md =
         \\---
         \\x-usezombie:
-        \\  trigger:
-        \\    type: api
+        \\  triggers:
+        \\    - type: cron
+        \\      schedule: "0 0 * * *"
         \\  tools:
         \\    - agentmail
         \\  budget:

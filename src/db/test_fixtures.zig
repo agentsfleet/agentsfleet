@@ -52,7 +52,7 @@ pub fn teardownWorkspace(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
         "DELETE FROM core.workspaces WHERE workspace_id = $1::uuid",
         .{workspace_id},
-    ) catch {};
+    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 /// Delete the canonical test tenant.
@@ -110,7 +110,7 @@ pub fn teardownTenantById(conn: *pg.Conn, tenant_id: []const u8) void {
     _ = conn.exec(
         "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
         .{tenant_id},
-    ) catch {};
+    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // M10_001: seedSpec, seedRun, teardownRuns, teardownSpecs removed.
@@ -157,11 +157,11 @@ pub fn teardownZombies(conn: *pg.Conn, workspace_id: []const u8) void {
     _ = conn.exec(
         \\DELETE FROM core.zombie_sessions WHERE zombie_id IN
         \\  (SELECT id FROM core.zombies WHERE workspace_id = $1)
-    , .{workspace_id}) catch {};
+    , .{workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         "DELETE FROM core.zombies WHERE workspace_id = $1",
         .{workspace_id},
-    ) catch {};
+    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Provider + KEK fixtures ─────────────────────────────────────────────
@@ -251,11 +251,11 @@ pub fn seedPlatformProviderWithKey(
 /// for the workspace. Tenant_billing row is NOT touched here (some tests
 /// override balance_nanos and want to control teardown explicitly).
 pub fn teardownPlatformProvider(conn: *pg.Conn, workspace_id: []const u8) void {
-    _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE provider = $1", .{TEST_PROVIDER_NAME}) catch {};
-    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch {};
-    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch {};
+    _ = conn.exec("DELETE FROM core.platform_llm_keys WHERE provider = $1", .{TEST_PROVIDER_NAME}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2", .{ workspace_id, TEST_PROVIDER_NAME }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.tenant_providers WHERE tenant_id = $1::uuid", .{TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombie_execution_telemetry WHERE workspace_id = $1", .{workspace_id}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Shared DB connection ────────────────────────────────────────────────

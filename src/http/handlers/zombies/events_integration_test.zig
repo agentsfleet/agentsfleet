@@ -94,9 +94,9 @@ fn insertEvent(conn: *pg.Conn, zombie_id: []const u8, event_id: []const u8, acto
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Auth + path-shape (no Redis needed) ─────────────────────────────────────
@@ -223,6 +223,48 @@ test "integration: events GET — actor=steer:* glob filter returns steer events
     try std.testing.expect(r.bodyContains("steer:kishore"));
     try std.testing.expect(!r.bodyContains("webhook:github"));
     try std.testing.expect(!r.bodyContains("cron:0_*/30"));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+test "integration: events GET — actor_prefix=webhook: scopes to webhook actors only" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?actor_prefix=webhook:", .{TEST_WORKSPACE_ID});
+    defer ALLOC.free(url);
+
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+    try std.testing.expect(r.bodyContains("webhook:github"));
+    try std.testing.expect(!r.bodyContains("steer:kishore"));
+    try std.testing.expect(!r.bodyContains("cron:0_*/30"));
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    cleanupTestData(conn);
+}
+
+test "integration: events GET — actor + actor_prefix → 400 mutually exclusive" {
+    const h = seedAndHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const url = try std.fmt.allocPrint(ALLOC, "/v1/workspaces/{s}/events?actor=steer:*&actor_prefix=webhook:", .{TEST_WORKSPACE_ID});
+    defer ALLOC.free(url);
+
+    const r = try (try (h.get(url)).bearer(TOKEN_OPERATOR)).send();
+    defer r.deinit();
+    try r.expectStatus(.bad_request);
+    try std.testing.expect(r.bodyContains("actor_and_actor_prefix_mutually_exclusive"));
 
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);

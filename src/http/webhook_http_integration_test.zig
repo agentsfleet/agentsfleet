@@ -14,7 +14,6 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const webhook_sig = @import("../auth/middleware/webhook_sig.zig");
 const svix_signature = @import("../auth/middleware/svix_signature.zig");
 const serve_webhook_lookup = @import("../cmd/serve_webhook_lookup.zig");
-const redis_protocol = @import("../queue/redis_protocol.zig");
 
 const harness_mod = @import("test_harness.zig");
 const fx_mod = @import("webhook_test_fixtures.zig");
@@ -24,7 +23,9 @@ const TestHarness = harness_mod.TestHarness;
 
 // ── Middleware wiring ─────────────────────────────────────────────────────
 
+// SAFETY: test fixture; field is populated by the surrounding builder before any read.
 var wired_webhook_sig: webhook_sig.WebhookSig(*pg.Pool) = undefined;
+// SAFETY: test fixture; field is populated by the surrounding builder before any read.
 var wired_svix: svix_signature.SvixSignature(*pg.Pool) = undefined;
 
 fn wireWebhookMiddleware(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
@@ -87,7 +88,7 @@ const Setup = struct {
     fn deinit(self: *Setup, alloc: std.mem.Allocator) void {
         const conn = self.h.acquireConn() catch null;
         if (conn) |c| {
-            fx_mod.cleanup(c, self.fx) catch {};
+            fx_mod.cleanup(c, self.fx) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
             self.h.releaseConn(c);
         }
         alloc.free(self.url);
@@ -116,7 +117,7 @@ fn postSigned(
     const r3 = try r2.header("x-github-event", event);
     const r4 = try r3.header("x-github-delivery", delivery);
     const r5 = try r4.json(body);
-    return try r5.send();
+    return r5.send();
 }
 
 // Issue a raw command and return the integer reply (or null on non-integer).

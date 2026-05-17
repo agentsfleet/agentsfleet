@@ -20,7 +20,8 @@
     "qa:smoke": "bun run test:smoke && bun run test:e2e:smoke"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.3.3",
+    "@assistant-ui/react": "^0.14.5",
+    "@clerk/nextjs": "^7.3.4",
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-avatar": "1.1.11",
     "@radix-ui/react-dialog": "1.1.15",
@@ -33,9 +34,9 @@
     "@usezombie/design-system": "workspace:*",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
-    "lucide-react": "^1.14.0",
+    "lucide-react": "^1.16.0",
     "next": "^16.2.6",
-    "posthog-js": "^1.372.10",
+    "posthog-js": "^1.373.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.75.0",
@@ -45,24 +46,24 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.3",
-    "@clerk/testing": "^2.0.27",
-    "@playwright/test": "1.59.1",
+    "@clerk/testing": "^2.0.28",
+    "@playwright/test": "1.60.0",
     "@size-limit/preset-app": "^12.1.0",
     "@tailwindcss/postcss": "^4.3.0",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^25.6.2",
+    "@types/node": "^25.8.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@vitest/coverage-v8": "4.1.5",
+    "@vitest/coverage-v8": "4.1.6",
     "happy-dom": "20",
-    "oxlint": "^1.63.0",
+    "oxlint": "^1.64.0",
     "oxlint-tsgolint": "^0.22.1",
     "size-limit": "^12.1.0",
     "svix": "^1.45.1",
     "tailwindcss": "^4.3.0",
     "typescript": "6.0.3",
-    "vitest": "4.1.5"
+    "vitest": "4.1.6"
   }
 }

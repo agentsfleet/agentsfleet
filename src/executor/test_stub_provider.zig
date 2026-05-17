@@ -69,7 +69,7 @@ pub const StubProvider = struct {
         _: []const u8,
         _: f64,
     ) anyerror![]const u8 {
-        return try allocator.dupe(u8, "");
+        return allocator.dupe(u8, "");
     }
 
     fn chatImpl(

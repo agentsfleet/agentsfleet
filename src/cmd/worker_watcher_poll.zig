@@ -18,7 +18,6 @@
 //! Each phase processes whatever entries Redis returns; dispatch errors are
 //! logged but never propagate (per-entry recovery, not loop-fatal).
 
-const std = @import("std");
 const watcher_mod = @import("worker_watcher.zig");
 const control_stream = @import("../zombie/control_stream.zig");
 const redis_protocol = @import("../queue/redis_protocol.zig");

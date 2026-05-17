@@ -31,12 +31,15 @@ pub const Route = union(enum) {
     tenant_provider,
     /// POST /v1/webhooks/{zombie_id} — generic per-zombie webhook receiver.
     /// HMAC-only via webhook_sig middleware; secret resolved from the
-    /// workspace credential keyed by `trigger.source`.
+    /// workspace credential keyed by the matching `triggers[].source`.
     receive_webhook: []const u8,
     // Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
     receive_svix_webhook: []const u8,
-    // Clerk user.created signup webhook — /v1/webhooks/clerk (no zombie context).
-    clerk_webhook,
+    // Clerk user.created signup event — /v1/auth/identity-events/clerk.
+    // Internal auth-plane endpoint; carries no zombie_id. Separated from
+    // /v1/webhooks/ (customer data plane) pre-v2 so the auth namespace
+    // can grow without polluting M28's PROVIDER_REGISTRY.
+    auth_identity_event_clerk,
     // Zombie approval gate callback
     approval_webhook: []const u8,
     // Grant approval webhook — /v1/webhooks/{zombie_id}/grant-approval
@@ -93,10 +96,8 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/workspaces")) return .create_workspace;
     if (std.mem.eql(u8, path, "/v1/admin/platform-keys")) return .admin_platform_keys;
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
-    // Clerk user.created signup webhook — exact-match before the zombie-scoped
-    // /v1/webhooks/{zombie_id} catch-all so "clerk" is not swallowed as a
-    // zombie_id.
-    if (std.mem.eql(u8, path, "/v1/webhooks/clerk")) return .clerk_webhook;
+    // Clerk user.created signup event — internal auth-plane path. Exact-match.
+    if (std.mem.eql(u8, path, "/v1/auth/identity-events/clerk")) return .auth_identity_event_clerk;
 
     // Single canonical parse + version dispatch. The "v1" literal lives in
     // exactly one place — adding v2 is a new branch here, not a sweep across

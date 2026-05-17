@@ -7,7 +7,6 @@ const handler = @import("handler.zig");
 const router = @import("router.zig");
 const common = @import("handlers/common.zig");
 const otel_traces = @import("../observability/otel_traces.zig");
-const trace_mod = @import("../observability/trace.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const auth_adapter = @import("handlers/auth/adapter.zig");
 const route_table = @import("route_table.zig");
@@ -112,6 +111,7 @@ pub const Server = struct {
 /// must use `Server.init` with a properly-initialized registry instead.
 /// Lives in the data segment (not the stack) so `initForTesting` returns
 /// no dangling pointer.
+// SAFETY: written by surrounding init logic before any read of this storage.
 var testing_dummy_registry: auth_mw.MiddlewareRegistry = undefined;
 
 // ── Request dispatch ──────────────────────────────────────────────────────

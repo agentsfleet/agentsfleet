@@ -1,8 +1,13 @@
 {
   "rules": {
     "avoid-as": "off",
-    "no-catch-return": "off",
-    "suppressed-errors": "off",
-    "unsafe-undefined": "off"
+    "homeless-try": "warn",
+    "no-catch-return": "error",
+    "no-print": "warn",
+    "no-return-try": "off",
+    "no-unresolved": "warn",
+    "suppressed-errors": "error",
+    "unsafe-undefined": "error",
+    "unused-decls": "error"
   }
 }

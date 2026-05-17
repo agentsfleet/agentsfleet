@@ -28,10 +28,10 @@ tags:
   description: Tenant-scoped surfaces — provider posture and tenant-level configuration
   x-mintlify:
     navigation: Tenant
-- name: Runs
-  description: Core spec-to-PR pipeline — queue, monitor, stream, retry, and cancel runs
+- name: auth-identity-events
+  description: Internal auth-plane identity-lifecycle events (Clerk `user.created`, future identity-provider hooks). Not for customer zombies.
   x-mintlify:
-    navigation: Runs
+    navigation: Auth Identity Events
 - name: Zombies
   description: Zombie management and webhook ingestion — create, configure, and operate event-driven Zombies
   x-mintlify:
@@ -65,22 +65,10 @@ tags:
     for admin auth.
   x-mintlify:
     navigation: API Keys
-- name: Execute
-  description: Synchronous tool execution proxy for external agents
-  x-mintlify:
-    navigation: Execute
-- name: Slack
-  description: Slack OAuth install flow and inbound events/interactions webhooks
-  x-mintlify:
-    navigation: Slack
 - name: Webhooks
   description: Approval-gate webhooks invoked by humans to unblock a paused zombie
   x-mintlify:
     navigation: Webhooks
-- name: Telemetry
-  description: Per-zombie execution telemetry
-  x-mintlify:
-    navigation: Telemetry
 - name: Approvals
   description: Approval-gate inbox — list, inspect, and resolve pending gates from the dashboard or programmatically.
   x-mintlify:
@@ -104,8 +92,8 @@ paths:
     $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}:
     $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories~1{memory_key}
-  /v1/webhooks/clerk:
-    $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1clerk
+  /v1/auth/identity-events/clerk:
+    $ref: ./paths/auth/identity-events.yaml#/~1v1~1auth~1identity-events~1clerk
   /v1/webhooks/svix/{zombie_id}:
     $ref: ./paths/webhooks.yaml#/~1v1~1webhooks~1svix~1{zombie_id}
   /v1/webhooks/{zombie_id}:
