@@ -6,6 +6,7 @@
 const std = @import("std");
 const Connection = @import("redis_connection.zig");
 const redis_config = @import("redis_config.zig");
+const log_sinks = @import("log").sinks;
 
 // Loopback host shared across every in-process fake server below.
 // `parseIp4` (for `listen`) and `alloc.dupe` (for `Config.host`) both want
@@ -316,6 +317,184 @@ test "commandAllowError: residual bytes after parsed reply poison the conn and s
     //   2. The parsed RespValue was freed before the error return —
     //      `std.testing.allocator` would flag the leak if not.
     try std.testing.expect(conn.state == .poisoned);
+}
+
+// ── #14: redis_err logged before deinit ────────────────────────────────
+//
+// Fake that returns a single `.err` RESP frame, then keeps the socket
+// open. Drives `command()` into its resumable-error branch where
+// `log.warn("redis_command_err_reply", .{ .cmd, .server_err })` fires.
+// BufferedSink captures the emitted line so the test can assert the
+// log carries the server's error text — pre-sink-refactor this surface
+// was impossible to assert on (zombiedLog hardcoded stderr.writeAll).
+const WrongtypeErrReply = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+
+    fn start(self: *WrongtypeErrReply) !void {
+        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    fn shutdown(self: *WrongtypeErrReply) void {
+        self.stop.store(true, .release);
+        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn loop(self: *WrongtypeErrReply) void {
+        const conn = self.server.accept() catch return;
+        if (self.stop.load(.acquire)) {
+            conn.stream.close();
+            return;
+        }
+        var buf: [256]u8 = undefined;
+        const n = conn.stream.read(&buf) catch 0;
+        // pin test: literal is the contract — RESP `-WRONGTYPE` is the
+        // canonical resumable error for a type-mismatched op. The leading
+        // `-` plus the trailing CRLF make this a complete RESP frame so
+        // the parser returns `.err`; anything else would short-read.
+        if (n > 0) conn.stream.writeAll("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n") catch {};
+        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
+        conn.stream.close();
+    }
+
+    fn config(self: *WrongtypeErrReply, alloc: std.mem.Allocator) !redis_config.Config {
+        const host = try alloc.dupe(u8, LOOPBACK_IPV4);
+        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+    }
+};
+
+test "command on resumable .err reply emits redis_command_err_reply warn carrying server text" {
+    var srv: WrongtypeErrReply = undefined;
+    try srv.start();
+    defer srv.shutdown();
+
+    const cfg = try srv.config(std.testing.allocator);
+    defer redis_config.deinitConfig(std.testing.allocator, cfg);
+
+    // Install the buffered sink BEFORE the conn issues commands, clear
+    // on the way out so downstream tests don't observe stale captures.
+    var bs = log_sinks.BufferedSink.init(std.testing.allocator);
+    defer bs.deinit();
+    log_sinks.clearSinks();
+    defer log_sinks.clearSinks();
+    log_sinks.registerSink(bs.sink());
+
+    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    defer conn.deinit();
+
+    const result = conn.command(&.{ "LPUSH", "any-key", "v" });
+    try std.testing.expectError(error.RedisCommandError, result);
+
+    // Load-bearing captures: the warn line fires from
+    // redis_connection.zig's resumable-error branch BEFORE deinit. With
+    // the sink in place, we can prove the operator-visible signal made
+    // it through the format pipeline.
+    const captured = bs.snapshot();
+    try std.testing.expect(std.mem.indexOf(u8, captured, "redis_command_err_reply") != null);
+    try std.testing.expect(std.mem.indexOf(u8, captured, "WRONGTYPE") != null);
+    // Conn stayed in protocol sync after the .err reply (resumable):
+    // a Pool would park it back to idle; the next command on this conn
+    // would reuse the socket.
+    try std.testing.expect(conn.state == .active);
+}
+
+// ── #15: TLS handshake failure clean teardown ──────────────────────────
+//
+// Fake server that completes the TCP `accept` then writes garbage bytes
+// where a TLS ServerHello belongs. The TLS ClientHello on `Connection.init`
+// fails parsing the response; `init` propagates the error, the partial
+// transport is torn down, and `std.testing.allocator` confirms no leak.
+//
+// `redis_transport.zig`'s `tls.initInPlace` calls into `std.crypto.tls.Client.init`
+// — that's the path the bad bytes hit. The exact error variant depends on
+// where parsing fails inside std.crypto.tls; we assert the init returns
+// SOMETHING (not specific code) plus a clean leak audit.
+const TlsGarbageHandshake = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+
+    fn start(self: *TlsGarbageHandshake) !void {
+        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    fn shutdown(self: *TlsGarbageHandshake) void {
+        self.stop.store(true, .release);
+        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn loop(self: *TlsGarbageHandshake) void {
+        const conn = self.server.accept() catch return;
+        if (self.stop.load(.acquire)) {
+            conn.stream.close();
+            return;
+        }
+        // Drain whatever ClientHello bytes the client sent, then reply
+        // with 64 bytes of garbage — not a TLS record header, not even
+        // a coherent protocol. std.crypto.tls's record parser will
+        // reject this during the first read of the ServerHello.
+        var buf: [4096]u8 = undefined;
+        _ = conn.stream.read(&buf) catch {};
+        const garbage = "GARBAGE-NOT-A-TLS-SERVERHELLO-FRAME-AT-ALL-NO-RECORD-LAYER-XYZ\n";
+        conn.stream.writeAll(garbage) catch {};
+        // Close IMMEDIATELY after the garbage. Without this, `std.crypto.tls`
+        // can block forever on a subsequent record read (it's reading
+        // length-prefixed records and the partial garbage doesn't terminate
+        // a valid record). Closing forces EOF on the next read, which the
+        // TLS client surfaces as a hard error — the behavior under test.
+        conn.stream.close();
+    }
+
+    fn config(self: *TlsGarbageHandshake, alloc: std.mem.Allocator) !redis_config.Config {
+        const host = try alloc.dupe(u8, LOOPBACK_IPV4);
+        // `use_tls = true` forces Connection.init through the TLS
+        // handshake path, which is the surface under test. The host
+        // string doesn't need to match a real cert SNI — the handshake
+        // fails on the server's malformed reply long before name check.
+        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = true };
+    }
+};
+
+test "Connection.init: TLS handshake against garbage server errors cleanly with no leak" {
+    var srv: TlsGarbageHandshake = undefined;
+    try srv.start();
+    defer srv.shutdown();
+
+    const cfg = try srv.config(std.testing.allocator);
+    defer redis_config.deinitConfig(std.testing.allocator, cfg);
+
+    var bs = log_sinks.BufferedSink.init(std.testing.allocator);
+    defer bs.deinit();
+    log_sinks.clearSinks();
+    defer log_sinks.clearSinks();
+    log_sinks.registerSink(bs.sink());
+
+    // `std.testing.allocator` is leak-detecting — if `init`'s errdefer
+    // chain misses any allocation, the test runner reports the unfreed
+    // bytes on shutdown. We accept ANY error (the specific variant
+    // depends on std.crypto.tls internals and isn't load-bearing); the
+    // load-bearing assertion is the leak audit.
+    const result = Connection.init(std.testing.allocator, &cfg, .pooled);
+    try std.testing.expect(std.meta.isError(result));
+    // If init succeeded somehow (unexpected), deinit to avoid leaking.
+    if (result) |*c| {
+        @constCast(c).deinit();
+    } else |_| {}
 }
 
 test "commandAllowError: OOM during RESP read propagates and poisons the connection" {

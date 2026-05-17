@@ -48,7 +48,7 @@ fn readRedisRequestTimeoutMs(alloc: std.mem.Allocator) u32 {
         return queue_redis.REDIS_REQUEST_TIMEOUT_MS_DEFAULT;
     };
     defer alloc.free(raw);
-    return std.fmt.parseInt(u32, raw, 10) catch {
+    return queue_redis.parseRequestTimeoutMs(raw) catch {
         log.err(S_STARTUP_ENV_CHECK_FAILED, .{
             .error_code = error_codes.ERR_STARTUP_ENV_CHECK,
             .err = queue_redis.REDIS_REQUEST_TIMEOUT_MS_ENV ++ " must parse as a non-negative integer (ms)",

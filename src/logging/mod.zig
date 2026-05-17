@@ -14,6 +14,8 @@
 //! Plus `fatalStderr` for pre-init startup output (see its docstring).
 
 const std = @import("std");
+const builtin = @import("builtin");
+pub const sinks = @import("sinks.zig");
 
 // ---------------------------------------------------------------------------
 // Section 1 — `obs.scoped` API (LOGGING_STANDARD §7).
@@ -104,6 +106,11 @@ fn emit(
 ) void {
     var buf: [4096]u8 = undefined;
     const msg = buildLogfmtLine(&buf, event, fields);
+    if (builtin.is_test and sinks.sinksRegistered()) {
+        const scope_str = comptime if (scope == .default) "default" else @tagName(scope);
+        sinks.emitToSinks(level, scope_str, std.time.milliTimestamp(), msg);
+        return;
+    }
     const log = std.log.scoped(scope);
     switch (level) {
         .err => log.err(S_S, .{msg}),

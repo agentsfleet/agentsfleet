@@ -13,6 +13,8 @@ pub const SubscriberInitOptions = redis_subscriber.InitOptions;
 pub const ClientInitOptions = redis_client.InitOptions;
 pub const REDIS_REQUEST_TIMEOUT_MS_ENV = redis_client.REDIS_REQUEST_TIMEOUT_MS_ENV;
 pub const REDIS_REQUEST_TIMEOUT_MS_DEFAULT = redis_client.REDIS_REQUEST_TIMEOUT_MS_DEFAULT;
+pub const parseRequestTimeoutMs = redis_client.parseRequestTimeoutMs;
+pub const ParseRequestTimeoutError = redis_client.ParseRequestTimeoutError;
 
 pub const testing = struct {
     pub const parseRedisUrl = redis_config.parseRedisUrl;
