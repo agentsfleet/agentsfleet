@@ -258,7 +258,7 @@ If `ship_reflection.md` moves to `_unshipped/`, do the same grep for inbound ref
 
 ## Discovery (consult log)
 
-Empty at creation. Populated as the implementing agent surfaces design-consult / architecture decisions during EXECUTE.
+- **2026-05-17 — `ship_reflection.md` deletion (Captain decision).** The §7 plan was to move the placeholder to `docs/architecture/_unshipped/ship_reflection.md` with a README explaining the convention. After review, Captain decided to **delete** both files outright rather than hold the placeholder. The post-launch reflection content can be re-authored from real evidence when v2 actually ships; carrying the skeleton (or even a `_unshipped/` convention) adds clutter without payoff. Discovery: the move path was over-engineered for what amounts to one file's worth of pre-launch placeholder. Bastion's `Next:` pointer dropped; README's `_unshipped/` row dropped. Test `test_ship_reflection_resolved` in this spec now passes via "file deleted" rather than "file moved."
 
 ---
 

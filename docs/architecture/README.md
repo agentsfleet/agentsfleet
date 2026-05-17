@@ -31,7 +31,6 @@ After that, dip into whichever of these matches the change you're making:
 | [`bastion.md`](./bastion.md) | Where the wedge points after launch. Not part of v2 scope; documented so spec authors avoid foreclosing it. |
 | [`office_hours.md`](./office_hours.md) | Historical — the product-design session that produced the v2 wedge. Persona context, demand-bucket honesty check, rejected approaches. Not enforceable canon. |
 | [`plan_engg_review.md`](./plan_engg_review.md) | Historical — the engineering-review pass that produced the substrate-tier vs packaging-tier split. Test framing, critical paths, regression surface. Not enforceable canon. |
-| [`_unshipped/`](./_unshipped/) | Architecture documents waiting on a v2 launch event before they can be filled with real evidence. Currently holds [`ship_reflection.md`](./_unshipped/ship_reflection.md). |
 | [`../AUTH.md`](../AUTH.md) | The three principal types (CLI, UI, API key), the cookie-vs-Bearer reasoning, and the full auth-flow sequences. The canonical reference any time auth is in scope. |
 
 ---

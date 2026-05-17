@@ -30,6 +30,3 @@ This is post-MVP. It's the shape that competes structurally with Atlassian Statu
 
 The bastion is a `SKILL.md` authoring pattern plus a few new tool primitives plus a new rendering surface. It is not a different product. The MVP's job is to earn enough trust on internal-only diagnoses that customers feel safe letting the same zombie talk to *their* customers.
 
----
-
-> Next: [`_unshipped/ship_reflection.md`](./_unshipped/ship_reflection.md) — §14 post-launch reflection appendix. Held in `_unshipped/` until v2 launches; populated with real evidence (launch date, first external install, deferral outcomes) and moved back to the canonical set then.
