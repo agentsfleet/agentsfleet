@@ -11,6 +11,51 @@
 
 const std = @import("std");
 const Subscriber = @import("redis_subscriber.zig");
+const redis = @import("redis.zig");
+
+// Loopback host shared across every in-process fake server in this file.
+// `parseIp4` (for `listen`) and `alloc.dupe` (for `Config.host`) both want
+// the same literal — extracting prevents drift.
+const LOOPBACK_IPV4 = "127.0.0.1";
+
+// Shutdown-loop poll tick for fake servers — fine-grained enough that
+// `stop.store(.release)` is observed within one tick of `shutdown()` but
+// coarse enough not to peg a core during a long-running test.
+const FAKE_SHUTDOWN_POLL_NS = 10 * std.time.ns_per_ms;
+
+// Bounds for `SO_RCVTIMEO`-fired-or-equivalent timing assertions:
+//   - floor: anything below means the kernel returned EAGAIN immediately
+//     (peer close disguised as timeout) or the test never armed the
+//     timeout in the first place.
+//   - ceiling: catches retry-loop / busy-spin bugs that would let an
+//     "expected ~100ms" test silently hang for minutes.
+const RCVTIMEO_FLOOR_NS = 50 * std.time.ns_per_ms;
+const RCVTIMEO_CEILING_NS = 5 * std.time.ns_per_s;
+
+// Façade-vs-impl type-equality: the unified façade `redis.zig` MUST
+// re-export `redis_subscriber.zig` as `Subscriber`. The previous split
+// `redis_pubsub.zig` is gone; the only public entry into pub/sub is via
+// `redis.Subscriber`. A future refactor that introduces a wrapper struct
+// (and re-routes consumers) would shadow this assertion — the failure is
+// the warning shot to update the spec's "facade unified" claim too.
+comptime {
+    std.debug.assert(redis.Subscriber == Subscriber);
+}
+
+// Deletion guard for the retired `redis_pubsub.zig`. The spec's "unify"
+// claim hinges on there being exactly one Subscriber implementation; a
+// re-introduction would silently fork the surface. CWD during
+// `zig build test` is the project root, so the relative path resolves
+// against the workspace toplevel. `error.FileNotFound` is the green path.
+test "redis_pubsub.zig stays deleted (spec: unified subscriber)" {
+    const result = std.fs.cwd().access("src/queue/redis_pubsub.zig", .{});
+    if (result) |_| {
+        std.debug.print("FAIL: src/queue/redis_pubsub.zig was re-introduced — spec §unified-subscriber claim is broken\n", .{});
+        return error.RedisPubsubResurrected;
+    } else |err| {
+        try std.testing.expectEqual(error.FileNotFound, err);
+    }
+}
 
 const TLS_URL_ENV = "TEST_REDIS_TLS_URL";
 const REDISS_SCHEME = "rediss://";
@@ -46,7 +91,7 @@ const SubscribeAckThenMessage = struct {
     publish_delay_ms: u64,
 
     fn start(self: *SubscribeAckThenMessage, channel: []const u8, payload: []const u8, publish_delay_ms: u64) !void {
-        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
         self.server = try loopback.listen(.{ .reuse_address = true });
         self.addr = self.server.listen_address;
         self.stop = std.atomic.Value(bool).init(false);
@@ -99,7 +144,7 @@ const SubscribeAckThenMessage = struct {
         };
         conn.stream.writeAll(msg) catch {};
 
-        while (!self.stop.load(.acquire)) std.Thread.sleep(10 * std.time.ns_per_ms);
+        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
         conn.stream.close();
     }
 
@@ -144,8 +189,8 @@ test "Subscriber.nextMessage with read_timeout_ms=null blocks until message arri
     // Elapsed proves we actually blocked through the publisher's delay
     // (lower bound generous for CI jitter; upper bound catches retry / spin
     // bugs in the read loop).
-    try std.testing.expect(elapsed_ns >= 50 * std.time.ns_per_ms);
-    try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
+    try std.testing.expect(elapsed_ns >= RCVTIMEO_FLOOR_NS);
+    try std.testing.expect(elapsed_ns < RCVTIMEO_CEILING_NS);
 }
 
 test "integration: subscriber receives a real PUBLISH from a sibling connection" {
@@ -204,8 +249,8 @@ test "integration: subscriber receives a real PUBLISH from a sibling connection"
     try std.testing.expectEqualStrings(channel, got.channel);
     try std.testing.expectEqualStrings(payload, got.payload);
 
-    try std.testing.expect(elapsed_ns >= 50 * std.time.ns_per_ms);
-    try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
+    try std.testing.expect(elapsed_ns >= RCVTIMEO_FLOOR_NS);
+    try std.testing.expect(elapsed_ns < RCVTIMEO_CEILING_NS);
 }
 
 test "integration: subscriber with 100ms read_timeout returns null on a quiet channel" {
@@ -231,6 +276,6 @@ test "integration: subscriber with 100ms read_timeout returns null on a quiet ch
     // typically lands ≥50ms when the budget is 100ms. Generous upper bound
     // (5s) prevents this from flaking on a loaded CI host; the budget tells
     // us "fired roughly on time" not "fired exactly at 100ms".
-    try std.testing.expect(elapsed_ns >= 50 * std.time.ns_per_ms);
-    try std.testing.expect(elapsed_ns < 5 * std.time.ns_per_s);
+    try std.testing.expect(elapsed_ns >= RCVTIMEO_FLOOR_NS);
+    try std.testing.expect(elapsed_ns < RCVTIMEO_CEILING_NS);
 }

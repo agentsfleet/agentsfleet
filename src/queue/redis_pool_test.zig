@@ -11,6 +11,16 @@ const Pool = @import("redis_pool.zig");
 const Connection = @import("redis_connection.zig");
 const redis_config = @import("redis_config.zig");
 
+// Loopback host shared across every in-process fake server below.
+// `parseIp4` (for `listen`) and `alloc.dupe` (for `Config.host`) both want
+// the same literal — extracting prevents drift.
+const LOOPBACK_IPV4 = "127.0.0.1";
+
+// Shutdown-loop poll tick for fake servers. Pre-existing sites in
+// `PingFake` / `CloseOnCmd` already use 10ms; we name the value so that
+// new fakes don't drift to 5ms or 100ms by copy-paste.
+const FAKE_SHUTDOWN_POLL_NS = 10 * std.time.ns_per_ms;
+
 const PingFake = struct {
     server: std.net.Server,
     addr: std.net.Address,
@@ -166,6 +176,59 @@ test "Pool.release(ok=true) over max_idle increments forced_closes_total" {
     pool.release(b, true);
     try std.testing.expectEqual(@as(u64, 1), pool.stats().forced_closes_total);
     try std.testing.expectEqual(@as(usize, 1), pool.stats().idle);
+}
+
+test "Pool.release 16-cycle stress at max_idle=8 holds idle==8 steady-state with extras force-closed" {
+    // Spec §pool-sizing: max_idle is a hard cap on parked conns, not a hint.
+    // Acquire 16 conns concurrently (drives active > max_idle), then release
+    // all 16. Exactly the first 8 land in idle; the trailing 8 force-close
+    // and bump forced_closes_total. After the burst, every subsequent
+    // acquire/release cycle reuses an idle conn — no further force-closes,
+    // dials_total stays at 16. Catches a regression where max_idle is
+    // treated as soft (off-by-one in the cap check) or where the force-close
+    // path leaks the Connection allocation back into idle.
+    const alloc = std.testing.allocator;
+
+    var fake: PingFake = undefined;
+    try fake.start(true);
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 8, .eager_min = 0 });
+    defer pool.deinit();
+
+    var conns: [16]*@import("redis_connection.zig") = undefined;
+    for (&conns) |*slot| slot.* = try pool.acquire();
+
+    // 16 concurrent acquires: 16 fresh dials, 16 active, 0 idle.
+    try std.testing.expectEqual(@as(usize, 16), pool.stats().active);
+    try std.testing.expectEqual(@as(usize, 0), pool.stats().idle);
+    try std.testing.expectEqual(@as(u64, 16), pool.stats().dials_total);
+
+    // Release all 16 ok=true: first 8 park (idle climbs to 8); trailing 8
+    // exceed the cap and force-close. forced_closes_total bumps by 8.
+    for (conns) |c| pool.release(c, true);
+
+    const after_burst = pool.stats();
+    try std.testing.expectEqual(@as(usize, 8), after_burst.idle);
+    try std.testing.expectEqual(@as(usize, 0), after_burst.active);
+    try std.testing.expectEqual(@as(u64, 8), after_burst.forced_closes_total);
+
+    // Steady-state: 16 single acquire/release cycles must reuse idle conns
+    // unchanged. No new dials, no new force-closes — `dials_total` and
+    // `forced_closes_total` are frozen at their burst values; `idle` stays
+    // at the cap.
+    var i: usize = 0;
+    while (i < 16) : (i += 1) {
+        const c = try pool.acquire();
+        pool.release(c, true);
+    }
+
+    const steady = pool.stats();
+    try std.testing.expectEqual(@as(usize, 8), steady.idle);
+    try std.testing.expectEqual(@as(usize, 0), steady.active);
+    try std.testing.expectEqual(@as(u64, 16), steady.dials_total);
+    try std.testing.expectEqual(@as(u64, 8), steady.forced_closes_total);
 }
 
 test "Pool.acquire OOM during create does not leak active_count" {
@@ -377,12 +440,14 @@ const CloseOnCmd = struct {
     addr: std.net.Address,
     thread: std.Thread,
     stop: std.atomic.Value(bool),
+    accepts: std.atomic.Value(u32),
 
     fn start(self: *CloseOnCmd) !void {
         const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
         self.server = try loopback.listen(.{ .reuse_address = true });
         self.addr = self.server.listen_address;
         self.stop = std.atomic.Value(bool).init(false);
+        self.accepts = std.atomic.Value(u32).init(0);
         self.thread = try std.Thread.spawn(.{}, loop, .{self});
     }
 
@@ -400,6 +465,7 @@ const CloseOnCmd = struct {
                 conn.stream.close();
                 return;
             }
+            _ = self.accepts.fetchAdd(1, .monotonic);
             // Swallow whatever the client wrote (a RESP-encoded PING), then
             // close. The client's response read returns EOF → ReadFailed →
             // non-resumable. The Pool retry layer redials a fresh conn for
@@ -428,7 +494,7 @@ const ErrThenPongOnSameSocket = struct {
     accepts: std.atomic.Value(u32),
 
     fn start(self: *ErrThenPongOnSameSocket) !void {
-        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
         self.server = try loopback.listen(.{ .reuse_address = true });
         self.addr = self.server.listen_address;
         self.stop = std.atomic.Value(bool).init(false);
@@ -455,18 +521,25 @@ const ErrThenPongOnSameSocket = struct {
             var buf: [256]u8 = undefined;
             // Cmd 1 → -ERR (resumable: protocol frame is whole).
             const n1 = conn.stream.read(&buf) catch 0;
+            // pin test: literal is the contract — RESP `-ERR <msg>\r\n`
+            // is the resumable error frame the Client retry layer
+            // classifies via `isResumable`. The exact message text isn't
+            // load-bearing, but the leading `-` and trailing CRLF are.
             if (n1 > 0) conn.stream.writeAll("-ERR fake_error\r\n") catch {};
             // Cmd 2 → +PONG on the SAME socket. Blocks until the test
             // issues its follow-up command after release(ok=true).
             const n2 = conn.stream.read(&buf) catch 0;
+            // pin test: literal is the contract — RESP simple-string OK
+            // reply. Changing the prefix breaks the protocol parser, not
+            // just this test.
             if (n2 > 0) conn.stream.writeAll("+PONG\r\n") catch {};
-            while (!self.stop.load(.acquire)) std.Thread.sleep(10 * std.time.ns_per_ms);
+            while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
             conn.stream.close();
         }
     }
 
     fn config(self: *ErrThenPongOnSameSocket, alloc: std.mem.Allocator) !redis_config.Config {
-        const host = try alloc.dupe(u8, "127.0.0.1");
+        const host = try alloc.dupe(u8, LOOPBACK_IPV4);
         return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
     }
 };
@@ -542,6 +615,15 @@ test "Client.command bumps reconnects_total on non-resumable transport error" {
     // Exactly one recordReconnect: the bump between attempt 1's failure
     // and attempt 2's redial. MAX_ATTEMPTS=2 forbids a third try.
     try std.testing.expectEqual(@as(u64, 1), client.pool.stats().reconnects_total);
+
+    // Fresh-dial witness: attempt 2's `acquire` redialed a NEW TCP socket
+    // (the poisoned attempt-1 conn was closed in release(ok=false)). The
+    // fake accepted >=2 connections — one per attempt. A pool that
+    // mistakenly recycled the poisoned conn would have accepts=1 and the
+    // second attempt would block waiting for a reply on the dead socket.
+    try std.testing.expect(fake.accepts.load(.monotonic) >= 2);
+    // Pool-side accounting matches: dials_total tracks both attempts.
+    try std.testing.expectEqual(@as(u64, 2), client.pool.stats().dials_total);
 }
 
 const Client = @import("redis_client.zig");
