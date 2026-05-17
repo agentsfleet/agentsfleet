@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M72
 **Workstream:** 002
 **Date:** May 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — contributor-facing; not blocking any user surface but compounds drift over time.
 **Categories:** DOCS
 **Batch:** B1 — runs parallel to M72_001 in a separate worktree, different repo.

@@ -65,8 +65,22 @@ async function withStateDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
   }
 }
 
+// Pre-write session.json with known UUIDs so loadSession returns
+// stable IDs. validUuid (state.ts) requires canonical UUID format —
+// arbitrary strings get regenerated. These are fixed v4 fixtures.
+const PINNED_DEVICE = "11111111-1111-4111-8111-111111111111";
+const PINNED_SESSION = "22222222-2222-4222-8222-222222222222";
+async function pinSession(dir: string): Promise<void> {
+  await fs.writeFile(
+    path.join(dir, "session.json"),
+    JSON.stringify({ device_id: PINNED_DEVICE, session_id: PINNED_SESSION, last_activity: Date.now() }),
+    { mode: 0o600 },
+  );
+}
+
 test("runCli tracks login success with post-login distinct id and shuts down analytics", async () => {
-  await withStateDir(async () => {
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
     await withAnalyticsStub(async () => {
       const events: TrackedEvent[] = [];
       let shutdownClient: AnalyticsClient | null | undefined = null;
@@ -136,25 +150,51 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
         client: analyticsClient,
         distinctId: "anonymous",
         event: "cli_command_started",
-        properties: { command: "login", json_mode: "false" },
+        properties: {
+          command: "login",
+          json_mode: "false",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+        },
       });
+      // Wire keys are now namespaced: cli_session_id is the CLI
+      // telemetry session (stable across the invocation), session_id is
+      // the auth session set by login's setCliAnalyticsContext. Two
+      // different concepts, two different keys — no collision.
       assert.deepEqual(events[1], {
         client: analyticsClient,
         distinctId: "anonymous",
         event: "cli_command_finished",
-        properties: { command: "login", json_mode: "false", exit_code: "0", session_id: "sess_analytics" },
+        properties: {
+          command: "login",
+          json_mode: "false",
+          exit_code: "0",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+          session_id: "sess_analytics",
+        },
       });
       assert.deepEqual(events[2], {
         client: analyticsClient,
         distinctId: "user_login_123",
         event: "user_authenticated",
-        properties: { command: "login", session_id: "sess_analytics" },
+        properties: {
+          command: "login",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+          session_id: "sess_analytics",
+        },
       });
       assert.deepEqual(events[3], {
         client: analyticsClient,
         distinctId: "user_login_123",
         event: "login_completed",
-        properties: { command: "login", session_id: "sess_analytics" },
+        properties: {
+          command: "login",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+          session_id: "sess_analytics",
+        },
       });
       assert.equal(shutdownClient, analyticsClient);
     });
@@ -162,7 +202,8 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
 });
 
 test("runCli tracks workspace creation with existing distinct id", async () => {
-  await withStateDir(async () => {
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
     await withAnalyticsStub(async () => {
       const events: TrackedEvent[] = [];
       const analyticsClient = { name: "workspace-client" };
@@ -208,7 +249,12 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         client: analyticsClient,
         distinctId: "user_workspace_456",
         event: "cli_command_started",
-        properties: { command: "workspace.add", json_mode: "false" },
+        properties: {
+          command: "workspace.add",
+          json_mode: "false",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+        },
       });
       assert.deepEqual(events[1], {
         client: analyticsClient,
@@ -218,6 +264,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
           command: "workspace.add",
           json_mode: "false",
           exit_code: "0",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
           workspace_id: "ws_123456789abc",
         },
       });
@@ -227,6 +275,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         event: "workspace_created",
         properties: {
           command: "workspace.add",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
           workspace_id: "ws_123456789abc",
         },
       });
@@ -236,6 +286,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
         event: "workspace_add_completed",
         properties: {
           command: "workspace.add",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
           workspace_id: "ws_123456789abc",
         },
       });
@@ -244,7 +296,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
 });
 
 test("runCli tracks unknown-command errors and still shuts down analytics when tracking throws", async () => {
-  await withStateDir(async () => {
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
     await withAnalyticsStub(async () => {
       const events: Array<Omit<TrackedEvent, "client">> = [];
       let shutdownCalls = 0;
@@ -279,7 +332,90 @@ test("runCli tracks unknown-command errors and still shuts down analytics when t
       assert.equal(events.length, 1);
       assert.equal(events[0]?.event, "cli_error");
       assert.equal(events[0]?.distinctId, "anonymous");
+      // GAP B: commander-level cli_error must carry the same base props
+      // that runCommand's emits carry — otherwise PostHog loses session
+      // correlation on unknown-command / usage-error paths.
+      assert.equal(events[0]?.properties.cli_session_id, PINNED_SESSION);
+      assert.equal(events[0]?.properties.cli_device_id, PINNED_DEVICE);
       assert.equal(shutdownCalls, 1);
+    });
+  });
+});
+
+test("runCli persists session.json with bumped last_activity before returning (fast-exit flush guarantee)", async () => {
+  await withStateDir(async (dir) => {
+    await withAnalyticsStub(async () => {
+      cliAnalytics.createCliAnalytics = async () => null;
+      cliAnalytics.trackCliEvent = () => {};
+      cliAnalytics.shutdownCliAnalytics = async () => {};
+      const stdout = bufferStream();
+      const stderr = bufferStream();
+      // No session.json pre-existing — loadSession generates fresh.
+      const t0 = Date.now();
+      // --help is the fast-exit path most likely to race process.exit
+      // against a fire-and-forget saveSession. If the await regressed,
+      // this assertion would catch it: session.json must exist with a
+      // bumped last_activity by the time runCli returns.
+      await runCli(["--help"], {
+        env: { ...process.env, NO_COLOR: "1" },
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      });
+      const sessionPath = path.join(dir, "session.json");
+      const body = await fs.readFile(sessionPath, "utf8");
+      const parsed = JSON.parse(body) as { device_id: string; session_id: string; last_activity: number | null };
+      assert.match(parsed.device_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      assert.match(parsed.session_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      assert.ok(typeof parsed.last_activity === "number" && parsed.last_activity >= t0, "last_activity must be bumped by runCli startup");
+    });
+  });
+});
+
+test("runCli UNEXPECTED-branch cli_error carries cli_session_id + cli_device_id base props", async () => {
+  // GAP cover: cli.ts:325-338 — when parseAsync throws a non-Commander,
+  // non-InvalidArgumentError, the catch emits cli_error with the same
+  // namespaced base props that runCommand emits. Trigger by making the
+  // cli_command_started track call throw a plain Error from inside
+  // runCommand (line is outside runCommand's own try/catch), which
+  // propagates up through parseAsync into cli.ts's outer catch.
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
+    await withAnalyticsStub(async () => {
+      const events: Array<Omit<TrackedEvent, "client">> = [];
+      const analyticsClient = { name: "test-client" };
+      cliAnalytics.createCliAnalytics = async () => analyticsClient;
+      cliAnalytics.trackCliEvent = (_client, distinctId, event, properties = {}) => {
+        if (event === "cli_command_started") {
+          throw new Error("simulated unexpected analytics fault");
+        }
+        events.push({ distinctId, event, properties });
+      };
+      cliAnalytics.shutdownCliAnalytics = async () => {};
+
+      const stdout = bufferStream();
+      const stderr = bufferStream();
+
+      // login is AUTH_EXEMPT so preAction doesn't short-circuit; the
+      // runCommand wrapper fires cli_command_started before any handler
+      // logic, so we never reach the network. fetchImpl unused but
+      // required for type.
+      const code = await runCli(["login", "--no-open"], {
+        env: { ...process.env, NO_COLOR: "1", BROWSER: "false" },
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        fetchImpl: asFetchOverride(async () => {
+          throw new Error("fetch should not be reached — cli_command_started throws first");
+        }),
+      });
+
+      assert.equal(code, 1);
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.event, "cli_error");
+      assert.equal(events[0]?.properties.error_code, "UNEXPECTED");
+      assert.equal(events[0]?.properties.exit_code, "1");
+      assert.equal(events[0]?.properties.cli_session_id, PINNED_SESSION);
+      assert.equal(events[0]?.properties.cli_device_id, PINNED_DEVICE);
+      assert.match(stderr.read(), /error: simulated unexpected analytics fault/);
     });
   });
 });

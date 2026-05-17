@@ -67,7 +67,7 @@ export default function Hero() {
                 trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" })
               }
             >
-              → install in Claude Code
+              → get early access
             </a>
           </Button>
           <Button asChild variant="ghost" data-testid="hero-cta-secondary">

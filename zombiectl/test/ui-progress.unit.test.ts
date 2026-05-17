@@ -97,3 +97,20 @@ test("withSpinner re-throws the work error after calling fail", async () => {
     }),
   ).rejects.toThrow("boom");
 });
+
+// Pins the setInterval callback body (lines 51-53 in src/ui-progress.ts).
+// Without this, the body is dead to coverage because the existing tests
+// start+succeed/stop synchronously and never wait for the 80ms tick.
+test("createSpinner timer callback writes spinner frames at the configured interval", async () => {
+  const stream = fakeStream(true);
+  const s = createSpinner({ enabled: true, stream: asWritable(stream), label: "loading" });
+  s.start();
+  // Wait ~250ms — enough for ≥2 timer ticks at 80ms. Using real timers
+  // because Bun's fake-timer story varies; 250ms is cheap and pins
+  // the actual setInterval body executing.
+  await new Promise<void>((resolve) => setTimeout(resolve, 250));
+  s.stop();
+  // Each timer tick writes a frame line ("\r" + braille char + " " + label).
+  const spinnerLines = stream.frames.filter((f) => f.includes("loading") && f.startsWith("\r"));
+  expect(spinnerLines.length).toBeGreaterThanOrEqual(2);
+});

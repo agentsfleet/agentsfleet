@@ -59,7 +59,7 @@ const items: FeatureFlowItem[] = [
       "Daily + monthly dollar caps, trip-blocked at the gate",
       "zombiectl kill checkpoints state; nothing lost",
     ],
-    ctaLabel: "open mission control",
+    ctaLabel: "open dashboard",
     ctaHref: APP_BASE_URL,
     panel: [
       "agents     12",
