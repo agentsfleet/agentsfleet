@@ -14,11 +14,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M74
 **Workstream:** 001
 **Date:** May 17, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — substrate for M74_002 (CLI auth handshake hardening) and a foundation for every subsequent CLI command. Captain-mandated as the runtime model for all CLI commands going forward.
 **Categories:** CLI
 **Batch:** B1
-**Branch:** feat/m74-001-effect-ts-migration (to be created on CHORE(open))
+**Branch:** feat/m74-001-effect-ts-migration
 **Depends on:** None.
 **Provenance:** human-written (Kishore decision, May 17, 2026) — surfaced from M74 HANDOFF discussion. Reference: [`supabase/cli`'s `apps/cli/src/next/commands/login/login.handler.ts`](https://github.com/supabase/cli/blob/main/apps/cli/src/next/commands/login/login.handler.ts) (Effect-TS shape we are adopting).
 
