@@ -258,7 +258,7 @@ test("runCommand: session_id + device_id appear on started + finished events as 
     const code = await runCommand({
       name: "telecmd",
       handler: async () => 0,
-      ctx: { jsonMode: false, apiUrl: "http://x", session_id: "ses_X", device_id: "dev_Y" },
+      ctx: { jsonMode: false, apiUrl: "http://x", cliSessionId: "ses_X", cliDeviceId: "dev_Y" },
       deps: { trackCliEvent },
     });
     assert.equal(code, 0);
@@ -275,7 +275,7 @@ test("runCommand: writes one NDJSON trace line on success path", async () => {
     await runCommand({
       name: "trace-ok",
       handler: async () => 0,
-      ctx: { jsonMode: false, apiUrl: "http://x", session_id: "ses_T", device_id: "dev_T" },
+      ctx: { jsonMode: false, apiUrl: "http://x", cliSessionId: "ses_T", cliDeviceId: "dev_T" },
       deps: { trackCliEvent },
     });
     const today = new Date().toISOString().slice(0, 10);
@@ -300,7 +300,7 @@ test("runCommand: trace line on ApiError path has exit_code=1", async () => {
     await runCommand({
       name: "trace-err",
       handler: async () => { throw new ApiError("boom", { status: 400, code: "UZ-VAL-001" }); },
-      ctx: { stderr: STDERR_STUB, jsonMode: false, apiUrl: "http://x", session_id: "ses_E", device_id: "dev_E" },
+      ctx: { stderr: STDERR_STUB, jsonMode: false, apiUrl: "http://x", cliSessionId: "ses_E", cliDeviceId: "dev_E" },
       deps: { trackCliEvent, writeLine: w.writeLine, printJson: w.printJson, ui: w.ui },
     });
     const today = new Date().toISOString().slice(0, 10);
@@ -334,7 +334,7 @@ test("runCommand: instrument=false suppresses trace writes", async () => {
       name: "silent",
       handler: async () => 0,
       instrument: false,
-      ctx: { jsonMode: false, apiUrl: "http://x", session_id: "ses_S", device_id: "dev_S" },
+      ctx: { jsonMode: false, apiUrl: "http://x", cliSessionId: "ses_S", cliDeviceId: "dev_S" },
       deps: { trackCliEvent },
     });
     const tracesDir = path.join(dir, "traces");

@@ -177,7 +177,10 @@ export async function saveSession(next: Session): Promise<void> {
 // Append one JSON line to today's trace file. Best-effort: silently
 // drops the record on disk-full / permission-denied / EROFS so the CLI
 // boundary path never throws on telemetry. Caller passes a fully formed
-// record (no shape coercion happens here).
+// record (no shape coercion happens here). `fs.appendFile`'s `mode`
+// option is only honored on file creation; chmod after the append
+// guarantees STATE_FILE_MODE even when the trace file was previously
+// widened by an operator or another tool.
 export async function appendTrace(record: Record<string, unknown>): Promise<void> {
   const { tracesDir } = resolveStatePaths();
   const today = new Date().toISOString().slice(0, 10);
@@ -185,6 +188,7 @@ export async function appendTrace(record: Record<string, unknown>): Promise<void
   try {
     await fs.mkdir(tracesDir, { recursive: true });
     await fs.appendFile(tracePath, `${JSON.stringify(record)}\n`, { mode: STATE_FILE_MODE });
+    await fs.chmod(tracePath, STATE_FILE_MODE);
   } catch {
     // Telemetry never breaks the CLI boundary.
   }

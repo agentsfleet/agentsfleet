@@ -77,7 +77,7 @@ What this delivers: `state.ts` gains `loadSession()` and `saveSession()` functio
 }
 ```
 
-On first load, `device_id` and `session_id` are generated fresh. On subsequent loads, `device_id` is kept; `session_id` is regenerated if `last_activity` is older than `SESSION_TIMEOUT_MS` (30 min). `runCli()` persists the rotated/fresh session at startup (best-effort, fire-and-forget) with `last_activity = Date.now()`.
+On first load, `device_id` and `session_id` are generated fresh. On subsequent loads, `device_id` is kept; `session_id` is regenerated if `last_activity` is older than `SESSION_TIMEOUT_MS` (30 min). `last_activity` is bumped **once per CLI invocation at `runCli()` startup** (fire-and-forget, best-effort) — zombiectl runs one handler per invocation, so a startup bump is exactly one bump per command boundary. Per-`runCommand` bumps would be redundant writes with no behaviour change.
 
 Implementation default: `SESSION_TIMEOUT_MS = 30 * 60 * 1000` from Supabase's `identity.ts`. File permissions mirror `credentials.json` (0o600).
 

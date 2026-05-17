@@ -33,8 +33,11 @@ export interface HandlerCtx {
   distinctId?: string;
   analyticsContext?: Record<string, unknown> | null;
   retryConfig?: RetryConfig | null;
-  session_id?: string | null;
-  device_id?: string | null;
+  // CLI telemetry session/device identity. Field names match the local
+  // camelCase convention; the wire-format snake_case rename happens at
+  // emit/append sites (buildProps + appendTrace).
+  cliSessionId?: string | null;
+  cliDeviceId?: string | null;
   [key: string]: unknown;
 }
 
@@ -192,8 +195,8 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
       command: name,
       json_mode: String(handlerCtx.jsonMode ?? false),
     };
-    if (handlerCtx.session_id) base["session_id"] = handlerCtx.session_id;
-    if (handlerCtx.device_id) base["device_id"] = handlerCtx.device_id;
+    if (handlerCtx.cliSessionId) base["session_id"] = handlerCtx.cliSessionId;
+    if (handlerCtx.cliDeviceId) base["device_id"] = handlerCtx.cliDeviceId;
     return { ...base, ...getCliAnalyticsContext(handlerCtx) };
   };
 
@@ -264,8 +267,8 @@ export async function runCommand(opts: RunCommandOptions): Promise<number> {
       await appendTrace({
         ts: new Date().toISOString(),
         command: name,
-        session_id: handlerCtx.session_id ?? null,
-        device_id: handlerCtx.device_id ?? null,
+        session_id: handlerCtx.cliSessionId ?? null,
+        device_id: handlerCtx.cliDeviceId ?? null,
         exit_code: finalExit,
         duration_ms: durationMs,
       });

@@ -253,8 +253,8 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     jsonMode,
     noOpen: false,
     noInput: false,
-    session_id: session.session_id || null,
-    device_id: session.device_id || null,
+    cliSessionId: session.session_id || null,
+    cliDeviceId: session.device_id || null,
     // Tests inject partial WritableStreamLike mocks (just `.write` + `isTTY`);
     // CommandCtx declares the field as the richer NodeJS.WritableStream because
     // that matches the production runtime. Narrowing the field type would
