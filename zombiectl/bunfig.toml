@@ -1,6 +1,8 @@
-# Coverage knobs for `bun test --coverage`. Floor matches the
-# 95% bar shared with `ui/packages/{app,website}` — every product
-# in the monorepo answers to the same gate.
+# Coverage knobs for `bun test --coverage`. Floor pinned at 99% on
+# both function + line — the Effect substrate carries every command,
+# so the runtime model deserves the discipline. Enforced by
+# scripts/enforce-coverage.mjs (bun 1.3.x parses but does not enforce
+# the bunfig threshold itself).
 #
 # The acceptance suite (`test/acceptance/*.spec.js`) runs under the
 # same `bun:test` runtime as the rest of the suite — Captain
@@ -20,7 +22,7 @@
 # test/ that bun's heuristic doesn't.
 [test]
 coverage = true
-coverageThreshold = { line = 0.95, function = 0.95 }
+coverageThreshold = { line = 0.99, function = 0.99 }
 coverageReporter = ["text", "lcov"]
 coverageDir = "coverage"
 coverageSkipTestFiles = true

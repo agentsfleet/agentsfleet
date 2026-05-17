@@ -1,7 +1,6 @@
 import { queueCliAnalyticsEvent, setCliAnalyticsContext } from "../lib/analytics.ts";
 import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.ts";
-import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
 import { SIGINT } from "../constants/signals.ts";
 import type {
   CommandCtx,
@@ -22,7 +21,6 @@ const MIN_POLL_MS = 500;
 // hydration GET. RULE EMS — once these messages ship they become a
 // stable surface; failure-modes integration tests pin the substrings.
 export const loginErrorMap = compose(AUTH_PRESET);
-export const logoutErrorMap = compose(AUTH_PRESET);
 
 interface NormalizedWorkspace {
   workspace_id: string;
@@ -178,8 +176,9 @@ async function maybeOpenBrowser(
   deps: CommandDeps,
 ): Promise<boolean | void> {
   const { openUrl, writeLine } = deps;
-  // Commander normalises --no-open to opts.open === false. Legacy parsed
-  // shape kept opts["no-open"] === true; both resolve here.
+  // Commander normalises --no-open to opts.open === false; the dashed
+  // form opts["no-open"] === true is the alternate spelling some call
+  // sites pass. Both resolve here.
   const noOpenFlag = options["open"] === false || options["no-open"] === true;
   const shouldOpen = noOpenFlag ? false : !ctx.noOpen;
   const opened = shouldOpen ? await openUrl(loginUrl, { env: ctx.env }) : false;
@@ -318,18 +317,4 @@ export async function commandLogin(
   }
 
   return emitLoginResult(ctx, sessionId, result, deps);
-}
-
-export async function commandLogout(
-  ctx: CommandCtx,
-  _parsed: ParsedArgs,
-  _workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { clearCredentials, printJson, ui, writeLine } = deps;
-  await clearCredentials();
-  queueCliAnalyticsEvent(ctx, EVT_LOGOUT_COMPLETED);
-  if (ctx.jsonMode && ctx.stdout) printJson(ctx.stdout, { status: "ok", logged_out: true });
-  else if (ctx.stdout) writeLine(ctx.stdout, ui.ok("logout complete"));
-  return 0;
 }

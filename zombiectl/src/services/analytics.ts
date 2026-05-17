@@ -1,0 +1,62 @@
+// Analytics service — wraps the existing PostHog client construction
+// in lib/analytics.ts. `capture` automatically merges `cli_session_id`
+// and `cli_device_id` from TelemetryRuntime, so commands cannot
+// accidentally lose those props on any emit.
+//
+// Telemetry failures are swallowed via `Effect.ignore` at the
+// dispatcher — Analytics never blocks user-facing UX.
+
+import { Context, Effect, Layer } from "effect";
+import {
+  createCliAnalytics,
+  trackCliEvent,
+  shutdownCliAnalytics,
+  type AnalyticsClient,
+} from "../lib/analytics.ts";
+import { TelemetryRuntime } from "./telemetry-runtime.ts";
+
+export interface AnalyticsShape {
+  readonly capture: (
+    event: string,
+    properties?: Record<string, unknown>,
+  ) => Effect.Effect<void>;
+  readonly identify: (distinctId: string) => Effect.Effect<void>;
+  readonly alias: (distinctId: string, deviceId: string | null) => Effect.Effect<void>;
+  readonly shutdown: Effect.Effect<void>;
+}
+
+export class Analytics extends Context.Tag("Analytics")<Analytics, AnalyticsShape>() {}
+
+interface AnalyticsState {
+  client: AnalyticsClient | null;
+  distinctId: string;
+}
+
+const makeShape = (
+  state: AnalyticsState,
+  telemetry: { sessionId: string | null; deviceId: string | null },
+): AnalyticsShape => ({
+  capture: (event, properties = {}) =>
+    Effect.sync(() => {
+      const base: Record<string, unknown> = {};
+      if (telemetry.sessionId) base["cli_session_id"] = telemetry.sessionId;
+      if (telemetry.deviceId) base["cli_device_id"] = telemetry.deviceId;
+      trackCliEvent(state.client, state.distinctId, event, { ...base, ...properties });
+    }),
+  identify: (distinctId) =>
+    Effect.sync(() => {
+      state.distinctId = distinctId;
+    }),
+  alias: () => Effect.void,
+  shutdown: Effect.promise(() => shutdownCliAnalytics(state.client)),
+});
+
+export const AnalyticsLive: Layer.Layer<Analytics, never, TelemetryRuntime> = Layer.effect(
+  Analytics,
+  Effect.gen(function* () {
+    const telemetry = yield* TelemetryRuntime;
+    const client = yield* Effect.promise(() => createCliAnalytics());
+    const state: AnalyticsState = { client, distinctId: "anonymous" };
+    return makeShape(state, telemetry);
+  }),
+);

@@ -19,7 +19,7 @@ import {
   commandCredentialList,
   commandCredentialDelete,
 } from "../src/commands/zombie_credential.ts";
-import { commandLogin, commandLogout } from "../src/commands/core.ts";
+import { commandLogin } from "../src/commands/core.ts";
 import { commandDoctor } from "../src/commands/core-ops.ts";
 import {
   workspaceAdd,
@@ -134,7 +134,6 @@ type CoreHandler = (args?: readonly string[]) => Promise<number>;
 // `noUncheckedIndexedAccess` without a `!` non-null assertion.
 export interface CoreHandlers {
   commandLogin: CoreHandler;
-  commandLogout: CoreHandler;
   commandDoctor: CoreHandler;
   commandWorkspace: CoreHandler;
 }
@@ -150,7 +149,6 @@ export function createCoreHandlers(
 ): CoreHandlers {
   return {
     commandLogin:  (args = []) => commandLogin(ctx,  buildParsed(args), workspaces, deps),
-    commandLogout: (args = []) => commandLogout(ctx, buildParsed(args), workspaces, deps),
     commandDoctor: (args = []) => commandDoctor(ctx, buildParsed(args), workspaces, deps),
     commandWorkspace: (args = []) => commandWorkspaceDispatch(ctx, args, workspaces, deps),
   };

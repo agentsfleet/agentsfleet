@@ -1,15 +1,19 @@
 // Wires the imported leaf handlers into the shape cli-tree.ts expects.
-// Each entry runs through runCommand() so ApiError → friendly remap,
-// fetch-failed → API_UNREACHABLE, and the cli_command_started/finished/
-// error analytics triplet stay co-located with the dispatch path.
+// auth.status + logout route through the Effect dispatcher (runEffect)
+// — they consume services declared on the Effect's R channel.
+// Remaining groups route through the pre-Effect runCommand path until
+// their own commit in this PR.
 
+import type { Effect } from "effect";
 import { cliAnalytics } from "../lib/analytics.ts";
 import { runCommand } from "../lib/run-command.ts";
+import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
 import { printJson, writeLine } from "./io.ts";
 import { ui } from "../output/index.ts";
 
-import { commandLogin, commandLogout, loginErrorMap, logoutErrorMap } from "../commands/core.ts";
-import { commandAuthStatus, authStatusErrorMap } from "../commands/auth.ts";
+import { commandLogin, loginErrorMap } from "../commands/core.ts";
+import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
+import type { CliError } from "../errors/index.ts";
 import { commandDoctor, doctorErrorMap } from "../commands/core-ops.ts";
 import {
   workspaceAdd,
@@ -109,14 +113,37 @@ function wrapHandler(
   };
 }
 
+function wrapEffect<E extends CliError, R extends MainLayerServices>(
+  name: string,
+  effect: Effect.Effect<void, E, R>,
+  lifecycle: Lifecycle,
+): CommandHandlerFn {
+  return async (_frame: ActionFrame): Promise<number> => {
+    const exitCode = await runEffect({
+      name,
+      effect,
+      telemetry: {
+        sessionId: lifecycle.ctx.cliSessionId ?? null,
+        deviceId: lifecycle.ctx.cliDeviceId ?? null,
+      },
+    });
+    lifecycle.lastCommand = name;
+    return exitCode;
+  };
+}
+
 export function buildHandlers(lifecycle: Lifecycle): Handlers {
   const wrap = (name: string, map: PresetMap, fn: CommandHandler): CommandHandlerFn =>
     wrapHandler(name, map, fn, lifecycle);
+  const wrapE = <E extends CliError, R extends MainLayerServices>(
+    name: string,
+    effect: Effect.Effect<void, E, R>,
+  ): CommandHandlerFn => wrapEffect(name, effect, lifecycle);
   return {
     login: wrap("login", loginErrorMap, commandLogin),
-    logout: wrap("logout", logoutErrorMap, commandLogout),
+    logout: wrapE("logout", logoutEffect),
     auth: {
-      status: wrap("auth.status", authStatusErrorMap, commandAuthStatus),
+      status: wrapE("auth.status", authStatusEffect),
     },
     doctor: wrap("doctor", doctorErrorMap, commandDoctor),
     workspace: {

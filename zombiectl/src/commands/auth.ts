@@ -1,62 +1,58 @@
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
+// auth status + logout migrated to Effect.
+//
+// `login` still routes through the pre-Effect dispatcher until its own
+// commit in this PR. The Effect dispatcher is `runEffect` in
+// lib/run-effect.ts; the services consumed below come from
+// src/services/* via MainLayer.
+
+import { Effect, Option, Redacted } from "effect";
+import { Analytics } from "../services/analytics.ts";
+import { CliConfig } from "../services/config.ts";
+import { Credentials } from "../services/credentials.ts";
+import { HttpClient } from "../services/http-client.ts";
+import { Output } from "../services/output.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
-import { decodeTokenPayload } from "../program/auth-token.ts";
+import { AuthError, ServerError, type CliError } from "../errors/index.ts";
+import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
 import {
   ERR_FORBIDDEN,
   ERR_UNAUTHORIZED,
   ERR_TOKEN_EXPIRED,
 } from "../constants/error-codes.ts";
-import {
-  TOKEN_EXPIRED,
-  UNAUTHORIZED,
-} from "../constants/cli-errors.ts";
-import type {
-  CommandCtx,
-  CommandDeps,
-  ParsedArgs,
-  Workspaces,
-  Credentials,
-} from "./types.ts";
+import { decodeTokenPayload } from "../program/auth-token.ts";
 
-export const authStatusErrorMap = compose(AUTH_PRESET);
-
+type TokenSource = "file" | "env" | "none";
 type ProbeStatus = "valid" | "unauthorized" | "unreachable";
 
 interface ProbeResult {
-  status: ProbeStatus;
-  error: string | null;
+  readonly status: ProbeStatus;
+  readonly error: string | null;
 }
 
 interface TokenSummary {
-  iss: string | null;
-  aud: string | null;
-  sub: string | null;
-  tenant_id: string | null;
-  role: string | null;
-  exp_at: string | null;
-  expired: boolean | null;
+  readonly iss: string | null;
+  readonly aud: string | null;
+  readonly sub: string | null;
+  readonly tenant_id: string | null;
+  readonly role: string | null;
+  readonly exp_at: string | null;
+  readonly expired: boolean | null;
 }
 
 interface AuthStatusResult {
-  authenticated: boolean;
-  source: "file" | "env" | "none";
-  api_url: string | undefined;
-  saved_at: number | null;
-  session_id: string | null;
-  token: TokenSummary | null;
-  server_check: ProbeResult;
+  readonly authenticated: boolean;
+  readonly source: TokenSource;
+  readonly api_url: string;
+  readonly saved_at: number | null;
+  readonly session_id: string | null;
+  readonly token: TokenSummary | null;
+  readonly server_check: ProbeResult;
 }
 
-function resolveSource(
-  fileToken: string | null,
-  envToken: string | null,
-): "file" | "env" | "none" {
-  if (fileToken) return "file";
-  if (envToken) return "env";
-  return "none";
-}
+const formatTs = (ms: number | null | undefined): string =>
+  typeof ms === "number" && Number.isFinite(ms) ? new Date(ms).toISOString() : "—";
 
-function deriveTokenSummary(token: string | null): TokenSummary | null {
+const deriveTokenSummary = (token: string | null): TokenSummary | null => {
   if (!token) return null;
   const payload = decodeTokenPayload(token);
   if (!payload) return null;
@@ -86,133 +82,158 @@ function deriveTokenSummary(token: string | null): TokenSummary | null {
     exp_at: expSec ? new Date(expSec * 1000).toISOString() : null,
     expired: expSec ? expSec <= nowSec : null,
   };
-}
+};
 
-async function probeServer(
-  ctx: CommandCtx,
-  deps: CommandDeps,
-): Promise<ProbeResult> {
-  const { apiHeaders, request } = deps;
-  try {
-    await request(ctx, TENANT_BILLING_PATH, {
-      method: "GET",
-      headers: apiHeaders(ctx),
-    });
-    return { status: "valid", error: null };
-  } catch (err) {
-    const errObj =
-      err && typeof err === "object" ? (err as Record<string, unknown>) : {};
-    const tag = typeof errObj["tag"] === "string" ? (errObj["tag"] as string) : null;
-    const code =
-      typeof errObj["code"] === "string" ? (errObj["code"] as string) : null;
-    const message =
-      typeof errObj["message"] === "string"
-        ? (errObj["message"] as string)
-        : null;
-    if (
-      tag === TOKEN_EXPIRED ||
-      tag === UNAUTHORIZED ||
-      code === ERR_FORBIDDEN ||
-      code === ERR_UNAUTHORIZED ||
-      code === ERR_TOKEN_EXPIRED
-    ) {
-      return { status: "unauthorized", error: tag ?? code };
-    }
-    return { status: "unreachable", error: tag ?? code ?? message ?? "unknown" };
+const classifyProbeError = (err: ServerError): ProbeResult => {
+  if (
+    err.code === ERR_FORBIDDEN ||
+    err.code === ERR_UNAUTHORIZED ||
+    err.code === ERR_TOKEN_EXPIRED ||
+    err.status === 401 ||
+    err.status === 403
+  ) {
+    return { status: "unauthorized", error: err.code };
   }
-}
+  return { status: "unreachable", error: err.code };
+};
 
-function formatTimestamp(ms: number | null | undefined): string {
-  return typeof ms === "number" && Number.isFinite(ms)
-    ? new Date(ms).toISOString()
-    : "—";
-}
-
-function emitNotAuthenticated(ctx: CommandCtx, deps: CommandDeps): number {
-  const { printJson, ui, writeLine } = deps;
-  const payload = { authenticated: false, source: "none", api_url: ctx.apiUrl };
-  if (ctx.jsonMode && ctx.stdout) printJson(ctx.stdout, payload);
-  else if (ctx.stderr)
-    writeLine(
-      ctx.stderr,
-      ui.err("not authenticated — run `zombiectl login` to start a session"),
+const probe = (
+  token: Redacted.Redacted<string>,
+): Effect.Effect<ProbeResult, never, HttpClient> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    return yield* http.request({ path: TENANT_BILLING_PATH, token }).pipe(
+      Effect.match({
+        onSuccess: (): ProbeResult => ({ status: "valid", error: null }),
+        onFailure: (err): ProbeResult =>
+          err._tag === "ServerError"
+            ? classifyProbeError(err)
+            : { status: "unreachable", error: "network" },
+      }),
     );
-  return 1;
-}
-
-function emitStatus(
-  ctx: CommandCtx,
-  result: AuthStatusResult,
-  deps: CommandDeps,
-): number {
-  const { printJson, printKeyValue, printSection = () => {}, writeLine } = deps;
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, result);
-    return result.server_check.status === "unauthorized" ? 1 : 0;
-  }
-  if (!ctx.stdout) return 0;
-  printSection(ctx.stdout, "Authentication");
-  printKeyValue(ctx.stdout, {
-    source: result.source,
-    api_url: result.api_url ?? "—",
-    saved_at: formatTimestamp(result.saved_at),
-    tenant_id: result.token?.tenant_id ?? "—",
-    role: result.token?.role ?? "—",
-    expires_at: result.token?.exp_at ?? "—",
-    expired:
-      result.token?.expired === true
-        ? "yes"
-        : result.token?.expired === false
-          ? "no"
-          : "—",
-    server_check: result.server_check.error
-      ? `${result.server_check.status} (${result.server_check.error})`
-      : result.server_check.status,
   });
-  writeLine(ctx.stdout);
-  if (result.server_check.status === "unauthorized") {
-    if (ctx.stderr)
-      writeLine(
-        ctx.stderr,
-        deps.ui.err("server rejected the current token — re-run `zombiectl login`"),
+
+const renderHuman = (
+  result: AuthStatusResult,
+): Effect.Effect<void, never, Output> =>
+  Effect.gen(function* () {
+    const output = yield* Output;
+    yield* output.printSection("Authentication");
+    yield* output.printKeyValue({
+      source: result.source,
+      api_url: result.api_url,
+      saved_at: formatTs(result.saved_at),
+      tenant_id: result.token?.tenant_id ?? "—",
+      role: result.token?.role ?? "—",
+      expires_at: result.token?.exp_at ?? "—",
+      expired:
+        result.token?.expired === true
+          ? "yes"
+          : result.token?.expired === false
+            ? "no"
+            : "—",
+      server_check: result.server_check.error
+        ? `${result.server_check.status} (${result.server_check.error})`
+        : result.server_check.status,
+    });
+    if (result.server_check.status === "unauthorized") {
+      yield* output.error(
+        "server rejected the current token — re-run `zombiectl login`",
       );
-    return 1;
+    } else {
+      yield* output.success("authenticated");
+    }
+  });
+
+export const authStatusEffect: Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output
+> = Effect.gen(function* () {
+  const config = yield* CliConfig;
+  const credentials = yield* Credentials;
+  const output = yield* Output;
+
+  const fileToken = yield* credentials.getAccessToken;
+  const envToken = config.accessToken;
+
+  const source: TokenSource = Option.isSome(fileToken)
+    ? "file"
+    : Option.isSome(envToken)
+      ? "env"
+      : "none";
+
+  if (source === "none") {
+    if (config.jsonMode) {
+      yield* output.printJson({
+        authenticated: false,
+        source: "none",
+        api_url: config.apiUrl,
+      });
+    } else {
+      yield* output.error(
+        "not authenticated — run `zombiectl login` to start a session",
+      );
+    }
+    return yield* Effect.fail(
+      new AuthError({
+        detail: "not authenticated",
+        suggestion: "run `zombiectl login`",
+        code: "AUTH_REQUIRED",
+      }),
+    );
   }
-  writeLine(ctx.stdout, deps.ui.ok("authenticated"));
-  return 0;
-}
 
-export async function commandAuthStatus(
-  ctx: CommandCtx,
-  _parsed: ParsedArgs,
-  _workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { loadCredentials } = deps;
-  const creds: Credentials = await loadCredentials();
-  const fileToken = creds.token ?? null;
-  const envToken =
-    typeof ctx.env?.["ZOMBIE_TOKEN"] === "string"
-      ? (ctx.env["ZOMBIE_TOKEN"] as string)
-      : null;
-  const source = resolveSource(fileToken, envToken);
-  if (source === "none") return emitNotAuthenticated(ctx, deps);
+  const activeToken = Option.getOrElse(fileToken, () =>
+    Option.getOrThrow(envToken),
+  );
+  const savedAt = source === "file" ? yield* credentials.getSavedAt : null;
+  const sessionId = source === "file" ? yield* credentials.getSessionId : null;
+  const probeResult = yield* probe(activeToken);
 
-  const activeToken = fileToken || envToken;
-  ctx.token = activeToken;
-  const probe =
-    (await probeServer(ctx, deps)) ?? {
-      status: "unreachable" as const,
-      error: "probe returned no result",
-    };
   const result: AuthStatusResult = {
-    authenticated: probe.status !== "unauthorized",
+    authenticated: probeResult.status !== "unauthorized",
     source,
-    api_url: ctx.apiUrl,
-    saved_at: source === "file" ? (creds.saved_at ?? null) : null,
-    session_id: source === "file" ? (creds.session_id ?? null) : null,
-    token: deriveTokenSummary(activeToken),
-    server_check: probe,
+    api_url: config.apiUrl,
+    saved_at: savedAt,
+    session_id: sessionId,
+    token: deriveTokenSummary(Redacted.value(activeToken)),
+    server_check: probeResult,
   };
-  return emitStatus(ctx, result, deps);
-}
+
+  if (config.jsonMode) {
+    yield* output.printJson(result);
+  } else {
+    yield* renderHuman(result);
+  }
+
+  if (probeResult.status === "unauthorized") {
+    return yield* Effect.fail(
+      new AuthError({
+        detail: "server rejected the current token",
+        suggestion: "re-run `zombiectl login`",
+        code: probeResult.error ?? ERR_UNAUTHORIZED,
+      }),
+    );
+  }
+});
+
+export const logoutEffect: Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | Output | Analytics
+> = Effect.gen(function* () {
+  const config = yield* CliConfig;
+  const credentials = yield* Credentials;
+  const output = yield* Output;
+  const analytics = yield* Analytics;
+
+  yield* credentials.clearAccessToken;
+  yield* analytics.capture(EVT_LOGOUT_COMPLETED);
+
+  if (config.jsonMode) {
+    yield* output.printJson({ status: "ok", logged_out: true });
+  } else {
+    yield* output.success("logout complete");
+  }
+});
