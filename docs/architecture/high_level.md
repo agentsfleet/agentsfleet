@@ -171,23 +171,7 @@ All three flow through the same reasoning loop. The zombie does not branch on ac
 
 ---
 
-## 6. Open Product Question
-
-Many users already run a personal assistant locally in a TUI. The v2 bet is that the durable cloud runtime is more valuable than the local interactive loop for operational work.
-
-That bet is valid only if the cloud zombie does something the local assistant does not:
-
-- waits for events while the human is gone
-- keeps state across retries and failures
-- resumes after interruption
-- owns approvals and audit
-- acts on real infrastructure signals, not just conversational prompts
-
-If those properties are not materially better than "open Claude and ask it what to do next," then the v2 thesis is too weak.
-
----
-
-## 7. Why Not Just Use OpenClaw
+## 6. Why Not Just Use OpenClaw
 
 This is the hardest product challenge and is stated plainly.
 

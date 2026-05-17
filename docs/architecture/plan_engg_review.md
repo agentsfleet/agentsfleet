@@ -160,4 +160,4 @@ Do not use this file as:
 - a dated launch checklist
 - a source of product positioning
 
-For product positioning, use [`office_hours_v2.md`](./office_hours_v2.md) plus the core architecture files.
+For product positioning, use [`office_hours.md`](./office_hours.md) plus the core architecture files.

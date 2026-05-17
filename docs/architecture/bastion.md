@@ -32,4 +32,4 @@ The bastion is a `SKILL.md` authoring pattern plus a few new tool primitives plu
 
 ---
 
-> Next: [`ship_reflection.md`](./ship_reflection.md) — §14 post-launch reflection appendix (PENDING SHIP until v2 launches; populated with real evidence post-ship).
+> Next: [`_unshipped/ship_reflection.md`](./_unshipped/ship_reflection.md) — §14 post-launch reflection appendix. Held in `_unshipped/` until v2 launches; populated with real evidence (launch date, first external install, deferral outcomes) and moved back to the canonical set then.
