@@ -7,6 +7,22 @@ const std = @import("std");
 const Connection = @import("redis_connection.zig");
 const redis_config = @import("redis_config.zig");
 
+// Loopback host shared across every in-process fake server below.
+// `parseIp4` (for `listen`) and `alloc.dupe` (for `Config.host`) both want
+// the same literal — extracting prevents drift.
+const LOOPBACK_IPV4 = "127.0.0.1";
+
+// Shutdown-loop poll tick for new fake servers introduced in this file.
+// Pre-existing `PongOnce` keeps its 5ms tick to avoid opportunistic edits;
+// new fakes use the canonical 10ms (matches `redis_subscriber_test.zig`).
+const FAKE_SHUTDOWN_POLL_NS = 10 * std.time.ns_per_ms;
+
+// Upper bound for `SO_RCVTIMEO`-fired timing assertions — catches
+// retry-loop or busy-spin bugs that would let an "expected ~200ms"
+// test silently hang for minutes. The floor is per-test (a function
+// of the test's configured budget, e.g. half of 200ms).
+const RCVTIMEO_CEILING_NS = 5 * std.time.ns_per_s;
+
 const PongOnce = struct {
     server: std.net.Server,
     addr: std.net.Address,
@@ -156,7 +172,7 @@ const ResidualBytesAfterReply = struct {
     stop: std.atomic.Value(bool),
 
     fn start(self: *ResidualBytesAfterReply) !void {
-        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
         self.server = try loopback.listen(.{ .reuse_address = true });
         self.addr = self.server.listen_address;
         self.stop = std.atomic.Value(bool).init(false);
@@ -182,16 +198,103 @@ const ResidualBytesAfterReply = struct {
         // loopback; the std.Io.Reader pulls both frames into its buffer
         // in one read syscall. Parser consumes `+PONG\r\n`; `+EXTRA\r\n`
         // remains buffered. bufferedLen() > 0 → poison.
+        // pin test: literal is the contract — the parser MUST consume
+        // `+PONG\r\n` and leave the trailing 8 bytes (`+EXTRA\r\n`)
+        // buffered. Any rewrite that changes the byte boundary breaks
+        // the residual-byte check the production code asserts on.
         if (n > 0) conn.stream.writeAll("+PONG\r\n+EXTRA\r\n") catch {};
-        while (!self.stop.load(.acquire)) std.Thread.sleep(5 * std.time.ns_per_ms);
+        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
         conn.stream.close();
     }
 
     fn config(self: *ResidualBytesAfterReply, alloc: std.mem.Allocator) !redis_config.Config {
-        const host = try alloc.dupe(u8, "127.0.0.1");
+        const host = try alloc.dupe(u8, LOOPBACK_IPV4);
         return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
     }
 };
+
+// Writes the length header of a bulk-string reply (`$5\r\n`) and then
+// hangs — never sends the 5-byte body. With `SO_RCVTIMEO` armed via
+// `applyReadTimeout`, the parser blocks on body read until the kernel
+// returns EAGAIN, which surfaces as `error.ReadFailed`. Proves the
+// partial-frame timeout path poisons the conn (spec §protocol-desync).
+const PartialFrameThenHang = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+
+    fn start(self: *PartialFrameThenHang) !void {
+        const loopback = try std.net.Address.parseIp4(LOOPBACK_IPV4, 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    fn shutdown(self: *PartialFrameThenHang) void {
+        self.stop.store(true, .release);
+        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn loop(self: *PartialFrameThenHang) void {
+        const conn = self.server.accept() catch return;
+        if (self.stop.load(.acquire)) {
+            conn.stream.close();
+            return;
+        }
+        var buf: [256]u8 = undefined;
+        const n = conn.stream.read(&buf) catch 0;
+        // pin test: literal is the contract — `$5\r\n` announces a
+        // 5-byte body; never send it. The parser consumes the length
+        // header, then blocks on body read until `SO_RCVTIMEO` fires.
+        // Rewriting the header (e.g. `$10\r\n`) shifts the parser state
+        // and changes which assertion the test is making.
+        if (n > 0) conn.stream.writeAll("$5\r\n") catch {};
+        while (!self.stop.load(.acquire)) std.Thread.sleep(FAKE_SHUTDOWN_POLL_NS);
+        conn.stream.close();
+    }
+
+    fn config(self: *PartialFrameThenHang, alloc: std.mem.Allocator) !redis_config.Config {
+        const host = try alloc.dupe(u8, LOOPBACK_IPV4);
+        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+    }
+};
+
+test "commandAllowError: partial RESP frame past SO_RCVTIMEO surfaces ReadFailed and poisons conn" {
+    var srv: PartialFrameThenHang = undefined;
+    try srv.start();
+    defer srv.shutdown();
+
+    const cfg = try srv.config(std.testing.allocator);
+    defer redis_config.deinitConfig(std.testing.allocator, cfg);
+
+    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    defer conn.deinit();
+
+    // Arm the read timeout BEFORE issuing the command — the fake hangs
+    // after writing `$5\r\n`, so without SO_RCVTIMEO the parser would
+    // block forever on the missing body. 200ms keeps the test fast while
+    // remaining well above kernel granularity.
+    conn.applyReadTimeout(200);
+
+    const start = std.time.nanoTimestamp();
+    const result = conn.commandAllowError(&.{"PING"});
+    const elapsed_ns = std.time.nanoTimestamp() - start;
+
+    try std.testing.expectError(error.ReadFailed, result);
+
+    // Load-bearing assertions:
+    //   1. Partial-frame parser failure poisons the conn — Pool.release
+    //      with ok=false closes; the retry layer dials fresh.
+    //   2. Timing floor proves SO_RCVTIMEO actually fired (not a same-tick
+    //      EOF from peer close). Upper bound catches retry / spin bugs.
+    try std.testing.expect(conn.state == .poisoned);
+    try std.testing.expect(elapsed_ns >= 100 * std.time.ns_per_ms);
+    try std.testing.expect(elapsed_ns < RCVTIMEO_CEILING_NS);
+}
 
 test "commandAllowError: residual bytes after parsed reply poison the conn and surface RedisProtocolDesync" {
     var srv: ResidualBytesAfterReply = undefined;
