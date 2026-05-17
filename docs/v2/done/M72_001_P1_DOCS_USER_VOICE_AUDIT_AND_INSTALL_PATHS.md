@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M72
 **Workstream:** 001
 **Date:** May 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — operator-facing docs drift from architectural source-of-truth; cold-start install instructions undersell the simpler path.
 **Categories:** DOCS
 **Batch:** B1
