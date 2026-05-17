@@ -2,11 +2,9 @@
 
 > Parent: [`README.md`](./README.md)
 >
-> Status: Internal validation note, cleaned for durable reference.
-> Use this file for what must be tested around the platform-ops wedge.
-> Do not use it as the source of truth for active milestone status or dated launch sequencing.
+> **Status: Historical — pre-launch engineering-review record.** This is the review pass that produced the substrate-tier vs packaging-tier split and the platform-ops validation bar. Preserved for the test framing it locked in. **Not enforceable canon.** Current canon for architecture lives in the topic files of this directory (`data_flow.md`, `capabilities.md`, `direction.md`); current QA gates and verification commands live in [`../VERIFY_TIERS.md`](../VERIFY_TIERS.md). Read this for the original testing rationale; read those when you need to know what runs today.
 
-This file is consumed by `/qa` and `/qa-only` as primary test input.
+This file is consumed by `/qa` and `/qa-only` as primary test input for the platform-ops scenario.
 
 ---
 
@@ -26,13 +24,16 @@ It exists to answer:
 The wedge mainly exercises existing runtime surfaces rather than inventing a completely new subsystem.
 
 - CLI: `zombiectl install --from <path>`
-- CLI: `zombiectl steer {id}`
-- CLI: `zombiectl credential set <name> --data @-`
+- CLI: `zombiectl steer <zombie_id> <message>` (post-M69_002: enters Read-Eval-Print Loop (REPL) when stdin is a Terminal (TTY) and no message arg is given)
+- CLI: `zombiectl credential add <name> --data @-` (the v2 command surface is `add`, not `set`; verified against `zombiectl/src/program/cli-tree.js:331`)
 - CLI: `zombiectl doctor --json`
+- CLI: `zombiectl tenant provider set --credential <name>` (the self-managed activation surface)
 - Skill: `/usezombie-install-platform-ops`
 - Docs surface: `docs.usezombie.com/quickstart/platform-ops`
 - Docs surface: `docs.usezombie.com/skills`
-- Skill distribution surface: `https://usezombie.sh/skills.md`
+- Skill distribution surfaces (two paths by audience, see [`user_flow.md`](./user_flow.md) §8.0):
+  - Humans: `https://usezombie.sh/skills.md` (copy-paste install)
+  - Agents: `npm install -g @usezombie/zombiectl && npx skills add usezombie/skills` (post-M69_001)
 
 ## Core happy path
 
@@ -40,16 +41,16 @@ The core happy path is:
 
 1. The user runs `/usezombie-install-platform-ops` inside a target repo.
 2. The skill detects the repo shape and asks a small number of gating questions.
-3. The skill resolves credentials in the expected order.
+3. The skill resolves credentials in the expected order (1Password CLI → environment variables → interactive prompt).
 4. The skill writes `.usezombie/platform-ops/SKILL.md` and `.usezombie/platform-ops/TRIGGER.md`.
-5. The skill calls `zombiectl doctor --json` and gets a clean readiness result.
+5. The skill calls `zombiectl doctor --json` and gets a clean readiness result — the only sanctioned preflight surface (see [`user_flow.md`](./user_flow.md) §8.2).
 6. The skill calls `zombiectl install --from .usezombie/platform-ops/`.
-7. The skill opens `zombiectl steer {id}`.
-8. A real "morning health check" message produces a real diagnosis and Slack post.
+7. The skill runs `zombiectl steer <zombie_id> "morning health check"` for a real smoke test.
+8. The smoke-test message produces a real diagnosis and a Slack post.
 
 If this path fails, the wedge is not ready no matter how polished the surrounding docs are.
 
-Current launch contract: self-managed flows through tenant-scoped provider configuration (`zombiectl tenant provider set --credential <name>`). The workspace-scoped `/credentials/llm` route is removed before v2.0.0 and must not be preserved as a compatibility path.
+**Launch contract on self-managed:** activation flows through the **tenant-scoped** provider configuration (`zombiectl tenant provider set --credential <name>`). The earlier workspace-scoped `/credentials/llm` route was removed before v2.0.0; it must not be preserved as a compatibility path (RULE NLG — pre-`2.0.0`, no legacy framing or compat shims).
 
 ## Hosted posture assumptions
 
@@ -162,4 +163,4 @@ Do not use this file as:
 - a dated launch checklist
 - a source of product positioning
 
-For product positioning, use [`office_hours_v2.md`](./office_hours_v2.md) plus the core architecture files.
+For product positioning, use [`office_hours.md`](./office_hours.md) plus the core architecture files.

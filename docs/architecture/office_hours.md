@@ -2,9 +2,7 @@
 
 > Parent: [`README.md`](./README.md)
 >
-> Status: Internal strategy note, cleaned for durable reference.
-> Use this file for product framing, persona choice, wedge choice, and validation bar.
-> Do not use it as the canonical source for implementation status, spec backlog, or launch sequencing.
+> **Status: Historical — pre-launch product-design record.** This is the conversation that produced the v2 wedge (persona, demand bucket, why-not-OpenClaw, validation bar). Preserved for the decisions it captured and the alternatives it rejected. **Not enforceable canon.** Current canon for what v2 is and is not lives in [`high_level.md`](./high_level.md) and [`direction.md`](./direction.md); current milestone status lives under `docs/v2/{pending,active,done}/`. Read this when you want context for a decision; read those when you need the truth about today.
 
 ---
 
@@ -16,12 +14,12 @@ When a deploy fails, an inference endpoint starts returning errors, or productio
 
 For v2, the sharpest wedge is deploy-failure and production-triage work:
 
-- gather evidence from CI, infrastructure, logs, and chat surfaces
+- gather evidence from Continuous Integration (CI), infrastructure, logs, and chat surfaces
 - preserve the timeline with actor provenance
 - keep going after the original interactive session is gone
 - ask for approval when the next action is risky
 
-The wedge is intentionally narrower than "AI for SRE." It is a durable operational runtime for one concrete outcome.
+The wedge is intentionally narrower than "AI for Site Reliability Engineering (SRE)." It is a durable operational runtime for one concrete outcome.
 
 ## Demand honesty
 
@@ -41,7 +39,7 @@ The primary user is a high-agency operator who owns infrastructure outcomes dire
 
 - SRE or platform engineer at a small team
 - founder-operator or strong indie engineer
-- teams that cannot or do not want to pipe their entire ops stack into another SaaS
+- teams that cannot or do not want to pipe their entire ops stack into another Software-as-a-Service (SaaS) tool
 - teams that value open source, self-managed provider key, and prompt-defined behaviour over a heavy workflow builder
 
 The broader category includes AI-infra teams, GPU-cloud operators, regulated mid-market teams, and agentic-operations teams, but the v2 wedge should stay grounded in the small-team operator who feels this pain acutely today.

@@ -387,7 +387,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.12
+          bun-version: 1.3.13
 
       - name: Load Vercel bypass secret from 1Password
         uses: 1password/load-secrets-action@v4
@@ -458,7 +458,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.12
+          bun-version: 1.3.13
 
       - name: Load Clerk DEV credentials from 1Password
         uses: 1password/load-secrets-action@v4
@@ -529,7 +529,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: 1.3.12
+          bun-version: 1.3.13
 
       - name: Install zombiectl dependencies (BEFORE secret load — WS-E #C2)
         run: bun install --frozen-lockfile
@@ -560,8 +560,8 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           CLERK_SECRET_KEY: op://${{ vars.VAULT_DEV }}/clerk-dev/secret-key
-          AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures/regular/email
-          AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures/admin/email
+          AUTH_E2E_REGULAR_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/regular
+          AUTH_E2E_ADMIN_EMAIL: op://${{ vars.VAULT_DEV }}/e2e-fixtures-email/admin
 
       - name: Run CLI acceptance suite against api-dev
         run: bun run test:acceptance

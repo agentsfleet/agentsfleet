@@ -28,7 +28,7 @@ pub const renderPrometheus = mr.renderPrometheus;
 
 // Per-(workspace, zombie) token counter.
 
-// Executor metrics re-exports (§5.2).
+// Executor metrics re-exports.
 pub const incExecutorSessionsCreated = em.incExecutorSessionsCreated;
 pub const setExecutorSessionsActive = em.setExecutorSessionsActive;
 pub const incExecutorFailures = em.incExecutorFailures;
@@ -41,6 +41,12 @@ pub const incExecutorCancellations = em.incExecutorCancellations;
 pub const addExecutorCpuThrottledMs = em.addExecutorCpuThrottledMs;
 pub const setExecutorMemoryPeakBytes = em.setExecutorMemoryPeakBytes;
 pub const executorSnapshot = em.executorSnapshot;
+
+// Redis pool registration — Prometheus pull-side wiring.
+const mrp = @import("metrics_redis_pool.zig");
+pub const registerRedisPool = mrp.registerPool;
+pub const clearRegisteredRedisPool = mrp.clearRegisteredPool;
+pub const redisPoolSnapshot = mrp.snapshot;
 
 test "prometheus render includes key live metrics" {
     const alloc = std.testing.allocator;

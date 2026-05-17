@@ -197,4 +197,23 @@ pub const Transport = union(enum) {
             .tls => |*t| t.writer(),
         };
     }
+
+    /// Install (or clear) `SO_RCVTIMEO` on the underlying socket. Non-null
+    /// `ms` makes blocking reads return after that many milliseconds with
+    /// `error.ReadFailed` at the std.Io.Reader layer (Zig 0.15.2 wraps the
+    /// posix `WouldBlock` into `ReadFailed`). Null clears the timeout.
+    /// Caller (Connection / Subscriber) decides how to interpret the error.
+    pub fn setReadTimeout(self: *Transport, ms: ?u32) void {
+        const fd = switch (self.*) {
+            .plain => |*p| p.stream.handle,
+            .tls => |*t| t.stream.handle,
+        };
+        const timeout: std.posix.timeval = if (ms) |v| .{
+            .sec = @intCast(v / 1000),
+            .usec = @intCast((v % 1000) * 1000),
+        } else .{ .sec = 0, .usec = 0 };
+        std.posix.setsockopt(fd, std.posix.SOL.SOCKET, std.posix.SO.RCVTIMEO, std.mem.asBytes(&timeout)) catch |err| {
+            log.warn("setsockopt_rcvtimeo_failed", .{ .err = @errorName(err) });
+        };
+    }
 };

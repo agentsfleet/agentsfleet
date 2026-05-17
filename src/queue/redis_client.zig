@@ -1,41 +1,118 @@
 //! Redis client. File-as-struct: the file IS the `Client` type.
+//!
+//! Thin façade over `Pool`. `Client.command` acquires a connection from
+//! the pool, runs one RESP round-trip, releases. Transport errors are
+//! non-resumable: the pool closes the connection and `command` retries
+//! once with a fresh dial (MAX_ATTEMPTS = 2). Server-side `.err` replies
+//! are resumable: the connection stays alive in the pool and the caller
+//! surfaces the error.
+//!
+//! No mutex — concurrent callers each take their own pooled connection
+//! and never serialize across the network round-trip (Invariant 1).
+//! Self-heal on idle-drop is a Pool property: a dead idle conn poisons
+//! on first IO error, gets closed by release, and the retry layer dials
+//! fresh.
 
 pub const Client = @This();
 
 const S_PONG = "PONG";
 const S_SET = "SET";
-const S_AUTH = "AUTH";
-const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
 const S_EX = "EX";
 const S_D = "{d}";
 const S_PING = "PING";
 const S_OK = "OK";
+const S_XADD_ZOMBIE_EVENT_FAILED = "xadd_zombie_event_failed";
+
+// XADD argv slots for `xaddZombieEvent` — lifted to file scope so the
+// compile-folded prefix is a single comptime slice instead of six slot
+// assignments at runtime. The `MAXLEN ~ 10000` triplet caps the
+// zombie:{id}:events stream's retention (~10k approximate trim); `*`
+// asks Redis to generate the stream entry id (which IS the event_id).
+const XADD_VERB: []const u8 = "XADD";
+const XADD_MAXLEN_KEYWORD: []const u8 = "MAXLEN";
+const XADD_MAXLEN_APPROX: []const u8 = "~";
+const XADD_MAXLEN_ZOMBIE_EVENTS: []const u8 = "10000";
+const XADD_AUTO_ID: []const u8 = "*";
+
+/// Compile-folded tail for `XADD zombie:{id}:events MAXLEN ~ 10000 * …`.
+/// Slot 0 = `XADD`, slot 1 = stream key (runtime), slots 2..6 = this slice.
+const XADD_ZOMBIE_TRIM_TAIL: []const []const u8 = &.{
+    XADD_MAXLEN_KEYWORD,
+    XADD_MAXLEN_APPROX,
+    XADD_MAXLEN_ZOMBIE_EVENTS,
+    XADD_AUTO_ID,
+};
+const XADD_ZOMBIE_PREFIX_LEN: usize = 2 + XADD_ZOMBIE_TRIM_TAIL.len;
+
+/// Per spec retry contract: pool-path operations get 2 attempts total
+/// before the error surfaces to the caller. No backoff at this layer —
+/// the caller (PG-dedup'd XADD, lossy PUBLISH, idempotent XACK) tolerates
+/// at-least-once delivery.
+const MAX_ATTEMPTS: u8 = 2;
+
+/// Boot-path env knob for the request-path read timeout (spec §6).
+/// Read in `serve.zig` and threaded through `connectFromEnvWithOptions`.
+/// Constant lives here because the queue layer owns the semantics; the
+/// env-name string is shared with operator docs verbatim.
+pub const REDIS_REQUEST_TIMEOUT_MS_ENV = "REDIS_REQUEST_TIMEOUT_MS";
+pub const REDIS_REQUEST_TIMEOUT_MS_DEFAULT: u32 = 5000;
+
+/// Typed parse error for `parseRequestTimeoutMs`. `std.fmt.parseInt`'s
+/// variants leak across crates and don't carry the env-var identity;
+/// wrapping in a queue-layer error keeps the boot-path log site honest
+/// about which env knob misparsed.
+pub const ParseRequestTimeoutError = error{InvalidRequestTimeout};
+
+/// Parse a raw env-string into a request-timeout millisecond value.
+/// Pure helper — serve.zig wraps the env-read + log-and-exit ceremony
+/// around this. Tests can exercise the parser directly without env
+/// state or process-exit side effects.
+pub fn parseRequestTimeoutMs(raw: []const u8) ParseRequestTimeoutError!u32 {
+    return std.fmt.parseInt(u32, raw, 10) catch error.InvalidRequestTimeout;
+}
+
+pub const InitOptions = struct {
+    /// `SO_RCVTIMEO` for every pooled Connection. Null = block forever
+    /// (legacy / test harness). Production callers pass the env-derived
+    /// value so a frozen Upstash proxy can't pin a worker thread.
+    read_timeout_ms: ?u32 = null,
+};
 
 alloc: std.mem.Allocator,
-cfg: redis_config.Config,
-transport: redis_transport.Transport,
-lock: std.Thread.Mutex = .{},
+pool: Pool,
 
 pub fn connectFromEnv(alloc: std.mem.Allocator, role: redis_types.RedisRole) !Client {
+    return connectFromEnvWithOptions(alloc, role, .{});
+}
+
+pub fn connectFromEnvWithOptions(alloc: std.mem.Allocator, role: redis_types.RedisRole, options: InitOptions) !Client {
     const url_owned = try redis_config.resolveRedisUrl(alloc, role);
     defer alloc.free(url_owned);
-    return connectFromUrl(alloc, url_owned);
+    return connectFromUrlWithOptions(alloc, url_owned, options);
 }
 
 pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
-    const cfg = try redis_config.parseRedisUrl(alloc, url);
-    errdefer redis_config.deinitConfig(alloc, cfg);
+    return connectFromUrlWithOptions(alloc, url, .{});
+}
 
-    // SAFETY: written by surrounding init logic before any read of this storage.
-    var client = Client{ .alloc = alloc, .cfg = cfg, .transport = undefined };
-    client.transport = try dialAndAuth(alloc, cfg);
+pub fn connectFromUrlWithOptions(alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Client {
+    const cfg = try redis_config.parseRedisUrl(alloc, url);
+    // NOTE: do NOT register an `errdefer deinitConfig(alloc, cfg)` here.
+    // `Pool.init` takes ownership of cfg unconditionally — it has its own
+    // `errdefer redis_config.deinitConfig(alloc, pool.cfg)` (pool.zig:73)
+    // that fires on init failure, AND owns the cfg in `pool.deinit()` on
+    // success. A second errdefer at this layer double-frees cfg.host on
+    // Pool.init failure (segfault in `@memset` poisoning of already-freed
+    // memory).
+    var pool = try Pool.init(alloc, cfg, .{ .read_timeout_ms = options.read_timeout_ms });
+    errdefer pool.deinit();
+
     log.info("connected", .{ .host = cfg.host, .port = cfg.port, .tls = cfg.use_tls });
-    return client;
+    return .{ .alloc = alloc, .pool = pool };
 }
 
 pub fn deinit(self: *Client) void {
-    self.transport.deinit(self.alloc);
-    redis_config.deinitConfig(self.alloc, self.cfg);
+    self.pool.deinit();
 }
 
 pub fn publish(self: *Client, channel: []const u8, data: []const u8) !void {
@@ -78,36 +155,18 @@ pub fn ping(self: *Client) !void {
     }
 }
 
+/// Liveness probe for `/readyz`. Pool retry handles dead idle conns
+/// transparently — no explicit reconnect plumbing here. PING is
+/// idempotent so the standard 2-attempt retry is safe.
 pub fn readyCheck(self: *Client) !void {
-    // PING-only: the API server doesn't consume any stream itself, so a
-    // consumer-group probe (which would also require XGROUP CREATE perms in
-    // role-based-ACL Redis) adds no signal. Per-zombie streams + groups are
-    // created lazily by the worker via `redis_zombie.ensureZombieEventsGroup`
-    // when a zombie spawns; the control stream by `control_stream.ensureGroup`
-    // at worker boot.
-    //
-    // PING is idempotent, so we retry the full round-trip (write AND read)
-    // after a forced reconnect. `commandUnlocked` only retries write-phase
-    // failures because most callers can't tolerate a duplicate request; here
-    // we know we can.
-    self.ping() catch {
-        self.lock.lock();
-        defer self.lock.unlock();
-        try self.reconnectUnlocked();
-        var resp = try self.commandUnlocked(&.{S_PING});
-        defer resp.deinit(self.alloc);
-        switch (resp) {
-            .simple => |v| if (!std.mem.eql(u8, v, S_PONG)) return error.RedisPingFailed,
-            else => return error.RedisPingFailed,
-        }
-    };
+    try self.ping();
 }
 
 pub fn aclWhoAmI(self: *Client) ![]u8 {
     var resp = try self.command(&.{ "ACL", "WHOAMI" });
     defer resp.deinit(self.alloc);
     const who = redis_protocol.valueAsString(resp) orelse return error.RedisUnexpectedResponse;
-    return self.alloc.dupe(u8, who);
+    return try self.alloc.dupe(u8, who);
 }
 
 /// setNx sets key=value with ttl only if key does not exist.
@@ -136,15 +195,12 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
     const payload_argv = try envelope.encodeForXAdd(self.alloc);
     defer EventEnvelope.freeXAddArgv(self.alloc, payload_argv);
 
-    var argv = try self.alloc.alloc([]const u8, 6 + payload_argv.len);
+    var argv = try self.alloc.alloc([]const u8, XADD_ZOMBIE_PREFIX_LEN + payload_argv.len);
     defer self.alloc.free(argv);
-    argv[0] = "XADD";
+    argv[0] = XADD_VERB;
     argv[1] = stream_key;
-    argv[2] = "MAXLEN";
-    argv[3] = "~";
-    argv[4] = "10000";
-    argv[5] = "*";
-    @memcpy(argv[6..], payload_argv);
+    @memcpy(argv[2..XADD_ZOMBIE_PREFIX_LEN], XADD_ZOMBIE_TRIM_TAIL);
+    @memcpy(argv[XADD_ZOMBIE_PREFIX_LEN..], payload_argv);
 
     var resp = try self.command(argv);
     defer resp.deinit(self.alloc);
@@ -164,88 +220,71 @@ pub fn xaddZombieEvent(self: *Client, envelope: EventEnvelope) ![]u8 {
     return owned_id;
 }
 
+/// Pool-backed: acquire → run command → release. Transport errors retry
+/// up to MAX_ATTEMPTS with a fresh dial; server-side `.err` replies are
+/// resumable (no retry) and surface to the caller.
 pub fn command(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
-    var value = try self.commandAllowError(argv);
-    if (value == .err) {
-        log.err("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
-        value.deinit(self.alloc);
-        return error.RedisCommandError;
+    var attempt: u8 = 0;
+    while (true) : (attempt += 1) {
+        const conn = try self.pool.acquire();
+        const resp = conn.command(argv) catch |err| {
+            // OOM during RESP read poisons the connection (see
+            // redis_connection.zig:commandAllowError — the length/count
+            // header is consumed before the body allocation fires, leaving
+            // partial bytes in the transport buffer). `release(conn, true)`
+            // is safe because `Pool.release` checks `conn.state != .active`
+            // and closes the poisoned connection via the early branch; the
+            // conn is NOT returned to idle. OOM still surfaces verbatim to
+            // the caller (no `ReadFailed` re-tag) so memory pressure shows
+            // up with its real root cause.
+            if (err == error.OutOfMemory) {
+                self.pool.release(conn, true);
+                return error.OutOfMemory;
+            }
+            // @errorCast narrows from Connection.Error (incl. OutOfMemory)
+            // to RedisError — safe because the OOM branch returned above.
+            const resumable = redis_errors.isResumable(@errorCast(err));
+            self.pool.release(conn, resumable);
+            if (resumable) {
+                // Warn (not err): a resumable server-side reply (BUSYGROUP,
+                // WRONGTYPE, READONLY) is degraded control flow — the inner
+                // `redis_command_err_reply` log already captures the server
+                // message at warn. Outer + inner stay at the same level so
+                // negative-path tests don't trip Zig's "logged errors" gate.
+                log.warn("command_error", .{ .cmd = if (argv.len > 0) argv[0] else "unknown", .error_code = error_codes.ERR_INTERNAL_OPERATION_FAILED });
+                return err;
+            }
+            if (attempt + 1 >= MAX_ATTEMPTS) return err;
+            self.pool.recordReconnect();
+            continue;
+        };
+        self.pool.release(conn, true);
+        return resp;
     }
-    return value;
 }
 
+/// Same as `command` but surfaces `.err` RespValue intact for callers
+/// that need to inspect the server's error message (XGROUP CREATE
+/// returning BUSYGROUP on a known-created group, etc.).
 pub fn commandAllowError(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
-    self.lock.lock();
-    defer self.lock.unlock();
-    return self.commandUnlocked(argv);
-}
-
-fn commandUnlocked(self: *Client, argv: []const []const u8) !redis_protocol.RespValue {
-    // Write-phase failures (BrokenPipe, ConnectionResetByPeer, etc.) prove the
-    // server hadn't seen the request — safe to reconnect+resend for any cmd.
-    // Read-phase failures are NOT auto-retried here because the server may have
-    // already processed the write; replaying could double-XADD or double-PUBLISH.
-    // Idempotent callers (e.g. /readyz PING) layer their own read-phase retry.
-    writeArgvToTransport(&self.transport, argv) catch |err| {
-        log.warn("write_failed_reconnecting", .{ .err = @errorName(err) });
-        self.reconnectUnlocked() catch return err;
-        try writeArgvToTransport(&self.transport, argv);
-        return redis_protocol.readRespValue(self.alloc, self.transport.reader());
-    };
-    return redis_protocol.readRespValue(self.alloc, self.transport.reader());
-}
-
-fn writeArgvToTransport(transport: *redis_transport.Transport, argv: []const []const u8) !void {
-    const writer = transport.writer();
-    try writer.print("*{d}\r\n", .{argv.len});
-    for (argv) |arg| {
-        try writer.print("${d}\r\n", .{arg.len});
-        try writer.writeAll(arg);
-        try writer.writeAll("\r\n");
+    var attempt: u8 = 0;
+    while (true) : (attempt += 1) {
+        const conn = try self.pool.acquire();
+        const resp = conn.commandAllowError(argv) catch |err| {
+            // OOM passthrough — see command() above.
+            if (err == error.OutOfMemory) {
+                self.pool.release(conn, true);
+                return error.OutOfMemory;
+            }
+            const resumable = redis_errors.isResumable(@errorCast(err));
+            self.pool.release(conn, resumable);
+            if (resumable or attempt + 1 >= MAX_ATTEMPTS) return err;
+            self.pool.recordReconnect();
+            continue;
+        };
+        self.pool.release(conn, true);
+        return resp;
     }
-    if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
-    try writer.flush();
-    if (transport.* == .tls) try transport.tls.stream_writer.interface.flush();
-}
-
-/// Build a fresh authenticated transport. Used at first connect and on
-/// transparent reconnect. On failure the partially-built transport is freed
-/// before returning.
-fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transport.Transport {
-    const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
-
-    // SAFETY: written by surrounding init logic before any read of this storage.
-    var transport: redis_transport.Transport = undefined;
-    if (cfg.use_tls) {
-        // SAFETY: written by surrounding init logic before any read of this storage.
-        transport = .{ .tls = undefined };
-        try transport.tls.initInPlace(alloc, stream, cfg.host);
-    } else {
-        transport = .{ .plain = try redis_transport.PlainTransport.init(alloc, stream) };
-    }
-    errdefer transport.deinit(alloc);
-
-    if (cfg.password) |pwd| {
-        const argv: []const []const u8 = if (cfg.username) |usr|
-            &.{ S_AUTH, usr, pwd }
-        else
-            &.{ S_AUTH, pwd };
-        try writeArgvToTransport(&transport, argv);
-        var resp = try redis_protocol.readRespValue(alloc, transport.reader());
-        defer resp.deinit(alloc);
-        try redis_protocol.ensureSimpleOk(resp);
-    }
-    return transport;
-}
-
-/// Re-dial Redis using the stored config and atomically replace the live
-/// transport. Caller must hold `self.lock`. If the dial or re-AUTH fails the
-/// existing transport is left untouched so the next attempt can retry.
-fn reconnectUnlocked(self: *Client) !void {
-    const new_transport = try dialAndAuth(self.alloc, self.cfg);
-    self.transport.deinit(self.alloc);
-    self.transport = new_transport;
-    log.info("reconnected", .{ .host = self.cfg.host, .port = self.cfg.port });
 }
 
 pub fn makeConsumerId(alloc: std.mem.Allocator) ![]u8 {
@@ -261,7 +300,8 @@ const queue_consts = @import("constants.zig");
 const redis_types = @import("redis_types.zig");
 const redis_config = @import("redis_config.zig");
 const redis_protocol = @import("redis_protocol.zig");
-const redis_transport = @import("redis_transport.zig");
+const redis_errors = @import("redis_errors.zig");
+const Pool = @import("redis_pool.zig");
 const error_codes = @import("../errors/error_registry.zig");
 const EventEnvelope = @import("../zombie/event_envelope.zig");
 const log = logging.scoped(.redis_queue);
