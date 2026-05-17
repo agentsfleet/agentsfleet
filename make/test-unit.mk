@@ -1,8 +1,8 @@
 # =============================================================================
-# TEST-UNIT — zombied, zombiectl, website, app
+# TEST-UNIT — zombied, zombiectl, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-zombied test-unit-zombied _test-unit-zombied-executor test-unit-zombiectl test-unit-website test-unit-app test-coverage-app test-depth test-coverage-zombied test-auth
+.PHONY: test-unit-zombied test-unit-zombiectl test-unit-website test-unit-app test-unit-design-system test-unit-skills test-coverage-all _test-coverage-zombied
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -18,27 +18,12 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 $${redis_tls_test_url:+TEST_REDIS_TLS_URL="$$redis_tls_test_url"} \
 	 zig build test --summary all
-	@$(MAKE) _test-unit-zombied-executor
-	@$(MAKE) test-depth
-
-test-auth:  ## Portability gate — compile + run src/auth/** in isolation (M18_002 §1.3)
-	@echo "→ [zombied] Running src/auth/ portability gate..."
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-auth --summary all
-	@echo "✓ [zombied] src/auth/ compiles + tests pass in isolation (portability contract holds)"
-
-_test-unit-zombied-executor:  ## Run zombied-executor sidecar unit tests (Zig)
-	@echo "→ [zombied-executor] Running executor sidecar tests..."
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-executor --summary all 2>&1 | tee /dev/stderr | grep -q "passed" \
-	   && echo "✓ [zombied-executor] Executor tests passed" \
-	   || { echo "✗ [zombied-executor] Executor tests failed"; exit 1; }
+	@$(MAKE) test-unit-executor
+	@$(MAKE) _lint_zig_test_depth
 
 test-unit-zombiectl:  ## Run zombiectl CLI unit tests (bun)
+	@echo "→ [zombiectl] Building dist/ (tests spawn dist/bin/zombiectl.js)..."
+	@cd zombiectl && bun run build >/dev/null
 	@echo "→ [zombiectl] Running Bun unit tests..."
 	@cd zombiectl && bun test
 	@echo "✓ [zombiectl] Unit tests passed"
@@ -48,35 +33,33 @@ test-unit-website:  ## Run website unit tests (vitest)
 	@cd ui/packages/website && bun run test
 	@echo "✓ [website] Unit tests passed"
 
-test-unit-app:  ## Run app unit tests (vitest)
+test-unit-app:  ## Run app unit tests (vitest, no coverage)
 	@echo "→ [app] Running Vitest unit tests..."
 	@cd ui/packages/app && bun run test
 	@echo "✓ [app] Unit tests passed"
 
-test-skill-evals:  ## Run agent-skill evals (node --test, deterministic subset)
-	@echo "→ [skill-evals] Running install-skill substitution + invariant suite..."
-	@node --test --test-reporter=spec $$(find tests/skill-evals -name '*.test.js' | sort)
-	@echo "✓ [skill-evals] All skill evals passed"
+test-unit-design-system:  ## Run design-system unit tests (vitest, no coverage)
+	@echo "→ [design-system] Running Vitest unit tests..."
+	@cd ui/packages/design-system && bun run test
+	@echo "✓ [design-system] Unit tests passed"
 
-test-coverage-app:  ## Run app unit tests with v8 coverage and enforce thresholds (vitest.config.ts)
+test-unit-skills:  ## Run agent-skill substitution + invariant unit tests (node --test, deterministic subset)
+	@echo "→ [skills] Running agent-skill substitution + invariant suite..."
+	@node --test --test-reporter=spec $$(find tests/skill-evals -name '*.test.js' | sort)
+	@echo "✓ [skills] All agent-skill checks passed"
+
+test-coverage-all:  ## Run coverage gates across app + website + zombiectl + design-system
 	@echo "→ [app] Running Vitest with --coverage..."
 	@cd ui/packages/app && bun run test:coverage
-	@echo "✓ [app] Coverage gate passed (statements ≥95, branches ≥90, functions ≥95, lines ≥95)"
+	@echo "→ [website] Running Vitest with --coverage..."
+	@cd ui/packages/website && bun run test:coverage
+	@echo "→ [zombiectl] Running Bun test --coverage..."
+	@cd zombiectl && bun run test:coverage
+	@echo "→ [design-system] Running Vitest with --coverage..."
+	@cd ui/packages/design-system && bun run test:coverage
+	@echo "✓ All package coverage gates passed"
 
-test-zombied: test-unit-zombied _test-integration-zombied  ## Run zombied tests (unit + integration)
-	@echo "✓ [zombied] Unit + integration passed"
-
-
-test-depth:  ## Enforce minimum test depth inventory
-	@mkdir -p .tmp
-	@unit_count=$$(find src -name '*.zig' -exec grep -hE '^test "' {} + | wc -l | tr -d ' '); \
-	 integration_count=$$(find src -name '*.zig' -exec grep -hE '^test "integration:' {} + | wc -l | tr -d ' '); \
-	 printf 'zombied_test_cases=%s\nzombied_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/zombied-test-depth.txt >/dev/null; \
-	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
-	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
-	 echo "✓ [zombied] test depth gate passed (unit=$$unit_count integration=$$integration_count)"
-
-test-coverage-zombied:  ## Run backend line coverage with kcov and enforce minimum threshold
+_test-coverage-zombied:
 	@command -v kcov >/dev/null 2>&1 || { echo "✗ kcov is required for backend coverage (install: brew install kcov or apt-get install kcov)"; exit 1; }
 	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)" coverage/zombied .tmp
 	@echo "→ [zombied] Building backend test binary for coverage..."

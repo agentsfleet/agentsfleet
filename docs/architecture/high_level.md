@@ -36,7 +36,7 @@ If a user can get the same value by opening Claude locally and asking "what shou
 Three structural pillars carry v2:
 
 - **Open source.** The runtime is open source. The operator can read the code that holds their credentials and runs against their infrastructure.
-- **Self-managed provider keys.** Operators bring their own large-language-model provider key — Anthropic, OpenAI, Fireworks (which serves Kimi K2), Together AI, Groq, and others. The executor treats it as another secret resolved at the tool bridge. No vendor lock-in on inference cost. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md).
+- **Self-managed provider keys.** Operators bring their own large-language-model provider key. The executor treats it as another secret resolved at the tool bridge. No vendor lock-in on inference cost. Supported providers are listed in [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 (single source of truth).
 - **Markdown-defined.** Operational behaviour lives in `SKILL.md` + `TRIGGER.md`, not in a typed workflow engine. Iteration is editing prose, not redeploying code.
 
 **Self-host is deferred to v3.** v2 ships hosted-only on `api.usezombie.com` via Clerk OAuth. The architecture admits self-host (the auth substrate, the key-management-service adapter, and process orchestration are the only deployment-specific layers), but validating it on a clean non-Fly Linux host is a v3 workstream.
@@ -165,7 +165,7 @@ Trigger modes:
 
 - **Webhook.** GitHub Actions posts `workflow_run.conclusion == failure` to the zombie's webhook ingest URL (today `POST /v1/webhooks/{zombie_id}`) with a hash-based-message-authentication signature; the receiver writes a synthetic event with `actor=webhook:github`.
 - **Cron.** A periodic production health check, scheduled by NullClaw's `cron_add` tool; each fire arrives as a synthetic event with `actor=cron:<schedule>`.
-- **Steer.** A direct operator instruction via `zombiectl steer {id} [<message>]` or the dashboard chat widget; lands with `actor=steer:<user>`.
+- **Steer.** A direct operator instruction via `zombiectl steer <zombie_id> <message>` or the dashboard chat widget; lands with `actor=steer:<user>`.
 
 All three flow through the same reasoning loop. The zombie does not branch on actor type — its SKILL.md describes the general outcome and the same `http_request` tool calls fire regardless of trigger source.
 

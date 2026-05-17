@@ -1,23 +1,21 @@
-// M25_001: zbench-backed micro-benchmark runner (Tier-1).
+// Tier-1 micro-bench runner — zBench-backed.
 //
-// HTTP loadgen (Tier-2) is handled externally by `hey` — see make/test-bench.mk.
-// Each bench_xxx fn exercises one hot path; fixtures live in zbench_fixtures.zig.
-// See docs/v2/active/P2_OBS_M25_001_ZBENCH_MICRO_CATALOG.md for gate rationale.
+// HTTP loadgen (Tier-2) is handled externally by `hey` — see make/bench.mk.
+// Each bench_xxx fn exercises one hot path; fixtures live in micro_fixtures.zig.
 
 const std = @import("std");
 const zbench = @import("zbench");
+const app = @import("bench_app");
 
-const router = @import("http/router.zig");
-const error_registry = @import("errors/error_registry.zig");
-const keyset_cursor = @import("zombie/keyset_cursor.zig");
-const id_format = @import("types/id_format.zig");
-const webhook_verify = @import("zombie/webhook_verify.zig");
-const pc = @import("executor/progress_callbacks.zig");
-const fx = @import("zbench_fixtures.zig");
+const router = app.router;
+const error_registry = app.error_registry;
+const keyset_cursor = app.keyset_cursor;
+const id_format = app.id_format;
+const webhook_verify = app.webhook_verify;
+const pc = app.progress_callbacks;
+const fx = @import("micro_fixtures.zig");
 
-// Authoritative gates live in spec §1.X — these comments are pointers, not sources of truth.
-
-// ── 1.1 route_match ─ spec §1.1
+// ── route_match ───────────────────────────────────────────────────────────
 fn benchRouteMatch(allocator: std.mem.Allocator) void {
     _ = allocator;
     for (fx.ROUTE_PATHS) |path| {
@@ -26,7 +24,7 @@ fn benchRouteMatch(allocator: std.mem.Allocator) void {
     }
 }
 
-// ── 1.2 error_registry_lookup ─ spec §1.2
+// ── error_registry_lookup ─────────────────────────────────────────────────
 fn benchErrorRegistryLookup(allocator: std.mem.Allocator) void {
     _ = allocator;
     for (fx.ERROR_CODES) |code| {
@@ -35,7 +33,7 @@ fn benchErrorRegistryLookup(allocator: std.mem.Allocator) void {
     }
 }
 
-// ── 1.3 keyset_cursor_roundtrip ─ spec §1.3
+// ── keyset_cursor_roundtrip ───────────────────────────────────────────────
 fn benchActivityCursorRoundtrip(allocator: std.mem.Allocator) void {
     for (fx.CURSORS) |raw| {
         // Fixtures are synthesized in-process and covered by keyset_cursor
@@ -46,7 +44,7 @@ fn benchActivityCursorRoundtrip(allocator: std.mem.Allocator) void {
     }
 }
 
-// ── 1.4 json_encode_response ─ spec §1.4
+// ── json_encode_response ──────────────────────────────────────────────────
 fn benchJsonEncodeResponse(allocator: std.mem.Allocator) void {
     const body = .{ .zombies = fx.ZOMBIE_PAGE };
     const s = std.json.Stringify.valueAlloc(allocator, body, .{}) catch @panic("json encode OOM");
@@ -54,14 +52,14 @@ fn benchJsonEncodeResponse(allocator: std.mem.Allocator) void {
     std.mem.doNotOptimizeAway(s.ptr);
 }
 
-// ── 1.6 uuid_v7_generate ─ spec §1.6
+// ── uuid_v7_generate ──────────────────────────────────────────────────────
 fn benchUuidV7Generate(allocator: std.mem.Allocator) void {
     const id = id_format.generateWorkspaceId(allocator) catch @panic("uuid mint OOM");
     defer allocator.free(id);
     std.mem.doNotOptimizeAway(id.ptr);
 }
 
-// ── 1.7 webhook_signature_verify ─ spec §1.7
+// ── webhook_signature_verify ──────────────────────────────────────────────
 fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
     _ = allocator;
     const ok = webhook_verify.verifySignature(

@@ -13,9 +13,20 @@ A zombie's capabilities split into two layers: what the language model is told i
 | `SKILL.md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose. | The language model reading its own prompt — soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
 | `TRIGGER.md` | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs | Code-enforced at the executor sandbox boundary — the language model cannot escape these |
 
-> **`trigger.type` vs event type — they are different fields.** `trigger.type` is the static config that says *how* a zombie gets triggered: `webhook` (external sender posts to `/v1/webhooks/...`), `api` (user/integration calls `/v1/.../zombies/{id}/messages` — the chat path), `cron` (scheduled), or `chain` (another zombie hands off). The per-event `event_type` field on `core.zombie_events` (`chat`, `continuation`, …) tags individual events on the stream. A `trigger.type: api` zombie typically receives `event_type: chat` events from the steer/chat API; the two are orthogonal and live in different tables. See `src/zombie/config_helpers.zig` (`parseZombieTrigger`) and `src/zombie/event_envelope.zig` (`EventType`).
-
 The split matters. `SKILL.md` is *advisory* — the model reads it and tries to comply. `TRIGGER.md` is *binding* — the executor refuses tool calls that would violate it, regardless of what the model wants.
+
+### 1.1 `trigger.type` vs `event_type` — orthogonal fields, common confusion
+
+These are two different fields on two different tables. Mixing them up is the most common source of new-contributor confusion in this area:
+
+| Field | Where it lives | Values | What it tags |
+|---|---|---|---|
+| `trigger.type` | `TRIGGER.md` frontmatter (static config) | `webhook` / `api` / `cron` / `chain` | **How a zombie gets triggered** — the wiring at install time. |
+| `event_type` | `core.zombie_events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
+
+A `trigger.type: api` zombie typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` zombie receives `event_type: webhook`. A worker re-enqueue under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
+
+Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `trigger.type`; `src/zombie/event_envelope.zig` (`EventType`) for `event_type`.
 
 ---
 
@@ -120,16 +131,9 @@ The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keep
 
 ### The chain-cap escape hatch — `chunk_chain_escalate_human`
 
-A pathological agent can in principle chunk forever — each stage hits the L3 threshold, snapshots, and the worker dutifully re-enqueues. To bound this, the runtime caps each chain at **10 continuations**. On the 11th attempt:
+A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: worker stops re-enqueueing, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `zombiectl events <zombie_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the zombie itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
 
-- **No XADD.** The worker stops re-enqueueing this chain.
-- **`failure_label = chunk_chain_escalate_human`** is written to the originating event row. The label appears in `zombiectl events {id}`, the dashboard Events tab, and the activity stream's terminal `event_complete` frame.
-- **The zombie itself stays alive.** Only this one chain is forfeit; future webhooks, cron fires, and user steers land on the events stream as fresh chains with their own 10-chunk budgets.
-- **Idempotency on replay** is preserved by the `(zombie_id, event_id)` PRIMARY KEY — a duplicate XADD of an already-processed event is a no-op.
-
-**Notification today is silent.** The label is observability — the user sees it only by looking (`zombiectl events`, dashboard, SSE tail). There is no automatic Slack post, email, or page when `chunk_chain_escalate_human` fires. Active notification could later come from the approval surface, from SKILL prose that posts a Slack handoff message preemptively on the agent's 10th continuation, or from an optional `escalation_webhook_url` on the zombie config that the worker POSTs to whenever this label fires.
-
-**Resuming a forfeited chain manually.** There is no special "resume chunk-chain" endpoint. The cleanest path is `zombiectl steer {id} "continue from <snapshot-key> — pick up where you left off"`, where `<snapshot-key>` is whatever the zombie's own SKILL.md prose taught the agent to use as the memory key for that work unit (e.g. `incident:<id>:findings` for platform-ops; `lead:<id>:scoring` for a lead-scorer; `applicant:<id>:assessment` for a screener). This XADDs a fresh chat event; the SKILL prose tells the agent to `memory_recall` the snapshot. The new event's chain starts at zero — the user gets another 10-chunk budget without the runtime needing a dedicated resume verb. The runtime never invents the key shape — it's whatever the zombie's own prose chose.
+Notification today is silent — observability only. Resume by steering a fresh message that calls `memory_recall` against whatever snapshot key the zombie's own SKILL.md prose chose (the runtime never invents the key shape).
 
 ### Defaults — the user shouldn't have to do token math
 
