@@ -39,6 +39,11 @@ const Error = error{
     ReadFailed,
     WriteFailed,
     RedisCommandError,
+    /// Server flushed bytes past the parsed RESP reply — the transport
+    /// buffer is in protocol desync. Mirrors `RedisError.RedisProtocolDesync`
+    /// in `redis_errors.zig`; surfaces here so the local Error set covers
+    /// every path `commandAllowError` can return.
+    RedisProtocolDesync,
     /// Allocator failure during RESP read. The connection IS poisoned
     /// (bulk-string and array replies leave partial bytes in the
     /// transport buffer on body-alloc failure) but the OOM surfaces
@@ -165,7 +170,7 @@ pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redi
         self.transitionTo(.poisoned);
         return mapWriteError(err);
     };
-    return redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
+    var value = redis_protocol.readRespValue(self.alloc, self.transport.reader()) catch |err| {
         // OOM during RESP parsing must poison the connection: bulk-string
         // (`$N\r\n<N bytes>\r\n`) and array (`*N\r\n<elements>`) replies
         // consume the length/count header via `readRespLine` BEFORE the
@@ -184,6 +189,21 @@ pub fn commandAllowError(self: *Connection, argv: []const []const u8) Error!redi
         self.transitionTo(.poisoned);
         return mapReadError(err);
     };
+
+    // Defense against a dirty server: pooled connections follow strict
+    // one-command-one-reply RESP (Invariant 12 — pipelining forbidden), so
+    // any bytes remaining in the transport buffer after a successful parse
+    // are a protocol violation — broken intermediary, server bug, or
+    // misframed reply. The next read on this conn would start mid-frame
+    // and corrupt downstream state. Poison so `Pool.release` closes;
+    // surface a typed protocol error so the Client retry layer classifies
+    // it as non-resumable and dials fresh.
+    if (self.transport.reader().bufferedLen() > 0) {
+        value.deinit(self.alloc);
+        self.transitionTo(.poisoned);
+        return error.RedisProtocolDesync;
+    }
+    return value;
 }
 
 fn mapWriteError(err: anyerror) Error {

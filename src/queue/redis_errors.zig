@@ -26,6 +26,10 @@ pub const RedisError = error{
     ConnectionResetByPeer,
     ReadFailed,
     WriteFailed,
+    /// Server flushed bytes past the parsed RESP reply — the transport
+    /// buffer is in protocol desync. The next read on this conn would
+    /// start mid-frame. Non-resumable: poison the connection, dial fresh.
+    RedisProtocolDesync,
 };
 
 /// Resumable = the same connection can serve the next request (server-side
@@ -36,6 +40,6 @@ pub const RedisError = error{
 pub fn isResumable(err: RedisError) bool {
     return switch (err) {
         error.RedisCommandError, error.RedisXaddFailed, error.RedisXackFailed => true,
-        error.BrokenPipe, error.ConnectionResetByPeer, error.ReadFailed, error.WriteFailed => false,
+        error.BrokenPipe, error.ConnectionResetByPeer, error.ReadFailed, error.WriteFailed, error.RedisProtocolDesync => false,
     };
 }

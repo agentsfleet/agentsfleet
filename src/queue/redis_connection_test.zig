@@ -145,6 +145,76 @@ test "post-deinit Connection has .closed state — double-deinit asserts in debu
     // invariant is enforced by the precondition observable here.
 }
 
+// Serves `+PONG\r\n+EXTRA\r\n` in a single write — the parser consumes
+// `+PONG\r\n` and the trailing 8 bytes stay buffered, simulating a server
+// that flushed bytes past the expected reply boundary. Used to prove the
+// residual-byte poison check at `commandAllowError`.
+const ResidualBytesAfterReply = struct {
+    server: std.net.Server,
+    addr: std.net.Address,
+    thread: std.Thread,
+    stop: std.atomic.Value(bool),
+
+    fn start(self: *ResidualBytesAfterReply) !void {
+        const loopback = try std.net.Address.parseIp4("127.0.0.1", 0);
+        self.server = try loopback.listen(.{ .reuse_address = true });
+        self.addr = self.server.listen_address;
+        self.stop = std.atomic.Value(bool).init(false);
+        self.thread = try std.Thread.spawn(.{}, loop, .{self});
+    }
+
+    fn shutdown(self: *ResidualBytesAfterReply) void {
+        self.stop.store(true, .release);
+        if (std.net.tcpConnectToAddress(self.addr)) |s| s.close() else |_| {}
+        self.thread.join();
+        self.server.deinit();
+    }
+
+    fn loop(self: *ResidualBytesAfterReply) void {
+        const conn = self.server.accept() catch return;
+        if (self.stop.load(.acquire)) {
+            conn.stream.close();
+            return;
+        }
+        var buf: [256]u8 = undefined;
+        const n = conn.stream.read(&buf) catch 0;
+        // One writeAll → kernel coalesces into a single TCP segment on
+        // loopback; the std.Io.Reader pulls both frames into its buffer
+        // in one read syscall. Parser consumes `+PONG\r\n`; `+EXTRA\r\n`
+        // remains buffered. bufferedLen() > 0 → poison.
+        if (n > 0) conn.stream.writeAll("+PONG\r\n+EXTRA\r\n") catch {};
+        while (!self.stop.load(.acquire)) std.Thread.sleep(5 * std.time.ns_per_ms);
+        conn.stream.close();
+    }
+
+    fn config(self: *ResidualBytesAfterReply, alloc: std.mem.Allocator) !redis_config.Config {
+        const host = try alloc.dupe(u8, "127.0.0.1");
+        return .{ .host = host, .port = self.addr.in.getPort(), .use_tls = false };
+    }
+};
+
+test "commandAllowError: residual bytes after parsed reply poison the conn and surface RedisProtocolDesync" {
+    var srv: ResidualBytesAfterReply = undefined;
+    try srv.start();
+    defer srv.shutdown();
+
+    const cfg = try srv.config(std.testing.allocator);
+    defer redis_config.deinitConfig(std.testing.allocator, cfg);
+
+    var conn = try Connection.init(std.testing.allocator, &cfg, .pooled);
+    defer conn.deinit();
+
+    const result = conn.commandAllowError(&.{"PING"});
+    try std.testing.expectError(error.RedisProtocolDesync, result);
+
+    // Load-bearing assertions:
+    //   1. The conn transitioned to .poisoned — Pool.release(conn, true)
+    //      will see this and close the conn instead of parking back to idle.
+    //   2. The parsed RespValue was freed before the error return —
+    //      `std.testing.allocator` would flag the leak if not.
+    try std.testing.expect(conn.state == .poisoned);
+}
+
 test "commandAllowError: OOM during RESP read propagates and poisons the connection" {
     var srv: PongOnce = undefined;
     try srv.start();
