@@ -595,25 +595,31 @@ test "integration: concurrent PATCH + INSERT into zombie_events — both succeed
 
     // INSERT row must be visible — proves FK didn't fail and PATCH didn't
     // CASCADE-delete the parent. Final config_json reflects PATCH variant A.
+    // Each query is scoped in its own block so the previous result set is
+    // drained (via PgQuery.deinit) before the next conn.query — otherwise
+    // the second call hits error.ConnectionBusy.
     const conn = try h.acquireConn();
     defer h.releaseConn(conn);
-    var q_evt = PgQuery.from(try conn.query(
-        "SELECT COUNT(*)::bigint FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2",
-        .{ ZOMBIE_A, evt_id },
-    ));
-    defer q_evt.deinit();
-    const row_evt = (try q_evt.next()) orelse return error.RowNotFound;
-    const evt_count = try row_evt.get(i64, 0);
-    try std.testing.expectEqual(@as(i64, 1), evt_count);
-
-    var q_cfg = PgQuery.from(try conn.query(
-        "SELECT config_json::text FROM core.zombies WHERE id = $1::uuid",
-        .{ZOMBIE_A},
-    ));
-    defer q_cfg.deinit();
-    const row_cfg = (try q_cfg.next()) orelse return error.RowNotFound;
-    const cfg = try row_cfg.get([]const u8, 0);
-    try std.testing.expect(std.mem.indexOf(u8, cfg, "*/15 * * * *") != null);
+    {
+        var q_evt = PgQuery.from(try conn.query(
+            "SELECT COUNT(*)::bigint FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2",
+            .{ ZOMBIE_A, evt_id },
+        ));
+        defer q_evt.deinit();
+        const row_evt = (try q_evt.next()) orelse return error.RowNotFound;
+        const evt_count = try row_evt.get(i64, 0);
+        try std.testing.expectEqual(@as(i64, 1), evt_count);
+    }
+    {
+        var q_cfg = PgQuery.from(try conn.query(
+            "SELECT config_json::text FROM core.zombies WHERE id = $1::uuid",
+            .{ZOMBIE_A},
+        ));
+        defer q_cfg.deinit();
+        const row_cfg = (try q_cfg.next()) orelse return error.RowNotFound;
+        const cfg = try row_cfg.get([]const u8, 0);
+        try std.testing.expect(std.mem.indexOf(u8, cfg, "*/15 * * * *") != null);
+    }
 }
 
 // Comptime JSON-string-encode a multi-line literal. See
