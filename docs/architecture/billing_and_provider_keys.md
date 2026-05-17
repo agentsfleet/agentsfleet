@@ -292,7 +292,7 @@ The OpenAI-compatible client routes the call to `https://api.fireworks.ai/infere
 
 ## 10. The model-caps endpoint (cryptic-prefix, public-but-unguessable)
 
-The single source of truth for model context caps **and per-model token rates**. The install-time vs trigger-time resolution flow — which posture reads what, when, and how the frontmatter overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#§8.7-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the endpoint *is* and how it is hosted.
+The single source of truth for model context caps **and per-model token rates**. The install-time vs trigger-time resolution flow — which posture reads what, when, and how the frontmatter overlay works — is documented in [`user_flow.md` §8.7](./user_flow.md#87-model-and-context-cap-origin-platform-vs-self-managed); this section covers what the endpoint *is* and how it is hosted.
 
 For billing specifically: the API server reads the endpoint at boot and on a periodic refresh; `computeStageCharge` consults the cached per-model token rates — never makes a network call on the hot path.
 

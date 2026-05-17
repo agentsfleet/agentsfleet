@@ -28,7 +28,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Implementing agent — read these first
 
-1. `scripts/audit-error-codes.sh` (symlinked from `~/Projects/dotfiles/scripts/audit-error-codes.sh`) — walks `*.zig` + `zombiectl/src/` for raw `UZ-<CAT>-<NNN>` literals; fails commit on any hit outside the allowlist. Read both the regex (line ~15) and the file-walk logic.
+1. `scripts/audit-error-codes.sh` (symlinked from `the dotfiles repo at `scripts/audit-error-codes.sh``) — walks `*.zig` + `zombiectl/src/` for raw `UZ-<CAT>-<NNN>` literals; fails commit on any hit outside the allowlist. Read both the regex (line ~15) and the file-walk logic.
 2. `src/errors/error_registry.zig` + `src/errors/error_entries.zig` — the canonical source. Every UZ code lives here.
 3. `zombiectl/src/constants/error-codes.js` — the file being retired. ~25 `export const ERR_*` declarations, each mapping a named symbol to its UZ string.
 4. `zombiectl/src/lib/error-map-presets.js` — the **second** file with UZ literals (as map keys). The under-discussed second exception; this spec must address it too or the allowlist entry just relocates.
@@ -120,7 +120,7 @@ No HTTP, OpenAPI, or wire-protocol surface added. Internal interfaces touched de
 | Stale generated file on cold clone (Path 1) | `tsc --noEmit` runs before `prebuild`; the generated file does not exist. | Wire codegen as `postinstall`, not just `prebuild`. Document in `zombiectl/README.md`. |
 | Tag-string typo (Path 3) | Stringly-typed comparisons (`tag === "UNAUTHORZIED"`) bypass type-check. | Add a const-tag enum: `export const TAG_UNAUTHORIZED = "UNAUTHORIZED"`. Still hand-maintained but only contains stringly tags, not UZ literals — moves the problem one layer but keeps the audit clean. |
 | Drift between Zig registry and CLI mirror (Paths 2, 3) | Human edits `error_registry.zig` but forgets the CLI side. | Path 1 eliminates structurally; Paths 2 and 3 require a checklist or a CI test that imports both surfaces and asserts every Zig code has a CLI counterpart. |
-| Audit script edit in dotfiles repo gets out-of-sync | Audit lives in `~/Projects/dotfiles/scripts/`, this spec edits it; the dotfiles commit might land before the usezombie code change. | Land both in lockstep: pre-merge gate validates `zombiectl/` has no UZ literals in non-allowlisted files. Order the dotfiles change AFTER the usezombie change to avoid a window where the audit fires on legitimate code. |
+| Audit script edit in dotfiles repo gets out-of-sync | Audit lives in the dotfiles repo's `scripts/` directory, this spec edits it; the dotfiles commit might land before the usezombie code change. | Land both in lockstep: pre-merge gate validates `zombiectl/` has no UZ literals in non-allowlisted files. Order the dotfiles change AFTER the usezombie change to avoid a window where the audit fires on legitimate code. |
 
 ---
 

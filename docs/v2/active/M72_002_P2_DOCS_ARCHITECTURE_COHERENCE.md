@@ -18,35 +18,35 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Priority:** P2 — contributor-facing; not blocking any user surface but compounds drift over time.
 **Categories:** DOCS
 **Batch:** B1 — runs parallel to M72_001 in a separate worktree, different repo.
-**Branch:** chore/m72-arch-coherence (worktree at `~/Projects/usezombie-m72-arch-coherence/`)
+**Branch:** chore/m72-arch-coherence (worktree at `the worktree directory `)
 **Depends on:** None. Sibling to M72_001 under the same milestone. Shares no files.
 **Provenance:** human-written (Kishore, May 17, 2026) — surfaced after M72_001 audit by Captain ask to "do the same for the architecture set."
 
-**Canonical architecture:** the directory this spec touches is itself the canonical architecture set — `~/Projects/usezombie/docs/architecture/`.
+**Canonical architecture:** the directory this spec touches is itself the canonical architecture set — `docs/architecture/`.
 
 ---
 
 ## Implementing agent — read these first
 
-1. `~/Projects/usezombie/docs/architecture/README.md` — the directory's own table of contents and glossary. The proposed installer-signpost and the deduped glossary land here first.
-2. `~/Projects/usezombie/docs/architecture/high_level.md` §1–§7 — the contributor's first stop. Houses the §6/§7 why-not-OpenClaw duplication and the one-paragraph summary that duplicates with README.
-3. `~/Projects/usezombie/docs/architecture/user_flow.md` §8.7, `billing_and_provider_keys.md` §9–10, `capabilities.md` §4 — the three places where the model-cap origin story is told. Pick the canonical home; the other two narrow to a lens reference.
-4. `~/Projects/usezombie/docs/architecture/office_hours_v2.md`, `plan_engg_review_v2.md`, `ship_reflection.md` — historical / pending artifacts that need explicit status headers.
-5. `~/Projects/usezombie/docs/v2/pending/M72_001_*.md` — the sibling workstream. Coordinate on shared vocabulary so a docs.usezombie.com page that cites an architecture section still resolves after this cleanup.
+1. `docs/architecture/README.md` — the directory's own table of contents and glossary. The proposed installer-signpost and the deduped glossary land here first.
+2. `docs/architecture/high_level.md` §1–§7 — the contributor's first stop. Houses the §6/§7 why-not-OpenClaw duplication and the one-paragraph summary that duplicates with README.
+3. `docs/architecture/user_flow.md` §8.7, `billing_and_provider_keys.md` §9–10, `capabilities.md` §4 — the three places where the model-cap origin story is told. Pick the canonical home; the other two narrow to a lens reference.
+4. `docs/architecture/office_hours_v2.md`, `plan_engg_review_v2.md`, `ship_reflection.md` — historical / pending artifacts that need explicit status headers.
+5. `docs/v2/pending/M72_001_*.md` — the sibling workstream. Coordinate on shared vocabulary so a docs.usezombie.com page that cites an architecture section still resolves after this cleanup.
 
 ---
 
 ## Applicable Rules
 
 - `docs/greptile-learnings/RULES.md` — universal docs discipline. RULE NDC (no dead links after a rename), RULE NLR (touch-it-fix-it on adjacent stale claims).
-- `~/Projects/usezombie/AGENTS.md` — repo-level conventions for doc edits and cross-reference hygiene.
+- `AGENTS.md` — repo-level conventions for doc edits and cross-reference hygiene.
 - `docs/SCHEMA_CONVENTIONS.md`, `docs/ZIG_RULES.md`, `docs/REST_API_DESIGN_GUIDELINES.md` — N/A. DOCS-only spec; no code paths.
 
 ---
 
 ## Overview
 
-**Goal (testable):** A contributor or installer landing in `~/Projects/usezombie/docs/architecture/` knows within the first paragraph of README.md (a) whether this directory is what they want and (b) where to go if it is not. Every architectural concept named in the README glossary has exactly one canonical inline definition elsewhere in the directory; the README glossary points at that definition rather than restating it. Every historical or unshipped artifact carries a status header that disambiguates its standing as canon. The model-cap origin story has one canonical home; the other two mentions reduce to lens-only summaries with a pointer to canon — verified by grep + line-count assertions in §Acceptance Criteria.
+**Goal (testable):** A contributor or installer landing in `docs/architecture/` knows within the first paragraph of README.md (a) whether this directory is what they want and (b) where to go if it is not. Every architectural concept named in the README glossary has exactly one canonical inline definition elsewhere in the directory; the README glossary points at that definition rather than restating it. Every historical or unshipped artifact carries a status header that disambiguates its standing as canon. The model-cap origin story has one canonical home; the other two mentions reduce to lens-only summaries with a pointer to canon — verified by grep + line-count assertions in §Acceptance Criteria.
 
 **Problem:** Eight observable coherence issues for a new contributor or a confused installer who lands in `architecture/`:
 
@@ -59,7 +59,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 7. **`ship_reflection.md` is still 41 lines of PENDING SHIP placeholders** while M68 done and most of v2 shipped. Either fill from evidence or move to an `_unshipped/` subfolder so the architecture set does not look incomplete.
 8. **`_v2` suffix inconsistency.** Only `office_hours_v2.md` and `plan_engg_review_v2.md` carry the suffix; everything else does not. The directory itself is implicitly v2. Drop the suffix (lighter touch) and update inbound links.
 
-**Solution summary:** One PR against `~/Projects/usezombie/` on a worktree-isolated branch. Each fix is a small targeted edit with grep-verifiable acceptance. No prose is rewritten where it is correct; reorganisation only. Cross-references are checked end-to-end; any link this PR breaks is fixed in the same diff. No changes to `docs/v2/`, code, or external user-facing surfaces.
+**Solution summary:** One PR against the usezombie repo on a worktree-isolated branch. Each fix is a small targeted edit with grep-verifiable acceptance. No prose is rewritten where it is correct; reorganisation only. Cross-references are checked end-to-end; any link this PR breaks is fixed in the same diff. No changes to `docs/v2/`, code, or external user-facing surfaces.
 
 ---
 
@@ -78,7 +78,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `docs/architecture/_unshipped/` | CREATE (conditional) | Only if `ship_reflection.md` cannot be filled. |
 | `docs/v2/pending/M72_002_*.md` | CREATE | This spec. |
 
-Inbound link audit (separate grep pass): every `office_hours_v2.md` / `plan_engg_review_v2.md` reference under `docs/`, `~/Projects/docs/`, and the spec history gets rewritten in the same diff.
+Inbound link audit (separate grep pass): every `office_hours_v2.md` / `plan_engg_review_v2.md` reference under `docs/`, `<docs-repo>/`, and the spec history gets rewritten in the same diff.
 
 ---
 
@@ -154,7 +154,7 @@ README.md
 | Glossary pointer points at moved anchor | The canonical inline definition was on a heading the implementer also touched in §4 or §5. | Re-grep anchor targets after §4/§5 land; fix pointers in the same diff. |
 | `ship_reflection.md` fill is wrong | Implementer fills evidence the team has not actually validated. | Default to the move path (`_unshipped/`) when in doubt. Filling is the cleaner outcome but only if the evidence is real and Captain-acked. |
 | Glossary deletion regret | A glossary entry that turned out to have no canonical home elsewhere gets deleted instead of kept. | Confirm canonical home exists *before* trimming. Pre-grep each entry's terms; if there is no inline definition, that entry stays in the glossary as the canonical home. |
-| Worktree drift | Implementer edits files outside the worktree by mistake. | CWD check (`pwd` + `git worktree list`) on every Bash invocation; refuse edits outside `~/Projects/usezombie-m72-arch-coherence/`. |
+| Worktree drift | Implementer edits files outside the worktree by mistake. | CWD check (`pwd` + `git worktree list`) on every Bash invocation; refuse edits outside `the worktree directory `. |
 
 ---
 
@@ -190,15 +190,15 @@ README.md
 - [ ] `_v2` suffix gone, status headers added. Verify: `ls docs/architecture/*_v2.md 2>/dev/null` empty AND `head -10 docs/architecture/office_hours.md docs/architecture/plan_engg_review.md | grep -c 'Status: Historical'` returns `2`.
 - [ ] No file under `docs/architecture/` exceeds 350 lines as a result of these edits.
 - [ ] `ship_reflection.md` either filled or moved — no PENDING SHIP placeholders in the canonical set.
-- [ ] All inbound links resolved. Verify: `grep -rn 'office_hours_v2\|plan_engg_review_v2' . 2>/dev/null` empty across `~/Projects/usezombie/` and `~/Projects/docs/`.
-- [ ] Worktree clean before PR. Verify: `git status` in `~/Projects/usezombie-m72-arch-coherence/` empty.
+- [ ] All inbound links resolved. Verify: `grep -rn 'office_hours_v2\|plan_engg_review_v2' . 2>/dev/null` empty across both the usezombie repo and the `usezombie/docs` repo.
+- [ ] Worktree clean before PR. Verify: `git status` in `the worktree directory ` empty.
 
 ---
 
 ## Eval Commands (Post-Implementation Verification)
 
 ```bash
-# Run inside the worktree: ~/Projects/usezombie-m72-arch-coherence/
+# Run inside the worktree: the worktree directory 
 
 # E1: installer signpost
 head -10 docs/architecture/README.md | grep -q 'docs.usezombie.com' && echo PASS || echo FAIL
@@ -238,8 +238,8 @@ Two files renamed: `office_hours_v2.md` → `office_hours.md`, `plan_engg_review
 
 | Deleted reference | Grep command | Expected |
 |-------------------|--------------|----------|
-| `office_hours_v2` | `grep -rn 'office_hours_v2' ~/Projects/usezombie/ ~/Projects/docs/` | 0 matches |
-| `plan_engg_review_v2` | `grep -rn 'plan_engg_review_v2' ~/Projects/usezombie/ ~/Projects/docs/` | 0 matches |
+| `office_hours_v2` | `grep -rn 'office_hours_v2'  <docs-repo>/` | 0 matches |
+| `plan_engg_review_v2` | `grep -rn 'plan_engg_review_v2'  <docs-repo>/` | 0 matches |
 | Anchors changed in §4/§5 | Audit anchors on each touched §. | All inbound pointers resolve. |
 
 If `ship_reflection.md` moves to `_unshipped/`, do the same grep for inbound references.
@@ -283,5 +283,5 @@ If `ship_reflection.md` moves to `_unshipped/`, do the same grep for inbound ref
 - **Rewriting any canonical topic file.** This is a coherence pass, not a content rewrite. If a topic file's prose is correct but verbose, leave it.
 - **`docs/v2/` spec corpus.** This spec touches `docs/architecture/` only. The spec corpus has its own coherence story; that is a separate milestone.
 - **Code-comment ↔ architecture cross-references.** Some code points at `docs/architecture/<file>#<anchor>` in comments. Auditing those is in-scope only when the anchor changes (§4, §5); a broader sweep is its own milestone.
-- **External user-facing docs.** Sibling workstream M72_001 owns `~/Projects/docs/`. This spec does not edit there except for inbound-link fixes after the `_v2` rename.
+- **External user-facing docs.** Sibling workstream M72_001 owns `<docs-repo>/`. This spec does not edit there except for inbound-link fixes after the `_v2` rename.
 - **New architecture topics.** No new files added beyond the conditional `_unshipped/` folder. Adding topics is a content milestone, not this coherence pass.

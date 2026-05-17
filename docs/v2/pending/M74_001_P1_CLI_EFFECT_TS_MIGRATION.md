@@ -20,7 +20,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Batch:** B1
 **Branch:** feat/m74-001-effect-ts-migration (to be created on CHORE(open))
 **Depends on:** None.
-**Provenance:** human-written (Kishore decision, May 17, 2026) — surfaced from M74 HANDOFF discussion. Reference: `~/Projects/oss/cli/apps/cli/src/next/commands/login/login.handler.ts` (Effect-TS shape we are adopting).
+**Provenance:** human-written (Kishore decision, May 17, 2026) — surfaced from M74 HANDOFF discussion. Reference: [`supabase/cli`'s `apps/cli/src/next/commands/login/login.handler.ts`](https://github.com/supabase/cli/blob/main/apps/cli/src/next/commands/login/login.handler.ts) (Effect-TS shape we are adopting).
 
 **Canonical architecture:** N/A — substrate migration; the resulting runtime model becomes canon for every future CLI spec.
 
@@ -28,7 +28,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Implementing agent — read these first
 
-1. `~/Projects/oss/cli/apps/cli/src/next/commands/login/login.handler.ts` — 228L Supabase CLI login handler. The reference shape: typed error channels via `Effect.fail`, composable side-effects via `Effect.gen`, runtime via `Effect.runPromise`. The patterns transfer one-for-one; the runtime choice (Effect-TS) is what M74_001 lands.
+1. [`supabase/cli`'s `apps/cli/src/next/commands/login/login.handler.ts`](https://github.com/supabase/cli/blob/main/apps/cli/src/next/commands/login/login.handler.ts) — 228L Supabase CLI login handler. The reference shape: typed error channels via `Effect.fail`, composable side-effects via `Effect.gen`, runtime via `Effect.runPromise`. The patterns transfer one-for-one; the runtime choice (Effect-TS) is what M74_001 lands.
 2. `zombiectl/src/commands/*.{js,ts}` — every command file. Each becomes an `Effect`-returning function with a typed error union.
 3. `zombiectl/src/program/io.ts`, `zombiectl/src/program/auth-guard.ts`, `zombiectl/src/program/auth-token.ts` — existing helper layer. Effect-TS adoption needs to plug into (or replace) these.
 4. `zombiectl/src/lib/run-command.ts` — current dispatcher wrapper. Migrates to an `Effect.runPromiseExit`-based dispatcher with structured error reporting.

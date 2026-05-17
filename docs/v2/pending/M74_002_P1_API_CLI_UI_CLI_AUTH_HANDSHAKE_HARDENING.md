@@ -22,14 +22,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Depends on:** M74_001 (Effect-TS substrate in `zombiectl`). The new login handler is implemented on the Effect-TS dispatcher; landing this before M74_001 means rewriting the handler twice.
 **Provenance:** human-written from `HANDOFF_SUPABASE_HARDENING_SPEC.md` (Captain ask, May 17, 2026).
 
-**Canonical architecture:** `~/Projects/usezombie/docs/AUTH.md` Flow 1 (CLI device flow). Updated as part of this spec.
+**Canonical architecture:** `docs/AUTH.md` Flow 1 (CLI device flow). Updated as part of this spec.
 
 ---
 
 ## Implementing agent — read these first
 
-1. `~/Projects/usezombie/docs/AUTH.md` end-to-end. **Flow 1** is the primary target; "Two tokens at a glance", "Backend validation", and "Test infrastructure — e2e fixture mint" inform constraints. Read this before writing any spec claim — prior agents hit Captain rejections for getting Flow 1 vs Flow 3 confused.
-2. `~/Projects/oss/cli/apps/cli/src/next/commands/login/login.handler.ts` (228L) end-to-end. The pattern to port — ECDH keypair, public_key in URL params, ciphertext PATCH body, verification-code prompt, token_name device label. Captain has explicitly told prior agents to "use and leverage" this file's patterns.
+1. `docs/AUTH.md` end-to-end. **Flow 1** is the primary target; "Two tokens at a glance", "Backend validation", and "Test infrastructure — e2e fixture mint" inform constraints. Read this before writing any spec claim — prior agents hit Captain rejections for getting Flow 1 vs Flow 3 confused.
+2. [`supabase/cli`'s `apps/cli/src/next/commands/login/login.handler.ts`](https://github.com/supabase/cli/blob/main/apps/cli/src/next/commands/login/login.handler.ts) (228L) end-to-end. The pattern to port — ECDH keypair, public_key in URL params, ciphertext PATCH body, verification-code prompt, token_name device label. Captain has explicitly told prior agents to "use and leverage" this file's patterns.
 3. `zombiectl/src/commands/auth.{js,ts}` — the current `commandLogin` (`~70-211`) and `commandLogout` (`~213-220`). M74_001 migrates these to Effect-TS; M74_002 adds the hardening on the migrated handler.
 4. `src/auth/sessions.zig` + `src/http/handlers/auth/sessions.zig` — the SessionStore (in-memory) and the `PATCH`/`POST`/`GET` handler surface. Today the session row carries `{ status, token }`. ECDH transport requires adding `{ public_key, nonce, ciphertext }` plus optional `verification_code`.
 5. The dashboard `/cli-auth/{session_id}` page in `ui/packages/app/app/`. Find it with `grep -rln 'cli-auth-approve' ui/packages/app/` (acceptance test pins the testid). Read it end-to-end before drafting §3.
