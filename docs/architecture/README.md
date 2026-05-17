@@ -1,5 +1,7 @@
 # Architecture — v2 Operational Outcome Runner
 
+> **Trying to USE usezombie?** This directory is the contributor-facing architecture set. If you want to install a zombie on your own infra, go to **[docs.usezombie.com](https://docs.usezombie.com)** instead — that surface walks you through `zombiectl install` end-to-end and never asks you to read a system-topology file. Stay here only if you are contributing to the runtime, the CLI, the dashboard, or the SDK packages.
+
 Date: Apr 30, 2026
 Status: Canonical reference for the v2 problem, thesis, runtime model, agent / zombie interaction, capabilities, and context lifecycle. All v2 specs in `docs/v2/` are grounded in the topic files in this directory.
 
