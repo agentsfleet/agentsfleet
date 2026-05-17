@@ -63,17 +63,29 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | File | Action | Why |
 |------|--------|-----|
-| `zombiectl/package.json` | EDIT | Add `effect` dependency. Bump TS target if needed. |
-| `zombiectl/src/lib/run-command.ts` | REWRITE | Becomes the Effect dispatcher — receives an `Effect`, runs to exit code, owns error formatting. |
-| `zombiectl/src/program/io.ts` | EDIT | Lifted to an Effect `Layer` so handlers access stdout/stderr/prompts via DI. |
-| `zombiectl/src/program/auth-guard.ts` | EDIT | Returns an `Effect<AuthContext, AuthError, AuthLayer>`; composes via `Effect.gen` instead of throwing. |
-| `zombiectl/src/program/auth-token.ts` | EDIT | Same pattern — Effect-returning. |
-| `zombiectl/src/commands/auth.js` (or .ts) | REWRITE | First command migrated, paired with M74_002. Becomes `loginEffect`, `logoutEffect`, `authStatusEffect`. |
-| `zombiectl/src/commands/*` | REWRITE | Every remaining command — `install`, `status`, `logs`, `events`, `steer`, `stop`, `resume`, `kill`, `delete`, `list`, `credential`, `workspace`, `agent`, `grant`, `billing`, `doctor`, `tenant provider`. One Effect per command. |
-| `zombiectl/src/program/cli-tree.ts` | EDIT | Commander's `.action()` wiring receives the Effect from the command module and hands it to the dispatcher. |
-| `zombiectl/src/errors/` | CREATE | Shared discriminated-union error types (`AuthError`, `NetworkError`, `ValidationError`, `ServerError`, …). Each command's error union is a subset. |
-| `zombiectl/test/**/*.test.ts` | EDIT | Tests rewritten to use `Effect.provide` for layer mocking; no more `process.exit` stubs. |
-| `zombiectl/README.md` (or `CONTRIBUTING.md` if it exists) | EDIT | One-page Effect-TS conventions: how to write a command, how to add an error variant, how to mock layers in tests. |
+| `zombiectl/package.json` | EDIT | Add `effect@^3` dependency (latest stable). |
+| `zombiectl/src/lib/run-command.ts` | REWRITE | Becomes the Effect dispatcher — receives an `Effect`, runs via `Effect.runPromiseExit`, owns exit-code translation + error formatting. |
+| `zombiectl/src/lib/analytics.ts` | DELETE | Replaced by `services/analytics.ts`. Per-call-site `trackCliEvent` wiring deleted in the group commits that consumed it. |
+| `zombiectl/src/program/handlers-bind.ts` | DELETE | Per-handler `runCommand(…)` binding goes away; cli-tree.ts wires Effects to the dispatcher directly. |
+| `zombiectl/src/program/io.ts` | EDIT | Folded into `services/output.ts`; this file shrinks to a stream-write primitive or is deleted. |
+| `zombiectl/src/program/auth-guard.ts` | EDIT | Becomes an Effect returning `AuthContext`; composes via `Effect.gen` instead of returning `{ok}`. |
+| `zombiectl/src/program/auth-token.ts` | EDIT | Same pattern — Effect-returning. Token storage moves into `services/credentials.ts`. |
+| `zombiectl/src/runtime/main-layer.ts` | CREATE | The `MainLayer` composition that the dispatcher provides at the runtime boundary. |
+| `zombiectl/src/services/analytics.ts` | CREATE | `Analytics` service wrapping `posthog-node`. Owns `capture`/`alias`/`identify`; preserves the `cli_session_id`/`cli_device_id` props from M71_001. |
+| `zombiectl/src/services/telemetry-runtime.ts` | CREATE | `TelemetryRuntime` service — `deviceId`, `sessionId` are read from a service, not threaded through `HandlerCtx`. |
+| `zombiectl/src/services/output.ts` | CREATE | `Output` service — `intro`/`info`/`success`/`warn`/`error`/`promptText`/`promptConfirm`. Every emit carries audit metadata (`{command, …}`). Single audit-bearing surface. |
+| `zombiectl/src/services/credentials.ts` | CREATE | `Credentials` service. Access token stored as `Redacted<string>` — accidental log/print = type error. |
+| `zombiectl/src/services/crypto.ts` | CREATE | `Crypto` service — ECDH keypair, session-id generation. Substrate for M74_002 hardening. |
+| `zombiectl/src/services/browser.ts` | CREATE | `Browser` service — `open(url)` effect. |
+| `zombiectl/src/services/stdin.ts` | CREATE | `Stdin` service — `isTTY`, `readPipedText`. |
+| `zombiectl/src/services/http-client.ts` | CREATE | `HttpClient` service replacing the direct `http.ts` call sites; carries `RetryConfig` + structured errors. |
+| `zombiectl/src/services/config.ts` | CREATE | `CliConfig` service — `apiUrl`, `accessToken` (env), `dashboardUrl`. |
+| `zombiectl/src/commands/auth.ts` | REWRITE | First group migrated (commit 1, paired with substrate per Q-A). `loginEffect`, `logoutEffect`, `authStatusEffect`. |
+| `zombiectl/src/commands/*` | REWRITE | Every remaining command — `install`, `status`, `logs`, `events`, `steer`, `stop`, `resume`, `kill`, `delete`, `list`, `credential`, `workspace`, `agent`, `grant`, `billing`, `doctor`, `tenant provider`. One Effect per command; per-command `errorMap` deleted as its group migrates. |
+| `zombiectl/src/program/cli-tree.ts` | EDIT | Commander's `.action()` receives the Effect from the command module and hands it to the dispatcher. |
+| `zombiectl/src/errors/` | CREATE | Shared discriminated-union error types (`AuthError`, `NetworkError`, `ValidationError`, `ServerError`, `ConfigError`) as `Data.TaggedError` subclasses with `{detail, suggestion}`. |
+| `zombiectl/test/**/*.test.ts` | EDIT | Tests rewritten to use `Effect.provide(testLayers)`; no `process.exit` stubs. |
+| `zombiectl/CONTRIBUTING.md` | CREATE | Effect-TS conventions page: how to write a command, how to add an error variant, how to mock layers in tests, the no-`process.exit` rule. |
 
 ---
 
@@ -81,7 +93,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — Substrate: dispatcher + layers
 
-`run-command.ts` becomes the Effect dispatcher. Defines the `MainLayer` composed of `IoLayer`, `HttpClientLayer`, `AuthTokenLayer`, `ConfigLayer`. Translates `Effect.runPromiseExit` results into process exit codes via one shared formatter that knows every error variant's preferred exit code + user-facing message. No command file calls `process.exit` after this slice.
+`run-command.ts` becomes the Effect dispatcher. `MainLayer` (defined in `src/runtime/main-layer.ts`) composes — taken verbatim from Supabase's `next/` shape — `IoLayer` (folded into `Output`), `HttpClient`, `AuthToken`, `CliConfig`, `Analytics`, `TelemetryRuntime`, `Output`, `Credentials`, `Crypto`, `Browser`, `Stdin`. The dispatcher translates `Effect.runPromiseExit` results into process exit codes via one shared formatter that knows every error variant's preferred exit code + user-facing message. **No command file calls `process.exit` after this slice.**
+
+**Why these layers (not just IO + HTTP):** the user-visible win — audit/support-friendly errors, telemetry that can't be forgotten, secrets that can't be accidentally logged — comes from structural DI of the side-effecting capabilities, not from the dispatcher alone. Skipping `Analytics`/`TelemetryRuntime`/`Output`/`Credentials`/`Crypto` reduces the migration to a mechanical refactor with no end-user benefit. The Supabase `login.handler.ts` reference shows the full set in 228 lines.
 
 ### §2 — Error taxonomy
 
@@ -89,15 +103,26 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 **Implementation default:** Match the existing `UZ-<CAT>-<NNN>` taxonomy from the server side. Each server-defined code maps to one TypeScript error variant; the formatter renders the same user-facing string for both client-side failures (e.g. `NetworkError`) and server-side failures relayed from the API.
 
-### §3 — First-command migration (paired with M74_002)
+### §3 — First-group migration (auth — bundled into commit 1)
 
-`zombiectl auth login / logout / auth status` migrate first because M74_002 lands the ECDH + verification-code hardening on the same code paths. The pair ships together: M74_001 provides the substrate; M74_002 provides the security work that exercises it.
+`zombiectl auth login / logout / auth status` migrate in **the same commit as §1's substrate** (Q-A decision). Rationale: the substrate must not exist without a working consumer — a substrate-only commit with zero callers is exactly the "two horses mid-stream" framing the rules prohibit. Commit 1 ships the dispatcher, the layer set, the error taxonomy scaffold (`AuthError` + the formatter), and the auth-group rewrite together.
 
-### §4 — Bulk migration
+**M74_002 sequencing (Q-B decision):** M74_001 lands first. M74_002's sibling worktree (`feat/m74-002-cli-browser-authorization-flow`) rebases onto this branch after merge, then writes its ECDH + verification-code hardening in Effect shape from day one. No auth code is ever written twice.
 
-Remaining commands migrate in alphabetical groups. Each PR migrates one group (e.g. `install` + `status` + `logs`; or `workspace` subcommands as a group). The dispatcher accepts both Effect-returning and legacy command bodies during the migration window via a thin shim; the shim is deleted in the last migration PR.
+### §4 — Bulk migration (single PR, per-group commits, no shim)
 
-**Implementation default:** Group by subcommand surface, not alphabetically — e.g. all `workspace ${verb}` commands migrate together so their shared layer composition is reused, not duplicated.
+The remaining command groups migrate as separate commits **on this same branch, in this same PR**. Each commit:
+
+1. Rewrites that group's command bodies as Effect-returning handlers consuming the relevant services.
+2. Updates `cli-tree.ts` to wire them to the Effect dispatcher.
+3. **Deletes** the old code paths (per-command `errorMap`, manual `trackCliEvent` triplet wiring, `handlers-bind.ts` entries) that the migrated group no longer needs.
+4. CI must be green at the commit's HEAD — no broken-build interstitial commits.
+
+There is **no dual-acceptance dispatcher, no compat shim, no rename**. Between commits, un-migrated groups continue to route through their pre-existing helper code — that code is not renamed, not gated, and not framed as "legacy"; it is simply the code that has not yet been replaced. The **final commit** before PR-open deletes whatever remains of the pre-Effect dispatch surface (`lib/run-command.ts`'s pre-Effect body, the old `lib/analytics.ts`, `program/handlers-bind.ts`) so what merges to `main` is Effect-only — no transitional state on the integration branch, ever.
+
+**Group order:** `auth` (commit 1, with §1) → `zombie` core (`install`, `status`, `logs`, `events`, `steer`, `stop`, `resume`, `kill`, `delete`, `list`) → `workspace` → `credential` → `agent` → `grant` → `billing` → `tenant provider` → `doctor`. Group-by-subcommand-surface (Supabase pattern) — each group shares a layer composition.
+
+**Touch-it-fix-it sweep (RULE NLR):** as each file is migrated, the ~10 pre-existing `// legacy …` / `// shim …` comments in committed code (`commands/billing.ts`, `commands/core.ts`, `lib/analytics.ts`, `output/*.ts`, `program/cli-tree*.ts`) are removed in the same commit. No separate sweep.
 
 ### §5 — Test harness migration
 
@@ -142,7 +167,7 @@ export const installCommand = (args: InstallArgs): Effect.Effect<void, CliError,
 |------|-------|----------|
 | Dispatcher cannot map an error variant to an exit code | A new error variant lands without updating the shared formatter switch. | Compile-time: the formatter's `switch (err._tag)` is exhaustive; missing case → TS2367. CI gate catches it before merge. |
 | Layer not provided | A command needs `VaultLayer` but the test composition omits it. | Compile-time: Effect's `R` parameter unifies; missing layer surfaces as `Effect<…, …, MissingLayer>` and the test won't compile. |
-| Mid-migration legacy command bypasses the dispatcher | An author copies an old command and forgets to wrap. | Lint rule (custom ESLint or grep in `make lint`): no command file may call `process.exit`; CI gate fails. |
+| Un-migrated command outlives its group's commit | An author adds a new command using the pre-Effect helper after that helper was supposed to be deleted. | Lint rule + grep gate in `make lint`: no command file may `import { runCommand }` from `lib/run-command.ts`'s pre-Effect entry, and no command file may call `process.exit`. CI fails. |
 | Effect adds substantial bundle size | Bun-bundled CLI binary grows. | Measure before/after with `du`; if growth is unacceptable, narrow imports to tree-shakable subpaths (`effect/Effect`, `effect/Layer`, etc.) rather than the umbrella import. |
 | Async stack traces become harder to read | Effect's runtime adds frames. | Use Effect's built-in `Effect.withSpan` for operation labels; surface in `--debug` mode. Document in CONTRIBUTING. |
 
@@ -153,7 +178,8 @@ export const installCommand = (args: InstallArgs): Effect.Effect<void, CliError,
 1. **No `process.exit` in command files.** Enforced by a lint rule + grep in `make lint`. Only the dispatcher calls `process.exit`.
 2. **Every command's Effect carries a typed error union.** Enforced by TypeScript — `Effect<void, unknown, …>` is rejected at type-check time via a custom strictness rule (or a wrapper type).
 3. **The dispatcher's error formatter is exhaustive.** Enforced by TypeScript's exhaustiveness check on the `switch (err._tag)`.
-4. **No mid-migration "legacy" code paths after the last migration PR lands.** Enforced by RULE NLG — the dispatcher's compatibility shim is deleted in the closing PR.
+4. **No pre-Effect dispatch surface survives PR-open.** Enforced by RULE NLG — the old `runCommand` body, `lib/analytics.ts`, and `program/handlers-bind.ts` are deleted in the final commit on this branch. There is no transitional state on `main` — what merges is Effect-only. Within-branch dev state may carry un-migrated groups; what ships does not.
+5. **No "legacy"/"compat"/"shim"/"deprecated" framing anywhere in committed `src/`.** Enforced by Eval E5 (`grep -wi`) — zero matches required at PR-open. Pre-existing comment hits are swept under RULE NLR as their file is touched.
 
 ---
 
@@ -167,19 +193,25 @@ export const installCommand = (args: InstallArgs): Effect.Effect<void, CliError,
 | `test_auth_status_happy_path` | `zombiectl auth status` against a fixture HTTP layer returns the expected formatted output and exit code 0 (regression for D31 from M68 across the migration). |
 | `test_auth_status_error_paths` | Each documented `auth status` failure (UZ-AUTH-001 / UZ-AUTH-002 / TOKEN_EXPIRED) routes to the correct exit code and message after migration. |
 | `test_dispatcher_unknown_error_compile_fails` | A synthetic test that adds a new error variant without updating the formatter MUST fail to compile. |
+| `test_telemetry_session_device_props_preserved` | Every `cli_*` analytics event captured through `Analytics` carries `cli_session_id` + `cli_device_id` (M71_001 regression). |
+| `test_credentials_redacted_never_logged` | A test that calls `Output.success` after `Credentials.getAccessToken` MUST NOT leak the token string into captured stderr/stdout (Redacted enforcement). |
+| `test_legacy_framing_grep` | `grep -rn -wi 'legacy\|compat\|shim\|deprecated' zombiectl/src/` returns zero matches (Eval E5 as a test gate). |
 
 ---
 
 ## Acceptance Criteria
 
 - [ ] `bun test` green in `zombiectl/`.
-- [ ] `bun run lint` green; the custom no-`process.exit` rule is in `eslint.config.js` (or `bun run lint:custom` equivalent).
+- [ ] `bun run lint` green; the custom no-`process.exit` rule is wired into `oxlint` config or the existing `audit-*.mjs` script chain.
 - [ ] `grep -rn 'process\.exit' zombiectl/src/commands/` returns zero matches.
-- [ ] `grep -rn 'Effect.Effect<.*,.*unknown,' zombiectl/src/` returns zero matches.
+- [ ] `grep -rnE 'Effect\.Effect<[^,]*,[[:space:]]*unknown' zombiectl/src/` returns zero matches.
+- [ ] `grep -rn -wi 'legacy\|compat\|shim\|deprecated' zombiectl/src/` returns zero matches (Eval E5).
 - [ ] `zombiectl --help` output unchanged (regression).
 - [ ] Every command listed in `cli/zombiectl.mdx` works against the integration fixture.
-- [ ] `zombiectl/README.md` (or `CONTRIBUTING.md`) contains the Effect-TS conventions page.
+- [ ] `zombiectl/CONTRIBUTING.md` exists and contains the Effect-TS conventions page.
 - [ ] No file in `zombiectl/src/` over 350 lines as a result of the migration.
+- [ ] M71_001's `cli_session_id` + `cli_device_id` analytics props remain present on every `cli_*` event (served from `TelemetryRuntime`).
+- [ ] CI green at **every commit** on the integration branch (no broken-build interstitials).
 
 ---
 
@@ -199,18 +231,25 @@ bun test && bun run lint
 
 # E4: help output regression
 diff <(zombiectl --help) tests/golden/help.txt
+
+# E5: no legacy/compat/shim/deprecated framing
+grep -rn -wi 'legacy\|compat\|shim\|deprecated' src/ && echo FAIL || echo PASS
 ```
 
 ---
 
 ## Dead Code Sweep
 
-The migration deletes the legacy dispatcher shim in its final PR. Before opening that PR:
+Each group commit deletes the old code paths it replaces — no separate cleanup commit, no rename, no shim. Before PR-open the final commit on the branch must have produced these zero-match states:
 
-| Deleted symbol | Grep | Expected |
-|----------------|------|----------|
-| `runCommandLegacy` (or whatever the shim is named) | `grep -rn 'runCommandLegacy' zombiectl/` | Zero matches |
+| Deleted surface | Grep | Expected |
+|-----------------|------|----------|
+| Pre-Effect `runCommand` body / `HandlerCtx` shape | `grep -rn 'HandlerCtx\|RunCommandDeps' zombiectl/src/` | Zero matches |
+| `lib/analytics.ts` (replaced by `services/analytics.ts`) | `git ls-files zombiectl/src/lib/analytics.ts` | Empty |
+| `program/handlers-bind.ts` (replaced by direct Effect wiring in `cli-tree.ts`) | `git ls-files zombiectl/src/program/handlers-bind.ts` | Empty |
+| Per-command `errorMap` exports | `grep -rn 'export.*errorMap\|export.*ErrorMap' zombiectl/src/commands/` | Zero matches |
 | Per-command `try { … } catch (e) { process.exit(…) }` blocks | `grep -rn 'process\.exit' zombiectl/src/commands/` | Zero matches |
+| "legacy"/"compat"/"shim"/"deprecated" framing in committed code | `grep -rn -wi 'legacy\|compat\|shim\|deprecated' zombiectl/src/` | Zero matches |
 
 ---
 
@@ -219,24 +258,30 @@ The migration deletes the legacy dispatcher shim in its final PR. Before opening
 | When | Skill | What it does | Required output |
 |------|-------|--------------|-----------------|
 | After each migration PR, before CHORE(close) | `/write-unit-test` | Audits layer-mock coverage on the migrated commands. | Clean. |
-| After migration complete, before final CHORE(close) | `/review` | Adversarial pass: every command returns a typed Effect, dispatcher is the only exit-code surface, no mid-migration shim survives. | Findings dispositioned. |
+| After migration complete, before CHORE(close) | `/review` | Adversarial pass: every command returns a typed Effect, dispatcher is the only exit-code surface, no pre-Effect dispatch surface survives, no legacy framing in committed code. | Findings dispositioned. |
 | After each `gh pr create` | `/review-pr` | Catches Effect signatures with `unknown` or `any` error channels. | Comments addressed before human review. |
 
 ---
 
 ## Discovery (consult log)
 
-Empty at creation. Open questions in §Open Questions below need Captain decisions at plan-eng-review.
+- **May 17, 2026 — Spec audit vs Supabase `next/` reference.** Original §1 layer list (`IoLayer`, `HttpClientLayer`, `AuthTokenLayer`, `ConfigLayer`) omitted the user-visible-value layers — `Analytics`, `TelemetryRuntime`, `Output` (audit-bearing), `Credentials` (`Redacted` secrets), `Crypto`, `Browser`, `Stdin`. Without them the migration reduces to a mechanical refactor with no end-user benefit. Added in this amendment.
+- **May 17, 2026 — RULE NLG sweep in spec prose.** Original §4 used "thin shim" / "compatibility shim" / "legacy command bodies" / "runCommandLegacy" — all of which violate `[[feedback_pre_v2_api_drift]]` for a pre-2.0 codebase. Rewritten to: single PR, per-group commits, each commit deletes the code it replaces, no shim, no rename, no transitional state on `main`. Eval E5 added to enforce zero `grep -wi legacy|compat|shim|deprecated` matches at PR-open.
+- **May 17, 2026 — Q5 (tsconfig strictness) is already met.** `zombiectl/tsconfig.json` currently has `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, `useUnknownInCatchVariables: true`. No uplift required; Effect composes on top.
+- **May 17, 2026 — M71_001 analytics regression risk noted.** `cli_session_id` + `cli_device_id` props were added recently (commit 97705654). Migration must preserve them — they now flow from `TelemetryRuntime` service, not `HandlerCtx`. Added as Acceptance Criterion + Test Spec implication.
+- **May 17, 2026 — handlers-bind.ts identified as deletion target.** Its sole purpose is wiring leaf handlers through `runCommand`; the Effect dispatcher consumes Effects directly from each command module, making this file obsolete. Marked DELETE in Files Changed.
 
 ---
 
-## Open Questions (Captain decides)
+## Open Questions — RESOLVED (Captain decisions, May 17, 2026)
 
-- **Q1: Effect-TS major version.** v3.x is current stable; `effect` package is umbrella. Pin range or take `^3.x`?
-- **Q2: Layer split.** Single `MainLayer` per dispatcher run vs per-command custom layer subset. The latter is more disciplined (a command can only use what it asked for); the former is simpler boilerplate. Captain picks.
-- **Q3: Migration PR cadence.** One PR per command group (workspace / credential / billing / auth …) or one mega-PR? Recommendation: per-group; lands incrementally, each reviewable, dispatcher shim handles the in-flight mixed state.
-- **Q4: Codegen for the error taxonomy.** Should the `CliError` union be hand-maintained or generated from the same Zig registry M73_001 will codegen? Recommendation: hand-maintained for v1, revisit after M73_001 ships (the two specs naturally compose).
-- **Q5: TypeScript strictness uplift.** Effect-TS works best with `strict: true` + `noUncheckedIndexedAccess: true`. Current `tsconfig.json` strictness?
+- **Q1 — Effect-TS major version:** Latest stable `effect@^3` (caret range; bump on minor/patch).
+- **Q2 — Layer split:** Follow Supabase's `next/` shape verbatim. Per-handler `yield* Service` for what the handler needs; `MainLayer` is the runtime-boundary composition only. Services are atomic; TypeScript tracks each handler's `R`.
+- **Q3 — PR cadence:** **One PR for M74_001.** Multiple commits within the PR — one per subcommand group. CI green at every commit; no broken-build interstitials.
+- **Q4 — Codegen of error taxonomy:** Hand-maintained for v1. M73_001 may later codegen the union from the Zig registry without breaking the discriminated-union shape.
+- **Q5 — TypeScript strictness:** No-op. Current `tsconfig.json` already at the target strictness (`strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `useUnknownInCatchVariables`). Effect composes on top.
+- **Q-A — Commit 1 content:** Substrate (§1) + error taxonomy (§2) + auth group (§3) ship together. The substrate is born with a working consumer; no dead-substrate commit.
+- **Q-B — M74_002 sequencing:** M74_001 lands first. The sibling worktree (`feat/m74-002-cli-browser-authorization-flow`) rebases onto the merged substrate and writes its ECDH + verification-code hardening in Effect shape from day one — no auth code written twice.
 
 ---
 
@@ -248,6 +293,7 @@ Empty at creation. Open questions in §Open Questions below need Captain decisio
 | no untyped Effect (E2) | see Eval | | |
 | tests + lint (E3) | `bun test && bun run lint` | | |
 | help regression (E4) | `diff` | | |
+| no legacy framing (E5) | `grep -wi 'legacy\|compat\|shim\|deprecated' src/` | | |
 
 ---
 
