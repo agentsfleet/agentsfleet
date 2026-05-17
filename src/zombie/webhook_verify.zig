@@ -63,9 +63,10 @@ comptime {
 
 // ── Public API ────────────────────────────────────────────────────────────
 
-/// Match a provider by `trigger.source` (case-insensitive), falling back to
-/// request-header presence. `headers` must expose `header(name) ?[]const u8`;
-/// pass `NoHeaders{}` at config-parse time when no request exists.
+/// Match a provider by a `triggers[].source` value (case-insensitive),
+/// falling back to request-header presence. `headers` must expose
+/// `header(name) ?[]const u8`; pass `NoHeaders{}` at config-parse time
+/// when no request exists.
 pub fn detectProvider(source: []const u8, headers: anytype) ?VerifyConfig {
     if (source.len > 0) {
         for (PROVIDER_REGISTRY) |cfg| {

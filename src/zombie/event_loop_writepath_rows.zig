@@ -7,7 +7,6 @@ const pg = @import("pg");
 const Allocator = std.mem.Allocator;
 
 const redis_zombie = @import("../queue/redis_zombie.zig");
-const queue_redis = @import("../queue/redis_client.zig");
 const executor_client = @import("../executor/client.zig");
 const id_format = @import("../types/id_format.zig");
 

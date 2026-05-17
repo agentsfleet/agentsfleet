@@ -4,8 +4,9 @@
 name: typo-skill
 
 x-usezombie:
-  trigger:
-    type: api
+  triggers:
+    - type: cron
+      schedule: "0 9 * * *"
   tools:
     - agentmail
   budget:

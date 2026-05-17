@@ -47,7 +47,7 @@ describe("FAQ", () => {
     expect(screen.getByText(/self-managed provider key\./)).toBeInTheDocument();
     await user.click(screen.getByText("What am I actually paying for?"));
     expect(screen.queryByText(/self-managed provider key\./)).not.toBeInTheDocument();
-    expect(screen.getByText(/Hosted execution\./)).toBeInTheDocument();
+    expect(screen.getByText(/Hosted execution is metered/i)).toBeInTheDocument();
   });
 
   it("sets aria-expanded correctly", async () => {

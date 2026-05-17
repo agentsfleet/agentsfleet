@@ -31,8 +31,15 @@ export default function Pricing() {
         <Card data-testid="pricing-rate-card" className="flex flex-col gap-5">
           <div className="flex flex-col gap-3">
             <Badge className="self-start font-mono">
-              → try free · {RATES_DISPLAY.STARTER_CREDIT} starter credit, never expires
+              → try free · free until July 2026
             </Badge>
+
+            <p
+              data-testid="pricing-free-trial-banner"
+              className="font-sans text-body-sm leading-body text-text-muted m-0 max-w-narrow"
+            >
+              {RATES_DISPLAY.FREE_TRIAL_BANNER}
+            </p>
 
             <p
               data-testid="pricing-rate-line"
@@ -46,12 +53,14 @@ export default function Pricing() {
               <p
                 className="font-mono text-fluid-display-md leading-display-md tracking-display-md font-medium text-text m-0 tabular-nums flex flex-wrap items-baseline gap-x-3 gap-y-1"
               >
-                <span data-testid="pricing-rate-stage-platform">{RATES_DISPLAY.STAGE_PLATFORM}</span>
+                <s data-testid="pricing-rate-stage-platform" className="text-text-muted">
+                  {RATES_DISPLAY.STAGE_PLATFORM}
+                </s>
                 <span className="font-sans text-text-muted text-body-sm">platform default</span>
                 <span className="text-text-subtle">·</span>
-                <span data-testid="pricing-rate-stage-self-managed">
+                <s data-testid="pricing-rate-stage-self-managed" className="text-text-muted">
                   {RATES_DISPLAY.STAGE_SELF_MANAGED}
-                </span>
+                </s>
                 <span className="font-sans text-text-muted text-body-sm">self-managed</span>
               </p>
               <p className="font-sans text-body-sm leading-body text-text-muted m-0">

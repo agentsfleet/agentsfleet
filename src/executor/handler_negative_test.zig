@@ -9,7 +9,6 @@
 
 const std = @import("std");
 const handler_mod = @import("handler.zig");
-const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const protocol = @import("protocol.zig");
 

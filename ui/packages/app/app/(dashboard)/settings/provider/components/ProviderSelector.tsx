@@ -3,7 +3,7 @@
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2Icon } from "lucide-react";
-import { Alert, Button, RadioGroup } from "@usezombie/design-system";
+import { Alert, Badge, Button, RadioGroup } from "@usezombie/design-system";
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";
@@ -122,12 +122,13 @@ export default function ProviderSelector({
           {strategy.submitLabel}
         </Button>
         {state.ok ? (
-          <span
-            role="status"
-            className="text-xs text-success animate-in fade-in-0 slide-in-from-bottom-1 duration-200"
+          <Badge
+            variant="green"
+            role="status" // oxlint-disable-line jsx-a11y/prefer-tag-over-role -- Badge is the design-system primitive; <output> drops text children in happy-dom@20.
+            className="animate-in fade-in-0 slide-in-from-bottom-1 duration-200 normal-case tracking-normal"
           >
             {state.ok}
-          </span>
+          </Badge>
         ) : null}
       </div>
 

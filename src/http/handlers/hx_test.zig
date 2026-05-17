@@ -21,7 +21,6 @@
 
 const std = @import("std");
 const httpz = @import("httpz");
-const common = @import("common.zig");
 const hx_mod = @import("hx.zig");
 const error_codes = @import("../../errors/error_registry.zig");
 
@@ -32,8 +31,10 @@ fn buildHx(res: *httpz.Response, req_id: []const u8) Hx {
         .alloc = std.testing.allocator,
         // ok/fail never read these — if that changes, this test crashes and
         // surfaces the coupling.
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .principal = undefined,
         .req_id = req_id,
+        // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .ctx = undefined,
         .res = res,
     };

@@ -9,7 +9,6 @@
 const std = @import("std");
 const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const Allocator = std.mem.Allocator;
 
 const event_loop = @import("event_loop.zig");
 const writepath = @import("event_loop_writepath.zig");
@@ -17,8 +16,6 @@ const types = @import("event_loop_types.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const EventEnvelope = @import("event_envelope.zig");
-const balance_policy_mod = @import("../config/balance_policy.zig");
-const tenant_billing = @import("../state/tenant_billing.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const ALLOC = std.testing.allocator;
@@ -28,7 +25,7 @@ const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa01";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa10";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"writepath-bot","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"writepath-bot","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---
@@ -44,7 +41,7 @@ fn deleteEventStream(redis: *queue_redis.Client) void {
 }
 
 fn deleteZombieEventsRows(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_events WHERE zombie_id = $1::uuid", .{TEST_ZOMBIE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 fn provisionEmptyBalance(conn: *pg.Conn) !void {
@@ -59,7 +56,7 @@ fn provisionEmptyBalance(conn: *pg.Conn) !void {
 }
 
 fn clearTenantBilling(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{base.TEST_TENANT_ID}) catch {};
+    _ = conn.exec("DELETE FROM billing.tenant_billing WHERE tenant_id = $1::uuid", .{base.TEST_TENANT_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Balance-gate: writepath must mark gate_blocked + XACK when balance < est_total ─

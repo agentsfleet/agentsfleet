@@ -4,8 +4,6 @@
 
 const std = @import("std");
 const logging = @import("log");
-const httpz = @import("httpz");
-const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -84,7 +82,7 @@ pub fn innerListGrants(hx: hx_mod.Hx, workspace_id: []const u8, zombie_id: []con
             .approved_at = approved_at,
             .revoked_at = revoked_at,
             .reason = reason,
-        }) catch {};
+        }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     }
 
     hx.ok(.ok, .{ .items = grants.items, .total = grants.items.len });

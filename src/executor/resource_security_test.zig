@@ -14,12 +14,9 @@
 //! Tiers: T5 (concurrency), T7 (regression), T8 (security), T11 (memleak)
 
 const std = @import("std");
-const builtin = @import("builtin");
 const types = @import("types.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
-const cgroup = @import("cgroup.zig");
-const executor_metrics = @import("executor_metrics.zig");
 const runner = @import("runner.zig");
 
 

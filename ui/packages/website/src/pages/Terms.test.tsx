@@ -25,9 +25,9 @@ describe("Terms", () => {
     expect(screen.getByRole("heading", { name: /termination/i })).toBeInTheDocument();
   });
 
-  it("mentions $5 workspace activation fee", () => {
+  it("mentions the free-trial period in billing terms", () => {
     render(<Terms />);
-    expect(screen.getByText(/\$5/)).toBeInTheDocument();
+    expect(screen.getByText(/free to try through July 31, 2026/i)).toBeInTheDocument();
   });
 
   it("renders contact email link sourced from SUPPORT_EMAIL", () => {

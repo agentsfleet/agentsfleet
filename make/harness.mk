@@ -31,7 +31,7 @@
 #
 #   M68 commit 02c1f3cf (the orphan-cleanup slip) was the forcing
 #   function — pre-commit `HEAD` is the prior commit, so a `BASE...HEAD`
-#   check was blind to a fix the agent staged but had not yet committed.
+#   check was blind to a fix the agent staged but had not yet committed.</
 #
 # Adding a gate:
 #   1. Drop scripts/audit-<gate>.sh on disk (or symlink from dotfiles).
@@ -75,10 +75,11 @@ harness-verify:  ## Run every deterministic gate audit (mechanical HARNESS VERIF
 	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
 	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
 	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
+	$(call HARNESS_RUN,CROSS-TIER RATES,scripts/audit-cross-tier-rates.sh)
 	# audit-msid-ui.sh is diff-shaped by construction — it asserts on
 	# *added* lines, not file state. Stays on --staged for pre-commit
 	# context. See scripts/audit-msid-ui.sh "Per-check scope" docstring.
-	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --staged)
+	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --staged)</
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── ready for VERIFY$(C_RESET)\n\n"
 
 harness-verify-all:  ## Whole-worktree variant for periodic deep audits
@@ -93,5 +94,6 @@ harness-verify-all:  ## Whole-worktree variant for periodic deep audits
 	$(call HARNESS_RUN,ERROR REGISTRY,scripts/audit-error-codes.sh)
 	$(call HARNESS_RUN,LOGGING,scripts/audit-logging.sh)
 	$(call HARNESS_RUN,LIFECYCLE,scripts/audit-deinit-pairs.sh)
-	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --diff)
+	$(call HARNESS_RUN,CROSS-TIER RATES,scripts/audit-cross-tier-rates.sh)
+	$(call HARNESS_RUN,MS-ID + UI,scripts/audit-msid-ui.sh --diff)</
 	@printf "$(C_BOLD)$(C_CYAN)●$(C_RESET) $(C_BOLD)$(C_GREEN)ALL GATES GREEN$(C_RESET) $(C_GREY)── whole-worktree sweep clean$(C_RESET)\n\n"

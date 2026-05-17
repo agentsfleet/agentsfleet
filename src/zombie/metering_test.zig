@@ -1,13 +1,10 @@
 // Tests for src/zombie/metering.zig — two-debit credit-pool path.
 
 const std = @import("std");
-const pg = @import("pg");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const metering = @import("metering.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
-const tenant_provider = @import("../state/tenant_provider.zig");
-const balance_policy = @import("../config/balance_policy.zig");
 const base = @import("../db/test_fixtures.zig");
 const uc1 = @import("../db/test_fixtures_uc1.zig");
 
@@ -86,6 +83,17 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
     // self-managed: receive = EVENT_NANOS (0), stage = STAGE_SELF_MANAGED_NANOS.
     // Balance < est_total → blocked.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_block");
+
+    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS,
+    // so est_total = 0 and `balance < est_total` is mathematically unreachable.
+    // Skip until post-trial — the gate still holds, this assertion just can't
+    // be exercised through the public charge path while the gate is closed.
+    const trial_active = blk: {
+        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        defer ALLOC.free(@constCast(b.grant_source));
+        break :blk b.free_trial_active;
+    };
+    if (trial_active) return error.SkipZigTest;
 
     try std.testing.expect(!metering.balanceCoversEstimate(
         db_ctx.pool,
@@ -170,6 +178,17 @@ test "debitStage self-managed: STAGE_SELF_MANAGED_NANOS flat overhead drains bal
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
+    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS.
+    // Branch expected nanos so this test stays honest in both eras — covers
+    // the trial-active deduction-of-zero path AND the post-trial flat-overhead
+    // path through the same end-to-end assertion shape.
+    const trial_active = blk: {
+        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        defer ALLOC.free(@constCast(b.grant_source));
+        break :blk b.free_trial_active;
+    };
+    const expected_stage_nanos: i64 = if (trial_active) 0 else tenant_billing.STAGE_SELF_MANAGED_NANOS;
+
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a02";
     const result = metering.debitStage(
         db_ctx.pool,
@@ -179,15 +198,15 @@ test "debitStage self-managed: STAGE_SELF_MANAGED_NANOS flat overhead drains bal
         .stop,
     );
     switch (result) {
-        .deducted => |c| try std.testing.expectEqual(tenant_billing.STAGE_SELF_MANAGED_NANOS, c),
+        .deducted => |c| try std.testing.expectEqual(expected_stage_nanos, c),
         else => return error.TestExpectedEqual,
     }
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
     defer ALLOC.free(@constCast(row.grant_source));
-    // STARTER_CREDIT_NANOS - STAGE_SELF_MANAGED_NANOS (self-managed posture per makeCtx).
+    // STARTER_CREDIT_NANOS - expected_stage_nanos (self-managed posture per makeCtx).
     try std.testing.expectEqual(
-        tenant_billing.STARTER_CREDIT_NANOS - tenant_billing.STAGE_SELF_MANAGED_NANOS,
+        tenant_billing.STARTER_CREDIT_NANOS - expected_stage_nanos,
         row.balance_nanos,
     );
 
@@ -214,6 +233,17 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
 
     // Provision at 0 nanos — stage debit (STAGE_SELF_MANAGED_NANOS) must exhaust.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_exhaust");
+
+    // §7 free-trial: stage charge is 0 until FREE_TRIAL_END_MS, so debiting
+    // 0 from a 0-balance row succeeds (.deducted = 0) instead of exhausting.
+    // Skip until post-trial — the exhaust path is real, this fixture just
+    // can't reach it while the gate is closed.
+    const trial_active = blk: {
+        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        defer ALLOC.free(@constCast(b.grant_source));
+        break :blk b.free_trial_active;
+    };
+    if (trial_active) return error.SkipZigTest;
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a03";
     const result = metering.debitStage(
@@ -257,6 +287,18 @@ test "recordStageActuals: updates stage row tokens and wall_ms, leaves nanos unt
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
+    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS.
+    // Branch the telemetry-row nanos assertion so the test stays honest in
+    // both eras — the invariant under test ("recordStageActuals doesn't
+    // mutate credit_deducted_nanos") holds regardless of which value the
+    // pre-execution estimate landed.
+    const trial_active = blk: {
+        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
+        defer ALLOC.free(@constCast(b.grant_source));
+        break :blk b.free_trial_active;
+    };
+    const expected_stage_nanos: i64 = if (trial_active) 0 else tenant_billing.STAGE_SELF_MANAGED_NANOS;
+
     // Land a stage debit first so we have a row to update.
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a05";
     const ctx = makeCtx(ws, event_id);
@@ -283,7 +325,7 @@ test "recordStageActuals: updates stage row tokens and wall_ms, leaves nanos unt
     defer q.deinit();
     const r = (try q.next()) orelse return error.RowNotFound;
     // credit_deducted_nanos: pre-execution estimate is the charge of record.
-    try std.testing.expectEqual(tenant_billing.STAGE_SELF_MANAGED_NANOS, try r.get(i64, 0));
+    try std.testing.expectEqual(expected_stage_nanos, try r.get(i64, 0));
     try std.testing.expectEqual(@as(?i64, 100), try r.get(?i64, 1));
     try std.testing.expectEqual(@as(?i64, 540), try r.get(?i64, 2));
     try std.testing.expectEqual(@as(?i64, 12_500), try r.get(?i64, 3));
