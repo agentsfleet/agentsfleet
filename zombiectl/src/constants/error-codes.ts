@@ -43,9 +43,6 @@ export const ERR_INTERNAL_DB_QUERY = "UZ-INTERNAL-002";
 export const ERR_INTERNAL_OPERATION_FAILED = "UZ-INTERNAL-003";
 
 // Vault / credentials (workspace-scoped credential store).
-// UZ-CRED-001/003 are server-side LLM-provider credential codes; the
-// CLI surfaces them as generic "credential" errors via the human-facing
-// message in the errorMap preset.
 export const ERR_VAULT_DATA_INVALID = "UZ-VAULT-001";
 
 // Executor (runtime / nullclaw)

@@ -396,8 +396,10 @@ test "command on resumable .err reply emits redis_command_err_reply warn carryin
     // Load-bearing captures: the warn line fires from
     // redis_connection.zig's resumable-error branch BEFORE deinit. With
     // the sink in place, we can prove the operator-visible signal made
-    // it through the format pipeline.
-    const captured = bs.snapshot();
+    // it through the format pipeline. snapshot returns an owned copy
+    // (race-safe vs concurrent emits); caller frees with bs.alloc.
+    const captured = try bs.snapshot();
+    defer std.testing.allocator.free(captured);
     try std.testing.expect(std.mem.indexOf(u8, captured, "redis_command_err_reply") != null);
     try std.testing.expect(std.mem.indexOf(u8, captured, "WRONGTYPE") != null);
     // Conn stayed in protocol sync after the .err reply (resumable):
