@@ -6,6 +6,57 @@ Three principal types reach the Zig backend. All three converge on a single cred
 Authorization: Bearer <…>
 ```
 
+## The three flows at a glance
+
+```
+            ┌──────────────────────────────────────────────────────────────┐
+            │                                                              │
+            │  WHO IS THE ACTOR?                                           │
+            │                                                              │
+            │  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐  │
+            │  │ A human at a │    │ A human in a │    │ A machine    │  │
+            │  │ terminal     │    │ browser tab  │    │ (script/bot) │  │
+            │  └──────┬───────┘    └──────┬───────┘    └──────┬───────┘  │
+            │         │                   │                   │           │
+            │         ▼                   ▼                   ▼           │
+            │   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    │
+            │   │   FLOW 1    │    │   FLOW 2    │    │   FLOW 3    │    │
+            │   │             │    │             │    │             │    │
+            │   │ zombiectl   │    │ Dashboard   │    │ Tenant API  │    │
+            │   │ login       │    │ sign-in     │    │ key         │    │
+            │   │             │    │             │    │ zmb_t_…     │    │
+            │   │ verification│    │ Clerk       │    │ static hash │    │
+            │   │ code + ECDH │    │ __session   │    │ in DB       │    │
+            │   │ + 5-min TTL │    │ cookie →    │    │ long-lived  │    │
+            │   │             │    │ getToken    │    │ revocable   │    │
+            │   │             │    │ ({api})     │    │             │    │
+            │   └──────┬──────┘    └──────┬──────┘    └──────┬──────┘    │
+            │          │                  │                  │            │
+            │          └──────────────────┴──────────────────┘            │
+            │                             │                                │
+            │                             ▼                                │
+            │              Authorization: Bearer <…>                       │
+            │                             │                                │
+            │                             ▼                                │
+            │              bearer_or_api_key middleware                    │
+            │              (zmb_t_*  → DB hash lookup)                     │
+            │              (anything → JWKS verify)                        │
+            │                                                              │
+            └──────────────────────────────────────────────────────────────┘
+```
+
+| When to use which | Flow 1 | Flow 2 | Flow 3 |
+|---|---|---|---|
+| Human present at the keyboard? | ✅ required (5-min interactive flow) | ✅ required | ❌ |
+| Long-lived credential? | ❌ JWT expires ~15 min; CLI re-runs `login` on 401 | ❌ minted per request | ✅ until explicitly revoked |
+| Provisioned via | `zombiectl login` | Clerk sign-in form | dashboard "Create API Key" surface |
+| Right answer for | a developer on a workstation; Cursor/Claude Code running locally with the developer present | someone using `app.usezombie.com` in a browser | n8n / Zapier / cron jobs / CI runners / Kubernetes / scheduled background work |
+| Wrong answer for | unattended CI / cron / K8s / hosted-agent platforms — see *Human-led-only invariant* | none — this is the only browser path | interactive humans (`zmb_t_` long-lived keys carry too much standing privilege for a workstation) |
+
+There is also a fourth surface — **agent keys** (`zmb_*` bound to a single zombie) — for narrowly-scoped webhook-driven inbound calls. It's a Flow 3 subtype: same DB-hash-lookup shape, narrower scope. See *Agent keys* below.
+
+A fifth surface — **inbound webhooks** — does not use Bearer at all (HMAC-signed by the provider). See *Webhook auth*.
+
 There are exactly two payload shapes inside that header:
 
 | Payload                  | Issuer                | Validation path                    | Used by             |
@@ -45,57 +96,242 @@ In Clerk's terms, the existence of two tokens reflects two different verifier re
 
 ---
 
-## Flow 1 — CLI (zombiectl, used by agents)
+## Flow 1 — CLI device flow (`zombiectl login`)
 
-The CLI runs a one-time **device flow** to acquire a Clerk-issued user JWT, then carries that JWT on every subsequent request. The browser is the bridge: it has the user's Clerk session cookie, so it can mint an API-audience JWT on behalf of the CLI and POST it into a short-lived session row keyed by `session_id`.
+`zombiectl login` is the one credential-acquisition path that humans use from a terminal. It is a browser-mediated device flow with a **verification code** that ties the human approving in the browser to the human typing into the local terminal, and **ECDH P-256 transport encryption** that keeps the minted JWT out of every server-side surface other than process memory. The session row in Redis holds ciphertext + a keyed-HMAC of the verification code; no plaintext JWT, no plaintext code, ever.
 
-### One-time login (`zombiectl login`)
+A fresh login takes one round-trip from `zombiectl` to create a session, one browser tab to Approve, and one terminal prompt to type the code. The whole flow is bounded at five minutes; an unfinished session expires automatically.
+
+### Where the JWT lives in plaintext (data lifecycle)
+
+This view points in the *opposite* direction from the temporal sequence below, because the JWT is *born* in the dashboard's browser process (immediately after Clerk mints it) and *consumed* in the `zombiectl` process (after ECDH decryption). The CLI initiates the flow; the secret flows the other way.
+
+```
+┌────────────────────────────────────────────────────────────────────┐
+│                                                                    │
+│  Dashboard browser tab                                             │
+│   ┌─────────────────────────────────────────────────────────────┐  │
+│   │   Clerk mints user-JWT  ─►  AES-256-GCM encrypt(JWT)        │  │
+│   │   (via FAPI /tokens)         under HKDF-SHA256-derived key  │  │
+│   │                              from ECDH(dash_priv, cli_pub)   │  │
+│   └─────────────────────────────────────────────────────────────┘  │
+│                              │                                     │
+│              PATCH /v1/auth/sessions/{id}/approve                  │
+│              { dashboard_public_key, ciphertext, nonce,            │
+│                verification_code }   (plaintext code over TLS;     │
+│                                       API computes HMAC and        │
+│                                       discards plaintext)          │
+│                              │                                     │
+│                              ▼                                     │
+│  API process (zombied) + Redis                                     │
+│   ┌─────────────────────────────────────────────────────────────┐  │
+│   │   Redis row stores:                                         │  │
+│   │     status, cli_public_key, dashboard_public_key,           │  │
+│   │     ciphertext, nonce,                                      │  │
+│   │     verification_code_hmac      ◄── HMAC-SHA256(            │  │
+│   │     verification_attempts (≤5)        AUTH_SESSION_CODE_    │  │
+│   │     created_at_ms, expires_at_ms      PEPPER,               │  │
+│   │   ────────────────────────────         session_id ‖ code)   │  │
+│   │   Nothing in this row decrypts the JWT.                     │  │
+│   │   Pepper lives in zombied process memory only — never disk. │  │
+│   └─────────────────────────────────────────────────────────────┘  │
+│                              │                                     │
+│              POST /v1/auth/sessions/{id}/verify { code }            │
+│              (only after CLI presents the matching code; atomic    │
+│               verification_pending → consumed in a single Lua-EVAL │
+│               write that also returns the ciphertext payload)      │
+│                              │                                     │
+│                              ▼                                     │
+│  CLI process (zombiectl)                                           │
+│   ┌─────────────────────────────────────────────────────────────┐  │
+│   │   shared = ECDH(cli_priv, dashboard_public_key)             │  │
+│   │   key    = HKDF-SHA256(shared, info="m74-002-v1")           │  │
+│   │   JWT    = AES-256-GCM-decrypt(ciphertext, key, nonce)      │  │
+│   │   write { token, token_name } → credentials.json (0o600)    │  │
+│   │   GET /v1/me  (validation ping; deletes credential on 401)  │  │
+│   └─────────────────────────────────────────────────────────────┘  │
+│                                                                    │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+**Honest-server assumption.** An honest API server stores `cli_public_key` and `dashboard_public_key` as the CLI and dashboard sent them. Under that assumption the API never possesses decryption capability, and a Redis dump alone does not yield the JWT — the attacker would need (a) `cli_priv` from the CLI process, and (b) the matching plaintext verification code. **An *active malicious* API server (or a TLS-terminating intermediary acting maliciously rather than passively) can swap `cli_public_key` and execute a textbook unauthenticated-Diffie-Hellman key-substitution MITM.** v2.0 explicitly does not close this; see *Threats this flow does NOT close*.
+
+### Sequence — one-time login
 
 ```mermaid
 sequenceDiagram
     actor User
     participant CLI as zombiectl
-    participant Browser
-    participant Next as Next.js dashboard<br/>(app domain)
-    participant Clerk as Clerk FAPI<br/>(clerk.dev.usezombie.com)
-    participant API as Zig backend<br/>(api-dev.usezombie.com)
+    participant UI as Dashboard<br/>(app.usezombie.com)
+    participant API as Zig backend<br/>(api.usezombie.com)
+    participant Clerk
 
-    User->>CLI: zombiectl login
-    CLI->>API: POST /v1/auth/sessions  (no auth)
-    API-->>CLI: 201 { session_id, verify_url }
-    CLI->>User: print "open verify_url in browser"
+    User->>CLI: zombiectl login [--token-name LABEL]
+    Note over CLI: generate (cli_priv, cli_pub) via crypto.subtle<br/>default token_name = platform family<br/>("macos-cli" / "linux-cli" / "windows-cli")
 
-    loop poll every 2s, 5 min TTL
-        CLI->>API: GET /v1/auth/sessions/{id}  (no auth)
-        API-->>CLI: 200 { status: pending }
+    CLI->>API: POST /v1/auth/sessions<br/>{ public_key: cli_pub, token_name }
+    API-->>CLI: 201 { session_id }
+    CLI-->>User: open https://app.usezombie.com/cli-auth/{session_id}
+
+    Note over CLI: poll with exp backoff (1s → 5s, ±20% jitter)<br/>+ live countdown "Session expires in MM:SS"<br/>+ single-blip tolerance
+
+    User->>UI: open verify URL in browser
+    Note over UI: Clerk session validates (__session cookie)
+    UI->>API: GET /v1/auth/sessions/{id}
+    API-->>UI: { status: pending, cli_public_key, token_name }
+    UI-->>User: "Approve CLI login for {token_name}?"
+    User->>UI: click Approve
+
+    UI->>Clerk: POST /tokens (template: api)<br/>+ __session cookie
+    Clerk-->>UI: { user-jwt }
+
+    Note over UI: generate (dash_priv, dash_pub)<br/>shared = dash_priv × cli_pub<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>ciphertext = AES-256-GCM(jwt, key, nonce)<br/>verification_code = random 6 digits (CSPRNG)
+
+    UI->>API: PATCH /v1/auth/sessions/{id}/approve<br/>{ dashboard_public_key, ciphertext, nonce, verification_code }<br/>Authorization: Bearer <user-jwt>
+    Note over API: server computes verification_code_hmac<br/>= HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, sid ‖ code)<br/>persists ciphertext + nonce + dash_pub + HMAC<br/>discards plaintext code<br/>state: pending → verification_pending
+    API-->>UI: 200
+    UI-->>User: "Type {verification_code} into your CLI"
+
+    loop CLI poll
+        CLI->>API: GET /v1/auth/sessions/{id}
+        API-->>CLI: { status: verification_pending }
     end
 
-    User->>Browser: open verify_url<br/>= /cli-auth?s={id}
-    Browser->>Next: GET /cli-auth?s={id}<br/>+ __session cookie (if signed in)
-    Note over Next: clerkMiddleware()<br/>reads __session,<br/>redirects to /sign-in if missing
+    Note over CLI: prompt "Verification code:" (suppressed in --no-input)
+    User->>CLI: types verification_code
+    CLI->>API: POST /v1/auth/sessions/{id}/verify<br/>{ verification_code }
+    Note over API: Lua-EVAL atomic transition:<br/>compare HMAC (constant-time);<br/>match → verification_pending → consumed<br/>in the same write; return payload
+    API-->>CLI: 200 { dashboard_public_key, ciphertext, nonce }
 
-    alt user not signed in yet
-        Next->>Browser: 302 /sign-in
-        Browser->>Clerk: GET /sign-in (Clerk-hosted)<br/>+ GitHub OAuth round-trip
-        Clerk-->>Browser: Set-Cookie: __session=<clerk-jwt><br/>(domain=app.dev.usezombie.com)
-    end
+    Note over CLI: shared = cli_priv × dashboard_public_key<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>jwt = AES-256-GCM-decrypt(ciphertext, key, nonce)
 
-    Browser->>Next: page render<br/>"Approve CLI login?"
-    User->>Browser: click Approve
-    Browser->>Clerk: POST /tokens<br/>+ __session cookie<br/>{ template: "api" }
-    Clerk-->>Browser: { jwt: <user-jwt><br/>aud=https://api.usezombie.com<br/>iss=https://clerk.dev.usezombie.com }
-
-    Browser->>API: PATCH /v1/auth/sessions/{id}<br/>Authorization: Bearer <user-jwt><br/>body { status: "complete", token: <user-jwt> }
-    Note over API: bearer_or_api_key validates the user-jwt,<br/>handler stores token in session row.<br/>Body mirrors the GET poll response shape.
-    API-->>Browser: 200 { status: complete, token: <user-jwt> }
-
-    CLI->>API: GET /v1/auth/sessions/{id}  (next poll)
-    API-->>CLI: 200 { status: complete, token: <user-jwt> }
-    CLI->>CLI: write ~/.config/zombiectl/auth.json
-    CLI-->>User: "logged in"
+    CLI->>CLI: write { token, token_name } → credentials.json (0o600)
+    CLI->>API: GET /v1/me   (post-write validation ping)
+    API-->>CLI: 200
+    CLI-->>User: "logged in as {token_name}"
 ```
 
-### Every subsequent CLI call (incl. `zombiectl steer` + SSE)
+Two facts the diagram pins:
+1. **The CLI is the initiator.** Every interaction with the UI, API, or Clerk is downstream of `zombiectl login`. The user typing the verification code closes the loop back to the CLI.
+2. **Clerk is involved at exactly one step** (`POST /tokens`). The API server never talks to Clerk in this flow — Clerk's involvement is JWKS-only when the CLI later uses the minted JWT against normal API endpoints.
+
+### Session state machine
+
+```
+┌─────────┐     PATCH /approve    ┌───────────────────────┐    POST /verify (correct,    ┌──────────┐
+│ pending ├──────────────────────►│ verification_pending  ├─── single Lua-EVAL atomic ──►│ consumed │
+└────┬────┘                       └───────────┬───────────┘    write; payload returned)  └──────────┘
+     │                                        │                                            (terminal,
+     │  5 min TTL                              │  5 failed verify attempts                  60s same-
+     │  OR explicit DELETE                     │  OR 5 min TTL                              fingerprint
+     │  OR replaced                            │  OR explicit DELETE                        replay
+     ▼                                        ▼  OR replaced                                window)
+┌─────────┐                       ┌───────────────────────┐
+│ expired │  (terminal)           │ aborted               │  (terminal)
+└─────────┘                       └───────────────────────┘
+```
+
+| State | Enters from | Exits to |
+|---|---|---|
+| `pending` | initial (POST /sessions) | `verification_pending` · `expired` · `aborted` |
+| `verification_pending` | `pending` | `consumed` · `expired` · `aborted` |
+| `consumed` | `verification_pending` | (terminal — single-read, with 60s same-fingerprint idempotency window) |
+| `expired` | `pending` · `verification_pending` | (terminal) |
+| `aborted` | `pending` · `verification_pending` | (terminal) |
+
+**Invariants.** The state machine is monotonic — no backward transitions. There is no codepath from `pending` directly to `consumed`; verification code presentation is mandatory. `verified` is not a stored state; the successful POST /verify writes `consumed` atomically.
+
+### Endpoint trust boundaries
+
+| Endpoint | Trusted actor | Auth |
+|---|---|---|
+| `POST /v1/auth/sessions` | unauthenticated CLI | rate-limited per IP (10/min) |
+| `GET /v1/auth/sessions/{id}` | unauthenticated CLI poll | rate-limited per session (≥750 ms between polls) |
+| `PATCH /v1/auth/sessions/{id}/approve` | dashboard JS process | Clerk JWT (`api` template) · per-Clerk-user rate limit (20/hr) |
+| `POST /v1/auth/sessions/{id}/verify` | CLI with the verification code | the code IS the auth · ≤5 attempts per session |
+| `DELETE /v1/auth/sessions/{id}` | dashboard JS process | Clerk JWT · must match session's `clerk_user_id` |
+| `DELETE /v1/auth/sessions/all` | dashboard JS process | Clerk JWT |
+
+### Security properties by layer
+
+The contract. Every line of code in Flow 1 must trace to one of these properties. Any claim of "auth hardening" in the abstract should be re-read against this table.
+
+| Layer | Property | Out of scope |
+|---|---|---|
+| TLS | server authenticity (cert chain to a trusted CA) + transport encryption | endpoint compromise on either side |
+| Clerk session | browser-user authentication (the human at the keyboard owns the Clerk identity) | hijacked browser session · shared workstation |
+| **Verification code** | **browser ↔ terminal authorization binding** — proves the human approving in the browser is the same human typing into the local terminal | user pasting attacker-supplied commands |
+| `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id ‖ code)` | disclosure-resistance of the verification code against passive server-side compromise. The pepper lives in zombied process memory only (Vault-loaded at boot, never on disk) — a Redis dump alone cannot recover the code via offline brute-force | compromise of the dashboard JS process where the code is displayed · compromise of the CLI process where it is typed · compromise of zombied process memory |
+| ECDH P-256 | ciphertext-only session transport — no intermediate server, log, or DB row sees the JWT in plaintext | compromise of the dashboard or CLI endpoints |
+| AES-256-GCM | tamper detection — any ciphertext modification produces a hard `DecryptError`, not silent corruption | — |
+| Atomic `verified → consumed` | single-read ciphertext — captured response cannot be replayed against the same session | replay using a fresh session (closed by `verification_code` + rate limits) |
+| Verify-attempt rate limit (≤5/session) | brute-force resistance on the 6-digit code | distributed brute force across many sessions (closed by session-creation rate limit per IP + per Clerk user) |
+| `token_name` | auditability only — operator can list active sessions by label | trust signal of any kind |
+
+### Threats this flow closes
+
+Each line is paired: the attack in one sentence, the mechanism that thwarts it in the next.
+
+| # | Threat | How it's thwarted |
+|---|---|---|
+| 1 | **Session-row plaintext disclosure** — Redis dumps, logs, queue inspections, metrics blobs, memory snapshots. | ECDH ciphertext transport. The Redis row holds `{ ciphertext, nonce, public keys, verification_code_hmac }`; nothing in that set decrypts to the JWT. |
+| 2 | **Passive network observation of the JWT** — TLS-inspecting corporate proxies, captured HTTPS payload logs, intermediaries that terminate and re-issue TLS. | ECDH ciphertext transport. After this spec, intermediaries see ciphertext only — the JWT plaintext lives nowhere on the wire. |
+| 3 | **Session-id phishing without terminal access** — attacker has only the `session_id` (URL sniff, browser-history sync, shoulder surf). | The `verification_code` requirement + moving ciphertext release from GET to POST /verify. An attacker without terminal access cannot present the matching code and cannot trigger ciphertext release. |
+| 4 | **Verification-code disclosure via passive server compromise** — attacker reads the session row but only sees the keyed HMAC; tries to offline-brute-force the 1M-entry 6-digit space. | `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, …)` storage. The pepper lives in zombied process memory only — without it the attacker cannot compute candidate HMACs even if they own the Redis blob. |
+| 5 | **Verification-code online brute force** — attacker with `session_id` tries the 1,000,000 6-digit code space against POST /verify. | ≤5 verify attempts per session, then the session transitions to `aborted` with `reason="rate_limit_exceeded"`. Attacker exhausts 0.0005% of the space before being locked out. |
+| 6 | **Ciphertext replay** — attacker captures a single POST /verify response and retries the same `session_id`. | Atomic transition `verification_pending → consumed` in the same Lua-EVAL write that returns the ciphertext. Subsequent verify calls return 410 `SessionConsumed` (with a 60-second same-fingerprint idempotency window for the legitimate "consume succeeded, response lost, client retried" failure mode). |
+| 7 | **Distributed brute force across many sessions** — attacker scripts 200,000 sessions × 5 codes each = 1M attempts. | Per-IP session-creation rate limit (10/min) and per-Clerk-user PATCH-approve rate limit (20/hr). Attacker cannot fan out fast enough. |
+
+### Threats this flow does NOT close
+
+Each line names the attack and points at where its closure lives (or why it cannot be closed by any flow this spec could produce).
+
+| # | Threat | Why not — and where closure lives |
+|---|---|---|
+| 1 | **Compromised browser session** — XSS on the dashboard, malicious browser extension, session-cookie theft, injected analytics, compromised NPM dependency in the dashboard bundle. | The plaintext JWT lives momentarily in the dashboard JS process before encryption. Anything with execution access to that process sees the JWT; ECDH does not help. Future hardening: SRI + CSP + dependency supply-chain pinning (separate spec). |
+| 2 | **Malware on the CLI host** — compromised `zombiectl` machine, malicious user-space process, memory scraping. | `cli_priv` lives in CLI process memory during the flow; the decrypted JWT lives in `credentials.json` after. Local malware reads either. No future milestone closes this without hardware-backed key storage (TPM / Secure Enclave) — a separate downstream spec. |
+| 3 | **Attacker with simultaneous browser + terminal access** — user runs attacker-supplied software ("paste this curl into your terminal"). | The verification code cannot defend against the user actively typing the code into the attacker's tool. The human-led-only invariant is the only defense, and it is documentation, not code. |
+| 4 | **Device impersonation / fake `zombiectl` binaries** — any actor can generate a valid ECDH keypair using publicly known math; any actor can ship a binary called `zombiectl`. | Possessing a valid public key proves nothing about identity. Closure: **M75_xxx Agent Identity** (persistent device keypair) or a binary-signing spec — both to be authored. |
+| 5 | **Autonomous-agent authentication** — CI runners, Kubernetes workloads, hosted agent platforms calling our API. | Out of trust model. A human MUST be present at flow time to type the verification code; remove the human and the verification code property collapses into theatre. Closure: **M75_xxx Agent Identity** (persistent keypair + signed challenges + scoped credentials + server-side agent inventory). |
+| 6 | **Active API or proxy key-substitution MITM** — attacker with active control over an API response path swaps `cli_public_key` in GET /sessions, intercepts the encrypted PATCH /approve, decrypts with their own key, re-encrypts to the real CLI's key. | Unauthenticated Diffie-Hellman — passing the public key through the API and trusting the API to return it honestly is the textbook setup. **v2.0 explicitly does NOT close this; tracked as the v2.1 priority.** Closure: URL fragment binding (`#cli_public_key=…` — fragments aren't sent to the server) + HKDF transcript binding (`info` parameter binds both pubkeys + session_id, so any substitution breaks decryption on the CLI). |
+
+### Replay semantics
+
+Six invariants. All are tested explicitly.
+
+1. **Verification code is single-use, with a bounded same-fingerprint idempotency window.** A successful POST /verify atomically transitions to `consumed` in the same Lua-EVAL write that returns the ciphertext. Subsequent POST /verify calls within 60 seconds **from the same client fingerprint** (sha256 of `derived_client_ip ‖ user_agent ‖ session_id`) return the same payload (handles "consume succeeded, response lost, client retried"). Outside 60 seconds, or from a different fingerprint, or after the payload-retention TTL elapses → HTTP 410 `SessionConsumed`.
+2. **Ciphertext is single-read per client fingerprint.** Item 1's mechanism: only the originating fingerprint can replay during the window; any other source gets 410. This narrows the replay surface to "captured-network-packet-within-60s-from-same-source", which is dominated by existing TLS + network-perimeter assumptions.
+3. **Verified sessions cannot revert.** The state machine is monotonic; no path from `consumed` / `expired` / `aborted` back to any active state.
+4. **PATCH /approve is single-write.** Calling it against a session already in `verification_pending` returns HTTP 409 Conflict. The dashboard MUST NOT retry PATCH /approve if it has previously succeeded for the same session.
+5. **`session_id` is high-entropy.** UUIDv7; 128 bits; CSPRNG; not enumerable.
+6. **`session_id` is capability-bearing** — combined with the verification code, it authorizes ciphertext release. Classified equivalent to a password-reset token. **`session_id` appears only in the primary verification URL (`https://app.usezombie.com/cli-auth/{session_id}`) and in the API route paths that consume it.** It MUST NOT appear in logs (at info/warn/error level — use the `redactSessionId()` helper), analytics, telemetry, metrics labels, secondary URLs, error response bodies routed to non-trusted surfaces, or copied diagnostic bundles. Audit-log events carry `session_id_hash` (keyed HMAC with `AUDIT_LOG_PEPPER`) + `session_id_prefix` (first 8 hex chars) — never the raw ID in default mode.
+
+### Cryptographic primitives (pinned)
+
+| Primitive | Value | Why pinned |
+|---|---|---|
+| Curve | P-256 (NIST) | `crypto.subtle` supports it natively in both Node.js ≥20 and modern browsers. |
+| Key derivation | HKDF-SHA-256, output 32 bytes, `info = "m74-002-v1"`, empty salt | Versioned `info` lets a future protocol change rev without colliding. The ECDH shared secret is already high-entropy, so the salt adds nothing. |
+| Authenticated encryption | AES-256-GCM, 256-bit key, 96-bit random nonce per encryption, 128-bit auth tag | — |
+| Verification code | 6 random digits (CSPRNG) | Brute force closed by attempt cap, not code entropy. (Future improvement: 8 alphanumeric, ~37× entropy, segmented for human-typability.) |
+| Verification-code storage | `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id ‖ code)`; pepper Vault-loaded at boot, process-memory-only | Defeats offline brute force from a Redis dump (attacker needs the pepper too). Constant-time comparison via `std.crypto.utils.timingSafeEql` on the comparison side. |
+| Crypto library | `crypto.subtle` on both sides (Node.js + browser Web Crypto) | Zero extra dependencies; identical API surface; avoids `tweetnacl` / `@noble/curves` drift. |
+
+### Log and audit redaction — `session_id` is sensitive
+
+| Surface | What can appear | What must NOT appear |
+|---|---|---|
+| `std.log.scoped(.auth)` info/warn/error | `request_id`, status names, error categories, sanitized error messages | full `session_id`, full verification code, ciphertext bytes, public keys (informational risk only, redact anyway) |
+| `std.log.scoped(.auth)` debug/trace | `session_id` redacted to first 8 hex chars + length suffix (`abcd1234…(len=36)`) | full `session_id` |
+| `std.log.scoped(.auth_audit)` | `session_id_hash` (keyed HMAC with `AUDIT_LOG_PEPPER`) + `session_id_prefix` (first 8 hex chars). Full `session_id` only when `AUTH_AUDIT_INCLUDE_FULL_IDS=true` (env-gated, dev/staging-only, startup WARN emitted). | plaintext verification code (always redact; not even hashed), `verification_code_hmac` value, ciphertext bytes, raw session_id in default mode |
+| HTTP response error bodies | `request_id`, error code (`UZ-AUTH-XXX`), generic message | `session_id` (the client already knows it; echoing it back in errors routed to log-aggregators is forbidden) |
+| Metrics / traces | high-cardinality labels avoided | `session_id` as a tag (cardinality explosion + capability leakage into observability surfaces) |
+
+The `.auth_audit` log sink MUST be routed to a destination distinct from customer-visible logs (separate ACL, separate destination, tighter access controls than `.auth`). This is deploy-side discipline, not enforced by code; documented in the deploy README.
+
+### Every subsequent CLI call
+
+Once `credentials.json` exists, the CLI carries the JWT on every request — same as a Flow 2 browser call after `getToken({template:"api"})`.
 
 ```mermaid
 sequenceDiagram
@@ -103,7 +339,7 @@ sequenceDiagram
     participant API as Zig backend
 
     CLI->>API: GET /v1/zombies/{id}/events<br/>Authorization: Bearer <user-jwt>
-    Note over API: bearer_or_api_key:<br/>JWKS verify (cached 6h),<br/>iss + aud + exp checks,<br/>→ AuthPrincipal{ mode=jwt_oidc, user_id, tenant_id, ... }
+    Note over API: bearer_or_api_key:<br/>JWKS verify (cached 6h),<br/>iss + aud + exp checks,<br/>→ AuthPrincipal{ mode=jwt_oidc, user_id, tenant_id, … }
     API-->>CLI: 200 events
 
     CLI->>API: GET /v1/zombies/{id}/events/stream<br/>Authorization: Bearer <user-jwt><br/>Accept: text/event-stream
@@ -111,11 +347,37 @@ sequenceDiagram
     Note over CLI,API: server PUBLISH frames →<br/>SSE events for the lifetime of the connection
 ```
 
-The CLI handles its own token refresh: if a request returns `401 token_expired`, it re-runs `zombiectl login`. The handshake row is deleted server-side once the CLI completes the poll.
+On `401 token_expired`, the CLI re-runs `zombiectl login`. Clerk JWTs are short-lived (~15 min); JWT revocation is **not** done by `zombiectl logout` (Clerk admin API would be required; see *What's not in this doc*).
 
 ---
 
-## Flow 2 — UI (browser dashboard)
+## Flow 2 — UI (browser dashboard) — UNCHANGED by M74_002
+
+This flow is **unchanged** by the M74_002 device-flow work. Every property documented below — Clerk-hosted sign-in, `__session` cookie on the dashboard origin, Token B mint via `getToken({template:"api"})`, dashboard → `/backend/:path*` rewrite → zombied — continues to work byte-identically.
+
+### Shape
+
+```
+Browser tab on app.usezombie.com                            Zig backend (api.usezombie.com)
+─────────────────────────────────                            ─────────────────────────────────
+__session cookie  ──┐                                                    ▲
+   (Token A)        │                                                    │
+                    ▼                                                    │
+    clerkMiddleware()                                                    │
+    (Next.js page render)                                                │
+                                                                         │
+    useAuth().getToken({template:"api"})                                 │
+        │  POST /tokens   + __session cookie                             │
+        ▼                                                                │
+    Clerk FAPI ───────────► <user-jwt>                                   │
+                            (Token B, aud=api)                           │
+                            │                                            │
+                            ▼                                            │
+    fetch("/backend/v1/…", { Authorization: Bearer Token B })            │
+                            │                                            │
+                            └─► /backend/:path* rewrite ──────────────────┘
+                                (same-origin; preserved Bearer header)
+```
 
 The browser holds the Clerk `__session` cookie. It uses Clerk's SDK to convert that cookie into a short-lived API-audience JWT, then sends the JWT to the Zig backend. Two sub-flows:
 
@@ -185,9 +447,37 @@ Browser never holds an API-audience JWT in this flow. The Bearer token only ever
 
 ---
 
-## Flow 3 — API key (service-to-service)
+## Flow 3 — Tenant API key (service-to-service)
 
 Static, long-lived, never expires by default. Provisioned in the dashboard, used directly by external services (n8n, Zapier, custom scripts, customer agents).
+
+### Shape
+
+```
+Provisioning (one-time, via dashboard)            Usage (every subsequent call)
+──────────────────────────────────────            ─────────────────────────────
+Operator                                          External service (n8n/Zapier/…)
+   │                                                │
+   │ click "Create API key"                         │ Authorization: Bearer zmb_t_<hex>
+   ▼                                                ▼
+Dashboard ─► POST /v1/api-keys ─► Zig backend     Zig backend
+              Authorization:        │                 │
+              Bearer <user-jwt>     │                 │ bearer_or_api_key middleware:
+              (Flow 2 mint)         │                 │ detects "zmb_t_" prefix
+                                    │                 │ → tenant_api_key.zig
+                                    │                 │ → SHA-256 hash compare in DB
+                                    │                 ▼
+                                    │             AuthPrincipal{ mode=api_key,
+                                    │                            tenant_id, … }
+                                    ▼
+                            core.api_keys row
+                            { hash: sha256(zmb_t_<hex>),
+                              tenant_id, label, … }
+                            (raw zmb_t_<hex> shown to
+                             operator ONCE — never stored)
+```
+
+A tenant API key carries the same standing privilege as a long-lived JWT for the tenant — anyone who holds the raw `zmb_t_<hex>` value can act for that tenant until the key is revoked. Treat as a credential equivalent to a database password: rotate on suspected exposure, scope by workspace where the dashboard's "Create API Key" surface supports it, prefer short-lived JWTs (Flow 1 or Flow 2) for interactive use.
 
 ### Provisioning
 
@@ -217,6 +507,20 @@ sequenceDiagram
 ```
 
 API keys never touch Clerk. They live only in the backend DB, hashed at rest, and authenticate via the same `Authorization: Bearer …` header that JWTs use — the `zmb_t_` prefix tells the middleware to take the DB lookup branch instead of the JWKS verify branch.
+
+---
+
+## Agent keys (`zmb_*`, bound to a single zombie)
+
+A narrower subtype of Flow 3. Same DB-hash-lookup shape; same `Authorization: Bearer …` wire format; the only differences are scope (one zombie vs. one tenant) and provisioning surface (`POST /v1/workspaces/{ws}/agent-keys` vs. `POST /v1/api-keys`).
+
+```
+core.agent_keys row
+{ hash: sha256(zmb_<hex>),
+  workspace_id, zombie_id, label, … }
+```
+
+Used by webhook-driven external integrations that post events to a single zombie (one customer's GitHub Actions emitting to a specific automation, etc.). The narrow scope makes the blast radius of a leaked agent key bounded to one zombie's event stream — preferred over `zmb_t_` for any caller that only needs to act on one zombie.
 
 ---
 
@@ -437,6 +741,84 @@ In-scope fixes that DID land in this milestone:
 - **WS-B #8 part 1** — `@clerk/nextjs` major pinned + `_smoke.spec.ts` asserts resolved major matches `CLERK_NEXTJS_PINNED_MAJOR`.
 - **WS-B #9** — `_smoke.spec.ts` asserts `freshPassword().length ≥ 16`.
 - **WS-B #11** — `mintTokens` TTL tightened from 3600s to 900s (15 min, ~2× observed p95 wall-clock).
+
+---
+
+## Sensitive-data classification
+
+Every named credential / token / identifier in the auth surface, with sensitivity class, acceptable surfaces, and forbidden surfaces. Reach for this table when designing a new audit-log event, a new metric label, a new error-response body, or a new diagnostic bundle — anything that copies data out of a process and into a place where humans or external systems can read it.
+
+| Item | Class | Lifetime | Acceptable surfaces | Forbidden surfaces |
+|---|---|---|---|---|
+| `__session` cookie (Token A) | secret | session-bound (Clerk-managed) | dashboard origin (`app.usezombie.com`) only | any other origin · server logs · client logs · URLs |
+| Clerk-signed JWT (Token B, `api` template) | secret | ~15 min | `Authorization: Bearer …` header on `/v1/*` calls | logs · query strings · client-side storage beyond the React closure that minted it · disk (the CLI's `credentials.json` is the one exception, mode 0o600) |
+| `zmb_t_*` tenant API key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls; vault items; operator's password manager | logs · process lists · shell history · client-side storage · disk except a secrets manager · screenshots |
+| `zmb_*` agent key | secret | until explicitly revoked | `Authorization: Bearer …` header on `/v1/*` calls (specifically to the bound zombie's surface) | same as `zmb_t_*` |
+| `CLERK_SECRET_KEY` | secret (catastrophic) | until rotated | Vercel runtime env · Fly runtime env · `~/Projects/usezombie/.env` (gitignored, operator laptop only) · CI runners (GitHub Actions secret) · 1Password vaults | client bundle (a rename to `NEXT_PUBLIC_*` would be a P0 incident) · logs · error bodies |
+| `session_id` (M74_002 device-flow session ID) | sensitive ephemeral capability — treat as password-reset token | 5 min (or terminal state) | the primary CLI-generated verification URL (`https://app.usezombie.com/cli-auth/{session_id}`) · API route paths that consume it (`/v1/auth/sessions/{id}{,/approve,/verify}`) | `.auth` log scope at info/warn/error (use `redactSessionId()` to 8-hex-prefix) · analytics · telemetry · metrics labels · secondary URLs (deep links, redirect targets, "share this page") · error response bodies routed to non-trusted surfaces · copied diagnostic bundles · support tickets |
+| `verification_code` (6 digits, M74_002) | secret ephemeral capability | 5 min (or terminal state) | dashboard JS process (display) · CLI process (prompt) · TLS-encrypted POST /approve and POST /verify bodies | server-side persistence in any form · `.auth` log scope · `.auth_audit` log scope (audit events MUST NOT carry the plaintext code, nor the `verification_code_hmac`) · metrics · error bodies |
+| `AUTH_SESSION_CODE_PEPPER` | secret (catastrophic if disclosed) | until rotated | 1Password vaults (`op://ops/ZMB_CD_{PROD,DEV,LOCAL_DEV}/AUTH_SESSION_CODE_PEPPER/credential`) · zombied process memory after Vault load | disk · logs · metrics · client bundles · environment-variable dumps · `op://` URI logged in any audit trail |
+| `AUDIT_LOG_PEPPER` | secret | until rotated | 1Password vaults · zombied process memory | same as `AUTH_SESSION_CODE_PEPPER` |
+| Webhook secrets (per-provider HMAC keys) | secret | until rotated | vault items (`zombie:<source>` in workspace vault) · webhook_sig middleware in zombied | logs · error bodies · diagnostic bundles · operator screenshots |
+| `clerk-{dev,prod}` publishable key (`pk_test_…`/`pk_live_…`) | non-credential identifier | until Clerk instance is rotated | client bundle (intentionally shipped via `NEXT_PUBLIC_…`) | (none — this is the "non-secret" one) |
+
+---
+
+## Deployment requirements (Flow 1)
+
+Flow 1's protocol assumes the following deploy contract. Diverging from these turns the flow's security claims into wishes.
+
+| Requirement | Detail |
+|---|---|
+| **HTTPS-only** for `/v1/auth/*` | Load balancer / reverse proxy enforces. HTTP requests promoted via HTTP 308 to HTTPS. `api.usezombie.com` already enforces this in prod. |
+| **HSTS** header on every API response | `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload`. Source: load balancer or `src/http/middleware/security_headers.zig`. |
+| **TLS ≥ 1.2** (1.3 preferred) | Load balancer config. |
+| **Redis required** | `REDIS_URL` env must resolve to a single-node Redis reachable from every API pod (acceptable for dev / single-region prod) OR a Redis Sentinel / Cluster with ≥1 reachable primary per pod. In-memory session storage is **not** acceptable under any multi-pod topology. zombied fails fast on boot if `REDIS_URL` is unset. |
+| `maxmemory-policy allkeys-lfu` (recommended) | Under memory pressure, least-frequently-accessed session keys evict first. Deploy-time config, not enforced by code. |
+| `TRUSTED_PROXY_IPS` env var | Comma-separated allowlist of reverse-proxy / load-balancer IPs or CIDR ranges. Used by `src/http/middleware/trusted_client_ip.zig` to derive the trusted client IP from `X-Forwarded-For` / `Forwarded` only when the TCP peer is a configured trusted proxy. Direct-internet deploys (no proxy) set this empty; the API then trusts only the raw TCP peer. Per-IP rate-limit buckets and consume-idempotency fingerprints both consume the derived IP. |
+| **NTP-synced pod clocks** within ≤1s drift | Server-authoritative expiry uses a 30-second grace window over `expires_at_ms`; the CLI's countdown is informational only. Cross-pod drift >1s is a deploy bug. |
+| **Two peppers in Vault** | `AUTH_SESSION_CODE_PEPPER` (defeats offline brute-force of the verification code) and `AUDIT_LOG_PEPPER` (pseudonymizes `session_id` in the `.auth_audit` log scope) — both at `op://ops/ZMB_CD_{PROD,DEV,LOCAL_DEV}/{auth-session-code,audit-log}-pepper/credential`. Boot fails fast if either is missing. Provisioning is documented in `playbooks/001_bootstrap/001_playbook.md §1.3b`. |
+| **`.auth_audit` sink isolation** | The `.auth_audit` Zig log scope MUST route to a destination distinct from customer-visible logs — separate ACL, separate destination (e.g., security-team-only S3 bucket, separate Loki tenant, separate syslog facility). Deploy-side discipline, not enforced by code. |
+
+---
+
+## Human-led-only invariant (Flow 1)
+
+**M74_002's Flow 1 supports only human-led agents.** A human MUST be present at flow time to (a) approve in the browser AND (b) type the verification code into the terminal. The verification code is the security property that closes the phishing-without-terminal attack; remove the human and the property collapses into theatre — an attacker who controls the agent's environment completes the flow themselves without the operator's awareness.
+
+**Unattended use of `zombiectl login` is a spec violation, not a supported deployment shape.**
+
+Examples that are NOT supported and MUST NOT be retrofitted as "agent auth":
+
+- CI runners (GitHub Actions, GitLab CI, CircleCI, Jenkins, …).
+- Cron jobs, systemd timers, scheduled background execution.
+- Kubernetes workloads, deployments, jobs.
+- Hosted agent platforms calling the API on behalf of a human.
+- Headless containers running `zombiectl login` against a pre-supplied verification code.
+- "Local agent" frames where the agent runs in the background without a human present at flow time.
+
+For any of the above, see **M75_xxx Agent Identity** (to be authored): persistent agent keypair → signed challenges → scoped credentials → server-side agent inventory → revocation.
+
+This is enforced by **discipline + documentation**, not by code. The login flow has no programmatic way to detect "is a real human present" — that is precisely why misuse must be called out as a spec violation rather than left as a runtime error.
+
+Local coding agents that run on the same workstation where the human can complete the browser approval AND the terminal verification (Cursor, Claude Code, etc.) ARE supported by Flow 1 — the human's presence is what makes it work, not the absence of a coding agent.
+
+---
+
+## What's not in this doc (yet)
+
+Each of these is a real concern, named here so future agents and security-review passes can find them without re-discovering the design tension. Each entry names the owning future work item (or, where no future spec yet exists, that fact is stated explicitly).
+
+| # | Concern | Owning future work |
+|---|---|---|
+| 1 | **Autonomous agent identity** — persistent keypair, signed challenges, scoped credentials, server-side agent inventory, revocation for non-human callers. | **M75_xxx Agent Identity** (to be authored). |
+| 2 | **JWT revocation** — `zombiectl logout` clears local credentials and aborts in-flight pending login sessions but does NOT revoke the active JWT (Clerk admin-API call would be needed; not free, rate-limited). | Separate Clerk-revocation-integration spec (to be authored) OR rolled into M75_xxx. |
+| 3 | **Active API / proxy key-substitution MITM (Attack G)** — an active attacker on the API response path can swap `cli_public_key`, decrypt, re-encrypt. v2.0 explicitly does not close this. | **v2.1** (to be authored) — closure via URL fragment binding (`#cli_public_key=…` — fragments aren't sent to the server) + HKDF transcript binding (the `info` parameter binds both pubkeys + session_id; any substitution breaks decryption on the CLI). |
+| 4 | **Verification-code entropy uplift** — 6 digits (1M entries) → 8 alphanumeric in a TOTP-style segmented format (e.g. `X4K9-TQ`). ~37× entropy improvement; human-typability preserved. Hygiene, not correctness — the 5-attempt cap + 5-min TTL already caps brute-force success at 0.0005% per session-lifetime. | Future follow-up spec (no milestone yet). |
+| 5 | **Dashboard-JS-compromise hardening** — Sub-Resource Integrity (SRI) on the dashboard bundle, Content Security Policy (CSP) hardening, dependency-supply-chain pinning. Addresses Flow 1 *Threats this flow does NOT close* row 1. | Future spec (no milestone yet). |
+| 6 | **API-minted scoped access tokens** instead of raw Clerk-JWT transport — long-term the dashboard should not act as a Clerk-JWT broker; the API should mint its own scoped, short-lived access tokens (derived from a verified Clerk session) and the dashboard hands those to the CLI. Lets the API revoke server-side; supports per-CLI-install scopes. | Future spec (no milestone yet). v2.0 ships raw Clerk JWT transport for delivery speed; do not fossilize the choice. |
+| 7 | **Pub/sub for sub-second session-state push** — replaces the 1-5s CLI poll with a Redis pub/sub channel on `auth:session:{id}:state`. UX improvement, not behavior. | Tracked separately. |
+| 8 | **Hardware-backed CLI key storage** (TPM / Secure Enclave / WebAuthn / passkey) — closes Flow 1 *Threats this flow does NOT close* row 2 (malware on the CLI host). | Future spec (no milestone yet). |
 
 ---
 
