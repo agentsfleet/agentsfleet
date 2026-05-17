@@ -357,6 +357,55 @@ test("runCli persists session.json with bumped last_activity before returning (f
   });
 });
 
+test("runCli UNEXPECTED-branch cli_error carries cli_session_id + cli_device_id base props", async () => {
+  // GAP cover: cli.ts:325-338 — when parseAsync throws a non-Commander,
+  // non-InvalidArgumentError, the catch emits cli_error with the same
+  // namespaced base props that runCommand emits. Trigger by making the
+  // cli_command_started track call throw a plain Error from inside
+  // runCommand (line is outside runCommand's own try/catch), which
+  // propagates up through parseAsync into cli.ts's outer catch.
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
+    await withAnalyticsStub(async () => {
+      const events: Array<Omit<TrackedEvent, "client">> = [];
+      const analyticsClient = { name: "test-client" };
+      cliAnalytics.createCliAnalytics = async () => analyticsClient;
+      cliAnalytics.trackCliEvent = (_client, distinctId, event, properties = {}) => {
+        if (event === "cli_command_started") {
+          throw new Error("simulated unexpected analytics fault");
+        }
+        events.push({ distinctId, event, properties });
+      };
+      cliAnalytics.shutdownCliAnalytics = async () => {};
+
+      const stdout = bufferStream();
+      const stderr = bufferStream();
+
+      // login is AUTH_EXEMPT so preAction doesn't short-circuit; the
+      // runCommand wrapper fires cli_command_started before any handler
+      // logic, so we never reach the network. fetchImpl unused but
+      // required for type.
+      const code = await runCli(["login", "--no-open"], {
+        env: { ...process.env, NO_COLOR: "1", BROWSER: "false" },
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+        fetchImpl: asFetchOverride(async () => {
+          throw new Error("fetch should not be reached — cli_command_started throws first");
+        }),
+      });
+
+      assert.equal(code, 1);
+      assert.equal(events.length, 1);
+      assert.equal(events[0]?.event, "cli_error");
+      assert.equal(events[0]?.properties.error_code, "UNEXPECTED");
+      assert.equal(events[0]?.properties.exit_code, "1");
+      assert.equal(events[0]?.properties.cli_session_id, PINNED_SESSION);
+      assert.equal(events[0]?.properties.cli_device_id, PINNED_DEVICE);
+      assert.match(stderr.read(), /error: simulated unexpected analytics fault/);
+    });
+  });
+});
+
 test("runCli honors analytics opt-out with bundled key", async () => {
   await withAnalyticsStub(async () => {
     let createCalls = 0;
