@@ -132,6 +132,23 @@ test("appendTrace writes one JSON line per call to today's NDJSON file", async (
   });
 });
 
+test("appendTrace re-applies 0o600 even when trace file was widened (chmod after append)", async () => {
+  await withTempStateDir(async (dir) => {
+    const tracesDir = path.join(dir, "traces");
+    await fs.mkdir(tracesDir, { recursive: true });
+    const today = new Date().toISOString().slice(0, 10);
+    const tracePath = path.join(tracesDir, `${today}.ndjson`);
+    // Pre-create the file at 0o644 (widened) so the appendFile `mode`
+    // option (which only fires on creation) cannot enforce 0o600.
+    await fs.writeFile(tracePath, "{\"pre-existing\":true}\n", { mode: 0o644 });
+    const before = await fs.stat(tracePath);
+    assert.equal(before.mode & 0o777, 0o644);
+    await appendTrace({ ts: "x", command: "tighten", exit_code: 0, duration_ms: 1 });
+    const after = await fs.stat(tracePath);
+    assert.equal(after.mode & 0o777, 0o600, "appendTrace should chmod back to 0o600 after the append");
+  });
+});
+
 test("appendTrace never throws even if mkdir or write fails (read-only baseDir)", async () => {
   await withTempStateDir(async (dir) => {
     // Pre-create traces as a regular file (not a dir) so mkdir recursive
