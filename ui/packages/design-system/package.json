@@ -12,6 +12,7 @@
   },
   "scripts": {
     "lint": "oxlint src && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
@@ -29,13 +30,14 @@
     "@radix-ui/react-tooltip": "1.2.8",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
-    "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3",
+    "@types/node": "^25.8.0",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "class-variance-authority": "0.7.1",
     "jsdom": "^29.1.1",
-    "oxlint": "^1.63.0",
-    "typescript": "^6.0.3",
-    "vitest": "4.1.5"
+    "oxlint": "^1.64.0",
+    "typescript": "6.0.3",
+    "vitest": "4.1.6"
   },
   "dependencies": {
     "@fontsource-variable/instrument-sans": "^5.2.8",

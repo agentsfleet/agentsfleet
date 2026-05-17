@@ -9,7 +9,6 @@
 const std = @import("std");
 const logging = @import("log");
 const httpz = @import("httpz");
-const pg = @import("pg");
 const PgQuery = @import("../../../db/pg_query.zig").PgQuery;
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
@@ -198,7 +197,7 @@ pub fn innerListAgentKeys(hx: Hx, workspace_id: []const u8) void {
             .description = description,
             .created_at = created_at,
             .last_used_at = last_used,
-        }) catch {};
+        }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
     }
 
     hx.ok(.ok, .{ .items = agents.items, .total = agents.items.len });

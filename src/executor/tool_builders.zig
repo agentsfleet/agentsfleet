@@ -9,7 +9,6 @@
 const std = @import("std");
 const nullclaw = @import("nullclaw");
 const tools_mod = nullclaw.tools;
-const Config = nullclaw.config.Config;
 const bridge = @import("tool_bridge.zig");
 const BuildCtx = bridge.BuildCtx;
 const PolicyHttpRequestTool = @import("runtime/policy_http_request.zig");

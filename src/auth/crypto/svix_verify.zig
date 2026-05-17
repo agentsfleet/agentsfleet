@@ -1,7 +1,7 @@
 //! Svix v1 webhook signature verifier — pure-function crypto core.
 //!
 //! Callers: `/v1/webhooks/svix/{zombie_id}` middleware (M28_001) and the
-//! `/v1/webhooks/clerk` handler (M11_003). Both paths share the HMAC +
+//! `/v1/auth/identity-events/clerk` handler. Both paths share the HMAC +
 //! multi-sig + timestamp freshness logic; only the secret-lookup surface
 //! differs (vault row vs env var).
 //!

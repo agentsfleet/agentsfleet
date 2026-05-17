@@ -83,6 +83,7 @@ fn benchWebhookSignatureVerify(allocator: std.mem.Allocator) void {
 // Process-lifetime scratch — initialized in main() under the bench
 // allocator and torn down explicitly before main() returns. zbench
 // drives this fn with the same allocator across iterations.
+// SAFETY: test fixture; field is populated by the surrounding builder before any read.
 var bench_chunk_scratch: std.io.Writer.Allocating = undefined;
 
 fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {

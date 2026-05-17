@@ -1,17 +1,14 @@
-// M1_001 §3.0 — Zombie event loop integration tests (DB-backed).
+// Zombie event loop integration tests (DB-backed).
 //
-// Covers spec dimensions:
-//   3.1 claimZombie — config + checkpoint loaded from DB
-//   3.3 crashRecovery — agent reloaded from checkpoint
+// Covers claimZombie + crashRecovery: config + checkpoint round-trip
+// through Postgres.
 //
-// Requires: LIVE_DB=1 TEST_DATABASE_URL=postgres://... (set by make test-integration-db).
-// Skipped when DB is not available.
+// Requires: LIVE_DB=1 TEST_DATABASE_URL=postgres://... (set by make
+// test-integration-db). Skipped when DB is not available.
 
 const std = @import("std");
-const pg = @import("pg");
 const event_loop = @import("event_loop.zig");
 const writepath_rows = @import("event_loop_writepath_rows.zig");
-const zombie_config = @import("config.zig");
 const base = @import("../db/test_fixtures.zig");
 
 const TEST_WORKSPACE_ID = "0195b4ba-8d3a-7f13-8abc-000000000099";
@@ -19,7 +16,7 @@ const TEST_ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000100";
 const TEST_SESSION_ID = "0195b4ba-8d3a-7f13-8abc-000000000101";
 
 const VALID_CONFIG_JSON =
-    \\{"name":"platform-ops","x-usezombie":{"trigger":{"type":"webhook","source":"agentmail"},"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
+    \\{"name":"platform-ops","x-usezombie":{"triggers":[{"type":"webhook","source":"agentmail"}],"tools":["agentmail"],"budget":{"daily_dollars":5.0}}}
 ;
 const VALID_SOURCE_MD =
     \\---
@@ -51,7 +48,8 @@ test "integration 3.1: claimZombie loads config from core.zombies" {
     try std.testing.expectEqualStrings("platform-ops", session.config.name);
     try std.testing.expectEqualStrings(TEST_ZOMBIE_ID, session.zombie_id);
     try std.testing.expectEqualStrings(TEST_WORKSPACE_ID, session.workspace_id);
-    try std.testing.expectEqualStrings("agentmail", session.config.trigger.webhook.source);
+    try std.testing.expectEqual(@as(usize, 1), session.config.triggers.len);
+    try std.testing.expectEqualStrings("agentmail", session.config.triggers[0].webhook.source);
 }
 
 test "integration 3.1: claimZombie extracts instructions from source_markdown" {

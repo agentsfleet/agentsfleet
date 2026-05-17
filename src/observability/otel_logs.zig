@@ -6,7 +6,6 @@
 //! Config: GRAFANA_OTLP_ENDPOINT, GRAFANA_OTLP_INSTANCE_ID, GRAFANA_OTLP_API_KEY.
 
 const std = @import("std");
-const metrics = @import("metrics.zig");
 const StringBuilder = @import("../util/strings/string_builder.zig");
 
 const OTLP_LOGS_PATH = "/v1/logs";
@@ -15,6 +14,9 @@ const FLUSH_INTERVAL_MS: u64 = 5_000;
 const FLUSH_BATCH_SIZE: usize = 50;
 const SHUTDOWN_DRAIN_TIMEOUT_MS: u64 = 5_000;
 
+
+const logging = @import("log");
+const log = logging.scoped(.otel_logs);
 pub const GrafanaOtlpConfig = struct {
     endpoint: []const u8,
     instance_id: []const u8,
@@ -62,6 +64,7 @@ const LogEntry = struct {
 };
 
 const Ring = struct {
+    // SAFETY: populated by the owning init/builder before any consumer reads this field.
     buffer: [BUFFER_CAPACITY]LogEntry = undefined,
     head: std.atomic.Value(usize) = std.atomic.Value(usize).init(0),
     tail: std.atomic.Value(usize) = std.atomic.Value(usize).init(0),
@@ -140,6 +143,7 @@ pub fn enqueue(
 ) void {
     if (!isInstalled()) return;
 
+    // SAFETY: written by surrounding init logic before any read of this storage.
     var entry: LogEntry = undefined;
     entry.timestamp_ns = @intCast(std.time.nanoTimestamp());
     entry.level_len = @intCast(@min(level.len, 5));
@@ -210,7 +214,7 @@ fn flushBatch() void {
     sb.allocate(alloc) catch return;
     const body = sb.fmt(envelope_fmt, envelope_args);
 
-    postWithBasicAuth(alloc, cfg, OTLP_LOGS_PATH, body) catch {};
+    postWithBasicAuth(alloc, cfg, OTLP_LOGS_PATH, body) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 }
 
 pub fn postWithBasicAuth(

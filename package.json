@@ -8,5 +8,8 @@
   ],
   "devDependencies": {
     "@redocly/cli": "^2.30.5"
+  },
+  "overrides": {
+    "playwright-core": "1.60.0"
   }
 }

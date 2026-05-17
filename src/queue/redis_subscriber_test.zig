@@ -115,7 +115,9 @@ const SubscribeAckThenMessage = struct {
             return;
         }
         var drain: [256]u8 = undefined;
-        _ = conn.stream.read(&drain) catch {};
+        // Drain SUBSCRIBE bytes; read errors here just mean the client
+        // hung up before we got around to it — fake-server, ignore.
+        if (conn.stream.read(&drain)) |_| {} else |_| {}
 
         var ack_buf: [256]u8 = undefined;
         const ack = std.fmt.bufPrint(
@@ -322,7 +324,10 @@ const AckThenCloseStorm = struct {
             }
             _ = self.accepts.fetchAdd(1, .monotonic);
             var buf: [256]u8 = undefined;
-            _ = conn.stream.read(&buf) catch {};
+            // Drain whatever the subscriber sent; the test's load-bearing
+            // assertion is the accept count + ack write below, not the
+            // bytes read here — peer-side read errors are expected on close.
+            if (conn.stream.read(&buf)) |_| {} else |_| {}
             // pin test: literal is the contract — a valid RESP
             // subscribe-ack array for channel "ch". The subscriber's
             // ack parser advances past this; the immediate close

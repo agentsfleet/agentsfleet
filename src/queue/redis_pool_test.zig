@@ -481,7 +481,10 @@ const CloseOnCmd = struct {
             // non-resumable. The Pool retry layer redials a fresh conn for
             // attempt 2; this loop accepts that too and closes the same way.
             var buf: [256]u8 = undefined;
-            _ = conn.stream.read(&buf) catch {};
+            // Drain command bytes; peer-side read errors expected when the
+            // client is mid-failover. The close() below is the load-bearing
+            // behavior, not the read result.
+            if (conn.stream.read(&buf)) |_| {} else |_| {}
             conn.stream.close();
         }
     }

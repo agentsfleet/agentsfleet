@@ -96,7 +96,6 @@ fn validateCredentialName(hx: hx_mod.Hx, name: []const u8) bool {
     return true;
 }
 
-const StoreError = error{DataTooLarge} || error{OutOfMemory} || vault.Error || std.fmt.AllocPrintError;
 
 fn storeCredentialJsonOnConn(
     conn: *pg.Conn,

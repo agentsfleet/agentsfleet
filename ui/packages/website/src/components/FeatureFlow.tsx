@@ -52,7 +52,7 @@ const items: FeatureFlowItem[] = [
   },
   {
     id: "mission",
-    title: "Mission Control",
+    title: "Dashboard",
     description:
       "Approvals, budgets, self-managed provider, kill switch — one dashboard. Approve from Slack or the web.",
     bullets: [

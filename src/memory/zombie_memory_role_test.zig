@@ -9,7 +9,6 @@
 //! The test user (usezombie) is a superuser in local dev, so SET ROLE succeeds.
 
 const std = @import("std");
-const pg = @import("pg");
 const base = @import("../db/test_fixtures.zig");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 

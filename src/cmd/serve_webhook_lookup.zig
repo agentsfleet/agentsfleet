@@ -2,11 +2,16 @@
 //! for the webhook_sig middleware. Lives in `src/cmd/` so it can import both
 //! `src/auth/` and `src/zombie/`.
 //!
-//! Secret resolution: each zombie declares a `trigger.source` (e.g. `github`)
-//! that names the HMAC scheme and the workspace credential to read. The
-//! credential is stored at vault key `zombie:<source>` (overridable via
-//! `trigger.credential_name`) and decodes to a JSON object whose
-//! `webhook_secret` field is the HMAC key.
+//! Secret resolution: each zombie declares one or more `triggers[].source`
+//! entries (e.g. `github`). Each names an HMAC scheme and a workspace
+//! credential. The credential is stored at vault key `zombie:<source>`
+//! (overridable via `triggers[].credential_name`) and decodes to a JSON
+//! object whose `webhook_secret` field is the HMAC key.
+//!
+//! Multi-webhook-per-zombie URL routing (`{source}` segment in the webhook
+//! URL) lands with the install + list response slice. Until then the URL
+//! carries `zombie_id` alone and the queries below pull the first webhook
+//! trigger from the `triggers[]` array.
 
 const std = @import("std");
 const pg = @import("pg");
@@ -116,10 +121,16 @@ const SvixRow = struct {
 
 fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) !?HmacRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text,
-        \\       config_json->'x-usezombie'->'trigger'->>'source',
-        \\       config_json->'x-usezombie'->'trigger'->>'credential_name'
-        \\FROM core.zombies WHERE id = $1::uuid
+        \\SELECT z.workspace_id::text,
+        \\       (SELECT trig->>'source'
+        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          WHERE trig->>'type' = 'webhook'
+        \\          LIMIT 1),
+        \\       (SELECT trig->>'credential_name'
+        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          WHERE trig->>'type' = 'webhook'
+        \\          LIMIT 1)
+        \\FROM core.zombies z WHERE z.id = $1::uuid
     , .{zombie_id}));
     defer q.deinit();
 
@@ -138,9 +149,12 @@ fn fetchHmacRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) 
 
 fn fetchSvixRow(conn: anytype, alloc: std.mem.Allocator, zombie_id: []const u8) !?SvixRow {
     var q = PgQuery.from(try conn.query(
-        \\SELECT workspace_id::text,
-        \\       config_json->'x-usezombie'->'trigger'->'signature'
-        \\FROM core.zombies WHERE id = $1::uuid
+        \\SELECT z.workspace_id::text,
+        \\       (SELECT trig->'signature'
+        \\          FROM jsonb_array_elements(z.config_json->'x-usezombie'->'triggers') trig
+        \\          WHERE trig->>'type' = 'webhook'
+        \\          LIMIT 1)
+        \\FROM core.zombies z WHERE z.id = $1::uuid
     , .{zombie_id}));
     defer q.deinit();
 

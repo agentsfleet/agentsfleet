@@ -241,8 +241,11 @@ fn transportFd(transport: *redis_transport.Transport) std.posix.fd_t {
 fn dialAndAuth(alloc: std.mem.Allocator, cfg: redis_config.Config) !redis_transport.Transport {
     const stream = try std.net.tcpConnectToHost(alloc, cfg.host, cfg.port);
 
+    // SAFETY: assigned in the branch below before any reader observes it.
     var transport: redis_transport.Transport = undefined;
     if (cfg.use_tls) {
+        // SAFETY: `initInPlace` writes the tls field on the next line
+        // before any caller reads through `transport.tls`.
         transport = .{ .tls = undefined };
         try transport.tls.initInPlace(alloc, stream, cfg.host);
     } else {

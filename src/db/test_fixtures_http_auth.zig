@@ -18,6 +18,7 @@
 /// `cleanup` removes both workspaces and the tenant in FK-safe order and is
 /// idempotent — safe to call before seeding as a "reset previous run" bookend.
 
+const std = @import("std");
 const base = @import("test_fixtures.zig");
 const pg = @import("pg");
 
@@ -40,11 +41,11 @@ pub fn cleanup(conn: *pg.Conn) void {
     _ = conn.exec(
         "DELETE FROM core.workspaces WHERE workspace_id IN ($1::uuid, $2::uuid)",
         .{ WS_PRIMARY, WS_SECONDARY },
-    ) catch {};
+    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         "DELETE FROM core.tenants WHERE tenant_id = $1::uuid",
         .{TENANT_ID},
-    ) catch {};
+    ) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 /// Insert the shared auth-test tenant. Idempotent via ON CONFLICT DO NOTHING.

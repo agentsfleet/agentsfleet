@@ -6,16 +6,9 @@ How users pay for what they run, and how the runtime stays neutral between two c
 
 This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the executor + worker path, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
-The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **stage** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This is the *shape* — specific dollar amounts move as the rate table tightens or relaxes, so they live in code, not in this doc.
+The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **stage** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
-> **Where the live values are.** Specific rates are not pinned in this doc on purpose — they change. The canonical sources, in lockstep:
->
-> - **User-facing rates:** <https://usezombie.com/#pricing> — anchor on the home page; `App.tsx:83` redirects bare `/pricing` here. Link to this URL anywhere a human-facing rate is needed; do not paraphrase the numbers.
-> - **Zig (server authority):** `src/state/tenant_billing.zig` — `STARTER_CREDIT_NANOS`, `EVENT_NANOS`, `STAGE_PLATFORM_NANOS`, `STAGE_SELF_MANAGED_NANOS`. Pin tests in `tenant_billing_test.zig` lock the values.
-> - **Marketing display strings:** `~/Projects/docs/snippets/rates.mdx` (Mintlify), mirrored at `ui/packages/website/src/lib/rates.ts` (rendered into the `/#pricing` section).
-> - **Per-model token rates (platform posture):** the public-but-unguessable `model-caps.json` endpoint — see §10.
->
-> Cross-tier parity rule: identifier names match across Zig/TS/JS so a rate bump is a coordinated PR across all sources, not a silent drift.
+> **Where the live values are.** [`https://usezombie.com/#pricing`](https://usezombie.com/#pricing) is the canonical source of truth for current rates, starter-grant value, and any active promotional window (e.g. a free-trial period). This doc and the scenarios in this directory deliberately do not quote dollar amounts or windows — they go stale the moment a rate moves. For implementers: server-authoritative constants live in `src/state/tenant_billing.zig` (pin-tested), mirrored to `ui/packages/website/src/lib/rates.ts` and `~/Projects/docs/snippets/rates.mdx`. Identifier names match across Zig/TS/JS so a rate bump is a coordinated PR.
 
 ---
 
@@ -48,7 +41,15 @@ Under self-managed the grant covers `STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_N
 
 When `balance_nanos` cannot cover the next event's estimated cost, the gate trips. The event is dead-lettered with `failure_label='balance_exhausted'`. The CLI prints a one-line pointer at the dashboard billing page; the dashboard shows the empty-balance state. **Stripe-backed Purchase Credits is deferred to v2.1.** In v2.0, a user whose grant runs out either contacts us (manual top-up via support) or stops using the platform. The pricing model and the schema both anticipate Stripe — they just don't ship the integration in v2.0.
 
-### 2.3 Plan tiers
+### 2.3 Promotional windows (free-trial mechanism)
+
+Promotional windows (e.g. a launch free-trial) are **timestamp-gated, not feature-flagged**: a cutoff constant (`FREE_TRIAL_END_MS` in `src/state/tenant_billing.zig`) drives `compute_stage_charge` to return `0` while `now_ms < cutoff`, then falls through to the standard rate constants automatically. No env var, no `is_free_trial_enabled` toggle, no database column — time passes, the window closes.
+
+While the window is active: the starter grant still inserts on tenant create and accumulates (users carry unused balance into the post-window period); telemetry rows still INSERT and still record posture + token counts but with `credit_deducted_nanos = 0` (accurate audit history; zero revenue while we gather traction). Tests inject `now_ms` rather than reading the system clock, so pre-window / mid-window / post-window behaviour is all pin-tested deterministically in `tenant_billing_test.zig`.
+
+Whether a window is currently active, and how it's presented to users, is canonical on [`usezombie.com/#pricing`](https://usezombie.com/#pricing). Two consumer-visible reads surface the raw state for clients: `zombiectl doctor --json` → `billing.free_trial: { active: bool, ends_at_ms: int }`, and the dashboard billing panel — both let consumers decide how to render.
+
+### 2.4 Plan tiers
 
 There are no plan tiers in the cost function. The flat-rate `compute_receive_charge` and `compute_stage_charge` functions in §4 do not take a plan parameter. If we ever introduce paid plans (v2.1+), they will manifest as larger one-time grants, recurring Stripe charges that top up `balance_nanos`, or volume discounts on per-event rates — but not as a branch inside `compute_charge`.
 
@@ -155,10 +156,6 @@ total_nanos = EVENT_NANOS                          // receive
 ```
 
 One named constant for each posture's flat overhead, one named constant for receive, one rate lookup for platform's token component. To learn the live dollar amounts: read the constants in `src/state/tenant_billing.zig`, the model-caps response for token rates, and `~/Projects/docs/snippets/rates.mdx` for the marketing display strings.
-
-### 4.4 Drain-rate envelope
-
-Same $5-class starter grant, same model, same workload — different posture, different drain rate, by design. Under self-managed the drain is `STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_NANOS` stages flat. Under platform the drain is bounded above by `STARTER_CREDIT_NANOS / STAGE_PLATFORM_NANOS` (when token component is zero) and below by `STARTER_CREDIT_NANOS / (STAGE_PLATFORM_NANOS + worst_case_tokens × rate)` (when the model is expensive and stages are long). The exact count moves as model rates and stage constants move; this doc deliberately doesn't quote a number that's wrong the moment we ratchet.
 
 ---
 
@@ -390,3 +387,15 @@ No `purchase` / `topup` / `configure` subcommands in v2.0. The CLI's job is to s
 
 When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) prints a one-line pointer at the dashboard billing page. The CLI never blocks the user from making the next call (you can still issue another `steer` even with zero balance) — the gate is server-side, and the CLI surfaces the eventual rejection through `zombiectl events`.
 
+---
+
+## 13. Open questions deferred to v2.1+ and v3
+
+- **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement, CLI subcommand if/when warranted.
+- **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
+- **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in `compute_charge`.
+- **Refund-on-actual-tokens.** v3. Today the conservative estimate at stage-debit time is the charge; reconciling to actual tokens after `StageResult` would add bookkeeping for marginal accuracy gains.
+- **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3 — needs a new gate at the workspace level.
+- **Volume discounts beyond a threshold.** v3, sales-led.
+- **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.
+- **Auto-fallback from self-managed to platform on provider error.** Errors surface to the user; no silent fallback (it would charge them without consent).

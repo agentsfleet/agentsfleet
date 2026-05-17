@@ -2,7 +2,7 @@
 
 **Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
-> **Rate snapshot.** Cent-and-token arithmetic in steps 4–8 was authored against an earlier rate table ($10 starter, 1¢ receive, ~2¢ stage). Current values are different (smaller starter, free receive, sub-cent stage); the *flow* is unchanged. Authoritative source: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1.
+> **Rate snapshot.** Through 2026-07-31 UTC every event and every stage execution is free (`FREE_TRIAL_STAGE_NANOS = 0`); the gate and telemetry rows still run but `credit_deducted_nanos = 0`. After the cutoff, the rates in `src/state/tenant_billing.zig` apply. Cent-and-token arithmetic in steps 4–8 below was authored against an earlier rate table — the *flow* is unchanged, but every deduction is 0 during the trial. **For the live, customer-facing rate table, always consult [`https://usezombie.com/#pricing`](https://usezombie.com/#pricing).** The architecture description here covers shape and behaviour; numbers change. Code-level pin: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.3.
 
 > **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time grant. John in this scenario, John in Scenario 02 (after he flips to self-managed), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.
 
@@ -33,9 +33,12 @@ sequenceDiagram
     CLI->>API: POST /zombies<br/>{trigger_markdown, source_markdown}
     API->>Worker: XADD zombie:control (zombie_created)
     Worker-->>API: ≤1s thread spawned
-    API-->>Skill: { id, webhook_url }
-    Skill->>Op: print webhook URL + locally generated secret (manual paste in GH)
-    Skill->>CLI: steer <zombie_id> "morning health check"
+    API-->>Skill: { id, webhook_urls: { github: "..." } }
+    Skill->>GH: gh api repos/owner/repo/hooks<br/>(events[]=workflow_run, config.url, secret)
+    GH-->>Skill: { id, active: true }
+    Skill->>API: HMAC self-verify (curl + computed sig)
+    API-->>Skill: 202
+    Skill->>CLI: steer {id} "morning health check"
     CLI->>API: POST /steer
     API->>Worker: XADD zombie:{id}:events
     Worker->>Slack: posts first-pass health summary
@@ -59,14 +62,16 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 
 ### 1.1 Skill steps
 
-1. **Doctor preflight.** `zombiectl doctor --json` runs. If the CLI isn't installed, the skill prints the one-line install command and stops. If it's installed but unauthenticated, the skill prints `zombiectl auth login` and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
-2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version."
-3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_opt_in`. The skill never asks about model or self-managed in this scenario — both default to platform-managed.
+1. **Preconditions.** The skill runs `which zombiectl && which gh && zombiectl doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @usezombie/zombiectl`, `npx skills add usezombie/usezombie`, `zombiectl auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
+2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version." It also runs `gh repo view --json nameWithOwner -q .nameWithOwner` to capture the upstream repo for step 9.
+3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_schedule` (blank to skip). The skill never asks about model or self-managed in this scenario — both default to platform-managed.
 4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
    - try `op read 'op://Personal/<name>/api-token'`
    - else read env `ZOMBIE_CRED_<NAME>_API_TOKEN`
    - else interactive masked prompt
    then `zombiectl credential set <name> --data @-` per credential (upsert; same surface used for the self-managed credential in Scenario 02). JSON is piped on stdin so secret bytes do not appear in shell history or process argv.
+
+   For the `github` credential the body is `{ "api_token": "<PAT>", "webhook_secret": "<base64 32 bytes>" }`. The skill generates `webhook_secret` locally via `openssl rand -base64 32` on first install for the workspace; subsequent installs skip-if-exists per M45's upsert default (one secret per workspace, all GitHub-sourced zombies share it; rotation rotates everywhere).
 5. **Model and cap from doctor.** The skill reads `zombiectl doctor --json`'s `tenant_provider` block, which carries the resolved model + cap regardless of posture. For John (no row): the synthesised platform default — `model: "accounts/fireworks/models/kimi-k2.6"`, `context_cap_tokens: 256000`, `provider: "fireworks"`. The platform-side resolver hardcodes the synth-default values; doctor never has to call the model-caps endpoint at runtime.
 
    The model-caps endpoint at `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json` is the source of truth, but it is consumed by the platform-side resolver (for the synth-default constants) and by `zombiectl tenant provider set` (Scenario 02), **not** by the install-skill directly. The skill stays simple: read doctor, branch on mode, write resolved-or-sentinel into frontmatter. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §9 for the endpoint design.
@@ -75,9 +80,16 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    name: platform-ops
    x-usezombie:
-     trigger:
-       types: [chat, webhook:github, cron]
-       cron: "*/30 * * * *"          # only if cron_opt_in
+     triggers:
+       - type: webhook
+         source: github
+         events: ["workflow_run"]
+         signature:
+           secret_ref: github
+           header: x-hub-signature-256
+           prefix: "sha256="
+       - type: cron                 # omitted entirely when cron_schedule is blank
+         schedule: "*/30 * * * *"
      model: accounts/fireworks/models/kimi-k2.6
      context:
        context_cap_tokens: 256000   # ← from /_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
@@ -97,16 +109,21 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
-7. **Install.** `zombiectl install --from .usezombie/platform-ops/`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required. The dashboard install form exercises the same wire shape by posting pasted `TRIGGER.md` + `SKILL.md`.
-8. **Webhook URL + secret.** The skill has already generated the workspace `github.webhook_secret` locally and stored it with `zombiectl credential set github --data @-`. API returns `{zombie_id, webhook_url}`. The skill prints the URL plus the one-time local secret inline:
+7. **Install.** `zombiectl install --from .usezombie/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required. The 201 response carries `{ zombie_id, name, status, webhook_urls: { github: "https://api.usezombie.com/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
+8. **Parse rendered TRIGGER.md.** The skill reads its own freshly-written `.usezombie/platform-ops/TRIGGER.md`, extracts `triggers[]`, captures each webhook entry's `source` + `events[]` for the next step.
+9. **Register webhook(s) on the provider via the user's local `gh`.** For each webhook trigger in `triggers[]`, the skill runs:
+   ```bash
+   gh api -X POST "repos/${GH_REPO}/hooks" \
+     --field name=web --field active=true \
+     --field 'events[]=workflow_run' \
+     --field "config[url]=https://api.usezombie.com/v1/webhooks/{id}/github" \
+     --field 'config[content_type]=json' \
+     --field "config[secret]=${WEBHOOK_SECRET}"
    ```
-   Add this webhook to your repo:
-     URL:    https://api.usezombie.com/v1/webhooks/{id}
-     Secret: <one-time HMAC-SHA256 secret — copy now, won't be shown again>
-     Events: workflow_run
-   ```
-   Manual step the skill can't automate without a GitHub App — explicitly called out, takes ~30 seconds in the GH UI. (A GitHub App that auto-configures the webhook is a follow-up; v2 keeps the manual step.)
-9. **First steer (smoke test).** The skill runs `zombiectl steer <zombie_id> "morning health check"` in batch mode and streams the response inline.
+   The user's `gh auth` does the work — the platform never holds the user's PAT for this step. Failure modes: `403`/`401` → skill prints `gh auth refresh -s admin:repo_hook` and stops; `404` → repo or token wrong, prints response verbatim and stops; `422 Hook already exists` → idempotent (skill `gh api repos/.../hooks`, matches on `config.url`, advances).
+10. **Self-verify the webhook end-to-end.** The skill computes HMAC-SHA256 over a synthetic payload using the stored `webhook_secret`, curls the receiver with the signed payload + `X-GitHub-Event: workflow_run` + `X-Hub-Signature-256` headers. Expects 202. Anything else → prints response verbatim and stops *before* declaring success. The user never finds out hours later that HMAC is wrong.
+11. **Post-install summary.** Prints zombie id, registered hook id per source, HMAC-verified status, and the credentials stored — no manual paste prose. No GitHub web UI step.
+12. **First steer (smoke test).** The skill runs `zombiectl steer {id} "morning health check"` in batch mode and streams the response inline.
 
 ### 1.2 What the first steer actually returns
 
@@ -169,18 +186,17 @@ This is the verbatim end-to-end CLI experience. The skill drives most of it; Joh
 ```text
 $ /usezombie-install-platform-ops
 
-▸ Running zombiectl doctor --json …
-{
-  "auth_token_present": true,
-  "workspace_bound": true,
-  "tenant_provider": {
-    "mode": "platform",
-    "provider": "fireworks",
-    "model": "accounts/fireworks/models/kimi-k2.6",
-    "context_cap_tokens": 256000
-  }
-}
-✓ Doctor checks pass.
+▸ Preconditions …
+  zombiectl   ✓ on PATH
+  gh          ✓ on PATH, scope admin:repo_hook present
+  doctor      ✓ auth + workspace + tenant_provider OK
+              tenant_provider: { mode: platform,
+                provider: fireworks,
+                model: accounts/fireworks/models/kimi-k2.6,
+                context_cap_tokens: 256000 }
+              billing: { free_trial: { active: true,
+                ends_at_ms: 1785542400000 } }
+              → Free until 2026-07-31 (UTC); stages charged 0 nanos.
 
 ▸ Detecting repo … github.com/john-doe/widgetly
   .github/workflows/deploy.yml present
@@ -189,29 +205,34 @@ $ /usezombie-install-platform-ops
 ▸ Three quick questions:
   Slack channel for diagnoses?     #platform-ops
   Production branch glob?          main
-  Periodic health check (every 30 min)?  no
+  Cron schedule (blank to skip)?   (blank)
 
 ▸ Resolving tool credentials (op → env → prompt fallback) …
   fly       ✓ via op
   slack     ✓ via op
   github    ✓ via env (ZOMBIE_CRED_GITHUB_API_TOKEN)
+            ✓ generated webhook_secret locally (32 bytes, base64);
+              stored in vault credential `github`, never re-displayed
   upstash   skipped (not detected)
 
-▸ Generated webhook secret (one-time view; copy now):
-    whsec_<32-byte-base64-elided>
-
-▸ Writing .usezombie/platform-ops/SKILL.md
+▸ Writing .usezombie/platform-ops/SKILL.md, TRIGGER.md
+   triggers: [ webhook:github events=[workflow_run] ]
    model: accounts/fireworks/models/kimi-k2.6
    context_cap_tokens: 256000     ← from doctor's tenant_provider block
 
 ▸ Installing …
   zombie_id   = zmb_01HX9N3K…
-  webhook_url = https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…
+  webhook_urls = { github: https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…/github }
 
-✓ Installed. Add this webhook to your repo (Settings → Webhooks):
-  URL:    https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…
-  Secret: whsec_<32-byte-base64-elided>
-  Events: workflow_run
+▸ Registering webhook on john-doe/widgetly via gh api …
+  POST repos/john-doe/widgetly/hooks
+       events=[workflow_run]
+       config.url=https://api.usezombie.com/v1/webhooks/zmb_01HX9N3K…/github
+       config.secret=$WEBHOOK_SECRET
+  ✓ hook 482389123 registered, active=true
+
+▸ Self-verifying webhook (HMAC-SHA256 + curl) …
+  POST .../v1/webhooks/zmb_01HX9N3K…/github → 202
 
 ▸ Running first steer ("morning health check") …
   GH Actions runs on main: 12 in last 24h, all green
@@ -219,6 +240,8 @@ $ /usezombie-install-platform-ops
   Posted to #platform-ops at 09:14 UTC.
 
 ✓ Setup complete. To steer manually:  zombiectl steer zmb_01HX9N3K… "<msg>"
+  Webhook ready. Next failed workflow_run on john-doe/widgetly will
+  wake the zombie automatically.
 ```
 
 ### 3.2 First production webhook fires (a few hours later)

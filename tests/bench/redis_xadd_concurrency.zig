@@ -92,7 +92,9 @@ pub fn main() !void {
     var out_buf: [4096]u8 = undefined;
     var stdout_writer = stdout.writer(&out_buf);
     const w = &stdout_writer.interface;
-    defer w.flush() catch {};
+    // Best-effort flush at scope exit — bench tool, terminal write failures
+    // are not actionable here.
+    defer if (w.flush()) |_| {} else |_| {};
 
     if (!try checkSkipGate(alloc, w)) return;
 

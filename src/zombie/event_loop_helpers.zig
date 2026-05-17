@@ -17,9 +17,7 @@ const telemetry_mod = @import("../observability/telemetry.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const executor_client = @import("../executor/client.zig");
 const executor_transport = @import("../executor/transport.zig");
-const context_budget = @import("../executor/context_budget.zig");
 const event_loop_context_resolve = @import("event_loop_context_resolve.zig");
-const id_format = @import("../types/id_format.zig");
 const logging = @import("log");
 
 const types = @import("event_loop_types.zig");
@@ -62,9 +60,9 @@ pub fn loadSessionCheckpoint(alloc: Allocator, pool: *pg.Pool, zombie_id: []cons
     defer q.deinit();
 
     if (try q.next()) |row| {
-        return try alloc.dupe(u8, try row.get([]const u8, 0));
+        return alloc.dupe(u8, try row.get([]const u8, 0));
     }
-    return try alloc.dupe(u8, "{}");
+    return alloc.dupe(u8, "{}");
 }
 
 pub fn updateSessionContext(
@@ -193,7 +191,7 @@ pub fn setExecutionActive(alloc: Allocator, session: *ZombieSession, execution_i
         \\UPDATE core.zombie_sessions
         \\SET execution_id = $1, execution_started_at = $2
         \\WHERE zombie_id = $3::uuid
-    , .{ owned, session.execution_started_at, session.zombie_id }) catch {};
+    , .{ owned, session.execution_started_at, session.zombie_id }) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 }
 
 /// Clear active execution in session and DB. Non-fatal.
@@ -210,7 +208,7 @@ pub fn clearExecutionActive(alloc: Allocator, session: *ZombieSession, pool: *pg
         \\UPDATE core.zombie_sessions
         \\SET execution_id = NULL, execution_started_at = NULL
         \\WHERE zombie_id = $1::uuid
-    , .{session.zombie_id}) catch {};
+    , .{session.zombie_id}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 }
 
 // ── Sandbox execution (moved from event_loop.zig for RULE FLL) ───────────────
@@ -259,7 +257,7 @@ pub fn executeInSandbox(
         if (event_loop_secrets.resolveSecretsMap(alloc, cfg.pool, session.workspace_id, session.config.credentials)) |r| {
             resolved_secrets = r;
             for (r) |entry| {
-                secrets_obj.put(entry.name, entry.parsed.value) catch {};
+                secrets_obj.put(entry.name, entry.parsed.value) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
             }
             secrets_obj_alive = true;
         } else |err| {
@@ -298,7 +296,7 @@ pub fn executeInSandbox(
     };
     // clearExecutionActive defer runs BEFORE this (LIFO), so DB is cleared before socket is closed.
     defer {
-        cfg.executor.destroyExecution(execution_id) catch {};
+        cfg.executor.destroyExecution(execution_id) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
         alloc.free(execution_id);
     }
 

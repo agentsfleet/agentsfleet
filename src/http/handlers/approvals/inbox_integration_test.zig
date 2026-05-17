@@ -87,11 +87,11 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_approval_gates WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.zombie_approval_gates WHERE workspace_id = $1::uuid", .{OTHER_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WORKSPACE_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_approval_gates WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombie_approval_gates WHERE workspace_id = $1::uuid", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id = $1::uuid", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{TEST_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WORKSPACE_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 const SeedGate = struct {

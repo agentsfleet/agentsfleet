@@ -1,24 +1,28 @@
 //! PATCH /v1/workspaces/{ws}/zombies/{id} — partial update of a zombie.
 //!
-//! Body fields are optional and presence-based:
-//!   - `config_json`?: string                         — replace zombie config (XADD zombie_config_changed).
-//!   - `status`?: "active" | "stopped" | "killed"     — drive the FSM (XADD zombie_status_changed).
+//! Body fields (all optional, presence-based; empty body → 200 no-op):
+//!   - `config_json`      — replace config_json blob directly.
+//!   - `status`           — "active" | "stopped" | "killed"; drives FSM.
+//!   - `trigger_markdown` — reparses; rewrites trigger_markdown + config_json + name.
+//!   - `source_markdown`  — reparses; validates name match; rewrites source_markdown.
+//!
+//! `config_json` and `trigger_markdown` are mutually exclusive (both drive
+//! `core.zombies.config_json`).
+//!
+//! All paths run inside one transaction with `SELECT … FOR UPDATE`
+//! row-lock so the cross-file name invariant observes locked state. The
+//! txn locks exactly one `core.zombies` row → deadlock structurally
+//! impossible (Invariant 10). Per-txn defensive timeouts: lock_timeout=5s,
+//! statement_timeout=10s, idle_in_transaction_session_timeout=5s. PG
+//! `55P03` (lock_timeout) → 503 ERR_INTERNAL_DB_UNAVAILABLE.
 //!
 //! Status FSM (paused is gate-only, never set via API):
-//!     active   ── stop    ──▶ stopped   ─┐
-//!     active   ── kill    ──▶ killed     │ (terminal — 404 on further PATCH)
-//!     paused   ── stop    ──▶ stopped    │
-//!     paused   ── resume  ──▶ active     │
-//!     paused   ── kill    ──▶ killed     │
-//!     stopped  ── resume  ──▶ active     │
-//!     stopped  ── kill    ──▶ killed    ─┘
+//!     active|paused|stopped → stopped  (resume from auto-pause/operator-stop)
+//!     active|paused|stopped → active
+//!     active|paused|stopped → killed   (terminal — 404 on further PATCH)
+//!     same → same          → 409 (no-op transition rejected by SQL guard)
 //!
-//! Both fields can ride together; the SQL UPDATE is one statement and the
-//! control-stream publishes (one per dirty surface) follow. Empty body is a
-//! 200 no-op — matches REST PATCH semantics.
-//!
-//! `updated_at` (BIGINT, ms epoch) doubles as the config_revision — strictly
-//! monotonic per zombie, no schema migration needed.
+//! `updated_at` (BIGINT ms epoch) doubles as config_revision — monotonic.
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -43,12 +47,22 @@ const Hx = hx_mod.Hx;
 const PatchBody = struct {
     config_json: ?[]const u8 = null,
     status: ?[]const u8 = null,
+    trigger_markdown: ?[]const u8 = null,
+    source_markdown: ?[]const u8 = null,
 };
 
-const TransitionResult = enum {
-    transitioned,
+// All deterministic outcomes of a body-field PATCH. Unexpected DB errors
+// propagate via `anyerror`; everything the handler maps to a specific
+// HTTP response lives here. Lowercase tags by intent — only consumed by
+// innerPatchZombie below; not external API surface.
+const TxnOutcome = union(enum) {
+    updated: i64, // new updated_at (revision)
     not_found,
     invalid_transition,
+    invalid_trigger_markdown,
+    invalid_source_markdown,
+    name_mismatch,
+    lock_timeout,
 };
 
 /// Partial update of a zombie. Validates inputs, persists in one SQL UPDATE
@@ -68,7 +82,9 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
     }
 
     const body = parsePatchBody(hx, req) orelse return;
-    if (body.config_json == null and body.status == null) {
+    if (body.config_json == null and body.status == null and
+        body.trigger_markdown == null and body.source_markdown == null)
+    {
         hx.ok(.ok, .{ .zombie_id = zombie_id, .config_revision = @as(?i64, null) });
         return;
     }
@@ -97,49 +113,39 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
         }
     }
 
-    const revision_opt = patchZombieOnConn(conn, workspace_id, zombie_id, body) catch |err| {
+    const outcome = patchZombieInTxn(hx.alloc, conn, workspace_id, zombie_id, body) catch |err| {
         log.err("patch_db_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    if (revision_opt == null) {
-        const result = classifyMiss(conn, workspace_id, zombie_id) catch |err| {
-            log.err("patch_classify_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id });
-            common.internalDbError(hx.res, hx.req_id);
+    const revision = switch (outcome) {
+        .updated => |r| r,
+        .not_found => return hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND),
+        .invalid_transition => return hx.fail(ec.ERR_ZOMBIE_ALREADY_TERMINAL, "Status transition not allowed from current state"),
+        .invalid_trigger_markdown, .invalid_source_markdown => return hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG),
+        .name_mismatch => return hx.fail(ec.ERR_ZOMBIE_NAME_MISMATCH, ec.MSG_ZOMBIE_NAME_MISMATCH),
+        .lock_timeout => {
+            log.warn("patch_lock_timeout", .{ .zombie_id = zombie_id, .req_id = hx.req_id });
+            common.internalDbUnavailable(hx.res, hx.req_id);
             return;
-        };
-        switch (result) {
-            .not_found => hx.fail(ec.ERR_ZOMBIE_NOT_FOUND, ec.MSG_ZOMBIE_NOT_FOUND),
-            .invalid_transition => hx.fail(ec.ERR_ZOMBIE_ALREADY_TERMINAL, "Status transition not allowed from current state"),
-            .transitioned => unreachable,
-        }
-        return;
-    }
-    const revision = revision_opt.?;
+        },
+    };
 
     if (body.status) |s| publishStatusChange(hx.ctx.queue, zombie_id, s) catch |err| {
-        // PG row already reflects the new status. Watcher's reconcile loop
-        // (≈30s) heals control-plane drift if the publish failed.
-        log.warn(
-            "status_publish_failed",
-            .{ .err = @errorName(err), .zombie_id = zombie_id, .status = s, .req_id = hx.req_id, .hint = "row_updated_reconcile_will_apply" },
-        );
+        // PG row already reflects new status; watcher's reconcile (~30s) heals control-plane drift.
+        log.warn("status_publish_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .status = s, .req_id = hx.req_id });
     };
-    if (body.config_json != null) publishConfigChange(hx.ctx.queue, zombie_id, revision) catch |err| {
-        log.warn(
-            "patch_publish_failed",
-            .{ .err = @errorName(err), .zombie_id = zombie_id, .revision = revision, .req_id = hx.req_id, .hint = "row_updated_worker_blind" },
-        );
+    // Any of config_json/trigger_markdown/source_markdown changes what the
+    // worker needs to reload (config blob OR source_markdown body).
+    const config_dirty = body.config_json != null or body.trigger_markdown != null or body.source_markdown != null;
+    if (config_dirty) publishConfigChange(hx.ctx.queue, zombie_id, revision) catch |err| {
+        log.warn("patch_publish_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .revision = revision, .req_id = hx.req_id });
     };
 
     log.info("patched", .{ .id = zombie_id, .workspace = workspace_id, .revision = revision, .status_set = body.status });
     if (body.status) |s| {
-        hx.ok(.ok, .{
-            .zombie_id = zombie_id,
-            .status = s,
-            .config_revision = revision,
-        });
+        hx.ok(.ok, .{ .zombie_id = zombie_id, .status = s, .config_revision = revision });
     } else {
         hx.ok(.ok, .{ .zombie_id = zombie_id, .config_revision = revision });
     }
@@ -157,16 +163,26 @@ fn parsePatchBody(hx: Hx, req: *httpz.Request) ?PatchBody {
 }
 
 fn validateBody(hx: Hx, body: PatchBody) bool {
+    // config_json and trigger_markdown both drive core.zombies.config_json;
+    // sending both is ambiguous — reject at the door.
+    if (body.config_json != null and body.trigger_markdown != null) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "config_json and trigger_markdown are mutually exclusive");
+        return false;
+    }
     if (body.config_json) |cj| {
         if (cj.len == 0) {
             hx.fail(ec.ERR_INVALID_REQUEST, ec.MSG_ZOMBIE_CONFIG_REQUIRED);
             return false;
         }
-        _ = zombie_config.parseZombieConfig(hx.alloc, cj) catch {
-            hx.fail(ec.ERR_ZOMBIE_INVALID_CONFIG, ec.MSG_ZOMBIE_INVALID_CONFIG);
-            return false;
-        };
     }
+    if (body.trigger_markdown) |tm| if (tm.len == 0) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "trigger_markdown must be non-empty");
+        return false;
+    };
+    if (body.source_markdown) |sm| if (sm.len == 0) {
+        hx.fail(ec.ERR_INVALID_REQUEST, "source_markdown must be non-empty");
+        return false;
+    };
     if (body.status) |s| {
         // Only operator-targetable states. `paused` is reserved for the
         // platform's anomaly gate and rejected here so callers can't use
@@ -183,80 +199,134 @@ fn validateBody(hx: Hx, body: PatchBody) bool {
     return true;
 }
 
-/// One UPDATE handles either or both fields. The status FSM is encoded as
-/// SQL gates so the kernel of state-machine truth lives at the storage
-/// boundary where it is impossible to bypass via parallel writes:
-///
-///   killed              — never transitions out (`status != 'killed'` guard)
-///   active   → stopped  — ok
-///   active   → killed   — ok
-///   paused   → stopped  — ok
-///   paused   → active   — ok (resume from auto-pause)
-///   paused   → killed   — ok
-///   stopped  → active   — ok (resume from operator stop)
-///   stopped  → killed   — ok
-///   active   → active / stopped → stopped — rejected (no-op transitions
-///                                            return 0 rows → 409)
-///
-/// `paused` is intentionally unset-able via API. Returns null on miss; the
-/// caller distinguishes 404 (gone or killed) from 409 (no valid transition)
-/// via a presence probe (`classifyMiss`).
-fn patchZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8, body: PatchBody) !?i64 {
+/// SELECT FOR UPDATE → reparse → UPDATE gated by FSM. See file header
+/// for FSM table, timeouts, and Invariant 10 (single-row lock).
+fn patchZombieInTxn(
+    alloc: std.mem.Allocator,
+    conn: *pg.Conn,
+    workspace_id: []const u8,
+    zombie_id: []const u8,
+    body: PatchBody,
+) anyerror!TxnOutcome {
+    _ = try conn.exec("BEGIN", .{});
+    var tx_open = true;
+    defer if (tx_open) {
+        conn.rollback() catch |err| log.warn("rollback_fail", .{ .err = @errorName(err) });
+    };
+
+    _ = conn.exec("SET LOCAL lock_timeout = '5s'", .{}) catch |err| return mapPgErr(conn, err);
+    _ = conn.exec("SET LOCAL statement_timeout = '10s'", .{}) catch |err| return mapPgErr(conn, err);
+    _ = conn.exec("SET LOCAL idle_in_transaction_session_timeout = '5s'", .{}) catch |err| return mapPgErr(conn, err);
+
+    // SELECT FOR UPDATE — acquire row-lock + snapshot (name, status). Both
+    // are needed: name for source_md cross-file invariant; status for
+    // distinguishing 404 (terminal/killed) from 409 (FSM rejects) when the
+    // UPDATE returns 0 rows.
+    const current = blk: {
+        var sel_q = PgQuery.from(conn.query(
+            \\SELECT name, status FROM core.zombies
+            \\WHERE id = $1::uuid AND workspace_id = $2::uuid
+            \\FOR UPDATE
+        , .{ zombie_id, workspace_id }) catch |err| return mapPgErr(conn, err));
+        defer sel_q.deinit();
+        const row = try sel_q.next();
+        if (row == null) break :blk null;
+        const n = try alloc.dupe(u8, try row.?.get([]const u8, 0));
+        const s = try alloc.dupe(u8, try row.?.get([]const u8, 1));
+        break :blk .{ .name = n, .status = s };
+    };
+    if (current == null) return TxnOutcome{ .not_found = {} };
+    defer alloc.free(current.?.name);
+    defer alloc.free(current.?.status);
+
+    // Reparse body markdown if present. ParsedTrigger / SkillMetadata own
+    // heap; deinit'd on every return path (success and error).
+    var parsed_trigger: ?zombie_config.ParsedTrigger = null;
+    defer if (parsed_trigger) |*pt| pt.deinit(alloc);
+    if (body.trigger_markdown) |tm| {
+        parsed_trigger = zombie_config.parseTriggerMarkdownWithJson(alloc, tm) catch return TxnOutcome{ .invalid_trigger_markdown = {} };
+    }
+
+    var skill_meta: ?zombie_config.SkillMetadata = null;
+    defer if (skill_meta) |*sm| sm.deinit(alloc);
+    if (body.source_markdown) |sm| {
+        skill_meta = zombie_config.parseSkillMetadata(alloc, sm) catch return TxnOutcome{ .invalid_source_markdown = {} };
+        const target_name = if (parsed_trigger) |pt| pt.config.name else current.?.name;
+        if (!std.mem.eql(u8, skill_meta.?.name, target_name)) return TxnOutcome{ .name_mismatch = {} };
+    }
+
+    const new_config_json: ?[]const u8 = if (parsed_trigger) |pt| pt.config_json else body.config_json;
+    const new_name: ?[]const u8 = if (parsed_trigger) |pt| pt.config.name else null;
+
     const now_ms = std.time.milliTimestamp();
     const active = zombie_config.ZombieStatus.active.toSlice();
     const stopped = zombie_config.ZombieStatus.stopped.toSlice();
     const killed = zombie_config.ZombieStatus.killed.toSlice();
     const paused = zombie_config.ZombieStatus.paused.toSlice();
 
-    var q = PgQuery.from(try conn.query(
-        \\UPDATE core.zombies SET
-        \\    config_json = COALESCE($1::jsonb, config_json),
-        \\    status = COALESCE($2, status),
-        \\    updated_at = $3
-        \\WHERE id = $4::uuid
-        \\  AND workspace_id = $5::uuid
-        \\  AND status != $6
-        \\  AND (
-        \\        $2::text IS NULL
-        \\     OR ($2 = $6)
-        \\     OR ($2 = $7 AND status = ANY($9::text[]))
-        \\     OR ($2 = $8 AND status = ANY($10::text[]))
-        \\  )
-        \\RETURNING updated_at
-    , .{
-        body.config_json,
-        body.status,
-        now_ms,
-        zombie_id,
-        workspace_id,
-        killed,
-        stopped,
-        active,
-        &[_][]const u8{ active, paused },
-        &[_][]const u8{ stopped, paused },
-    }));
-    defer q.deinit();
-    if (try q.next()) |row| return try row.get(i64, 0);
-    return null;
+    const revision_opt: ?i64 = blk: {
+        var upd_q = PgQuery.from(conn.query(
+            \\UPDATE core.zombies SET
+            \\    config_json      = COALESCE($1::jsonb, config_json),
+            \\    status           = COALESCE($2,        status),
+            \\    trigger_markdown = COALESCE($11,       trigger_markdown),
+            \\    source_markdown  = COALESCE($12,       source_markdown),
+            \\    name             = COALESCE($13,       name),
+            \\    updated_at       = $3
+            \\WHERE id = $4::uuid
+            \\  AND workspace_id = $5::uuid
+            \\  AND status != $6
+            \\  AND (
+            \\        $2::text IS NULL
+            \\     OR ($2 = $6)
+            \\     OR ($2 = $7 AND status = ANY($9::text[]))
+            \\     OR ($2 = $8 AND status = ANY($10::text[]))
+            \\  )
+            \\RETURNING updated_at
+        , .{
+            new_config_json,
+            body.status,
+            now_ms,
+            zombie_id,
+            workspace_id,
+            killed,
+            stopped,
+            active,
+            &[_][]const u8{ active, paused },
+            &[_][]const u8{ stopped, paused },
+            body.trigger_markdown,
+            body.source_markdown,
+            new_name,
+        }) catch |err| return mapPgErr(conn, err));
+        defer upd_q.deinit();
+        if (try upd_q.next()) |row| break :blk try row.get(i64, 0);
+        break :blk null;
+    };
+
+    if (revision_opt == null) {
+        // FSM/terminal guard rejected. Use the snapshot we already hold to
+        // distinguish — no extra round-trip needed (we still own the lock).
+        if (std.mem.eql(u8, current.?.status, killed)) return TxnOutcome{ .not_found = {} };
+        return TxnOutcome{ .invalid_transition = {} };
+    }
+
+    _ = try conn.exec("COMMIT", .{});
+    tx_open = false;
+    return TxnOutcome{ .updated = revision_opt.? };
 }
 
-/// Distinguish 404 (zombie not in workspace, or already killed — both are
-/// tombstones) from 409 (zombie exists in non-killed state but the
-/// transition isn't allowed from there).
-fn classifyMiss(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8) !TransitionResult {
-    const killed = zombie_config.ZombieStatus.killed.toSlice();
-    var q = PgQuery.from(try conn.query(
-        \\SELECT status FROM core.zombies
-        \\WHERE id = $1::uuid AND workspace_id = $2::uuid
-        \\LIMIT 1
-    , .{ zombie_id, workspace_id }));
-    defer q.deinit();
-    if (try q.next()) |row| {
-        const s = try row.get([]const u8, 0);
-        if (std.mem.eql(u8, s, killed)) return .not_found;
-        return .invalid_transition;
+/// Map a pg driver error to a TxnOutcome when the SQLSTATE is one the
+/// handler surfaces as a deterministic outcome (e.g. lock_timeout 55P03 →
+/// 503 retryable). Otherwise propagate the raw error so the caller's
+/// `catch` falls into the generic 500 path. The driver carries the
+/// SQLSTATE on `conn.err.?.code` after `error.PG`.
+fn mapPgErr(conn: *pg.Conn, err: anyerror) anyerror!TxnOutcome {
+    if (err == error.PG) {
+        if (conn.err) |pg_err| {
+            if (std.mem.eql(u8, pg_err.code, "55P03")) return TxnOutcome{ .lock_timeout = {} };
+        }
     }
-    return .not_found;
+    return err;
 }
 
 fn publishConfigChange(redis: *queue_redis.Client, zombie_id: []const u8, revision: i64) !void {

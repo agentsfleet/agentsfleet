@@ -150,6 +150,121 @@ test "integration: zombies list — cursor pagination roundtrip" {
     try r_anon.expectStatus(.unauthorized);
 }
 
+test "integration: zombies list — projects triggers array from config_json" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+
+    // Seed one zombie with a `triggers[]` array inside `x-usezombie:` — mirrors
+    // what config_parser.zig persists for a real install. Bypasses the HTTP
+    // create path (Redis required) but exercises the SELECT projection that
+    // list.zig adds: `config_json->'x-usezombie'->'triggers'`.
+    const zid = try id_format.generateZombieId(alloc);
+    defer alloc.free(zid);
+    const config_json =
+        \\{"name":"triggers-projection","x-usezombie":{"triggers":[
+        \\  {"type":"webhook","source":"github","events":["workflow_run"]},
+        \\  {"type":"cron","schedule":"*/30 * * * *"}
+        \\]}}
+    ;
+    _ = try conn.exec(
+        \\INSERT INTO core.zombies
+        \\  (id, workspace_id, name, source_markdown, trigger_markdown, config_json,
+        \\   status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3, 'seed', null, $4::jsonb, 'active', $5, $5)
+    , .{ zid, TEST_WORKSPACE_ID, "triggers-projection", config_json, now_ms + 9_000 });
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies?limit=20", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+
+    const r = try (try h.get(url).bearer(TOKEN_USER)).send();
+    defer r.deinit();
+    try r.expectStatus(.ok);
+
+    // Newest-first ordering puts our zombie at index 0 (created_at = now+9000s,
+    // greater than any sibling rows from the pagination suite).
+    try std.testing.expect(r.bodyContains("\"name\":\"triggers-projection\""));
+    try std.testing.expect(r.bodyContains("\"type\":\"webhook\""));
+    try std.testing.expect(r.bodyContains("\"source\":\"github\""));
+    try std.testing.expect(r.bodyContains("\"workflow_run\""));
+    try std.testing.expect(r.bodyContains("\"type\":\"cron\""));
+    try std.testing.expect(r.bodyContains("\"schedule\":\"*/30 * * * *\""));
+}
+
+// §2 contract: 201 install response carries a `webhook_urls` map keyed by
+// `triggers[].source`. URL pattern is `{api_url}/v1/webhooks/{id}/{source}`.
+// The CLI install-skill consumes this map verbatim when looping `gh api`
+// per declared webhook trigger — a wrong value (or missing field) drops the
+// install skill into the paste-into-GitHub fallback the spec eliminates.
+test "integration: install — 201 returns webhook_urls map keyed by source" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+
+    const body =
+        "{\"source_markdown\":\"---\\nname: webhook-install-pin\\ndescription: pins webhook_urls shape\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: webhook-install-pin\\nx-usezombie:\\n  triggers:\\n    - type: webhook\\n      source: github\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.created);
+
+    try std.testing.expect(r.bodyContains("\"webhook_urls\":{"));
+    try std.testing.expect(r.bodyContains("\"github\":\"http://127.0.0.1/v1/webhooks/"));
+    try std.testing.expect(r.bodyContains("/github\""));
+}
+
+// §Failure Modes row: "Install with no webhook trigger → 201 with
+// `webhook_urls: {}`". A cron-only zombie short-circuits the install-skill's
+// S1.9 `gh api` loop — the empty map is the signal that there is nothing to
+// register on the upstream side, and the skill validates via smoke-test
+// steer at S1.11 instead.
+test "integration: install — cron-only trigger returns empty webhook_urls map" {
+    const alloc = std.testing.allocator;
+    const h = makeHarness(alloc) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    if (!h.tryConnectRedis()) return error.SkipZigTest;
+
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    const now_ms = std.time.milliTimestamp();
+    try seedWorkspace(conn, now_ms);
+
+    const body =
+        "{\"source_markdown\":\"---\\nname: cron-only-install-pin\\ndescription: pins empty webhook_urls\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
+        "\"trigger_markdown\":\"---\\nname: cron-only-install-pin\\nx-usezombie:\\n  triggers:\\n    - type: cron\\n      schedule: '*/30 * * * *'\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+
+    const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
+    defer alloc.free(url);
+    const r = try (try (try h.post(url).bearer(TOKEN_USER)).json(body)).send();
+    defer r.deinit();
+    try r.expectStatus(.created);
+
+    try std.testing.expect(r.bodyContains("\"webhook_urls\":{}"));
+}
+
 // Cross-file `name:` invariant: SKILL.md and TRIGGER.md must agree on identity.
 // Handler enforcement at create.zig fires before workspace authorization, so a
 // USER-role token still surfaces the mismatch error (no escalation needed).
@@ -171,7 +286,7 @@ test "integration: zombie create rejects SKILL/TRIGGER name mismatch with UZ-ZMB
     // handler, which is what this test pins.
     const body =
         "{\"source_markdown\":\"---\\nname: alpha-zombie\\ndescription: alpha\\nversion: 0.1.0\\n---\\nBody.\\n\"," ++
-        "\"trigger_markdown\":\"---\\nname: beta-zombie\\nx-usezombie:\\n  trigger:\\n    type: api\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
+        "\"trigger_markdown\":\"---\\nname: beta-zombie\\nx-usezombie:\\n  triggers:\\n    - type: webhook\\n      source: agentmail\\n  tools:\\n    - agentmail\\n  budget:\\n    daily_dollars: 1.0\\n---\\n\"}";
 
     const url = try std.fmt.allocPrint(alloc, "/v1/workspaces/{s}/zombies", .{TEST_WORKSPACE_ID});
     defer alloc.free(url);

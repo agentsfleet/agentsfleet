@@ -2,13 +2,13 @@
 name: full-skill
 
 x-usezombie:
-  trigger:
-    type: webhook
-    source: github
-    signature:
-      secret_ref: github_secret
-      header: x-hub-signature-256
-      prefix: "sha256="
+  triggers:
+    - type: webhook
+      source: github
+      signature:
+        secret_ref: github_secret
+        header: x-hub-signature-256
+        prefix: "sha256="
   tools:
     - agentmail
     - slack

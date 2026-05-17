@@ -20,7 +20,6 @@
 const config_types = @import("config_types.zig");
 const config_parser = @import("config_parser.zig");
 const config_markdown = @import("config_markdown.zig");
-const config_validate = @import("config_validate.zig");
 const config_gates = @import("config_gates.zig");
 
 // Value types.
@@ -57,7 +56,7 @@ pub const extractZombieInstructions = config_markdown.extractZombieInstructions;
 // this adds zero bytes to production binaries. main.zig imports config.zig
 // once; config.zig fans out to the implementation + test modules.
 test {
-    _ = @import("config_helpers.zig"); // has inline tests, no other fanout path
+    _ = @import("config_helpers_test.zig");
     _ = @import("config_types_test.zig");
     _ = @import("config_parser_test.zig");
     _ = @import("config_markdown_test.zig");

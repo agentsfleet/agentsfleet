@@ -4,7 +4,7 @@
 
 # Your deploy failed. The agent already knows why.
 
-[![Try Free — $5 Credit](https://img.shields.io/badge/usezombie-Try_Free_·_%245_Credit-5EEAD4?style=for-the-badge)](https://usezombie.com)
+[![Try for free](https://img.shields.io/badge/usezombie-Try_for_free-5EEAD4?style=for-the-badge)](https://usezombie.com)
 [![Docs](https://img.shields.io/badge/Docs-blue?style=for-the-badge)](https://docs.usezombie.com)
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
@@ -17,7 +17,7 @@
 
 A **Zombie** wakes on your events (webhook · cron · steer), gathers evidence against your infra, posts an evidenced diagnosis to Slack, and records every action in a replayable event log. Markdown-defined. Self-managed provider keys. Hosted on `api.usezombie.com`.
 
-**Trying it as a user?** Skip the rest of this README and go straight to **[docs.usezombie.com/quickstart](https://docs.usezombie.com/quickstart)** — `$5` starter credit on signup, no card required, full install + first run in under five minutes.
+**Trying it as a user?** Skip the rest of this README and go straight to **[docs.usezombie.com/quickstart](https://docs.usezombie.com/quickstart)** — free to try, no card required, full install + first run in under five minutes. Current rates on [`usezombie.com/#pricing`](https://usezombie.com/#pricing).
 
 ---
 

@@ -84,7 +84,7 @@ pub fn start(alloc: Allocator, opts: Options) !Harness {
     errdefer if (paths.script_path) |p| alloc.free(p);
 
     if (paths.script_path) |p| try writeFile(p, opts.script_json);
-    errdefer if (paths.script_path) |p| std.fs.deleteFileAbsolute(p) catch {};
+    errdefer if (paths.script_path) |p| std.fs.deleteFileAbsolute(p) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 
     var child = try spawnChild(alloc, bin_path, paths, opts);
     errdefer terminateChild(&child);
@@ -105,9 +105,7 @@ pub fn start(alloc: Allocator, opts: Options) !Harness {
     // automatic connect and call it themselves.
     try harness.waitForSocket();
     if (opts.auto_connect) {
-        harness.executor.connect() catch |err| {
-            return err;
-        };
+        try harness.executor.connect();
         harness.connected = true;
     }
 
@@ -117,8 +115,8 @@ pub fn start(alloc: Allocator, opts: Options) !Harness {
 pub fn deinit(self: *Harness) void {
     if (self.connected) self.executor.close();
     terminateChild(&self.child);
-    std.fs.deleteFileAbsolute(self.socket_path) catch {};
-    if (self.script_path) |p| std.fs.deleteFileAbsolute(p) catch {};
+    std.fs.deleteFileAbsolute(self.socket_path) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    if (self.script_path) |p| std.fs.deleteFileAbsolute(p) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     self.alloc.free(self.socket_path);
     if (self.script_path) |p| self.alloc.free(p);
 }
@@ -190,7 +188,7 @@ fn spawnChild(
     if (paths.script_path) |p| try env_map.put("EXECUTOR_HARNESS_SCRIPT", p);
     if (opts.rpc_version) |v| {
         var ver_buf: [16]u8 = undefined;
-        const s = std.fmt.bufPrint(&ver_buf, "{d}", .{v}) catch unreachable;
+        const s = std.fmt.bufPrint(&ver_buf, "{d}", .{v}) catch @panic("bufPrint failed: stack buffer sized incorrectly at compile time");
         try env_map.put("EXECUTOR_HARNESS_RPC_VERSION", s);
     }
     // Force a permissive network policy and skip Linux sandboxing in tests —
@@ -228,8 +226,8 @@ fn terminateChild(child: *std.process.Child) void {
     // as a zombie and the std.process.Child handle frees its internals.
     // Without wait(), a long test run accumulates zombies and the test
     // allocator detects leaked Child internals at suite shutdown.
-    _ = child.kill() catch {};
-    _ = child.wait() catch {};
+    _ = child.kill() catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = child.wait() catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 test "harness skips when binary missing and no override" {

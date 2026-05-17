@@ -108,8 +108,10 @@ test "integration: ready decision passes when dependencies are healthy" {
 fn buildLivenessHx(res: *httpz.Response) hx_mod.Hx {
     return .{
         .alloc = std.testing.allocator,
+        // SAFETY: written by surrounding init logic before any read of this storage.
         .principal = undefined,
         .req_id = "health-test",
+        // SAFETY: written by surrounding init logic before any read of this storage.
         .ctx = undefined, // innerHealthz does not read ctx
         .res = res,
     };

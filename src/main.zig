@@ -279,6 +279,8 @@ test {
     _ = @import("http/handlers/zombies/create.zig");
     _ = @import("http/handlers/zombies/list.zig");
     _ = @import("http/handlers/zombies/patch.zig");
+    _ = @import("http/handlers/zombies/patch_body_fields_integration_test.zig");
+    _ = @import("http/handlers/zombies/patch_concurrent_integration_test.zig");
     _ = @import("http/handlers/zombies/delete.zig");
     // Zombie execution telemetry store (writers via metering, tenant-scoped read via /v1/tenants/me/billing/charges)
     _ = @import("state/zombie_telemetry_store.zig");
@@ -297,7 +299,7 @@ test {
     _ = @import("http/handlers/model_caps.zig");
     _ = @import("http/handlers/model_caps_integration_test.zig");
     _ = @import("http/handlers/webhooks/grant_approval.zig");
-    _ = @import("http/handlers/webhooks/clerk_integration_test.zig");
+    _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/webhooks/github.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
     _ = @import("http/route_matchers.zig");

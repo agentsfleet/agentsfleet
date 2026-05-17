@@ -89,9 +89,9 @@ fn seedTestData(conn: *pg.Conn) !void {
 }
 
 fn cleanupTestData(conn: *pg.Conn) void {
-    _ = conn.exec("DELETE FROM core.zombie_sessions WHERE zombie_id IN ($1, $2, $3)", .{ ZOMBIE_IDLE, ZOMBIE_ACTIVE, ZOMBIE_OTHER_WS }) catch {};
-    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id IN ($1, $2)", .{ TEST_WORKSPACE_ID, OTHER_WS_ID }) catch {};
-    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch {};
+    _ = conn.exec("DELETE FROM core.zombie_sessions WHERE zombie_id IN ($1, $2, $3)", .{ ZOMBIE_IDLE, ZOMBIE_ACTIVE, ZOMBIE_OTHER_WS }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM core.zombies WHERE workspace_id IN ($1, $2)", .{ TEST_WORKSPACE_ID, OTHER_WS_ID }) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
+    _ = conn.exec("DELETE FROM workspaces WHERE workspace_id = $1", .{OTHER_WS_ID}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
 }
 
 // ── Auth + body validation (no Redis needed) ────────────────────────────────

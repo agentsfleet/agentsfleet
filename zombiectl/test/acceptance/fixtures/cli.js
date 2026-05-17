@@ -2,23 +2,27 @@
  * Per-spawn CLI runner for the acceptance suite.
  *
  * Two binary modes:
- *   - worktree: spawn `node ./bin/zombiectl.js` from the repo (DEV jobs)
+ *   - worktree: spawn `node ./dist/bin/zombiectl.js` from the repo (DEV jobs)
  *   - global:   spawn `zombiectl` from PATH (PROD jobs, post-`npm i -g`)
  *
+ * Both modes run the tsc-emitted .js artifact. Worktree mode requires
+ * a prior `npm run build` (the test script chains build before bun test);
+ * global mode resolves `zombiectl` from PATH after `npm i -g`.
+ *
  * The caller composes the full child env — `runZombiectl` NEVER mutates
- * `process.env`. WS-E #C1 invariant: the minted Clerk JWT is per-call;
- * leaking it into the parent env would inherit into every later spawn.
+ * `process.env`. The minted Clerk JWT is per-call; leaking it into the
+ * parent env would inherit into every later spawn.
  */
 
 import { spawn } from "node:child_process";
 import path from "node:path";
 import url from "node:url";
 
-import { ACCEPTANCE_BINARY, ACCEPTANCE_BINARY_ENV } from "./constants.js";
+import { ACCEPTANCE_BINARY, ACCEPTANCE_BINARY_ENV } from "./constants.ts";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..", "..");
-const WORKTREE_ENTRY = path.join(ZOMBIECTL_ROOT, "bin", "zombiectl.js");
+const WORKTREE_ENTRY = path.join(ZOMBIECTL_ROOT, "dist", "bin", "zombiectl.js");
 
 const DEFAULT_TIMEOUT_MS = 60_000;
 
@@ -35,7 +39,7 @@ function resolveBinary(opts) {
   const requested = opts?.binary ?? process.env[ACCEPTANCE_BINARY_ENV] ?? ACCEPTANCE_BINARY.worktree;
   if (requested === ACCEPTANCE_BINARY.global) return { command: "zombiectl", prefixArgs: [] };
   if (requested === ACCEPTANCE_BINARY.worktree) {
-    return { command: process.execPath, prefixArgs: [WORKTREE_ENTRY] };
+    return { command: "node", prefixArgs: [WORKTREE_ENTRY] };
   }
   throw new Error(`unknown ZOMBIE_ACCEPTANCE_BINARY: ${requested}`);
 }
