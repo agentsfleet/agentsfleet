@@ -220,12 +220,18 @@ pub fn reloadZombieConfig(alloc: Allocator, session: *ZombieSession, pool: *pg.P
     var new_config = try zombie_config.parseZombieConfig(alloc, config_json_owned);
     errdefer new_config.deinit(alloc);
 
+    // Durable audit row BEFORE the in-memory swap. If the INSERT fails
+    // (conn drop, network blip), the swap is skipped and errdefer frees
+    // new_config — the next config_changed signal re-runs reload against
+    // the same revision and ON CONFLICT keeps it idempotent. Swap-first
+    // would leak the audit row: the next reload sees a NEW revision and
+    // the missed cfg-{revision} row is gone forever.
+    try writeReloadEventRow(conn, session, revision);
+
     var old_config = session.config;
     session.config = new_config;
     old_config.deinit(alloc);
     log.info("zombie_event_loop.config_reloaded", .{ .zombie_id = session.zombie_id, .name = session.config.name });
-
-    try writeReloadEventRow(conn, session, revision);
 }
 
 // Durable trace of "the worker reloaded its config to this revision."
