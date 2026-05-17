@@ -67,20 +67,25 @@ pub const TestHarness = struct {
     thread: std.Thread,
     port: u16,
 
-    /// Opportunistic Redis connect. Sets `has_redis = true` on success so
-    /// tests that need the queue can `if (!h.has_redis) return error.SkipZigTest;`.
-    /// Reads REDIS_URL_API (role .api) — the same env var `serve.zig` uses,
-    /// since the harness simulates the API server. `make test-integration`
-    /// exports REDIS_URL_API automatically.
+    /// Connect Redis using the same env var `serve.zig` uses (REDIS_URL_API,
+    /// role .api) — the harness simulates the API server. Returns the raw
+    /// error so the caller can distinguish env-missing (skip) from
+    /// connect-failed (hard fail in CI). `make test-integration` exports
+    /// REDIS_URL_API automatically; local dev without Redis sees
+    /// `error.MissingRedisUrl` and the harness escalates to SkipZigTest.
+    pub fn connectRedis(self: *TestHarness) !void {
+        if (self.has_redis) return;
+        self.queue = try queue_redis.Client.connectFromEnv(self.alloc, .api);
+        self.has_redis = true;
+    }
+
+    /// Bool-returning wrapper kept for tests that opt into Redis
+    /// opportunistically (`if (!h.tryConnectRedis()) return error.SkipZigTest;`
+    /// and `_ = h.tryConnectRedis();`). New code should call `connectRedis`
+    /// directly to inspect the error variant.
     pub fn tryConnectRedis(self: *TestHarness) bool {
-        if (self.has_redis) return true;
-        if (queue_redis.Client.connectFromEnv(self.alloc, .api)) |client| {
-            self.queue = client;
-            self.has_redis = true;
-            return true;
-        } else |_| {
-            return false;
-        }
+        self.connectRedis() catch return false;
+        return true;
     }
 
     /// Start an in-process server on a free port. Returns `error.SkipZigTest`
@@ -88,6 +93,13 @@ pub const TestHarness = struct {
     pub fn start(alloc: std.mem.Allocator, cfg: Config) !*TestHarness {
         const db_ctx = (try common.openHandlerTestConn(alloc)) orelse return error.SkipZigTest;
         db_ctx.pool.release(db_ctx.conn);
+        // Ownership transfers to h.pool below, but until we successfully
+        // return h the pool is THIS function's responsibility — without
+        // this errdefer, any later failure (server init, spawn,
+        // waitForServer, tryConnectRedis) leaks the pool's Postgres
+        // connections. Cascading test failures hit `sorry, too many
+        // clients already` after ~25 leaked harnesses (5-8 conns each).
+        errdefer db_ctx.pool.deinit();
 
         const h = try alloc.create(TestHarness);
         errdefer alloc.destroy(h);
@@ -117,6 +129,11 @@ pub const TestHarness = struct {
             .thread = undefined,
             .port = port,
         };
+        // Mirror deinit()'s teardown order from here forward — each
+        // resource that gets a deinit there gets an errdefer here.
+        errdefer h.session_store.deinit();
+        errdefer h.verifier.deinit();
+
         h.ctx = .{
             .pool = h.pool,
             .queue = &h.queue,
@@ -140,23 +157,40 @@ pub const TestHarness = struct {
             .workers = 2,
             .max_clients = 64,
         });
+        errdefer h.server.deinit();
         h.thread = try std.Thread.spawn(.{}, serverThread, .{h.server});
+        // After spawn: stop + join must precede h.server.deinit (the
+        // outer errdefer above). LIFO ordering puts this block first.
         errdefer {
             h.server.stop();
             h.thread.join();
-            h.server.deinit();
         }
         try waitForServer(alloc, port, cfg.wait_timeout_ms);
         // Wire the queue upfront so handlers that publish (PATCH zombie
         // status, webhooks, approvals, etc.) don't dereference undefined
-        // memory. `make test-integration` always exports REDIS_URL_API.
-        // Failure is hard — silent skip would mask coverage gaps. Return
-        // the error directly; the errdefer above owns the server+thread
-        // teardown. A manual stop+join+deinit here would double-call
-        // server.stop() (once explicit, once via errdefer) — the second
-        // write to a closed close_fd is a segfault under httpz's eventfd-
-        // based shutdown signalling (CI run on commit a446c2a7).
-        if (!h.tryConnectRedis()) return error.RedisRequiredForTestHarness;
+        // memory. Three-way split:
+        //   • `error.MissingRedisUrl` (REDIS_URL_API unset)  → SkipZigTest.
+        //   • Any other error AND `CI` env unset (local dev) → SkipZigTest.
+        //     The Makefile defaults `REDIS_URL_API` to a localhost rediss://
+        //     URL even when no Redis is running; without this branch local
+        //     `make test-integration` cascades into hundreds of failures.
+        //   • Any other error AND `CI` env set (real CI run) →
+        //     `error.RedisRequiredForTestHarness`. Silent skip in CI would
+        //     mask coverage gaps — fail-hard is the intentional signal.
+        // The errdefers above own teardown. A manual cleanup chain here
+        // would double-call server.stop() (once explicit, once via
+        // errdefer); the second write to a closed close_fd is a segfault
+        // under httpz's eventfd-based shutdown.
+        h.connectRedis() catch |err| switch (err) {
+            error.MissingRedisUrl => return error.SkipZigTest,
+            else => {
+                if (std.process.getEnvVarOwned(alloc, "CI")) |v| {
+                    defer alloc.free(v);
+                    if (v.len > 0) return error.RedisRequiredForTestHarness;
+                } else |_| {}
+                return error.SkipZigTest;
+            },
+        };
         return h;
     }
 
