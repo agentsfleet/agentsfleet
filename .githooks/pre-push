@@ -1,45 +1,106 @@
 #!/usr/bin/env bash
-# Pre-push: comprehensive verification before anything leaves the machine.
-#
-# Always runs:
-#   - make test                       (tier 1 — Zig unit + zombiectl + website + app)
-#
-# Conditional on Zig changes since upstream (or main, on first push):
-#   - make test-integration-stub      (tier 2a — executor-side stub-binary contract; fast)
-#   - make test-integration           (tier 2b — worker integration vs real Postgres + Redis)
-#   - make memleak                    (allocator leak gate; valgrind on Linux CI)
-#
-# Stub-contract first: it's seconds-fast and fails on a redactor regression
-# without paying for postgres/redis startup. test-integration is the heavy
-# pass that follows.
-#
+# Pre-push: fast smoke verification. Heavy lanes live in CI.
 # Bypass for emergencies: `git push --no-verify` (discouraged per AGENTS.md).
+#
+# Stage shape:
+#   1. classify pushed files (since upstream / main fork-point) into 7 flags
+#   2. parallel matching test-unit-* lanes
+#
+# Surfaces:
+#   - test-unit-zombied        (*.zig, schema/*.sql — also runs test-unit-executor)
+#   - test-unit-zombiectl      (zombiectl/*)
+#   - test-unit-website        (ui/packages/website/*)
+#   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
+#   - test-unit-design-system  (ui/packages/design-system/*)
+#   - test-unit-skills         (tests/skill-evals/*, skills/*)
+#
+# Moved to CI (.github/workflows/{test-integration,memleak}.yml):
+#   - test-integration         — worker integration vs real Postgres + Redis
+#   - memleak                  — valgrind / allocator leak gate
+# Pre-push is the fast-smoke floor; CI is the comprehensive gate. The prior
+# behaviour held the SSH session idle for 15-20 min during tier-2 + memleak,
+# which github.com routinely dropped — the pack-write at end-of-hook then
+# failed with SIGPIPE even though every test passed locally.
 set -euo pipefail
 
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-echo "pre-push: make test"
-make test
-
-# Tier-2 + memleak fire when this push contains Zig changes — those are the
-# branches that exercise the integration paths and allocator wiring.
 if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
   upstream_ref='@{u}'
 else
-  # No upstream yet (first push of this branch) — gate against main fork point.
+  # No upstream yet (first push of this branch) — gate against main fork-point.
   upstream_ref="$(git merge-base HEAD main 2>/dev/null || git rev-list --max-parents=0 HEAD)"
 fi
 
-pushed_zig="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null | grep -E '\.zig$' || true)"
+pushed_files="$(git diff --name-only "$upstream_ref"..HEAD 2>/dev/null || true)"
 
-if [ -n "$pushed_zig" ]; then
-  echo "pre-push: make test-integration-stub (Zig changed since $upstream_ref)"
-  make test-integration-stub
-  echo "pre-push: make test-integration (Zig changed since $upstream_ref)"
-  make test-integration
-  echo "pre-push: make memleak (Zig changed since $upstream_ref)"
-  make memleak
-else
-  echo "pre-push: no Zig changes since $upstream_ref — skipping tier-2 + memleak"
+needs_test_zig=0
+needs_test_zombiectl=0
+needs_test_website=0
+needs_test_app=0
+needs_test_design_system=0
+needs_test_skills=0
+
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+  case "$f" in
+    *.zig|schema/*.sql)
+      needs_test_zig=1 ;;
+    zombiectl/*)
+      needs_test_zombiectl=1 ;;
+    ui/packages/website/*)
+      needs_test_website=1 ;;
+    ui/packages/app/*)
+      needs_test_app=1 ;;
+    ui/packages/design-system/*)
+      # DS is consumed by app — test both when DS changes.
+      needs_test_design_system=1
+      needs_test_app=1 ;;
+    tests/skill-evals/*|skills/*)
+      needs_test_skills=1 ;;
+  esac
+done <<< "$pushed_files"
+
+any_needed=$(( needs_test_zig + needs_test_zombiectl + needs_test_website + needs_test_app + needs_test_design_system + needs_test_skills ))
+
+if [ "$any_needed" -eq 0 ]; then
+  echo "pre-push: no test-relevant files since $upstream_ref — nothing to run"
+  exit 0
 fi
+
+# --- Parallel test lanes -----------------------------------------------------
+# test-unit-zombied internally runs test-unit-executor too — don't launch it
+# again separately. Output may interleave across lanes; each target prefixes
+# its lines ([zombied]/[app]/[website]/etc.) so the source is identifiable.
+pids=()
+names=()
+
+launch() {
+  local name="$1"; shift
+  echo "pre-push: $* (parallel)"
+  "$@" &
+  pids+=("$!")
+  names+=("$name")
+}
+
+[ "$needs_test_zig"           = 1 ] && launch test-unit-zombied        make test-unit-zombied
+[ "$needs_test_zombiectl"     = 1 ] && launch test-unit-zombiectl      make test-unit-zombiectl
+[ "$needs_test_website"       = 1 ] && launch test-unit-website        make test-unit-website
+[ "$needs_test_app"           = 1 ] && launch test-unit-app            make test-unit-app
+[ "$needs_test_design_system" = 1 ] && launch test-unit-design-system  make test-unit-design-system
+[ "$needs_test_skills"        = 1 ] && launch test-unit-skills         make test-unit-skills
+
+failed_names=()
+for i in "${!pids[@]}"; do
+  if ! wait "${pids[$i]}"; then
+    failed_names+=("${names[$i]}")
+  fi
+done
+
+if [ "${#failed_names[@]}" -gt 0 ]; then
+  echo "✗ pre-push: failed lanes — ${failed_names[*]}"
+  exit 1
+fi
+
+exit 0

@@ -15,7 +15,7 @@ const writepath = @import("event_loop_writepath.zig");
 const types = @import("event_loop_types.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
-const redis_pubsub = @import("../queue/redis_pubsub.zig");
+const redis_subscriber = @import("../queue/redis_subscriber.zig");
 const EventEnvelope = @import("event_envelope.zig");
 const base = @import("../db/test_fixtures.zig");
 const activity_publisher = @import("activity_publisher.zig");
@@ -54,12 +54,12 @@ const HEARTBEAT_INTERVAL_MAX_MS: i64 = 3_500;
 const HEARTBEAT_DRAIN_BUDGET_MS: u64 = 15_000;
 const EXPECTED_PROGRESS_FRAMES: usize = 3;
 
-// Drain runs on a background thread so it samples readMessage() in real
+// Drain runs on a background thread so it samples nextMessage() in real
 // time while writepath.run blocks the main thread for ~6s. Without
 // concurrency, all 3 frames buffer in the kernel/Redis pipeline and
 // collapse to ms-level intervals when the test thread drains afterwards.
 const DrainCtx = struct {
-    sub: *redis_pubsub.Subscriber,
+    sub: *redis_subscriber.Subscriber,
     alloc: Allocator,
     frames: *helpers.FrameList,
     budget_ms: u64,

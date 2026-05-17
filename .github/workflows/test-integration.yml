@@ -16,15 +16,15 @@ jobs:
   # redactor contract table. No Postgres / Redis needed; runs in seconds.
   # Carved out so a redactor regression fails fast in its own job, parallel
   # to the heavy worker integration suite.
-  test-integration-stub:
+  test-unit-executor:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     container:
       image: ghcr.io/usezombie/ci-zig-ubuntu:0.15.2
     steps:
       - uses: actions/checkout@v6
-      - name: Run stub-binary contract suite
-        run: make test-integration-stub
+      - name: Run executor-side mocked unit tests
+        run: make test-unit-executor
 
   test-integration:
     runs-on: ubuntu-latest

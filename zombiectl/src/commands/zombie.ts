@@ -12,8 +12,6 @@ import {
   VALIDATION_ERROR,
 } from "../constants/cli-errors.ts";
 import {
-  ERR_CRED_PLATFORM_KEY_MISSING,
-  ERR_CRED_ANTHROPIC_KEY_MISSING,
   ERR_VAULT_DATA_INVALID,
   ERR_EXEC_RUNNER_AGENT_RUN,
   ERR_INTERNAL_DB_UNAVAILABLE,
@@ -40,14 +38,6 @@ export const errorMap = compose(AUTH_PRESET, WORKSPACE_PRESET, ZOMBIE_PRESET, {
   [ERR_VAULT_DATA_INVALID]: {
     code: "CREDENTIAL_INVALID",
     message: "Credential JSON is invalid — must be a non-empty object ≤ 4 KiB.",
-  },
-  [ERR_CRED_ANTHROPIC_KEY_MISSING]: {
-    code: "CREDENTIAL_NOT_FOUND",
-    message: "Credential not found in this workspace.",
-  },
-  [ERR_CRED_PLATFORM_KEY_MISSING]: {
-    code: "CREDENTIAL_NAME_INVALID",
-    message: "Credential name is invalid — use lowercase letters, digits, and dashes.",
   },
   [ERR_EXEC_RUNNER_AGENT_RUN]: {
     code: "ZOMBIE_RUNNER_FAILED",
