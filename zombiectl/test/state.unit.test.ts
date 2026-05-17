@@ -136,6 +136,31 @@ test("loadSession propagates permission errors (does NOT silently regenerate dev
   });
 });
 
+test("appendTrace under concurrent writes produces well-formed NDJSON (T5 — O_APPEND atomicity)", async () => {
+  await withTempStateDir(async (dir) => {
+    // Simulate N parallel zombiectl invocations all hitting the same
+    // date file. Each writes one record. After Promise.all resolves,
+    // every line must be parseable JSON — interleaved bytes would
+    // produce broken lines and at least one JSON.parse would throw.
+    const N = 50;
+    const writes = Array.from({ length: N }, (_, i) =>
+      appendTrace({ ts: "x", command: `concurrent-${i}`, exit_code: 0, duration_ms: 1, seq: i }),
+    );
+    await Promise.all(writes);
+    const today = new Date().toISOString().slice(0, 10);
+    const body = await fs.readFile(path.join(dir, "traces", `${today}.ndjson`), "utf8");
+    const lines = body.split("\n").filter((line) => line.length > 0);
+    assert.equal(lines.length, N, "every concurrent write must produce exactly one line");
+    const seqs = new Set<number>();
+    for (const line of lines) {
+      const rec = JSON.parse(line) as { command: string; seq: number };
+      assert.ok(rec.command.startsWith("concurrent-"));
+      seqs.add(rec.seq);
+    }
+    assert.equal(seqs.size, N, "no records lost or duplicated under concurrent append");
+  });
+});
+
 test("appendTrace refuses to follow a planted symlink (security guard)", async () => {
   await withTempStateDir(async (dir) => {
     const tracesDir = path.join(dir, "traces");

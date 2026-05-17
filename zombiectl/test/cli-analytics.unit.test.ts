@@ -282,7 +282,8 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
 });
 
 test("runCli tracks unknown-command errors and still shuts down analytics when tracking throws", async () => {
-  await withStateDir(async () => {
+  await withStateDir(async (dir) => {
+    await pinSession(dir);
     await withAnalyticsStub(async () => {
       const events: Array<Omit<TrackedEvent, "client">> = [];
       let shutdownCalls = 0;
@@ -317,7 +318,41 @@ test("runCli tracks unknown-command errors and still shuts down analytics when t
       assert.equal(events.length, 1);
       assert.equal(events[0]?.event, "cli_error");
       assert.equal(events[0]?.distinctId, "anonymous");
+      // GAP B: commander-level cli_error must carry the same base props
+      // that runCommand's emits carry — otherwise PostHog loses session
+      // correlation on unknown-command / usage-error paths.
+      assert.equal(events[0]?.properties.cli_session_id, PINNED_SESSION);
+      assert.equal(events[0]?.properties.cli_device_id, PINNED_DEVICE);
       assert.equal(shutdownCalls, 1);
+    });
+  });
+});
+
+test("runCli persists session.json with bumped last_activity before returning (fast-exit flush guarantee)", async () => {
+  await withStateDir(async (dir) => {
+    await withAnalyticsStub(async () => {
+      cliAnalytics.createCliAnalytics = async () => null;
+      cliAnalytics.trackCliEvent = () => {};
+      cliAnalytics.shutdownCliAnalytics = async () => {};
+      const stdout = bufferStream();
+      const stderr = bufferStream();
+      // No session.json pre-existing — loadSession generates fresh.
+      const t0 = Date.now();
+      // --help is the fast-exit path most likely to race process.exit
+      // against a fire-and-forget saveSession. If the await regressed,
+      // this assertion would catch it: session.json must exist with a
+      // bumped last_activity by the time runCli returns.
+      await runCli(["--help"], {
+        env: { ...process.env, NO_COLOR: "1" },
+        stdout: stdout.stream,
+        stderr: stderr.stream,
+      });
+      const sessionPath = path.join(dir, "session.json");
+      const body = await fs.readFile(sessionPath, "utf8");
+      const parsed = JSON.parse(body) as { device_id: string; session_id: string; last_activity: number | null };
+      assert.match(parsed.device_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      assert.match(parsed.session_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+      assert.ok(typeof parsed.last_activity === "number" && parsed.last_activity >= t0, "last_activity must be bumped by runCli startup");
     });
   });
 });
