@@ -97,8 +97,13 @@ pub fn connectFromUrl(alloc: std.mem.Allocator, url: []const u8) !Client {
 
 pub fn connectFromUrlWithOptions(alloc: std.mem.Allocator, url: []const u8, options: InitOptions) !Client {
     const cfg = try redis_config.parseRedisUrl(alloc, url);
-    errdefer redis_config.deinitConfig(alloc, cfg);
-
+    // NOTE: do NOT register an `errdefer deinitConfig(alloc, cfg)` here.
+    // `Pool.init` takes ownership of cfg unconditionally — it has its own
+    // `errdefer redis_config.deinitConfig(alloc, pool.cfg)` (pool.zig:73)
+    // that fires on init failure, AND owns the cfg in `pool.deinit()` on
+    // success. A second errdefer at this layer double-frees cfg.host on
+    // Pool.init failure (segfault in `@memset` poisoning of already-freed
+    // memory).
     var pool = try Pool.init(alloc, cfg, .{ .read_timeout_ms = options.read_timeout_ms });
     errdefer pool.deinit();
 
