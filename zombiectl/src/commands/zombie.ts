@@ -89,7 +89,7 @@ export async function commandStatus(
   workspaces: Workspaces,
   deps: CommandDeps,
 ): Promise<number> {
-  const { request, apiHeaders, ui, printJson, printKeyValue, printSection = () => {}, writeLine } = deps;
+  const { request, apiHeaders, ui, printJson, printKeyValue, printSection, writeLine } = deps;
   const wsId = requireWorkspace(ctx, workspaces, deps);
   if (!wsId) return 1;
 

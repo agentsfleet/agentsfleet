@@ -31,7 +31,7 @@ export async function commandEvents(
   workspaces: Workspaces,
   deps: CommandDeps,
 ): Promise<number> {
-  const { request, apiHeaders, ui, printJson, printSection = () => {}, writeLine, writeError } = deps;
+  const { request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
   const zombieId = parsed.positionals[0];
 
   const wsId = workspaces.current_workspace_id;

@@ -51,7 +51,7 @@ export async function workspaceAdd(
   workspaces: Workspaces,
   deps: CommandDeps,
 ): Promise<number> {
-  const { apiHeaders, printJson, printKeyValue, printSection = () => {}, request, saveWorkspaces } = deps;
+  const { apiHeaders, printJson, printKeyValue, printSection, request, saveWorkspaces } = deps;
   const ws = workspaces;
   const name = parsed.positionals[0] || null;
 
@@ -181,7 +181,7 @@ export async function workspaceShow(
   workspaces: Workspaces,
   deps: CommandDeps,
 ): Promise<number> {
-  const { printJson, printKeyValue, printSection = () => {} } = deps;
+  const { printJson, printKeyValue, printSection } = deps;
   const ws = workspaces;
   const fromOpt = resolveOption(parsed.options, "workspaceId", "workspace-id");
   const workspaceId =
@@ -224,7 +224,7 @@ export async function workspaceCredentials(
   _workspaces: Workspaces,
   deps: CommandDeps,
 ): Promise<number> {
-  const { printJson, printSection = () => {}, ui, writeLine } = deps;
+  const { printJson, printSection, ui, writeLine } = deps;
   if (ctx.jsonMode && ctx.stdout) {
     printJson(ctx.stdout, {
       status: "redirect",

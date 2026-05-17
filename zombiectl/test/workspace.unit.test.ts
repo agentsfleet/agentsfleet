@@ -23,6 +23,7 @@ function makeDeps(overrides: Partial<CommandDeps> = {}): CommandDeps {
     openUrl: async () => false,
     printJson: (_s: NodeJS.WritableStream, _v: unknown) => {},
     printKeyValue: () => {},
+    printSection: () => {},
     printTable: () => {},
     request: async () => ({}),
     saveCredentials: async () => {},

@@ -27,7 +27,7 @@ export async function commandLogs(
   workspaces: Workspaces,
   deps: CommandDeps,
 ): Promise<number> {
-  const { request, apiHeaders, ui, printJson, printSection = () => {}, writeLine, writeError } = deps;
+  const { request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
   const limitOpt = parsed.options["limit"];
   const limit =
     typeof limitOpt === "string" || typeof limitOpt === "number"

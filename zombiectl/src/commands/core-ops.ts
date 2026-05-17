@@ -47,7 +47,7 @@ export async function commandDoctor(
   workspaces: Workspaces,
   deps: CommandDeps,
 ): Promise<number> {
-  const { apiHeaders, printJson, printSection = () => {}, request, ui, writeLine } = deps;
+  const { apiHeaders, printJson, printSection, request, ui, writeLine } = deps;
 
   const checks: DoctorCheck[] = [];
 

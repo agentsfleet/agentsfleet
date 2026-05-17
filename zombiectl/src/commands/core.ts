@@ -162,7 +162,7 @@ function announceLoginSession(
   loginUrl: string,
   deps: CommandDeps,
 ): void {
-  const { printKeyValue, printSection = () => {}, writeLine } = deps;
+  const { printKeyValue, printSection, writeLine } = deps;
   if (ctx.jsonMode || !ctx.stdout) return;
   printSection(ctx.stdout, "Login session");
   printKeyValue(ctx.stdout, { session_id: sessionId, login_url: loginUrl });
