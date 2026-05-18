@@ -117,6 +117,8 @@ const configLayer = (overrides: Partial<{
     accessToken: overrides.accessToken ?? Option.none(),
     jsonMode: overrides.jsonMode ?? false,
     noOpen: false,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
   });
 
 const unused = <T>(): Layer.Layer<T> =>

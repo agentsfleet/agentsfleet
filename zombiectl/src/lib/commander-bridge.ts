@@ -21,6 +21,7 @@
 import { Cause, Clock, Effect, Exit, Layer, Option } from "effect";
 import { CommanderError, type Command } from "commander";
 import { commandRuntimeFromValuesLayer } from "../runtime/command-runtime.service.ts";
+import { cliConfigLayer } from "../services/config.ts";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { analyticsLayer } from "../services/telemetry/analytics.layer.ts";
 import { EVT_CLI_COMMAND_EXECUTED } from "../services/telemetry/command-instrumentation.ts";
@@ -100,7 +101,10 @@ function mainLayerForCommanderParse() {
       commandPath: [...PARSE_COMMAND_PATH],
       commandRunId: PARSE_COMMAND_RUN_ID,
     }),
-    analyticsLayer.pipe(Layer.provide(telemetryRuntimeLayer)),
+    analyticsLayer.pipe(
+      Layer.provide(telemetryRuntimeLayer),
+      Layer.provide(cliConfigLayer),
+    ),
     tracingLayer.pipe(Layer.provide(telemetryRuntimeLayer)),
   );
 }

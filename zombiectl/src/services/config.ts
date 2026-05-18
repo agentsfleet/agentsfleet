@@ -11,6 +11,11 @@ import type { FetchImpl } from "../lib/http.ts";
 
 const DEFAULT_API_URL = "https://api.usezombie.com";
 const DEFAULT_DASHBOARD_URL = "https://dashboard.usezombie.com";
+// PostHog project key is public-by-design (write-only capture scope,
+// no read/admin), same model as Stripe pk_live_…. Supabase ships
+// theirs as a plain string in cli-config.layer.ts; we match that.
+export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
+export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3bXzv"; // gitleaks:allow — public phc_ key (write-only capture scope), see header comment
 
 export interface CliConfigShape {
   readonly apiUrl: string;
@@ -18,6 +23,8 @@ export interface CliConfigShape {
   readonly accessToken: Option.Option<Redacted.Redacted<string>>;
   readonly jsonMode: boolean;
   readonly noOpen: boolean;
+  readonly telemetryPosthogKey: string;
+  readonly telemetryPosthogHost: string;
   // Injectable fetch impl — integration tests pass a stubbed fetch via
   // runCli's RunCliIo, which threads here so HttpClient bypasses
   // globalThis.fetch. Defaults to undefined → globalThis.fetch.
@@ -42,6 +49,10 @@ export const resolveCliConfig = (): CliConfigShape => {
   const dashboardUrl =
     trimmed(readEnv("ZOMBIE_DASHBOARD_URL")) ?? DEFAULT_DASHBOARD_URL;
   const envToken = trimmed(readEnv("ZOMBIE_TOKEN"));
+  const telemetryPosthogKey =
+    trimmed(readEnv("ZOMBIE_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
+  const telemetryPosthogHost =
+    trimmed(readEnv("ZOMBIE_TELEMETRY_POSTHOG_HOST")) ?? DEFAULT_POSTHOG_HOST;
   return {
     apiUrl,
     dashboardUrl,
@@ -51,6 +62,8 @@ export const resolveCliConfig = (): CliConfigShape => {
         : Option.none(),
     jsonMode: false,
     noOpen: false,
+    telemetryPosthogKey,
+    telemetryPosthogHost,
   };
 };
 

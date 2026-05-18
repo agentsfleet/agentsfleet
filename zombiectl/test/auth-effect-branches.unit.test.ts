@@ -71,6 +71,8 @@ const configLayer = (jsonMode = false, envToken: string | null = null): Layer.La
       envToken !== null ? Option.some(Redacted.make(envToken)) : Option.none(),
     jsonMode,
     noOpen: false,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
   });
 
 const analyticsLayer: Layer.Layer<Analytics> = Layer.succeed(Analytics, {

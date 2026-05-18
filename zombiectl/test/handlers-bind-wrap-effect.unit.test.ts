@@ -36,16 +36,13 @@ const frame: ActionFrame = {
 let stateDir: string;
 let prevStateDir: string | undefined;
 let prevTelemetryDisabled: string | undefined;
-let prevPosthogKey: string | undefined;
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "zombiectl-wrap-effect-"));
   prevStateDir = process.env.ZOMBIE_STATE_DIR;
   prevTelemetryDisabled = process.env.ZOMBIE_TELEMETRY_DISABLED;
-  prevPosthogKey = process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY;
   process.env.ZOMBIE_STATE_DIR = stateDir;
   process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
-  process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY = "";
 });
 
 afterEach(() => {
@@ -53,8 +50,6 @@ afterEach(() => {
   else process.env.ZOMBIE_STATE_DIR = prevStateDir;
   if (prevTelemetryDisabled === undefined) delete process.env.ZOMBIE_TELEMETRY_DISABLED;
   else process.env.ZOMBIE_TELEMETRY_DISABLED = prevTelemetryDisabled;
-  if (prevPosthogKey === undefined) delete process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY;
-  else process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY = prevPosthogKey;
   rmSync(stateDir, { recursive: true, force: true });
 });
 
