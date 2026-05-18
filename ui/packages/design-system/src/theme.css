@@ -222,4 +222,6 @@
    * `transition-colors duration-snap ease-snap`. */
   --ease-snap: var(--easing-snap);
   --duration-snap: var(--motion-duration-snap);
+  --ease-fade: var(--easing-fade);
+  --duration-fade: var(--motion-duration-fade);
 }

@@ -9,6 +9,8 @@ const analytics = vi.hoisted(() => ({
 
 vi.mock("../analytics/posthog", () => analytics);
 
+import { TOAST_FADE_MS } from "@usezombie/design-system";
+
 import Hero from "./Hero";
 
 const INSTALL_COMMAND =
@@ -153,6 +155,12 @@ describe("Hero", () => {
     );
     await act(async () => {
       vi.advanceTimersByTime(2100);
+    });
+    // Visible window closed; children remain mounted for one fade-out
+    // window so the opacity transition is perceptible. Advance past
+    // TOAST_FADE_MS to assert the children have unmounted.
+    await act(async () => {
+      vi.advanceTimersByTime(TOAST_FADE_MS + 50);
     });
     expect((screen.getByTestId("hero-cta-toast").textContent ?? "").trim()).toBe("");
   });

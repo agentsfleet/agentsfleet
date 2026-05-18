@@ -179,6 +179,7 @@ export {
 } from "./use-resettable-timeout";
 export {
   Toast,
+  TOAST_FADE_MS,
   toastVariants,
   type ToastProps,
   type ToastSeverity,
