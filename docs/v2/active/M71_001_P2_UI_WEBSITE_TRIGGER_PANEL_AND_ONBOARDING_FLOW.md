@@ -14,8 +14,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M71
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** DONE
-**Priority:** P2 — completes the M68 trigger DX surface (per-trigger cards, provider guidance table, OnboardingFlow, Hero CTA) that was deferred during M68's CHORE(close). Not blocking any other workstream.
+**Status:** IN_PROGRESS
+**Priority:** P2 — completes the M68 trigger DX surface (per-trigger cards, provider guidance table, OnboardingFlow, Hero CTA) that was deferred during M68's CHORE(close), plus §7 hero promo pill (Captain ask, in-PR amendment May 18, 2026). Not blocking any other workstream.
 **Categories:** UI, WEBSITE
 **Batch:** B1
 **Branch:** feat/m71-001-p2-trigger-panel-onboarding-flow
@@ -79,8 +79,10 @@ No server-side surface touched. No new HTTP endpoints. No schema changes. No new
 | `ui/packages/website/src/components/OnboardingFlow.test.tsx` | NEW | §5 | Snapshot. |
 | `ui/packages/website/src/pages/Home.tsx` | EDIT | §5 | Mount OnboardingFlow (disposition a or b). |
 | `ui/packages/website/src/components/FeatureFlow.tsx` + `FeatureFlow.test.tsx` | DELETE (disposition a only) | §5 | Replaced by OnboardingFlow. |
-| `ui/packages/website/src/components/Hero.tsx` | EDIT | §6 | Primary CTA redesign — clipboard + toast + smooth-scroll to `#onboarding-flow`. |
-| `ui/packages/website/src/components/Hero.test.tsx` | EDIT | §6 | New CTA assertions. |
+| `ui/packages/website/src/components/Hero.tsx` | EDIT | §6, §7 | Primary CTA redesign (§6) — clipboard + toast + smooth-scroll to `#onboarding-flow`. Promo pill (§7) between LIVE eyebrow and headline. |
+| `ui/packages/website/src/components/Hero.test.tsx` | EDIT | §6, §7 | New CTA assertions (§6) + promo-pill assertions (§7). |
+| `ui/packages/website/src/lib/rates.ts` | EDIT | §7 | Add `RATES_DISPLAY.FREE_TRIAL_PILL` (short pill string) sharing the date with `FREE_TRIAL_BANNER` via a private `FREE_TRIAL_END_DISPLAY` substring. |
+| `ui/packages/website/src/lib/rates.test.ts` | EDIT | §7 | Pin pill / banner share a single date substring; pin pill text format. |
 
 > **Anti-pattern guard:** no file in `zombiectl/`, `src/` (Zig), `docs/v2/done/`, or `docs/AUTH.md` is touched by this spec. CLI auth-flow work lives in M74_002.
 
@@ -237,6 +239,27 @@ The four cards (verbatim from M68 §G5):
 
 ---
 
+### §7 — Hero promo pill (Pioneer-pattern, in-PR amendment May 18, 2026)
+
+**Provenance:** in-PR Captain ask on PR #330. The free-trial pricing posture ("Free until July 31, 2026 — every event receipt and stage execution is on us") already lives on the pricing component (`Pricing.tsx` consuming `RATES_DISPLAY.FREE_TRIAL_BANNER`) but is invisible above the fold on the landing page. The promo is concrete, time-bound, and asymmetrically converting vs the generic "try for free" framing — the landing should make it explicit.
+
+**What lands:** between the LIVE eyebrow `<p data-testid="hero-eyebrow">` and the `<h1 data-testid="hero-headline">` in `Hero.tsx`, render a React Router `<Link to="/pricing">` styled as a small mono pill carrying a `Promo` lozenge + the short trial-end string + an aria-hidden `→`. Shape mirrors Pioneer's "Free inference on Opus 4.7 until Aug 1 →" pattern. Pill text is **derived from the rates pin**, not hardcoded in `Hero.tsx`.
+
+**Rates-pin coupling:** `ui/packages/website/src/lib/rates.ts` is the source of truth for the trial-end display string. A new `RATES_DISPLAY.FREE_TRIAL_PILL` ("Free until July 31, 2026") is added; both `FREE_TRIAL_BANNER` (pricing) and `FREE_TRIAL_PILL` (hero) consume a single internal `FREE_TRIAL_END_DISPLAY` substring so the date can never drift between hero and pricing. The numeric `FREE_TRIAL_END_MS` constant remains the cross-tier-pinned source (audit-cross-tier-rates.sh enforces it across Zig + 3 TS surfaces); the display string is a TS-only display-layer mirror.
+
+**File:** `ui/packages/website/src/components/Hero.tsx` — EDIT, insert between the existing eyebrow `<p>` and `<h1>` blocks (~lines 78–91 post-§6).
+
+**Design tokens (no arbitrary values, DESIGN TOKEN GATE compliant):**
+- Container: `inline-flex items-center gap-2 rounded-full bg-card border border-border px-3 py-1 text-sm font-mono text-text-muted hover:text-text transition-colors w-fit`
+- `Promo` lozenge: `rounded-full bg-pulse text-pulse-fg px-2 py-0.5 text-xs uppercase tracking-eyebrow font-medium`
+- Trailing `→` is `aria-hidden="true"`; the link's accessible name is its text content.
+
+**Tests:** `Hero.test.tsx` — assert (a) pill renders with `data-testid="hero-promo-pill"`, (b) it is an `<a>` with `href="/pricing"`, (c) it contains the literal "Free until July 31, 2026" string sourced from `RATES_DISPLAY.FREE_TRIAL_PILL`, (d) the pill renders before the `<h1>` in document order (DOM-position check, not snapshot). `rates.test.ts` — assert (e) `RATES_DISPLAY.FREE_TRIAL_PILL` equals the exact pin string, (f) the pill string and the banner string share the same `"July 31, 2026"` date substring (single-source-of-truth invariant).
+
+**Acceptance:** the existing 12 Hero.test.tsx rows continue to pass byte-for-byte (no §6 regression); 4 new rows green; rates.test.ts gains 2 rows.
+
+---
+
 ## Interfaces
 
 No HTTP / OpenAPI / wire surface added or changed. No new dashboard or website routes. The contracts this spec locks:
@@ -270,6 +293,8 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 | `navigator.clipboard.writeText` rejects (insecure context / permission denied) | Browser restricts clipboard access | Fallback to a visible "Copy this command:" prose block with the command selectable; the toast still fires but with prose "Selected — copy manually." |
 | `scrollIntoView` no-op (anchor missing because §5 didn't land yet) | §6 lands before §5 | §6 PR must include §5; the dependency is documented. CI test for §6 asserts `#onboarding-flow` exists in the rendered Home page. |
 | Bundle-size regression beyond the website's 140 kB landing-js ceiling (`ui/packages/website/.size-limit.json`) | `cron-parser` or other §4 dep | Implementer measures pre-/post-bundle size; if over budget, swap for a smaller cron parser or roll a minimal expression-only formatter. |
+| Hero promo pill date drifts from `RATES_DISPLAY.FREE_TRIAL_BANNER` date | Someone edits the pill string without touching the banner (or vice versa) | Both consume a single private `FREE_TRIAL_END_DISPLAY` substring in `rates.ts`. `rates.test.ts` pins the shared substring; drift fails the test. |
+| Hero promo pill date drifts from `FREE_TRIAL_END_MS` numeric pin | Someone bumps `FREE_TRIAL_END_MS` (Zig + 3 TS surfaces, audit-cross-tier-rates.sh enforced) but forgets the display string | Out-of-scope automation for now; the rates.ts module-level comment names the coupling, the audit script flags numeric drift, and the human PR review is the catch for the display string until a future spec adds a `FREE_TRIAL_END_MS → display` derivation. |
 
 ---
 
@@ -279,6 +304,7 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 2. **No file added or modified by this spec exceeds 350 lines.** Enforced by RULE FLL pre-commit hook. The provider-guidance table splits per-provider if it grows.
 3. **The M68 shipped `TriggerPanel` test rows continue to pass** (or their assertions move to the new TriggerPanel.test.ts with equivalent coverage). No regression of M68 acceptance.
 4. **No `as any` / `!` / `@ts-expect-error` introduced.** Enforced by `bun run lint` + `bun run typecheck`.
+5. **Hero promo pill date string is never hardcoded in `Hero.tsx`.** §7. Pill consumes `RATES_DISPLAY.FREE_TRIAL_PILL` from `rates.ts`. Enforced by code review + rates.test.ts pinning the substring share with `FREE_TRIAL_BANNER`.
 
 ---
 
@@ -304,6 +330,10 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 | `test_hero_cta_shows_toast_then_dismisses` | Toast appears for ~2s then disappears. |
 | `test_hero_cta_scrolls_to_onboarding_flow` | `scrollIntoView` called on the `#onboarding-flow` element. |
 | `test_existing_trigger_panel_tabs_assertions_preserved` | If the Tabs-UI code path remains as the "no triggers" fallback, M68's existing test rows continue to pass byte-for-byte. |
+| `test_hero_promo_pill_renders_link_to_pricing` | Pill renders with `data-testid="hero-promo-pill"`, is an `<a>` whose `href="/pricing"`, contains the literal "Free until July 31, 2026" sourced from `RATES_DISPLAY.FREE_TRIAL_PILL`. |
+| `test_hero_promo_pill_precedes_headline_in_document_order` | DOM position check: pill node sits before `<h1 data-testid="hero-headline">` and after `<p data-testid="hero-eyebrow">`. |
+| `test_rates_display_free_trial_pill_pinned` | `RATES_DISPLAY.FREE_TRIAL_PILL` literal equals `"Free until July 31, 2026"`. |
+| `test_rates_display_pill_and_banner_share_trial_end_date` | Both `RATES_DISPLAY.FREE_TRIAL_PILL` and `RATES_DISPLAY.FREE_TRIAL_BANNER` contain the `"July 31, 2026"` substring (single source of truth). |
 
 Per-section acceptance criteria match the §X "Acceptance" blocks above.
 
