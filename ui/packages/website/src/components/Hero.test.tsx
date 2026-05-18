@@ -100,6 +100,43 @@ describe("Hero", () => {
     }
   });
 
+  it("honors prefers-reduced-motion: reduce by using behavior='auto' on scroll", async () => {
+    installClipboard();
+    const anchor = document.createElement("section");
+    anchor.id = "onboarding-flow";
+    const scrollIntoView = vi.fn();
+    anchor.scrollIntoView = scrollIntoView;
+    document.body.appendChild(anchor);
+    const matchMedia = vi.fn().mockImplementation((query: string) => ({
+      matches: query === "(prefers-reduced-motion: reduce)",
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+      onchange: null,
+    }));
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: matchMedia,
+    });
+    try {
+      renderHero();
+      fireEvent.click(screen.getByTestId("hero-cta-primary"));
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView.mock.calls[0][0]).toMatchObject({ behavior: "auto" });
+    } finally {
+      document.body.removeChild(anchor);
+      Object.defineProperty(window, "matchMedia", {
+        configurable: true,
+        writable: true,
+        value: undefined,
+      });
+    }
+  });
+
   it("shows the copied toast then dismisses it after the visible window", async () => {
     vi.useFakeTimers();
     installClipboard();

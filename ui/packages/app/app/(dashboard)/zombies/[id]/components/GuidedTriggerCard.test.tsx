@@ -31,6 +31,41 @@ describe("GuidedTriggerCard", () => {
     expect(screen.getByText("On workflow_run, push")).toBeTruthy();
   });
 
+  it("renders without crashing when the trigger has no `events` field (??-fallback)", () => {
+    // Branch coverage: `trigger.events ?? []` right side. Real TRIGGER.md
+    // entries may omit `events` to mean "all events"; the provider's
+    // `eventsLabel([])` returns a sensible default per provider.
+    render(
+      <GuidedTriggerCard
+        trigger={{ type: "webhook", source: "github" }}
+        webhookUrl={WEBHOOK}
+        guidance={PROVIDER_GUIDANCE.github}
+        lastDeliveryAt={null}
+      />,
+    );
+    expect(screen.getByText("GitHub")).toBeTruthy();
+    // GitHub's default eventsLabel for [] is provider-specific; we assert
+    // only that the rendered command is non-empty (proves the ??-fallback
+    // didn't blow up downstream).
+    expect(screen.getByTestId("command-github").textContent?.length).toBeGreaterThan(0);
+  });
+
+  it("hides the Variables block when the provider declares zero variables (slack)", () => {
+    // Branch coverage: `guidance.variables.length > 0 ? ... : null` false path.
+    // Slack's variables list is empty after the M71 P1 fix — pinned here so a
+    // future provider table change can't silently re-introduce a dead Variables
+    // section.
+    render(
+      <GuidedTriggerCard
+        trigger={{ type: "webhook", source: "slack", events: ["message"] }}
+        webhookUrl={`${WEBHOOK.replace("/github", "/slack")}`}
+        guidance={PROVIDER_GUIDANCE.slack}
+        lastDeliveryAt={null}
+      />,
+    );
+    expect(screen.queryByText(/^Variables$/)).toBeNull();
+  });
+
   it("renders the webhook URL inside a copyable code block", () => {
     renderCard();
     const code = screen.getByTestId("webhook-url");

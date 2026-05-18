@@ -169,6 +169,15 @@ function LastDeliveryBadge({ at }: { at: number | null | undefined }) {
   );
 }
 
+// First-class sources get tailored copy. Everything else falls through to the
+// generic "Unknown provider" line. `api` and `legacy` are NOT unknown — they
+// are declared shapes the panel uses CopyUrlFallback for as the rendering
+// strategy; calling them "Unknown provider" misleads operators during setup.
+const COPY_URL_FALLBACK_HELPER_TEXT: Record<string, string> = {
+  api: "API ingress — POST events directly to this URL.",
+  legacy: "Bare webhook URL — POST events here from any service.",
+};
+
 function CopyUrlFallback({ url, source }: { url: string; source: string }) {
   const [copied, setCopied] = useState(false);
   const resetTimer = useResettableTimeout();
@@ -181,6 +190,9 @@ function CopyUrlFallback({ url, source }: { url: string; source: string }) {
       // clipboard unavailable
     }
   }
+  const helperText =
+    COPY_URL_FALLBACK_HELPER_TEXT[source] ??
+    "Unknown provider — paste this URL into any webhook-capable service.";
   return (
     <div className="flex flex-col gap-2" data-testid={`copy-url-fallback-${source}`}>
       <span className="font-mono text-label uppercase tracking-label text-muted-foreground">
@@ -204,9 +216,7 @@ function CopyUrlFallback({ url, source }: { url: string; source: string }) {
           {copied ? "Copied" : "Copy"}
         </Button>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Unknown provider — paste this URL into any webhook-capable service.
-      </p>
+      <p className="text-xs text-muted-foreground">{helperText}</p>
     </div>
   );
 }

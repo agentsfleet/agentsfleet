@@ -45,9 +45,39 @@ describe("TriggerPanel", () => {
     await waitFor(() =>
       expect(screen.getByTestId("copy-url-fallback-weirdco")).toBeTruthy(),
     );
+    expect(screen.getByTestId("copy-url-fallback-weirdco").textContent).toMatch(
+      /Unknown provider — paste this URL into any webhook-capable service\./,
+    );
     expect(screen.getByTestId("webhook-url").textContent).toBe(
       "https://api-dev.usezombie.com/v1/webhooks/zmb_x/weirdco",
     );
+  });
+
+  it("renders the API-ingress helper line on the api trigger card (not the unknown-provider copy)", async () => {
+    render(<TriggerPanel zombieId="zmb_x" triggers={[{ type: "api" }]} />);
+    // Single api trigger with no recorded delivery → auto-expands on mount.
+    await waitFor(() => expect(screen.getByTestId("copy-url-fallback-api")).toBeTruthy());
+    const card = screen.getByTestId("copy-url-fallback-api");
+    expect(card.textContent).toMatch(/API ingress — POST events directly to this URL\./);
+    expect(card.textContent).not.toMatch(/Unknown provider/);
+  });
+
+  it("renders the bare-webhook helper line on the empty-triggers fallback (legacy source)", async () => {
+    render(<TriggerPanel zombieId="zmb_x" />);
+    const card = screen.getByTestId("copy-url-fallback-legacy");
+    expect(card.textContent).toMatch(/Bare webhook URL — POST events here from any service\./);
+    expect(card.textContent).not.toMatch(/Unknown provider/);
+  });
+
+  it("collapses an open accordion item when the user clicks the trigger again", () => {
+    // Branch coverage: `onValueChange={(v) => setOpenValue(v || undefined)}`
+    // — the user-collapse path where Radix passes `""` and we coerce to
+    // `undefined`. Auto-expand paths only exercise the expand half.
+    render(<TriggerPanel zombieId="zmb_x" triggers={[githubTrigger]} />);
+    const triggerBtn = screen.getByRole("button", { name: /Webhook · github/i });
+    expect(triggerBtn.getAttribute("aria-expanded")).toBe("true"); // auto-expanded
+    fireEvent.click(triggerBtn);
+    expect(triggerBtn.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("renders the never-delivered badge when lastDeliveryByKey reports null", () => {

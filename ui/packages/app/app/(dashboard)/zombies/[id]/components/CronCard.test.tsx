@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import { CronExpressionParser } from "cron-parser";
 import CronCard from "./CronCard";
 
 afterEach(() => cleanup());
@@ -28,6 +29,25 @@ describe("CronCard", () => {
     render(<CronCard trigger={{ type: "cron", schedule: "*/15 * * * *" }} zombieId="zmb_x" />);
     const link = screen.getByTestId("cron-deliveries-link");
     expect(link.getAttribute("href")).toBe("/zombies/zmb_x?actor=cron:*");
+  });
+
+  it("uses the literal 'unparseable' fallback reason when the parser throws a non-Error", () => {
+    // Branch coverage: the `err instanceof Error ? err.message : "unparseable"`
+    // ternary's right side. Real cron-parser always throws Error subclasses;
+    // we stub it to throw a plain string to force the fallback path.
+    const spy = vi.spyOn(CronExpressionParser, "parse").mockImplementation(() => {
+      throw "raw string, not an Error";
+    });
+    try {
+      render(
+        <CronCard trigger={{ type: "cron", schedule: "*/15 * * * *" }} zombieId="zmb_x" />,
+      );
+      expect(screen.getByTestId("cron-next-fire-error").textContent).toMatch(
+        /Schedule unparseable — check/,
+      );
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("falls back to UTC when the runtime cannot resolve a timezone", () => {
