@@ -10,8 +10,9 @@ import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
-import { ERR_UNAUTHORIZED } from "../src/constants/error-codes.ts";
 import { AuthError, ServerError } from "../src/errors/index.ts";
+
+const ERR_UNAUTHORIZED = "UZ-AUTH-002";
 
 interface Recorder {
   readonly stdout: string[];
