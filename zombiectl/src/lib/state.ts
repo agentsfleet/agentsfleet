@@ -12,7 +12,6 @@ export interface StatePaths {
   readonly credentialsPath: string;
   readonly workspacesPath: string;
   readonly sessionPath: string;
-  readonly tracesDir: string;
 }
 
 export interface Session {
@@ -21,15 +20,13 @@ export interface Session {
   last_activity: number | null;
 }
 
-// Pinned from Supabase's identity.ts / tracing.layer.ts. Inactivity past
-// SESSION_TIMEOUT_MS rotates session_id (device_id stays permanent).
-// Traces older than TRACE_RETENTION_DAYS are swept at CLI startup.
+// Pinned from Supabase's identity.ts. Inactivity past SESSION_TIMEOUT_MS
+// rotates session_id (device_id stays permanent).
 export const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
-export const TRACE_RETENTION_DAYS = 7;
 
 // Every file under baseDir is owner-rw-only: credentials, workspaces,
-// session.json, and the rolling traces/*.ndjson. Single named const so
-// the policy is enforced from one site.
+// session.json. Single named const so the policy is enforced from
+// one site.
 const STATE_FILE_MODE = 0o600;
 
 export interface Credentials {
@@ -60,7 +57,6 @@ function resolveStatePaths(): StatePaths {
     credentialsPath: path.join(baseDir, "credentials.json"),
     workspacesPath: path.join(baseDir, "workspaces.json"),
     sessionPath: path.join(baseDir, "session.json"),
-    tracesDir: path.join(baseDir, "traces"),
   };
 }
 
@@ -175,65 +171,6 @@ export async function loadSession(): Promise<Session> {
 export async function saveSession(next: Session): Promise<void> {
   const { sessionPath } = resolveStatePaths();
   await writeJson(sessionPath, next);
-}
-
-// Append one JSON line to today's trace file. Best-effort: silently
-// drops the record on disk-full / permission-denied / EROFS so the CLI
-// boundary path never throws on telemetry. Caller passes a fully formed
-// record (no shape coercion happens here).
-//
-// Symlink guard: refuse to write through a pre-existing symlink so an
-// attacker who plants `traces/YYYY-MM-DD.ndjson` -> /etc/something can't
-// trick this code into appending and chmod'ing an arbitrary file.
-//
-// Mode enforcement: `fs.appendFile`'s `mode` option is only honored on
-// creation; explicit chmod after the append guarantees STATE_FILE_MODE
-// even when the trace file was previously widened.
-export async function appendTrace(record: Record<string, unknown>): Promise<void> {
-  const { tracesDir } = resolveStatePaths();
-  const today = new Date().toISOString().slice(0, 10);
-  const tracePath = path.join(tracesDir, `${today}.ndjson`);
-  try {
-    await fs.mkdir(tracesDir, { recursive: true });
-    try {
-      const lst = await fs.lstat(tracePath);
-      if (lst.isSymbolicLink()) return; // never follow planted symlinks
-    } catch {
-      // ENOENT is fine — file will be created by appendFile.
-    }
-    await fs.appendFile(tracePath, `${JSON.stringify(record)}\n`, { mode: STATE_FILE_MODE });
-    await fs.chmod(tracePath, STATE_FILE_MODE);
-  } catch {
-    // Telemetry never breaks the CLI boundary.
-  }
-}
-
-// Sweep trace files older than TRACE_RETENTION_DAYS. Best-effort and
-// silent — every failure (missing dir, unparseable name, unlink racing
-// with a concurrent CLI) is swallowed so telemetry never blocks UX.
-export async function cleanupTraces(tracesDir?: string): Promise<void> {
-  const dir = tracesDir ?? resolveStatePaths().tracesDir;
-  let entries: string[];
-  try {
-    entries = await fs.readdir(dir);
-  } catch {
-    return;
-  }
-  const cutoffMs = Date.now() - TRACE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-  await Promise.all(
-    entries.map(async (entry) => {
-      const match = /^(\d{4}-\d{2}-\d{2})\.ndjson$/.exec(entry);
-      const dateStr = match?.[1];
-      if (typeof dateStr !== "string") return;
-      const fileMs = Date.parse(`${dateStr}T00:00:00Z`);
-      if (!Number.isFinite(fileMs) || fileMs >= cutoffMs) return;
-      try {
-        await fs.unlink(path.join(dir, entry));
-      } catch {
-        // Concurrent CLI may have already removed it.
-      }
-    }),
-  );
 }
 
 export const stateInternals = {
