@@ -18,13 +18,27 @@ test.describe("Home page", () => {
   });
 
   test("renders hero CTAs", async ({ page }) => {
+    // Primary CTA is a clipboard-copy button that carries the install
+    // one-liner as its visible label — not a docs anchor.
     const install = page.getByTestId("hero-cta-primary");
     await expect(install).toBeVisible();
-    await expect(install).toHaveAttribute("href", /docs\.usezombie\.com\/quickstart/);
+    await expect(install).toHaveJSProperty("tagName", "BUTTON");
+    await expect(install).not.toHaveAttribute("href", /./);
+    await expect(install).toContainText(
+      "npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie",
+    );
 
     const replay = page.getByTestId("hero-cta-secondary");
     await expect(replay).toBeVisible();
     await expect(replay).toHaveAttribute("href", "/agents");
+
+    // Promo pill between the LIVE eyebrow and the headline links to the
+    // inline /pricing anchor and surfaces the rates-pin trial-end string
+    // (`RATES_DISPLAY.FREE_TRIAL_PILL` in lib/rates.ts).
+    const pill = page.getByTestId("hero-promo-pill");
+    await expect(pill).toBeVisible();
+    await expect(pill).toHaveAttribute("href", "/pricing");
+    await expect(pill).toContainText(/Free until July 31, 2026/);
 
     await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
   });
@@ -43,10 +57,15 @@ test.describe("Home page", () => {
     await expect(brandMark).toHaveAttribute("data-live", "true");
   });
 
-  test("renders feature flow rows", async ({ page }) => {
-    await expect(page.getByRole("heading", { name: "Install once." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Every event on the record." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  test("renders OnboardingFlow steps", async ({ page }) => {
+    // `OnboardingFlow.tsx` is the home page's four-step pictorial. Anchors at
+    // `#onboarding-flow` for the Hero CTA's smooth-scroll target.
+    const flow = page.locator('[aria-label="Onboarding flow"]');
+    await expect(flow).toBeVisible();
+    await expect(flow.getByRole("heading", { name: "Install the CLI" })).toBeVisible();
+    await expect(flow.getByRole("heading", { name: "Run the install skill" })).toBeVisible();
+    await expect(flow.getByRole("heading", { name: "Wire your trigger" })).toBeVisible();
+    await expect(flow.getByRole("heading", { name: "Steer your zombie" })).toBeVisible();
   });
 
   test("renders how it works steps", async ({ page }) => {
