@@ -1,17 +1,12 @@
 //! Redis-backed integration tests for SessionStore + Lua-EVAL atomicity.
-//!
-//! Pins the live behaviour of the verify-and-consume path that
-//! session_store_redis_proto.zig's pure-tests can only smoke-test. Each
-//! test owns a fresh session_id (UUIDv7 minted by SessionStore.create)
-//! and DELs its own key on teardown — no FLUSHDB, since sibling test
-//! suites share the same Redis namespace.
-//!
-//! Self-skips when TEST_REDIS_TLS_URL is unset (matches the
-//! sse_streaming_integration_test convention). CI runs this suite
-//! against the production-target Redis flavour (Upstash via
-//! TEST_REDIS_TLS_URL pointing at the rediss:// URL) so the atomicity
-//! claim survives the script-time cap + cjson edge cases that vanilla
-//! Redis 7 doesn't enforce.
+//! Pins live behaviour of the verify-and-consume + pod-survival paths
+//! that session_store_redis_proto.zig's pure-tests can only smoke-test.
+//! Each test owns a fresh session_id (UUIDv7 minted by SessionStore.create)
+//! and DELs its own key on teardown — no FLUSHDB, since sibling suites
+//! share the namespace. Self-skips when TEST_REDIS_TLS_URL is unset; CI
+//! runs against the production-target Upstash flavour so the atomicity
+//! claim survives the script-time cap + cjson edge cases vanilla Redis 7
+//! does not enforce.
 
 const std = @import("std");
 const queue_redis = @import("../queue/redis.zig");
@@ -272,4 +267,80 @@ test "verify under two concurrent correct-code calls collapses to one consume" {
     defer parsed.deinit();
     try std.testing.expectEqual(SessionStatus.consumed, parsed.value.status);
     try std.testing.expect(parsed.value.consumed_at_ms != null);
+}
+
+test "session_store survives pod restart" {
+    const alloc = std.testing.allocator;
+
+    // Pod A: connect, write, close. The session_id is heap-allocated via
+    // the same alloc the test owns, so it outlives client_a.deinit().
+    const sid = blk: {
+        var client_a = try connectRedisOrSkip(alloc);
+        defer client_a.deinit();
+        var store_a = SessionStore.init(alloc, &client_a, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+        break :blk try createApprovedSession(&store_a);
+    };
+    defer alloc.free(sid);
+
+    // Pod B: fresh connection, same Redis target, same peppers. Reading
+    // back the blob proves the data outlives pod A; running a full
+    // verifyAndConsume proves the HMAC pepper round-trips correctly
+    // across pod boundaries (Invariant 14).
+    var client_b = try connectRedisOrSkip(alloc);
+    defer client_b.deinit();
+    var store_b = SessionStore.init(alloc, &client_b, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+    defer delSessionKey(&client_b, alloc, sid);
+
+    var parsed = (try store_b.get(sid)).?;
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings(sid, parsed.value.session_id);
+    try std.testing.expectEqual(SessionStatus.verification_pending, parsed.value.status);
+    try std.testing.expectEqualStrings(TEST_CLERK_USER_ID, parsed.value.clerk_user_id.?);
+    try std.testing.expectEqualStrings(TEST_DASH_PK, parsed.value.dashboard_public_key.?);
+
+    const out = try store_b.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    try std.testing.expect(out == .success);
+    try std.testing.expectEqualStrings(TEST_CIPHERTEXT, out.success.ciphertext);
+}
+
+test "session_store works across three concurrent pods" {
+    const alloc = std.testing.allocator;
+
+    var client_a = try connectRedisOrSkip(alloc);
+    defer client_a.deinit();
+    var client_b = try connectRedisOrSkip(alloc);
+    defer client_b.deinit();
+    var client_c = try connectRedisOrSkip(alloc);
+    defer client_c.deinit();
+
+    var store_a = SessionStore.init(alloc, &client_a, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+    var store_b = SessionStore.init(alloc, &client_b, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+    var store_c = SessionStore.init(alloc, &client_c, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+
+    // Pod A: create + approve.
+    const sid = try createApprovedSession(&store_a);
+    defer alloc.free(sid);
+    defer delSessionKey(&client_c, alloc, sid);
+
+    // Pod B: poll. The dashboard would do this on the `/cli-auth/{id}`
+    // page to render the verification code prompt.
+    {
+        var parsed = (try store_b.get(sid)).?;
+        defer parsed.deinit();
+        try std.testing.expectEqual(SessionStatus.verification_pending, parsed.value.status);
+        try std.testing.expectEqualStrings(TEST_CLERK_USER_ID, parsed.value.clerk_user_id.?);
+    }
+
+    // Pod C: verify. Different connection from approve+poll, but the
+    // Lua-EVAL atomicity is across the Redis instance not the client,
+    // so .success is the expected outcome.
+    const out = try store_c.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    try std.testing.expect(out == .success);
+    try std.testing.expectEqualStrings(TEST_CIPHERTEXT, out.success.ciphertext);
+
+    // Polling from pod B again should now see the terminal consumed
+    // state — the EVAL on pod C wrote-through to the same key.
+    var after = (try store_b.get(sid)).?;
+    defer after.deinit();
+    try std.testing.expectEqual(SessionStatus.consumed, after.value.status);
 }
