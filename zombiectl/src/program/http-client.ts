@@ -35,12 +35,11 @@ export function apiHeaders(ctx: HttpRequestContext): Record<string, string> {
   return authHeaders({ token: ctx.token, apiKey: ctx.apiKey });
 }
 
-// ctx.retryConfig is the single carrier that lets runCommand({ retry })
-// flow into the HTTP layer without changing apiRequest's signature.
-// Falsy → use apiRequestWithRetry's default (3 attempts). Object →
-// propagate verbatim (incl. { maxAttempts: 1 } from runCommand({ retry:
-// false })). ZOMBIE_NO_RETRY=1 still wins inside apiRequestWithRetry as
-// the global short-circuit.
+// ctx.retryConfig flows into the HTTP layer without changing
+// apiRequest's signature. Falsy → use apiRequestWithRetry's default
+// (3 attempts). Object → propagate verbatim (incl. { maxAttempts: 1 }
+// for opt-out paths). ZOMBIE_NO_RETRY=1 still wins inside
+// apiRequestWithRetry as the global short-circuit.
 export async function request(
   ctx: HttpRequestContext,
   reqPath: string,

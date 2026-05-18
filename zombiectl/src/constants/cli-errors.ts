@@ -3,10 +3,10 @@
  * or when mapping server-side responses to a stable analytics dimension.
  *
  * Pairs with the server's UZ-* registry (src/errors/error_registry.zig).
- * Server-side codes flow through `displayCode` in run-command.js and
- * appear verbatim on stderr / JSON envelope `.error.code`; these are
- * for client-side rejections (validation, missing args, local-only
- * "not found" cases).
+ * Server-side codes flow through the Effect dispatcher's renderError
+ * (lib/run-effect.ts) and appear verbatim on stderr / JSON envelope
+ * `.error.code`; these are for client-side rejections (validation,
+ * missing args, local-only "not found" cases).
  *
  * RULE UFS — every error-code string in CLI source reads from this file.
  */

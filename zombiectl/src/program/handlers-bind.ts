@@ -1,7 +1,6 @@
 // Wires the imported leaf handlers into the shape cli-tree.ts expects.
 // Every command routes through the Effect dispatcher (runEffect) and
-// consumes services declared on its R channel. The pre-Effect
-// runCommand path is fully retired as of the doctor migration.
+// consumes services declared on its R channel.
 
 import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
@@ -40,9 +39,8 @@ export interface Lifecycle {
   workspaces: Workspaces;
   deps: CommandDeps;
   analyticsClient: AnalyticsClient | null | undefined;
-  // null until a token is present. run-command.ts applies the
-  // "anonymous" fallback for analytics emission when both
-  // deps.distinctId and handlerCtx.distinctId are unset.
+  // null until a token is present. The dispatcher's Analytics service
+  // applies the "anonymous" fallback when distinctId is unset.
   distinctId: string | null;
   lastCommand: string | null;
 }

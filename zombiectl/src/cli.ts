@@ -295,7 +295,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   installPreAction(program, ctx, state);
 
-  // commander + post-action events bypass runCommand; mirror its session base props.
+  // commander parse + post-action events run outside the dispatcher.
   const baseEventProps: Record<string, unknown> = { ...(ctx.cliSessionId ? { cli_session_id: ctx.cliSessionId } : {}), ...(ctx.cliDeviceId ? { cli_device_id: ctx.cliDeviceId } : {}) };
 
   try {
