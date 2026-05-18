@@ -45,10 +45,13 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .metrics => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeMetrics },
         .model_caps => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeModelCaps },
 
-        // Auth sessions
+        // Auth sessions — device-flow surface.
         .create_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeCreateAuthSession },
         .poll_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokePollAuthSession },
-        .patch_auth_session => .{ .middlewares = registry.bearer(), .invoke = invoke.invokePatchAuthSession },
+        .approve_auth_session => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeApproveAuthSession },
+        .verify_auth_session => .{ .middlewares = auth_mw.MiddlewareRegistry.none, .invoke = invoke.invokeVerifyAuthSession },
+        .delete_auth_session => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteAuthSession },
+        .delete_all_auth_sessions => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeDeleteAllAuthSessions },
 
         // Workspace lifecycle
         .create_workspace => .{ .middlewares = registry.bearer(), .invoke = invoke.invokeCreateWorkspace },
@@ -133,7 +136,10 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.metrics, &reg) != null);
     try testing.expect(specFor(.create_auth_session, &reg) != null);
     try testing.expect(specFor(.{ .poll_auth_session = "s1" }, &reg) != null);
-    try testing.expect(specFor(.{ .patch_auth_session = "s1" }, &reg) != null);
+    try testing.expect(specFor(.{ .approve_auth_session = "s1" }, &reg) != null);
+    try testing.expect(specFor(.{ .verify_auth_session = "s1" }, &reg) != null);
+    try testing.expect(specFor(.{ .delete_auth_session = "s1" }, &reg) != null);
+    try testing.expect(specFor(.delete_all_auth_sessions, &reg) != null);
     try testing.expect(specFor(.create_workspace, &reg) != null);
     try testing.expect(specFor(.get_tenant_billing, &reg) != null);
     try testing.expect(specFor(.get_tenant_billing_charges, &reg) != null);

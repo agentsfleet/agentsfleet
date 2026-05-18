@@ -79,7 +79,7 @@ pub fn invokeModelCaps(hx: *Hx, req: *httpz.Request, route: router.Route) void {
 pub fn invokeCreateAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
-    auth_sessions.innerCreateAuthSession(hx.*);
+    auth_sessions.innerCreateAuthSession(hx.*, req);
 }
 
 pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
@@ -87,9 +87,25 @@ pub fn invokePollAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) 
     auth_sessions.innerPollAuthSession(hx.*, route.poll_auth_session);
 }
 
-pub fn invokePatchAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+pub fn invokeApproveAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .PATCH) { common.respondMethodNotAllowed(hx.res); return; }
-    auth_sessions.innerPatchAuthSession(hx.*, req, route.patch_auth_session);
+    auth_sessions.innerApproveAuthSession(hx.*, req, route.approve_auth_session);
+}
+
+pub fn invokeVerifyAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    auth_sessions.innerVerifyAuthSession(hx.*, req, route.verify_auth_session);
+}
+
+pub fn invokeDeleteAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    auth_sessions.innerDeleteAuthSession(hx.*, req, route.delete_auth_session);
+}
+
+pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
+    auth_sessions.innerDeleteAllAuthSessions(hx.*);
 }
 
 // ── Workspace lifecycle ───────────────────────────────────────────────────
