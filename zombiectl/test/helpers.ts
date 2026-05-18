@@ -3,11 +3,6 @@ import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
 import { commandLogin } from "../src/commands/core.ts";
 import { commandDoctor } from "../src/commands/core-ops.ts";
-import {
-  commandTenantProviderShow,
-  commandTenantProviderAdd,
-  commandTenantProviderDelete,
-} from "../src/commands/tenant.ts";
 
 import type {
   CommandCtx,
@@ -91,15 +86,6 @@ export const ui: UiTheme = {
   head: (s) => s,
 };
 
-// Direct-handler tests pass partial deps shaped against the production
-// CommandDeps contract. The mocks omit fields the handler under test
-// doesn't read; the boundary cast widens partial → CommandDeps at the
-// call site, preserving strict-mode pressure on the production code path.
-type TestDeps = Partial<CommandDeps> & {
-  parseFlags?: (tokens: readonly string[]) => ParsedArgs;
-  parseFlagsImpl?: (tokens: readonly string[]) => ParsedArgs;
-};
-
 type CoreHandler = (args?: readonly string[]) => Promise<number>;
 
 // Named-member return shape (vs `Record<string, CoreHandler>`) so call
@@ -123,39 +109,6 @@ export function createCoreHandlers(
     commandLogin:  (args = []) => commandLogin(ctx,  buildParsed(args), workspaces, deps),
     commandDoctor: (args = []) => commandDoctor(ctx, buildParsed(args), workspaces, deps),
   };
-}
-
-// Test-only shim mirroring the old `commandTenant(ctx, args, _ws, deps)`
-// dispatcher — routes `provider {show|add|delete}` to the new leaf exports.
-export function commandTenant(
-  ctx: CommandCtx,
-  args: readonly string[],
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const subgroup = args[0];
-  const action = args[1];
-  const rest = args.slice(2);
-  const testDeps = deps as TestDeps;
-  if (subgroup === "provider") {
-    // Honor deps.parseFlags / deps.parseFlagsImpl when injected — legacy
-    // tenant provider tests stub it to control parsed.options without
-    // routing through the dashed-CLI form.
-    const parse = testDeps.parseFlags ?? testDeps.parseFlagsImpl ?? buildParsed;
-    if (action === "show")   return Promise.resolve(commandTenantProviderShow(ctx,   parse(rest), workspaces, deps));
-    if (action === "add")    return Promise.resolve(commandTenantProviderAdd(ctx,    parse(rest), workspaces, deps));
-    if (action === "delete") return Promise.resolve(commandTenantProviderDelete(ctx, parse(rest), workspaces, deps));
-    emitUsage(ctx, deps, "UNKNOWN_COMMAND", `unknown tenant provider action: ${action ?? "(none)"}`, [
-      "usage: zombiectl tenant provider show",
-      "       zombiectl tenant provider add --credential <name> [--model <override>]",
-      "       zombiectl tenant provider delete",
-    ]);
-    return Promise.resolve(2);
-  }
-  emitUsage(ctx, deps, "UNKNOWN_COMMAND", `unknown tenant subgroup: ${subgroup ?? "(none)"}`, [
-    "usage: zombiectl tenant provider {show|add|delete}",
-  ]);
-  return Promise.resolve(2);
 }
 
 
@@ -186,30 +139,6 @@ export function buildParsed(tokens: readonly string[] = []): ParsedArgs {
     }
   }
   return { options, positionals };
-}
-
-// Shared usage-message emitter — five call sites in commandTenant + commandBilling
-// were each carrying the same json-mode-vs-tty branching. Hoisting drops ~30
-// lines and unifies the format. Honors deps.printJson / deps.writeLine /
-// deps.ui.err when injected; falls back to direct stream writes when the
-// test passes a barebones deps bag.
-function emitUsage(
-  ctx: CommandCtx,
-  deps: CommandDeps,
-  code: string,
-  message: string,
-  usageLines: readonly string[],
-): void {
-  const testDeps = deps as TestDeps;
-  if (ctx.jsonMode) {
-    const printJson = testDeps.printJson ?? ((s, v) => { s.write(JSON.stringify(v)); });
-    if (ctx.stderr) printJson(ctx.stderr, { error: { code, message } });
-    return;
-  }
-  if (!ctx.stderr) return;
-  const writeLine = testDeps.writeLine ?? ((s, line = "") => { s.write(`${line}\n`); });
-  const err = testDeps.ui?.err ?? ((s: string) => s);
-  for (const line of usageLines) writeLine(ctx.stderr, err(line));
 }
 
 // ── Stable test constants ─────────────────────────────────────────────────────

@@ -26,10 +26,9 @@ import {
   grantDeleteEffectFromArgs,
 } from "../commands/grant.ts";
 import {
-  commandTenantProviderShow,
-  commandTenantProviderAdd,
-  commandTenantProviderDelete,
-  errorMap as tenantErrorMap,
+  tenantProviderShowEffect,
+  tenantProviderAddEffectFromArgs,
+  tenantProviderDeleteEffect,
 } from "../commands/tenant.ts";
 import { billingShowEffectFromArgs } from "../commands/billing.ts";
 import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
@@ -288,9 +287,17 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     },
     tenant: {
       provider: {
-        show:   wrap("tenant.provider.show",   tenantErrorMap, commandTenantProviderShow),
-        add:    wrap("tenant.provider.add",    tenantErrorMap, commandTenantProviderAdd),
-        delete: wrap("tenant.provider.delete", tenantErrorMap, commandTenantProviderDelete),
+        show: wrapE("tenant.provider.show", tenantProviderShowEffect),
+        add: wrapEffectFn(
+          "tenant.provider.add",
+          (frame) =>
+            tenantProviderAddEffectFromArgs(
+              optString(frame.parsed.options, "credential"),
+              optString(frame.parsed.options, "model"),
+            ),
+          lifecycle,
+        ),
+        delete: wrapE("tenant.provider.delete", tenantProviderDeleteEffect),
       },
     },
     billing: {
