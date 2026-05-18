@@ -78,7 +78,7 @@ Adding a new event: declare the name in `src/constants/analytics-events.ts`, the
 
 ### PostHog projects — prod bundled, dev for e2e
 
-The production PostHog project key is bundled in `src/services/telemetry/analytics.layer.ts:DEFAULT_POSTHOG_KEY` (write-only `phc_…` credential, public-by-design — same model as Stripe `pk_live_…`). End-to-end suites that actually emit telemetry must NOT pollute the prod project. Convention:
+The production PostHog project key is bundled in `src/services/config.ts:DEFAULT_POSTHOG_KEY` and read by the analytics layer via `CliConfig.telemetryPosthogKey` (resolved at layer construction from `ZOMBIE_TELEMETRY_POSTHOG_KEY || DEFAULT_POSTHOG_KEY`). It's a write-only `phc_…` credential, public-by-design — same model as Stripe `pk_live_…`. End-to-end suites that actually emit telemetry must NOT pollute the prod project. Convention:
 
 ```bash
 # Local dev — point telemetry at the dev project before running acceptance:

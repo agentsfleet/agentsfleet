@@ -1,46 +1,12 @@
 // analyticsInternals helper-function coverage. Pure synchronous helpers
 // used by analyticsLayer — split out from analytics.layer.unit.test.ts
-// to stay under the 350-line file gate.
+// to stay under the 350-line file gate. PostHog key/host resolution
+// moved to CliConfig — see test/config.posthog-resolution.unit.test.ts.
 
 import { describe, expect, it } from "bun:test";
 import { analyticsInternals } from "../../src/services/telemetry/analytics.layer.ts";
 
 describe("analyticsInternals", () => {
-  it("exports DEFAULT_POSTHOG_HOST and DEFAULT_POSTHOG_KEY", () => {
-    expect(analyticsInternals.DEFAULT_POSTHOG_HOST).toBe("https://us.i.posthog.com");
-    expect(analyticsInternals.DEFAULT_POSTHOG_KEY.length).toBeGreaterThan(0);
-  });
-
-  it("resolvePosthogKey prefers env override", () => {
-    expect(analyticsInternals.resolvePosthogKey({ ZOMBIE_TELEMETRY_POSTHOG_KEY: "phc_test" })).toBe(
-      "phc_test",
-    );
-  });
-
-  it("resolvePosthogKey falls back to DEFAULT_POSTHOG_KEY", () => {
-    expect(analyticsInternals.resolvePosthogKey({})).toBe(
-      analyticsInternals.DEFAULT_POSTHOG_KEY,
-    );
-  });
-
-  it("resolvePosthogKey falls back when env value is empty string", () => {
-    expect(analyticsInternals.resolvePosthogKey({ ZOMBIE_TELEMETRY_POSTHOG_KEY: "" })).toBe(
-      analyticsInternals.DEFAULT_POSTHOG_KEY,
-    );
-  });
-
-  it("resolvePosthogHost prefers env override", () => {
-    expect(analyticsInternals.resolvePosthogHost({ ZOMBIE_TELEMETRY_POSTHOG_HOST: "https://h" })).toBe(
-      "https://h",
-    );
-  });
-
-  it("resolvePosthogHost falls back to DEFAULT_POSTHOG_HOST", () => {
-    expect(analyticsInternals.resolvePosthogHost({})).toBe(
-      analyticsInternals.DEFAULT_POSTHOG_HOST,
-    );
-  });
-
   it("stripUndefined drops undefined values only", () => {
     const out = analyticsInternals.stripUndefined({ a: 1, b: undefined, c: null, d: "" });
     expect(out).toEqual({ a: 1, c: null, d: "" });

@@ -83,6 +83,8 @@ const configLayer = (
     accessToken: Option.none(),
     jsonMode: overrides.jsonMode ?? false,
     noOpen: false,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
   });
 
 const runWith = <E extends CliError>(

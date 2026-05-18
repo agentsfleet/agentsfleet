@@ -80,6 +80,8 @@ const configLayer: Layer.Layer<CliConfig> = Layer.succeed(CliConfig, {
   accessToken: Option.none(),
   jsonMode: false,
   noOpen: true,
+  telemetryPosthogKey: "phc_test",
+  telemetryPosthogHost: "https://us.i.posthog.com",
 });
 
 const credentialsLayer = (rec: IdentityRecorder): Layer.Layer<Credentials> => {

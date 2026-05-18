@@ -166,6 +166,8 @@ const configLayer = (overrides: { jsonMode?: boolean; noOpen?: boolean } = {}): 
     accessToken: Option.none(),
     jsonMode: overrides.jsonMode ?? false,
     noOpen: overrides.noOpen ?? false,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
   });
 
 type HttpResponder = (path: string) => unknown | Error;

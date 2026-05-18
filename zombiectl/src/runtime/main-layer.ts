@@ -8,7 +8,8 @@
 //   - CliConfig has no deps
 //   - TelemetryRuntime is resolved on disk + env by services/telemetry/
 //     runtime.layer.ts — no input thread-through from cli.ts anymore.
-//   - Analytics + Tracing both consume TelemetryRuntime
+//   - Analytics + Tracing both consume TelemetryRuntime; Analytics
+//     also consumes CliConfig for telemetryPosthogKey/Host.
 //   - CommandRuntime is per-invocation; populated from MainLayerInput.commandPath
 //   - HttpClient consumes CliConfig
 //   - Output, Credentials, Browser, Workspaces, Spinner have no service deps
@@ -101,7 +102,10 @@ export const mainLayerFor = (
   });
 
   const http = httpClientLayer.pipe(Layer.provide(configBase));
-  const analytics = analyticsLayer.pipe(Layer.provide(telemetryRuntimeLayer));
+  const analytics = analyticsLayer.pipe(
+    Layer.provide(telemetryRuntimeLayer),
+    Layer.provide(configBase),
+  );
   const tracing = tracingLayer.pipe(Layer.provide(telemetryRuntimeLayer));
 
   return Layer.mergeAll(

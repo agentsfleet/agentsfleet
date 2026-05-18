@@ -1,8 +1,9 @@
 // analyticsLayer — PostHog product-analytics implementation.
 //
-// Owns: PostHog client construction (env:
-// ZOMBIE_TELEMETRY_POSTHOG_KEY, ZOMBIE_TELEMETRY_POSTHOG_HOST),
-// consent gating (no-op when denied), base property merging,
+// Owns: PostHog client construction (key/host read from CliConfig,
+// itself resolved from env ZOMBIE_TELEMETRY_POSTHOG_KEY /
+// ZOMBIE_TELEMETRY_POSTHOG_HOST at layer construction), consent
+// gating (no-op when denied), base property merging,
 // CurrentAnalyticsContext merging on every capture, and shutdown via
 // Effect.addFinalizer (Scoped layer). The single owner of
 // `posthog-node` in the codebase.
@@ -14,26 +15,13 @@
 
 import { PostHog } from "posthog-node";
 import { Effect, Layer, Option } from "effect";
+import { CliConfig } from "../config.ts";
 import { CurrentAnalyticsContext, type AnalyticsContext } from "./analytics-context.ts";
 import { Analytics } from "./analytics.service.ts";
 import { AiTool } from "./ai-tool.service.ts";
 import { aiToolLayer } from "./ai-tool.layer.ts";
 import { TelemetryRuntime } from "./runtime.service.ts";
 import { telemetryRuntimeLayer } from "./runtime.layer.ts";
-
-// PostHog project key is public-by-design (write-only capture scope,
-// no read/admin), same model as Stripe pk_live_…. Supabase ships
-// theirs as a plain string in cli-config.layer.ts; we match that.
-const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
-const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3bXzv"; // gitleaks:allow — public phc_ key (write-only capture scope), see header comment
-
-function resolvePosthogKey(env: NodeJS.ProcessEnv): string {
-  return env.ZOMBIE_TELEMETRY_POSTHOG_KEY || DEFAULT_POSTHOG_KEY;
-}
-
-function resolvePosthogHost(env: NodeJS.ProcessEnv): string {
-  return env.ZOMBIE_TELEMETRY_POSTHOG_HOST || DEFAULT_POSTHOG_HOST;
-}
 
 function stripUndefined(
   properties: Record<string, unknown>,
@@ -73,14 +61,14 @@ export const analyticsLayer = Layer.effect(
     Effect.gen(function* () {
       const runtime = yield* TelemetryRuntime;
       const aiTool = yield* AiTool;
+      const cliConfig = yield* CliConfig;
 
       if (runtime.consent !== "granted") {
         return noopAnalytics;
       }
 
-      const posthogKey = resolvePosthogKey(process.env);
-      const client = new PostHog(posthogKey, {
-        host: resolvePosthogHost(process.env),
+      const client = new PostHog(cliConfig.telemetryPosthogKey, {
+        host: cliConfig.telemetryPosthogHost,
         flushAt: 1,
         flushInterval: 0,
       });
@@ -172,10 +160,6 @@ export const analyticsLayer = Layer.effect(
   ).pipe(Layer.provide(telemetryRuntimeLayer), Layer.provide(aiToolLayer));
 
 export const analyticsInternals = {
-  DEFAULT_POSTHOG_HOST,
-  DEFAULT_POSTHOG_KEY,
-  resolvePosthogKey,
-  resolvePosthogHost,
   stripUndefined,
   contextProperties,
   resolveGroups,

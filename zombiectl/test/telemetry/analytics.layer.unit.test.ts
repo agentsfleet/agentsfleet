@@ -88,7 +88,8 @@ const { Analytics } = await import("../../src/services/telemetry/analytics.servi
 const { withAnalyticsContext } = await import(
   "../../src/services/telemetry/analytics-context.ts"
 );
-const { Effect } = await import("effect");
+const { cliConfigLayer } = await import("../../src/services/config.ts");
+const { Effect, Layer } = await import("effect");
 
 const ENV_KEYS = [
   "ZOMBIE_TELEMETRY_POSTHOG_KEY",
@@ -146,7 +147,7 @@ function denyConsentViaDoNotTrack(): void {
 function getAnalytics() {
   return Effect.gen(function* () {
     return yield* Analytics;
-  }).pipe(Effect.provide(analyticsLayer));
+  }).pipe(Effect.provide(Layer.provide(analyticsLayer, cliConfigLayer)));
 }
 
 function writeTelemetryJson(body: Record<string, unknown>): void {

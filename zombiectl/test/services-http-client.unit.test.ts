@@ -16,6 +16,8 @@ const configLayer = (apiUrl: string): Layer.Layer<CliConfig> =>
     accessToken: Option.none(),
     jsonMode: false,
     noOpen: false,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
   });
 
 const SUITE_LAYER = (apiUrl: string): Layer.Layer<HttpClient> =>
