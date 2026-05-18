@@ -1,6 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Button, LogLine, Terminal, WakePulse } from "@usezombie/design-system";
+import {
+  Button,
+  LogLine,
+  Terminal,
+  WakePulse,
+  useResettableTimeout,
+} from "@usezombie/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
 
 // Plain-text payload for the clipboard. Visible terminal renders
@@ -39,16 +45,11 @@ const TOAST_VISIBLE_MS = 2000;
  */
 export default function Hero() {
   const [toast, setToast] = useState<null | "copied" | "manual">(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => () => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-  }, []);
+  const toastTimer = useResettableTimeout();
 
   function showToast(kind: "copied" | "manual") {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToast(kind);
-    toastTimer.current = setTimeout(() => setToast(null), TOAST_VISIBLE_MS);
+    toastTimer.start(() => setToast(null), TOAST_VISIBLE_MS);
   }
 
   async function onInstallClick() {

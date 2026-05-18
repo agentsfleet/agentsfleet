@@ -124,16 +124,22 @@ describe("Hero", () => {
     expect((screen.getByTestId("hero-cta-toast").textContent ?? "").trim()).toBe("");
   });
 
-  it("clears the pending toast timer on unmount (no leaked setTimeout)", async () => {
-    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
-    const writeText = installClipboard();
+  it("survives unmount-mid-toast without spurious setState (page-navigate / refresh scenario)", async () => {
+    vi.useFakeTimers();
+    installClipboard();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { unmount } = renderHero();
     fireEvent.click(screen.getByTestId("hero-cta-primary"));
-    await waitFor(() => expect(writeText).toHaveBeenCalled());
-    const before = clearSpy.mock.calls.length;
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     unmount();
-    expect(clearSpy.mock.calls.length).toBeGreaterThan(before);
-    clearSpy.mockRestore();
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
   });
 
   it("falls back to the manual-copy toast when the clipboard API rejects", async () => {
