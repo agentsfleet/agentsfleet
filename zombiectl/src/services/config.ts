@@ -7,6 +7,7 @@
 // string is extracted only at the HTTP authorization-header site.
 
 import { Context, Effect, Layer, Option, Redacted } from "effect";
+import type { FetchImpl } from "../lib/http.ts";
 
 const DEFAULT_API_URL = "https://api.usezombie.com";
 const DEFAULT_DASHBOARD_URL = "https://dashboard.usezombie.com";
@@ -17,6 +18,10 @@ export interface CliConfigShape {
   readonly accessToken: Option.Option<Redacted.Redacted<string>>;
   readonly jsonMode: boolean;
   readonly noOpen: boolean;
+  // Injectable fetch impl — integration tests pass a stubbed fetch via
+  // runCli's RunCliIo, which threads here so HttpClient bypasses
+  // globalThis.fetch. Defaults to undefined → globalThis.fetch.
+  readonly fetchImpl?: FetchImpl;
 }
 
 export class CliConfig extends Context.Tag("CliConfig")<CliConfig, CliConfigShape>() {}

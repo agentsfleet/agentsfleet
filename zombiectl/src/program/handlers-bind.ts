@@ -1,8 +1,8 @@
 // Wires the imported leaf handlers into the shape cli-tree.ts expects.
-// auth.status + logout route through the Effect dispatcher (runEffect)
-// — they consume services declared on the Effect's R channel.
-// Remaining groups route through the pre-Effect runCommand path until
-// their own commit in this PR.
+// auth.status + logout + login route through the Effect dispatcher
+// (runEffect) — they consume services declared on the Effect's R
+// channel. Remaining groups route through the pre-Effect runCommand
+// path until their own commit in this PR.
 
 import type { Effect } from "effect";
 import { cliAnalytics } from "../lib/analytics.ts";
@@ -11,8 +11,8 @@ import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
 import { printJson, writeLine } from "./io.ts";
 import { ui } from "../output/index.ts";
 
-import { commandLogin, loginErrorMap } from "../commands/core.ts";
 import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
+import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
 import { commandDoctor, doctorErrorMap } from "../commands/core-ops.ts";
 import {
@@ -113,12 +113,37 @@ function wrapHandler(
   };
 }
 
+function configOverrideFromCtx(ctx: Lifecycle["ctx"]): {
+  jsonMode: boolean;
+  noOpen: boolean;
+  apiUrl: string;
+  fetchImpl?: import("../lib/http.ts").FetchImpl;
+} {
+  return {
+    jsonMode: Boolean(ctx.jsonMode),
+    noOpen: Boolean(ctx.noOpen),
+    apiUrl: ctx.apiUrl,
+    ...(ctx.fetchImpl !== undefined
+      ? { fetchImpl: ctx.fetchImpl as import("../lib/http.ts").FetchImpl }
+      : {}),
+  };
+}
+
+function streamsFromCtx(
+  ctx: Lifecycle["ctx"],
+): { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream } | undefined {
+  if (!ctx.stdout || !ctx.stderr) return undefined;
+  if (ctx.stdout === process.stdout && ctx.stderr === process.stderr) return undefined;
+  return { stdout: ctx.stdout, stderr: ctx.stderr };
+}
+
 function wrapEffect<E extends CliError, R extends MainLayerServices>(
   name: string,
   effect: Effect.Effect<void, E, R>,
   lifecycle: Lifecycle,
 ): CommandHandlerFn {
   return async (_frame: ActionFrame): Promise<number> => {
+    const streams = streamsFromCtx(lifecycle.ctx);
     const exitCode = await runEffect({
       name,
       effect,
@@ -126,11 +151,48 @@ function wrapEffect<E extends CliError, R extends MainLayerServices>(
         sessionId: lifecycle.ctx.cliSessionId ?? null,
         deviceId: lifecycle.ctx.cliDeviceId ?? null,
       },
+      config: configOverrideFromCtx(lifecycle.ctx),
+      ...(streams !== undefined ? { streams } : {}),
     });
     lifecycle.lastCommand = name;
     return exitCode;
   };
 }
+
+// Variant for command Effects whose flags come from the parsed frame
+// (login's --timeout-sec / --poll-ms / --no-open). The factory receives
+// the frame and returns the Effect; everything else is the same as
+// wrapEffect.
+function wrapEffectFn<E extends CliError, R extends MainLayerServices>(
+  name: string,
+  factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
+  lifecycle: Lifecycle,
+): CommandHandlerFn {
+  return async (frame: ActionFrame): Promise<number> => {
+    const streams = streamsFromCtx(lifecycle.ctx);
+    const exitCode = await runEffect({
+      name,
+      effect: factory(frame),
+      telemetry: {
+        sessionId: lifecycle.ctx.cliSessionId ?? null,
+        deviceId: lifecycle.ctx.cliDeviceId ?? null,
+      },
+      config: configOverrideFromCtx(lifecycle.ctx),
+      ...(streams !== undefined ? { streams } : {}),
+    });
+    lifecycle.lastCommand = name;
+    return exitCode;
+  };
+}
+
+const numericOption = (value: unknown): number | undefined => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
+};
 
 export function buildHandlers(lifecycle: Lifecycle): Handlers {
   const wrap = (name: string, map: PresetMap, fn: CommandHandler): CommandHandlerFn =>
@@ -140,7 +202,18 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     effect: Effect.Effect<void, E, R>,
   ): CommandHandlerFn => wrapEffect(name, effect, lifecycle);
   return {
-    login: wrap("login", loginErrorMap, commandLogin),
+    login: wrapEffectFn(
+      "login",
+      (frame) => {
+        const opts = frame.parsed.options;
+        return loginEffectFromFlags(
+          numericOption(opts["timeoutSec"] ?? opts["timeout-sec"]),
+          numericOption(opts["pollMs"] ?? opts["poll-ms"]),
+          opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
+        );
+      },
+      lifecycle,
+    ),
     logout: wrapE("logout", logoutEffect),
     auth: {
       status: wrapE("auth.status", authStatusEffect),
