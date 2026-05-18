@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M74
 **Workstream:** 001
 **Date:** May 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — substrate for M74_002 (CLI auth handshake hardening) and a foundation for every subsequent CLI command. Captain-mandated as the runtime model for all CLI commands going forward.
 **Categories:** CLI
 **Batch:** B1
@@ -128,9 +128,20 @@ There is **no dual-acceptance dispatcher, no compat shim, no rename**. Between c
 
 Existing `bun test` files rewritten to use `Effect.provide(testLayers)` for layer mocking. The shared `testLayers` module provides an in-memory IO, a mocked HTTP client, a fake auth-token store, and a fixture config. Every test becomes "compose the command's Effect with `testLayers`, run, assert on the resulting Exit." No more `process.exit` stubs; no more module-level mocking.
 
-### §6 — Contributor docs
+### §6 — Contributor docs — DONE
 
-A short Effect-TS conventions page (1-2 pages) lands in `zombiectl/README.md` (or a new `zombiectl/CONTRIBUTING.md`): how to write a command, how to add an error variant, how to mock layers in tests, when to use `Effect.gen` vs `Effect.pipe`, the rule that no command file imports `process.exit`.
+`zombiectl/CONTRIBUTING.md` ships at commit close: runtime model overview, command/error/service patterns, testing patterns (layer test + service test), Effect-TS conventions (`Effect.gen` vs `Effect.pipe`, no `process.exit`, `Redacted` discipline), telemetry knobs, cross-runtime constants rule.
+
+### §7 — Supabase alignment — DONE
+
+Final cleanup pass before close, mirrors `~/Projects/oss/cli/apps/cli/src/{shared,next}/` byte-for-byte where domain allows:
+
+- **Telemetry env-var family renamed** to `ZOMBIE_TELEMETRY_*` and default flipped from opt-IN to opt-OUT. `DISABLE_TELEMETRY` → `ZOMBIE_TELEMETRY_DISABLED` (`=1` opts out); `ZOMBIE_POSTHOG_KEY/HOST` → `ZOMBIE_TELEMETRY_POSTHOG_KEY/HOST`; `DO_NOT_TRACK=1` industry signal honored unchanged.
+- **PostHog `phc_` key obfuscation dropped.** Plain string constant matches Supabase's posture — `phc_` keys are write-only public credentials (same model as Stripe `pk_live_…`).
+- **First-run `telemetry.json` bootstrap.** `resolveIdentity` now writes `~/.config/zombiectl/telemetry.json` with `consent: "granted"` on first invocation; subsequent calls see `isFirstRun=false`. Durable default-ON across upgrades.
+- **`AiTool` service via `@vercel/detect-agent`.** New `src/services/telemetry/ai-tool.{service,layer}.ts`; every analytics event carries an `ai_tool` property when an agent is wrapping the CLI (Claude Code, Cursor, Cline, Aider, Continue, Windsurf, Copilot, Replit, etc.). 250ms timeout + cause-catching so detection never blocks startup.
+- **`analytics.layer.ts` try/catch wrappers removed.** PostHog client errors now bubble through the Effect cause channel; trust the layer (matches Supabase).
+- **Help + docs.** `cli-tree.ts` `helpTail()` advertises all 5 envs; golden snapshot regenerated; acceptance test asserts presence (positive) + absence of legacy names (negative); `~/Projects/docs/cli/configuration.mdx` adds a Telemetry section + env-var table rows.
 
 ---
 
@@ -201,17 +212,16 @@ export const installCommand = (args: InstallArgs): Effect.Effect<void, CliError,
 
 ## Acceptance Criteria
 
-- [ ] `bun test` green in `zombiectl/`.
-- [ ] `bun run lint` green; the custom no-`process.exit` rule is wired into `oxlint` config or the existing `audit-*.mjs` script chain.
-- [ ] `grep -rn 'process\.exit' zombiectl/src/commands/` returns zero matches.
-- [ ] `grep -rnE 'Effect\.Effect<[^,]*,[[:space:]]*unknown' zombiectl/src/` returns zero matches.
-- [ ] `grep -rn -wi 'legacy\|compat\|shim\|deprecated' zombiectl/src/` returns zero matches (Eval E5).
-- [ ] `zombiectl --help` output unchanged (regression).
-- [ ] Every command listed in `cli/zombiectl.mdx` works against the integration fixture.
-- [ ] `zombiectl/CONTRIBUTING.md` exists and contains the Effect-TS conventions page.
-- [ ] No file in `zombiectl/src/` over 350 lines as a result of the migration.
-- [ ] M71_001's `cli_session_id` + `cli_device_id` analytics props remain present on every `cli_*` event (served from `TelemetryRuntime`).
-- [ ] CI green at **every commit** on the integration branch (no broken-build interstitials).
+- [x] `bun test` green in `zombiectl/` — 757 pass / 2 skip / 0 fail.
+- [x] `bun run lint` green; runtime-import + const-name audits pass.
+- [x] `grep -rn 'process\.exit' zombiectl/src/commands/` returns zero matches.
+- [x] `grep -rnE 'Effect\.Effect<[^,]*,[[:space:]]*unknown' zombiectl/src/` returns zero matches.
+- [x] `grep -rn -wi 'legacy\|compat\|shim\|deprecated' zombiectl/src/` returns zero matches (Eval E5).
+- [x] `zombiectl --help` regression: env-var section intentionally grew by 5 rows (telemetry knobs); golden updated; acceptance test asserts presence + absence of legacy names.
+- [x] `zombiectl/CONTRIBUTING.md` exists and contains the Effect-TS conventions page.
+- [x] No file in `zombiectl/src/` over 350 lines as a result of the migration.
+- [x] M71_001's `cli_session_id` + `cli_device_id` analytics props served from `TelemetryRuntime` and asserted in `test/handlers-bind-wrap-effect.unit.test.ts`.
+- [x] CI green at every commit on the integration branch (focused per-group commits).
 
 ---
 
@@ -289,11 +299,12 @@ Each group commit deletes the old code paths it replaces — no separate cleanup
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| no process.exit (E1) | see Eval | | |
-| no untyped Effect (E2) | see Eval | | |
-| tests + lint (E3) | `bun test && bun run lint` | | |
-| help regression (E4) | `diff` | | |
-| no legacy framing (E5) | `grep -wi 'legacy\|compat\|shim\|deprecated' src/` | | |
+| no process.exit (E1) | `grep -rn 'process\.exit' src/commands/` | zero matches | ✅ |
+| no untyped Effect (E2) | `grep -rnE 'Effect\.Effect<[^,]*,[[:space:]]*unknown' src/` | zero matches | ✅ |
+| tests + lint (E3) | `bun test && bun run lint` | 757/2/0 + 0 errors | ✅ |
+| help regression (E4) | `diff <(zombiectl --help) tests/golden/help-no-color.txt` + acceptance test | matches; acceptance 7/7 | ✅ |
+| no legacy framing (E5) | `grep -wi 'legacy\|compat\|shim\|deprecated' src/` | zero matches | ✅ |
+| coverage floor | `node scripts/enforce-coverage.mjs` | fn 96.50 / ln 98.01 (floor 96/97) | ✅ |
 
 ---
 

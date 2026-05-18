@@ -36,6 +36,7 @@
     "postinstall": "node ./scripts/postinstall.mjs"
   },
   "dependencies": {
+    "@vercel/detect-agent": "^1.2.3",
     "commander": "^14.0.3",
     "effect": "4.0.0-beta.67",
     "posthog-node": "^5.34.1",

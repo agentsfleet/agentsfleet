@@ -1,40 +1,38 @@
-// analyticsLayer — PostHog product-analytics implementation. Mirrors
-// ~/Projects/oss/cli/apps/cli/src/shared/telemetry/analytics.layer.ts.
+// analyticsLayer — PostHog product-analytics implementation.
 //
-// Owns: PostHog client construction (env: ZOMBIE_POSTHOG_KEY,
-// ZOMBIE_POSTHOG_HOST), consent gating (no-op when denied), base
-// property merging, CurrentAnalyticsContext merging on every capture,
-// and shutdown via Effect.addFinalizer (Scoped layer).
+// Owns: PostHog client construction (env:
+// ZOMBIE_TELEMETRY_POSTHOG_KEY, ZOMBIE_TELEMETRY_POSTHOG_HOST),
+// consent gating (no-op when denied), base property merging,
+// CurrentAnalyticsContext merging on every capture, and shutdown via
+// Effect.addFinalizer (Scoped layer). The single owner of
+// `posthog-node` in the codebase.
 //
-// The previous PostHog construction lived in src/lib/analytics.ts —
-// it is retired in the cutover commit; this layer is the single
-// owner of `posthog-node` in the new tree.
-//
-// Telemetry failures are swallowed inside capture — Analytics never
-// blocks user-facing UX. The dispatcher does NOT wrap captures in
-// Effect.ignore (the wrapper is here).
+// Telemetry failures bubble through the Effect cause channel; call
+// sites swallow with .pipe(Effect.ignore). Matches supabase
+// apps/cli/src/shared/telemetry/analytics.layer.ts — no try/catch
+// inside the emit functions.
 
 import { PostHog } from "posthog-node";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option } from "effect";
 import { CurrentAnalyticsContext, type AnalyticsContext } from "./analytics-context.ts";
 import { Analytics } from "./analytics.service.ts";
+import { AiTool } from "./ai-tool.service.ts";
+import { aiToolLayer } from "./ai-tool.layer.ts";
 import { TelemetryRuntime } from "./runtime.service.ts";
 import { telemetryRuntimeLayer } from "./runtime.layer.ts";
 
+// PostHog project key is public-by-design (write-only capture scope,
+// no read/admin), same model as Stripe pk_live_…. Supabase ships
+// theirs as a plain string in cli-config.layer.ts; we match that.
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
-const DEFAULT_POSTHOG_KEY = [
-  "phc_XmuRIXBST",
-  "Rfxka7IgfkU0V",
-  "PMD3LDRR3IqIL",
-  "XNg3bXzv",
-].join("");
+const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3bXzv"; // gitleaks:allow — public phc_ key (write-only capture scope), see header comment
 
 function resolvePosthogKey(env: NodeJS.ProcessEnv): string {
-  return env.ZOMBIE_POSTHOG_KEY || DEFAULT_POSTHOG_KEY;
+  return env.ZOMBIE_TELEMETRY_POSTHOG_KEY || DEFAULT_POSTHOG_KEY;
 }
 
 function resolvePosthogHost(env: NodeJS.ProcessEnv): string {
-  return env.ZOMBIE_POSTHOG_HOST || DEFAULT_POSTHOG_HOST;
+  return env.ZOMBIE_TELEMETRY_POSTHOG_HOST || DEFAULT_POSTHOG_HOST;
 }
 
 function stripUndefined(
@@ -74,23 +72,24 @@ export const analyticsLayer = Layer.effect(
     Analytics,
     Effect.gen(function* () {
       const runtime = yield* TelemetryRuntime;
+      const aiTool = yield* AiTool;
 
       if (runtime.consent !== "granted") {
         return noopAnalytics;
       }
 
       const posthogKey = resolvePosthogKey(process.env);
-      if (posthogKey.length === 0) {
-        return noopAnalytics;
-      }
-
       const client = new PostHog(posthogKey, {
         host: resolvePosthogHost(process.env),
         flushAt: 1,
         flushInterval: 0,
       });
+      // Bounded shutdown so CLI exit isn't blocked on a slow PostHog
+      // endpoint. Mirrors supabase analytics.layer.ts. _shutdown(ms) is
+      // the timeout-bound variant; client.shutdown() can hang for the
+      // default flush interval if the endpoint is unreachable.
       yield* Effect.addFinalizer(() =>
-        Effect.promise(() => client.shutdown()).pipe(Effect.ignore),
+        Effect.promise(() => client._shutdown(5_000)).pipe(Effect.ignore),
       );
 
       const baseProperties = stripUndefined({
@@ -101,6 +100,11 @@ export const analyticsLayer = Layer.effect(
         is_first_run: runtime.isFirstRun,
         is_tty: runtime.isTty,
         is_ci: runtime.isCi,
+        ai_tool: Option.match(aiTool.name, {
+          onNone: () =>
+            runtime.isCi ? "ci" : runtime.isTty ? undefined : "unknown_non_interactive",
+          onSome: (name) => name,
+        }),
         os: runtime.os,
         arch: runtime.arch,
         cli_version: runtime.cliVersion,
@@ -110,20 +114,16 @@ export const analyticsLayer = Layer.effect(
         Effect.gen(function* () {
           const context = yield* CurrentAnalyticsContext;
           const groups = resolveGroups(context);
-          try {
-            client.capture({
-              event,
-              distinctId: context.distinct_id ?? runtime.distinctId ?? runtime.deviceId,
-              ...(groups === undefined ? {} : { groups }),
-              properties: {
-                ...baseProperties,
-                ...contextProperties(context),
-                ...stripUndefined(properties),
-              },
-            });
-          } catch {
-            // never block CLI UX on a telemetry fault
-          }
+          client.capture({
+            event,
+            distinctId: context.distinct_id ?? runtime.distinctId ?? runtime.deviceId,
+            ...(groups === undefined ? {} : { groups }),
+            properties: {
+              ...baseProperties,
+              ...contextProperties(context),
+              ...stripUndefined(properties),
+            },
+          });
         });
 
       const identify = (
@@ -131,28 +131,20 @@ export const analyticsLayer = Layer.effect(
         properties: Record<string, unknown> = {},
       ) =>
         Effect.sync(() => {
-          try {
-            client.identify({
-              distinctId,
-              properties: stripUndefined({
-                cli_version: runtime.cliVersion,
-                os: runtime.os,
-                arch: runtime.arch,
-                ...properties,
-              }),
-            });
-          } catch {
-            // ignore
-          }
+          client.identify({
+            distinctId,
+            properties: stripUndefined({
+              cli_version: runtime.cliVersion,
+              os: runtime.os,
+              arch: runtime.arch,
+              ...properties,
+            }),
+          });
         });
 
       const alias = (distinctId: string, aliasValue: string) =>
         Effect.sync(() => {
-          try {
-            client.alias({ distinctId, alias: aliasValue });
-          } catch {
-            // ignore
-          }
+          client.alias({ distinctId, alias: aliasValue });
         });
 
       const groupIdentify = (
@@ -162,16 +154,12 @@ export const analyticsLayer = Layer.effect(
       ) =>
         Effect.gen(function* () {
           const context = yield* CurrentAnalyticsContext;
-          try {
-            client.groupIdentify({
-              groupType,
-              groupKey,
-              distinctId: context.distinct_id ?? runtime.distinctId ?? runtime.deviceId,
-              properties: stripUndefined(properties),
-            });
-          } catch {
-            // ignore
-          }
+          client.groupIdentify({
+            groupType,
+            groupKey,
+            distinctId: context.distinct_id ?? runtime.distinctId ?? runtime.deviceId,
+            properties: stripUndefined(properties),
+          });
         });
 
       return Analytics.of({
@@ -181,7 +169,7 @@ export const analyticsLayer = Layer.effect(
         groupIdentify,
       });
     }),
-  ).pipe(Layer.provide(telemetryRuntimeLayer));
+  ).pipe(Layer.provide(telemetryRuntimeLayer), Layer.provide(aiToolLayer));
 
 export const analyticsInternals = {
   DEFAULT_POSTHOG_HOST,

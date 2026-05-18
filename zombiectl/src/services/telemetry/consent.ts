@@ -1,27 +1,22 @@
-// Consent resolution. Mirrors
-// ~/Projects/oss/cli/apps/cli/src/shared/telemetry/consent.ts but reads
-// process.env directly instead of going through a CliConfig service —
-// usezombie's other telemetry primitives already read env directly
-// (see the retired lib/analytics.ts resolveConfig).
+// Consent resolution. Reads process.env directly (no CliConfig
+// service field in usezombie yet — see M75 follow-up).
 //
-// Order of precedence (first match wins):
-//   1. DISABLE_TELEMETRY env (opt-out, current default behaviour)
+// Order of precedence (first match wins), mirrors supabase
+// getEffectiveConsent in apps/cli/src/shared/telemetry/consent.ts:
+//   1. ZOMBIE_TELEMETRY_DISABLED=1 env (opt-out kill switch)
 //   2. DO_NOT_TRACK=1 env (industry-standard signal)
 //   3. Persisted telemetry.json consent field
 //   4. Default "granted"
 //
-// Telemetry is currently opt-IN: boolFromEnv(env.DISABLE_TELEMETRY,
-// true) returns disabled=true when the env is unset. That semantics is
-// preserved here — the new tree does not change the default; consent
-// stays denied until DISABLE_TELEMETRY=0|false|off|no is set.
+// Telemetry is opt-OUT (i.e. enabled by default). Only the literal
+// string "1" opts out; anything else (including unset) keeps
+// telemetry on. Matches supabase SUPABASE_TELEMETRY_DISABLED behavior.
 
 import { Effect } from "effect";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { ConsentState, TelemetryConfig } from "./types.ts";
-
-const FALSY_VALUES = new Set(["0", "false", "off", "no"]);
 
 function getConfigDirSync(): string {
   return (
@@ -33,10 +28,8 @@ function getConfigDirSync(): string {
 export const getConfigDir = Effect.sync(getConfigDirSync);
 
 function telemetryDisabledFromEnv(env: NodeJS.ProcessEnv): boolean {
-  const raw = env.DISABLE_TELEMETRY;
-  if (raw == null || raw === "") return true;
-  const normalized = String(raw).trim().toLowerCase();
-  return !FALSY_VALUES.has(normalized);
+  const raw = env.ZOMBIE_TELEMETRY_DISABLED;
+  return raw != null && String(raw).trim() === "1";
 }
 
 function doNotTrackFromEnv(env: NodeJS.ProcessEnv): boolean {

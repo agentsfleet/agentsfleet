@@ -4,8 +4,8 @@
 // renderered error to stderr, die Exit → UnexpectedError formatting.
 //
 // The Analytics service inside MainLayer wraps the real posthog client
-// loader; ZOMBIE_POSTHOG_KEY="" + DISABLE_TELEMETRY=true (the default)
-// causes createCliAnalytics to return null, so analytics.capture is a
+// loader; ZOMBIE_TELEMETRY_POSTHOG_KEY="" + ZOMBIE_TELEMETRY_DISABLED=1
+// forces the analytics layer into its noop branch, so capture is a
 // silent no-op. That keeps these tests offline and deterministic.
 
 import { describe, test, expect, beforeEach, afterEach, beforeAll } from "bun:test";
@@ -46,7 +46,7 @@ let originalStdoutWrite: typeof process.stdout.write = process.stdout.write.bind
 beforeAll(() => {
   // Telemetry off across the suite so MainLayer's posthog loader stays a
   // no-op. Tests never hit the network.
-  process.env.DISABLE_TELEMETRY = "true";
+  process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
 });
 
 beforeEach(() => {

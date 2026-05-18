@@ -5,7 +5,7 @@
 //   - persisted telemetry.json (consent state, distinct_id)
 //   - persisted session.json (device_id, session_id with timeout
 //     rotation — delegated to identity.ts → lib/state.ts)
-//   - process.env (DISABLE_TELEMETRY, DO_NOT_TRACK, CI vars, ZOMBIE_TELEMETRY_DEBUG)
+//   - process.env (ZOMBIE_TELEMETRY_DISABLED, DO_NOT_TRACK, CI vars, ZOMBIE_TELEMETRY_DEBUG)
 //   - node:os (platform, arch, hostname)
 //   - process.stdout.isTTY for TTY detection
 //
@@ -52,7 +52,7 @@ const CI_ENV_VARS = [
 const FIRST_RUN_NOTICE = [
   "",
   "  usezombie collects anonymous usage data to improve the CLI.",
-  "  Opt out by setting DISABLE_TELEMETRY=1 (or DO_NOT_TRACK=1).",
+  "  Opt out by setting ZOMBIE_TELEMETRY_DISABLED=1 (or DO_NOT_TRACK=1).",
   "  Learn more: https://docs.usezombie.com/cli/telemetry",
   "",
   "",
