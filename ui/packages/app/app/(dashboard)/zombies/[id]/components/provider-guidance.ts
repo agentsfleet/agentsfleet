@@ -81,7 +81,10 @@ export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard> = {
     eventsLabel: (events) => joinEventsLabel(events, "Issue"),
     command: (vars, webhookUrl, events) => {
       const teamId = orPlaceholder(vars, "TEAM_ID", "TEAM_ID");
-      const resources = JSON.stringify(eventList(events, "Issue"));
+      // GraphQL enum values are bare identifiers, not JSON strings. Using
+      // JSON.stringify here emits `["Issue"]` whose inner double-quotes break
+      // the outer `-d '{"query":"..."}'` JSON payload boundary.
+      const resources = `[${eventList(events, "Issue").join(", ")}]`;
       return [
         `curl -X POST https://api.linear.app/graphql \\`,
         `  -H "Authorization: $LINEAR_API_KEY" \\`,

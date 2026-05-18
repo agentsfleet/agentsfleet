@@ -45,8 +45,38 @@ describe("PROVIDER_GUIDANCE", () => {
       );
       expect(out).toContain(`teamId: \\"ENG\\"`);
       expect(out).toContain(`url: \\"${WEBHOOK}/linear\\"`);
-      expect(out).toContain(`resourceTypes: ["Issue"]`);
+      // GraphQL enum list — bare identifiers, no quotes. Quoted forms would
+      // break the outer JSON payload boundary.
+      expect(out).toContain(`resourceTypes: [Issue]`);
+      expect(out).not.toContain(`resourceTypes: ["Issue"]`);
       expect(out).toContain(`curl -X POST https://api.linear.app/graphql`);
+    });
+
+    it("renders multiple resourceTypes as a bare-identifier list", () => {
+      const out = PROVIDER_GUIDANCE.linear.command(
+        { TEAM_ID: "ENG" },
+        `${WEBHOOK}/linear`,
+        ["Issue", "Comment"],
+      );
+      expect(out).toContain(`resourceTypes: [Issue, Comment]`);
+    });
+
+    it("produces a JSON-valid -d payload (no quote escaping pitfalls)", () => {
+      const out = PROVIDER_GUIDANCE.linear.command(
+        { TEAM_ID: "ENG" },
+        `${WEBHOOK}/linear`,
+        ["Issue", "Comment"],
+      );
+      // Extract the single-quoted -d payload and verify it parses as JSON.
+      // A failure here was the original bug — JSON.stringify on the enum
+      // list embedded literal `"` chars inside the outer `"..."` string.
+      const match = out.match(/-d '(\{[\s\S]*\})'/);
+      if (!match || match[1] === undefined) {
+        throw new Error(`-d payload not found in: ${out}`);
+      }
+      const parsed = JSON.parse(match[1]);
+      expect(typeof parsed.query).toBe("string");
+      expect(parsed.query).toContain("resourceTypes: [Issue, Comment]");
     });
 
     it("deep-links to the Linear API settings", () => {
