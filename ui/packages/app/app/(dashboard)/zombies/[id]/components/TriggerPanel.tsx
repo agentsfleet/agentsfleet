@@ -67,7 +67,7 @@ export default function TriggerPanel({
     if (list.length === 0) return undefined;
     const setup = list.find((t) => {
       const last = lastDeliveryByKey?.[triggerKey(t)];
-      return last == null;
+      return last === null;
     });
     return setup ? triggerKey(setup) : undefined;
   }, [list, lastDeliveryByKey]);
