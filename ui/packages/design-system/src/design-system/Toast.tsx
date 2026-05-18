@@ -1,6 +1,12 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import { type ComponentProps } from "react";
+import { type ComponentProps, useEffect, useRef, useState } from "react";
 import { cn } from "../utils";
+
+// Fade window — keeps children mounted this long after `visible` flips
+// false so the opacity transition is perceptible. Must match
+// `--motion-duration-fade` in tokens.css (240ms). Exported so tests
+// that advance fake timers past the dismiss window stay coupled.
+export const TOAST_FADE_MS = 240;
 
 /*
  * Toast — transient inline status message announcing the result of a
@@ -16,12 +22,15 @@ import { cn } from "../utils";
  *
  * Layout note: the <output> element renders unconditionally so the
  * a11y live region stays stable across visible/hidden transitions
- * (screen readers attach to a node that exists at mount). When
- * visible=false the inner content is null, so the element collapses
- * to zero height. In a fixed-height parent this can cause layout
- * shift; wrap in a min-height container if stable layout matters.
- * Hero's `flex flex-wrap` row absorbs the toggle gracefully without
- * a wrapper.
+ * (screen readers attach to a node that exists at mount). After
+ * `visible` flips false the children stay mounted for one
+ * `TOAST_FADE_MS` window so the opacity transition is perceptible,
+ * then unmount — `aria-hidden` flips immediately to suppress a stale
+ * screen-reader re-read. `motion-safe:` gates the transition so
+ * `prefers-reduced-motion: reduce` users get an instant change. In a
+ * fixed-height parent the collapse-to-empty can cause layout shift;
+ * wrap in a min-height container if stable layout matters. Hero's
+ * `flex flex-wrap` row absorbs the toggle gracefully without a wrapper.
  */
 export const toastVariants = cva(
   ["font-mono text-mono"],
@@ -64,15 +73,42 @@ export function Toast({
   ...props
 }: ToastProps) {
   const resolved: ToastSeverity = severity ?? "info";
+  const [rendered, setRendered] = useState(visible);
+  const fadeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setRendered(true);
+      if (fadeTimer.current) {
+        clearTimeout(fadeTimer.current);
+        fadeTimer.current = null;
+      }
+      return;
+    }
+    fadeTimer.current = setTimeout(() => setRendered(false), TOAST_FADE_MS);
+    return () => {
+      if (fadeTimer.current) {
+        clearTimeout(fadeTimer.current);
+        fadeTimer.current = null;
+      }
+    };
+  }, [visible]);
+
   return (
     <output
       ref={ref}
       aria-live={ariaLiveFor(resolved)}
       aria-atomic="true"
-      className={cn(toastVariants({ severity: resolved }), className)}
+      aria-hidden={!visible}
+      className={cn(
+        toastVariants({ severity: resolved }),
+        "motion-safe:transition-opacity motion-safe:duration-fade motion-safe:ease-fade",
+        visible ? "opacity-100" : "opacity-0",
+        className,
+      )}
       {...props}
     >
-      {visible ? children : null}
+      {rendered ? children : null}
     </output>
   );
 }

@@ -149,6 +149,13 @@
   --easing-snap: ease-out;
   --motion-duration-snap: 50ms;
 
+  /* Fade — perceptible opacity transition for transient surfaces (Toast,
+   * inline status). 240ms hits the sweet spot where the eye registers
+   * the change as smooth without holding the user up. `ease-out` matches
+   * the snap easing — entry/exit feel consistent across primitives. */
+  --easing-fade: ease-out;
+  --motion-duration-fade: 240ms;
+
   /* ── Layout ──
    * `--max-w-*` are the named content widths shared across surfaces.
    * Forwarded to Tailwind as `--container-{narrow,measure,wide,content,…}`
