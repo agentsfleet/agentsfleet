@@ -9,6 +9,7 @@ import {
   useResettableTimeout,
 } from "@usezombie/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
+import { RATES_DISPLAY } from "../lib/rates";
 
 // Plain-text payload for the clipboard. Visible terminal renders
 // each line through <LogLine severity=...> so the prompt, debug
@@ -87,6 +88,25 @@ export default function Hero() {
           />
           LIVE — wake.on.event
         </p>
+
+        <Link
+          to="/pricing"
+          onClick={() =>
+            trackNavigationClicked({
+              source: "hero_promo_pill",
+              surface: "hero",
+              target: "pricing",
+            })
+          }
+          className="inline-flex w-fit items-center gap-2 rounded-full bg-card border border-border px-3 py-1 text-sm font-mono text-text-muted hover:text-text transition-colors"
+          data-testid="hero-promo-pill"
+        >
+          <span className="rounded-full bg-pulse text-pulse-fg px-2 py-0.5 text-xs uppercase tracking-eyebrow font-medium">
+            Promo
+          </span>
+          {RATES_DISPLAY.FREE_TRIAL_PILL}
+          <span aria-hidden="true">→</span>
+        </Link>
 
         <h1
           className="font-mono text-fluid-hero leading-display-xl tracking-display-xl font-medium text-text"

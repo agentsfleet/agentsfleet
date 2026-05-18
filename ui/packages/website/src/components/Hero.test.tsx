@@ -183,4 +183,38 @@ describe("Hero", () => {
     expect(container.querySelector(".hero-cta-primary")).toBeNull();
     expect(container.querySelector(".hero-headline")).toBeNull();
   });
+
+  it("renders the promo pill as a link to /pricing with the rates-pin trial-end string", () => {
+    renderHero();
+    const pill = screen.getByTestId("hero-promo-pill");
+    expect(pill.tagName).toBe("A");
+    expect(pill).toHaveAttribute("href", "/pricing");
+    // Sourced from RATES_DISPLAY.FREE_TRIAL_PILL in lib/rates.ts; rates.test.ts
+    // pins the literal — this assertion catches accidental hardcoding in Hero.
+    expect(pill.textContent).toMatch(/Free until July 31, 2026/);
+    expect(pill.textContent).toMatch(/Promo/);
+  });
+
+  it("places the promo pill after the eyebrow and before the headline in document order", () => {
+    renderHero();
+    const eyebrow = screen.getByTestId("hero-eyebrow");
+    const pill = screen.getByTestId("hero-promo-pill");
+    const headline = screen.getByTestId("hero-headline");
+    expect(
+      eyebrow.compareDocumentPosition(pill) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      pill.compareDocumentPosition(headline) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("tracks clicks on the promo pill", () => {
+    renderHero();
+    fireEvent.click(screen.getByTestId("hero-promo-pill"));
+    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
+      source: "hero_promo_pill",
+      surface: "hero",
+      target: "pricing",
+    });
+  });
 });

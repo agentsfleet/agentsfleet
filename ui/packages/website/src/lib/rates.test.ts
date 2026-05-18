@@ -87,3 +87,24 @@ describe("RATES_DISPLAY format contract (shipped to Mintlify snippet, OpenAPI, s
     expect(RATES_DISPLAY.STAGE_SELF_MANAGED).toBe("$0.0001");
   });
 });
+
+describe("free-trial display strings (banner + hero pill share a single date substring)", () => {
+  // pin test: literal is the contract
+  it("FREE_TRIAL_PILL renders the short pill string with the trial-end date", () => {
+    expect(RATES_DISPLAY.FREE_TRIAL_PILL).toBe("Free until July 31, 2026");
+  });
+
+  it("FREE_TRIAL_BANNER starts with the same `Free until <date>` prefix", () => {
+    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).toMatch(/^Free until July 31, 2026 — /);
+  });
+
+  // Drift catcher: the pill and the banner both consume
+  // FREE_TRIAL_END_DISPLAY internally. If a future edit hardcodes the date in
+  // one without the other, this asserts both still share the same date
+  // substring — the substring IS the contract here.
+  it("pill and banner share the same trial-end date substring", () => {
+    const TRIAL_END_DISPLAY = "July 31, 2026";
+    expect(RATES_DISPLAY.FREE_TRIAL_PILL).toContain(TRIAL_END_DISPLAY);
+    expect(RATES_DISPLAY.FREE_TRIAL_BANNER).toContain(TRIAL_END_DISPLAY);
+  });
+});
