@@ -38,9 +38,14 @@ export type { MainLayerServices } from "../runtime/main-layer.ts";
 // `Effect.provide(MainLayer)` call below fails to typecheck — that's
 // the compile-time guard that every command's declared service-set is
 // actually wired.
-export interface RunEffectInput<E extends CliError, R> {
+//
+// A — the success value type. `void` is the common case (the dispatcher
+// maps success → exit 0). `number` lets a command emit its own exit
+// code on success (e.g. `doctor` returns 1 when checks logically fail
+// without raising a typed error).
+export interface RunEffectInput<A, E extends CliError, R> {
   readonly name: string;
-  readonly effect: Effect.Effect<void, E, R>;
+  readonly effect: Effect.Effect<A, E, R>;
   // Pre-built layer mirrors the Supabase pattern (shared/cli/run.ts):
   // compose at one site, provide at the boundary. When omitted, a
   // default layer is built from `mainLayerFor` — used by tests that
@@ -53,10 +58,17 @@ export interface RunEffectInput<E extends CliError, R> {
   readonly layerInput?: MainLayerInput;
 }
 
-const formatExit = <E extends CliError>(
-  exit: Exit.Exit<void, E>,
+const formatExit = <A, E extends CliError>(
+  exit: Exit.Exit<A, E>,
 ): { code: number; rendered: CliError } | null => {
-  if (Exit.isSuccess(exit)) return null;
+  if (Exit.isSuccess(exit)) {
+    // Numeric success value = command-managed exit code (e.g. doctor's
+    // ok ? 0 : 1). Non-numeric success = exit 0. The dispatcher swallows
+    // the "rendered" hint for success cases.
+    return typeof exit.value === "number" && exit.value !== 0
+      ? { code: exit.value, rendered: { _tag: "UnexpectedError" } as CliError }
+      : null;
+  }
   const failure = Cause.findErrorOption(exit.cause);
   if (Option.isSome(failure)) {
     const err = failure.value;
@@ -93,9 +105,9 @@ const renderError = (
     yield* output.error(err.message);
   });
 
-const renderAndCount = <E extends CliError>(
+const renderAndCount = <A, E extends CliError>(
   name: string,
-  exit: Exit.Exit<void, E>,
+  exit: Exit.Exit<A, E>,
 ): Effect.Effect<number, never, Output | Analytics> =>
   Effect.gen(function* () {
     const analytics = yield* Analytics;
@@ -106,6 +118,17 @@ const renderAndCount = <E extends CliError>(
         exit_code: "0",
       });
       return 0;
+    }
+    // Numeric success exit codes (doctor's ok ? 0 : 1) skip the error
+    // render — the command already wrote its own report. They DO emit
+    // cli_command_finished with the non-zero code so dashboards see the
+    // failure surface.
+    if (Exit.isSuccess(exit)) {
+      yield* analytics.capture(EVT_CLI_COMMAND_FINISHED, {
+        command: name,
+        exit_code: String(formatted.code),
+      });
+      return formatted.code;
     }
     yield* renderError(formatted.rendered);
     const errorCode =
@@ -135,8 +158,8 @@ const captureStarted = (name: string): Effect.Effect<void, never, Analytics | Cl
     });
   });
 
-export const runEffect = async <E extends CliError, R extends MainLayerServices>(
-  input: RunEffectInput<E, R>,
+export const runEffect = async <A, E extends CliError, R extends MainLayerServices>(
+  input: RunEffectInput<A, E, R>,
 ): Promise<number> => {
   const program = Effect.gen(function* () {
     yield* captureStarted(input.name);
