@@ -69,11 +69,11 @@ describe("runEffect — success path", () => {
     });
     expect(exit).toBe(0);
   });
-  test("threads telemetry session/device ids through", async () => {
+  test("threads commandPath into CommandRuntime span name", async () => {
     const exit = await runEffect({
-      name: "test.with-telemetry",
+      name: "test.with-cmd-path",
       effect: Effect.void,
-      layerInput: { telemetry: { sessionId: "sess-123", deviceId: "dev-456" } },
+      layerInput: { commandPath: ["test", "with-cmd-path"] },
     });
     expect(exit).toBe(0);
   });

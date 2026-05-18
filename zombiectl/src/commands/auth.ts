@@ -3,7 +3,7 @@
 // services consumed below come from src/services/* via MainLayer.
 
 import { Effect, Option, Redacted } from "effect";
-import { Analytics } from "../services/analytics.ts";
+import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";

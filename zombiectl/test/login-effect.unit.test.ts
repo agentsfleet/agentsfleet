@@ -11,7 +11,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { loginEffect, type LoginFlags } from "../src/commands/login.ts";
-import { Analytics } from "../src/services/analytics.ts";
+import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { Browser } from "../src/services/browser.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
@@ -71,7 +71,7 @@ const analyticsLayer = (rec: Recorder): Layer.Layer<Analytics> =>
       Effect.sync(() => { rec.events.push({ event, properties }); }),
     identify: () => Effect.void,
     alias: () => Effect.void,
-    shutdown: Effect.void,
+    groupIdentify: () => Effect.void,
   });
 
 const credentialsLayer = (rec: Recorder): Layer.Layer<Credentials> => {

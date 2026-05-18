@@ -6,9 +6,10 @@
 //
 // Layer order is significant for dependency resolution:
 //   - CliConfig has no deps
-//   - TelemetryRuntime is wired from runtime values resolved at process
-//     start (cli.ts session record) and passed in via `input.telemetry`
-//   - Analytics consumes TelemetryRuntime
+//   - TelemetryRuntime is resolved on disk + env by services/telemetry/
+//     runtime.layer.ts — no input thread-through from cli.ts anymore.
+//   - Analytics + Tracing both consume TelemetryRuntime
+//   - CommandRuntime is per-invocation; populated from MainLayerInput.commandPath
 //   - HttpClient consumes CliConfig
 //   - Output, Credentials, Browser, Workspaces, Spinner have no service deps
 //
@@ -16,11 +17,9 @@
 //   - `MainLayer` — defaults-only constant, used by callers that don't
 //     need per-invocation overrides (and by tests that exercise the
 //     env-resolved shape).
-//   - `mainLayerFor(input)` — composes a layer with telemetry/config/
-//     streams overrides. Mirrors Supabase's `cliConfigLayerFor` helper
-//     factory in shared/cli/run.ts — the dispatcher and the handler-
-//     binding layer call this and apply `Effect.provide` at the outer
-//     boundary.
+//   - `mainLayerFor(input)` — composes a layer with config/streams/
+//     commandPath overrides. Mirrors Supabase's cliProgramFor helper
+//     factory in shared/cli/run.ts.
 
 import { Layer } from "effect";
 import {
@@ -30,32 +29,38 @@ import {
   type CliConfigShape,
 } from "../services/config.ts";
 import {
-  TelemetryRuntime,
-  telemetryRuntimeEmptyLayer,
-  telemetryRuntimeFromValuesLayer,
-} from "../services/telemetry-runtime.ts";
-import {
   Output,
   outputStdioLayer,
   outputFromStreamsLayer,
 } from "../services/output.ts";
 import { Credentials, credentialsLayer } from "../services/credentials.ts";
-import {
-  Analytics,
-  analyticsLayer,
-  analyticsLayerWithDistinctId,
-} from "../services/analytics.ts";
 import { HttpClient, httpClientLayer } from "../services/http-client.ts";
 import { Browser, browserLayer } from "../services/browser.ts";
 import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
 import { Spinner, spinnerLayer } from "../services/spinner.ts";
+import {
+  CommandRuntime,
+  commandRuntimeFromValuesLayer,
+} from "./command-runtime.service.ts";
+import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
+import { telemetryRuntimeLayer } from "../services/telemetry/runtime.layer.ts";
+import { Analytics } from "../services/telemetry/analytics.service.ts";
+import { analyticsLayer } from "../services/telemetry/analytics.layer.ts";
+import { tracingLayer } from "../services/telemetry/tracing.layer.ts";
 
 // Every service `mainLayerFor` provides. Command Effects' R channel
 // must be a subset.
+//
+// `Tracing` (Tracer.Tracer) is a Context.Reference with a default,
+// not a Service — Effect resolves it from the active reference even
+// when not explicitly in R. The tracing layer still installs the
+// CLI tracer at the boundary so spans flow to NDJSON; the service
+// just doesn't appear in MainLayerServices.
 export type MainLayerServices =
   | Analytics
   | Browser
   | CliConfig
+  | CommandRuntime
   | Credentials
   | HttpClient
   | Output
@@ -64,19 +69,21 @@ export type MainLayerServices =
   | Workspaces;
 
 export interface MainLayerInput {
-  readonly telemetry?: {
-    readonly sessionId: string | null;
-    readonly deviceId: string | null;
-  };
   readonly config?: Partial<CliConfigShape>;
   readonly streams?: {
     readonly stdout: NodeJS.WritableStream;
     readonly stderr: NodeJS.WritableStream;
   };
-  // Pre-resolved distinct id from the env token. When set, the Analytics
-  // service starts under this id instead of "anonymous"; otherwise the
-  // anonymous default applies until a command calls analytics.identify().
-  readonly initialDistinctId?: string | null;
+  // commandPath populates CommandRuntime so the supabase-pattern span
+  // name + analytics command label are non-empty. handlers-bind.ts
+  // passes the wrap site's `name` (e.g. "agent.add") split by "."; the
+  // commander-bridge passes ["__parse__"]. Defaults to ["unknown"]
+  // when omitted (tests that don't care about CommandRuntime).
+  readonly commandPath?: ReadonlyArray<string>;
+  // commandRunId correlates analytics events + spans + log lines for
+  // one invocation. handlers-bind.ts generates one per wrap call.
+  // Defaults to crypto.randomUUID() per mainLayerFor call.
+  readonly commandRunId?: string;
 }
 
 export const mainLayerFor = (
@@ -84,33 +91,30 @@ export const mainLayerFor = (
 ): Layer.Layer<MainLayerServices> => {
   const configBase =
     input.config !== undefined ? cliConfigFromValuesLayer(input.config) : cliConfigLayer;
-  const telemetryBase =
-    input.telemetry !== undefined
-      ? telemetryRuntimeFromValuesLayer({
-          sessionId: input.telemetry.sessionId,
-          deviceId: input.telemetry.deviceId,
-        })
-      : telemetryRuntimeEmptyLayer;
   const outputBase =
     input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer;
 
+  const commandRuntime = commandRuntimeFromValuesLayer({
+    commandPath: input.commandPath ?? ["unknown"],
+    commandRunId: input.commandRunId ?? crypto.randomUUID(),
+  });
+
   const http = httpClientLayer.pipe(Layer.provide(configBase));
-  const analyticsBase =
-    input.initialDistinctId !== undefined && input.initialDistinctId !== null
-      ? analyticsLayerWithDistinctId(input.initialDistinctId)
-      : analyticsLayer;
-  const analytics = analyticsBase.pipe(Layer.provide(telemetryBase));
+  const analytics = analyticsLayer.pipe(Layer.provide(telemetryRuntimeLayer));
+  const tracing = tracingLayer.pipe(Layer.provide(telemetryRuntimeLayer));
 
   return Layer.mergeAll(
     configBase,
-    telemetryBase,
+    telemetryRuntimeLayer,
     outputBase,
     credentialsLayer,
     browserLayer,
     workspacesLayer,
     spinnerLayer,
+    commandRuntime,
     http,
     analytics,
+    tracing,
   );
 };
 

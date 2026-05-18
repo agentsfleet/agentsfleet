@@ -9,10 +9,8 @@
 // Workspaces accept any extra fields handlers read so command-specific
 // reads don't force a churn through this file.
 
-import type { ApiRequestOptions, RetryConfig } from "../lib/http.ts";
 import type { StreamGetCallback, StreamGetOptions } from "../lib/sse.ts";
 import type { Credentials, Workspaces, WorkspaceItem } from "../lib/state.ts";
-import type { AnalyticsClient } from "../lib/analytics.ts";
 import type {
   UiTheme,
   WriteStream,
@@ -26,8 +24,6 @@ import type {
 // workspaces.json) — handlers, cli.ts, and the lifecycle all reference
 // the same interfaces.
 export type { Credentials, Workspaces, WorkspaceItem };
-
-export type { ApiRequestOptions };
 
 export type StreamGetFn = (
   url: string,
@@ -53,12 +49,11 @@ export interface CommandCtx {
   noOpen?: boolean;
   noInput?: boolean;
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-  analyticsClient?: AnalyticsClient | null;
-  distinctId?: string;
-  analyticsContext?: Record<string, unknown> | null;
-  retryConfig?: RetryConfig | null;
-  // CLI telemetry session/device identity. Local camelCase; the
-  // wire-format snake_case rename happens at emit/append sites.
+  // CLI telemetry session/device identity. Read off lib/state.ts session
+  // record in cli.ts; consumed by the legacy non-Effect command path
+  // (kept for non-migrated commands that emit analytics outside the
+  // dispatcher). Effect-shaped commands read the canonical values from
+  // TelemetryRuntime instead.
   cliSessionId?: string | null;
   cliDeviceId?: string | null;
   [key: string]: unknown;
@@ -97,8 +92,11 @@ export interface SpinnerHandle {
 // src/cli.ts verbatim. writeError is widened to accept any subset of
 // CommandDeps that the call site assembles (some commands call it with
 // just { printJson, writeLine, ui }, others pass the full deps).
+//
+// `apiHeaders` + `request` were retired alongside src/lib/analytics.ts
+// in the supabase-pattern telemetry cutover — no command consumed
+// them; every HTTP path now goes through the Effect HttpClient service.
 export interface CommandDeps {
-  apiHeaders: (ctx: CommandCtx) => Record<string, string>;
   clearCredentials: () => Promise<void> | void;
   createSpinner: (options: SpinnerOptions) => SpinnerHandle;
   loadCredentials: () => Promise<Credentials> | Credentials;
@@ -120,11 +118,6 @@ export interface CommandDeps {
     columns: ReadonlyArray<TableColumn>,
     rows: ReadonlyArray<TableRow>,
   ) => void;
-  request: (
-    ctx: CommandCtx,
-    path: string,
-    opts?: ApiRequestOptions,
-  ) => Promise<ApiResponse>;
   saveCredentials: (cred: Credentials) => Promise<void> | void;
   saveWorkspaces: (workspaces: Workspaces) => Promise<void> | void;
   // Optional SSE injector — zombie_steer uses this for the live event

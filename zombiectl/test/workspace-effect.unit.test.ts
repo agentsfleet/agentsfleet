@@ -13,7 +13,7 @@ import {
   workspaceShowEffectFromArgs,
   workspaceUseEffectFromArgs,
 } from "../src/commands/workspace.ts";
-import { Analytics } from "../src/services/analytics.ts";
+import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
@@ -69,7 +69,7 @@ const analyticsLayer = (rec: Recorder): Layer.Layer<Analytics> =>
       }),
     identify: () => Effect.void,
     alias: () => Effect.void,
-    shutdown: Effect.void,
+    groupIdentify: () => Effect.void,
   });
 
 const workspacesLayer = (state: { value: WorkspacesValue }): Layer.Layer<Workspaces> =>

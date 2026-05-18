@@ -45,34 +45,32 @@ function doNotTrackFromEnv(env: NodeJS.ProcessEnv): boolean {
   return String(raw).trim() === "1";
 }
 
-export const readTelemetryConfig = Effect.fn("telemetry.readConfig")(
-  function* (configDir: string) {
-    const configPath = path.join(configDir, "telemetry.json");
-    try {
-      const content = yield* Effect.promise(() =>
-        fs.readFile(configPath, "utf8"),
-      );
-      return JSON.parse(content) as TelemetryConfig;
-    } catch {
-      return null;
-    }
-  },
-);
+export const readTelemetryConfig = (
+  configDir: string,
+): Effect.Effect<TelemetryConfig | null> =>
+  Effect.tryPromise({
+    try: () => fs.readFile(path.join(configDir, "telemetry.json"), "utf8"),
+    catch: () => null,
+  }).pipe(
+    Effect.map((content) => JSON.parse(content) as TelemetryConfig),
+    Effect.catch(() => Effect.succeed(null as TelemetryConfig | null)),
+  );
 
-export const writeTelemetryConfig = Effect.fn("telemetry.writeConfig")(
-  function* (config: TelemetryConfig, configDir: string) {
-    yield* Effect.promise(() =>
-      fs.mkdir(configDir, { recursive: true, mode: 0o700 }),
-    );
-    yield* Effect.promise(() =>
-      fs.writeFile(
+export const writeTelemetryConfig = (
+  config: TelemetryConfig,
+  configDir: string,
+): Effect.Effect<void> =>
+  Effect.tryPromise({
+    try: async () => {
+      await fs.mkdir(configDir, { recursive: true, mode: 0o700 });
+      await fs.writeFile(
         path.join(configDir, "telemetry.json"),
         JSON.stringify(config, null, 2),
         { mode: 0o600 },
-      ),
-    );
-  },
-);
+      );
+    },
+    catch: () => undefined,
+  }).pipe(Effect.ignore);
 
 export const getEffectiveConsent = (
   config: TelemetryConfig | null,

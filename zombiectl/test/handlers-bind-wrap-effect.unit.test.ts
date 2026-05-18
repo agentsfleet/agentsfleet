@@ -67,8 +67,6 @@ describe("wrapEffect inner handler", () => {
       ctx: minimalCtx(),
       workspaces,
       deps: minimalDeps(),
-      analyticsClient: null,
-      distinctId: null,
       lastCommand: null,
     };
     const handlers = buildHandlers(lifecycle);
@@ -83,8 +81,6 @@ describe("wrapEffect inner handler", () => {
       ctx: minimalCtx(),
       workspaces,
       deps: minimalDeps(),
-      analyticsClient: null,
-      distinctId: null,
       lastCommand: null,
     };
     const handlers = buildHandlers(lifecycle);

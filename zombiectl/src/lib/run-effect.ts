@@ -2,19 +2,18 @@
 // MainLayer at the boundary, translates the Exit into a process exit
 // code via the shared formatter + EXIT_CODE map.
 //
-// Owns the cli_command_started / cli_command_finished / cli_error
-// analytics triplet so individual command Effects don't have to wire
-// it. cli_session_id + cli_device_id are added automatically inside
-// the Analytics service from TelemetryRuntime.
+// Analytics emit is NOT this layer's responsibility — it lives in
+// services/telemetry/command-instrumentation.ts:withCommandInstrumentation,
+// applied at the single bind site in program/handlers-bind.ts. The
+// dispatcher just runs the Effect and renders the Exit. Mirrors
+// Supabase's shared/cli/run.ts handledProgram shape.
 //
 // Catches via `Effect.exit` so both typed failures (CliError variants)
 // and dies (uncaught exceptions inside the Effect graph) route through
 // the formatter — there's no untyped escape.
 
 import { Cause, Effect, Exit, Layer, Option } from "effect";
-import { Analytics } from "../services/analytics.ts";
 import { Output } from "../services/output.ts";
-import { CliConfig } from "../services/config.ts";
 import {
   mainLayerFor,
   type MainLayerInput,
@@ -25,11 +24,6 @@ import {
   UnexpectedError,
   type CliError,
 } from "../errors/index.ts";
-import {
-  EVT_CLI_COMMAND_STARTED,
-  EVT_CLI_COMMAND_FINISHED,
-  EVT_CLI_ERROR,
-} from "../constants/analytics-events.ts";
 
 export type { MainLayerServices } from "../runtime/main-layer.ts";
 
@@ -106,65 +100,24 @@ const renderError = (
   });
 
 const renderAndCount = <A, E extends CliError>(
-  name: string,
   exit: Exit.Exit<A, E>,
-): Effect.Effect<number, never, Output | Analytics> =>
+): Effect.Effect<number, never, Output> =>
   Effect.gen(function* () {
-    const analytics = yield* Analytics;
     const formatted = formatExit(exit);
-    if (formatted === null) {
-      yield* analytics.capture(EVT_CLI_COMMAND_FINISHED, {
-        command: name,
-        exit_code: "0",
-      });
-      return 0;
-    }
+    if (formatted === null) return 0;
     // Numeric success exit codes (doctor's ok ? 0 : 1) skip the error
-    // render — the command already wrote its own report. They DO emit
-    // cli_command_finished with the non-zero code so dashboards see the
-    // failure surface.
-    if (Exit.isSuccess(exit)) {
-      yield* analytics.capture(EVT_CLI_COMMAND_FINISHED, {
-        command: name,
-        exit_code: String(formatted.code),
-      });
-      return formatted.code;
-    }
+    // render — the command already wrote its own report.
+    if (Exit.isSuccess(exit)) return formatted.code;
     yield* renderError(formatted.rendered);
-    const errorCode =
-      formatted.rendered._tag === "ServerError" ||
-      formatted.rendered._tag === "AuthError"
-        ? formatted.rendered.code
-        : formatted.rendered._tag;
-    yield* analytics.capture(EVT_CLI_ERROR, {
-      command: name,
-      error_code: errorCode,
-      exit_code: String(formatted.code),
-    });
-    yield* analytics.capture(EVT_CLI_COMMAND_FINISHED, {
-      command: name,
-      exit_code: String(formatted.code),
-    });
     return formatted.code;
-  });
-
-const captureStarted = (name: string): Effect.Effect<void, never, Analytics | CliConfig> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const analytics = yield* Analytics;
-    yield* analytics.capture(EVT_CLI_COMMAND_STARTED, {
-      command: name,
-      json_mode: String(config.jsonMode),
-    });
   });
 
 export const runEffect = async <A, E extends CliError, R extends MainLayerServices>(
   input: RunEffectInput<A, E, R>,
 ): Promise<number> => {
   const program = Effect.gen(function* () {
-    yield* captureStarted(input.name);
     const exit = yield* Effect.exit(input.effect);
-    return yield* renderAndCount(input.name, exit);
+    return yield* renderAndCount(exit);
   });
 
   const runtime = input.layer ?? mainLayerFor(input.layerInput);

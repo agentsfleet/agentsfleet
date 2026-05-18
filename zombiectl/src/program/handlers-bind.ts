@@ -5,6 +5,7 @@
 import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
+import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
 
 import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
 import { loginEffectFromFlags } from "../commands/login.ts";
@@ -32,16 +33,11 @@ import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.t
 import type { CommandCtx, CommandDeps, Workspaces } from "../commands/types.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
 import { parseIntOption } from "./validators.ts";
-import type { AnalyticsClient } from "../lib/analytics.ts";
 
 export interface Lifecycle {
   ctx: CommandCtx;
   workspaces: Workspaces;
   deps: CommandDeps;
-  analyticsClient: AnalyticsClient | null | undefined;
-  // null until a token is present. The dispatcher's Analytics service
-  // applies the "anonymous" fallback when distinctId is unset.
-  distinctId: string | null;
   lastCommand: string | null;
 }
 
@@ -83,19 +79,24 @@ function streamsFromCtx(
 // site, Effect.provide at the dispatcher boundary). Reads ctx AFTER
 // commander's preAction has fired, so --no-open / --json / --api
 // global flags are captured.
-function mainLayerForCtx(lifecycle: Lifecycle): ReturnType<typeof mainLayerFor> {
+//
+// `name` is the wrap-site label ("agent.add", "workspace.list", ...).
+// Split into commandPath so CommandRuntime carries it (the span name
+// becomes `cli.agent.add`, the analytics command label becomes
+// "agent add").
+function mainLayerForCtx(lifecycle: Lifecycle, name: string): ReturnType<typeof mainLayerFor> {
   const streams = streamsFromCtx(lifecycle.ctx);
   return mainLayerFor({
-    telemetry: {
-      sessionId: lifecycle.ctx.cliSessionId ?? null,
-      deviceId: lifecycle.ctx.cliDeviceId ?? null,
-    },
     config: configOverrideFromCtx(lifecycle.ctx),
+    commandPath: name.split("."),
     ...(streams !== undefined ? { streams } : {}),
-    ...(lifecycle.distinctId ? { initialDistinctId: lifecycle.distinctId } : {}),
   });
 }
 
+// withCommandInstrumentation is applied HERE — single seam. Every
+// command Effect picks up the supabase-pattern tracing span + the
+// cli_command_executed analytics emit transparently. The 30+ files
+// under src/commands/*.ts are NOT edited.
 function wrapEffect<A, E extends CliError, R extends MainLayerServices>(
   name: string,
   effect: Effect.Effect<A, E, R>,
@@ -104,8 +105,8 @@ function wrapEffect<A, E extends CliError, R extends MainLayerServices>(
   return async (_frame: ActionFrame): Promise<number> => {
     const exitCode = await runEffect({
       name,
-      effect,
-      layer: mainLayerForCtx(lifecycle),
+      effect: effect.pipe(withCommandInstrumentation()),
+      layer: mainLayerForCtx(lifecycle, name),
     });
     lifecycle.lastCommand = name;
     return exitCode;
@@ -124,8 +125,8 @@ function wrapEffectFn<A, E extends CliError, R extends MainLayerServices>(
   return async (frame: ActionFrame): Promise<number> => {
     const exitCode = await runEffect({
       name,
-      effect: factory(frame),
-      layer: mainLayerForCtx(lifecycle),
+      effect: factory(frame).pipe(withCommandInstrumentation()),
+      layer: mainLayerForCtx(lifecycle, name),
     });
     lifecycle.lastCommand = name;
     return exitCode;
