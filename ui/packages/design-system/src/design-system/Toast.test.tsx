@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import { Toast } from "./Toast";
 
 afterEach(() => cleanup());
@@ -83,5 +83,138 @@ describe("Toast", () => {
     const cls = screen.getByTestId("t").className;
     expect(cls).toContain("custom-marker");
     expect(cls).toContain("text-text-muted");
+  });
+
+  it("drives inline transitionDuration from fadeMs (default 240 ms)", () => {
+    render(
+      <Toast visible data-testid="t">
+        default
+      </Toast>,
+    );
+    expect(screen.getByTestId("t").style.transitionDuration).toBe("240ms");
+  });
+
+  it("honors a custom fadeMs by writing it into inline transitionDuration", () => {
+    render(
+      <Toast visible fadeMs={80} data-testid="t">
+        fast
+      </Toast>,
+    );
+    expect(screen.getByTestId("t").style.transitionDuration).toBe("80ms");
+  });
+
+  it("toggles opacity classes on visible flip (CSS-only fade trigger)", () => {
+    const { rerender } = render(
+      <Toast visible data-testid="t">
+        on
+      </Toast>,
+    );
+    expect(screen.getByTestId("t").className).toContain("opacity-100");
+    rerender(
+      <Toast visible={false} data-testid="t">
+        on
+      </Toast>,
+    );
+    expect(screen.getByTestId("t").className).toContain("opacity-0");
+  });
+
+  it("flips aria-hidden immediately when visible flips false (before fade completes)", () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <Toast visible data-testid="t">
+        copied
+      </Toast>,
+    );
+    expect(screen.getByTestId("t").getAttribute("aria-hidden")).toBe("false");
+    rerender(
+      <Toast visible={false} data-testid="t">
+        copied
+      </Toast>,
+    );
+    // aria-hidden flips immediately on the same render; the fade timer
+    // is still running but screen readers must not re-announce stale
+    // content while the visual fades out.
+    expect(screen.getByTestId("t").getAttribute("aria-hidden")).toBe("true");
+    vi.useRealTimers();
+  });
+
+  it("keeps children mounted during the fade window, then unmounts them", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <Toast visible fadeMs={200} data-testid="t">
+        copied — paste
+      </Toast>,
+    );
+    expect(screen.getByTestId("t").textContent).toBe("copied — paste");
+    rerender(
+      <Toast visible={false} fadeMs={200} data-testid="t">
+        copied — paste
+      </Toast>,
+    );
+    // Mid-fade (100 ms in): children still mounted so the user sees
+    // the text fading rather than snapping to empty.
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(screen.getByTestId("t").textContent).toBe("copied — paste");
+    // Past the fade window (220 ms total > 200 ms fadeMs): children unmount.
+    await act(async () => {
+      vi.advanceTimersByTime(120);
+    });
+    expect((screen.getByTestId("t").textContent ?? "").trim()).toBe("");
+    vi.useRealTimers();
+  });
+
+  it("re-shows children when visible flips true mid-fade (no orphan timer)", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(
+      <Toast visible fadeMs={200} data-testid="t">
+        hello
+      </Toast>,
+    );
+    rerender(
+      <Toast visible={false} fadeMs={200} data-testid="t">
+        hello
+      </Toast>,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(80);
+    });
+    // Mid-fade reflip — visible back to true.
+    rerender(
+      <Toast visible fadeMs={200} data-testid="t">
+        hello
+      </Toast>,
+    );
+    // Run the original would-be-orphan timer; children must still be
+    // mounted (the cleanup canceled it).
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByTestId("t").textContent).toBe("hello");
+    vi.useRealTimers();
+  });
+
+  it("survives unmount mid-fade without leaking a setTimeout", async () => {
+    vi.useFakeTimers();
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { rerender, unmount } = render(
+      <Toast visible fadeMs={200} data-testid="t">
+        x
+      </Toast>,
+    );
+    rerender(
+      <Toast visible={false} fadeMs={200} data-testid="t">
+        x
+      </Toast>,
+    );
+    unmount();
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    // No setState-on-unmounted-component warnings allowed.
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
+    vi.useRealTimers();
   });
 });
