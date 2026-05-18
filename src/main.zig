@@ -226,7 +226,6 @@ test {
     _ = @import("zombie/webhook_verify_test.zig");
     _ = @import("zombie/webhook/normalizer/github.zig");
     _ = cli_commands;
-    _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
     _ = @import("observability/trace.zig");

@@ -21,7 +21,8 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const auth_sessions = @import("../auth/sessions.zig");
+const session_store_redis = @import("../auth/session_store_redis.zig");
+const audit_events = @import("../auth/audit_events.zig");
 const oidc = @import("../auth/oidc.zig");
 const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
@@ -32,6 +33,8 @@ const telemetry_mod = @import("../observability/telemetry.zig");
 const test_port = @import("test_port.zig");
 
 const MAX_HEADERS = 16;
+const TEST_AUTH_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
+const TEST_AUDIT_LOG_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 
 pub const Config = struct {
     /// Caller configures the middleware registry. Called AFTER init with pool
@@ -56,7 +59,7 @@ const DEFAULT_JWKS =
 pub const TestHarness = struct {
     alloc: std.mem.Allocator,
     pool: *pg.Pool,
-    session_store: auth_sessions.SessionStore,
+    session_store: session_store_redis.SessionStore,
     verifier: oidc.Verifier,
     queue: queue_redis.Client,
     has_redis: bool = false,
@@ -77,6 +80,16 @@ pub const TestHarness = struct {
         if (self.has_redis) return;
         self.queue = try queue_redis.Client.connectFromEnv(self.alloc, .api);
         self.has_redis = true;
+        // SessionStore holds a pointer to `self.queue`; safe now that the
+        // queue handle is initialized. `ctx.auth_sessions` already points
+        // to `&self.session_store`, so the in-place init is observed by
+        // every handler call from this point on.
+        self.session_store = session_store_redis.SessionStore.init(
+            self.alloc,
+            &self.queue,
+            TEST_AUTH_SESSION_PEPPER,
+            TEST_AUDIT_LOG_PEPPER,
+        );
     }
 
     /// Bool-returning wrapper kept for tests that opt into Redis
@@ -108,7 +121,11 @@ pub const TestHarness = struct {
         h.* = .{
             .alloc = alloc,
             .pool = db_ctx.pool,
-            .session_store = auth_sessions.SessionStore.init(alloc),
+            // SAFETY: SessionStore is populated in-place by `connectRedis()` below
+            // (needs the queue handle). `ctx.auth_sessions = &h.session_store`
+            // captures the stable pointer; the pointee is initialized before any
+            // auth-session handler reads it.
+            .session_store = undefined,
             .verifier = oidc.Verifier.init(alloc, .{
                 .provider = .clerk,
                 .jwks_url = "https://test.invalid/jwks",
@@ -131,7 +148,6 @@ pub const TestHarness = struct {
         };
         // Mirror deinit()'s teardown order from here forward — each
         // resource that gets a deinit there gets an errdefer here.
-        errdefer h.session_store.deinit();
         errdefer h.verifier.deinit();
 
         h.ctx = .{
@@ -140,6 +156,7 @@ pub const TestHarness = struct {
             .alloc = alloc,
             .oidc = &h.verifier,
             .auth_sessions = &h.session_store,
+            .audit_ctx = audit_events.AuditCtx.init(TEST_AUDIT_LOG_PEPPER),
             .app_url = "http://127.0.0.1",
             .api_url = "http://127.0.0.1",
             .api_in_flight_requests = std.atomic.Value(u32).init(0),
@@ -199,7 +216,8 @@ pub const TestHarness = struct {
         self.thread.join();
         self.server.deinit();
         self.verifier.deinit();
-        self.session_store.deinit();
+        // Redis-backed SessionStore is a pure facade — no per-instance
+        // teardown. `queue.deinit()` below releases the underlying pool.
         if (self.has_redis) self.queue.deinit();
         self.pool.deinit();
         self.alloc.destroy(self);

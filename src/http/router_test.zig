@@ -37,16 +37,37 @@ test "match resolves auth routes" {
             else => return error.TestExpectedEqual,
         },
     );
-    // PATCH dispatches to patch_auth_session.
+    // DELETE on the bare id dispatches to delete_auth_session (Clerk-authed cancel).
     try std.testing.expectEqualStrings(
         "sess_1",
-        switch (match("/v1/auth/sessions/sess_1", .PATCH).?) {
-            .patch_auth_session => |session_id| session_id,
+        switch (match("/v1/auth/sessions/sess_1", .DELETE).?) {
+            .delete_auth_session => |session_id| session_id,
             else => return error.TestExpectedEqual,
         },
     );
+    // The /approve suffix → PATCH approve_auth_session.
+    try std.testing.expectEqualStrings(
+        "sess_1",
+        switch (match("/v1/auth/sessions/sess_1/approve", .PATCH).?) {
+            .approve_auth_session => |session_id| session_id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // The /verify suffix → POST verify_auth_session.
+    try std.testing.expectEqualStrings(
+        "sess_1",
+        switch (match("/v1/auth/sessions/sess_1/verify", .POST).?) {
+            .verify_auth_session => |session_id| session_id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // Bulk-abort path is unit, no id.
+    try std.testing.expectEqualDeep(Route.delete_all_auth_sessions, match("/v1/auth/sessions/all", .DELETE).?);
     // The retired POST .../complete suffix no longer dispatches to any route.
     try std.testing.expect(match("/v1/auth/sessions/sess_1/complete", .POST) == null);
+    // The retired plaintext PATCH /v1/auth/sessions/{id} (Q3): the matcher
+    // returns poll_auth_session, the invoke fn 405s on non-GET. No router
+    // path leads to the old plaintext handler.
 }
 
 // Memory API moved from /v1/memory/{store,recall,list,forget} to

@@ -15,7 +15,7 @@ const std = @import("std");
 const logging = @import("log");
 const queue_redis = @import("../queue/redis.zig");
 const id_format = @import("../types/id_format.zig");
-const hmac_sig = @import("../crypto/hmac_sig.zig");
+const hmac_sig = @import("hmac_sig");
 const session_state = @import("session_state.zig");
 const proto = @import("session_store_redis_proto.zig");
 

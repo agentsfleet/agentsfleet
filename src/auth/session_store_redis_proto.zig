@@ -186,7 +186,7 @@ test "firstTag returns the leading bulk on a string-only array" {
 }
 
 test "firstTag returns null on non-array RESP" {
-    var resp = redis_protocol.RespValue{ .integer = 7 };
+    const resp = redis_protocol.RespValue{ .integer = 7 };
     try testing.expect(firstTag(resp) == null);
 }
 

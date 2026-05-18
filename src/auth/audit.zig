@@ -18,7 +18,7 @@
 //! Both are loaded once at boot in `src/config/runtime_loader.zig`.
 
 const std = @import("std");
-const hmac_sig = @import("../crypto/hmac_sig.zig");
+const hmac_sig = @import("hmac_sig");
 
 /// Length of the human-correlation prefix surfaced into audit events
 /// (8 hex chars = 32 bits = ~4B entries). Coarse enough to avoid
