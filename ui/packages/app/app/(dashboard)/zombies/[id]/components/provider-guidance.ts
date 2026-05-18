@@ -182,5 +182,10 @@ export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard> = {
 };
 
 export function guidanceFor(source: string): GuidanceCard | null {
+  // Object.hasOwn guard — `source` arrives from operator-supplied trigger
+  // config; a bare bracket-access would inherit Object.prototype members
+  // (e.g. `constructor`) and resolve to a non-GuidanceCard function,
+  // crashing the GuidedTriggerCard render path.
+  if (!Object.hasOwn(PROVIDER_GUIDANCE, source)) return null;
   return (PROVIDER_GUIDANCE as Record<string, GuidanceCard>)[source] ?? null;
 }

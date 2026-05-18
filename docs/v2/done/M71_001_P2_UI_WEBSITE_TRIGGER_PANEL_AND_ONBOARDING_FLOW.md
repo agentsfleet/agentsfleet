@@ -287,7 +287,7 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 
 | Mode | Cause | Handling |
 |---|---|---|
-| Zombie has zero triggers declared | Edge case from M68 spec | TriggerPanel renders a single "No triggers declared" Card with the legacy bare webhook URL as a fallback ingress (via `CopyUrlFallback` source="legacy"). The M68 Tabs scaffolding is removed by RULE NLR (touch-it-fix-it) — its only remaining caller was this empty-state branch, and dragging it forward solely for that case is dead-code framing. The "user can still find a webhook URL" intent of the M68 row is preserved. |
+| Zombie has zero triggers declared | Edge case from M68 spec | TriggerPanel renders a single "No triggers declared" Card with the bare webhook URL as a fallback ingress (via `CopyUrlFallback` source="none"). The M68 Tabs scaffolding is removed by RULE NLR (touch-it-fix-it) — its only remaining caller was this empty-state branch, and dragging it forward solely for that case is dead-code framing. The "user can still find a webhook URL" intent of the M68 row is preserved. |
 | `trigger.source` not in `PROVIDER_GUIDANCE` keyset | Unknown / new provider | TriggerPanel renders `CopyUrlCard` (existing M68 fallback shape). |
 | Cron expression unparseable | Bad TRIGGER.md input | CronCard shows the raw expression in the header + a "schedule unparseable — check `TRIGGER.md`" warning line in place of next-fire. |
 | `navigator.clipboard.writeText` rejects (insecure context / permission denied) | Browser restricts clipboard access | Fallback to a visible "Copy this command:" prose block with the command selectable; the toast still fires but with prose "Selected — copy manually." |

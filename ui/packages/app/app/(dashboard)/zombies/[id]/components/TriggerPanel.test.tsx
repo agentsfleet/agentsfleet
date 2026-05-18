@@ -62,11 +62,32 @@ describe("TriggerPanel", () => {
     expect(card.textContent).not.toMatch(/Unknown provider/);
   });
 
-  it("renders the bare-webhook helper line on the empty-triggers fallback (legacy source)", async () => {
+  it("renders the bare-webhook helper line on the empty-triggers fallback (no source)", async () => {
     render(<TriggerPanel zombieId="zmb_x" />);
-    const card = screen.getByTestId("copy-url-fallback-legacy");
+    const card = screen.getByTestId("copy-url-fallback-none");
     expect(card.textContent).toMatch(/Bare webhook URL — POST events here from any service\./);
     expect(card.textContent).not.toMatch(/Unknown provider/);
+  });
+
+  it("falls back to the Unknown-provider line when the source name collides with an Object.prototype key", async () => {
+    // Hardening: `COPY_URL_FALLBACK_HELPER_TEXT[source]` would inherit
+    // Object.prototype members (e.g. `constructor`, `toString`) if the
+    // lookup did not gate on Object.hasOwn — rendering `function Object()
+    // { [native code] }` as helper text instead of the fallback line.
+    render(
+      <TriggerPanel
+        zombieId="zmb_x"
+        triggers={[{ type: "webhook", source: "constructor" } as never]}
+      />,
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("copy-url-fallback-constructor")).toBeTruthy(),
+    );
+    const card = screen.getByTestId("copy-url-fallback-constructor");
+    expect(card.textContent).toMatch(
+      /Unknown provider — paste this URL into any webhook-capable service\./,
+    );
+    expect(card.textContent).not.toMatch(/\[native code\]/);
   });
 
   it("collapses an open accordion item when the user clicks the trigger again", () => {

@@ -170,12 +170,12 @@ function LastDeliveryBadge({ at }: { at: number | null | undefined }) {
 }
 
 // First-class sources get tailored copy. Everything else falls through to the
-// generic "Unknown provider" line. `api` and `legacy` are NOT unknown — they
-// are declared shapes the panel uses CopyUrlFallback for as the rendering
-// strategy; calling them "Unknown provider" misleads operators during setup.
+// generic "Unknown provider" line. `api` is a declared trigger type; `none`
+// is the empty-triggers sentinel — both render via CopyUrlFallback as the
+// rendering strategy, so calling them "Unknown provider" misleads operators.
 const COPY_URL_FALLBACK_HELPER_TEXT: Record<string, string> = {
   api: "API ingress — POST events directly to this URL.",
-  legacy: "Bare webhook URL — POST events here from any service.",
+  none: "Bare webhook URL — POST events here from any service.",
 };
 
 function CopyUrlFallback({ url, source }: { url: string; source: string }) {
@@ -190,9 +190,12 @@ function CopyUrlFallback({ url, source }: { url: string; source: string }) {
       // clipboard unavailable
     }
   }
-  const helperText =
-    COPY_URL_FALLBACK_HELPER_TEXT[source] ??
-    "Unknown provider — paste this URL into any webhook-capable service.";
+  // Object.hasOwn guard — `source` can be operator-supplied via trigger config;
+  // a bare bracket-access would inherit Object.prototype members (e.g.
+  // `constructor`, `toString`) and render them as helper text.
+  const helperText = Object.hasOwn(COPY_URL_FALLBACK_HELPER_TEXT, source)
+    ? COPY_URL_FALLBACK_HELPER_TEXT[source]
+    : "Unknown provider — paste this URL into any webhook-capable service.";
   return (
     <div className="flex flex-col gap-2" data-testid={`copy-url-fallback-${source}`}>
       <span className="font-mono text-label uppercase tracking-label text-muted-foreground">
@@ -233,7 +236,7 @@ function EmptyTriggers({ zombieId }: { zombieId: string }) {
           <code className="font-mono">TRIGGER.md</code> and reinstall to wire a
           webhook or cron trigger.
         </p>
-        <CopyUrlFallback url={webhookUrlFor(zombieId)} source="legacy" />
+        <CopyUrlFallback url={webhookUrlFor(zombieId)} source="none" />
       </CardContent>
     </Card>
   );
