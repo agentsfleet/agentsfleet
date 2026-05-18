@@ -8,11 +8,18 @@
 // via createCoreHandlers from helpers.ts. Both went out with Stage 5.b
 // of the orphan sweep.
 
-import { describe, test, expect } from "bun:test";
+import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { loginEffect, type LoginFlags } from "../src/commands/login.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
-import { Browser } from "../src/services/browser.ts";
+import {
+  TelemetryRuntime,
+  telemetryRuntimeFromValuesLayer,
+} from "../src/services/telemetry/runtime.service.ts";
+import { Browser } from "../src/services/browser.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
@@ -72,6 +79,22 @@ const analyticsLayer = (rec: Recorder): Layer.Layer<Analytics> =>
     identify: () => Effect.void,
     alias: () => Effect.void,
     groupIdentify: () => Effect.void,
+  });
+
+const telemetryRuntimeLayer: Layer.Layer<TelemetryRuntime> =
+  telemetryRuntimeFromValuesLayer({
+    configDir: "/tmp/zombiectl-login-test",
+    tracesDir: "/tmp/zombiectl-login-test/traces",
+    consent: "denied",
+    showDebug: false,
+    deviceId: "device-test-fixture",
+    sessionId: "session-test-fixture",
+    isFirstRun: false,
+    isTty: false,
+    isCi: true,
+    os: "linux",
+    arch: "x64",
+    cliVersion: "0.0.0-test",
   });
 
 const credentialsLayer = (rec: Recorder): Layer.Layer<Credentials> => {
@@ -186,6 +209,7 @@ const runLogin = async (
     Effect.provide(httpClientLayer(opts.responder)),
     Effect.provide(outputLayer(rec)),
     Effect.provide(spinnerLayer),
+    Effect.provide(telemetryRuntimeLayer),
     Effect.provide(workspacesLayer(rec, opts.initialWorkspaces)),
   );
   return Effect.runPromiseExit(program as Effect.Effect<void, CliError, never>);
@@ -193,6 +217,22 @@ const runLogin = async (
 
 const findFailure = (exit: Exit.Exit<void, CliError>): CliError | null =>
   Exit.isFailure(exit) ? Option.getOrNull(Cause.findErrorOption(exit.cause)) : null;
+
+let tempStateDir: string | null = null;
+let prevStateDir: string | undefined = undefined;
+
+beforeEach(() => {
+  prevStateDir = process.env.ZOMBIE_STATE_DIR;
+  tempStateDir = fs.mkdtempSync(path.join(os.tmpdir(), "zombiectl-login-"));
+  process.env.ZOMBIE_STATE_DIR = tempStateDir;
+});
+
+afterEach(() => {
+  if (tempStateDir) fs.rmSync(tempStateDir, { recursive: true, force: true });
+  tempStateDir = null;
+  if (prevStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
+  else process.env.ZOMBIE_STATE_DIR = prevStateDir;
+});
 
 describe("loginEffect — success path", () => {
   test("complete flow → exit 0, login complete stdout, credentials saved", async () => {
@@ -341,4 +381,3 @@ describe("loginEffect — browser opt-out", () => {
     expect(rec.browserOpens).toEqual(["https://login.test/x"]);
   });
 });
-

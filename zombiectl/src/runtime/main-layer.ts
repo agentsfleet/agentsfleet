@@ -35,7 +35,8 @@ import {
 } from "../services/output.ts";
 import { Credentials, credentialsLayer } from "../services/credentials.ts";
 import { HttpClient, httpClientLayer } from "../services/http-client.ts";
-import { Browser, browserLayer } from "../services/browser.ts";
+import { Browser } from "../services/browser.service.ts";
+import { browserLayer } from "../services/browser.layer.ts";
 import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
 import { Spinner, spinnerLayer } from "../services/spinner.ts";
 import {
@@ -117,5 +118,3 @@ export const mainLayerFor = (
     tracing,
   );
 };
-
-export const MainLayer: Layer.Layer<MainLayerServices> = mainLayerFor();
