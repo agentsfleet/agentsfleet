@@ -29,6 +29,7 @@ import {
 } from "../errors/index.ts";
 import {
   EVT_WORKSPACE_ADD_COMPLETED,
+  EVT_WORKSPACE_CREATED,
   EVT_WORKSPACE_LIST_VIEWED,
   EVT_WORKSPACE_USED,
   EVT_WORKSPACE_DELETED,
@@ -89,6 +90,12 @@ export const workspaceAddEffect = (
 
     yield* analytics.capture(EVT_WORKSPACE_ADD_COMPLETED, {
       workspace_id: workspaceId,
+    });
+    // workspace_created mirrors the legacy post-action surface (just
+    // the command tag) so PostHog dashboards keep the same shape when
+    // telemetry is opted in via DISABLE_TELEMETRY=0.
+    yield* analytics.capture(EVT_WORKSPACE_CREATED, {
+      command: "workspace.add",
     });
 
     if (config.jsonMode) {

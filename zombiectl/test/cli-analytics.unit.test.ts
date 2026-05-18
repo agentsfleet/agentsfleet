@@ -140,16 +140,18 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
       assert.equal(code, 0);
       assert.equal(pollCount, 1);
       assert.equal(events.length, 4);
-      // Effect dispatcher emits cli_command_started before the command
-      // Effect runs and cli_command_finished after. loginEffect emits
-      // login_completed in-band (after credentials persist), so it lands
-      // between started and finished. cli.ts's post-action bridge then
-      // emits user_authenticated using the saved token.
+      // The Effect dispatcher emits cli_command_started before the
+      // command Effect runs and cli_command_finished after. loginEffect
+      // identifies the post-login distinct id, then fires
+      // user_authenticated + login_completed in-band before returning,
+      // so dashboards see started → user_authenticated → login_completed
+      // → finished — all three commands' emits reuse the same
+      // identified distinct id.
       assert.deepEqual(events.map(({ event }) => event), [
         "cli_command_started",
+        "user_authenticated",
         "login_completed",
         "cli_command_finished",
-        "user_authenticated",
       ]);
       assert.deepEqual(events[0], {
         client: analyticsClient,
@@ -162,12 +164,17 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
           cli_device_id: PINNED_DEVICE,
         },
       });
-      // login_completed fires in-band from loginEffect after the
-      // distinct id is identified from the saved token. The dispatcher
-      // emits cli_command_finished after the effect returns; then
-      // cli.ts's post-action bridge emits user_authenticated reading
-      // the saved-token distinct id.
       assert.deepEqual(events[1], {
+        client: analyticsClient,
+        distinctId: "user_login_123",
+        event: "user_authenticated",
+        properties: {
+          command: "login",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+        },
+      });
+      assert.deepEqual(events[2], {
         client: analyticsClient,
         distinctId: "user_login_123",
         event: "login_completed",
@@ -177,23 +184,13 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
           cli_device_id: PINNED_DEVICE,
         },
       });
-      assert.deepEqual(events[2], {
+      assert.deepEqual(events[3], {
         client: analyticsClient,
         distinctId: "user_login_123",
         event: "cli_command_finished",
         properties: {
           command: "login",
           exit_code: "0",
-          cli_session_id: PINNED_SESSION,
-          cli_device_id: PINNED_DEVICE,
-        },
-      });
-      assert.deepEqual(events[3], {
-        client: analyticsClient,
-        distinctId: "user_login_123",
-        event: "user_authenticated",
-        properties: {
-          command: "login",
           cli_session_id: PINNED_SESSION,
           cli_device_id: PINNED_DEVICE,
         },
@@ -241,17 +238,16 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
 
       assert.equal(code, 0);
       assert.equal(events.length, 4);
-      // Effect dispatcher emits cli_command_started before the command
-      // Effect runs and cli_command_finished after. workspaceAddEffect
-      // emits workspace_add_completed in-band (after persisting the new
-      // workspace), so it lands between started and finished. cli.ts's
-      // post-action bridge then emits workspace_created reading the
-      // lifecycle.lastCommand === "workspace.add" sentinel.
+      // The Effect dispatcher emits cli_command_started before the
+      // command Effect runs and cli_command_finished after.
+      // workspaceAddEffect fires workspace_add_completed + workspace_created
+      // in-band (after persisting the new workspace), so dashboards see
+      // started → workspace_add_completed → workspace_created → finished.
       assert.deepEqual(events.map(({ event }) => event), [
         "cli_command_started",
         "workspace_add_completed",
-        "cli_command_finished",
         "workspace_created",
+        "cli_command_finished",
       ]);
       assert.deepEqual(events[0], {
         client: analyticsClient,
@@ -277,10 +273,9 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
       assert.deepEqual(events[2], {
         client: analyticsClient,
         distinctId: "user_workspace_456",
-        event: "cli_command_finished",
+        event: "workspace_created",
         properties: {
           command: "workspace.add",
-          exit_code: "0",
           cli_session_id: PINNED_SESSION,
           cli_device_id: PINNED_DEVICE,
         },
@@ -288,9 +283,10 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
       assert.deepEqual(events[3], {
         client: analyticsClient,
         distinctId: "user_workspace_456",
-        event: "workspace_created",
+        event: "cli_command_finished",
         properties: {
           command: "workspace.add",
+          exit_code: "0",
           cli_session_id: PINNED_SESSION,
           cli_device_id: PINNED_DEVICE,
         },

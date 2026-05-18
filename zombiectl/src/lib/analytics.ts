@@ -44,21 +44,6 @@ export interface HttpRetryInfo {
   reason: string;
 }
 
-export interface QueuedAnalyticsEvent {
-  event: string;
-  properties?: Record<string, string>;
-}
-
-// analyticsContext is typed `Record<string, unknown>` (not `string`) so that
-// CommandCtx — which carries this field through the dispatch lifecycle —
-// can flow into set/get/queue without a coercion at the call site. The
-// runtime values are always sanitized strings; the wider type just
-// accommodates writer-side variance before sanitizeProperties() runs.
-interface AnalyticsCtxLike {
-  analyticsContext?: Record<string, unknown> | null;
-  analyticsEvents?: QueuedAnalyticsEvent[];
-}
-
 interface ResolveConfigResult {
   key: string;
   host: string;
@@ -171,46 +156,6 @@ export function trackHttpRetry(
   });
 }
 
-export function setCliAnalyticsContext(
-  ctx: AnalyticsCtxLike | null | undefined,
-  properties: Record<string, unknown> = {},
-): void {
-  if (!ctx) return;
-  const current = ctx.analyticsContext || {};
-  ctx.analyticsContext = {
-    ...current,
-    ...sanitizeProperties(properties),
-  };
-}
-
-export function getCliAnalyticsContext(
-  ctx: AnalyticsCtxLike | null | undefined,
-): Record<string, unknown> {
-  return ctx?.analyticsContext ? { ...ctx.analyticsContext } : {};
-}
-
-export function queueCliAnalyticsEvent(
-  ctx: AnalyticsCtxLike | null | undefined,
-  event: string,
-  properties: Record<string, unknown> = {},
-): void {
-  if (!ctx) return;
-  if (!Array.isArray(ctx.analyticsEvents)) ctx.analyticsEvents = [];
-  ctx.analyticsEvents.push({
-    event,
-    properties: sanitizeProperties(properties),
-  });
-}
-
-export function drainCliAnalyticsEvents(
-  ctx: AnalyticsCtxLike | null | undefined,
-): QueuedAnalyticsEvent[] {
-  if (!ctx || !Array.isArray(ctx.analyticsEvents) || ctx.analyticsEvents.length === 0) return [];
-  const events = ctx.analyticsEvents.slice();
-  ctx.analyticsEvents = [];
-  return events;
-}
-
 export async function shutdownCliAnalytics(
   client: AnalyticsClient | null | undefined,
 ): Promise<void> {
@@ -225,12 +170,8 @@ export async function shutdownCliAnalytics(
 // Mutable on purpose — test DI replaces members in place.
 export const cliAnalyticsInternals = {
   DEFAULT_POSTHOG_KEY,
-  drainCliAnalyticsEvents,
-  getCliAnalyticsContext,
-  queueCliAnalyticsEvent,
   resolveConfig,
   sanitizeProperties,
-  setCliAnalyticsContext,
 };
 
 export const cliAnalytics = {

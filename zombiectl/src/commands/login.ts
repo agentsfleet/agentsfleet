@@ -30,7 +30,10 @@ import {
   UnexpectedError,
   type CliError,
 } from "../errors/index.ts";
-import { EVT_LOGIN_COMPLETED } from "../constants/analytics-events.ts";
+import {
+  EVT_LOGIN_COMPLETED,
+  EVT_USER_AUTHENTICATED,
+} from "../constants/analytics-events.ts";
 import { extractDistinctIdFromToken } from "../program/auth-token.ts";
 import {
   hydrateWorkspacesAfterLogin,
@@ -207,12 +210,12 @@ const persistSuccess = (
     return redacted;
   });
 
-// Identify under the post-login distinct id so subsequent emits in the
-// same fiber attribute correctly, then capture login_completed. The
-// `user_authenticated` event is NOT emitted here — cli.ts's post-action
-// bridge fires it from the saved-credentials token after the dispatcher
-// returns, preserving the order the analytics dashboards expect
-// (started → finished → user_authenticated → login_completed).
+// Identify under the post-login distinct id so subsequent emits in
+// the same fiber attribute correctly, then fire user_authenticated +
+// login_completed in-band. The Analytics service auto-merges
+// cli_session_id / cli_device_id via TelemetryRuntime; the layer
+// short-circuits these emits when DISABLE_TELEMETRY isn't opted in
+// (the default).
 const captureLoginCompleted = (
   sessionId: string,
   token: string,
@@ -221,6 +224,7 @@ const captureLoginCompleted = (
     const analytics = yield* Analytics;
     const distinctId = extractDistinctIdFromToken(token);
     if (distinctId) yield* analytics.identify(distinctId);
+    yield* analytics.capture(EVT_USER_AUTHENTICATED, { command: "login" });
     yield* analytics.capture(EVT_LOGIN_COMPLETED, { session_id: sessionId });
   });
 

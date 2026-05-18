@@ -5,12 +5,7 @@ import { dirname, join } from "node:path";
 import { type Command, CommanderError, InvalidArgumentError } from "commander";
 
 import { openUrl } from "./lib/browser.ts";
-import {
-  cliAnalytics,
-  drainCliAnalyticsEvents,
-  getCliAnalyticsContext,
-  type AnalyticsClient,
-} from "./lib/analytics.ts";
+import { cliAnalytics, type AnalyticsClient } from "./lib/analytics.ts";
 import {
   cleanupTraces,
   clearCredentials,
@@ -36,8 +31,6 @@ import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
 import { ROLE_ADMIN } from "./constants/auth-roles.ts";
-import { EVT_USER_AUTHENTICATED, EVT_WORKSPACE_CREATED } from "./constants/analytics-events.ts";
-
 import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
@@ -179,42 +172,6 @@ function errMessage(err: unknown): string {
   return String(err);
 }
 
-async function runPostActionAnalytics(
-  lifecycle: Lifecycle,
-  state: ProgramState,
-  baseEventProps: Record<string, unknown>,
-): Promise<void> {
-  const { ctx, analyticsClient, distinctId } = lifecycle;
-  const analyticsContext = getCliAnalyticsContext(ctx);
-  let eventDistinctId = distinctId;
-  if (state.exitCode === 0 && lifecycle.lastCommand === "login") {
-    const latestCreds: Partial<Credentials> = await loadCredentials().catch(
-      () => ({} as Partial<Credentials>),
-    );
-    eventDistinctId = extractDistinctIdFromToken(latestCreds.token ?? null) || distinctId;
-    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, EVT_USER_AUTHENTICATED, {
-      command: lifecycle.lastCommand,
-      ...baseEventProps,
-      ...analyticsContext,
-    });
-  }
-  if (state.exitCode === 0 && lifecycle.lastCommand === "workspace.add") {
-    cliAnalytics.trackCliEvent(analyticsClient, distinctId, EVT_WORKSPACE_CREATED, {
-      command: lifecycle.lastCommand,
-      ...baseEventProps,
-      ...analyticsContext,
-    });
-  }
-  for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
-    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
-      command: lifecycle.lastCommand || "unknown",
-      ...baseEventProps,
-      ...analyticsContext,
-      ...queuedEvent.properties,
-    });
-  }
-}
-
 const EMPTY_CREDS: Credentials = { token: null, saved_at: null, session_id: null, api_url: null };
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
 const EMPTY_SESSION: Session = { device_id: "", session_id: "", last_activity: null };
@@ -310,7 +267,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
             error_code: err.code === "commander.unknownCommand" ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
             exit_code: String(exitCode),
             ...baseEventProps,
-            ...getCliAnalyticsContext(ctx),
           });
         } catch {
           // Analytics failure is swallowed; the unknown-command UX is the
@@ -328,7 +284,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
       error_code: "UNEXPECTED",
       exit_code: "1",
       ...baseEventProps,
-      ...getCliAnalyticsContext(ctx),
     });
     const message = errMessage(err);
     if (ctx.jsonMode) {
@@ -338,11 +293,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     }
     return 1;
   } finally {
-    try {
-      await runPostActionAnalytics(lifecycle, state, baseEventProps);
-    } finally {
-      await cliAnalytics.shutdownCliAnalytics(analyticsClient);
-    }
+    await cliAnalytics.shutdownCliAnalytics(analyticsClient);
   }
 
   return state.exitCode;
