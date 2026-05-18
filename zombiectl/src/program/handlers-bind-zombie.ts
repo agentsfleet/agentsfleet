@@ -7,6 +7,7 @@ import type { Effect } from "effect";
 import type { CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import type { MainLayerServices } from "../lib/run-effect.ts";
 import type { CliError } from "../errors/index.ts";
+import { readStringOpt as optString } from "../commands/types.ts";
 import {
   statusEffect,
   stopEffectFromId,
@@ -28,20 +29,6 @@ import {
   credentialListEffect,
   credentialDeleteEffectFromName,
 } from "../commands/zombie_credential.ts";
-
-// Commander parsers like `parseIntOption` return numbers, others return
-// strings; this reader normalises both to a string for downstream
-// query-string + flag plumbing. Empty-string + non-finite-number
-// produce undefined so callers can `??` cleanly.
-const optString = (
-  options: Record<string, unknown>,
-  key: string,
-): string | undefined => {
-  const v = options[key];
-  if (typeof v === "string" && v.length > 0) return v;
-  if (typeof v === "number" && Number.isFinite(v)) return String(v);
-  return undefined;
-};
 
 export type WrapE = <E extends CliError, R extends MainLayerServices>(
   name: string,
