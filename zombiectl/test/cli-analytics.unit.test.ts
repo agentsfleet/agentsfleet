@@ -140,11 +140,16 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
       assert.equal(code, 0);
       assert.equal(pollCount, 1);
       assert.equal(events.length, 4);
+      // Effect dispatcher emits cli_command_started before the command
+      // Effect runs and cli_command_finished after. loginEffect emits
+      // login_completed in-band (after credentials persist), so it lands
+      // between started and finished. cli.ts's post-action bridge then
+      // emits user_authenticated using the saved token.
       assert.deepEqual(events.map(({ event }) => event), [
         "cli_command_started",
+        "login_completed",
         "cli_command_finished",
         "user_authenticated",
-        "login_completed",
       ]);
       assert.deepEqual(events[0], {
         client: analyticsClient,
@@ -157,24 +162,33 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
           cli_device_id: PINNED_DEVICE,
         },
       });
-      // Wire keys are now namespaced: cli_session_id is the CLI
-      // telemetry session (stable across the invocation), session_id is
-      // the auth session set by login's setCliAnalyticsContext. Two
-      // different concepts, two different keys — no collision.
+      // login_completed fires in-band from loginEffect after the
+      // distinct id is identified from the saved token. The dispatcher
+      // emits cli_command_finished after the effect returns; then
+      // cli.ts's post-action bridge emits user_authenticated reading
+      // the saved-token distinct id.
       assert.deepEqual(events[1], {
         client: analyticsClient,
-        distinctId: "anonymous",
-        event: "cli_command_finished",
+        distinctId: "user_login_123",
+        event: "login_completed",
         properties: {
-          command: "login",
-          json_mode: "false",
-          exit_code: "0",
+          session_id: "sess_analytics",
           cli_session_id: PINNED_SESSION,
           cli_device_id: PINNED_DEVICE,
-          session_id: "sess_analytics",
         },
       });
       assert.deepEqual(events[2], {
+        client: analyticsClient,
+        distinctId: "user_login_123",
+        event: "cli_command_finished",
+        properties: {
+          command: "login",
+          exit_code: "0",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+        },
+      });
+      assert.deepEqual(events[3], {
         client: analyticsClient,
         distinctId: "user_login_123",
         event: "user_authenticated",
@@ -182,18 +196,6 @@ test("runCli tracks login success with post-login distinct id and shuts down ana
           command: "login",
           cli_session_id: PINNED_SESSION,
           cli_device_id: PINNED_DEVICE,
-          session_id: "sess_analytics",
-        },
-      });
-      assert.deepEqual(events[3], {
-        client: analyticsClient,
-        distinctId: "user_login_123",
-        event: "login_completed",
-        properties: {
-          command: "login",
-          cli_session_id: PINNED_SESSION,
-          cli_device_id: PINNED_DEVICE,
-          session_id: "sess_analytics",
         },
       });
       assert.equal(shutdownClient, analyticsClient);

@@ -19,8 +19,11 @@ export const EVT_CLI_COMMAND_STARTED = "cli_command_started";
 export const EVT_CLI_COMMAND_FINISHED = "cli_command_finished";
 export const EVT_CLI_ERROR = "cli_error";
 
-// Auth-flow milestones.
-export const EVT_CLI_LOGIN_COMPLETED = "cli_login_completed";
+// Auth-flow milestones. `login_completed` is the established wire
+// contract — PostHog dashboards key off the bare name. New CLI events
+// keep the `cli_` prefix; this one stays as-is to avoid breaking
+// downstream funnels.
+export const EVT_LOGIN_COMPLETED = "login_completed";
 
 export const EVT_WORKSPACE_CREATED = "workspace_created";
 export const EVT_WORKSPACE_ADD_COMPLETED = "workspace_add_completed";

@@ -9,7 +9,13 @@
 // and passing it here as a Redacted value.
 
 import { Context, Effect, Layer, Option, Redacted } from "effect";
-import { ApiError, apiRequestWithRetry, authHeaders, type RetryConfig } from "../lib/http.ts";
+import {
+  ApiError,
+  apiRequestWithRetry,
+  authHeaders,
+  type FetchImpl,
+  type RetryConfig,
+} from "../lib/http.ts";
 import { CliConfig } from "./config.ts";
 import { NetworkError, ServerError } from "../errors/index.ts";
 
@@ -83,7 +89,10 @@ const buildHeaders = (
   return { ...auth, ...(base ?? {}) };
 };
 
-const makeLive = (apiUrl: string): HttpClientShape => ({
+const makeLive = (
+  apiUrl: string,
+  fetchImpl: FetchImpl | undefined,
+): HttpClientShape => ({
   request: <T = unknown>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
     const url = `${apiUrl.replace(/\/$/, "")}${input.path}`;
     const headers = buildHeaders(input.headers, input.token);
@@ -97,6 +106,7 @@ const makeLive = (apiUrl: string): HttpClientShape => ({
             : {}),
           ...(input.retry !== undefined ? { retry: input.retry } : {}),
           ...(input.timeoutMs !== undefined ? { timeoutMs: input.timeoutMs } : {}),
+          ...(fetchImpl !== undefined ? { fetchImpl } : {}),
         }) as Promise<T>,
       catch: (cause) => toCliError(url, cause),
     });
@@ -107,7 +117,7 @@ export const HttpClientLive: Layer.Layer<HttpClient, never, CliConfig> = Layer.e
   HttpClient,
   Effect.gen(function* () {
     const config = yield* CliConfig;
-    return makeLive(config.apiUrl);
+    return makeLive(config.apiUrl, config.fetchImpl);
   }),
 );
 

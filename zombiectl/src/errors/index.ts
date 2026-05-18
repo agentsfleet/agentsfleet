@@ -16,6 +16,10 @@ export class AuthError extends Data.TaggedError("AuthError")<{
   readonly detail: string;
   readonly suggestion: string;
   readonly code: string;
+  // Optional — populated when an AuthError is re-wrapped from a
+  // ServerError (e.g. login surface re-mapping a 503 from /auth/sessions
+  // so the dispatcher still emits `request_id:` for support workflows).
+  readonly requestId?: string | null;
 }> {
   override get message(): string {
     return `${this.detail}\n  Suggestion: ${this.suggestion}`;

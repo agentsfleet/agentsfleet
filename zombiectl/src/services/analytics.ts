@@ -7,12 +7,12 @@
 // dispatcher — Analytics never blocks user-facing UX.
 
 import { Context, Effect, Layer } from "effect";
-import {
-  createCliAnalytics,
-  trackCliEvent,
-  shutdownCliAnalytics,
-  type AnalyticsClient,
-} from "../lib/analytics.ts";
+// The `cliAnalytics` namespace import (rather than named imports) is
+// load-bearing for tests: cli-analytics.unit.test.ts mutates the
+// namespace members in place to inject capture/no-op stubs, and named
+// imports would be frozen at module-load time. RULE NLR — keep this
+// indirection.
+import { cliAnalytics, type AnalyticsClient } from "../lib/analytics.ts";
 import { TelemetryRuntime } from "./telemetry-runtime.ts";
 
 export interface AnalyticsShape {
@@ -41,21 +41,24 @@ const makeShape = (
       const base: Record<string, unknown> = {};
       if (telemetry.sessionId) base["cli_session_id"] = telemetry.sessionId;
       if (telemetry.deviceId) base["cli_device_id"] = telemetry.deviceId;
-      trackCliEvent(state.client, state.distinctId, event, { ...base, ...properties });
+      cliAnalytics.trackCliEvent(state.client, state.distinctId, event, {
+        ...base,
+        ...properties,
+      });
     }),
   identify: (distinctId) =>
     Effect.sync(() => {
       state.distinctId = distinctId;
     }),
   alias: () => Effect.void,
-  shutdown: Effect.promise(() => shutdownCliAnalytics(state.client)),
+  shutdown: Effect.promise(() => cliAnalytics.shutdownCliAnalytics(state.client)),
 });
 
 export const AnalyticsLive: Layer.Layer<Analytics, never, TelemetryRuntime> = Layer.effect(
   Analytics,
   Effect.gen(function* () {
     const telemetry = yield* TelemetryRuntime;
-    const client = yield* Effect.promise(() => createCliAnalytics());
+    const client = yield* Effect.promise(() => cliAnalytics.createCliAnalytics());
     const state: AnalyticsState = { client, distinctId: "anonymous" };
     return makeShape(state, telemetry);
   }),

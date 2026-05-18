@@ -1,9 +1,6 @@
-// auth status + logout migrated to Effect.
-//
-// `login` still routes through the pre-Effect dispatcher until its own
-// commit in this PR. The Effect dispatcher is `runEffect` in
-// lib/run-effect.ts; the services consumed below come from
-// src/services/* via MainLayer.
+// auth status + logout. login sits in ./login.ts (split for file-length
+// cap). The Effect dispatcher is `runEffect` in lib/run-effect.ts; the
+// services consumed below come from src/services/* via MainLayer.
 
 import { Effect, Option, Redacted } from "effect";
 import { Analytics } from "../services/analytics.ts";
