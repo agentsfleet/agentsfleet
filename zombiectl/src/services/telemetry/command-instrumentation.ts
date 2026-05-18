@@ -13,7 +13,7 @@
 // used by commands that emit their own analytics with finer-grained
 // properties (e.g. the auth flow).
 
-import { Clock, Effect, Exit } from "effect";
+import { Clock, Effect, Exit, Option } from "effect";
 import {
   CommandRuntime,
   getCommandRuntimeCommand,
@@ -24,7 +24,7 @@ import { Analytics } from "./analytics.service.ts";
 
 export const EVT_CLI_COMMAND_EXECUTED = "cli_command_executed";
 
-export interface CommandInstrumentationOptions<
+interface CommandInstrumentationOptions<
   Flags extends Record<string, unknown> = Record<string, never>,
 > {
   readonly analytics?: boolean;
@@ -48,6 +48,16 @@ function extractFlagsUsed(args: ReadonlyArray<string>): ReadonlyArray<string> {
   return [...used].sort((a, b) => a.localeCompare(b));
 }
 
+// Effect Option values must be unwrapped before reaching the analytics
+// payload — otherwise an Option.some("dev") leaks as `{ _tag: "Some",
+// value: "dev" }` instead of `"dev"`. Mirrors supabase's normalizeFlagValue.
+function normalizeFlagValue(value: unknown): unknown | undefined {
+  if (value === undefined) return undefined;
+  if (!Option.isOption(value)) return value;
+  if (Option.isNone(value)) return undefined;
+  return normalizeFlagValue(value.value);
+}
+
 function extractAllowedFlagValues<Flags extends Record<string, unknown>>(
   flags: Flags,
   allowedFlagValues: ReadonlyArray<Extract<keyof Flags, string>>,
@@ -58,7 +68,7 @@ function extractAllowedFlagValues<Flags extends Record<string, unknown>>(
   for (const key of allowedFlagValues) {
     const flagName = toCliFlagName(key);
     if (!usedFlagSet.has(flagName)) continue;
-    const value = flags[key];
+    const value = normalizeFlagValue(flags[key]);
     if (value === undefined) continue;
     entries.push([flagName, value]);
   }

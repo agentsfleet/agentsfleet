@@ -44,7 +44,7 @@ export interface Lifecycle {
 // Thread runCli's env-resolved values into Effect's CliConfig override.
 // `ctx.token` is already a `creds.token || env.ZOMBIE_TOKEN` merge from
 // cli.ts; mirror it as the override's `accessToken` so commands' Effects
-// see the same token the legacy path used to.
+// receive the merged value.
 function configOverrideFromCtx(ctx: Lifecycle["ctx"]): {
   jsonMode: boolean;
   noOpen: boolean;

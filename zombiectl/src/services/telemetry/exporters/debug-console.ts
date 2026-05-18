@@ -18,6 +18,10 @@ function formatTimestamp(ms: number): string {
   return `${h}:${m}:${s}.${mil}`;
 }
 
+// Test-hook export — consumed by exporters/debug-console.unit.test.ts to
+// assert the one-line format without running the full Tracer pipeline.
+// Not consumed by src/ — production wiring goes through onSpanEnd in
+// tracing.layer.ts.
 export function formatSpanForDebugConsole(span: Tracer.Span): string | undefined {
   const status = span.status;
   if (status._tag !== "Ended") return undefined;

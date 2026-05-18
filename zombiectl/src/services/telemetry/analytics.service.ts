@@ -12,7 +12,7 @@
 
 import { Context, Effect } from "effect";
 
-export interface AnalyticsShape {
+interface AnalyticsShape {
   readonly capture: (
     event: string,
     properties?: Record<string, unknown>,

@@ -49,13 +49,6 @@ export interface CommandCtx {
   noOpen?: boolean;
   noInput?: boolean;
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
-  // CLI telemetry session/device identity. Read off lib/state.ts session
-  // record in cli.ts; consumed by the legacy non-Effect command path
-  // (kept for non-migrated commands that emit analytics outside the
-  // dispatcher). Effect-shaped commands read the canonical values from
-  // TelemetryRuntime instead.
-  cliSessionId?: string | null;
-  cliDeviceId?: string | null;
   [key: string]: unknown;
 }
 
@@ -93,9 +86,8 @@ export interface SpinnerHandle {
 // CommandDeps that the call site assembles (some commands call it with
 // just { printJson, writeLine, ui }, others pass the full deps).
 //
-// `apiHeaders` + `request` were retired alongside src/lib/analytics.ts
-// in the supabase-pattern telemetry cutover — no command consumed
-// them; every HTTP path now goes through the Effect HttpClient service.
+// Commands receive `deps` from cli.ts buildDeps(). Every HTTP path
+// goes through the Effect HttpClient service.
 export interface CommandDeps {
   clearCredentials: () => Promise<void> | void;
   createSpinner: (options: SpinnerOptions) => SpinnerHandle;

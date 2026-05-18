@@ -16,7 +16,7 @@
 
 import { Context, Layer } from "effect";
 
-export interface CommandRuntimeShape {
+interface CommandRuntimeShape {
   readonly commandPath: ReadonlyArray<string>;
   readonly commandRunId: string;
 }

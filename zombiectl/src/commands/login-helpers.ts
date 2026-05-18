@@ -7,6 +7,18 @@ import { HttpClient } from "../services/http-client.ts";
 import { Spinner } from "../services/spinner.ts";
 import { CliConfig } from "../services/config.ts";
 import { Workspaces, type WorkspaceItem } from "../services/workspaces.ts";
+import { Analytics } from "../services/telemetry/analytics.service.ts";
+import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
+import { getConfigDir } from "../services/telemetry/consent.ts";
+import {
+  clearDistinctId,
+  saveDistinctId,
+} from "../services/telemetry/identity.ts";
+import {
+  EVT_LOGIN_COMPLETED,
+  EVT_USER_AUTHENTICATED,
+} from "../constants/analytics-events.ts";
+import { extractDistinctIdFromToken } from "../program/auth-token.ts";
 import { SIGINT } from "../constants/signals.ts";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
@@ -104,4 +116,28 @@ export const startSpinner = (
       label,
     });
     return { succeed: handle.succeed(), fail: handle.fail() };
+  });
+
+// Identify under the post-login distinct id so subsequent emits in the
+// same fiber attribute correctly, then persist via saveDistinctId so
+// later CLI invocations inherit the same identity from telemetry.json.
+// Mirrors supabase login.handler.ts resolveAuthenticatedDistinctId.
+export const captureLoginCompleted = (
+  sessionId: string,
+  token: string,
+): Effect.Effect<void, never, Analytics | TelemetryRuntime> =>
+  Effect.gen(function* () {
+    const analytics = yield* Analytics;
+    const runtime = yield* TelemetryRuntime;
+    const configDir = yield* getConfigDir;
+    const distinctId = extractDistinctIdFromToken(token);
+    if (distinctId) {
+      yield* analytics.alias(distinctId, runtime.deviceId);
+      yield* analytics.identify(distinctId);
+      yield* saveDistinctId(configDir, distinctId);
+    } else {
+      yield* clearDistinctId(configDir);
+    }
+    yield* analytics.capture(EVT_USER_AUTHENTICATED, { command: "login" });
+    yield* analytics.capture(EVT_LOGIN_COMPLETED, { session_id: sessionId });
   });

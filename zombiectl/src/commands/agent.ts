@@ -126,8 +126,7 @@ export const agentAddEffectFromArgs = (
     }
     yield* output.success(`External agent added: ${res.agent_id ?? ""}`);
     yield* output.info("");
-    // The shown-once warning belongs on stdout next to the key — the
-    // legacy path used `ui.warn` for emphasis, not stream redirection.
+    // The shown-once warning belongs on stdout next to the key.
     // Output.warn would route to stderr; surface this as an info line
     // so the integration test (which reads stdout) still sees it.
     yield* output.info("API Key (shown once — store securely):");

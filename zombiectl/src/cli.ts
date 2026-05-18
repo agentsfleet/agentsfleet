@@ -145,8 +145,8 @@ function installPreAction(program: Command, ctx: CommandCtx, state: ProgramState
 }
 
 // commander.* error codes that map to POSIX "usage error" exit 2.
-// Commander itself uses 1 for these — the legacy CLI used 2, the
-// did-you-mean / unknown-subcommand tests rely on that contract.
+// Commander itself uses 1 for these; we override to 2 so the
+// did-you-mean / unknown-subcommand contract matches POSIX.
 const COMMANDER_USAGE_CODES: ReadonlySet<string> = new Set([
   "commander.unknownCommand",
   "commander.unknownOption",
@@ -211,8 +211,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     jsonMode,
     noOpen: false,
     noInput: false,
-    cliSessionId: session.session_id || null,
-    cliDeviceId: session.device_id || null,
     // Tests inject partial WritableStreamLike mocks (just `.write` + `isTTY`);
     // CommandCtx declares the field as the richer NodeJS.WritableStream because
     // that matches the production runtime. Narrowing the field type would
@@ -243,11 +241,10 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   installPreAction(program, ctx, state);
 
-  // commander parse + parse-error analytics go through the
-  // commander-bridge — the bridge wraps program.parseAsync in an Effect
-  // that emits cli_command_executed (exit_code: 0 on success, 1 on
-  // parse failure) through the new Analytics layer. The bridge file is
-  // deleted in the (c) migration when commander goes away.
+  // commander parse runs through the bridge. On success, the command
+  // handler's own withCommandInstrumentation wrap (handlers-bind.ts) has
+  // already emitted cli_command_executed. On parse-stage failure, the
+  // bridge emits a single cli_command_executed with command "__parse__".
   const parseResult = await Effect.runPromise(runCommanderParse(program, effectiveArgv));
 
   if (!parseResult.ok) {

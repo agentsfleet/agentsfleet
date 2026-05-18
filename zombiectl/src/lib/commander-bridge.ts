@@ -1,75 +1,67 @@
-// commander-bridge — single seam between commander's non-Effect parse
-// loop and the new Effect-shaped Analytics + Tracing layers.
+// commander-bridge — adapts commander's parse loop to the Effect runtime.
 //
-// Two responsibilities:
-//   1. runCommanderParse — wraps program.parseAsync(argv) in an Effect
-//      that catches CommanderError. On parse failure (unknown command,
-//      missing argument, etc.) emits cli_command_executed with
-//      exit_code: 1 through the new Analytics service, so the supabase
-//      single-event shape covers commander-only failures too — the
-//      withCommandInstrumentation wrapper (which only fires inside the
-//      command Effect) doesn't see parse errors.
-//   2. mainLayerForCommanderParse — builds the layer with a synthetic
-//      CommandRuntime { commandPath: ["__parse__"] } so the analytics
-//      emit has a non-empty span name + command label.
+// On successful dispatch, the command handler's own
+// withCommandInstrumentation wrap (applied in handlers-bind.ts) emits
+// the canonical cli_command_executed event. The bridge MUST NOT wrap
+// the outer parseAsync with withCommandInstrumentation — doing so
+// would emit a second cli_command_executed event per invocation (one
+// for the parse stage, one for the real command). Codex review caught
+// this duplicate-emit regression.
 //
-// Forward-looking — when (c) lands and effect/unstable/cli's
-// Command.runWith replaces commander, this entire file is deleted.
-// Command.runWith parses + dispatches in a single Effect, so parse
-// errors are caught by the outer Effect.exit alongside command
-// errors — no bridge needed.
+// Parse-stage failures (CommanderError: unknown command, bad flag,
+// missing required arg, --help / --version short-circuit) never reach
+// any handler, so handlers-bind never fires for them. The bridge emits
+// a single cli_command_executed for those cases only, with
+// commandPath=["__parse__"] and exit_code=1.
+//
+// When effect/unstable/cli's Command.runWith replaces commander, parse
+// and dispatch run inside one Effect and this bridge can collapse into
+// the outer command runner.
 
-import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Cause, Clock, Effect, Exit, Layer, Option } from "effect";
 import { CommanderError, type Command } from "commander";
 import { commandRuntimeFromValuesLayer } from "../runtime/command-runtime.service.ts";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { analyticsLayer } from "../services/telemetry/analytics.layer.ts";
-import { CurrentAnalyticsContext } from "../services/telemetry/analytics-context.ts";
+import { EVT_CLI_COMMAND_EXECUTED } from "../services/telemetry/command-instrumentation.ts";
 import { tracingLayer } from "../services/telemetry/tracing.layer.ts";
 import { telemetryRuntimeLayer } from "../services/telemetry/runtime.layer.ts";
-import { EVT_CLI_COMMAND_EXECUTED } from "../services/telemetry/command-instrumentation.ts";
 
-const PARSE_COMMAND_PATH = ["__parse__"] as const;
+const PARSE_COMMAND = "__parse__";
+const PARSE_COMMAND_RUN_ID = "parse";
+const PARSE_COMMAND_PATH = [PARSE_COMMAND] as const;
 
-export interface CommanderParseResult {
+interface CommanderParseResult {
   readonly ok: boolean;
   readonly commanderError: CommanderError | undefined;
   readonly otherError: unknown;
 }
 
-// runCommanderParse — Effect-wrap the parseAsync call so a parse
-// failure can emit cli_command_executed before bubbling out. The
-// caller (cli.ts) maps the result to a process exit code.
+// runCommanderParse — Effect-wrap parseAsync. On success the handler
+// has already emitted cli_command_executed via handlers-bind. On
+// parse-stage failure, emit exactly one cli_command_executed with the
+// __parse__ command label and exit_code=1.
 export function runCommanderParse(
   program: Command,
   argv: ReadonlyArray<string>,
 ): Effect.Effect<CommanderParseResult> {
   return Effect.gen(function* () {
-    const analytics = yield* Analytics;
-    const startedAt = Date.now();
-
+    const startedAt = yield* Clock.currentTimeMillis;
     const outcome = yield* Effect.tryPromise({
       try: () => program.parseAsync([...argv], { from: "user" }),
       catch: (err) => err,
     }).pipe(Effect.exit);
 
-    const durationMs = Date.now() - startedAt;
-
     if (Exit.isFailure(outcome)) {
+      const finishedAt = yield* Clock.currentTimeMillis;
+      const analytics = yield* Analytics;
+      yield* analytics.capture(EVT_CLI_COMMAND_EXECUTED, {
+        command: PARSE_COMMAND,
+        command_run_id: PARSE_COMMAND_RUN_ID,
+        exit_code: 1,
+        duration_ms: finishedAt - startedAt,
+      });
       const err = unwrapCause(outcome);
-      yield* analytics
-        .capture(EVT_CLI_COMMAND_EXECUTED, {
-          exit_code: 1,
-          duration_ms: durationMs,
-        })
-        .pipe(
-          Effect.updateService(CurrentAnalyticsContext, (current) => ({
-            ...current,
-            command_run_id: "parse",
-            command: "__parse__",
-          })),
-        );
-
       if (err instanceof CommanderError) {
         return {
           ok: false,
@@ -83,19 +75,6 @@ export function runCommanderParse(
         otherError: err,
       } satisfies CommanderParseResult;
     }
-
-    yield* analytics
-      .capture(EVT_CLI_COMMAND_EXECUTED, {
-        exit_code: 0,
-        duration_ms: durationMs,
-      })
-      .pipe(
-        Effect.updateService(CurrentAnalyticsContext, (current) => ({
-          ...current,
-          command_run_id: "parse",
-          command: "__parse__",
-        })),
-      );
 
     return {
       ok: true,
@@ -119,7 +98,7 @@ function mainLayerForCommanderParse() {
   return Layer.mergeAll(
     commandRuntimeFromValuesLayer({
       commandPath: [...PARSE_COMMAND_PATH],
-      commandRunId: "parse",
+      commandRunId: PARSE_COMMAND_RUN_ID,
     }),
     analyticsLayer.pipe(Layer.provide(telemetryRuntimeLayer)),
     tracingLayer.pipe(Layer.provide(telemetryRuntimeLayer)),

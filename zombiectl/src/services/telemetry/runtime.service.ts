@@ -15,7 +15,7 @@
 import { Context, Layer } from "effect";
 import type { ConsentState } from "./types.ts";
 
-export interface TelemetryRuntimeShape {
+interface TelemetryRuntimeShape {
   readonly configDir: string;
   readonly tracesDir: string;
   readonly consent: ConsentState;

@@ -91,9 +91,9 @@ export const workspaceAddEffect = (
     yield* analytics.capture(EVT_WORKSPACE_ADD_COMPLETED, {
       workspace_id: workspaceId,
     });
-    // workspace_created mirrors the legacy post-action surface (just
-    // the command tag) so PostHog dashboards keep the same shape when
-    // telemetry is opted in via DISABLE_TELEMETRY=0.
+    // workspace_created carries just the command tag so PostHog
+    // dashboards can pivot on command name (telemetry is opt-OUT
+    // default; ZOMBIE_TELEMETRY_DISABLED=1 or DO_NOT_TRACK=1 disables).
     yield* analytics.capture(EVT_WORKSPACE_CREATED, {
       command: "workspace.add",
     });

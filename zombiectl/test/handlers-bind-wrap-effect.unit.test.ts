@@ -21,8 +21,6 @@ const minimalCtx = (): CommandCtx => ({
   jsonMode: true,
   noOpen: true,
   noInput: true,
-  cliSessionId: null,
-  cliDeviceId: null,
   stdout: process.stdout,
   stderr: process.stderr,
   env: process.env,
@@ -37,26 +35,26 @@ const frame: ActionFrame = {
 
 let stateDir: string;
 let prevStateDir: string | undefined;
-let prevDisableTelemetry: string | undefined;
+let prevTelemetryDisabled: string | undefined;
 let prevPosthogKey: string | undefined;
 
 beforeEach(() => {
   stateDir = mkdtempSync(join(tmpdir(), "zombiectl-wrap-effect-"));
   prevStateDir = process.env.ZOMBIE_STATE_DIR;
-  prevDisableTelemetry = process.env.DISABLE_TELEMETRY;
-  prevPosthogKey = process.env.ZOMBIE_POSTHOG_KEY;
+  prevTelemetryDisabled = process.env.ZOMBIE_TELEMETRY_DISABLED;
+  prevPosthogKey = process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY;
   process.env.ZOMBIE_STATE_DIR = stateDir;
-  process.env.DISABLE_TELEMETRY = "true";
-  process.env.ZOMBIE_POSTHOG_KEY = "";
+  process.env.ZOMBIE_TELEMETRY_DISABLED = "1";
+  process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY = "";
 });
 
 afterEach(() => {
   if (prevStateDir === undefined) delete process.env.ZOMBIE_STATE_DIR;
   else process.env.ZOMBIE_STATE_DIR = prevStateDir;
-  if (prevDisableTelemetry === undefined) delete process.env.DISABLE_TELEMETRY;
-  else process.env.DISABLE_TELEMETRY = prevDisableTelemetry;
-  if (prevPosthogKey === undefined) delete process.env.ZOMBIE_POSTHOG_KEY;
-  else process.env.ZOMBIE_POSTHOG_KEY = prevPosthogKey;
+  if (prevTelemetryDisabled === undefined) delete process.env.ZOMBIE_TELEMETRY_DISABLED;
+  else process.env.ZOMBIE_TELEMETRY_DISABLED = prevTelemetryDisabled;
+  if (prevPosthogKey === undefined) delete process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY;
+  else process.env.ZOMBIE_TELEMETRY_POSTHOG_KEY = prevPosthogKey;
   rmSync(stateDir, { recursive: true, force: true });
 });
 

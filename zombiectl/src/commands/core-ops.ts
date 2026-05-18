@@ -2,9 +2,8 @@
 //
 // Runs three checks: server reachable (/healthz, no auth), workspace
 // selected (read from Workspaces service), workspace binding valid
-// (GET /v1/workspaces/{ws}/zombies, authed). Aggregates into a report
-// shape the legacy command produced and exits 0/1 by the all-checks-ok
-// fold.
+// (GET /v1/workspaces/{ws}/zombies, authed). Aggregates the results
+// and exits 0/1 by the all-checks-ok fold.
 //
 // CliError variants are mapped down into per-check `ok=false, detail`
 // rows by Effect.either + match, so doctor never short-circuits on
@@ -132,10 +131,9 @@ const renderHuman = (
     const output = yield* Output;
     yield* output.printSection("zombiectl doctor");
     // Check status lines (both [OK] and [FAIL]) route to stdout via
-    // output.info so the operator's full report lands on one stream —
-    // the legacy doctor wrote everything to stdout. output.success and
-    // output.error split across stdout/stderr, which would scatter the
-    // report across two streams.
+    // output.info so the full report lands on one stream. output.success
+    // and output.error split across stdout/stderr, which would scatter
+    // the report across two streams.
     for (const c of checks) {
       const tag = c.ok ? "[OK]" : "[FAIL]";
       yield* output.info(`${tag} ${c.name}`);

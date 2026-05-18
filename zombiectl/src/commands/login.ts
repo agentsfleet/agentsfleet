@@ -15,7 +15,8 @@
 
 import { Effect, Redacted } from "effect";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
-import { Browser } from "../services/browser.ts";
+import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
+import { Browser } from "../services/browser.service.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -31,11 +32,7 @@ import {
   type CliError,
 } from "../errors/index.ts";
 import {
-  EVT_LOGIN_COMPLETED,
-  EVT_USER_AUTHENTICATED,
-} from "../constants/analytics-events.ts";
-import { extractDistinctIdFromToken } from "../program/auth-token.ts";
-import {
+  captureLoginCompleted,
   hydrateWorkspacesAfterLogin,
   startSpinner,
   withSigintAbort,
@@ -210,24 +207,6 @@ const persistSuccess = (
     return redacted;
   });
 
-// Identify under the post-login distinct id so subsequent emits in
-// the same fiber attribute correctly, then fire user_authenticated +
-// login_completed in-band. The Analytics service auto-merges
-// cli_session_id / cli_device_id via TelemetryRuntime; the layer
-// short-circuits these emits when DISABLE_TELEMETRY isn't opted in
-// (the default).
-const captureLoginCompleted = (
-  sessionId: string,
-  token: string,
-): Effect.Effect<void, never, Analytics> =>
-  Effect.gen(function* () {
-    const analytics = yield* Analytics;
-    const distinctId = extractDistinctIdFromToken(token);
-    if (distinctId) yield* analytics.identify(distinctId);
-    yield* analytics.capture(EVT_USER_AUTHENTICATED, { command: "login" });
-    yield* analytics.capture(EVT_LOGIN_COMPLETED, { session_id: sessionId });
-  });
-
 const failedOutcomeError = (outcome: LoginOutcome): AuthError => {
   const detail =
     outcome.status === "expired"
@@ -262,6 +241,7 @@ const loginCore = (
   | HttpClient
   | Output
   | Spinner
+  | TelemetryRuntime
   | Workspaces
 > =>
   Effect.gen(function* () {
@@ -326,6 +306,7 @@ export const loginEffect = (
   | HttpClient
   | Output
   | Spinner
+  | TelemetryRuntime
   | Workspaces
 > =>
   loginCore(flags).pipe(Effect.mapError(remapTransportErrors));
