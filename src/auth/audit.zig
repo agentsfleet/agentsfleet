@@ -7,13 +7,8 @@
 //! Session_id classification: a sensitive ephemeral capability equivalent
 //! to a password-reset token. The `.auth` log scope MUST use
 //! `redactSessionIdInto()` at info/warn/error level. The `.auth_audit`
-//! scope MAY carry the keyed HMAC + first-8 prefix (per `sessionIdHashHex`
-//! + `sessionIdPrefix` below) — but never the raw id in default mode.
-//!
-//! Incident-mode (`AUTH_AUDIT_INCLUDE_FULL_IDS=true`) is gated by env at
-//! startup and surfaces a WARN-level line on the `.auth` scope so operators
-//! see it in any aggregated log feed. Production deploys MUST NOT enable
-//! this — enforced operationally, not by code.
+//! scope carries the keyed HMAC + first-8 prefix (per `sessionIdHashHex`
+//! + `sessionIdPrefix` below) — never the raw id.
 //!
 //! Two peppers consumed by this module are distinct from each other:
 //!   - `AUTH_SESSION_CODE_PEPPER` — keys the verification-code HMAC
@@ -24,9 +19,6 @@
 
 const std = @import("std");
 const hmac_sig = @import("../crypto/hmac_sig.zig");
-const logging = @import("log");
-
-const log_auth = logging.scoped(.auth);
 
 /// Length of the human-correlation prefix surfaced into audit events
 /// (8 hex chars = 32 bits = ~4B entries). Coarse enough to avoid
@@ -36,9 +28,6 @@ pub const SESSION_ID_PREFIX_LEN: usize = 8;
 
 /// Lower-case hex encoding of a 32-byte HMAC — 64 chars.
 pub const SESSION_ID_HASH_HEX_LEN: usize = hmac_sig.MAC_LEN * 2;
-
-const S_TRUE = "true";
-const S_AUTH_AUDIT_INCLUDE_FULL_IDS = "AUTH_AUDIT_INCLUDE_FULL_IDS";
 
 /// Writes the redacted form `<prefix8>…(len=<n>)` into `buf` and returns
 /// the populated slice. Caller-buffer shape avoids allocation in the hot
@@ -87,30 +76,6 @@ pub fn sessionIdHashHex(buf: []u8, pepper: []const u8, session_id: []const u8) [
     const hex = std.fmt.bytesToHex(mac, .lower);
     @memcpy(buf[0..SESSION_ID_HASH_HEX_LEN], &hex);
     return buf[0..SESSION_ID_HASH_HEX_LEN];
-}
-
-/// True when `AUTH_AUDIT_INCLUDE_FULL_IDS=true` is set in the process env.
-/// Pure read; called at boot to decide whether to emit the startup WARN
-/// and whether subsequent audit events carry the raw `session_id` field.
-///
-/// Off by default. Production deploys MUST NOT enable this — enforced
-/// operationally, documented in the deploy README.
-pub fn fullIdsEnabled(alloc: std.mem.Allocator) bool {
-    const raw = std.process.getEnvVarOwned(alloc, S_AUTH_AUDIT_INCLUDE_FULL_IDS) catch return false;
-    defer alloc.free(raw);
-    return std.ascii.eqlIgnoreCase(std.mem.trim(u8, raw, " \t\r\n"), S_TRUE);
-}
-
-/// Emits the startup WARN on the `.auth` scope when full-ID mode is on.
-/// Idempotent — re-running surfaces the same line. Returns whether the
-/// warning fired so callers can wire it into their boot summary.
-pub fn warnIfFullIdsEnabled(alloc: std.mem.Allocator) bool {
-    if (!fullIdsEnabled(alloc)) return false;
-    log_auth.warn(
-        "audit_full_ids_enabled — raw session_id will appear in .auth_audit events. Use only in dev/staging or under a documented incident.",
-        .{},
-    );
-    return true;
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
