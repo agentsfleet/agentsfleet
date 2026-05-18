@@ -245,10 +245,10 @@ Two facts the diagram pins:
 
 | Endpoint | Trusted actor | Auth |
 |---|---|---|
-| `POST /v1/auth/sessions` | unauthenticated CLI | rate-limited per IP (10/min) |
-| `GET /v1/auth/sessions/{id}` | unauthenticated CLI poll | rate-limited per session (≥750 ms between polls) |
-| `PATCH /v1/auth/sessions/{id}/approve` | dashboard JS process | Clerk JWT (`api` template) · per-Clerk-user rate limit (20/hr) |
-| `POST /v1/auth/sessions/{id}/verify` | CLI with the verification code | the code IS the auth · ≤5 attempts per session |
+| `POST /v1/auth/sessions` | unauthenticated CLI | rate-limited at edge — Cloudflare WAF, 10 / IP / min (L2) |
+| `GET /v1/auth/sessions/{id}` | unauthenticated CLI poll | CLI-honored backoff ≥ 750 ms; server does not enforce |
+| `PATCH /v1/auth/sessions/{id}/approve` | dashboard JS process | Clerk JWT (`api` template) · per-Clerk-user backstop deferred post-launch — Clerk-edge per-IP on sign-in / sign-up (L1) bounds upstream identity supply |
+| `POST /v1/auth/sessions/{id}/verify` | CLI with the verification code | the code IS the auth · ≤5 attempts per session (Lua-internal, L3) |
 | `DELETE /v1/auth/sessions/{id}` | dashboard JS process | Clerk JWT · must match session's `clerk_user_id` |
 | `DELETE /v1/auth/sessions/all` | dashboard JS process | Clerk JWT |
 
@@ -265,8 +265,20 @@ The contract. Every line of code in Flow 1 must trace to one of these properties
 | ECDH P-256 | ciphertext-only session transport — no intermediate server, log, or DB row sees the JWT in plaintext | compromise of the dashboard or CLI endpoints |
 | AES-256-GCM | tamper detection — any ciphertext modification produces a hard `DecryptError`, not silent corruption | — |
 | Atomic `verified → consumed` | single-read ciphertext — captured response cannot be replayed against the same session | replay using a fresh session (closed by `verification_code` + rate limits) |
-| Verify-attempt rate limit (≤5/session) | brute-force resistance on the 6-digit code | distributed brute force across many sessions (closed by session-creation rate limit per IP + per Clerk user) |
+| Verify-attempt rate limit (≤5/session, L3 — Lua-internal) | brute-force resistance on the 6-digit code | distributed brute force across many sessions (closed by L1 Clerk-edge per-IP on sign-in / sign-up + L2 Cloudflare WAF per-IP on session creation — see *Rate-limit layers* below) |
 | `token_name` | auditability only — operator can list active sessions by label | trust signal of any kind |
+
+### Rate-limit layers
+
+Rate limiting decomposes across three layers. Only L3 lives inside zombied.
+
+| Layer | Owner | Surface | Limit |
+|---|---|---|---|
+| **L1** | Clerk edge | Sign-in / sign-up | 3 attempts / 10 s, 5 creates / 10 s per IP — bounds upstream Clerk-identity supply |
+| **L2** | Cloudflare WAF in front of `api.usezombie.com` | `POST /v1/auth/sessions` | 10 / IP / minute — request never reaches origin on block |
+| **L3** | zombied — `verifyAndConsume` Lua (already shipped) | `POST /v1/auth/sessions/{id}/verify` | 5 attempts per session → `auth.session.aborted` reason `rate_limit_exceeded` |
+
+No in-app rate-limit middleware in zombied. The per-IP and per-Clerk-user counters that an earlier revision of the M74_002 spec described inside zombied are not authored — per-IP belongs at edge (L2), per-Clerk-user backstop is deferred post-launch (L1 already throttles the upstream Clerk identity supply). See `docs/v2/active/M74_002_*.md` Captain decision Q10 for the full rationale and the dead-code sweep that landed alongside this decision.
 
 ### Threats this flow closes
 

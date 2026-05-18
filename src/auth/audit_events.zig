@@ -34,21 +34,17 @@ pub const EV_SESSION_CONSUMED: []const u8 = "auth.session.consumed";
 pub const EV_SESSION_CONSUMED_REPLAY: []const u8 = "auth.session.consumed_replay";
 pub const EV_SESSION_ABORTED: []const u8 = "auth.session.aborted";
 pub const EV_SESSION_EXPIRED: []const u8 = "auth.session.expired";
-pub const EV_RATELIMIT_EXCEEDED: []const u8 = "auth.ratelimit.exceeded";
 
 // Reason enum string constants for aborted / verify_failed.
+// REASON_RATE_LIMIT_EXCEEDED stays — auth.session.aborted fires it when the
+// L3 5-attempt cap in verifyAndConsume Lua trips. The verify_failed
+// REASON_RATE_LIMITED was for an in-app /verify per-IP middleware path that
+// is no longer authored (Captain decision Q10) — removed.
 pub const REASON_INVALID_CODE: []const u8 = "invalid_code";
-pub const REASON_RATE_LIMITED: []const u8 = "rate_limited";
 pub const REASON_NOT_APPROVED: []const u8 = "not_approved";
 pub const REASON_RATE_LIMIT_EXCEEDED: []const u8 = "rate_limit_exceeded";
 pub const REASON_EXPLICIT_CANCEL: []const u8 = "explicit_cancel";
 pub const REASON_REPLACED: []const u8 = "replaced";
-
-// Rate-limit surface enum.
-pub const SURFACE_SESSION_CREATE: []const u8 = "session_create";
-pub const SURFACE_VERIFY: []const u8 = "verify";
-pub const SURFACE_PATCH_APPROVE: []const u8 = "patch_approve";
-pub const SURFACE_POLL: []const u8 = "poll";
 
 /// Shared boot-loaded state. Constructed once at serve init and passed
 /// onto the request context so per-request emit calls don't re-read env.
@@ -254,28 +250,6 @@ pub fn emitSessionExpired(
     });
 }
 
-pub fn emitRateLimitExceeded(
-    ctx: AuditCtx,
-    surface: []const u8,
-    bucket_key: []const u8,
-    derived_ip: trusted_ip.DerivedClientIp,
-    request_id: []const u8,
-) void {
-    _ = ctx;
-    audit_log.info("audit_record", .{
-        .event = EV_RATELIMIT_EXCEEDED,
-        .ts_ms = std.time.milliTimestamp(),
-        .surface = surface,
-        .bucket_key = bucket_key,
-        .ip = derived_ip.ip,
-        .xff = derived_ip.xff_raw,
-        .fly_client_ip = derived_ip.fly_client_ip_raw,
-        .client_ip_source = @tagName(derived_ip.source),
-        .client_ip_divergent = derived_ip.divergent,
-        .request_id = request_id,
-    });
-}
-
 // ── Tests ────────────────────────────────────────────────────────────────
 
 const testing = std.testing;
@@ -289,23 +263,14 @@ test "event name constants are stable and namespaced" {
     try testing.expectEqualStrings("auth.session.consumed_replay", EV_SESSION_CONSUMED_REPLAY);
     try testing.expectEqualStrings("auth.session.aborted", EV_SESSION_ABORTED);
     try testing.expectEqualStrings("auth.session.expired", EV_SESSION_EXPIRED);
-    try testing.expectEqualStrings("auth.ratelimit.exceeded", EV_RATELIMIT_EXCEEDED);
 }
 
 test "reason constants match the audit-event schema" {
     try testing.expectEqualStrings("invalid_code", REASON_INVALID_CODE);
-    try testing.expectEqualStrings("rate_limited", REASON_RATE_LIMITED);
     try testing.expectEqualStrings("not_approved", REASON_NOT_APPROVED);
     try testing.expectEqualStrings("rate_limit_exceeded", REASON_RATE_LIMIT_EXCEEDED);
     try testing.expectEqualStrings("explicit_cancel", REASON_EXPLICIT_CANCEL);
     try testing.expectEqualStrings("replaced", REASON_REPLACED);
-}
-
-test "surface constants enumerate every rate-limit point" {
-    try testing.expectEqualStrings("session_create", SURFACE_SESSION_CREATE);
-    try testing.expectEqualStrings("verify", SURFACE_VERIFY);
-    try testing.expectEqualStrings("patch_approve", SURFACE_PATCH_APPROVE);
-    try testing.expectEqualStrings("poll", SURFACE_POLL);
 }
 
 test "AuditCtx.init stores the pepper for later emit calls" {

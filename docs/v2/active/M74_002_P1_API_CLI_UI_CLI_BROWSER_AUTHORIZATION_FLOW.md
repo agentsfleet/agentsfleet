@@ -409,13 +409,19 @@ decryption fail. Detail in *Out of Scope → Future improvements*.
 Attacker scripts: create 200,000 sessions, try 5 codes each = 1,000,000 attempts.
 
 Closed by:
-1. Session-creation rate limit per IP (default: 10 / IP / minute, see Rate Limits §).
-2. Session-creation rate limit per Clerk user once the user logs in to the dashboard to
-   approve (default: 20 / user / hour).
-3. The 6-digit code is per-session — guessing across sessions is not amortized; each
+1. **L1 — Clerk-edge per-IP** on sign-in / sign-up (3 attempts / 10 s, 5 creates / 10 s
+   per IP). Bounds the upstream Clerk-identity supply an attacker would need to approve
+   sessions at scale. Enforced at Clerk's perimeter before any request reaches our origin.
+2. **L2 — Cloudflare Web Application Firewall (WAF)** per-IP on `POST /v1/auth/sessions`
+   (10 / IP / minute). Enforced at the edge in front of `api.usezombie.com`; the request
+   never reaches the origin pod on a block.
+3. **L3 — per-session 5-attempt cap** on /verify inside the atomic `verifyAndConsume`
+   Lua script. Closes the protocol-level brute force inside zombied; no middleware needed.
+4. The 6-digit code is per-session — guessing across sessions is not amortized; each
    session_id has its own code.
 
-Outcome: BLOCKED at session-creation budget. Attacker cannot fan out fast enough.
+Outcome: BLOCKED at session-creation budget (L2) plus identity-supply budget (L1).
+Attacker cannot fan out fast enough.
 ```
 
 ---
@@ -577,7 +583,7 @@ Security specs should not leave crypto implicit.
 |---|---|
 | Key schema | `auth:session:{session_id}` → JSON blob matching the *Session Schema* below. Hash-tagged so cluster mode keeps all session keys for one session on the same shard if/when Redis cluster is adopted. |
 | Per-session TTL | `EXPIRE auth:session:{id} 300` (5 minutes) at creation; refreshed only on state transitions, not on read. Expiry is the primary garbage-collection mechanism (see *Session garbage collection* below). |
-| Rate-limit counters | `auth:ratelimit:ip:{ip}:{minute_bucket}` (TTL 60s; token-bucket via `INCR` + `EXPIRE NX`). `auth:ratelimit:user:{clerk_user_id}:{hour_bucket}` (TTL 3600s). Separate keys, separate TTLs, no shared state with session blob. |
+| Rate-limit counters | **Out of scope for v2.0.** Per-IP enforcement lives at Cloudflare WAF (L2). Per-Clerk-user backstop on PATCH /approve deferred post-launch (Captain decision Q10). See *Rate limits* below. |
 | Verify-attempt counter | Stored inside the session JSON blob (`verification_attempts`), not a separate Redis key — keeps the atomic transition + counter increment in one write. |
 | Atomic verified → consumed transition | Lua script via `EVAL` — atomically: read session, check state == `verification_pending`, compare hash, increment-or-flip-state, write back, return ciphertext. Single round-trip; no partial-state windows. |
 | Consume-idempotency window | After `verified → consumed`, the response payload (`{dashboard_public_key, ciphertext, nonce}`) is retained in the session blob for 60 seconds along with `consumed_client_fingerprint`. POST /verify retries within the window from the same fingerprint return the same payload; outside the window (or different fingerprint) → 410 `SessionConsumed`. After 60s the payload fields are wiped from the blob via a follow-up `EXPIRE`-driven hook (see *Fix 1* in Discovery). |
@@ -621,15 +627,27 @@ In-memory session storage is **not** acceptable under any multi-pod deployment t
 
 ## Rate limits (pinned)
 
-| Surface | Limit | Cause-of-action when exceeded |
-|---|---|---|
-| `POST /v1/auth/sessions` (session creation) | 10 / IP / minute | HTTP 429 with `Retry-After`; AUTH_PRESET `RateLimited`. |
-| `POST /v1/auth/sessions` (session creation, after dashboard auth context attaches via Clerk on PATCH) | 20 / Clerk user / hour | HTTP 429 on the PATCH /approve call; dashboard surfaces "too many login attempts". |
-| `POST /v1/auth/sessions/{id}/verify` (per session) | 5 attempts total | HTTP 410 `SessionAborted`; session transitions to `aborted`. |
-| `GET /v1/auth/sessions/{id}` (polling) | Server-enforced minimum interval 750 ms; CLI honors `Retry-After` if returned | HTTP 429 with `Retry-After`; CLI's D29 backoff already respects this. |
-| Expired sessions | Hard reject (HTTP 410) on any state-mutating call | Per-state semantics in the lifecycle table. |
+Rate limiting in v2.0 carves cleanly across three layers; only **L3** runs inside zombied. The in-app `src/http/middleware/rate_limit.zig` originally specified by an earlier revision of this spec is no longer authored — Captain decision Q10, May 18, 2026.
 
-Rate-limit storage: **Redis-backed token buckets** using the centralized session store from above. Per-IP and per-Clerk-user counters live at separate keys (`auth:ratelimit:ip:{ip}:{minute_bucket}` etc.) with their own TTLs; verify-attempt counters live inside the session JSON blob to keep the atomic transition in one write. **No process-local rate-limit state** — every limit decision reads Redis (the API process is rate-limit-stateless). If a middleware already exists at `src/http/middleware/rate_limit.zig`, mirror its shape; otherwise this spec authors a minimal token-bucket middleware atop the existing `redis_pool.zig`.
+### Layer responsibilities
+
+| Layer | Owner | What it caps |
+|---|---|---|
+| **L1 — Clerk edge** | Clerk's perimeter | Sign-in attempts at 3 / 10 s, sign-in / sign-up creates at 5 / 10 s per IP. Bounds the upstream Clerk-identity supply for any post-auth abuse vector against `PATCH /approve`. Enforced before any request reaches our origin. |
+| **L2 — Cloudflare Web Application Firewall (WAF)** | In front of `api.usezombie.com` | `POST /v1/auth/sessions` at 10 / IP / minute. Enforced at the edge — the request never reaches the origin pod on a block. Local-dev / Continuous Integration (CI) run without an edge; L3 still holds. |
+| **L3 — `verifyAndConsume` Lua** | zombied, already shipped (`ff47949f`) | `POST /verify` at 5 attempts per session. Atomic state-machine inside the Lua EVAL — no middleware, no separate Redis counter key. Trips `auth.session.aborted` with reason `rate_limit_exceeded`. |
+
+### Per-surface table
+
+| Surface | Layer | Limit | When exceeded |
+|---|---|---|---|
+| `POST /v1/auth/sessions` (CLI session creation) | L2 | 10 / IP / minute | Edge returns HTTP 429 + `Retry-After`; never reaches origin |
+| `PATCH /v1/auth/sessions/{id}/approve` (dashboard approve) | L1 indirect | Per-user in-app backstop deferred post-launch — Clerk-edge per-IP gates upstream identity supply | N/A pre-launch |
+| `POST /v1/auth/sessions/{id}/verify` (per session) | L3 | 5 attempts total | HTTP 410 `SessionAborted`; `auth.session.aborted` reason `rate_limit_exceeded` |
+| `GET /v1/auth/sessions/{id}` (CLI poll) | CLI-honored | ≥ 750 ms between polls (no server enforcement) | CLI honors `Retry-After` if returned by edge |
+| Expired sessions | zombied state-machine | Hard reject on any state-mutating call | HTTP 410 per the lifecycle table |
+
+**No in-app rate-limit middleware.** The verify-attempt counter inside the session JSON blob (`verification_attempts`) is the only rate-limit-shaped state zombied owns, and it lives inside the atomic `verifyAndConsume` Lua write — not as a separate Redis key, not behind a middleware. Why this carve-up: rate limiting is naturally edge-shaped — Cloudflare absorbs Distributed Denial of Service (DDoS) attempts at the perimeter and a request blocked at edge never consumes origin resources. Clerk's own per-IP sign-in / sign-up limits further bound the supply of authenticated identities, so a post-auth rate limit on PATCH /approve inside zombied would protect against a vector L1 already throttles upstream. The protocol-level brute-force closure (L3) remains application-state-dependent and stays in the Lua script. Pre-2.0 launch with no production traffic, deferring the in-app middleware avoids ~600 lines of code that would otherwise duplicate edge functionality.
 
 ---
 
@@ -692,10 +710,11 @@ zombied lives behind Fly's proxy in any non-dev deploy. Fly always stamps `Fly-C
 ### Coverage
 
 - The consume-idempotency fingerprint hash (`Fix #1`) uses the derived IP, never the raw TCP peer when either header was present.
-- The per-IP rate-limit buckets (`auth:ratelimit:ip:{ip}:{minute_bucket}` per *Rate limits*) use the derived IP for the same reason.
 - Audit events that carry an `ip` field record the derived IP plus the four attribution fields above.
 
-**Tested by:** `test_client_ip_falls_back_to_tcp_peer_when_no_headers`, `test_client_ip_uses_xff_when_only_xff_present`, `test_client_ip_uses_fly_header_when_only_fly_present`, `test_client_ip_prefers_xff_when_both_agree`, `test_client_ip_flips_to_fly_and_marks_divergent_on_disagreement`, `test_rate_limit_per_derived_client_ip` (asserts the bucket key is the derived IP, not the LB IP), `test_consume_fingerprint_uses_derived_client_ip`, `test_audit_event_carries_both_raw_headers_and_attribution_fields`.
+(Per-IP rate-limit consumer removed — Captain Q10 decision; per-IP enforcement lives at Cloudflare WAF L2, not in zombied. The derived-IP helper remains in use by the consume-idempotency fingerprint and by audit attribution.)
+
+**Tested by:** `test_client_ip_falls_back_to_tcp_peer_when_no_headers`, `test_client_ip_uses_xff_when_only_xff_present`, `test_client_ip_uses_fly_header_when_only_fly_present`, `test_client_ip_prefers_xff_when_both_agree`, `test_client_ip_flips_to_fly_and_marks_divergent_on_disagreement`, `test_consume_fingerprint_uses_derived_client_ip`, `test_audit_event_carries_both_raw_headers_and_attribution_fields`. (`test_rate_limit_per_derived_client_ip` removed per Captain Q10 — per-IP enforcement is now an edge concern.)
 
 ---
 
@@ -823,6 +842,7 @@ These were Open Questions in the prior revision. Captain answered May 17, 2026 (
 | Q7 | Effect-TS error variant naming | Follow M74_001's tagged-class convention. If M74_001 has not landed when this spec is implemented, M74_002 ships plain `Error` subclasses (`VerificationFailedError`, `DecryptError`, …) and M74_001 maps them to tagged classes during its bulk migration. | Don't invent a one-off auth-specific naming style. |
 | Q8 | Trusted client IP shape | **`X-Forwarded-For` is the default attribution source; `Fly-Client-IP` is the trust anchor and divergence check.** No `TRUSTED_PROXY_IPS` env, no IP allowlist. Compare the two headers — agree → use XFF (`client_ip_source="xff"`). Disagree → flip to Fly-Client-IP, set `client_ip_divergent=true` so ops can grep forgery attempts. Neither present → fall back to TCP peer. Every `.auth_audit` event carrying `ip` also carries `xff`, `fly_client_ip`, `client_ip_source`, `client_ip_divergent`. | Captain decision May 18 2026: keeps the audit chain reading sensibly to any operator (XFF default) while letting Fly's authoritative header catch spoofing (divergence check). Zero env surface; Fly's proxy is the implicit trust boundary in any non-dev deploy. Local-dev/direct-internet falls through to TCP peer cleanly. |
 | Q9 | Incident-mode `AUTH_AUDIT_INCLUDE_FULL_IDS` | **Dropped.** No env knob; audit events always carry `session_id_hash` + `session_id_prefix`, never the raw id. | Captain decision May 18 2026: the env's only value was saving ops ~5s of `HMAC-SHA256(AUDIT_LOG_PEPPER, raw_id)` when starting from a customer-supplied raw session_id — ops already hold the pepper, so the same hash is a one-liner away. Trade for one less "MUST NOT enable in prod" foot-gun. |
+| Q10 | In-app rate-limit middleware (`src/http/middleware/rate_limit.zig`) | **Dropped — out of scope for v2.0.** Rate limiting carves across three layers; only L3 (per-session 5-attempt cap in `verifyAndConsume` Lua) lives inside zombied. L1 — Clerk-edge per-IP on sign-in / sign-up (3 attempts / 10 s, 5 creates / 10 s) bounds upstream Clerk-identity supply. L2 — Cloudflare WAF per-IP on `POST /v1/auth/sessions` (10 / IP / min) bounds CLI-side session creation at the edge in front of `api.usezombie.com`. Per-Clerk-user backstop on PATCH /approve is deferred post-launch (L1 already gates the upstream identity supply). The `src/http/middleware/rate_limit.zig` file is not authored; `MiddlewareRegistry`, `route_table.zig`, and the error registry are not extended; dead audit primitives (`emitRateLimitExceeded`, `SURFACE_*`, `EV_RATELIMIT_EXCEEDED`, `REASON_RATE_LIMITED`) are swept per RULE NDC. `REASON_RATE_LIMIT_EXCEEDED` stays — still consumed by `auth.session.aborted` when L3 trips. | Captain decision May 18 2026: pre-2.0 with no production traffic, building ~600 lines of in-app middleware to duplicate Cloudflare WAF's per-IP function is debt for zero current threat. Edge owns L1+L2; Lua owns L3; future per-user concerns reopen as a post-launch hardening milestone if usage data justifies. Clerk does not offer per-user rate limits for customer APIs (its limits are on Clerk's own endpoints), so a per-user backstop would require Arcjet / Upstash / homegrown — explicitly deferred. |
 
 ---
 
@@ -874,8 +894,8 @@ All three are required to ship a coherent CLI auth surface. Either of (1) or (3)
 |------|--------|-----|
 | `src/auth/sessions.zig` | REWRITE | **DELETE** the in-memory `SessionStore` (StringHashMap + `max_sessions: usize = 64`) in entirety. Rewrite on Redis (use `src/queue/redis_pool.zig` from M69_004). New `SessionState` per the *Session Schema* below. Embed the Lua EVAL script for the atomic verify→consume transition. Add `redactSessionId(id) []const u8` helper for log-redaction use. Add the secondary background sweep helper. |
 | `src/http/handlers/auth/sessions.zig` | REWRITE | **Delete the existing plaintext PATCH handler in entirety** (no `acceptPatchPlaintextDeprecated` shim — Q3 directive). Implement: `POST /v1/auth/sessions` (creation), `GET /v1/auth/sessions/{id}` (polling, status + cli_public_key + token_name + expires_at_ms only), `PATCH /v1/auth/sessions/{id}/approve` (dashboard, Clerk-authenticated), `POST /v1/auth/sessions/{id}/verify` (CLI, no auth, single Lua-EVAL atomic verified→consumed + consume-idempotency window per Fix 1), `DELETE /v1/auth/sessions/{id}`, `DELETE /v1/auth/sessions/all`. Every log emit uses `redactSessionId()`. Every response includes the standard error envelope; never echoes session_id in error bodies. |
-| `src/http/middleware/rate_limit.zig` (existing if present, else NEW) | EDIT or CREATE | Redis-backed token-bucket: per-IP for session creation, per-Clerk-user for PATCH /approve. Verify-attempt counter lives in the session blob (not here). Emits `auth.ratelimit.exceeded` audit event on every block. **IP source: the derived client IP from `trusted_client_ip.zig`, NEVER the raw TCP peer when behind a proxy.** |
-| `src/auth/middleware/trusted_client_ip.zig` (Slice 1.3, exists) | WIRE | Pure helper `deriveClientIp(tcp_peer, xff, fly_client_ip)` already landed. Slice 3 wires the handler chain to read `X-Forwarded-For` + `Fly-Client-IP` from `req.headers`, calls the helper, and stores the `DerivedClientIp` result on the request context for downstream rate-limit + fingerprint + audit consumers. No env var, no allowlist (Captain Q8 decision). |
+| ~~`src/http/middleware/rate_limit.zig`~~ | **DROPPED — Captain Q10** | In-app rate-limit middleware out of scope for v2.0. Per-IP enforcement at Cloudflare WAF (L2); per-session 5-attempt cap already in Lua `verifyAndConsume` (L3). |
+| `src/auth/middleware/trusted_client_ip.zig` (Slice 1.3, exists) | WIRE | Pure helper `deriveClientIp(tcp_peer, xff, fly_client_ip)` already landed. Slice 3 wires the handler chain to read `X-Forwarded-For` + `Fly-Client-IP` from `req.headers`, calls the helper, and stores the `DerivedClientIp` result on the request context for downstream fingerprint + audit consumers. No env var, no allowlist (Captain Q8 decision). |
 | `src/http/middleware/security_headers.zig` (existing if present, else NEW per Fix 6) | EDIT or CREATE | Adds `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` to every response. Confirm via `grep -rln 'Strict-Transport-Security' src/` before authoring — if the load balancer already adds it, the middleware is a defense-in-depth no-op (still authored so test `test_hsts_header_present_on_auth_responses` passes deterministically in unit tests without a load balancer). |
 | `src/auth/audit.zig` (Slice 1.3, exists; Slice 3 extends) | EXTEND | Pseudonymization primitives (`sessionIdHash`, `sessionIdHashHex`, `sessionIdPrefix`, `redactSessionIdInto`) already landed. Slice 3 adds the per-event emitter functions (one per row in the audit-events table) that consume the typed payload + `AUDIT_LOG_PEPPER` (loaded once at boot in `src/config/runtime_loader.zig`) and write JSON-line records via `std.log.scoped(.auth_audit)`. Every event carrying `ip` also stamps `xff`, `fly_client_ip`, `client_ip_source`, `client_ip_divergent`. No env override for raw session_id (Captain Q9 decision). |
 | `src/auth/session_store_redis.zig` (NEW, called from `src/auth/sessions.zig`) | CREATE | Encapsulates the Redis-backed CRUD: `create()`, `get()`, `approve()`, `verifyAndConsume()` (Lua EVAL), `delete()`, `deleteAllForUser()`, `runBackgroundSweep()`. Calls into `src/queue/redis_pool.zig`. Single source of truth for session storage; the handler never touches Redis directly. |
