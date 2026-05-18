@@ -1,14 +1,7 @@
 import { Writable } from "node:stream";
 import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
-import { commandLogin } from "../src/commands/core.ts";
-
-import type {
-  CommandCtx,
-  CommandDeps,
-  ParsedArgs,
-  Workspaces,
-} from "../src/commands/types.ts";
+import type { ParsedArgs } from "../src/commands/types.ts";
 
 export { ApiError };
 export type { FetchImpl };
@@ -84,30 +77,6 @@ export const ui: UiTheme = {
   dim: (s) => s,
   head: (s) => s,
 };
-
-type CoreHandler = (args?: readonly string[]) => Promise<number>;
-
-// Named-member return shape (vs `Record<string, CoreHandler>`) so call
-// sites like `core.commandLogin()` typecheck under
-// `noUncheckedIndexedAccess` without a `!` non-null assertion.
-export interface CoreHandlers {
-  commandLogin: CoreHandler;
-}
-
-// Test-only shim that re-creates the old createCoreHandlers return shape
-// from the new top-level exports — direct-handler tests keep their
-// `handlers.commandLogin(args)` invocation pattern without rewriting
-// every call site.
-export function createCoreHandlers(
-  ctx: CommandCtx,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): CoreHandlers {
-  return {
-    commandLogin: (args = []) => commandLogin(ctx, buildParsed(args), workspaces, deps),
-  };
-}
-
 
 // Build the parsed = { options, positionals } shape that leaf handlers
 // expect from a flat token array. Test-only utility — production now

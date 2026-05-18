@@ -1,7 +1,7 @@
 // request-retry.unit.test.ts — pins the §3 propagation contract:
 // request(ctx, path) reads ctx.retryConfig and forwards it to
 // apiRequestWithRetry. Recovery from a transient 503 is therefore
-// transparent to handlers that don't opt out via runCommand({ retry: false }).
+// transparent to callers that don't opt out via { maxAttempts: 1 }.
 
 import { test } from "bun:test";
 import assert from "node:assert/strict";
@@ -63,7 +63,7 @@ test("request: ctx.retryConfig undefined → default 3 attempts (recovers from o
   assert.equal(seq.callCount(), 2);
 });
 
-test("request: ctx.retryConfig={maxAttempts:1} from runCommand({retry:false}) collapses to single attempt", async () => {
+test("request: ctx.retryConfig={maxAttempts:1} collapses to a single attempt (no retry)", async () => {
   const seq = makeFetchSeq([
     makeResponse({ status: 503, body: { error: { code: "HTTP_503" } } }),
     makeResponse({ body: { ok: true } }), // never reached

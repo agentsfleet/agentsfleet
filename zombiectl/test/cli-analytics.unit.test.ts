@@ -337,8 +337,8 @@ test("runCli tracks unknown-command errors and still shuts down analytics when t
       assert.equal(events[0]?.event, "cli_error");
       assert.equal(events[0]?.distinctId, "anonymous");
       // GAP B: commander-level cli_error must carry the same base props
-      // that runCommand's emits carry — otherwise PostHog loses session
-      // correlation on unknown-command / usage-error paths.
+      // that the dispatcher's emits carry — otherwise PostHog loses
+      // session correlation on unknown-command / usage-error paths.
       assert.equal(events[0]?.properties.cli_session_id, PINNED_SESSION);
       assert.equal(events[0]?.properties.cli_device_id, PINNED_DEVICE);
       assert.equal(shutdownCalls, 1);
@@ -376,12 +376,11 @@ test("runCli persists session.json with bumped last_activity before returning (f
 });
 
 test("runCli UNEXPECTED-branch cli_error carries cli_session_id + cli_device_id base props", async () => {
-  // GAP cover: cli.ts:325-338 — when parseAsync throws a non-Commander,
-  // non-InvalidArgumentError, the catch emits cli_error with the same
-  // namespaced base props that runCommand emits. Trigger by making the
-  // cli_command_started track call throw a plain Error from inside
-  // runCommand (line is outside runCommand's own try/catch), which
-  // propagates up through parseAsync into cli.ts's outer catch.
+  // GAP cover: cli.ts's outer catch — when parseAsync throws a
+  // non-Commander, non-InvalidArgumentError, the catch emits cli_error
+  // with the same namespaced base props the dispatcher uses. Trigger
+  // by making the cli_command_started track call throw a plain Error,
+  // which propagates up through parseAsync into cli.ts's outer catch.
   await withStateDir(async (dir) => {
     await pinSession(dir);
     await withAnalyticsStub(async () => {
@@ -400,9 +399,9 @@ test("runCli UNEXPECTED-branch cli_error carries cli_session_id + cli_device_id 
       const stderr = bufferStream();
 
       // login is AUTH_EXEMPT so preAction doesn't short-circuit; the
-      // runCommand wrapper fires cli_command_started before any handler
-      // logic, so we never reach the network. fetchImpl unused but
-      // required for type.
+      // dispatcher fires cli_command_started before any handler logic,
+      // so we never reach the network. fetchImpl unused but required
+      // for type.
       const code = await runCli(["login", "--no-open"], {
         env: { ...process.env, NO_COLOR: "1", BROWSER: "false" },
         stdout: stdout.stream,

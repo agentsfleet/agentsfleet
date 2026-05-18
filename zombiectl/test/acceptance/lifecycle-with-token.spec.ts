@@ -3,7 +3,7 @@
  *
  * Mints a Clerk session JWT via the admin path (mirrors the dashboard
  * suite's identity), hydrates workspaces.json directly from the API
- * (the CLI only hydrates inside commandLogin — §5 covers that path),
+ * (the CLI only hydrates inside the login flow — §5 covers that path),
  * then walks the full CLI surface:
  *   §4a — install → status → logs → billing → stop → resume → kill
  *   §4b — read-only sweep over READ_ONLY_COMMANDS

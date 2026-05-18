@@ -21,32 +21,10 @@ import type {
   KeyValueRows,
 } from "../output/index.ts";
 
-// Ctx shape commands read directly. Previously inherited from
-// lib/run-command.ts::HandlerCtx; inlined here when the legacy
-// wrapper was retired and the dispatcher (lib/run-effect.ts) became
-// the only command boundary. Fields are a strict superset of what
-// cli.ts buildDeps() emits + what handlers reach into.
-export interface RunCommandCtx {
-  stderr?: NodeJS.WritableStream | null;
-  jsonMode?: boolean;
-  apiUrl?: string;
-  analyticsClient?: AnalyticsClient | null;
-  distinctId?: string;
-  analyticsContext?: Record<string, unknown> | null;
-  retryConfig?: RetryConfig | null;
-  // CLI telemetry session/device identity. Local camelCase; the
-  // wire-format snake_case rename happens at emit/append sites.
-  cliSessionId?: string | null;
-  cliDeviceId?: string | null;
-  [key: string]: unknown;
-}
-
-// On-disk shapes re-exported from lib/state.ts. Single source of truth for
-// the worktree (~/.config/zombiectl/credentials.json, workspaces.json) —
-// handlers, cli.ts, and the lifecycle all reference the same interfaces.
-// Previously commands/types.ts declared its own Workspaces + CredentialFile
-// with overlapping-but-inconsistent shapes, which surfaced as cross-file
-// assignability errors the moment cli.ts became typed (D41).
+// On-disk shapes re-exported from lib/state.ts. Single source of truth
+// for the worktree (~/.config/zombiectl/credentials.json,
+// workspaces.json) — handlers, cli.ts, and the lifecycle all reference
+// the same interfaces.
 export type { Credentials, Workspaces, WorkspaceItem };
 
 export type { ApiRequestOptions };
@@ -58,25 +36,32 @@ export type StreamGetFn = (
   options?: StreamGetOptions,
 ) => Promise<void>;
 
-// The ctx that command handlers receive. Extends RunCommandCtx with
-// the streams and credential fields commands read directly. The
-// retryConfig is now set by the dispatcher (or by callers that need
-// it) rather than mutated by a wrapper.
-export interface CommandCtx extends RunCommandCtx {
+// The ctx every command handler receives. Mirrors what cli.ts
+// buildDeps() emits plus the streams and credentials commands reach
+// into directly. apiUrl is required (cli.ts sets it before any
+// handler runs; http-client.ts:HttpRequestContext requires it —
+// optional here meant the commands ↔ http-client seam couldn't
+// typecheck under exact-optional contravariance).
+export interface CommandCtx {
   stdout?: NodeJS.WritableStream | null;
   stderr?: NodeJS.WritableStream | null;
   stdin?: NodeJS.ReadableStream | string | null;
   token?: string | null;
   apiKey?: string | null;
-  // apiUrl is required — cli.ts sets it before any handler runs, and
-  // http-client.ts:HttpRequestContext requires it. Optional here meant
-  // the commands ↔ http-client seam couldn't typecheck (TS exact-optional
-  // rejects the contravariance).
   apiUrl: string;
   jsonMode?: boolean;
   noOpen?: boolean;
   noInput?: boolean;
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+  analyticsClient?: AnalyticsClient | null;
+  distinctId?: string;
+  analyticsContext?: Record<string, unknown> | null;
+  retryConfig?: RetryConfig | null;
+  // CLI telemetry session/device identity. Local camelCase; the
+  // wire-format snake_case rename happens at emit/append sites.
+  cliSessionId?: string | null;
+  cliDeviceId?: string | null;
+  [key: string]: unknown;
 }
 
 // Parsed CLI invocation (Commander/cli-tree frame.parsed). `options`

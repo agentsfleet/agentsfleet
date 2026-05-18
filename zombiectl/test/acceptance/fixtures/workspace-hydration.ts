@@ -1,8 +1,9 @@
 /**
  * Hydrate workspaces.json for the ZOMBIE_TOKEN-injection suite.
  *
- * The CLI populates workspaces.json only inside `commandLogin`'s
- * post-success branch (`hydrateWorkspacesAfterLogin` in src/commands/core.ts).
+ * The CLI populates workspaces.json only inside the login flow's
+ * post-success branch (`hydrateWorkspacesAfterLogin` in
+ * src/commands/login-helpers.ts).
  * §4 injects a minted JWT directly via `ZOMBIE_TOKEN`, so it never walks
  * that path — without help the read-only sweep sees an empty local list
  * even though the tenant has workspaces.
