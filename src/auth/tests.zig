@@ -15,6 +15,9 @@ test {
     _ = @import("oidc.zig");
     _ = @import("principal.zig");
     _ = @import("rbac.zig");
+    _ = @import("session_state.zig");
+    _ = @import("session_store_redis.zig");
+    _ = @import("session_store_redis_proto.zig");
     _ = @import("sessions.zig");
     _ = @import("middleware/chain.zig");
     _ = @import("middleware/mod.zig");
