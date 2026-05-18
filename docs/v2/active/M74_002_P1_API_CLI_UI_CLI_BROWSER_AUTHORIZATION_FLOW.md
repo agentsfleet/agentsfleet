@@ -656,7 +656,7 @@ The naïve "single-use code, single-read ciphertext" invariant creates a real pr
 | Property | Value |
 |---|---|
 | Replay window | 60 seconds from `consumed_at_ms` |
-| Fingerprint match | `sha256(request.remote_addr || request.user_agent || session_id)` — narrow enough to defeat network-level capture-and-replay from a different host; loose enough to survive the same CLI process retrying on its own connection. **`remote_addr` derivation is pinned: see *Trusted client IP extraction* below.** Mis-derivation (trusting unsigned `X-Forwarded-For` headers, or using the load-balancer IP) would either collapse all CLIs behind one proxy into the same fingerprint (loose replay) or let a client-supplied header forge a fingerprint match (forged replay). |
+| Fingerprint match | `sha256(request.remote_addr || request.user_agent || session_id)` — narrow enough to defeat network-level capture-and-replay from a different host; loose enough to survive the same CLI process retrying on its own connection. **`remote_addr` derivation is pinned: see *Trusted client IP extraction* below.** Mis-derivation (taking the load-balancer IP directly, or trusting an XFF chain whose leftmost entry the client forged) would either collapse all CLIs behind one proxy into the same fingerprint (loose replay) or let a client-supplied header forge a fingerprint match (forged replay). |
 | Payload retention | The full `{dashboard_public_key, ciphertext, nonce}` payload is retained in the session blob for the 60-second window, then wiped via a TTL-driven hook. |
 | Behavior in window | Same fingerprint → 200 + same payload (idempotent). Different fingerprint → 410 `SessionConsumed` (with `Retry-After: 0` and explicit "this session can no longer be recovered; re-run `zombiectl login`"). |
 | Behavior outside window | Any source → 410 `SessionConsumed`. |
@@ -666,32 +666,36 @@ The naïve "single-use code, single-read ciphertext" invariant creates a real pr
 
 ---
 
-## Trusted client IP extraction (Must-change B from ChatGPT review 4)
+## Trusted client IP extraction (Must-change B from ChatGPT review 4, Captain decision May 18 2026)
 
-`request.remote_addr` for consume-idempotency fingerprinting AND for the per-IP rate-limit buckets MUST be derived from the trusted proxy chain. Two failure modes if this is wrong:
+`request.remote_addr` for consume-idempotency fingerprinting AND for the per-IP rate-limit buckets MUST be derived from the two header signals the deploy actually carries — never from the raw TCP peer when zombied sits behind a proxy. Two failure modes if this is wrong:
 
 | Mis-derivation | Consequence |
 |---|---|
 | Use the load-balancer IP directly (no header parsing) | Every CLI behind the LB shares the same `remote_addr`. Fingerprint collisions for unrelated sessions; per-IP rate limit becomes a per-LB limit (one CLI exhausts the budget for all CLIs in its region). |
-| Trust `X-Forwarded-For` / `Forwarded` from any source | A malicious client sets the header to a victim's IP; their fingerprint then matches the victim's replay window; per-IP rate-limit attribution forges to the victim. |
+| Take `X-Forwarded-For` blindly with no comparison | A malicious client sets `X-Forwarded-For: <victim>`. Fly's proxy appends its own view, but the leftmost (forged) entry would win without the divergence check — fingerprint forges to the victim. |
 
-### Derivation rules (pinned)
+### Derivation rules (pinned, Captain decision May 18 2026)
+
+zombied lives behind Fly's proxy in any non-dev deploy. Fly always stamps `Fly-Client-IP` with the true peer and strips client-supplied copies of its own header, so `Fly-Client-IP` is the trust anchor. `X-Forwarded-For` is the industry-standard signal — used as the *default* attribution source so the audit chain reads sensibly, with `Fly-Client-IP` acting as a divergence check that catches forgery attempts. **No env knob; no IP allowlist.**
 
 | Rule | Detail |
 |---|---|
-| `TRUSTED_PROXY_IPS` configuration | Comma-separated allowlist of reverse-proxy / load-balancer IPs OR CIDR ranges. Loaded from env at zombied boot (`TRUSTED_PROXY_IPS=...`). Values per deploy: Cloudflare's IP ranges in production, the local proxy IP in dev, `127.0.0.1` in test. **Required** in any deploy that fronts zombied with a proxy. Direct-internet deploys (no proxy) set it to empty and the API trusts only the raw TCP peer address. |
-| Header trust rule | If `request.remote_addr` (the raw TCP peer) is in `TRUSTED_PROXY_IPS`, parse `X-Forwarded-For` left-to-right and take the **first** entry that is NOT itself in `TRUSTED_PROXY_IPS` — that is the client IP. If `X-Forwarded-For` is absent in this case, fall back to the TCP peer. If the TCP peer is NOT in `TRUSTED_PROXY_IPS`, **ignore** every `X-Forwarded-For` / `Forwarded` header and use the TCP peer directly (client-supplied forwarding headers are ignored when the request did not arrive through a configured trusted proxy). |
-| `Forwarded` (RFC 7239) | Treated the same as `X-Forwarded-For`. Same trust rule. |
-| Misbehaving proxies | A proxy in `TRUSTED_PROXY_IPS` that drops `X-Forwarded-For` causes every request through it to attribute to the proxy IP itself. Operationally a deploy bug, not a security issue — caught by the per-IP rate limit firing at the proxy IP. Documented in deploy README. |
-| Implementation surface | `src/http/middleware/trusted_client_ip.zig` (NEW unless an equivalent exists — grep first). Runs before `rate_limit.zig` and before any handler that reads `remote_addr`. Stores the derived client IP on the request context; downstream code reads from there, never from raw headers. |
+| Default attribution source | `X-Forwarded-For` leftmost non-empty entry, trimmed of whitespace. Industry-standard shape; readable in any audit-log aggregator out of the box. |
+| Trust anchor | `Fly-Client-IP` header. Set only by Fly's proxy; Fly strips client-supplied copies before forwarding. Absent in local-dev / direct-internet deploys. |
+| Comparison rule | If both headers are present and the XFF leftmost entry **agrees** with `Fly-Client-IP` → use XFF (`client_ip_source = "xff"`, `client_ip_divergent = false`). If they **disagree** → flip to `Fly-Client-IP` (`client_ip_source = "fly_client_ip"`, `client_ip_divergent = true`). Disagreement is a forgery signal; ops can grep `client_ip_divergent=true` for spoofing attempts. |
+| Single-header path | XFF only (no Fly header) → use XFF. Fly header only (no XFF) → use Fly-Client-IP. Either way, `client_ip_divergent = false`. |
+| Neither header present | Fall back to the raw TCP peer (`client_ip_source = "tcp_peer"`). Expected only in local-dev or a future direct-internet deploy. |
+| Audit emission | Every `.auth_audit` event that carries `ip` ALSO carries the raw `xff`, raw `fly_client_ip`, `client_ip_source` enum, and `client_ip_divergent` bool — so divergence is forensically visible even when the chosen `ip` field looks ordinary. |
+| Implementation surface | `src/auth/middleware/trusted_client_ip.zig` — pure function `deriveClientIp(tcp_peer, xff, fly_client_ip) -> DerivedClientIp { ip, source, divergent, xff_raw, fly_client_ip_raw }`. Handler-slice wiring reads `req.headers.get("X-Forwarded-For")` + `req.headers.get("Fly-Client-IP")` and passes to the pure helper; downstream rate-limit + fingerprint code reads from the derived result on the request context. |
 
 ### Coverage
 
-- The consume-idempotency fingerprint hash (`Fix #1`) uses the derived IP, never the raw TCP peer when the request arrived via a trusted proxy.
+- The consume-idempotency fingerprint hash (`Fix #1`) uses the derived IP, never the raw TCP peer when either header was present.
 - The per-IP rate-limit buckets (`auth:ratelimit:ip:{ip}:{minute_bucket}` per *Rate limits*) use the derived IP for the same reason.
-- Audit events that carry an `ip` field record the derived IP.
+- Audit events that carry an `ip` field record the derived IP plus the four attribution fields above.
 
-**Tested by:** `test_trusted_client_ip_trusts_xff_from_known_proxy`, `test_trusted_client_ip_ignores_xff_from_unknown_source`, `test_trusted_client_ip_falls_back_to_tcp_peer_when_xff_absent`, `test_rate_limit_per_derived_client_ip` (asserts the bucket key is the derived IP, not the LB IP), `test_consume_fingerprint_uses_derived_client_ip`.
+**Tested by:** `test_client_ip_falls_back_to_tcp_peer_when_no_headers`, `test_client_ip_uses_xff_when_only_xff_present`, `test_client_ip_uses_fly_header_when_only_fly_present`, `test_client_ip_prefers_xff_when_both_agree`, `test_client_ip_flips_to_fly_and_marks_divergent_on_disagreement`, `test_rate_limit_per_derived_client_ip` (asserts the bucket key is the derived IP, not the LB IP), `test_consume_fingerprint_uses_derived_client_ip`, `test_audit_event_carries_both_raw_headers_and_attribution_fields`.
 
 ---
 
@@ -705,7 +709,8 @@ Auth events flow to a dedicated `auth_audit` logger sink, separate from the gene
 |---|---|
 | `session_id_hash` | `HMAC-SHA256(AUDIT_LOG_PEPPER, session_id)` — 32 bytes, base64url-encoded in events. Same session_id always produces the same hash (correlation preserved across all events for one session). |
 | `session_id_prefix` | First 8 hex chars of the raw session_id. Human-typeable for ops debugging; not capability-bearing (8 hex chars = 32 bits = 4B entries, too coarse to brute-force the verify endpoint). |
-| Incident-mode (full `session_id` in audit) | Gated by `AUTH_AUDIT_INCLUDE_FULL_IDS=true` env flag. Off by default. When enabled, zombied emits a startup warning to the `.auth` scope at WARN level: `"AUTH_AUDIT_INCLUDE_FULL_IDS=true — audit events will carry raw session_ids. Use only in dev/staging or under a documented incident."`. Production deploys MUST NOT enable this — enforced operationally, not by code. |
+
+**No incident-mode env knob (Captain decision May 18 2026).** An earlier revision proposed an `AUTH_AUDIT_INCLUDE_FULL_IDS=true` env to emit raw `session_id` in audit events for live-incident correlation. Dropped: the only capability `=true` would add is saving ops ~5 seconds of HMAC computation when starting from a customer-supplied raw `session_id`. Ops already hold `AUDIT_LOG_PEPPER` — `HMAC-SHA256(pepper, raw_id)` is a one-liner that yields the same hash already in the audit log. The flag was net debt (a "MUST NOT enable in prod" foot-gun + a code path + tests + a startup WARN + an AUTH.md row) for zero capability. Audit events ALWAYS carry `session_id_hash` + `session_id_prefix`; never the raw id; no env to override.
 
 **Pepper provisioning** (mirrors `AUTH_SESSION_CODE_PEPPER`):
 
@@ -735,7 +740,14 @@ Auth events flow to a dedicated `auth_audit` logger sink, separate from the gene
 | `auth.session.expired` | Background sweep finds an expired session | `event`, `ts`, `session_id_hash`, `session_id_prefix`, `expired_at_ms`, `created_at_ms` |
 | `auth.ratelimit.exceeded` | Any rate-limit threshold tripped | `event`, `ts`, `surface` (`session_create` / `verify` / `patch_approve` / `poll`), `bucket_key` (e.g. `ip:1.2.3.4` or `user:u_abc`), `ip`, `request_id` |
 
-**Shape contract:** every event is a single-line JSON object. `event` is the first field, `ts` is the second. Field order otherwise unspecified. No nested objects in the v2 contract; future extensions add new top-level fields. **No event carries the plaintext verification code, the HMAC of the code, the ciphertext, the public keys, or the raw `session_id` in default mode.**
+**Shape contract:** every event is a single-line JSON object. `event` is the first field, `ts` is the second. Field order otherwise unspecified. No nested objects in the v2 contract; future extensions add new top-level fields. **No event carries the plaintext verification code, the HMAC of the code, the ciphertext, the public keys, or the raw `session_id`.**
+
+**Client-IP attribution fields (every event in the table above carrying `ip`).** In addition to `ip` (the derived value used for rate-limit + fingerprint decisions), each such event carries:
+
+- `xff` — raw value of the `X-Forwarded-For` request header, or `null` when absent.
+- `fly_client_ip` — raw value of the `Fly-Client-IP` request header, or `null` when absent.
+- `client_ip_source` — enum `"xff"` / `"fly_client_ip"` / `"tcp_peer"` recording which signal won.
+- `client_ip_divergent` — bool, `true` when both headers were present and disagreed and we flipped to `Fly-Client-IP`. Surfaces forgery attempts for forensic queries: `{scope="auth_audit"} | client_ip_divergent=true` returns every event where someone tried to spoof XFF and Fly's view contradicted them.
 
 **Sink contract:** `auth_audit` is a dedicated `std.log.scoped(.auth_audit)` (Zig) — separate scope from the general `.auth` scope so deploy-side log routing can fan it to a restricted sink per the requirement above.
 
@@ -749,7 +761,7 @@ Auth events flow to a dedicated `auth_audit` logger sink, separate from the gene
 |---|---|---|
 | `std.log.scoped(.auth)` info/warn/error | `request_id`, status names, error categories, sanitized error messages | Full `session_id`, full verification code, ciphertext bytes, public keys (informational risk only but redact anyway) |
 | `std.log.scoped(.auth)` debug/trace | `session_id` redacted to first 8 hex chars (`abcd1234…`) + length suffix | Full `session_id` |
-| `std.log.scoped(.auth_audit)` | `session_id_hash` (HMAC keyed with AUDIT_LOG_PEPPER) + `session_id_prefix` (first 8 hex chars) per Fix #4. Full `session_id` only when `AUTH_AUDIT_INCLUDE_FULL_IDS=true` (env-gated, startup warning emitted, dev/staging only). | Plaintext verification code (always redact; not even hashed), `verification_code_hmac` value, ciphertext bytes, raw session_id in default mode |
+| `std.log.scoped(.auth_audit)` | `session_id_hash` (HMAC keyed with AUDIT_LOG_PEPPER) + `session_id_prefix` (first 8 hex chars) per Fix #4. Plus per-event client-IP attribution: `xff` raw, `fly_client_ip` raw, `client_ip_source`, `client_ip_divergent`. | Plaintext verification code (always redact; not even hashed), `verification_code_hmac` value, ciphertext bytes, raw `session_id` (no env override) |
 | HTTP response error bodies | `request_id`, error code (`UZ-AUTH-XXX`), generic message | `session_id` (the client already knows it; echoing it back is fine in success responses but never in errors routed to log-aggregators) |
 | Metrics / traces | High-cardinality labels avoided | `session_id` as a tag (would explode cardinality + leak capability into observability surfaces) |
 
@@ -757,7 +769,7 @@ Auth events flow to a dedicated `auth_audit` logger sink, separate from the gene
 
 - `src/auth/sessions.zig` and `src/http/handlers/auth/sessions.zig` log emits MUST use the `redactSessionId(id)` helper that returns `"{first8}…(len={n})"` — added to `src/auth/sessions.zig` as a pub fn.
 - A grep-based test (`test_session_id_never_logged_unredacted`) scans the compiled binary's string table for any patterns matching `session_id` followed by a full hex sequence, OR scans the test-mode log capture for full-id matches. Implemented as a Zig integration test with a synthetic full request flow + log-capture assertion.
-- The audit sink (`.auth_audit` scope) carries `session_id_hash` + `session_id_prefix` per Fix #4 (not the full ID by default); incident-mode env flag allows full IDs.
+- The audit sink (`.auth_audit` scope) carries `session_id_hash` + `session_id_prefix` per Fix #4 — never the raw ID. No env override exists (incident-mode env was dropped — see *Audit events* note).
 - Existing redaction patterns (`src/zombie/event_loop_harness_redaction_test.zig`, `src/executor/redaction_canary.zig`) are referenced for shape; the new auth-side helper does not duplicate that infrastructure, just mirrors its discipline.
 
 **AUTH.md addition:** the security-classification table gains a row: `session_id` = "sensitive ephemeral capability — treat as password-reset token."
@@ -809,6 +821,8 @@ These were Open Questions in the prior revision. Captain answered May 17, 2026 (
 | Q5 | Verification-code transport | Dedicated `POST /v1/auth/sessions/{id}/verify` endpoint. **Never** via query parameter; **never** overloaded onto the GET polling endpoint. | Clean state-machine semantics; atomic verified→consumed; clean rate-limit per surface; clean audit logs. |
 | Q6 | ECDH + verification code, or verification code only? | **Both.** | Verification code closes the phishing-without-terminal attack class; ECDH closes the server-side-disclosure attack class. Implementation cost is small once the substrate is in place; threat model is cleaner with both shipping together. AUTH.md must continue to state explicitly that ECDH is NOT authentication. |
 | Q7 | Effect-TS error variant naming | Follow M74_001's tagged-class convention. If M74_001 has not landed when this spec is implemented, M74_002 ships plain `Error` subclasses (`VerificationFailedError`, `DecryptError`, …) and M74_001 maps them to tagged classes during its bulk migration. | Don't invent a one-off auth-specific naming style. |
+| Q8 | Trusted client IP shape | **`X-Forwarded-For` is the default attribution source; `Fly-Client-IP` is the trust anchor and divergence check.** No `TRUSTED_PROXY_IPS` env, no IP allowlist. Compare the two headers — agree → use XFF (`client_ip_source="xff"`). Disagree → flip to Fly-Client-IP, set `client_ip_divergent=true` so ops can grep forgery attempts. Neither present → fall back to TCP peer. Every `.auth_audit` event carrying `ip` also carries `xff`, `fly_client_ip`, `client_ip_source`, `client_ip_divergent`. | Captain decision May 18 2026: keeps the audit chain reading sensibly to any operator (XFF default) while letting Fly's authoritative header catch spoofing (divergence check). Zero env surface; Fly's proxy is the implicit trust boundary in any non-dev deploy. Local-dev/direct-internet falls through to TCP peer cleanly. |
+| Q9 | Incident-mode `AUTH_AUDIT_INCLUDE_FULL_IDS` | **Dropped.** No env knob; audit events always carry `session_id_hash` + `session_id_prefix`, never the raw id. | Captain decision May 18 2026: the env's only value was saving ops ~5s of `HMAC-SHA256(AUDIT_LOG_PEPPER, raw_id)` when starting from a customer-supplied raw session_id — ops already hold the pepper, so the same hash is a one-liner away. Trade for one less "MUST NOT enable in prod" foot-gun. |
 
 ---
 
@@ -861,9 +875,9 @@ All three are required to ship a coherent CLI auth surface. Either of (1) or (3)
 | `src/auth/sessions.zig` | REWRITE | **DELETE** the in-memory `SessionStore` (StringHashMap + `max_sessions: usize = 64`) in entirety. Rewrite on Redis (use `src/queue/redis_pool.zig` from M69_004). New `SessionState` per the *Session Schema* below. Embed the Lua EVAL script for the atomic verify→consume transition. Add `redactSessionId(id) []const u8` helper for log-redaction use. Add the secondary background sweep helper. |
 | `src/http/handlers/auth/sessions.zig` | REWRITE | **Delete the existing plaintext PATCH handler in entirety** (no `acceptPatchPlaintextDeprecated` shim — Q3 directive). Implement: `POST /v1/auth/sessions` (creation), `GET /v1/auth/sessions/{id}` (polling, status + cli_public_key + token_name + expires_at_ms only), `PATCH /v1/auth/sessions/{id}/approve` (dashboard, Clerk-authenticated), `POST /v1/auth/sessions/{id}/verify` (CLI, no auth, single Lua-EVAL atomic verified→consumed + consume-idempotency window per Fix 1), `DELETE /v1/auth/sessions/{id}`, `DELETE /v1/auth/sessions/all`. Every log emit uses `redactSessionId()`. Every response includes the standard error envelope; never echoes session_id in error bodies. |
 | `src/http/middleware/rate_limit.zig` (existing if present, else NEW) | EDIT or CREATE | Redis-backed token-bucket: per-IP for session creation, per-Clerk-user for PATCH /approve. Verify-attempt counter lives in the session blob (not here). Emits `auth.ratelimit.exceeded` audit event on every block. **IP source: the derived client IP from `trusted_client_ip.zig`, NEVER the raw TCP peer when behind a proxy.** |
-| `src/http/middleware/trusted_client_ip.zig` (existing if present, else NEW per Must-change B) | EDIT or CREATE | Derives the trusted client IP from the proxy chain per *Trusted client IP extraction*. Reads `TRUSTED_PROXY_IPS` env at boot; parses `X-Forwarded-For` / `Forwarded` only when the TCP peer is a configured trusted proxy. Stores the derived IP on the request context for downstream consumers. Runs before `rate_limit.zig` and before any handler reading `remote_addr`. |
+| `src/auth/middleware/trusted_client_ip.zig` (Slice 1.3, exists) | WIRE | Pure helper `deriveClientIp(tcp_peer, xff, fly_client_ip)` already landed. Slice 3 wires the handler chain to read `X-Forwarded-For` + `Fly-Client-IP` from `req.headers`, calls the helper, and stores the `DerivedClientIp` result on the request context for downstream rate-limit + fingerprint + audit consumers. No env var, no allowlist (Captain Q8 decision). |
 | `src/http/middleware/security_headers.zig` (existing if present, else NEW per Fix 6) | EDIT or CREATE | Adds `Strict-Transport-Security: max-age=31536000; includeSubDomains; preload` to every response. Confirm via `grep -rln 'Strict-Transport-Security' src/` before authoring — if the load balancer already adds it, the middleware is a defense-in-depth no-op (still authored so test `test_hsts_header_present_on_auth_responses` passes deterministically in unit tests without a load balancer). |
-| `src/auth/audit.zig` (NEW) | CREATE | Emits the structured events listed in *Audit events* — one function per event variant taking the typed payload struct. Loads `AUDIT_LOG_PEPPER` from Vault at boot (fail-fast if missing). Computes `session_id_hash = HMAC-SHA256(AUDIT_LOG_PEPPER, session_id)` and `session_id_prefix = first8(session_id)` for every event; raw `session_id` only when `AUTH_AUDIT_INCLUDE_FULL_IDS=true` (env-gated). Uses `std.log.scoped(.auth_audit)` (separate from `.auth` scope per Fix 3 + Fix 4). JSON-line format; one field per event row in the audit-events table. |
+| `src/auth/audit.zig` (Slice 1.3, exists; Slice 3 extends) | EXTEND | Pseudonymization primitives (`sessionIdHash`, `sessionIdHashHex`, `sessionIdPrefix`, `redactSessionIdInto`) already landed. Slice 3 adds the per-event emitter functions (one per row in the audit-events table) that consume the typed payload + `AUDIT_LOG_PEPPER` (loaded once at boot in `src/config/runtime_loader.zig`) and write JSON-line records via `std.log.scoped(.auth_audit)`. Every event carrying `ip` also stamps `xff`, `fly_client_ip`, `client_ip_source`, `client_ip_divergent`. No env override for raw session_id (Captain Q9 decision). |
 | `src/auth/session_store_redis.zig` (NEW, called from `src/auth/sessions.zig`) | CREATE | Encapsulates the Redis-backed CRUD: `create()`, `get()`, `approve()`, `verifyAndConsume()` (Lua EVAL), `delete()`, `deleteAllForUser()`, `runBackgroundSweep()`. Calls into `src/queue/redis_pool.zig`. Single source of truth for session storage; the handler never touches Redis directly. |
 
 ### CLI (TypeScript / `zombiectl/`)
@@ -910,6 +924,13 @@ Bootstrap and preflight playbooks gain new vault items per the *Bootstrap playbo
 | `playbooks/001_bootstrap/001_playbook.md` | EDIT | §1.3a (Generate Encryption Master Key) is extended with §1.3b (Generate Auth Pepper Keys) for `AUTH_SESSION_CODE_PEPPER` + `AUDIT_LOG_PEPPER` and §1.3c (Provision E2E Fixture Email Identities) for `e2e-fixture-email/regular` + `e2e-fixture-email/admin`. The §2.0 agent-step vault inventory table gains rows for the three new items. The §1.3 hand-off message gets one extra bullet pointing to §1.3b + §1.3c. |
 | `playbooks/002_preflight/001_playbook.md` | EDIT | DEV-vault inventory (around line 66) and PROD-vault inventory (around line 42) each gain three rows: `auth-session-code-pepper`, `audit-log-pepper`, `e2e-fixture-email`. Consumer column for the peppers names `zombied` (loaded at boot via `src/state/vault.zig`); for `e2e-fixture-email` names the Playwright + Vitest e2e suites under `ui/packages/app/tests/e2e/`. |
 | `playbooks/001_bootstrap/03_auth_pepper_provision.sh` (NEW) | CREATE | Optional automation script mirroring `02_vercel_env.sh`'s shape. Runs `openssl rand -hex 32` for each pepper per environment, idempotently upserts into `$VAULT_DEV` / `$VAULT_PROD` via `op item create` (skips if already present). `--check` mode reads-only and exits 1 if items missing. Reduces human error in the bootstrap; the playbook prose path stays valid for manual provisioning. |
+
+### CI/CD (`.github/workflows/`)
+
+| File | Action | Why |
+|------|--------|-----|
+| `.github/workflows/deploy-dev.yml` | EDIT | Per §8 — pull `AUTH_SESSION_CODE_PEPPER` + `AUDIT_LOG_PEPPER` from `op://${{ vars.VAULT_DEV }}` via the existing `1password/load-secrets-action@v4` step, then propagate via `flyctl secrets set` to `zombied-dev`. Mirrors the existing `ENCRYPTION_MASTER_KEY` wiring exactly. |
+| `.github/workflows/release.yml` | EDIT | Same as deploy-dev.yml but against `${{ vars.VAULT_PROD }}` → `zombied-prod`. Triggered on tag push. |
 
 ### Docs
 
@@ -1290,6 +1311,19 @@ Effect-TS error variants (per Q7): one tagged-class per row above, in `zombiectl
 10. **Deployment requirements** subsection: Redis required for the session store; HTTPS-only at the load balancer; HSTS header on every response; NTP-synced clocks across pods within ≤1s drift; `AUTH_SESSION_CODE_PEPPER` and `AUDIT_LOG_PEPPER` provisioned in Vault; `.auth_audit` sink routed to a restricted destination distinct from customer-visible logs.
 11. **Human-led-only invariant** (Fix #5): explicit prose mirroring the autonomous-agents section's hard rule — M74_002 is for human-led flows only; CI / cron / K8s / hosted-agent / scheduled use is a spec violation; redirect to M75_xxx.
 
+### §8 — Deploy automation (Fly secrets sourced from 1Password)
+
+Captain decision May 18 2026: both peppers are PR-scope, not deferred infra. The existing GitHub Actions deploy workflows already pull every other secret (DATABASE_URL_*, REDIS_URL_*, ENCRYPTION_MASTER_KEY, CLERK_*, …) from 1Password via `1password/load-secrets-action@v4` and then `flyctl secrets set` them to Fly. The two peppers slot into the exact same pattern — two lines per workflow, no new infrastructure.
+
+| File | Edit shape |
+|---|---|
+| `.github/workflows/deploy-dev.yml` | (a) in the `Load secrets from 1Password` step, add `AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential` + `AUDIT_LOG_PEPPER: op://${{ vars.VAULT_DEV }}/audit-log-pepper/credential` alongside `ENCRYPTION_MASTER_KEY`. (b) in the `Stage Fly secrets from vault` step's `flyctl secrets set` command, add `AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \` + `AUDIT_LOG_PEPPER="$AUDIT_LOG_PEPPER" \`. |
+| `.github/workflows/release.yml` | Same two additions against `${{ vars.VAULT_PROD }}` paths. |
+
+After landing: a fresh DEV deploy on `push to main` automatically pulls both peppers from `op://$VAULT_DEV` and stages them on `zombied-dev`; a fresh PROD release on tag push does the same against `$VAULT_PROD`. The manual `fly secrets set` at `playbooks/001_bootstrap/001_playbook.md:210` stays as a documented break-glass path but is no longer the steady-state mechanism. **Verified by:** post-deploy `fly secrets list --app zombied-dev` must show both `AUTH_SESSION_CODE_PEPPER` + `AUDIT_LOG_PEPPER` (smoke step in the existing post-deploy QA, no new CI step needed). Pre-flight gate (`./playbooks/002_preflight/00_gate.sh`) already validates the vault items exist before the deploy job starts — covered.
+
+**Why in this PR.** The session-store + handler-surface slices fail-fast on boot if either pepper is missing. Without §8, the first DEV deploy after merge would fail at boot, ops would have to manually `fly secrets set` to recover, and the failure window is a foot-gun for the prod release. Bundling §8 with the milestone means the deploy path is correct on day one with zero manual intervention.
+
 ---
 
 ## Interfaces
@@ -1391,7 +1425,8 @@ See §1 for wire shapes. Locked contracts:
 | `test_audit_event_shape_session_verify_failed` | After a wrong code POST, capture one audit line with `{event:"auth.session.verify_failed", session_id_hash, session_id_prefix, attempt, ip, user_agent, reason:"invalid_code", request_id}`. No plaintext code, no HMAC value of code. |
 | `test_audit_event_shape_session_consumed_replay` | After replay-within-window, capture one audit line with `{event:"auth.session.consumed_replay", session_id_hash, session_id_prefix, consumed_client_fingerprint, replay_within_ms, request_id}`. |
 | `test_audit_session_id_hash_correlation` | Two events for the same session (created + approved) produce identical `session_id_hash` values; events for different sessions produce different hashes. Confirms cross-event correlation works through the pseudonymization layer. |
-| `test_audit_incident_mode_warns_on_boot` | Boot with `AUTH_AUDIT_INCLUDE_FULL_IDS=true` → `.auth` scope emits a WARN-level startup line `"AUTH_AUDIT_INCLUDE_FULL_IDS=true …"`. Audit events then carry the raw `session_id` field. |
+| `test_audit_events_never_carry_raw_session_id` | Full happy-path + sad-path log capture; assert no audit event JSON contains the raw `session_id` (a 36-char UUIDv7 hex pattern matching the live session). The incident-mode env knob was dropped (Captain Q9); raw IDs are never emitted. |
+| `test_audit_event_carries_both_raw_headers_and_attribution_fields` | After any flow that produces an `.auth_audit` event carrying `ip`, the captured JSON line includes `xff` (raw), `fly_client_ip` (raw), `client_ip_source` ∈ `{xff, fly_client_ip, tcp_peer}`, and `client_ip_divergent` (bool). Pins Captain Q8. |
 | `test_audit_events_carry_no_plaintext_code` | Full happy-path + sad-path log capture; assert no audit event JSON contains the plaintext 6-digit code. |
 | `test_audit_log_pepper_required_on_boot` | Boot zombied without `AUDIT_LOG_PEPPER` → fail fast (same shape as `AUTH_SESSION_CODE_PEPPER` + `REDIS_URL` requirements). |
 | `test_server_grace_window_30s` | At `expires_at_ms + 15_000`, GET /poll returns `verification_pending` (within grace). At `expires_at_ms + 31_000`, GET /poll returns `expired`. Pins Fix 5. |
@@ -1503,7 +1538,7 @@ See §1 for wire shapes. Locked contracts:
 - [ ] Session storage is Redis-backed; the old in-memory `SessionStore` is deleted in entirety from `src/auth/sessions.zig`. `grep -n 'StringHashMap.*Session\|max_sessions: usize' src/auth/sessions.zig` returns zero matches.
 - [ ] Boot the API with `REDIS_URL` unset → process exits with non-zero status + clear error. Tested by `test_session_store_redis_required`.
 - [ ] Consume-idempotency window verified end-to-end: replay within 60s from same fingerprint succeeds; outside window OR different fingerprint → 410.
-- [ ] Audit events fire with the exact field shapes in the *Audit events* section (`session_id_hash` + `session_id_prefix` in default mode, raw `session_id` only under `AUTH_AUDIT_INCLUDE_FULL_IDS=true`); verified via integration log-capture tests.
+- [ ] Audit events fire with the exact field shapes in the *Audit events* section (`session_id_hash` + `session_id_prefix` always; raw `session_id` never — no env override exists per Captain Q9); every event carrying `ip` also stamps `xff`, `fly_client_ip`, `client_ip_source`, `client_ip_divergent` per Captain Q8; verified via integration log-capture tests.
 - [ ] `AUDIT_LOG_PEPPER` provisioned in Vault for every environment; zombied fails fast on boot without it.
 - [ ] No audit event in any test capture contains the plaintext verification code or the `verification_code_hmac` raw bytes.
 - [ ] `playbooks/001_bootstrap/001_playbook.md` includes §1.3b (Auth Pepper Keys) + §1.3c (E2E Fixture Email Identities); the §2.0 vault inventory lists `auth-session-code-pepper`, `audit-log-pepper`, `e2e-fixture-email/regular`, `e2e-fixture-email/admin`.
@@ -1511,7 +1546,7 @@ See §1 for wire shapes. Locked contracts:
 - [ ] `ui/packages/app/next.config.ts` is **unchanged** by this spec (the existing `/backend/:path*` rewrite covers the new endpoints); grep confirms.
 - [ ] `ui/packages/app/app/cli-auth/[session_id]/page.tsx` is the only new dashboard route added; no other dashboard pages modified.
 - [ ] Flow 2 regression: a smoke test runs against the existing dashboard sign-in / dashboard / sign-out path and confirms zero behavioral change.
-- [ ] `TRUSTED_PROXY_IPS` env documented in deploy README; `trusted_client_ip.zig` middleware lands; consume-idempotency fingerprint + per-IP rate-limit buckets confirmed via test to use the derived IP, not the raw TCP peer.
+- [ ] `trusted_client_ip.zig` derives client IP from `X-Forwarded-For` (default) + `Fly-Client-IP` (divergence check) per Captain Q8 — no env, no IP allowlist; consume-idempotency fingerprint + per-IP rate-limit buckets confirmed via test to use the derived IP, not the raw TCP peer; `.auth_audit` events stamp both raw headers + `client_ip_source` + `client_ip_divergent`.
 - [ ] Spec wording: `session_id` allowed in the primary `cli-auth/{session_id}` URL and API route paths; forbidden in logs / analytics / metrics / secondary URLs / error bodies. Grep confirms the contradictory "never embedded in user-pasteable URLs" phrasing is gone.
 - [ ] `session_id` redaction enforced: a full log capture of a happy-path flow shows zero unredacted session_id occurrences in the `.auth` scope.
 - [ ] Server-side expiry uses a 30-second grace window; CLI countdown is informational only.
@@ -1632,10 +1667,12 @@ grep -cE 'auth-session-code-pepper|audit-log-pepper|e2e-fixture-email' playbooks
 grep -c '/backend/:path\*' ui/packages/app/next.config.ts
 # expect: 1  (the existing rewrite covers all new auth endpoints transparently)
 
-# E29: trusted-client-ip middleware present + TRUSTED_PROXY_IPS env documented
-test -f src/http/middleware/trusted_client_ip.zig && echo PASS || echo FAIL
-grep -c 'TRUSTED_PROXY_IPS' docs/AUTH.md
-# expect: ≥ 1  (deploy assumption documented)
+# E29: trusted-client-ip middleware present (XFF-default + Fly-Client-IP divergence-check per Captain Q8)
+test -f src/auth/middleware/trusted_client_ip.zig && echo PASS || echo FAIL
+grep -c 'Fly-Client-IP' docs/AUTH.md
+# expect: ≥ 1  (deploy attribution shape documented)
+grep -c 'TRUSTED_PROXY_IPS\|AUTH_AUDIT_INCLUDE_FULL_IDS' docs/AUTH.md src/ playbooks/ docs/v2/active/M74_002_*.md 2>/dev/null
+# expect: 0  (both envs were dropped per Captain Q8 + Q9 — only AUTH_SESSION_CODE_PEPPER + AUDIT_LOG_PEPPER remain approved)
 
 # E30: session_id wording contradiction resolved (outside this spec's own meta-references)
 grep -rli 'never embedded in user-visible URLs the user might paste\|never embedded in user-pasteable URLs' docs/AUTH.md src/ ui/ zombiectl/ 2>/dev/null | wc -l
@@ -1708,7 +1745,7 @@ Additionally:
 - **Fix #1 (HMAC pepper for verification code) — APPLIED.** Replaced `sha256(code || session_id)` with `HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id || code)`. New required env loaded from Vault at zombied boot; dashboard no longer hashes locally (only the API has the pepper); plaintext code travels on PATCH /approve over TLS to a Clerk-authenticated endpoint, lives momentarily in process memory, and is discarded after HMAC compute. Closes offline brute force from a Redis dump alone.
 - **Fix #2 (active API/proxy MITM closure) — DEFERRED TO v2.1.** v2.0 explicitly does NOT close key-substitution MITM. The spec text was softened end-to-end: every "API never holds decrypt capability" claim becomes "honest API never holds decrypt capability"; new row 6 added to *what this flow does NOT protect against*; new Attack G walkthrough added to *Concrete attacker walkthroughs*; Invariant 13 softened. v2.1 closure detailed in *Out of Scope → Future improvements* (URL fragment binding for `cli_public_key` + HKDF info string binds both pubkeys + session_id). Tracked top priority for v2.1.
 - **Fix #3 (deprecated plaintext PATCH compatibility) — REMOVED ENTIRELY.** Captain directive: "the plaintext PATCH never shipped in production; treat it as if it never existed." Q3 pinned answer rewritten; `acceptPatchPlaintextDeprecated` handler deleted from spec; OpenAPI `patch_auth_session` operation deleted from `authentication.yaml`; `UpgradeRequiredError` variant deleted; `auth.session.deprecated_patch_used` audit event deleted; deprecated-path tests deleted; Failure Modes row "old binary with PATCH plaintext" rewritten to "router 404"; Dead Code Sweep row updated. The spec's security claim ("plaintext JWT removed") is unconditionally true on day one. RULE NLG-perfect — there is no legacy path because there was never anything in production to be legacy to.
-- **Fix #4 (`.auth_audit` pseudonymization) — APPLIED.** Audit events default to `session_id_hash = HMAC-SHA256(AUDIT_LOG_PEPPER, session_id)` + `session_id_prefix = first8(session_id)`; raw `session_id` only under `AUTH_AUDIT_INCLUDE_FULL_IDS=true` (env-gated, dev/staging-only, startup WARN). Restricted-routing requirement documented: `.auth_audit` sink MUST NOT route to customer-visible logs and MUST have tighter access controls than `.auth`. This is deploy-side discipline, not enforced by code; AUTH.md + deploy README carry the requirement. Mirrors the discipline already applied to `zmb_t_` tenant API keys (only the SHA-256 hash is persisted in `core.api_keys`).
+- **Fix #4 (`.auth_audit` pseudonymization) — APPLIED.** Audit events carry `session_id_hash = HMAC-SHA256(AUDIT_LOG_PEPPER, session_id)` + `session_id_prefix = first8(session_id)` always; raw `session_id` never (incident-mode env knob dropped per Captain Q9 — ops can recompute the hash one-liner from a customer-supplied raw id since they hold the pepper). Restricted-routing requirement documented: `.auth_audit` sink MUST NOT route to customer-visible logs and MUST have tighter access controls than `.auth`. This is deploy-side discipline, not enforced by code; AUTH.md + deploy README carry the requirement. Mirrors the discipline already applied to `zmb_t_` tenant API keys (only the SHA-256 hash is persisted in `core.api_keys`).
 - **Fix #5 (human-led-only hard wording) — APPLIED.** Added explicit prose to *Relationship to autonomous agents*, AUTH.md, and Invariant 20: M74_002 supports only human-led agents; CI / cron / K8s / hosted-agent / scheduled use is a spec violation; redirect to M75_xxx. Enforced by discipline + documentation, not by code (no programmatic way to detect "real human present"). Closes the future-drift hazard where someone rationalizes unattended use as "a kind of local agent."
 
 Captain provided an operational clarification during Fix #4 review: audit recording is server-side (zombied); zombiectl emits only product analytics (M71_001 P1) and is structurally unfit for security audit because it doesn't see Clerk user, cross-tenant attempts, or brute-force across sessions. Both peppers (`AUTH_SESSION_CODE_PEPPER`, `AUDIT_LOG_PEPPER`) live in zombied process memory after Vault load; never crosses to CLI or dashboard.
@@ -1716,7 +1753,7 @@ Captain provided an operational clarification during Fix #4 review: audit record
 **May 18, 2026 — fifth review pass (ChatGPT final).** Verdict: `GREENLIGHT: yes`. Attack G remains the explicit accepted risk for v2.0; the spec's documentation of that scope-out is what makes the greenlight defensible. Two non-blocking wording / implementation clarifications landed:
 
 - **Must-change A (wording contradiction on session_id URLs).** Previous text said `session_id` must "never be embedded in user-visible URLs the user might paste" — but the flow itself requires `https://app.usezombie.com/cli-auth/{session_id}`. Reworded throughout: `session_id` appears **only** in the primary CLI-generated verification URL and the API route paths that consume it; forbidden in logs, analytics, metrics labels, secondary URLs, error bodies, and copied diagnostics. Both Invariant 6 and AUTH.md row 8 updated.
-- **Must-change B (trusted client IP extraction pinned).** Previous fingerprint definition used `request.remote_addr` without specifying how it's derived behind a load balancer. Bad on two axes: (a) load-balancer IP collapses all CLIs into one fingerprint; (b) trusting unsigned `X-Forwarded-For` lets a client forge the IP. New "Trusted client IP extraction" subsection pins: `TRUSTED_PROXY_IPS` env allowlist; `X-Forwarded-For` accepted ONLY when the TCP peer is a configured trusted proxy; ignored otherwise. New middleware `src/http/middleware/trusted_client_ip.zig` runs before rate-limiting and any handler reading `remote_addr`. Five new tests pin the matrix.
+- **Must-change B (trusted client IP extraction pinned).** Previous fingerprint definition used `request.remote_addr` without specifying how it's derived behind a load balancer. Bad on two axes: (a) load-balancer IP collapses all CLIs into one fingerprint; (b) trusting unsigned `X-Forwarded-For` lets a client forge the IP. **Captain Q8 decision May 18 2026 reshaped the original ChatGPT proposal:** instead of a `TRUSTED_PROXY_IPS` env allowlist, the helper takes both header signals — `X-Forwarded-For` (default attribution, industry standard) and `Fly-Client-IP` (Fly's authoritative single-value header, the implicit trust anchor since Fly's proxy is the only path to zombied in any non-dev deploy and Fly strips client-supplied copies). When both are present the leftmost XFF entry is compared against `Fly-Client-IP`; agreement → use XFF; disagreement → flip to `Fly-Client-IP` + mark `client_ip_divergent=true` (forensic signal for spoof attempts). Single-header or no-header paths handled deterministically; neither header → fall back to TCP peer. New middleware `src/auth/middleware/trusted_client_ip.zig` is a pure function; Slice 3 reads the headers and threads the derived result onto the request context. Zero env surface added. Tests pin all five branches (xff-only, fly-only, both-agree, both-disagree, neither).
 
 Beyond these two, **ChatGPT explicitly recommended NOT changing**: v2.1 key-substitution closure (stays deferred per Captain's Fix #2 decision), autonomous-agent auth (M75_xxx owns this), API-minted scoped tokens (future improvement, do not fossilize Clerk-JWT-as-transport but do not bite it off here), 6-digit code entropy uplift (rate-limit cap is sufficient for v2.0), dashboard sessions/revoke UI (out of scope, future spec). The spec is sized to ship; expanding it again would make it unreviewable. Going to implementation.
 
