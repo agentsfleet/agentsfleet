@@ -20,6 +20,11 @@ const ServeConfig = runtime.ServeConfig;
 const ValidationError = runtime.ValidationError;
 
 const test_encryption_master_key = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const test_session_code_pepper = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const test_audit_log_pepper = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+// test_session_code_pepper + test_audit_log_pepper are referenced by every
+// ServeConfig.load test below; the loadAuthPeppers-specific tests live in
+// runtime_pepper_loader_test.zig.
 
 const ALL_RUNTIME_ENV_VARS = [_][]const u8{
     "PORT",                       "API_HTTP_THREADS",
@@ -28,7 +33,8 @@ const ALL_RUNTIME_ENV_VARS = [_][]const u8{
     "READY_MAX_QUEUE_AGE_MS",     "OIDC_JWKS_URL",
     "OIDC_ISSUER",                "OIDC_AUDIENCE",
     "OIDC_PROVIDER",              "API_KEY",
-    "ENCRYPTION_MASTER_KEY",      "APP_URL",
+    "ENCRYPTION_MASTER_KEY",      "AUTH_SESSION_CODE_PEPPER",
+    "AUDIT_LOG_PEPPER",           "APP_URL",
     "API_URL",
 };
 
@@ -50,6 +56,8 @@ test "ServeConfig.load accepts custom provider" {
         .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
         .{ "OIDC_PROVIDER", "custom" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -66,6 +74,8 @@ test "ServeConfig.load rejects invalid provider deterministically" {
         .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
         .{ "OIDC_PROVIDER", "not-real" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -77,6 +87,8 @@ test "ServeConfig.load rejects provider without required OIDC_JWKS_URL" {
     const env_pairs = [_][2][]const u8{
         .{ "OIDC_PROVIDER", "custom" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -88,6 +100,8 @@ test "ServeConfig.load rejects empty OIDC_JWKS_URL" {
     const env_pairs = [_][2][]const u8{
         .{ "OIDC_JWKS_URL", "" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -99,6 +113,8 @@ test "ServeConfig.load accepts api key only auth mode" {
     const env_pairs = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -116,6 +132,8 @@ test "ServeConfig.load accepts oidc plus api key auth mode" {
         .{ "OIDC_PROVIDER", "custom" },
         .{ "API_KEY", "issued-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -133,6 +151,8 @@ test "ServeConfig.load accepts whitespace api key as oidc-only when oidc enabled
         .{ "OIDC_JWKS_URL", "https://idp.example.com/.well-known/jwks.json" },
         .{ "API_KEY", "   " },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -146,6 +166,8 @@ test "ServeConfig.load applies default port" {
     const env_pairs = [_][2][]const u8{
         .{ "API_KEY", "dev-key" },
         .{ "ENCRYPTION_MASTER_KEY", test_encryption_master_key },
+        .{ "AUTH_SESSION_CODE_PEPPER", test_session_code_pepper },
+        .{ "AUDIT_LOG_PEPPER", test_audit_log_pepper },
     };
     try setTestEnv(&env_pairs);
     defer unsetTestEnv(&env_pairs);
@@ -304,3 +326,7 @@ test "loadSizes rejects PORT overflow (>u16 max)" {
     defer unsetTestEnv(&env_pairs);
     try std.testing.expectError(ValidationError.InvalidPort, loader.loadSizes(alloc));
 }
+
+// loadAuthPeppers tests live in runtime_pepper_loader_test.zig — extracted
+// to keep this file under the 350-line FLL cap. Discovery happens via the
+// test {} block in runtime.zig.
