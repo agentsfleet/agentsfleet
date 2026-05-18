@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M71
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — completes the M68 trigger DX surface (per-trigger cards, provider guidance table, OnboardingFlow, Hero CTA) that was deferred during M68's CHORE(close). Not blocking any other workstream.
 **Categories:** UI, WEBSITE
 **Batch:** B1
@@ -119,10 +119,16 @@ type Source = "github" | "linear" | "jira" | "grafana" | "slack" | "agentmail" |
 type GuidanceCard = {
   title: string;
   eventsLabel: (events: string[]) => string;        // e.g. ["push","pull_request"] → "On push, pull_request"
-  command: (vars: Record<string, string>, webhookUrl: string) => string;
+  command: (vars: Record<string, string>, webhookUrl: string, events: readonly string[]) => string;
   webUiDeepLink: (vars: Record<string, string>) => string;
   variables: Array<{ name: string; example: string; required: boolean }>;
 };
+
+// NOTE: the `command` callback takes a 3rd `events` arg so per-provider templates
+// can vary the rendered command by trigger.events (e.g. GitHub's `-F events[]=push`
+// list) without re-deriving them inside the closure. The original M68 §line 122 sketch
+// was 2-arg; landing under this spec widens the signature with rationale per
+// CLAUDE.md "signature change → update spec first".
 
 export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard>;
 ```
@@ -180,7 +186,7 @@ type Props = {
 **Composition:**
 
 1. Header: `Cron — ${trigger.schedule}` (the raw cron expression).
-2. Next-fire line: computed client-side from the cron expression + `Date.now()` + IANA tz from `Intl.DateTimeFormat().resolvedOptions().timeZone`. Implementer picks a lightweight cron-parsing dep (`cron-parser` is ~9 kB minified; check bundle budget against M68's 220 kB asserted ceiling).
+2. Next-fire line: computed client-side from the cron expression + `Date.now()` + IANA tz from `Intl.DateTimeFormat().resolvedOptions().timeZone`. Implementer picks a lightweight cron-parsing dep (`cron-parser` is ~9 kB minified; check bundle budget against the website's `.size-limit.json` 140 kB asserted ceiling).
 3. "Cron is read-only in the Dashboard" prose: "Declared in TRIGGER.md, runtime-managed by NullClaw's `cron_add` tool. Edit `TRIGGER.md` and reinstall to change the schedule." Mirrors the Out-of-Scope note from M68 line 993.
 4. Recent-activity filter link: `<Link href={\`/zombies/${zombieId}?actor_prefix=cron:\`}>View cron deliveries →</Link>`.
 
@@ -242,7 +248,8 @@ type TriggerPanelProps = {
   triggers: ZombieTrigger[];   // NEW — parent passes from zombie.triggers
 };
 
-// PROVIDER_GUIDANCE export (§2):
+// PROVIDER_GUIDANCE export (§2): GuidanceCard.command is 3-arg
+// (vars, webhookUrl, events) — see §2 schema block.
 export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard>;
 
 // OnboardingFlow component (§5):
@@ -257,12 +264,12 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 
 | Mode | Cause | Handling |
 |---|---|---|
-| Zombie has zero triggers declared | Edge case from M68 spec | TriggerPanel falls back to the existing Tabs-UI "no triggers" message (preserve the M68 shipped behavior). |
+| Zombie has zero triggers declared | Edge case from M68 spec | TriggerPanel renders a single "No triggers declared" Card with the legacy bare webhook URL as a fallback ingress (via `CopyUrlFallback` source="legacy"). The M68 Tabs scaffolding is removed by RULE NLR (touch-it-fix-it) — its only remaining caller was this empty-state branch, and dragging it forward solely for that case is dead-code framing. The "user can still find a webhook URL" intent of the M68 row is preserved. |
 | `trigger.source` not in `PROVIDER_GUIDANCE` keyset | Unknown / new provider | TriggerPanel renders `CopyUrlCard` (existing M68 fallback shape). |
 | Cron expression unparseable | Bad TRIGGER.md input | CronCard shows the raw expression in the header + a "schedule unparseable — check `TRIGGER.md`" warning line in place of next-fire. |
 | `navigator.clipboard.writeText` rejects (insecure context / permission denied) | Browser restricts clipboard access | Fallback to a visible "Copy this command:" prose block with the command selectable; the toast still fires but with prose "Selected — copy manually." |
 | `scrollIntoView` no-op (anchor missing because §5 didn't land yet) | §6 lands before §5 | §6 PR must include §5; the dependency is documented. CI test for §6 asserts `#onboarding-flow` exists in the rendered Home page. |
-| Bundle-size regression beyond M68's 220 kB ceiling | `cron-parser` or other §4 dep | Implementer measures pre-/post-bundle size; if over budget, swap for a smaller cron parser or roll a minimal expression-only formatter. |
+| Bundle-size regression beyond the website's 140 kB landing-js ceiling (`ui/packages/website/.size-limit.json`) | `cron-parser` or other §4 dep | Implementer measures pre-/post-bundle size; if over budget, swap for a smaller cron parser or roll a minimal expression-only formatter. |
 
 ---
 
@@ -310,7 +317,7 @@ Per-section acceptance criteria match the §X "Acceptance" blocks above.
 - [ ] No new file or modified file in this spec's blast-radius exceeds 350 lines.
 - [ ] No `as any` / `!` / `@ts-expect-error` added — `git diff origin/main..HEAD -- 'ui/packages/**/*.ts' 'ui/packages/**/*.tsx' | grep -E "as any|@ts-expect-error|: !" | wc -l` == 0.
 - [ ] M68 PR #326 merged into main — `gh pr view 326 --json state -q .state` == `MERGED`.
-- [ ] Bundle size for `ui/packages/website` stays under the M68 220 kB asserted ceiling.
+- [ ] Bundle size for `ui/packages/website` stays under the 140 kB landing-js ceiling pinned in `ui/packages/website/.size-limit.json` (the M68 prose said 220 kB; the actual size-limit config was 140 kB throughout — this spec aligns the prose).
 
 ---
 
@@ -374,16 +381,16 @@ If disposition (b) — coexist — both components remain; no dead-code sweep.
 
 ## Verification Evidence
 
-> Filled in during VERIFY; this section is empty at PENDING.
-
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| App typecheck + lint + test | `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` | _pending_ | |
-| Website typecheck + lint + test | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | _pending_ | |
-| Harness | `make harness-verify` | _pending_ | |
-| Bundle size | `du -sk ui/packages/website/dist/` | _pending_ | |
-| No zombiectl edits | grep | _pending_ | |
-| Strictness compliance | `git diff ... \| grep ...` | _pending_ | |
+| App typecheck + lint + test | `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · 47 files / 504 tests | ✅ |
+| App coverage thresholds | `(cd ui/packages/app && bun run test:coverage)` | statements 96.05 · branches 90.15 · functions 95.4 · lines 97.32 (gate: 95/90/95/95) | ✅ |
+| Website typecheck + lint + test | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · 19 files / 139 tests | ✅ |
+| Harness | `make harness-verify` | UFS / DESIGN TOKEN / SPEC TEMPLATE / ERROR REGISTRY / LOGGING / LIFECYCLE / CROSS-TIER RATES / MS-ID+UI — ALL GATES GREEN | ✅ |
+| Bundle size (landing js) | `(cd ui/packages/website && bun run size)` | 132.6 kB gzipped — under the 140 kB ceiling pinned in `ui/packages/website/.size-limit.json` (7.4 kB headroom) | ✅ |
+| Bundle size (landing css) | `(cd ui/packages/website && bun run size)` | 9.88 kB gzipped — under the 20 kB ceiling | ✅ |
+| No zombiectl edits | `git diff origin/main..HEAD --name-only \| grep -c '^zombiectl/'` | 0 | ✅ |
+| Strictness compliance | E6 grep from "Eval Commands" | 0 `as any` / `!` / `@ts-expect-error` introduced | ✅ |
 
 ---
 

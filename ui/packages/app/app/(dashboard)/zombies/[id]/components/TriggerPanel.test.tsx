@@ -1,0 +1,147 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import TriggerPanel, { triggerKey } from "./TriggerPanel";
+import type { ZombieTrigger } from "@/lib/types";
+
+afterEach(() => cleanup());
+
+const githubTrigger: ZombieTrigger = {
+  type: "webhook",
+  source: "github",
+  events: ["workflow_run"],
+};
+const cronTrigger: ZombieTrigger = { type: "cron", schedule: "*/15 * * * *" };
+const weirdcoTrigger: ZombieTrigger = { type: "webhook", source: "weirdco" };
+const triggers: ZombieTrigger[] = [githubTrigger, cronTrigger, weirdcoTrigger];
+
+describe("TriggerPanel", () => {
+  it("renders the empty-state when no triggers are declared", () => {
+    render(<TriggerPanel zombieId="zmb_x" />);
+    expect(screen.getByTestId("trigger-panel-empty")).toBeTruthy();
+    expect(screen.getByText(/No triggers declared/i)).toBeTruthy();
+    // The legacy bare webhook URL is still surfaced as a fallback ingress.
+    expect(screen.getByTestId("webhook-url").textContent).toBe(
+      "https://api-dev.usezombie.com/v1/webhooks/zmb_x",
+    );
+  });
+
+  it("renders one accordion item per trigger in declared order", () => {
+    render(<TriggerPanel zombieId="zmb_x" triggers={triggers} />);
+    expect(screen.getByTestId("trigger-label-webhook:github").textContent).toMatch(
+      /Webhook · github/,
+    );
+    expect(screen.getByTestId("trigger-label-cron:*/15 * * * *").textContent).toMatch(
+      /Cron · \*\/15/,
+    );
+    expect(screen.getByTestId("trigger-label-webhook:weirdco").textContent).toMatch(
+      /Webhook · weirdco/,
+    );
+  });
+
+  it("falls back to the copy-URL card when the source has no provider-guidance", async () => {
+    render(<TriggerPanel zombieId="zmb_x" triggers={triggers} />);
+    // Expand the weirdco accordion item.
+    fireEvent.click(screen.getByText(/Webhook · weirdco/i));
+    await waitFor(() =>
+      expect(screen.getByTestId("copy-url-fallback-weirdco")).toBeTruthy(),
+    );
+    expect(screen.getByTestId("webhook-url").textContent).toBe(
+      "https://api-dev.usezombie.com/v1/webhooks/zmb_x/weirdco",
+    );
+  });
+
+  it("renders the never-delivered badge when lastDeliveryByKey reports null", () => {
+    const map = {
+      "webhook:github": null,
+      "cron:*/15 * * * *": null,
+      "webhook:weirdco": null,
+    };
+    render(<TriggerPanel zombieId="zmb_x" triggers={triggers} lastDeliveryByKey={map} />);
+    const badges = screen.getAllByTestId("last-delivery-badge");
+    expect(badges.every((b) => b.textContent === "never")).toBe(true);
+  });
+
+  it("renders a <time> relative-delivery badge when lastDeliveryByKey reports an epoch", () => {
+    const map = { "webhook:github": Date.now() - 60_000 };
+    render(<TriggerPanel zombieId="zmb_x" triggers={[githubTrigger]} lastDeliveryByKey={map} />);
+    const badge = screen.getByTestId("last-delivery-badge");
+    expect(badge.querySelector("time")).not.toBeNull();
+  });
+
+  it("copies the webhook URL when the fallback card's copy button is clicked", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<TriggerPanel zombieId="zmb_x" />);
+    fireEvent.click(screen.getByLabelText("Copy webhook URL"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    const arg = writeText.mock.calls[0]?.[0] ?? "";
+    expect(arg).toBe("https://api-dev.usezombie.com/v1/webhooks/zmb_x");
+  });
+
+  it("produces stable accordion keys via triggerKey()", () => {
+    expect(triggerKey({ type: "webhook", source: "github" })).toBe("webhook:github");
+    expect(triggerKey({ type: "cron", schedule: "*/15 * * * *" })).toBe(
+      "cron:*/15 * * * *",
+    );
+    expect(triggerKey({ type: "api" })).toBe("api");
+  });
+
+  it("labels the api accordion row 'API ingress'", () => {
+    render(
+      <TriggerPanel
+        zombieId="zmb_x"
+        triggers={[{ type: "api" }]}
+      />,
+    );
+    expect(screen.getByTestId("trigger-label-api").textContent).toBe("API ingress");
+  });
+
+  it("omits the last-delivery badge when the parent passes no map entry for a trigger", () => {
+    render(<TriggerPanel zombieId="zmb_x" triggers={[githubTrigger]} lastDeliveryByKey={{}} />);
+    expect(screen.queryByTestId("last-delivery-badge")).toBeNull();
+  });
+
+  it("auto-expands a cron trigger that has no recorded delivery and renders the CronCard", async () => {
+    render(
+      <TriggerPanel
+        zombieId="zmb_x"
+        triggers={[cronTrigger]}
+        lastDeliveryByKey={{ "cron:*/15 * * * *": null }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("cron-card")).toBeTruthy());
+  });
+
+  it("clears the CopyUrlFallback reset timer on unmount (no leaked setTimeout)", async () => {
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    const { unmount } = render(<TriggerPanel zombieId="zmb_x" />);
+    fireEvent.click(screen.getByLabelText("Copy webhook URL"));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const before = clearSpy.mock.calls.length;
+    unmount();
+    expect(clearSpy.mock.calls.length).toBeGreaterThan(before);
+    clearSpy.mockRestore();
+  });
+
+  it("auto-expands an api trigger that has no recorded delivery and renders the copy-URL fallback", async () => {
+    render(
+      <TriggerPanel
+        zombieId="zmb_x"
+        triggers={[{ type: "api" }]}
+        lastDeliveryByKey={{ api: null }}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId("copy-url-fallback-api")).toBeTruthy());
+    expect(screen.getByTestId("webhook-url").textContent).toBe(
+      "https://api-dev.usezombie.com/v1/webhooks/zmb_x",
+    );
+  });
+});
