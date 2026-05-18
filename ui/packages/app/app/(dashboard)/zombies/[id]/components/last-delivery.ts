@@ -47,7 +47,10 @@ export async function resolveLastDeliveries(
       const key = triggerKey(t);
       const actor = actorGlobFor(t);
       if (!actor) {
-        out[key] = null;
+        // Leave the key absent — `undefined` reads as "parent did not
+        // look" in TriggerPanel's prop contract, which suppresses both
+        // the "never" delivery badge and the auto-expand-on-mount path.
+        // Writing `null` would falsely fire both on every api trigger.
         return;
       }
       try {

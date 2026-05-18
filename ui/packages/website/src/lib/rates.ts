@@ -39,6 +39,8 @@ export const FREE_TRIAL_STAGE_NANOS = 0n;
 // one without the other would mis-message customers. The numeric authority
 // is FREE_TRIAL_END_MS above (cross-tier-pinned across Zig + 3 TS surfaces
 // by scripts/audit-cross-tier-rates.sh); this is its display-layer mirror.
+// IMPORTANT: when FREE_TRIAL_END_MS changes, update this string to match —
+// the two are coupled by convention, not by the type system.
 const FREE_TRIAL_END_DISPLAY = "July 31, 2026";
 
 export const RATES_DISPLAY = {

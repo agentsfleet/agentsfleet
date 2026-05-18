@@ -73,11 +73,29 @@ describe("resolveLastDeliveries", () => {
     expect(result).toEqual({ "webhook:jira": null });
   });
 
-  it("skips the events fetch for api triggers but still records null", async () => {
+  it("skips the events fetch for api triggers and leaves the key absent", async () => {
+    // The absent key is load-bearing: TriggerPanel reads `undefined` as
+    // "parent did not look", suppressing the "never" delivery badge and
+    // the auto-expand-on-mount path. Writing `null` would falsely fire
+    // both on every api trigger.
     const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", [
       { type: "api" },
     ]);
-    expect(result).toEqual({ api: null });
+    expect(result).toEqual({});
+    expect("api" in result).toBe(false);
     expect(eventsApi.listZombieEvents).not.toHaveBeenCalled();
+  });
+
+  it("records api keys as absent even when mixed with delivering triggers", async () => {
+    eventsApi.listZombieEvents.mockResolvedValueOnce({
+      items: [{ id: "evt_1", created_at: 1_700_000_000_000 }],
+      next_cursor: null,
+    });
+    const result = await resolveLastDeliveries("ws_1", "zmb_1", "tok", [
+      { type: "webhook", source: "github" },
+      { type: "api" },
+    ]);
+    expect(result).toEqual({ "webhook:github": 1_700_000_000_000 });
+    expect("api" in result).toBe(false);
   });
 });
