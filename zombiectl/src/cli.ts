@@ -7,7 +7,6 @@ import { type Command, CommanderError, InvalidArgumentError } from "commander";
 import { openUrl } from "./lib/browser.ts";
 import { cliAnalytics, type AnalyticsClient } from "./lib/analytics.ts";
 import {
-  cleanupTraces,
   clearCredentials,
   loadCredentials,
   loadSession,
@@ -201,7 +200,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // on EMPTY_SESSION so we never clobber an unreadable session.json.
   if (session.device_id !== "")
     await saveSession({ ...session, last_activity: Date.now() }).catch(() => {});
-  void cleanupTraces();
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
