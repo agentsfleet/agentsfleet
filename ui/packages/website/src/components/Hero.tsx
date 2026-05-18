@@ -92,10 +92,10 @@ export default function Hero() {
               target: "pricing",
             })
           }
-          className="inline-flex w-fit items-center gap-2 rounded-full bg-card border border-border px-3 py-1 text-sm font-mono text-text-muted hover:text-text transition-colors"
+          className="inline-flex w-fit items-center gap-2 rounded-full bg-card border border-border px-3 py-1 text-sm font-mono text-text hover:text-text transition-colors"
           data-testid="hero-promo-pill"
         >
-          <span className="rounded-full bg-pulse text-pulse-fg px-2 py-0.5 text-xs uppercase tracking-eyebrow font-medium">
+          <span className="rounded-full bg-evidence text-background px-2 py-0.5 text-xs uppercase tracking-eyebrow font-medium">
             Promo
           </span>
           {RATES_DISPLAY.FREE_TRIAL_PILL}
