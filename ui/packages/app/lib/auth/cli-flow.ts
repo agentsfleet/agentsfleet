@@ -43,6 +43,11 @@ export async function generateEphemeralKeypair(): Promise<EphemeralKeypair> {
   };
 }
 
+// HKDF salt convention: passes `new Uint8Array(0)` verbatim — Web Crypto hashes
+// the empty array literally, which is HMAC-SHA256("", IKM). This differs from
+// the RFC 5869 "no-salt" default (a string of HashLen=32 zero bytes). The
+// CLI-side mirror in zombiectl MUST replicate this empty-array choice exactly
+// or both sides will derive different AES keys and decryption will fail.
 export async function deriveSharedKey(
   privateKey: CryptoKey,
   peerPublicKeyBase64Url: string,
@@ -94,11 +99,21 @@ export async function encryptJwt(jwt: string, key: CryptoKey): Promise<Encrypted
   };
 }
 
+// Rejection sampling — `raw % 1_000_000` on a Uint32 skews the low 967_296
+// codes by ~0.023%. Tiny on its own, but verification codes are bearer secrets
+// so the bar is uniform distribution, not "good enough." Discard draws in the
+// top-of-uint32 sliver and re-roll until we land in the unbiased range.
+const UINT32_LIMIT = 0x1_0000_0000;
+const VERIFICATION_CODE_REJECT_THRESHOLD =
+  UINT32_LIMIT - (UINT32_LIMIT % VERIFICATION_CODE_MODULUS);
+
 export function generateVerificationCode(): string {
   const arr = new Uint32Array(1);
-  crypto.getRandomValues(arr);
   let raw = 0;
-  for (const v of arr) raw = v;
+  do {
+    crypto.getRandomValues(arr);
+    for (const v of arr) raw = v;
+  } while (raw >= VERIFICATION_CODE_REJECT_THRESHOLD);
   return (raw % VERIFICATION_CODE_MODULUS).toString().padStart(VERIFICATION_CODE_DIGITS, "0");
 }
 
