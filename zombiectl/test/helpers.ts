@@ -3,14 +3,6 @@ import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
 import { commandLogin } from "../src/commands/core.ts";
 import { commandDoctor } from "../src/commands/core-ops.ts";
-import {
-  workspaceAdd,
-  workspaceList,
-  workspaceUse,
-  workspaceShow,
-  workspaceCredentials,
-  workspaceDelete,
-} from "../src/commands/workspace.ts";
 import { commandBillingShow } from "../src/commands/billing.ts";
 import {
   commandTenantProviderShow,
@@ -117,12 +109,11 @@ type CoreHandler = (args?: readonly string[]) => Promise<number>;
 export interface CoreHandlers {
   commandLogin: CoreHandler;
   commandDoctor: CoreHandler;
-  commandWorkspace: CoreHandler;
 }
 
 // Test-only shim that re-creates the old createCoreHandlers return shape
 // from the new top-level exports — direct-handler tests keep their
-// `handlers.commandLogin(args)` / `handlers.commandWorkspace(args)`
+// `handlers.commandLogin(args)` / `handlers.commandDoctor(args)`
 // invocation pattern without rewriting every call site.
 export function createCoreHandlers(
   ctx: CommandCtx,
@@ -132,31 +123,7 @@ export function createCoreHandlers(
   return {
     commandLogin:  (args = []) => commandLogin(ctx,  buildParsed(args), workspaces, deps),
     commandDoctor: (args = []) => commandDoctor(ctx, buildParsed(args), workspaces, deps),
-    commandWorkspace: (args = []) => commandWorkspaceDispatch(ctx, args, workspaces, deps),
   };
-}
-
-function commandWorkspaceDispatch(
-  ctx: CommandCtx,
-  args: readonly string[],
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const action = args[0];
-  const rest = args.slice(1);
-  switch (action) {
-    case "add":         return Promise.resolve(workspaceAdd(ctx, buildParsed(rest), workspaces, deps));
-    case "list":        return Promise.resolve(workspaceList(ctx, buildParsed(rest), workspaces, deps));
-    case "use":         return Promise.resolve(workspaceUse(ctx, buildParsed(rest), workspaces, deps));
-    case "show":        return Promise.resolve(workspaceShow(ctx, buildParsed(rest), workspaces, deps));
-    case "credentials": return Promise.resolve(workspaceCredentials(ctx, buildParsed(rest), workspaces, deps));
-    case "delete":      return Promise.resolve(workspaceDelete(ctx, buildParsed(rest), workspaces, deps));
-    default:
-      if (deps?.writeError) {
-        deps.writeError(ctx, "UNKNOWN_COMMAND", "usage: workspace add|list|use|show|credentials|delete", deps);
-      }
-      return Promise.resolve(2);
-  }
 }
 
 // Test-only shim mirroring the old `commandTenant(ctx, args, _ws, deps)`

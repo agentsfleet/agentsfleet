@@ -241,11 +241,17 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
 
       assert.equal(code, 0);
       assert.equal(events.length, 4);
+      // Effect dispatcher emits cli_command_started before the command
+      // Effect runs and cli_command_finished after. workspaceAddEffect
+      // emits workspace_add_completed in-band (after persisting the new
+      // workspace), so it lands between started and finished. cli.ts's
+      // post-action bridge then emits workspace_created reading the
+      // lifecycle.lastCommand === "workspace.add" sentinel.
       assert.deepEqual(events.map(({ event }) => event), [
         "cli_command_started",
+        "workspace_add_completed",
         "cli_command_finished",
         "workspace_created",
-        "workspace_add_completed",
       ]);
       assert.deepEqual(events[0], {
         client: analyticsClient,
@@ -261,17 +267,25 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
       assert.deepEqual(events[1], {
         client: analyticsClient,
         distinctId: "user_workspace_456",
-        event: "cli_command_finished",
+        event: "workspace_add_completed",
         properties: {
-          command: "workspace.add",
-          json_mode: "false",
-          exit_code: "0",
+          workspace_id: "ws_123456789abc",
           cli_session_id: PINNED_SESSION,
           cli_device_id: PINNED_DEVICE,
-          workspace_id: "ws_123456789abc",
         },
       });
       assert.deepEqual(events[2], {
+        client: analyticsClient,
+        distinctId: "user_workspace_456",
+        event: "cli_command_finished",
+        properties: {
+          command: "workspace.add",
+          exit_code: "0",
+          cli_session_id: PINNED_SESSION,
+          cli_device_id: PINNED_DEVICE,
+        },
+      });
+      assert.deepEqual(events[3], {
         client: analyticsClient,
         distinctId: "user_workspace_456",
         event: "workspace_created",
@@ -279,18 +293,6 @@ test("runCli tracks workspace creation with existing distinct id", async () => {
           command: "workspace.add",
           cli_session_id: PINNED_SESSION,
           cli_device_id: PINNED_DEVICE,
-          workspace_id: "ws_123456789abc",
-        },
-      });
-      assert.deepEqual(events[3], {
-        client: analyticsClient,
-        distinctId: "user_workspace_456",
-        event: "workspace_add_completed",
-        properties: {
-          command: "workspace.add",
-          cli_session_id: PINNED_SESSION,
-          cli_device_id: PINNED_DEVICE,
-          workspace_id: "ws_123456789abc",
         },
       });
     });

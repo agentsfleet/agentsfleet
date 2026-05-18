@@ -80,7 +80,9 @@ describe("failure modes — workspace surface", () => {
         const code = await runCli(["workspace", "add", "my-repo"], {
           stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl },
         });
-        expect(code).toBe(1);
+        // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
+        // The pre-Effect path collapsed every API failure to exit 1.
+        expect(code).toBe(3);
         const text = err.read();
         expect(text).toContain("UZ-WORKSPACE-002");
         expect(text).toContain("Workspace paused");

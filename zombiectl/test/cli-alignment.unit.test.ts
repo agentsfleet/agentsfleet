@@ -109,7 +109,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
       stderr: err.stream,
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
     });
-    assert.equal(code, 2);
+    assert.equal(code, 5);
     assert.ok(err.read().includes("not in your local list"));
     const state = await loadWorkspaces();
     assert.equal(state.current_workspace_id, "01900000-0000-7000-8000-000000000001"); // unchanged
@@ -186,7 +186,7 @@ test("workspace show errors when no active workspace and no --workspace-id", asy
       stderr: err.stream,
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
     });
-    assert.equal(code, 2);
+    assert.equal(code, 5);
     assert.ok(err.read().includes("no active workspace"));
   });
 });

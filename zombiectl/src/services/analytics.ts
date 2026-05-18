@@ -65,3 +65,19 @@ export const analyticsLayer: Layer.Layer<Analytics, never, TelemetryRuntime> = L
     return Analytics.of(makeShape(state, telemetry));
   }),
 );
+
+// Seeded variant — used by the handler-binding layer to inject the
+// pre-resolved distinct id from the env token, so `cli_command_started`
+// fires under the right id when the operator is already authenticated.
+export const analyticsLayerWithDistinctId = (
+  initialDistinctId: string,
+): Layer.Layer<Analytics, never, TelemetryRuntime> =>
+  Layer.effect(
+    Analytics,
+    Effect.gen(function* () {
+      const telemetry = yield* TelemetryRuntime;
+      const client = yield* Effect.promise(() => cliAnalytics.createCliAnalytics());
+      const state: AnalyticsState = { client, distinctId: initialDistinctId };
+      return Analytics.of(makeShape(state, telemetry));
+    }),
+  );

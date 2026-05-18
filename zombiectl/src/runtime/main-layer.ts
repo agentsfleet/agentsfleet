@@ -40,7 +40,11 @@ import {
   outputFromStreamsLayer,
 } from "../services/output.ts";
 import { Credentials, credentialsLayer } from "../services/credentials.ts";
-import { Analytics, analyticsLayer } from "../services/analytics.ts";
+import {
+  Analytics,
+  analyticsLayer,
+  analyticsLayerWithDistinctId,
+} from "../services/analytics.ts";
 import { HttpClient, httpClientLayer } from "../services/http-client.ts";
 import { Browser, browserLayer } from "../services/browser.ts";
 import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
@@ -69,6 +73,10 @@ export interface MainLayerInput {
     readonly stdout: NodeJS.WritableStream;
     readonly stderr: NodeJS.WritableStream;
   };
+  // Pre-resolved distinct id from the env token. When set, the Analytics
+  // service starts under this id instead of "anonymous"; otherwise the
+  // anonymous default applies until a command calls analytics.identify().
+  readonly initialDistinctId?: string | null;
 }
 
 export const mainLayerFor = (
@@ -87,7 +95,11 @@ export const mainLayerFor = (
     input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer;
 
   const http = httpClientLayer.pipe(Layer.provide(configBase));
-  const analytics = analyticsLayer.pipe(Layer.provide(telemetryBase));
+  const analyticsBase =
+    input.initialDistinctId !== undefined && input.initialDistinctId !== null
+      ? analyticsLayerWithDistinctId(input.initialDistinctId)
+      : analyticsLayer;
+  const analytics = analyticsBase.pipe(Layer.provide(telemetryBase));
 
   return Layer.mergeAll(
     configBase,

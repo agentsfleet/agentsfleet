@@ -17,15 +17,6 @@ import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
 import { commandDoctor, doctorErrorMap } from "../commands/core-ops.ts";
 import {
-  workspaceAdd,
-  workspaceList,
-  workspaceUse,
-  workspaceShow,
-  workspaceCredentials,
-  workspaceDelete,
-  errorMap as workspaceErrorMap,
-} from "../commands/workspace.ts";
-import {
   commandAgentAdd,
   commandAgentList,
   commandAgentDelete,
@@ -47,6 +38,7 @@ import {
   errorMap as billingErrorMap,
 } from "../commands/billing.ts";
 import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
+import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import type {
@@ -144,6 +136,7 @@ function mainLayerForCtx(lifecycle: Lifecycle): ReturnType<typeof mainLayerFor> 
     },
     config: configOverrideFromCtx(lifecycle.ctx),
     ...(streams !== undefined ? { streams } : {}),
+    ...(lifecycle.distinctId ? { initialDistinctId: lifecycle.distinctId } : {}),
   });
 }
 
@@ -222,14 +215,13 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       status: wrapE("auth.status", authStatusEffect),
     },
     doctor: wrap("doctor", doctorErrorMap, commandDoctor),
-    workspace: {
-      add:         wrap("workspace.add",         workspaceErrorMap, workspaceAdd),
-      list:        wrap("workspace.list",        workspaceErrorMap, workspaceList),
-      use:         wrap("workspace.use",         workspaceErrorMap, workspaceUse),
-      show:        wrap("workspace.show",        workspaceErrorMap, workspaceShow),
-      credentials: wrap("workspace.credentials", workspaceErrorMap, workspaceCredentials),
-      delete:      wrap("workspace.delete",      workspaceErrorMap, workspaceDelete),
-    },
+    workspace: buildWorkspaceHandlers(
+      wrapE,
+      <E extends CliError, R extends MainLayerServices>(
+        name: string,
+        factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
+      ) => wrapEffectFn(name, factory, lifecycle),
+    ),
     agent: {
       add:    wrap("agent.add",    agentErrorMap, commandAgentAdd),
       list:   wrap("agent.list",   agentErrorMap, commandAgentList),
