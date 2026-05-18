@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import TriggerPanel, { triggerKey } from "./TriggerPanel";
 import type { ZombieTrigger } from "@/lib/types";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 const githubTrigger: ZombieTrigger = {
   type: "webhook",
@@ -115,20 +118,26 @@ describe("TriggerPanel", () => {
     await waitFor(() => expect(screen.getByTestId("cron-card")).toBeTruthy());
   });
 
-  it("clears the CopyUrlFallback reset timer on unmount (no leaked setTimeout)", async () => {
-    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+  it("CopyUrlFallback survives unmount-mid-reset without spurious setState (page-navigate / refresh scenario)", async () => {
+    vi.useFakeTimers();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
     });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { unmount } = render(<TriggerPanel zombieId="zmb_x" />);
     fireEvent.click(screen.getByLabelText("Copy webhook URL"));
-    await waitFor(() => expect(writeText).toHaveBeenCalled());
-    const before = clearSpy.mock.calls.length;
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
     unmount();
-    expect(clearSpy.mock.calls.length).toBeGreaterThan(before);
-    clearSpy.mockRestore();
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
   });
 
   it("auto-expands an api trigger that has no recorded delivery and renders the copy-URL fallback", async () => {

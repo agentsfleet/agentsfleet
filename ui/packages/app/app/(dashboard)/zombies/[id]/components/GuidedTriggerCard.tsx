@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { CheckIcon, CopyIcon, ExternalLinkIcon } from "lucide-react";
 import {
   Button,
@@ -11,6 +11,7 @@ import {
   Input,
   Label,
   Time,
+  useResettableTimeout,
 } from "@usezombie/design-system";
 import type { ZombieTrigger } from "@/lib/types";
 import type { GuidanceCard } from "./provider-guidance";
@@ -32,14 +33,7 @@ export default function GuidedTriggerCard({
 }: Props) {
   const [vars, setVars] = useState<Record<string, string>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(
-    () => () => {
-      if (resetTimer.current !== null) clearTimeout(resetTimer.current);
-    },
-    [],
-  );
+  const resetTimer = useResettableTimeout();
 
   const events = useMemo(() => trigger.events ?? [], [trigger.events]);
   const command = useMemo(
@@ -52,11 +46,10 @@ export default function GuidedTriggerCard({
     try {
       await navigator.clipboard.writeText(value);
       setCopiedKey(key);
-      if (resetTimer.current !== null) clearTimeout(resetTimer.current);
-      resetTimer.current = setTimeout(() => {
-        setCopiedKey((k) => (k === key ? null : k));
-        resetTimer.current = null;
-      }, COPY_RESET_MS);
+      resetTimer.start(
+        () => setCopiedKey((k) => (k === key ? null : k)),
+        COPY_RESET_MS,
+      );
     } catch {
       // clipboard API unavailable — user can select the code block manually
     }

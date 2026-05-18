@@ -155,28 +155,30 @@ describe("GuidedTriggerCard", () => {
     expect(screen.getByLabelText("Copy webhook URL").textContent).toMatch(/Copy URL/);
   });
 
-  it("clears the pending reset timer on unmount (no leaked setTimeout fires after teardown)", async () => {
-    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+  it("survives unmount-mid-reset without spurious setState on the unmounted tree (page-navigate / refresh scenario)", async () => {
+    vi.useFakeTimers();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
     });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const { unmount } = renderCard();
     fireEvent.click(screen.getByLabelText("Copy registration command"));
-    // Wait until the click handler has resolved writeText AND scheduled
-    // the reset timer — only then does resetTimer.current hold a handle.
-    await waitFor(() => expect(writeText).toHaveBeenCalled());
     await act(async () => {
       await Promise.resolve();
+      await Promise.resolve();
     });
-    const before = clearSpy.mock.calls.length;
+    // User navigates away (or hard-refreshes) before the 1.5 s reset
+    // window elapses. The pending timer must be cancelled by the hook's
+    // useEffect destructor — no setState on the unmounted tree, no React
+    // error logged.
     unmount();
-    // Cleanup runs the useEffect destructor, which calls clearTimeout on
-    // the pending handle. Other React-internal clearTimeout calls during
-    // unmount may also bump the count — the assertion is "at least one more".
-    expect(clearSpy.mock.calls.length).toBeGreaterThan(before);
-    clearSpy.mockRestore();
+    await act(async () => {
+      vi.advanceTimersByTime(5000);
+    });
+    expect(errSpy).not.toHaveBeenCalled();
+    errSpy.mockRestore();
   });
 
   it("swallows clipboard rejection without throwing", async () => {

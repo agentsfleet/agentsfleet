@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
 import {
   Accordion,
@@ -11,6 +11,7 @@ import {
   Card,
   CardContent,
   Time,
+  useResettableTimeout,
 } from "@usezombie/design-system";
 import { webhookUrlFor } from "@/lib/api/zombies";
 import type { ZombieTrigger } from "@/lib/types";
@@ -170,22 +171,12 @@ function LastDeliveryBadge({ at }: { at: number | null | undefined }) {
 
 function CopyUrlFallback({ url, source }: { url: string; source: string }) {
   const [copied, setCopied] = useState(false);
-  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(
-    () => () => {
-      if (resetTimer.current !== null) clearTimeout(resetTimer.current);
-    },
-    [],
-  );
+  const resetTimer = useResettableTimeout();
   async function onCopy() {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
-      if (resetTimer.current !== null) clearTimeout(resetTimer.current);
-      resetTimer.current = setTimeout(() => {
-        setCopied(false);
-        resetTimer.current = null;
-      }, 1500);
+      resetTimer.start(() => setCopied(false), 1500);
     } catch {
       // clipboard unavailable
     }

@@ -173,3 +173,7 @@ export {
   type DescriptionListProps,
   type DescriptionDetailsProps,
 } from "./DescriptionList";
+export {
+  useResettableTimeout,
+  type ResettableTimeout,
+} from "./use-resettable-timeout";

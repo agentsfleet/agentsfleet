@@ -149,4 +149,6 @@ export {
   dlVariants,
   type DescriptionListProps,
   type DescriptionDetailsProps,
+  useResettableTimeout,
+  type ResettableTimeout,
 } from "./design-system";
