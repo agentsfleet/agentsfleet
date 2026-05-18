@@ -1,5 +1,5 @@
 import { Card, Terminal } from "@usezombie/design-system";
-import { DOCS_QUICKSTART_URL } from "../config";
+import { DOCS_QUICKSTART_URL, INSTALL_COMMAND } from "../config";
 
 type Step = {
   id: string;
@@ -15,7 +15,7 @@ const STEPS: readonly Step[] = [
     id: "install",
     number: "01",
     title: "Install the CLI",
-    command: "npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie",
+    command: INSTALL_COMMAND,
     caption: "One npm + one skill. Host-neutral — Claude Code, Amp, Codex, OpenCode.",
   },
   {

@@ -9,6 +9,7 @@ import {
   useResettableTimeout,
 } from "@usezombie/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
+import { INSTALL_COMMAND } from "../config";
 import { RATES_DISPLAY } from "../lib/rates";
 
 // Plain-text payload for the clipboard. Visible terminal renders
@@ -21,13 +22,6 @@ const HERO_INSTALL_TRANSCRIPT = `$ claude /usezombie-install-platform-ops
 ✓ installed platform-ops (SKILL.md · TRIGGER.md · 2 secrets injected via vault)
 ✓ webhook registered github.com/your-org/your-repo
 › awaiting first event...`;
-
-// Bootstrap one-liner copied to the clipboard by the primary CTA. The
-// CTA label is the visible form of the same command. Kept in lockstep
-// with the OnboardingFlow `step 01` snippet so a user can copy from
-// either surface and end up with identical text.
-const HERO_INSTALL_COMMAND =
-  "npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie";
 
 const TOAST_VISIBLE_MS = 2000;
 
@@ -57,7 +51,7 @@ export default function Hero() {
   async function onInstallClick() {
     trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
     try {
-      await navigator.clipboard.writeText(HERO_INSTALL_COMMAND);
+      await navigator.clipboard.writeText(INSTALL_COMMAND);
       showToast("copied");
     } catch {
       showToast("manual");
@@ -134,7 +128,7 @@ export default function Hero() {
             <span className="text-pulse" aria-hidden="true">
               $
             </span>{" "}
-            {HERO_INSTALL_COMMAND}
+            {INSTALL_COMMAND}
           </Button>
           <Button asChild variant="ghost" data-testid="hero-cta-secondary">
             <Link
