@@ -22,9 +22,13 @@ import {
   HEALTHZ_PATH,
   HEALTHZ_STATUS_OK,
 } from "../lib/api-paths.ts";
-import { REQUEST_FAILED } from "../constants/cli-errors.ts";
 import { DOCTOR_CHECK } from "../constants/doctor-checks.ts";
 import type { CliError } from "../errors/index.ts";
+
+// Client-side fallback when an outgoing request fails without a
+// server-supplied err.code (network failure, timeout, transport).
+// Surfaced on the doctor JSON envelope's error.code field.
+const REQUEST_FAILED = "REQUEST_FAILED";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 

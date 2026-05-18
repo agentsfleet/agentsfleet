@@ -11,12 +11,15 @@ import { Output } from "../services/output.ts";
 import { TENANT_BILLING_PATH } from "../lib/api-paths.ts";
 import { AuthError, ServerError, type CliError } from "../errors/index.ts";
 import { EVT_LOGOUT_COMPLETED } from "../constants/analytics-events.ts";
-import {
-  ERR_FORBIDDEN,
-  ERR_UNAUTHORIZED,
-  ERR_TOKEN_EXPIRED,
-} from "../constants/error-codes.ts";
 import { decodeTokenPayload } from "../program/auth-token.ts";
+
+// Server-side auth codes from src/errors/error_registry.zig. The CLI
+// branches on these to surface re-auth prompts; they are the only
+// UZ-* codes the CLI inspects by name (other codes flow through the
+// dispatcher's typed CliError variants as opaque strings).
+const ERR_FORBIDDEN = "UZ-AUTH-001";
+const ERR_UNAUTHORIZED = "UZ-AUTH-002";
+const ERR_TOKEN_EXPIRED = "UZ-AUTH-003";
 
 type TokenSource = "file" | "env" | "none";
 type ProbeStatus = "valid" | "unauthorized" | "unreachable";
