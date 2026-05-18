@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const analytics = vi.hoisted(() => ({
   trackNavigationClicked: vi.fn(),
@@ -35,10 +35,6 @@ describe("Hero", () => {
   beforeEach(() => {
     analytics.trackNavigationClicked.mockReset();
     analytics.trackSignupStarted.mockReset();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
   });
 
   it("renders the two-line mono headline", () => {

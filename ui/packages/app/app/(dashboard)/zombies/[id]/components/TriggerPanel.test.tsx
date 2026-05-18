@@ -3,10 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import TriggerPanel, { triggerKey } from "./TriggerPanel";
 import type { ZombieTrigger } from "@/lib/types";
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
+afterEach(() => cleanup());
 
 const githubTrigger: ZombieTrigger = {
   type: "webhook",

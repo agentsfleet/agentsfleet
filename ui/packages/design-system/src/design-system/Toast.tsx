@@ -13,6 +13,15 @@ import { cn } from "../utils";
  *
  * Role + aria-live are derived from severity: info/success use polite,
  * warning/destructive use assertive (screen readers interrupt).
+ *
+ * Layout note: the <output> element renders unconditionally so the
+ * a11y live region stays stable across visible/hidden transitions
+ * (screen readers attach to a node that exists at mount). When
+ * visible=false the inner content is null, so the element collapses
+ * to zero height. In a fixed-height parent this can cause layout
+ * shift; wrap in a min-height container if stable layout matters.
+ * Hero's `flex flex-wrap` row absorbs the toggle gracefully without
+ * a wrapper.
  */
 export const toastVariants = cva(
   ["font-mono text-mono"],

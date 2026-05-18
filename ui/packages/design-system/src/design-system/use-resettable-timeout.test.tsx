@@ -1,10 +1,6 @@
 import { renderHook, act } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { useResettableTimeout } from "./use-resettable-timeout";
-
-afterEach(() => {
-  vi.useRealTimers();
-});
 
 describe("useResettableTimeout", () => {
   it("fires the callback after the requested delay", () => {

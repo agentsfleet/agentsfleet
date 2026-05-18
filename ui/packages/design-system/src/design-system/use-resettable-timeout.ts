@@ -1,3 +1,5 @@
+"use client";
+
 import { useEffect, useMemo, useRef } from "react";
 
 // Imperative one-shot timer with cancel-and-reschedule + auto-cleanup

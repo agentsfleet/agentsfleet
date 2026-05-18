@@ -3,10 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import GuidedTriggerCard from "./GuidedTriggerCard";
 import { PROVIDER_GUIDANCE } from "./provider-guidance";
 
-afterEach(() => {
-  cleanup();
-  vi.useRealTimers();
-});
+afterEach(() => cleanup());
 
 const trigger = {
   type: "webhook" as const,
