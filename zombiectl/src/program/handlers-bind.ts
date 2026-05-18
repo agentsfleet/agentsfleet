@@ -22,9 +22,8 @@ import {
   agentDeleteEffectFromArgs,
 } from "../commands/agent.ts";
 import {
-  commandGrantList,
-  commandGrantDelete,
-  errorMap as grantErrorMap,
+  grantListEffectFromArgs,
+  grantDeleteEffectFromArgs,
 } from "../commands/grant.ts";
 import {
   commandTenantProviderShow,
@@ -267,8 +266,28 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       ),
     },
     grant: {
-      list:   wrap("grant.list",   grantErrorMap, commandGrantList),
-      delete: wrap("grant.delete", grantErrorMap, commandGrantDelete),
+      list: wrapEffectFn(
+        "grant.list",
+        (frame) =>
+          grantListEffectFromArgs(
+            frame.parsed.positionals[0],
+            optString(frame.parsed.options, "zombie") ??
+              optString(frame.parsed.options, "zombieId") ??
+              optString(frame.parsed.options, "zombie-id"),
+          ),
+        lifecycle,
+      ),
+      delete: wrapEffectFn(
+        "grant.delete",
+        (frame) =>
+          grantDeleteEffectFromArgs(
+            optString(frame.parsed.options, "zombie") ??
+              optString(frame.parsed.options, "zombieId") ??
+              optString(frame.parsed.options, "zombie-id"),
+            frame.parsed.positionals[0],
+          ),
+        lifecycle,
+      ),
     },
     tenant: {
       provider: {
