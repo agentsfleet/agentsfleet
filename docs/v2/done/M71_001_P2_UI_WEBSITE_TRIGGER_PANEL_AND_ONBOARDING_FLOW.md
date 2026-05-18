@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M71
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — completes the M68 trigger DX surface (per-trigger cards, provider guidance table, OnboardingFlow, Hero CTA) that was deferred during M68's CHORE(close), plus §7 hero promo pill (Captain ask, in-PR amendment May 18, 2026). Not blocking any other workstream.
 **Categories:** UI, WEBSITE
 **Batch:** B1
@@ -415,12 +415,13 @@ If disposition (b) — coexist — both components remain; no dead-code sweep.
 |-------|---------|--------|-------|
 | App typecheck + lint + test | `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · 47 files / 504 tests | ✅ |
 | App coverage thresholds | `(cd ui/packages/app && bun run test:coverage)` | statements 96.05 · branches 90.15 · functions 95.4 · lines 97.32 (gate: 95/90/95/95) | ✅ |
-| Website typecheck + lint + test | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · 19 files / 139 tests | ✅ |
+| Website typecheck + lint + test (post-§7) | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · **19 files / 146 tests** (+7 over pre-§7 baseline: 3 Hero pill + 3 rates pill + 1 banner-prefix pin) | ✅ |
 | Harness | `make harness-verify` | UFS / DESIGN TOKEN / SPEC TEMPLATE / ERROR REGISTRY / LOGGING / LIFECYCLE / CROSS-TIER RATES / MS-ID+UI — ALL GATES GREEN | ✅ |
-| Bundle size (landing js) | `(cd ui/packages/website && bun run size)` | 132.6 kB gzipped — under the 140 kB ceiling pinned in `ui/packages/website/.size-limit.json` (7.4 kB headroom) | ✅ |
-| Bundle size (landing css) | `(cd ui/packages/website && bun run size)` | 9.88 kB gzipped — under the 20 kB ceiling | ✅ |
+| Bundle size (landing js, post-§7) | `(cd ui/packages/website && bun run size)` | **132.94 kB gzipped** — under the 140 kB ceiling pinned in `ui/packages/website/.size-limit.json` (7.06 kB headroom; §7 adds ~0.34 kB gz vs pre-§7 baseline) | ✅ |
+| Bundle size (landing css) | `(cd ui/packages/website && bun run size)` | 9.89 kB gzipped — under the 20 kB ceiling | ✅ |
 | No zombiectl edits | `git diff origin/main..HEAD --name-only \| grep -c '^zombiectl/'` | 0 | ✅ |
 | Strictness compliance | E6 grep from "Eval Commands" | 0 `as any` / `!` / `@ts-expect-error` introduced | ✅ |
+| Cross-tier rates pin (§7 coupling) | `bash scripts/audit-cross-tier-rates.sh` | `FREE_TRIAL_END_MS` numeric value pins across `src/state/tenant_billing.zig` + 3 TS surfaces; display string `FREE_TRIAL_END_DISPLAY` shared between `RATES_DISPLAY.FREE_TRIAL_BANNER` and `RATES_DISPLAY.FREE_TRIAL_PILL` (rates.test.ts pins the substring) | ✅ |
 
 ---
 
