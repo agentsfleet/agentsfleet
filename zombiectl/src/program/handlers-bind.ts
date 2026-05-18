@@ -17,10 +17,9 @@ import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
 import { commandDoctor, doctorErrorMap } from "../commands/core-ops.ts";
 import {
-  commandAgentAdd,
-  commandAgentList,
-  commandAgentDelete,
-  errorMap as agentErrorMap,
+  agentAddEffectFromArgs,
+  agentListEffectFromArgs,
+  agentDeleteEffectFromArgs,
 } from "../commands/agent.ts";
 import {
   commandGrantList,
@@ -47,6 +46,7 @@ import type {
   CommandHandler,
   Workspaces,
 } from "../commands/types.ts";
+import { readStringOpt as optString } from "../commands/types.ts";
 import { parseIntOption } from "./validators.ts";
 import type { PresetMap } from "../lib/error-map-presets.ts";
 import type { AnalyticsClient } from "../lib/analytics.ts";
@@ -223,9 +223,48 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       ) => wrapEffectFn(name, factory, lifecycle),
     ),
     agent: {
-      add:    wrap("agent.add",    agentErrorMap, commandAgentAdd),
-      list:   wrap("agent.list",   agentErrorMap, commandAgentList),
-      delete: wrap("agent.delete", agentErrorMap, commandAgentDelete),
+      add: wrapEffectFn(
+        "agent.add",
+        (frame) => {
+          const opts = frame.parsed.options;
+          return agentAddEffectFromArgs({
+            workspaceId:
+              optString(opts, "workspace") ??
+              optString(opts, "workspaceId") ??
+              optString(opts, "workspace-id"),
+            zombieId:
+              optString(opts, "zombie") ??
+              optString(opts, "zombieId") ??
+              optString(opts, "zombie-id"),
+            name: optString(opts, "name"),
+            description: optString(opts, "description"),
+          });
+        },
+        lifecycle,
+      ),
+      list: wrapEffectFn(
+        "agent.list",
+        (frame) =>
+          agentListEffectFromArgs(
+            optString(frame.parsed.options, "workspace") ??
+              optString(frame.parsed.options, "workspaceId") ??
+              optString(frame.parsed.options, "workspace-id"),
+          ),
+        lifecycle,
+      ),
+      delete: wrapEffectFn(
+        "agent.delete",
+        (frame) =>
+          agentDeleteEffectFromArgs(
+            optString(frame.parsed.options, "workspace") ??
+              optString(frame.parsed.options, "workspaceId") ??
+              optString(frame.parsed.options, "workspace-id"),
+            frame.parsed.positionals[0],
+            optString(frame.parsed.options, "agent-id") ??
+              optString(frame.parsed.options, "agentId"),
+          ),
+        lifecycle,
+      ),
     },
     grant: {
       list:   wrap("grant.list",   grantErrorMap, commandGrantList),

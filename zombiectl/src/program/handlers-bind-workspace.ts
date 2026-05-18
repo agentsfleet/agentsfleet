@@ -5,6 +5,7 @@
 
 import type { WorkspaceHandlers } from "./cli-tree-types.ts";
 import type { WrapE, WrapEFn } from "./handlers-bind-zombie.ts";
+import { readStringOpt as optString } from "../commands/types.ts";
 import {
   workspaceAddEffect,
   workspaceCredentialsEffect,
@@ -13,15 +14,6 @@ import {
   workspaceShowEffectFromArgs,
   workspaceUseEffectFromArgs,
 } from "../commands/workspace.ts";
-
-const optString = (
-  options: Record<string, unknown>,
-  key: string,
-): string | undefined => {
-  const v = options[key];
-  if (typeof v === "string" && v.length > 0) return v;
-  return undefined;
-};
 
 export const buildWorkspaceHandlers = (
   wrapE: WrapE,

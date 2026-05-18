@@ -188,3 +188,17 @@ export function readNumber(
   }
   return null;
 }
+
+// Sister to `readString` for callers that prefer `undefined`-shaped
+// optional reads (Effect-side commands, `??`-chained flag fallbacks).
+// Also coerces parseIntOption's numeric results to a string so query-
+// string + flag-passthrough plumbing doesn't have to special-case both.
+export function readStringOpt(
+  options: ParsedArgs["options"],
+  key: string,
+): string | undefined {
+  const v = options[key];
+  if (typeof v === "string" && v.length > 0) return v;
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return undefined;
+}
