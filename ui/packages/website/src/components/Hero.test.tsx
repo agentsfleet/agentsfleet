@@ -9,8 +9,6 @@ const analytics = vi.hoisted(() => ({
 
 vi.mock("../analytics/posthog", () => analytics);
 
-import { TOAST_FADE_MS } from "@usezombie/design-system";
-
 import Hero from "./Hero";
 
 const INSTALL_COMMAND =
@@ -153,14 +151,11 @@ describe("Hero", () => {
     expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
       /Copied — paste into your terminal/i,
     );
+    // Advance past both the 2 s visible window AND the Toast fade-out
+    // window. The Toast default is 240 ms; we advance 3000 ms to assert
+    // the children have unmounted without coupling to the Toast default.
     await act(async () => {
-      vi.advanceTimersByTime(2100);
-    });
-    // Visible window closed; children remain mounted for one fade-out
-    // window so the opacity transition is perceptible. Advance past
-    // TOAST_FADE_MS to assert the children have unmounted.
-    await act(async () => {
-      vi.advanceTimersByTime(TOAST_FADE_MS + 50);
+      vi.advanceTimersByTime(3000);
     });
     expect((screen.getByTestId("hero-cta-toast").textContent ?? "").trim()).toBe("");
   });

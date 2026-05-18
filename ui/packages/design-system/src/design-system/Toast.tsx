@@ -2,11 +2,11 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { type ComponentProps, useEffect, useRef, useState } from "react";
 import { cn } from "../utils";
 
-// Fade window — keeps children mounted this long after `visible` flips
-// false so the opacity transition is perceptible. Must match
-// `--motion-duration-fade` in tokens.css (240ms). Exported so tests
-// that advance fake timers past the dismiss window stay coupled.
-export const TOAST_FADE_MS = 240;
+// Default fade window — mirrors the `--motion-duration-fade` design
+// token (tokens.css). Used when the caller does not pass `fadeMs`; per-
+// instance overrides flow through the prop so both the JS setTimeout
+// and the inline CSS transitionDuration share one source.
+const DEFAULT_FADE_MS = 240;
 
 /*
  * Toast — transient inline status message announcing the result of a
@@ -23,14 +23,17 @@ export const TOAST_FADE_MS = 240;
  * Layout note: the <output> element renders unconditionally so the
  * a11y live region stays stable across visible/hidden transitions
  * (screen readers attach to a node that exists at mount). After
- * `visible` flips false the children stay mounted for one
- * `TOAST_FADE_MS` window so the opacity transition is perceptible,
- * then unmount — `aria-hidden` flips immediately to suppress a stale
- * screen-reader re-read. `motion-safe:` gates the transition so
- * `prefers-reduced-motion: reduce` users get an instant change. In a
- * fixed-height parent the collapse-to-empty can cause layout shift;
- * wrap in a min-height container if stable layout matters. Hero's
- * `flex flex-wrap` row absorbs the toggle gracefully without a wrapper.
+ * `visible` flips false the children stay mounted for one `fadeMs`
+ * window so the opacity transition is perceptible, then unmount —
+ * `aria-hidden` flips immediately to suppress a stale screen-reader
+ * re-read. The same `fadeMs` value drives the inline CSS
+ * transitionDuration so the visual fade and the JS unmount stay in
+ * lockstep regardless of theme overrides. `motion-safe:` gates the
+ * transition so `prefers-reduced-motion: reduce` users get an instant
+ * change. In a fixed-height parent the collapse-to-empty can cause
+ * layout shift; wrap in a min-height container if stable layout matters.
+ * Hero's `flex flex-wrap` row absorbs the toggle gracefully without a
+ * wrapper.
  */
 export const toastVariants = cva(
   ["font-mono text-mono"],
@@ -53,8 +56,16 @@ export type ToastSeverity = NonNullable<
 
 export type ToastProps = Omit<ComponentProps<"output">, "children"> &
   VariantProps<typeof toastVariants> & {
-    /** True renders the children; false renders the element with no text (preserves layout slot). */
+    /** True renders the children; false starts the fade-out + unmount cycle. */
     visible: boolean;
+    /**
+     * Fade-out duration in milliseconds. Drives BOTH the inline CSS
+     * `transition-duration` AND the JS setTimeout that unmounts the
+     * children after the fade completes — single source so the visual
+     * and the DOM cannot drift. Defaults to 240 (mirrors the
+     * `--motion-duration-fade` token).
+     */
+    fadeMs?: number;
     children: React.ReactNode;
   };
 
@@ -67,7 +78,9 @@ function ariaLiveFor(severity: ToastSeverity): "polite" | "assertive" {
 export function Toast({
   visible,
   severity,
+  fadeMs = DEFAULT_FADE_MS,
   className,
+  style,
   children,
   ref,
   ...props
@@ -85,14 +98,14 @@ export function Toast({
       }
       return;
     }
-    fadeTimer.current = setTimeout(() => setRendered(false), TOAST_FADE_MS);
+    fadeTimer.current = setTimeout(() => setRendered(false), fadeMs);
     return () => {
       if (fadeTimer.current) {
         clearTimeout(fadeTimer.current);
         fadeTimer.current = null;
       }
     };
-  }, [visible]);
+  }, [visible, fadeMs]);
 
   return (
     <output
@@ -102,10 +115,11 @@ export function Toast({
       aria-hidden={!visible}
       className={cn(
         toastVariants({ severity: resolved }),
-        "motion-safe:transition-opacity motion-safe:duration-fade motion-safe:ease-fade",
+        "motion-safe:transition-opacity motion-safe:ease-fade",
         visible ? "opacity-100" : "opacity-0",
         className,
       )}
+      style={{ transitionDuration: `${fadeMs}ms`, ...style }}
       {...props}
     >
       {rendered ? children : null}
