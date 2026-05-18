@@ -150,7 +150,11 @@ export const PROVIDER_GUIDANCE: Record<Source, GuidanceCard> = {
         `# 5. Install the app into your workspace.`,
       ].join("\n"),
     webUiDeepLink: () => `https://api.slack.com/apps?new_app=1`,
-    variables: [v("WORKSPACE", "your-org")],
+    // No variables — the Slack flow is web-UI-only and the new-app
+    // deep-link is workspace-neutral, so any "WORKSPACE" input would
+    // render a visible field whose value is never read. Keep the
+    // variables array empty until Slack ships a CLI worth interpolating.
+    variables: [],
   },
 
   agentmail: {

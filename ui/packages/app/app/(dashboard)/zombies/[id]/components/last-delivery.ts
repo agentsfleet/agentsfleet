@@ -4,6 +4,15 @@ import { triggerKey } from "./TriggerPanel";
 
 /**
  * Maps a declared trigger to the actor-glob the events API recognises.
+ *
+ * Cron triggers all share `cron:*` regardless of schedule — the server
+ * does not tag cron events with the specific schedule that fired, so
+ * the actor space has no per-schedule namespace to glob against. A
+ * zombie with two cron triggers (e.g. every-15-min and hourly)
+ * therefore renders the same "last delivery" timestamp on both cards
+ * — whichever cron fired most recently. The right place to fix this
+ * is the server's cron actor format, not the dashboard's glob.
+ *
  * `api` triggers don't carry a stable actor namespace (every webhook
  * ingress shares the bare `/v1/webhooks/{id}` URL), so they opt out —
  * the caller surfaces `null` in the per-trigger map.
