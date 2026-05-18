@@ -95,8 +95,10 @@ export async function encryptJwt(jwt: string, key: CryptoKey): Promise<Encrypted
 }
 
 export function generateVerificationCode(): string {
-  const buf = crypto.getRandomValues(new Uint32Array(1));
-  const raw = buf[0] ?? 0;
+  const arr = new Uint32Array(1);
+  crypto.getRandomValues(arr);
+  let raw = 0;
+  for (const v of arr) raw = v;
   return (raw % VERIFICATION_CODE_MODULUS).toString().padStart(VERIFICATION_CODE_DIGITS, "0");
 }
 
@@ -107,7 +109,7 @@ function base64UrlEncode(bytes: Uint8Array): string {
 }
 
 function base64UrlDecode(input: string): Uint8Array<ArrayBuffer> {
-  const pad = input.length % 4 === 0 ? "" : "=".repeat(4 - (input.length % 4));
+  const pad = "=".repeat((4 - (input.length % 4)) % 4);
   const b64 = input.replaceAll("-", "+").replaceAll("_", "/") + pad;
   const binary = atob(b64);
   const buf = new ArrayBuffer(binary.length);
