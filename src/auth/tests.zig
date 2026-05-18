@@ -19,6 +19,7 @@ test {
     _ = @import("session_state.zig");
     _ = @import("session_store_redis.zig");
     _ = @import("session_store_redis_proto.zig");
+    _ = @import("session_store_redis_integration_test.zig");
     _ = @import("middleware/chain.zig");
     _ = @import("middleware/mod.zig");
     _ = @import("middleware/auth_ctx.zig");
