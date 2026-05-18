@@ -2,7 +2,6 @@ import { Writable } from "node:stream";
 import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
 import { commandLogin } from "../src/commands/core.ts";
-import { commandDoctor } from "../src/commands/core-ops.ts";
 
 import type {
   CommandCtx,
@@ -93,21 +92,19 @@ type CoreHandler = (args?: readonly string[]) => Promise<number>;
 // `noUncheckedIndexedAccess` without a `!` non-null assertion.
 export interface CoreHandlers {
   commandLogin: CoreHandler;
-  commandDoctor: CoreHandler;
 }
 
 // Test-only shim that re-creates the old createCoreHandlers return shape
 // from the new top-level exports — direct-handler tests keep their
-// `handlers.commandLogin(args)` / `handlers.commandDoctor(args)`
-// invocation pattern without rewriting every call site.
+// `handlers.commandLogin(args)` invocation pattern without rewriting
+// every call site.
 export function createCoreHandlers(
   ctx: CommandCtx,
   workspaces: Workspaces,
   deps: CommandDeps,
 ): CoreHandlers {
   return {
-    commandLogin:  (args = []) => commandLogin(ctx,  buildParsed(args), workspaces, deps),
-    commandDoctor: (args = []) => commandDoctor(ctx, buildParsed(args), workspaces, deps),
+    commandLogin: (args = []) => commandLogin(ctx, buildParsed(args), workspaces, deps),
   };
 }
 

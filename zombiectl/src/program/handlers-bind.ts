@@ -1,21 +1,16 @@
 // Wires the imported leaf handlers into the shape cli-tree.ts expects.
-// auth.status + logout + login route through the Effect dispatcher
-// (runEffect) — they consume services declared on the Effect's R
-// channel. Remaining groups route through the pre-Effect runCommand
-// path until their own commit in this PR.
+// Every command routes through the Effect dispatcher (runEffect) and
+// consumes services declared on its R channel. The pre-Effect
+// runCommand path is fully retired as of the doctor migration.
 
 import { Option, Redacted, type Effect } from "effect";
-import { cliAnalytics } from "../lib/analytics.ts";
-import { runCommand } from "../lib/run-command.ts";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
-import { printJson, writeLine } from "./io.ts";
-import { ui } from "../output/index.ts";
 
 import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
 import { loginEffectFromFlags } from "../commands/login.ts";
 import type { CliError } from "../errors/index.ts";
-import { commandDoctor, doctorErrorMap } from "../commands/core-ops.ts";
+import { doctorEffect } from "../commands/core-ops.ts";
 import {
   agentAddEffectFromArgs,
   agentListEffectFromArgs,
@@ -35,15 +30,9 @@ import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
-import type {
-  CommandCtx,
-  CommandDeps,
-  CommandHandler,
-  Workspaces,
-} from "../commands/types.ts";
+import type { CommandCtx, CommandDeps, Workspaces } from "../commands/types.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
 import { parseIntOption } from "./validators.ts";
-import type { PresetMap } from "../lib/error-map-presets.ts";
 import type { AnalyticsClient } from "../lib/analytics.ts";
 
 export interface Lifecycle {
@@ -56,32 +45,6 @@ export interface Lifecycle {
   // deps.distinctId and handlerCtx.distinctId are unset.
   distinctId: string | null;
   lastCommand: string | null;
-}
-
-function wrapHandler(
-  name: string,
-  errorMap: PresetMap,
-  handler: CommandHandler,
-  lifecycle: Lifecycle,
-): CommandHandlerFn {
-  return async (frame: ActionFrame): Promise<number> => {
-    const exitCode = await runCommand({
-      name,
-      errorMap,
-      ctx: lifecycle.ctx,
-      deps: {
-        analyticsClient: lifecycle.analyticsClient,
-        distinctId: lifecycle.distinctId ?? undefined,
-        trackCliEvent: cliAnalytics.trackCliEvent,
-        printJson,
-        writeLine,
-        ui,
-      },
-      handler: () => handler(lifecycle.ctx, frame.parsed, lifecycle.workspaces, lifecycle.deps),
-    });
-    lifecycle.lastCommand = name;
-    return exitCode;
-  };
 }
 
 // Thread runCli's env-resolved values into Effect's CliConfig override.
@@ -135,9 +98,9 @@ function mainLayerForCtx(lifecycle: Lifecycle): ReturnType<typeof mainLayerFor> 
   });
 }
 
-function wrapEffect<E extends CliError, R extends MainLayerServices>(
+function wrapEffect<A, E extends CliError, R extends MainLayerServices>(
   name: string,
-  effect: Effect.Effect<void, E, R>,
+  effect: Effect.Effect<A, E, R>,
   lifecycle: Lifecycle,
 ): CommandHandlerFn {
   return async (_frame: ActionFrame): Promise<number> => {
@@ -155,9 +118,9 @@ function wrapEffect<E extends CliError, R extends MainLayerServices>(
 // (login's --timeout-sec / --poll-ms / --no-open). The factory receives
 // the frame and returns the Effect; everything else is the same as
 // wrapEffect.
-function wrapEffectFn<E extends CliError, R extends MainLayerServices>(
+function wrapEffectFn<A, E extends CliError, R extends MainLayerServices>(
   name: string,
-  factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
+  factory: (frame: ActionFrame) => Effect.Effect<A, E, R>,
   lifecycle: Lifecycle,
 ): CommandHandlerFn {
   return async (frame: ActionFrame): Promise<number> => {
@@ -186,11 +149,9 @@ const numericOption = (value: unknown): number | undefined => {
 };
 
 export function buildHandlers(lifecycle: Lifecycle): Handlers {
-  const wrap = (name: string, map: PresetMap, fn: CommandHandler): CommandHandlerFn =>
-    wrapHandler(name, map, fn, lifecycle);
-  const wrapE = <E extends CliError, R extends MainLayerServices>(
+  const wrapE = <A, E extends CliError, R extends MainLayerServices>(
     name: string,
-    effect: Effect.Effect<void, E, R>,
+    effect: Effect.Effect<A, E, R>,
   ): CommandHandlerFn => wrapEffect(name, effect, lifecycle);
   return {
     login: wrapEffectFn(
@@ -209,7 +170,7 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     auth: {
       status: wrapE("auth.status", authStatusEffect),
     },
-    doctor: wrap("doctor", doctorErrorMap, commandDoctor),
+    doctor: wrapE("doctor", doctorEffect),
     workspace: buildWorkspaceHandlers(
       wrapE,
       <E extends CliError, R extends MainLayerServices>(

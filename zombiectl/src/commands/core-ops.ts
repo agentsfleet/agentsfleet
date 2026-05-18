@@ -1,141 +1,191 @@
-import { wsZombiesPath, HEALTHZ_PATH, HEALTHZ_STATUS_OK } from "../lib/api-paths.ts";
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
+// zombiectl doctor — Effect-shaped.
+//
+// Runs three checks: server reachable (/healthz, no auth), workspace
+// selected (read from Workspaces service), workspace binding valid
+// (GET /v1/workspaces/{ws}/zombies, authed). Aggregates into a report
+// shape the legacy command produced and exits 0/1 by the all-checks-ok
+// fold.
+//
+// CliError variants are mapped down into per-check `ok=false, detail`
+// rows by Effect.either + match, so doctor never short-circuits on
+// the first transport failure — every check still runs.
+
+import { Effect } from "effect";
+import { CliConfig } from "../services/config.ts";
+import { Credentials } from "../services/credentials.ts";
+import { HttpClient } from "../services/http-client.ts";
+import { Output } from "../services/output.ts";
+import { Workspaces } from "../services/workspaces.ts";
+import { resolveAuthToken } from "./workspace-guards.ts";
 import {
-  ERR_INTERNAL_DB_UNAVAILABLE,
-  ERR_INTERNAL_DB_QUERY,
-  ERR_INTERNAL_OPERATION_FAILED,
-} from "../constants/error-codes.ts";
-import { DOCTOR_CHECK } from "../constants/doctor-checks.ts";
+  wsZombiesPath,
+  HEALTHZ_PATH,
+  HEALTHZ_STATUS_OK,
+} from "../lib/api-paths.ts";
 import { REQUEST_FAILED } from "../constants/cli-errors.ts";
-import type {
-  CommandCtx,
-  CommandDeps,
-  ParsedArgs,
-  Workspaces,
-} from "./types.ts";
+import { DOCTOR_CHECK } from "../constants/doctor-checks.ts";
+import type { CliError } from "../errors/index.ts";
 
 const PER_CHECK_TIMEOUT_MS = 5000;
 
-// Doctor hits /healthz (no auth) and the workspace zombies list (auth).
-// UZ-INTERNAL-001 (DB unavailable) is the headline failure surfaced by
-// failure-modes.integration.test.js. AUTH_PRESET covers the
-// authenticated leg.
-export const doctorErrorMap = compose(AUTH_PRESET, {
-  [ERR_INTERNAL_DB_UNAVAILABLE]: {
-    code: "SERVER_INTERNAL",
-    message: "Database unavailable — the API is degraded; try again shortly.",
-  },
-  [ERR_INTERNAL_DB_QUERY]: {
-    code: "SERVER_INTERNAL",
-    message: "Server internal error — the API is degraded; try again shortly.",
-  },
-  [ERR_INTERNAL_OPERATION_FAILED]: {
-    code: "SERVER_INTERNAL",
-    message: "Server internal error — the API is degraded; try again shortly.",
-  },
-});
-
-interface DoctorCheck {
-  name: string;
-  ok: boolean;
-  detail: string;
+interface DoctorCheckResult {
+  readonly name: string;
+  readonly ok: boolean;
+  readonly detail: string;
 }
 
-export async function commandDoctor(
-  ctx: CommandCtx,
-  _parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { apiHeaders, printJson, printSection, request, ui, writeLine } = deps;
+const renderErrorDetail = (err: CliError): string => {
+  if (err._tag === "NetworkError") return err.detail;
+  if (err._tag === "ServerError") return `${err.code}: ${err.detail}`;
+  return err.detail;
+};
 
-  const checks: DoctorCheck[] = [];
-
-  try {
-    const healthz = (await request(ctx, HEALTHZ_PATH, {
-      method: "GET",
+const runHealthzCheck: Effect.Effect<
+  DoctorCheckResult,
+  never,
+  CliConfig | HttpClient
+> = Effect.gen(function* () {
+  const config = yield* CliConfig;
+  const http = yield* HttpClient;
+  return yield* http
+    .request<{ status?: string }>({
+      path: HEALTHZ_PATH,
       timeoutMs: PER_CHECK_TIMEOUT_MS,
-    })) as { status?: string } | null;
-    const ok = healthz?.status === HEALTHZ_STATUS_OK;
-    checks.push({
-      name: DOCTOR_CHECK.SERVER_REACHABLE,
-      ok,
-      detail: ok
-        ? `${ctx.apiUrl}${HEALTHZ_PATH}`
-        : `unexpected payload: ${JSON.stringify(healthz)}`,
-    });
-  } catch (err) {
-    const message =
-      err instanceof Error && typeof err.message === "string"
-        ? err.message
-        : String(err);
-    checks.push({
-      name: DOCTOR_CHECK.SERVER_REACHABLE,
-      ok: false,
-      detail: `${ctx.apiUrl}${HEALTHZ_PATH}: ${message}`,
-    });
-  }
+    })
+    .pipe(
+      Effect.match({
+        onSuccess: (res): DoctorCheckResult => {
+          const ok = res?.status === HEALTHZ_STATUS_OK;
+          return {
+            name: DOCTOR_CHECK.SERVER_REACHABLE,
+            ok,
+            detail: ok
+              ? `${config.apiUrl}${HEALTHZ_PATH}`
+              : `unexpected payload: ${JSON.stringify(res)}`,
+          };
+        },
+        onFailure: (err): DoctorCheckResult => ({
+          name: DOCTOR_CHECK.SERVER_REACHABLE,
+          ok: false,
+          detail: `${config.apiUrl}${HEALTHZ_PATH}: ${renderErrorDetail(err)}`,
+        }),
+      }),
+    );
+});
 
-  const wsId = workspaces.current_workspace_id;
+const runBindingCheck = (
+  wsId: string,
+): Effect.Effect<
+  DoctorCheckResult,
+  never,
+  CliConfig | Credentials | HttpClient
+> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    const tokenResult = yield* resolveAuthToken.pipe(
+      Effect.match({
+        onSuccess: (t) => ({ ok: true as const, token: t }),
+        onFailure: (err) => ({ ok: false as const, err }),
+      }),
+    );
+    if (!tokenResult.ok) {
+      return {
+        name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
+        ok: false,
+        detail: `${wsId}: ${renderErrorDetail(tokenResult.err)}`,
+      };
+    }
+    return yield* http
+      .request<unknown>({
+        path: wsZombiesPath(wsId),
+        token: tokenResult.token,
+        timeoutMs: PER_CHECK_TIMEOUT_MS,
+      })
+      .pipe(
+        Effect.match({
+          onSuccess: (): DoctorCheckResult => ({
+            name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
+            ok: true,
+            detail: `token bound to ${wsId}`,
+          }),
+          onFailure: (err): DoctorCheckResult => {
+            const code = err._tag === "ServerError" ? err.code : REQUEST_FAILED;
+            return {
+              name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
+              ok: false,
+              detail: `${wsId}: ${code} — run \`zombiectl workspace list\` to reset`,
+            };
+          },
+        }),
+      );
+  });
+
+const renderHuman = (
+  checks: ReadonlyArray<DoctorCheckResult>,
+  ok: boolean,
+): Effect.Effect<void, never, Output> =>
+  Effect.gen(function* () {
+    const output = yield* Output;
+    yield* output.printSection("zombiectl doctor");
+    // Check status lines (both [OK] and [FAIL]) route to stdout via
+    // output.info so the operator's full report lands on one stream —
+    // the legacy doctor wrote everything to stdout. output.success and
+    // output.error split across stdout/stderr, which would scatter the
+    // report across two streams.
+    for (const c of checks) {
+      const tag = c.ok ? "[OK]" : "[FAIL]";
+      yield* output.info(`${tag} ${c.name}`);
+      if (!c.ok && c.detail) yield* output.info(`        ${c.detail}`);
+    }
+    yield* output.info("");
+    const passed = checks.filter((c) => c.ok).length;
+    yield* output.info(
+      ok ? "All checks passed." : `${passed}/${checks.length} checks passed`,
+    );
+  });
+
+export const doctorEffect: Effect.Effect<
+  number,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> = Effect.gen(function* () {
+  const config = yield* CliConfig;
+  const output = yield* Output;
+  const workspaces = yield* Workspaces;
+
+  const healthz = yield* runHealthzCheck;
+
+  const state = yield* workspaces.load;
+  const wsId = state.current_workspace_id;
   const wsSelected = Boolean(wsId);
-  checks.push({
+  const wsCheck: DoctorCheckResult = {
     name: DOCTOR_CHECK.WORKSPACE_SELECTED,
     ok: wsSelected,
     detail: wsSelected
       ? String(wsId)
       : "no workspace selected. Run: zombiectl workspace add",
-  });
+  };
 
-  if (!wsSelected || !wsId) {
-    checks.push({
-      name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
-      ok: false,
-      detail: "skipped: no workspace selected",
-    });
-  } else {
-    try {
-      await request(ctx, wsZombiesPath(wsId), {
-        method: "GET",
-        headers: apiHeaders(ctx),
-        timeoutMs: PER_CHECK_TIMEOUT_MS,
-      });
-      checks.push({
-        name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
-        ok: true,
-        detail: `token bound to ${wsId}`,
-      });
-    } catch (err) {
-      const code =
-        err && typeof err === "object" && typeof (err as Record<string, unknown>)["code"] === "string"
-          ? ((err as Record<string, unknown>)["code"] as string)
-          : REQUEST_FAILED;
-      checks.push({
+  const bindingCheck: DoctorCheckResult = wsId
+    ? yield* runBindingCheck(wsId)
+    : {
         name: DOCTOR_CHECK.WORKSPACE_BINDING_VALID,
         ok: false,
-        detail: `${wsId}: ${code} — run \`zombiectl workspace list\` to reset`,
-      });
-    }
-  }
+        detail: "skipped: no workspace selected",
+      };
 
+  const checks: ReadonlyArray<DoctorCheckResult> = [
+    healthz,
+    wsCheck,
+    bindingCheck,
+  ];
   const ok = checks.every((c) => c.ok);
-  const report = { ok, api_url: ctx.apiUrl, checks };
+  const report = { ok, api_url: config.apiUrl, checks };
 
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, report);
-  } else if (ctx.stdout) {
-    printSection(ctx.stdout, "zombiectl doctor");
-    for (const c of checks) {
-      const tag = c.ok ? "[OK]" : "[FAIL]";
-      const line = `${tag} ${c.name}`;
-      writeLine(ctx.stdout, c.ok ? ui.ok(line) : ui.err(line));
-      if (!c.ok && c.detail) writeLine(ctx.stdout, `        ${c.detail}`);
-    }
-    writeLine(ctx.stdout);
-    const passed = checks.filter((c) => c.ok).length;
-    writeLine(
-      ctx.stdout,
-      ok ? ui.ok("All checks passed.") : ui.err(`${passed}/${checks.length} checks passed`),
-    );
+  if (config.jsonMode) {
+    yield* output.printJson(report);
+  } else {
+    yield* renderHuman(checks, ok);
   }
   return ok ? 0 : 1;
-}
+});
