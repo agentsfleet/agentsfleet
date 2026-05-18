@@ -3,7 +3,6 @@ import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
 import { commandLogin } from "../src/commands/core.ts";
 import { commandDoctor } from "../src/commands/core-ops.ts";
-import { commandBillingShow } from "../src/commands/billing.ts";
 import {
   commandTenantProviderShow,
   commandTenantProviderAdd,
@@ -159,22 +158,6 @@ export function commandTenant(
   return Promise.resolve(2);
 }
 
-// Test-only shim mirroring the old `commandBilling(ctx, args, _ws, deps)`
-// dispatcher — routes the `show` verb to the new commandBillingShow leaf.
-export function commandBilling(
-  ctx: CommandCtx,
-  args: readonly string[],
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const action = args[0];
-  const rest = args.slice(1);
-  if (action === "show") return Promise.resolve(commandBillingShow(ctx, buildParsed(rest), workspaces, deps));
-  emitUsage(ctx, deps, "UNKNOWN_COMMAND", `unknown billing action: ${action ?? "(none)"}`, [
-    "usage: zombiectl billing show [--limit <n>] [--cursor <token>] [--json]",
-  ]);
-  return Promise.resolve(2);
-}
 
 // Build the parsed = { options, positionals } shape that leaf handlers
 // expect from a flat token array. Test-only utility — production now

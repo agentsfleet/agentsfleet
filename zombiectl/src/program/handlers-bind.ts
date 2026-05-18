@@ -31,10 +31,7 @@ import {
   commandTenantProviderDelete,
   errorMap as tenantErrorMap,
 } from "../commands/tenant.ts";
-import {
-  commandBillingShow,
-  errorMap as billingErrorMap,
-} from "../commands/billing.ts";
+import { billingShowEffectFromArgs } from "../commands/billing.ts";
 import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
 import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 
@@ -297,7 +294,15 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       },
     },
     billing: {
-      show: wrap("billing.show", billingErrorMap, commandBillingShow),
+      show: wrapEffectFn(
+        "billing.show",
+        (frame) =>
+          billingShowEffectFromArgs({
+            limit: optString(frame.parsed.options, "limit"),
+            cursor: optString(frame.parsed.options, "cursor"),
+          }),
+        lifecycle,
+      ),
     },
     zombie: buildZombieHandlers(
       wrapE,
