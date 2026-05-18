@@ -116,8 +116,14 @@ export async function deleteZombie(
   );
 }
 
-export function webhookUrlFor(zombieId: string): string {
-  return `${API_ORIGIN}/v1/webhooks/${zombieId}`;
+// Builds the per-source webhook URL the server returns in
+// `webhook_urls` on install (`src/http/handlers/zombies/create.zig`
+// populateWebhookUrls). When `source` is omitted the legacy
+// no-source path is returned — the M68 fallback panel still uses it.
+export function webhookUrlFor(zombieId: string, source?: string): string {
+  return source
+    ? `${API_ORIGIN}/v1/webhooks/${zombieId}/${source}`
+    : `${API_ORIGIN}/v1/webhooks/${zombieId}`;
 }
 
 // POST /v1/workspaces/{ws}/zombies/{id}/messages

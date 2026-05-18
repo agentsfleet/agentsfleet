@@ -1,6 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const analytics = vi.hoisted(() => ({
   trackNavigationClicked: vi.fn(),
@@ -10,7 +10,9 @@ const analytics = vi.hoisted(() => ({
 vi.mock("../analytics/posthog", () => analytics);
 
 import Hero from "./Hero";
-import { DOCS_QUICKSTART_URL } from "../config";
+
+const INSTALL_COMMAND =
+  "npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie";
 
 function renderHero() {
   return render(
@@ -20,10 +22,23 @@ function renderHero() {
   );
 }
 
+function installClipboard() {
+  const writeText = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+  return writeText;
+}
+
 describe("Hero", () => {
   beforeEach(() => {
     analytics.trackNavigationClicked.mockReset();
     analytics.trackSignupStarted.mockReset();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("renders the two-line mono headline", () => {
@@ -49,11 +64,91 @@ describe("Hero", () => {
     expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
   });
 
-  it("renders the primary CTA pointing at the docs quickstart", () => {
+  it("renders the primary CTA as a terminal-style $ install button (not a docs link)", () => {
+    installClipboard();
     renderHero();
     const cta = screen.getByTestId("hero-cta-primary");
-    expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
-    expect(cta.textContent).toMatch(/get early access/i);
+    expect(cta.tagName).toBe("BUTTON");
+    expect(cta.textContent).toContain(INSTALL_COMMAND);
+    expect(cta.textContent).toContain("$");
+    expect(cta.getAttribute("href")).toBeNull();
+  });
+
+  it("writes the install command to the clipboard on primary CTA click", async () => {
+    const writeText = installClipboard();
+    renderHero();
+    fireEvent.click(screen.getByTestId("hero-cta-primary"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    expect(writeText.mock.calls[0][0]).toBe(INSTALL_COMMAND);
+    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
+      source: "hero_primary",
+      surface: "hero",
+      mode: "humans",
+    });
+  });
+
+  it("scrolls the #onboarding-flow anchor into view after copying", async () => {
+    installClipboard();
+    const anchor = document.createElement("section");
+    anchor.id = "onboarding-flow";
+    const scrollIntoView = vi.fn();
+    anchor.scrollIntoView = scrollIntoView;
+    document.body.appendChild(anchor);
+    try {
+      renderHero();
+      fireEvent.click(screen.getByTestId("hero-cta-primary"));
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView.mock.calls[0][0]).toMatchObject({ block: "start" });
+    } finally {
+      document.body.removeChild(anchor);
+    }
+  });
+
+  it("shows the copied toast then dismisses it after the visible window", async () => {
+    vi.useFakeTimers();
+    installClipboard();
+    renderHero();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("hero-cta-primary"));
+      // Two microtask flushes — one for clipboard.writeText resolve, one
+      // for the React state update that paints the toast.
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
+      /Copied — paste into your terminal/i,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(2100);
+    });
+    expect((screen.getByTestId("hero-cta-toast").textContent ?? "").trim()).toBe("");
+  });
+
+  it("clears the pending toast timer on unmount (no leaked setTimeout)", async () => {
+    const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+    const writeText = installClipboard();
+    const { unmount } = renderHero();
+    fireEvent.click(screen.getByTestId("hero-cta-primary"));
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const before = clearSpy.mock.calls.length;
+    unmount();
+    expect(clearSpy.mock.calls.length).toBeGreaterThan(before);
+    clearSpy.mockRestore();
+  });
+
+  it("falls back to the manual-copy toast when the clipboard API rejects", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("blocked"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderHero();
+    fireEvent.click(screen.getByTestId("hero-cta-primary"));
+    await waitFor(() =>
+      expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
+        /Clipboard blocked/i,
+      ),
+    );
   });
 
   it("renders the secondary CTA pointing at /agents", () => {
@@ -61,16 +156,6 @@ describe("Hero", () => {
     const cta = screen.getByTestId("hero-cta-secondary");
     expect(cta).toHaveAttribute("href", "/agents");
     expect(cta.textContent).toMatch(/view a real wake/i);
-  });
-
-  it("tracks clicks on the primary CTA", () => {
-    renderHero();
-    fireEvent.click(screen.getByTestId("hero-cta-primary"));
-    expect(analytics.trackSignupStarted).toHaveBeenCalledWith({
-      source: "hero_primary",
-      surface: "hero",
-      mode: "humans",
-    });
   });
 
   it("tracks clicks on the secondary CTA", () => {

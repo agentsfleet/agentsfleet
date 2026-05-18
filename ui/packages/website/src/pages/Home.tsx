@@ -1,6 +1,6 @@
 import Hero from "../components/Hero";
 import FeatureSection from "../components/FeatureSection";
-import FeatureFlow from "../components/FeatureFlow";
+import OnboardingFlow from "../components/OnboardingFlow";
 import HowItWorks from "../components/HowItWorks";
 import Pricing from "../components/Pricing";
 import CTABlock from "../components/CTABlock";
@@ -37,7 +37,7 @@ export default function Home() {
   return (
     <div data-testid="home-page">
       <Hero />
-      <FeatureFlow />
+      <OnboardingFlow />
 
       <section className="site-section" aria-label="Core capabilities">
         <div className="wrap flex flex-col gap-8">

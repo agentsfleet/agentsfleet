@@ -2,7 +2,6 @@ import { render, screen } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { describe, it, expect } from "vitest";
 import Home from "./Home";
-import { DOCS_QUICKSTART_URL } from "../config";
 import { RATES_DISPLAY } from "../lib/rates";
 
 function renderHome() {
@@ -27,11 +26,11 @@ describe("Home", () => {
     expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
   });
 
-  it("renders primary early-access CTA pointing at the docs quickstart", () => {
+  it("renders the terminal-style primary CTA with the install command", () => {
     renderHome();
     const cta = screen.getByTestId("hero-cta-primary");
-    expect(cta).toHaveAttribute("href", DOCS_QUICKSTART_URL);
-    expect(cta.textContent).toMatch(/get early access/i);
+    expect(cta.tagName).toBe("BUTTON");
+    expect(cta.textContent).toContain("npm install -g @usezombie/zombiectl");
   });
 
   it("does not render Talk to us CTA", () => {
@@ -44,11 +43,15 @@ describe("Home", () => {
     expect(screen.getByLabelText(/install platform-ops via claude code/i)).toBeInTheDocument();
   });
 
-  it("renders feature flow rows including Dashboard", () => {
+  it("mounts the OnboardingFlow at the #onboarding-flow anchor with all four steps", () => {
     renderHome();
-    expect(screen.getByRole("heading", { level: 3, name: "Install once." })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Every event on the record." })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 3, name: "Dashboard" })).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-flow").getAttribute("id")).toBe(
+      "onboarding-flow",
+    );
+    expect(screen.getByRole("heading", { level: 3, name: "Install the CLI" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Run the install skill" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Wire your trigger" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 3, name: "Steer your zombie" })).toBeInTheDocument();
   });
 
   it("renders How it works section", () => {

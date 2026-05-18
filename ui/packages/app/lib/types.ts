@@ -10,6 +10,15 @@ export type ApiError = {
 
 // ── Zombies ──
 
+// Server projects `config_json->'x-usezombie'->'triggers'` into the list-row
+// response (`src/http/handlers/zombies/list.zig` ZombieListItem). One entry
+// per declared trigger from `TRIGGER.md`. Tagged union by `type` — webhook
+// carries source + events; cron carries the raw schedule expression.
+export type ZombieTrigger =
+  | { type: "webhook"; source: string; events?: string[] }
+  | { type: "cron"; schedule: string }
+  | { type: "api" };
+
 // `status` is typed as the loose `string` because the wire format may carry
 // values the front-end doesn't recognise (forward-compat). Consumers should
 // narrow with `ZOMBIE_STATUS` from `lib/api/zombies` before branching.
@@ -19,6 +28,7 @@ export type Zombie = {
   status: string;
   created_at: number;
   updated_at: number;
+  triggers?: ZombieTrigger[];
 };
 
 export type InstallZombieRequest = {

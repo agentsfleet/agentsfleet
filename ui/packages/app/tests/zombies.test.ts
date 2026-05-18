@@ -685,60 +685,9 @@ describe("zombies routes", () => {
   });
 });
 
-// ── Panel interactions (real DOM) ──────────────────────────────────────────
-
-describe("TriggerPanel interactions", () => {
-  it("shows webhook URL by default, copy button calls clipboard and toggles state", async () => {
-    const { default: TriggerPanel } = await import(
-      "../app/(dashboard)/zombies/[id]/components/TriggerPanel"
-    );
-    render(React.createElement(TriggerPanel, { zombieId: "zom_abc" }));
-
-    expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
-    );
-    // fireEvent.click instead of userEvent.click — user-event v14 installs its
-    // own clipboard shim that hides the navigator.clipboard spy this test sets.
-    fireEvent.click(screen.getByRole("button", { name: /copy webhook url/i }));
-    expect(clipboardWriteText).toHaveBeenCalledWith(
-      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /copy webhook url/i }).textContent,
-      ).toMatch(/Copied/),
-    );
-  });
-
-  it("copy handler swallows clipboard API rejection without throwing", async () => {
-    clipboardWriteText.mockRejectedValueOnce(new Error("denied"));
-    const { default: TriggerPanel } = await import(
-      "../app/(dashboard)/zombies/[id]/components/TriggerPanel"
-    );
-    render(React.createElement(TriggerPanel, { zombieId: "zom_abc" }));
-    // Should not throw even though clipboard rejects.
-    fireEvent.click(screen.getByRole("button", { name: /copy webhook url/i }));
-    expect(clipboardWriteText).toHaveBeenCalled();
-    // Let the rejected promise settle so the try/catch branch completes.
-    await Promise.resolve();
-    // State stays un-toggled — still the Copy icon/label.
-    expect(screen.getByRole("button", { name: /copy webhook url/i }).textContent).toMatch(
-      /Copy/,
-    );
-  });
-
-  it("switching to schedule tab reveals the CLI-only placeholder", async () => {
-    const { default: TriggerPanel } = await import(
-      "../app/(dashboard)/zombies/[id]/components/TriggerPanel"
-    );
-    const user = userEvent.setup();
-    render(React.createElement(TriggerPanel, { zombieId: "zom_abc" }));
-
-    await user.click(screen.getByRole("tab", { name: /schedule \(cron\)/i }));
-    expect(screen.getByText(/Cron scheduling is CLI-only/i)).toBeTruthy();
-    expect(screen.queryByTestId("webhook-url")).toBeNull();
-  });
-});
+// TriggerPanel coverage moved to a co-located test file with the
+// per-trigger accordion rewrite (`components/TriggerPanel.test.tsx`).
+// The legacy Tabs UI tested in this block no longer exists.
 
 describe("ZombieConfig interactions", () => {
   it("delete flow: confirm dialog → DELETE call → push to /zombies", async () => {
