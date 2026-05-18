@@ -70,8 +70,7 @@ const noopAnalytics = Analytics.of({
   groupIdentify: () => Effect.void,
 });
 
-export const analyticsLayer: Layer.Layer<Analytics, never, TelemetryRuntime> =
-  Layer.effect(
+export const analyticsLayer = Layer.effect(
     Analytics,
     Effect.gen(function* () {
       const runtime = yield* TelemetryRuntime;

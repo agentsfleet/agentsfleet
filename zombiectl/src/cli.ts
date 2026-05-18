@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { type Command, CommanderError, InvalidArgumentError } from "commander";
 
 import { openUrl } from "./lib/browser.ts";
-import { cliAnalytics, type AnalyticsClient } from "./lib/analytics.ts";
 import {
   clearCredentials,
   loadCredentials,
@@ -19,8 +18,9 @@ import {
   type Session,
   type Workspaces,
 } from "./lib/state.ts";
-import { apiHeaders, request } from "./program/http-client.ts";
-import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.ts";
+import { Effect } from "effect";
+import { runCommanderParse } from "./lib/commander-bridge.ts";
+import { extractRoleFromToken } from "./program/auth-token.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
@@ -100,7 +100,6 @@ function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): s
 
 function buildDeps(): CommandDeps {
   return {
-    apiHeaders,
     clearCredentials,
     createSpinner,
     loadCredentials,
@@ -110,7 +109,6 @@ function buildDeps(): CommandDeps {
     printKeyValue,
     printSection,
     printTable,
-    request,
     saveCredentials,
     saveWorkspaces,
     ui,
@@ -226,15 +224,10 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     fetchImpl,
   };
 
-  const analyticsClient: AnalyticsClient | null = await cliAnalytics.createCliAnalytics(env);
-  const distinctId: string | null = extractDistinctIdFromToken(ctx.token ?? null);
-
   const lifecycle: Lifecycle = {
     ctx,
     workspaces,
     deps: buildDeps(),
-    analyticsClient,
-    distinctId,
     lastCommand: null,
   };
 
@@ -250,39 +243,22 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   installPreAction(program, ctx, state);
 
-  // commander parse + post-action events run outside the dispatcher.
-  const baseEventProps: Record<string, unknown> = { ...(ctx.cliSessionId ? { cli_session_id: ctx.cliSessionId } : {}), ...(ctx.cliDeviceId ? { cli_device_id: ctx.cliDeviceId } : {}) };
+  // commander parse + parse-error analytics go through the
+  // commander-bridge — the bridge wraps program.parseAsync in an Effect
+  // that emits cli_command_executed (exit_code: 0 on success, 1 on
+  // parse failure) through the new Analytics layer. The bridge file is
+  // deleted in the (c) migration when commander goes away.
+  const parseResult = await Effect.runPromise(runCommanderParse(program, effectiveArgv));
 
-  try {
-    await program.parseAsync(effectiveArgv, { from: "user" });
-  } catch (err) {
+  if (!parseResult.ok) {
+    const err = parseResult.commanderError ?? parseResult.otherError;
     if (err instanceof CommanderError) {
-      const exitCode = exitFromCommanderError(err, state);
-      if (COMMANDER_USAGE_CODES.has(err.code)) {
-        try {
-          cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-            command: lifecycle.lastCommand || "unknown",
-            error_code: err.code === "commander.unknownCommand" ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
-            exit_code: String(exitCode),
-            ...baseEventProps,
-          });
-        } catch {
-          // Analytics failure is swallowed; the unknown-command UX is the
-          // headline. The finally block still shuts down the client.
-        }
-      }
-      return exitCode;
+      return exitFromCommanderError(err, state);
     }
     if (err instanceof InvalidArgumentError) {
       writeLine(stderr, ui.err(`error: ${err.message}`));
       return 2;
     }
-    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-      command: lifecycle.lastCommand || "unknown",
-      error_code: "UNEXPECTED",
-      exit_code: "1",
-      ...baseEventProps,
-    });
     const message = errMessage(err);
     if (ctx.jsonMode) {
       printJson(stderr, { error: { code: "UNEXPECTED", message } });
@@ -290,8 +266,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
       writeLine(stderr, ui.err(`error: ${message}`));
     }
     return 1;
-  } finally {
-    await cliAnalytics.shutdownCliAnalytics(analyticsClient);
   }
 
   return state.exitCode;

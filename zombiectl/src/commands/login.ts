@@ -14,7 +14,7 @@
 // login-helpers.ts to keep this file under the 350-line cap.
 
 import { Effect, Redacted } from "effect";
-import { Analytics } from "../services/analytics.ts";
+import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { Browser } from "../services/browser.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";

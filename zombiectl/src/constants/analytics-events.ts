@@ -10,14 +10,21 @@
 export const EVT_USER_AUTHENTICATED = "user_authenticated";
 export const EVT_LOGOUT_COMPLETED = "logout_completed";
 
-// Dispatcher triplet — emitted by the Effect dispatcher around every
-// command Effect (started → finished, or started → error → finished).
-// cli_session_id / cli_device_id are auto-merged inside the Analytics
-// service from TelemetryRuntime so command code cannot accidentally
-// drop them.
-export const EVT_CLI_COMMAND_STARTED = "cli_command_started";
-export const EVT_CLI_COMMAND_FINISHED = "cli_command_finished";
-export const EVT_CLI_ERROR = "cli_error";
+// Single command-lifecycle event emitted by the supabase-pattern
+// withCommandInstrumentation wrapper (services/telemetry/
+// command-instrumentation.ts). Properties: exit_code (0|1),
+// duration_ms, plus command_run_id / command / flags_used /
+// flag_values auto-merged from CurrentAnalyticsContext, plus
+// device_id / session_id / is_first_run / is_tty / is_ci / os /
+// arch / cli_version auto-merged from TelemetryRuntime.
+//
+// Error attribution lives on the span (Effect.withSpan) — the NDJSON
+// exporter extracts status.exit._tag into the `error_code` field on
+// the span line. No separate cli_error event.
+//
+// Re-exported from command-instrumentation.ts so this file stays the
+// single source of truth for event names.
+export { EVT_CLI_COMMAND_EXECUTED } from "../services/telemetry/command-instrumentation.ts";
 
 // Auth-flow milestones. `login_completed` is the established wire
 // contract — PostHog dashboards key off the bare name. New CLI events

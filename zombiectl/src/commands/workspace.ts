@@ -13,7 +13,7 @@
 //   - state store IO failure              → UnexpectedError (exit 1)
 
 import { Effect } from "effect";
-import { Analytics } from "../services/analytics.ts";
+import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
