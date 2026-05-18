@@ -4,6 +4,7 @@ import {
   Button,
   LogLine,
   Terminal,
+  Toast,
   WakePulse,
   useResettableTimeout,
 } from "@usezombie/design-system";
@@ -39,7 +40,7 @@ const TOAST_VISIBLE_MS = 2000;
  *   cli:      inline <Terminal> showing the install transcript
  *
  * Primary CTA copies the bootstrap one-liner, surfaces an inline
- * aria-live toast, and smooth-scrolls down to the OnboardingFlow
+ * design-system <Toast>, and smooth-scrolls down to the OnboardingFlow
  * anchor on the same page (#onboarding-flow). No portal — the toast
  * lives in the hero's own DOM so it ships under the same a11y tree.
  */
@@ -129,17 +130,17 @@ export default function Hero() {
               view a real wake (replay)
             </Link>
           </Button>
-          <output
-            aria-live="polite"
+          <Toast
+            visible={toast !== null}
+            severity={toast === "manual" ? "warning" : "info"}
             data-testid="hero-cta-toast"
-            className="font-mono text-mono text-text-muted"
           >
             {toast === "copied"
               ? "Copied — paste into your terminal"
               : toast === "manual"
                 ? "Clipboard blocked — select the command above and copy manually"
                 : null}
-          </output>
+          </Toast>
         </div>
 
         <Terminal
