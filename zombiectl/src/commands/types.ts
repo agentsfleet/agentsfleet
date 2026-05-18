@@ -9,10 +9,10 @@
 // Workspaces accept any extra fields handlers read so command-specific
 // reads don't force a churn through this file.
 
-import type { HandlerCtx as RunCommandCtx } from "../lib/run-command.ts";
-import type { ApiRequestOptions } from "../lib/http.ts";
+import type { ApiRequestOptions, RetryConfig } from "../lib/http.ts";
 import type { StreamGetCallback, StreamGetOptions } from "../lib/sse.ts";
 import type { Credentials, Workspaces, WorkspaceItem } from "../lib/state.ts";
+import type { AnalyticsClient } from "../lib/analytics.ts";
 import type {
   UiTheme,
   WriteStream,
@@ -20,6 +20,26 @@ import type {
   TableRow,
   KeyValueRows,
 } from "../output/index.ts";
+
+// Ctx shape commands read directly. Previously inherited from
+// lib/run-command.ts::HandlerCtx; inlined here when the legacy
+// wrapper was retired and the dispatcher (lib/run-effect.ts) became
+// the only command boundary. Fields are a strict superset of what
+// cli.ts buildDeps() emits + what handlers reach into.
+export interface RunCommandCtx {
+  stderr?: NodeJS.WritableStream | null;
+  jsonMode?: boolean;
+  apiUrl?: string;
+  analyticsClient?: AnalyticsClient | null;
+  distinctId?: string;
+  analyticsContext?: Record<string, unknown> | null;
+  retryConfig?: RetryConfig | null;
+  // CLI telemetry session/device identity. Local camelCase; the
+  // wire-format snake_case rename happens at emit/append sites.
+  cliSessionId?: string | null;
+  cliDeviceId?: string | null;
+  [key: string]: unknown;
+}
 
 // On-disk shapes re-exported from lib/state.ts. Single source of truth for
 // the worktree (~/.config/zombiectl/credentials.json, workspaces.json) —
@@ -38,9 +58,10 @@ export type StreamGetFn = (
   options?: StreamGetOptions,
 ) => Promise<void>;
 
-// The ctx that command handlers receive. Extends runCommand's
-// HandlerCtx (whose retryConfig the wrapper mutates) with the streams
-// and credential fields commands read directly.
+// The ctx that command handlers receive. Extends RunCommandCtx with
+// the streams and credential fields commands read directly. The
+// retryConfig is now set by the dispatcher (or by callers that need
+// it) rather than mutated by a wrapper.
 export interface CommandCtx extends RunCommandCtx {
   stdout?: NodeJS.WritableStream | null;
   stderr?: NodeJS.WritableStream | null;
