@@ -1,24 +1,6 @@
 import { Writable } from "node:stream";
 import { ApiError, type FetchImpl } from "../src/lib/http.ts";
 
-import {
-  commandStatus,
-  commandStop,
-  commandResume,
-  commandKill,
-  commandDelete as commandZombieDeleteLeaf,
-} from "../src/commands/zombie.ts";
-import { commandInstall, commandUpdate } from "../src/commands/zombie_install.ts";
-import { commandList as commandZombieList } from "../src/commands/zombie_list.ts";
-import { commandLogs as commandZombieLogs } from "../src/commands/zombie_logs.ts";
-import { commandEvents as commandZombieEvents } from "../src/commands/zombie_events.ts";
-import { commandSteer as commandZombieSteer } from "../src/commands/zombie_steer.ts";
-import {
-  commandCredentialAdd,
-  commandCredentialShow,
-  commandCredentialList,
-  commandCredentialDelete,
-} from "../src/commands/zombie_credential.ts";
 import { commandLogin } from "../src/commands/core.ts";
 import { commandDoctor } from "../src/commands/core-ops.ts";
 import {
@@ -224,46 +206,6 @@ export function commandBilling(
   emitUsage(ctx, deps, "UNKNOWN_COMMAND", `unknown billing action: ${action ?? "(none)"}`, [
     "usage: zombiectl billing show [--limit <n>] [--cursor <token>] [--json]",
   ]);
-  return Promise.resolve(2);
-}
-
-// Test-only dispatcher that re-creates the old `commandZombie(ctx, args, ws, deps)`
-// surface from the new leaf exports. Production routes through commander
-// (cli-tree.ts); this shim keeps the direct-handler tests focused on leaf
-// behavior without rewriting every call site to a different function per action.
-export function commandZombieDispatch(
-  ctx: CommandCtx,
-  args: readonly string[],
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const action = args[0];
-  const rest = args.slice(1);
-  switch (action) {
-    case "install": return commandInstall(ctx, buildParsed(rest), workspaces, deps);
-    case "update":  return commandUpdate(ctx, buildParsed(rest), workspaces, deps);
-    case "status":  return Promise.resolve(commandStatus(ctx, buildParsed(rest), workspaces, deps));
-    case "kill":    return Promise.resolve(commandKill(ctx, buildParsed(rest), workspaces, deps));
-    case "stop":    return Promise.resolve(commandStop(ctx, buildParsed(rest), workspaces, deps));
-    case "resume":  return Promise.resolve(commandResume(ctx, buildParsed(rest), workspaces, deps));
-    case "delete":  return Promise.resolve(commandZombieDeleteLeaf(ctx, buildParsed(rest), workspaces, deps));
-    case "list":    return Promise.resolve(commandZombieList(ctx, buildParsed(rest), workspaces, deps));
-    case "logs":    return Promise.resolve(commandZombieLogs(ctx, buildParsed(rest), workspaces, deps));
-    case "events":  return commandZombieEvents(ctx, buildParsed(rest), workspaces, deps);
-    case "steer":   return commandZombieSteer(ctx, buildParsed(rest), workspaces, deps);
-    case "credential": {
-      const sub = rest[0];
-      const subRest = rest.slice(1);
-      if (sub === "add")    return commandCredentialAdd(ctx, buildParsed(subRest), workspaces, deps);
-      if (sub === "show")   return Promise.resolve(commandCredentialShow(ctx, buildParsed(subRest), workspaces, deps));
-      if (sub === "list")   return Promise.resolve(commandCredentialList(ctx, buildParsed(subRest), workspaces, deps));
-      if (sub === "delete") return Promise.resolve(commandCredentialDelete(ctx, buildParsed(subRest), workspaces, deps));
-      break;
-    }
-  }
-  if (deps?.writeError) {
-    deps.writeError(ctx, "UNKNOWN_COMMAND", `unknown zombie subcommand: ${action ?? "(none)"}`, deps);
-  }
   return Promise.resolve(2);
 }
 

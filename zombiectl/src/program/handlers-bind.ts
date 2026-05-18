@@ -4,7 +4,7 @@
 // channel. Remaining groups route through the pre-Effect runCommand
 // path until their own commit in this PR.
 
-import type { Effect } from "effect";
+import { Option, Redacted, type Effect } from "effect";
 import { cliAnalytics } from "../lib/analytics.ts";
 import { runCommand } from "../lib/run-command.ts";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
@@ -46,25 +46,7 @@ import {
   commandBillingShow,
   errorMap as billingErrorMap,
 } from "../commands/billing.ts";
-import {
-  commandStatus,
-  commandStop,
-  commandResume,
-  commandKill,
-  commandDelete as commandZombieDelete,
-  errorMap as zombieErrorMap,
-} from "../commands/zombie.ts";
-import { commandInstall, commandUpdate } from "../commands/zombie_install.ts";
-import { commandList as commandZombieList } from "../commands/zombie_list.ts";
-import { commandLogs as commandZombieLogs } from "../commands/zombie_logs.ts";
-import { commandEvents as commandZombieEvents } from "../commands/zombie_events.ts";
-import { commandSteer as commandZombieSteer } from "../commands/zombie_steer.ts";
-import {
-  commandCredentialAdd,
-  commandCredentialShow,
-  commandCredentialList,
-  commandCredentialDelete,
-} from "../commands/zombie_credential.ts";
+import { buildZombieHandlers } from "./handlers-bind-zombie.ts";
 
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import type {
@@ -73,6 +55,7 @@ import type {
   CommandHandler,
   Workspaces,
 } from "../commands/types.ts";
+import { parseIntOption } from "./validators.ts";
 import type { PresetMap } from "../lib/error-map-presets.ts";
 import type { AnalyticsClient } from "../lib/analytics.ts";
 
@@ -114,16 +97,25 @@ function wrapHandler(
   };
 }
 
+// Thread runCli's env-resolved values into Effect's CliConfig override.
+// `ctx.token` is already a `creds.token || env.ZOMBIE_TOKEN` merge from
+// cli.ts; mirror it as the override's `accessToken` so commands' Effects
+// see the same token the legacy path used to.
 function configOverrideFromCtx(ctx: Lifecycle["ctx"]): {
   jsonMode: boolean;
   noOpen: boolean;
   apiUrl: string;
+  accessToken: Option.Option<Redacted.Redacted<string>>;
   fetchImpl?: import("../lib/http.ts").FetchImpl;
 } {
   return {
     jsonMode: Boolean(ctx.jsonMode),
     noOpen: Boolean(ctx.noOpen),
     apiUrl: ctx.apiUrl,
+    accessToken:
+      typeof ctx.token === "string" && ctx.token.length > 0
+        ? Option.some(Redacted.make(ctx.token))
+        : Option.none(),
     ...(ctx.fetchImpl !== undefined
       ? { fetchImpl: ctx.fetchImpl as import("../lib/http.ts").FetchImpl }
       : {}),
@@ -191,13 +183,18 @@ function wrapEffectFn<E extends CliError, R extends MainLayerServices>(
   };
 }
 
+// Permissive post-handoff reader — wraps `parseIntOption` from
+// validators.ts, swallowing its InvalidArgumentError so the commander
+// parser doubles as a try/Either-style integer reader here. Number
+// fast-path skips the `String(value).trim()` round-trip; the parser
+// covers every other shape (string, undefined, junk).
 const numericOption = (value: unknown): number | undefined => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : undefined;
+  try {
+    return parseIntOption()(value);
+  } catch {
+    return undefined;
   }
-  return undefined;
 };
 
 export function buildHandlers(lifecycle: Lifecycle): Handlers {
@@ -252,24 +249,12 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
     billing: {
       show: wrap("billing.show", billingErrorMap, commandBillingShow),
     },
-    zombie: {
-      install: wrap("zombie.install", zombieErrorMap, commandInstall),
-      update:  wrap("zombie.update",  zombieErrorMap, commandUpdate),
-      list:    wrap("zombie.list",    zombieErrorMap, commandZombieList),
-      status:  wrap("zombie.status",  zombieErrorMap, commandStatus),
-      stop:    wrap("zombie.stop",    zombieErrorMap, commandStop),
-      resume:  wrap("zombie.resume",  zombieErrorMap, commandResume),
-      kill:    wrap("zombie.kill",    zombieErrorMap, commandKill),
-      delete:  wrap("zombie.delete",  zombieErrorMap, commandZombieDelete),
-      logs:    wrap("zombie.logs",    zombieErrorMap, commandZombieLogs),
-      events:  wrap("zombie.events",  zombieErrorMap, commandZombieEvents),
-      steer:   wrap("zombie.steer",   zombieErrorMap, commandZombieSteer),
-      credential: {
-        add:    wrap("zombie.credential.add",    zombieErrorMap, commandCredentialAdd),
-        show:   wrap("zombie.credential.show",   zombieErrorMap, commandCredentialShow),
-        list:   wrap("zombie.credential.list",   zombieErrorMap, commandCredentialList),
-        delete: wrap("zombie.credential.delete", zombieErrorMap, commandCredentialDelete),
-      },
-    },
+    zombie: buildZombieHandlers(
+      wrapE,
+      <E extends CliError, R extends MainLayerServices>(
+        name: string,
+        factory: (frame: ActionFrame) => Effect.Effect<void, E, R>,
+      ) => wrapEffectFn(name, factory, lifecycle),
+    ),
   };
 }

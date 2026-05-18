@@ -10,7 +10,13 @@
 // driven by the command code, not by this service.
 
 import { Effect, Layer, Context } from "effect";
-import { ui as defaultUi, printSection as printSectionRaw } from "../output/index.ts";
+import {
+  ui as defaultUi,
+  printSection as printSectionRaw,
+  printTable as printTableRaw,
+  type TableColumn,
+  type TableRow,
+} from "../output/index.ts";
 
 type Stream = NodeJS.WritableStream;
 
@@ -31,6 +37,10 @@ export interface OutputShape {
   readonly printJsonErr: (payload: unknown) => Effect.Effect<void>;
   readonly printKeyValue: (record: Record<string, string>) => Effect.Effect<void>;
   readonly printSection: (title: string) => Effect.Effect<void>;
+  readonly printTable: (
+    columns: ReadonlyArray<TableColumn>,
+    rows: ReadonlyArray<TableRow>,
+  ) => Effect.Effect<void>;
 }
 
 export class Output extends Context.Service<Output, OutputShape>()(
@@ -69,6 +79,10 @@ export const makeStdioOutput = ({ stdout, stderr }: StreamPair): OutputShape => 
   printSection: (title) =>
     Effect.sync(() => {
       printSectionRaw(stdout as unknown as Parameters<typeof printSectionRaw>[0], title);
+    }),
+  printTable: (columns, rows) =>
+    Effect.sync(() => {
+      printTableRaw(stdout as unknown as Parameters<typeof printTableRaw>[0], columns, rows);
     }),
 });
 

@@ -1,102 +1,76 @@
-// `zombiectl events <zombie_id>` — paginated history print.
-//
-// Reads the per-zombie `core.zombie_events` history newest-first.
+// `zombiectl events <zombie_id>` — newest-first paginated history print.
 // Filters: --actor (glob), --since (Go-style duration or RFC 3339),
 // --cursor (opaque base64url from a prior `next_cursor`), --limit.
-// Default print: one line per event with timestamp + actor + status +
-// short response preview. `--json` emits the raw envelope for piping.
+// Default: one line per event with ts + actor + status + preview.
+// `--json` (or global jsonMode) emits the raw envelope for piping.
 
+import { Effect } from "effect";
+import { CliConfig } from "../services/config.ts";
+import { Credentials } from "../services/credentials.ts";
+import { HttpClient } from "../services/http-client.ts";
+import { Output } from "../services/output.ts";
+import { Workspaces } from "../services/workspaces.ts";
+import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsZombieEventsPath } from "../lib/api-paths.ts";
 import { EVENT_STATUS } from "../constants/event-status.ts";
-import type { UiTheme } from "../output/index.ts";
-import type {
-  CommandCtx,
-  CommandDeps,
-  ParsedArgs,
-  Workspaces,
-} from "./types.ts";
+import { ui, type UiTheme } from "../output/index.ts";
+import {
+  ValidationError,
+  type CliError,
+} from "../errors/index.ts";
 
 const DEFAULT_LIMIT = 50;
+const PREVIEW_MAX = 80;
 
 interface EventRow {
-  created_at?: number | string | null;
-  response_text?: string | null;
-  status?: string | null;
-  actor?: string | null;
+  readonly created_at?: number | string | null;
+  readonly response_text?: string | null;
+  readonly status?: string | null;
+  readonly actor?: string | null;
 }
 
-export async function commandEvents(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, printSection, writeLine, writeError } = deps;
-  const zombieId = parsed.positionals[0];
-
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    writeError(ctx, "NO_WORKSPACE", "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
-  }
-  if (!zombieId) {
-    writeError(ctx, "MISSING_ARGUMENT", "usage: zombiectl events <zombie_id> [--actor=glob] [--since=2h] [--cursor=...] [--limit=N] [--json]", deps);
-    return 2;
-  }
-
-  const url = buildUrl(wsId, zombieId, parsed.options);
-  const res = (await request(ctx, url, {
-    method: "GET",
-    headers: apiHeaders(ctx),
-  })) as { items?: EventRow[]; next_cursor?: string | null } | null;
-
-  if ((ctx.jsonMode || parsed.options["json"]) && ctx.stdout) {
-    printJson(ctx.stdout, res);
-    return 0;
-  }
-
-  const items = res?.items ?? [];
-  if (!ctx.stdout) return 0;
-  if (items.length === 0) {
-    writeLine(ctx.stdout, ui.info("No events yet."));
-    return 0;
-  }
-
-  printSection(ctx.stdout, "Events");
-  for (const ev of items) {
-    writeLine(ctx.stdout, formatRow(ev, ui));
-  }
-  if (res?.next_cursor) {
-    writeLine(ctx.stdout);
-    writeLine(ctx.stdout, ui.dim(`  More: zombiectl events ${zombieId} --cursor=${res.next_cursor}`));
-  }
-  return 0;
+interface EventsResponse {
+  readonly items?: ReadonlyArray<EventRow>;
+  readonly next_cursor?: string | null;
 }
 
-function buildUrl(
-  wsId: string,
-  zombieId: string,
-  options: ParsedArgs["options"],
-): string {
-  const base = wsZombieEventsPath(wsId, zombieId);
+export interface EventsEffectFlags {
+  readonly zombieId?: string | undefined;
+  readonly actor?: string | undefined;
+  readonly since?: string | undefined;
+  readonly cursor?: string | undefined;
+  readonly limit?: string | undefined;
+  readonly json?: boolean | undefined;
+}
+
+const buildQuery = (flags: EventsEffectFlags): string => {
   const qs = new URLSearchParams();
-  const limitOpt = options["limit"];
   const limit =
-    typeof limitOpt === "string" || typeof limitOpt === "number"
-      ? String(limitOpt)
+    typeof flags.limit === "string" || typeof flags.limit === "number"
+      ? String(flags.limit)
       : String(DEFAULT_LIMIT);
   qs.set("limit", limit);
-  const actor = options["actor"];
-  const since = options["since"];
-  const cursor = options["cursor"];
-  if (typeof actor === "string" && actor.length > 0) qs.set("actor", actor);
-  if (typeof since === "string" && since.length > 0) qs.set("since", since);
-  if (typeof cursor === "string" && cursor.length > 0) qs.set("cursor", cursor);
-  const q = qs.toString();
-  return q.length > 0 ? `${base}?${q}` : base;
-}
+  if (typeof flags.actor === "string" && flags.actor.length > 0) qs.set("actor", flags.actor);
+  if (typeof flags.since === "string" && flags.since.length > 0) qs.set("since", flags.since);
+  if (typeof flags.cursor === "string" && flags.cursor.length > 0) qs.set("cursor", flags.cursor);
+  return qs.toString();
+};
 
-function formatRow(ev: EventRow, ui: UiTheme): string {
+const renderStatus = (status: string | null | undefined, theme: UiTheme): string => {
+  if (!status) return theme.dim("—");
+  if (status === EVENT_STATUS.PROCESSED) return theme.ok(status);
+  if (status === EVENT_STATUS.AGENT_ERROR) return theme.err(status);
+  if (status === EVENT_STATUS.GATE_BLOCKED) return theme.warn(status);
+  return theme.dim(status);
+};
+
+const previewText = (text: string | null | undefined): string => {
+  if (typeof text !== "string" || text.length === 0) return "";
+  const oneline = text.replace(/\s+/g, " ").trim();
+  return oneline.length > PREVIEW_MAX ? `${oneline.slice(0, PREVIEW_MAX - 3)}…` : oneline;
+};
+
+const formatRow = (ev: EventRow): string => {
   const ts =
     typeof ev.created_at === "number" && Number.isFinite(ev.created_at)
       ? new Date(ev.created_at).toISOString()
@@ -105,18 +79,53 @@ function formatRow(ev: EventRow, ui: UiTheme): string {
   const actor = ev.actor || "—";
   const preview = previewText(ev.response_text);
   return `  ${ui.dim(ts)}  ${actor}  ${status}  ${preview}`;
-}
+};
 
-function renderStatus(status: string | null | undefined, ui: UiTheme): string {
-  if (!status) return ui.dim("—");
-  if (status === EVENT_STATUS.PROCESSED) return ui.ok(status);
-  if (status === EVENT_STATUS.AGENT_ERROR) return ui.err(status);
-  if (status === EVENT_STATUS.GATE_BLOCKED) return ui.warn ? ui.warn(status) : ui.dim(status);
-  return ui.dim(status);
-}
+export const eventsEffectFromFlags = (
+  flags: EventsEffectFlags,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
 
-function previewText(text: string | null | undefined): string {
-  if (typeof text !== "string" || text.length === 0) return "";
-  const oneline = text.replace(/\s+/g, " ").trim();
-  return oneline.length > 80 ? `${oneline.slice(0, 77)}…` : oneline;
-}
+    if (!flags.zombieId) {
+      return yield* Effect.fail(
+        new ValidationError({
+          detail: "zombie_id is required",
+          suggestion:
+            "usage: zombiectl events <zombie_id> [--actor=glob] [--since=2h] [--cursor=...] [--limit=N] [--json]",
+        }),
+      );
+    }
+
+    const wsId = yield* requireWorkspaceId;
+    const token = yield* resolveAuthToken;
+    const path = `${wsZombieEventsPath(wsId, flags.zombieId)}?${buildQuery(flags)}`;
+    const res = yield* http.request<EventsResponse>({ path, token });
+
+    if (config.jsonMode || flags.json === true) {
+      yield* output.printJson(res);
+      return;
+    }
+
+    const items = res.items ?? [];
+    if (items.length === 0) {
+      yield* output.info("No events yet.");
+      return;
+    }
+
+    yield* output.printSection("Events");
+    for (const ev of items) {
+      yield* output.info(formatRow(ev));
+    }
+    if (res.next_cursor) {
+      yield* output.info(
+        ui.dim(`  More: zombiectl events ${flags.zombieId} --cursor=${res.next_cursor}`),
+      );
+    }
+  });

@@ -35,6 +35,10 @@ const outputLayer = (rec: Recorder): Layer.Layer<Output> =>
         for (const [k, v] of Object.entries(record)) rec.stdout.push(`  ${k}: ${v}`);
       }),
     printSection: (title) => Effect.sync(() => rec.stdout.push(`# ${title}`)),
+    printTable: (_columns, rows) =>
+      Effect.sync(() => {
+        for (const row of rows) rec.stdout.push(JSON.stringify(row));
+      }),
   });
 
 const credentialsLayer = (
