@@ -73,7 +73,7 @@ describe("runEffect — success path", () => {
     const exit = await runEffect({
       name: "test.with-telemetry",
       effect: Effect.void,
-      telemetry: { sessionId: "sess-123", deviceId: "dev-456" },
+      layerInput: { telemetry: { sessionId: "sess-123", deviceId: "dev-456" } },
     });
     expect(exit).toBe(0);
   });

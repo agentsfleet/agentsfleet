@@ -8,6 +8,7 @@ import type { Effect } from "effect";
 import { cliAnalytics } from "../lib/analytics.ts";
 import { runCommand } from "../lib/run-command.ts";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
+import { mainLayerFor } from "../runtime/main-layer.ts";
 import { printJson, writeLine } from "./io.ts";
 import { ui } from "../output/index.ts";
 
@@ -137,22 +138,33 @@ function streamsFromCtx(
   return { stdout: ctx.stdout, stderr: ctx.stderr };
 }
 
+// Compose the per-invocation MainLayer at the handler-bind site
+// (mirrors Supabase's shared/cli/run.ts::cliProgramFor — compose at one
+// site, Effect.provide at the dispatcher boundary). Reads ctx AFTER
+// commander's preAction has fired, so --no-open / --json / --api
+// global flags are captured.
+function mainLayerForCtx(lifecycle: Lifecycle): ReturnType<typeof mainLayerFor> {
+  const streams = streamsFromCtx(lifecycle.ctx);
+  return mainLayerFor({
+    telemetry: {
+      sessionId: lifecycle.ctx.cliSessionId ?? null,
+      deviceId: lifecycle.ctx.cliDeviceId ?? null,
+    },
+    config: configOverrideFromCtx(lifecycle.ctx),
+    ...(streams !== undefined ? { streams } : {}),
+  });
+}
+
 function wrapEffect<E extends CliError, R extends MainLayerServices>(
   name: string,
   effect: Effect.Effect<void, E, R>,
   lifecycle: Lifecycle,
 ): CommandHandlerFn {
   return async (_frame: ActionFrame): Promise<number> => {
-    const streams = streamsFromCtx(lifecycle.ctx);
     const exitCode = await runEffect({
       name,
       effect,
-      telemetry: {
-        sessionId: lifecycle.ctx.cliSessionId ?? null,
-        deviceId: lifecycle.ctx.cliDeviceId ?? null,
-      },
-      config: configOverrideFromCtx(lifecycle.ctx),
-      ...(streams !== undefined ? { streams } : {}),
+      layer: mainLayerForCtx(lifecycle),
     });
     lifecycle.lastCommand = name;
     return exitCode;
@@ -169,16 +181,10 @@ function wrapEffectFn<E extends CliError, R extends MainLayerServices>(
   lifecycle: Lifecycle,
 ): CommandHandlerFn {
   return async (frame: ActionFrame): Promise<number> => {
-    const streams = streamsFromCtx(lifecycle.ctx);
     const exitCode = await runEffect({
       name,
       effect: factory(frame),
-      telemetry: {
-        sessionId: lifecycle.ctx.cliSessionId ?? null,
-        deviceId: lifecycle.ctx.cliDeviceId ?? null,
-      },
-      config: configOverrideFromCtx(lifecycle.ctx),
-      ...(streams !== undefined ? { streams } : {}),
+      layer: mainLayerForCtx(lifecycle),
     });
     lifecycle.lastCommand = name;
     return exitCode;

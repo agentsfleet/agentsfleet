@@ -7,27 +7,19 @@
 // it. cli_session_id + cli_device_id are added automatically inside
 // the Analytics service from TelemetryRuntime.
 //
-// Catches via `Effect.catchCause` so both typed failures (CliError
-// variants) and dies (uncaught exceptions inside the Effect graph)
-// route through the formatter — there's no untyped escape.
+// Catches via `Effect.exit` so both typed failures (CliError variants)
+// and dies (uncaught exceptions inside the Effect graph) route through
+// the formatter — there's no untyped escape.
 
-import { Cause, Effect, Exit, Layer } from "effect";
-import { Analytics, analyticsLayer } from "../services/analytics.ts";
-import { Output, outputStdioLayer, outputFromStreamsLayer } from "../services/output.ts";
+import { Cause, Effect, Exit, Layer, Option } from "effect";
+import { Analytics } from "../services/analytics.ts";
+import { Output } from "../services/output.ts";
+import { CliConfig } from "../services/config.ts";
 import {
-  TelemetryRuntime,
-  telemetryRuntimeFromValuesLayer,
-} from "../services/telemetry-runtime.ts";
-import {
-  CliConfig,
-  cliConfigLayer,
-  cliConfigFromValuesLayer,
-} from "../services/config.ts";
-import { Credentials, credentialsLayer } from "../services/credentials.ts";
-import { HttpClient, httpClientLayer } from "../services/http-client.ts";
-import { Browser, browserLayer } from "../services/browser.ts";
-import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
-import { Spinner, spinnerLayer } from "../services/spinner.ts";
+  mainLayerFor,
+  type MainLayerInput,
+  type MainLayerServices,
+} from "../runtime/main-layer.ts";
 import {
   EXIT_CODE,
   UnexpectedError,
@@ -39,18 +31,7 @@ import {
   EVT_CLI_ERROR,
 } from "../constants/analytics-events.ts";
 
-// Every service MainLayer + the runtime telemetry layer provides.
-// Command Effects' R channel must be a subset.
-export type MainLayerServices =
-  | Analytics
-  | Browser
-  | CliConfig
-  | Credentials
-  | HttpClient
-  | Output
-  | Spinner
-  | TelemetryRuntime
-  | Workspaces;
+export type { MainLayerServices } from "../runtime/main-layer.ts";
 
 // R is the service-set the command Effect needs. The dispatcher provides
 // MainLayer; if R is not a subset of what MainLayer covers, the
@@ -60,27 +41,16 @@ export type MainLayerServices =
 export interface RunEffectInput<E extends CliError, R> {
   readonly name: string;
   readonly effect: Effect.Effect<void, E, R>;
-  readonly telemetry?: {
-    readonly sessionId: string | null;
-    readonly deviceId: string | null;
-  };
-  // Per-invocation overrides commander parsed from argv. Threaded into
-  // CliConfig here so command Effects see the same jsonMode/noOpen the
-  // pre-Effect dispatcher sees. apiUrl override comes from --api.
-  readonly config?: {
-    readonly jsonMode?: boolean;
-    readonly noOpen?: boolean;
-    readonly apiUrl?: string;
-    readonly fetchImpl?: import("./http.ts").FetchImpl;
-  };
-  // Optional stream pair — integration tests inject in-memory streams
-  // via runCli's RunCliIo. When set, the dispatcher provisions Output
-  // against these instead of process.stdout/stderr so test assertions
-  // see the actual command writes.
-  readonly streams?: {
-    readonly stdout: NodeJS.WritableStream;
-    readonly stderr: NodeJS.WritableStream;
-  };
+  // Pre-built layer mirrors the Supabase pattern (shared/cli/run.ts):
+  // compose at one site, provide at the boundary. When omitted, a
+  // default layer is built from `mainLayerFor` — used by tests that
+  // don't need overrides. Callers with telemetry/config/streams should
+  // build the layer once via `mainLayerFor(...)` and pass it here.
+  readonly layer?: Layer.Layer<MainLayerServices>;
+  // Convenience shortcut for the common case where the caller doesn't
+  // build the layer itself. When set, `mainLayerFor(layerInput)` is
+  // composed here. `layer` takes precedence if both are provided.
+  readonly layerInput?: MainLayerInput;
 }
 
 const formatExit = <E extends CliError>(
@@ -88,7 +58,7 @@ const formatExit = <E extends CliError>(
 ): { code: number; rendered: CliError } | null => {
   if (Exit.isSuccess(exit)) return null;
   const failure = Cause.findErrorOption(exit.cause);
-  if (failure._tag === "Some") {
+  if (Option.isSome(failure)) {
     const err = failure.value;
     return { code: EXIT_CODE[err._tag], rendered: err };
   }
@@ -168,43 +138,13 @@ const captureStarted = (name: string): Effect.Effect<void, never, Analytics | Cl
 export const runEffect = async <E extends CliError, R extends MainLayerServices>(
   input: RunEffectInput<E, R>,
 ): Promise<number> => {
-  const telemetryLayer = telemetryRuntimeFromValuesLayer({
-    sessionId: input.telemetry?.sessionId ?? null,
-    deviceId: input.telemetry?.deviceId ?? null,
-  });
-
   const program = Effect.gen(function* () {
     yield* captureStarted(input.name);
     const exit = yield* Effect.exit(input.effect);
     return yield* renderAndCount(input.name, exit);
   });
 
-  // MainLayer is re-composed per call so the per-invocation
-  // cliConfigFromValuesLayer override actually reaches HttpClient + Analytics
-  // (which both consume CliConfig). Pre-baking MainLayer with
-  // cliConfigLayer would freeze the env-resolved config inside those
-  // services; the override here would only land on the leaf CliConfig
-  // tag, not the copy threaded into HttpClient. Re-composing keeps the
-  // override authoritative.
-  const configLayer =
-    input.config !== undefined ? cliConfigFromValuesLayer(input.config) : cliConfigLayer;
-  const httpLayer = httpClientLayer.pipe(Layer.provide(configLayer));
-  const analytics = analyticsLayer.pipe(Layer.provide(telemetryLayer));
-  const outputLayer =
-    input.streams !== undefined
-      ? outputFromStreamsLayer(input.streams)
-      : outputStdioLayer;
-  const runtime = Layer.mergeAll(
-    configLayer,
-    telemetryLayer,
-    outputLayer,
-    credentialsLayer,
-    browserLayer,
-    workspacesLayer,
-    spinnerLayer,
-    httpLayer,
-    analytics,
-  );
+  const runtime = input.layer ?? mainLayerFor(input.layerInput);
   // The `R extends MainLayerServices` constraint guarantees the residual
   // after the runtime layer is `never`; TypeScript cannot prove the
   // symbolic Exclude<> reduction so a single localised cast at the
