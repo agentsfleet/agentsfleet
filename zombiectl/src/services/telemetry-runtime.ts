@@ -7,21 +7,25 @@
 // cli_session_id / cli_device_id props because the Analytics service
 // reaches into TelemetryRuntime directly.
 
-import { Context, Layer } from "effect";
+import { Layer, Context } from "effect";
 
 export interface TelemetryRuntimeShape {
   readonly sessionId: string | null;
   readonly deviceId: string | null;
 }
 
-export class TelemetryRuntime extends Context.Tag("TelemetryRuntime")<
+export class TelemetryRuntime extends Context.Service<
   TelemetryRuntime,
   TelemetryRuntimeShape
->() {}
+>()("zombiectl/telemetry/TelemetryRuntime") {}
 
-export const TelemetryRuntimeFromValues = (
+export const telemetryRuntimeFromValuesLayer = (
   values: TelemetryRuntimeShape,
-): Layer.Layer<TelemetryRuntime> => Layer.succeed(TelemetryRuntime, values);
+): Layer.Layer<TelemetryRuntime> =>
+  Layer.succeed(TelemetryRuntime, TelemetryRuntime.of(values));
 
-export const TelemetryRuntimeEmpty: Layer.Layer<TelemetryRuntime> =
-  Layer.succeed(TelemetryRuntime, { sessionId: null, deviceId: null });
+export const telemetryRuntimeEmptyLayer: Layer.Layer<TelemetryRuntime> =
+  Layer.succeed(
+    TelemetryRuntime,
+    TelemetryRuntime.of({ sessionId: null, deviceId: null }),
+  );

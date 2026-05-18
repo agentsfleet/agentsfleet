@@ -8,7 +8,7 @@
 // Credentials service is responsible for reading the on-disk token
 // and passing it here as a Redacted value.
 
-import { Context, Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Layer, Option, Redacted, Context } from "effect";
 import {
   ApiError,
   apiRequestWithRetry,
@@ -35,7 +35,9 @@ export interface HttpClientShape {
   ) => Effect.Effect<T, NetworkError | ServerError>;
 }
 
-export class HttpClient extends Context.Tag("HttpClient")<HttpClient, HttpClientShape>() {}
+export class HttpClient extends Context.Service<HttpClient, HttpClientShape>()(
+  "zombiectl/runtime/HttpClient",
+) {}
 
 const isFetchFailed = (cause: unknown): boolean =>
   cause instanceof TypeError &&
@@ -113,11 +115,11 @@ const makeLive = (
   },
 });
 
-export const HttpClientLive: Layer.Layer<HttpClient, never, CliConfig> = Layer.effect(
+export const httpClientLayer: Layer.Layer<HttpClient, never, CliConfig> = Layer.effect(
   HttpClient,
   Effect.gen(function* () {
     const config = yield* CliConfig;
-    return makeLive(config.apiUrl, config.fetchImpl);
+    return HttpClient.of(makeLive(config.apiUrl, config.fetchImpl));
   }),
 );
 

@@ -3,11 +3,11 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Option, Redacted } from "effect";
-import { CliConfig, CliConfigLive } from "../src/services/config.ts";
+import { CliConfig, cliConfigLayer } from "../src/services/config.ts";
 import {
   TelemetryRuntime,
-  TelemetryRuntimeEmpty,
-  TelemetryRuntimeFromValues,
+  telemetryRuntimeEmptyLayer,
+  telemetryRuntimeFromValuesLayer,
 } from "../src/services/telemetry-runtime.ts";
 
 const provideEffect = async <A, E, R, S>(
@@ -25,13 +25,13 @@ describe("TelemetryRuntime", () => {
         const t = yield* TelemetryRuntime;
         return t;
       }),
-      TelemetryRuntimeEmpty,
+      telemetryRuntimeEmptyLayer,
     );
     expect(result.sessionId).toBeNull();
     expect(result.deviceId).toBeNull();
   });
   test("FromValues layer carries the provided values", async () => {
-    const layer = TelemetryRuntimeFromValues({ sessionId: "sess-x", deviceId: "dev-x" });
+    const layer = telemetryRuntimeFromValuesLayer({ sessionId: "sess-x", deviceId: "dev-x" });
     const result = await provideEffect(
       Effect.gen(function* () {
         const t = yield* TelemetryRuntime;
@@ -43,7 +43,7 @@ describe("TelemetryRuntime", () => {
     expect(result.deviceId).toBe("dev-x");
   });
   test("FromValues handles null values explicitly", async () => {
-    const layer = TelemetryRuntimeFromValues({ sessionId: null, deviceId: null });
+    const layer = telemetryRuntimeFromValuesLayer({ sessionId: null, deviceId: null });
     const result = await provideEffect(
       Effect.gen(function* () {
         const t = yield* TelemetryRuntime;
@@ -55,8 +55,8 @@ describe("TelemetryRuntime", () => {
     expect(result.deviceId).toBeNull();
   });
   test("FromValues factory is referentially distinct per call", () => {
-    const a = TelemetryRuntimeFromValues({ sessionId: "x", deviceId: "y" });
-    const b = TelemetryRuntimeFromValues({ sessionId: "x", deviceId: "y" });
+    const a = telemetryRuntimeFromValuesLayer({ sessionId: "x", deviceId: "y" });
+    const b = telemetryRuntimeFromValuesLayer({ sessionId: "x", deviceId: "y" });
     expect(a).not.toBe(b);
   });
 });
@@ -84,7 +84,7 @@ describe("CliConfig", () => {
       Effect.gen(function* () {
         return yield* CliConfig;
       }),
-      CliConfigLive,
+      cliConfigLayer,
     );
     expect(result.apiUrl).toBe("https://api.usezombie.com");
     expect(result.dashboardUrl).toBe("https://dashboard.usezombie.com");
@@ -100,7 +100,7 @@ describe("CliConfig", () => {
       Effect.gen(function* () {
         return yield* CliConfig;
       }),
-      CliConfigLive,
+      cliConfigLayer,
     );
     expect(result.apiUrl).toBe("https://api.test.local");
     expect(result.dashboardUrl).toBe("https://dash.test.local");
@@ -116,7 +116,7 @@ describe("CliConfig", () => {
       Effect.gen(function* () {
         return yield* CliConfig;
       }),
-      CliConfigLive,
+      cliConfigLayer,
     );
     expect(result.apiUrl).toBe("https://api.usezombie.com");
     expect(Option.isNone(result.accessToken)).toBe(true);

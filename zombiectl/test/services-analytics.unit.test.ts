@@ -4,8 +4,8 @@
 
 import { afterEach, beforeEach, describe, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import { Analytics, AnalyticsLive } from "../src/services/analytics.ts";
-import { TelemetryRuntimeFromValues } from "../src/services/telemetry-runtime.ts";
+import { Analytics, analyticsLayer } from "../src/services/analytics.ts";
+import { telemetryRuntimeFromValuesLayer } from "../src/services/telemetry-runtime.ts";
 
 let snapshot: string | undefined;
 
@@ -20,7 +20,7 @@ afterEach(() => {
 });
 
 const layerWith = (sessionId: string | null, deviceId: string | null): Layer.Layer<Analytics> =>
-  Layer.provide(AnalyticsLive, TelemetryRuntimeFromValues({ sessionId, deviceId }));
+  Layer.provide(analyticsLayer, telemetryRuntimeFromValuesLayer({ sessionId, deviceId }));
 
 describe("Analytics service", () => {
   test("capture is a no-op when telemetry disabled (no throw)", async () => {

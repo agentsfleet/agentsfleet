@@ -14,27 +14,27 @@
 //   - Output, Credentials, Browser, Workspaces, Spinner have no service deps
 
 import { Layer } from "effect";
-import { CliConfigLive } from "../services/config.ts";
-import { TelemetryRuntimeEmpty } from "../services/telemetry-runtime.ts";
-import { OutputStdioLayer } from "../services/output.ts";
-import { CredentialsLive } from "../services/credentials.ts";
-import { AnalyticsLive } from "../services/analytics.ts";
-import { HttpClientLive } from "../services/http-client.ts";
-import { BrowserLive } from "../services/browser.ts";
-import { WorkspacesLive } from "../services/workspaces.ts";
-import { SpinnerLive } from "../services/spinner.ts";
+import { cliConfigLayer } from "../services/config.ts";
+import { telemetryRuntimeEmptyLayer } from "../services/telemetry-runtime.ts";
+import { outputStdioLayer } from "../services/output.ts";
+import { credentialsLayer } from "../services/credentials.ts";
+import { analyticsLayer } from "../services/analytics.ts";
+import { httpClientLayer } from "../services/http-client.ts";
+import { browserLayer } from "../services/browser.ts";
+import { workspacesLayer } from "../services/workspaces.ts";
+import { spinnerLayer } from "../services/spinner.ts";
 
 const Base = Layer.mergeAll(
-  CliConfigLive,
-  TelemetryRuntimeEmpty,
-  OutputStdioLayer,
-  CredentialsLive,
-  BrowserLive,
-  WorkspacesLive,
-  SpinnerLive,
+  cliConfigLayer,
+  telemetryRuntimeEmptyLayer,
+  outputStdioLayer,
+  credentialsLayer,
+  browserLayer,
+  workspacesLayer,
+  spinnerLayer,
 );
 
-const WithAnalytics = AnalyticsLive.pipe(Layer.provide(TelemetryRuntimeEmpty));
-const WithHttp = HttpClientLive.pipe(Layer.provide(CliConfigLive));
+const WithAnalytics = analyticsLayer.pipe(Layer.provide(telemetryRuntimeEmptyLayer));
+const WithHttp = httpClientLayer.pipe(Layer.provide(cliConfigLayer));
 
 export const MainLayer = Layer.mergeAll(Base, WithAnalytics, WithHttp);

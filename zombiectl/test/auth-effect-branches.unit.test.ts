@@ -3,7 +3,7 @@
 // fallback.
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { authStatusEffect } from "../src/commands/auth.ts";
 import { Analytics } from "../src/services/analytics.ts";
 import { CliConfig } from "../src/services/config.ts";
@@ -101,7 +101,7 @@ describe("authStatusEffect — probe branches", () => {
     const exit = await Effect.runPromiseExit(program);
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const fail = exit.cause._tag === "Fail" ? exit.cause.error : null;
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
       expect(fail).toBeInstanceOf(AuthError);
     }
     expect(rec.stderr.some((line) => line.includes("server rejected"))).toBe(true);

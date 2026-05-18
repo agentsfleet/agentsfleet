@@ -7,27 +7,27 @@
 // it. cli_session_id + cli_device_id are added automatically inside
 // the Analytics service from TelemetryRuntime.
 //
-// Catches via `Effect.catchAllCause` so both typed failures (CliError
+// Catches via `Effect.catchCause` so both typed failures (CliError
 // variants) and dies (uncaught exceptions inside the Effect graph)
 // route through the formatter — there's no untyped escape.
 
 import { Cause, Effect, Exit, Layer } from "effect";
-import { Analytics, AnalyticsLive } from "../services/analytics.ts";
-import { Output, OutputStdioLayer, OutputFromStreams } from "../services/output.ts";
+import { Analytics, analyticsLayer } from "../services/analytics.ts";
+import { Output, outputStdioLayer, outputFromStreamsLayer } from "../services/output.ts";
 import {
   TelemetryRuntime,
-  TelemetryRuntimeFromValues,
+  telemetryRuntimeFromValuesLayer,
 } from "../services/telemetry-runtime.ts";
 import {
   CliConfig,
-  CliConfigLive,
-  CliConfigFromValues,
+  cliConfigLayer,
+  cliConfigFromValuesLayer,
 } from "../services/config.ts";
-import { Credentials, CredentialsLive } from "../services/credentials.ts";
-import { HttpClient, HttpClientLive } from "../services/http-client.ts";
-import { Browser, BrowserLive } from "../services/browser.ts";
-import { Workspaces, WorkspacesLive } from "../services/workspaces.ts";
-import { Spinner, SpinnerLive } from "../services/spinner.ts";
+import { Credentials, credentialsLayer } from "../services/credentials.ts";
+import { HttpClient, httpClientLayer } from "../services/http-client.ts";
+import { Browser, browserLayer } from "../services/browser.ts";
+import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
+import { Spinner, spinnerLayer } from "../services/spinner.ts";
 import {
   EXIT_CODE,
   UnexpectedError,
@@ -87,7 +87,7 @@ const formatExit = <E extends CliError>(
   exit: Exit.Exit<void, E>,
 ): { code: number; rendered: CliError } | null => {
   if (Exit.isSuccess(exit)) return null;
-  const failure = Cause.failureOption(exit.cause);
+  const failure = Cause.findErrorOption(exit.cause);
   if (failure._tag === "Some") {
     const err = failure.value;
     return { code: EXIT_CODE[err._tag], rendered: err };
@@ -168,7 +168,7 @@ const captureStarted = (name: string): Effect.Effect<void, never, Analytics | Cl
 export const runEffect = async <E extends CliError, R extends MainLayerServices>(
   input: RunEffectInput<E, R>,
 ): Promise<number> => {
-  const telemetryLayer = TelemetryRuntimeFromValues({
+  const telemetryLayer = telemetryRuntimeFromValuesLayer({
     sessionId: input.telemetry?.sessionId ?? null,
     deviceId: input.telemetry?.deviceId ?? null,
   });
@@ -180,30 +180,30 @@ export const runEffect = async <E extends CliError, R extends MainLayerServices>
   });
 
   // MainLayer is re-composed per call so the per-invocation
-  // CliConfigFromValues override actually reaches HttpClient + Analytics
+  // cliConfigFromValuesLayer override actually reaches HttpClient + Analytics
   // (which both consume CliConfig). Pre-baking MainLayer with
-  // CliConfigLive would freeze the env-resolved config inside those
+  // cliConfigLayer would freeze the env-resolved config inside those
   // services; the override here would only land on the leaf CliConfig
   // tag, not the copy threaded into HttpClient. Re-composing keeps the
   // override authoritative.
-  const cliConfigLayer =
-    input.config !== undefined ? CliConfigFromValues(input.config) : CliConfigLive;
-  const httpLayer = HttpClientLive.pipe(Layer.provide(cliConfigLayer));
-  const analyticsLayer = AnalyticsLive.pipe(Layer.provide(telemetryLayer));
+  const configLayer =
+    input.config !== undefined ? cliConfigFromValuesLayer(input.config) : cliConfigLayer;
+  const httpLayer = httpClientLayer.pipe(Layer.provide(configLayer));
+  const analytics = analyticsLayer.pipe(Layer.provide(telemetryLayer));
   const outputLayer =
     input.streams !== undefined
-      ? OutputFromStreams(input.streams)
-      : OutputStdioLayer;
+      ? outputFromStreamsLayer(input.streams)
+      : outputStdioLayer;
   const runtime = Layer.mergeAll(
-    cliConfigLayer,
+    configLayer,
     telemetryLayer,
     outputLayer,
-    CredentialsLive,
-    BrowserLive,
-    WorkspacesLive,
-    SpinnerLive,
+    credentialsLayer,
+    browserLayer,
+    workspacesLayer,
+    spinnerLayer,
     httpLayer,
-    analyticsLayer,
+    analytics,
   );
   // The `R extends MainLayerServices` constraint guarantees the residual
   // after the runtime layer is `never`; TypeScript cannot prove the

@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "commander": "^14.0.3",
-    "effect": "^3.21.2",
+    "effect": "4.0.0-beta.67",
     "posthog-node": "^5.34.1",
     "uuid": "^14.0.0"
   },

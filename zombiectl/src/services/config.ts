@@ -6,7 +6,7 @@
 // through Effects without risking accidental log emission. The actual
 // string is extracted only at the HTTP authorization-header site.
 
-import { Context, Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Layer, Option, Redacted, Context } from "effect";
 import type { FetchImpl } from "../lib/http.ts";
 
 const DEFAULT_API_URL = "https://api.usezombie.com";
@@ -24,7 +24,9 @@ export interface CliConfigShape {
   readonly fetchImpl?: FetchImpl;
 }
 
-export class CliConfig extends Context.Tag("CliConfig")<CliConfig, CliConfigShape>() {}
+export class CliConfig extends Context.Service<CliConfig, CliConfigShape>()(
+  "zombiectl/config/CliConfig",
+) {}
 
 const readEnv = (key: string): string | undefined =>
   typeof process !== "undefined" ? process.env[key] : undefined;
@@ -52,15 +54,15 @@ export const resolveCliConfig = (): CliConfigShape => {
   };
 };
 
-export const CliConfigLive: Layer.Layer<CliConfig> = Layer.effect(
+export const cliConfigLayer: Layer.Layer<CliConfig> = Layer.effect(
   CliConfig,
-  Effect.sync(resolveCliConfig),
+  Effect.sync(() => CliConfig.of(resolveCliConfig())),
 );
 
-export const CliConfigFromValues = (
+export const cliConfigFromValuesLayer = (
   overrides: Partial<CliConfigShape> = {},
 ): Layer.Layer<CliConfig> =>
-  Layer.succeed(CliConfig, {
-    ...resolveCliConfig(),
-    ...overrides,
-  });
+  Layer.succeed(
+    CliConfig,
+    CliConfig.of({ ...resolveCliConfig(), ...overrides }),
+  );

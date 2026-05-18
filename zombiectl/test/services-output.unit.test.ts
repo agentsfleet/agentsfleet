@@ -3,7 +3,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Layer } from "effect";
-import { Output, OutputFromStreams, makeStdioOutput } from "../src/services/output.ts";
+import { Output, outputFromStreamsLayer, makeStdioOutput } from "../src/services/output.ts";
 
 class BufStream {
   readonly chunks: string[] = [];
@@ -21,7 +21,7 @@ class BufStream {
 const makeStreams = (): { stdout: BufStream; stderr: BufStream; layer: Layer.Layer<Output> } => {
   const stdout = new BufStream();
   const stderr = new BufStream();
-  const layer = OutputFromStreams({
+  const layer = outputFromStreamsLayer({
     stdout: stdout as unknown as NodeJS.WritableStream,
     stderr: stderr as unknown as NodeJS.WritableStream,
   });

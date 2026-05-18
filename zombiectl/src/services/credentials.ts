@@ -7,7 +7,7 @@
 // the schema (token / saved_at / session_id / api_url) is
 // preserved so existing user sessions survive the migration.
 
-import { Context, Effect, Layer, Option, Redacted } from "effect";
+import { Effect, Layer, Option, Redacted, Context } from "effect";
 import {
   loadCredentials as loadCredsRaw,
   saveCredentials as saveCredsRaw,
@@ -31,7 +31,9 @@ export interface CredentialsShape {
   readonly clearAccessToken: Effect.Effect<void, UnexpectedError>;
 }
 
-export class Credentials extends Context.Tag("Credentials")<Credentials, CredentialsShape>() {}
+export class Credentials extends Context.Service<Credentials, CredentialsShape>()(
+  "zombiectl/auth/Credentials",
+) {}
 
 const unexpected = (op: string) =>
   (cause: unknown): UnexpectedError =>
@@ -69,4 +71,7 @@ const makeLive = (): CredentialsShape => ({
   }),
 });
 
-export const CredentialsLive: Layer.Layer<Credentials> = Layer.succeed(Credentials, makeLive());
+export const credentialsLayer: Layer.Layer<Credentials> = Layer.succeed(
+  Credentials,
+  Credentials.of(makeLive()),
+);

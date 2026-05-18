@@ -9,7 +9,7 @@
 // is intentionally side-effect-only — the analytics correlation is
 // driven by the command code, not by this service.
 
-import { Context, Effect, Layer } from "effect";
+import { Effect, Layer, Context } from "effect";
 import { ui as defaultUi, printSection as printSectionRaw } from "../output/index.ts";
 
 type Stream = NodeJS.WritableStream;
@@ -33,7 +33,9 @@ export interface OutputShape {
   readonly printSection: (title: string) => Effect.Effect<void>;
 }
 
-export class Output extends Context.Tag("Output")<Output, OutputShape>() {}
+export class Output extends Context.Service<Output, OutputShape>()(
+  "zombiectl/runtime/Output",
+) {}
 
 interface StreamPair {
   readonly stdout: Stream;
@@ -70,10 +72,10 @@ export const makeStdioOutput = ({ stdout, stderr }: StreamPair): OutputShape => 
     }),
 });
 
-export const OutputStdioLayer: Layer.Layer<Output> = Layer.succeed(
+export const outputStdioLayer: Layer.Layer<Output> = Layer.succeed(
   Output,
-  makeStdioOutput({ stdout: process.stdout, stderr: process.stderr }),
+  Output.of(makeStdioOutput({ stdout: process.stdout, stderr: process.stderr })),
 );
 
-export const OutputFromStreams = (pair: StreamPair): Layer.Layer<Output> =>
-  Layer.succeed(Output, makeStdioOutput(pair));
+export const outputFromStreamsLayer = (pair: StreamPair): Layer.Layer<Output> =>
+  Layer.succeed(Output, Output.of(makeStdioOutput(pair)));

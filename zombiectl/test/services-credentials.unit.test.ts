@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Option, Redacted } from "effect";
-import { Credentials, CredentialsLive } from "../src/services/credentials.ts";
+import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
 
 let tempDir: string;
 let originalStateDir: string | undefined;
@@ -27,7 +27,7 @@ afterEach(() => {
 
 const provideEffect = async <A, E>(
   effect: Effect.Effect<A, E, Credentials>,
-): Promise<A> => Effect.runPromise(Effect.provide(effect, CredentialsLive));
+): Promise<A> => Effect.runPromise(Effect.provide(effect, credentialsLayer));
 
 describe("Credentials service", () => {
   test("getAccessToken returns Option.none on empty store", async () => {

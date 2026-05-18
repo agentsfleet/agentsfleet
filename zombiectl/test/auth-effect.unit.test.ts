@@ -7,7 +7,7 @@
 // pure: services are provided, side-effects are captured in arrays.
 
 import { describe, test, expect } from "bun:test";
-import { Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { authStatusEffect, logoutEffect } from "../src/commands/auth.ts";
 import { Analytics } from "../src/services/analytics.ts";
 import { CliConfig } from "../src/services/config.ts";
@@ -141,7 +141,7 @@ describe("authStatusEffect", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const cause = exit.cause;
-      const failure = cause._tag === "Fail" ? cause.error : null;
+      const failure = Option.getOrNull(Cause.findErrorOption(cause));
       expect(failure).toBeInstanceOf(AuthError);
     }
     expect(rec.stderr.some((line) => line.includes("not authenticated"))).toBe(true);

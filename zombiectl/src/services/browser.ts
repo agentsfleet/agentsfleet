@@ -6,29 +6,37 @@
 // and returns a boolean. The success/failure signal is the boolean,
 // not a thrown error, so the service's error channel is `never`.
 
-import { Context, Effect, Layer } from "effect";
+import { Effect, Layer, Context } from "effect";
 import { openUrl as openUrlRaw } from "../lib/browser.ts";
 
 export interface BrowserShape {
   readonly open: (url: string) => Effect.Effect<boolean>;
 }
 
-export class Browser extends Context.Tag("Browser")<Browser, BrowserShape>() {}
+export class Browser extends Context.Service<Browser, BrowserShape>()(
+  "zombiectl/runtime/Browser",
+) {}
 
-export const BrowserLive: Layer.Layer<Browser> = Layer.succeed(Browser, {
-  open: (url: string) => Effect.promise(() => openUrlRaw(url)),
-});
+export const browserLayer: Layer.Layer<Browser> = Layer.succeed(
+  Browser,
+  Browser.of({
+    open: (url: string) => Effect.promise(() => openUrlRaw(url)),
+  }),
+);
 
 // Test-time helper — substitutes a capture-only `open` so login tests
-// don't shell out. Returns the original Layer shape so the type
-// checker treats it as interchangeable with BrowserLive.
-export const BrowserNoop = (
+// don't shell out. Returns the same Layer shape so the type checker
+// treats it as interchangeable with browserLayer.
+export const browserNoopLayer = (
   onOpen?: (url: string) => void,
 ): Layer.Layer<Browser> =>
-  Layer.succeed(Browser, {
-    open: (url: string) =>
-      Effect.sync(() => {
-        onOpen?.(url);
-        return false;
-      }),
-  });
+  Layer.succeed(
+    Browser,
+    Browser.of({
+      open: (url: string) =>
+        Effect.sync(() => {
+          onOpen?.(url);
+          return false;
+        }),
+    }),
+  );

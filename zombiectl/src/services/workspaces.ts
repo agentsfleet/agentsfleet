@@ -5,7 +5,7 @@
 // Workspaces record from lib/state.ts verbatim (current_workspace_id +
 // items[]) — same JSON on disk, just exposed as an Effect surface.
 
-import { Context, Effect, Layer } from "effect";
+import { Effect, Layer, Context } from "effect";
 import {
   loadWorkspaces as loadWorkspacesRaw,
   saveWorkspaces as saveWorkspacesRaw,
@@ -22,10 +22,10 @@ export interface WorkspacesShape {
   readonly save: (next: WorkspacesValue) => Effect.Effect<void, UnexpectedError>;
 }
 
-export class Workspaces extends Context.Tag("Workspaces")<
+export class Workspaces extends Context.Service<
   Workspaces,
   WorkspacesShape
->() {}
+>()("zombiectl/state/Workspaces") {}
 
 const unexpected = (op: string) =>
   (cause: unknown): UnexpectedError =>
@@ -34,27 +34,33 @@ const unexpected = (op: string) =>
       suggestion: "check ~/.zombiectl/ permissions and disk space",
     });
 
-export const WorkspacesLive: Layer.Layer<Workspaces> = Layer.succeed(Workspaces, {
-  load: Effect.tryPromise({
-    try: () => loadWorkspacesRaw(),
-    catch: unexpected("load"),
-  }),
-  save: (next) =>
-    Effect.tryPromise({
-      try: () => saveWorkspacesRaw(next),
-      catch: unexpected("save"),
+export const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(
+  Workspaces,
+  Workspaces.of({
+    load: Effect.tryPromise({
+      try: () => loadWorkspacesRaw(),
+      catch: unexpected("load"),
     }),
-});
+    save: (next) =>
+      Effect.tryPromise({
+        try: () => saveWorkspacesRaw(next),
+        catch: unexpected("save"),
+      }),
+  }),
+);
 
-export const WorkspacesFromValue = (
+export const workspacesFromValueLayer = (
   initial: WorkspacesValue,
 ): Layer.Layer<Workspaces> => {
   let current: WorkspacesValue = { ...initial, items: [...initial.items] };
-  return Layer.succeed(Workspaces, {
-    load: Effect.sync(() => current),
-    save: (next) =>
-      Effect.sync(() => {
-        current = { ...next, items: [...next.items] };
-      }),
-  });
+  return Layer.succeed(
+    Workspaces,
+    Workspaces.of({
+      load: Effect.sync(() => current),
+      save: (next) =>
+        Effect.sync(() => {
+          current = { ...next, items: [...next.items] };
+        }),
+    }),
+  );
 };

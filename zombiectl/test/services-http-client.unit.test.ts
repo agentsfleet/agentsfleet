@@ -5,9 +5,9 @@
 // NetworkError) plus a happy-path request.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { CliConfig } from "../src/services/config.ts";
-import { HttpClient, HttpClientLive, resolveToken } from "../src/services/http-client.ts";
+import { HttpClient, httpClientLayer, resolveToken } from "../src/services/http-client.ts";
 
 const configLayer = (apiUrl: string): Layer.Layer<CliConfig> =>
   Layer.succeed(CliConfig, {
@@ -19,7 +19,7 @@ const configLayer = (apiUrl: string): Layer.Layer<CliConfig> =>
   });
 
 const SUITE_LAYER = (apiUrl: string): Layer.Layer<HttpClient> =>
-  Layer.provide(HttpClientLive, configLayer(apiUrl));
+  Layer.provide(httpClientLayer, configLayer(apiUrl));
 
 let originalFetch: typeof globalThis.fetch;
 
@@ -66,7 +66,7 @@ describe("HttpClient", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const cause = exit.cause;
-      const fail = cause._tag === "Fail" ? cause.error : null;
+      const fail = Option.getOrNull(Cause.findErrorOption(cause));
       expect(fail?._tag).toBe("ServerError");
       expect(fail?.message).toContain("re-authenticate");
     }
@@ -87,7 +87,7 @@ describe("HttpClient", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const fail = exit.cause._tag === "Fail" ? exit.cause.error : null;
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
       expect(fail?._tag).toBe("ServerError");
       expect(fail?.message).toContain("retry");
     }
@@ -107,7 +107,7 @@ describe("HttpClient", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
-      const fail = exit.cause._tag === "Fail" ? exit.cause.error : null;
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
       expect(fail?._tag).toBe("NetworkError");
     }
   });

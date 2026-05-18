@@ -16,11 +16,11 @@ import { Effect, Option, Redacted } from "effect";
 import { CliConfig } from "../src/services/config.ts";
 import {
   TelemetryRuntime,
-  TelemetryRuntimeFromValues,
+  telemetryRuntimeFromValuesLayer,
 } from "../src/services/telemetry-runtime.ts";
-import { Credentials, CredentialsLive } from "../src/services/credentials.ts";
-import { Output, OutputFromStreams } from "../src/services/output.ts";
-import { Analytics, AnalyticsLive } from "../src/services/analytics.ts";
+import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
+import { Output, outputFromStreamsLayer } from "../src/services/output.ts";
+import { Analytics, analyticsLayer } from "../src/services/analytics.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import {
   AuthError,
@@ -86,12 +86,12 @@ describe("Analytics identify / alias / shutdown", () => {
     await Effect.runPromise(
       Effect.provide(
         program,
-        AnalyticsLive.pipe(
+        analyticsLayer.pipe(
           (l) => l,
         ),
       ).pipe(
         Effect.provide(
-          TelemetryRuntimeFromValues({ sessionId: "s", deviceId: "d" }),
+          telemetryRuntimeFromValuesLayer({ sessionId: "s", deviceId: "d" }),
         ),
       ) as Effect.Effect<void, never, never>,
     );
@@ -125,7 +125,7 @@ describe("Credentials full surface", () => {
             yield* c.clearAccessToken;
             return { savedAt, sessionId, apiUrl, savedAt2, sessionId2, apiUrl2, hasToken: Option.isSome(token2) };
           }),
-          CredentialsLive,
+          credentialsLayer,
         ),
       );
       expect(result.savedAt).toBeNull();
@@ -143,7 +143,7 @@ describe("Credentials full surface", () => {
   });
 });
 
-describe("Output service via OutputFromStreams covers all method bodies", () => {
+describe("Output service via outputFromStreamsLayer covers all method bodies", () => {
   test("every method body executes under a captured stream pair", async () => {
     class Sink {
       readonly chunks: string[] = [];
@@ -156,7 +156,7 @@ describe("Output service via OutputFromStreams covers all method bodies", () => 
     }
     const stdout = new Sink();
     const stderr = new Sink();
-    const layer = OutputFromStreams({
+    const layer = outputFromStreamsLayer({
       stdout: stdout as unknown as NodeJS.WritableStream,
       stderr: stderr as unknown as NodeJS.WritableStream,
     });
@@ -192,8 +192,8 @@ describe("CliConfig direct shape access via Effect.runPromise", () => {
           return cfg;
         }),
         // Inline layer construction touches both the resolveCliConfig
-        // call site and the spread-merge branch of CliConfigFromValues.
-        (await import("../src/services/config.ts")).CliConfigFromValues({
+        // call site and the spread-merge branch of cliConfigFromValuesLayer.
+        (await import("../src/services/config.ts")).cliConfigFromValuesLayer({
           jsonMode: true,
           noOpen: true,
         }),

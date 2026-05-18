@@ -1,21 +1,21 @@
 // Targeted tests filling the remaining coverage holes on the
-// substrate: CliConfigFromValues override merge, Credentials error
+// substrate: cliConfigFromValuesLayer override merge, Credentials error
 // path through a non-writable state dir.
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, chmodSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Exit, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Option, Redacted } from "effect";
 import {
   CliConfig,
-  CliConfigFromValues,
+  cliConfigFromValuesLayer,
 } from "../src/services/config.ts";
-import { Credentials, CredentialsLive } from "../src/services/credentials.ts";
+import { Credentials, credentialsLayer } from "../src/services/credentials.ts";
 
-describe("CliConfigFromValues", () => {
+describe("cliConfigFromValuesLayer", () => {
   test("merges overrides on top of env-resolved defaults", async () => {
-    const layer = CliConfigFromValues({
+    const layer = cliConfigFromValuesLayer({
       jsonMode: true,
       apiUrl: "https://override.test.local",
     });
@@ -37,7 +37,7 @@ describe("CliConfigFromValues", () => {
         Effect.gen(function* () {
           return yield* CliConfig;
         }),
-        CliConfigFromValues(),
+        cliConfigFromValuesLayer(),
       ),
     );
     expect(typeof result.apiUrl).toBe("string");
@@ -78,14 +78,14 @@ describe("Credentials error path", () => {
             apiUrl: "https://x",
           });
         }),
-        CredentialsLive,
+        credentialsLayer,
       ),
     );
     // On platforms where the chmod doesn't enforce (root/CI) the test
     // still asserts the type-level path: either the Effect succeeds or
     // fails with the typed UnexpectedError variant we care about.
     if (Exit.isFailure(exit)) {
-      const fail = exit.cause._tag === "Fail" ? exit.cause.error : null;
+      const fail = Option.getOrNull(Cause.findErrorOption(exit.cause));
       expect(fail?._tag).toBe("UnexpectedError");
     }
   });

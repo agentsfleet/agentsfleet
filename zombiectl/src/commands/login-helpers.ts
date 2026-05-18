@@ -54,7 +54,7 @@ export const hydrateWorkspacesAfterLogin = (
     if (items.length === 0) return;
 
     const previous = yield* workspaces.load.pipe(
-      Effect.catchAll(() => Effect.succeed({ current_workspace_id: null, items: [] })),
+      Effect.orElseSucceed(() => ({ current_workspace_id: null, items: [] })),
     );
     const existingCurrent = items.find(
       (item) => item.workspace_id === previous.current_workspace_id,
@@ -62,9 +62,7 @@ export const hydrateWorkspacesAfterLogin = (
     const firstItem = items[0];
     if (!firstItem) return;
     const current = existingCurrent?.workspace_id ?? firstItem.workspace_id;
-    yield* workspaces
-      .save({ current_workspace_id: current, items })
-      .pipe(Effect.catchAll(() => Effect.void));
+    yield* workspaces.save({ current_workspace_id: current, items }).pipe(Effect.ignore);
   });
 
 // Promise+listener bridge: SIGINT during the poll loop aborts the

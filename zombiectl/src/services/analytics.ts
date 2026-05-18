@@ -6,7 +6,7 @@
 // Telemetry failures are swallowed via `Effect.ignore` at the
 // dispatcher — Analytics never blocks user-facing UX.
 
-import { Context, Effect, Layer } from "effect";
+import { Effect, Layer, Context } from "effect";
 // The `cliAnalytics` namespace import (rather than named imports) is
 // load-bearing for tests: cli-analytics.unit.test.ts mutates the
 // namespace members in place to inject capture/no-op stubs, and named
@@ -25,7 +25,9 @@ export interface AnalyticsShape {
   readonly shutdown: Effect.Effect<void>;
 }
 
-export class Analytics extends Context.Tag("Analytics")<Analytics, AnalyticsShape>() {}
+export class Analytics extends Context.Service<Analytics, AnalyticsShape>()(
+  "zombiectl/telemetry/Analytics",
+) {}
 
 interface AnalyticsState {
   client: AnalyticsClient | null;
@@ -54,12 +56,12 @@ const makeShape = (
   shutdown: Effect.promise(() => cliAnalytics.shutdownCliAnalytics(state.client)),
 });
 
-export const AnalyticsLive: Layer.Layer<Analytics, never, TelemetryRuntime> = Layer.effect(
+export const analyticsLayer: Layer.Layer<Analytics, never, TelemetryRuntime> = Layer.effect(
   Analytics,
   Effect.gen(function* () {
     const telemetry = yield* TelemetryRuntime;
     const client = yield* Effect.promise(() => cliAnalytics.createCliAnalytics());
     const state: AnalyticsState = { client, distinctId: "anonymous" };
-    return makeShape(state, telemetry);
+    return Analytics.of(makeShape(state, telemetry));
   }),
 );

@@ -8,7 +8,7 @@
 // `Effect.sync` callbacks; the surface is `Effect<void>` so commands
 // don't have to track a fiber for the spinner timer.
 
-import { Context, Effect, Layer } from "effect";
+import { Effect, Layer, Context } from "effect";
 import { createSpinner as createSpinnerRaw } from "../ui-progress.ts";
 import type { SpinnerOptions } from "../commands/types.ts";
 
@@ -22,17 +22,22 @@ export interface SpinnerShape {
   readonly start: (opts: SpinnerOptions) => Effect.Effect<SpinnerHandleShape>;
 }
 
-export class Spinner extends Context.Tag("Spinner")<Spinner, SpinnerShape>() {}
+export class Spinner extends Context.Service<Spinner, SpinnerShape>()(
+  "zombiectl/runtime/Spinner",
+) {}
 
-export const SpinnerLive: Layer.Layer<Spinner> = Layer.succeed(Spinner, {
-  start: (opts) =>
-    Effect.sync(() => {
-      const handle = createSpinnerRaw(opts);
-      handle.start();
-      return {
-        succeed: (message) => Effect.sync(() => handle.succeed?.(message)),
-        fail: (message) => Effect.sync(() => handle.fail?.(message)),
-        stop: Effect.sync(() => handle.stop?.()),
-      };
-    }),
-});
+export const spinnerLayer: Layer.Layer<Spinner> = Layer.succeed(
+  Spinner,
+  Spinner.of({
+    start: (opts) =>
+      Effect.sync(() => {
+        const handle = createSpinnerRaw(opts);
+        handle.start();
+        return {
+          succeed: (message) => Effect.sync(() => handle.succeed?.(message)),
+          fail: (message) => Effect.sync(() => handle.fail?.(message)),
+          stop: Effect.sync(() => handle.stop?.()),
+        };
+      }),
+  }),
+);
