@@ -20,6 +20,7 @@ import {
 } from "../src/services/telemetry/runtime.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
+import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
 import type { TelemetryConfig } from "../src/services/telemetry/types.ts";
 
@@ -211,6 +212,16 @@ describe("captureLoginCompleted", () => {
   });
 });
 
+const stubHttpLayer = (
+  onDelete: () => Effect.Effect<unknown, never>,
+): Layer.Layer<HttpClient> =>
+  Layer.succeed(HttpClient, {
+    request: (input) =>
+      input.method === "DELETE" && input.path === "/v1/auth/sessions/all"
+        ? (onDelete() as Effect.Effect<never, never>)
+        : Effect.die(`unexpected ${input.method ?? "GET"} ${input.path}`),
+  });
+
 describe("logoutEffect", () => {
   test("clears credentials, clears distinct_id from telemetry.json, captures logout_completed", async () => {
     const rec = makeRecorder();
@@ -225,11 +236,12 @@ describe("logoutEffect", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      logoutEffect.pipe(
+      logoutEffect().pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(configLayer),
         Effect.provide(credentialsLayer(rec)),
         Effect.provide(outputLayer(rec)),
+        Effect.provide(stubHttpLayer(() => Effect.succeed({ aborted_count: 0 }))),
         Effect.provide(telemetryRuntime),
       ),
     );

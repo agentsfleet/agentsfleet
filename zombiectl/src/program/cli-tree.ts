@@ -56,7 +56,8 @@ function helpTail(): string {
     "",
     "Environment variables:",
     "  ZOMBIE_API_URL                  API base URL (overridden by --api)",
-    "  ZOMBIE_TOKEN                    Auth token (overridden by login)",
+    "  ZMB_TOKEN                       Auth token (interactive shells prefer env)",
+    "  ZOMBIE_TOKEN                    Auth token (alternate spelling of ZMB_TOKEN)",
     "  ZOMBIE_API_KEY                  API key for service auth",
     "  ZOMBIE_STATE_DIR                Directory for local CLI state files",
     "  NO_COLOR                        Any non-empty value disables color",
@@ -155,7 +156,11 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
 
   program
     .command("logout")
-    .description("Clear stored credentials")
+    .description("Sign out — revoke every active session on this account and clear local credentials")
+    .option(
+      "--all",
+      "rejected — revocation of every active session is the default; passing this flag exits with a validation error",
+    )
     .action(actionFor("logout", (frame) => runHandler(state, frame, handlers.logout)));
 
   const auth = program.command("auth").description("Inspect authentication state");

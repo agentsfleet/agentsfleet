@@ -169,7 +169,14 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       },
       lifecycle,
     ),
-    logout: wrapE("logout", logoutEffect),
+    logout: wrapEffectFn(
+      "logout",
+      (frame) =>
+        logoutEffect({
+          all: frame.parsed.options["all"] === true,
+        }),
+      lifecycle,
+    ),
     auth: {
       status: wrapE("auth.status", authStatusEffect),
     },
