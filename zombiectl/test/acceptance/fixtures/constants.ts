@@ -8,6 +8,8 @@
  * side instead of drifting silently.
  */
 
+import crypto from "node:crypto";
+
 export const CLERK_API_BASE = "https://api.clerk.com/v1";
 
 export const JWT_TEMPLATE = "api";
@@ -29,8 +31,8 @@ export const ZOMBIE_STATUS = {
 } as const;
 
 // `terminated` is a third post-kill resting state alongside `killed` /
-// `errored` — lifecycle-with-token.spec.ts §4a accepts any of the three
-// after `killZombie`. Omitting it would land terminated zombies in the
+// `errored`. The lifecycle suite accepts any of the three after
+// `killZombie`. Omitting it would land terminated zombies in the
 // teardown `live` list, where the kill retry trips UZ-ZMB-010.
 export const TERMINAL_STATUSES: ReadonlyArray<string> = [
   ZOMBIE_STATUS.killed,
@@ -57,4 +59,24 @@ export const ACCEPTANCE_TARGET_ENV = "ZOMBIE_ACCEPTANCE_TARGET";
 
 export const ACCEPTANCE_BINARY_ENV = "ZOMBIE_ACCEPTANCE_BINARY";
 
+export const ACCEPTANCE_DASHBOARD_URL_ENV = "ZOMBIE_ACCEPTANCE_DASHBOARD_URL";
+
 export const UNROUTABLE_API_URL = "http://127.0.0.1:1";
+
+// Per-environment API + dashboard URLs. Dashboard URLs derive from the
+// acceptance API target — no separate skip-gating env var needed.
+//   - PROD dashboard mirrors `runtime_loader.zig`'s `APP_URL` default.
+//   - DEV dashboard is the Vercel-deploy URL used by the dev workflow
+//     (per `playbooks/004_deploy_dev/001_playbook.md` +
+//     `playbooks/008_credential_rotation_dev/02_service_health.sh`).
+export const API_URL_PROD = "https://api.usezombie.com";
+export const API_URL_DEV = "https://api-dev.usezombie.com";
+export const DASHBOARD_URL_PROD = "https://app.usezombie.com";
+export const DASHBOARD_URL_DEV = "https://usezombie-app.vercel.app";
+
+// Per-process acceptance run identifier — every zombie created by this
+// run is named `${ACCEPTANCE_RUN_PREFIX}-…`; every list/teardown
+// assertion filters by it. Eliminates shared-DEV-tenant contention:
+// the assertion becomes "no zombies from MY run remain" instead of
+// "the tenant is globally empty" (which is never true).
+export const ACCEPTANCE_RUN_PREFIX = `acc-${Date.now().toString(36)}-${crypto.randomBytes(3).toString("hex")}`;

@@ -308,6 +308,39 @@ Each group commit deletes the old code paths it replaces — no separate cleanup
 
 ---
 
+## Piece 1 Closeout — Acceptance Hardening (May 19, 2026)
+
+After the substrate migration landed, the Captain split delivery into pieces to keep PR #332 focused. Verbatim quote:
+
+> Captain (May 19, 2026): "Captain has decided to PARK Piece 2 (HttpClient port to effect/unstable/http) and Piece 3 (coverage uplift to 99/99) as separate follow-up specs. Land Piece 1 only in PR #332."
+
+During final acceptance against api-dev, two structural defects surfaced in the `zombiectl` acceptance suite that PR #332 closes as part of the Piece 1 deliverable:
+
+1. **Shared-DEV-tenant brittleness.** `lifecycle-with-token.spec.ts`'s post-teardown empty-list assertion asserted *global* tenant emptiness, which is never true for a shared DEV tenant carrying leftover zombies from other runs/agents. Three skips lived under this gate.
+2. **Hardcoded skip on a derivable URL.** `lifecycle-after-login.spec.ts` skipped whenever `ZOMBIE_ACCEPTANCE_DASHBOARD_URL` was unset, even though the dashboard URL is deterministic per environment (`https://usezombie-app.vercel.app` for DEV, `https://app.usezombie.com` for PROD).
+
+**Resolutions landed in PR #332:**
+
+- **`ACCEPTANCE_RUN_PREFIX` per-process identifier.** Every zombie created by an acceptance run carries the prefix in its `name`. The empty-list assertion now reads "no LIVE zombies starting with my prefix remain" — true after teardown regardless of global tenant state. Eliminates parallel-run interference, worktree contention, and leftover-state false-negatives in one move. Implemented in `zombiectl/test/acceptance/fixtures/constants.ts`, `seed.ts`, `teardown.ts`, `lifecycle.ts`, `lifecycle-with-token.spec.ts`.
+- **`resolveDashboardUrl(apiUrl)` deterministic derivation.** Dashboard URL maps from the acceptance API URL via `global-setup.ts` — `api-dev.usezombie.com` → `usezombie-app.vercel.app`, `api.usezombie.com` → `app.usezombie.com`, with `ZOMBIE_ACCEPTANCE_DASHBOARD_URL` retained as an override hatch for `localhost:3000` workflows.
+- **`lifecycle-after-login.spec.ts` skip narrowed to actual blocker.** Source grep proves `ui/packages/app/app/cli-auth/` doesn't exist and `data-testid="cli-auth-approve"` is not in the dashboard codebase. The page is M74_002's deliverable (per `docs/v2/pending/M74_002_…_HANDSHAKE_HARDENING.md` line 72). Skip now reads `dashboardHandshakeImplemented = false` — a 1-line constant the M74_002 PR flips to `true` in the same commit that adds the page. No env var, no probe, no tribal opt-in.
+- **RULE NLR cleanup while touching.** Stripped `§4a`/`§4b`/`§4c1`/`§4c2`/`§3-residual`/`§5a`/`§5b`/`§5b'`/`§5c` from describe/it names and surrounding comments per RULE TST-NAM. Removed the unused `EMPTY_LIST_CONVENTIONS` constant after the last consumer was deleted.
+
+### Verification Evidence (Piece 1 closeout)
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| acceptance suite (live DEV, no dashboard env) | `bun run test:acceptance` | 98 pass / 1 skip / 0 fail (was 97/4/0) | ✅ |
+| acceptance dashboard URL derivation | (omitted `ZOMBIE_ACCEPTANCE_DASHBOARD_URL`) | dev URL auto-resolved to `usezombie-app.vercel.app` | ✅ |
+| zombiectl unit tests | `cd zombiectl && bun test` | 755 pass / 2 skip / 0 fail (cov: fn 96.50 / ln 98.02) | ✅ |
+| zombiectl lint | `cd zombiectl && bun run lint` | 0 warnings / 0 errors | ✅ |
+
+### Captain ack — out-of-scope deferrals
+
+> Captain (May 19, 2026): "if so we can ship this PR if the ceremonies in git add, git push pr completes" + "And i can start a new session for fixing acceptance?" + "If so we must skip test-e2e tests" — context: deferring `make live-e2e-auth` (pre-existing M62 portability-gate regression in `src/auth/middleware/{errors,tenant_api_key}.zig` — relative imports outside the auth module path) and `make live-e2e-all` (placeholder `BACKEND_E2E_FILTER_*` strings match zero tests; `_zig_test_filter` doesn't thread `TEST_DATABASE_URL`/`LIVE_DB`/`REDIS_TLS_CA_CERT_FILE`) to follow-up specs **M74_003** and **M74_004** respectively. Dashboard `/cli-auth/{session_id}` page implementation is already in **M74_002**'s blast radius. PR #332 ships M74_001 Piece 1 substrate + acceptance hardening only.
+
+---
+
 ## Out of Scope
 
 - **Server-side runtime changes.** Zig handlers stay as-is; the migration is CLI-only.
