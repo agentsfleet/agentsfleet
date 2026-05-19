@@ -206,7 +206,7 @@ github.com/usezombie/skills/
 1. After §3, `find skills/ -type f` returns empty in this repo — enforced by orphan-sweep CI grep on `skills/` path.
 2. After §4, `npm pack --dry-run` in `zombiectl/` does not list any `skills/` file — enforced by the `make` smoke target or a new check.
 3. Skill-repo `main` is the only release surface — no tags, no semver. Enforced by convention + docs.
-4. Every `npx skills add usezombie/usezombie` reference in the lead repo + `~/Projects/docs/` is dead post-§5 — enforced by `grep -rn "usezombie/usezombie" docs/ ui/ src/ zombiectl/` returning empty.
+4. Every `npx skills add usezombie/usezombie` reference in the lead repo + `~/Projects/docs/` is dead post-§5 — enforced by `grep -rn "npx skills add usezombie/usezombie" docs/ ui/ src/ zombiectl/` returning empty (active surface only — `docs/v2/done/**` is historical archive and is excluded from the sweep by spec convention; the bare-URL form `https://github.com/usezombie/usezombie` remains valid in repo URL references — website footer/config, zombiectl/README.md, zombiectl/package.json, architecture data_flow.md examples — and is NOT in scope of this invariant).
 
 ---
 
@@ -248,8 +248,8 @@ test ! -d tests/skill-evals/usezombie-install-platform-ops && echo "PASS" || ech
 # E3: package.json files: array no longer mentions skills
 cd zombiectl && jq -e '.files | contains(["skills"]) | not' package.json && echo "PASS" || echo "FAIL"
 
-# E4: no lingering references to old install path
-! grep -rn "npx skills add usezombie/usezombie" docs/ ui/ src/ zombiectl/ && echo "PASS: no stale refs" || echo "FAIL"
+# E4: no lingering references to old install path (active surface — exclude done/ archive)
+! grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done docs/ ui/ src/ zombiectl/ && echo "PASS: no stale refs" || echo "FAIL"
 
 # E5: new repo reachable
 gh repo view usezombie/skills --json visibility | jq -e '.visibility == "PUBLIC"' && echo "PASS" || echo "FAIL"
@@ -277,7 +277,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 | Deleted symbol | Grep | Expected |
 |---|---|---|
-| `npx skills add usezombie/usezombie` | `grep -rn "usezombie/usezombie" docs/ ui/ src/ zombiectl/` | 0 matches |
+| `npx skills add usezombie/usezombie` | `grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done docs/ ui/ src/ zombiectl/` | 0 matches (active surface; `done/` is historical archive) |
 | `skills/` path import or reference | `grep -rn "skills/usezombie-install-platform-ops" src/ zombiectl/` | 0 matches |
 
 ---
