@@ -172,9 +172,10 @@ pub fn innerVerifyAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
     var fp_buf: [helpers.FINGERPRINT_HEX_LEN]u8 = undefined;
     const fingerprint = helpers.computeFingerprintHex(&fp_buf, scratch.derived.ip, scratch.user_agent, session_id);
 
-    const outcome = hx.ctx.auth_sessions.verifyAndConsume(session_id, parsed.value.verification_code, fingerprint) catch |err| {
+    var outcome = hx.ctx.auth_sessions.verifyAndConsume(session_id, parsed.value.verification_code, fingerprint) catch |err| {
         return helpers.failFromStoreError(hx, err, session_id);
     };
+    defer outcome.deinit(hx.alloc);
     helpers.dispatchVerifyOutcome(hx, outcome, session_id, fingerprint, scratch);
 }
 

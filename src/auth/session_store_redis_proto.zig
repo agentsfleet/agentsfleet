@@ -57,6 +57,30 @@ pub const VerifyOutcome = union(enum) {
     consumed: void,
     expired: void,
     missing: void,
+
+    /// Deep-copy slice payloads with `alloc` so the returned outcome
+    /// survives the originating RespValue's deinit. The borrowed form
+    /// (returned by `parseVerifyOutcome`) is unsafe to retain after
+    /// `resp.deinit` — every production caller MUST `dupe` first and
+    /// `deinit` the result.
+    pub fn dupe(self: VerifyOutcome, alloc: std.mem.Allocator) error{OutOfMemory}!VerifyOutcome {
+        return switch (self) {
+            .success => |p| .{ .success = try dupePayload(alloc, p) },
+            .replay => |p| .{ .replay = try dupePayload(alloc, p) },
+            .aborted => |reason| .{ .aborted = try alloc.dupe(u8, reason) },
+            .invalid_code => |attempts| .{ .invalid_code = attempts },
+            .not_approved, .consumed, .expired, .missing => self,
+        };
+    }
+
+    pub fn deinit(self: *VerifyOutcome, alloc: std.mem.Allocator) void {
+        switch (self.*) {
+            .success => |p| deinitPayload(alloc, p),
+            .replay => |p| deinitPayload(alloc, p),
+            .aborted => |reason| alloc.free(reason),
+            else => {},
+        }
+    }
 };
 
 pub const VerifyPayload = struct {
@@ -64,6 +88,21 @@ pub const VerifyPayload = struct {
     ciphertext: []const u8,
     nonce: []const u8,
 };
+
+fn dupePayload(alloc: std.mem.Allocator, p: VerifyPayload) error{OutOfMemory}!VerifyPayload {
+    const dpk = try alloc.dupe(u8, p.dashboard_public_key);
+    errdefer alloc.free(dpk);
+    const ct = try alloc.dupe(u8, p.ciphertext);
+    errdefer alloc.free(ct);
+    const nonce = try alloc.dupe(u8, p.nonce);
+    return .{ .dashboard_public_key = dpk, .ciphertext = ct, .nonce = nonce };
+}
+
+fn deinitPayload(alloc: std.mem.Allocator, p: VerifyPayload) void {
+    alloc.free(p.dashboard_public_key);
+    alloc.free(p.ciphertext);
+    alloc.free(p.nonce);
+}
 
 pub const Error = error{
     InvalidPublicKey,
@@ -243,6 +282,56 @@ test "parseVerifyOutcome replay shares the success payload shape" {
     defer resp.deinit(testing.allocator);
     const outcome = try parseVerifyOutcome(resp);
     try testing.expectEqualStrings("D", outcome.replay.dashboard_public_key);
+}
+
+test "VerifyOutcome.dupe survives RespValue free — pins the borrowed-slice fix" {
+    // The hazard: parseVerifyOutcome returns slices borrowed from `resp`.
+    // If the caller frees `resp` before reading the outcome, those slices
+    // dangle. testing.allocator scribbles 0xaa on free, so this test will
+    // observe corrupted bytes if dupe is missing or wrong.
+    var resp = try arrayOf(testing.allocator, &.{ "success", "DASH-KEY", "CIPHER-PAYLOAD", "NONCE-BYTES" });
+    const borrowed = try parseVerifyOutcome(resp);
+    var owned = try borrowed.dupe(testing.allocator);
+    defer owned.deinit(testing.allocator);
+
+    // Free the RespValue first — this is the production lifecycle.
+    resp.deinit(testing.allocator);
+
+    // The owned outcome must still read the original bytes, not the
+    // allocator scribble pattern.
+    try testing.expectEqualStrings("DASH-KEY", owned.success.dashboard_public_key);
+    try testing.expectEqualStrings("CIPHER-PAYLOAD", owned.success.ciphertext);
+    try testing.expectEqualStrings("NONCE-BYTES", owned.success.nonce);
+}
+
+test "VerifyOutcome.dupe survives RespValue free — aborted reason variant" {
+    var resp = try arrayOf(testing.allocator, &.{ "aborted", "rate_limit_exceeded" });
+    const borrowed = try parseVerifyOutcome(resp);
+    var owned = try borrowed.dupe(testing.allocator);
+    defer owned.deinit(testing.allocator);
+
+    resp.deinit(testing.allocator);
+    try testing.expectEqualStrings("rate_limit_exceeded", owned.aborted);
+}
+
+test "VerifyOutcome.dupe is identity for payload-less variants" {
+    inline for (.{ "consumed", "expired", "missing", "not_approved" }) |tag| {
+        var resp = try arrayOf(testing.allocator, &.{tag});
+        defer resp.deinit(testing.allocator);
+        const borrowed = try parseVerifyOutcome(resp);
+        var owned = try borrowed.dupe(testing.allocator);
+        defer owned.deinit(testing.allocator); // no-op; pin it doesn't crash.
+        try testing.expect(std.meta.activeTag(owned) == std.meta.activeTag(borrowed));
+    }
+}
+
+test "VerifyOutcome.dupe preserves invalid_code u8 attempts" {
+    var resp = try arrayOf(testing.allocator, &.{ "invalid_code", "4" });
+    defer resp.deinit(testing.allocator);
+    const borrowed = try parseVerifyOutcome(resp);
+    var owned = try borrowed.dupe(testing.allocator);
+    defer owned.deinit(testing.allocator);
+    try testing.expectEqual(@as(u8, 4), owned.invalid_code);
 }
 
 test "VERIFY_AND_CONSUME_LUA embed is non-empty and references attempts" {

@@ -180,7 +180,12 @@ pub const SessionStore = struct {
             att_str,  ttl_str,
         });
         defer resp.deinit(self.alloc);
-        return proto.parseVerifyOutcome(resp);
+        // parseVerifyOutcome returns slices borrowed from `resp`. The
+        // `defer` above frees those slices the moment this function
+        // returns, so the caller would read freed memory. Dupe before
+        // return; caller calls `outcome.deinit(alloc)`.
+        const borrowed = try proto.parseVerifyOutcome(resp);
+        return borrowed.dupe(self.alloc) catch return Error.OutOfMemory;
     }
 
     /// Atomic owner-checked transition to `aborted/explicit_cancel`. Used
