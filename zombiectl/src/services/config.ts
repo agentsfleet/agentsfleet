@@ -10,7 +10,12 @@ import { Effect, Layer, Option, Redacted, Context } from "effect";
 import type { FetchImpl } from "../lib/http.ts";
 
 const DEFAULT_API_URL = "https://api.usezombie.com";
-const DEFAULT_DASHBOARD_URL = "https://dashboard.usezombie.com";
+// PROD dashboard is `app.usezombie.com` (DEV is the Vercel preview at
+// `usezombie-app.vercel.app`; see `runtime_loader.zig:121 APP_URL`,
+// `BILLING_DASHBOARD_URL` in `commands/billing.ts`, and acceptance's
+// `DASHBOARD_URL_PROD`). The earlier `dashboard.usezombie.com` value
+// was a typo that pointed at a nonexistent domain.
+const DEFAULT_DASHBOARD_URL = "https://app.usezombie.com";
 // PostHog project key is public-by-design (write-only capture scope,
 // no read/admin), same model as Stripe pk_live_…. Supabase ships
 // theirs as a plain string in cli-config.layer.ts; we match that.
