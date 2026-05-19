@@ -54,8 +54,11 @@ describe("TriggerPanel", () => {
   });
 
   it("renders the API-ingress helper line on the api trigger card (not the unknown-provider copy)", async () => {
+    // `api` keys are deliberately absent from lastDeliveryByKey per
+    // last-delivery.ts's contract, so auto-expand never fires for api
+    // triggers. Click the trigger header to expand the card explicitly.
     render(<TriggerPanel zombieId="zmb_x" triggers={[{ type: "api" }]} />);
-    // Single api trigger with no recorded delivery → auto-expands on mount.
+    fireEvent.click(screen.getByText(/API ingress/i));
     await waitFor(() => expect(screen.getByTestId("copy-url-fallback-api")).toBeTruthy());
     const card = screen.getByTestId("copy-url-fallback-api");
     expect(card.textContent).toMatch(/API ingress — POST events directly to this URL\./);
@@ -80,6 +83,7 @@ describe("TriggerPanel", () => {
         triggers={[{ type: "webhook", source: "constructor" } as never]}
       />,
     );
+    fireEvent.click(screen.getByText(/Webhook · constructor/i));
     await waitFor(() =>
       expect(screen.getByTestId("copy-url-fallback-constructor")).toBeTruthy(),
     );
@@ -94,7 +98,13 @@ describe("TriggerPanel", () => {
     // Branch coverage: `onValueChange={(v) => setOpenValue(v || undefined)}`
     // — the user-collapse path where Radix passes `""` and we coerce to
     // `undefined`. Auto-expand paths only exercise the expand half.
-    render(<TriggerPanel zombieId="zmb_x" triggers={[githubTrigger]} />);
+    render(
+      <TriggerPanel
+        zombieId="zmb_x"
+        triggers={[githubTrigger]}
+        lastDeliveryByKey={{ "webhook:github": null }}
+      />,
+    );
     const triggerBtn = screen.getByRole("button", { name: /Webhook · github/i });
     expect(triggerBtn.getAttribute("aria-expanded")).toBe("true"); // auto-expanded
     fireEvent.click(triggerBtn);
