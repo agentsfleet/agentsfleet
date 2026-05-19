@@ -817,16 +817,18 @@ Local coding agents that run on the same workstation where the human can complet
 
 ---
 
-## Roadmap — Flow 2 dashboard cleanup (planned, post-M74_002)
+## Roadmap — Flow 2 dashboard cleanup
 
-> **Status:** PLANNED. Captain decision 2026-05-19 — staged as Option 2 then Option 3. Pre-condition: Clerk session-token claim customization confirmed available on the current org's plan (see *Verification owed* below).
+> **Status:** Stage 1 SHIPPED in M74_002 §9 (dashboard single-token collapse). Stage 2 (BFF) PLANNED as a future milestone.
 > **Scope:** dashboard (`ui/packages/app/`) and Clerk org config only. **Flow 1 (CLI) is unaffected by either stage** — see *CLI carve-out* below for the invariants the M74_002 work continues to satisfy throughout.
 
 The Token A / Token B split documented in *The two tokens at a glance* is not load-bearing on zombied's side. `src/auth/jwks.zig` validates `sub`, `iss`, `exp`, and `aud`; `sid` is never checked. The split exists because Clerk's *default* session token does not carry `aud=https://api.usezombie.com` (zombied's strict-check rejects it) and Clerk's *custom JWT templates* (the `api` template) cannot include `sid` per Clerk's docs (so the template can't double as the dashboard's `clerkMiddleware()` session token). Hence two distinct JWTs running in parallel today.
 
 Clerk's **session-token claim customization** — a separate Clerk feature from JWT templates — lifts the constraint. Adding `aud`, `metadata.tenant_id`, `metadata.role` to the session token produces one JWT that satisfies both `clerkMiddleware()` (it already carries `sid`) and zombied (the new `aud` claim passes the existing strict-check). Token B as a separate artifact for Flow 2 becomes unnecessary.
 
-### Stage 1 — Option 2: single-token via session-token claim customization
+### Stage 1 — Option 2: single-token via session-token claim customization (shipped, M74_002 §9)
+
+> Operator setup for the Clerk dashboard configuration lives at `playbooks/003_priming_infra/001_playbook.md` §3.3 ("Clerk — Session Token Customization"). Per-env audience (`aud`) MUST match the env's `OIDC_AUDIENCE` Fly secret; defaults today are `https://api.usezombie.com` (PROD) and `https://api-dev.usezombie.com` (DEV).
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -849,20 +851,22 @@ Clerk's **session-token claim customization** — a separate Clerk feature from 
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Delta vs today:**
+**What shipped (M74_002 §9 D40–D49):**
 
-| Surface | Action |
+| Surface | Outcome |
 |---|---|
-| Clerk org config | Session Token Claims += `aud`, `metadata.tenant_id`, `metadata.role` (UI-only change in Clerk dashboard) |
-| `lib/auth/server.ts` | DELETE — `getServerToken()` / `getServerAuth()` no longer needed; server pages call `auth().getToken()` directly |
-| `lib/api/redacted.ts` (+ test) | DELETE — Token B no longer exists as a distinct artifact requiring defensive masking |
-| `lib/actions/with-token.ts` | DELETE or simplify |
-| `lib/api/{zombies,events,approvals,credentials,tenant_billing,tenant_provider,workspaces,client}.ts` | Remove optional-bearer branches (~3 lines per file) |
-| `app/(dashboard)/**/page.tsx` server pages | Replace `getServerToken()` calls with bare `auth().getToken()` (15 hits across 12 files) |
-| `app/backend/.../events/stream/route.ts` | Drop `{template:"api"}` arg on `getToken()` |
-| `tests/e2e/acceptance/fixtures/clerk-admin.ts` | Mint via session-token endpoint instead of `tokens/api` |
+| Clerk org config (D40) | Session Token Claims += `aud`, `metadata.tenant_id`, `metadata.role`. DEV applied; PROD pending operator click. |
+| `lib/auth/server.ts` (D41) | DELETED — `getServerToken()` / `getServerAuth()` / `getServerSessionMetadata()` / `API_TEMPLATE` const all gone. |
+| `lib/api/redacted.ts` (D42) | N/A — file not present in this worktree; no surface to delete. |
+| `lib/actions/with-token.ts` (D43) | Simplified — drops the `getServerToken` indirection; calls `auth().getToken()` directly. |
+| `lib/api/{zombies,events,approvals,credentials,tenant_billing,tenant_provider,workspaces,client}.ts` (D44) | N/A — helper signatures already accept non-null `token`; no optional-bearer branches to remove. |
+| `app/(dashboard)/**/page.tsx` server pages (D45) | 14 sites migrated to `const { getToken } = await auth(); const token = await getToken();`. `lib/workspace.ts:readWorkspaceClaim` switched to inline `sessionClaims.metadata` read. |
+| `app/backend/.../events/stream/route.ts` (D46) | `getToken({template:"api"})` → `getToken()` (no template arg). |
+| `app/cli-auth/[session_id]/page.tsx` (D47) | UNCHANGED — carve-out. The api-template mint survives at this single call site for the CLI handoff. |
+| `tests/e2e/acceptance/fixtures/clerk-admin.ts` (D48) | Mint endpoint switched to `POST /v1/sessions/{id}/tokens` (default session token). `JWT_TEMPLATE` constant retired. |
+| `playbooks/003_priming_infra/001_playbook.md` §3.3 + this doc (D49) | Operator UI walkthrough + rollback procedure captured. |
 
-**Blast radius:** ~22 files, ~400 net-removed lines. Zero zombied changes. Zero infra changes. **Reversibility:** flip Clerk session-token claim config back to default; revert the PR.
+**Reversibility:** Clerk dashboard → **Sessions → Customize session token** → reset to default. Next minted token lacks `aud`; dashboard fetches fail loudly with `AudienceMismatch` 401 on the next refresh. Re-apply the claims to restore. No zombied or schema state involved.
 
 ### Stage 2 — Option 3: BFF on top of single-token
 
@@ -997,12 +1001,6 @@ Concrete invariants the M74_002 work continues to satisfy through both stages:
 4. **`bearer_or_api_key.zig` validates the CLI's Bearer identically.** OIDC verifier path, JWKS caching, `aud=https://api.usezombie.com` check — all unchanged.
 
 If a future milestone decides to move the CLI off the Clerk JWT to a server-mintable `zmb_t_*`-style token (the direction sketched at *What's not in this doc — item 6*), it ships as its own milestone — **never bundled with the Flow 2 cleanup**.
-
-### Verification owed before Stage 1 spec opens
-
-1. Confirm Clerk session-token claim customization is available on the current org's plan; capture the dated docs citation.
-2. Measure resulting session-token size against Clerk's cookie size budget after the three added claims (`aud` + `metadata.tenant_id` + `metadata.role`).
-3. Confirm `useAuth().getToken()` refresh cadence doesn't degrade with the additional claims, and the cookie path continues to work for `clerkMiddleware()`.
 
 ### Beyond Stage 2 — what this roadmap does NOT solve
 
