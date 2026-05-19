@@ -79,7 +79,9 @@ The OpenAPI surface lands new auth endpoints (PATCH /approve, POST /verify, DELE
 
 The ONLY new dashboard surface in M74_002 is the `/cli-auth/{session_id}` page (a single page reachable only when a CLI initiates a login flow and directs the user's browser to it). End users who never run `zombiectl login` never see this page; their experience is identical to before.
 
-`docs/AUTH.md` Flow 2 / Flow 3 / Webhook auth sections are explicitly out of scope (see *Out of Scope*).
+`docs/AUTH.md` Flow 2 / Flow 3 / Webhook auth sections are out of scope for this milestone's *original* (Slices 1–8) scope.
+
+> **Amendment 2026-05-19 — §9 expands the milestone scope to include Stage 1 of the Flow 2 cleanup.** §9 (Single-token collapse) replaces three Flow 2 rows above: the *getToken({template:"api"}) mint*, the */backend/:path\* carrying Token B*, and the *SSE Route Handler injecting Bearer* — all three switch from the api-template Token B to Clerk's customized default session token. Browser-side `__session` cookie + `clerkMiddleware()` reading it stays Unchanged. The single-page `/cli-auth/{session_id}` (Flow 1 carve-out) keeps the api-template mint at one surviving call site. See §9 + `docs/AUTH.md` §"Roadmap — Flow 2 dashboard cleanup (planned, post-M74_002)" (post-merge) for the full deltas.
 
 ---
 
@@ -844,6 +846,7 @@ These were Open Questions in the prior revision. Captain answered May 17, 2026 (
 | Q9 | Incident-mode `AUTH_AUDIT_INCLUDE_FULL_IDS` | **Dropped.** No env knob; audit events always carry `session_id_hash` + `session_id_prefix`, never the raw id. | Captain decision May 18 2026: the env's only value was saving ops ~5s of `HMAC-SHA256(AUDIT_LOG_PEPPER, raw_id)` when starting from a customer-supplied raw session_id — ops already hold the pepper, so the same hash is a one-liner away. Trade for one less "MUST NOT enable in prod" foot-gun. |
 | Q10 | In-app rate-limit middleware (`src/http/middleware/rate_limit.zig`) | **Dropped — out of scope for v2.0.** Rate limiting carves across three layers; only L3 (per-session 5-attempt cap in `verifyAndConsume` Lua) lives inside zombied. L1 — Clerk-edge per-IP on sign-in / sign-up (3 attempts / 10 s, 5 creates / 10 s) bounds upstream Clerk-identity supply. L2 — Cloudflare WAF per-IP on `POST /v1/auth/sessions` (10 / IP / min) bounds CLI-side session creation at the edge in front of `api.usezombie.com`. Per-Clerk-user backstop on PATCH /approve is deferred post-launch (L1 already gates the upstream identity supply). The `src/http/middleware/rate_limit.zig` file is not authored; `MiddlewareRegistry`, `route_table.zig`, and the error registry are not extended; dead audit primitives (`emitRateLimitExceeded`, `SURFACE_*`, `EV_RATELIMIT_EXCEEDED`, `REASON_RATE_LIMITED`) are swept per RULE NDC. `REASON_RATE_LIMIT_EXCEEDED` stays — still consumed by `auth.session.aborted` when L3 trips. | Captain decision May 18 2026: pre-2.0 with no production traffic, building ~600 lines of in-app middleware to duplicate Cloudflare WAF's per-IP function is debt for zero current threat. Edge owns L1+L2; Lua owns L3; future per-user concerns reopen as a post-launch hardening milestone if usage data justifies. Clerk does not offer per-user rate limits for customer APIs (its limits are on Clerk's own endpoints), so a per-user backstop would require Arcjet / Upstash / homegrown — explicitly deferred. |
 | Q11 | URL-shape gate carve-out for the slash-suffix lifecycle paths | **Slash-suffix paths kept; `scripts/check_openapi_url_shape.py` carve-out added.** Slice 3 shipped `/v1/auth/sessions/{id}/approve`, `/v1/auth/sessions/{id}/verify`, `/v1/auth/sessions/all` with slash-suffix shape (router.zig + integration tests already in tree). The REST §1 URL-shape gate flags verb-leaf segments by default; the Q11 patch adds `approve`, `verify`, `all` to `NOUN_FINAL_SEGMENT_ALLOW` with one-line justifications and removes the now-stale `complete` entry per RULE NLR (the pre-Q3 plaintext `/complete` route was retired by Slice 3). A separate fix to `make/quality.mk` swaps `REDOCLY := bun x redocly` → `REDOCLY := bunx @redocly/cli` because the former resolved to a stub package ("This is not the package you're looking for.") and silently didn't write `public/openapi.json` — independent tooling bug, not part of the gate carve-out. **Captain authorization (verbatim, May 18, 2026):** *"I authorize patching scripts/check_openapi_url_shape.py to allowlist approve, verify, all in NOUN_FINAL_SEGMENT_ALLOW and remove the now-stale complete entry. Reason: Slice 3 routes shipped with slash-suffix shape; gate carve-out documented per its own 'code-review surface' convention."* | Captain decision May 18, 2026: refactoring Slice 3's merged router + handler + integration tests to colon-op (or any other shape) for the sake of the gate would touch already-tested code. The URL-shape gate's own docstring documents allowlist carve-outs as "a code-review surface — every carve-out has a TODO pointing at the spec that will rename the offending path"; the Q11 row IS the spec entry. Future REST §1 cleanup can revisit if/when there's reason to. |
+| Q12 | Folding Flow 2 cleanup Stage 1 into this milestone | **§9 (Single-token collapse) added to this spec; no separate PR; no separate spec file.** Stage 1 of the Flow 2 dashboard cleanup roadmap (`docs/AUTH.md` §"Roadmap — Flow 2 dashboard cleanup", landed 2026-05-19 at commit `5ebcdf95` on this branch) is folded in as a new workstream §9. Clerk org config gains custom session-token claims (`aud`, `metadata.tenant_id`, `metadata.role`); dashboard drops the api-template Token B mint everywhere except `/cli-auth/[session_id]/page.tsx` (Flow 1 carve-out). ~22 files / ~400 net-removed dashboard LOC; zero zombied changes. Sequenced after Slice 5 (`zombiectl/src/commands/auth.ts` Effect-TS rewrite). Stage 2 (BFF: `/backend` → `/api` route handlers + Server Actions) deferred to a follow-up milestone. **Captain authorization (verbatim, May 19, 2026):** *"Green, but amend your M74_002 with the auth_single_token spec in this spec — and send a PR in this worktree. No separate PR or spec for the auth_single_token spec."* | Captain decision May 19, 2026: a single milestone captures the full CLI-handshake-hardening + dashboard-token-collapse story; AUTH.md Roadmap section + spec §9 stay co-located with the M74_002 device-flow content they cross-reference; the M74_002 carve-out review verified Flow 1 is unaffected. |
 
 ---
 
@@ -923,9 +926,17 @@ All three are required to ship a coherent CLI auth surface. Either of (1) or (3)
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/packages/app/app/cli-auth/[session_id]/page.tsx` (grep for actual path) | REWRITE | Read `session_id` from path param only (no `public_key` in URL). GET /v1/auth/sessions/{id} to fetch `cli_public_key` + `token_name`. Display "Approve CLI login for **{token_name}**?". On Approve: mint JWT via Clerk → generate `(dash_priv, dash_pub)` → derive shared via ECDH × cli_public_key → HKDF → AES-256-GCM encrypt(jwt) → generate 6-digit code → hash with sha256(code \|\| session_id) → PATCH /approve → display the plaintext code with "Type this into your CLI" hint. When a previous session exists for the same Clerk user, surface "This will replace your previous CLI session on **{previous_token_name}**" alongside the Approve button. |
+| `ui/packages/app/app/cli-auth/[session_id]/page.tsx` (grep for actual path) | REWRITE | Read `session_id` from path param only (no `public_key` in URL). GET /v1/auth/sessions/{id} to fetch `cli_public_key` + `token_name`. Display "Approve CLI login for **{token_name}**?". On Approve: mint JWT via Clerk → generate `(dash_priv, dash_pub)` → derive shared via ECDH × cli_public_key → HKDF → AES-256-GCM encrypt(jwt) → generate 6-digit code → hash with sha256(code \|\| session_id) → PATCH /approve → display the plaintext code with "Type this into your CLI" hint. When a previous session exists for the same Clerk user, surface "This will replace your previous CLI session on **{previous_token_name}**" alongside the Approve button. **§9 carve-out:** this file keeps `getToken({template:"api"})` as the ONE surviving api-template mint call site post-§9 (annotated with a comment explaining the carve-out). |
 | `ui/packages/app/lib/auth/cli-flow.ts` (NEW or EDIT — grep first) | CREATE or EDIT | Pure crypto helpers: `generateEphemeralKeypair()`, `deriveSharedKey(privateKey, publicKey)`, `encryptJwt(jwt, key)`, `hashVerificationCode(code, sessionId)`. All `crypto.subtle`-based. Unit-tested in isolation. |
 | `ui/packages/app/tests/e2e/acceptance/cli-acceptance/lifecycle-after-login.spec.ts` (or successor) | EDIT | Assert verification-code happy path + wrong-code reject + device-label visibility + already-authenticated dashboard message. |
+| **§9 dashboard cleanup files (D40–D49 below)** | | |
+| `ui/packages/app/lib/auth/server.ts` | **DELETE** | `getServerToken()` / `getServerAuth()` removed. Server pages call `auth().getToken()` directly (no template arg). D41. |
+| `ui/packages/app/lib/api/redacted.ts` + `redacted.test.ts` | **DELETE** | Token B no longer exists as a distinct artifact requiring defensive masking. D42. |
+| `ui/packages/app/lib/actions/with-token.ts` | **DELETE or simplify** | Server Actions resolve token via `auth().getToken()` directly. D43. |
+| `ui/packages/app/lib/api/{zombies,events,approvals,credentials,tenant_billing,tenant_provider,workspaces,client}.ts` | EDIT | Optional-bearer branches removed (~3 lines per file × ~7 files). D44. |
+| `ui/packages/app/app/(dashboard)/**/page.tsx` server pages | EDIT | 15 hits across 12 server pages: replace `await getServerToken()` with `await auth().getToken()` (or null-check helper). D45. |
+| `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream/route.ts:26` | EDIT | Drop `{template:"api"}` arg on `getToken()`. SSE route now uses the customized session token. D46. |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts` | EDIT | Mint endpoint switches from `POST /v1/sessions/{id}/tokens/api` (template-specific) to `POST /v1/sessions/{id}/tokens` (default session token). Custom claims arrive automatically once D40 Clerk org config lands. D48. |
 
 ### OpenAPI
 
@@ -1331,6 +1342,7 @@ Effect-TS error variants (per Q7): one tagged-class per row above, in `zombiectl
 9. **High-risk future hardening areas** subsection listing dashboard-JS-compromise (XSS / extension / supply-chain), real JWT revocation, and the verification-code entropy uplift. Each entry names the responsible future milestone (or "spec not yet authored") so future security-review passes find them without re-reasoning.
 10. **Deployment requirements** subsection: Redis required for the session store; HTTPS-only at the load balancer; HSTS header on every response; NTP-synced clocks across pods within ≤1s drift; `AUTH_SESSION_CODE_PEPPER` and `AUDIT_LOG_PEPPER` provisioned in Vault; `.auth_audit` sink routed to a restricted destination distinct from customer-visible logs.
 11. **Human-led-only invariant** (Fix #5): explicit prose mirroring the autonomous-agents section's hard rule — M74_002 is for human-led flows only; CI / cron / K8s / hosted-agent / scheduled use is a spec violation; redirect to M75_xxx.
+12. **Roadmap — Flow 2 dashboard cleanup (planned, post-M74_002)** subsection (Captain decision 2026-05-19; landed in this PR at commit `5ebcdf95`). Captures Stage 1 (single-token via session-token claim customization) + Stage 2 (BFF on top of single-token) + the CLI carve-out (Flow 1 unaffected) + the v3 trajectory beyond Stage 2 (usezombie-native capability layer). Cross-references §9 of this spec for implementation dimensions of Stage 1.
 
 ### §8 — Deploy automation (Fly secrets sourced from 1Password)
 
@@ -1344,6 +1356,103 @@ Captain decision May 18 2026: both peppers are PR-scope, not deferred infra. The
 After landing: a fresh DEV deploy on `push to main` automatically pulls both peppers from `op://$VAULT_DEV` and stages them on `zombied-dev`; a fresh PROD release on tag push does the same against `$VAULT_PROD`. The manual `fly secrets set` at `playbooks/001_bootstrap/001_playbook.md:210` stays as a documented break-glass path but is no longer the steady-state mechanism. **Verified by:** post-deploy `fly secrets list --app zombied-dev` must show both `AUTH_SESSION_CODE_PEPPER` + `AUDIT_LOG_PEPPER` (smoke step in the existing post-deploy QA, no new CI step needed). Pre-flight gate (`./playbooks/002_preflight/00_gate.sh`) already validates the vault items exist before the deploy job starts — covered.
 
 **Why in this PR.** The session-store + handler-surface slices fail-fast on boot if either pepper is missing. Without §8, the first DEV deploy after merge would fail at boot, ops would have to manually `fly secrets set` to recover, and the failure window is a foot-gun for the prod release. Bundling §8 with the milestone means the deploy path is correct on day one with zero manual intervention.
+
+### §9 — Single-token collapse (Stage 1 of Flow 2 dashboard cleanup)
+
+Stage 1 of the Flow 2 dashboard cleanup roadmap captured in `docs/AUTH.md` §"Roadmap — Flow 2 dashboard cleanup (planned, post-M74_002)" (landed at commit `5ebcdf95` on this branch). The dashboard switches from minting an api-template Token B per request to using Clerk's customized default session token directly. The api-template mint survives at exactly one call site — `/cli-auth/[session_id]/page.tsx` — for the M74_002 CLI handoff, which needs the longer-lived shape.
+
+**Architectural premise (re-confirmed by the carve-out review 2026-05-19).** zombied's OIDC verifier (`src/auth/jwks.zig:326–358`) validates `sub` + `iss` + `exp` + `aud`; `sid` is **never** checked. The two-token model exists not because zombied requires `sid`, but because Clerk's default session token lacks `aud=https://api.usezombie.com` (custom JWT templates carry `aud` but cannot include `sid` per Clerk's docs — verbatim: *"session-tied claims like `sid`, `v`, `pla`, or `fea` cannot be included in custom JWTs."*). Clerk's separate **Session Token Customization** feature (configured at `dashboard.clerk.com/~/sessions`) lets custom claims be added to the default session token (which already carries `sid`). Adding `aud + metadata.tenant_id + metadata.role` produces one JWT that satisfies both `clerkMiddleware()` (already has `sid`) and zombied (new `aud` passes the existing strict-check).
+
+**Sequencing constraint.** §9 lands AFTER Slice 5 (`zombiectl/src/commands/auth.ts` Effect-TS rewrite). Slice 5 leaves the `/cli-auth/[session_id]/page.tsx` api-template mint untouched per the carve-out; §9 also leaves it untouched. But §9 deletes `ui/packages/app/lib/auth/server.ts` — Slice 5 acceptance tests may transitively touch this surface, so the order is binding: 5 → 9. Slice 7 (E2E acceptance) and Slice 9 (CHORE-close) follow §9.
+
+**Pre-conditions (Captain verification dimensions; must be green before §9 implementation starts).**
+
+| # | Question | How to verify |
+|---|---|---|
+| V9.1 | Does Clerk's Session Token Customization (dashboard UI feature, NOT JWT templates) accept `aud` as a custom claim value on the org's plan? | Captain inspects `dashboard.clerk.com/~/sessions`. If reserved/blocked, escalate (see fallbacks below). |
+| V9.2 | Do nested `metadata.tenant_id` / `metadata.role` claims work, or must they be flattened? | Same dashboard inspection; configure in DEV; decode the minted token via `useAuth().getToken()` in a `/sandbox` page. |
+| V9.3 | Cookie size budget — is the customized session token still under Clerk's 4KB cookie cap (1.2KB custom-claim budget per Clerk docs)? | After D40 config, decode the resulting JWT and measure its serialized cookie size in DEV. |
+| V9.4 | Does the customized session token retain `sid`? | Decode the JWT; verify `sid` claim is present. (Should — it's still the session token, not a JWT template — but confirm.) |
+| V9.5 | Is Session Token Customization available on the current Clerk subscription tier? | Captain confirms with Clerk. |
+
+**Replans if verification goes red:**
+- V9.1 fails (`aud` reserved): use a Clerk-allowed claim name and update zombied's OIDC verifier config to accept the alternate. Adds zombied scope; out of bounds. Defer §9 to a follow-up milestone.
+- V9.2 fails (nested metadata blocked): flatten claims to top-level (`tenant_id`, `role`) and update `src/auth/claims.zig:55–155` extraction logic to read from top-level. Adds zombied scope; out of bounds. Defer §9.
+- V9.3 fails (cookie too large): drop one claim (likely `role`) and resolve it server-side from `sub` via a Clerk Backend API call. Adds latency; revisit.
+- V9.4 fails (`sid` missing): unexpected — would break `clerkMiddleware()`. Escalate to Clerk support; defer §9.
+- V9.5 fails (plan gating): drop §9 from this milestone; alternative is **Option 1 (BFF-only)**, file as separate milestone.
+
+#### Dimensions
+
+| Dim | Surface | Behaviour |
+|---|---|---|
+| D40 | Clerk org config (DEV + PROD) | Session Token Claims += `aud: "https://api.usezombie.com"` + `metadata.tenant_id` + `metadata.role` (or flat equivalents per V9.2). UI-only change in Clerk dashboard; idempotent. Captured in playbook (D49). |
+| D41 | `ui/packages/app/lib/auth/server.ts` | DELETED. `getServerToken()` / `getServerAuth()` / `API_TEMPLATE` const all gone. Server pages migrate to bare `auth().getToken()`. |
+| D42 | `ui/packages/app/lib/api/redacted.ts` + `redacted.test.ts` | DELETED. Token B no longer crosses any function boundary; defensive masking has zero surface to defend. |
+| D43 | `ui/packages/app/lib/actions/with-token.ts` | DELETED or simplified. Server Actions call `auth().getToken()` directly. |
+| D44 | `ui/packages/app/lib/api/{zombies,events,approvals,credentials,tenant_billing,tenant_provider,workspaces,client}.ts` | Optional-bearer branches removed (~3 lines per file × ~7 files). Helper signatures simplify to "browser fetch path only". |
+| D45 | `ui/packages/app/app/(dashboard)/**/page.tsx` | 15 hits across 12 server pages: `await getServerToken()` → `await auth().getToken()`. |
+| D46 | `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream/route.ts:26` | `getToken({template:"api"})` → `getToken()` (NO template arg). SSE route now uses customized session token. |
+| D47 | `ui/packages/app/app/cli-auth/[session_id]/page.tsx:115` | UNCHANGED — explicit carve-out. The api-template mint survives at this single call site for the M74_002 CLI handoff. Add a comment block above the mint explaining WHY: CLI lacks Clerk SDK + cookie auto-refresh; session tokens are ~60s lived and refresh-coupled to the browser session; api template is the right shape for a credential that lives ~15 min in `credentials.json`. |
+| D48 | `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts` | Mint endpoint switches from `POST /v1/sessions/{id}/tokens/api` (template-specific) to `POST /v1/sessions/{id}/tokens` (default session token). Custom claims arrive automatically once D40 lands in Clerk DEV. |
+| D49 | `playbooks/003_priming_infra/001_playbook.md` | NEW §X.Y — "Clerk session-token claim customization" — UI-walkthrough for adding the three custom claims to DEV + PROD Clerk orgs. Idempotent re-runs are harmless. Captures the V9.1–V9.5 verification artifacts (screenshot of the resulting claim editor + JWT decode + cookie-size measurement). |
+
+#### Wire-shape change (zombied: zero)
+
+Zombied's OIDC verifier is unchanged. After D40, the *default* session token returned by `useAuth().getToken()` (NO template arg) carries `aud=https://api.usezombie.com` + `metadata.tenant_id` + `metadata.role`, satisfying the verifier identically to today's api-template-minted Token B. Both flows continue working in parallel during the deletion window (Clerk config flip is reversible).
+
+#### Invariants
+
+I9.1 **No surviving call to `getToken({template:"api"})` outside `/cli-auth/[session_id]/page.tsx`.** Enforced by a repo-wide grep gate (`tests/grep-gates/no-api-template-mint.test.ts`). Indirect calls via the `API_TEMPLATE` const are caught because the const is deleted with `lib/auth/server.ts` (compile error if anything still imports it).
+
+I9.2 **No surviving call to `getServerToken()`, `getServerAuth()`, or import of `Redacted<string>`.** Enforced by `tsc --noEmit` after file deletion + grep gate.
+
+I9.3 **`bearer_or_api_key.zig` OIDC verifier path is unchanged through this milestone.** Zero code changes in `src/auth/`; pinned by existing OIDC integration tests continuing to pass against tokens minted from the customized session token.
+
+I9.4 **Browser JS heap still holds one JWT** (the customized session token returned by `useAuth().getToken()`) — same XSS surface as Stage 0, just one token shape instead of two. Stage 2 (BFF) eliminates the JS-heap exposure entirely — out of scope here.
+
+I9.5 **Clerk config (D40) is reversible.** Flipping Session Token Claims back to default reverts every browser fetch to a default-aud JWT which zombied rejects with 401 `AudienceMismatch` — failure is loud, not silent. Tested by a manual rollback rehearsal documented in §9 acceptance.
+
+I9.6 **CLI handshake is byte-identical through §9.** The `/cli-auth/[session_id]/page.tsx` page continues to mint an api-template JWT and ECDH-encrypt it; zombiectl's `credentials.json` post-merge contains the same shape per Slice 5.C. Verified by the M74_002 carve-out review 2026-05-19.
+
+#### Acceptance criteria
+
+- AC9.1 — Browser fetch of any `/backend/v1/...` page in DEV succeeds with the customized session token carrying `aud + metadata.tenant_id + metadata.role`.
+- AC9.2 — `getToken({template:"api"})` literal appears in **exactly one file** in the dashboard codebase: `ui/packages/app/app/cli-auth/[session_id]/page.tsx`. Verified by `grep -rn 'getToken({\s*template:\s*"api"' ui/packages/app/`.
+- AC9.3 — `ui/packages/app/lib/auth/server.ts`, `lib/api/redacted.ts`, `lib/actions/with-token.ts` are deleted; their callers compile without errors (`bun typecheck` green).
+- AC9.4 — `bun test` + `bun typecheck` + `bun run lint` (oxlint) all green; no `as any` / `!` / `@ts-expect-error` introduced (TS-strict per `feedback_ts_migration_intent`).
+- AC9.5 — Net diff for §9 is ≤500 lines added, ~400+ lines removed (deletion-dominant; primary "code change" is a Clerk config click).
+- AC9.6 — M74_002 CLI device flow (Flow 1) end-to-end acceptance suite (`zombiectl/test/auth/login.acceptance.spec.ts`) passes byte-for-byte unchanged.
+- AC9.7 — Clerk dashboard config is captured in the playbook (D49) so a fresh org bootstrap reproduces the setup; rollback procedure documented.
+- AC9.8 — Cookie-size verification: post-D40 customized session token measures under Clerk's 4KB cookie cap with ≥30% headroom remaining (V9.3 artifact).
+
+#### Test specification additions
+
+Server-side: zero new tests (zombied unchanged).
+
+UI-side:
+- `ui/packages/app/tests/grep-gates/no-api-template-mint.test.ts` (NEW) — fails if `getToken({template:"api"})` appears outside the carve-out file.
+- `ui/packages/app/tests/grep-gates/no-getServerToken.test.ts` (NEW) — fails if `getServerToken` appears anywhere in the codebase post-deletion.
+- `ui/packages/app/tests/e2e/acceptance/dashboard-customized-session-token.spec.ts` (NEW) — full login → page load → verify the JWT in the `Authorization` header (intercepted in Playwright) carries `aud + metadata.tenant_id` + does NOT match the api-template signature (different `kid` or claim shape if Clerk distinguishes them).
+- `ui/packages/app/tests/e2e/acceptance/clerk-config-revertable.spec.ts` (NEW) — manual or scripted rollback rehearsal: flip Clerk config to default → assert dashboard fails with 401 → restore → assert dashboard passes again. Captures I9.5.
+
+#### Cross-references
+
+- `docs/AUTH.md` §"Roadmap — Flow 2 dashboard cleanup (planned, post-M74_002)" — architecture rationale + topology diagrams (Stage 1 + Stage 2) + CLI carve-out + Beyond-Stage-2 trajectory.
+- §3 (Dashboard handler) — the carve-out site (`/cli-auth/[session_id]/page.tsx`) that preserves the api-template mint.
+- §7 (AUTH.md update) item 12 — the doc-side addition that captures this direction.
+- Captain decision Q12 (above) — the verbatim authorization for §9.
+
+#### What §9 explicitly does NOT do (Stage 2 deferred)
+
+- **`/backend` → `/api` rename.** Stage 2.
+- **`/api/v1/...` route handler creation** for every zombied endpoint the dashboard reads. Stage 2.
+- **Server pages calling `/api/*` handler functions in-process.** Stage 2.
+- **Mutations migrating to Server Actions.** Stage 2.
+- **Browser stops being a credential courier entirely (zero JWT in JS heap).** Stage 2.
+- **Audit emit + IDOR defense-in-depth at the `/api/*` boundary** (reusing M74_002's `AUDIT_LOG_PEPPER` + `.auth_audit` sink). Stage 2.
+
+Stage 2 ships as a follow-up milestone (`M{NN}_001_P1_UI_AUTH_BFF_CLEANUP`) authored after §9 lands and stabilizes. The cross-reference structure preserved here makes the Stage-2 spec's Discovery section short — it cites this §9 as the prior art.
 
 ---
 
