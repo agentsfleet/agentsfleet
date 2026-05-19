@@ -35,6 +35,7 @@ import {
   InterruptedError,
   TimeoutError,
   type CliError,
+  type MeValidationError,
 } from "../errors/index.ts";
 import {
   buildLoginUrl,
@@ -52,6 +53,7 @@ import {
   startSpinner,
   withSigintAbort,
 } from "./login-helpers.ts";
+import { pingMe } from "../lib/me-ping.ts";
 
 const DEFAULT_TIMEOUT_SEC = 300;
 const DEFAULT_POLL_MS = 2000;
@@ -187,9 +189,23 @@ const failedOutcomeError = (
   });
 };
 
+// /me ping failure → wipe credentials.json before propagating the error.
+// The token was persisted moments ago but failed validation; leaving it
+// on disk would route subsequent commands to the same dead-on-arrival
+// token. Swallow the clear's own UnexpectedError — the validation
+// failure is the load-bearing signal the operator needs to see.
+const rollbackOnMeFailure = (
+  err: MeValidationError,
+): Effect.Effect<never, MeValidationError, Credentials> =>
+  Effect.gen(function* () {
+    const credentials = yield* Credentials;
+    yield* credentials.clearAccessToken.pipe(Effect.ignore);
+    return yield* Effect.fail(err);
+  });
+
 // Verification-pending branch: prompt → /verify → decrypt → persist →
-// hydrate → telemetry. Lives outside loginCore so the orchestrator stays
-// linear (no nested generators) under the 350-line cap.
+// /me ping → hydrate → telemetry. Lives outside loginCore so the
+// orchestrator stays linear (no nested generators) under the 350-line cap.
 const completeVerificationBranch = (
   sessionId: string,
   keypair: import("../lib/cli-flow.ts").CliKeypair,
@@ -202,6 +218,7 @@ const completeVerificationBranch = (
   Effect.gen(function* () {
     const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput });
     const redacted = yield* persistSuccess(sessionId, token);
+    yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
     yield* hydrateWorkspacesAfterLogin(redacted);
     yield* captureLoginCompleted(sessionId, token);
     return { status: "complete", token } as FinalOutcome;

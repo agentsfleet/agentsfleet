@@ -131,6 +131,12 @@ const httpLayer = (fixture: DeviceFlowFixture): Layer.Layer<HttpClient> =>
       if (method === "GET" && path === "/v1/tenants/me/workspaces") {
         return Effect.succeed({ items: [] } as T);
       }
+      if (method === "GET" && path === "/v1/tenants/me/billing") {
+        // Stand-in for the post-login token-validation ping (`pingMe`
+        // in `src/lib/me-ping.ts`). Body shape is irrelevant — the only
+        // signal pingMe consumes is success vs 401/403.
+        return Effect.succeed({ balance_nanos: 0, updated_at: 0 } as T);
+      }
       return Effect.fail(
         new ServerError({
           detail: `unexpected ${method} ${path}`,
