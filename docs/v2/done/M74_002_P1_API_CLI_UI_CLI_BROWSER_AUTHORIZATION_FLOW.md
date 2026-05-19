@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M74
 **Workstream:** 002
 **Date:** May 17, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE (code shipped in PR #331; D40 PROD operator click pending — captured in PR Session Notes and playbook §3.3 rollback procedure)
 **Priority:** P1 — closes the session-id phishing-without-terminal attack class on the device-authorization flow; removes plaintext JSON Web Token (JWT) from server-side transport, storage, log, queue, and metrics surfaces; and consolidates every in-flight CLI-login concern (UX polish, error taxonomy, Effect-TS migration of the auth commands) into a single spec so the auth surface ships coherent instead of stitched. **Honest scope: this spec does NOT authenticate a specific Command Line Interface (CLI) installation, device, or autonomous agent.** Persistent machine identity is deferred to M75_xxx Agent Identity.
 **Categories:** Application Programming Interface (API), CLI, User Interface (UI)
 **Batch:** B2 — standalone. M74_001 is no longer a hard dependency (see *Relationship to M74_001* below); M71_001 P2 §1-§5 absorbed here (see *Relationship to M71_001 P2* below).
