@@ -249,7 +249,7 @@ test ! -d tests/skill-evals/usezombie-install-platform-ops && echo "PASS" || ech
 cd zombiectl && jq -e '.files | contains(["skills"]) | not' package.json && echo "PASS" || echo "FAIL"
 
 # E4: no lingering references to old install path (active surface — exclude done/ archive)
-! grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done docs/ ui/ src/ zombiectl/ && echo "PASS: no stale refs" || echo "FAIL"
+! grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done --exclude='M69_001*' docs/ ui/ src/ zombiectl/ && echo "PASS: no stale refs" || echo "FAIL"
 
 # E5: new repo reachable
 gh repo view usezombie/skills --json visibility | jq -e '.visibility == "PUBLIC"' && echo "PASS" || echo "FAIL"
@@ -277,7 +277,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 | Deleted symbol | Grep | Expected |
 |---|---|---|
-| `npx skills add usezombie/usezombie` | `grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done docs/ ui/ src/ zombiectl/` | 0 matches (active surface; `done/` is historical archive) |
+| `npx skills add usezombie/usezombie` | `grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done --exclude='M69_001*' docs/ ui/ src/ zombiectl/` | 0 matches (active surface; `done/` is historical archive) |
 | `skills/` path import or reference | `grep -rn "skills/usezombie-install-platform-ops" src/ zombiectl/` | 0 matches |
 
 ---
