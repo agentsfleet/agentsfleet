@@ -61,7 +61,7 @@ export function runCommanderParse(
         command_run_id: PARSE_COMMAND_RUN_ID,
         exit_code: 1,
         duration_ms: finishedAt - startedAt,
-      });
+      }).pipe(Effect.ignore);
       const err = unwrapCause(outcome);
       if (err instanceof CommanderError) {
         return {

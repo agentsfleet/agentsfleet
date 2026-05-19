@@ -145,12 +145,17 @@ describe("readTelemetryConfig", () => {
     }
   });
 
-  it("dies on malformed JSON (parse error surfaces as defect)", async () => {
+  it("returns null on malformed JSON (parse error caught into typed channel)", async () => {
+    // Corrupted telemetry.json (e.g. partial write after a crash) must
+    // not crash the CLI. The Effect.try wrap around JSON.parse converts
+    // the synchronous SyntaxError into a typed error the surrounding
+    // Effect.catch can intercept, returning null gracefully so command
+    // dispatch continues with default consent.
     const dir = makeTempDir();
     try {
       writeFileSync(path.join(dir, "telemetry.json"), "{not json");
-      const exit = await Effect.runPromiseExit(readTelemetryConfig(dir));
-      expect(exit._tag).toBe("Failure");
+      const cfg = await Effect.runPromise(readTelemetryConfig(dir));
+      expect(cfg).toBeNull();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
