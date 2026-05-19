@@ -26,9 +26,9 @@ export interface UiTheme {
   readonly label: (s: string) => string;
 }
 
-// Legacy `ui` proxy — preserves the shape command modules already
-// import. Each member resolves capability at call time so tests can
-// override process.stdout.isTTY / NO_COLOR per test without re-importing.
+// `ui` proxy — call-time capability resolution. Each member resolves
+// process.stdout.isTTY / NO_COLOR on call so tests can override these
+// per test without re-importing the module.
 export const ui: UiTheme = {
   ok:    (s) => withGlyph(glyph.ok, s),
   info:  (s) => palette.muted(s),

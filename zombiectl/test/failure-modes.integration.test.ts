@@ -80,7 +80,9 @@ describe("failure modes — workspace surface", () => {
         const code = await runCli(["workspace", "add", "my-repo"], {
           stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl },
         });
-        expect(code).toBe(1);
+        // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
+        // The pre-Effect path collapsed every API failure to exit 1.
+        expect(code).toBe(3);
         const text = err.read();
         expect(text).toContain("UZ-WORKSPACE-002");
         expect(text).toContain("Workspace paused");
@@ -101,7 +103,10 @@ describe("failure modes — install surface (local + server)", () => {
           ["install", "--from", "/definitely/does/not/exist/zombie-template"],
           { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
         );
-        expect(code).toBe(1);
+        // Effect-shape contract: SkillLoadError is rewrapped as
+        // ConfigError → exit 5. The pre-Effect path returned 1 via
+        // writeError(SkillLoadError.code, …).
+        expect(code).toBe(5);
         expect(err.read()).toContain("ERR_PATH_NOT_FOUND");
         expect(calls).toHaveLength(0);
       });
@@ -119,7 +124,8 @@ describe("failure modes — install surface (local + server)", () => {
             ["install", "--from", tmpDir],
             { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
           );
-          expect(code).toBe(1);
+          // Effect-shape contract: SkillLoadError → ConfigError → exit 5.
+          expect(code).toBe(5);
           expect(err.read()).toContain("ERR_SKILL_MISSING");
           expect(calls).toHaveLength(0);
         });
@@ -148,7 +154,9 @@ describe("failure modes — install surface (local + server)", () => {
             ["install", "--from", tmpDir],
             { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
           );
-          expect(code).toBe(1);
+          // Effect-shape contract: HTTP 4xx → ServerError → exit 3.
+          // The pre-Effect path collapsed every API failure to exit 1.
+          expect(code).toBe(3);
           const text = err.read();
           expect(text).toContain("UZ-ZMB-006");
           expect(text).toContain("already exists");
@@ -247,7 +255,11 @@ describe("failure modes — runtime / observability surface", () => {
           ["logs", ZOMBIE_ID],
           { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
         );
-        expect(code).toBe(1);
+        // Effect-shape contract: HTTP 401 → ServerError → exit 3.
+        // The user-visible message still carries UZ-AUTH-003 + the
+        // "run zombiectl login" suggestion so the recovery path is
+        // unchanged from the operator's POV.
+        expect(code).toBe(3);
         const text = err.read();
         expect(text).toContain("UZ-AUTH-003");
         expect(text).toContain("Token expired");

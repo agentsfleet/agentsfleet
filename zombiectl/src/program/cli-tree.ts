@@ -55,11 +55,16 @@ function helpTail(): string {
     ...subcommands.map((s) => `  ${s}`),
     "",
     "Environment variables:",
-    "  ZOMBIE_API_URL    API base URL (overridden by --api)",
-    "  ZOMBIE_TOKEN      Auth token (overridden by login)",
-    "  ZOMBIE_API_KEY    API key for service auth",
-    "  ZOMBIE_STATE_DIR  Directory for local CLI state files",
-    "  NO_COLOR          Any non-empty value disables color",
+    "  ZOMBIE_API_URL                  API base URL (overridden by --api)",
+    "  ZOMBIE_TOKEN                    Auth token (overridden by login)",
+    "  ZOMBIE_API_KEY                  API key for service auth",
+    "  ZOMBIE_STATE_DIR                Directory for local CLI state files",
+    "  NO_COLOR                        Any non-empty value disables color",
+    "  ZOMBIE_TELEMETRY_DISABLED       Set to 1 to opt out of analytics + tracing",
+    "  DO_NOT_TRACK                    Set to 1 to opt out (industry-standard signal)",
+    "  ZOMBIE_TELEMETRY_POSTHOG_KEY    Override the PostHog project key",
+    "  ZOMBIE_TELEMETRY_POSTHOG_HOST   Override the PostHog ingest host",
+    "  ZOMBIE_TELEMETRY_DEBUG          Set to 1 to print span summaries to stderr",
   ].join("\n");
 }
 
@@ -69,7 +74,7 @@ function normalizeOptions(opts: Record<string, unknown>): Record<string, unknown
   // wire-form (`"workspace-id"`), so leaf handlers reading
   // `parsed.options[OPT_WORKSPACE_ID]` only find the dashed key. Mirror
   // every camelCase key under its dashed form so both spellings resolve
-  // — no handler needs a per-option shim.
+  // — handlers stay agnostic to commander's naming transform.
   const out: Record<string, unknown> = { ...opts };
   for (const k of Object.keys(opts)) {
     const dashed = k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`);

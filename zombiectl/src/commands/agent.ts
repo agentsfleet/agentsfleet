@@ -1,194 +1,237 @@
-// External Agent Key CLI commands.
+// External Agent Key CLI commands — Effect-shaped.
 //
-// These commands manage zmb_ API keys issued to LangGraph/CrewAI/Composio agents.
+// Manages zmb_ API keys issued to LangGraph/CrewAI/Composio agents.
 // The raw key is shown once at creation and cannot be retrieved again.
 //
 // zombiectl agent add    --workspace <ws> --zombie <id> --name <name> [--description <desc>]
 // zombiectl agent list   --workspace <ws>
 // zombiectl agent delete --workspace <ws> <agent_id>
 
+import { Effect } from "effect";
+import { Analytics } from "../services/telemetry/analytics.service.ts";
+import { CliConfig } from "../services/config.ts";
+import { Credentials } from "../services/credentials.ts";
+import { HttpClient } from "../services/http-client.ts";
+import { Output } from "../services/output.ts";
+import { Workspaces } from "../services/workspaces.ts";
+import { resolveAuthToken } from "./workspace-guards.ts";
 import { WORKSPACES_PATH } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
-import { AUTH_PRESET, compose } from "../lib/error-map-presets.ts";
-import { MISSING_ARGUMENT, VALIDATION_ERROR } from "../constants/cli-errors.ts";
-import {
-  OPT_AGENT_ID,
-  OPT_DESCRIPTION,
-  OPT_NAME,
-  OPT_WORKSPACE,
-  OPT_WORKSPACE_ID,
-  OPT_ZOMBIE,
-  OPT_ZOMBIE_ID,
-} from "../constants/cli-flags.ts";
-import type {
-  CommandCtx,
-  CommandDeps,
-  ParsedArgs,
-  Workspaces,
-} from "./types.ts";
-import { readString } from "./types.ts";
-
-// Agent commands hit /v1/workspaces/{ws}/agent-keys (POST/GET/DELETE).
-// Server-side these can surface validation, conflict on duplicate
-// names, and not-found on delete. AUTH_PRESET covers the auth leg;
-// area-specific codes expand here as the audit surfaces them.
-export const errorMap = compose(AUTH_PRESET);
+import { ValidationError, type CliError } from "../errors/index.ts";
 
 interface AgentKeyResponse {
-  agent_id?: string;
-  key?: string;
-  created_at?: number | string | null;
-  [key: string]: unknown;
+  readonly agent_id?: string;
+  readonly key?: string;
+  readonly created_at?: number | string | null;
 }
 
 interface AgentRow {
-  agent_id?: string;
-  name?: string;
-  description?: string;
-  last_used_at?: number | string | null;
-  [key: string]: unknown;
+  readonly agent_id?: string;
+  readonly name?: string;
+  readonly description?: string;
+  readonly last_used_at?: number | string | null;
 }
 
-// ── agent add ────────────────────────────────────────────────────────────────
-
-export async function commandAgentAdd(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, printTable, writeLine, writeError } = deps;
-
-  const workspaceId =
-    readString(parsed.options, OPT_WORKSPACE) ??
-    readString(parsed.options, OPT_WORKSPACE_ID) ??
-    (workspaces?.current_workspace_id ?? null);
-  const zombieId =
-    readString(parsed.options, OPT_ZOMBIE) ??
-    readString(parsed.options, OPT_ZOMBIE_ID);
-  const name = readString(parsed.options, OPT_NAME);
-  const description = readString(parsed.options, OPT_DESCRIPTION) ?? "";
-
-  if (!workspaceId) { writeError(ctx, MISSING_ARGUMENT, "agent add requires --workspace <id>", deps); return 2; }
-  if (!zombieId)    { writeError(ctx, MISSING_ARGUMENT, "agent add requires --zombie <id>", deps); return 2; }
-  if (!name)        { writeError(ctx, MISSING_ARGUMENT, "agent add requires --name <name>", deps); return 2; }
-
-  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
-  const res = (await request(ctx, url, {
-    method: "POST",
-    headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
-    body: JSON.stringify({ zombie_id: zombieId, name, description }),
-  })) as AgentKeyResponse | null;
-
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, res);
-    return 0;
-  }
-
-  if (!ctx.stdout) return 0;
-  writeLine(ctx.stdout, ui.ok(`External agent added: ${res?.agent_id ?? ""}`));
-  writeLine(ctx.stdout);
-  // ui.warn highlights "store this now, you can't get it back" semantically.
-  // Was previously ui.bold which doesn't exist on the theme — the call threw
-  // TypeError and crashed the non-JSON path.
-  writeLine(ctx.stdout, ui.warn("API Key (shown once — store securely):"));
-  writeLine(ctx.stdout, `  ${res?.key ?? ""}`);
-  writeLine(ctx.stdout);
-  writeLine(ctx.stdout, ui.dim("Use as: Authorization: Bearer <key>"));
-  writeLine(ctx.stdout, ui.dim(`Authenticated zombie: ${zombieId}`));
-
-  if (printTable) {
-    writeLine(ctx.stdout);
-    printTable(ctx.stdout, [
-      { key: "label", label: "" },
-      { key: "value", label: "" },
-    ], [
-      { label: "agent_id",  value: res?.agent_id ?? "" },
-      { label: "zombie_id", value: zombieId },
-      { label: "name",      value: name },
-      { label: "created_at", value: res?.created_at ? new Date(res.created_at).toISOString() : "—" },
-    ]);
-  }
-  return 0;
+interface AgentListResponse {
+  readonly items?: ReadonlyArray<AgentRow>;
 }
 
-// ── agent list ────────────────────────────────────────────────────────────────
-
-export async function commandAgentList(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, printTable, writeLine, writeError } = deps;
-
-  const workspaceId =
-    readString(parsed.options, OPT_WORKSPACE) ??
-    readString(parsed.options, OPT_WORKSPACE_ID) ??
-    (workspaces?.current_workspace_id ?? null);
-  if (!workspaceId) { writeError(ctx, MISSING_ARGUMENT, "agent list requires --workspace <id> or an active workspace context", deps); return 2; }
-
-  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
-  const res = (await request(ctx, url, {
-    method: "GET",
-    headers: apiHeaders(ctx),
-  })) as { items?: AgentRow[] } | null;
-  const agents = Array.isArray(res?.items) ? res.items : [];
-
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, res);
-    return 0;
-  }
-
-  if (!ctx.stdout) return 0;
-  if (agents.length === 0) {
-    writeLine(ctx.stdout, ui.info("no external agents found"));
-    return 0;
-  }
-
-  printTable(ctx.stdout, [
-    { key: "name",         label: "NAME" },
-    { key: "description",  label: "DESCRIPTION" },
-    { key: "last_used_at", label: "LAST_USED" },
-    { key: "agent_id",     label: "AGENT_ID" },
-  ], agents.map((a: AgentRow) => ({
-    ...a,
-    last_used_at: a.last_used_at ? new Date(a.last_used_at).toISOString() : "never",
-  })));
-  return 0;
+export interface AgentAddArgs {
+  readonly workspaceId: string | undefined;
+  readonly zombieId: string | undefined;
+  readonly name: string | undefined;
+  readonly description: string | undefined;
 }
 
-// ── agent delete ──────────────────────────────────────────────────────────────
+const requireFlag = (
+  value: string | undefined,
+  detail: string,
+  suggestion: string,
+): Effect.Effect<string, ValidationError> =>
+  value
+    ? Effect.succeed(value)
+    : Effect.fail(new ValidationError({ detail, suggestion }));
 
-export async function commandAgentDelete(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-
-  const workspaceId =
-    readString(parsed.options, OPT_WORKSPACE) ??
-    readString(parsed.options, OPT_WORKSPACE_ID) ??
-    (workspaces?.current_workspace_id ?? null);
-  const agentId = parsed.positionals[0] ?? readString(parsed.options, OPT_AGENT_ID);
-
-  if (!workspaceId) { writeError(ctx, MISSING_ARGUMENT, "agent delete requires --workspace <id> or an active workspace context", deps); return 2; }
-  if (!agentId)     { writeError(ctx, MISSING_ARGUMENT, "agent delete requires <agent_id>", deps); return 2; }
-
-  const checkWs = validateRequiredId(workspaceId, "workspace_id");
-  if (!checkWs.ok) { writeError(ctx, VALIDATION_ERROR, checkWs.message, deps); return 2; }
-  const checkKey = validateRequiredId(agentId, "key_id");
-  if (!checkKey.ok) { writeError(ctx, VALIDATION_ERROR, checkKey.message, deps); return 2; }
-
-  const url = `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys/${encodeURIComponent(agentId)}`;
-  await request(ctx, url, { method: "DELETE", headers: apiHeaders(ctx) });
-
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, { deleted: true, agent_id: agentId });
-  } else if (ctx.stdout) {
-    writeLine(ctx.stdout, ui.ok(`External agent ${agentId} deleted. Key immediately invalidated.`));
+const requireValidId = (
+  value: string,
+  fieldName: string,
+): Effect.Effect<string, ValidationError> => {
+  const check = validateRequiredId(value, fieldName);
+  if (!check.ok) {
+    return Effect.fail(
+      new ValidationError({
+        detail: check.message,
+        suggestion: "pass a valid uuidv7",
+      }),
+    );
   }
-  return 0;
-}
+  return Effect.succeed(value);
+};
+
+const resolveWorkspaceId = (
+  override: string | undefined,
+): Effect.Effect<string, CliError, Workspaces> =>
+  Effect.gen(function* () {
+    if (override) return override;
+    const workspaces = yield* Workspaces;
+    const state = yield* workspaces.load;
+    return yield* requireFlag(
+      state.current_workspace_id ?? undefined,
+      "agent command requires --workspace <id> or an active workspace context",
+      "run `zombiectl workspace use <id>` or pass --workspace <id>",
+    );
+  });
+
+const agentKeysPath = (workspaceId: string): string =>
+  `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys`;
+
+const agentKeyPath = (workspaceId: string, agentId: string): string =>
+  `${WORKSPACES_PATH}${encodeURIComponent(workspaceId)}/agent-keys/${encodeURIComponent(agentId)}`;
+
+export const agentAddEffectFromArgs = (
+  args: AgentAddArgs,
+): Effect.Effect<
+  void,
+  CliError,
+  Analytics | CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
+    const token = yield* resolveAuthToken;
+    const workspaceId = yield* resolveWorkspaceId(args.workspaceId);
+    const zombieId = yield* requireFlag(
+      args.zombieId,
+      "agent add requires --zombie <id>",
+      "pass --zombie <zombie_id>",
+    );
+    const name = yield* requireFlag(
+      args.name,
+      "agent add requires --name <name>",
+      "pass --name <name>",
+    );
+    const description = args.description ?? "";
+
+    const res = yield* http.request<AgentKeyResponse>({
+      path: agentKeysPath(workspaceId),
+      method: "POST",
+      body: { zombie_id: zombieId, name, description },
+      token,
+    });
+
+    if (config.jsonMode) {
+      yield* output.printJson(res);
+      return;
+    }
+    yield* output.success(`External agent added: ${res.agent_id ?? ""}`);
+    yield* output.info("");
+    // The shown-once warning belongs on stdout next to the key.
+    // Output.warn would route to stderr; surface this as an info line
+    // so the integration test (which reads stdout) still sees it.
+    yield* output.info("API Key (shown once — store securely):");
+    yield* output.info(`  ${res.key ?? ""}`);
+    yield* output.info("");
+    yield* output.info(`Use as: Authorization: Bearer <key>`);
+    yield* output.info(`Authenticated zombie: ${zombieId}`);
+    yield* output.info("");
+    yield* output.printTable(
+      [
+        { key: "label", label: "" },
+        { key: "value", label: "" },
+      ],
+      [
+        { label: "agent_id", value: res.agent_id ?? "" },
+        { label: "zombie_id", value: zombieId },
+        { label: "name", value: name },
+        {
+          label: "created_at",
+          value: res.created_at ? new Date(res.created_at).toISOString() : "—",
+        },
+      ],
+    );
+  });
+
+export const agentListEffectFromArgs = (
+  workspaceIdFlag: string | undefined,
+): Effect.Effect<
+  void,
+  CliError,
+  Analytics | CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
+    const token = yield* resolveAuthToken;
+    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag);
+
+    const res = yield* http.request<AgentListResponse>({
+      path: agentKeysPath(workspaceId),
+      token,
+    });
+    const agents = res.items ?? [];
+
+    if (config.jsonMode) {
+      yield* output.printJson(res);
+      return;
+    }
+    if (agents.length === 0) {
+      yield* output.info("no external agents found");
+      return;
+    }
+    yield* output.printTable(
+      [
+        { key: "name", label: "NAME" },
+        { key: "description", label: "DESCRIPTION" },
+        { key: "last_used_at", label: "LAST_USED" },
+        { key: "agent_id", label: "AGENT_ID" },
+      ],
+      agents.map((a) => ({
+        name: a.name ?? "",
+        description: a.description ?? "",
+        last_used_at: a.last_used_at
+          ? new Date(a.last_used_at).toISOString()
+          : "never",
+        agent_id: a.agent_id ?? "",
+      })),
+    );
+  });
+
+export const agentDeleteEffectFromArgs = (
+  workspaceIdFlag: string | undefined,
+  agentIdPositional: string | undefined,
+  agentIdFlag: string | undefined,
+): Effect.Effect<
+  void,
+  CliError,
+  Analytics | CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
+    const token = yield* resolveAuthToken;
+    const workspaceId = yield* resolveWorkspaceId(workspaceIdFlag);
+    yield* requireValidId(workspaceId, "workspace_id");
+    const agentIdRaw = yield* requireFlag(
+      agentIdPositional ?? agentIdFlag,
+      "agent delete requires <agent_id>",
+      "pass <agent_id> as positional or --agent-id <id>",
+    );
+    const agentId = yield* requireValidId(agentIdRaw, "key_id");
+
+    yield* http.request<unknown>({
+      path: agentKeyPath(workspaceId, agentId),
+      method: "DELETE",
+      token,
+    });
+
+    if (config.jsonMode) {
+      yield* output.printJson({ deleted: true, agent_id: agentId });
+    } else {
+      yield* output.success(
+        `External agent ${agentId} deleted. Key immediately invalidated.`,
+      );
+    }
+  });
