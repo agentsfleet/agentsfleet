@@ -1,8 +1,18 @@
-// JWT claim decoding. The CLI never verifies signatures — that's the
-// server's job; here we only read public claims to populate analytics
-// distinct-id, role-gate UI hints, and the auth-status summary. Every
-// extractor returns null when input shape is wrong, so callers can't
-// trap on malformed tokens.
+// JWT claim decoding + TTY-aware env/file token resolution.
+//
+// Claim decoding: the CLI never verifies signatures — that's the server's
+// job; here we only read public claims to populate analytics distinct-id,
+// role-gate UI hints, and the auth-status summary. Every extractor
+// returns null when input shape is wrong, so callers can't trap on
+// malformed tokens.
+//
+// Resolution (D26 / spec §5): which of {credentials.json, ZMB_TOKEN,
+// ZOMBIE_TOKEN} wins is TTY-dependent. Interactive shells prefer the
+// env-var the operator just exported in the current session over a
+// possibly-stale file; scripts (CI, cron, pipes) prefer the on-disk
+// credential a previous `zombiectl login` wrote, falling through to env
+// only if no file exists. ZMB_TOKEN and ZOMBIE_TOKEN are both accepted;
+// ZMB_TOKEN wins the env-var tiebreaker (shorter canonical spelling).
 
 export type RoleClaim = "user" | "operator" | "admin";
 
@@ -37,6 +47,46 @@ export interface JwtClaims {
 
 const ROLE_NAMESPACE_DEV = "https://usezombie.dev/role";
 const ROLE_NAMESPACE_COM = "https://usezombie.com/role";
+
+export type AuthTokenSource = "file" | "zmb_env" | "zombie_env" | "none";
+
+export interface ResolvedAuthToken {
+  readonly token: string | null;
+  readonly source: AuthTokenSource;
+}
+
+export interface ResolveAuthTokenInput {
+  readonly fileToken: string | null;
+  readonly env: NodeJS.ProcessEnv;
+  readonly isTty: boolean;
+}
+
+const trimOrNull = (raw: string | undefined | null): string | null => {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+// Pure resolver — no process.env or process.stdin reads. Callers pass
+// the snapshot in so tests can pin TTY-ness and env shape without monkey-
+// patching process. The order is intentional: env-var values are
+// inspected before file, but only "win" in TTY mode; non-TTY callers
+// fall through to file first.
+export function resolveAuthTokenForCli(input: ResolveAuthTokenInput): ResolvedAuthToken {
+  const zmb = trimOrNull(input.env["ZMB_TOKEN"]);
+  const zombie = trimOrNull(input.env["ZOMBIE_TOKEN"]);
+  const file = trimOrNull(input.fileToken);
+  const fileResolved: ResolvedAuthToken | null = file ? { token: file, source: "file" } : null;
+  const zmbResolved: ResolvedAuthToken | null = zmb ? { token: zmb, source: "zmb_env" } : null;
+  const zombieResolved: ResolvedAuthToken | null = zombie
+    ? { token: zombie, source: "zombie_env" }
+    : null;
+  const order: ReadonlyArray<ResolvedAuthToken | null> = input.isTty
+    ? [zmbResolved, zombieResolved, fileResolved]
+    : [fileResolved, zmbResolved, zombieResolved];
+  for (const candidate of order) if (candidate) return candidate;
+  return { token: null, source: "none" };
+}
 
 export function decodeTokenPayload(token: unknown): JwtClaims | null {
   if (!token || typeof token !== "string") return null;
