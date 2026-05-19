@@ -92,7 +92,7 @@ The existence of two tokens is the documented Clerk recipe for **frontend on one
 
 In Clerk's terms, the existence of two tokens reflects two different verifier requirements: `clerkMiddleware()` needs the `sid` (session id) claim to call Clerk's session-introspection API; zombied needs the `aud=api.usezombie.com` claim to enforce that the token wasn't minted for a different service. Per Clerk's own docs, custom JWT templates **cannot** include `sid`, and default session tokens do not include a service-specific `aud`. One token, both requirements is therefore not a configuration we can hit from a JWT template alone — hence two.
 
-> **Naming bridge to the Mermaid diagrams below.** The diagrams predate this Token A / Token B framing. They use `<clerk-jwt>` for the cookie token (Token A) and `<user-jwt>` for the api-template Bearer (Token B). Same things, older labels.
+> **Label map for the Mermaid diagrams below.** The Mermaid sequence diagrams use the wire-level placeholders `<clerk-jwt>` (the cookie session token = Token A in this section's vocabulary) and `<user-jwt>` (the api-template Bearer = Token B). Same artifacts, different label conventions — the table headers use Token A/B for conceptual clarity; the diagrams use the wire placeholders so a reader can match them against actual HTTP captures. A future doc refactor may unify on Token A/B everywhere, but not in this milestone (mid-flight relabeling has high churn for low information gain).
 
 ---
 
@@ -903,6 +903,81 @@ Clerk's **session-token claim customization** — a separate Clerk feature from 
 | `/api/*` defense-in-depth | NEW — IDOR check (session tenant_id vs URL workspace_id) and audit emit reusing M74_002's `AUDIT_LOG_PEPPER` + `.auth_audit` sink pattern |
 
 **Blast radius:** ~2 weeks of work on top of Stage 1. **Outcome:** browser carries zero usable credentials in JS heap; `/api/*` is the single dashboard trust boundary for IDOR, audit, and rate-limit policy.
+
+### Stage 2 wire shapes — `/api` request paths
+
+Post-Stage-2 the dashboard's data plane fans through `/api/*` route handlers. Two canonical request shapes capture the surface:
+
+**Read (events backfill):**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser
+    participant Next as Next.js<br/>(/api/v1/...)
+    participant Clerk
+    participant API as Zig backend<br/>(api.usezombie.com)
+
+    User->>Browser: load /zombies/{id}
+    Browser->>Next: GET /api/v1/workspaces/{ws}/zombies/{z}/events<br/>Cookie: __session=<Token A>
+    Note over Next: route handler:<br/>auth() reads __session<br/>getToken() mints session-JWT (~5ms in fn memory)<br/>forward upstream with Bearer
+    Next->>API: GET /v1/workspaces/{ws}/zombies/{z}/events<br/>Authorization: Bearer <session-JWT>
+    API-->>Next: 200 events
+    Next-->>Browser: 200 events
+    Note over Browser: no JWT ever touched the JS heap
+```
+
+**Mutation (Server Action — `steerZombie`):**
+
+```mermaid
+sequenceDiagram
+    actor User
+    participant Browser as Browser<br/>(client component)
+    participant SA as Server Action<br/>steerZombieAction
+    participant API as Zig backend
+
+    User->>Browser: types message, submits
+    Browser->>SA: RPC steerZombieAction({zombie_id, message})<br/>(React serializes args; uses __session cookie)
+    Note over SA: "use server" function:<br/>auth() reads __session<br/>getToken() mints session-JWT<br/>POST upstream with Bearer<br/>(no public /api/.../messages POST route exposed)
+    SA->>API: POST /v1/workspaces/{ws}/zombies/{z}/messages<br/>Authorization: Bearer <session-JWT>
+    API-->>SA: 202 accepted
+    SA-->>Browser: { ok: true }
+```
+
+Both shapes share two invariants:
+
+1. **The browser's outgoing request carries only the `__session` cookie.** No `Authorization` header in client → Next traffic. The JWT is minted server-side per request and discarded.
+2. **The Bearer JWT exists only inside one route-handler / Server-Action function call.** It never crosses an RSC → client boundary, never lands in a React server-component prop, never appears in HTML or hydration data.
+
+### Stage 2 token lifecycle
+
+After Stage 1 (single-token collapse) + Stage 2 (BFF), the dashboard carries one credential shape. The CLI carries a different shape via the M74_002 device flow. Both are summarized here for clarity.
+
+| Token | Lives in | TTL | Refreshes | Crosses boundaries |
+|---|---|---|---|---|
+| **Customized session JWT** (dashboard) | `__session` cookie on `app.usezombie.com`; transient JS-heap copy via `auth().getToken()` inside a route handler / Server Action for ~5ms | ~60s (Clerk default) | Clerk SDK auto-refreshes via the cookie on every `getToken()` call | browser ↔ cookie ↔ Clerk FAPI ↔ Next.js server runtime; **never crosses into client-rendered React** |
+| **Api-template JWT** (CLI carve-out) | `~/.config/zombiectl/credentials.json` on the operator's workstation | ~15 min (Clerk api template default) | None — CLI re-runs `zombiectl login` on 401 | dashboard JS process (mint) → ECDH-encrypted → CLI process (post-decrypt persistence) |
+| **Tenant API key** `zmb_t_*` (Flow 3) | Operator's external-service config (n8n, Zapier, scheduled jobs) | Until explicit revoke | None | DB-hash-compare; never re-issued |
+
+**"What happens if the dashboard's session JWT expires mid-request?"** Doesn't happen the way the question implies — Clerk SDK refreshes the cookie token on each `getToken()` call, and Stage 2's route handler mints fresh on every request. There is no long-lived in-memory copy of the JWT to expire.
+
+**"What happens if the CLI's api-template JWT expires?"** `bearer_or_api_key.zig` returns `401 token_expired`; the CLI surfaces "session expired, re-run `zombiectl login`" via `AUTH_PRESET.ExpiredSession`. Re-login is a 30-second human-mediated device flow; no transparent refresh path (intentional — see *Beyond Stage 2* row 1 for the long-term direction).
+
+### Stage 2 threat model — `/api` as the trust boundary
+
+Post-Stage-2, `/api/*` is the single dashboard-to-zombied trust boundary. Four threats and their closures:
+
+| # | Threat | Closure |
+|---|---|---|
+| 1 | **Unauthenticated request hits `/api/v1/...`** — no `__session` cookie. | Route handler's `auth()` call returns null → handler returns `401 Unauthorized` with no upstream call. Zombied never sees the request. |
+| 2 | **Authenticated user crosses tenants** — Sarah at tenant A hits `GET /api/v1/workspaces/{ws_of_tenant_B}/zombies`. | Two layers: (a) zombied's existing IDOR check rejects with 403 (`tenant_id` claim mismatch); (b) Stage 2 adds a `/api/*` defense-in-depth check that reads `metadata.tenant_id` from the session, asserts the URL `workspace_id` belongs to it, and returns 403 **before** the upstream fetch. Lower latency + clearer audit trail on cross-tenant attempts. |
+| 3 | **Token replay** — attacker captures a session JWT (e.g., XSS exfiltration) and replays it from outside the dashboard. | Two factors: (a) the JWT has ~60s TTL — replay window closes fast; (b) Stage 2's audit emit (reusing M74_002's `.auth_audit` sink + `AUDIT_LOG_PEPPER`) carries `xff` + `fly_client_ip` + `client_ip_divergent` on every `/api/*` accept, so replays from unusual IPs surface in audit. Not closed against same-IP replay within the TTL window — that requires hardware-backed key storage (out of scope; v3 trajectory). |
+| 4 | **CSRF on a Server Action** — attacker-controlled origin tries to invoke `steerZombieAction` from a malicious page using the user's `__session` cookie. | React's Server Action transport includes built-in origin verification (form-encoded RPC with same-origin check). Bare public POST routes under `/api/*` (none should remain after Stage 2's Server Action migration; verify in C.8 audit) would need explicit double-submit cookie or origin-header validation. |
+
+**What this threat model deliberately does NOT close:**
+
+- **Compromised dashboard JS process** (XSS, malicious browser extension, supply-chain'd npm dependency). The JWT exists in transient server-side memory inside route handlers, so XSS-in-the-browser can't read it directly — but the cookie itself is still readable, and once an attacker controls the cookie they ARE the dashboard user. Closure lives upstream: CSP + SRI + dependency pinning (separate spec; *What's not in this doc* item 5).
+- **Compromised Clerk control plane.** Stage 2 still trusts Clerk's JWKS directly. Replacing this with a usezombie-native issuer is the v3 trajectory — see *Beyond Stage 2* table row 2.
 
 ### CLI carve-out — Flow 1 is unaffected by both stages
 
