@@ -112,6 +112,22 @@ export default function CliAuthPage({
     if (load.kind !== "active") return;
     setApprove({ kind: "working" });
     try {
+      // ───────── CLI carve-out (I9.1) ─────────
+      // This is the ONE surviving `getToken({ template: "api" })` call in
+      // the dashboard post-Stage-1. The rest of the dashboard now uses the
+      // customized default session token (`auth().getToken()` with no
+      // template arg). WHY this site keeps the api-template mint:
+      //   • The minted JWT is encrypted with the CLI's ephemeral ECDH
+      //     pubkey and persisted in `~/.usezombie/credentials.json` for
+      //     ~15 minutes. The CLI has no Clerk SDK and cannot refresh.
+      //   • Default session tokens are ~60s lived and refresh-coupled to
+      //     the browser session via Clerk's cookie. That refresh
+      //     mechanism doesn't exist on the CLI side.
+      //   • The api template lets us mint a longer-lived (currently 60s
+      //     but template-configurable independently of session tokens)
+      //     token that the CLI can actually use.
+      // Invariant I9.1 (grep-gate test) verifies this is the ONLY site
+      // outside `/cli-auth/[session_id]/page.tsx` calling the api template.
       const jwt = await getToken({ template: "api" });
       if (!jwt) {
         setApprove({ kind: "failed", message: "Your dashboard session expired. Refresh and try again." });

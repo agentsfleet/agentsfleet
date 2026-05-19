@@ -29,7 +29,7 @@ export type BillingUsageTabProps = {
  *
  * Initial events + cursor come from the server-rendered page; subsequent
  * pages are fetched via `listTenantBillingChargesAction`, a Server Action
- * that mints the api-template Bearer server-side via `getServerToken()`.
+ * that mints the customized default session token via `auth().getToken()`.
  * `limit * 2` is intentional: each event yields up to two rows (receive +
  * stage), so we ask for double the rows we'll surface as events.
  */

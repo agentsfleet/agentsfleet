@@ -1357,7 +1357,7 @@ After landing: a fresh DEV deploy on `push to main` automatically pulls both pep
 
 **Why in this PR.** The session-store + handler-surface slices fail-fast on boot if either pepper is missing. Without §8, the first DEV deploy after merge would fail at boot, ops would have to manually `fly secrets set` to recover, and the failure window is a foot-gun for the prod release. Bundling §8 with the milestone means the deploy path is correct on day one with zero manual intervention.
 
-### §9 — Single-token collapse (Stage 1 of Flow 2 dashboard cleanup)
+### §9 — Dashboard single-token collapse (Stage 1 of Flow 2 dashboard cleanup)
 
 Stage 1 of the Flow 2 dashboard cleanup roadmap captured in `docs/AUTH.md` §"Roadmap — Flow 2 dashboard cleanup (planned, post-M74_002)" (landed at commit `5ebcdf95` on this branch). The dashboard switches from minting an api-template Token B per request to using Clerk's customized default session token directly. The api-template mint survives at exactly one call site — `/cli-auth/[session_id]/page.tsx` — for the M74_002 CLI handoff, which needs the longer-lived shape.
 
@@ -1384,18 +1384,18 @@ Stage 1 of the Flow 2 dashboard cleanup roadmap captured in `docs/AUTH.md` §"Ro
 
 #### Dimensions
 
-| Dim | Surface | Behaviour |
-|---|---|---|
-| D40 | Clerk org config (DEV + PROD) | Session Token Claims += `aud: "https://api.usezombie.com"` + `metadata.tenant_id` + `metadata.role` (or flat equivalents per V9.2). UI-only change in Clerk dashboard; idempotent. Captured in playbook (D49). |
-| D41 | `ui/packages/app/lib/auth/server.ts` | DELETED. `getServerToken()` / `getServerAuth()` / `API_TEMPLATE` const all gone. Server pages migrate to bare `auth().getToken()`. |
-| D42 | `ui/packages/app/lib/api/redacted.ts` + `redacted.test.ts` | DELETED. Token B no longer crosses any function boundary; defensive masking has zero surface to defend. |
-| D43 | `ui/packages/app/lib/actions/with-token.ts` | DELETED or simplified. Server Actions call `auth().getToken()` directly. |
-| D44 | `ui/packages/app/lib/api/{zombies,events,approvals,credentials,tenant_billing,tenant_provider,workspaces,client}.ts` | Optional-bearer branches removed (~3 lines per file × ~7 files). Helper signatures simplify to "browser fetch path only". |
-| D45 | `ui/packages/app/app/(dashboard)/**/page.tsx` | 15 hits across 12 server pages: `await getServerToken()` → `await auth().getToken()`. |
-| D46 | `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream/route.ts:26` | `getToken({template:"api"})` → `getToken()` (NO template arg). SSE route now uses customized session token. |
-| D47 | `ui/packages/app/app/cli-auth/[session_id]/page.tsx:115` | UNCHANGED — explicit carve-out. The api-template mint survives at this single call site for the M74_002 CLI handoff. Add a comment block above the mint explaining WHY: CLI lacks Clerk SDK + cookie auto-refresh; session tokens are ~60s lived and refresh-coupled to the browser session; api template is the right shape for a credential that lives ~15 min in `credentials.json`. |
-| D48 | `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts` | Mint endpoint switches from `POST /v1/sessions/{id}/tokens/api` (template-specific) to `POST /v1/sessions/{id}/tokens` (default session token). Custom claims arrive automatically once D40 lands in Clerk DEV. |
-| D49 | `playbooks/003_priming_infra/001_playbook.md` | NEW §X.Y — "Clerk session-token claim customization" — UI-walkthrough for adding the three custom claims to DEV + PROD Clerk orgs. Idempotent re-runs are harmless. Captures the V9.1–V9.5 verification artifacts (screenshot of the resulting claim editor + JWT decode + cookie-size measurement). |
+| Dim | Status | Surface | Behaviour |
+|---|---|---|---|
+| D40 | **IN_PROGRESS** (DEV done; PROD pending operator) | Clerk org config (DEV + PROD) | Session Token Claims += `aud: "https://api.usezombie.com"` + `metadata.tenant_id` + `metadata.role` (or flat equivalents per V9.2). UI-only change in Clerk dashboard; idempotent. Captured in playbook (D49). |
+| D41 | **DONE** | `ui/packages/app/lib/auth/server.ts` | DELETED. `getServerToken()` / `getServerAuth()` / `getServerSessionMetadata()` / `API_TEMPLATE` const all gone. Server pages migrate to bare `auth().getToken()`. |
+| D42 | **N/A (no-op)** | `ui/packages/app/lib/api/redacted.ts` + `redacted.test.ts` | File not present in this worktree — never landed in M74_002 or already retired pre-merge. No surface to delete. |
+| D43 | **DONE** (simplified) | `ui/packages/app/lib/actions/with-token.ts` | Simplified: drops the `getServerToken` indirection; calls `auth().getToken()` directly. ActionResult contract preserved for 17+ Server Action callers. |
+| D44 | **N/A** | `ui/packages/app/lib/api/{zombies,events,approvals,credentials,tenant_billing,tenant_provider,workspaces,client}.ts` | Helper signatures already accept `token: string` (no optional-bearer branches to remove). Verified by audit. |
+| D45 | **DONE** | `ui/packages/app/app/(dashboard)/**/page.tsx` | 14 sites migrated: `await getServerToken()` → `const { getToken } = await auth(); const token = await getToken();`. `lib/workspace.ts:readWorkspaceClaim` switched from `getServerSessionMetadata` to inline `sessionClaims.metadata` read. |
+| D46 | **DONE** | `ui/packages/app/app/backend/v1/workspaces/[workspaceId]/zombies/[zombieId]/events/stream/route.ts:26` | `getToken({template:"api"})` → `getToken()` (NO template arg). SSE route now uses customized session token. |
+| D47 | **DONE** | `ui/packages/app/app/cli-auth/[session_id]/page.tsx:115` | UNCHANGED — explicit carve-out. The api-template mint survives at this single call site for the M74_002 CLI handoff. Carve-out comment block added explaining WHY: CLI lacks Clerk SDK + cookie auto-refresh; session tokens are ~60s lived and refresh-coupled to the browser session; api template is the right shape for a credential that lives ~15 min in `credentials.json`. |
+| D48 | **DONE** | `ui/packages/app/tests/e2e/acceptance/fixtures/clerk-admin.ts` | Mint endpoint switched from `POST /v1/sessions/{id}/tokens/api` (template-specific) to `POST /v1/sessions/{id}/tokens` (default session token). `JWT_TEMPLATE` constant removed from `constants.ts`. Custom claims arrive automatically once D40 PROD lands in Clerk. |
+| D49 | **PENDING** (this commit batch's docs commit) | `playbooks/003_priming_infra/001_playbook.md` + `docs/AUTH.md` | NEW §X.Y — "Clerk session-token claim customization" — UI-walkthrough for adding the three custom claims to DEV + PROD Clerk orgs. Idempotent re-runs are harmless. Captures the V9.1–V9.5 verification artifacts. AUTH.md Roadmap section folds out the "Stage 1 (planned)" qualifiers. |
 
 #### Wire-shape change (zombied: zero)
 

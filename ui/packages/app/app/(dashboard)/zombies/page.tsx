@@ -1,4 +1,4 @@
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -17,7 +17,8 @@ import ZombiesList from "./components/ZombiesList";
 export const dynamic = "force-dynamic";
 
 export default async function ZombiesListPage() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);

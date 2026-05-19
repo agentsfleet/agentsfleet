@@ -53,8 +53,11 @@ describe("SSE route handler — auth", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("requests the api-audience template, not the default JWT", async () => {
-    getTokenFn.mockResolvedValueOnce("api_jwt_token");
+  it("requests the customized default session token (no template arg)", async () => {
+    // Post-Stage-1: the customized default session token carries
+    // `aud=https://api.usezombie.com` + `metadata.tenant_id`, satisfying
+    // zombied's OIDC verifier without the api-template indirection.
+    getTokenFn.mockResolvedValueOnce("session_jwt_token");
     fetchSpy.mockResolvedValueOnce(
       new Response("data: hi\n\n", {
         status: 200,
@@ -62,7 +65,7 @@ describe("SSE route handler — auth", () => {
       }),
     );
     await GET(makeReq(), paramsOf("ws_1", "zomb_1"));
-    expect(getTokenFn).toHaveBeenCalledWith({ template: "api" });
+    expect(getTokenFn).toHaveBeenCalledWith();
   });
 });
 

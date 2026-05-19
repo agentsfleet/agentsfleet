@@ -1,4 +1,4 @@
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { notFound, redirect } from "next/navigation";
 import { Badge, PageHeader, PageTitle, Section, SectionLabel, WakePulse } from "@usezombie/design-system";
 import { getZombie, ZOMBIE_STATUS } from "@/lib/api/zombies";
@@ -22,7 +22,8 @@ export default async function ZombieDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);

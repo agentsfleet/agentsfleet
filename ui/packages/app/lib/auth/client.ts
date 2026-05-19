@@ -1,7 +1,7 @@
 import { useUser, UserButton, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
 // `useClientToken()` was retired in M64_006. Every dashboard mutation/read
-// now flows through a Server Action that calls `getServerToken()`
+// now flows through a Server Action that calls `auth().getToken()`
 // server-side, so the Clerk in-browser SDK's session state is no longer
 // load-bearing for any API call. This unblocks Playwright's cookie-mount
 // fixture path — `clerkMiddleware` accepts the mounted `__session` cookie
@@ -28,6 +28,10 @@ export function useCurrentUser(): {
 // UI components re-exported so app code never imports from @clerk/nextjs
 // directly. Replacing the auth provider later = swap these named exports
 // to the new library's equivalents; no consumer changes.
+//
+// Note: post-Stage-1, server-side dashboard pages call `auth()` directly
+// from `@clerk/nextjs/server`. The lone surviving api-template mint is in
+// `app/cli-auth/[session_id]/page.tsx` — the CLI handshake carve-out.
 export const AuthProvider = ClerkProvider;
 export const AuthUserButton = UserButton;
 export const AuthSignIn = SignIn;
