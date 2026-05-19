@@ -12,6 +12,7 @@ type Env = Readonly<Record<string, string>>;
 export interface ZombieRow {
   readonly id?: string;
   readonly zombie_id?: string;
+  readonly name?: string;
   readonly status?: string;
   readonly workspace_id?: string;
   readonly [key: string]: unknown;

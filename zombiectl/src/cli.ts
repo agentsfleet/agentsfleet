@@ -6,27 +6,18 @@ import { type Command, CommanderError, InvalidArgumentError } from "commander";
 
 import { openUrl } from "./lib/browser.ts";
 import {
-  cliAnalytics,
-  drainCliAnalyticsEvents,
-  getCliAnalyticsContext,
-  type AnalyticsClient,
-} from "./lib/analytics.ts";
-import {
-  cleanupTraces,
   clearCredentials,
   loadCredentials,
-  loadSession,
   loadWorkspaces,
   newIdempotencyKey,
   saveCredentials,
-  saveSession,
   saveWorkspaces,
   type Credentials,
-  type Session,
   type Workspaces,
 } from "./lib/state.ts";
-import { apiHeaders, request } from "./program/http-client.ts";
-import { extractDistinctIdFromToken, extractRoleFromToken } from "./program/auth-token.ts";
+import { Effect } from "effect";
+import { runCommanderParse } from "./lib/commander-bridge.ts";
+import { extractRoleFromToken } from "./program/auth-token.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
@@ -36,8 +27,6 @@ import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
 import { ROLE_ADMIN } from "./constants/auth-roles.ts";
-import { EVT_USER_AUTHENTICATED, EVT_WORKSPACE_CREATED } from "./constants/analytics-events.ts";
-
 import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
 import type { WritableStreamLike } from "./output/capability.ts";
@@ -108,7 +97,6 @@ function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): s
 
 function buildDeps(): CommandDeps {
   return {
-    apiHeaders,
     clearCredentials,
     createSpinner,
     loadCredentials,
@@ -118,7 +106,6 @@ function buildDeps(): CommandDeps {
     printKeyValue,
     printSection,
     printTable,
-    request,
     saveCredentials,
     saveWorkspaces,
     ui,
@@ -155,8 +142,8 @@ function installPreAction(program: Command, ctx: CommandCtx, state: ProgramState
 }
 
 // commander.* error codes that map to POSIX "usage error" exit 2.
-// Commander itself uses 1 for these — the legacy CLI used 2, the
-// did-you-mean / unknown-subcommand tests rely on that contract.
+// Commander itself uses 1 for these; we override to 2 so the
+// did-you-mean / unknown-subcommand contract matches POSIX.
 const COMMANDER_USAGE_CODES: ReadonlySet<string> = new Set([
   "commander.unknownCommand",
   "commander.unknownOption",
@@ -179,45 +166,8 @@ function errMessage(err: unknown): string {
   return String(err);
 }
 
-async function runPostActionAnalytics(
-  lifecycle: Lifecycle,
-  state: ProgramState,
-  baseEventProps: Record<string, unknown>,
-): Promise<void> {
-  const { ctx, analyticsClient, distinctId } = lifecycle;
-  const analyticsContext = getCliAnalyticsContext(ctx);
-  let eventDistinctId = distinctId;
-  if (state.exitCode === 0 && lifecycle.lastCommand === "login") {
-    const latestCreds: Partial<Credentials> = await loadCredentials().catch(
-      () => ({} as Partial<Credentials>),
-    );
-    eventDistinctId = extractDistinctIdFromToken(latestCreds.token ?? null) || distinctId;
-    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, EVT_USER_AUTHENTICATED, {
-      command: lifecycle.lastCommand,
-      ...baseEventProps,
-      ...analyticsContext,
-    });
-  }
-  if (state.exitCode === 0 && lifecycle.lastCommand === "workspace.add") {
-    cliAnalytics.trackCliEvent(analyticsClient, distinctId, EVT_WORKSPACE_CREATED, {
-      command: lifecycle.lastCommand,
-      ...baseEventProps,
-      ...analyticsContext,
-    });
-  }
-  for (const queuedEvent of drainCliAnalyticsEvents(ctx)) {
-    cliAnalytics.trackCliEvent(analyticsClient, eventDistinctId, queuedEvent.event, {
-      command: lifecycle.lastCommand || "unknown",
-      ...baseEventProps,
-      ...analyticsContext,
-      ...queuedEvent.properties,
-    });
-  }
-}
-
 const EMPTY_CREDS: Credentials = { token: null, saved_at: null, session_id: null, api_url: null };
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
-const EMPTY_SESSION: Session = { device_id: "", session_id: "", last_activity: null };
 
 export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promise<number> {
   const stdout = (io.stdout ?? process.stdout) as WritableStreamLike;
@@ -235,16 +185,13 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // Bare `zombiectl` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
-  const [creds, workspaces, session] = await Promise.all([
+  const [creds, workspaces] = await Promise.all([
     loadCredentials().catch(() => EMPTY_CREDS),
     loadWorkspaces().catch(() => EMPTY_WORKSPACES),
-    loadSession().catch(() => EMPTY_SESSION),
   ]);
-  // Await so fast-exit paths flush device_id before process.exit. Skip
-  // on EMPTY_SESSION so we never clobber an unreadable session.json.
-  if (session.device_id !== "")
-    await saveSession({ ...session, last_activity: Date.now() }).catch(() => {});
-  void cleanupTraces();
+  // Session identity (`device_id`, `session_id`, `session_last_active`)
+  // is read+bumped inside `resolveIdentity` against `telemetry.json`
+  // (mirrors supabase). No session file maintained here.
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
@@ -258,8 +205,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     jsonMode,
     noOpen: false,
     noInput: false,
-    cliSessionId: session.session_id || null,
-    cliDeviceId: session.device_id || null,
     // Tests inject partial WritableStreamLike mocks (just `.write` + `isTTY`);
     // CommandCtx declares the field as the richer NodeJS.WritableStream because
     // that matches the production runtime. Narrowing the field type would
@@ -271,15 +216,10 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     fetchImpl,
   };
 
-  const analyticsClient: AnalyticsClient | null = await cliAnalytics.createCliAnalytics(env);
-  const distinctId: string | null = extractDistinctIdFromToken(ctx.token ?? null);
-
   const lifecycle: Lifecycle = {
     ctx,
     workspaces,
     deps: buildDeps(),
-    analyticsClient,
-    distinctId,
     lastCommand: null,
   };
 
@@ -295,41 +235,21 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   installPreAction(program, ctx, state);
 
-  // commander + post-action events bypass runCommand; mirror its session base props.
-  const baseEventProps: Record<string, unknown> = { ...(ctx.cliSessionId ? { cli_session_id: ctx.cliSessionId } : {}), ...(ctx.cliDeviceId ? { cli_device_id: ctx.cliDeviceId } : {}) };
+  // commander parse runs through the bridge. On success, the command
+  // handler's own withCommandInstrumentation wrap (handlers-bind.ts) has
+  // already emitted cli_command_executed. On parse-stage failure, the
+  // bridge emits a single cli_command_executed with command "__parse__".
+  const parseResult = await Effect.runPromise(runCommanderParse(program, effectiveArgv));
 
-  try {
-    await program.parseAsync(effectiveArgv, { from: "user" });
-  } catch (err) {
+  if (!parseResult.ok) {
+    const err = parseResult.commanderError ?? parseResult.otherError;
     if (err instanceof CommanderError) {
-      const exitCode = exitFromCommanderError(err, state);
-      if (COMMANDER_USAGE_CODES.has(err.code)) {
-        try {
-          cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-            command: lifecycle.lastCommand || "unknown",
-            error_code: err.code === "commander.unknownCommand" ? "UNKNOWN_COMMAND" : "USAGE_ERROR",
-            exit_code: String(exitCode),
-            ...baseEventProps,
-            ...getCliAnalyticsContext(ctx),
-          });
-        } catch {
-          // Analytics failure is swallowed; the unknown-command UX is the
-          // headline. The finally block still shuts down the client.
-        }
-      }
-      return exitCode;
+      return exitFromCommanderError(err, state);
     }
     if (err instanceof InvalidArgumentError) {
       writeLine(stderr, ui.err(`error: ${err.message}`));
       return 2;
     }
-    cliAnalytics.trackCliEvent(analyticsClient, distinctId, "cli_error", {
-      command: lifecycle.lastCommand || "unknown",
-      error_code: "UNEXPECTED",
-      exit_code: "1",
-      ...baseEventProps,
-      ...getCliAnalyticsContext(ctx),
-    });
     const message = errMessage(err);
     if (ctx.jsonMode) {
       printJson(stderr, { error: { code: "UNEXPECTED", message } });
@@ -337,12 +257,6 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
       writeLine(stderr, ui.err(`error: ${message}`));
     }
     return 1;
-  } finally {
-    try {
-      await runPostActionAnalytics(lifecycle, state, baseEventProps);
-    } finally {
-      await cliAnalytics.shutdownCliAnalytics(analyticsClient);
-    }
   }
 
   return state.exitCode;

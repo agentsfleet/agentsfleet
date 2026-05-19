@@ -128,6 +128,39 @@ describe("NO_COLOR semantics", () => {
   });
 });
 
+describe("telemetry env-var advertisement (--help)", () => {
+  // Supabase-aligned env names land in --help so users can discover the
+  // opt-out path without reading source. Golden snapshot covers the
+  // exact bytes; this acceptance assertion confirms the built binary
+  // (npm install / dist) renders the same names end-to-end.
+  it("advertises ZOMBIE_TELEMETRY_DISABLED, DO_NOT_TRACK and POSTHOG knobs", async () => {
+    const result = await runZombiectl(["--help"], {
+      env: composeEnv({ NO_COLOR: "1" }),
+    });
+    assert.equal(result.code, 0);
+    for (const key of [
+      "ZOMBIE_TELEMETRY_DISABLED",
+      "DO_NOT_TRACK",
+      "ZOMBIE_TELEMETRY_POSTHOG_KEY",
+      "ZOMBIE_TELEMETRY_POSTHOG_HOST",
+      "ZOMBIE_TELEMETRY_DEBUG",
+    ]) {
+      assert.ok(
+        result.stdout.includes(key),
+        `--help did not mention ${key}; got: ${result.stdout}`,
+      );
+    }
+    // Negative assertion: the pre-supabase-alignment names must not
+    // resurface (catches a future bad merge that brings them back).
+    for (const stale of ["DISABLE_TELEMETRY ", "ZOMBIE_POSTHOG_KEY", "ZOMBIE_POSTHOG_HOST"]) {
+      assert.ok(
+        !result.stdout.includes(stale),
+        `--help still references legacy env name ${stale}`,
+      );
+    }
+  });
+});
+
 describe("--no-open suppresses browser spawn (stub backend)", () => {
   let stub: LocalStubHandle | null = null;
   let stateDir: StubbedStateDir | null = null;

@@ -109,7 +109,7 @@ test("workspace use rejects a workspace not in the local list", async () => {
       stderr: err.stream,
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
     });
-    assert.equal(code, 2);
+    assert.equal(code, 5);
     assert.ok(err.read().includes("not in your local list"));
     const state = await loadWorkspaces();
     assert.equal(state.current_workspace_id, "01900000-0000-7000-8000-000000000001"); // unchanged
@@ -186,7 +186,7 @@ test("workspace show errors when no active workspace and no --workspace-id", asy
       stderr: err.stream,
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
     });
-    assert.equal(code, 2);
+    assert.equal(code, 5);
     assert.ok(err.read().includes("no active workspace"));
   });
 });
@@ -324,7 +324,7 @@ test("zombie list honors --workspace-id override over current_workspace_id", asy
   });
 });
 
-test("zombie list errors with NO_WORKSPACE when no active and no --workspace-id", async () => {
+test("zombie list errors with ConfigError when no active workspace and no --workspace-id", async () => {
   await withStateDir(async () => {
     await saveWorkspaces({ current_workspace_id: null, items: [] });
     const out = bufferStream();
@@ -334,7 +334,9 @@ test("zombie list errors with NO_WORKSPACE when no active and no --workspace-id"
       stderr: err.stream,
       env: { NO_COLOR: "1", ZOMBIE_TOKEN: "tkn" },
     });
-    assert.equal(code, 1);
+    // Effect-shape contract: ConfigError → exit 5.
+    // The pre-Effect path returned 1 via writeError(NO_WORKSPACE, ...).
+    assert.equal(code, 5);
     assert.ok(err.read().includes("no workspace selected"));
   });
 });

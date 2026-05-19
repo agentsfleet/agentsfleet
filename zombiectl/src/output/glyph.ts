@@ -53,7 +53,7 @@ export const glyph: GlyphSet = {
 };
 
 // Shorthands — the common "render a glyph + space + message" pattern.
-// Used by the legacy `ui` proxy and a few commands. Same color rule.
+// Same color rule as the underlying GlyphFactory.
 export function withGlyph(g: GlyphFactory, message: string, opts?: StyleOpts): string {
   return `${g(opts).render()} ${message}`;
 }
