@@ -1,7 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { PageHeader, PageTitle, Section, SectionLabel } from "@usezombie/design-system";
 
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { listApprovals } from "@/lib/api/approvals";
 import ApprovalsList from "./components/ApprovalsList";
@@ -9,7 +9,8 @@ import ApprovalsList from "./components/ApprovalsList";
 export const dynamic = "force-dynamic";
 
 export default async function ApprovalsPage() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) notFound();

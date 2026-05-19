@@ -23,8 +23,8 @@ const getTenantBillingMock = vi.fn();
 const listWorkspaceEventsMock = vi.fn();
 const listZombieEventsMock = vi.fn();
 const resolveActiveWorkspaceMock = vi.fn();
-const getServerTokenMock = vi.fn();
-const getServerAuthMock = vi.fn();
+// authMock is the per-test control point for `@clerk/nextjs/server` `auth()`.
+// `mockAuth({ token, userId })` below is the helper test bodies use.
 
 vi.mock("next/navigation", () => ({
   notFound,
@@ -48,15 +48,21 @@ vi.mock("@clerk/nextjs", () => ({
   SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
 }));
 
+const authMock = vi.fn();
 vi.mock("@clerk/nextjs/server", () => ({
-  auth: vi.fn().mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_abc"), userId: "usr_1" }),
+  auth: authMock,
 }));
 
-vi.mock("@/lib/auth/server", () => ({
-  getServerToken: getServerTokenMock,
-  getServerAuth: getServerAuthMock,
-  getServerSessionMetadata: vi.fn(),
-}));
+// Helper: configure the `auth()` mock return for a single call.
+function mockAuth(opts: { token?: string | null; userId?: string | null } = {}) {
+  const token = opts.token === undefined ? "token_abc" : opts.token;
+  const userId = opts.userId === undefined ? "usr_1" : opts.userId;
+  authMock.mockResolvedValueOnce({
+    getToken: vi.fn().mockResolvedValue(token),
+    userId,
+    sessionClaims: null,
+  });
+}
 
 vi.mock("@/lib/workspace", () => ({
   resolveActiveWorkspace: resolveActiveWorkspaceMock,
@@ -82,7 +88,7 @@ vi.mock("@/lib/api/zombies", () => ({
 }));
 
 // The dashboard's mutation surface now flows through Server Actions instead
-// of useClientToken. The actions internally call getServerToken + the api
+// of useClientToken. The actions internally call auth().getToken() + the api
 // helpers above; in unit tests we stub them with thin wrappers that mirror
 // the ActionResult contract while still reusing the api-layer mocks above.
 type ActionResult<T> =
@@ -339,8 +345,9 @@ vi.mock("@usezombie/design-system", async (importOriginal) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getServerTokenMock.mockResolvedValue("token_abc");
-  getServerAuthMock.mockResolvedValue({ token: "token_abc", userId: "usr_1" });
+  authMock.mockReset();
+  // Default happy path — tests can override via mockAuth(...) before importing the page.
+  authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_abc"), userId: "usr_1", sessionClaims: null });
   resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Alpha" });
   listZombiesMock.mockResolvedValue({
     items: [
@@ -370,7 +377,7 @@ afterEach(() => {
 
 describe("placeholder pages", () => {
   it("credentials page renders list + add form when workspace + credentials are present", async () => {
-    getServerTokenMock.mockResolvedValue("token_abc");
+    mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listCredentialsMock.mockResolvedValue({
       credentials: [
@@ -388,7 +395,7 @@ describe("placeholder pages", () => {
   });
 
   it("credentials page falls back to empty list when API errors", async () => {
-    getServerTokenMock.mockResolvedValue("token_abc");
+    mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listCredentialsMock.mockRejectedValue(new Error("boom"));
     const { default: Page } = await import("../app/(dashboard)/credentials/page");
@@ -397,26 +404,26 @@ describe("placeholder pages", () => {
   });
 
   it("settings page redirects to /sign-in when no token", async () => {
-    getServerAuthMock.mockResolvedValue({ token: null, userId: null });
+    mockAuth({ token: null, userId: null });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("events page redirects to /sign-in when no token", async () => {
-    getServerTokenMock.mockResolvedValue(null);
+    mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/events/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("events page calls notFound when no active workspace", async () => {
-    getServerTokenMock.mockResolvedValue("token_abc");
+    mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/events/page");
     await expect(Page()).rejects.toThrow("notFound");
   });
 
   it("events page renders Workspace events section with EventsList", async () => {
-    getServerTokenMock.mockResolvedValue("token_abc");
+    mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockResolvedValue({ items: [], next_cursor: null });
     const { default: Page } = await import("../app/(dashboard)/events/page");
@@ -426,7 +433,7 @@ describe("placeholder pages", () => {
   });
 
   it("events page falls back to empty page when listWorkspaceEvents errors", async () => {
-    getServerTokenMock.mockResolvedValue("token_abc");
+    mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_1", name: "Default" });
     listWorkspaceEventsMock.mockRejectedValue(new Error("boom"));
     const { default: Page } = await import("../app/(dashboard)/events/page");
@@ -435,7 +442,7 @@ describe("placeholder pages", () => {
   });
 
   it("settings page renders workspace info and userId when authenticated", async () => {
-    getServerAuthMock.mockResolvedValue({ token: "tkn", userId: "usr_42" });
+    mockAuth({ token: "tkn", userId: "usr_42" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
@@ -446,7 +453,7 @@ describe("placeholder pages", () => {
   });
 
   it("settings page tolerates missing active workspace", async () => {
-    getServerAuthMock.mockResolvedValue({ token: "tkn", userId: "usr_42" });
+    mockAuth({ token: "tkn", userId: "usr_42" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/page");
     const m = renderToStaticMarkup(await Page());
@@ -455,7 +462,7 @@ describe("placeholder pages", () => {
   });
 
   it("provider settings page renders selector with current config and empty credentials", async () => {
-    getServerTokenMock.mockResolvedValue("token_provider");
+    mockAuth({ token: "token_provider" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
     getTenantProviderMock.mockResolvedValue({
       mode: PROVIDER_MODE.platform,
@@ -475,7 +482,7 @@ describe("placeholder pages", () => {
   });
 
   it("provider settings page surfaces resolver error banner from the API", async () => {
-    getServerTokenMock.mockResolvedValue("token_provider");
+    mockAuth({ token: "token_provider" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
     getTenantProviderMock.mockResolvedValue({
       mode: PROVIDER_MODE.self_managed,
@@ -493,7 +500,7 @@ describe("placeholder pages", () => {
   });
 
   it("provider settings page renders empty-workspace empty-state when no workspace", async () => {
-    getServerTokenMock.mockResolvedValue("token_provider");
+    mockAuth({ token: "token_provider" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
     const m = renderToStaticMarkup(await Page());
@@ -501,13 +508,13 @@ describe("placeholder pages", () => {
   });
 
   it("provider settings page redirects to /sign-in when no token", async () => {
-    getServerTokenMock.mockResolvedValue(null);
+    mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/settings/provider/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("provider settings page tolerates a getTenantProvider 5xx (catch fallback)", async () => {
-    getServerTokenMock.mockResolvedValue("token_provider");
+    mockAuth({ token: "token_provider" });
     resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_p", name: "P" });
     getTenantProviderMock.mockRejectedValue(new Error("503"));
     listCredentialsMock.mockResolvedValue({ credentials: [] });
@@ -518,7 +525,7 @@ describe("placeholder pages", () => {
   });
 
   it("billing settings page renders balance card + usage tab + invoice/payment empty states", async () => {
-    getServerTokenMock.mockResolvedValue("token_billing");
+    mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
       balance_nanos: 4_710_000_000,
       updated_at: 1, is_exhausted: false, exhausted_at: null,
@@ -545,7 +552,7 @@ describe("placeholder pages", () => {
   });
 
   it("billing settings page tolerates a /charges 5xx by falling back to empty events", async () => {
-    getServerTokenMock.mockResolvedValue("token_billing");
+    mockAuth({ token: "token_billing" });
     getTenantBillingMock.mockResolvedValue({
       balance_nanos: 0,
       updated_at: 1, is_exhausted: true, exhausted_at: 2,
@@ -557,7 +564,7 @@ describe("placeholder pages", () => {
   });
 
   it("billing settings page redirects to /sign-in when no token", async () => {
-    getServerTokenMock.mockResolvedValue(null);
+    mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
@@ -567,7 +574,7 @@ describe("placeholder pages", () => {
 
 describe("dashboard overview page", () => {
   it("redirects to /sign-in when no server token", async () => {
-    getServerTokenMock.mockResolvedValue(null);
+    mockAuth({ token: null });
     const { default: Page } = await import("../app/(dashboard)/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
@@ -582,10 +589,10 @@ describe("dashboard overview page", () => {
   it("StatusTiles returns null when no token or no workspace", async () => {
     const mod = await import("../app/(dashboard)/page");
     const Page = mod.default;
-    getServerTokenMock.mockResolvedValue(null);
+    mockAuth({ token: null });
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
 
-    getServerTokenMock.mockResolvedValue("token_abc");
+    mockAuth({ token: "token_abc" });
     resolveActiveWorkspaceMock.mockResolvedValue(null);
     const m = renderToStaticMarkup(await Page());
     expect(m).toContain("Dashboard");

@@ -1,4 +1,4 @@
-import { getServerAuth } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { ChevronRightIcon, ZapIcon, WalletIcon } from "lucide-react";
@@ -18,7 +18,8 @@ import { resolveActiveWorkspace } from "@/lib/workspace";
 export const dynamic = "force-dynamic";
 
 export default async function SettingsPage() {
-  const { token, userId } = await getServerAuth();
+  const { getToken, userId } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);

@@ -6,7 +6,7 @@ import {
   Section,
 } from "@usezombie/design-system";
 import { KeyRoundIcon } from "lucide-react";
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { listCredentials } from "@/lib/api/credentials";
 import AddCredentialForm from "./components/AddCredentialForm";
@@ -15,7 +15,8 @@ import CredentialsList from "./components/CredentialsList";
 export const dynamic = "force-dynamic";
 
 export default async function CredentialsPage() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);

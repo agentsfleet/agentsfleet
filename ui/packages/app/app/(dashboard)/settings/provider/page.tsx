@@ -11,7 +11,7 @@ import {
   SectionLabel,
 } from "@usezombie/design-system";
 import { ZapIcon } from "lucide-react";
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { getTenantProvider } from "@/lib/api/tenant_provider";
 import { listCredentials } from "@/lib/api/credentials";
@@ -21,7 +21,8 @@ import ProviderSelector from "./components/ProviderSelector";
 export const dynamic = "force-dynamic";
 
 export default async function ProviderSettingsPage() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);
