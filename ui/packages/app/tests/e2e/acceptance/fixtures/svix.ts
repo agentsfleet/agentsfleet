@@ -1,8 +1,8 @@
 /**
  * Svix HMAC-SHA256 signing for outbound webhook posts.
  *
- * Mirrors the reference shape used by zombied's webhook handler
- * (src/http/handlers/webhooks/clerk.zig) and the Svix spec:
+ * Mirrors the reference shape used by zombied's identity-events handler
+ * (src/http/handlers/auth/identity_events_clerk.zig) and the Svix spec:
  *   signed_input = `${id}.${timestamp}.${body}`
  *   signature    = base64( HMAC_SHA256(decode_base64(secret_after_whsec_prefix), signed_input) )
  *   header value = `v1,${signature}`
