@@ -31,18 +31,18 @@ import { Spinner } from "../services/spinner.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   AuthError,
+  ExpiredSessionError,
+  InterruptedError,
+  TimeoutError,
   type CliError,
 } from "../errors/index.ts";
-import {
-  AUTH_CODE_EXPIRED_SESSION,
-  AUTH_CODE_INTERRUPTED,
-  AUTH_CODE_TIMEOUT,
-} from "../lib/auth-error-codes.ts";
 import {
   buildLoginUrl,
   createSession,
   defaultTokenName,
+  envTokenAwareness,
   generateKeypair,
+  idempotencyCheck,
   pollUntilVerificationPending,
   verifyAndDecryptWithRetry,
 } from "./login-device-flow.ts";
@@ -66,6 +66,18 @@ export interface LoginFlags {
   readonly timeoutSec: number;
   readonly pollMs: number;
   readonly noOpen: boolean;
+  readonly noInput: boolean;
+  readonly force: boolean;
+  readonly tokenName: string | undefined;
+}
+
+export interface LoginFlagsRaw {
+  readonly timeoutSec: number | undefined;
+  readonly pollMs: number | undefined;
+  readonly noOpen: boolean | undefined;
+  readonly noInput: boolean | undefined;
+  readonly force: boolean | undefined;
+  readonly tokenName: string | undefined;
 }
 
 const announceSession = (
@@ -154,25 +166,24 @@ const persistSuccess = (
     return redacted;
   });
 
-const failedOutcomeError = (outcome: FinalOutcome): AuthError => {
+const failedOutcomeError = (
+  outcome: FinalOutcome,
+): ExpiredSessionError | InterruptedError | TimeoutError => {
   if (outcome.status === "expired") {
-    return new AuthError({
+    return new ExpiredSessionError({
       detail: "login session expired",
       suggestion: "retry `zombiectl login`",
-      code: AUTH_CODE_EXPIRED_SESSION,
     });
   }
   if (outcome.status === "interrupted") {
-    return new AuthError({
+    return new InterruptedError({
       detail: "login interrupted",
       suggestion: "retry `zombiectl login`",
-      code: AUTH_CODE_INTERRUPTED,
     });
   }
-  return new AuthError({
+  return new TimeoutError({
     detail: "login timed out",
     suggestion: "retry `zombiectl login`",
-    code: AUTH_CODE_TIMEOUT,
   });
 };
 
@@ -182,13 +193,14 @@ const failedOutcomeError = (outcome: FinalOutcome): AuthError => {
 const completeVerificationBranch = (
   sessionId: string,
   keypair: import("../lib/cli-flow.ts").CliKeypair,
+  noInput: boolean,
 ): Effect.Effect<
   FinalOutcome,
   CliError,
   Analytics | CliConfig | Credentials | HttpClient | Input | Output | TelemetryRuntime | Workspaces
 > =>
   Effect.gen(function* () {
-    const token = yield* verifyAndDecryptWithRetry(sessionId, keypair);
+    const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput });
     const redacted = yield* persistSuccess(sessionId, token);
     yield* hydrateWorkspacesAfterLogin(redacted);
     yield* captureLoginCompleted(sessionId, token);
@@ -219,8 +231,18 @@ const loginCore = (
 > =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
+
+    // Pre-flight (D20 + D26b). idempotencyCheck refuses to overwrite an
+    // existing credential without --force or a Y/yes prompt; envTokenAwareness
+    // surfaces the precedence gotcha when ZMB_TOKEN/ZOMBIE_TOKEN is set.
+    // Both honor --no-input by aborting with NoInputAbort instead of prompting.
+    const preflightGuards = { force: flags.force, noInput: flags.noInput };
+    yield* idempotencyCheck(preflightGuards);
+    yield* envTokenAwareness(preflightGuards);
+
     const keypair = yield* generateKeypair;
-    const created = yield* createSession(keypair.publicKeyBase64Url, defaultTokenName());
+    const tokenName = flags.tokenName ?? defaultTokenName();
+    const created = yield* createSession(keypair.publicKeyBase64Url, tokenName);
     const loginUrl = buildLoginUrl(config.dashboardUrl, created.session_id);
 
     yield* announceSession(created.session_id, loginUrl);
@@ -243,7 +265,7 @@ const loginCore = (
 
     const final: FinalOutcome =
       pollOutcome.status === "verification_pending"
-        ? yield* completeVerificationBranch(created.session_id, keypair)
+        ? yield* completeVerificationBranch(created.session_id, keypair, flags.noInput)
         : pollOutcome;
 
     const exitCode = yield* renderOutcome(final, created.session_id);
@@ -290,12 +312,13 @@ export const loginEffect = (
   loginCore(flags).pipe(Effect.mapError(remapTransportErrors));
 
 export const loginEffectFromFlags = (
-  rawTimeoutSec: number | undefined,
-  rawPollMs: number | undefined,
-  rawNoOpen: boolean | undefined,
+  raw: LoginFlagsRaw,
 ): ReturnType<typeof loginEffect> =>
   loginEffect({
-    timeoutSec: rawTimeoutSec ?? DEFAULT_TIMEOUT_SEC,
-    pollMs: rawPollMs ?? DEFAULT_POLL_MS,
-    noOpen: rawNoOpen ?? false,
+    timeoutSec: raw.timeoutSec ?? DEFAULT_TIMEOUT_SEC,
+    pollMs: raw.pollMs ?? DEFAULT_POLL_MS,
+    noOpen: raw.noOpen ?? false,
+    noInput: raw.noInput ?? false,
+    force: raw.force ?? false,
+    tokenName: raw.tokenName,
   });

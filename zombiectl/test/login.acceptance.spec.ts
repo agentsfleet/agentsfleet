@@ -251,7 +251,14 @@ describe("login acceptance — full device flow end-to-end", () => {
       verifyCalls: { count: 0 },
     };
 
-    const program = loginEffect({ timeoutSec: 30, pollMs: 500, noOpen: true }).pipe(
+    const program = loginEffect({
+      timeoutSec: 30,
+      pollMs: 500,
+      noOpen: true,
+      noInput: false,
+      force: true,
+      tokenName: undefined,
+    }).pipe(
       Effect.provide(httpLayer(fixture)),
       Effect.provide(inputLayer(rec, VERIFICATION_CODE)),
       Effect.provide(outputLayer(rec)),
