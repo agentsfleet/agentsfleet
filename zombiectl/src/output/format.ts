@@ -33,9 +33,9 @@ function isAllNumeric(values: ReadonlyArray<unknown>): boolean {
   return values.every((v) => v !== "" && v != null && Number.isFinite(Number(v)));
 }
 
-// Drop-in for the legacy printSection shape. Section titles render in
-// bold default text — they're chrome, not live signals. Pulse is
-// reserved for help headings, the version dot, and live-glyph dots.
+// Section titles render in bold default text — they're chrome, not
+// live signals. Pulse is reserved for help headings, the version dot,
+// and live-glyph dots.
 export function formatSection(title: string, opts?: FormatOpts): string {
   const head = palette.bold(title, opts);
   const rule = palette.subtle(HORIZONTAL_RULE.repeat(title.length), opts);

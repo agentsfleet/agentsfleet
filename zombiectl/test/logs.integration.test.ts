@@ -71,7 +71,7 @@ describe("logs (paginated event tail)", () => {
     });
   });
 
-  test("`logs` with no zombie_id exits 2 with a missing-argument error", async () => {
+  test("`logs` with no zombie_id exits ValidationError (4) with a missing-argument error", async () => {
     await authedScope(async () => {
       // No mock routes — the CLI's argument validation must fire before any
       // outbound fetch, otherwise the test traps an unexpected request.
@@ -82,7 +82,10 @@ describe("logs (paginated event tail)", () => {
           ["logs"],
           { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
         );
-        expect(code).toBe(2);
+        // Effect-shape contract: ValidationError → exit 4 (EXIT_CODE.ValidationError).
+        // The pre-Effect path returned 2 via writeError(MISSING_ARGUMENT, …); the
+        // Effect dispatcher now classifies missing positionals as ValidationError.
+        expect(code).toBe(4);
         expect(err.read()).toMatch(/zombie/i);
         expect(calls).toHaveLength(0);
       });

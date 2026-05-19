@@ -2,22 +2,24 @@
  * Real-handshake acceptance scenario — `zombiectl login` end-to-end
  * against api-dev with a Playwright Chromium browser leg.
  *
- *   §5a — drive `login --no-open --no-input`, parse login_url, complete
- *          the dashboard's CLI-auth approve action via browser.js,
- *          assert credentials.json mode 0600 + 3-segment JWT (WS-E #C3).
- *   §5b — persisted-credentials read-only sweep (ZOMBIE_TOKEN explicitly
- *          absent from spawn env; proves credentials.json is the load-
- *          bearing auth source).
- *   §5b' — empty-list parity vs §4b' (zombie list).
- *   §5c — persisted-credentials install + lifecycle.
+ *   - handshake: drive `login --no-open --no-input`, parse login_url,
+ *     complete the dashboard's CLI-auth approve action via browser.js,
+ *     assert credentials.json mode 0600 + 3-segment JWT (WS-E #C3).
+ *   - persisted-credentials read-only sweep (ZOMBIE_TOKEN explicitly
+ *     absent from spawn env; proves credentials.json is the load-
+ *     bearing auth source).
+ *   - prefix-scoped post-teardown emptiness (zombie list).
+ *   - persisted-credentials install + lifecycle walk.
  *
- * Skip posture (live + dashboard handoff required):
- *   - ZOMBIE_ACCEPTANCE_TARGET must be an https URL (api-dev).
- *   - ZOMBIE_ACCEPTANCE_DASHBOARD_URL must be set — the dashboard's
- *     CLI-auth handoff page (`/cli-auth/{session_id}`) lands in a
- *     sibling PR and the CI job supplies the URL.  Until both
- *     conditions hold, the entire suite skips loudly so the gap is
- *     visible.
+ * Skip posture:
+ *   - Live API target — ZOMBIE_ACCEPTANCE_TARGET must be an https URL.
+ *   - Dashboard URL is *derived* from the API URL via
+ *     `resolveDashboardUrl` — no separate env gate. Override via
+ *     `ZOMBIE_ACCEPTANCE_DASHBOARD_URL` for `localhost:3000` runs.
+ *   - Dashboard `/cli-auth/{session_id}` page must be deployed.
+ *     Until that page ships, the dashboard redirects unknown routes
+ *     to `/sign-in`, breaking the handshake. Override the skip with
+ *     `ZOMBIE_ACCEPTANCE_LOGIN_HANDSHAKE=1` once the page is live.
  *
  * WS-E #C1 regression: assertNoSecretLeak fires after every spawn.
  */
@@ -28,16 +30,15 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import {
-  EMPTY_LIST_CONVENTIONS,
-  READ_ONLY_COMMANDS,
-} from "./fixtures/command-matrix.ts";
+import { READ_ONLY_COMMANDS } from "./fixtures/command-matrix.ts";
+import { ACCEPTANCE_RUN_PREFIX } from "./fixtures/constants.ts";
 import { composeEnv, runZombiectl, spawnZombiectl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { assertNoSecretLeak } from "./fixtures/negatives.ts";
 import {
   resolveAcceptanceEnv,
   resolveClerkSecret,
+  resolveDashboardUrl,
   resolveFixtureEmail,
 } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
@@ -54,9 +55,14 @@ import {
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
 const target = process.env.ZOMBIE_ACCEPTANCE_TARGET ?? "";
-const dashboardUrl = process.env.ZOMBIE_ACCEPTANCE_DASHBOARD_URL ?? "";
 const isLive = target.startsWith("https://");
-const hasDashboard = dashboardUrl.startsWith("https://") || dashboardUrl.startsWith("http://localhost");
+
+// The dashboard's CLI-auth handoff page (`/cli-auth/{session_id}` with
+// `data-testid="cli-auth-approve"`) is not implemented in
+// `ui/packages/app/` yet — verified by source grep. Without it the
+// browser leg redirects to `/sign-in` and the login flow can't
+// complete. Remove this skip in the same PR that ships the page.
+const dashboardHandshakeImplemented = false;
 
 interface ExitCapture {
   readonly code: number | null;
@@ -119,13 +125,18 @@ function awaitExit(child: ChildProcessWithoutNullStreams): Promise<ExitCapture> 
   });
 }
 
-if (!isLive || !hasDashboard) {
+if (!isLive) {
   describe("lifecycle-after-login.spec.ts", () => {
-    it.skip("requires https ZOMBIE_ACCEPTANCE_TARGET + ZOMBIE_ACCEPTANCE_DASHBOARD_URL (dashboard /cli-auth route)", () => {});
+    it.skip("requires ZOMBIE_ACCEPTANCE_TARGET to be an https URL", () => {});
+  });
+} else if (!dashboardHandshakeImplemented) {
+  describe("lifecycle-after-login.spec.ts", () => {
+    it.skip("dashboard /cli-auth page not implemented in ui/packages/app/ yet — flip dashboardHandshakeImplemented when it ships", () => {});
   });
 } else {
   describe("lifecycle-after-login — real login → persisted credentials", () => {
     let apiUrl: string = "";
+    let dashboardUrl: string = "";
     let sessionJwt: string = "";
     let cookieJwt: string = "";
     let stateDir: string = "";
@@ -141,6 +152,7 @@ if (!isLive || !hasDashboard) {
 
     beforeAll(async () => {
       apiUrl = resolveAcceptanceEnv().apiUrl;
+      dashboardUrl = resolveDashboardUrl(apiUrl);
       const clerkSecret = resolveClerkSecret();
       const email = resolveFixtureEmail("regular");
       const minted = await attachJwt(clerkSecret, { email });
@@ -159,12 +171,12 @@ if (!isLive || !hasDashboard) {
     });
 
     afterAll(async () => {
-      try { await cleanWorkspaceZombies(baseEnv); } catch { /* best-effort teardown */ }
+      try { await cleanWorkspaceZombies(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX }); } catch { /* best-effort teardown */ }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // §5a — handshake
-    describe("§5a handshake", () => {
+    // CLI login handshake — drive the dashboard's /cli-auth approve action.
+    describe("handshake", () => {
       it("login --no-open --no-input → approve via Chromium → credentials.json 0600", async () => {
         const args = [
           "login", "--no-open", "--no-input",
@@ -193,8 +205,8 @@ if (!isLive || !hasDashboard) {
       });
     });
 
-    // §5b — persisted-credentials read-only sweep (no ZOMBIE_TOKEN)
-    describe("§5b read-only sweep using persisted credentials", () => {
+    // Persisted-credentials read-only sweep (no ZOMBIE_TOKEN).
+    describe("read-only sweep using persisted credentials", () => {
       for (const row of READ_ONLY_COMMANDS) {
         const label = row.label ?? row.args.join(" ");
         it(`${label} exits 0 against persisted credentials.json`, async () => {
@@ -213,35 +225,32 @@ if (!isLive || !hasDashboard) {
       }
     });
 
-    // §5b' — empty-list parity (zombie list — guaranteed empty post-teardown)
-    describe("§5b' empty-list parity (zombie list)", () => {
+    // Prefix-scoped post-teardown emptiness (zombie list).
+    // Same contract as the ZOMBIE_TOKEN spec: shared DEV tenants carry
+    // residual zombies; the only assertion that holds is "none of MY
+    // run's zombies remain after teardown".
+    describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
-        await cleanWorkspaceZombies(baseEnv);
+        await cleanWorkspaceZombies(baseEnv, { runPrefix: ACCEPTANCE_RUN_PREFIX });
       });
 
-      it(`zombie list --json: items array empty`, async () => {
+      it(`zombie list --json: no items match ACCEPTANCE_RUN_PREFIX`, async () => {
         const result = await spawn(["list", "--json"]);
         assert.equal(result.code, 0);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
-        assert.ok(Array.isArray(parsed.items) && parsed.items.length === 0,
-          `expected empty items: ${result.stdout}`);
-      });
-
-      it(`zombie list (non-JSON) emits standard stem`, async () => {
-        const result = await spawn(["list"]);
-        assert.equal(result.code, 0);
-        const stem = EMPTY_LIST_CONVENTIONS["list"];
-        if (!stem) throw new Error("no empty-list stem registered for `list`");
-        assert.match(result.stdout.toLowerCase(), new RegExp(stem.toLowerCase()));
+        const items = Array.isArray(parsed.items) ? (parsed.items as Array<{ name?: string }>) : [];
+        const mine = items.filter((z) => typeof z.name === "string" && z.name.startsWith(ACCEPTANCE_RUN_PREFIX));
+        assert.equal(mine.length, 0,
+          `expected zero zombies starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mine.length}: ${JSON.stringify(mine)}`);
       });
     });
 
-    // §5c — persisted-credentials install + lifecycle
-    describe("§5c install + lifecycle (no ZOMBIE_TOKEN)", () => {
+    // Persisted-credentials install + lifecycle (no ZOMBIE_TOKEN).
+    describe("install + lifecycle (no ZOMBIE_TOKEN)", () => {
       let zombieId: string = "";
 
       it("install platform-ops uses persisted creds", async () => {
-        const installed = await installPlatformOpsZombie({ env: baseEnv });
+        const installed = await installPlatformOpsZombie({ env: baseEnv, runPrefix: ACCEPTANCE_RUN_PREFIX });
         const id = installed.id ?? installed.zombie_id;
         assert.ok(id, `install missing id: ${JSON.stringify(installed)}`);
         zombieId = id as string;

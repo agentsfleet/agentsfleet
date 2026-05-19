@@ -9,8 +9,6 @@
 // Workspaces accept any extra fields handlers read so command-specific
 // reads don't force a churn through this file.
 
-import type { HandlerCtx as RunCommandCtx } from "../lib/run-command.ts";
-import type { ApiRequestOptions } from "../lib/http.ts";
 import type { StreamGetCallback, StreamGetOptions } from "../lib/sse.ts";
 import type { Credentials, Workspaces, WorkspaceItem } from "../lib/state.ts";
 import type {
@@ -21,15 +19,11 @@ import type {
   KeyValueRows,
 } from "../output/index.ts";
 
-// On-disk shapes re-exported from lib/state.ts. Single source of truth for
-// the worktree (~/.config/zombiectl/credentials.json, workspaces.json) —
-// handlers, cli.ts, and the lifecycle all reference the same interfaces.
-// Previously commands/types.ts declared its own Workspaces + CredentialFile
-// with overlapping-but-inconsistent shapes, which surfaced as cross-file
-// assignability errors the moment cli.ts became typed (D41).
+// On-disk shapes re-exported from lib/state.ts. Single source of truth
+// for the worktree (~/.config/zombiectl/credentials.json,
+// workspaces.json) — handlers, cli.ts, and the lifecycle all reference
+// the same interfaces.
 export type { Credentials, Workspaces, WorkspaceItem };
-
-export type { ApiRequestOptions };
 
 export type StreamGetFn = (
   url: string,
@@ -38,24 +32,24 @@ export type StreamGetFn = (
   options?: StreamGetOptions,
 ) => Promise<void>;
 
-// The ctx that command handlers receive. Extends runCommand's
-// HandlerCtx (whose retryConfig the wrapper mutates) with the streams
-// and credential fields commands read directly.
-export interface CommandCtx extends RunCommandCtx {
+// The ctx every command handler receives. Mirrors what cli.ts
+// buildDeps() emits plus the streams and credentials commands reach
+// into directly. apiUrl is required (cli.ts sets it before any
+// handler runs; http-client.ts:HttpRequestContext requires it —
+// optional here meant the commands ↔ http-client seam couldn't
+// typecheck under exact-optional contravariance).
+export interface CommandCtx {
   stdout?: NodeJS.WritableStream | null;
   stderr?: NodeJS.WritableStream | null;
   stdin?: NodeJS.ReadableStream | string | null;
   token?: string | null;
   apiKey?: string | null;
-  // apiUrl is required — cli.ts sets it before any handler runs, and
-  // http-client.ts:HttpRequestContext requires it. Optional here meant
-  // the commands ↔ http-client seam couldn't typecheck (TS exact-optional
-  // rejects the contravariance).
   apiUrl: string;
   jsonMode?: boolean;
   noOpen?: boolean;
   noInput?: boolean;
   env?: NodeJS.ProcessEnv | Record<string, string | undefined>;
+  [key: string]: unknown;
 }
 
 // Parsed CLI invocation (Commander/cli-tree frame.parsed). `options`
@@ -91,8 +85,10 @@ export interface SpinnerHandle {
 // src/cli.ts verbatim. writeError is widened to accept any subset of
 // CommandDeps that the call site assembles (some commands call it with
 // just { printJson, writeLine, ui }, others pass the full deps).
+//
+// Commands receive `deps` from cli.ts buildDeps(). Every HTTP path
+// goes through the Effect HttpClient service.
 export interface CommandDeps {
-  apiHeaders: (ctx: CommandCtx) => Record<string, string>;
   clearCredentials: () => Promise<void> | void;
   createSpinner: (options: SpinnerOptions) => SpinnerHandle;
   loadCredentials: () => Promise<Credentials> | Credentials;
@@ -114,11 +110,6 @@ export interface CommandDeps {
     columns: ReadonlyArray<TableColumn>,
     rows: ReadonlyArray<TableRow>,
   ) => void;
-  request: (
-    ctx: CommandCtx,
-    path: string,
-    opts?: ApiRequestOptions,
-  ) => Promise<ApiResponse>;
   saveCredentials: (cred: Credentials) => Promise<void> | void;
   saveWorkspaces: (workspaces: Workspaces) => Promise<void> | void;
   // Optional SSE injector — zombie_steer uses this for the live event
@@ -187,4 +178,18 @@ export function readNumber(
     return Number.isFinite(n) ? n : null;
   }
   return null;
+}
+
+// Sister to `readString` for callers that prefer `undefined`-shaped
+// optional reads (Effect-side commands, `??`-chained flag fallbacks).
+// Also coerces parseIntOption's numeric results to a string so query-
+// string + flag-passthrough plumbing doesn't have to special-case both.
+export function readStringOpt(
+  options: ParsedArgs["options"],
+  key: string,
+): string | undefined {
+  const v = options[key];
+  if (typeof v === "string" && v.length > 0) return v;
+  if (typeof v === "number" && Number.isFinite(v)) return String(v);
+  return undefined;
 }

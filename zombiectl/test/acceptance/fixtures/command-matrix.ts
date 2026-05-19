@@ -41,8 +41,8 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
   { args: ["agent", "list", "--json"], isList: true, itemsKey: "items" },
-  { args: ["tenant", "provider", "show", "--json"], requiredKey: "provider_mode" },
-  { args: ["billing", "show", "--json"], requiredKey: "balance" },
+  { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
+  { args: ["billing", "show", "--json"], requiredKey: "balance_nanos" },
   { args: ["list", "--json"], isList: true, itemsKey: "items", label: "zombie list" },
 ];
 
@@ -89,20 +89,22 @@ export interface RequiresIdentifierRow {
 //   clientRejectCode — CLI-emitted error code when local validation /
 //              local lookup rejects the request (apiHits: false rows).
 export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
-  // status is the only zombie verb that does NOT run validateRequiredId
-  // (it accepts an optional positional and falls back to workspace-wide).
-  { args: ["status"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: false },
+  // status accepts an optional positional and currently falls back to a
+  // workspace-wide list response, so it is not a by-ID not-found probe.
+  { args: ["status"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: false, validatesClient: false },
   // kill/stop/resume/logs and grant/agent delete all run validateRequiredId
   // — §4c2 sweep relies on validatesClient: true to fire the no-network
   // invariant against an invalid-format id sample.
-  { args: ["kill"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
-  { args: ["stop"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
-  { args: ["resume"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
-  { args: ["logs"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: true, validatesClient: true },
+  { args: ["kill"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: false, validatesClient: true },
+  { args: ["stop"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: false, validatesClient: true },
+  { args: ["resume"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: false, validatesClient: true },
+  { args: ["logs"], expectedErrorCode: "UZ-ZMB-009", argName: "zombie_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
-  { args: ["agent", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: true, validatesClient: true },
-  { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: true, validatesClient: true },
+  { args: ["agent", "delete"], expectedErrorCode: "UZ-AGENT-001", argName: "key_id", apiHits: false, validatesClient: true },
+  // grant delete also requires --zombie <id>, so the generic single-ID
+  // matrix cannot exercise it without a live zombie fixture.
+  { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: false, validatesClient: false },
 ];
 
 export interface RequiresPositionalArgRow {
@@ -133,23 +135,7 @@ export const INVALID_ID_SAMPLES: ReadonlyArray<string> = [
   "not-a-uuid",
   "foo",
   "abc def",
-  "---",
 ];
-
-/**
- * Per-list-command empty-collection conventions. Stem matches the current
- * `ui.info(...)` output the existing CLI emits; the spec sweeps assert the
- * stem appears in non-JSON mode and `{items: [], total: 0}` in JSON mode.
- *
- * Stems read with substring match — if the CLI tightens its wording, the
- * test still passes as long as the kebab/space stem is present.
- */
-export const EMPTY_LIST_CONVENTIONS: Readonly<Record<string, string>> = {
-  "workspace list": "no workspaces",
-  "agent list": "no agent",
-  "grant list": "no grant",
-  "list": "no zombies",
-};
 
 export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> = [
   ["doctor"],

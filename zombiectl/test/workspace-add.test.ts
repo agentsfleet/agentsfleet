@@ -62,7 +62,7 @@ test("workspace add does not persist local state when API create fails", async (
       fetchImpl,
     });
 
-    assert.equal(code, 1);
+    assert.equal(code, 3);
     assert.match(err.read(), /INTERNAL_ERROR/);
     assert.match(err.read(), /request_id: req_abc123/);
 

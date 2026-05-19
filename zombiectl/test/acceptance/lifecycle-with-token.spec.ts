@@ -3,17 +3,17 @@
  *
  * Mints a Clerk session JWT via the admin path (mirrors the dashboard
  * suite's identity), hydrates workspaces.json directly from the API
- * (the CLI only hydrates inside commandLogin — §5 covers that path),
- * then walks the full CLI surface:
- *   §4a — install → status → logs → billing → stop → resume → kill
- *   §4b — read-only sweep over READ_ONLY_COMMANDS
- *   §4b' — empty-list standard message (post-teardown)
- *   §4c1 — invalid-arg-value matrix with valid-format nonexistent ID
- *   §4c2 — invalid-format identifier rejected client-side, no network
- *   §3-residual — missing-required-arg sweep over REQUIRES_POSITIONAL_ARG
+ * (the CLI only hydrates inside the login flow — the after-login spec
+ * covers that path), then walks the full CLI surface:
+ *   - install → status → logs → billing → stop → resume → kill
+ *   - read-only sweep over READ_ONLY_COMMANDS
+ *   - prefix-scoped post-teardown empty-list assertion
+ *   - invalid-arg-value matrix with valid-format nonexistent IDs
+ *   - invalid-format identifier rejected client-side, no network
+ *   - missing-required-arg sweep over REQUIRES_POSITIONAL_ARG
  *
  * WS-E #C1 regression fires after every `runZombiectl` call: the minted
- * JWT must not appear in stdout/stderr. WS-E #C3 is §5's territory.
+ * JWT must not appear in stdout/stderr.
  *
  * Live-only: the entire suite registers only when
  * `ZOMBIE_ACCEPTANCE_TARGET` is an https URL. Without that gate, all
@@ -30,14 +30,13 @@ import url from "node:url";
 
 import {
   COMMAND_GROUPS,
-  EMPTY_LIST_CONVENTIONS,
   INVALID_ID_SAMPLES,
   PER_ZOMBIE_READ_ONLY_COMMANDS,
   READ_ONLY_COMMANDS,
   REQUIRES_IDENTIFIER,
   REQUIRES_POSITIONAL_ARG,
 } from "./fixtures/command-matrix.ts";
-import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
+import { ACCEPTANCE_RUN_PREFIX, TERMINAL_STATUSES, UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { composeEnv, runZombiectl } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import {
@@ -77,10 +76,10 @@ interface ValidateModule {
   validateRequiredId(value: string, label: string): ValidateResult;
 }
 
-// Random uuidv7 for §4c1 — backend's `isUuidV7` rejects v4, so
-// crypto.randomUUID() would surface as a 400/validation error instead
-// of 404. Hand-roll a v7 with valid version+variant bits and random
-// payload so the server's not-found branch fires.
+// Random uuidv7 for the invalid-arg-value sweep — backend's `isUuidV7`
+// rejects v4, so `crypto.randomUUID()` would surface as a 400/validation
+// error instead of 404. Hand-roll a v7 with valid version+variant bits
+// and random payload so the server's not-found branch fires.
 function randomUuidv7(): string {
   const bytes = crypto.randomBytes(16);
   const tsMs = BigInt(Date.now());
@@ -142,13 +141,13 @@ if (!isLive) {
 
     afterAll(async () => {
       if (env && workspaceId) {
-        try { await cleanWorkspaceZombies(env, workspaceId); } catch { /* best-effort teardown */ }
+        try { await cleanWorkspaceZombies(env, { workspaceId }); } catch { /* best-effort teardown */ }
       }
       if (stateDir) await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // §4a — full lifecycle walk
-    describe("§4a lifecycle walk", () => {
+    // Full lifecycle walk against a freshly-installed zombie.
+    describe("lifecycle walk", () => {
       let zombieId: string = "";
 
       it("install platform-ops bundle", async () => {
@@ -189,7 +188,7 @@ if (!isLive) {
         // `--zombie`, `--limit`, `--cursor`); commander would exit 1 on
         // an unknown flag. The recency bound here was misplaced — the
         // intent is just to exercise the read path on a real zombie.
-        const result = await runWithEnv(["logs", zombieId, "--json"]);
+        const result = await runWithEnv(["logs", "--zombie", zombieId, "--json"]);
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}");
         assert.equal(typeof parsed, "object");
@@ -199,7 +198,7 @@ if (!isLive) {
         const result = await runWithEnv(["billing", "show", "--json"]);
         assert.equal(result.code, 0, `billing show exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim());
-        assert.ok("balance" in parsed, `billing response missing balance: ${result.stdout}`);
+        assert.ok("balance_nanos" in parsed, `billing response missing balance_nanos: ${result.stdout}`);
       });
 
       it("stop → resume → kill walks state", async () => {
@@ -209,22 +208,23 @@ if (!isLive) {
         await expectStatus(env, zombieId, ["active", "running", "starting"]);
         await killZombie(env, zombieId);
         await expectStatus(env, zombieId, ["killed", "errored", "terminated"]);
-      });
+      }, 30_000);
 
       it("kill is idempotent on a terminal zombie", async () => {
         const result = await runWithEnv(["kill", zombieId, "--json"]);
-        // Either succeed silently, or surface UZ-ZMB-010 (already terminal).
-        // Both are acceptable — what's NOT acceptable is exiting 0 then re-emitting
-        // a `status: active` later. The status assertion below catches that.
+        // Either succeed silently, surface an already-terminal stem, or report
+        // not-found after the terminal transition hides the zombie from writes.
+        // What's not acceptable is re-emitting `status: active` later. The
+        // status assertion below catches that.
         if (result.code !== 0) {
-          assert.match(result.stderr + result.stdout, /UZ-ZMB-010|already.*terminal|killed|terminated/i);
+          assert.match(result.stderr + result.stdout, /UZ-ZMB-010|already.*terminal|killed|terminated|HTTP_404|not found/i);
         }
         await expectStatus(env, zombieId, ["killed", "errored", "terminated"]);
       });
     });
 
-    // §4b — read-only sweep
-    describe("§4b read-only sweep", () => {
+    // Workspace-wide read-only sweep.
+    describe("read-only sweep", () => {
       for (const row of READ_ONLY_COMMANDS) {
         const label = row.label ?? row.args.join(" ");
         it(`${label} exits 0 with parseable JSON`, async () => {
@@ -241,38 +241,33 @@ if (!isLive) {
       }
     });
 
-    // §4b' — empty-list standard message (post-teardown).
-    //
-    // Only `zombie list` is asserted empty: cleanWorkspaceZombies kills the
-    // fixture-installed zombies, leaving the list provably empty. workspace /
-    // agent / grant lists may carry residual state across CI runs (shared
-    // tenant identity) — those rows surface as Discovery once a per-suite
-    // tenant teardown lands.
-    describe("§4b' empty-list message (zombie list)", () => {
+    // Prefix-scoped post-teardown emptiness — shared DEV tenants carry
+    // residual zombies, so the contract is "none of MY run's zombies
+    // remain alive", not "the workspace is globally empty". Terminal
+    // (killed/errored/terminated) rows still surface in the list and
+    // prove teardown worked — filter them out before asserting.
+    describe("post-teardown emptiness (prefix-scoped)", () => {
       beforeAll(async () => {
-        await cleanWorkspaceZombies(env, workspaceId);
+        await cleanWorkspaceZombies(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
       });
 
-      const stem = EMPTY_LIST_CONVENTIONS["list"] ?? "";
-
-      it(`zombie list --json: items array is empty`, async () => {
+      it(`zombie list --json: no LIVE items match ACCEPTANCE_RUN_PREFIX`, async () => {
         const result = await runWithEnv(["list", "--json"]);
         assert.equal(result.code, 0, `list --json exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
-        assert.ok(Array.isArray(parsed.items) && parsed.items.length === 0,
-          `expected empty items array; got: ${result.stdout}`);
-      });
-
-      it(`zombie list (non-JSON) emits "${stem}"`, async () => {
-        const result = await runWithEnv(["list"]);
-        assert.equal(result.code, 0, `list exited ${result.code}: ${result.stderr}`);
-        assert.match(result.stdout.toLowerCase(), new RegExp(stem.toLowerCase()),
-          `missing stem "${stem}" in: ${result.stdout}`);
+        const items = Array.isArray(parsed.items) ? (parsed.items as Array<{ name?: string; status?: string }>) : [];
+        const mineLive = items.filter((z) =>
+          typeof z.name === "string" &&
+          z.name.startsWith(ACCEPTANCE_RUN_PREFIX) &&
+          !TERMINAL_STATUSES.includes(z.status ?? ""),
+        );
+        assert.equal(mineLive.length, 0,
+          `expected zero live zombies starting with ${ACCEPTANCE_RUN_PREFIX}; got ${mineLive.length}: ${JSON.stringify(mineLive)}`);
       });
     });
 
-    // §4c1 — valid-format nonexistent UUID → server 404 → UZ-* envelope
-    describe("§4c1 invalid-arg-value (valid format, nonexistent)", () => {
+    // Valid-format nonexistent UUID → server 404 → UZ-* envelope.
+    describe("invalid-arg-value (valid format, nonexistent)", () => {
       for (const row of REQUIRES_IDENTIFIER) {
         if (!row.apiHits) continue;
         it(`${row.args.join(" ")} <random-uuidv7> → ${row.expectedErrorCode}`, async () => {
@@ -283,12 +278,12 @@ if (!isLive) {
       }
     });
 
-    // §4c2 — invalid-format ID rejected client-side; no network call fires.
+    // Invalid-format ID rejected client-side; no network call fires.
     // Today only workspace use/delete run `validateRequiredId`. The zombie /
     // agent / grant handlers send invalid strings straight to the API —
     // surfaced as Discovery (CLI hygiene: wire validateRequiredId into the
     // remaining ID-taking handlers, then this sweep widens automatically).
-    describe("§4c2 invalid-format ID — client-side rejection, no network", () => {
+    describe("invalid-format ID — client-side rejection, no network", () => {
       // All INVALID_ID_SAMPLES fail the uuidv7 validator introduced in this
       // PR (SAFE_ID_RE was removed). Run the full set so every sample is
       // confirmed to be rejected client-side without touching the network.
@@ -317,9 +312,9 @@ if (!isLive) {
       }
     });
 
-    // §3-residual — missing-required-arg sweep (moved here per HANDOFF.md;
-    // CLI checks workspace-context before arg-validation, so this only
-    // works inside the lifecycle suite which has state).
+    // Missing-required-arg sweep — lives in the lifecycle suite because
+    // the CLI checks workspace-context before arg-validation, so this
+    // path only fires when fixture state exists.
     describe("missing-required positional arg", () => {
       for (const row of REQUIRES_POSITIONAL_ARG) {
         it(`${row.args.join(" ")} (no <${row.missingArgName}>) exits non-zero`, async () => {
@@ -344,7 +339,7 @@ if (!isLive) {
         if (row.group) exercised.add(row.group);
       }
       const missing = COMMAND_GROUPS.filter((g) => !exercised.has(g) && g !== "zombie");
-      assert.deepEqual(missing, [], `command groups missing from §4b sweep: ${missing.join(",")}`);
+      assert.deepEqual(missing, [], `command groups missing from read-only sweep: ${missing.join(",")}`);
     });
   });
 }

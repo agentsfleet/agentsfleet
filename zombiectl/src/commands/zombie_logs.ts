@@ -1,94 +1,118 @@
+// `zombiectl logs` — paginated event print for a specific zombie.
+// Accepts `<zombie_id>` positional or `--zombie <id>` flag; `--limit`
+// (default 20) and `--cursor` for pagination.
+
+import { Effect } from "effect";
+import { CliConfig } from "../services/config.ts";
+import { Credentials } from "../services/credentials.ts";
+import { HttpClient } from "../services/http-client.ts";
+import { Output } from "../services/output.ts";
+import { Workspaces } from "../services/workspaces.ts";
+import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsZombieEventsPath } from "../lib/api-paths.ts";
 import { validateRequiredId } from "../program/validators.ts";
+import { ui } from "../output/index.ts";
 import {
-  MISSING_ARGUMENT,
-  NO_WORKSPACE,
-  VALIDATION_ERROR,
-} from "../constants/cli-errors.ts";
-import type {
-  CommandCtx,
-  CommandDeps,
-  ParsedArgs,
-  Workspaces,
-} from "./types.ts";
+  ValidationError,
+  type CliError,
+} from "../errors/index.ts";
 
 const DEFAULT_LOGS_LIMIT = "20";
+const USAGE = "logs requires --zombie <id>";
 
 interface EventRow {
-  created_at?: number | string | null;
-  response_text?: string | null;
-  status?: string | null;
-  actor?: string | null;
+  readonly created_at?: number | string | null;
+  readonly response_text?: string | null;
+  readonly status?: string | null;
+  readonly actor?: string | null;
 }
 
-export async function commandLogs(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, printSection = () => {}, writeLine, writeError } = deps;
-  const limitOpt = parsed.options["limit"];
-  const limit =
-    typeof limitOpt === "string" || typeof limitOpt === "number"
-      ? String(limitOpt)
-      : DEFAULT_LOGS_LIMIT;
-
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    writeError(ctx, NO_WORKSPACE, "no workspace selected. Run: zombiectl workspace add", deps);
-    return 1;
-  }
-
-  const zombieOpt = parsed.options["zombie"];
-  const zombieId =
-    (typeof zombieOpt === "string" ? zombieOpt : null) ?? parsed.positionals[0];
-  if (!zombieId) {
-    writeError(ctx, MISSING_ARGUMENT, "logs requires --zombie <id>", deps);
-    return 2;
-  }
-  const check = validateRequiredId(zombieId, "zombie_id");
-  if (!check.ok) {
-    writeError(ctx, VALIDATION_ERROR, check.message, deps);
-    return 2;
-  }
-
-  let url = `${wsZombieEventsPath(wsId, zombieId)}?limit=${encodeURIComponent(limit)}`;
-  const cursor = parsed.options["cursor"];
-  if (typeof cursor === "string" && cursor.length > 0) {
-    url += `&cursor=${encodeURIComponent(cursor)}`;
-  }
-
-  const res = (await request(ctx, url, {
-    method: "GET",
-    headers: apiHeaders(ctx),
-  })) as { items?: EventRow[]; next_cursor?: string | null } | null;
-
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, res);
-    return 0;
-  }
-
-  const events = res?.items ?? [];
-  if (!ctx.stdout) return 0;
-  if (events.length === 0) {
-    writeLine(ctx.stdout, ui.info("No events yet."));
-    return 0;
-  }
-
-  // The events endpoint replaced the activity stream in M42; row shape now
-  // carries actor/status/response_text instead of event_type/detail.
-  printSection(ctx.stdout, "Event Stream");
-  for (const evt of events) {
-    const ts = evt.created_at ? new Date(evt.created_at).toISOString() : "—";
-    const summary = evt.response_text ? evt.response_text.slice(0, 80) : (evt.status ?? "");
-    writeLine(ctx.stdout, `  ${ui.dim(ts)}  ${evt.actor ?? "—"}  ${summary}`);
-  }
-
-  if (res?.next_cursor) {
-    writeLine(ctx.stdout);
-    writeLine(ctx.stdout, ui.dim(`  More: zombiectl logs --cursor=${res.next_cursor}`));
-  }
-
-  return 0;
+interface LogsResponse {
+  readonly items?: ReadonlyArray<EventRow>;
+  readonly next_cursor?: string | null;
 }
+
+export interface LogsEffectFlags {
+  readonly zombieId?: string | undefined;
+  readonly cursor?: string | undefined;
+  readonly limit?: string | undefined;
+}
+
+const requireZombieId = (
+  raw: string | undefined,
+): Effect.Effect<string, ValidationError> =>
+  Effect.gen(function* () {
+    if (!raw) {
+      return yield* Effect.fail(
+        new ValidationError({ detail: USAGE, suggestion: USAGE }),
+      );
+    }
+    const check = validateRequiredId(raw, "zombie_id");
+    if (!check.ok) {
+      return yield* Effect.fail(
+        new ValidationError({ detail: check.message, suggestion: USAGE }),
+      );
+    }
+    return raw;
+  });
+
+const formatTimestamp = (raw: number | string | null | undefined): string =>
+  raw ? new Date(raw).toISOString() : "—";
+
+export const logsEffectFromFlags = (
+  flags: LogsEffectFlags,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
+
+    const wsId = yield* requireWorkspaceId;
+    const zombieId = yield* requireZombieId(flags.zombieId);
+
+    const limit =
+      typeof flags.limit === "string" && flags.limit.length > 0
+        ? flags.limit
+        : DEFAULT_LOGS_LIMIT;
+    const qs = new URLSearchParams();
+    qs.set("limit", limit);
+    if (typeof flags.cursor === "string" && flags.cursor.length > 0) {
+      qs.set("cursor", flags.cursor);
+    }
+    const path = `${wsZombieEventsPath(wsId, zombieId)}?${qs.toString()}`;
+
+    const token = yield* resolveAuthToken;
+    const res = yield* http.request<LogsResponse>({ path, token });
+
+    if (config.jsonMode) {
+      yield* output.printJson(res);
+      return;
+    }
+
+    const events = res.items ?? [];
+    if (events.length === 0) {
+      yield* output.info("No events yet.");
+      return;
+    }
+
+    yield* output.printSection("Event Stream");
+    for (const evt of events) {
+      const ts = formatTimestamp(evt.created_at);
+      const summary = evt.response_text
+        ? evt.response_text.slice(0, 80)
+        : (evt.status ?? "");
+      yield* output.info(
+        `  ${ui.dim(ts)}  ${evt.actor ?? "—"}  ${summary}`,
+      );
+    }
+
+    if (res.next_cursor) {
+      yield* output.info(
+        ui.dim(`  More: zombiectl logs --cursor=${res.next_cursor}`),
+      );
+    }
+  });

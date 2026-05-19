@@ -61,8 +61,8 @@ export function isTty(stream: IsTtyStream = process.stdout): boolean {
 }
 
 // Emit a one-shot stderr notice when the resolved mode is basic16 — engineers
-// on legacy terminals see a single line, not a stream. Silent in xterm256
-// and none modes. Callers route through palette.ts, not directly.
+// on basic-color terminals see a single line, not a stream. Silent in
+// xterm256 and none modes. Callers route through palette.ts, not directly.
 export function noteBasic16IfFirst(stream: WritableStreamLike = process.stderr): void {
   if (warnedBasic16) return;
   // Validate the stream BEFORE flipping the flag — otherwise a non-TTY

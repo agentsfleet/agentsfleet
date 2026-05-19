@@ -1,287 +1,292 @@
-// Zombie credential CLI commands (extracted from zombie.js to keep it
-// under the 350-line file gate).
-//
-// zombiectl credential add    <name> --data='<json-object>'   (or --data=@- for stdin)
-// zombiectl credential add    <name> --data=@- --force        (overwrite existing)
-// zombiectl credential show   <name>                          (existence + created_at; never secret bytes)
-// zombiectl credential list
-// zombiectl credential delete <name>
-//
-// Credentials are workspace-scoped opaque JSON objects. The skill that
-// consumes the secret addresses fields as ${secrets.<name>.<field>}; this
-// CLI does not enforce a schema — that's the consumer's contract.
-//
-// Default upsert: skip-if-exists. `--force` to overwrite. The backing
-// endpoint upserts on (workspace_id, key_name); the client-side guard
-// prevents re-runs from silently clobbering a shared secret.
+// `zombiectl credential add|show|list|delete` — workspace-scoped opaque
+// JSON secrets keyed by `name`. The skill consuming them addresses fields
+// as ${secrets.<name>.<field>}; this CLI does not enforce a schema (the
+// consumer owns it). Default `add` upserts skip-if-exists; `--force`
+// overwrites. The backing endpoint upserts on (workspace_id, key_name);
+// the client-side guard keeps re-runs from silently clobbering a shared
+// secret.
 
+import { Effect } from "effect";
+import { CliConfig } from "../services/config.ts";
+import { Credentials } from "../services/credentials.ts";
+import { HttpClient } from "../services/http-client.ts";
+import { Output } from "../services/output.ts";
+import { Workspaces } from "../services/workspaces.ts";
+import { requireWorkspaceId, resolveAuthToken } from "./workspace-guards.ts";
 import { wsCredentialsPath, wsCredentialPath } from "../lib/api-paths.ts";
+import { ui } from "../output/index.ts";
 import {
-  MISSING_ARGUMENT,
-  INVALID_ARGUMENT,
-  NO_WORKSPACE,
-} from "../constants/cli-errors.ts";
-import type {
-  CommandCtx,
-  CommandDeps,
-  ParsedArgs,
-  Workspaces,
-} from "./types.ts";
+  ConfigError,
+  ValidationError,
+  type CliError,
+} from "../errors/index.ts";
+
+const STDIN_DATA_SENTINEL = "@-";
+const MISSING_DATA_HINT =
+  "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.";
 
 interface CredentialRow {
-  name?: string;
-  created_at?: string | number | null;
-  [key: string]: unknown;
+  readonly name?: string;
+  readonly created_at?: string | number | null;
 }
 
 interface CredentialsListResponse {
-  credentials?: CredentialRow[];
+  readonly credentials?: ReadonlyArray<CredentialRow>;
 }
 
 type ParsedData =
-  | { value: Record<string, unknown>; error?: undefined }
-  | { error: string; value?: undefined };
+  | { readonly ok: true; readonly value: Record<string, unknown> }
+  | { readonly ok: false; readonly message: string };
 
-function requireWorkspace(
-  ctx: CommandCtx,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): string | null | undefined {
-  const wsId = workspaces.current_workspace_id;
-  if (!wsId) {
-    deps.writeError(ctx, NO_WORKSPACE, "no workspace selected. Run: zombiectl workspace add", deps);
-  }
-  return wsId;
-}
-
-function parseDataObject(raw: string): ParsedData {
+const parseDataObject = (raw: string): ParsedData => {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { error: `--data is not valid JSON: ${message}` };
+    return { ok: false, message: `--data is not valid JSON: ${message}` };
   }
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { error: "--data must be a JSON object (not a string, array, or scalar)" };
+    return { ok: false, message: "--data must be a JSON object (not a string, array, or scalar)" };
   }
   const obj = parsed as Record<string, unknown>;
   if (Object.keys(obj).length === 0) {
-    return { error: "--data must be a non-empty JSON object — at least one field is required" };
+    return {
+      ok: false,
+      message: "--data must be a non-empty JSON object — at least one field is required",
+    };
   }
-  return { value: obj };
-}
+  return { ok: true, value: obj };
+};
 
-// Read all of stdin as UTF-8 — used when --data is `@-` so secret JSON
-// never appears in shell history or process argv.
-async function readStdinJson(ctx: CommandCtx): Promise<string> {
-  if (typeof ctx.stdin === "string") return ctx.stdin;
-  if (
-    ctx.stdin &&
-    typeof (ctx.stdin as AsyncIterable<unknown>)[Symbol.asyncIterator] ===
-      "function"
-  ) {
-    const chunks: unknown[] = [];
-    for await (const chunk of ctx.stdin as AsyncIterable<unknown>) {
-      chunks.push(chunk);
-    }
-    return chunks
-      .map((c) =>
-        typeof c === "string"
-          ? c
-          : c instanceof Uint8Array
-            ? new TextDecoder().decode(c)
-            : String(c),
-      )
-      .join("");
-  }
-  const bunRef = (globalThis as { Bun?: { stdin?: { text?: () => Promise<string> } } }).Bun;
-  if (typeof bunRef?.stdin?.text === "function") {
-    return await bunRef.stdin.text();
-  }
-  const chunks: Buffer[] = [];
-  for await (const chunk of process.stdin) {
-    chunks.push(chunk as Buffer);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
+const readStdinJson: Effect.Effect<string, ConfigError> = Effect.tryPromise({
+  try: () => Bun.stdin.text(),
+  catch: (err) =>
+    new ConfigError({
+      detail: `failed to read stdin: ${err instanceof Error ? err.message : String(err)}`,
+      suggestion: "ensure stdin is not closed and re-pipe the JSON payload",
+    }),
+});
 
-async function findCredentialByName(
-  ctx: CommandCtx,
+const findCredentialByName = (
   wsId: string,
   name: string,
-  deps: CommandDeps,
-): Promise<CredentialRow | null> {
-  const { request, apiHeaders } = deps;
-  const res = (await request(ctx, wsCredentialsPath(wsId), {
-    method: "GET",
-    headers: apiHeaders(ctx),
-  })) as CredentialsListResponse | null;
-  const list = Array.isArray(res?.credentials) ? res.credentials : [];
-  return list.find((c) => c.name === name) ?? null;
+): Effect.Effect<
+  CredentialRow | null,
+  CliError,
+  CliConfig | Credentials | HttpClient
+> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    const token = yield* resolveAuthToken;
+    const res = yield* http.request<CredentialsListResponse>({
+      path: wsCredentialsPath(wsId),
+      token,
+    });
+    const list = Array.isArray(res.credentials) ? res.credentials : [];
+    return list.find((c) => c.name === name) ?? null;
+  });
+
+export interface CredentialAddFlags {
+  readonly name?: string | undefined;
+  readonly data?: string | undefined;
+  readonly force?: boolean | undefined;
 }
 
-export async function commandCredentialAdd(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const wsId = requireWorkspace(ctx, workspaces, deps);
-  if (!wsId) return 1;
+const requireName = (
+  name: string | undefined,
+  usage: string,
+): Effect.Effect<string, ValidationError> =>
+  typeof name === "string" && name.length > 0
+    ? Effect.succeed(name)
+    : Effect.fail(
+        new ValidationError({
+          detail: "credential name is required",
+          suggestion: `usage: ${usage}`,
+        }),
+      );
 
-  const credName = parsed.positionals[0];
-  if (!credName) {
-    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl credential add <name> --data='<json-object>' [--force]", deps);
-    return 2;
-  }
-
-  const force = Boolean(parsed.options["force"]);
-  const dataFlag = parsed.options["data"];
-  if (!dataFlag || typeof dataFlag !== "string") {
-    writeError(
-      ctx,
-      MISSING_ARGUMENT,
-      "missing --data flag. Pipe JSON on stdin with --data=@- or pass --data='{...}'. Stdin form keeps secrets out of shell history.",
-      deps,
-    );
-    return 2;
-  }
-
-  let raw: string;
-  if (dataFlag === "@-") {
-    raw = await readStdinJson(ctx);
+const resolveDataSource = (
+  data: string | undefined,
+): Effect.Effect<string, CliError> =>
+  Effect.gen(function* () {
+    if (typeof data !== "string" || data.length === 0) {
+      return yield* Effect.fail(
+        new ValidationError({
+          detail: MISSING_DATA_HINT,
+          suggestion: "pass --data='{...}' or --data=@- for stdin",
+        }),
+      );
+    }
+    if (data !== STDIN_DATA_SENTINEL) return data;
+    const raw = yield* readStdinJson;
     if (!raw || raw.trim().length === 0) {
-      writeError(ctx, INVALID_ARGUMENT, "--data=@- but stdin was empty", deps);
-      return 2;
+      return yield* Effect.fail(
+        new ValidationError({
+          detail: "--data=@- but stdin was empty",
+          suggestion: "pipe JSON on stdin: cat creds.json | zombiectl credential add <name> --data=@-",
+        }),
+      );
     }
-  } else {
-    raw = dataFlag;
-  }
+    return raw;
+  });
 
-  const validated = parseDataObject(raw);
-  if (validated.error || !validated.value) {
-    writeError(ctx, INVALID_ARGUMENT, validated.error ?? "invalid --data", deps);
-    return 2;
-  }
+export const credentialAddEffectFromFlags = (
+  flags: CredentialAddFlags,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
 
-  if (!force) {
-    const existing = await findCredentialByName(ctx, wsId, credName, deps);
-    if (existing) {
-      if (ctx.jsonMode && ctx.stdout) {
-        printJson(ctx.stdout, { status: "skipped", name: credName, reason: "already_exists" });
-      } else if (ctx.stdout) {
-        writeLine(ctx.stdout, ui.info(`Credential '${credName}' already exists — skipped. Pass --force to overwrite.`));
+    const wsId = yield* requireWorkspaceId;
+    const name = yield* requireName(
+      flags.name,
+      "zombiectl credential add <name> --data='<json-object>' [--force]",
+    );
+    const raw = yield* resolveDataSource(flags.data);
+    const validated = parseDataObject(raw);
+    if (!validated.ok) {
+      return yield* Effect.fail(
+        new ValidationError({
+          detail: validated.message,
+          suggestion: "fix the --data payload and retry",
+        }),
+      );
+    }
+
+    if (flags.force !== true) {
+      const existing = yield* findCredentialByName(wsId, name);
+      if (existing) {
+        if (config.jsonMode) {
+          yield* output.printJson({ status: "skipped", name, reason: "already_exists" });
+        } else {
+          yield* output.info(
+            `Credential '${name}' already exists — skipped. Pass --force to overwrite.`,
+          );
+        }
+        return;
       }
-      return 0;
     }
-  }
 
-  await request(ctx, wsCredentialsPath(wsId), {
-    method: "POST",
-    headers: { ...apiHeaders(ctx), "Content-Type": "application/json" },
-    body: JSON.stringify({ name: credName, data: validated.value }),
+    const token = yield* resolveAuthToken;
+    yield* http.request<unknown>({
+      path: wsCredentialsPath(wsId),
+      method: "POST",
+      body: { name, data: validated.value },
+      token,
+    });
+
+    const status = flags.force === true ? "overwritten" : "stored";
+    if (config.jsonMode) {
+      yield* output.printJson({ status, name });
+    } else {
+      yield* output.success(`Credential '${name}' ${status} in vault.`);
+    }
   });
 
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, { status: force ? "overwritten" : "stored", name: credName });
-  } else if (ctx.stdout) {
-    writeLine(ctx.stdout, ui.ok(`Credential '${credName}' ${force ? "overwritten" : "stored"} in vault.`));
-  }
-  return 0;
-}
+export const credentialShowEffectFromName = (
+  rawName: string | undefined,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
 
-export async function commandCredentialShow(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { ui, printJson, writeLine, writeError } = deps;
-  const wsId = requireWorkspace(ctx, workspaces, deps);
-  if (!wsId) return 1;
-
-  const credName = parsed.positionals[0];
-  if (!credName) {
-    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl credential show <name>", deps);
-    return 2;
-  }
-
-  const found = await findCredentialByName(ctx, wsId, credName, deps);
-  if (!found) {
-    if (ctx.jsonMode && ctx.stdout) {
-      printJson(ctx.stdout, { name: credName, exists: false });
-    } else if (ctx.stderr) {
-      writeLine(ctx.stderr, ui.err(`Credential '${credName}' not found in vault.`));
+    const wsId = yield* requireWorkspaceId;
+    const name = yield* requireName(rawName, "zombiectl credential show <name>");
+    const found = yield* findCredentialByName(wsId, name);
+    if (!found) {
+      if (config.jsonMode) {
+        yield* output.printJson({ name, exists: false });
+      } else {
+        yield* output.error(`Credential '${name}' not found in vault.`);
+      }
+      return yield* Effect.fail(
+        new ConfigError({
+          detail: `credential '${name}' not found`,
+          suggestion: `list available with: zombiectl credential list`,
+        }),
+      );
     }
-    return 1;
+
+    if (config.jsonMode) {
+      yield* output.printJson({
+        name: found.name,
+        exists: true,
+        created_at: found.created_at ?? null,
+      });
+      return;
+    }
+    yield* output.success(`Credential '${found.name}' exists.`);
+    if (found.created_at) {
+      yield* output.info(ui.dim(`  created_at: ${found.created_at}`));
+    }
+  });
+
+export const credentialListEffect: Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> = Effect.gen(function* () {
+  const config = yield* CliConfig;
+  const output = yield* Output;
+  const http = yield* HttpClient;
+
+  const wsId = yield* requireWorkspaceId;
+  const token = yield* resolveAuthToken;
+  const res = yield* http.request<CredentialsListResponse>({
+    path: wsCredentialsPath(wsId),
+    token,
+  });
+
+  if (config.jsonMode) {
+    yield* output.printJson(res);
+    return;
   }
-
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, { name: found.name, exists: true, created_at: found.created_at ?? null });
-  } else if (ctx.stdout) {
-    writeLine(ctx.stdout, ui.ok(`Credential '${found.name}' exists.`));
-    if (found.created_at) writeLine(ctx.stdout, ui.dim(`  created_at: ${found.created_at}`));
-  }
-  return 0;
-}
-
-export async function commandCredentialList(
-  ctx: CommandCtx,
-  _parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, writeLine } = deps;
-  const wsId = requireWorkspace(ctx, workspaces, deps);
-  if (!wsId) return 1;
-
-  const res = (await request(ctx, wsCredentialsPath(wsId), {
-    method: "GET",
-    headers: apiHeaders(ctx),
-  })) as CredentialsListResponse | null;
-
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, res);
-    return 0;
-  }
-  if (!ctx.stdout) return 0;
-  const creds = res?.credentials ?? [];
+  const creds = res.credentials ?? [];
   if (creds.length === 0) {
-    writeLine(ctx.stdout, ui.info("No credentials stored. Add one with: zombiectl credential add <name> --data=@- (pipe JSON on stdin)"));
-  } else {
-    for (const c of creds) {
-      writeLine(ctx.stdout, `  ${c.name ?? ""}  ${ui.dim(String(c.created_at || ""))}`);
+    yield* output.info(
+      "No credentials stored. Add one with: zombiectl credential add <name> --data=@- (pipe JSON on stdin)",
+    );
+    return;
+  }
+  for (const c of creds) {
+    yield* output.info(`  ${c.name ?? ""}  ${ui.dim(String(c.created_at ?? ""))}`);
+  }
+});
+
+export const credentialDeleteEffectFromName = (
+  rawName: string | undefined,
+): Effect.Effect<
+  void,
+  CliError,
+  CliConfig | Credentials | HttpClient | Output | Workspaces
+> =>
+  Effect.gen(function* () {
+    const config = yield* CliConfig;
+    const output = yield* Output;
+    const http = yield* HttpClient;
+
+    const wsId = yield* requireWorkspaceId;
+    const name = yield* requireName(rawName, "zombiectl credential delete <name>");
+    const token = yield* resolveAuthToken;
+    yield* http.request<unknown>({
+      path: wsCredentialPath(wsId, name),
+      method: "DELETE",
+      token,
+    });
+
+    if (config.jsonMode) {
+      yield* output.printJson({ status: "deleted", name });
+    } else {
+      yield* output.success(`Credential '${name}' removed from vault.`);
     }
-  }
-  return 0;
-}
-
-export async function commandCredentialDelete(
-  ctx: CommandCtx,
-  parsed: ParsedArgs,
-  workspaces: Workspaces,
-  deps: CommandDeps,
-): Promise<number> {
-  const { request, apiHeaders, ui, printJson, writeLine, writeError } = deps;
-  const wsId = requireWorkspace(ctx, workspaces, deps);
-  if (!wsId) return 1;
-
-  const credName = parsed.positionals[0];
-  if (!credName) {
-    writeError(ctx, MISSING_ARGUMENT, "usage: zombiectl credential delete <name>", deps);
-    return 2;
-  }
-  await request(ctx, wsCredentialPath(wsId, credName), {
-    method: "DELETE",
-    headers: apiHeaders(ctx),
   });
-
-  if (ctx.jsonMode && ctx.stdout) {
-    printJson(ctx.stdout, { status: "deleted", name: credName });
-  } else if (ctx.stdout) {
-    writeLine(ctx.stdout, ui.ok(`Credential '${credName}' removed from vault.`));
-  }
-  return 0;
-}

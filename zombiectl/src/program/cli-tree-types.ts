@@ -1,7 +1,7 @@
 // Shared types for the zombiectl command tree. Lives outside cli-tree.ts
 // so the FLL cap (350L) does not block adding new verbs to the tree
 // itself; consumers (cli-tree.ts, cli-tree-zombie.ts, handlers-bind.ts)
-// import this module directly — no re-export shim in cli-tree.ts.
+// import this module directly.
 
 import type { Command, Help } from "commander";
 import type { ParsedArgs } from "../commands/types.ts";

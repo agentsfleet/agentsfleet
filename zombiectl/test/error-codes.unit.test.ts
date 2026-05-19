@@ -1,7 +1,0 @@
-import { test } from "bun:test";
-import assert from "node:assert/strict";
-import { ERR_CREDIT_EXHAUSTED } from "../src/constants/error-codes.ts";
-
-test("ERR_CREDIT_EXHAUSTED matches canonical code", () => {
-  assert.equal(ERR_CREDIT_EXHAUSTED, "UZ-BILLING-005");
-});

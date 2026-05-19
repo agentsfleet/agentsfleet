@@ -63,9 +63,8 @@ describe("grant (integration grant) commands", () => {
         expect(text).toContain("01900000-0000-7000-8000-000000067a01");
         // The CLI's success line tells the operator the zombie can no
         // longer use this integration. Server UZ-* codes are deliberately
-        // not leaked into operator-facing output (see error-map-presets
-        // discipline — UZ-GRANT-003 is what the zombie sees on retry, not
-        // what the operator gets here).
+        // not leaked into operator-facing output — UZ-GRANT-003 is what
+        // the zombie sees on retry, not what the operator gets here.
         expect(text).toContain("can no longer use this integration");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
           `DELETE /v1/workspaces/${WS_ID}/zombies/${ZOMBIE_ID}/integration-grants/01900000-0000-7000-8000-000000067a01`,
