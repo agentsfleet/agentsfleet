@@ -8,14 +8,11 @@ import { openUrl } from "./lib/browser.ts";
 import {
   clearCredentials,
   loadCredentials,
-  loadSession,
   loadWorkspaces,
   newIdempotencyKey,
   saveCredentials,
-  saveSession,
   saveWorkspaces,
   type Credentials,
-  type Session,
   type Workspaces,
 } from "./lib/state.ts";
 import { Effect } from "effect";
@@ -171,7 +168,6 @@ function errMessage(err: unknown): string {
 
 const EMPTY_CREDS: Credentials = { token: null, saved_at: null, session_id: null, api_url: null };
 const EMPTY_WORKSPACES: Workspaces = { current_workspace_id: null, items: [] };
-const EMPTY_SESSION: Session = { device_id: "", session_id: "", last_activity: null };
 
 export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promise<number> {
   const stdout = (io.stdout ?? process.stdout) as WritableStreamLike;
@@ -189,15 +185,13 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // Bare `zombiectl` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
   const effectiveArgv = argv.length === 0 ? ["--help"] : [...argv];
 
-  const [creds, workspaces, session] = await Promise.all([
+  const [creds, workspaces] = await Promise.all([
     loadCredentials().catch(() => EMPTY_CREDS),
     loadWorkspaces().catch(() => EMPTY_WORKSPACES),
-    loadSession().catch(() => EMPTY_SESSION),
   ]);
-  // Await so fast-exit paths flush device_id before process.exit. Skip
-  // on EMPTY_SESSION so we never clobber an unreadable session.json.
-  if (session.device_id !== "")
-    await saveSession({ ...session, last_activity: Date.now() }).catch(() => {});
+  // Session identity (`device_id`, `session_id`, `session_last_active`)
+  // is read+bumped inside `resolveIdentity` against `telemetry.json`
+  // (mirrors supabase). No session file maintained here.
   const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);

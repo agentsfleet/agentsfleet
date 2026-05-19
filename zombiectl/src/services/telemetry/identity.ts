@@ -1,23 +1,22 @@
 // Identity resolution. Mirrors
-// ~/Projects/oss/cli/apps/cli/src/shared/telemetry/identity.ts but
-// delegates deviceId/sessionId rotation to usezombie's pre-existing
-// session store (src/lib/state.ts loadSession / saveSession). The
-// telemetry.json file (consent + distinct_id) is the dedicated
-// telemetry persistence; its absence signals first-run and triggers
-// a bootstrap write with consent: "granted" (default-ON model).
+// ~/Projects/oss/cli/apps/cli/src/shared/telemetry/identity.ts —
+// `telemetry.json` is the single source of truth for `device_id`,
+// `session_id`, `session_last_active`, `distinct_id`, and `consent`.
+// `session_id` rotates after `SESSION_TIMEOUT_MS` of inactivity;
+// `device_id` is permanent for the install lifetime.
 //
 // resolveIdentity returns a TelemetryConfig-shaped record extended
-// with `isFirstRun` (true when telemetry.json was absent on entry).
+// with `isFirstRun` (true when `telemetry.json` was absent on entry).
 // The caller is expected to merge this into TelemetryRuntime.
 
 import { Effect } from "effect";
-import {
-  loadSession,
-  saveSession,
-  type Session,
-} from "../../lib/state.ts";
+import { randomUUID } from "node:crypto";
 import { readTelemetryConfig, writeTelemetryConfig } from "./consent.ts";
 import type { TelemetryConfig } from "./types.ts";
+
+// Pinned from Supabase's identity.ts. Inactivity past this rotates
+// `session_id`; `device_id` stays permanent.
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 interface ResolvedIdentity {
   readonly deviceId: string;
@@ -28,38 +27,39 @@ interface ResolvedIdentity {
 
 export const resolveIdentity = Effect.fn("telemetry.resolveIdentity")(
   function* (configDir: string) {
-    // First-run signal is the absence of telemetry.json (mirrors
-    // supabase identity.ts:11-24). When absent, bootstrap the file with
-    // consent: "granted" so the default-ON model is durable across
-    // upgrades. session.json continues to back deviceId/sessionId since
-    // that store predates telemetry.json in usezombie.
-    const telemetryConfig = yield* readTelemetryConfig(configDir);
-    const isFirstRun = telemetryConfig === null;
-    const session: Session = yield* Effect.promise(() => loadSession());
+    const config = yield* readTelemetryConfig(configDir);
+    const now = Date.now();
 
-    yield* Effect.promise(() =>
-      saveSession({
-        device_id: session.device_id,
-        session_id: session.session_id,
-        last_activity: Date.now(),
-      }),
-    );
-
-    if (isFirstRun) {
+    if (!config) {
+      // First-run: mint fresh identity + bootstrap with default-ON
+      // consent. Mirrors supabase identity.ts:11-24.
       const bootstrap: TelemetryConfig = {
         consent: "granted",
-        device_id: session.device_id,
-        session_id: session.session_id,
-        session_last_active: Date.now(),
+        device_id: randomUUID(),
+        session_id: randomUUID(),
+        session_last_active: now,
       };
       yield* writeTelemetryConfig(bootstrap, configDir);
+      return {
+        deviceId: bootstrap.device_id,
+        sessionId: bootstrap.session_id,
+        distinctId: undefined,
+        isFirstRun: true,
+      } satisfies ResolvedIdentity;
     }
 
+    const isSessionExpired = now - config.session_last_active > SESSION_TIMEOUT_MS;
+    const sessionId = isSessionExpired ? randomUUID() : config.session_id;
+
+    yield* writeTelemetryConfig(
+      { ...config, session_id: sessionId, session_last_active: now },
+      configDir,
+    );
     return {
-      deviceId: session.device_id,
-      sessionId: session.session_id,
-      distinctId: telemetryConfig?.distinct_id,
-      isFirstRun,
+      deviceId: config.device_id,
+      sessionId,
+      distinctId: config.distinct_id,
+      isFirstRun: false,
     } satisfies ResolvedIdentity;
   },
 );

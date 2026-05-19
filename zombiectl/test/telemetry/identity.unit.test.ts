@@ -1,8 +1,7 @@
-// Identity resolution coverage. Adapted from Supabase identity tests —
-// usezombie's resolveIdentity delegates to lib/state.ts (loadSession /
-// saveSession), which reads ZOMBIE_STATE_DIR. Tests redirect that env
-// var to a temp dir per case so the on-disk session.json + telemetry.json
-// live in isolated locations.
+// Identity resolution coverage. resolveIdentity persists into
+// `telemetry.json` as the single source of truth (mirrors supabase's
+// `~/Projects/oss/cli/apps/cli/src/shared/telemetry/identity.ts`).
+// Tests redirect ZOMBIE_STATE_DIR to a per-case temp directory.
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Effect } from "effect";
@@ -27,11 +26,6 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 
 function makeTempDir(): string {
   return mkdtempSync(path.join(tmpdir(), "zombiectl-identity-test-"));
-}
-
-function writeSession(dir: string, body: Record<string, unknown>): void {
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, "session.json"), JSON.stringify(body));
 }
 
 function writeTelemetry(dir: string, body: TelemetryConfig): void {
@@ -77,7 +71,7 @@ describe("resolveIdentity", () => {
     }
   });
 
-  it("reports isFirstRun=true when no prior session.json exists", async () => {
+  it("reports isFirstRun=true when no prior telemetry.json exists", async () => {
     const dir = makeTempDir();
     process.env.ZOMBIE_STATE_DIR = dir;
     try {
@@ -88,12 +82,12 @@ describe("resolveIdentity", () => {
     }
   });
 
-  it("persists session.json after resolving identity", async () => {
+  it("persists telemetry.json after resolving identity", async () => {
     const dir = makeTempDir();
     process.env.ZOMBIE_STATE_DIR = dir;
     try {
       await Effect.runPromise(resolveIdentity(dir));
-      expect(existsSync(path.join(dir, "session.json"))).toBe(true);
+      expect(existsSync(path.join(dir, "telemetry.json"))).toBe(true);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -104,10 +98,11 @@ describe("resolveIdentity", () => {
     process.env.ZOMBIE_STATE_DIR = dir;
     const existingDevice = "11111111-1111-4111-8111-111111111111";
     const existingSession = "22222222-2222-4222-8222-222222222222";
-    writeSession(dir, {
+    writeTelemetry(dir, {
+      consent: "granted",
       device_id: existingDevice,
       session_id: existingSession,
-      last_activity: Date.now(),
+      session_last_active: Date.now(),
     });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
@@ -118,20 +113,14 @@ describe("resolveIdentity", () => {
   });
 
   it("reports isFirstRun=false when telemetry.json already exists", async () => {
-    // Supabase parity: first-run is signaled by the absence of
-    // telemetry.json, not session.json. Bootstrap writes it on first
-    // resolveIdentity; subsequent invocations see isFirstRun=false.
     const dir = makeTempDir();
     process.env.ZOMBIE_STATE_DIR = dir;
-    writeFileSync(
-      path.join(dir, "telemetry.json"),
-      JSON.stringify({
-        consent: "granted",
-        device_id: "11111111-1111-4111-8111-111111111111",
-        session_id: "22222222-2222-4222-8222-222222222222",
-        session_last_active: Date.now(),
-      }),
-    );
+    writeTelemetry(dir, {
+      consent: "granted",
+      device_id: "11111111-1111-4111-8111-111111111111",
+      session_id: "22222222-2222-4222-8222-222222222222",
+      session_last_active: Date.now(),
+    });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
       expect(id.isFirstRun).toBe(false);
@@ -140,14 +129,15 @@ describe("resolveIdentity", () => {
     }
   });
 
-  it("preserves session_id when last_activity is within the 30-minute window", async () => {
+  it("preserves session_id when last activity is within the 30-minute window", async () => {
     const dir = makeTempDir();
     process.env.ZOMBIE_STATE_DIR = dir;
     const sessionId = "33333333-3333-4333-8333-333333333333";
-    writeSession(dir, {
+    writeTelemetry(dir, {
+      consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
       session_id: sessionId,
-      last_activity: Date.now() - 10 * 60 * 1000,
+      session_last_active: Date.now() - 10 * 60 * 1000,
     });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
@@ -161,10 +151,11 @@ describe("resolveIdentity", () => {
     const dir = makeTempDir();
     process.env.ZOMBIE_STATE_DIR = dir;
     const oldSessionId = "44444444-4444-4444-8444-444444444444";
-    writeSession(dir, {
+    writeTelemetry(dir, {
+      consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
       session_id: oldSessionId,
-      last_activity: Date.now() - 31 * 60 * 1000,
+      session_last_active: Date.now() - 31 * 60 * 1000,
     });
     try {
       const id = await Effect.runPromise(resolveIdentity(dir));
@@ -175,19 +166,20 @@ describe("resolveIdentity", () => {
     }
   });
 
-  it("persists an updated last_activity on every call", async () => {
+  it("persists an updated session_last_active on every call", async () => {
     const dir = makeTempDir();
     process.env.ZOMBIE_STATE_DIR = dir;
     const before = Date.now();
-    writeSession(dir, {
+    writeTelemetry(dir, {
+      consent: "granted",
       device_id: "11111111-1111-4111-8111-111111111111",
       session_id: "22222222-2222-4222-8222-222222222222",
-      last_activity: Date.now() - 5000,
+      session_last_active: Date.now() - 5000,
     });
     try {
       await Effect.runPromise(resolveIdentity(dir));
-      const session = JSON.parse(readFileSync(path.join(dir, "session.json"), "utf8"));
-      expect(session.last_activity).toBeGreaterThanOrEqual(before);
+      const written = readTelemetry(dir);
+      expect(written.session_last_active).toBeGreaterThanOrEqual(before);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -198,8 +190,8 @@ describe("resolveIdentity", () => {
     process.env.ZOMBIE_STATE_DIR = dir;
     writeTelemetry(dir, {
       consent: "granted",
-      device_id: "anything",
-      session_id: "anything",
+      device_id: "11111111-1111-4111-8111-111111111111",
+      session_id: "22222222-2222-4222-8222-222222222222",
       session_last_active: Date.now(),
       distinct_id: "user-42",
     });
@@ -242,8 +234,8 @@ describe("saveDistinctId", () => {
     process.env.ZOMBIE_STATE_DIR = dir;
     writeTelemetry(dir, {
       consent: "denied",
-      device_id: "x",
-      session_id: "y",
+      device_id: "11111111-1111-4111-8111-111111111111",
+      session_id: "22222222-2222-4222-8222-222222222222",
       session_last_active: 1,
     });
     try {
@@ -263,8 +255,8 @@ describe("clearDistinctId", () => {
     process.env.ZOMBIE_STATE_DIR = dir;
     writeTelemetry(dir, {
       consent: "granted",
-      device_id: "x",
-      session_id: "y",
+      device_id: "11111111-1111-4111-8111-111111111111",
+      session_id: "22222222-2222-4222-8222-222222222222",
       session_last_active: 1,
       distinct_id: "user-101",
     });

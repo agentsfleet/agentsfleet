@@ -134,7 +134,7 @@ function withCommandAnalyticsImplementation<Flags extends Record<string, unknown
             exit_code: Exit.isSuccess(exit) ? 0 : 1,
             duration_ms: finishedAt - startedAt,
           })
-          .pipe(withAnalyticsContext(analyticsContext));
+          .pipe(withAnalyticsContext(analyticsContext), Effect.ignore);
 
         if (Exit.isFailure(exit)) {
           return yield* Effect.failCause(exit.cause);
