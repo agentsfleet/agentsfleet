@@ -184,8 +184,13 @@ describe("--no-open suppresses browser spawn (stub backend)", () => {
     });
     // Short timeout — we just want to confirm the CLI prints the URL
     // then polls; not waiting for "complete".
+    // --force overrides the D20 idempotency prompt — makeStubbedStateDir
+    // pre-seeds credentials.json with STUB_TOKEN, which would otherwise
+    // abort login under --no-input (InterruptedError) before the poll
+    // loop ever prints login_url. The test's intent is "verify --no-open
+    // suppresses browser spawn"; the idempotency gate is orthogonal.
     const child = spawnZombiectl(
-      ["login", "--no-open", "--no-input", "--timeout-sec", "2", "--poll-ms", "200"],
+      ["login", "--no-open", "--no-input", "--force", "--timeout-sec", "2", "--poll-ms", "200"],
       { env },
     );
     const result = await waitForExit(child);
@@ -222,6 +227,7 @@ describe("SIGINT during login (stub backend)", () => {
     const args = [
       "login",
       "--no-input",
+      "--force", // bypass D20 idempotency on the stubbed-creds state dir
       "--timeout-sec",
       String(SIGINT_DEADLINE_SEC),
       "--poll-ms",
