@@ -23,14 +23,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, "..");
 const repoRoot = resolve(pkgRoot, "..");
 
-for (const name of ["samples"]) {
-  const src = resolve(repoRoot, name);
-  const dst = resolve(pkgRoot, name);
-  if (!existsSync(src)) {
-    console.error(`prepublish: source ${src} missing — refusing to publish a package without ${name}/`);
-    process.exit(1);
+// Defense-in-depth: scrub any stray local dirs that used to be bundled but
+// no longer should be (e.g. `skills/` pre-M69_001). gitignore + `files:`
+// already guard these from publishing, but a manual `cpSync` in a stale
+// local shell session could resurrect them. Active rm at publish-time
+// closes that hole.
+for (const stale of ["skills"]) {
+  const p = resolve(pkgRoot, stale);
+  if (existsSync(p)) {
+    rmSync(p, { recursive: true, force: true });
+    console.log(`prepublish: scrubbed stale ${stale}/ from ${pkgRoot}`);
   }
-  if (existsSync(dst)) rmSync(dst, { recursive: true, force: true });
-  cpSync(src, dst, { recursive: true });
-  console.log(`prepublish: copied ${name}/ (${src} → ${dst})`);
 }
+
+const samplesSrc = resolve(repoRoot, "samples");
+const samplesDst = resolve(pkgRoot, "samples");
+if (!existsSync(samplesSrc)) {
+  console.error(`prepublish: source ${samplesSrc} missing — refusing to publish a package without samples/`);
+  process.exit(1);
+}
+if (existsSync(samplesDst)) rmSync(samplesDst, { recursive: true, force: true });
+cpSync(samplesSrc, samplesDst, { recursive: true });
+console.log(`prepublish: copied samples/ (${samplesSrc} → ${samplesDst})`);
