@@ -407,6 +407,12 @@ If disposition (b) — coexist — both components remain; no dead-code sweep.
 
 **May 18, 2026 — rescoped.** Captain consolidated every in-flight CLI auth concern into M74_002 (CLI Browser Authorization Flow). The original §1-§5 CLI dimensions (D22 / D23 / D28 / D29 / D30) and the CLI dimensions originally listed in this spec's Out of Scope (D20 / D21 / D24 / D25 / D26 / D32) all moved into M74_002 §5-§6. This spec was renamed from `M71_001_P2_CLI_LOGIN_RESILIENCE_AND_UX_POLISH.md` to `M71_001_P2_UI_WEBSITE_TRIGGER_PANEL_AND_ONBOARDING_FLOW.md`. Categories trimmed to `UI, WEBSITE`. Sections renumbered (former §6-§11 are now §1-§6).
 
+**May 19, 2026 — §7 Option C `/backend` proxy + Redacted + retry hardening dropped, superseded by M74_002 single-token collapse.** A post-merge scope expansion landed on this branch on May 19 ("§7 — API token redaction + retry hardening + Option C /backend proxy", commits `89add737` / `989dda57` / `9e381f2e` / `e8def1ac`). It introduced per-endpoint `/backend/*` route-handler proxies so the browser would never carry the bearer, a `Redacted<string>` wrapper, and an expanded retry layer mirroring `zombiectl/src/lib/http.js`. Two findings forced a reversal:
+1. **Build break.** `lib/api/client.ts:serverAuthorizationHeader` dynamically imports `lib/auth/server.ts`, which statically resolves to `@clerk/nextjs/server` and trips Next's `server-only` boundary. `next build` fails on Vercel — `dry-app` / `lint-app` don't catch it because they typecheck rather than bundle. Reproduced locally with `bun run build`.
+2. **M74_002 redirected to single-token collapse.** Captain pivoted M74_002 from CLI handshake hardening to the Clerk `sid`-on-custom-template investigation (formerly HANDOFF.md § A.1). If single-token collapse lands, the entire `/backend` BFF + `Redacted` wrapper + `serverAuthorizationHeader` indirection are deleted — the browser carries one cookie-borne JWT and talks to zombied directly.
+
+Rather than fix the `server-only` boundary just to ship code that M74_002 deletes, the §7 commits were dropped from this branch (`git reset --hard b96a153d` then force-push). The hero promo pill §7 (line 242 above) is unaffected and remains DONE. The retry layer reverts to the pre-§7 shape; if M74_002's single-token work needs CLI-parity retries on the dashboard side, it can re-introduce them in its own diff. `tests/e2e/acceptance/events-backfill-proxy.spec.ts` is dropped — the invariant it pinned ("browser carries no bearer") is automatically restored by single-token collapse, where there is no browser-side bearer to leak.
+
 ---
 
 ## Verification Evidence
@@ -415,9 +421,9 @@ If disposition (b) — coexist — both components remain; no dead-code sweep.
 |-------|---------|--------|-------|
 | App typecheck + lint + test | `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · 47 files / 504 tests | ✅ |
 | App coverage thresholds | `(cd ui/packages/app && bun run test:coverage)` | statements 96.05 · branches 90.15 · functions 95.4 · lines 97.32 (gate: 95/90/95/95) | ✅ |
-| Website typecheck + lint + test (post-§7) | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · **19 files / 146 tests** (+7 over pre-§7 baseline: 3 Hero pill + 3 rates pill + 1 banner-prefix pin) | ✅ |
+| Website typecheck + lint + test | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · **19 files / 146 tests** (Hero pill + rates pin coverage included) | ✅ |
 | Harness | `make harness-verify` | UFS / DESIGN TOKEN / SPEC TEMPLATE / ERROR REGISTRY / LOGGING / LIFECYCLE / CROSS-TIER RATES / MS-ID+UI — ALL GATES GREEN | ✅ |
-| Bundle size (landing js, post-§7) | `(cd ui/packages/website && bun run size)` | **132.94 kB gzipped** — under the 140 kB ceiling pinned in `ui/packages/website/.size-limit.json` (7.06 kB headroom; §7 adds ~0.34 kB gz vs pre-§7 baseline) | ✅ |
+| Bundle size (landing js) | `(cd ui/packages/website && bun run size)` | **132.94 kB gzipped** — under the 140 kB ceiling pinned in `ui/packages/website/.size-limit.json` (7.06 kB headroom) | ✅ |
 | Bundle size (landing css) | `(cd ui/packages/website && bun run size)` | 9.89 kB gzipped — under the 20 kB ceiling | ✅ |
 | No zombiectl edits | `git diff origin/main..HEAD --name-only \| grep -c '^zombiectl/'` | 0 | ✅ |
 | Strictness compliance | E6 grep from "Eval Commands" | 0 `as any` / `!` / `@ts-expect-error` introduced | ✅ |
@@ -429,6 +435,7 @@ If disposition (b) — coexist — both components remain; no dead-code sweep.
 
 - **CLI login resilience and polish (D22 / D23 / D28 / D29 / D30)** — absorbed into **M74_002** (CLI Browser Authorization Flow) §6 "Login UX hardening" on May 18, 2026. Originally §1-§5 of this spec.
 - **CLI handshake hardening dimensions D20 / D21 / D24 / D25 / D26 / D32** (idempotency check, `--token-name` flag, `/me` ping, argv-leak warning, TTY-priority env resolution, `logout --all` rename) — absorbed into M74_002 §5 on the same date. Originally listed in this spec's Out of Scope as "deferred to the cli-auth handshake hardening sibling spec."
+- **§7 Option C `/backend` proxy + Redacted<string> wrapper + retry-layer hardening** — landed on May 19 then dropped before merge. Superseded by M74_002 single-token collapse (the cookie-borne JWT removes the need for a BFF). Investigation memo lives in the Discovery entry above; the four commits (`89add737` / `989dda57` / `9e381f2e` / `e8def1ac`) are preserved on the local backup branch `backup/m71-001-p2-pre-rebase-20260519-234114` and on `origin` until the next force-push, in case M74_002 needs to reference the prior art.
 - **`ApiCard.tsx`** (catch-all `POST /v1/zombies/{id}/events` ingress variant from M68 §E5) — lands with the workspace-API-tokens spec, not here.
 - **Server-side handshake redesign, `auth_sessions` endpoint shape, token introspection, expiry semantics, revocation** — all in M74_002.
 - **PostHog event-schema changes** — no new analytics emits in this spec.
