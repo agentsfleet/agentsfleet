@@ -11,6 +11,20 @@
 // same identifiers.
 
 import { Data } from "effect";
+import type {
+  DecryptError,
+  ExpiredSessionError,
+  InterruptedError,
+  InvalidSessionError,
+  MeValidationError,
+  RateLimitedError,
+  SessionAbortedError,
+  SessionConsumedError,
+  TimeoutError,
+  VerificationFailedError,
+} from "./auth.ts";
+
+export * from "./auth.ts";
 
 export class AuthError extends Data.TaggedError("AuthError")<{
   readonly detail: string;
@@ -81,7 +95,22 @@ export type CliError =
   | ServerError
   | ValidationError
   | ConfigError
-  | UnexpectedError;
+  | UnexpectedError
+  // Auth-flow tagged classes from auth.ts. Each is conceptually an
+  // AuthError specialization; kept as siblings of AuthError rather than
+  // subclasses because Effect's Data.TaggedError doesn't compose by
+  // inheritance and the dispatcher's exit-code lookup keys directly on
+  // _tag. Adding a row here without an EXIT_CODE entry fails compile.
+  | InvalidSessionError
+  | ExpiredSessionError
+  | RateLimitedError
+  | TimeoutError
+  | InterruptedError
+  | VerificationFailedError
+  | DecryptError
+  | SessionAbortedError
+  | SessionConsumedError
+  | MeValidationError;
 
 // Exit-code mapping. The dispatcher's exhaustive switch on `_tag`
 // references this; any new variant must add a row here or the
@@ -93,4 +122,17 @@ export const EXIT_CODE: Record<CliError["_tag"], number> = {
   ValidationError: 4,
   ConfigError: 5,
   UnexpectedError: 1,
+  // Auth-flow specializations. All exit 1 except InterruptedError,
+  // which uses the conventional SIGINT/abort code 130 so shells + CI
+  // can distinguish operator-cancel from a real failure.
+  InvalidSessionError: 1,
+  ExpiredSessionError: 1,
+  RateLimitedError: 2,
+  TimeoutError: 1,
+  InterruptedError: 130,
+  VerificationFailedError: 1,
+  DecryptError: 1,
+  SessionAbortedError: 1,
+  SessionConsumedError: 1,
+  MeValidationError: 1,
 };

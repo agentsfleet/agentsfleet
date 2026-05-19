@@ -157,11 +157,15 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       "login",
       (frame) => {
         const opts = frame.parsed.options;
-        return loginEffectFromFlags(
-          numericOption(opts["timeoutSec"] ?? opts["timeout-sec"]),
-          numericOption(opts["pollMs"] ?? opts["poll-ms"]),
-          opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
-        );
+        const tokenNameOpt = opts["tokenName"] ?? opts["token-name"];
+        return loginEffectFromFlags({
+          timeoutSec: numericOption(opts["timeoutSec"] ?? opts["timeout-sec"]),
+          pollMs: numericOption(opts["pollMs"] ?? opts["poll-ms"]),
+          noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
+          noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,
+          force: opts["force"] === true,
+          tokenName: typeof tokenNameOpt === "string" ? tokenNameOpt : undefined,
+        });
       },
       lifecycle,
     ),

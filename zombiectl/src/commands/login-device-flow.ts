@@ -21,7 +21,7 @@
 // Fingerprint is computed server-side from request_addr || user_agent ||
 // session_id; the CLI never sends one.
 
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import {
   decryptJwt,
   deriveSharedKey,
@@ -29,14 +29,19 @@ import {
   type CliKeypair,
 } from "../lib/cli-flow.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.ts";
+import { CliConfig } from "../services/config.ts";
+import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
 import { Output } from "../services/output.ts";
-import { AuthError, type CliError, type NetworkError, type ServerError } from "../errors/index.ts";
 import {
-  AUTH_CODE_DECRYPT_ERROR,
-  AUTH_CODE_VERIFICATION_FAILED,
-} from "../lib/auth-error-codes.ts";
+  DecryptError,
+  InterruptedError,
+  VerificationFailedError,
+  type CliError,
+  type NetworkError,
+  type ServerError,
+} from "../errors/index.ts";
 
 const MIN_POLL_MS = 500;
 
@@ -75,6 +80,102 @@ export const defaultTokenName = (
   if (platform === "freebsd") return "freebsd-cli";
   return "cli";
 };
+
+const ZMB_TOKEN_ENV_KEYS = ["ZMB_TOKEN", "ZOMBIE_TOKEN"] as const;
+
+const noInputAbort = (detail: string): InterruptedError =>
+  new InterruptedError({
+    detail,
+    suggestion: "re-run interactively (without --no-input) or pass --force",
+  });
+
+// Reads stdin via Input.readLine and returns true on y/Y/yes/<empty>.
+// The empty-string default biases toward "Yes" because the calling
+// prompts (D20 replace-existing, D26b env-var notice) treat continuing
+// as the safe choice — the user has to type "n" to abort.
+const promptYesNo = (
+  question: string,
+): Effect.Effect<boolean, never, Input | Output> =>
+  Effect.gen(function* () {
+    const input = yield* Input;
+    const raw = yield* input.readLine(`${question} [Y/n] `);
+    const trimmed = raw.trim().toLowerCase();
+    return trimmed === "" || trimmed === "y" || trimmed === "yes";
+  });
+
+// D20 — abort if an existing credential is present and the operator
+// hasn't passed --force. --no-input + no --force aborts loudly so
+// scripts don't silently overwrite tokens. Interactive mode prompts.
+export const idempotencyCheck = (
+  opts: { readonly force: boolean; readonly noInput: boolean },
+): Effect.Effect<void, CliError, Credentials | Input | Output> =>
+  Effect.gen(function* () {
+    if (opts.force) return;
+    const credentials = yield* Credentials;
+    const existing = yield* credentials.getAccessToken;
+    if (Option.isNone(existing)) return;
+    if (opts.noInput) {
+      return yield* Effect.fail(
+        noInputAbort("an existing credential is already saved"),
+      );
+    }
+    const output = yield* Output;
+    yield* output.warn(
+      "an existing credential is already saved on this machine",
+    );
+    const proceed = yield* promptYesNo("Replace it?");
+    if (!proceed) {
+      return yield* Effect.fail(
+        new InterruptedError({
+          detail: "login aborted — existing credential kept",
+          suggestion: "re-run with --force to overwrite without prompting",
+        }),
+      );
+    }
+  });
+
+// D26b — surface a notice when ZMB_TOKEN / ZOMBIE_TOKEN is set in the
+// environment. The login flow only writes credentials.json; env-var
+// tokens are out-of-band and take precedence on interactive shells, so
+// the operator may run `zombiectl login` expecting it to "fix"
+// authentication and be confused when the env-var token keeps winning.
+// Read process.env directly — CliConfig.accessToken is the *resolved*
+// token (could be from creds.json or env), we want to know specifically
+// whether the env variant was set.
+const envTokenKeysSet = (): readonly string[] =>
+  ZMB_TOKEN_ENV_KEYS.filter((k) => typeof process.env[k] === "string" && process.env[k] !== "");
+
+export const envTokenAwareness = (
+  opts: { readonly force: boolean; readonly noInput: boolean },
+  envKeysSetFn: () => readonly string[] = envTokenKeysSet,
+): Effect.Effect<void, CliError, CliConfig | Input | Output> =>
+  Effect.gen(function* () {
+    const keysSet = envKeysSetFn();
+    if (keysSet.length === 0) return;
+    const config = yield* CliConfig;
+    if (config.jsonMode) return;
+    const output = yield* Output;
+    const list = keysSet.join(" / ");
+    yield* output.warn(
+      `${list} is set in your environment — on interactive shells it takes precedence over credentials.json.\n  ` +
+        "`zombiectl login` only replaces credentials.json; your env-var token is unaffected.",
+    );
+    if (opts.force) return;
+    if (opts.noInput) {
+      return yield* Effect.fail(
+        noInputAbort(`${list} is set; login would not change which token wins on this shell`),
+      );
+    }
+    const proceed = yield* promptYesNo("Continue with login anyway?");
+    if (!proceed) {
+      return yield* Effect.fail(
+        new InterruptedError({
+          detail: "login aborted — env-var token left in place",
+          suggestion: `unset ${list} or re-run with --force`,
+        }),
+      );
+    }
+  });
 
 export const buildLoginUrl = (dashboardUrl: string, sessionId: string): string =>
   `${dashboardUrl.replace(/\/$/, "")}/cli-auth/${encodeURIComponent(sessionId)}`;
@@ -117,8 +218,8 @@ export const submitVerificationCode = (
     });
   });
 
-// ECDH derive + HKDF + AES-GCM decrypt. Any throw → AuthError(DECRYPT_ERROR)
-// — the channel is opaque on this side, no value in surfacing the raw
+// ECDH derive + HKDF + AES-GCM decrypt. Any throw → DecryptError —
+// the channel is opaque on this side, no value in surfacing the raw
 // WebCrypto failure to the operator.
 export const decryptIssuedToken = (
   keypair: CliKeypair,
@@ -130,23 +231,21 @@ export const decryptIssuedToken = (
       return await decryptJwt(key, response.ciphertext, response.nonce);
     },
     catch: () =>
-      new AuthError({
+      new DecryptError({
         detail: "session integrity check failed",
         suggestion: "retry `zombiectl login`",
-        code: AUTH_CODE_DECRYPT_ERROR,
       }),
   });
 
-// Map a wrong-code 400 from /verify to a typed VerificationFailed AuthError
+// Map a wrong-code 400 from /verify to a typed VerificationFailedError
 // so callers can detect it and offer one retry without coupling to the
 // transport-layer error shape.
 export const mapVerifyFailure = (err: CliError): CliError => {
   if (err._tag !== "ServerError") return err;
   if (err.status !== 400) return err;
-  return new AuthError({
+  return new VerificationFailedError({
     detail: "verification code didn't match",
     suggestion: "check the 6-digit code shown in your browser and try again",
-    code: AUTH_CODE_VERIFICATION_FAILED,
     requestId: err.requestId,
   });
 };
@@ -203,22 +302,32 @@ const verifyAndDecrypt = (
   });
 
 // Interactive code submission. On a wrong-code first attempt the operator
-// gets one retry; a second failure surfaces the AuthError. Decrypt
-// failures (DecryptError) and terminal-state ServerErrors propagate
-// without retry — those signal protocol or session-level breakage, not
-// human typo.
+// gets one retry; a second failure surfaces VerificationFailedError.
+// DecryptError and terminal-state ServerErrors propagate without retry —
+// those signal protocol or session-level breakage, not human typo.
+// --no-input aborts before any prompt — the verification code is a
+// human-readable per-flow secret typed into the terminal; non-interactive
+// shells have no way to supply it.
 export const verifyAndDecryptWithRetry = (
   sessionId: string,
   keypair: CliKeypair,
+  opts: { readonly noInput: boolean } = { noInput: false },
 ): Effect.Effect<string, CliError, HttpClient | Input | Output> =>
   Effect.gen(function* () {
+    if (opts.noInput) {
+      return yield* Effect.fail(
+        new InterruptedError({
+          detail: "verification code required but --no-input prevents prompting",
+          suggestion: "re-run interactively (without --no-input)",
+        }),
+      );
+    }
     const firstCode = yield* promptVerificationCode;
     const firstAttempt = yield* verifyAndDecrypt(sessionId, keypair, firstCode).pipe(
       Effect.map((token) => ({ ok: true as const, token })),
-      Effect.catchTag("AuthError", (err) => {
-        if (err.code !== AUTH_CODE_VERIFICATION_FAILED) return Effect.fail(err);
-        return Effect.succeed({ ok: false as const, err });
-      }),
+      Effect.catchTag("VerificationFailedError", (err) =>
+        Effect.succeed({ ok: false as const, err }),
+      ),
     );
     if (firstAttempt.ok) return firstAttempt.token;
     const output = yield* Output;

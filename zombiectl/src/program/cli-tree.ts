@@ -149,6 +149,8 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .description("Authenticate via browser")
     .option("--timeout-sec <n>", "Wait up to N seconds for browser callback", parseIntOption(TIMEOUT_SEC_BOUNDS))
     .option("--poll-ms <n>", "Poll cadence in milliseconds", parseIntOption(POLL_MS_BOUNDS))
+    .option("--token-name <label>", "Label this session in audit logs (default: platform family)")
+    .option("--force", "Skip the existing-credential prompt and overwrite", false)
     .action(actionFor("login", (frame) => runHandler(state, frame, handlers.login)));
 
   program

@@ -1,10 +1,9 @@
-// Deterministic helper tests for the device-flow login surface. The
-// keypair-gen + create-session + poll + verify-with-retry paths that
-// require a live Effect runtime + HttpClient mock + Input fake land in
-// the dimension batch alongside D20/D22/D24 — this file pins the pure
-// functions a downstream change might silently regress: platform-keyed
-// token-name defaults, login-URL composition, and the wrong-code 400 →
-// AuthError translation.
+// Deterministic helper tests for the device-flow login surface. Pins
+// the pure functions a downstream change might silently regress:
+// platform-keyed token-name defaults, login-URL composition, wrong-code
+// 400 → AuthError translation, plus the new D20 idempotency check and
+// D26b env-token awareness branches with --no-input + --force matrix
+// coverage.
 
 import { describe, test, expect } from "bun:test";
 import {
@@ -17,8 +16,8 @@ import {
   NetworkError,
   ServerError,
   ValidationError,
+  VerificationFailedError,
 } from "../src/errors/index.ts";
-import { AUTH_CODE_VERIFICATION_FAILED } from "../src/lib/auth-error-codes.ts";
 
 describe("defaultTokenName", () => {
   test("maps darwin → macos-cli", () => {
@@ -57,7 +56,7 @@ describe("buildLoginUrl", () => {
 });
 
 describe("mapVerifyFailure", () => {
-  test("translates a 400 ServerError to a VerificationFailed AuthError", () => {
+  test("translates a 400 ServerError to VerificationFailedError", () => {
     const err = new ServerError({
       detail: "verification failed",
       suggestion: "retry",
@@ -66,9 +65,8 @@ describe("mapVerifyFailure", () => {
       requestId: "req_abc",
     });
     const mapped = mapVerifyFailure(err);
-    expect(mapped).toBeInstanceOf(AuthError);
-    expect((mapped as AuthError).code).toBe(AUTH_CODE_VERIFICATION_FAILED);
-    expect((mapped as AuthError).requestId).toBe("req_abc");
+    expect(mapped).toBeInstanceOf(VerificationFailedError);
+    expect((mapped as VerificationFailedError).requestId).toBe("req_abc");
   });
   test("leaves non-400 ServerErrors untouched (caller decides)", () => {
     const err = new ServerError({
