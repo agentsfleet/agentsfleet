@@ -16,7 +16,12 @@ import path from "node:path";
 import url from "node:url";
 
 import {
+  ACCEPTANCE_DASHBOARD_URL_ENV,
   ACCEPTANCE_TARGET_ENV,
+  API_URL_DEV,
+  API_URL_PROD,
+  DASHBOARD_URL_DEV,
+  DASHBOARD_URL_PROD,
   FIXTURE_JWT_FILE,
 } from "./fixtures/constants.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
@@ -46,6 +51,24 @@ export function resolveAcceptanceEnv(): AcceptanceEnv {
     throw new Error(`${ACCEPTANCE_TARGET_ENV} unset — acceptance suite requires an API URL`);
   }
   return { apiUrl: target };
+}
+
+/**
+ * Derive the dashboard URL from the acceptance API URL. The dashboard
+ * environment always pairs with the API environment, so the routing
+ * is deterministic — no separate skip gate needed.
+ *
+ * Explicit `ZOMBIE_ACCEPTANCE_DASHBOARD_URL` override wins (use this
+ * for `localhost:3000` against a locally-running dashboard).
+ */
+export function resolveDashboardUrl(apiUrl: string): string {
+  const override = process.env[ACCEPTANCE_DASHBOARD_URL_ENV]?.trim();
+  if (override) return override;
+  if (apiUrl.startsWith(API_URL_DEV)) return DASHBOARD_URL_DEV;
+  if (apiUrl.startsWith(API_URL_PROD)) return DASHBOARD_URL_PROD;
+  throw new Error(
+    `cannot derive dashboard URL for API ${apiUrl} — set ${ACCEPTANCE_DASHBOARD_URL_ENV} explicitly`,
+  );
 }
 
 export function resolveClerkSecret(): string {
