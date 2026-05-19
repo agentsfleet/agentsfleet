@@ -108,13 +108,15 @@ test "verify is atomic: consume blocks replay from a different fingerprint" {
     defer alloc.free(sid);
     defer delSessionKey(&client, alloc, sid);
 
-    const first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer first.deinit(alloc);
     try std.testing.expect(first == .success);
     try std.testing.expectEqualStrings(TEST_CIPHERTEXT, first.success.ciphertext);
     try std.testing.expectEqualStrings(TEST_DASH_PK, first.success.dashboard_public_key);
     try std.testing.expectEqualStrings(TEST_NONCE, first.success.nonce);
 
-    const second = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_B);
+    var second = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_B);
+    defer second.deinit(alloc);
     try std.testing.expect(second == .consumed);
 
     var parsed = (try store.get(sid)).?;
@@ -134,10 +136,12 @@ test "verify is idempotent within the replay window for the same fingerprint" {
     defer alloc.free(sid);
     defer delSessionKey(&client, alloc, sid);
 
-    const first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer first.deinit(alloc);
     try std.testing.expect(first == .success);
 
-    const second = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var second = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer second.deinit(alloc);
     try std.testing.expect(second == .replay);
     try std.testing.expectEqualStrings(first.success.ciphertext, second.replay.ciphertext);
     try std.testing.expectEqualStrings(first.success.nonce, second.replay.nonce);
@@ -153,7 +157,8 @@ test "verify is idempotent within the replay window for the same fingerprint" {
     };
 
     // Replay must not bump consumed_at_ms — pin Fix 1.
-    const third = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var third = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer third.deinit(alloc);
     try std.testing.expect(third == .replay);
     var reparsed = (try store.get(sid)).?;
     defer reparsed.deinit();
@@ -170,14 +175,16 @@ test "verify rejects replay once the 60s payload window has elapsed" {
     defer alloc.free(sid);
     defer delSessionKey(&client, alloc, sid);
 
-    const first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer first.deinit(alloc);
     try std.testing.expect(first == .success);
 
     // Surrogate for the 61-second wait — push the window into the past
     // so the Lua's `window_open` check fails.
     try expireReplayWindow(&store, sid);
 
-    const after = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var after = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer after.deinit(alloc);
     try std.testing.expect(after == .consumed);
 }
 
@@ -191,12 +198,14 @@ test "verify rejects replay from a different fingerprint inside the window" {
     defer alloc.free(sid);
     defer delSessionKey(&client, alloc, sid);
 
-    const first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var first = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer first.deinit(alloc);
     try std.testing.expect(first == .success);
 
     // Inside the 60s window but the fingerprint differs — Lua falls
     // through the replay-cache branch and returns the consumed terminal.
-    const cross_source = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_B);
+    var cross_source = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_B);
+    defer cross_source.deinit(alloc);
     try std.testing.expect(cross_source == .consumed);
 }
 
@@ -251,6 +260,11 @@ test "verify under two concurrent correct-code calls collapses to one consume" {
     try std.testing.expect(racer_a.outcome != null);
     try std.testing.expect(racer_b.outcome != null);
 
+    // verifyAndConsume returns owned outcomes (post-UAF-fix); deinit
+    // both before scope-exit to keep the test allocator leak-free.
+    defer racer_a.outcome.?.deinit(alloc);
+    defer racer_b.outcome.?.deinit(alloc);
+
     var success_count: u8 = 0;
     var replay_count: u8 = 0;
     for ([_]VerifyOutcome{ racer_a.outcome.?, racer_b.outcome.? }) |out| {
@@ -298,7 +312,8 @@ test "session_store survives pod restart" {
     try std.testing.expectEqualStrings(TEST_CLERK_USER_ID, parsed.value.clerk_user_id.?);
     try std.testing.expectEqualStrings(TEST_DASH_PK, parsed.value.dashboard_public_key.?);
 
-    const out = try store_b.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var out = try store_b.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer out.deinit(alloc);
     try std.testing.expect(out == .success);
     try std.testing.expectEqualStrings(TEST_CIPHERTEXT, out.success.ciphertext);
 }
@@ -334,7 +349,8 @@ test "session_store works across three concurrent pods" {
     // Pod C: verify. Different connection from approve+poll, but the
     // Lua-EVAL atomicity is across the Redis instance not the client,
     // so .success is the expected outcome.
-    const out = try store_c.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    var out = try store_c.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer out.deinit(alloc);
     try std.testing.expect(out == .success);
     try std.testing.expectEqualStrings(TEST_CIPHERTEXT, out.success.ciphertext);
 
