@@ -817,6 +817,158 @@ Local coding agents that run on the same workstation where the human can complet
 
 ---
 
+## Roadmap — Flow 2 dashboard cleanup (planned, post-M74_002)
+
+> **Status:** PLANNED. Captain decision 2026-05-19 — staged as Option 2 then Option 3. Pre-condition: Clerk session-token claim customization confirmed available on the current org's plan (see *Verification owed* below).
+> **Scope:** dashboard (`ui/packages/app/`) and Clerk org config only. **Flow 1 (CLI) is unaffected by either stage** — see *CLI carve-out* below for the invariants the M74_002 work continues to satisfy throughout.
+
+The Token A / Token B split documented in *The two tokens at a glance* is not load-bearing on zombied's side. `src/auth/jwks.zig` validates `sub`, `iss`, `exp`, and `aud`; `sid` is never checked. The split exists because Clerk's *default* session token does not carry `aud=https://api.usezombie.com` (zombied's strict-check rejects it) and Clerk's *custom JWT templates* (the `api` template) cannot include `sid` per Clerk's docs (so the template can't double as the dashboard's `clerkMiddleware()` session token). Hence two distinct JWTs running in parallel today.
+
+Clerk's **session-token claim customization** — a separate Clerk feature from JWT templates — lifts the constraint. Adding `aud`, `metadata.tenant_id`, `metadata.role` to the session token produces one JWT that satisfies both `clerkMiddleware()` (it already carries `sid`) and zombied (the new `aud` claim passes the existing strict-check). Token B as a separate artifact for Flow 2 becomes unnecessary.
+
+### Stage 1 — Option 2: single-token via session-token claim customization
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Browser tab @ app.usezombie.com                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  __session cookie  (customized: sid + aud + metadata.tenant_id +    │ │
+│  │                     metadata.role — ONE token)                       │ │
+│  │  JS heap:                                                            │ │
+│  │    useAuth().getToken()        // NO {template:"api"} arg            │ │
+│  │      ← session JWT (already-issued)                                  │ │
+│  │    fetch("/backend/v1/...", { Authorization: Bearer <sess JWT> })    │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                          │                                                │
+│                          ▼                                                │
+│  Next.js /backend/:path* same-origin rewrite (UNCHANGED)                  │
+│                          │                                                │
+│                          ▼                                                │
+│  Zombied — bearer_or_api_key → OIDC verifier                              │
+│  (aud check passes against new claim; sid present but ignored downstream) │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Delta vs today:**
+
+| Surface | Action |
+|---|---|
+| Clerk org config | Session Token Claims += `aud`, `metadata.tenant_id`, `metadata.role` (UI-only change in Clerk dashboard) |
+| `lib/auth/server.ts` | DELETE — `getServerToken()` / `getServerAuth()` no longer needed; server pages call `auth().getToken()` directly |
+| `lib/api/redacted.ts` (+ test) | DELETE — Token B no longer exists as a distinct artifact requiring defensive masking |
+| `lib/actions/with-token.ts` | DELETE or simplify |
+| `lib/api/{zombies,events,approvals,credentials,tenant_billing,tenant_provider,workspaces,client}.ts` | Remove optional-bearer branches (~3 lines per file) |
+| `app/(dashboard)/**/page.tsx` server pages | Replace `getServerToken()` calls with bare `auth().getToken()` (15 hits across 12 files) |
+| `app/backend/.../events/stream/route.ts` | Drop `{template:"api"}` arg on `getToken()` |
+| `tests/e2e/acceptance/fixtures/clerk-admin.ts` | Mint via session-token endpoint instead of `tokens/api` |
+
+**Blast radius:** ~22 files, ~400 net-removed lines. Zero zombied changes. Zero infra changes. **Reversibility:** flip Clerk session-token claim config back to default; revert the PR.
+
+### Stage 2 — Option 3: BFF on top of single-token
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│  Browser tab @ app.usezombie.com                                          │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  __session cookie ONLY                                               │ │
+│  │  JS heap: NO TOKEN (browser is not a credential courier)             │ │
+│  │  fetch("/api/v1/...", credentials:"include")  // cookie rides        │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                          │                                                │
+│                          ▼                                                │
+│  /api/v1/... route handler (Next.js, server only)                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐ │
+│  │  auth() reads __session                                              │ │
+│  │  getToken() ──► customized session JWT (~5ms in fn memory)           │ │
+│  │  forward to zombied                                                  │ │
+│  └─────────────────────────────────────────────────────────────────────┘ │
+│                          │                                                │
+│  Server pages: import handler function and invoke in-process              │
+│  Mutations: Server Actions ("use server") — no public POST routes         │
+│                          ▼                                                │
+│  Zombied (unchanged verifier; same single token shape)                    │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+**Delta vs Stage 1:**
+
+| Surface | Action |
+|---|---|
+| `ui/packages/app/app/backend/` | RENAME → `ui/packages/app/app/api/` |
+| `next.config.ts` | Update or remove the rewrite — route handlers serve every dashboard→zombied path directly |
+| `app/api/v1/.../route.ts` | NEW — one handler per zombied endpoint the dashboard reads (~10 routes); each reads cookie, mints token server-side via `auth().getToken()`, fetches upstream, forwards response |
+| Server pages | Replace `fetch` calls with direct handler-function import + in-process invocation (no loopback fetch) |
+| Client-side mutations | Migrate to Server Actions; drop public POST routes for steer / kill / approve / deny / install-zombie / delete-credential / set-provider |
+| `lib/api/*` helpers | DELETE (residual remnants from Stage 1) |
+| `/api/*` defense-in-depth | NEW — IDOR check (session tenant_id vs URL workspace_id) and audit emit reusing M74_002's `AUDIT_LOG_PEPPER` + `.auth_audit` sink pattern |
+
+**Blast radius:** ~2 weeks of work on top of Stage 1. **Outcome:** browser carries zero usable credentials in JS heap; `/api/*` is the single dashboard trust boundary for IDOR, audit, and rate-limit policy.
+
+### CLI carve-out — Flow 1 is unaffected by both stages
+
+The `/cli-auth/[session_id]/page.tsx` page **keeps minting Token B via `getToken({template:"api"})`** through both stages. The customized session token is not a substitute for the CLI's purposes:
+
+| Why the customized session token can't serve the CLI |
+|---|
+| The CLI has no `__session` cookie and no Clerk SDK auto-refresh path. Once it receives a JWT, it must remain valid for ~15 min until a 401 forces re-login. |
+| Customized session tokens are ~60s lived and refresh-coupled to the dashboard user's active browser session — wrong lifetime + wrong dependency for an artifact that lives on disk in a separate process. |
+| The api template was designed precisely for this use case: configurable TTL, no session-introspection coupling, stable shape across browser sign-outs. |
+
+Concrete invariants the M74_002 work continues to satisfy through both stages:
+
+1. **One surviving api-template call site after Stage 1:** `ui/packages/app/app/cli-auth/[session_id]/page.tsx`. Every other `getToken({template:"api"})` (including indirect calls via the `API_TEMPLATE` const in `lib/auth/server.ts`) and every `getServerToken()` is deleted.
+2. **The ECDH + AES-256-GCM envelope is payload-agnostic.** `lib/auth/cli-flow.ts:deriveSharedKey` / `encrypt` / `decrypt` operate on arbitrary bytes; M74_002's crypto layer requires zero changes regardless of what the dashboard encrypts in the future.
+3. **`credentials.json` shape stored by zombiectl is unchanged** — still `{ token, token_name, saved_at, session_id, api_url }` with `token` a Clerk-signed api-template JWT. *(The `token_name` field lands in Slice 5.C of M74_002 itself; readers on intermediate commits during PR #331's review window see four fields, not five. By the time PR #331 merges, the shape matches.)*
+4. **`bearer_or_api_key.zig` validates the CLI's Bearer identically.** OIDC verifier path, JWKS caching, `aud=https://api.usezombie.com` check — all unchanged.
+
+If a future milestone decides to move the CLI off the Clerk JWT to a server-mintable `zmb_t_*`-style token (the direction sketched at *What's not in this doc — item 6*), it ships as its own milestone — **never bundled with the Flow 2 cleanup**.
+
+### Verification owed before Stage 1 spec opens
+
+1. Confirm Clerk session-token claim customization is available on the current org's plan; capture the dated docs citation.
+2. Measure resulting session-token size against Clerk's cookie size budget after the three added claims (`aud` + `metadata.tenant_id` + `metadata.role`).
+3. Confirm `useAuth().getToken()` refresh cadence doesn't degrade with the additional claims, and the cookie path continues to work for `clerkMiddleware()`.
+
+### Beyond Stage 2 — what this roadmap does NOT solve
+
+Stages 1 and 2 are dashboard browser-session cleanup. They are NOT finished platform auth architecture. After both stages land, three structural smells remain.
+
+| # | Smell | Why it survives Stages 1+2 |
+|---|---|---|
+| 1 | **The CLI's stored credential is a human session artifact.** zombiectl's `credentials.json` holds a Clerk-issued api-template JWT — a browser-originated, human-session-bound token used as a machine credential. Adequate for human-led local development; wrong primitive for service principals, automation, robot accounts, offline auth, long-running agent delegation, scoped execution tokens, and revocable capabilities. | The carve-out preserves the api template specifically because the customized session token's ~60s TTL + browser-refresh coupling doesn't fit the CLI. Stages 1+2 hide the smell better; they don't fix it. |
+| 2 | **Clerk semantics still leak through the BFF.** At Stage 2, `/api/*` route handlers mint Clerk-issued tokens via `auth().getToken()`; zombied's verifier trusts Clerk's JWKS directly via `iss=https://clerk.dev.usezombie.com`. The platform's control-plane trust is anchored at an external SaaS identity provider. | Stages 1+2 collapse Token A/B into one Clerk token; they don't replace Clerk as the issuer. |
+| 3 | **No usezombie-native capability layer.** The platform has no opinion of its own about credential shape, scope, delegation, or revocation — every authentication path inherits whatever Clerk decides. | Out of scope for browser-session cleanup. |
+
+The end-state direction (sketched at *What's not in this doc — item 6*; worth stating more sharply here):
+
+```
+Clerk
+  │  identity verification at sign-in ONLY
+  ▼
+usezombie identity exchange layer
+  │  mints scoped, short-lived, server-revocable capability tokens
+  │  per CLI install / per dashboard session / per agent
+  ▼
+usezombie-issued capability token
+  │  zombied trusts usezombie's issuer + signing keys
+  ▼
+zombied verifier
+```
+
+At that point: zombied stops trusting Clerk's JWKS directly. The CLI's stored credential is a usezombie capability token (revocable server-side, scoped per install, decoupled from any human's Clerk session lifecycle). The dashboard's BFF mints usezombie capabilities, not Clerk JWTs. Clerk reduces to identity verification at sign-in.
+
+That work is the v3 trajectory and is not bundled with the Flow 2 cleanup. Stage 1 + Stage 2 explicitly do NOT preclude it — they are intermediate states on the path to it. Treat them as such; do not fossilize "Clerk JWTs everywhere" as the destination.
+
+> **Naming caveat.** "Flow 1 / Flow 2 / Flow 3" are rollout-order labels, not trust-boundary names. A future doc refactor should rename around trust boundaries (e.g. *interactive-human-session* vs *standing-service-capability*). Not bundled here — would balloon this PR and bury the architectural decision under a doc rename.
+
+### Cross-references
+
+- Stage 1 spec: `docs/v2/pending/M{NN}_001_P1_UI_AUTH_SINGLE_TOKEN_COLLAPSE.md` (to be authored after M74_002 lands and Clerk verification above is green).
+- Stage 2 spec: `docs/v2/pending/M{NN+1}_001_P1_UI_AUTH_BFF_CLEANUP.md` (to be authored after Stage 1 lands).
+- Related CLI-future-state item: *What's not in this doc — item 6* (API-minted scoped access tokens for the CLI). Separate concern, separate milestone.
+
+---
+
 ## What's not in this doc (yet)
 
 Each of these is a real concern, named here so future agents and security-review passes can find them without re-discovering the design tension. Each entry names the owning future work item (or, where no future spec yet exists, that fact is stated explicitly).
