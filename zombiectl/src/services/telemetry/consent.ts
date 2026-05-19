@@ -45,7 +45,17 @@ export const readTelemetryConfig = (
     try: () => fs.readFile(path.join(configDir, "telemetry.json"), "utf8"),
     catch: () => null,
   }).pipe(
-    Effect.map((content) => JSON.parse(content) as TelemetryConfig),
+    // JSON.parse throws synchronously on malformed input; wrap in
+    // Effect.try so the SyntaxError lands in the typed error channel
+    // instead of escaping as an Effect defect that Effect.catch can't
+    // intercept. Mirrors the ai-tool.layer.ts pattern landed earlier
+    // in this PR.
+    Effect.flatMap((content) =>
+      Effect.try({
+        try: () => JSON.parse(content) as TelemetryConfig,
+        catch: () => null,
+      }),
+    ),
     Effect.catch(() => Effect.succeed(null as TelemetryConfig | null)),
   );
 
