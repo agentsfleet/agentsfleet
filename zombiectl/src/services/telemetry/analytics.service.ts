@@ -6,9 +6,11 @@
 // flags_used, flag_values, distinct_id, groups) inside the layer, so
 // commands cannot accidentally lose those props on any emit.
 //
-// Telemetry failures are swallowed inside the layer's capture impl —
-// Analytics never blocks user-facing UX. The dispatcher does NOT need
-// to wrap captures in Effect.ignore.
+// Telemetry failures bubble through the Effect cause channel; call
+// sites swallow with `.pipe(Effect.ignore)`. Matches `analytics.layer.ts`
+// and supabase `apps/cli/src/shared/telemetry/analytics.layer.ts` —
+// no try/catch inside the layer's emit functions. Every `capture` call
+// site is therefore responsible for the `.pipe(Effect.ignore)` suffix.
 
 import { Context, Effect } from "effect";
 
