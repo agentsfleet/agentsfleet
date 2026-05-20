@@ -222,7 +222,7 @@ const expiredPollHttp: Layer.Layer<HttpClient> = Layer.succeed(HttpClient, {
         new ServerError({
           detail: "session gone",
           suggestion: "retry",
-          code: "UZ-AUTH-EXPIRED",
+          code: "UZ-AUTH-013",
           status: 410,
           requestId: null,
         }),

@@ -262,7 +262,7 @@ export const pollUntilVerificationPending = (
           // 404 = the session row is gone (TTL-evicted or deleted) mid-poll;
           // 410 = explicit terminal expiry. Both mean "stop polling, expired"
           // rather than surfacing a hard transport error to the operator.
-          if (err.code === "UZ-AUTH-EXPIRED" || err.status === 410 || err.status === 404) {
+          if (err.status === 410 || err.status === 404) {
             return Effect.succeed({ kind: "expired" as const });
           }
           return Effect.fail(err);
