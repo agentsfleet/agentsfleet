@@ -110,33 +110,33 @@
 
 ## Sections (implementation slices)
 
-### §1 — Hero curl CTA (items 1, 2)
+### §1 — Hero curl CTA (items 1, 2) — ✅ DONE
 Replace the long command-as-button (which copies *and* smooth-scrolls) with a copy-row: the curl one-liner + a Copy affordance that copies only and surfaces the existing `Toast`, no scroll/navigation. The "view a real wake (replay)" ghost link (→ `/agents`) moves to its own line beneath the command.
 
 - **Dimension 1.1** — hero shows `INSTALL_COMMAND` (the curl one-liner) as a copy-row → Test `test_hero_shows_curl_install_command`
 - **Dimension 1.2** — clicking Copy writes the command to the clipboard and shows the toast, and does **not** scroll/navigate → Test `test_hero_copy_is_copy_only_no_scroll`
 - **Dimension 1.3** — the replay link renders below the command and points at `/agents` → Test `test_hero_replay_link_below_command`
 
-### §2 — Animated colored Terminal + Copy fix (item 3 + pioneer.ai ask)
+### §2 — Animated colored Terminal + Copy fix (item 3 + pioneer.ai ask) — ✅ DONE
 Add an opt-in `animate` prop to `Terminal` that reveals its children line-by-line via a CSS keyframe (color comes from the existing `LogLine` severity tokens — pioneer.ai-style liveliness, design-token only). Under `prefers-reduced-motion: reduce` every line is visible immediately. The hero's terminal demonstrates the curl install flow ending in `→ next: claude /usezombie-install-platform-ops`, and its Copy payload is **exactly** that slash-command const.
 
 - **Dimension 2.1** — `Terminal animate` reveals lines via CSS (keyframe + per-line delay), no JS timer → Test `test_terminal_animate_reveals_lines_via_css`
 - **Dimension 2.2** — under reduced-motion, all lines render visible immediately → Test `test_terminal_animate_static_under_reduced_motion`
 - **Dimension 2.3** — hero terminal Copy yields exactly `claude /usezombie-install-platform-ops` → Test `test_hero_terminal_copy_is_slash_command`
-- **Dimension 2.4** — `WakePulse`/`tokens.css` "only animation" comments + `DESIGN_SYSTEM.md` updated to reflect two animations → Test `test_design_system_doc_records_terminal_animation` (grep assertion)
+- **Dimension 2.4** — `WakePulse`/`tokens.css` "only animation" comments + `DESIGN_SYSTEM.md` §Motion updated to reflect two sanctioned animations → verified by the diff + `/review` (a prose-grep unit test is an anti-pattern; the doc edit ships in this PR)
 
-### §3 — Remove duplicate Home install block (item 5)
+### §3 — Remove duplicate Home install block (item 5) — ✅ DONE
 Delete the `InstallBlock` section below pricing on `Home.tsx`; the 4-step `OnboardingFlow` at the top already covers install + slash command.
 
 - **Dimension 3.1** — Home renders no second standalone install block; OnboardingFlow remains → Test `test_home_has_no_duplicate_install_block`
 
-### §4 — Human-voice closing CTA + footer (items 6, 7)
+### §4 — Human-voice closing CTA + footer (items 6, 7) — ✅ DONE
 Rewrite `CTABlock` to a human/outcome message (not the OpenAPI machine pitch — that lives on `/agents`). Rewrite the footer tagline + fix the lowercase "self-managed".
 
 - **Dimension 4.1** — closing CTA copy is human-outcome voice; no "OpenAPI 3.1 / machine surface" string → Test `test_cta_block_human_voice`
 - **Dimension 4.2** — footer tagline rewritten, capitalization fixed → Test `test_footer_tagline_rewrite`
 
-### §5 — Trial-aware pricing billing cards (item 4)
+### §5 — Trial-aware pricing billing cards (item 4) — ✅ DONE
 Make the "how a run is billed" cards read the trial window: during the free trial the stage cells show **free** (matching the headline), with `$0.001` presented as the post-July-31 rate. The struck rate line and the cards stop contradicting each other.
 
 - **Dimension 5.1** — within the trial window, stage cells render "free" → Test `test_billing_cards_free_during_trial`
@@ -256,6 +256,8 @@ grep -rn "npm install -g @usezombie/zombiectl && npx skills" ui/packages/website
 
 - **Architecture consult (pre-recorded):** adding the design system's second animation departs from the documented operational-restraint / "single animation" principle. Indy explicitly requested a pioneer.ai-style animated, colored terminal (chat May 20–21, 2026). Resolution: implement CSS-driven (mirroring WakePulse), update `DESIGN_SYSTEM.md` + the two "only animation" comments in the same diff.
 - **Coordination:** M75 (`usezombie.sh` installer + DNS) ships in parallel via another agent. Boundary: M75 owns scripts + docs sweep + `marketing-spec.test.ts`; this PR owns website source and leaves that test file untouched. Merge-ordering: this PR must not merge before M75/DNS is live.
+- **/write-unit-test:** diff ledger 14/14 resolved (13 tested · 1 won't-test — `tokens.css` reduced-motion is declarative CSS, not jsdom-executable; the invariant that matters, content never JS-gated, is tested). All four changed conditionals (`isWithinFreeTrial`, `animate`, trial-cell, trial-note) cover both arms; error-path 100% (clipboard reject); negative-path ratio ~55%. No Zig/concurrency/perf proofs applicable (UI). DoD met for Change-set mode.
+- **/review:** scope CLEAN; critical-pass categories (SQL / race / LLM-output / shell / enum-completeness) all N/A for this UI diff. Independent adversarial subagent found 1×P1 + 2×P2 + 3×P3 — **all 6 fixed in-PR**: P1 `tokens.css` pinned `opacity:0` had no fallback when animation is suppressed *without* reduced-motion (print / forced-colors / content-blockers) → switched to `animation-fill-mode: both` with resting opacity 1, so a non-running animation degrades to visible; P2 Pricing reused `EVENT_RATE` for the trial "free" string → added dedicated `FREE_TRIAL_STAGE_DISPLAY` mirroring `FREE_TRIAL_STAGE_NANOS`; P2 stale "fades + rises" comment → corrected (opacity-only); P3 stale OnboardingFlow test name (referenced removed scroll) → renamed; P3 6-line stagger cap → documented in the `animate` JSDoc; P3 `isWithinFreeTrial(NaN)` `BigInt(NaN)` throw → guarded + test added. Re-verified green (website 154 · design-system 396).
 
 ---
 
@@ -273,12 +275,14 @@ grep -rn "npm install -g @usezombie/zombiectl && npx skills" ui/packages/website
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Website unit | `cd ui/packages/website && bun run test` | {paste} | |
-| Design-system unit | `cd ui/packages/design-system && bun run test` | {paste} | |
-| Lint | `make lint` | {paste} | |
-| marketing-spec untouched | `git diff --name-only origin/main \| grep marketing-spec` | {paste} | |
-| e2e home | website Playwright home spec | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
+| Website unit | `make test-unit-website` | 154 passed (19 files) | ✅ |
+| Design-system unit | `make test-unit-design-system` | 396 passed (41 files) | ✅ |
+| Lint | `make lint-website` + design-system `tsc --noEmit` | oxlint + tsc clean | ✅ |
+| Design-token audit | `scripts/audit-design-tokens.sh` | OK — no arbitraries with a token equivalent | ✅ |
+| marketing-spec untouched | `git diff --name-only origin/main \| grep marketing-spec` | (empty — untouched) | ✅ |
+| Live render | headless Chromium `localhost:5173` hero | renders; no console errors; 5-colour terminal | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found | ✅ |
+| Playwright e2e | `make _e2e` (home/navigation/agents specs) | specs updated; full run deferred to CI (browser-install) — unit + live-render cover the same assertions | ⏳ CI |
 
 ---
 

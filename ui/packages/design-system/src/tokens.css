@@ -222,13 +222,14 @@
   --on-pulse: #0a0d0e;
 }
 
-/* ── The wake pulse — the only signature animation in the system ──
+/* ── The wake pulse — the signature live-signal animation ──
  *
- * Fires on `[data-live]`. Only the <WakePulse live={true}> primitive
- * sets that attribute; consumers cannot accidentally pulse non-live
- * entities. Stops the instant live flips false (attribute removed →
- * no rule matches → no animation). 2.4s ease-in-out infinite per
- * docs/DESIGN_SYSTEM.md §Motion. */
+ * One of two sanctioned animations in the system (the other is the
+ * terminal install-demo line reveal below). Fires on `[data-live]`.
+ * Only the <WakePulse live={true}> primitive sets that attribute;
+ * consumers cannot accidentally pulse non-live entities. Stops the
+ * instant live flips false (attribute removed → no rule matches → no
+ * animation). 2.4s ease-in-out infinite per docs/DESIGN_SYSTEM.md §Motion. */
 @keyframes wake-pulse {
   0% {
     box-shadow: 0 0 0 0 var(--pulse-glow);
@@ -253,5 +254,44 @@
     animation: none;
     box-shadow: 0 0 0 4px var(--pulse-glow);
     opacity: 0.6;
+  }
+}
+
+/* ── Terminal install-demo line reveal — the second sanctioned animation ──
+ *
+ * Opt-in via <Terminal animate>: the component sets [data-terminal-reveal]
+ * on the code block, and each direct-child line fades in, in sequence, so
+ * the install demo reads as "running live". Pure CSS (staggered
+ * animation-delay), no JS timer — same discipline as the wake pulse above.
+ * `forwards` holds the final visible frame. Reduced motion: every line is
+ * shown at once, no reveal. Per docs/DESIGN_SYSTEM.md §Motion. */
+@keyframes terminal-line-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* `both` fill-mode: `backwards` applies the from-frame (opacity 0) during each
+ * line's delay so the stagger still plays, while the resting state stays the
+ * default opacity 1. If the animation never runs (print, forced-colors,
+ * content-blockers — none of which set reduced-motion) the line degrades to
+ * visible, not invisible. Never pin opacity:0 as the resting state. */
+[data-terminal-reveal] > * {
+  animation: terminal-line-in 0.28s ease-out both;
+}
+[data-terminal-reveal] > *:nth-child(1) { animation-delay: 0.12s; }
+[data-terminal-reveal] > *:nth-child(2) { animation-delay: 0.52s; }
+[data-terminal-reveal] > *:nth-child(3) { animation-delay: 0.92s; }
+[data-terminal-reveal] > *:nth-child(4) { animation-delay: 1.32s; }
+[data-terminal-reveal] > *:nth-child(5) { animation-delay: 1.72s; }
+[data-terminal-reveal] > *:nth-child(6) { animation-delay: 2.12s; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-terminal-reveal] > * {
+    opacity: 1;
+    animation: none;
   }
 }
