@@ -15,7 +15,8 @@
 --   {"consumed"}                   -- terminal: outside replay window OR different fingerprint
 --   {"not_approved"}               -- state == pending
 --   {"replay", dpk, ct, nonce}     -- consume-idempotency hit (same fingerprint, in window)
---   {"invalid_code", attempts_str} -- HMAC mismatch; attempts now `attempts_str` (1..5)
+--   {"invalid_code", attempts_str} -- HMAC mismatch; attempts now `attempts_str` (1..max_attempts-1)
+--   {"rate_limited"}               -- terminal: this mismatch tripped max_attempts; session now aborted
 --   {"success", dpk, ct, nonce}    -- first-write success; transitioned to consumed
 --
 -- Field names match SessionState's JSON shape; all bytes-typed fields are
@@ -67,11 +68,16 @@ diff = diff + (a_len - b_len) * (a_len - b_len)
 
 if diff ~= 0 then
     s.verification_attempts = (s.verification_attempts or 0) + 1
-    if s.verification_attempts >= max_attempts then
+    local locked_out = s.verification_attempts >= max_attempts
+    if locked_out then
         s.status = "aborted"
         s.aborted_reason = "rate_limit_exceeded"
     end
     redis.call("SET", key, cjson.encode(s), "EX", ttl_seconds)
+    -- The wrong attempt that trips the cap returns the terminal `rate_limited`
+    -- tag (not `invalid_code`) so the handler signals an aborted session and
+    -- emits the lockout audit exactly once, on the transition.
+    if locked_out then return {"rate_limited"} end
     return {"invalid_code", tostring(s.verification_attempts)}
 end
 
