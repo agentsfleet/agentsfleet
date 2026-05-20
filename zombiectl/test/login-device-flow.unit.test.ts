@@ -88,6 +88,25 @@ const failingHttp = (status: number, code: string): Layer.Layer<HttpClient> =>
       ),
   });
 
+// Like failingHttp but walks a fixed list of failures across successive
+// requests (clamping at the last) and counts calls — lets a test prove how
+// many /verify round-trips a retry path actually made.
+const countingHttp = (
+  steps: ReadonlyArray<{ readonly status: number; readonly code: string }>,
+): { readonly layer: Layer.Layer<HttpClient>; readonly calls: () => number } => {
+  let n = 0;
+  const layer = Layer.succeed(HttpClient, {
+    request: <T>(_input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
+      const step = steps[Math.min(n, steps.length - 1)] ?? { status: 500, code: "UZ-FIXTURE-EMPTY" };
+      n += 1;
+      return Effect.fail(
+        new ServerError({ detail: "fixture", suggestion: "x", code: step.code, status: step.status, requestId: "req_fix" }),
+      );
+    },
+  });
+  return { layer, calls: () => n };
+};
+
 const failureValue = <T>(exit: Exit.Exit<T, CliError>): CliError | null =>
   Exit.isFailure(exit) ? Option.getOrNull(Cause.findErrorOption(exit.cause)) : null;
 
@@ -139,6 +158,16 @@ describe("mapVerifyFailure", () => {
     const mapped = mapVerifyFailure(err);
     expect(mapped).toBeInstanceOf(VerificationFailedError);
     expect((mapped as VerificationFailedError).requestId).toBe("req_abc");
+  });
+  test("leaves a UZ-AUTH-018 malformed-code 400 untouched (re-enter, not a strike)", () => {
+    const err = new ServerError({
+      detail: "Invalid verification code shape",
+      suggestion: "enter the 6 digits",
+      code: "UZ-AUTH-018",
+      status: 400,
+      requestId: "req_shape",
+    });
+    expect(mapVerifyFailure(err)).toBe(err);
   });
   test("leaves non-400 ServerErrors untouched (caller decides)", () => {
     const err = new ServerError({
@@ -352,9 +381,9 @@ describe("pollUntilVerificationPending — terminal-state mapping", () => {
     expect(failureValue(exit)).toBeInstanceOf(ServerError);
   });
 
-  // The terminal-state guard is `code === "UZ-AUTH-EXPIRED" || status === 410`.
-  // Exercise each OR clause independently so a regression that drops one side
-  // (e.g. only checking status) is caught.
+  // The terminal-state guard is `code === "UZ-AUTH-EXPIRED" || status === 410
+  // || status === 404`. Exercise each clause independently so a regression
+  // that drops one side (e.g. only checking status) is caught.
   test("UZ-AUTH-EXPIRED with a non-410 status still maps to expired (code clause)", async () => {
     const outcome = await Effect.runPromise(
       pollUntilVerificationPending(
@@ -373,6 +402,17 @@ describe("pollUntilVerificationPending — terminal-state mapping", () => {
         { deadline: Date.now() + 10_000, pollMs: 500 },
         new AbortController().signal,
       ).pipe(Effect.provide(failingHttp(410, "UZ-SOMETHING-ELSE"))),
+    );
+    expect(outcome.status).toBe("expired");
+  });
+
+  test("status 404 maps to expired (session row gone mid-poll)", async () => {
+    const outcome = await Effect.runPromise(
+      pollUntilVerificationPending(
+        "sess_poll",
+        { deadline: Date.now() + 10_000, pollMs: 500 },
+        new AbortController().signal,
+      ).pipe(Effect.provide(failingHttp(404, "UZ-SOMETHING-ELSE"))),
     );
     expect(outcome.status).toBe("expired");
   });
@@ -413,5 +453,25 @@ describe("verifyAndDecryptWithRetry — one retry then fail", () => {
       ),
     );
     expect(failureValue(exit)).toBeInstanceOf(VerificationFailedError);
+  });
+
+  test("a malformed code (UZ-AUTH-018) re-prompts without spending a wrong-code strike", async () => {
+    const keypair = await generateCliKeypair();
+    // 018 = bad shape: re-enter, no strike. Then two 011 wrong codes exhaust
+    // the 2-strike budget. If 018 had burned a strike, only 2 requests fire.
+    const http = countingHttp([
+      { status: 400, code: "UZ-AUTH-018" },
+      { status: 400, code: "UZ-AUTH-011" },
+      { status: 400, code: "UZ-AUTH-011" },
+    ]);
+    const exit = await Effect.runPromiseExit(
+      verifyAndDecryptWithRetry("sess_retry", keypair, { noInput: false }).pipe(
+        Effect.provide(http.layer),
+        Effect.provide(inputReturning("000000")),
+        Effect.provide(outputNoop),
+      ),
+    );
+    expect(failureValue(exit)).toBeInstanceOf(VerificationFailedError);
+    expect(http.calls()).toBe(3);
   });
 });
