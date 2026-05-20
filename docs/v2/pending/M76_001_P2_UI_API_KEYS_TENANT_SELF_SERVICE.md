@@ -9,19 +9,19 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - See docs/TEMPLATE.md "Prohibited" section above for canonical list.
 -->
 
-# M76_001: Tenant API Keys — Settings UI for self-service mint, list, revoke, delete
+# M76_001: Settings self-service — API keys, account deletion, avatar fallback, theme toggle
 
 **Prototype:** v2.0.0
 **Milestone:** M76
 **Workstream:** 001
 **Date:** May 18, 2026
 **Status:** PENDING
-**Priority:** P2 — backend already ships; closing the operator-experience gap (no current UI; today mint requires `curl` with a Clerk JWT).
-**Categories:** UI, API, DOCS
-**Batch:** B1 — no parallel siblings; standalone settings surface.
+**Priority:** P2 — backend already ships for API keys; closing the operator-experience gap across the settings surface (API-key mint/revoke today requires `curl`; no account-deletion flow; no avatar fallback control; no light/dark toggle despite the tokens existing).
+**Categories:** UI, API, DOCS, AUTH
+**Batch:** B1 — no parallel siblings; the settings surface.
 **Branch:** {feat/m76-001-name — added at CHORE(open)}
-**Depends on:** none. Existing `POST|GET|PATCH|DELETE /v1/api-keys` handlers, `core.api_keys` table, and `bearer_or_api_key` middleware are already in place.
-**Provenance:** human-written (Captain ack, May 18, 2026)
+**Depends on:** API-keys §1–§7 depend on nothing (handlers + `core.api_keys` + `bearer_or_api_key` already in place). **§8 account deletion depends on new backend** (tenant-lifecycle delete endpoint + scheduled hard-delete + Clerk `user.deleted` webhook wiring — none exist today) and touches `src/http/handlers/auth/`, which **M74_002 owns** — sequence after/with M74_002 or graduate §8 to its own spec.
+**Provenance:** human-written (Captain ack, May 18, 2026). **Scope expanded May 20, 2026** (Captain ask) from API-keys-only to the broader settings self-service surface: §8 account deletion, §9 avatar fallback, §10 light/dark theme toggle. See the §8 callout — account deletion is a backend-heavy, billing/auth-sensitive feature and is a strong candidate to graduate to its own spec (same rationale that split API-keys out of M71_001 P2).
 
 **Canonical architecture:** `docs/ARCHITECTURE.md` (settings dashboard surface, tenant principal scope).
 
@@ -71,6 +71,15 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/lib/api/api_keys.ts` | CREATE | Typed server-only client: `listApiKeys`, `createApiKey`, `revokeApiKey`, `deleteApiKey`. |
 | `ui/packages/app/tests/e2e/acceptance/settings-api-keys.spec.ts` | CREATE | Mint → one-time-reveal → revoke → delete round-trip. |
 | `src/http/handlers/api_keys/tenant.zig` | EDIT | Comment-only: replace the "Operational/bootstrap-only … No first-party UI/CLI consumes these routes" block with the actual consumer pointer. |
+| **§8 account deletion (new backend — graduate candidate)** | | |
+| `ui/packages/app/app/(dashboard)/settings/account/{page,actions}.tsx` + `components/DeleteAccountDialog.tsx` | CREATE | Danger Zone + confirm-by-typing dialog + billing pre-flight. |
+| `src/http/handlers/tenants/lifecycle.zig` (+ route_table/router wiring) | CREATE | `DELETE /v1/tenants/me` — soft-delete (`deleted_at`), disable zombies/triggers, revoke API keys; returns scheduled hard-delete date. |
+| scheduled hard-delete worker | CREATE | Cascade tenant→workspaces→zombies→credentials→events→billing after grace; delete Clerk user. |
+| `src/http/handlers/auth/identity_events_clerk.zig` | EDIT (M74_002 territory) | Add `user.deleted` branch → soft-delete cascade. Coordinate with M74_002. |
+| **§9 avatar fallback** | | |
+| `ui/packages/app/lib/clerkAppearance.ts` (+ test) | EDIT | Theme the Clerk default initials avatar with design-system tokens (or an identicon component if chosen). |
+| **§10 theme toggle** | | |
+| `ui/packages/app/app/layout.tsx` + a `ThemeToggle.tsx` + cookie helper | EDIT/CREATE | SSR-stamp `data-theme` from cookie; client toggle writes cookie + flips attribute. No new color tokens (`[data-theme="light"]` already exists). |
 
 ---
 
@@ -103,6 +112,42 @@ The page server-side checks the user's `AuthRole`. `user` role → redirect to `
 ### §7 — Source comment correction
 
 Replace the "Operational/bootstrap-only surface today … No first-party UI/CLI consumes these routes; if you add one (e.g. self-service key rotation in the dashboard), drop the playbook reference" block in `src/http/handlers/api_keys/tenant.zig` with one referencing `/settings/api-keys` as the first-party consumer. This is the one Zig edit in the spec and must satisfy RULE NLR — the old framing now contradicts shipped reality.
+
+### §8 — Account deletion ("Danger Zone")
+
+> ⚠️ **Graduate-to-own-spec candidate.** Unlike §1–§7 (UI over existing endpoints), §8 needs **new backend** (tenant-lifecycle delete endpoint + scheduled hard-delete job + the currently-ignored Clerk `user.deleted` webhook) and a **billing policy decision**. It also touches `src/http/handlers/auth/` (M74_002's reserved surface). Recommendation: split §8 into its own milestone once the process below is Captain-approved; keep it here only as the design of record until then.
+
+**Current-state findings (May 20, 2026):**
+- **No deletion path exists.** `route_table.zig` has no tenant/account delete route. Clerk's `user.deleted` event is explicitly **ignored** (`src/http/handlers/auth/identity_events_clerk.zig:113-114`), so a user deleting themselves via Clerk today **orphans** their tenant, workspaces, zombies, credentials, events, and billing rows.
+- **Billing is prepaid credits — there is no "dues"/arrears model.** `TenantBilling = { balance_nanos, is_exhausted }` (no `owed`/`outstanding` field). An exhausted tenant is already gate-blocked from incurring new charges; Stripe purchase + any postpaid invoice is **v2.1**. So deletion is **not** blocked by debt today.
+
+**Recommended process (the design of record):**
+
+1. **Scope.** "Delete account" = soft-delete the **tenant** (owner/admin only) + delete the **Clerk user**. Tenants are single-user at alpha, so the two coincide; defer multi-member org semantics (member-leave vs tenant-delete) until orgs exist.
+2. **Billing gate.**
+   - **Today (prepaid):** do **not** block on balance. If `balance_nanos > 0`, show a forfeiture warning ("X credits will be forfeited — free-trial credits have no cash value"). No auto-refund.
+   - **v2.1 (Stripe/postpaid):** **block** deletion while an invoice is unsettled — "Settle your outstanding balance before deleting." The grace period (below) is the settlement window. Refund of remaining *purchased* credits follows the published refund policy.
+3. **Re-auth + confirm.** Require a fresh auth check and **confirm-by-typing** the tenant name (or email) before the destructive call — no single-click delete.
+4. **Data export first.** Offer a GDPR-portability export (at minimum events + billing-charge history) before the point of no return.
+5. **Soft-delete + grace period (default 30 days).** On confirm, the server marks the tenant `deleted_at`, **immediately** disables every zombie + trigger (stop serving/incurring) and revokes all tenant API keys, but **retains data**. Email the user a confirmation with a cancel-within-grace link.
+6. **Hard-delete after grace.** A scheduled job cascades tenant → workspaces → zombies → credentials → events → billing rows, then deletes the Clerk user via the Clerk backend API.
+7. **Webhook reconciliation.** Wire the currently-ignored Clerk `user.deleted` webhook → the same server-side soft-delete cascade, so a Clerk-initiated deletion is consistent with the in-app flow. (This closes the orphan gap above regardless of §8's UI.)
+
+**UI surface:** a de-emphasised "Danger Zone" card at the bottom of an account/settings section, owner/admin-gated (mirrors §6 RBAC). The destructive button opens a confirm-by-typing dialog showing the forfeiture/settlement state from the billing pre-flight.
+
+**New backend (out of M76's "no new endpoints" rule — hence the graduate flag):** `DELETE /v1/tenants/me` (soft-delete + return scheduled hard-delete date), a scheduled hard-delete worker, and a `user.deleted` branch in `identity_events_clerk.zig`. All auth-adjacent → coordinate with M74_002.
+
+### §9 — Avatar fallback
+
+**Current state:** the top-right avatar is Clerk's `<UserButton>` (`AuthUserButton` in `components/layout/Shell.tsx:119`), themed by `AUTH_APPEARANCE`. With no uploaded image, Clerk renders its **default initials avatar** (the user's initials on a solid fill) — **not** a GitHub-style identicon. There is no first-party fallback in our code.
+
+**What lands:** a deliberate decision + a pinned test, not a guess. Default recommendation: **keep Clerk's initials avatar** (consistent with the auth widget, zero new deps) and only theme it via `AUTH_APPEARANCE` so the fallback fill uses `--surface-2` / `--text` tokens rather than Clerk's stock palette. If a GitHub-style generated identicon is desired instead, that's an explicit upgrade (deterministic hash → pattern/gradient keyed on user id); spec it as an alternative, don't ship both. Acceptance: a test asserts the rendered fallback uses design-system tokens (or the identicon component if chosen), so the "what do I see with no avatar" answer is pinned, not incidental.
+
+### §10 — Light/dark theme toggle
+
+**Current state:** the design system **already ships both palettes** — dark is the default (`:root` in `tokens.css`), light is fully defined under `[data-theme="light"]` (`tokens.css:201`). But **nothing sets `data-theme`** — no `next-themes`, no provider, no toggle — so light mode is currently **dormant/unreachable**. The token work is done; only the wiring is missing.
+
+**What lands:** a theme toggle (a control in the header or settings) that sets `data-theme` on `<html>`, persisted (cookie so SSR renders the right palette with no flash; `localStorage` mirror optional), defaulting to `prefers-color-scheme` on first visit. **Implementation default:** a cookie read in the root layout that stamps `data-theme` server-side (avoids the light-flash-on-dark FOUC), plus a small client toggle that writes the cookie and flips the attribute. No new color tokens — `[data-theme="light"]` already covers the surface. Acceptance: toggling flips `<html data-theme>`, the choice survives reload (cookie), and SSR markup matches the persisted theme (no hydration mismatch).
 
 ---
 
@@ -163,6 +208,18 @@ Error shape is the standard `ec.ERR_*` envelope already produced by the handler 
 | `test_sort_param_invalid_resets` | Direct URL with `sort=foo` resets to default and toasts. |
 | `test_pagination_bounds` | `page_size=200` is rejected client-side before request fires. |
 | `test_e2e_round_trip` (Playwright) | mint → reveal → close → list shows new row → revoke → delete → list is back to original state. Reveal-secret invariant asserted post-close. |
+| **§8 account deletion** | |
+| `test_delete_requires_confirm_typing` | Destructive button stays disabled until the tenant name is typed exactly. |
+| `test_delete_billing_preflight_warns_on_credits` | `balance_nanos > 0` → forfeiture warning shown; deletion still allowed (prepaid, v2.0). |
+| `test_delete_blocks_on_unsettled_balance` (v2.1) | Unsettled invoice → deletion blocked with "settle first" (gated behind the postpaid flag). |
+| `test_delete_soft_deletes_and_disables` | `DELETE /v1/tenants/me` sets `deleted_at`, disables zombies/triggers, revokes API keys, returns hard-delete date. |
+| `test_clerk_user_deleted_webhook_cascades` | A `user.deleted` event triggers the same soft-delete cascade (no orphaned tenant). |
+| `test_non_owner_cannot_delete` | Non-owner/admin role → Danger Zone hidden + endpoint 403. |
+| **§9 avatar fallback** | |
+| `test_avatar_fallback_uses_tokens` | With no image, the rendered Clerk fallback (or identicon, if chosen) uses design-system tokens — pins "what you see with no avatar". |
+| **§10 theme toggle** | |
+| `test_theme_toggle_flips_data_theme` | Toggle sets `<html data-theme="light">`/removes it. |
+| `test_theme_persists_across_reload` | Cookie persists the choice; SSR markup matches (no hydration mismatch / no FOUC). |
 
 Regression: existing `settings-provider.spec.ts`, `settings-billing.spec.ts`, `signout-and-signin.spec.ts` still pass — settings shell layout did not change beyond the new card.
 
