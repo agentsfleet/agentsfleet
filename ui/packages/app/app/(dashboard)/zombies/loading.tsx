@@ -1,13 +1,5 @@
-import { Loader2Icon } from "lucide-react";
+import { Spinner } from "@usezombie/design-system";
 
 export default function ZombiesLoading() {
-  return (
-    <output
-      aria-live="polite"
-      className="flex items-center gap-3 py-16 text-sm text-muted-foreground"
-    >
-      <Loader2Icon size={18} className="animate-spin" aria-hidden="true" />
-      <span>Loading zombies…</span>
-    </output>
-  );
+  return <Spinner size="lg" label="Loading zombies…" className="py-16 text-sm" />;
 }

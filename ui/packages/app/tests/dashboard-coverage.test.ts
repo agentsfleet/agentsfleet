@@ -16,6 +16,7 @@ const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
 });
 const setActiveWorkspaceMock = vi.fn().mockResolvedValue(undefined);
+const createWorkspaceActionMock = vi.fn().mockResolvedValue({ ok: true, data: { workspace_id: "ws_new", name: "fresh-name" } });
 const getTokenFn = vi.fn().mockResolvedValue("token_abc");
 const stopZombieMock = vi.fn();
 const listZombiesMock = vi.fn();
@@ -202,6 +203,7 @@ vi.mock("@/app/(dashboard)/credentials/components/CredentialsList", () => ({
 
 vi.mock("@/app/(dashboard)/actions", () => ({
   setActiveWorkspace: setActiveWorkspaceMock,
+  createWorkspaceAction: createWorkspaceActionMock,
 }));
 
 vi.mock("lucide-react", () => {
@@ -225,6 +227,7 @@ vi.mock("lucide-react", () => {
     ReceiptIcon: make("ReceiptIcon"),
     CreditCardIcon: make("CreditCardIcon"),
     ActivityIcon: make("ActivityIcon"),
+    AlertTriangleIcon: make("AlertTriangleIcon"),
   };
 });
 
@@ -561,6 +564,41 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
+
+  it("billing settings page shows the not-ready empty state when billing is null", async () => {
+    getServerTokenMock.mockResolvedValue("token_billing");
+    getTenantBillingMock.mockResolvedValue(null);
+    listTenantBillingChargesMock.mockResolvedValue({ items: [], next_cursor: null });
+    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    const m = renderToStaticMarkup(await Page());
+    // renderToStaticMarkup escapes the apostrophe in "isn't"; assert on a
+    // stable substring of the not-ready empty state instead.
+    expect(m).toContain("ready yet");
+    expect(m).toContain("still being set up");
+  });
+
+  it("credentials page redirects to /sign-in when no token", async () => {
+    getServerTokenMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("credentials page shows the no-workspace empty state", async () => {
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("No workspace yet");
+  });
+
+  it("settings page renders an em-dash when the userId is missing", async () => {
+    getServerAuthMock.mockResolvedValue({ token: "tkn", userId: null });
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
+    const { default: Page } = await import("../app/(dashboard)/settings/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("ws_xyz");
+    expect(m).toContain("—"); // userId ?? "—"
+  });
 });
 
 // ── Dashboard page (StatusTiles + RecentActivity) ──────────────────────────
@@ -591,17 +629,63 @@ describe("dashboard overview page", () => {
     expect(m).toContain("Dashboard");
   });
 
-  it("StatusTiles computes active/paused/stopped counts from the zombie list", async () => {
-    const { StatusTiles } = (await import("../app/(dashboard)/page")) as unknown as {
-      StatusTiles: () => Promise<React.ReactElement | null>;
-    };
-    // StatusTiles is not exported — invoke indirectly via the whole page in a way
-    // that renders the children. We exercise the same logic by calling listZombies
-    // mock through the page render:
-    const { default: Page } = await import("../app/(dashboard)/page");
-    void StatusTiles;
-    await Page();
-    expect(listZombiesMock).toBeDefined();
+  it("StatusTiles renders Live/Paused/Stopped tiles + balance from the zombie list", async () => {
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    // beforeEach seeds 1 active / 1 paused / 1 stopped; an exhausted balance
+    // exercises the `is_exhausted ? "danger"` truthy arm + `active > 0` sublabel.
+    getTenantBillingMock.mockResolvedValue({
+      balance_nanos: 5 * NANOS_PER_USD,
+      is_exhausted: true,
+      exhausted_at: 1,
+    });
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("Live");
+    expect(m).toContain("Paused");
+    expect(m).toContain("Stopped");
+    expect(m).toContain("$5.00"); // billing present → formatted-balance branch
+
+    // No active zombies → the sublabel ternary takes its undefined arm while
+    // the grid still renders.
+    listZombiesMock.mockResolvedValue({
+      items: [{ id: "z", name: "n", status: "stopped", created_at: "2026-04-22T00:00:00Z" }],
+      total: 1,
+      cursor: null,
+    });
+    getTenantBillingMock.mockResolvedValue(null); // billing null + zombies present → Balance "—"
+    const m2 = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m2).toContain("Stopped");
+    expect(m2).toContain("—"); // billing ? ... : "—" false arm
+  });
+
+  it("StatusTiles shows the first-install free-credit card when there are no zombies", async () => {
+    listZombiesMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+    getTenantBillingMock.mockResolvedValue({
+      balance_nanos: 5 * NANOS_PER_USD,
+      is_exhausted: false,
+      exhausted_at: null,
+    });
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("First wake");
+    expect(m).toContain("free credit"); // credits > 0 copy branch
+  });
+
+  it("StatusTiles first-install copy degrades to the terminal prompt when balance is unknown", async () => {
+    listZombiesMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+    getTenantBillingMock.mockResolvedValue(null); // balance null → credits-null branch
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("First wake");
+    expect(m).toContain("Install a zombie from your terminal");
+  });
+
+  it("StatusTiles returns null without a token or an active workspace", async () => {
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    getServerTokenMock.mockResolvedValue(null);
+    expect(await StatusTiles()).toBeNull();
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue(null);
+    expect(await StatusTiles()).toBeNull();
   });
 });
 
@@ -961,14 +1045,23 @@ describe("WorkspaceSwitcher component", () => {
     );
   }
 
-  it("renders nothing when workspaces is empty", async () => {
-    const { container } = render(
+  it("still renders with a New workspace affordance when workspaces is empty", async () => {
+    render(
       React.createElement(
         (await import("../components/layout/WorkspaceSwitcher")).default,
         { workspaces: [], activeId: null, onSwitch: setActiveWorkspaceMock } as never,
       ),
     );
-    expect(container.textContent).toBe("");
+    // The empty case is exactly when create matters most — switcher must show.
+    expect(screen.getByLabelText(/select workspace/i).textContent).toContain("No workspace");
+    expect(screen.getByTestId("workspace-new")).toBeTruthy();
+  });
+
+  it("opens the create dialog from the New workspace item", async () => {
+    const user = userEvent.setup();
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
+    await waitFor(() => expect(screen.getByTestId("workspace-name-input")).toBeTruthy());
   });
 
   it("renders the active workspace label", async () => {
@@ -1015,5 +1108,163 @@ describe("WorkspaceSwitcher component", () => {
     // Give transition a tick
     await new Promise((r) => setTimeout(r, 10));
     expect(setActiveWorkspaceMock).not.toHaveBeenCalled();
+  });
+});
+
+// ── CreateWorkspaceDialog ───────────────────────────────────────────────────
+
+describe("CreateWorkspaceDialog component", () => {
+  async function renderDialog(
+    props: { open?: boolean; onOpenChange?: (open: boolean) => void } = {},
+  ) {
+    const onOpenChange = props.onOpenChange ?? vi.fn();
+    const { default: CreateWorkspaceDialog } = await import(
+      "../components/layout/CreateWorkspaceDialog"
+    );
+    render(
+      React.createElement(CreateWorkspaceDialog, {
+        open: props.open ?? true,
+        onOpenChange,
+      } as never),
+    );
+    return { onOpenChange };
+  }
+
+  it("submits the trimmed name, then closes and refreshes on success", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_x", name: "acme-prod" },
+    });
+    const { onOpenChange } = await renderDialog();
+    await user.type(screen.getByTestId("workspace-name-input"), "  acme-prod  ");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "acme-prod" }),
+    );
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(routerRefresh).toHaveBeenCalled();
+  });
+
+  it("omits a blank name so the server generates a Heroku-style one", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_y", name: "auto-gen" },
+    });
+    await renderDialog();
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: undefined }),
+    );
+  });
+
+  it("shows the mapped error and stays open when the action fails", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: false,
+      errorCode: "UZ-AUTH-401",
+      error: "Missing tenant context on session",
+    });
+    const { onOpenChange } = await renderDialog();
+    await user.type(screen.getByTestId("workspace-name-input"), "x");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-create-error")).toBeTruthy(),
+    );
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("submits when Enter is pressed inside the name field", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_z", name: "via-enter" },
+    });
+    await renderDialog();
+    await user.type(screen.getByTestId("workspace-name-input"), "via-enter{Enter}");
+    await waitFor(() =>
+      expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "via-enter" }),
+    );
+  });
+
+  it("Cancel closes the dialog without calling the action", async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = await renderDialog();
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(createWorkspaceActionMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a second Enter submit while the first is still in flight", async () => {
+    const user = userEvent.setup();
+    let release: (v: unknown) => void = () => {};
+    createWorkspaceActionMock.mockImplementationOnce(
+      () => new Promise((r) => { release = r; }), // stays pending until released
+    );
+    await renderDialog();
+    const input = screen.getByTestId("workspace-name-input");
+    await user.type(input, "ws{Enter}"); // first submit → useTransition pending
+    await user.type(input, "{Enter}"); // second Enter hits the `if (pending) return` guard
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+    release({ ok: true, data: { workspace_id: "ws_p", name: "ws" } });
+  });
+
+  it("clears a typed-but-unsaved name when the dialog closes, so a reopen starts fresh", async () => {
+    const user = userEvent.setup();
+    const { default: CreateWorkspaceDialog } = await import(
+      "../components/layout/CreateWorkspaceDialog"
+    );
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    await user.type(screen.getByTestId("workspace-name-input"), "draft-name");
+    expect(
+      (screen.getByTestId("workspace-name-input") as HTMLInputElement).value,
+    ).toBe("draft-name");
+    // Close (open→false): the effect cleanup resets the form while the
+    // component stays mounted.
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: false, onOpenChange } as never),
+    );
+    // Reopen: the name field is blank again, not the abandoned "draft-name".
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    expect(
+      (screen.getByTestId("workspace-name-input") as HTMLInputElement).value,
+    ).toBe("");
+  });
+
+  it("drops a stale error when the dialog closes, so a reopen starts clean", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: false,
+      errorCode: "UZ-AUTH-401",
+      error: "Missing tenant context on session",
+    });
+    const { default: CreateWorkspaceDialog } = await import(
+      "../components/layout/CreateWorkspaceDialog"
+    );
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    await user.type(screen.getByTestId("workspace-name-input"), "x");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-create-error")).toBeTruthy(),
+    );
+    // Close then reopen: the cleanup must drop the error banner, not carry the
+    // failed-attempt message into a fresh session.
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: false, onOpenChange } as never),
+    );
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    expect(screen.queryByTestId("workspace-create-error")).toBeNull();
   });
 });

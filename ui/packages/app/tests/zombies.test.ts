@@ -480,7 +480,10 @@ describe("zombies routes", () => {
     render(React.createElement(Loading));
     const el = screen.getByRole("status");
     expect(el.textContent).toContain("Loading zombies");
-    expect(el.querySelector("[data-icon=Loader2Icon]")).toBeTruthy();
+    // Branded WakePulse dot (data-live), not the off-system Loader2Icon spin.
+    const dot = el.querySelector("[data-live]");
+    expect(dot).toBeTruthy();
+    expect(dot?.className).toContain("bg-pulse");
   });
 
   it("zombies list page redirects to /sign-in when no token", async () => {
@@ -683,62 +686,38 @@ describe("zombies routes", () => {
     expect(markup).toContain("platform-ops");
     expect(markup).not.toContain("Balance exhausted");
   });
-});
 
-// ── Panel interactions (real DOM) ──────────────────────────────────────────
-
-describe("TriggerPanel interactions", () => {
-  it("shows webhook URL by default, copy button calls clipboard and toggles state", async () => {
-    const { default: TriggerPanel } = await import(
-      "../app/(dashboard)/zombies/[id]/components/TriggerPanel"
+  it("zombies detail page degrades to empty when the events + approvals fetches fail (catch branches)", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) throw new Error("approvals down");
+      if (url.includes("/events")) throw new Error("events down");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
+          total: 1,
+        }),
+      };
+    });
+    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
     );
-    render(React.createElement(TriggerPanel, { zombieId: "zom_abc" }));
-
-    expect(screen.getByTestId("webhook-url").textContent).toBe(
-      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
-    );
-    // fireEvent.click instead of userEvent.click — user-event v14 installs its
-    // own clipboard shim that hides the navigator.clipboard spy this test sets.
-    fireEvent.click(screen.getByRole("button", { name: /copy webhook url/i }));
-    expect(clipboardWriteText).toHaveBeenCalledWith(
-      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
-    );
-    await waitFor(() =>
-      expect(
-        screen.getByRole("button", { name: /copy webhook url/i }).textContent,
-      ).toMatch(/Copied/),
-    );
-  });
-
-  it("copy handler swallows clipboard API rejection without throwing", async () => {
-    clipboardWriteText.mockRejectedValueOnce(new Error("denied"));
-    const { default: TriggerPanel } = await import(
-      "../app/(dashboard)/zombies/[id]/components/TriggerPanel"
-    );
-    render(React.createElement(TriggerPanel, { zombieId: "zom_abc" }));
-    // Should not throw even though clipboard rejects.
-    fireEvent.click(screen.getByRole("button", { name: /copy webhook url/i }));
-    expect(clipboardWriteText).toHaveBeenCalled();
-    // Let the rejected promise settle so the try/catch branch completes.
-    await Promise.resolve();
-    // State stays un-toggled — still the Copy icon/label.
-    expect(screen.getByRole("button", { name: /copy webhook url/i }).textContent).toMatch(
-      /Copy/,
-    );
-  });
-
-  it("switching to schedule tab reveals the CLI-only placeholder", async () => {
-    const { default: TriggerPanel } = await import(
-      "../app/(dashboard)/zombies/[id]/components/TriggerPanel"
-    );
-    const user = userEvent.setup();
-    render(React.createElement(TriggerPanel, { zombieId: "zom_abc" }));
-
-    await user.click(screen.getByRole("tab", { name: /schedule \(cron\)/i }));
-    expect(screen.getByText(/Cron scheduling is CLI-only/i)).toBeTruthy();
-    expect(screen.queryByTestId("webhook-url")).toBeNull();
+    // The zombie still renders; the failed events + approvals calls degrade
+    // to empty via their `.catch` arms (the events list shows its empty state).
+    expect(markup).toContain("platform-ops");
+    expect(markup).toContain("No events yet");
   });
 });
+
+// TriggerPanel coverage moved to a co-located test file with the
+// per-trigger accordion rewrite (`components/TriggerPanel.test.tsx`).
+// The legacy Tabs UI tested in this block no longer exists.
 
 describe("ZombieConfig interactions", () => {
   it("delete flow: confirm dialog → DELETE call → push to /zombies", async () => {

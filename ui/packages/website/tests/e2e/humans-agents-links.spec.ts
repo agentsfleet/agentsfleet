@@ -48,10 +48,18 @@ test.describe("Cross-page link coverage", () => {
       "https://docs.usezombie.com",
     );
 
-    await expect(page.getByTestId("hero-cta-primary")).toHaveAttribute(
-      "href",
-      /docs\.usezombie\.com\/quickstart/,
-    );
+    // The Hero primary CTA is a clipboard-copy button, not a docs anchor.
+    // The docs/quickstart deep link still lives on the home page — it moved
+    // to the final install block's "Start an agent" CTA, asserted in
+    // home.spec.ts "renders final install block actions". Here we just prove
+    // the Hero CTA is the button shape, not an anchor.
+    const heroCtaPrimary = page.getByTestId("hero-cta-primary");
+    await expect(heroCtaPrimary).toHaveJSProperty("tagName", "BUTTON");
+    await expect(heroCtaPrimary).not.toHaveAttribute("href", /./);
+
+    // The Hero promo pill is the home page's link to the inline /pricing anchor.
+    await expect(page.getByTestId("hero-promo-pill")).toHaveAttribute("href", "/pricing");
+
     await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
 
     await assertFooterLinks(page);

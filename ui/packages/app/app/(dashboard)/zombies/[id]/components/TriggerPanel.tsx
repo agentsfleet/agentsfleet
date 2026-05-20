@@ -1,78 +1,243 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CheckIcon, CopyIcon } from "lucide-react";
-import { Button, Tabs, TabsList, TabsTrigger, TabsContent } from "@usezombie/design-system";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+  Button,
+  Card,
+  CardContent,
+  Time,
+  useResettableTimeout,
+} from "@usezombie/design-system";
 import { webhookUrlFor } from "@/lib/api/zombies";
+import type { ZombieTrigger } from "@/lib/types";
+import GuidedTriggerCard, { COPY_RESET_MS } from "./GuidedTriggerCard";
+import CronCard from "./CronCard";
+import { guidanceFor } from "./provider-guidance";
 
-type Props = { zombieId: string };
+type Props = {
+  zombieId: string;
+  triggers?: ZombieTrigger[];
+  /**
+   * Map of trigger-key → epoch-ms of the most-recent delivery for that trigger.
+   * Keys are stable per-trigger ids produced by `triggerKey()`. `null` means
+   * the parent looked but found no delivery; `undefined` means it did not
+   * look at all (no badge rendered).
+   */
+  lastDeliveryByKey?: Record<string, number | null>;
+};
 
-export default function TriggerPanel({ zombieId }: Props) {
+export function triggerKey(t: ZombieTrigger): string {
+  switch (t.type) {
+    case "webhook":
+      return `webhook:${t.source}`;
+    case "cron":
+      return `cron:${t.schedule}`;
+    case "api":
+      return "api";
+  }
+}
+
+function triggerLabel(t: ZombieTrigger): string {
+  switch (t.type) {
+    case "webhook":
+      return `Webhook · ${t.source}`;
+    case "cron":
+      return `Cron · ${t.schedule}`;
+    case "api":
+      return "API ingress";
+  }
+}
+
+export default function TriggerPanel({
+  zombieId,
+  triggers,
+  lastDeliveryByKey,
+}: Props) {
+  const list = useMemo(() => triggers ?? [], [triggers]);
+
+  // Auto-expand the first trigger that has no recorded delivery — that's the
+  // "still in setup" case the operator most wants to see. If every trigger
+  // has delivered, leave the accordion collapsed by default.
+  const initiallyOpen = useMemo(() => {
+    if (list.length === 0) return undefined;
+    const setup = list.find((t) => {
+      const last = lastDeliveryByKey?.[triggerKey(t)];
+      return last === null;
+    });
+    return setup ? triggerKey(setup) : undefined;
+  }, [list, lastDeliveryByKey]);
+
+  const [openValue, setOpenValue] = useState<string | undefined>(undefined);
+  // Defer auto-expand to the client so SSR markup matches a collapsed accordion.
+  useEffect(() => {
+    setOpenValue(initiallyOpen);
+  }, [initiallyOpen]);
+
+  if (list.length === 0) {
+    return <EmptyTriggers zombieId={zombieId} />;
+  }
+
+  return (
+    <Card className="bg-card">
+      <Accordion
+        type="single"
+        collapsible
+        value={openValue}
+        onValueChange={(v) => setOpenValue(v || undefined)}
+        data-testid="trigger-accordion"
+      >
+        {list.map((t) => {
+          const key = triggerKey(t);
+          const last = lastDeliveryByKey?.[key];
+          return (
+            <AccordionItem key={key} value={key} className="px-4 last:border-b-0">
+              <AccordionTrigger className="font-mono text-sm">
+                <span className="flex flex-1 items-center justify-between gap-3 pr-3">
+                  <span data-testid={`trigger-label-${key}`}>{triggerLabel(t)}</span>
+                  <LastDeliveryBadge at={last} />
+                </span>
+              </AccordionTrigger>
+              <AccordionContent className="pb-4">
+                <TriggerBody trigger={t} zombieId={zombieId} lastDeliveryAt={last} />
+              </AccordionContent>
+            </AccordionItem>
+          );
+        })}
+      </Accordion>
+      <CardContent className="text-xs text-muted-foreground">
+        Edit <code className="font-mono">TRIGGER.md</code> and reinstall to change
+        triggers — the source markdown is the source of truth.
+      </CardContent>
+    </Card>
+  );
+}
+
+function TriggerBody({
+  trigger,
+  zombieId,
+  lastDeliveryAt,
+}: {
+  trigger: ZombieTrigger;
+  zombieId: string;
+  lastDeliveryAt: number | null | undefined;
+}) {
+  if (trigger.type === "cron") {
+    return <CronCard trigger={trigger} zombieId={zombieId} />;
+  }
+  if (trigger.type === "webhook") {
+    const guidance = guidanceFor(trigger.source);
+    const url = webhookUrlFor(zombieId, trigger.source);
+    if (!guidance) {
+      return <CopyUrlFallback url={url} source={trigger.source} />;
+    }
+    return (
+      <GuidedTriggerCard
+        trigger={trigger}
+        webhookUrl={url}
+        guidance={guidance}
+        lastDeliveryAt={lastDeliveryAt ?? null}
+      />
+    );
+  }
+  return <CopyUrlFallback url={webhookUrlFor(zombieId)} source="api" />;
+}
+
+function LastDeliveryBadge({ at }: { at: number | null | undefined }) {
+  if (at === undefined) return null;
+  if (at === null) {
+    return (
+      <span
+        className="font-mono text-xs text-muted-foreground"
+        data-testid="last-delivery-badge"
+      >
+        never
+      </span>
+    );
+  }
+  return (
+    <span
+      className="font-mono text-xs text-muted-foreground"
+      data-testid="last-delivery-badge"
+    >
+      <Time value={new Date(at)} format="relative" tooltip={false} />
+    </span>
+  );
+}
+
+// First-class sources get tailored copy. Everything else falls through to the
+// generic "Unknown provider" line. `api` is a declared trigger type; `none`
+// is the empty-triggers sentinel — both render via CopyUrlFallback as the
+// rendering strategy, so calling them "Unknown provider" misleads operators.
+const COPY_URL_FALLBACK_HELPER_TEXT: Record<string, string> = {
+  api: "API ingress — POST events directly to this URL.",
+  none: "Bare webhook URL — POST events here from any service.",
+};
+
+function CopyUrlFallback({ url, source }: { url: string; source: string }) {
   const [copied, setCopied] = useState(false);
-  const url = webhookUrlFor(zombieId);
-
+  const resetTimer = useResettableTimeout();
   async function onCopy() {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
+      resetTimer.start(() => setCopied(false), COPY_RESET_MS);
     } catch {
-      // clipboard API unavailable — no-op, user can select the text
+      // clipboard unavailable
     }
   }
-
+  // Object.hasOwn guard — `source` can be operator-supplied via trigger config;
+  // a bare bracket-access would inherit Object.prototype members (e.g.
+  // `constructor`, `toString`) and render them as helper text.
+  const helperText = Object.hasOwn(COPY_URL_FALLBACK_HELPER_TEXT, source)
+    ? COPY_URL_FALLBACK_HELPER_TEXT[source]
+    : "Unknown provider — paste this URL into any webhook-capable service.";
   return (
-    <div className="rounded-md border border-border bg-card p-4">
-      <Tabs defaultValue="webhook">
-        <TabsList aria-label="Trigger mode">
-          <TabsTrigger value="webhook">Webhook (event-driven)</TabsTrigger>
-          <TabsTrigger value="schedule">Schedule (cron)</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="webhook">
-          <span className="mb-1 block font-mono text-label uppercase tracking-label text-muted-foreground">
-            Webhook URL
-          </span>
-          <div className="flex items-center gap-2">
-            <code
-              data-testid="webhook-url"
-              className="flex-1 rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs break-all"
-            >
-              {url}
-            </code>
-            <Button
-              type="button"
-              onClick={() => { void onCopy(); }}
-              variant="ghost"
-              size="sm"
-              aria-label="Copy webhook URL"
-            >
-              {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-              {copied ? "Copied" : "Copy"}
-            </Button>
-          </div>
-          <p className="mt-3 text-xs text-muted-foreground">
-            Paste this URL into AgentMail, Grafana, Slack Events API, or any
-            webhook-capable service.
-          </p>
-        </TabsContent>
-
-        <TabsContent value="schedule">
-          <div className="rounded-md border border-dashed border-border bg-muted/20 px-4 py-6 text-sm text-muted-foreground">
-            <p className="font-medium text-foreground">
-              Cron scheduling is CLI-only for V1.
-            </p>
-            <p className="mt-1">
-              Use{" "}
-              <code className="font-mono text-xs">
-                zombiectl zombie schedule
-              </code>{" "}
-              for now. A UI editor ships once the backend schedule endpoint
-              is available.
-            </p>
-          </div>
-        </TabsContent>
-      </Tabs>
+    <div className="flex flex-col gap-2" data-testid={`copy-url-fallback-${source}`}>
+      <span className="font-mono text-label uppercase tracking-label text-muted-foreground">
+        Webhook URL
+      </span>
+      <div className="flex items-center gap-2">
+        <code
+          data-testid="webhook-url"
+          className="flex-1 break-all rounded-md border border-border bg-muted/30 px-3 py-2 font-mono text-xs"
+        >
+          {url}
+        </code>
+        <Button
+          type="button"
+          onClick={() => void onCopy()}
+          variant="ghost"
+          size="sm"
+          aria-label="Copy webhook URL"
+        >
+          {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{helperText}</p>
     </div>
+  );
+}
+
+function EmptyTriggers({ zombieId }: { zombieId: string }) {
+  return (
+    <Card className="bg-card" data-testid="trigger-panel-empty">
+      <CardContent className="flex flex-col gap-3 py-4">
+        <p className="font-mono text-label uppercase tracking-label text-muted-foreground">
+          No triggers declared
+        </p>
+        <p className="text-sm text-muted-foreground">
+          Add <code className="font-mono">triggers:</code> entries to{" "}
+          <code className="font-mono">TRIGGER.md</code> and reinstall to wire a
+          webhook or cron trigger.
+        </p>
+        <CopyUrlFallback url={webhookUrlFor(zombieId)} source="none" />
+      </CardContent>
+    </Card>
   );
 }

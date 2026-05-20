@@ -2,8 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2Icon } from "lucide-react";
-import { Alert, Badge, Button, RadioGroup } from "@usezombie/design-system";
+import { Alert, Badge, Button, RadioGroup, Spinner } from "@usezombie/design-system";
 import { resetProviderAction, setProviderSelfManagedAction } from "../actions";
 import type { ActionResult } from "@/lib/actions/with-token";
 import type { CredentialSummary } from "@/lib/api/credentials";
@@ -118,7 +117,7 @@ export default function ProviderSelector({
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={isPending || (isSelfManaged && noCredentials)}>
-          {isPending ? <Loader2Icon size={14} className="animate-spin" aria-hidden /> : null}
+          {isPending ? <Spinner size="sm" srLabel="Saving" /> : null}
           {strategy.submitLabel}
         </Button>
         {state.ok ? (

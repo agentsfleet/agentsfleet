@@ -22,6 +22,7 @@ export default defineConfig({
       'tests/e2e/**',
     ],
     testTimeout: 10000,
+    setupFiles: ['./vitest.setup.ts'],
     // Global DOM environment so every test file can render React components
     // and fire interactions through @testing-library. Node-only tests still
     // work under happy-dom (it provides a superset of the globals they use).
@@ -39,22 +40,17 @@ export default defineConfig({
       ],
       exclude: [
         'lib/types.ts',
-        'components/ui/**',
         'next-env.d.ts',
         'next.config.ts',
         'playwright.config.ts',
         'global.d.ts',
         'proxy.ts',
-        // Dev-only fixture route. ds-button-rsc is a build-time assertion —
-        // its contract is that `next build` does not hoist "use client"
-        // onto the DS Button — not a runtime unit.
-        '**/ds-button-rsc/**',
       ],
       thresholds: {
-        statements: 95,
-        branches: 90,
-        functions: 95,
-        lines: 95,
+        statements: 97,
+        branches: 97,
+        functions: 97,
+        lines: 97,
       },
     },
   },

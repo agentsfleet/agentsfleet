@@ -58,6 +58,8 @@ vi.mock("lucide-react", () => ({
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
   MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
+  ChevronDownIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ChevronDownIcon" }),
+  PlusIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PlusIcon" }),
 }));
 
 type ClickableElement = React.ReactElement<{ children?: React.ReactNode; onClick?: (...args: unknown[]) => unknown }>;
@@ -222,6 +224,36 @@ describe("app components", () => {
     expect(dialog).toBeTruthy();
     expect(dialog.textContent).toContain("Dashboard");
     expect(dialog.textContent).toContain("Zombies");
+    cleanup();
+  });
+
+  it("emits navigation analytics from sidebar, bottom-nav, and header links", async () => {
+    const { default: Shell } = await import("../components/layout/Shell");
+    mocks.usePathname.mockReturnValue("/");
+    const user = userEvent.setup();
+    render(
+      React.createElement(Shell, null, React.createElement("div", null, "content")),
+    );
+    // Sidebar 'Dashboard' is href "/" → the source uses the 'root' branch;
+    // 'Zombies' exercises the path-to-slug replaceAll branch.
+    await user.click(screen.getByText("Dashboard"));
+    await user.click(screen.getByText("Zombies"));
+    // Bottom group: 'Docs' is external (anchor branch), 'Settings' internal.
+    await user.click(screen.getByText("Docs"));
+    await user.click(screen.getByText("Settings"));
+    // Header marketing/docs anchors.
+    await user.click(screen.getByText("docs"));
+    await user.click(screen.getByText("usezombie.com"));
+
+    const sources = mocks.trackNavigationClicked.mock.calls.map(
+      (c) => (c[0] as { source: string }).source,
+    );
+    expect(sources).toContain("app_sidebar_root");
+    expect(sources).toContain("app_sidebar_zombies");
+    expect(sources).toContain("app_sidebar_more_docs");
+    expect(sources).toContain("app_sidebar_more_settings");
+    expect(sources).toContain("app_header_docs");
+    expect(sources).toContain("app_header_marketing");
     cleanup();
   });
 });

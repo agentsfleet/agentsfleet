@@ -34,12 +34,21 @@ export const STAGE_SELF_MANAGED_NANOS = 100_000n;
 export const FREE_TRIAL_END_MS = 1_785_542_400_000n; // 2026-08-01T00:00:00Z
 export const FREE_TRIAL_STAGE_NANOS = 0n;
 
+// Single source of truth for the trial-end *display* string. The pricing
+// banner and the landing hero pill both consume this — drifting the date in
+// one without the other would mis-message customers. The numeric authority
+// is FREE_TRIAL_END_MS above (cross-tier-pinned across Zig + 3 TS surfaces
+// by scripts/audit-cross-tier-rates.sh); this is its display-layer mirror.
+// IMPORTANT: when FREE_TRIAL_END_MS changes, update this string to match —
+// the two are coupled by convention, not by the type system.
+const FREE_TRIAL_END_DISPLAY = "July 31, 2026";
+
 export const RATES_DISPLAY = {
   STARTER_CREDIT: "$5",
   EVENT_RATE: "free",
   STAGE_PLATFORM: "$0.001",
   STAGE_SELF_MANAGED: "$0.0001",
   HEADLINE: "Get early access",
-  FREE_TRIAL_BANNER:
-    "Free until July 31, 2026 — every event receipt and stage execution is on us while we gather traction. Self-managed posture still recommended for production-grade isolation.",
+  FREE_TRIAL_BANNER: `Free until ${FREE_TRIAL_END_DISPLAY} — every event receipt and stage execution is on us while we gather traction. Self-managed posture still recommended for production-grade isolation.`,
+  FREE_TRIAL_PILL: `Free until ${FREE_TRIAL_END_DISPLAY}`,
 } as const;

@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2Icon } from "lucide-react";
 import {
   Alert,
   Button,
@@ -16,6 +15,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  Spinner,
   Textarea,
 } from "@usezombie/design-system";
 import { installZombieAction } from "../actions";
@@ -149,14 +149,7 @@ export default function InstallZombieForm({ workspaceId }: Props) {
             variant="default"
             size="sm"
           >
-            {pending ? (
-              <>
-                <Loader2Icon size={14} className="animate-spin" aria-hidden="true" />
-                Installing…
-              </>
-            ) : (
-              "Install Zombie"
-            )}
+            {pending ? <Spinner size="sm" label="Installing…" /> : "Install Zombie"}
           </Button>
           <Button
             type="button"
