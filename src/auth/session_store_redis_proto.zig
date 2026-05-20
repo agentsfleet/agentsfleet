@@ -15,7 +15,9 @@ const redis_protocol = @import("../queue/redis_protocol.zig");
 pub const VERIFY_AND_CONSUME_LUA: []const u8 = @embedFile("session_verify_consume.lua");
 
 /// Atomic approve: pending → verification_pending in one EVAL so two
-/// dashboard Approve clicks race-free (second one returns 409).
+/// dashboard Approve clicks race-free (second one returns 409). Re-stamps
+/// `expires_at_ms` to match the reset TTL — otherwise the stale create-time
+/// expiry would let a background sweep prune a freshly-approved session.
 pub const APPROVE_LUA: []const u8 =
     \\local blob = redis.call("GET", KEYS[1])
     \\if not blob then return {"missing"} end
@@ -28,6 +30,7 @@ pub const APPROVE_LUA: []const u8 =
     \\s.verification_code_hmac_hex = ARGV[4]
     \\s.clerk_user_id = ARGV[5]
     \\s.approved_at_ms = tonumber(ARGV[6])
+    \\s.expires_at_ms = tonumber(ARGV[6]) + tonumber(ARGV[7]) * 1000
     \\redis.call("SET", KEYS[1], cjson.encode(s), "EX", tonumber(ARGV[7]))
     \\return {"ok"}
 ;

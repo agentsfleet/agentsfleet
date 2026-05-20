@@ -99,6 +99,33 @@ fn expireReplayWindow(
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
+test "approve re-stamps expires_at_ms to the reset TTL window" {
+    const alloc = std.testing.allocator;
+    var client = try connectRedisOrSkip(alloc);
+    defer client.deinit();
+    var store = SessionStore.init(alloc, &client, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+
+    const sid = try store.create(TEST_CLI_PK, TEST_TOKEN_NAME);
+    defer alloc.free(sid);
+    defer delSessionKey(&client, alloc, sid);
+
+    const created_expiry = blk: {
+        var p = (try store.get(sid)).?;
+        defer p.deinit();
+        break :blk p.value.expires_at_ms;
+    };
+
+    try store.approve(sid, TEST_DASH_PK, TEST_CIPHERTEXT, TEST_NONCE, TEST_VERIFICATION_CODE, TEST_CLERK_USER_ID);
+
+    var parsed = (try store.get(sid)).?;
+    defer parsed.deinit();
+    // expires_at_ms must move with the TTL reset at approval, not stay frozen
+    // at create time — else a background sweep could prune the live session.
+    const ttl_ms = @as(i64, @intCast(session_store_redis.SESSION_TTL_SECONDS)) * 1000;
+    try std.testing.expectEqual(parsed.value.approved_at_ms.? + ttl_ms, parsed.value.expires_at_ms);
+    try std.testing.expect(parsed.value.expires_at_ms >= created_expiry);
+}
+
 test "delete is idempotent: first call aborts, second reports already_aborted" {
     const alloc = std.testing.allocator;
     var client = try connectRedisOrSkip(alloc);
