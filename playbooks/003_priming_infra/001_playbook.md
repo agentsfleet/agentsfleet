@@ -351,9 +351,11 @@ For local docker-compose Redis, static credentials are configured in `docker-com
 
 ### 3.3 Clerk — Session Token Customization
 
-Zombied's OIDC verifier strict-checks `aud` against the per-env `OIDC_AUDIENCE` Fly secret. Clerk's *default* session token does not carry `aud`, so the dashboard ran a second JWT shape (the api-template Bearer) through every fetch pre-M74_002 §9. Customizing the session token to add `aud`, `metadata.tenant_id`, `metadata.role` collapses the dashboard's runtime auth to one JWT — the same `useAuth().getToken()` value that `clerkMiddleware()` already reads from the `__session` cookie.
+Zombied's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/auth/jwks.zig` — the audience comparison is skipped when the configured audience is null). Clerk's *default* session token does not carry `aud`, so the dashboard ran a second JWT shape (the api-template Bearer) through every fetch pre-M74_002 §9. Customizing the session token to add `aud`, `metadata.tenant_id`, `metadata.role` collapses the dashboard's runtime auth to one JWT — the same `useAuth().getToken()` value that `clerkMiddleware()` already reads from the `__session` cookie. The tenant-context claims (`metadata.tenant_id` + `metadata.role`) are load-bearing; `aud` becomes load-bearing once `OIDC_AUDIENCE` is set (below).
 
-**Per-env audience:** the `aud` claim MUST equal each env's `OIDC_AUDIENCE` Fly secret. The default split today is `https://api.usezombie.com` (PROD) and `https://api-dev.usezombie.com` (DEV); verify with `fly secrets list -a zombied-{prod,dev} | grep OIDC_AUDIENCE` before applying. A Clerk claim that does not match the Fly secret produces a loud 401 `AudienceMismatch` on every dashboard fetch — failure is fail-closed, never silent.
+**`OIDC_AUDIENCE` is wired in CI, not the vault.** It is set as a per-env literal in the `flyctl secrets set` step (alongside `OIDC_PROVIDER="clerk"`): `deploy-dev.yml` sets `https://api-dev.usezombie.com`, `release.yml` sets `https://api.usezombie.com`. It is **not** a 1Password field — the vault has no `clerk-{dev,prod}/audience`. (Historically `OIDC_AUDIENCE` was unset on both envs, so the aud check was a no-op; M74_002 §9 wires it.)
+
+**Per-env audience — coupling invariant:** the CI `OIDC_AUDIENCE` literal MUST equal the human-entered Clerk D40 `aud` claim for that env, AND the new dashboard code (D45 session-token path) must deploy in the **same** workflow run that sets the secret. Setting `OIDC_AUDIENCE` out-of-band (e.g. a manual `fly secrets set`) against an env still running the old api-template dashboard code will 401 every fetch — the api-template token's `aud` differs from the customized session token's `aud`. The CI step couples secret + image deploy atomically, so the only remaining ordering rule is: **apply the D40 Clerk customization (human) BEFORE the deploy that ships `OIDC_AUDIENCE` + the new code.** A mismatch is fail-closed (loud 401 `AudienceMismatch`), never silent.
 
 **One-time setup (per env, Clerk dashboard — human):**
 
@@ -396,7 +398,7 @@ Clerk dashboard → **Sessions → Customize session token** → **Reset to defa
 | V9.4 — `sid` present | JWT payload has `sid` field | `clerkMiddleware()` continues to validate the cookie |
 | V9.5 — plan gating | Plan tier is Pro+ (Free tier blocks claim customization) | Confirm before scheduling D40 PROD apply |
 
-> **Pre-D40 PROD checklist:** `fly secrets list -a zombied-prod | grep OIDC_AUDIENCE` matches the PROD claim's `aud` value; V9.5 confirmed against current Clerk plan; nkishore@megam.io DEV cookie measured for V9.3 baseline.
+> **Pre-D40 PROD checklist:** (1) the human-entered PROD Clerk `aud` claim equals `https://api.usezombie.com` (the literal `release.yml` sets as `OIDC_AUDIENCE`); (2) the D40 PROD Clerk customization is applied **before** the prod release that ships `OIDC_AUDIENCE` + the new dashboard code; (3) V9.5 confirmed against the current Clerk plan; (4) nkishore@megam.io DEV cookie measured for the V9.3 baseline. Note `OIDC_AUDIENCE` is no longer a vault/`fly secrets`-list item — it's a CI literal, so verify it in `release.yml`, not `fly secrets list`.
 
 ---
 
