@@ -234,3 +234,15 @@ test "computeFingerprintHex differs when any input differs" {
     try testing.expect(!std.mem.eql(u8, &a, &c));
     try testing.expect(!std.mem.eql(u8, &a, &d));
 }
+
+test "computeFingerprintHex resists ip||ua boundary collision" {
+    // Without the 0x00 field separator, ("12","3") and ("1","23") would
+    // both hash `12||3 == 1||23` and collide. The separator makes the
+    // field boundary unambiguous, so the two distinct (ip,ua) pairs must
+    // produce distinct fingerprints for the same sid.
+    var a: [FINGERPRINT_HEX_LEN]u8 = undefined;
+    var b: [FINGERPRINT_HEX_LEN]u8 = undefined;
+    _ = computeFingerprintHex(&a, "12", "3", "sid-1");
+    _ = computeFingerprintHex(&b, "1", "23", "sid-1");
+    try testing.expect(!std.mem.eql(u8, &a, &b));
+}
