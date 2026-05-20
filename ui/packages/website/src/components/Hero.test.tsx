@@ -151,13 +151,44 @@ describe("Hero", () => {
     expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
       /Copied — paste into your terminal/i,
     );
-    // Advance past both the 2 s visible window AND the Toast fade-out
-    // window. The Toast default is 240 ms; we advance 3000 ms to assert
-    // the children have unmounted without coupling to the Toast default.
+    // Toast arms its fade-out unmount timer only after the `visible=false`
+    // render commits, and React flushes that passive effect at the act()
+    // boundary. So cross the 2 s visible window in one act (which arms the
+    // 240 ms unmount timer), then advance through the fade in a second act
+    // to fire it. The two act() boundaries are the synchronization points —
+    // this is deterministic, not a timing race on a single advance.
     await act(async () => {
-      vi.advanceTimersByTime(3000);
+      vi.advanceTimersByTime(2000);
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(1000);
     });
     expect((screen.getByTestId("hero-cta-toast").textContent ?? "").trim()).toBe("");
+  });
+
+  it("keeps the toast text mounted through the fade-out after the visible window ends", async () => {
+    vi.useFakeTimers();
+    installClipboard();
+    renderHero();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("hero-cta-primary"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
+      /Copied — paste into your terminal/i,
+    );
+    // Land inside the fade-out: 2100 ms is past the 2 s visible window (so
+    // `visible` is false and the fade is running) but short of the 240 ms
+    // fade unmount. The text must still be mounted so it fades visibly
+    // rather than snapping to empty the same paint the toast hides — Hero
+    // keeps passing the message after `toast` clears via the last-shown ref.
+    await act(async () => {
+      vi.advanceTimersByTime(2100);
+    });
+    expect(screen.getByTestId("hero-cta-toast").textContent).toMatch(
+      /Copied — paste into your terminal/i,
+    );
   });
 
   it("survives unmount-mid-toast without spurious setState (page-navigate / refresh scenario)", async () => {

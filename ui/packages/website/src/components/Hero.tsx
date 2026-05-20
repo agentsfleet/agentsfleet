@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Button,
@@ -42,8 +42,16 @@ const TOAST_VISIBLE_MS = 2000;
 export default function Hero() {
   const [toast, setToast] = useState<null | "copied" | "manual">(null);
   const toastTimer = useResettableTimeout();
+  // Toast keeps its children mounted through the fade-out window so the
+  // text fades rather than snapping to empty (design-system contract —
+  // Toast.test.tsx "keeps children mounted during the fade window"). Hold
+  // the last shown kind so children + severity stay stable while `visible`
+  // is false and the fade plays; reading `toast` directly would reset both
+  // the same paint it clears.
+  const lastToast = useRef<"copied" | "manual">("copied");
 
   function showToast(kind: "copied" | "manual") {
+    lastToast.current = kind;
     setToast(kind);
     toastTimer.start(() => setToast(null), TOAST_VISIBLE_MS);
   }
@@ -67,6 +75,10 @@ export default function Hero() {
       });
     }
   }
+
+  // During the fade-out (`toast === null`) fall back to the last shown
+  // kind so the message + severity stay put while Toast plays its fade.
+  const shown = toast ?? lastToast.current;
 
   return (
     <section className="site-section" aria-label="Hero" data-testid="hero">
@@ -146,14 +158,12 @@ export default function Hero() {
           </Button>
           <Toast
             visible={toast !== null}
-            severity={toast === "manual" ? "warning" : "info"}
+            severity={shown === "manual" ? "warning" : "info"}
             data-testid="hero-cta-toast"
           >
-            {toast === "copied"
+            {shown === "copied"
               ? "Copied — paste into your terminal"
-              : toast === "manual"
-                ? "Clipboard blocked — select the command above and copy manually"
-                : null}
+              : "Clipboard blocked — select the command above and copy manually"}
           </Toast>
         </div>
 
