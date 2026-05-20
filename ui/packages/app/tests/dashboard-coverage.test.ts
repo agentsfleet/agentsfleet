@@ -227,6 +227,7 @@ vi.mock("lucide-react", () => {
     ReceiptIcon: make("ReceiptIcon"),
     CreditCardIcon: make("CreditCardIcon"),
     ActivityIcon: make("ActivityIcon"),
+    AlertTriangleIcon: make("AlertTriangleIcon"),
   };
 });
 
@@ -563,6 +564,41 @@ describe("placeholder pages", () => {
     const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
+
+  it("billing settings page shows the not-ready empty state when billing is null", async () => {
+    getServerTokenMock.mockResolvedValue("token_billing");
+    getTenantBillingMock.mockResolvedValue(null);
+    listTenantBillingChargesMock.mockResolvedValue({ items: [], next_cursor: null });
+    const { default: Page } = await import("../app/(dashboard)/settings/billing/page");
+    const m = renderToStaticMarkup(await Page());
+    // renderToStaticMarkup escapes the apostrophe in "isn't"; assert on a
+    // stable substring of the not-ready empty state instead.
+    expect(m).toContain("ready yet");
+    expect(m).toContain("still being set up");
+  });
+
+  it("credentials page redirects to /sign-in when no token", async () => {
+    getServerTokenMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    await expect(Page()).rejects.toThrow("redirect:/sign-in");
+  });
+
+  it("credentials page shows the no-workspace empty state", async () => {
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue(null);
+    const { default: Page } = await import("../app/(dashboard)/credentials/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("No workspace yet");
+  });
+
+  it("settings page renders an em-dash when the userId is missing", async () => {
+    getServerAuthMock.mockResolvedValue({ token: "tkn", userId: null });
+    resolveActiveWorkspaceMock.mockResolvedValue({ id: "ws_xyz", name: "Production" });
+    const { default: Page } = await import("../app/(dashboard)/settings/page");
+    const m = renderToStaticMarkup(await Page());
+    expect(m).toContain("ws_xyz");
+    expect(m).toContain("—"); // userId ?? "—"
+  });
 });
 
 // ── Dashboard page (StatusTiles + RecentActivity) ──────────────────────────
@@ -593,17 +629,63 @@ describe("dashboard overview page", () => {
     expect(m).toContain("Dashboard");
   });
 
-  it("StatusTiles computes active/paused/stopped counts from the zombie list", async () => {
-    const { StatusTiles } = (await import("../app/(dashboard)/page")) as unknown as {
-      StatusTiles: () => Promise<React.ReactElement | null>;
-    };
-    // StatusTiles is not exported — invoke indirectly via the whole page in a way
-    // that renders the children. We exercise the same logic by calling listZombies
-    // mock through the page render:
-    const { default: Page } = await import("../app/(dashboard)/page");
-    void StatusTiles;
-    await Page();
-    expect(listZombiesMock).toBeDefined();
+  it("StatusTiles renders Live/Paused/Stopped tiles + balance from the zombie list", async () => {
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    // beforeEach seeds 1 active / 1 paused / 1 stopped; an exhausted balance
+    // exercises the `is_exhausted ? "danger"` truthy arm + `active > 0` sublabel.
+    getTenantBillingMock.mockResolvedValue({
+      balance_nanos: 5 * NANOS_PER_USD,
+      is_exhausted: true,
+      exhausted_at: 1,
+    });
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("Live");
+    expect(m).toContain("Paused");
+    expect(m).toContain("Stopped");
+    expect(m).toContain("$5.00"); // billing present → formatted-balance branch
+
+    // No active zombies → the sublabel ternary takes its undefined arm while
+    // the grid still renders.
+    listZombiesMock.mockResolvedValue({
+      items: [{ id: "z", name: "n", status: "stopped", created_at: "2026-04-22T00:00:00Z" }],
+      total: 1,
+      cursor: null,
+    });
+    getTenantBillingMock.mockResolvedValue(null); // billing null + zombies present → Balance "—"
+    const m2 = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m2).toContain("Stopped");
+    expect(m2).toContain("—"); // billing ? ... : "—" false arm
+  });
+
+  it("StatusTiles shows the first-install free-credit card when there are no zombies", async () => {
+    listZombiesMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+    getTenantBillingMock.mockResolvedValue({
+      balance_nanos: 5 * NANOS_PER_USD,
+      is_exhausted: false,
+      exhausted_at: null,
+    });
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("First wake");
+    expect(m).toContain("free credit"); // credits > 0 copy branch
+  });
+
+  it("StatusTiles first-install copy degrades to the terminal prompt when balance is unknown", async () => {
+    listZombiesMock.mockResolvedValue({ items: [], total: 0, cursor: null });
+    getTenantBillingMock.mockResolvedValue(null); // balance null → credits-null branch
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    const m = renderToStaticMarkup(React.createElement(React.Fragment, null, await StatusTiles()));
+    expect(m).toContain("First wake");
+    expect(m).toContain("Install a zombie from your terminal");
+  });
+
+  it("StatusTiles returns null without a token or an active workspace", async () => {
+    const { StatusTiles } = await import("../app/(dashboard)/page");
+    getServerTokenMock.mockResolvedValue(null);
+    expect(await StatusTiles()).toBeNull();
+    getServerTokenMock.mockResolvedValue("token_abc");
+    resolveActiveWorkspaceMock.mockResolvedValue(null);
+    expect(await StatusTiles()).toBeNull();
   });
 });
 
@@ -1113,5 +1195,19 @@ describe("CreateWorkspaceDialog component", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(createWorkspaceActionMock).not.toHaveBeenCalled();
+  });
+
+  it("ignores a second Enter submit while the first is still in flight", async () => {
+    const user = userEvent.setup();
+    let release: (v: unknown) => void = () => {};
+    createWorkspaceActionMock.mockImplementationOnce(
+      () => new Promise((r) => { release = r; }), // stays pending until released
+    );
+    await renderDialog();
+    const input = screen.getByTestId("workspace-name-input");
+    await user.type(input, "ws{Enter}"); // first submit → useTransition pending
+    await user.type(input, "{Enter}"); // second Enter hits the `if (pending) return` guard
+    expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
+    release({ ok: true, data: { workspace_id: "ws_p", name: "ws" } });
   });
 });

@@ -686,6 +686,33 @@ describe("zombies routes", () => {
     expect(markup).toContain("platform-ops");
     expect(markup).not.toContain("Balance exhausted");
   });
+
+  it("zombies detail page degrades to empty when the events + approvals fetches fail (catch branches)", async () => {
+    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/v1/tenants/me/billing")) {
+        return { ok: true, status: 200, json: async () => happyBilling };
+      }
+      if (url.includes("/approvals")) throw new Error("approvals down");
+      if (url.includes("/events")) throw new Error("events down");
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
+          total: 1,
+        }),
+      };
+    });
+    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
+    const markup = renderToStaticMarkup(
+      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
+    );
+    // The zombie still renders; the failed events + approvals calls degrade
+    // to empty via their `.catch` arms (the events list shows its empty state).
+    expect(markup).toContain("platform-ops");
+    expect(markup).toContain("No events yet");
+  });
 });
 
 // TriggerPanel coverage moved to a co-located test file with the
