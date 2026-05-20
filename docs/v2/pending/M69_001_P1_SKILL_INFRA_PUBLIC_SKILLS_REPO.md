@@ -26,12 +26,39 @@
 
 ---
 
+## PR Intent & comprehension handshake
+
+> The bridge from spec to merged PR — the agent confirms intent before writing code.
+
+- **PR title (eventual):** Move skills to github.com/usezombie/skills; npm drops skills/
+- **Intent (one sentence):** Skill bodies iterate independently of server releases — a push to the skills repo ships a skill, and `npx skills add usezombie/skills` becomes the install path.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). The cross-repo ordering — the new skills repo must be live and public *before* the lead-repo `skills/` deletion lands, or the install path breaks between merges — is the assumption most likely to bite; name it explicitly. A mismatch with the Intent above → STOP and reconcile before any edit.
+
+---
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — universal repo discipline; RULE NLR (touch-it-fix-it on docs that reference the old install path) and RULE ORP (orphan sweep after deletion).
 - **`docs/BUN_RULES.md`** — `zombiectl/package.json` edits.
 - **`docs/EXECUTE_DOC_READS.md`** — `skills/**` and `zombiectl/package.json` edits trigger doc-read rows.
 - Standard set otherwise.
+
+---
+
+## Applicable Gates
+
+> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: `zombiectl/package.json`, `*.md`/`*.mdx` docs, and deletion of `skills/` + the eval dir — no Zig, no UI components, no schema.
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | no | no `*.zig` touched. |
+| PUB / Struct-Shape | no | no Zig surface. |
+| File & Function Length (≤350/≤50/≤70) | no | only a one-line `files:` edit + deletions + `.md` (exempt). |
+| UFS (repeated/semantic literals) | no | the `npx skills add usezombie/skills` string lives in `.md`/JSON, outside the UFS code surface; kept identical by convention. |
+| UI Substitution / DESIGN TOKEN | no | no `*.tsx`/`*.jsx`. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no | none of these surfaces touched. |
+
+Cross-cutting: **RULE ORP / RULE NLR** carry the weight here — the orphan sweep after the `skills/` deletion plus flipping every `usezombie/usezombie` install reference. See Applicable Rules and the Dead Code Sweep.
 
 ---
 
@@ -42,6 +69,16 @@
 **Problem:** Today, every skill body edit requires a PR against the main `usezombie/usezombie` monorepo, runs the full lint + test gauntlet, and waits on `kishore-babysit-prs` greptile cycles before reaching users. Skills are content, not service code — the ceremony is mismatched. M49 chose "skills live in the npm package" for simplicity; in practice this couples skill iteration cadence to server-release cadence.
 
 **Solution summary:** New public repo `github.com/usezombie/skills` becomes the canonical home for every `usezombie-*` skill body and its eval suite. The npm package `@usezombie/zombiectl` drops `skills/` from its `files:` array. Install becomes a two-command flow (already documented as such): `npm install -g @usezombie/zombiectl` for the CLI, `npx skills add usezombie/skills` for the agent skills. Skill iteration ships independently — push to `main` of the skills repo = ship. No tags, no semver, same model as `dotfiles`.
+
+---
+
+## Prior-Art / Reference Implementations
+
+> Mirror a known-good distribution pattern instead of inventing one.
+
+- **Distribution model** → `resend-cli` agent-skills (Implementing-agent read #4): `npx skills add <owner>/<repo>` clones the public GitHub repo and symlinks each top-level skill dir into the host skill dirs. Mirror verbatim.
+- **Release cadence** → the `dotfiles` model: push to `main` = ship; no tags, no semver.
+- **Alignment:** separate-repo + two-command install is the adjacent-project convention (resend, and the broader `npx skills add` ecosystem). No divergence — this PR reverses M49_001's earlier "no separate repo" call to match it.
 
 ---
 
@@ -70,6 +107,14 @@
 | `usezombie-install-platform-ops/evals/**` | CREATE | Migrated from `tests/skill-evals/` here. Test runner: **Bun** (`bun test`) — matches lead repo's `zombiectl/` and `ui/packages/` runners. No vitest, no node:test. |
 | `LICENSE` | CREATE | Match this repo's license. |
 | `.github/workflows/eval.yml` | CREATE | CI runs `npm test` in `evals/` on PRs to main. |
+
+---
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** six ordered slices — new-repo bootstrap → verbatim skill+eval migration → lead-repo deletion → npm `files:` surgery → cross-repo doc sweep → clean-env smoke. The ordering is load-bearing: the skills repo must be live and public before the lead-repo deletion, or the install path breaks between merges.
+- **Alternatives considered:** (a) an automated lead→skills mirror — rejected; it creates the very drift surface §3's outright deletion exists to kill. (b) keep `skills/` in the npm package and only *add* the separate repo — rejected; it doesn't decouple skill-iteration cadence from server-release cadence, which is the entire point.
+- **Patch-vs-refactor verdict:** this is a **refactor** — a distribution-topology change reversing an M49 decision, not a localized fix. The follow-on (third-party skill publishing, a marketplace UI) is named in Out of Scope rather than smuggled in here.
 
 ---
 
@@ -250,6 +295,12 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 ## Verification Evidence
 
 (Filled during VERIFY.)
+
+---
+
+## Discovery (consult log)
+
+**May 14, 2026 — scoped from an Indy Q&A session.** Decision: reverse M49_001's "two-repo distribution (rejected)" and "no new GitHub repos" calls — skills are content, not service code, so coupling their iteration to server-release ceremony is the wrong cadence. Reference surveyed: `resend-cli`'s `npx skills add` agent-skills pattern (the install shape adopted here). Further consults logged here during EXECUTE.
 
 ---
 

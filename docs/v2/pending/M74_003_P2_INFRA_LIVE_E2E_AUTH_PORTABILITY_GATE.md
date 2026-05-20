@@ -37,11 +37,36 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## PR Intent & comprehension handshake
+
+> The bridge from spec to merged PR — the agent confirms intent before writing code.
+
+- **PR title (eventual):** Restore src/auth/ portability gate via named error_registry module
+- **Intent (one sentence):** `make live-e2e-auth` goes green again — `src/auth/` compiles in isolation, proving it stays extractable into a standalone `zombie-auth` binary.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). Two to name: (1) registering a `b.createModule` named module is build wiring, not a new `pub` surface — PUB GATE should not fire; (2) *every* compiling target that pulls `src/auth/middleware/*` must get `error_registry` in its `.imports`, or the main `zig build` breaks. A mismatch with the Intent above → STOP and reconcile before any edit.
+
+---
+
 ## Applicable Rules
 
 - `docs/ZIG_RULES.md` — applies. The fix is a module wiring change; no new pub surface beyond the named-module export.
 - `docs/greptile-learnings/RULES.md` — RULE NLR (touch-it-fix-it) applies if the diff lands near related dead code; RULE NLG forbids legacy framing.
 - `docs/gates/pub-surface.md` — PUB GATE fires on any new `^pub` lines in `build.zig` (none expected — adding a module is not a pub surface change).
+
+---
+
+## Applicable Gates
+
+> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: `build.zig` + two `src/auth/middleware/*.zig` imports + a codebase sweep. Zig only.
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | yes | read `docs/ZIG_RULES.md`; cross-compile both linux targets (`zig build -Dtarget=x86_64-linux` + `-Dtarget=aarch64-linux`) after rewiring. |
+| PUB / Struct-Shape | no | adding a named module via `b.createModule` is build wiring, not a new `pub` decl; confirm no new `^pub` lines in the diff. |
+| File & Function Length (≤350/≤50/≤70) | no | a few additive lines in `build.zig`; the import conversions are 1-for-1. |
+| UFS (repeated/semantic literals) | yes | the module name `"error_registry"` recurs across `build.zig` + every `@import` — name it once as `S_ERROR_REGISTRY`, mirroring `hmac_sig_mod`/`log_mod`, and reference the const. |
+| UI Substitution / DESIGN TOKEN | no | no `*.tsx`/`*.jsx`. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no | wiring `error_registry` as a module touches no `UZ-*` codes, no init/deinit, no schema. |
 
 ---
 
@@ -62,6 +87,15 @@ The portability contract is unchanged in the main binary build (where `src/main.
 
 ---
 
+## Prior-Art / Reference Implementations
+
+> Mirror the existing build-graph pattern exactly — don't invent a new module shape.
+
+- **In-repo** → `build.zig:122-145` — the `hmac_sig_mod` + `log_mod` named-module definitions. The `error_registry` module is a verbatim mirror: `b.createModule(...)` + a `S_*` name const + an `.imports` entry on every consuming target.
+- **Alignment:** no divergence — this restores a pattern the repo already uses for two other shared modules. Not greenfield; the shape is defined at `build.zig:122-145`.
+
+---
+
 ## Files Changed (blast radius)
 
 | File | Action | Why |
@@ -70,6 +104,14 @@ The portability contract is unchanged in the main binary build (where `src/main.
 | `src/auth/middleware/errors.zig` | EDIT | Convert `@import("../../errors/error_registry.zig")` → `@import("error_registry")`. |
 | `src/auth/middleware/tenant_api_key.zig` | EDIT | Same conversion. |
 | (other relative-import sites — discover via grep) | EDIT | Convert for consistency. |
+
+---
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** three slices — register the named module, convert the two violating imports, sweep + verify. Mirrors the existing `hmac_sig_mod`/`log_mod` pattern.
+- **Alternatives considered:** (a) move `error_registry.zig` under `src/auth/` to satisfy the bounded path — rejected; the registry is shared across layers, not auth-specific. (b) relax the portability gate's module boundary — rejected; that defeats the gate's whole purpose (proving `src/auth/` extractability).
+- **Patch-vs-refactor verdict:** this is a **patch** — a localized build-wiring fix restoring a pre-existing invariant that the M62 refactor broke. No architecture change.
 
 ---
 
@@ -86,6 +128,45 @@ Convert both relative imports in `src/auth/middleware/` to named-module form. Ru
 ### §3 — Codebase sweep + lint
 
 `grep -rn '"../.*errors/error_registry.zig"' src/` must return zero matches. Run full `zig build test` to ensure the main binary build still passes.
+
+---
+
+## Interfaces
+
+Build-graph interface — a named module mirroring the existing `hmac_sig_mod` / `log_mod`:
+
+```
+build.zig:
+  const S_ERROR_REGISTRY = "error_registry";
+  const error_registry_mod = b.createModule(.{ .root_source_file = b.path("src/errors/error_registry.zig") });
+  // wired into each consumer's .imports:
+  //   exe · test step · test-auth step → { .name = S_ERROR_REGISTRY, .module = error_registry_mod }
+
+consumer source (src/auth/middleware/*.zig):
+  @import("error_registry")   // replaces @import("../../errors/error_registry.zig")
+```
+
+No HTTP/REST surface, no OpenAPI change, no CLI change. The only public contract is the build-graph module name `error_registry`, shared verbatim across `build.zig` and every consumer.
+
+---
+
+## Failure Modes
+
+| Mode | Cause | Handling |
+|------|-------|----------|
+| `test-auth` still fails "import of file outside module path" | A consumer of `error_registry` was missed when wiring `.imports` | Grep every `@import("../.*errors/error_registry.zig")` site (§3) and confirm each compiling target carries the module in its `.imports`. |
+| Main binary build breaks after rewiring | A source file uses the named import but the exe target lacks the module | Wire the exe consumer in §1 *before* converting imports in §2; `zig build` must stay green throughout. |
+| A future consumer reaches in via a relative path again | A later edit reintroduces the M62-class regression | The restored `make live-e2e-auth` gate catches it in CI; the grep invariant below is the durable guard. |
+| Cross-compile target diverges | A target-specific `.imports` list misses the module | Run both `zig build -Dtarget=x86_64-linux` and `-Dtarget=aarch64-linux` post-rewiring. |
+
+---
+
+## Invariants
+
+1. **`make live-e2e-auth` exits 0** — `src/auth/` compiles in isolation against its bounded module path. Enforced as a CI gate once restored.
+2. **`zig build` and `zig build test` stay green** — the main binary build and unit tests are unaffected by the rewiring.
+3. **Zero relative imports of `error_registry.zig` remain** — enforced by `grep -rn '"../.*errors/error_registry.zig"' src/` returning empty.
+4. **No new `pub` surface** — adding a named module is build wiring; `error_registry`'s own pub surface is unchanged.
 
 ---
 
