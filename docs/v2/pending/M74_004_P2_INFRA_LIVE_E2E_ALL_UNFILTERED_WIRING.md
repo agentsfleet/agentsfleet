@@ -35,10 +35,37 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## PR Intent & comprehension handshake
+
+> The bridge from spec to merged PR — the agent confirms intent before writing code.
+
+- **PR title (eventual):** make live-e2e-all: drop placeholder filters, run full suite
+- **Intent (one sentence):** `make live-e2e-all` runs the full Zig integration suite unfiltered against real Postgres + Redis, so its exit code is real signal instead of a silent 0-tests pass.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). The PLAN-decision to name: §3 drops the backend leg of `dry-smoke`/`_e2e_smoke` — confirm no live caller depends on it before deleting. A mismatch with the Intent above → STOP and reconcile before any edit.
+
+---
+
 ## Applicable Rules
 
 - `docs/greptile-learnings/RULES.md` — RULE NLR (touch-it-fix-it) applies if the diff lands near related dead Makefile recipes; RULE NLG forbids legacy framing.
 - `docs/gates/doc-read.md` — applies to any `*.mk` change touching test/integration infra.
+
+---
+
+## Applicable Gates
+
+> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: `make/acceptance.mk` + the top-level `Makefile` help block. No source files.
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | no | no `*.zig` edited — the recipe *runs* `zig build test`, it doesn't touch Zig source. |
+| PUB / Struct-Shape | no | no Zig surface. |
+| File & Function Length (≤350/≤50/≤70) | no | `.mk`/`Makefile` are outside the length-gate surface; the change net-removes lines. |
+| UFS (repeated/semantic literals) | no | the UFS surface is `*.zig`/`*.ts`/`*.tsx`/`*.js`/`*.jsx`; Makefiles are out of scope. |
+| UI Substitution / DESIGN TOKEN | no | no `*.tsx`/`*.jsx`. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no | none of these surfaces touched. |
+
+Note: editing `Makefile`/`make/*.mk` triggers the pre-commit `check-gh-actions-valid` lane (actionlint + make-target-ref sweep) — keep target references valid after deleting `_zig_test_filter`/`_e2e_backend_smoke`.
 
 ---
 
@@ -56,12 +83,29 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## Prior-Art / Reference Implementations
+
+> Mirror the canonical integration recipe — don't invent a new infra-up shape.
+
+- **In-repo** → `make/test-integration.mk:65-138` — `_test-integration-full` is the canonical pattern: depends on `_reset-test-db` (→ `_ensure-test-infra`), threads `LIVE_DB=1` / `TEST_DATABASE_URL` / `TEST_REDIS_TLS_URL` / `REDIS_URL_API` / `REDIS_TLS_CA_CERT_FILE` into `zig build test`.
+- **Alignment:** no divergence — `_e2e_backend` is rewritten to a `_test-integration-full`-shaped recipe minus the `-Dtest-filter`. Not greenfield; the shape already exists at `make/test-integration.mk:65-138`.
+
+---
+
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
 | `make/acceptance.mk` | EDIT | Delete `BACKEND_E2E_FILTER_*` constants, `_zig_test_filter` primitive, `_e2e_backend_smoke`, `_e2e_smoke` aggregate. Rewrite `_e2e_backend` as a `_test-integration-full`-shape recipe. |
 | `Makefile` (top-level `help` block) | EDIT | Update the `live-e2e-all` help text to reflect "full integration suite unfiltered" framing. |
+
+---
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** three slices — delete the placeholder filter constants, rewrite `_e2e_backend` to the canonical full-suite shape, drop/alias smoke. A targeted Makefile cleanup.
+- **Alternatives considered:** (a) curate a real `live-e2e` subset distinct from `test-integration` — rejected per Indy's call ("run with no filters in the all one"). (b) keep a fast smoke variant of the backend suite — rejected; the integration suite isn't smoke-grade.
+- **Patch-vs-refactor verdict:** this is a **patch** — removing dead filter constants and pointing one recipe at the existing canonical full-suite shape. No new abstraction.
 
 ---
 
@@ -78,6 +122,42 @@ Mirror `_test-integration-full`'s body: depend on `_reset-test-db`, build the sa
 ### §3 — Drop or alias smoke
 
 Captain didn't specify smoke. PLAN-decision: drop `_e2e_smoke` / `dry-smoke`'s backend leg entirely (smoke is for fast UI checks; the integration suite isn't a smoke-grade thing).
+
+---
+
+## Interfaces
+
+Make-target interface — `live-e2e-all` becomes a thin alias over a `_test-integration-full`-shaped recipe:
+
+```
+make live-e2e-all
+  → _e2e_backend                    # rewritten: depends on _reset-test-db (→ _ensure-test-infra)
+      env: LIVE_DB=1, TEST_DATABASE_URL, TEST_REDIS_TLS_URL, REDIS_URL_API, REDIS_TLS_CA_CERT_FILE
+      cmd: zig build test           # NO -Dtest-filter — full integration suite
+
+removed: BACKEND_E2E_FILTER_1..4, BACKEND_E2E_SMOKE_FILTER, _zig_test_filter, _e2e_backend_smoke
+```
+
+No source, HTTP, CLI, or schema interface changes. The contract is the Make target's behavior: `live-e2e-all`'s exit code now reflects the full suite's pass/fail.
+
+---
+
+## Failure Modes
+
+| Mode | Cause | Handling |
+|------|-------|----------|
+| `live-e2e-all` exits 0 with 0 tests run | The defect being fixed — filters matched nothing | Post-rewrite, assert the run count matches `grep -rn 'test "integration:' src/ \| wc -l`; a 0-count run is a failure, not a pass. |
+| Suite can't reach Postgres/Redis | `_e2e_backend` not depending on `_reset-test-db`/`_ensure-test-infra` | Mirror `_test-integration-full`'s dependency chain so containers are guaranteed up before `zig build test`. |
+| DB-backed tests skip silently | `LIVE_DB` not threaded into the env | Thread the full env block (`LIVE_DB=1` + `TEST_DATABASE_URL` + Redis TLS vars), not just `TEST_REDIS_TLS_URL`. |
+| A `dry-smoke` caller breaks | §3 drops the backend leg of smoke | Grep for callers of `_e2e_backend_smoke`/`_e2e_smoke` before deleting; update or remove each. |
+
+---
+
+## Invariants
+
+1. **`live-e2e-all` runs the full integration suite, no `-Dtest-filter`** — enforced by the run-count assertion in Acceptance Criteria.
+2. **The placeholder filter constants are gone** — `grep -nE 'BACKEND_E2E_FILTER|_zig_test_filter' make/` returns empty.
+3. **The suite runs against real infra** — `_reset-test-db` (→ `_ensure-test-infra`) is a hard dependency; the run fails loud if Postgres/Redis are unreachable rather than skipping silently.
 
 ---
 
