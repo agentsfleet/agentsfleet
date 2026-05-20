@@ -1,11 +1,50 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { request } from "./client";
+import { parseRetryAfterHeaderValue, request } from "./client";
 import { ApiError } from "./errors";
 
 const fetchMock = vi.fn();
 vi.stubGlobal("fetch", fetchMock);
 
 afterEach(() => fetchMock.mockReset());
+
+describe("parseRetryAfterHeaderValue", () => {
+  it("converts a numeric delta-seconds string to milliseconds", () => {
+    expect(parseRetryAfterHeaderValue("3")).toBe(3000);
+  });
+
+  it("returns null for a non-numeric string", () => {
+    expect(parseRetryAfterHeaderValue("abc")).toBeNull();
+  });
+
+  it("returns null for a negative number string", () => {
+    expect(parseRetryAfterHeaderValue("-5")).toBeNull();
+  });
+
+  it("returns null for a null header (missing header)", () => {
+    expect(parseRetryAfterHeaderValue(null)).toBeNull();
+  });
+});
+
+describe("BASE origin selection", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+    vi.stubGlobal("fetch", fetchMock); // restore the suite-wide fetch stub
+  });
+
+  it("routes through the same-origin /backend proxy in the browser", async () => {
+    const mod = await import("./client");
+    expect(mod.BASE).toBe("/backend"); // happy-dom defines window
+  });
+
+  it("targets the absolute API origin on the server (window undefined)", async () => {
+    vi.resetModules();
+    vi.stubGlobal("window", undefined);
+    const mod = await import("./client");
+    expect(mod.BASE).toBe(mod.API_ORIGIN);
+    expect(mod.BASE).not.toBe("/backend");
+  });
+});
 
 describe("request", () => {
   it("sets bearer auth and Content-Type on every call", async () => {

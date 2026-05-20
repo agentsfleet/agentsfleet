@@ -58,8 +58,13 @@ export const AUTH_APPEARANCE = {
       color: "var(--text)",
     },
     formFieldInput: {
-      backgroundColor: "var(--surface-2)",
-      borderColor: "var(--border)",
+      // Inputs sit ON the --surface-2 card (cardBox above). Filling them
+      // with --surface-2 too left zero luminance delta — the field was
+      // invisible until focused. Drop to --surface-1 (one step toward --bg)
+      // for an inset well, and use --border-strong so the edge reads as a
+      // click target without a focus event.
+      backgroundColor: "var(--surface-1)",
+      borderColor: "var(--border-strong)",
       color: "var(--text)",
     },
     formButtonPrimary: {

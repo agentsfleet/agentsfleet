@@ -8,7 +8,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@usezombie/design-system";
-import { ReceiptIcon, CreditCardIcon } from "lucide-react";
+import { ReceiptIcon, CreditCardIcon, WalletIcon } from "lucide-react";
 import { auth } from "@clerk/nextjs/server";
 import { getTenantBilling, listTenantBillingCharges } from "@/lib/api/tenant_billing";
 import BillingBalanceCard from "./components/BillingBalanceCard";
@@ -25,16 +25,32 @@ export default async function BillingSettingsPage() {
   if (!token) redirect("/sign-in");
 
   // Fetch in parallel — both endpoints are tenant-scoped (bearer-auth) and
-  // independent. listTenantBillingCharges 503s on a fresh tenant with no
-  // events; we tolerate that by falling back to an empty items array so the
-  // page still renders the balance card.
+  // independent. getTenantBilling 500s on a tenant whose signup webhook
+  // never bootstrapped a billing row; listTenantBillingCharges 503s on a
+  // fresh tenant with no events. Catch both so the page renders an
+  // explanatory empty state instead of Next's error page.
   const [billing, chargesResp] = await Promise.all([
-    getTenantBilling(token),
+    getTenantBilling(token).catch(() => null),
     listTenantBillingCharges(token, { limit: 50 }).catch(() => ({
       items: [],
       next_cursor: null,
     })),
   ]);
+
+  if (!billing) {
+    return (
+      <div className="space-y-8">
+        <PageHeader>
+          <PageTitle>Billing</PageTitle>
+        </PageHeader>
+        <EmptyState
+          icon={<WalletIcon size={28} />}
+          title="Billing isn't ready yet"
+          description="Your tenant is still being set up. Refresh in a moment; if this persists, contact support."
+        />
+      </div>
+    );
+  }
 
   const events = groupChargesByEvent(chargesResp.items);
   const initialCursor = chargesResp.next_cursor;

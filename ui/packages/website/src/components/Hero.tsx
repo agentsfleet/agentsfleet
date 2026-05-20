@@ -1,7 +1,16 @@
+import { useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Button, LogLine, Terminal, WakePulse } from "@usezombie/design-system";
-import { DOCS_QUICKSTART_URL } from "../config";
+import {
+  Button,
+  LogLine,
+  Terminal,
+  Toast,
+  WakePulse,
+  useResettableTimeout,
+} from "@usezombie/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
+import { INSTALL_COMMAND } from "../config";
+import { RATES_DISPLAY } from "../lib/rates";
 
 // Plain-text payload for the clipboard. Visible terminal renders
 // each line through <LogLine severity=...> so the prompt, debug
@@ -14,21 +23,63 @@ const HERO_INSTALL_TRANSCRIPT = `$ claude /usezombie-install-platform-ops
 ✓ webhook registered github.com/your-org/your-repo
 › awaiting first event...`;
 
+const TOAST_VISIBLE_MS = 2000;
+
 /*
  * Marketing hero — Mockup A canonical shape (DESIGN_SYSTEM.md preview.html).
  *
  *   eyebrow:  <WakePulse live> + LIVE label (mono, uppercase)
  *   headline: mono, two-line, "memorable thing" voice
  *   lede:     sans body, max 640px
- *   ctas:     primary install + default replay
+ *   ctas:     terminal-style install button + ghost replay link
  *   cli:      inline <Terminal> showing the install transcript
  *
- * No decorative hero illustration, proof grid, or animated gradient — the
- * dot-grid background (in styles.css) plus the eyebrow pulse carry all
- * visual life on this surface. --pulse currency rule honoured: it appears
- * exactly once on this page, on the live eyebrow indicator.
+ * Primary CTA copies the bootstrap one-liner, surfaces an inline
+ * design-system <Toast>, and smooth-scrolls down to the OnboardingFlow
+ * anchor on the same page (#onboarding-flow). No portal — the toast
+ * lives in the hero's own DOM so it ships under the same a11y tree.
  */
 export default function Hero() {
+  const [toast, setToast] = useState<null | "copied" | "manual">(null);
+  const toastTimer = useResettableTimeout();
+  // Toast keeps its children mounted through the fade-out window so the
+  // text fades rather than snapping to empty (design-system contract —
+  // Toast.test.tsx "keeps children mounted during the fade window"). Hold
+  // the last shown kind so children + severity stay stable while `visible`
+  // is false and the fade plays; reading `toast` directly would reset both
+  // the same paint it clears.
+  const lastToast = useRef<"copied" | "manual">("copied");
+
+  function showToast(kind: "copied" | "manual") {
+    lastToast.current = kind;
+    setToast(kind);
+    toastTimer.start(() => setToast(null), TOAST_VISIBLE_MS);
+  }
+
+  async function onInstallClick() {
+    trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
+    try {
+      await navigator.clipboard.writeText(INSTALL_COMMAND);
+      showToast("copied");
+    } catch {
+      showToast("manual");
+    }
+    const target = document.getElementById("onboarding-flow");
+    if (target) {
+      const prefersReducedMotion =
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      target.scrollIntoView({
+        behavior: prefersReducedMotion ? "auto" : "smooth",
+        block: "start",
+      });
+    }
+  }
+
+  // During the fade-out (`toast === null`) fall back to the last shown
+  // kind so the message + severity stay put while Toast plays its fade.
+  const shown = toast ?? lastToast.current;
+
   return (
     <section className="site-section" aria-label="Hero" data-testid="hero">
       <div className="wrap flex flex-col gap-8">
@@ -43,6 +94,25 @@ export default function Hero() {
           />
           LIVE — wake.on.event
         </p>
+
+        <Link
+          to="/pricing"
+          onClick={() =>
+            trackNavigationClicked({
+              source: "hero_promo_pill",
+              surface: "hero",
+              target: "pricing",
+            })
+          }
+          className="inline-flex w-fit items-center gap-2 rounded-full bg-card border border-border px-3 py-1 text-sm font-mono text-text hover:text-text transition-colors"
+          data-testid="hero-promo-pill"
+        >
+          <span className="rounded-full bg-evidence text-background px-2 py-0.5 text-xs uppercase tracking-eyebrow font-medium">
+            Promo
+          </span>
+          {RATES_DISPLAY.FREE_TRIAL_PILL}
+          <span aria-hidden="true">→</span>
+        </Link>
 
         <h1
           className="font-mono text-fluid-hero leading-display-xl tracking-display-xl font-medium text-text"
@@ -60,15 +130,17 @@ export default function Hero() {
         </p>
 
         <div className="flex flex-wrap gap-3 items-center">
-          <Button asChild data-testid="hero-cta-primary">
-            <a
-              href={DOCS_QUICKSTART_URL}
-              onClick={() =>
-                trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" })
-              }
-            >
-              → get early access
-            </a>
+          <Button
+            type="button"
+            onClick={() => void onInstallClick()}
+            data-testid="hero-cta-primary"
+            className="font-mono"
+            aria-label="Copy the install command and scroll to onboarding"
+          >
+            <span className="text-pulse" aria-hidden="true">
+              $
+            </span>{" "}
+            {INSTALL_COMMAND}
           </Button>
           <Button asChild variant="ghost" data-testid="hero-cta-secondary">
             <Link
@@ -84,6 +156,15 @@ export default function Hero() {
               view a real wake (replay)
             </Link>
           </Button>
+          <Toast
+            visible={toast !== null}
+            severity={shown === "manual" ? "warning" : "info"}
+            data-testid="hero-cta-toast"
+          >
+            {shown === "copied"
+              ? "Copied — paste into your terminal"
+              : "Clipboard blocked — select the command above and copy manually"}
+          </Toast>
         </div>
 
         <Terminal

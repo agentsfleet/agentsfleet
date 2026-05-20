@@ -13,6 +13,7 @@ import ZombieThreadDynamic from "@/components/domain/ZombieThreadDynamic";
 import TriggerPanel from "./components/TriggerPanel";
 import ZombieConfig from "./components/ZombieConfig";
 import KillSwitch from "./components/KillSwitch";
+import { resolveLastDeliveries } from "./components/last-delivery";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,18 @@ export default async function ZombieDetailPage({
     listApprovals(workspace.id, token, { zombieId: id, limit: 50 }).catch(() => ({ items: [], next_cursor: null })),
   ]);
   if (!zombie) notFound();
+
+  // Per-trigger "last delivery" lookup. One lightweight server-side call
+  // per declared trigger, in parallel; failures degrade to `null` (the
+  // TriggerPanel renders "never"). Webhook actors are namespaced as
+  // `webhook:<source>:*`; cron as `cron:*`.
+  const triggerList = zombie.triggers ?? [];
+  const lastDeliveryByKey = await resolveLastDeliveries(
+    workspace.id,
+    id,
+    token,
+    triggerList,
+  );
   // Exact count up to the page size; "50+" past that. The Approvals panel
   // below paginates the full list — the badge is just a glance signal.
   const hasPending = pendingApprovals.items.length > 0;
@@ -71,7 +84,11 @@ export default async function ZombieDetailPage({
       <Section asChild>
         <section aria-label="Trigger">
           <SectionLabel>Trigger</SectionLabel>
-          <TriggerPanel zombieId={zombie.id} />
+          <TriggerPanel
+            zombieId={zombie.id}
+            triggers={triggerList}
+            lastDeliveryByKey={lastDeliveryByKey}
+          />
         </section>
       </Section>
 

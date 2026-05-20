@@ -31,6 +31,18 @@ describe("Pagination (cursor variant)", () => {
     render(<Pagination kind="cursor" nextCursor="abc" onNext={() => {}} />);
     expect(screen.getByTestId("pagination-cursor").className).toContain("flex-wrap");
   });
+
+  it("does not call onNext when the cursor is an empty string (enabled-but-empty guard)", () => {
+    // Empty string !== null, so the button is NOT exhausted/disabled, yet the
+    // `if (nextCursor)` guard is falsy — clicking must be a no-op.
+    const onNext = vi.fn();
+    render(<Pagination kind="cursor" nextCursor="" onNext={onNext} />);
+    const btn = screen.getByRole("button", { name: "Load more items" });
+    expect(btn).not.toBeDisabled();
+    expect(screen.getByText("Load more")).toBeInTheDocument();
+    fireEvent.click(btn);
+    expect(onNext).not.toHaveBeenCalled();
+  });
 });
 
 describe("Pagination (page variant)", () => {

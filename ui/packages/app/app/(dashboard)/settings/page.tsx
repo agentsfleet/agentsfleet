@@ -25,16 +25,16 @@ export default async function SettingsPage() {
   const workspace = await resolveActiveWorkspace(token);
 
   return (
-    <div>
+    <div className="space-y-8">
       <PageHeader>
         <PageTitle>Settings</PageTitle>
       </PageHeader>
 
-      <div className="grid gap-6 md:grid-cols-2 max-w-4xl">
-        <Section asChild>
+      <div className="grid grid-cols-1 gap-6 max-w-4xl md:grid-cols-2">
+        <Section asChild className="min-w-0">
           <section aria-label="Workspace">
             <SectionLabel>Workspace</SectionLabel>
-            <DescriptionList className="mt-3">
+            <DescriptionList className="mt-3 break-all">
               <div>
                 <DescriptionTerm>Name</DescriptionTerm>
                 <DescriptionDetails>{workspace?.name ?? "—"}</DescriptionDetails>
@@ -50,7 +50,7 @@ export default async function SettingsPage() {
             </DescriptionList>
           </section>
         </Section>
-        <Section asChild>
+        <Section asChild className="min-w-0">
           <section aria-label="Settings index">
             <SectionLabel>More settings</SectionLabel>
             <List variant="plain" className="mt-3">

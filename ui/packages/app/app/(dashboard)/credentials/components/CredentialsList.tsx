@@ -2,8 +2,8 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, ConfirmDialog } from "@usezombie/design-system";
-import { Loader2Icon, Trash2Icon } from "lucide-react";
+import { Button, ConfirmDialog, Spinner } from "@usezombie/design-system";
+import { Trash2Icon } from "lucide-react";
 import { deleteCredentialAction } from "../actions";
 import type { CredentialSummary } from "@/lib/api/credentials";
 import { presentErrorString } from "@/lib/errors";
@@ -66,7 +66,7 @@ export default function CredentialsList({ workspaceId, credentials }: Props) {
             aria-label={`Delete credential ${c.name}`}
           >
             {pending && target === c.name ? (
-              <Loader2Icon size={14} className="animate-spin" />
+              <Spinner size="sm" srLabel="Deleting" />
             ) : (
               <Trash2Icon size={14} />
             )}

@@ -280,3 +280,48 @@ describe("denyApproval", () => {
     }
   });
 });
+
+// On the server (no `window`) the resolve fetch targets the absolute API
+// base instead of the `/backend` proxy. afterEach's unstubAllGlobals
+// restores `window`; the env var is restored explicitly.
+describe("resolve base URL — server-side (window undefined)", () => {
+  function resolved() {
+    return jsonResponse({
+      gate_id: GATE_ID,
+      action_id: "a",
+      outcome: "approved",
+      resolved_at: 1,
+      resolved_by: "user:x",
+    });
+  }
+
+  it("uses NEXT_PUBLIC_API_URL when set", async () => {
+    vi.stubGlobal("window", undefined);
+    const prev = process.env.NEXT_PUBLIC_API_URL;
+    process.env.NEXT_PUBLIC_API_URL = "https://api-test.usezombie.com";
+    try {
+      fetchMock.mockResolvedValueOnce(resolved());
+      await approveApproval(WORKSPACE_ID, GATE_ID, TOKEN);
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toBe(`https://api-test.usezombie.com${PATH_PREFIX}/${GATE_ID}:approve`);
+    } finally {
+      if (prev === undefined) delete process.env.NEXT_PUBLIC_API_URL;
+      else process.env.NEXT_PUBLIC_API_URL = prev;
+    }
+  });
+
+  it("falls back to the default API base when NEXT_PUBLIC_API_URL is unset", async () => {
+    vi.stubGlobal("window", undefined);
+    const prev = process.env.NEXT_PUBLIC_API_URL;
+    delete process.env.NEXT_PUBLIC_API_URL;
+    try {
+      fetchMock.mockResolvedValueOnce(resolved());
+      await denyApproval(WORKSPACE_ID, GATE_ID, TOKEN);
+      const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
+      expect(url).toContain("usezombie.com");
+      expect(url).not.toContain(BACKEND_BASE);
+    } finally {
+      if (prev !== undefined) process.env.NEXT_PUBLIC_API_URL = prev;
+    }
+  });
+});

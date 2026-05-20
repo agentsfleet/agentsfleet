@@ -47,6 +47,7 @@ vi.mock("lucide-react", () => ({
   KeyRoundIcon: () => React.createElement("svg", { "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: () => React.createElement("svg", { "data-icon": "CheckCircle2Icon" }),
   MenuIcon: () => React.createElement("svg", { "data-icon": "MenuIcon" }),
+  ChevronDownIcon: () => React.createElement("svg", { "data-icon": "ChevronDownIcon" }),
 }));
 
 vi.mock("@/lib/workspace", () => ({
