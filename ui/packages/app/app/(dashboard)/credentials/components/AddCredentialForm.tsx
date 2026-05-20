@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Loader2Icon } from "lucide-react";
 import {
   Button,
   Form,
@@ -16,6 +15,7 @@ import {
   FormLabel,
   FormMessage,
   Input,
+  Spinner,
   Textarea,
 } from "@usezombie/design-system";
 import { createCredentialAction } from "../actions";
@@ -140,7 +140,7 @@ export default function AddCredentialForm({ workspaceId }: Props) {
         />
         {apiError ? <p className="text-sm text-destructive">{apiError}</p> : null}
         <Button type="submit" disabled={pending}>
-          {pending ? <Loader2Icon size={14} className="mr-2 animate-spin" /> : null}
+          {pending ? <Spinner size="sm" srLabel="Storing" /> : null}
           Store credential
         </Button>
       </form>

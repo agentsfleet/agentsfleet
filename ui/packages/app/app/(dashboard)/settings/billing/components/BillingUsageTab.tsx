@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ActivityIcon, Loader2Icon } from "lucide-react";
+import { ActivityIcon } from "lucide-react";
 import {
   Alert,
   Badge,
   Button,
   DataTable,
   EmptyState,
+  Spinner,
   type DataTableColumn,
 } from "@usezombie/design-system";
 import { listTenantBillingChargesAction } from "../actions";
@@ -121,7 +122,7 @@ export default function BillingUsageTab({
             disabled={pending}
             data-testid="usage-load-more"
           >
-            {pending ? <Loader2Icon size={12} className="animate-spin" aria-hidden /> : null}
+            {pending ? <Spinner size="sm" srLabel="Loading" /> : null}
             Load more
           </Button>
         ) : (

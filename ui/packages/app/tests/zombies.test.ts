@@ -480,7 +480,10 @@ describe("zombies routes", () => {
     render(React.createElement(Loading));
     const el = screen.getByRole("status");
     expect(el.textContent).toContain("Loading zombies");
-    expect(el.querySelector("[data-icon=Loader2Icon]")).toBeTruthy();
+    // Branded WakePulse dot (data-live), not the off-system Loader2Icon spin.
+    const dot = el.querySelector("[data-live]");
+    expect(dot).toBeTruthy();
+    expect(dot?.className).toContain("bg-pulse");
   });
 
   it("zombies list page redirects to /sign-in when no token", async () => {

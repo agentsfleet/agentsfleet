@@ -84,7 +84,8 @@ No server-side surface touched. No new HTTP endpoints. No schema changes. No new
 | `ui/packages/website/src/lib/rates.ts` | EDIT | §7 | Add `RATES_DISPLAY.FREE_TRIAL_PILL` (short pill string) sharing the date with `FREE_TRIAL_BANNER` via a private `FREE_TRIAL_END_DISPLAY` substring. |
 | `ui/packages/website/src/lib/rates.test.ts` | EDIT | §7 | Pin pill / banner share a single date substring; pin pill text format. |
 | `ui/packages/app/lib/clerkAppearance.ts` (+ `.test.ts`) | EDIT / NEW | §8 | `formFieldInput` gets `--surface-1` fill + `--border-strong` so inputs separate from the card. |
-| `ui/packages/app/app/(dev)/ds-button-rsc/page.tsx` | EDIT | §9 | Prod `notFound()` guard — close public surface, keep build-time RSC assertion. |
+| `ui/packages/app/app/(dev)/ds-button-rsc/page.tsx` | DELETE | §9 | Remove public dev route; Button RSC-safety covered by real server-component usage. |
+| `ui/packages/app/vitest.config.ts` | EDIT | §9 | Drop the now-dead `**/ds-button-rsc/**` coverage exclude. |
 | `ui/packages/design-system/src/design-system/Spinner.tsx` (+ `.test.tsx`, index export) | NEW | §10 | Branded `WakePulse` spinner; swap `Loader2Icon` spinner sites. |
 | `ui/packages/app/app/(dashboard)/zombies/loading.tsx` + inline `Loader2Icon` spinner sites | EDIT | §10 | Use `Spinner`. Skeleton placeholders untouched. |
 | `ui/packages/app/lib/api/workspaces.ts` | EDIT | §11 | Add `createTenantWorkspace(token, {name?})`. |
@@ -284,15 +285,15 @@ The four cards (verbatim from M68 §G5):
 
 **Acceptance:** `clerkAppearance.test.ts` (new or extended) asserts `formFieldInput.backgroundColor !== cardBox.backgroundColor` (the regression that caused the bug) and that `formFieldInput.borderColor` is set.
 
-### §9 — Close `/ds-button-rsc` production exposure (keep the build guard)
+### §9 — Remove `/ds-button-rsc` dev route
 
 **Problem:** `app/(dev)/ds-button-rsc/page.tsx` is a public, unauthenticated route that ships to production and is reachable by URL.
 
-**Discovery correction:** the audit first read this as a deletable demo. It is not — `vitest.config.ts:49-52` documents it as a **build-time assertion**: the contract is that `next build` does not hoist `"use client"` onto the design-system `Button` (the RSC-safe contract). Deleting the route would drop that regression guard. So the fix is to **keep the fixture but remove the production surface**, not delete it.
+**Decision (Captain, May 20, 2026):** delete it. An interim gate (`notFound()` in production, keep the build fixture) was considered because `vitest.config.ts` documented the route as a build-time RSC-safe assertion for the design-system `Button`. The Captain directed full removal. Verified the guard is **redundant**: `Button` carries no `"use client"` directive (RSC-safe by construction) and is already rendered in real server components — `settings/billing/components/BillingBalanceCard.tsx` and `approvals/[gateId]/page.tsx` — so the contract stays exercised by production code without a dedicated fixture.
 
-**What lands:** a `process.env.NODE_ENV === "production" → notFound()` guard at the top of the page. The module is still always compiled, so the `next build` "no use-client hoist" assertion still runs; the route just 404s in production. `notFound()` is a server-safe call and introduces no client-ness, so the RSC contract is unaffected.
+**What lands:** delete the `app/(dev)/` route group, its dev-fixture test, and the now-dead `**/ds-button-rsc/**` coverage exclude in `vitest.config.ts`.
 
-**Acceptance:** the page renders in dev/test, `notFound()`s in production; the `vitest.config.ts` coverage-exclude for `**/ds-button-rsc/**` stays (it remains a build fixture, not a runtime unit).
+**Acceptance:** `find app/\(dev\)` returns nothing; `grep -rn ds-button-rsc app vitest.config.ts` returns nothing; app tests + typecheck stay green (Button RSC usage in BillingBalanceCard / approvals detail still compiles).
 
 ### §10 — Branded loader (`Spinner` via `WakePulse`)
 
@@ -429,7 +430,7 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 | Test | Asserts |
 |------|---------|
 | `test_clerk_appearance_input_distinct_from_card` | `AUTH_APPEARANCE.elements.formFieldInput.backgroundColor !== cardBox.backgroundColor` and `formFieldInput.borderColor` is set (§8 regression pin). |
-| `test_dev_route_prod_guarded` | `ds-button-rsc` page calls `notFound()` when `NODE_ENV==="production"`; renders the Button fixture otherwise (§9). |
+| `test_dev_route_removed` | `app/(dev)/ds-button-rsc` does not exist; no `ds-button-rsc` reference in `app/` or `vitest.config.ts` (§9). |
 | `test_spinner_renders_pulse_status` | `Spinner` renders the WakePulse element with `role="status"` + `aria-busy` (§10). |
 | `test_workspace_switcher_new_workspace_item` | WorkspaceSwitcher renders a "New workspace" item that opens the create dialog (§11). |
 | `test_create_workspace_action_happy_path` | `createTenantWorkspace` POSTs `{name?}`, returns `{workspace_id,name}`, switches active cookie (§11). |
