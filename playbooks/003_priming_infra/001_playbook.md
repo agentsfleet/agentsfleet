@@ -355,7 +355,15 @@ Zombied's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/
 
 **`OIDC_AUDIENCE` is wired in CI, not the vault.** It is set as a per-env literal in the `flyctl secrets set` step (alongside `OIDC_PROVIDER="clerk"`): `deploy-dev.yml` sets `https://api-dev.usezombie.com`, `release.yml` sets `https://api.usezombie.com`. It is **not** a 1Password field — the vault has no `clerk-{dev,prod}/audience`. (Historically `OIDC_AUDIENCE` was unset on both envs, so the aud check was a no-op; M74_002 §9 wires it.)
 
-**Per-env audience — coupling invariant:** the CI `OIDC_AUDIENCE` literal MUST equal the human-entered Clerk D40 `aud` claim for that env, AND the new dashboard code (D45 session-token path) must deploy in the **same** workflow run that sets the secret. Setting `OIDC_AUDIENCE` out-of-band (e.g. a manual `fly secrets set`) against an env still running the old api-template dashboard code will 401 every fetch — the api-template token's `aud` differs from the customized session token's `aud`. The CI step couples secret + image deploy atomically, so the only remaining ordering rule is: **apply the D40 Clerk customization (human) BEFORE the deploy that ships `OIDC_AUDIENCE` + the new code.** A mismatch is fail-closed (loud 401 `AudienceMismatch`), never silent.
+**Per-env audience — three surfaces must agree.** zombied checks `aud` on every bearer it receives, no matter which Clerk mechanism minted it. Three places carry the per-env audience and MUST hold the same value for that env:
+
+1. **`OIDC_AUDIENCE`** — the CI literal in `deploy-dev.yml` / `release.yml` (what zombied compares against).
+2. **Clerk → Sessions → Customize session token** — the `aud` claim on the *default* session token (feeds the new dashboard, D45 `auth().getToken()`).
+3. **Clerk → JWT Templates → `api`** — the `aud` claim on the api-template token (feeds the CLI carve-out D47 + the currently-deployed pre-§9 dashboard).
+
+Current values (confirmed 2026-05-20): DEV all three = `https://api-dev.usezombie.com`; PROD all three = `https://api.usezombie.com`.
+
+Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIENCE` is transition-safe across the old→new dashboard code swap and does not break the CLI. The hazard is editing one surface without the others: any token whose `aud` ≠ `OIDC_AUDIENCE` is fail-closed with a loud 401 `AudienceMismatch` (never silent). When rotating the audience for an env, change all three together; the CI step couples `OIDC_AUDIENCE` + image deploy atomically, so the only human ordering rule is to set the two Clerk `aud` claims before the deploy that ships `OIDC_AUDIENCE`.
 
 **One-time setup (per env, Clerk dashboard — human):**
 

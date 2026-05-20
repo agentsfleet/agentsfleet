@@ -2,13 +2,16 @@
 // ~/Projects/oss/cli/apps/cli/src/next/commands/login/login.errors.ts).
 // Each variant is its own tagged class so the dispatcher's exit-code map
 // keys on a unique `_tag` and the formatter switch on `_tag` is
-// exhaustive at compile time. Replaces the earlier string-code-on-
-// AuthError shape from auth-error-codes.ts.
+// exhaustive at compile time. Built via factories (the reference idiom)
+// rather than 10 hand-written class bodies — one shared `message` getter
+// per field-shape instead of ten.
 //
 // All variants carry { detail, suggestion } at minimum. ServerError-
 // derived variants additionally carry an optional requestId so the
 // dispatcher can render `request_id:` alongside the detail for support
-// workflows — mirrors AuthError's existing requestId convention.
+// workflows — mirrors AuthError's existing requestId convention. The
+// reference has a single field shape; zombie needs two (with/without
+// requestId), hence two factories over the reference's one.
 
 import { Data } from "effect";
 
@@ -24,65 +27,32 @@ interface WithRequestId extends BaseFields {
 const baseMessage = (e: BaseFields): string =>
   `${e.detail}\n  Suggestion: ${e.suggestion}`;
 
-export class InvalidSessionError extends Data.TaggedError("InvalidSessionError")<WithRequestId> {
-  override get message(): string {
-    return baseMessage(this);
-  }
+function baseError<Tag extends string>(tag: Tag) {
+  return class extends Data.TaggedError(tag)<BaseFields> {
+    override get message(): string {
+      return baseMessage(this);
+    }
+  };
 }
 
-export class ExpiredSessionError extends Data.TaggedError("ExpiredSessionError")<WithRequestId> {
-  override get message(): string {
-    return baseMessage(this);
-  }
+function reqIdError<Tag extends string>(tag: Tag) {
+  return class extends Data.TaggedError(tag)<WithRequestId> {
+    override get message(): string {
+      return baseMessage(this);
+    }
+  };
 }
 
-export class RateLimitedError extends Data.TaggedError("RateLimitedError")<WithRequestId> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
-
-export class TimeoutError extends Data.TaggedError("TimeoutError")<BaseFields> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
-
-export class InterruptedError extends Data.TaggedError("InterruptedError")<BaseFields> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
-
-export class VerificationFailedError extends Data.TaggedError("VerificationFailedError")<WithRequestId> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
-
-export class DecryptError extends Data.TaggedError("DecryptError")<BaseFields> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
-
-export class SessionAbortedError extends Data.TaggedError("SessionAbortedError")<WithRequestId> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
-
-export class SessionConsumedError extends Data.TaggedError("SessionConsumedError")<WithRequestId> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
-
-export class MeValidationError extends Data.TaggedError("MeValidationError")<WithRequestId> {
-  override get message(): string {
-    return baseMessage(this);
-  }
-}
+export class InvalidSessionError extends reqIdError("InvalidSessionError") {}
+export class ExpiredSessionError extends reqIdError("ExpiredSessionError") {}
+export class RateLimitedError extends reqIdError("RateLimitedError") {}
+export class TimeoutError extends baseError("TimeoutError") {}
+export class InterruptedError extends baseError("InterruptedError") {}
+export class VerificationFailedError extends reqIdError("VerificationFailedError") {}
+export class DecryptError extends baseError("DecryptError") {}
+export class SessionAbortedError extends reqIdError("SessionAbortedError") {}
+export class SessionConsumedError extends reqIdError("SessionConsumedError") {}
+export class MeValidationError extends reqIdError("MeValidationError") {}
 
 export type AuthFlowError =
   | InvalidSessionError
