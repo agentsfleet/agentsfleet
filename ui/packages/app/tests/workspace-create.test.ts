@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const cookieSet = vi.fn();
 const revalidatePath = vi.fn();
-const getServerToken = vi.fn();
+const getToken = vi.fn();
 const createTenantWorkspace = vi.fn();
 
 vi.mock("next/headers", () => ({ cookies: vi.fn(async () => ({ set: cookieSet })) }));
 vi.mock("next/cache", () => ({ revalidatePath }));
-vi.mock("@/lib/auth/server", () => ({ getServerToken }));
+// Post-Stage-1 single-token: createWorkspaceAction resolves its Bearer via
+// withToken → auth().getToken() (mock the named clerk export).
+vi.mock("@clerk/nextjs/server", () => ({ auth: vi.fn(async () => ({ getToken })) }));
 // lib/workspace.ts wraps listTenantWorkspaces in React `cache()` at import,
 // and actions.ts imports ACTIVE_WORKSPACE_COOKIE from there — keep the real
 // export shape so that module initialises.
@@ -22,7 +24,7 @@ beforeEach(() => {
 
 describe("createWorkspaceAction", () => {
   it("creates a workspace and switches the active cookie on success", async () => {
-    getServerToken.mockResolvedValue("tok_1");
+    getToken.mockResolvedValue("tok_1");
     createTenantWorkspace.mockResolvedValue({ workspace_id: "ws_new", name: "fresh" });
     const { createWorkspaceAction } = await import("../app/(dashboard)/actions");
 
@@ -36,7 +38,7 @@ describe("createWorkspaceAction", () => {
   });
 
   it("maps a missing token to UZ-AUTH-401 and does not switch the cookie", async () => {
-    getServerToken.mockResolvedValue(null);
+    getToken.mockResolvedValue(null);
     const { createWorkspaceAction } = await import("../app/(dashboard)/actions");
 
     const result = await createWorkspaceAction({});
@@ -48,7 +50,7 @@ describe("createWorkspaceAction", () => {
   });
 
   it("propagates a backend rejection without switching the cookie", async () => {
-    getServerToken.mockResolvedValue("tok_1");
+    getToken.mockResolvedValue("tok_1");
     const { ApiError } = await import("@/lib/api/errors");
     createTenantWorkspace.mockRejectedValue(
       new ApiError("Missing tenant context on session", 401, "UZ-AUTH-401", "req_1"),

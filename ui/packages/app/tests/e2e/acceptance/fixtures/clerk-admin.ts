@@ -1,22 +1,26 @@
 /**
  * Clerk backend-API helpers for the e2e harness.
  *
- * Idempotent fixture-user provisioning + api-template JWT mint via Clerk's
- * REST API. Same wire shape as `playbooks/012_usezombie_admin_bootstrap`
- * (lines 119–125): GET /v1/users → POST /v1/sessions → POST /v1/sessions/{id}/tokens/api.
+ * Idempotent fixture-user provisioning + customized-session JWT mint via
+ * Clerk's REST API. Wire shape: GET /v1/users → POST /v1/sessions → POST
+ * /v1/sessions/{id}/tokens. Post-the mint uses the bare
+ * `/tokens` endpoint (no template suffix) — the customized default
+ * session token carries `aud=https://api.usezombie.com` +
+ * `metadata.tenant_id` + `metadata.role`, which is exactly what zombied's
+ * OIDC verifier and tenant-scope check rely on.
  *
  * The cookie-side of "sign in" is handled by `clerk.signIn` from
  * `@clerk/testing/playwright` (see `fixtures/auth.ts`) — that helper mints
  * a single-use ticket via Backend API + drives `Clerk.signIn.create` in
  * the page, so clerk-js owns every session cookie. The harness only owns
- * the api-template Bearer JWT that direct zombied calls (seed/teardown)
- * use; clerkMiddleware never sees it.
+ * the customized-session Bearer JWT that direct zombied calls (seed/
+ * teardown) use; clerkMiddleware never sees it.
  *
  * Uses fetch directly. No @clerk/backend SDK — the surface is small and
  * stable, and the SDK pulls in node:crypto-heavy deps we don't need.
  */
 
-import { FixtureKey, JWT_TEMPLATE } from "./constants";
+import { FixtureKey } from "./constants";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
@@ -41,7 +45,12 @@ export interface MintedFixture {
   clerkUserId: string;
   /** Clerk session id — used by globalTeardown to revoke. */
   sessionId: string;
-  /** `api`-template JWT — Bearer auth on zombied; carries publicMetadata. */
+  /**
+   * Customized default session JWT — Bearer auth on zombied. Carries
+   * `aud=https://api.usezombie.com` + `metadata.tenant_id` + `metadata.role`
+   * via Clerk's Session Token Customization, not via the
+   * legacy `api` JWT template.
+   */
   sessionJwt: string;
 }
 
@@ -141,12 +150,15 @@ export async function mintTokens(
   userId: string,
 ): Promise<{ sessionId: string; sessionJwt: string }> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
-  const template = await clerkRequest<ClerkSessionToken>(
+  // Post-Stage-1: bare `/tokens` (no template suffix). Custom
+  // claims arrive automatically via Clerk's Session Token Customization
+  // configured in the org dashboard (see the Clerk session-token claim playbook).
+  const minted = await clerkRequest<ClerkSessionToken>(
     "POST",
-    `/sessions/${session.id}/tokens/${JWT_TEMPLATE}`,
+    `/sessions/${session.id}/tokens`,
     { expires_in_seconds: SESSION_TOKEN_TTL_SECONDS },
   );
-  return { sessionId: session.id, sessionJwt: template.jwt };
+  return { sessionId: session.id, sessionJwt: minted.jwt };
 }
 
 /**

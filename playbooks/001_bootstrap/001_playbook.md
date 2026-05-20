@@ -59,6 +59,44 @@ openssl rand -hex 32
 
 Store each output as `credential` in its respective vault item (`encryption-master-key`). Never reuse between environments.
 
+### 1.3b Generate Auth Pepper Keys
+
+Two independent 32-byte (64 hex char) CSPRNG values per environment. One is the keyed-HMAC pepper used to defeat offline brute-force of the CLI-login verification code; the other is the keyed-HMAC pepper used to pseudonymize `session_id` in the auth-audit log sink. Both are loaded by `zombied` at boot via `src/state/vault.zig` and held in process memory only — never written to disk, never logged. Boot fails fast if either is missing.
+
+```bash
+# DEV — session-code HMAC pepper
+openssl rand -hex 32   # → store in op://$VAULT_DEV/auth-session-code-pepper/credential
+
+# DEV — audit-log HMAC pepper
+openssl rand -hex 32   # → store in op://$VAULT_DEV/audit-log-pepper/credential
+
+# PROD — session-code HMAC pepper (must differ from DEV)
+openssl rand -hex 32   # → store in op://$VAULT_PROD/auth-session-code-pepper/credential
+
+# PROD — audit-log HMAC pepper (must differ from DEV)
+openssl rand -hex 32   # → store in op://$VAULT_PROD/audit-log-pepper/credential
+```
+
+**Rotation:** rotating `auth-session-code-pepper` invalidates every in-flight CLI login session (their HMACs no longer match). Cheap because sessions are 5-minute-TTL — drain old sessions by waiting 5+ minutes between provisioning the new pepper and cutting the API process over. Rotating `audit-log-pepper` breaks cross-event correlation for past sessions but does not affect security (a different pepper protects the code itself).
+
+**Optional automation:** `playbooks/001_bootstrap/03_auth_pepper_provision.sh` mirrors `02_vercel_env.sh`'s shape — idempotently upserts both pepper items into both vaults via `op item create`; `--check` mode reads-only and exits 1 on missing items.
+
+### 1.3c Provision E2E Fixture Email Identities
+
+The Playwright e2e suite under `ui/packages/app/tests/e2e/` and the live CLI acceptance suite under `zombiectl/test/acceptance/lifecycle-after-login.spec.ts` authenticate against Clerk DEV using two long-lived test users. Credentials live in Vault so tests read them at suite setup without hardcoding. DEV vault only — the e2e suite never runs against production.
+
+```bash
+# 1. In the Clerk DEV dashboard, create two test users:
+#    - regular@usezombie.dev (regular tenant member role)
+#    - admin@usezombie.dev   (tenant admin role)
+# 2. Generate a strong password for each: `openssl rand -base64 24` (or similar).
+# 3. Store both as separate 1Password items in the DEV vault:
+#    op://$VAULT_DEV/e2e-fixture-email/regular  → fields: email, password
+#    op://$VAULT_DEV/e2e-fixture-email/admin    → fields: email, password
+```
+
+PROD vault: **not required**. If a future spec adds prod-canary smoke tests, that spec authors the prod entries separately.
+
 ### 1.3 Hand Off to Agent
 
 Give the agent:
@@ -67,7 +105,7 @@ Give the agent:
 
 Hand-off message:
 
-> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/001_bootstrap/001_playbook.md §2.0`, then run `./playbooks/002_preflight/001_gate.sh` and proceed with `playbooks/002_preflight/001_playbook.md`."
+> "Milestone 1 complete. Here are the root API keys: [paste keys]. Store them in 1Password vaults `ZMB_CD_PROD` / `ZMB_CD_DEV` per `playbooks/001_bootstrap/001_playbook.md §2.0`, including the new entries from §1.3b (auth peppers) and §1.3c (e2e fixture emails). Then run `./playbooks/002_preflight/001_gate.sh` and proceed with `playbooks/002_preflight/001_playbook.md`."
 
 ---
 
@@ -91,6 +129,10 @@ Create each item listed there. Value sources for items that require human provis
 | `clerk-{dev,prod}` | Clerk dashboard → API Keys (publishable + secret); JWKS URL and issuer derived from Clerk domain |
 | `github-app` | GitHub App → Settings → App ID + Generate private key |
 | `encryption-master-key` | `openssl rand -hex 32` (DEV and PROD must differ) |
+| `auth-session-code-pepper` | `openssl rand -hex 32` (per §1.3b — DEV and PROD must differ) |
+| `audit-log-pepper` | `openssl rand -hex 32` (per §1.3b — DEV and PROD must differ) |
+| `e2e-fixture-email/regular` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
+| `e2e-fixture-email/admin` | Clerk DEV user + `openssl rand -base64 24` password (per §1.3c — DEV vault only) |
 | `zombied-prod-server-*` | Created on server provision |
 
 ### 2.2 Set GitHub Secrets and Variables

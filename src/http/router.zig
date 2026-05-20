@@ -14,12 +14,25 @@ pub const Route = union(enum) {
     // `zombiectl provider set` consume this once at provisioning time.
     model_caps,
     create_auth_session,
-    /// GET /v1/auth/sessions/{session_id} — poll pending session for token.
+    /// GET /v1/auth/sessions/{session_id} — CLI polls for status + (post-
+    /// approve) the public material it needs for the verify call. Never
+    /// returns ciphertext (Invariant 1).
     poll_auth_session: []const u8,
-    /// PATCH /v1/auth/sessions/{session_id} — depositor posts the user-jwt
-    /// to mark the session complete. Body: {status:"complete", token}.
-    /// Mirrors the GET poll response symmetry: {status, token}.
-    patch_auth_session: []const u8,
+    /// PATCH /v1/auth/sessions/{session_id}/approve — dashboard submits
+    /// the ECDH ciphertext + verification code after the user clicks
+    /// Approve. Clerk-authenticated.
+    approve_auth_session: []const u8,
+    /// POST /v1/auth/sessions/{session_id}/verify — CLI submits the 6-digit
+    /// code; on success returns the encrypted JWT payload. Atomic Lua-EVAL
+    /// transition verification_pending → consumed. No bearer auth — the
+    /// code is the auth.
+    verify_auth_session: []const u8,
+    /// DELETE /v1/auth/sessions/{session_id} — explicit cancel by the
+    /// session's owning Clerk user.
+    delete_auth_session: []const u8,
+    /// DELETE /v1/auth/sessions/all — abort every in-flight login session
+    /// for the calling Clerk user.
+    delete_all_auth_sessions,
     create_workspace,
     // Tenant-scoped billing snapshot — GET /v1/tenants/me/billing
     get_tenant_billing,
@@ -113,9 +126,18 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
 /// (no API-version literal). Disambiguation is shape-driven (segment count +
 /// segment[i] equality); no two matchers can both fire on the same path.
 fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
-    // ── Auth sessions (method-dispatched: GET poll vs PATCH patch) ────────
+    // ── Auth sessions (deepest shape first) ───────────────────────────────
+    // Approve / verify carry the {action} suffix; check before the bare
+    // {id} matcher.
+    if (matchers.matchAuthSessionApprove(p)) |session_id| return .{ .approve_auth_session = session_id };
+    if (matchers.matchAuthSessionVerify(p)) |session_id| return .{ .verify_auth_session = session_id };
+    // /auth/sessions/all is a sibling to /auth/sessions/{id}; the bare
+    // matcher rejects p[2] == "all" so the all-matcher fires deterministically.
+    if (matchers.matchAuthSessionsAll(p)) return .delete_all_auth_sessions;
+    // Bare /auth/sessions/{id}: GET → poll (no auth), DELETE → cancel (Clerk).
+    // Wrong methods land on .poll_auth_session and get 405 in the invoke fn.
     if (matchers.matchAuthSession(p)) |session_id| return switch (method) {
-        .PATCH => .{ .patch_auth_session = session_id },
+        .DELETE => .{ .delete_auth_session = session_id },
         else => .{ .poll_auth_session = session_id },
     };
 
@@ -192,11 +214,30 @@ test "match resolves auth routes" {
     );
     try std.testing.expectEqualStrings(
         "sess_1",
-        switch (match("/v1/auth/sessions/sess_1", .PATCH).?) {
-            .patch_auth_session => |session_id| session_id,
+        switch (match("/v1/auth/sessions/sess_1", .DELETE).?) {
+            .delete_auth_session => |session_id| session_id,
             else => return error.TestExpectedEqual,
         },
     );
+    try std.testing.expectEqualStrings(
+        "sess_1",
+        switch (match("/v1/auth/sessions/sess_1/approve", .PATCH).?) {
+            .approve_auth_session => |session_id| session_id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expectEqualStrings(
+        "sess_1",
+        switch (match("/v1/auth/sessions/sess_1/verify", .POST).?) {
+            .verify_auth_session => |session_id| session_id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    try std.testing.expectEqualDeep(Route.delete_all_auth_sessions, match("/v1/auth/sessions/all", .DELETE).?);
+    // The legacy plaintext PATCH /v1/auth/sessions/{id} shape (Q3) — never
+    // shipped to production; PATCH on the bare id no longer routes to a
+    // handler. It still matches the GET-shape (poll), and the invoke fn
+    // returns 405 for non-GET on that endpoint.
     try std.testing.expect(match("/v1/auth/sessions/sess_1/complete", .POST) == null);
     try std.testing.expect(match("/v1/runs/run_1", .GET) == null);
 }

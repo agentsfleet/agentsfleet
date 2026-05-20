@@ -9,7 +9,7 @@ import {
   TabsTrigger,
 } from "@usezombie/design-system";
 import { ReceiptIcon, CreditCardIcon, WalletIcon } from "lucide-react";
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { getTenantBilling, listTenantBillingCharges } from "@/lib/api/tenant_billing";
 import BillingBalanceCard from "./components/BillingBalanceCard";
 import BillingUsageTab from "./components/BillingUsageTab";
@@ -20,7 +20,8 @@ export const dynamic = "force-dynamic";
 const PURCHASE_FOOTNOTE = "Stripe purchase ships in v2.1.";
 
 export default async function BillingSettingsPage() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   // Fetch in parallel — both endpoints are tenant-scoped (bearer-auth) and

@@ -88,7 +88,7 @@ describe("lib/workspace resolveActiveWorkspace", () => {
     expect(await resolveActiveWorkspace("tok")).toBeNull();
   });
 
-  it("falls back to first workspace when getServerSessionMetadata throws (catch branch)", async () => {
+  it("falls back to first workspace when readWorkspaceClaim throws (catch branch)", async () => {
     // auth() throws inside readWorkspaceClaim — the catch must swallow the
     // error and return null so resolveActiveWorkspace can still use items[0].
     mockListTenantWorkspaces(["ws_1", "ws_2"]);

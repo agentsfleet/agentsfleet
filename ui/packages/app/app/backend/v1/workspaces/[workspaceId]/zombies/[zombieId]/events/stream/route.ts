@@ -19,11 +19,13 @@ export async function GET(req: Request, { params }: Params) {
   const { workspaceId, zombieId } = await params;
 
   const { getToken } = await auth();
-  // The Zig backend enforces aud=https://api.usezombie.com; mint an
-  // API-audience JWT via the Clerk "api" template per docs/AUTH.md §"UI ·
-  // SSE stream". Bare getToken() returns the default-aud session JWT and
-  // 401s upstream.
-  const token = await getToken({ template: "api" });
+  // Post-Stage-1: the customized default session token
+  // now carries `aud=https://api.usezombie.com` + `metadata.tenant_id` +
+  // `metadata.role`, so bare `getToken()` satisfies zombied's OIDC
+  // verifier without the `api` JWT template. The legacy api-template
+  // path survives only in `app/cli-auth/[session_id]/page.tsx` (CLI
+  // carve-out — see that file for the rationale).
+  const token = await getToken();
   if (!token) {
     return new Response(JSON.stringify({ error: "Unauthorized", code: "UZ-401" }), {
       status: 401,

@@ -17,7 +17,7 @@ import {
 } from "./lib/state.ts";
 import { Effect } from "effect";
 import { runCommanderParse } from "./lib/commander-bridge.ts";
-import { extractRoleFromToken } from "./program/auth-token.ts";
+import { extractRoleFromToken, resolveAuthTokenForCli } from "./program/auth-token.ts";
 import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
@@ -26,6 +26,7 @@ import { createSpinner } from "./ui-progress.ts";
 import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
+import { detectTokenInArgv } from "./lib/argv-redact.ts";
 import { ROLE_ADMIN } from "./constants/auth-roles.ts";
 import type { ProgramState } from "./program/cli-tree-types.ts";
 import type { CommandCtx, CommandDeps } from "./commands/types.ts";
@@ -180,6 +181,12 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
 
   printPreReleaseWarning(stderr, { noColor, jsonMode, ttyOnly: !stderr.isTTY });
 
+  // D25 — surface the --token leak warning before any command runs. The
+  // check is pure (no env/process reads); fires for any argv shape, --version
+  // included, because the value is in shell history either way.
+  const tokenLeak = detectTokenInArgv(argv);
+  if (tokenLeak) writeLine(stderr, tokenLeak);
+
   if (maybePrintVersion(argv, stdout, jsonMode, env)) return 0;
 
   // Bare `zombiectl` → --help so commander routes via stdout + exit 0 instead of stderr "missing command".
@@ -192,7 +199,16 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // Session identity (`device_id`, `session_id`, `session_last_active`)
   // is read+bumped inside `resolveIdentity` against `telemetry.json`
   // (mirrors supabase). No session file maintained here.
-  const resolvedToken = creds.token || env.ZOMBIE_TOKEN || null;
+  // D26: TTY-priority — interactive shells let an env-var the operator
+  // just exported beat a possibly-stale credentials.json; scripted runs
+  // prefer the on-disk credential. ZMB_TOKEN > ZOMBIE_TOKEN within env.
+  const stdinSrc = io.stdin ?? process.stdin;
+  const resolvedAuth = resolveAuthTokenForCli({
+    fileToken: creds.token ?? null,
+    env,
+    isTty: Boolean((stdinSrc as { isTTY?: boolean }).isTTY),
+  });
+  const resolvedToken = resolvedAuth.token;
   const resolvedApiKey = env.API_KEY || env.ZOMBIE_API_KEY || null;
   const resolvedAuthRole = extractRoleFromToken(resolvedToken) || (resolvedApiKey ? ROLE_ADMIN : null);
 

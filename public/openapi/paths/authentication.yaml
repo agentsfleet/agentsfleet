@@ -2,11 +2,46 @@
   post:
     operationId: create_auth_session
     summary: Start a CLI login session
-    description: Creates a device-code style auth session. Returns a session ID and a login URL to present to the user in
-      their browser.
+    description: |
+      Step 1 of the CLI device flow. The CLI generates an ephemeral
+      P-256 ECDH keypair and POSTs the public key plus an operator-facing
+      `token_name` label. The server allocates a UUIDv7 session_id and
+      stores `{cli_public_key, token_name, status: pending, expires_at_ms}`
+      in Redis with a 5-minute TTL. The CLI then prints
+      `https://app.usezombie.com/cli-auth/{session_id}` for the operator
+      to open in their browser.
+
+      Unauthenticated; rate-limited at the Cloudflare WAF edge
+      (L2 — 10 / IP / minute on `POST /v1/auth/sessions`) and
+      Clerk-edge (L1) for sign-in / sign-up traffic upstream.
     tags:
     - Authentication
     security: []
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - public_key
+            - token_name
+            properties:
+              public_key:
+                type: string
+                description: |
+                  Base64url-encoded P-256 SubjectPublicKeyInfo. The CLI's
+                  ephemeral ECDH public key — used by the dashboard to
+                  derive the AES-256-GCM session key that wraps the JWT.
+              token_name:
+                type: string
+                minLength: 1
+                maxLength: 64
+                description: |
+                  Operator-facing label for the resulting credential
+                  (e.g. `macos-cli`, `linux-cli`, `windows-cli`).
+                  Printable ASCII; appears in audit events and
+                  `zombiectl auth status`.
     responses:
       '201':
         description: Auth session created
@@ -16,29 +51,41 @@
               type: object
               required:
               - session_id
-              - login_url
               - request_id
               properties:
                 session_id:
                   type: string
                   format: uuid
-                  description: Session identifier for polling
-                login_url:
-                  type: string
-                  format: uri
-                  description: URL to open in the user's browser to complete authentication
+                  description: Session identifier for polling. UUIDv7.
                 request_id:
                   type: string
                   format: uuid
                   description: Unique request identifier
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
+
 /v1/auth/sessions/{session_id}:
   get:
     operationId: poll_auth_session
     summary: Poll auth session status
-    description: Polls a pending auth session. The CLI calls this repeatedly until status transitions to 'complete' (token
-      available) or 'expired'.
+    description: |
+      Step 2 of the CLI device flow. The CLI polls this endpoint with the
+      `session_id` returned from `POST /v1/auth/sessions`. The response
+      surfaces only the public material the CLI needs to proceed:
+      `status`, `cli_public_key`, `token_name`, `expires_at_ms`.
+
+      **NEVER** returns `ciphertext`, `nonce`, `dashboard_public_key`,
+      `verification_code`, or `verification_code_hmac` (Invariant 1 in
+      `docs/AUTH.md` Flow 1). Ciphertext release is gated behind the
+      verification code on `POST /v1/auth/sessions/{id}/verify`.
+
+      Unauthenticated by design — the CLI poll precedes any token grant.
+      The terminal states (`expired`, `consumed`, `aborted`) return 410
+      with a structured ErrorBody (`UZ-AUTH-006/012/013`).
     tags:
     - Authentication
     security: []
@@ -46,52 +93,113 @@
     - name: session_id
       in: path
       required: true
-      description: Auth session identifier
+      description: Auth session identifier (UUIDv7)
       schema:
         type: string
         format: uuid
     responses:
       '200':
-        description: Auth session status
+        description: Session is in an active (non-terminal) state
         content:
           application/json:
             schema:
               type: object
               required:
               - status
-              - request_id
+              - cli_public_key
+              - token_name
+              - expires_at_ms
               properties:
                 status:
                   type: string
                   enum:
                   - pending
-                  - complete
-                  - expired
-                  description: Current session status
-                token:
-                  type:
-                  - string
-                  - "null"
-                  description: Bearer token, present only when status is 'complete'
-                request_id:
+                  - verification_pending
+                  description: |
+                    `pending` — created, awaiting dashboard approval.
+                    `verification_pending` — dashboard approved, awaiting CLI
+                    verification code.
+                cli_public_key:
                   type: string
-                  format: uuid
-                  description: Unique request identifier
+                  description: Echo of the CLI's ECDH public key (base64url P-256 SPKI).
+                token_name:
+                  type: string
+                  description: Operator label that the dashboard shows to the user during approval.
+                expires_at_ms:
+                  type: integer
+                  format: int64
+                  description: Unix epoch milliseconds. Session TTL is 5 minutes from creation.
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '410':
+        $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
-  patch:
-    operationId: patch_auth_session
-    summary: Patch an auth session
-    description: Called by the web frontend after successful OAuth to attach a token to the pending session and transition
-      its status to 'complete'. The CLI's next poll will receive the token. Body mirrors the GET poll response shape so
-      the depositor can read back what a subsequent poll would return.
+  delete:
+    operationId: delete_auth_session
+    summary: Explicit cancel of a single login session
+    description: |
+      Used by the dashboard's "cancel this login" button and by the future
+      sessions surface. Transitions the named session to `aborted` with
+      `reason="explicit_cancel"`. The Clerk JWT MUST match the session's
+      `clerk_user_id` (set on `PATCH /v1/auth/sessions/{id}/approve`);
+      otherwise 403.
     tags:
     - Authentication
     parameters:
     - name: session_id
       in: path
       required: true
-      description: Auth session identifier
+      schema:
+        type: string
+        format: uuid
+    responses:
+      '204':
+        description: Session aborted
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '403':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '404':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/auth/sessions/{session_id}/approve:
+  patch:
+    operationId: approve_auth_session
+    summary: Dashboard approves a pending session and submits the encrypted JWT
+    description: |
+      Step 3 of the CLI device flow. Called by the dashboard JS process
+      after the operator clicks Approve on `/cli-auth/{session_id}`.
+
+      The dashboard:
+        1. Generates an ephemeral P-256 ECDH keypair (`dash_priv` / `dash_pub`).
+        2. Derives the shared secret = `dash_priv × cli_public_key`.
+        3. Runs HKDF-SHA-256 with empty salt and `info = "m74-002-v1"` to
+           produce a 32-byte AES-256-GCM key.
+        4. Encrypts the Clerk JWT (template `api`) with a fresh 96-bit nonce
+           via `crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, jwt)`.
+        5. Generates a 6-digit verification code via
+           `crypto.getRandomValues(new Uint32Array(1)) mod 1_000_000`.
+        6. PATCHes this endpoint with `{ dashboard_public_key, ciphertext,
+           nonce, verification_code }`.
+
+      The API computes `verification_code_hmac =
+      HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id || verification_code)`
+      and persists the HMAC (never the plaintext code). The session
+      transitions atomically `pending → verification_pending`. The
+      single-write invariant: any subsequent PATCH for the same session
+      returns 409 `UZ-AUTH-015`.
+
+      Memory hygiene on the dashboard: discard `dash_priv` and the shared
+      key after this call resolves. Never persist crypto material.
+    tags:
+    - Authentication
+    parameters:
+    - name: session_id
+      in: path
+      required: true
       schema:
         type: string
         format: uuid
@@ -102,36 +210,179 @@
           schema:
             type: object
             required:
-            - token
+            - dashboard_public_key
+            - ciphertext
+            - nonce
+            - verification_code
             properties:
-              status:
+              dashboard_public_key:
                 type: string
-                const: complete
-                description: Session transition target. Only 'complete' is legal from 'pending'.
-              token:
+                description: Base64url P-256 SubjectPublicKeyInfo (the dashboard's ephemeral ECDH public key).
+              ciphertext:
                 type: string
-                description: Bearer token from OAuth flow
+                description: Base64url AES-256-GCM output over the Clerk JWT plaintext.
+              nonce:
+                type: string
+                description: Base64url 12-byte (96-bit) AES-GCM nonce. Random per call.
+              verification_code:
+                type: string
+                pattern: '^[0-9]{6}$'
+                description: |
+                  Exactly 6 ASCII digits. Travels plaintext over TLS to this
+                  Clerk-authenticated endpoint, exists momentarily in the API
+                  process to compute the HMAC, then is discarded. The
+                  alternative (dashboard pre-hashes locally) does not work
+                  because only the API holds the pepper.
     responses:
       '200':
-        description: Session completed
+        description: Session transitioned to verification_pending
         content:
           application/json:
             schema:
               type: object
               required:
-              - status
-              - token
               - request_id
               properties:
-                status:
-                  type: string
-                  const: complete
-                token:
-                  type: string
-                  description: Bearer token now attached to the session
                 request_id:
                   type: string
                   format: uuid
-                  description: Unique request identifier
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '410':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/auth/sessions/{session_id}/verify:
+  post:
+    operationId: verify_auth_session
+    summary: CLI submits the 6-digit verification code and receives the encrypted JWT
+    description: |
+      Step 4 of the CLI device flow. Atomically transitions
+      `verification_pending → consumed` and releases the ciphertext
+      payload in a single Lua-EVAL write.
+
+      No bearer authentication — the verification code IS the auth. The
+      code is single-use; success and failure paths both surface through
+      ErrorBody response codes:
+
+        * `UZ-AUTH-011` (400) — code did not match; `verification_attempts`
+          incremented. The fifth failed attempt transitions the session to
+          `aborted` with `reason="rate_limit_exceeded"` (the L3 rate limit
+          per `docs/AUTH.md` Flow 1).
+        * `UZ-AUTH-012` (410) — session already consumed (outside the 60-second
+          same-fingerprint replay window, or different fingerprint).
+        * `UZ-AUTH-013` (410) — session aborted (5 wrong codes, explicit cancel,
+          or replaced by a newer session).
+        * `UZ-AUTH-014` (410) — session not yet approved (no dashboard PATCH yet).
+        * `UZ-AUTH-006` (401) — session expired (5-min TTL elapsed).
+
+      On success the response carries `{ dashboard_public_key, ciphertext,
+      nonce }`. The CLI derives the same AES-256-GCM key (ECDH × HKDF as
+      on the dashboard side; `info` MUST be `"m74-002-v1"` verbatim) and
+      decrypts the JWT.
+
+      Consume-idempotency window: on success the server records
+      `consumed_client_fingerprint = sha256(remote_addr || user_agent || session_id)`
+      and `consume_payload_expires_at_ms = now_ms + 60_000`. A second
+      POST inside that window from the same fingerprint returns the same
+      payload (so "consume succeeded, response lost, client retried"
+      converges). Outside the window or from a different fingerprint →
+      410 `UZ-AUTH-012`.
+    tags:
+    - Authentication
+    security: []
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - verification_code
+            properties:
+              verification_code:
+                type: string
+                pattern: '^[0-9]{6}$'
+                description: The 6-digit code the dashboard displayed to the user.
+    responses:
+      '200':
+        description: |
+          Verification succeeded; ciphertext payload released. The CLI
+          decrypts `ciphertext` using `dashboard_public_key` + its own
+          ECDH private key per the HKDF / AES-GCM derivation described
+          on `PATCH /v1/auth/sessions/{session_id}/approve`.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - dashboard_public_key
+              - ciphertext
+              - nonce
+              properties:
+                dashboard_public_key:
+                  type: string
+                  description: Base64url P-256 SPKI — the dashboard's ephemeral ECDH public key from the matching approve call.
+                ciphertext:
+                  type: string
+                  description: Base64url AES-256-GCM output over the Clerk JWT.
+                nonce:
+                  type: string
+                  description: Base64url 12-byte AES-GCM nonce used during encryption.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '410':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/auth/sessions/all:
+  delete:
+    operationId: delete_all_auth_sessions
+    summary: Bulk-abort every in-flight login session for the caller
+    description: |
+      Caller-scoped bulk delete. Enumerates every session with the caller's
+      `clerk_user_id` whose status is `pending` or `verification_pending`
+      and transitions each to `aborted` with `reason="explicit_cancel"`.
+
+      Does NOT revoke already-minted JWTs — Clerk revocation is a separate
+      problem; an active CLI continues to work until its short-lived JWT
+      expires. This endpoint clears in-flight login sessions only.
+    tags:
+    - Authentication
+    responses:
+      '200':
+        description: Sessions aborted (count includes 0 when none were pending)
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - aborted_count
+              properties:
+                aborted_count:
+                  type: integer
+                  minimum: 0
+                  description: Number of in-flight sessions transitioned to aborted
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
       default:
         $ref: ../components/responses.yaml#/components/responses/Error

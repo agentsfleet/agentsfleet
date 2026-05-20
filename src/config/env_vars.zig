@@ -191,6 +191,16 @@ test "validateLoadedWithMode api rejects non-TLS Redis" {
     try std.testing.expectError(EnvVarsErrors.RedisApiTlsRequired, validateLoadedWithMode(urls, .api));
 }
 
+// Auth-session storage lives in Redis; the API process must fail-fast at
+// boot if REDIS_URL_API is missing rather than silently fall back to an
+// in-memory store. Pins Invariant 14 (no in-memory session map) from the
+// CLI device-flow spec.
+test "validateLoadedWithMode api rejects missing API Redis URL" {
+    var urls = testEnvVars("postgres://api:pw@db.local:5432/api", null, null, null);
+    defer urls.deinit();
+    try std.testing.expectError(EnvVarsErrors.MissingRedisUrlApi, validateLoadedWithMode(urls, .api));
+}
+
 test "validateLoadedWithMode api accepts valid API URLs" {
     var urls = testEnvVars("postgres://api:pw@db.local:5432/api", null, "rediss://api:pw@cache.local:6379", null);
     defer urls.deinit();

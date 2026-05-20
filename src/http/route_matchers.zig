@@ -15,6 +15,11 @@ const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
 const S_WEBHOOKS = "webhooks";
 const S_ZOMBIES = "zombies";
+const S_AUTH = "auth";
+const S_SESSIONS = "sessions";
+const S_ALL = "all";
+const S_APPROVE = "approve";
+const S_VERIFY = "verify";
 
 pub const PATH_MAX_SEGMENTS: usize = 16;
 
@@ -88,12 +93,33 @@ pub const Path = struct {
 // `router.zig::match()` peels off the API-version segment (`v1`, future `v2`)
 // before calling these. No matcher checks the API version.
 
-// ── /auth/sessions/{session_id} ─────────────────────────────────────────────
+// ── /auth/sessions/{session_id}[/{action}] ─────────────────────────────────
+// Bare 3-seg form serves GET poll + DELETE cancel. `{id} == "all"` belongs
+// to the bulk-delete matcher (rejected here for deterministic dispatch).
+// 4-seg forms carry `/approve` (dashboard PATCH) or `/verify` (CLI POST).
 
 pub fn matchAuthSession(p: Path) ?[]const u8 {
     if (p.segs.len != 3) return null;
-    if (!p.eq(0, "auth") or !p.eq(1, "sessions")) return null;
+    if (!p.eq(0, S_AUTH) or !p.eq(1, S_SESSIONS) or p.eq(2, S_ALL)) return null;
     return p.param(2);
+}
+
+pub fn matchAuthSessionsAll(p: Path) bool {
+    return p.segs.len == 3 and p.eq(0, S_AUTH) and p.eq(1, S_SESSIONS) and p.eq(2, S_ALL);
+}
+
+fn matchAuthSessionAction(p: Path, action: []const u8) ?[]const u8 {
+    if (p.segs.len != 4) return null;
+    if (!p.eq(0, S_AUTH) or !p.eq(1, S_SESSIONS) or !p.eq(3, action)) return null;
+    return p.param(2);
+}
+
+pub fn matchAuthSessionApprove(p: Path) ?[]const u8 {
+    return matchAuthSessionAction(p, S_APPROVE);
+}
+
+pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
+    return matchAuthSessionAction(p, S_VERIFY);
 }
 
 // ── /admin/platform-keys/{provider} ────────────────────────────────────────

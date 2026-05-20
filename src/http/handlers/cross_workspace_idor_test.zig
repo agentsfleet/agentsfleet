@@ -27,7 +27,8 @@
 const std = @import("std");
 const pg = @import("pg");
 const logging = @import("log");
-const auth_sessions = @import("../../auth/sessions.zig");
+const session_store_redis = @import("../../auth/session_store_redis.zig");
+const audit_events = @import("../../auth/audit_events.zig");
 const oidc = @import("../../auth/oidc.zig");
 const queue_redis = @import("../../queue/redis.zig");
 const auth_mw = @import("../../auth/middleware/mod.zig");
@@ -36,6 +37,9 @@ const handler = @import("../../http/handler.zig");
 const http_server = @import("../../http/server.zig");
 const telemetry_mod = @import("../../observability/telemetry.zig");
 const test_port = @import("../test_port.zig");
+
+const TEST_AUDIT_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
+const TEST_SESSION_PEPPER: []const u8 = "test-pepper-bytes-32-len--padded";
 
 const ALLOC = std.testing.allocator;
 
@@ -82,7 +86,7 @@ const LISTEN_OTHER_ERR: u8 = 2;
 
 const TestServer = struct {
     pool: *pg.Pool,
-    session_store: auth_sessions.SessionStore,
+    session_store: session_store_redis.SessionStore,
     verifier: oidc.Verifier,
     // SAFETY: test fixture; field is populated by the surrounding builder before any read.
     queue: queue_redis.Client = undefined,
@@ -100,7 +104,7 @@ const TestServer = struct {
         self.thread.join();
         self.server.deinit();
         self.verifier.deinit();
-        self.session_store.deinit();
+        // Redis-backed SessionStore is a pure facade — no per-instance teardown.
         if (self.has_redis) self.queue.deinit();
         self.pool.deinit();
     }
@@ -205,7 +209,11 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     const srv = try alloc.create(TestServer);
     srv.* = TestServer{
         .pool = db_ctx.pool,
-        .session_store = auth_sessions.SessionStore.init(alloc),
+        // SAFETY: session_store is populated in-place after the queue connects below.
+        // IDOR tests never hit /v1/auth/* so leaving it undefined when Redis
+        // is absent does not crash anything; the field is only read by the
+        // auth-session handlers.
+        .session_store = undefined,
         .verifier = oidc.Verifier.init(alloc, .{ .provider = .clerk, .jwks_url = TEST_JWKS_URL, .issuer = TEST_ISSUER, .audience = TEST_AUDIENCE, .inline_jwks_json = TEST_JWKS }),
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .registry = undefined,
@@ -213,7 +221,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
-        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .oidc = undefined, .auth_sessions = undefined, .app_url = "http://127.0.0.1", .api_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
+        .ctx = .{ .pool = db_ctx.pool, .queue = undefined, .alloc = alloc, .oidc = undefined, .auth_sessions = undefined, .audit_ctx = audit_events.AuditCtx.init(TEST_AUDIT_PEPPER), .app_url = "http://127.0.0.1", .api_url = "http://127.0.0.1", .api_in_flight_requests = std.atomic.Value(u32).init(0), .api_max_in_flight_requests = 64, .ready_max_queue_depth = null, .ready_max_queue_age_ms = null, .telemetry = undefined },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .telemetry = undefined,
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
@@ -227,6 +235,12 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
     if (queue_redis.Client.connectFromEnv(alloc, .default)) |client| {
         srv.queue = client;
         srv.has_redis = true;
+        srv.session_store = session_store_redis.SessionStore.init(
+            alloc,
+            &srv.queue,
+            TEST_SESSION_PEPPER,
+            TEST_AUDIT_PEPPER,
+        );
     } else |_| {}
     srv.ctx.queue = &srv.queue;
     srv.ctx.oidc = &srv.verifier;

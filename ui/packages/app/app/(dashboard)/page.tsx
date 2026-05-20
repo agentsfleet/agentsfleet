@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { InstallBlock, PageHeader, PageTitle, Section, SectionLabel, StatusCard, Skeleton } from "@usezombie/design-system";
 import { listZombies, ZOMBIE_STATUS } from "@/lib/api/zombies";
@@ -13,7 +13,8 @@ import ExhaustionBanner from "@/components/domain/ExhaustionBanner";
 export const dynamic = "force-dynamic";
 
 export async function StatusTiles() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) return null;
 
   const workspace = await resolveActiveWorkspace(token);
@@ -83,7 +84,8 @@ function FirstInstallCard({ balanceNanos }: { balanceNanos: number | null }) {
 }
 
 export async function RecentActivity() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) return null;
 
   const workspace = await resolveActiveWorkspace(token);
@@ -104,7 +106,8 @@ export async function RecentActivity() {
 }
 
 export default async function DashboardPage() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   return (

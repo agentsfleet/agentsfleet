@@ -70,6 +70,82 @@ make test-integration   # Tier 2 — Zig vs real Postgres + Redis (run with serv
 
 `make test-integration` requires `make up` to have already provisioned Postgres + Redis. Run `make down && make up` first if you want a clean DB.
 
+## Running acceptance tests locally
+
+The dashboard acceptance suite (`ui/packages/app/tests/e2e/acceptance/`) is a separate harness from `make test-integration`. It hits **live `api-dev.usezombie.com`** — not a local zombied — so you're not accidentally writing to prod, but the suite is **not pure-read** either: it provisions fixture-user tenants on api-dev and tears them down on success.
+
+### Env vars the harness needs
+
+`global-setup.ts` requires five env vars resolved from the org's 1Password DEV vault (`ZMB_CD_DEV`):
+
+| Env var | Vault path |
+|---|---|
+| `NEXT_PUBLIC_API_URL` | hardcode `https://api-dev.usezombie.com` |
+| `CLERK_SECRET_KEY` | `op://ZMB_CD_DEV/clerk-dev/secret-key` |
+| `CLERK_PUBLISHABLE_KEY` | `op://ZMB_CD_DEV/clerk-dev/publishable-key` |
+| `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` | same value as `CLERK_PUBLISHABLE_KEY` |
+| `CLERK_WEBHOOK_SECRET` | `op://ZMB_CD_DEV/clerk-dev/webhook-secret` |
+
+### One-shell-line runner
+
+```bash
+cd ui/packages/app && \
+  NEXT_PUBLIC_API_URL=https://api-dev.usezombie.com \
+  CLERK_SECRET_KEY=$(op read 'op://ZMB_CD_DEV/clerk-dev/secret-key') \
+  CLERK_PUBLISHABLE_KEY=$(op read 'op://ZMB_CD_DEV/clerk-dev/publishable-key') \
+  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$(op read 'op://ZMB_CD_DEV/clerk-dev/publishable-key') \
+  CLERK_WEBHOOK_SECRET=$(op read 'op://ZMB_CD_DEV/clerk-dev/webhook-secret') \
+  bun run test:acceptance
+```
+
+Run a single spec instead of the whole suite: `bun run test:acceptance -- <pattern>`.
+
+### Why these env vars
+
+The harness mints fixture-user JWTs **out-of-band via Clerk's Backend API** (per the two-token Clerk model — see [`docs/AUTH.md`](docs/AUTH.md)). The vault items resolve to the org's Clerk DEV instance: `CLERK_SECRET_KEY` calls the Backend API; the publishable keys are for the dashboard's runtime Clerk-SDK loading; the webhook secret is for identity-event ingestion.
+
+### Side-effects + cleanup
+
+- **Side-effect:** `global-setup` provisions two fixture-user tenants on api-dev (`regular@usezombie.dev` + `admin@usezombie.dev`).
+- **Teardown:** `global-teardown` revokes them via the Clerk Backend API on success. On failure, they may linger — clean up via the Clerk DEV dashboard's user-management surface if you see drift.
+
+## Unit tests + typecheck (inner loop)
+
+For dashboard work that doesn't touch live api-dev:
+
+```bash
+cd ui/packages/app
+bun run test          # vitest — components, helpers, libs
+bun run typecheck     # tsc --noEmit (strict mode)
+```
+
+Same shape for `ui/packages/website/` and `ui/packages/design-system/`.
+
+## Common test failures
+
+Two failure modes the M74_002 milestone surfaced — documented here so the next contributor doesn't reverse-engineer them from a red CI log.
+
+### `global-setup 404` on identity-events
+
+**Symptom:** `POST /v1/webhooks/clerk` returns 404 during the harness's tenant bootstrap.
+
+**Cause:** historical wrong path. The actual zombied endpoint is `/v1/auth/identity-events/clerk` (per `src/http/router.zig`). `/v1/webhooks/clerk` was retired.
+
+**Fix:** confirm `global-setup.ts` bootstrap URL targets `/v1/auth/identity-events/clerk`. If it doesn't, update it.
+
+### "Client Component SSR import boundary" error referencing `@clerk/nextjs/server`
+
+**Symptom:** dev-server or test run fails with `You're importing a Client Component into a server file that imports server-only modules`, citing `@clerk/nextjs/server`.
+
+**Cause:** somewhere in the import chain, a file with `"use client"` at the top is transitively reaching `@/lib/auth/server` (which imports `@clerk/nextjs/server`). Server-only imports can't be reached from client components.
+
+**Fix:** grep upward from the offending import. Common culprit: a "helper" file imported by a client component statically imports a constant or type from `lib/auth/server.ts`. Move the shared shape to a `'use client'`-safe module, or restructure so the client component only imports from `lib/auth/client.ts`.
+
+### Cross-reference
+
+- The two-token Clerk model + how the harness mints fixture JWTs is in [`docs/AUTH.md`](docs/AUTH.md) (*Flow 2* + the *Test infrastructure — e2e fixture mint* section).
+- Post-Stage-1 of the planned dashboard cleanup, the harness will mint via the customized session-token endpoint instead of the api template — see [`docs/AUTH.md`](docs/AUTH.md) *Roadmap — Flow 2 dashboard cleanup* section.
+
 ## CLI for non-prod backends
 
 `zombiectl` defaults to `https://api.usezombie.com`. Three ways to point it at a local zombied:

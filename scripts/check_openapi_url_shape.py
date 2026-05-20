@@ -70,7 +70,13 @@ NOUN_FINAL_SEGMENT_ALLOW: set[str] = {
     "approval",          # webhook subpath for vendor-driven approval flows
     "grant-approval",    # webhook subpath for grant approval flows
     "github",            # webhook subpath for GitHub Actions ingest (vendor-named provider)
-    "complete",          # auth session completion (vendor-style verb, fine inbound)
+    # CLI device-flow auth-session lifecycle verbs. Routes shipped with the
+    # slash-suffix shape (router.zig + integration tests in tree). Carve-out
+    # documented per the gate's own "code-review surface" convention; future
+    # REST §1 cleanup can revisit.
+    "approve",           # PATCH /v1/auth/sessions/{id}/approve — dashboard transitions pending → verification_pending
+    "verify",            # POST  /v1/auth/sessions/{id}/verify  — CLI atomic verification_pending → consumed + ciphertext release
+    "all",               # DELETE /v1/auth/sessions/all         — caller-scoped bulk-abort of in-flight login sessions
     # Memory ops — top-level RPCs without a resource shape, predating §1:
     "forget", "list", "recall", "store",
     # Internal / non-public surface:

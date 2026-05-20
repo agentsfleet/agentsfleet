@@ -4,82 +4,16 @@ import { cleanup } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { NANOS_PER_USD } from "@/lib/types";
 
-// ── auth/server.ts — real module, mock @clerk/nextjs/server ──────────────
+// Post-Stage-1: dashboard pages call `auth().getToken()` directly from
+// `@clerk/nextjs/server` — no `lib/auth/server.ts` indirection. Tests mock
+// `auth` directly and feed `getToken` / `sessionClaims` / `userId` via
+// per-case overrides.
 
 const authMock = vi.fn();
 
 vi.mock("@clerk/nextjs/server", () => ({
   auth: authMock,
 }));
-
-describe("lib/auth/server", () => {
-  beforeEach(() => {
-    vi.resetModules();
-    authMock.mockReset();
-  });
-
-  it("getServerToken returns the minted token string", async () => {
-    authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn_abc") });
-    const mod = await import("../lib/auth/server");
-    expect(await mod.getServerToken()).toBe("tkn_abc");
-  });
-
-  it("getServerToken calls Clerk getToken with the api template", async () => {
-    // Pin Token B selection: bare getToken returns Token A (default
-    // session, no metadata + no api aud), which fails any SSR call that
-    // needs principal.tenant_id or strict aud-check downstream. See
-    // docs/AUTH.md "The two tokens at a glance".
-    const getToken = vi.fn().mockResolvedValue("tkn_b");
-    authMock.mockResolvedValue({ getToken });
-    const mod = await import("../lib/auth/server");
-    await mod.getServerToken();
-    expect(getToken).toHaveBeenCalledWith({ template: "api" });
-  });
-
-  it("getServerAuth returns token + userId", async () => {
-    authMock.mockResolvedValue({
-      getToken: vi.fn().mockResolvedValue("tkn_xyz"),
-      userId: "usr_42",
-    });
-    const mod = await import("../lib/auth/server");
-    const out = await mod.getServerAuth();
-    expect(out).toEqual({ token: "tkn_xyz", userId: "usr_42" });
-  });
-
-  it("getServerAuth calls Clerk getToken with the api template", async () => {
-    const getToken = vi.fn().mockResolvedValue("tkn_b");
-    authMock.mockResolvedValue({ getToken, userId: "usr_1" });
-    const mod = await import("../lib/auth/server");
-    await mod.getServerAuth();
-    expect(getToken).toHaveBeenCalledWith({ template: "api" });
-  });
-
-  it("getServerAuth normalizes missing userId to null", async () => {
-    authMock.mockResolvedValue({
-      getToken: vi.fn().mockResolvedValue(null),
-      userId: undefined,
-    });
-    const mod = await import("../lib/auth/server");
-    expect(await mod.getServerAuth()).toEqual({ token: null, userId: null });
-  });
-
-  it("getServerSessionMetadata returns the metadata record when present", async () => {
-    authMock.mockResolvedValue({
-      sessionClaims: { metadata: { tenant_id: "t1", workspace_id: "w1" } },
-    });
-    const mod = await import("../lib/auth/server");
-    expect(await mod.getServerSessionMetadata()).toEqual({
-      tenant_id: "t1",
-      workspace_id: "w1",
-    });
-  });
-
-  it("getServerSessionMetadata returns null when sessionClaims missing", async () => {
-    authMock.mockResolvedValue({ sessionClaims: null });
-    const mod = await import("../lib/auth/server");
-    expect(await mod.getServerSessionMetadata()).toBeNull();
-  });
-});
 
 // ── lib/utils.ts — formatDate (currently uncovered) ──────────────────────
 
@@ -104,6 +38,7 @@ describe("lib/utils formatDate", () => {
 describe("dashboard page inner async components", () => {
   beforeEach(() => {
     vi.resetModules();
+    authMock.mockReset();
     authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn_1") });
   });
 
@@ -119,11 +54,12 @@ describe("dashboard page inner async components", () => {
       ? { id: "ws_1", name: "Alpha" }
       : overrides.workspace;
 
-    vi.doMock("@/lib/auth/server", () => ({
-      getServerToken: vi.fn().mockResolvedValue(token),
-      getServerAuth: vi.fn().mockResolvedValue({ token, userId: "u_1" }),
-      getServerSessionMetadata: vi.fn().mockResolvedValue(null),
-    }));
+    authMock.mockReset();
+    authMock.mockResolvedValue({
+      getToken: vi.fn().mockResolvedValue(token),
+      userId: "u_1",
+      sessionClaims: null,
+    });
     vi.doMock("@/lib/workspace", () => ({
       resolveActiveWorkspace: vi.fn().mockResolvedValue(workspace),
       listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
@@ -254,14 +190,11 @@ describe("dashboard page inner async components", () => {
 describe("DashboardLayout edge branches", () => {
   beforeEach(() => {
     vi.resetModules();
+    authMock.mockReset();
   });
 
   it("falls back to empty list + null active when there is no token", async () => {
-    vi.doMock("@/lib/auth/server", () => ({
-      getServerToken: vi.fn().mockResolvedValue(null),
-      getServerAuth: vi.fn(),
-      getServerSessionMetadata: vi.fn(),
-    }));
+    authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue(null) });
     vi.doMock("@/lib/workspace", () => ({
       resolveActiveWorkspace: vi.fn(),
       listTenantWorkspacesCached: vi.fn(),
@@ -283,11 +216,7 @@ describe("DashboardLayout edge branches", () => {
   });
 
   it("recovers via catch when listTenantWorkspacesCached rejects", async () => {
-    vi.doMock("@/lib/auth/server", () => ({
-      getServerToken: vi.fn().mockResolvedValue("tkn"),
-      getServerAuth: vi.fn(),
-      getServerSessionMetadata: vi.fn(),
-    }));
+    authMock.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tkn") });
     vi.doMock("@/lib/workspace", () => ({
       resolveActiveWorkspace: vi.fn().mockResolvedValue(null),
       listTenantWorkspacesCached: vi.fn().mockRejectedValue(new Error("api-down")),

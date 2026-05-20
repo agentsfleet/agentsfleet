@@ -112,6 +112,39 @@ pub fn freeEncryption(alloc: Allocator, cfg: EncryptionConfig) void {
     alloc.free(cfg.master_key);
 }
 
+const AuthPeppersConfig = struct {
+    session_code_pepper: []u8,
+    audit_log_pepper: []u8,
+};
+
+/// Two independent HMAC peppers loaded at boot. Both share the same shape as
+/// ENCRYPTION_MASTER_KEY (64 hex chars = 32 bytes CSPRNG, hex-encoded). Held
+/// in process memory only; never written to disk; never logged. Provisioned
+/// via the bootstrap playbook auth-pepper subsection.
+///
+///   AUTH_SESSION_CODE_PEPPER — keyed HMAC for the device-flow verification
+///                              code (defeats offline brute-force from a
+///                              Redis dump alone).
+///   AUDIT_LOG_PEPPER         — keyed HMAC for `session_id` in the
+///                              `.auth_audit` log scope (pseudonymization
+///                              across audit events).
+pub fn loadAuthPeppers(alloc: Allocator) !AuthPeppersConfig {
+    const session_code = try env.requiredEnvOwned(alloc, "AUTH_SESSION_CODE_PEPPER", ValidationError.MissingAuthSessionCodePepper);
+    errdefer alloc.free(session_code);
+    if (session_code.len != 64 or !validate.isHexString(session_code)) return ValidationError.InvalidAuthSessionCodePepper;
+
+    const audit_log = try env.requiredEnvOwned(alloc, "AUDIT_LOG_PEPPER", ValidationError.MissingAuditLogPepper);
+    errdefer alloc.free(audit_log);
+    if (audit_log.len != 64 or !validate.isHexString(audit_log)) return ValidationError.InvalidAuditLogPepper;
+
+    return .{ .session_code_pepper = session_code, .audit_log_pepper = audit_log };
+}
+
+pub fn freeAuthPeppers(alloc: Allocator, cfg: AuthPeppersConfig) void {
+    alloc.free(cfg.session_code_pepper);
+    alloc.free(cfg.audit_log_pepper);
+}
+
 const MiscConfig = struct {
     app_url: []u8,
     api_url: []u8,

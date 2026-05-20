@@ -14,7 +14,7 @@ import {
   Time,
 } from "@usezombie/design-system";
 
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { getApproval, type ApprovalGate } from "@/lib/api/approvals";
 import ResolveButtons from "./ResolveButtons";
@@ -27,7 +27,8 @@ export default async function ApprovalDetailPage({
   params: Promise<{ gateId: string }>;
 }) {
   const { gateId } = await params;
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
   const workspace = await resolveActiveWorkspace(token);
   if (!workspace) notFound();

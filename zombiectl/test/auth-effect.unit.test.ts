@@ -202,9 +202,10 @@ describe("logoutEffect", () => {
       sessionId: "sess-1",
       apiUrl: "https://api.test.local",
     };
-    const program = logoutEffect.pipe(
+    const program = logoutEffect().pipe(
       Effect.provide(configLayer()),
       Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(httpClientLayer(() => Effect.succeed({ aborted_count: 2 }) as Effect.Effect<unknown, ServerError>)),
       Effect.provide(outputLayer(rec)),
       Effect.provide(analyticsLayer(rec)),
     );
@@ -224,14 +225,68 @@ describe("logoutEffect", () => {
       sessionId: "sess-1",
       apiUrl: "https://api.test.local",
     };
-    const program = logoutEffect.pipe(
+    const program = logoutEffect().pipe(
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(httpClientLayer(() => Effect.succeed({ aborted_count: 0 }) as Effect.Effect<unknown, ServerError>)),
       Effect.provide(outputLayer(rec)),
       Effect.provide(analyticsLayer(rec)),
     );
     await runWith(program);
     expect(rec.stdout.some((line) => line.includes("\"logged_out\":true"))).toBe(true);
+  });
+
+  test("--all rejected with ValidationError", async () => {
+    const rec = makeRecorder();
+    const fakeCreds: FakeCredsState = {
+      token: Option.some(Redacted.make("test-token")),
+      savedAt: 1700000000000,
+      sessionId: "sess-1",
+      apiUrl: "https://api.test.local",
+    };
+    const program = logoutEffect({ all: true }).pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(httpClientLayer(() => Effect.die("--all should short-circuit before HTTP") as Effect.Effect<unknown, ServerError>)),
+      Effect.provide(outputLayer(rec)),
+      Effect.provide(analyticsLayer(rec)),
+    );
+    const exit = await runWith(program);
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(rec.credentialOps).toEqual([]);
+  });
+
+  test("server-side revoke failure still clears local credentials + warns", async () => {
+    const rec = makeRecorder();
+    const fakeCreds: FakeCredsState = {
+      token: Option.some(Redacted.make("test-token")),
+      savedAt: 1700000000000,
+      sessionId: "sess-1",
+      apiUrl: "https://api.test.local",
+    };
+    const program = logoutEffect().pipe(
+      Effect.provide(configLayer()),
+      Effect.provide(credentialsLayer(fakeCreds, rec)),
+      Effect.provide(
+        httpClientLayer(() =>
+          Effect.fail(
+            new ServerError({
+              detail: "boom",
+              suggestion: "later",
+              code: "UZ-AUTH-XYZ",
+              status: 500,
+              requestId: null,
+            }),
+          ),
+        ),
+      ),
+      Effect.provide(outputLayer(rec)),
+      Effect.provide(analyticsLayer(rec)),
+    );
+    const exit = await runWith(program);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.credentialOps).toEqual(["clear"]);
+    expect(rec.stderr.some((line) => line.includes("server-side session revocation failed"))).toBe(true);
   });
 });
 

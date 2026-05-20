@@ -15,8 +15,9 @@
  *      with `is_test_fixture: true` metadata so prod ops dashboards can
  *      filter them out.
  *   4. Bootstrap each fixture user's tenant in zombied by Svix-signing a
- *      `user.created` payload and POSTing /v1/webhooks/clerk — same path
- *      Clerk hits in production. Idempotent (replay returns created:false).
+ *      `user.created` payload and POSTing /v1/auth/identity-events/clerk —
+ *      same path Clerk hits in production (renamed from /v1/webhooks/clerk
+ *      in M68). Idempotent (replay returns created:false).
  *   5. Cache the minted JWTs to .fixture-jwts.json so signInAs(page, key)
  *      can mount the cookie without re-minting per spec. The cache is
  *      gitignored at the repo root and stays out of Playwright's

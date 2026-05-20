@@ -2,11 +2,11 @@
  * Tenant-bootstrap helper for the e2e harness.
  *
  * Replays Clerk's `user.created` webhook against zombied's
- * POST /v1/webhooks/clerk handler so each fixture user has a tenant row,
- * default workspace, and starter credit before any spec runs. The wire shape
- * mirrors the integration test at
- * src/http/handlers/webhooks/clerk_integration_test.zig:82 (happy path)
- * and :348 (replay idempotency — replaying the same user.created returns
+ * POST /v1/auth/identity-events/clerk handler so each fixture user has a
+ * tenant row, default workspace, and starter credit before any spec runs.
+ * The wire shape mirrors the integration test at
+ * src/http/handlers/auth/identity_events_clerk_integration_test.zig (happy
+ * path + replay idempotency — replaying the same user.created returns
  * `created:false` with no new rows).
  *
  * Idempotent: safe to call on every globalSetup; replays return 200 with
@@ -56,7 +56,7 @@ export async function bootstrapTenant(fixture: ProvisionedUser): Promise<Bootstr
   const body = JSON.stringify(buildPayload(fixture));
   const headers = signSvix(secret, newMsgId("msg_e2e_bootstrap"), body);
 
-  const res = await fetch(`${apiUrl}/v1/webhooks/clerk`, {
+  const res = await fetch(`${apiUrl}/v1/auth/identity-events/clerk`, {
     method: "POST",
     headers: { ...headers, "Content-Type": "application/json" },
     body,

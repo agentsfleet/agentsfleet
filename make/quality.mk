@@ -183,7 +183,7 @@ _schema_gate_check:
 
 check-schema-gate: _schema_gate_check  ## Enforce pre-v2.0 teardown convention on schema/*.sql
 
-REDOCLY := bun x redocly
+REDOCLY := bunx @redocly/cli
 
 check-openapi:  ## Bundle YAML → openapi.json + Redocly lint + error-schema + URL-shape checks
 	@echo "→ [openapi] Bundling split YAML → public/openapi.json..."

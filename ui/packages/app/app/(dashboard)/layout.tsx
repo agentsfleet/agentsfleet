@@ -1,13 +1,14 @@
 import { TooltipProvider } from "@usezombie/design-system";
 import Shell from "@/components/layout/Shell";
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import {
   listTenantWorkspacesCached,
   resolveActiveWorkspace,
 } from "@/lib/workspace";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   const [listResult, active] = token
     ? await Promise.all([
         // Cached so `resolveActiveWorkspace` below (and every Suspense

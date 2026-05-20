@@ -5,7 +5,7 @@ import {
   Section,
   SectionLabel,
 } from "@usezombie/design-system";
-import { getServerToken } from "@/lib/auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { listWorkspaceEvents } from "@/lib/api/events";
 import { resolveActiveWorkspace } from "@/lib/workspace";
 import { EventsList } from "@/components/domain/EventsList";
@@ -13,7 +13,8 @@ import { EventsList } from "@/components/domain/EventsList";
 export const dynamic = "force-dynamic";
 
 export default async function EventsPage() {
-  const token = await getServerToken();
+  const { getToken } = await auth();
+  const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);
