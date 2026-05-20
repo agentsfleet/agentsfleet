@@ -160,9 +160,13 @@ pub fn mapApproveOutcome(resp: redis_protocol.RespValue) Error!void {
     return Error.UnexpectedRedisReply;
 }
 
-pub fn mapDeleteOutcome(resp: redis_protocol.RespValue) Error!void {
+/// Fresh abort (`ok`) vs idempotent re-delete of an already-aborted session (`already_aborted`) — lets the handler emit the abort audit record only once.
+pub const DeleteOutcome = enum { aborted, already_aborted };
+
+pub fn mapDeleteOutcome(resp: redis_protocol.RespValue) Error!DeleteOutcome {
     const tag = firstTag(resp) orelse return Error.UnexpectedRedisReply;
-    if (std.mem.eql(u8, tag, "ok") or std.mem.eql(u8, tag, "already_aborted")) return;
+    if (std.mem.eql(u8, tag, "ok")) return .aborted;
+    if (std.mem.eql(u8, tag, "already_aborted")) return .already_aborted;
     if (std.mem.eql(u8, tag, "missing")) return Error.SessionMissing;
     if (std.mem.eql(u8, tag, "not_owner")) return Error.NotOwner;
     if (std.mem.eql(u8, tag, "consumed")) return Error.SessionConsumed;

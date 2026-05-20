@@ -98,6 +98,30 @@ fn expireReplayWindow(
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
+test "delete is idempotent: first call aborts, second reports already_aborted" {
+    const alloc = std.testing.allocator;
+    var client = try connectRedisOrSkip(alloc);
+    defer client.deinit();
+    var store = SessionStore.init(alloc, &client, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+
+    const sid = try createApprovedSession(&store);
+    defer alloc.free(sid);
+    defer delSessionKey(&client, alloc, sid);
+
+    // First DELETE performs the abort.
+    try std.testing.expectEqual(
+        session_store_redis.DeleteOutcome.aborted,
+        try store.delete(sid, TEST_CLERK_USER_ID),
+    );
+    // Second DELETE is idempotent and must report `.already_aborted` — the
+    // handler keys its audit emit on `.aborted`, so a re-delete writes no
+    // duplicate explicit_cancel record over the prior reason.
+    try std.testing.expectEqual(
+        session_store_redis.DeleteOutcome.already_aborted,
+        try store.delete(sid, TEST_CLERK_USER_ID),
+    );
+}
+
 test "verify is atomic: consume blocks replay from a different fingerprint" {
     const alloc = std.testing.allocator;
     var client = try connectRedisOrSkip(alloc);

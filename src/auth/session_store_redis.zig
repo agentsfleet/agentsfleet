@@ -17,6 +17,7 @@ pub const SessionState = session_state.SessionState;
 pub const SessionStatus = session_state.SessionStatus;
 pub const VerifyOutcome = proto.VerifyOutcome;
 pub const VerifyPayload = proto.VerifyPayload;
+pub const DeleteOutcome = proto.DeleteOutcome;
 pub const Error = proto.Error;
 
 pub const SESSION_KEY_PREFIX: []const u8 = "auth:session:";
@@ -189,8 +190,11 @@ pub const SessionStore = struct {
         return try borrowed.dupe(self.alloc);
     }
 
-    /// Atomic owner-checked abort to `aborted/explicit_cancel`.
-    pub fn delete(self: *SessionStore, session_id: []const u8, clerk_user_id: []const u8) Error!void {
+    /// Atomic owner-checked abort to `aborted/explicit_cancel`. Returns
+    /// `.aborted` when this call performed the abort, `.already_aborted`
+    /// when the session was already terminal (idempotent re-delete) so the
+    /// caller can avoid emitting a duplicate audit record.
+    pub fn delete(self: *SessionStore, session_id: []const u8, clerk_user_id: []const u8) Error!proto.DeleteOutcome {
         var key_buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
         const key = formatSessionKey(&key_buf, session_id) catch return Error.SessionMissing;
         var ttl_buf: [12]u8 = undefined;

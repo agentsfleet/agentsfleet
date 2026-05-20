@@ -207,18 +207,24 @@ pub fn innerDeleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
     var scratch: helpers.RequestScratch = undefined;
     helpers.buildScratch(&scratch, req);
 
-    hx.ctx.auth_sessions.delete(session_id, clerk_user_id) catch |err| {
+    const outcome = hx.ctx.auth_sessions.delete(session_id, clerk_user_id) catch |err| {
         return helpers.failFromStoreError(hx, err, session_id);
     };
 
-    audit_events.emitSessionAborted(
-        hx.ctx.audit_ctx,
-        session_id,
-        audit_events.REASON_EXPLICIT_CANCEL,
-        clerk_user_id,
-        scratch.derived,
-        hx.req_id,
-    );
+    // Emit the abort audit record only when THIS call performed the abort.
+    // An already-aborted session (e.g. terminal via rate_limit_exceeded)
+    // already logged its own reason; a second explicit_cancel record would
+    // be a spurious, reason-inconsistent entry in the `.auth_audit` sink.
+    if (outcome == .aborted) {
+        audit_events.emitSessionAborted(
+            hx.ctx.audit_ctx,
+            session_id,
+            audit_events.REASON_EXPLICIT_CANCEL,
+            clerk_user_id,
+            scratch.derived,
+            hx.req_id,
+        );
+    }
     hx.noContent();
 }
 
