@@ -26,11 +26,14 @@ describe("Home", () => {
     expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
   });
 
-  it("renders the terminal-style primary CTA with the install command", () => {
+  it("renders the install command copy-row in the hero", () => {
     renderHome();
+    expect(screen.getByTestId("hero-install-command").textContent).toContain(
+      "curl -fsSL https://usezombie.sh | bash",
+    );
     const cta = screen.getByTestId("hero-cta-primary");
     expect(cta.tagName).toBe("BUTTON");
-    expect(cta.textContent).toContain("npm install -g @usezombie/zombiectl");
+    expect(cta.textContent).toMatch(/copy/i);
   });
 
   it("does not render Talk to us CTA", () => {
@@ -38,9 +41,9 @@ describe("Home", () => {
     expect(screen.queryByRole("link", { name: /talk to us/i })).not.toBeInTheDocument();
   });
 
-  it("renders the hero install transcript Terminal", () => {
+  it("renders the hero install Terminal", () => {
     renderHome();
-    expect(screen.getByLabelText(/install platform-ops via claude code/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/install via usezombie\.sh/i)).toBeInTheDocument();
   });
 
   it("mounts the OnboardingFlow at the #onboarding-flow anchor with all four steps", () => {
@@ -69,10 +72,13 @@ describe("Home", () => {
     expect(screen.getByText("Self-managed key")).toBeInTheDocument();
   });
 
-  it("renders the install block", () => {
+  it("does not render a duplicate install block (OnboardingFlow already covers install)", () => {
     renderHome();
-    expect(screen.getByRole("heading", { level: 2, name: "Install zombiectl, then run /usezombie-install-platform-ops" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /read the docs/i })).toBeInTheDocument();
+    // The old standalone InstallBlock below pricing was redundant with the
+    // OnboardingFlow steps at the top of the page; it must be gone.
+    expect(
+      screen.queryByRole("heading", { level: 2, name: /install zombiectl, then run/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("embeds the Pricing block below How it works", () => {

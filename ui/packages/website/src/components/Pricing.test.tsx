@@ -112,25 +112,52 @@ describe("Pricing component", () => {
     );
   });
 
-  it("renders the billing flow diagram with one event + three stage cells using the new rates", () => {
-    renderPricing();
-    const flow = screen.getByTestId("pricing-flow");
-    expect(flow).toBeInTheDocument();
-    const billed = screen.getByTestId("pricing-flow-billed");
-    const cells = billed.querySelectorAll('[data-testid^="pricing-flow-cell-"]');
-    expect(cells).toHaveLength(4);
-    expect(screen.getByTestId("pricing-flow-cell-event")).toHaveTextContent(
-      RATES_DISPLAY.EVENT_RATE,
-    );
-    expect(screen.getByTestId("pricing-flow-cell-stage-1")).toHaveTextContent(
-      RATES_DISPLAY.STAGE_PLATFORM,
-    );
-    expect(screen.getByTestId("pricing-flow-cell-stage-2")).toHaveTextContent(
-      RATES_DISPLAY.STAGE_PLATFORM,
-    );
-    expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent(
-      RATES_DISPLAY.STAGE_PLATFORM,
-    );
+  it("renders one event + three stage cells; stages free during the trial window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-01T00:00:00Z")); // inside the free-trial window
+    try {
+      renderPricing();
+      expect(screen.getByTestId("pricing-flow")).toBeInTheDocument();
+      const billed = screen.getByTestId("pricing-flow-billed");
+      const cells = billed.querySelectorAll('[data-testid^="pricing-flow-cell-"]');
+      expect(cells).toHaveLength(4);
+      expect(screen.getByTestId("pricing-flow-cell-event")).toHaveTextContent(
+        RATES_DISPLAY.EVENT_RATE,
+      );
+      // During the trial the stage cells read "free" — matching the headline —
+      // not the post-trial per-stage rate, so the cards stop contradicting it.
+      expect(screen.getByTestId("pricing-flow-cell-stage-1")).toHaveTextContent("free");
+      expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent("free");
+      expect(screen.getByTestId("pricing-flow-cell-stage-1")).not.toHaveTextContent(
+        RATES_DISPLAY.STAGE_PLATFORM,
+      );
+      expect(screen.getByTestId("pricing-flow-trial-note")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renders stage cells at the per-stage rate once the trial window closes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-01T00:00:00Z")); // after the free-trial window
+    try {
+      renderPricing();
+      expect(screen.getByTestId("pricing-flow-cell-event")).toHaveTextContent(
+        RATES_DISPLAY.EVENT_RATE,
+      );
+      expect(screen.getByTestId("pricing-flow-cell-stage-1")).toHaveTextContent(
+        RATES_DISPLAY.STAGE_PLATFORM,
+      );
+      expect(screen.getByTestId("pricing-flow-cell-stage-2")).toHaveTextContent(
+        RATES_DISPLAY.STAGE_PLATFORM,
+      );
+      expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent(
+        RATES_DISPLAY.STAGE_PLATFORM,
+      );
+      expect(screen.queryByTestId("pricing-flow-trial-note")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("renders the LLM-stratum stating the user's provider keeps a separate bill", () => {
