@@ -93,11 +93,10 @@ export function Toast({
 
   useEffect(() => {
     if (visible) {
+      // Re-showing cancels any pending fade-out for free: the false-branch
+      // cleanup below runs (clearing + nulling the timer) before this effect
+      // body, so there is never a live timer to clear here.
       setRendered(true);
-      if (fadeTimer.current) {
-        clearTimeout(fadeTimer.current);
-        fadeTimer.current = null;
-      }
       return;
     }
     fadeTimer.current = setTimeout(() => setRendered(false), fadeMs);
