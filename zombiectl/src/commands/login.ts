@@ -82,93 +82,89 @@ export interface LoginFlagsRaw {
   readonly tokenName: string | undefined;
 }
 
-const announceSession = (
+const announceSession = Effect.fnUntraced(function* (
   sessionId: string,
   loginUrl: string,
-): Effect.Effect<void, never, CliConfig | Output> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    if (config.jsonMode) return;
-    const output = yield* Output;
-    yield* output.printSection("Login session");
-    yield* output.printKeyValue({ session_id: sessionId, login_url: loginUrl });
-  });
+) {
+  const config = yield* CliConfig;
+  if (config.jsonMode) return;
+  const output = yield* Output;
+  yield* output.printSection("Login session");
+  yield* output.printKeyValue({ session_id: sessionId, login_url: loginUrl });
+});
 
-const maybeOpenBrowser = (
+const maybeOpenBrowser = Effect.fnUntraced(function* (
   loginUrl: string,
   noOpen: boolean,
-): Effect.Effect<boolean, never, Browser | CliConfig | Output> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    if (noOpen || config.noOpen) {
-      if (!config.jsonMode) {
-        const output = yield* Output;
-        yield* output.info("browser: not opened (open URL manually)");
-      }
-      return false;
-    }
-    const browser = yield* Browser;
-    const opened = yield* browser.open(loginUrl);
+) {
+  const config = yield* CliConfig;
+  if (noOpen || config.noOpen) {
     if (!config.jsonMode) {
       const output = yield* Output;
-      yield* output.info(
-        opened ? "browser: opened" : "browser: not opened (open URL manually)",
-      );
+      yield* output.info("browser: not opened (open URL manually)");
     }
-    return opened;
-  });
+    return false;
+  }
+  const browser = yield* Browser;
+  const opened = yield* browser.open(loginUrl);
+  if (!config.jsonMode) {
+    const output = yield* Output;
+    yield* output.info(
+      opened ? "browser: opened" : "browser: not opened (open URL manually)",
+    );
+  }
+  return opened;
+});
 
-const renderOutcome = (
+const renderOutcome = Effect.fnUntraced(function* (
   outcome: FinalOutcome,
   sessionId: string,
-): Effect.Effect<number, never, CliConfig | Output> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const output = yield* Output;
-    if (outcome.status === "complete") {
-      if (config.jsonMode) {
-        yield* output.printJson({
-          status: "complete",
-          session_id: sessionId,
-          token_saved: true,
-          api_url: config.apiUrl,
-        });
-      } else {
-        yield* output.success("login complete");
-      }
-      return 0;
-    }
-    const detailMap: Record<Exclude<FinalOutcome["status"], "complete">, string> = {
-      expired: "login session expired",
-      interrupted: "login interrupted",
-      timeout: "login timed out",
-    };
-    const detail = detailMap[outcome.status];
+) {
+  const config = yield* CliConfig;
+  const output = yield* Output;
+  if (outcome.status === "complete") {
     if (config.jsonMode) {
-      yield* output.printJson({ status: outcome.status, session_id: sessionId });
+      yield* output.printJson({
+        status: "complete",
+        session_id: sessionId,
+        token_saved: true,
+        api_url: config.apiUrl,
+      });
     } else {
-      yield* output.error(detail);
+      yield* output.success("login complete");
     }
-    return outcome.status === "interrupted" ? 130 : 1;
-  });
+    return 0;
+  }
+  const detailMap: Record<Exclude<FinalOutcome["status"], "complete">, string> = {
+    expired: "login session expired",
+    interrupted: "login interrupted",
+    timeout: "login timed out",
+  };
+  const detail = detailMap[outcome.status];
+  if (config.jsonMode) {
+    yield* output.printJson({ status: outcome.status, session_id: sessionId });
+  } else {
+    yield* output.error(detail);
+  }
+  return outcome.status === "interrupted" ? 130 : 1;
+});
 
-const persistSuccess = (
+const persistSuccess = Effect.fnUntraced(function* (
   sessionId: string,
   token: string,
-): Effect.Effect<Redacted.Redacted<string>, CliError, CliConfig | Credentials> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const credentials = yield* Credentials;
-    const redacted = Redacted.make(token);
-    yield* credentials.saveAccessToken({
-      token: redacted,
-      sessionId,
-      apiUrl: config.apiUrl,
-    });
-    return redacted;
+) {
+  const config = yield* CliConfig;
+  const credentials = yield* Credentials;
+  const redacted = Redacted.make(token);
+  yield* credentials.saveAccessToken({
+    token: redacted,
+    sessionId,
+    apiUrl: config.apiUrl,
   });
+  return redacted;
+});
 
-const failedOutcomeError = (
+export const failedOutcomeError = (
   outcome: FinalOutcome,
 ): ExpiredSessionError | InterruptedError | TimeoutError => {
   if (outcome.status === "expired") {
@@ -194,35 +190,27 @@ const failedOutcomeError = (
 // on disk would route subsequent commands to the same dead-on-arrival
 // token. Swallow the clear's own UnexpectedError — the validation
 // failure is the load-bearing signal the operator needs to see.
-const rollbackOnMeFailure = (
-  err: MeValidationError,
-): Effect.Effect<never, MeValidationError, Credentials> =>
-  Effect.gen(function* () {
-    const credentials = yield* Credentials;
-    yield* credentials.clearAccessToken.pipe(Effect.ignore);
-    return yield* Effect.fail(err);
-  });
+const rollbackOnMeFailure = Effect.fnUntraced(function* (err: MeValidationError) {
+  const credentials = yield* Credentials;
+  yield* credentials.clearAccessToken.pipe(Effect.ignore);
+  return yield* Effect.fail(err);
+});
 
 // Verification-pending branch: prompt → /verify → decrypt → persist →
 // /me ping → hydrate → telemetry. Lives outside loginCore so the
 // orchestrator stays linear (no nested generators) under the 350-line cap.
-const completeVerificationBranch = (
+const completeVerificationBranch = Effect.fnUntraced(function* (
   sessionId: string,
   keypair: import("../lib/cli-flow.ts").CliKeypair,
   noInput: boolean,
-): Effect.Effect<
-  FinalOutcome,
-  CliError,
-  Analytics | CliConfig | Credentials | HttpClient | Input | Output | TelemetryRuntime | Workspaces
-> =>
-  Effect.gen(function* () {
-    const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput });
-    const redacted = yield* persistSuccess(sessionId, token);
-    yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
-    yield* hydrateWorkspacesAfterLogin(redacted);
-    yield* captureLoginCompleted(sessionId, token);
-    return { status: "complete", token } as FinalOutcome;
-  });
+) {
+  const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput });
+  const redacted = yield* persistSuccess(sessionId, token);
+  yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
+  yield* hydrateWorkspacesAfterLogin(redacted);
+  yield* captureLoginCompleted(sessionId, token);
+  return { status: "complete", token } as FinalOutcome;
+});
 
 // Login surface contract: every failure exits 1. Transport / server
 // errors during create-session or poll get re-wrapped as AuthError so
@@ -230,64 +218,48 @@ const completeVerificationBranch = (
 // rather than ServerError(3) / NetworkError(2). VerificationFailed,
 // DecryptError, and the rate-limit-exceeded SessionAborted all come
 // through already-typed as AuthError from the device-flow helpers.
-const loginCore = (
-  flags: LoginFlags,
-): Effect.Effect<
-  void,
-  CliError,
-  | Analytics
-  | Browser
-  | CliConfig
-  | Credentials
-  | HttpClient
-  | Input
-  | Output
-  | Spinner
-  | TelemetryRuntime
-  | Workspaces
-> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
+const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
+  const config = yield* CliConfig;
 
-    // Pre-flight (D20 + D26b). idempotencyCheck refuses to overwrite an
-    // existing credential without --force or a Y/yes prompt; envTokenAwareness
-    // surfaces the precedence gotcha when ZMB_TOKEN/ZOMBIE_TOKEN is set.
-    // Both honor --no-input by aborting with NoInputAbort instead of prompting.
-    const preflightGuards = { force: flags.force, noInput: flags.noInput };
-    yield* idempotencyCheck(preflightGuards);
-    yield* envTokenAwareness(preflightGuards);
+  // Pre-flight (D20 + D26b). idempotencyCheck refuses to overwrite an
+  // existing credential without --force or a Y/yes prompt; envTokenAwareness
+  // surfaces the precedence gotcha when ZMB_TOKEN/ZOMBIE_TOKEN is set.
+  // Both honor --no-input by aborting with NoInputAbort instead of prompting.
+  const preflightGuards = { force: flags.force, noInput: flags.noInput };
+  yield* idempotencyCheck(preflightGuards);
+  yield* envTokenAwareness(preflightGuards);
 
-    const keypair = yield* generateKeypair;
-    const tokenName = flags.tokenName ?? defaultTokenName();
-    const created = yield* createSession(keypair.publicKeyBase64Url, tokenName);
-    const loginUrl = buildLoginUrl(config.dashboardUrl, created.session_id);
+  const keypair = yield* generateKeypair;
+  const tokenName = flags.tokenName ?? defaultTokenName();
+  const created = yield* createSession(keypair.publicKeyBase64Url, tokenName);
+  const loginUrl = buildLoginUrl(config.dashboardUrl, created.session_id);
 
-    yield* announceSession(created.session_id, loginUrl);
-    yield* maybeOpenBrowser(loginUrl, flags.noOpen);
+  yield* announceSession(created.session_id, loginUrl);
+  yield* maybeOpenBrowser(loginUrl, flags.noOpen);
 
-    const handles = yield* startSpinner("waiting for browser approval");
-    const deadline = Date.now() + Math.max(1, flags.timeoutSec) * 1000;
-    const pollOutcome = yield* withSigintAbort((signal) =>
-      pollUntilVerificationPending(
-        created.session_id,
-        { deadline, pollMs: flags.pollMs },
-        signal,
-      ),
-    ).pipe(
-      Effect.tap((res) =>
-        res.status === "verification_pending" ? handles.succeed : handles.fail,
-      ),
-      Effect.tapError(() => handles.fail),
-    );
+  const handles = yield* startSpinner("waiting for browser approval");
+  const deadline = Date.now() + Math.max(1, flags.timeoutSec) * 1000;
+  const pollOutcome = yield* withSigintAbort((signal) =>
+    pollUntilVerificationPending(
+      created.session_id,
+      { deadline, pollMs: flags.pollMs },
+      signal,
+    ),
+  ).pipe(
+    Effect.tap((res) =>
+      res.status === "verification_pending" ? handles.succeed : handles.fail,
+    ),
+    Effect.tapError(() => handles.fail),
+  );
 
-    const final: FinalOutcome =
-      pollOutcome.status === "verification_pending"
-        ? yield* completeVerificationBranch(created.session_id, keypair, flags.noInput)
-        : pollOutcome;
+  const final: FinalOutcome =
+    pollOutcome.status === "verification_pending"
+      ? yield* completeVerificationBranch(created.session_id, keypair, flags.noInput)
+      : pollOutcome;
 
-    const exitCode = yield* renderOutcome(final, created.session_id);
-    if (exitCode !== 0) return yield* Effect.fail(failedOutcomeError(final));
-  });
+  const exitCode = yield* renderOutcome(final, created.session_id);
+  if (exitCode !== 0) return yield* Effect.fail(failedOutcomeError(final));
+});
 
 // Re-map transport errors during create-session / poll so every login
 // failure exits 1 (AuthError). VerificationFailed / DecryptError /
