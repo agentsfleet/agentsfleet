@@ -15,7 +15,7 @@ import {
 } from "@usezombie/design-system";
 import { webhookUrlFor } from "@/lib/api/zombies";
 import type { ZombieTrigger } from "@/lib/types";
-import GuidedTriggerCard from "./GuidedTriggerCard";
+import GuidedTriggerCard, { COPY_RESET_MS } from "./GuidedTriggerCard";
 import CronCard from "./CronCard";
 import { guidanceFor } from "./provider-guidance";
 
@@ -185,7 +185,7 @@ function CopyUrlFallback({ url, source }: { url: string; source: string }) {
     try {
       await navigator.clipboard.writeText(url);
       setCopied(true);
-      resetTimer.start(() => setCopied(false), 1500);
+      resetTimer.start(() => setCopied(false), COPY_RESET_MS);
     } catch {
       // clipboard unavailable
     }

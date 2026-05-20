@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Alert,
@@ -28,6 +28,19 @@ export default function CreateWorkspaceDialog({ open, onOpenChange }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
+
+  // Reset the form when the dialog closes. The component stays mounted while
+  // closed (only the dialog content unmounts), so without this a typed-but-
+  // cancelled name — or a stale error — would persist into the next open. The
+  // cleanup fires on the open→closed transition and on unmount, covering every
+  // dismiss path (Cancel, Escape, overlay click) uniformly.
+  useEffect(() => {
+    if (!open) return;
+    return () => {
+      setName("");
+      setError(null);
+    };
+  }, [open]);
 
   function submit() {
     if (pending) return;

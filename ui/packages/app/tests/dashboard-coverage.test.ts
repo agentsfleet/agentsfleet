@@ -1210,4 +1210,31 @@ describe("CreateWorkspaceDialog component", () => {
     expect(createWorkspaceActionMock).toHaveBeenCalledTimes(1);
     release({ ok: true, data: { workspace_id: "ws_p", name: "ws" } });
   });
+
+  it("clears a typed-but-unsaved name when the dialog closes, so a reopen starts fresh", async () => {
+    const user = userEvent.setup();
+    const { default: CreateWorkspaceDialog } = await import(
+      "../components/layout/CreateWorkspaceDialog"
+    );
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    await user.type(screen.getByTestId("workspace-name-input"), "draft-name");
+    expect(
+      (screen.getByTestId("workspace-name-input") as HTMLInputElement).value,
+    ).toBe("draft-name");
+    // Close (open→false): the effect cleanup resets the form while the
+    // component stays mounted.
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: false, onOpenChange } as never),
+    );
+    // Reopen: the name field is blank again, not the abandoned "draft-name".
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    expect(
+      (screen.getByTestId("workspace-name-input") as HTMLInputElement).value,
+    ).toBe("");
+  });
 });
