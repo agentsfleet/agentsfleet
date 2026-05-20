@@ -44,7 +44,6 @@ pub const REASON_INVALID_CODE: []const u8 = "invalid_code";
 pub const REASON_NOT_APPROVED: []const u8 = "not_approved";
 pub const REASON_RATE_LIMIT_EXCEEDED: []const u8 = "rate_limit_exceeded";
 pub const REASON_EXPLICIT_CANCEL: []const u8 = "explicit_cancel";
-pub const REASON_REPLACED: []const u8 = "replaced";
 
 /// Shared boot-loaded state. Constructed once at serve init and passed
 /// onto the request context so per-request emit calls don't re-read env.
@@ -270,7 +269,6 @@ test "reason constants match the audit-event schema" {
     try testing.expectEqualStrings("not_approved", REASON_NOT_APPROVED);
     try testing.expectEqualStrings("rate_limit_exceeded", REASON_RATE_LIMIT_EXCEEDED);
     try testing.expectEqualStrings("explicit_cancel", REASON_EXPLICIT_CANCEL);
-    try testing.expectEqualStrings("replaced", REASON_REPLACED);
 }
 
 test "AuditCtx.init stores the pepper for later emit calls" {
