@@ -1028,3 +1028,90 @@ describe("WorkspaceSwitcher component", () => {
     expect(setActiveWorkspaceMock).not.toHaveBeenCalled();
   });
 });
+
+// ── CreateWorkspaceDialog ───────────────────────────────────────────────────
+
+describe("CreateWorkspaceDialog component", () => {
+  async function renderDialog(
+    props: { open?: boolean; onOpenChange?: (open: boolean) => void } = {},
+  ) {
+    const onOpenChange = props.onOpenChange ?? vi.fn();
+    const { default: CreateWorkspaceDialog } = await import(
+      "../components/layout/CreateWorkspaceDialog"
+    );
+    render(
+      React.createElement(CreateWorkspaceDialog, {
+        open: props.open ?? true,
+        onOpenChange,
+      } as never),
+    );
+    return { onOpenChange };
+  }
+
+  it("submits the trimmed name, then closes and refreshes on success", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_x", name: "acme-prod" },
+    });
+    const { onOpenChange } = await renderDialog();
+    await user.type(screen.getByTestId("workspace-name-input"), "  acme-prod  ");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "acme-prod" }),
+    );
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(routerRefresh).toHaveBeenCalled();
+  });
+
+  it("omits a blank name so the server generates a Heroku-style one", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_y", name: "auto-gen" },
+    });
+    await renderDialog();
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: undefined }),
+    );
+  });
+
+  it("shows the mapped error and stays open when the action fails", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: false,
+      errorCode: "UZ-AUTH-401",
+      error: "Missing tenant context on session",
+    });
+    const { onOpenChange } = await renderDialog();
+    await user.type(screen.getByTestId("workspace-name-input"), "x");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-create-error")).toBeTruthy(),
+    );
+    expect(onOpenChange).not.toHaveBeenCalledWith(false);
+    expect(routerRefresh).not.toHaveBeenCalled();
+  });
+
+  it("submits when Enter is pressed inside the name field", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { workspace_id: "ws_z", name: "via-enter" },
+    });
+    await renderDialog();
+    await user.type(screen.getByTestId("workspace-name-input"), "via-enter{Enter}");
+    await waitFor(() =>
+      expect(createWorkspaceActionMock).toHaveBeenCalledWith({ name: "via-enter" }),
+    );
+  });
+
+  it("Cancel closes the dialog without calling the action", async () => {
+    const user = userEvent.setup();
+    const { onOpenChange } = await renderDialog();
+    await user.click(screen.getByRole("button", { name: /cancel/i }));
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(createWorkspaceActionMock).not.toHaveBeenCalled();
+  });
+});
