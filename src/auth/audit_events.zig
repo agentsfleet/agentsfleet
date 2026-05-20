@@ -305,3 +305,20 @@ test "emitSessionConsumed omits IP fields per the consume-event schema" {
         "req_abc",
     );
 }
+
+test "emitSessionVerifyFailed accepts the not_approved reason" {
+    // Wiring smoke for the verify .not_approved arm: it now routes through
+    // emitSessionVerifyFailed with REASON_NOT_APPROVED and attempts=0 (no code
+    // was checked). Captured-bytes shape stays a Slice 3 integration concern.
+    const ctx = AuditCtx.init("test-pepper-bytes-32-len--padded");
+    const derived = trusted_ip.deriveClientIp("203.0.113.7", null, null);
+    emitSessionVerifyFailed(
+        ctx,
+        "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa40",
+        0,
+        REASON_NOT_APPROVED,
+        derived,
+        "Mozilla/5.0",
+        "req_abc123",
+    );
+}

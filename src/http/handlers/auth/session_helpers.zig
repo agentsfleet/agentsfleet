@@ -102,7 +102,7 @@ pub fn dispatchVerifyOutcome(
         .replay => |p| onVerifyReplay(hx, p, session_id, fingerprint),
         .invalid_code => |attempts| onVerifyInvalid(hx, attempts, session_id, scratch),
         .rate_limited => onVerifyRateLimited(hx, session_id, scratch),
-        .not_approved => hx.fail(error_codes.ERR_SESSION_NOT_APPROVED, "Session not approved yet"),
+        .not_approved => onVerifyNotApproved(hx, session_id, scratch),
         .aborted => |reason| hx.fail(error_codes.ERR_SESSION_ABORTED, reason),
         .consumed => hx.fail(error_codes.ERR_SESSION_CONSUMED, "Session already consumed"),
         .expired => hx.fail(error_codes.ERR_SESSION_EXPIRED, "Session expired"),
@@ -189,6 +189,23 @@ fn onVerifyRateLimited(hx: hx_mod.Hx, session_id: []const u8, scratch: RequestSc
         hx.req_id,
     );
     hx.fail(error_codes.ERR_SESSION_ABORTED, "Too many incorrect attempts — session aborted");
+}
+
+// A /verify against a still-pending (un-approved) session. The CLI polls to
+// verification_pending before prompting, so this is an out-of-order or probing
+// attempt worth a verify_failed record. attempts=0: no code was checked — the
+// session never reached the code gate.
+fn onVerifyNotApproved(hx: hx_mod.Hx, session_id: []const u8, scratch: RequestScratch) void {
+    audit_events.emitSessionVerifyFailed(
+        hx.ctx.audit_ctx,
+        session_id,
+        0,
+        audit_events.REASON_NOT_APPROVED,
+        scratch.derived,
+        scratch.user_agent,
+        hx.req_id,
+    );
+    hx.fail(error_codes.ERR_SESSION_NOT_APPROVED, "Session not approved yet");
 }
 
 // ── Store-error → HTTP mapping ───────────────────────────────────────────
