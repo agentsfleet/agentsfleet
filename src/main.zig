@@ -260,6 +260,7 @@ test {
     _ = @import("executor/lease.zig");
     _ = @import("executor/client.zig");
     _ = @import("http/handlers/handler_auth_primitives_test.zig");
+    _ = @import("http/handlers/auth/sessions_log_redaction_test.zig");
     _ = @import("http/handlers/error_response_test.zig");
     _ = @import("http/handlers/hx_test.zig");
     _ = @import("http/handlers/memory/handler_test.zig");

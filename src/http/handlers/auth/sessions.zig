@@ -144,8 +144,9 @@ fn finishApprove(hx: hx_mod.Hx, session_id: []const u8, clerk_user_id: []const u
     // on "<lookup_failed>" to find these and correlate against Redis
     // incidents.
     var maybe_parsed = hx.ctx.auth_sessions.get(session_id) catch |err| blk: {
+        var wbuf: [helpers.REDACT_BUF_LEN]u8 = undefined;
         log.warn("auth_session_approve_audit_lookup_failed", .{
-            .session_id = session_id,
+            .session_id = helpers.redactSid(&wbuf, session_id),
             .req_id = hx.req_id,
             .err = @errorName(err),
         });
