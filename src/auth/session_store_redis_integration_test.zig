@@ -150,6 +150,45 @@ test "verify is atomic: consume blocks replay from a different fingerprint" {
     try std.testing.expect(parsed.value.consume_payload_expires_at_ms != null);
 }
 
+test "verify locks out after MAX_VERIFY_ATTEMPTS wrong codes → terminal rate_limited" {
+    const alloc = std.testing.allocator;
+    var client = try connectRedisOrSkip(alloc);
+    defer client.deinit();
+    var store = SessionStore.init(alloc, &client, TEST_CODE_PEPPER, TEST_AUDIT_PEPPER);
+
+    const sid = try createApprovedSession(&store);
+    defer alloc.free(sid);
+    defer delSessionKey(&client, alloc, sid);
+
+    const wrong_code: []const u8 = "000000";
+
+    // The first MAX-1 wrong attempts increment the counter and stay retryable.
+    var attempt: u8 = 1;
+    while (attempt < session_store_redis.MAX_VERIFY_ATTEMPTS) : (attempt += 1) {
+        var out = try store.verifyAndConsume(sid, wrong_code, FP_A);
+        defer out.deinit(alloc);
+        try std.testing.expect(out == .invalid_code);
+        try std.testing.expectEqual(attempt, out.invalid_code);
+    }
+
+    // The attempt that trips the cap returns the terminal rate_limited tag —
+    // distinct from invalid_code so the handler emits the abort audit once.
+    var locked = try store.verifyAndConsume(sid, wrong_code, FP_A);
+    defer locked.deinit(alloc);
+    try std.testing.expect(locked == .rate_limited);
+
+    // The session is now aborted; a re-verify (even the correct code) returns
+    // the already-terminal aborted outcome, never rate_limited a second time.
+    var after = try store.verifyAndConsume(sid, TEST_VERIFICATION_CODE, FP_A);
+    defer after.deinit(alloc);
+    try std.testing.expect(after == .aborted);
+    try std.testing.expectEqualStrings("rate_limit_exceeded", after.aborted); // pin test: literal is the contract
+
+    var parsed = (try store.get(sid)).?;
+    defer parsed.deinit();
+    try std.testing.expectEqual(SessionStatus.aborted, parsed.value.status);
+}
+
 test "verify is idempotent within the replay window for the same fingerprint" {
     const alloc = std.testing.allocator;
     var client = try connectRedisOrSkip(alloc);

@@ -101,6 +101,7 @@ pub fn dispatchVerifyOutcome(
         .success => |p| onVerifySuccess(hx, p, session_id, fingerprint, scratch),
         .replay => |p| onVerifyReplay(hx, p, session_id, fingerprint),
         .invalid_code => |attempts| onVerifyInvalid(hx, attempts, session_id, scratch),
+        .rate_limited => onVerifyRateLimited(hx, session_id, scratch),
         .not_approved => hx.fail(error_codes.ERR_SESSION_NOT_APPROVED, "Session not approved yet"),
         .aborted => |reason| hx.fail(error_codes.ERR_SESSION_ABORTED, reason),
         .consumed => hx.fail(error_codes.ERR_SESSION_CONSUMED, "Session already consumed"),
@@ -161,17 +162,33 @@ fn onVerifyInvalid(hx: hx_mod.Hx, attempts: u8, session_id: []const u8, scratch:
         scratch.user_agent,
         hx.req_id,
     );
-    if (attempts >= session_store.MAX_VERIFY_ATTEMPTS) {
-        audit_events.emitSessionAborted(
-            hx.ctx.audit_ctx,
-            session_id,
-            audit_events.REASON_RATE_LIMIT_EXCEEDED,
-            null,
-            scratch.derived,
-            hx.req_id,
-        );
-    }
     hx.fail(error_codes.ERR_VERIFICATION_FAILED, "Verification code did not match");
+}
+
+// The verify attempt that just tripped MAX_VERIFY_ATTEMPTS. The Lua already
+// flipped the session to aborted; emit the final verify_failed + the one-shot
+// abort audit here (on the edge), then return the terminal 410 — not the
+// retryable ERR_VERIFICATION_FAILED — so the CLI stops prompting and the user
+// restarts login instead of burning the remaining client-side retry.
+fn onVerifyRateLimited(hx: hx_mod.Hx, session_id: []const u8, scratch: RequestScratch) void {
+    audit_events.emitSessionVerifyFailed(
+        hx.ctx.audit_ctx,
+        session_id,
+        session_store.MAX_VERIFY_ATTEMPTS,
+        audit_events.REASON_INVALID_CODE,
+        scratch.derived,
+        scratch.user_agent,
+        hx.req_id,
+    );
+    audit_events.emitSessionAborted(
+        hx.ctx.audit_ctx,
+        session_id,
+        audit_events.REASON_RATE_LIMIT_EXCEEDED,
+        null,
+        scratch.derived,
+        hx.req_id,
+    );
+    hx.fail(error_codes.ERR_SESSION_ABORTED, "Too many incorrect attempts — session aborted");
 }
 
 // ── Store-error → HTTP mapping ───────────────────────────────────────────
