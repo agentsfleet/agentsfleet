@@ -4,7 +4,7 @@
 **Milestone:** M78
 **Workstream:** 001
 **Date:** May 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the public marketing landing page is the first-touch conversion surface; the flagged bugs degrade it directly.
 **Categories:** UI
 **Batch:** B1 — runs alongside M75 (`usezombie.sh` installer) via a parallel agent; the two share the install-command surface.
