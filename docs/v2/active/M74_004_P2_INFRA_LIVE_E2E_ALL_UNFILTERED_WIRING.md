@@ -112,15 +112,15 @@ Note: editing `Makefile`/`make/*.mk` triggers the pre-commit `check-gh-actions-v
 
 ## Sections (implementation slices)
 
-### §1 — Delete the broken filter machinery + parametrize the canonical recipe
+### §1 — Delete the broken filter machinery + parametrize the canonical recipe — DONE
 
 Remove `BACKEND_E2E_FILTER_1..4` and the `_zig_test_filter` primitive. Parametrize `_test-integration-full` (in `make/test-integration.mk`) with an optional `TEST_FILTER`: unset → `zig build test` (full suite, today's behavior, backward-compatible); set → `zig build -Dtest-filter="$$TEST_FILTER" test`. Use POSIX `set --`/`"$@"` so a filter value with spaces stays one argument. Grepped the repo: `_zig_test_filter` has no caller outside `acceptance.mk`; no workflow references it.
 
-### §2 — Rewrite `_e2e_backend` (full lane)
+### §2 — Rewrite `_e2e_backend` (full lane) — DONE
 
 `_e2e_backend: _test-integration-full` with no `TEST_FILTER` → full suite, no `-Dtest-filter`, against real PG + Redis via the canonical dependency chain (`_reset-test-db` → `_ensure-test-infra`) and env block. `live-e2e-all` runs `_e2e_backend` (via the shared `_e2e` aggregate that `dry` also uses).
 
-### §3 — Keep + fix the smoke lane (Captain steer, May 21, 2026)
+### §3 — Keep + fix the smoke lane (Captain steer, May 21, 2026) — DONE
 
 Original PLAN-decision (drop smoke entirely) collided with the live `dry-smoke.yml` CI job that runs `make _e2e_smoke`. Captain steer: "all of these worked before i need them working again." So `_e2e_backend_smoke` is **kept** and fixed: `BACKEND_E2E_SMOKE_FILTER` becomes `integration: ready decision` (a substring matching the 4 readiness tests that exercise DB-unhealthy + Redis-degraded + healthy paths), and `_e2e_backend_smoke` runs `$(MAKE) _test-integration-full` with that filter — real infra, env threaded, fast. `dry-smoke`'s backend leg now runs real tests instead of zero. No workflow edit needed.
 

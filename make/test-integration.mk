@@ -101,6 +101,10 @@ _test-integration-redis: _reset-test-db
 	  zig build test
 	@echo "✓ [zombied] Redis integration tests passed"
 
+# Full real-infra integration recipe. Optional TEST_FILTER (env): when set, a
+# substring passed to `zig build -Dtest-filter` so a lane can run a named subset
+# (e.g. the live-e2e backend smoke lane); when unset, the whole suite runs. Both
+# the canonical `test-integration` gate and the acceptance lanes route through here.
 _test-integration-full: _reset-test-db
 	@db_url="$$TEST_DATABASE_URL"; \
 	if [ -z "$$db_url" ]; then db_url="$(TEST_DATABASE_URL_LOCAL)"; fi; \
@@ -125,7 +129,13 @@ _test-integration-full: _reset-test-db
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	DATABASE_URL_MIGRATOR="$$db_url" \
 	zig build run -- migrate; \
-	echo "→ [zombied] Running full integration suite against real DB + Redis..."; \
+	if [ -n "$$TEST_FILTER" ]; then \
+	  echo "→ [zombied] Running integration suite (filter: $$TEST_FILTER) against real DB + Redis..."; \
+	  set -- -Dtest-filter="$$TEST_FILTER" test; \
+	else \
+	  echo "→ [zombied] Running full integration suite against real DB + Redis..."; \
+	  set -- test; \
+	fi; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	LIVE_DB=1 \
@@ -133,8 +143,8 @@ _test-integration-full: _reset-test-db
 	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
 	REDIS_URL_API="$$redis_tls_test_url" \
 	REDIS_TLS_CA_CERT_FILE="$(TEST_REDIS_TLS_CA_CERT)" \
-	zig build test
-	@echo "✓ [zombied] Full integration suite passed"
+	zig build "$$@"
+	@echo "✓ [zombied] Integration suite passed"
 
 # Executor-side unit tests against the mocked/stubbed executor sidecar.
 # Runs `zig build test-executor` which includes the redactor contract table

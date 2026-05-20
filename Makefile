@@ -42,7 +42,7 @@ help:  ## Show all available Makefile targets
 	@echo "Acceptance:"
 	@echo "  dry                      Full dry lanes — backend live-e2e + website + app Playwright (no Clerk auth)"
 	@echo "  dry-smoke                Smoke dry lanes (fast backend + website + app, no Clerk auth)"
-	@echo "  live-e2e-all             Run live spec end-to-end backend scenarios (4 filtered Zig integration tests vs real Postgres + Redis)"
+	@echo "  live-e2e-all             Run the full Zig integration suite unfiltered vs real Postgres + Redis"
 	@echo "  live-e2e-auth            Portability gate — compile + run src/auth/** in isolation"
 	@echo ""
 	@echo "Performance:"
