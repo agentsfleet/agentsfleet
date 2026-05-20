@@ -13,7 +13,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { loginEffect, type LoginFlags } from "../src/commands/login.ts";
+import { loginEffect, failedOutcomeError, type LoginFlags } from "../src/commands/login.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { Browser } from "../src/services/browser.service.ts";
 import { CliConfig } from "../src/services/config.ts";
@@ -32,9 +32,11 @@ import {
 import { Workspaces } from "../src/services/workspaces.ts";
 import {
   AuthError,
+  ExpiredSessionError,
   InterruptedError,
   NetworkError,
   ServerError,
+  TimeoutError,
   type CliError,
 } from "../src/errors/index.ts";
 
@@ -121,15 +123,21 @@ const analyticsLayer: Layer.Layer<Analytics> = Layer.succeed(Analytics, {
   groupIdentify: () => Effect.void,
 });
 
-const configLayer: Layer.Layer<CliConfig> = Layer.succeed(CliConfig, {
-  apiUrl: "https://api.test.local",
-  dashboardUrl: "https://dash.test.local",
-  accessToken: Option.none(),
-  jsonMode: false,
-  noOpen: true,
-  telemetryPosthogKey: "phc_test",
-  telemetryPosthogHost: "https://us.i.posthog.com",
-});
+const makeConfig = (
+  over: Partial<{ jsonMode: boolean; noOpen: boolean }> = {},
+): Layer.Layer<CliConfig> =>
+  Layer.succeed(CliConfig, {
+    apiUrl: "https://api.test.local",
+    dashboardUrl: "https://dash.test.local",
+    accessToken: Option.none(),
+    jsonMode: false,
+    noOpen: true,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
+    ...over,
+  });
+
+const configLayer: Layer.Layer<CliConfig> = makeConfig();
 
 const telemetryLayer: Layer.Layer<TelemetryRuntime> = telemetryRuntimeFromValuesLayer({
   configDir: "/tmp/login-branch",
@@ -185,6 +193,7 @@ const provideAll = (
   rec: Rec,
   http: Layer.Layer<HttpClient>,
   fileToken: Option.Option<Redacted.Redacted<string>> = Option.none(),
+  config: Layer.Layer<CliConfig> = configLayer,
 ) =>
   (e: ReturnType<typeof loginEffect>) =>
     e.pipe(
@@ -196,9 +205,32 @@ const provideAll = (
       Effect.provide(spinnerLayer),
       Effect.provide(workspacesLayer),
       Effect.provide(analyticsLayer),
-      Effect.provide(configLayer),
+      Effect.provide(config),
       Effect.provide(telemetryLayer),
     ) as Effect.Effect<void, CliError, never>;
+
+// POST /sessions succeeds, then GET /sessions returns 410 — drives the
+// poll loop into its terminal `expired` outcome without any prompt.
+const expiredPollHttp: Layer.Layer<HttpClient> = Layer.succeed(HttpClient, {
+  request: <T>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
+    const { path, method = "GET" } = input;
+    if (method === "POST" && path === "/v1/auth/sessions") {
+      return Effect.succeed({ session_id: SESSION_ID } as T);
+    }
+    if (method === "GET" && path === `/v1/auth/sessions/${SESSION_ID}`) {
+      return Effect.fail(
+        new ServerError({
+          detail: "session gone",
+          suggestion: "retry",
+          code: "UZ-AUTH-EXPIRED",
+          status: 410,
+          requestId: null,
+        }),
+      );
+    }
+    return Effect.die(`unexpected ${method} ${path}`);
+  },
+});
 
 const failureValue = <T>(exit: Exit.Exit<T, CliError>): CliError | null => {
   if (!Exit.isFailure(exit)) return null;
@@ -285,5 +317,43 @@ describe("loginEffect — transport error remapping", () => {
     const fail = failureValue(exit) as AuthError | null;
     expect(fail).toBeInstanceOf(AuthError);
     expect(fail?.code).toBe("NETWORK_UNREACHABLE");
+  });
+});
+
+describe("loginEffect — browser open + outcome rendering", () => {
+  test("noOpen:false + config.noOpen:false opens the browser", async () => {
+    const rec = makeRec();
+    const exit = await Effect.runPromiseExit(
+      provideAll(rec, successPollHttp, Option.none(), makeConfig({ noOpen: false }))(
+        loginEffect({ ...DEFAULT_FLAGS, noOpen: false, force: true }),
+      ),
+    );
+    // The flow still aborts at the --no-input verify prompt; we only assert
+    // the browser-open branch ran before that.
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+    expect(rec.stdout.some((l) => l.includes("browser: opened"))).toBe(true);
+  });
+
+  test("expired poll + jsonMode prints the JSON outcome and fails ExpiredSessionError", async () => {
+    const rec = makeRec();
+    const exit = await Effect.runPromiseExit(
+      provideAll(rec, expiredPollHttp, Option.none(), makeConfig({ jsonMode: true }))(
+        loginEffect({ ...DEFAULT_FLAGS, force: true }),
+      ),
+    );
+    expect(failureValue(exit)).toBeInstanceOf(ExpiredSessionError);
+    expect(rec.stdout.some((l) => l.includes('"status":"expired"'))).toBe(true);
+  });
+});
+
+describe("failedOutcomeError — outcome → typed error mapping", () => {
+  test("expired → ExpiredSessionError", () => {
+    expect(failedOutcomeError({ status: "expired" })).toBeInstanceOf(ExpiredSessionError);
+  });
+  test("interrupted → InterruptedError", () => {
+    expect(failedOutcomeError({ status: "interrupted" })).toBeInstanceOf(InterruptedError);
+  });
+  test("timeout → TimeoutError", () => {
+    expect(failedOutcomeError({ status: "timeout" })).toBeInstanceOf(TimeoutError);
   });
 });

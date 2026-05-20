@@ -146,4 +146,21 @@ describe("hydrateWorkspacesAfterLogin", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(rec.stderr[0]).toContain("(unexpected)");
   });
+
+  test("item carrying `id` (no `workspace_id`) is normalized via the id fallback", async () => {
+    const rec = makeRec();
+    // Server may return `id` instead of `workspace_id`; the normalizer
+    // falls back to it rather than dropping the row.
+    const items = [{ id: "ws_id_form", name: "from-id" }];
+    const exit = await Effect.runPromiseExit(
+      hydrateWorkspacesAfterLogin(tok).pipe(
+        Effect.provide(httpLayer(() => Effect.succeed({ items }))),
+        Effect.provide(outputLayer(rec)),
+        Effect.provide(workspacesLayer(rec)),
+      ),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.saved).toBe(1);
+    expect(rec.stderr).toHaveLength(0);
+  });
 });

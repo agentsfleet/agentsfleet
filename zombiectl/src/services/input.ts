@@ -18,13 +18,26 @@ export class Input extends Context.Service<Input, InputShape>()(
   "zombiectl/runtime/Input",
 ) {}
 
-const makeLive = (): InputShape => ({
+// Narrowed readline surface — just the two members the prompt path uses.
+// Injecting the factory (rather than calling readline directly) lets a
+// test drive the resolve / reject / close paths without a real terminal.
+interface PromptInterface {
+  question(query: string): Promise<string>;
+  close(): void;
+}
+type CreateInterface = (opts: {
+  input: NodeJS.ReadableStream;
+  output: NodeJS.WritableStream;
+}) => PromptInterface;
+
+const defaultCreateInterface: CreateInterface = (opts) => readline.createInterface(opts);
+
+export const makeLive = (
+  createInterface: CreateInterface = defaultCreateInterface,
+): InputShape => ({
   readLine: (prompt: string) =>
     Effect.promise(async () => {
-      const rl = readline.createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
       try {
         return await rl.question(prompt);
       } catch {

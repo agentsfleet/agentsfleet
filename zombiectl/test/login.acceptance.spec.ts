@@ -33,7 +33,12 @@ import {
   telemetryRuntimeFromValuesLayer,
 } from "../src/services/telemetry/runtime.service.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
-import { NetworkError, ServerError, type CliError } from "../src/errors/index.ts";
+import {
+  MeValidationError,
+  NetworkError,
+  ServerError,
+  type CliError,
+} from "../src/errors/index.ts";
 
 const SESSION_ID = "sess_acceptance_e2e";
 const VERIFICATION_CODE = "424242";
@@ -47,6 +52,7 @@ interface Recorder {
   savedSessionId: string | null;
   browserOpened: boolean;
   promptsAsked: number;
+  cleared: boolean;
 }
 
 const makeRecorder = (): Recorder => ({
@@ -57,6 +63,7 @@ const makeRecorder = (): Recorder => ({
   savedSessionId: null,
   browserOpened: false,
   promptsAsked: 0,
+  cleared: false,
 });
 
 const importSpkiPublicKey = async (
@@ -90,7 +97,10 @@ interface DeviceFlowFixture {
   readonly verifyCalls: { count: number };
 }
 
-const httpLayer = (fixture: DeviceFlowFixture): Layer.Layer<HttpClient> =>
+const httpLayer = (
+  fixture: DeviceFlowFixture,
+  opts: { billingFails?: boolean; firstVerifyFails?: boolean } = {},
+): Layer.Layer<HttpClient> =>
   Layer.succeed(HttpClient, {
     request: <T>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
       const { path, method = "GET" } = input;
@@ -109,6 +119,19 @@ const httpLayer = (fixture: DeviceFlowFixture): Layer.Layer<HttpClient> =>
       }
       if (method === "POST" && path === `/v1/auth/sessions/${SESSION_ID}/verify`) {
         fixture.verifyCalls.count += 1;
+        if (opts.firstVerifyFails && fixture.verifyCalls.count === 1) {
+          // Wrong code on the first attempt → 400, which mapVerifyFailure
+          // turns into VerificationFailedError so the retry kicks in.
+          return Effect.fail(
+            new ServerError({
+              detail: "verification code didn't match",
+              suggestion: "try again",
+              code: "UZ-AUTH-010",
+              status: 400,
+              requestId: "req_verify_1",
+            }),
+          );
+        }
         return Effect.promise(async () => {
           const cliPub = fixture.capturedCliPubKey.value;
           if (!cliPub) throw new Error("verify called before create");
@@ -135,6 +158,17 @@ const httpLayer = (fixture: DeviceFlowFixture): Layer.Layer<HttpClient> =>
         // Stand-in for the post-login token-validation ping (`pingMe`
         // in `src/lib/me-ping.ts`). Body shape is irrelevant — the only
         // signal pingMe consumes is success vs 401/403.
+        if (opts.billingFails) {
+          return Effect.fail(
+            new ServerError({
+              detail: "token rejected",
+              suggestion: "retry",
+              code: "UZ-AUTH-401",
+              status: 401,
+              requestId: null,
+            }),
+          );
+        }
         return Effect.succeed({ balance_nanos: 0, updated_at: 0 } as T);
       }
       return Effect.fail(
@@ -187,7 +221,9 @@ const credentialsLayer = (rec: Recorder): Layer.Layer<Credentials> =>
         rec.savedToken = Redacted.value(input.token);
         rec.savedSessionId = input.sessionId;
       }),
-    clearAccessToken: Effect.void,
+    clearAccessToken: Effect.sync(() => {
+      rec.cleared = true;
+    }),
   });
 
 const browserLayer = (rec: Recorder): Layer.Layer<Browser> =>
@@ -224,15 +260,18 @@ const analyticsLayer = (rec: Recorder): Layer.Layer<Analytics> =>
     groupIdentify: () => Effect.void,
   });
 
-const configLayer: Layer.Layer<CliConfig> = Layer.succeed(CliConfig, {
-  apiUrl: "https://api.test.local",
-  dashboardUrl: "https://dash.test.local",
-  accessToken: Option.none(),
-  jsonMode: false,
-  noOpen: false,
-  telemetryPosthogKey: "phc_test",
-  telemetryPosthogHost: "https://us.i.posthog.com",
-});
+const makeConfig = (jsonMode: boolean): Layer.Layer<CliConfig> =>
+  Layer.succeed(CliConfig, {
+    apiUrl: "https://api.test.local",
+    dashboardUrl: "https://dash.test.local",
+    accessToken: Option.none(),
+    jsonMode,
+    noOpen: false,
+    telemetryPosthogKey: "phc_test",
+    telemetryPosthogHost: "https://us.i.posthog.com",
+  });
+
+const configLayer: Layer.Layer<CliConfig> = makeConfig(false);
 
 const telemetryLayer: Layer.Layer<TelemetryRuntime> = telemetryRuntimeFromValuesLayer({
   configDir: "/tmp/test-config",
@@ -295,5 +334,82 @@ describe("login acceptance — full device flow end-to-end", () => {
     // acceptance case is for; analytics emission is covered by the
     // login-effect / login-logout-identity unit tests once the dimension
     // batch reinstates them.
+  });
+});
+
+const runLogin = (
+  rec: Recorder,
+  fixture: DeviceFlowFixture,
+  opts: { jsonMode?: boolean; billingFails?: boolean; firstVerifyFails?: boolean } = {},
+): Effect.Effect<void, CliError, never> =>
+  loginEffect({
+    timeoutSec: 30,
+    pollMs: 500,
+    noOpen: true,
+    noInput: false,
+    force: true,
+    tokenName: undefined,
+  }).pipe(
+    Effect.provide(
+      httpLayer(fixture, {
+        billingFails: opts.billingFails ?? false,
+        firstVerifyFails: opts.firstVerifyFails ?? false,
+      }),
+    ),
+    Effect.provide(inputLayer(rec, VERIFICATION_CODE)),
+    Effect.provide(outputLayer(rec)),
+    Effect.provide(credentialsLayer(rec)),
+    Effect.provide(browserLayer(rec)),
+    Effect.provide(spinnerLayer),
+    Effect.provide(workspacesLayer),
+    Effect.provide(analyticsLayer(rec)),
+    Effect.provide(makeConfig(opts.jsonMode ?? false)),
+    Effect.provide(telemetryLayer),
+  ) as Effect.Effect<void, CliError, never>;
+
+const freshFixture = (): DeviceFlowFixture => ({
+  capturedCliPubKey: { value: null },
+  verifyCalls: { count: 0 },
+});
+
+describe("login acceptance — jsonMode rendering + rollback", () => {
+  test("jsonMode prints the machine-readable complete payload (no human prose)", async () => {
+    const rec = makeRecorder();
+    const exit = await Effect.runPromiseExit(runLogin(rec, freshFixture(), { jsonMode: true }));
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.savedToken).toBe(TEST_JWT);
+    expect(rec.stdout.some((l) => l.includes('"status":"complete"'))).toBe(true);
+    expect(rec.stdout.some((l) => l.includes('"token_saved":true'))).toBe(true);
+    expect(rec.stdout.some((l) => l.includes("login complete"))).toBe(false);
+  });
+
+  test("post-login /me ping failure rolls back the persisted credential", async () => {
+    const rec = makeRecorder();
+    const exit = await Effect.runPromiseExit(runLogin(rec, freshFixture(), { billingFails: true }));
+    expect(Exit.isFailure(exit)).toBe(true);
+    const err = Exit.isFailure(exit)
+      ? Option.getOrNull(Cause.findErrorOption(exit.cause))
+      : null;
+    expect(err).toBeInstanceOf(MeValidationError);
+    // The token was persisted moments before validation failed; rollback
+    // must wipe it so subsequent commands don't reuse a dead-on-arrival token.
+    expect(rec.savedToken).toBe(TEST_JWT);
+    expect(rec.cleared).toBe(true);
+  });
+
+  test("first wrong code then correct code: retry succeeds, token persists", async () => {
+    const rec = makeRecorder();
+    const fixture = freshFixture();
+    const exit = await Effect.runPromiseExit(
+      runLogin(rec, fixture, { firstVerifyFails: true }),
+    );
+    if (Exit.isFailure(exit)) {
+      throw new Error(`expected retry success, got: ${Cause.pretty(exit.cause)}`);
+    }
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.savedToken).toBe(TEST_JWT);
+    // Prompted twice (first attempt + retry), called /verify twice.
+    expect(rec.promptsAsked).toBe(2);
+    expect(fixture.verifyCalls.count).toBe(2);
   });
 });
