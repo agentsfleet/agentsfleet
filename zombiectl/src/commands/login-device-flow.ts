@@ -15,7 +15,7 @@
 //     404 | 410 — terminal states (consumed/expired/aborted)
 //   POST /v1/auth/sessions/{id}/verify  { verification_code }
 //     200 { dashboard_public_key, ciphertext, nonce }    (success | replay)
-//     400 — wrong code (ServerError.code === "UZ-AUTH-...")
+//     400 — UZ-AUTH-011 wrong code (retryable) | UZ-AUTH-018 bad shape (re-enter)
 //     410 — aborted/consumed/expired
 //
 // Fingerprint is computed server-side from request_addr || user_agent ||
@@ -44,6 +44,16 @@ import {
 } from "../errors/index.ts";
 
 const MIN_POLL_MS = 500;
+
+// Wrong-code budget for the interactive verify prompt. A malformed code
+// (UZ-AUTH-018) is a re-enterable typo and does NOT spend a strike; only a
+// wrong code (UZ-AUTH-011 → VerificationFailedError) does. Separate from the
+// server's session-level MAX_VERIFY_ATTEMPTS (5) cap.
+const MAX_CLI_VERIFY_ATTEMPTS = 2;
+
+// Server code for a malformed verification code (not 6 digits). Identifier
+// matches ERR_INVALID_VERIFICATION_CODE in src/errors/error_registry.zig.
+const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 
 export type PollOutcome =
   | { readonly status: "verification_pending" }
@@ -237,12 +247,16 @@ export const decryptIssuedToken = (
       }),
   });
 
-// Map a wrong-code 400 from /verify to a typed VerificationFailedError
-// so callers can detect it and offer one retry without coupling to the
-// transport-layer error shape.
+// Map a wrong-code 400 from /verify to a typed VerificationFailedError so
+// callers can offer a retry without coupling to the transport-layer shape.
+// /verify returns two distinct 400s: UZ-AUTH-011 (wrong HMAC) and
+// UZ-AUTH-018 (bad shape — not 6 digits). Only the former is a "didn't
+// match" worth a wrong-code strike; a shape error is a typo the caller
+// re-enters, so it passes through for verifyAndDecryptWithRetry to handle.
 export const mapVerifyFailure = (err: CliError): CliError => {
   if (err._tag !== "ServerError") return err;
   if (err.status !== 400) return err;
+  if (err.code === ERR_INVALID_VERIFICATION_CODE) return err;
   return new VerificationFailedError({
     detail: "verification code didn't match",
     suggestion: "check the 6-digit code shown in your browser and try again",
@@ -265,7 +279,10 @@ export const pollUntilVerificationPending = (
       const latest = yield* pollSessionStatus(sessionId).pipe(
         Effect.map((r) => ({ kind: "ok" as const, value: r })),
         Effect.catchTag("ServerError", (err) => {
-          if (err.code === "UZ-AUTH-EXPIRED" || err.status === 410) {
+          // 404 = the session row is gone (TTL-evicted or deleted) mid-poll;
+          // 410 = explicit terminal expiry. Both mean "stop polling, expired"
+          // rather than surfacing a hard transport error to the operator.
+          if (err.code === "UZ-AUTH-EXPIRED" || err.status === 410 || err.status === 404) {
             return Effect.succeed({ kind: "expired" as const });
           }
           return Effect.fail(err);
@@ -301,13 +318,13 @@ const verifyAndDecrypt = (
     return yield* decryptIssuedToken(keypair, response);
   });
 
-// Interactive code submission. On a wrong-code first attempt the operator
-// gets one retry; a second failure surfaces VerificationFailedError.
-// DecryptError and terminal-state ServerErrors propagate without retry —
-// those signal protocol or session-level breakage, not human typo.
-// --no-input aborts before any prompt — the verification code is a
-// human-readable per-flow secret typed into the terminal; non-interactive
-// shells have no way to supply it.
+// Interactive code submission. A wrong code (UZ-AUTH-011) spends one of
+// MAX_CLI_VERIFY_ATTEMPTS strikes; a malformed code (UZ-AUTH-018) is a typo
+// the operator re-enters, costing no strike. DecryptError and terminal-state
+// ServerErrors propagate without retry — those signal protocol or session
+// breakage, not a human typo. --no-input aborts before any prompt — the
+// verification code is a human-readable per-flow secret typed into the
+// terminal; non-interactive shells have no way to supply it.
 export const verifyAndDecryptWithRetry = (
   sessionId: string,
   keypair: CliKeypair,
@@ -322,16 +339,28 @@ export const verifyAndDecryptWithRetry = (
         }),
       );
     }
-    const firstCode = yield* promptVerificationCode;
-    const firstAttempt = yield* verifyAndDecrypt(sessionId, keypair, firstCode).pipe(
-      Effect.map((token) => ({ ok: true as const, token })),
-      Effect.catchTag("VerificationFailedError", (err) =>
-        Effect.succeed({ ok: false as const, err }),
-      ),
-    );
-    if (firstAttempt.ok) return firstAttempt.token;
     const output = yield* Output;
-    yield* output.warn("verification code didn't match — one more try");
-    const secondCode = yield* promptVerificationCode;
-    return yield* verifyAndDecrypt(sessionId, keypair, secondCode);
+    let strikesLeft = MAX_CLI_VERIFY_ATTEMPTS;
+    for (;;) {
+      const code = yield* promptVerificationCode;
+      const attempt = yield* verifyAndDecrypt(sessionId, keypair, code).pipe(
+        Effect.map((token) => ({ kind: "ok" as const, token })),
+        Effect.catchTag("VerificationFailedError", (err) =>
+          Effect.succeed({ kind: "wrong" as const, err }),
+        ),
+        Effect.catchTag("ServerError", (err) =>
+          err.code === ERR_INVALID_VERIFICATION_CODE
+            ? Effect.succeed({ kind: "malformed" as const })
+            : Effect.fail(err),
+        ),
+      );
+      if (attempt.kind === "ok") return attempt.token;
+      if (attempt.kind === "malformed") {
+        yield* output.warn("that isn't a 6-digit code — check the digits and try again");
+        continue;
+      }
+      strikesLeft -= 1;
+      if (strikesLeft <= 0) return yield* Effect.fail(attempt.err);
+      yield* output.warn("verification code didn't match — one more try");
+    }
   });
