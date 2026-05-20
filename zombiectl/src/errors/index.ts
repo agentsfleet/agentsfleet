@@ -11,18 +11,7 @@
 // same identifiers.
 
 import { Data } from "effect";
-import type {
-  DecryptError,
-  ExpiredSessionError,
-  InterruptedError,
-  InvalidSessionError,
-  MeValidationError,
-  RateLimitedError,
-  SessionAbortedError,
-  SessionConsumedError,
-  TimeoutError,
-  VerificationFailedError,
-} from "./auth.ts";
+import type { AuthFlowError } from "./auth.ts";
 
 export * from "./auth.ts";
 
@@ -96,21 +85,12 @@ export type CliError =
   | ValidationError
   | ConfigError
   | UnexpectedError
-  // Auth-flow tagged classes from auth.ts. Each is conceptually an
-  // AuthError specialization; kept as siblings of AuthError rather than
-  // subclasses because Effect's Data.TaggedError doesn't compose by
-  // inheritance and the dispatcher's exit-code lookup keys directly on
-  // _tag. Adding a row here without an EXIT_CODE entry fails compile.
-  | InvalidSessionError
-  | ExpiredSessionError
-  | RateLimitedError
-  | TimeoutError
-  | InterruptedError
-  | VerificationFailedError
-  | DecryptError
-  | SessionAbortedError
-  | SessionConsumedError
-  | MeValidationError;
+  // Auth-flow specializations (the AuthFlowError union from auth.ts). Kept
+  // as siblings of AuthError rather than subclasses because Effect's
+  // Data.TaggedError doesn't compose by inheritance and the dispatcher's
+  // exit-code lookup keys directly on _tag. Each member still needs an
+  // EXIT_CODE entry below or the Record type rejects the dispatcher.
+  | AuthFlowError;
 
 // Exit-code mapping. The dispatcher's exhaustive switch on `_tag`
 // references this; any new variant must add a row here or the
