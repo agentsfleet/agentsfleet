@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { getServerSessionMetadata } from "./auth/server";
+import { auth } from "@clerk/nextjs/server";
 import { listTenantWorkspaces, type TenantWorkspace } from "./api/workspaces";
 
 /**
@@ -59,7 +59,8 @@ export async function resolveActiveWorkspace(
 // anonymous, or the claim is missing — every caller already handles null.
 async function readWorkspaceClaim(): Promise<string | null> {
   try {
-    const metadata = await getServerSessionMetadata();
+    const { sessionClaims } = await auth();
+    const metadata = (sessionClaims?.metadata ?? null) as Record<string, unknown> | null;
     const value = metadata && typeof metadata.workspace_id === "string"
       ? metadata.workspace_id
       : null;

@@ -34,12 +34,14 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `posthog-prod` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
 | `clerk-prod` | `publishable-key` | Fly.io PROD `CLERK_PUBLISHABLE_KEY` |
 | `clerk-prod` | `secret-key` | Fly.io PROD `CLERK_SECRET_KEY` |
-| `clerk-prod` | `webhook-secret` | Fly.io PROD `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/webhooks/clerk`) |
+| `clerk-prod` | `webhook-secret` | Fly.io PROD `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/auth/identity-events/clerk`) |
 | `clerk-prod` | `jwks-url` | Fly.io PROD `OIDC_JWKS_URL` |
 | `clerk-prod` | `issuer` | Fly.io PROD `OIDC_ISSUER` |
 | `github-app` | `app-id` | Fly.io PROD + DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io PROD + DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io PROD `ENCRYPTION_MASTER_KEY` |
+| `auth-session-code-pepper` | `credential` | Fly.io PROD `AUTH_SESSION_CODE_PEPPER` — `zombied` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
+| `audit-log-pepper` | `credential` | Fly.io PROD `AUDIT_LOG_PEPPER` — `zombied` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
 | `planetscale-prod` | `api-connection-string` | Fly.io PROD `DATABASE_URL_API` |
 | `planetscale-prod` | `worker-connection-string` | Fly.io PROD `DATABASE_URL_WORKER` |
 | `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations) |
@@ -58,12 +60,16 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 |---|---|---|
 | `clerk-dev` | `publishable-key` | Fly.io DEV `CLERK_PUBLISHABLE_KEY` |
 | `clerk-dev` | `secret-key` | Fly.io DEV `CLERK_SECRET_KEY` |
-| `clerk-dev` | `webhook-secret` | Fly.io DEV `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/webhooks/clerk`) |
+| `clerk-dev` | `webhook-secret` | Fly.io DEV `CLERK_WEBHOOK_SECRET` (Svix signing key for `/v1/auth/identity-events/clerk`) |
 | `clerk-dev` | `jwks-url` | Fly.io DEV `OIDC_JWKS_URL` |
 | `clerk-dev` | `issuer` | Fly.io DEV `OIDC_ISSUER` |
 | `github-app` | `app-id` | Fly.io DEV `GITHUB_APP_ID` |
 | `github-app` | `private-key` | Fly.io DEV `GITHUB_APP_PRIVATE_KEY` |
 | `encryption-master-key` | `credential` | Fly.io DEV `ENCRYPTION_MASTER_KEY` |
+| `auth-session-code-pepper` | `credential` | Fly.io DEV `AUTH_SESSION_CODE_PEPPER` — `zombied` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
+| `audit-log-pepper` | `credential` | Fly.io DEV `AUDIT_LOG_PEPPER` — `zombied` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
+| `e2e-fixture-email/regular` | `email`, `password` | Playwright + Vitest e2e suites under `ui/packages/app/tests/e2e/` and the CLI acceptance suite `zombiectl/test/acceptance/lifecycle-after-login.spec.ts` — regular-tenant-member Clerk DEV identity. |
+| `e2e-fixture-email/admin` | `email`, `password` | Same suites — tenant-admin-role Clerk DEV identity (used by scenarios that require admin permissions). |
 | `vercel-api-token` | `credential` | Vercel env var setup |
 | `posthog-dev` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
 | `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |

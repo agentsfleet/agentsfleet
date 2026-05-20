@@ -3,7 +3,8 @@ const httpz = @import("httpz");
 const pg = @import("pg");
 const PgQuery = @import("../../db/pg_query.zig").PgQuery;
 const oidc = @import("../../auth/oidc.zig");
-const auth_sessions = @import("../../auth/sessions.zig");
+const session_store_redis = @import("../../auth/session_store_redis.zig");
+const audit_events = @import("../../auth/audit_events.zig");
 const queue_redis = @import("../../queue/redis.zig");
 const metrics = @import("../../observability/metrics.zig");
 const telemetry_mod = @import("../../observability/telemetry.zig");
@@ -32,7 +33,8 @@ pub const Context = struct {
     queue: *queue_redis.Client,
     alloc: std.mem.Allocator,
     oidc: ?*oidc.Verifier,
-    auth_sessions: *auth_sessions.SessionStore,
+    auth_sessions: *session_store_redis.SessionStore,
+    audit_ctx: audit_events.AuditCtx,
     app_url: []const u8,
     api_url: []const u8,
     api_in_flight_requests: std.atomic.Value(u32),

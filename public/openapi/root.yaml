@@ -88,6 +88,12 @@ paths:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions
   /v1/auth/sessions/{session_id}:
     $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}
+  /v1/auth/sessions/{session_id}/approve:
+    $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}~1approve
+  /v1/auth/sessions/{session_id}/verify:
+    $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1{session_id}~1verify
+  /v1/auth/sessions/all:
+    $ref: ./paths/authentication.yaml#/~1v1~1auth~1sessions~1all
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories:
     $ref: ./paths/memory.yaml#/~1v1~1workspaces~1{workspace_id}~1zombies~1{zombie_id}~1memories
   /v1/workspaces/{workspace_id}/zombies/{zombie_id}/memories/{memory_key}:

@@ -36,14 +36,6 @@ export const FIXTURE_KEYS: readonly FixtureKey[] = [
 ] as const;
 
 /**
- * Clerk JWT template name. Mints a session JWT with publicMetadata
- * (tenant_id, role) embedded — the same template the dashboard consumes via
- * `getToken({ template: JWT_TEMPLATE })`. Default Clerk session tokens omit
- * publicMetadata, which would land zombied at 403 UZ-AUTH-001.
- */
-export const JWT_TEMPLATE = "api";
-
-/**
  * `@clerk/nextjs` major version that the harness was tested against. A bump
  * of this dependency's major is intentionally a breaking change: clerkMiddleware
  * may tighten cookie/JWT validation (e.g. start enforcing real dev-browser

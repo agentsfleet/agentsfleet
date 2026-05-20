@@ -8,13 +8,20 @@
 
 test {
     _ = @import("api_key.zig");
+    _ = @import("audit.zig");
+    _ = @import("audit_events.zig");
     _ = @import("claims.zig");
     _ = @import("clerk_backend.zig");
     _ = @import("jwks.zig");
     _ = @import("oidc.zig");
     _ = @import("principal.zig");
     _ = @import("rbac.zig");
-    _ = @import("sessions.zig");
+    _ = @import("session_state.zig");
+    _ = @import("session_store_redis.zig");
+    _ = @import("session_store_redis_proto.zig");
+    _ = @import("session_store_redis_proto_test.zig");
+    _ = @import("session_store_redis_integration_test.zig");
+    _ = @import("session_store_redis_ttl_integration_test.zig");
     _ = @import("middleware/chain.zig");
     _ = @import("middleware/mod.zig");
     _ = @import("middleware/auth_ctx.zig");
@@ -22,7 +29,9 @@ test {
     _ = @import("middleware/errors.zig");
     _ = @import("middleware/bearer_oidc.zig");
     _ = @import("middleware/bearer_or_api_key.zig");
+    _ = @import("middleware/security_headers.zig");
     _ = @import("middleware/tenant_api_key.zig");
+    _ = @import("middleware/trusted_client_ip.zig");
     _ = @import("middleware/require_role.zig");
     _ = @import("middleware/webhook_hmac.zig");
     _ = @import("middleware/webhook_sig.zig");

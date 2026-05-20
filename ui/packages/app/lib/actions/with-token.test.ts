@@ -1,11 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
-const { getServerTokenMock } = vi.hoisted(() => ({
-  getServerTokenMock: vi.fn(),
+const { getTokenMock } = vi.hoisted(() => ({
+  getTokenMock: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/server", () => ({
-  getServerToken: getServerTokenMock,
+// Post-Stage-1, withToken calls `auth().getToken()` directly — no
+// templated mint, no `getServerToken` indirection. Mock the named export
+// from `@clerk/nextjs/server` to feed the resolved token directly.
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(async () => ({ getToken: getTokenMock })),
 }));
 
 import { withToken } from "./with-token";
@@ -13,11 +16,11 @@ import { ApiError } from "@/lib/api/errors";
 
 describe("withToken", () => {
   beforeEach(() => {
-    getServerTokenMock.mockReset();
+    getTokenMock.mockReset();
   });
 
   it("returns 401 when no token resolves", async () => {
-    getServerTokenMock.mockResolvedValueOnce(null);
+    getTokenMock.mockResolvedValueOnce(null);
     const result = await withToken(async () => "should-not-call");
     expect(result).toEqual({
       ok: false,
@@ -28,13 +31,13 @@ describe("withToken", () => {
   });
 
   it("returns ok:true with data on success", async () => {
-    getServerTokenMock.mockResolvedValueOnce("tok_abc");
+    getTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken<string>(async (t) => `data:${t}`);
     expect(result).toEqual({ ok: true, data: "data:tok_abc" });
   });
 
   it("maps ApiError to ok:false with status + errorCode fields", async () => {
-    getServerTokenMock.mockResolvedValueOnce("tok_abc");
+    getTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken(async () => {
       throw new ApiError("conflict", 409, "UZ-ZMB-009");
     });
@@ -47,7 +50,7 @@ describe("withToken", () => {
   });
 
   it("maps a plain Error to ok:false with message and no status", async () => {
-    getServerTokenMock.mockResolvedValueOnce("tok_abc");
+    getTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken(async () => {
       throw new Error("unexpected boom");
     });
@@ -55,7 +58,7 @@ describe("withToken", () => {
   });
 
   it("maps a non-Error throw (string) to ok:false with String(e) (covers else branch)", async () => {
-    getServerTokenMock.mockResolvedValueOnce("tok_abc");
+    getTokenMock.mockResolvedValueOnce("tok_abc");
     const result = await withToken(async () => {
       // eslint-disable-next-line @typescript-eslint/only-throw-error
       throw "raw-string-failure";

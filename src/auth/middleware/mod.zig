@@ -31,6 +31,8 @@ pub const require_role = @import("require_role.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
+pub const security_headers = @import("security_headers.zig");
+pub const trusted_client_ip = @import("trusted_client_ip.zig");
 
 pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;

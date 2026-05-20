@@ -36,6 +36,7 @@ import {
 } from "../services/output.ts";
 import { Credentials, credentialsLayer } from "../services/credentials.ts";
 import { HttpClient, httpClientLayer } from "../services/http-client.ts";
+import { Input, inputLayer } from "../services/input.ts";
 import { Browser } from "../services/browser.service.ts";
 import { browserLayer } from "../services/browser.layer.ts";
 import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
@@ -65,6 +66,7 @@ export type MainLayerServices =
   | CommandRuntime
   | Credentials
   | HttpClient
+  | Input
   | Output
   | Spinner
   | TelemetryRuntime
@@ -116,6 +118,7 @@ export const mainLayerFor = (
     browserLayer,
     workspacesLayer,
     spinnerLayer,
+    inputLayer,
     commandRuntime,
     http,
     analytics,

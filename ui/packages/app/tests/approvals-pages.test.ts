@@ -7,9 +7,9 @@ const GATE_ID = "01999999-0000-7000-8000-000000000001";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0aa701";
 const TOKEN = "token_pages";
 
-const { getServerToken, resolveActiveWorkspace, listApprovalsMock, getApprovalMock, notFound, redirect } =
+const { getTokenMock, resolveActiveWorkspace, listApprovalsMock, getApprovalMock, notFound, redirect } =
   vi.hoisted(() => ({
-    getServerToken: vi.fn(),
+    getTokenMock: vi.fn(),
     resolveActiveWorkspace: vi.fn(),
     listApprovalsMock: vi.fn(),
     getApprovalMock: vi.fn(),
@@ -22,7 +22,9 @@ const { getServerToken, resolveActiveWorkspace, listApprovalsMock, getApprovalMo
   }));
 
 vi.mock("next/navigation", () => ({ notFound, redirect }));
-vi.mock("@/lib/auth/server", () => ({ getServerToken }));
+vi.mock("@clerk/nextjs/server", () => ({
+  auth: vi.fn(async () => ({ getToken: getTokenMock })),
+}));
 vi.mock("@/lib/workspace", () => ({ resolveActiveWorkspace }));
 vi.mock("@/lib/api/approvals", () => ({
   listApprovals: listApprovalsMock,
@@ -46,13 +48,13 @@ vi.mock("@/app/(dashboard)/approvals/[gateId]/ResolveButtons", () => ({
 }));
 
 beforeEach(() => {
-  getServerToken.mockResolvedValue(TOKEN);
+  getTokenMock.mockResolvedValue(TOKEN);
   resolveActiveWorkspace.mockResolvedValue({ id: WORKSPACE_ID });
   listApprovalsMock.mockResolvedValue({ items: [], next_cursor: null });
 });
 
 afterEach(() => {
-  getServerToken.mockReset();
+  getTokenMock.mockReset();
   resolveActiveWorkspace.mockReset();
   listApprovalsMock.mockReset();
   getApprovalMock.mockReset();
@@ -63,7 +65,7 @@ afterEach(() => {
 
 describe("ApprovalsPage (workspace inbox)", () => {
   it("redirects to /sign-in when no token", async () => {
-    getServerToken.mockResolvedValueOnce(null);
+    getTokenMock.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/approvals/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
@@ -142,7 +144,7 @@ describe("ApprovalDetailPage", () => {
   }
 
   it("redirects to /sign-in when no token", async () => {
-    getServerToken.mockResolvedValueOnce(null);
+    getTokenMock.mockResolvedValueOnce(null);
     const { default: Page } = await import("../app/(dashboard)/approvals/[gateId]/page");
     await expect(Page({ params: Promise.resolve({ gateId: GATE_ID }) })).rejects.toThrow(
       "redirect:/sign-in",

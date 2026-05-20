@@ -378,6 +378,8 @@ jobs:
           REDIS_URL_API: op://${{ vars.VAULT_PROD }}/upstash-prod/api-url
           REDIS_URL_WORKER: op://${{ vars.VAULT_PROD }}/upstash-prod/worker-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_PROD }}/encryption-master-key/credential
+          AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_PROD }}/auth-session-code-pepper/credential
+          AUDIT_LOG_PEPPER: op://${{ vars.VAULT_PROD }}/audit-log-pepper/credential
           POSTHOG_API_KEY: op://${{ vars.VAULT_PROD }}/posthog-prod/credential
           GITHUB_APP_ID: op://${{ vars.VAULT_PROD }}/github-app/app-id
           GITHUB_APP_PRIVATE_KEY: op://${{ vars.VAULT_PROD }}/github-app/private-key
@@ -401,6 +403,8 @@ jobs:
             REDIS_URL_API="$REDIS_URL_API" \
             REDIS_URL_WORKER="$REDIS_URL_WORKER" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
+            AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
+            AUDIT_LOG_PEPPER="$AUDIT_LOG_PEPPER" \
             POSTHOG_API_KEY="$POSTHOG_API_KEY" \
             GITHUB_APP_ID="$GITHUB_APP_ID" \
             GITHUB_APP_PRIVATE_KEY="$GITHUB_APP_PRIVATE_KEY" \
@@ -410,6 +414,7 @@ jobs:
             OIDC_JWKS_URL="$OIDC_JWKS_URL" \
             OIDC_ISSUER="$OIDC_ISSUER" \
             OIDC_PROVIDER="clerk" \
+            OIDC_AUDIENCE="https://api.usezombie.com" \
             GRAFANA_OTLP_ENDPOINT="$GRAFANA_OTLP_ENDPOINT" \
             GRAFANA_OTLP_INSTANCE_ID="$GRAFANA_OTLP_INSTANCE_ID" \
             GRAFANA_OTLP_API_KEY="$GRAFANA_OTLP_API_KEY" \

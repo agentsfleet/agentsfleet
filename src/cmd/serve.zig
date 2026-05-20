@@ -5,7 +5,8 @@ const events_bus = @import("../events/bus.zig");
 const oidc_auth = @import("../auth/oidc.zig");
 const http_server = @import("../http/server.zig");
 const http_handler = @import("../http/handler.zig");
-const auth_sessions = @import("../auth/sessions.zig");
+const session_store_redis = @import("../auth/session_store_redis.zig");
+const audit_events = @import("../auth/audit_events.zig");
 const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key_lookup = @import("api_key_lookup.zig");
@@ -180,8 +181,12 @@ pub fn run(alloc: std.mem.Allocator) !void {
     defer model_rate_cache.deinit();
     log.info("startup.model_rate_cache_ok", .{});
 
-    var sessions = auth_sessions.SessionStore.init(alloc);
-    defer sessions.deinit();
+    var sessions = session_store_redis.SessionStore.init(
+        alloc,
+        &api_queue,
+        serve_cfg.auth_session_code_pepper,
+        serve_cfg.audit_log_pepper,
+    );
 
     var ctx = http_handler.Context{
         .pool = api_pool,
@@ -189,6 +194,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .alloc = alloc,
         .oidc = null,
         .auth_sessions = &sessions,
+        .audit_ctx = audit_events.AuditCtx.init(serve_cfg.audit_log_pepper),
         .app_url = serve_cfg.app_url,
         .api_url = serve_cfg.api_url,
         .api_in_flight_requests = std.atomic.Value(u32).init(0),

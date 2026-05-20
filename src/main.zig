@@ -226,9 +226,11 @@ test {
     _ = @import("zombie/webhook_verify_test.zig");
     _ = @import("zombie/webhook/normalizer/github.zig");
     _ = cli_commands;
-    _ = @import("auth/sessions.zig");
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
+    _ = @import("auth/session_store_redis_proto_test.zig");
+    _ = @import("auth/session_store_redis_integration_test.zig");
+    _ = @import("auth/session_store_redis_ttl_integration_test.zig");
     _ = @import("observability/trace.zig");
     _ = @import("observability/metrics_redis_pool.zig");
     _ = otel_logs;
@@ -259,6 +261,7 @@ test {
     _ = @import("executor/lease.zig");
     _ = @import("executor/client.zig");
     _ = @import("http/handlers/handler_auth_primitives_test.zig");
+    _ = @import("http/handlers/auth/sessions_log_redaction_test.zig");
     _ = @import("http/handlers/error_response_test.zig");
     _ = @import("http/handlers/hx_test.zig");
     _ = @import("http/handlers/memory/handler_test.zig");

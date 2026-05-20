@@ -12,7 +12,8 @@ Options:
 
 Commands:
   login [options]               Authenticate via browser
-  logout                        Clear stored credentials
+  logout [options]              Sign out — revoke every active session on this
+                                account and clear local credentials
   auth                          Inspect authentication state
   doctor                        Diagnose CLI configuration and connectivity
   workspace                     Manage workspaces
@@ -59,7 +60,8 @@ Subcommands:
 
 Environment variables:
   ZOMBIE_API_URL                  API base URL (overridden by --api)
-  ZOMBIE_TOKEN                    Auth token (overridden by login)
+  ZMB_TOKEN                       Auth token (interactive shells prefer env)
+  ZOMBIE_TOKEN                    Auth token (alternate spelling of ZMB_TOKEN)
   ZOMBIE_API_KEY                  API key for service auth
   ZOMBIE_STATE_DIR                Directory for local CLI state files
   NO_COLOR                        Any non-empty value disables color

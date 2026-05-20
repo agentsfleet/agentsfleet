@@ -17,6 +17,8 @@ const S_FORMAT = "--format=";
 const S_API = "api";
 const S_WORKER = "worker";
 const S_ENCRYPTION_MASTER_KEY = "encryption_master_key";
+const S_AUTH_SESSION_CODE_PEPPER = "auth_session_code_pepper";
+const S_AUDIT_LOG_PEPPER = "audit_log_pepper";
 const S_DOCTOR_SCHEMA_GATE_FAILED = "doctor.schema_gate_failed";
 const S_SCHEMA_GATE_COMPAT = "schema_gate_compat";
 const S_DB_API_CONFIG = "db_api_config";
@@ -356,6 +358,34 @@ pub fn run(alloc: std.mem.Allocator) !void {
             }
         } else {
             try appendCheck(alloc, &results, S_ENCRYPTION_MASTER_KEY, false, "ENCRYPTION_MASTER_KEY not set", &ok);
+        }
+    }
+
+    {
+        const key = std.process.getEnvVarOwned(alloc, "AUTH_SESSION_CODE_PEPPER") catch null;
+        if (key) |k| {
+            defer alloc.free(k);
+            if (k.len == 64) {
+                try appendCheck(alloc, &results, S_AUTH_SESSION_CODE_PEPPER, true, "AUTH_SESSION_CODE_PEPPER set", &ok);
+            } else {
+                try appendCheck(alloc, &results, S_AUTH_SESSION_CODE_PEPPER, false, "AUTH_SESSION_CODE_PEPPER must be 64 hex chars", &ok);
+            }
+        } else {
+            try appendCheck(alloc, &results, S_AUTH_SESSION_CODE_PEPPER, false, "AUTH_SESSION_CODE_PEPPER not set", &ok);
+        }
+    }
+
+    {
+        const key = std.process.getEnvVarOwned(alloc, "AUDIT_LOG_PEPPER") catch null;
+        if (key) |k| {
+            defer alloc.free(k);
+            if (k.len == 64) {
+                try appendCheck(alloc, &results, S_AUDIT_LOG_PEPPER, true, "AUDIT_LOG_PEPPER set", &ok);
+            } else {
+                try appendCheck(alloc, &results, S_AUDIT_LOG_PEPPER, false, "AUDIT_LOG_PEPPER must be 64 hex chars", &ok);
+            }
+        } else {
+            try appendCheck(alloc, &results, S_AUDIT_LOG_PEPPER, false, "AUDIT_LOG_PEPPER not set", &ok);
         }
     }
 

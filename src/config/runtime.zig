@@ -38,6 +38,8 @@ pub const ServeConfig = struct {
     oidc_issuer: ?[]u8,
     oidc_audience: ?[]u8,
     encryption_master_key: []u8,
+    auth_session_code_pepper: []u8,
+    audit_log_pepper: []u8,
 
     alloc: std.mem.Allocator,
 
@@ -55,6 +57,8 @@ pub const ServeConfig = struct {
         if (!oidc_cfg.enabled) return ValidationError.OidcRequired;
         const enc = try loader.loadEncryption(alloc);
         errdefer loader.freeEncryption(alloc, enc);
+        const peppers = try loader.loadAuthPeppers(alloc);
+        errdefer loader.freeAuthPeppers(alloc, peppers);
         const misc = try loader.loadMisc(alloc);
 
         return .{
@@ -73,6 +77,8 @@ pub const ServeConfig = struct {
             .oidc_issuer = oidc_cfg.issuer,
             .oidc_audience = oidc_cfg.audience,
             .encryption_master_key = enc.master_key,
+            .auth_session_code_pepper = peppers.session_code_pepper,
+            .audit_log_pepper = peppers.audit_log_pepper,
             .alloc = alloc,
         };
     }
@@ -84,6 +90,8 @@ pub const ServeConfig = struct {
         if (self.oidc_issuer) |v| self.alloc.free(v);
         if (self.oidc_audience) |v| self.alloc.free(v);
         self.alloc.free(self.encryption_master_key);
+        self.alloc.free(self.auth_session_code_pepper);
+        self.alloc.free(self.audit_log_pepper);
     }
 };
 
@@ -92,4 +100,5 @@ test {
     _ = @import("runtime_env_parse_test.zig");
     _ = @import("runtime_validate_test.zig");
     _ = @import("runtime_loader_test.zig");
+    _ = @import("runtime_pepper_loader_test.zig");
 }

@@ -349,6 +349,65 @@ For PROD, swap `$VAULT_DEV/upstash-dev` for `$VAULT_PROD/upstash-prod`.
 
 For local docker-compose Redis, static credentials are configured in `docker-compose.yml`.
 
+### 3.3 Clerk — Session Token Customization
+
+Zombied's OIDC verifier checks `aud` **only when `OIDC_AUDIENCE` is set** (`src/auth/jwks.zig` — the audience comparison is skipped when the configured audience is null). Clerk's *default* session token does not carry `aud`, so the dashboard ran a second JWT shape (the api-template Bearer) through every fetch pre-M74_002 §9. Customizing the session token to add `aud`, `metadata.tenant_id`, `metadata.role` collapses the dashboard's runtime auth to one JWT — the same `useAuth().getToken()` value that `clerkMiddleware()` already reads from the `__session` cookie. The tenant-context claims (`metadata.tenant_id` + `metadata.role`) are load-bearing; `aud` becomes load-bearing once `OIDC_AUDIENCE` is set (below).
+
+**`OIDC_AUDIENCE` is wired in CI, not the vault.** It is set as a per-env literal in the `flyctl secrets set` step (alongside `OIDC_PROVIDER="clerk"`): `deploy-dev.yml` sets `https://api-dev.usezombie.com`, `release.yml` sets `https://api.usezombie.com`. It is **not** a 1Password field — the vault has no `clerk-{dev,prod}/audience`. (Historically `OIDC_AUDIENCE` was unset on both envs, so the aud check was a no-op; M74_002 §9 wires it.)
+
+**Per-env audience — three surfaces must agree.** zombied checks `aud` on every bearer it receives, no matter which Clerk mechanism minted it. Three places carry the per-env audience and MUST hold the same value for that env:
+
+1. **`OIDC_AUDIENCE`** — the CI literal in `deploy-dev.yml` / `release.yml` (what zombied compares against).
+2. **Clerk → Sessions → Customize session token** — the `aud` claim on the *default* session token (feeds the new dashboard, D45 `auth().getToken()`).
+3. **Clerk → JWT Templates → `api`** — the `aud` claim on the api-template token (feeds the CLI carve-out D47 + the currently-deployed pre-§9 dashboard).
+
+Current values (confirmed 2026-05-20): DEV all three = `https://api-dev.usezombie.com`; PROD all three = `https://api.usezombie.com`.
+
+Because surfaces 2 and 3 carry the **same** per-env `aud`, enabling `OIDC_AUDIENCE` is transition-safe across the old→new dashboard code swap and does not break the CLI. The hazard is editing one surface without the others: any token whose `aud` ≠ `OIDC_AUDIENCE` is fail-closed with a loud 401 `AudienceMismatch` (never silent). When rotating the audience for an env, change all three together; the CI step couples `OIDC_AUDIENCE` + image deploy atomically, so the only human ordering rule is to set the two Clerk `aud` claims before the deploy that ships `OIDC_AUDIENCE`.
+
+**One-time setup (per env, Clerk dashboard — human):**
+
+1. Sign in to the Clerk dashboard for the target instance (`dashboard.clerk.com` → select `clerk-dev` or `clerk-prod`).
+2. Navigate to **Sessions → Customize session token**.
+3. Paste the claims JSON below. Replace `<AUDIENCE>` with the env-specific value (see *Per-env audience* above).
+   ```json
+   {
+     "aud": "<AUDIENCE>",
+     "metadata": {
+       "role": "{{user.public_metadata.role}}",
+       "tenant_id": "{{user.public_metadata.tenant_id}}"
+     }
+   }
+   ```
+4. Click **Save**. The Clerk UI applies the new template to all subsequently-minted session tokens; existing browser sessions continue with the pre-customization shape until next token refresh (~60s) or sign-out.
+
+**Verification (per env, after save):**
+
+1. Sign out of `app.usezombie.com` (or `app-dev.usezombie.com`) in a clean browser session; sign in again to force a fresh token.
+2. Open DevTools → Application → Cookies → `__session`; copy the value.
+3. Decode at `jwt.io` (or `jwt-cli decode`). Confirm the payload carries:
+   - `aud` matches the env's `OIDC_AUDIENCE`.
+   - `metadata.tenant_id` is non-empty (post-bootstrap).
+   - `metadata.role` is `admin` or `member`.
+   - `sid` is present (proves the session token wasn't replaced by a template token).
+4. Reload any `/(dashboard)/**` page; confirm no 401s in the network panel.
+
+**Rollback procedure (I9.5):**
+
+Clerk dashboard → **Sessions → Customize session token** → **Reset to default**. The next minted token will lack `aud`, every dashboard fetch will fail with `AudienceMismatch` on the next refresh, and operators will notice within ~60s. Re-apply the JSON above to restore. Rollback is reversible end-to-end; no zombied or schema state needs touching.
+
+**Verification artifacts (V9.1–V9.5):**
+
+| Check | Method | Pass criterion |
+|---|---|---|
+| V9.1 — feature available on plan | Clerk dashboard shows the **Customize session token** UI under Sessions | UI visible without an upgrade prompt |
+| V9.2 — nested metadata renders | JWT decode after sign-in shows `metadata.tenant_id` populated from `user.public_metadata.tenant_id` | Non-empty value matches the user's `publicMetadata` |
+| V9.3 — cookie size under cap | `document.cookie` value for `__session` is < 4KB | ≥30% headroom (~700 bytes typical) |
+| V9.4 — `sid` present | JWT payload has `sid` field | `clerkMiddleware()` continues to validate the cookie |
+| V9.5 — plan gating | Plan tier is Pro+ (Free tier blocks claim customization) | Confirm before scheduling D40 PROD apply |
+
+> **Pre-D40 PROD checklist:** (1) the human-entered PROD Clerk `aud` claim equals `https://api.usezombie.com` (the literal `release.yml` sets as `OIDC_AUDIENCE`); (2) the D40 PROD Clerk customization is applied **before** the prod release that ships `OIDC_AUDIENCE` + the new dashboard code; (3) V9.5 confirmed against the current Clerk plan; (4) nkishore@megam.io DEV cookie measured for the V9.3 baseline. Note `OIDC_AUDIENCE` is no longer a vault/`fly secrets`-list item — it's a CI literal, so verify it in `release.yml`, not `fly secrets list`.
+
 ---
 
 ## 4.0 Worker Infrastructure + Deployment Handoff

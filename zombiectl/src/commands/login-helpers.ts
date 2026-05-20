@@ -2,8 +2,9 @@
 // 350-line cap. Owns the workspace-hydration, spinner-handle, and
 // SIGINT-abort plumbing that the main login orchestrator calls into.
 
-import { Effect, Option, Redacted } from "effect";
+import { Effect, Redacted } from "effect";
 import { HttpClient } from "../services/http-client.ts";
+import { Output } from "../services/output.ts";
 import { Spinner } from "../services/spinner.ts";
 import { CliConfig } from "../services/config.ts";
 import { Workspaces, type WorkspaceItem } from "../services/workspaces.ts";
@@ -20,6 +21,7 @@ import {
 } from "../constants/analytics-events.ts";
 import { extractDistinctIdFromToken } from "../program/auth-token.ts";
 import { SIGINT } from "../constants/signals.ts";
+import type { NetworkError, ServerError, UnexpectedError } from "../errors/index.ts";
 
 const TENANT_WORKSPACES_PATH = "/v1/tenants/me/workspaces";
 
@@ -46,19 +48,44 @@ const normalizeWorkspaceItem = (
   };
 };
 
+type HydrationError = NetworkError | ServerError | UnexpectedError;
+
+// Render any underlying error as a single-line stderr warn so login still
+// exits 0 — workspace hydration is best-effort, not a login dependency.
+// The operator can recover by running `zombiectl workspace list` to
+// re-fetch + persist on demand.
+const reasonOf = (err: HydrationError): string =>
+  err._tag === "ServerError" ? err.code : err._tag === "NetworkError" ? "network" : "unexpected";
+
+const warnHydrationFailure = (
+  err: HydrationError,
+): Effect.Effect<void, never, Output> =>
+  Effect.gen(function* () {
+    const output = yield* Output;
+    yield* output.warn(
+      `post-login workspace hydration failed (${reasonOf(err)}) — run \`zombiectl workspace list\` to retry`,
+    );
+  });
+
+type FetchOutcome = { readonly ok: true; readonly value: { items?: unknown[] } } | { readonly ok: false; readonly err: HydrationError };
+type SaveOutcome = { readonly ok: true } | { readonly ok: false; readonly err: HydrationError };
+
 export const hydrateWorkspacesAfterLogin = (
   token: Redacted.Redacted<string>,
-): Effect.Effect<void, never, HttpClient | Workspaces> =>
+): Effect.Effect<void, never, HttpClient | Output | Workspaces> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const workspaces = yield* Workspaces;
-    const response = yield* http
-      .request<{ items?: unknown[] }>({
-        path: TENANT_WORKSPACES_PATH,
-        token,
-      })
-      .pipe(Effect.option);
-    if (Option.isNone(response)) return;
+    const response: FetchOutcome = yield* http
+      .request<{ items?: unknown[] }>({ path: TENANT_WORKSPACES_PATH, token })
+      .pipe(
+        Effect.match({
+          onSuccess: (value): FetchOutcome => ({ ok: true, value }),
+          onFailure: (err): FetchOutcome => ({ ok: false, err }),
+        }),
+      );
+    if (!response.ok) return yield* warnHydrationFailure(response.err);
+
     const fallbackCreatedAt = Date.now();
     const items = (Array.isArray(response.value.items) ? response.value.items : [])
       .map((item) => normalizeWorkspaceItem(item, fallbackCreatedAt))
@@ -74,7 +101,15 @@ export const hydrateWorkspacesAfterLogin = (
     const firstItem = items[0];
     if (!firstItem) return;
     const current = existingCurrent?.workspace_id ?? firstItem.workspace_id;
-    yield* workspaces.save({ current_workspace_id: current, items }).pipe(Effect.ignore);
+    const saveResult: SaveOutcome = yield* workspaces
+      .save({ current_workspace_id: current, items })
+      .pipe(
+        Effect.match({
+          onSuccess: (): SaveOutcome => ({ ok: true }),
+          onFailure: (err): SaveOutcome => ({ ok: false, err }),
+        }),
+      );
+    if (!saveResult.ok) return yield* warnHydrationFailure(saveResult.err);
   });
 
 // Promise+listener bridge: SIGINT during the poll loop aborts the
