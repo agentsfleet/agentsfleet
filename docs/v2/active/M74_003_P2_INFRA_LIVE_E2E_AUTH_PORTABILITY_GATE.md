@@ -14,11 +14,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M74
 **Workstream:** 003
 **Date:** May 19, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — gate is a build-time invariant, not a runtime correctness issue. The portability contract is still intact in the main binary build; only the isolation gate fails. Useful as a CI block once restored.
 **Categories:** INFRA
 **Batch:** B1
-**Branch:** feat/m74-003-live-e2e-auth-portability (to be created on CHORE(open))
+**Branch:** feat/m74-003-live-e2e-auth-portability
 **Depends on:** None.
 **Provenance:** Surfaced during M74_001 Piece 1 closeout (`docs/v2/done/M74_001_P1_CLI_EFFECT_TS_MIGRATION.md` — Piece 1 Closeout addendum, May 19, 2026).
 
