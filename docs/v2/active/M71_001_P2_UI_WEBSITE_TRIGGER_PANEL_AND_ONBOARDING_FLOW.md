@@ -14,9 +14,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M71
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** DONE
-**Priority:** P2 — completes the M68 trigger DX surface (per-trigger cards, provider guidance table, OnboardingFlow, Hero CTA) that was deferred during M68's CHORE(close), plus §7 hero promo pill (Captain ask, in-PR amendment May 18, 2026). Not blocking any other workstream.
-**Categories:** UI, WEBSITE
+**Status:** IN_PROGRESS
+**Priority:** P2 — completes the M68 trigger DX surface (per-trigger cards, provider guidance table, OnboardingFlow, Hero CTA) that was deferred during M68's CHORE(close), plus §7 hero promo pill (Captain ask, in-PR amendment May 18, 2026), plus §8–§12 post-audit dashboard follow-ups (Captain ask, May 20, 2026 — folds M76_001). Not blocking any other workstream.
+**Categories:** UI, WEBSITE, API
 **Batch:** B1
 **Branch:** feat/m71-001-p2-trigger-panel-onboarding-flow
 **Depends on:** M68_001 (DONE) — this spec inherits the unfinished M68 §D / §E / §G surface listed in M68's "Deferred to follow-up" section.
@@ -83,8 +83,20 @@ No server-side surface touched. No new HTTP endpoints. No schema changes. No new
 | `ui/packages/website/src/components/Hero.test.tsx` | EDIT | §6, §7 | New CTA assertions (§6) + promo-pill assertions (§7). |
 | `ui/packages/website/src/lib/rates.ts` | EDIT | §7 | Add `RATES_DISPLAY.FREE_TRIAL_PILL` (short pill string) sharing the date with `FREE_TRIAL_BANNER` via a private `FREE_TRIAL_END_DISPLAY` substring. |
 | `ui/packages/website/src/lib/rates.test.ts` | EDIT | §7 | Pin pill / banner share a single date substring; pin pill text format. |
+| `ui/packages/app/lib/clerkAppearance.ts` (+ `.test.ts`) | EDIT / NEW | §8 | `formFieldInput` gets `--surface-1` fill + `--border-strong` so inputs separate from the card. |
+| `ui/packages/app/app/(dev)/ds-button-rsc/page.tsx` | DELETE | §9 | Remove public dev demo route. |
+| `ui/packages/design-system/src/design-system/Spinner.tsx` (+ `.test.tsx`, index export) | NEW | §10 | Branded `WakePulse` spinner; swap `Loader2Icon` spinner sites. |
+| `ui/packages/app/app/(dashboard)/zombies/loading.tsx` + inline `Loader2Icon` spinner sites | EDIT | §10 | Use `Spinner`. Skeleton placeholders untouched. |
+| `ui/packages/app/lib/api/workspaces.ts` | EDIT | §11 | Add `createTenantWorkspace(token, {name?})`. |
+| `ui/packages/app/components/layout/WorkspaceSwitcher.tsx` (+ test) | EDIT | §11 | "New workspace" item → create dialog. |
+| `ui/packages/app/app/(dashboard)/actions.ts` | EDIT | §11 | Server action wrapping `POST /v1/workspaces` + active-workspace switch. |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/{page,actions,loading}.tsx` + `components/*` | NEW | §12 | List / mint / revoke / delete surface (mirrors `/credentials`). |
+| `ui/packages/app/app/(dashboard)/settings/page.tsx` | EDIT | §12 | Third `SettingsLink` card → API keys. |
+| `ui/packages/app/lib/api/api_keys.ts` (+ types in `lib/types.ts`) | NEW | §12 | Typed client: list/create/revoke/delete. |
+| `src/http/handlers/api_keys/tenant.zig` | EDIT (comment only) | §12 | RULE NLR — replace "no first-party UI" block with `/settings/api-keys` pointer. |
+| `ui/packages/app/tests/**` + `tests/e2e/acceptance/settings-api-keys.spec.ts` | NEW | §8–§12 | Unit + e2e coverage for the five follow-ups. |
 
-> **Anti-pattern guard:** no file in `zombiectl/`, `src/` (Zig), `docs/v2/done/`, or `docs/AUTH.md` is touched by this spec. CLI auth-flow work lives in M74_002.
+> **Anti-pattern guard:** no file in `zombiectl/`, `src/auth/`, `src/http/handlers/auth/`, or `ui/packages/app/lib/auth/` is touched by this spec — those are M74_002's reserved surface. The sole `src/` (Zig) touch is one **comment-only** edit in `src/http/handlers/api_keys/tenant.zig` (§12, RULE NLR); no Zig logic changes. `docs/AUTH.md` is not touched.
 
 ---
 
@@ -260,6 +272,67 @@ The four cards (verbatim from M68 §G5):
 
 ---
 
+## §8–§12 — Post-audit dashboard follow-ups (Captain ask, May 20, 2026)
+
+**Provenance:** during PR #330 review the Captain requested a full dashboard route/navigation audit. The audit surfaced five gaps; the Captain elected to fix all five in this PR rather than spin separate specs ("fix all of them in this PR — I don't want a separate spec"). M76_001 (Tenant API Keys self-service UI, PENDING) is **absorbed** here as §12 and deleted from `docs/v2/pending/`. None of the five touch M74_002's reserved surface (`zombiectl/`, `src/auth/`, `src/http/handlers/auth/`, `ui/packages/app/lib/auth/`).
+
+### §8 — Clerk sign-in input contrast fix
+
+**Problem:** `ui/packages/app/lib/clerkAppearance.ts` themes both the card surface (`cardBox.backgroundColor`) and the input fields (`formFieldInput.backgroundColor`) with the same `var(--surface-2)` token. With no luminance delta between the card and the inputs sitting on it, the text boxes are visually invisible — the operator cannot tell where to click (Captain: "its black and I didn't know where to click").
+
+**What lands:** give `formFieldInput` its own surface + a visible border so the click target reads as an input. Use `var(--surface-1)` for the field fill (one step darker than the `--surface-2` card) plus `borderColor: var(--border-strong)`. Inputs now separate from the card. No new tokens — both already exist in `theme.css`.
+
+**Acceptance:** `clerkAppearance.test.ts` (new or extended) asserts `formFieldInput.backgroundColor !== cardBox.backgroundColor` (the regression that caused the bug) and that `formFieldInput.borderColor` is set.
+
+### §9 — Remove `/ds-button-rsc` dev demo route
+
+**Problem:** `app/(dev)/ds-button-rsc/page.tsx` is a public, unauthenticated React-Server-Component button demo. It ships to production and is reachable by URL.
+
+**What lands:** delete the `app/(dev)/` route group. Grep first for any reference (`ds-button-rsc`, imports of the page) — expected zero outside the file itself.
+
+**Acceptance:** `find app/\(dev\)` returns nothing; `grep -rn ds-button-rsc app` returns nothing.
+
+### §10 — Branded loader (`Spinner` via `WakePulse`)
+
+**Problem:** loading affordances are inconsistent. The brand wake-pulse appears only as the header/sign-in "live" dot; in-flight loaders use Lucide's generic `Loader2Icon` (`/zombies` loading, BillingUsageTab "Load more", InstallZombieForm submit, etc.) while `/approvals`, `/settings`, `/events` use `Skeleton`. The generic spinner is off-brand.
+
+**What lands:** add a `Spinner` primitive to `@usezombie/design-system` built on the existing `WakePulse` glow-ring keyframe (a sized, `aria-busy` brand pulse). Swap the `Loader2Icon`-as-spinner usages in the dashboard to `Spinner`. **Skeleton placeholders stay** — they are layout-shape loaders, a different affordance, and are already consistent. The decision (pulse for indeterminate "working", skeleton for "page-shape pending") is documented in the component docstring.
+
+**Acceptance:** `Spinner.test.tsx` asserts it renders the pulse element with `role="status"` / `aria-busy`. No remaining `Loader2Icon` import in dashboard spinner sites (Skeleton untouched). DESIGN TOKEN GATE clean (pulse tokens, no arbitraries).
+
+### §11 — Create-workspace UI
+
+**Problem:** the backend exposes `POST /v1/workspaces` (bearer, `invokeCreateWorkspace` → `ws_lifecycle.innerCreateWorkspace`) but the dashboard has no create affordance — workspaces only ever come from the Clerk signup webhook. A tenant that lands without a workspace, or wants a second, is stuck.
+
+**Backend contract (verified, unchanged):** `POST /v1/workspaces`, body `{ name?: string }` (empty/blank → server picks a Heroku-style name), → `201 { workspace_id, name, request_id }`. Errors: `ERR_INVALID_REQUEST` (malformed JSON), `ERR_UNAUTHORIZED` (missing/unknown tenant on session).
+
+**What lands:** a "New workspace" entry in the existing `WorkspaceSwitcher` dropdown (header) opening a dialog with an optional name field; submit calls a server action wrapping `POST /v1/workspaces`, then switches the active-workspace cookie to the new id and revalidates. `lib/api/workspaces.ts` gains `createTenantWorkspace(token, { name? })`.
+
+**Acceptance:** unit test for the client + server action happy path and the `ERR_UNAUTHORIZED` mapping; WorkspaceSwitcher test asserts the "New workspace" item renders and opens the dialog.
+
+### §12 — Tenant API Keys self-service settings page (absorbs M76_001)
+
+Full plan, contract, failure-mode table, invariants, and test specification are carried verbatim from M76_001 (deleted from `pending/` on absorption). Summary:
+
+**Route:** `/settings/api-keys` under the dashboard shell. **RBAC:** operator/admin only — page guard reads `metadata.role` via the existing `getServerSessionMetadata()` in `lib/auth/server.ts` (consume, do not edit — M74_002 owns `lib/auth/`); `user` role → redirect to `/settings`. Mirrors the `registry.operator()` gating on the backend route.
+
+**Backend contract (verified, unchanged — no new endpoints):**
+```
+POST   /v1/api-keys        body {key_name, description?}  → 201 {id, key_name, key (raw zmb_t_*, ONCE), created_at}
+GET    /v1/api-keys        ?page&page_size&sort           → 200 {items[{id,key_name,active,created_at,last_used_at,revoked_at}], total, page, page_size}
+PATCH  /v1/api-keys/{id}   body {active:false}            → 200 {id, active:false, revoked_at}
+DELETE /v1/api-keys/{id}   (only when active=false)       → 204
+```
+Validation: `key_name` `[A-Za-z0-9_-]{1,64}`, `description` ≤256. sort allowlist `created_at|-created_at|key_name|-key_name`; default `-created_at`, page_size 25 (max 100). Error codes: `ERR_APIKEY_NAME_TAKEN`, `ERR_APIKEY_NOT_FOUND`, `ERR_APIKEY_READONLY_FIELD`, `ERR_APIKEY_ALREADY_REVOKED`, `ERR_APIKEY_MUST_REVOKE_FIRST`, `ERR_INVALID_REQUEST`, `ERR_FORBIDDEN`.
+
+**What lands:** server-rendered list with status/created/last-used/revoked columns; "New API key" dialog with one-time raw-secret reveal (copy-to-clipboard, overlay-click locked, single "I've stored it" dismiss); revoke (PATCH `{active:false}`) on active rows; delete (DELETE) on already-revoked rows; a third `SettingsLink` card on `/settings`. The raw key never persists in the DOM after dismiss and is never logged. One Zig **comment-only** edit in `src/http/handlers/api_keys/tenant.zig` (RULE NLR): the "no first-party UI/CLI consumes these routes" block now contradicts shipped reality → point it at `/settings/api-keys`.
+
+**Invariants:** (1) raw key not in DOM after reveal dialog closes; (2) raw key never logged; (3) page unreachable for `user` role; (4) all four mutations re-fetch the list before resolving.
+
+**Acceptance:** the M76_001 Test Specification rows are the floor (settings-card link, role redirect, list, mint-reveal-once, name validation, name-collision keeps-dialog-open, revoke, revoke-already-revoked toast, delete, delete-active toast). E2e round-trip mint→reveal→revoke→delete.
+
+---
+
 ## Interfaces
 
 No HTTP / OpenAPI / wire surface added or changed. No new dashboard or website routes. The contracts this spec locks:
@@ -295,6 +368,15 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 | Bundle-size regression beyond the website's 140 kB landing-js ceiling (`ui/packages/website/.size-limit.json`) | `cron-parser` or other §4 dep | Implementer measures pre-/post-bundle size; if over budget, swap for a smaller cron parser or roll a minimal expression-only formatter. |
 | Hero promo pill date drifts from `RATES_DISPLAY.FREE_TRIAL_BANNER` date | Someone edits the pill string without touching the banner (or vice versa) | Both consume a single private `FREE_TRIAL_END_DISPLAY` substring in `rates.ts`. `rates.test.ts` pins the shared substring; drift fails the test. |
 | Hero promo pill date drifts from `FREE_TRIAL_END_MS` numeric pin | Someone bumps `FREE_TRIAL_END_MS` (Zig + 3 TS surfaces, audit-cross-tier-rates.sh enforced) but forgets the display string | Out-of-scope automation for now; the rates.ts module-level comment names the coupling, the audit script flags numeric drift, and the human PR review is the catch for the display string until a future spec adds a `FREE_TRIAL_END_MS → display` derivation. |
+| §11 create-workspace: empty/blank name submitted | User leaves the name field blank | Backend picks a Heroku-style name (`{}` body path); UI treats blank as "let server name it" — no client-side rejection. |
+| §11 create-workspace: `ERR_UNAUTHORIZED` (missing/unknown tenant) | Stale session / unprovisioned Clerk metadata | Server action surfaces a toast "Workspace creation unavailable — refresh and retry"; no cookie switch on failure. |
+| §12 name collision | Mint with an existing tenant name | `ERR_APIKEY_NAME_TAKEN` → dialog stays open, name field flagged, no secret minted. |
+| §12 network failure during reveal | Mint succeeded server-side, response lost | Recovery message "the key may have been created — refresh the list and revoke if you see an unknown name"; **no auto-retry** (would mint a second key). |
+| §12 clipboard blocked | `navigator.clipboard.writeText` refused | Fall back to a selectable read-only field + "Copy failed — select manually"; reveal stays intact. |
+| §12 delete-while-active race | Delete clicked on a row still active | `ERR_APIKEY_MUST_REVOKE_FIRST` toast; list refresh shows current state. |
+| §12 already-revoked revoke race | Two operators revoke the same key | `ERR_APIKEY_ALREADY_REVOKED` toast; list refresh resolves. |
+| §12 non-operator role direct-URL | `user` role hits `/settings/api-keys` | Server component redirects to `/settings`; no API call fires. |
+| §12 sort param tampering | URL crafted with `sort=foo` | API `ERR_INVALID_REQUEST` → UI resets to default sort + toast. |
 
 ---
 
@@ -305,6 +387,11 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 3. **The M68 shipped `TriggerPanel` test rows continue to pass** (or their assertions move to the new TriggerPanel.test.ts with equivalent coverage). No regression of M68 acceptance.
 4. **No `as any` / `!` / `@ts-expect-error` introduced.** Enforced by `bun run lint` + `bun run typecheck`.
 5. **Hero promo pill date string is never hardcoded in `Hero.tsx`.** §7. Pill consumes `RATES_DISPLAY.FREE_TRIAL_PILL` from `rates.ts`. Enforced by code review + rates.test.ts pinning the substring share with `FREE_TRIAL_BANNER`.
+6. **`lib/auth/` is consumed, never edited.** §11/§12. Role + token reads go through the pre-existing `getServerSessionMetadata()` / `getServerAuth()`; M74_002 owns that directory.
+7. **No new HTTP route appears in `src/http/router.zig` or `route_table.zig`.** §11/§12 consume existing endpoints verbatim; `git diff origin/main -- src/http/router.zig src/http/route_table.zig` stays empty.
+8. **§12 raw API key never persists in the DOM after the reveal dialog closes, and is never logged.** Enforced by the dialog's unmount cleanup, an e2e post-close assertion, and a no-`console.log(key/result)` lint in `actions.ts`.
+9. **§12 `/settings/api-keys` is unreachable for `user` role** — server-component guard redirects; regression test asserts the redirect.
+10. **§12 all four mutations re-fetch the list before resolving** — the server action returns the fresh list payload; no client-only optimistic state that could lie on failure.
 
 ---
 
@@ -334,6 +421,30 @@ No new flags. No new env vars. No new dependencies beyond a lightweight cron-par
 | `test_hero_promo_pill_precedes_headline_in_document_order` | DOM position check: pill node sits before `<h1 data-testid="hero-headline">` and after `<p data-testid="hero-eyebrow">`. |
 | `test_rates_display_free_trial_pill_pinned` | `RATES_DISPLAY.FREE_TRIAL_PILL` literal equals `"Free until July 31, 2026"`. |
 | `test_rates_display_pill_and_banner_share_trial_end_date` | Both `RATES_DISPLAY.FREE_TRIAL_PILL` and `RATES_DISPLAY.FREE_TRIAL_BANNER` contain the `"July 31, 2026"` substring (single source of truth). |
+
+**§8–§12 post-audit follow-up test rows:**
+
+| Test | Asserts |
+|------|---------|
+| `test_clerk_appearance_input_distinct_from_card` | `AUTH_APPEARANCE.elements.formFieldInput.backgroundColor !== cardBox.backgroundColor` and `formFieldInput.borderColor` is set (§8 regression pin). |
+| `test_dev_route_removed` | `app/(dev)/ds-button-rsc` does not exist; no `ds-button-rsc` reference in `app/` (§9). |
+| `test_spinner_renders_pulse_status` | `Spinner` renders the WakePulse element with `role="status"` + `aria-busy` (§10). |
+| `test_workspace_switcher_new_workspace_item` | WorkspaceSwitcher renders a "New workspace" item that opens the create dialog (§11). |
+| `test_create_workspace_action_happy_path` | `createTenantWorkspace` POSTs `{name?}`, returns `{workspace_id,name}`, switches active cookie (§11). |
+| `test_create_workspace_unauthorized_maps_toast` | `ERR_UNAUTHORIZED` → toast, no cookie switch (§11). |
+| `test_settings_card_links_to_api_keys` | Settings index renders the third card → `/settings/api-keys` (§12). |
+| `test_user_role_redirected` | `user`-role principal → redirect to `/settings` (§12). |
+| `test_operator_role_lists_keys` | `operator` sees `active`+`revoked` rows ordered `-created_at` default (§12). |
+| `test_mint_happy_path_reveals_once` | submit → raw `zmb_t_*` visible once; after close, string no longer in DOM (§12). |
+| `test_mint_name_validation_client_side` | invalid `key_name` chars block submit, inline validation (§12). |
+| `test_mint_name_collision_keeps_dialog_open` | `ERR_APIKEY_NAME_TAKEN` → dialog stays open, no reveal (§12). |
+| `test_revoke_active_key` | active row → revoke → `revoked_at` populated, row inactive (§12). |
+| `test_revoke_already_revoked_toast` | `ERR_APIKEY_ALREADY_REVOKED` toast + list refresh (§12). |
+| `test_delete_revoked_key` | revoked row → delete → row gone (`204`) (§12). |
+| `test_delete_active_key_blocked` | `ERR_APIKEY_MUST_REVOKE_FIRST` toast + refresh (§12). |
+| `test_sort_param_invalid_resets` | `sort=foo` → default sort + toast (§12). |
+| `test_pagination_bounds` | `page_size=200` rejected client-side before request (§12). |
+| `test_e2e_round_trip` (Playwright) | mint → reveal → close → list shows row → revoke → delete → back to original; reveal-secret invariant asserted post-close (§12). |
 
 Per-section acceptance criteria match the §X "Acceptance" blocks above.
 
@@ -412,6 +523,8 @@ If disposition (b) — coexist — both components remain; no dead-code sweep.
 2. **M74_002 redirected to single-token collapse.** Captain pivoted M74_002 from CLI handshake hardening to the Clerk `sid`-on-custom-template investigation (formerly HANDOFF.md § A.1). If single-token collapse lands, the entire `/backend` BFF + `Redacted` wrapper + `serverAuthorizationHeader` indirection are deleted — the browser carries one cookie-borne JWT and talks to zombied directly.
 
 Rather than fix the `server-only` boundary just to ship code that M74_002 deletes, the §7 commits were dropped from this branch (`git reset --hard b96a153d` then force-push). The hero promo pill §7 (line 242 above) is unaffected and remains DONE. The retry layer reverts to the pre-§7 shape; if M74_002's single-token work needs CLI-parity retries on the dashboard side, it can re-introduce them in its own diff. `tests/e2e/acceptance/events-backfill-proxy.spec.ts` is dropped — the invariant it pinned ("browser carries no bearer") is automatically restored by single-token collapse, where there is no browser-side bearer to leak.
+
+**May 20, 2026 — spec reopened (DONE → IN_PROGRESS) for §8–§12 post-audit follow-ups.** During PR #330 babysitting the Captain asked for a full dashboard route/navigation audit (login → every route, top-right chrome, settings affordances, billing model, Clerk input styling, spinner branding). The audit found five gaps: (§8) Clerk sign-in inputs invisible — card + input both `--surface-2`; (§9) `/ds-button-rsc` public dev route ships to prod; (§10) loaders split between Lucide `Loader2Icon` and the brand pulse; (§11) no create-workspace UI despite a live `POST /v1/workspaces`; (§12) no API-keys self-service UI despite live `operator()`-gated `/v1/api-keys` CRUD. Captain: "fix all of them in this PR — I don't want a separate spec." **M76_001** (Tenant API Keys Settings UI, was PENDING) is absorbed as §12 and deleted from `pending/`; its full plan/contract/failure-modes/invariants/test-spec are the authority for §12. Backend contracts for §11 and §12 were verified against `route_table.zig`, `router.zig`, `workspaces/lifecycle.zig`, `api_keys/{tenant,list}.zig` before reopen — all endpoints already wired, no new HTTP surface introduced. RBAC role read via the pre-existing `getServerSessionMetadata()` so `lib/auth/` (M74_002's) is consumed, not edited.
 
 ---
 
