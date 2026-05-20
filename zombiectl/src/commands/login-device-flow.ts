@@ -42,6 +42,12 @@ import {
   type NetworkError,
   type ServerError,
 } from "../errors/index.ts";
+import type {
+  PollOutcome,
+  SessionCreatedResponse,
+  SessionStatusResponse,
+  VerifySuccessResponse,
+} from "./login-device-flow-types.ts";
 
 const MIN_POLL_MS = 500;
 
@@ -55,41 +61,15 @@ const MAX_CLI_VERIFY_ATTEMPTS = 2;
 // matches ERR_INVALID_VERIFICATION_CODE in src/errors/error_registry.zig.
 const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 
-export type PollOutcome =
-  | { readonly status: "verification_pending" }
-  | { readonly status: "expired" }
-  | { readonly status: "interrupted" }
-  | { readonly status: "timeout" };
-
-export interface SessionCreatedResponse {
-  readonly session_id: string;
-  readonly request_id?: string;
-}
-
-export interface SessionStatusResponse {
-  readonly status: "pending" | "verification_pending";
-  readonly cli_public_key: string;
-  readonly token_name: string;
-  readonly expires_at_ms: number;
-}
-
-export interface VerifySuccessResponse {
-  readonly dashboard_public_key: string;
-  readonly ciphertext: string;
-  readonly nonce: string;
-}
-
-// Spec-pinned platform default (no hostname leak). Falls back to a
-// generic label for unknown platforms.
-export const defaultTokenName = (
-  platform: NodeJS.Platform = process.platform,
-): string => {
-  if (platform === "darwin") return "macos-cli";
-  if (platform === "linux") return "linux-cli";
-  if (platform === "win32") return "windows-cli";
-  if (platform === "freebsd") return "freebsd-cli";
-  return "cli";
+// Re-export the device-flow wire shapes + platform default from their sibling
+// module so existing consumers (login.ts, tests) keep importing them from here.
+export type {
+  PollOutcome,
+  SessionCreatedResponse,
+  SessionStatusResponse,
+  VerifySuccessResponse,
 };
+export { defaultTokenName } from "./login-device-flow-types.ts";
 
 const ZMB_TOKEN_ENV_KEYS = ["ZMB_TOKEN", "ZOMBIE_TOKEN"] as const;
 
