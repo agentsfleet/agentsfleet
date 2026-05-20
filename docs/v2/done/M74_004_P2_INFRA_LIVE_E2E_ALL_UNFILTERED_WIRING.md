@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M74
 **Workstream:** 004
 **Date:** May 19, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — false-positive gate; currently runs zero tests and exits 0 silently. Real signal restoration.
 **Categories:** INFRA
 **Batch:** B1
