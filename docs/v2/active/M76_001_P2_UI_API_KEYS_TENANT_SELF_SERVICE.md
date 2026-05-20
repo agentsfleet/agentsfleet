@@ -9,19 +9,19 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - See docs/TEMPLATE.md "Prohibited" section above for canonical list.
 -->
 
-# M76_001: Settings self-service — API keys, account deletion, avatar fallback, theme toggle
+# M76_001: Settings self-service — API keys, avatar fallback, theme toggle
 
 **Prototype:** v2.0.0
 **Milestone:** M76
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** PENDING
-**Priority:** P2 — backend already ships for API keys; closing the operator-experience gap across the settings surface (API-key mint/revoke today requires `curl`; no account-deletion flow; no avatar fallback control; no light/dark toggle despite the tokens existing).
-**Categories:** UI, API, DOCS, AUTH
+**Status:** IN_PROGRESS
+**Priority:** P2 — backend already ships for API keys; closing the operator-experience gap across the settings surface (API-key mint/revoke today requires `curl`; no avatar fallback control; no light/dark toggle despite the tokens existing).
+**Categories:** API, AUTH, DOCS, UI
 **Batch:** B1 — no parallel siblings; the settings surface.
-**Branch:** {feat/m76-001-name — added at CHORE(open)}
-**Depends on:** API-keys §1–§7 depend on nothing (handlers + `core.api_keys` + `bearer_or_api_key` already in place). **§8 account deletion depends on new backend** (tenant-lifecycle delete endpoint + scheduled hard-delete + Clerk `user.deleted` webhook wiring — none exist today) and touches `src/http/handlers/auth/`, which **M74_002 owns** — sequence after/with M74_002 or graduate §8 to its own spec.
-**Provenance:** human-written (Captain ack, May 18, 2026). **Scope expanded May 20, 2026** (Captain ask) from API-keys-only to the broader settings self-service surface: §8 account deletion, §9 avatar fallback, §10 light/dark theme toggle. See the §8 callout — account deletion is a backend-heavy, billing/auth-sensitive feature and is a strong candidate to graduate to its own spec (same rationale that split API-keys out of M71_001 P2).
+**Branch:** feat/m76-001-settings-self-service
+**Depends on:** Nothing — API-keys §1–§7 (handlers + `core.api_keys` + `bearer_or_api_key`), §9 avatar (Clerk appearance), and §10 theme (`[data-theme="light"]` palette) all ship over surfaces already in place. Account deletion graduated to **M76_002** (new backend + billing decision).
+**Provenance:** human-written (Captain ack, May 18, 2026). **Scope expanded May 20, 2026** then **narrowed May 21, 2026** (Captain ask): ship API keys + §9 avatar fallback + §10 theme toggle here; **account deletion graduated to M76_002** (backend-heavy, billing/auth-sensitive — same rationale that split API-keys out of M71_001 P2).
 
 **Canonical architecture:** `docs/ARCHITECTURE.md` (settings dashboard surface, tenant principal scope).
 
@@ -43,7 +43,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 - **PR title (eventual):** Settings self-service: dashboard API-key management + theme/avatar
 - **Intent (one sentence):** Operators manage `zmb_t_*` API keys (mint / list / revoke / delete) from the dashboard with zero `curl`, plus a working light/dark toggle and a themed avatar fallback — closing the operator-experience gap on the settings surface.
-- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). The load-bearing one: **§8 account deletion needs new backend** (a delete endpoint + scheduled hard-delete + the ignored Clerk `user.deleted` webhook) + a billing-policy decision, and touches `src/http/handlers/auth/` (M74_002's reserved surface) — it is a graduate-to-own-spec candidate and must NOT be bundled into this PR without that decision. A mismatch with the Intent above → STOP and reconcile before any edit.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). The load-bearing one: this PR is **UI over existing endpoints + one comment-only Zig edit + theme/avatar wiring** — zero new HTTP routes, zero new schema, zero new error codes. Account deletion (new backend + billing-policy decision + auth-surface coordination) is **out of scope here and tracked in M76_002**. A mismatch with the Intent above → STOP and reconcile before any edit.
 
 ---
 
@@ -68,7 +68,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | File & Function Length (≤350/≤50/≤70) | yes | the surface is split into list / create-dialog / revoke-confirm / loading components (see Files Changed) so no single `.tsx` approaches the cap. |
 | UFS (repeated/semantic literals) | yes | share the `zmb_t_` prefix, the `[A-Za-z0-9_\-]{1,64}` name regex, and the sort allowlist verbatim with the Zig handler's constants; the `ERR_*`→toast map is named once. |
 | UI Substitution / DESIGN TOKEN | yes | use design-system primitives (`asChild` for HTML semantics) and `theme.css` tokens — no raw HTML, no arbitrary values; §10 reuses the existing `[data-theme="light"]` palette (no new color tokens). |
-| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING: yes | the raw key is secret from the network boundary — no `console.log(result/key)` in `actions.ts` (Invariant 2). ERROR REGISTRY: no (consumes existing `ERR_*`, mints none — §8's new codes graduate with §8). SCHEMA: no (existing `core.api_keys`). LIFECYCLE: no. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING: yes | the raw key is secret from the network boundary — no `console.log(result/key)` in `actions.ts` (Invariant 2). ERROR REGISTRY: no (consumes existing `ERR_*`, mints none — new codes graduate with M76_002). SCHEMA: no (existing `core.api_keys`). LIFECYCLE: no. |
 
 ---
 
@@ -106,11 +106,6 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/lib/api/api_keys.ts` | CREATE | Typed server-only client: `listApiKeys`, `createApiKey`, `revokeApiKey`, `deleteApiKey`. |
 | `ui/packages/app/tests/e2e/acceptance/settings-api-keys.spec.ts` | CREATE | Mint → one-time-reveal → revoke → delete round-trip. |
 | `src/http/handlers/api_keys/tenant.zig` | EDIT | Comment-only: replace the "Operational/bootstrap-only … No first-party UI/CLI consumes these routes" block with the actual consumer pointer. |
-| **§8 account deletion (new backend — graduate candidate)** | | |
-| `ui/packages/app/app/(dashboard)/settings/account/{page,actions}.tsx` + `components/DeleteAccountDialog.tsx` | CREATE | Danger Zone + confirm-by-typing dialog + billing pre-flight. |
-| `src/http/handlers/tenants/lifecycle.zig` (+ route_table/router wiring) | CREATE | `DELETE /v1/tenants/me` — soft-delete (`deleted_at`), disable zombies/triggers, revoke API keys; returns scheduled hard-delete date. |
-| scheduled hard-delete worker | CREATE | Cascade tenant→workspaces→zombies→credentials→events→billing after grace; delete Clerk user. |
-| `src/http/handlers/auth/identity_events_clerk.zig` | EDIT (M74_002 territory) | Add `user.deleted` branch → soft-delete cascade. Coordinate with M74_002. |
 | **§9 avatar fallback** | | |
 | `ui/packages/app/lib/clerkAppearance.ts` (+ test) | EDIT | Theme the Clerk default initials avatar with design-system tokens (or an identicon component if chosen). |
 | **§10 theme toggle** | | |
@@ -120,9 +115,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** §1–§7 (API-keys UI over *existing* endpoints, zero new backend) are the shippable core; §9 (avatar fallback) and §10 (theme toggle) are small, token-complete riders kept here because they're cheap. §8 (account deletion) is explicitly carved out as a **graduate-to-own-spec** candidate.
-- **Alternatives considered:** (a) ship §8 inline — rejected; it violates M76's "no new endpoints" rule, needs a billing-policy decision, and couples to M74_002's auth surface. (b) hold §9/§10 for a separate polish PR — viable, but they're token-complete and low-risk, so they ride along.
-- **Patch-vs-refactor verdict:** §1–§7/§9/§10 are an **additive feature over existing endpoints** (UI + one comment edit) — a patch in blast-radius terms. §8 is a **new-backend change** that should land as its own spec; name that follow-up rather than mud-patching a delete endpoint into this PR.
+- **Chosen shape:** §1–§7 (API-keys UI over *existing* endpoints, zero new backend) are the shippable core; §9 (avatar fallback) and §10 (theme toggle) are small, token-complete riders kept here because they're cheap and ship over surfaces already in place. Account deletion was graduated to **M76_002**.
+- **Alternatives considered:** (a) keep account deletion inline — rejected; it violates M76's "no new endpoints" rule, needs a billing-policy decision, and couples to M74_002's auth surface, so it became its own spec (M76_002). (b) hold §9/§10 for a separate polish PR — rejected per Captain ask (May 21); they're token-complete and low-risk, so they ride with the API-keys work.
+- **Patch-vs-refactor verdict:** §1–§7/§9/§10 are an **additive feature over existing endpoints** (UI + one comment edit + theme/avatar wiring) — a patch in blast-radius terms. The new-backend change lives in M76_002 rather than mud-patching a delete endpoint into this PR.
 
 ---
 
@@ -155,30 +150,6 @@ The page server-side checks the user's `AuthRole`. `user` role → redirect to `
 ### §7 — Source comment correction
 
 Replace the "Operational/bootstrap-only surface today … No first-party UI/CLI consumes these routes; if you add one (e.g. self-service key rotation in the dashboard), drop the playbook reference" block in `src/http/handlers/api_keys/tenant.zig` with one referencing `/settings/api-keys` as the first-party consumer. This is the one Zig edit in the spec and must satisfy RULE NLR — the old framing now contradicts shipped reality.
-
-### §8 — Account deletion ("Danger Zone")
-
-> ⚠️ **Graduate-to-own-spec candidate.** Unlike §1–§7 (UI over existing endpoints), §8 needs **new backend** (tenant-lifecycle delete endpoint + scheduled hard-delete job + the currently-ignored Clerk `user.deleted` webhook) and a **billing policy decision**. It also touches `src/http/handlers/auth/` (M74_002's reserved surface). Recommendation: split §8 into its own milestone once the process below is Captain-approved; keep it here only as the design of record until then.
-
-**Current-state findings (May 20, 2026):**
-- **No deletion path exists.** `route_table.zig` has no tenant/account delete route. Clerk's `user.deleted` event is explicitly **ignored** (`src/http/handlers/auth/identity_events_clerk.zig:113-114`), so a user deleting themselves via Clerk today **orphans** their tenant, workspaces, zombies, credentials, events, and billing rows.
-- **Billing is prepaid credits — there is no "dues"/arrears model.** `TenantBilling = { balance_nanos, is_exhausted }` (no `owed`/`outstanding` field). An exhausted tenant is already gate-blocked from incurring new charges; Stripe purchase + any postpaid invoice is **v2.1**. So deletion is **not** blocked by debt today.
-
-**Recommended process (the design of record):**
-
-1. **Scope.** "Delete account" = soft-delete the **tenant** (owner/admin only) + delete the **Clerk user**. Tenants are single-user at alpha, so the two coincide; defer multi-member org semantics (member-leave vs tenant-delete) until orgs exist.
-2. **Billing gate.**
-   - **Today (prepaid):** do **not** block on balance. If `balance_nanos > 0`, show a forfeiture warning ("X credits will be forfeited — free-trial credits have no cash value"). No auto-refund.
-   - **v2.1 (Stripe/postpaid):** **block** deletion while an invoice is unsettled — "Settle your outstanding balance before deleting." The grace period (below) is the settlement window. Refund of remaining *purchased* credits follows the published refund policy.
-3. **Re-auth + confirm.** Require a fresh auth check and **confirm-by-typing** the tenant name (or email) before the destructive call — no single-click delete.
-4. **Data export first.** Offer a GDPR-portability export (at minimum events + billing-charge history) before the point of no return.
-5. **Soft-delete + grace period (default 30 days).** On confirm, the server marks the tenant `deleted_at`, **immediately** disables every zombie + trigger (stop serving/incurring) and revokes all tenant API keys, but **retains data**. Email the user a confirmation with a cancel-within-grace link.
-6. **Hard-delete after grace.** A scheduled job cascades tenant → workspaces → zombies → credentials → events → billing rows, then deletes the Clerk user via the Clerk backend API.
-7. **Webhook reconciliation.** Wire the currently-ignored Clerk `user.deleted` webhook → the same server-side soft-delete cascade, so a Clerk-initiated deletion is consistent with the in-app flow. (This closes the orphan gap above regardless of §8's UI.)
-
-**UI surface:** a de-emphasised "Danger Zone" card at the bottom of an account/settings section, owner/admin-gated (mirrors §6 RBAC). The destructive button opens a confirm-by-typing dialog showing the forfeiture/settlement state from the billing pre-flight.
-
-**New backend (out of M76's "no new endpoints" rule — hence the graduate flag):** `DELETE /v1/tenants/me` (soft-delete + return scheduled hard-delete date), a scheduled hard-delete worker, and a `user.deleted` branch in `identity_events_clerk.zig`. All auth-adjacent → coordinate with M74_002.
 
 ### §9 — Avatar fallback
 
@@ -251,13 +222,6 @@ Error shape is the standard `ec.ERR_*` envelope already produced by the handler 
 | `test_sort_param_invalid_resets` | Direct URL with `sort=foo` resets to default and toasts. |
 | `test_pagination_bounds` | `page_size=200` is rejected client-side before request fires. |
 | `test_e2e_round_trip` (Playwright) | mint → reveal → close → list shows new row → revoke → delete → list is back to original state. Reveal-secret invariant asserted post-close. |
-| **§8 account deletion** | |
-| `test_delete_requires_confirm_typing` | Destructive button stays disabled until the tenant name is typed exactly. |
-| `test_delete_billing_preflight_warns_on_credits` | `balance_nanos > 0` → forfeiture warning shown; deletion still allowed (prepaid, v2.0). |
-| `test_delete_blocks_on_unsettled_balance` (v2.1) | Unsettled invoice → deletion blocked with "settle first" (gated behind the postpaid flag). |
-| `test_delete_soft_deletes_and_disables` | `DELETE /v1/tenants/me` sets `deleted_at`, disables zombies/triggers, revokes API keys, returns hard-delete date. |
-| `test_clerk_user_deleted_webhook_cascades` | A `user.deleted` event triggers the same soft-delete cascade (no orphaned tenant). |
-| `test_non_owner_cannot_delete` | Non-owner/admin role → Danger Zone hidden + endpoint 403. |
 | **§9 avatar fallback** | |
 | `test_avatar_fallback_uses_tokens` | With no image, the rendered Clerk fallback (or identicon, if chosen) uses design-system tokens — pins "what you see with no avatar". |
 | **§10 theme toggle** | |
@@ -352,16 +316,19 @@ After every push: `kishore-babysit-prs` per CLAUDE.md.
 
 ## Discovery (consult log)
 
-**May 18, 2026 — API-keys self-service acked by Indy** (split out of M71_001 P2, same rationale that split API-keys out before). **Scope expanded May 20, 2026** (Indy ask) to the broader settings surface: §8 account deletion, §9 avatar fallback, §10 theme toggle.
+**May 18, 2026 — API-keys self-service acked by Indy** (split out of M71_001 P2, same rationale that split API-keys out before). **Scope expanded May 20, 2026** (Indy ask) to the broader settings surface: account deletion, §9 avatar fallback, §10 theme toggle.
 
-**Current-state findings (May 20, 2026):** no tenant/account delete route exists and Clerk's `user.deleted` event is ignored (`identity_events_clerk.zig:113-114`), so self-deletion today orphans tenant → workspaces → zombies → credentials → events → billing; billing is prepaid credits (no arrears model), so deletion isn't debt-blocked at v2.0. The design system already ships both palettes (`tokens.css` `:root` dark + `[data-theme="light"]`) but nothing sets `data-theme` — light mode is dormant, only the wiring is missing.
+**May 21, 2026 — scope narrowed (Indy ask):** "Ship API Keys + Theme Toggle + Avatar all into this PR." Account deletion **graduated to M76_002** (new endpoint + scheduled hard-delete + Clerk `user.deleted` reconciliation + billing-policy decision + M74_002 coordination); its design-of-record (current-state findings + 7-step process) was carried into M76_002 verbatim. This PR keeps §1–§7 (API keys) + §9 (avatar) + §10 (theme) as the shippable core.
 
-**Recommendation of record:** graduate §8 to its own milestone (new endpoint + scheduled hard-delete + webhook reconciliation + billing decision + M74_002 coordination); keep §1–§7/§9/§10 as the shippable core. Further consults logged here during EXECUTE.
+**Current-state findings (May 20, 2026), still relevant here:** the design system already ships both palettes (`tokens.css` `:root` dark + `[data-theme="light"]`) but nothing sets `data-theme` — light mode is dormant, only the wiring is missing (§10). The top-right avatar is Clerk's `<UserButton>`; with no image it renders Clerk's stock initials fallback, not a themed one (§9).
+
+Further consults logged here during EXECUTE.
 
 ---
 
 ## Out of Scope
 
+- **Account deletion** — graduated to **M76_002** (tenant soft-delete + scheduled hard-delete + Clerk `user.deleted` reconciliation + billing-policy decision). Not in this PR.
 - **Workspace-scoped API keys** — the `api` zombie trigger variant (`src/zombie/config_helpers.zig:31`) requires a workspace-scoped surface; that is a separate milestone and intentionally not addressed here. This spec covers tenant-scoped keys only (the existing `zmb_t_*` surface).
 - **Agent-scoped API keys** — `src/http/handlers/api_keys/agent.zig` exists as a separate surface; its UI is a follow-up.
 - **Per-user filtering** — every `operator+` user in the tenant sees every tenant key. A "my keys only" filter and lowering the route to `user` role with `created_by`-scoped reads is a follow-up worth scoping after operator UX lands.
