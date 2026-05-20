@@ -25,6 +25,10 @@ pub const SESSION_TTL_SECONDS: u32 = 300;
 pub const CONSUME_REPLAY_WINDOW_MS: i64 = 60_000;
 pub const MAX_VERIFY_ATTEMPTS: u8 = 5;
 pub const TOKEN_NAME_MAX_LEN: usize = 64;
+// cli_public_key (unauthenticated POST /sessions): same P-256 SPKI base64url
+// shape as the dashboard pubkey; bound it so a caller can't park an oversized
+// blob in Redis for the full TTL.
+pub const CLI_PUBLIC_KEY_MAX_LEN: usize = 200;
 // approve() envelope caps. Production ceilings: P-256 SPKI base64url is
 // 124 chars; AES-256-GCM nonce base64url is 16 chars; ciphertext tracks
 // Clerk JWT size at ~2 KB + 16 B tag. Caps bound an authenticated-but-
@@ -65,10 +69,7 @@ pub const SessionStore = struct {
         cli_public_key: []const u8,
         token_name: []const u8,
     ) ![]const u8 {
-        if (cli_public_key.len == 0) return Error.InvalidPublicKey;
-        if (token_name.len == 0 or token_name.len > TOKEN_NAME_MAX_LEN) {
-            return Error.InvalidTokenName;
-        }
+        try validateCreateInputs(cli_public_key, token_name);
 
         const session_id = try id_format.allocUuidV7(self.alloc);
         errdefer self.alloc.free(session_id);
@@ -303,6 +304,12 @@ pub const SessionStore = struct {
         return 1;
     }
 };
+
+/// Validate create() inputs before any Redis I/O (pub for helpers_test boundary coverage).
+pub fn validateCreateInputs(cli_public_key: []const u8, token_name: []const u8) Error!void {
+    if (cli_public_key.len == 0 or cli_public_key.len > CLI_PUBLIC_KEY_MAX_LEN) return Error.InvalidPublicKey;
+    if (token_name.len == 0 or token_name.len > TOKEN_NAME_MAX_LEN) return Error.InvalidTokenName;
+}
 
 pub fn formatSessionKey(buf: []u8, session_id: []const u8) ![]const u8 {
     if (!id_format.isUuidV7(session_id)) return error.InvalidSessionId;
