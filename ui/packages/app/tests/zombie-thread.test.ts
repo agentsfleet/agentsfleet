@@ -196,6 +196,20 @@ describe("ZombieThread — role rendering", () => {
     expect(screen.getByText(/tick/)).toBeTruthy();
   });
 
+  it("renders a continuation system row with its chip label", () => {
+    mockStream([ev({ role: "system", actor: "continuation", text: "resumed after gate" })]);
+    renderThread();
+    expect(screen.getByText("continuation")).toBeTruthy();
+    expect(screen.getByText(/resumed after gate/)).toBeTruthy();
+  });
+
+  it("renders a gate_blocked system row with its chip label", () => {
+    mockStream([ev({ role: "system", actor: "gate_blocked", text: "blocked on approval" })]);
+    renderThread();
+    expect(screen.getByText("gate_blocked")).toBeTruthy();
+    expect(screen.getByText(/blocked on approval/)).toBeTruthy();
+  });
+
   it("renders a webhook row with the source tag and collapsible payload", () => {
     mockStream([
       ev({
@@ -321,6 +335,64 @@ describe("ZombieThread — steer submission", () => {
       "steer:pending",
     );
     expect(reconcileOptimistic).not.toHaveBeenCalled();
+  });
+
+  it("drives the steer retry indicator from the client's onRetry/onAttempt hooks", async () => {
+    const appendOptimistic = vi.fn().mockReturnValue("temp_r");
+    const reconcileOptimistic = vi.fn();
+    useZombieEventStreamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.LIVE,
+      isRunning: false,
+      appendOptimistic,
+      reconcileOptimistic,
+      convertEvent: toThreadMessage,
+      retryState: null,
+    });
+    // Mirror the real client: a retry, a non-terminal attempt, then a
+    // terminal attempt that clears the indicator.
+    steerZombieMock.mockImplementationOnce(
+      async (
+        _ws: string,
+        _zid: string,
+        _text: string,
+        _tok: string | null,
+        opts: {
+          onRetry?: (i: { attempt: number; status?: number; durationMs?: number; reason: string }) => void;
+          onAttempt?: (i: { terminal: boolean }) => void;
+        },
+      ) => {
+        opts.onRetry?.({ attempt: 1, status: 503, durationMs: 5, reason: "5xx" });
+        opts.onAttempt?.({ terminal: false });
+        opts.onAttempt?.({ terminal: true });
+        return { event_id: "evt_retry" };
+      },
+    );
+    renderThread();
+    const textarea = screen.getByPlaceholderText(/steer this zombie/i);
+    fireEvent.change(textarea, { target: { value: "retry me" } });
+    fireEvent.submit(textarea.closest("form")!);
+    await waitFor(() =>
+      expect(reconcileOptimistic).toHaveBeenCalledWith("temp_r", "evt_retry"),
+    );
+  });
+
+  it("renders the retry indicator line while a backfill retry is in flight", () => {
+    useZombieEventStreamMock.mockReturnValue({
+      events: [],
+      connectionStatus: CONNECTION_STATUS.RECONNECTING,
+      isRunning: false,
+      appendOptimistic: vi.fn(),
+      reconcileOptimistic: vi.fn(),
+      convertEvent: toThreadMessage,
+      retryState: { phase: "backfill", attempt: 2, max: 3, reason: "5xx" },
+    });
+    renderThread();
+    // RetryLine renders `steerRetry ?? stream.retryState`; the backfill state drives it here.
+    const line = screen.getByRole("status");
+    expect(line.textContent).toMatch(/Retrying backfill/i);
+    expect(line.textContent).toMatch(/attempt 2 of 3/);
+    expect(line.textContent).toMatch(/5xx/);
   });
 
   it("does not call steerZombie when token is null", async () => {

@@ -115,6 +115,40 @@ describe("groupChargesByEvent", () => {
     expect(groups.map((g) => g.event_id)).toEqual(["evt_a", "evt_b"]);
   });
 
+  it("sort tiebreaker treats null recorded_at as 0 via the ?? 0 guard (wire drift)", () => {
+    // The sort comparator has a defensive `?? 0` for recorded_at. This test
+    // sends a null value to exercise that branch. The API types recorded_at
+    // as non-null, but wire drift or migration replay can produce a null;
+    // the guard ensures the sort stays deterministic rather than producing NaN.
+    const nullAt: ChargeRow = {
+      ...RECEIVE,
+      event_id: "evt_null",
+      recorded_at: null as unknown as ChargeRow["recorded_at"],
+    };
+    const earlier: ChargeRow = { ...RECEIVE, event_id: "evt_real", recorded_at: 1_000 };
+    const groups = groupChargesByEvent([nullAt, earlier]);
+    // recorded_at=null treated as 0; earlier (1_000) sorts before it in newest-first order.
+    expect(groups[0]?.event_id).toBe("evt_real");
+    expect(groups[1]?.event_id).toBe("evt_null");
+  });
+
+  it("sort is stable when both events have null recorded_at (both ?? 0 arms)", () => {
+    // Exercises the `a.recorded_at ?? 0` arm of the sort comparator by putting
+    // null on both sides. dt becomes 0-0=0, so the localeCompare tiebreaker fires.
+    const nullA: ChargeRow = {
+      ...RECEIVE,
+      event_id: "evt_z",
+      recorded_at: null as unknown as ChargeRow["recorded_at"],
+    };
+    const nullB: ChargeRow = {
+      ...RECEIVE,
+      event_id: "evt_a",
+      recorded_at: null as unknown as ChargeRow["recorded_at"],
+    };
+    const groups = groupChargesByEvent([nullA, nullB]);
+    expect(groups.map((g) => g.event_id)).toEqual(["evt_a", "evt_z"]);
+  });
+
   it("ignores rows with an unknown charge_type (defensive)", () => {
     const weird = { ...RECEIVE, charge_type: "unknown" as ChargeRow["charge_type"] };
     const groups = groupChargesByEvent([weird]);

@@ -190,3 +190,96 @@ describe("zombie-stream-registry — optimistic mutations", () => {
     expect(getSnapshot("never_subscribed").events).toHaveLength(0);
   });
 });
+
+describe("zombie-stream-registry — backfill retry indicator", () => {
+  it("patches the snapshot retryState when backfill reports a retry", () => {
+    listZombieEventsMock.mockImplementationOnce(
+      (
+        _ws: string,
+        _z: string,
+        _tok: string,
+        _opts: unknown,
+        retry: { onRetry: (i: { attempt: number; reason: string }) => void },
+      ) => {
+        retry.onRetry({ attempt: 2, reason: "5xx" });
+        return new Promise(() => {}); // never settles → indicator stays up
+      },
+    );
+    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    expect(getSnapshot(Z_A).retryState).toMatchObject({
+      phase: "backfill",
+      attempt: 2,
+      reason: "5xx",
+    });
+    a();
+  });
+
+  it("clears retryState on a terminal backfill attempt, ignoring non-terminal ones", () => {
+    listZombieEventsMock.mockImplementationOnce(
+      (
+        _ws: string,
+        _z: string,
+        _tok: string,
+        _opts: unknown,
+        retry: {
+          onRetry: (i: { attempt: number; reason: string }) => void;
+          onAttempt: (i: { terminal: boolean }) => void;
+        },
+      ) => {
+        retry.onRetry({ attempt: 1, reason: "network" });
+        retry.onAttempt({ terminal: false }); // non-terminal → no clear
+        retry.onAttempt({ terminal: true }); // terminal → clears
+        return Promise.resolve({ items: [], next_cursor: null });
+      },
+    );
+    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    expect(getSnapshot(Z_A).retryState).toBeNull();
+    a();
+  });
+
+  it("ignores late backfill retry callbacks once the subscription is released (aborted)", () => {
+    let hooks!: {
+      onRetry: (i: { attempt: number; reason: string }) => void;
+      onAttempt: (i: { terminal: boolean }) => void;
+    };
+    listZombieEventsMock.mockImplementationOnce(
+      (_ws: string, _z: string, _tok: string, _opts: unknown, retry: typeof hooks) => {
+        hooks = retry;
+        return new Promise(() => {});
+      },
+    );
+    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    a(); // refcount → 0
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1); // idle release aborts the backfill controller
+    // Late callbacks must be no-ops now that the controller is aborted.
+    hooks.onRetry({ attempt: 9, reason: "5xx" });
+    hooks.onAttempt({ terminal: true });
+    expect(getSnapshot(Z_A).retryState).toBeNull();
+  });
+});
+
+describe("zombie-stream-registry — reconcileOptimistic edges", () => {
+  it("is a no-op for a zombie with no active subscription", () => {
+    reconcileOptimistic("never_subscribed", "temp_x", "evt_x");
+    expect(getSnapshot("never_subscribed").events).toHaveLength(0);
+  });
+
+  it("rewrites only the matching optimistic row and leaves the others untouched", () => {
+    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    const keep = appendOptimistic(Z_A, "first", "steer:k");
+    const target = appendOptimistic(Z_A, "second", "steer:k");
+    reconcileOptimistic(Z_A, target, "evt_real");
+    const snap = getSnapshot(Z_A);
+    expect(snap.events.find((e) => e.id === "evt_real")?.status).toBe("received");
+    // The non-matching optimistic row stays exactly as it was.
+    expect(snap.events.find((e) => e.id === keep)?.status).toBe("optimistic");
+    a();
+  });
+
+  it("calling the returned unsubscribe again after teardown is a no-op", () => {
+    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    a(); // refcount → 0, idle timer armed
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1); // teardown deletes the entry
+    expect(() => a()).not.toThrow(); // releaseSubscriber hits its `!entry` guard
+  });
+});

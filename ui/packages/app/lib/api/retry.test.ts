@@ -59,6 +59,14 @@ describe("classifyRetryable", () => {
     expect(classifyRetryable("string")).toBeNull();
     expect(classifyRetryable(null)).toBeNull();
   });
+  it("classifies node-shaped socket errors (ECONNRESET/ETIMEDOUT/ENOTFOUND) as 'network'", () => {
+    for (const code of ["ECONNRESET", "ETIMEDOUT", "ENOTFOUND"]) {
+      expect(classifyRetryable({ code })).toBe("network");
+    }
+  });
+  it("returns null for an unrecognized node error code", () => {
+    expect(classifyRetryable({ code: "EPERM" })).toBeNull();
+  });
 });
 
 describe("backoffDelay", () => {
@@ -229,5 +237,40 @@ describe("requestWithRetry — config", () => {
         sleepImpl: NOOP_SLEEP,
       }),
     ).rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
+
+  it("uses the built-in sleep when no sleepImpl is injected", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "svc" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
+    // Tiny base/cap so the real setTimeout-backed sleep returns in ~1ms.
+    const result = await requestWithRetry<{ ok: number }>(
+      "/v1/x",
+      { method: "GET" },
+      "tok",
+      { baseDelayMs: 1, capDelayMs: 1, randomFn: NOOP_RANDOM },
+    );
+    expect(result.ok).toBe(1);
+  });
+
+  it("ZOMBIE_NO_RETRY=1 collapses maxAttempts to a single attempt", async () => {
+    const prev = process.env.ZOMBIE_NO_RETRY;
+    process.env.ZOMBIE_NO_RETRY = "1";
+    try {
+      fetchMock.mockResolvedValue(jsonResponse(503, { error: "svc" }));
+      const onRetry = vi.fn();
+      await expect(
+        requestWithRetry("/v1/x", { method: "GET" }, "tok", {
+          maxAttempts: 3,
+          onRetry,
+          sleepImpl: NOOP_SLEEP,
+          randomFn: NOOP_RANDOM,
+        }),
+      ).rejects.toBeInstanceOf(ApiError);
+      expect(fetchMock).toHaveBeenCalledTimes(1); // no retry despite a 503
+      expect(onRetry).not.toHaveBeenCalled();
+    } finally {
+      if (prev === undefined) delete process.env.ZOMBIE_NO_RETRY;
+      else process.env.ZOMBIE_NO_RETRY = prev;
+    }
   });
 });

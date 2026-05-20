@@ -124,6 +124,52 @@ describe("ApprovalsList — initial render", () => {
   });
 });
 
+// ── Gate card optional chrome ─────────────────────────────────────────
+
+describe("ApprovalsList — gate card fallbacks", () => {
+  it("falls back to tool:action and omits optional chrome when fields are empty", () => {
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate({ proposed_action: "", gate_kind: "", blast_radius: "" })],
+        initialCursor: null,
+      }),
+    );
+    // proposed_action "" → `${tool_name}:${action_name}` fallback in the title link.
+    expect(screen.getByText("write_repo:create_pr")).toBeTruthy();
+    // gate_kind "" → no kind badge; blast_radius "" → no blast-radius content.
+    expect(screen.queryByText("destructive_action")).toBeNull();
+    expect(screen.queryByText("single repo branch")).toBeNull();
+  });
+});
+
+// ── Pagination ────────────────────────────────────────────────────────
+
+describe("ApprovalsList — loadMore", () => {
+  it("surfaces an error and stops when loadMore fails", async () => {
+    listApprovalsActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "load failed",
+      errorCode: "UZ-APPROVAL-500",
+    });
+    render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: "cursor_1",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /load more/i }));
+    await waitFor(() =>
+      expect(listApprovalsActionMock).toHaveBeenCalledWith(
+        WORKSPACE_ID,
+        expect.objectContaining({ cursor: "cursor_1" }),
+      ),
+    );
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+  });
+});
+
 // ── Filter input ──────────────────────────────────────────────────────
 
 describe("ApprovalsList — client-side filter", () => {
@@ -544,6 +590,29 @@ describe("ApprovalsList — 5s polling effect", () => {
     await vi.advanceTimersByTimeAsync(5_001);
     expect(screen.queryByRole("alert")).toBeNull();
     expect(screen.getByText("approvals-a")).toBeTruthy();
+  });
+
+  it("polling no-ops if the component unmounts before the request resolves", async () => {
+    let release: (v: unknown) => void = () => {};
+    listApprovalsActionMock.mockReturnValueOnce(
+      new Promise((r) => {
+        release = r;
+      }),
+    );
+    const { unmount } = render(
+      React.createElement(ApprovalsList, {
+        workspaceId: WORKSPACE_ID,
+        initialItems: [gate()],
+        initialCursor: null,
+      }),
+    );
+    await vi.advanceTimersByTimeAsync(5_001); // fire the tick → it awaits the pending action
+    unmount(); // effect cleanup sets `alive = false` and clears the interval
+    // The request resolves AFTER unmount; the resumed tick must hit the
+    // `!alive` guard and skip the state update (no act warning, no throw).
+    release({ ok: true, data: { items: [gate({ action_id: "late" })], next_cursor: "late" } });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(listApprovalsActionMock).toHaveBeenCalledTimes(1);
   });
 
   it("polling skips the reset once the operator has clicked Load more", async () => {

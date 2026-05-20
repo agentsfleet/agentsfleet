@@ -58,6 +58,27 @@ describe("listZombieEvents", () => {
     expect(url).toContain("since=2h");
     expect(url).toContain("limit=25");
   });
+
+  it("omits since from the query string when opts provides other params but not since", async () => {
+    // Exercises the false branch of `if (opts.since)` in buildQuery.
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
+    const { listZombieEvents } = await import("./events");
+    await listZombieEvents("ws_1", "z_1", "tok", { actor: "cron", limit: 10 });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("actor=cron");
+    expect(url).not.toContain("since=");
+  });
+
+  it("produces a clean URL (no trailing ?) when opts is an empty object", async () => {
+    // Exercises the false branch of `qs.length > 0 ? ... : ""` in buildQuery.
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) });
+    const { listZombieEvents } = await import("./events");
+    await listZombieEvents("ws_1", "z_1", "tok", {});
+    const url = fetchMock.mock.calls[0]![0] as string;
+    // With an empty opts object, buildQuery produces "" so the URL must not end in "?".
+    expect(url).not.toContain("?");
+    expect(url).toContain("/v1/workspaces/ws_1/zombies/z_1/events");
+  });
 });
 
 describe("listWorkspaceEvents", () => {
@@ -77,6 +98,15 @@ describe("listWorkspaceEvents", () => {
     await listWorkspaceEvents("ws_1", "tok", { zombie_id: "z_2" });
     const url = fetchMock.mock.calls[0]![0] as string;
     expect(url).toContain("zombie_id=z_2");
+  });
+
+  it("includes since param when provided alongside other opts", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => mockResponse });
+    const { listWorkspaceEvents } = await import("./events");
+    await listWorkspaceEvents("ws_1", "tok", { since: "1d", limit: 50 });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("since=1d");
+    expect(url).toContain("limit=50");
   });
 });
 

@@ -25,6 +25,15 @@ describe("listZombies", () => {
     const { listZombies } = await import("./zombies");
     await expect(listZombies("ws_1", "bad")).rejects.toBeInstanceOf(ApiError);
   });
+
+  it("appends cursor + limit query params when paginating", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, json: async () => ({ items: [], total: 0, next_cursor: null }) });
+    const { listZombies } = await import("./zombies");
+    await listZombies("ws_1", "tok", { cursor: "cur_2", limit: 10 });
+    const url = fetchMock.mock.calls[0]![0] as string;
+    expect(url).toContain("cursor=cur_2");
+    expect(url).toContain("limit=10");
+  });
 });
 
 describe("getZombie", () => {
@@ -40,6 +49,22 @@ describe("getZombie", () => {
     const { getZombie } = await import("./zombies");
     const result = await getZombie("ws_1", "missing", "tok");
     expect(result).toBeNull();
+  });
+
+  it("throws ApiError UZ-ZMB-SCAN-CAP (404) when id absent and cursor signals more pages exist", async () => {
+    // Workspace has >100 zombies — the first page doesn't contain the target
+    // id but `cursor` is non-null, meaning there ARE more pages we can't scan.
+    // The function must surface a distinct error rather than silently returning null.
+    fetchMock.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ items: [zombie], total: 999, cursor: "cursor_abc" }),
+    });
+    const { getZombie } = await import("./zombies");
+    const err = await getZombie("ws_1", "not_in_first_page", "tok").catch((e) => e) as ApiError;
+    expect(err).toBeInstanceOf(ApiError);
+    expect(err.status).toBe(404);
+    expect(err.code).toBe("UZ-ZMB-SCAN-CAP");
   });
 });
 
