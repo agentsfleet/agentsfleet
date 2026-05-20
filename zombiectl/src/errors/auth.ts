@@ -15,14 +15,8 @@
 
 import { Data } from "effect";
 
-interface BaseFields {
-  readonly detail: string;
-  readonly suggestion: string;
-}
-
-interface WithRequestId extends BaseFields {
-  readonly requestId?: string | null;
-}
+interface BaseFields { readonly detail: string; readonly suggestion: string; }
+interface WithRequestId extends BaseFields { readonly requestId?: string | null; }
 
 const baseMessage = (e: BaseFields): string =>
   `${e.detail}\n  Suggestion: ${e.suggestion}`;
