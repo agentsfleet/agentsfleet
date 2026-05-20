@@ -1237,4 +1237,34 @@ describe("CreateWorkspaceDialog component", () => {
       (screen.getByTestId("workspace-name-input") as HTMLInputElement).value,
     ).toBe("");
   });
+
+  it("drops a stale error when the dialog closes, so a reopen starts clean", async () => {
+    const user = userEvent.setup();
+    createWorkspaceActionMock.mockResolvedValueOnce({
+      ok: false,
+      errorCode: "UZ-AUTH-401",
+      error: "Missing tenant context on session",
+    });
+    const { default: CreateWorkspaceDialog } = await import(
+      "../components/layout/CreateWorkspaceDialog"
+    );
+    const onOpenChange = vi.fn();
+    const { rerender } = render(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    await user.type(screen.getByTestId("workspace-name-input"), "x");
+    await user.click(screen.getByTestId("workspace-create-submit"));
+    await waitFor(() =>
+      expect(screen.getByTestId("workspace-create-error")).toBeTruthy(),
+    );
+    // Close then reopen: the cleanup must drop the error banner, not carry the
+    // failed-attempt message into a fresh session.
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: false, onOpenChange } as never),
+    );
+    rerender(
+      React.createElement(CreateWorkspaceDialog, { open: true, onOpenChange } as never),
+    );
+    expect(screen.queryByTestId("workspace-create-error")).toBeNull();
+  });
 });

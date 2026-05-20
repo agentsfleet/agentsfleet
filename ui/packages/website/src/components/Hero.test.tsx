@@ -224,6 +224,36 @@ describe("Hero", () => {
     );
   });
 
+  it("renders the manual toast as a warning and holds that severity through the fade-out", async () => {
+    // The fade-out fix derives BOTH text and severity from the last-shown
+    // kind. This pins the severity half: a warning toast must stay a warning
+    // (assertive live region) while it fades, not silently revert to the
+    // info/polite default the same paint `toast` clears.
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockRejectedValue(new Error("blocked"));
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    renderHero();
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("hero-cta-primary"));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    const toast = screen.getByTestId("hero-cta-toast");
+    expect(toast.textContent).toMatch(/Clipboard blocked/i);
+    // warning → assertive (info would be polite).
+    expect(toast.getAttribute("aria-live")).toBe("assertive");
+    // Past the 2 s visible window, inside the 240 ms fade: severity holds.
+    await act(async () => {
+      vi.advanceTimersByTime(2100);
+    });
+    const fading = screen.getByTestId("hero-cta-toast");
+    expect(fading.textContent).toMatch(/Clipboard blocked/i);
+    expect(fading.getAttribute("aria-live")).toBe("assertive");
+  });
+
   it("renders the secondary CTA pointing at /agents", () => {
     renderHero();
     const cta = screen.getByTestId("hero-cta-secondary");

@@ -142,6 +142,30 @@ describe("TriggerPanel", () => {
     expect(arg).toBe("https://api-dev.usezombie.com/v1/webhooks/zmb_x");
   });
 
+  it("reverts the fallback copy button from Copied back to Copy after the reset delay", async () => {
+    // Exercises the reset callback: after a copy, the "Copied" affordance must
+    // time out back to "Copy" (COPY_RESET_MS) rather than sticking forever.
+    vi.useFakeTimers();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
+    render(<TriggerPanel zombieId="zmb_x" />);
+    fireEvent.click(screen.getByLabelText("Copy webhook URL"));
+    // Flush the clipboard write + the setCopied(true) state update.
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(screen.getByLabelText("Copy webhook URL").textContent?.trim()).toBe("Copied");
+    // Past the reset delay, the label reverts — fires `() => setCopied(false)`.
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(screen.getByLabelText("Copy webhook URL").textContent?.trim()).toBe("Copy");
+  });
+
   it("produces stable accordion keys via triggerKey()", () => {
     expect(triggerKey({ type: "webhook", source: "github" })).toBe("webhook:github");
     expect(triggerKey({ type: "cron", schedule: "*/15 * * * *" })).toBe(
