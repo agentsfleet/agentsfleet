@@ -93,6 +93,17 @@ describe("CliAuthPage — load states", () => {
     });
   });
 
+  it("disables Approve when the session loaded as verification_pending", async () => {
+    (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
+      jsonResponse(200, activeBody({ status: "verification_pending" })),
+    );
+    await renderPage();
+    await waitFor(() => {
+      expect(screen.getByText(/already been approved on another tab/)).toBeTruthy();
+    });
+    expect((screen.getByRole("button", { name: /approve/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("falls back to 'your terminal' when token_name is blank/control-only", async () => {
     (globalThis.fetch as ReturnType<typeof vi.fn>).mockResolvedValueOnce(
       jsonResponse(200, activeBody({ token_name: "\x00\x01\x7f" })),
@@ -309,7 +320,7 @@ describe("CliAuthPage — approve flow", () => {
     await waitFor(() => expect(screen.getByText(pattern)).toBeTruthy());
   });
 
-  it("surfaces a generic error when the PATCH itself throws", async () => {
+  it("shows the code with a caveat when the PATCH throws — the approve may have landed", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(jsonResponse(200, activeBody({ cli_public_key: await samplePeerSpkiBase64Url() })))
       .mockRejectedValueOnce(new TypeError("net"));
@@ -320,7 +331,40 @@ describe("CliAuthPage — approve flow", () => {
     await act(async () => {
       fireEvent.click(screen.getByText("Approve"));
     });
+    await waitFor(() => expect(screen.getByText(/couldn't confirm the approval/i)).toBeTruthy());
+    const code = screen.getByLabelText("Verification code").textContent ?? "";
+    expect(code).toMatch(/^\d{6}$/);
+  });
+
+  it("falls back to a generic failure when an earlier step throws before the code is generated", async () => {
+    getTokenFn.mockRejectedValueOnce(new Error("clerk boom"));
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      jsonResponse(200, activeBody({ cli_public_key: await samplePeerSpkiBase64Url() })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await renderPage();
+    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(screen.getByText("Approve"));
+    });
     await waitFor(() => expect(screen.getByText(/Something went wrong/i)).toBeTruthy());
+    expect(screen.queryByLabelText("Verification code")).toBeNull();
+  });
+
+  it("disables Approve after a failed attempt so a re-click can't re-trigger the round-trip", async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(jsonResponse(200, activeBody({ cli_public_key: await samplePeerSpkiBase64Url() })))
+      .mockResolvedValueOnce(new Response(null, { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await renderPage();
+    await waitFor(() => expect(screen.getByText("Approve")).toBeTruthy());
+    await act(async () => {
+      fireEvent.click(screen.getByText("Approve"));
+    });
+    await waitFor(() => expect(screen.getByText(/already approved/i)).toBeTruthy());
+    expect((screen.getByRole("button", { name: /approve/i }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
