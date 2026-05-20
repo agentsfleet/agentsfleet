@@ -195,6 +195,35 @@ describe("Toast", () => {
     vi.useRealTimers();
   });
 
+  it("clears a pending fade timer when re-shown before the fade resolves", async () => {
+    vi.useFakeTimers();
+    // Mount hidden so the effect schedules a fade timer (rendered=false path),
+    // leaving fadeTimer.current non-null.
+    const { rerender } = render(
+      <Toast visible={false} fadeMs={200} data-testid="t">
+        body
+      </Toast>,
+    );
+    await act(async () => {
+      vi.advanceTimersByTime(50);
+    });
+    // Flip visible BEFORE the 200 ms timer fires. The visible branch must
+    // clear + null the in-flight timer (the `if (fadeTimer.current)` arm).
+    rerender(
+      <Toast visible fadeMs={200} data-testid="t">
+        body
+      </Toast>,
+    );
+    expect(screen.getByTestId("t").textContent).toBe("body");
+    // Run well past the original 200 ms window; the cleared timer must not
+    // fire setRendered(false) and blank the content.
+    await act(async () => {
+      vi.advanceTimersByTime(500);
+    });
+    expect(screen.getByTestId("t").textContent).toBe("body");
+    vi.useRealTimers();
+  });
+
   it("survives unmount mid-fade without leaking a setTimeout", async () => {
     vi.useFakeTimers();
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);

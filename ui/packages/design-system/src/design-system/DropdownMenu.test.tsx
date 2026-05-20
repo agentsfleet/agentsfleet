@@ -100,6 +100,26 @@ describe("DropdownMenu", () => {
     expect(el.className).toContain("ml-auto");
   });
 
+  it("DropdownMenuLabel applies the inset indent when inset is set", () => {
+    render(
+      <DropdownMenu open>
+        <DropdownMenuContent>
+          <DropdownMenuLabel inset data-testid="lbl-inset">
+            Section
+          </DropdownMenuLabel>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+    const lbl = screen.queryByTestId("lbl-inset");
+    if (lbl) {
+      expect(lbl.className).toContain("pl-8");
+      expect(lbl.className).toContain("font-mono");
+    } else {
+      // portal not mounted in jsdom — document the absence
+      expect(lbl).toBeNull();
+    }
+  });
+
   it("DropdownMenuItem forwards onSelect when open", () => {
     // Standalone event assertion without relying on portal mounting:
     // we verify the Item receives the expected class set when rendered

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import Terminal from "./Terminal";
 
 describe("Terminal", () => {
@@ -70,6 +70,33 @@ describe("Terminal", () => {
     expect(screen.getByLabelText("Install")).toBeInTheDocument();
   });
 
+  it("omits the data-command attribute when children are JSX, not a string", () => {
+    const { container } = render(
+      <Terminal>
+        <span>echo hi</span>
+      </Terminal>,
+    );
+    expect(container.querySelector("pre")).not.toHaveAttribute("data-command");
+  });
+
+  it("hides the copy button when copyable but children are JSX and no copyText is given", () => {
+    render(
+      <Terminal copyable>
+        <span>npm ERR! ENOSPC</span>
+      </Terminal>,
+    );
+    expect(screen.queryByTestId("copy-btn")).not.toBeInTheDocument();
+  });
+
+  it("renders the copy button for JSX children once an explicit copyText is supplied", () => {
+    render(
+      <Terminal copyable copyText="npm install zombie">
+        <span>npm ERR! log line</span>
+      </Terminal>,
+    );
+    expect(screen.getByTestId("copy-btn")).toBeInTheDocument();
+  });
+
   describe("copy interaction", () => {
     beforeEach(() => {
       Object.assign(navigator, {
@@ -87,6 +114,81 @@ describe("Terminal", () => {
       await waitFor(() =>
         expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument(),
       );
+    });
+
+    it("copies the explicit copyText payload over the JSX children", async () => {
+      render(
+        <Terminal copyable copyText="curl -fsSL usezombie.sh | sh">
+          <span>colored log</span>
+        </Terminal>,
+      );
+      fireEvent.click(screen.getByTestId("copy-btn"));
+      await waitFor(() =>
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+          "curl -fsSL usezombie.sh | sh",
+        ),
+      );
+    });
+
+    it("clears the in-flight reset timer when copied twice in quick succession", async () => {
+      vi.useFakeTimers();
+      Object.assign(navigator, {
+        clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+      });
+      render(<Terminal copyable>cmd</Terminal>);
+      const btn = screen.getByTestId("copy-btn");
+      // First click schedules the 2s reset timer.
+      await act(async () => {
+        fireEvent.click(btn);
+        await Promise.resolve();
+      });
+      expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+      // Second click before the 2s window — clears the pending timer and
+      // reschedules (exercises the `if (resetTimerRef.current) clearTimeout`
+      // branch inside the success path).
+      await act(async () => {
+        vi.advanceTimersByTime(500);
+        fireEvent.click(btn);
+        await Promise.resolve();
+      });
+      // Advance past the original 2s mark; still Copied because the timer was reset.
+      await act(async () => {
+        vi.advanceTimersByTime(1800);
+      });
+      expect(screen.getByRole("button", { name: "Copied!" })).toBeInTheDocument();
+      // Past the rescheduled window — flips back to resting Copy state.
+      await act(async () => {
+        vi.advanceTimersByTime(400);
+      });
+      expect(screen.getByRole("button", { name: "Copy command" })).toBeInTheDocument();
+      vi.useRealTimers();
+    });
+  });
+
+  describe("clipboard rejection", () => {
+    beforeEach(() => {
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: vi.fn().mockRejectedValue(new Error("denied")),
+        },
+      });
+    });
+
+    it("swallows a rejected clipboard write and leaves the button at rest", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      render(<Terminal copyable>blocked cmd</Terminal>);
+      const btn = screen.getByTestId("copy-btn");
+      fireEvent.click(btn);
+      await waitFor(() =>
+        expect(navigator.clipboard.writeText).toHaveBeenCalledWith("blocked cmd"),
+      );
+      // The catch arm keeps the button in the resting "Copy command" state —
+      // no Copied flash, no unhandled rejection logged.
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "Copy command" })).toBeInTheDocument(),
+      );
+      expect(errSpy).not.toHaveBeenCalled();
+      errSpy.mockRestore();
     });
   });
 });

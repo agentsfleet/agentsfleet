@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { Alert, alertVariants, type AlertProps } from "./Alert";
+import { Alert, AlertTitle, AlertDescription, alertVariants, type AlertProps } from "./Alert";
 
 const variants: Array<{ variant: AlertProps["variant"]; tokens: string[] }> = [
   { variant: "info", tokens: ["text-info", "bg-info/10", "border-info/40"] },
@@ -94,5 +94,85 @@ describe("Alert", () => {
 
   it("alertVariants returns the destructive token string", () => {
     expect(alertVariants({ variant: "destructive" })).toContain("text-destructive");
+  });
+
+  it("fires onDismiss for each variant when a dismiss handler is supplied", () => {
+    for (const { variant } of variants) {
+      const onDismiss = vi.fn();
+      const { unmount } = render(
+        <Alert variant={variant} onDismiss={onDismiss}>
+          body
+        </Alert>,
+      );
+      fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+      expect(onDismiss).toHaveBeenCalledTimes(1);
+      unmount();
+    }
+  });
+});
+
+describe("AlertTitle", () => {
+  it("renders a <div> with the semibold heading utilities", () => {
+    const { container } = render(<AlertTitle>Disk full</AlertTitle>);
+    const el = container.firstChild as HTMLElement;
+    expect(el.tagName).toBe("DIV");
+    expect(el.textContent).toBe("Disk full");
+    expect(el.className).toContain("font-semibold");
+    expect(el.className).toContain("tracking-tight");
+  });
+
+  it("merges a caller className", () => {
+    const { container } = render(
+      <AlertTitle className="mb-1">Title</AlertTitle>,
+    );
+    const cls = (container.firstChild as HTMLElement).className;
+    expect(cls).toContain("font-semibold");
+    expect(cls).toContain("mb-1");
+  });
+
+  it("forwards arbitrary HTML attributes", () => {
+    const { container } = render(
+      <AlertTitle data-testid="title" id="t1">
+        x
+      </AlertTitle>,
+    );
+    const el = container.firstChild as HTMLElement;
+    expect(el.getAttribute("data-testid")).toBe("title");
+    expect(el.getAttribute("id")).toBe("t1");
+  });
+});
+
+describe("AlertDescription", () => {
+  it("renders a <div> with the muted small-text utilities", () => {
+    const { container } = render(
+      <AlertDescription>No space left on device.</AlertDescription>,
+    );
+    const el = container.firstChild as HTMLElement;
+    expect(el.tagName).toBe("DIV");
+    expect(el.textContent).toBe("No space left on device.");
+    expect(el.className).toContain("text-sm");
+    expect(el.className).toContain("opacity-90");
+  });
+
+  it("merges a caller className", () => {
+    const { container } = render(
+      <AlertDescription className="mt-2">desc</AlertDescription>,
+    );
+    const cls = (container.firstChild as HTMLElement).className;
+    expect(cls).toContain("opacity-90");
+    expect(cls).toContain("mt-2");
+  });
+
+  it("composes Title + Description inside an Alert", () => {
+    const { getByText } = render(
+      <Alert variant="destructive">
+        <div>
+          <AlertTitle>Build failed</AlertTitle>
+          <AlertDescription>Exit code 1.</AlertDescription>
+        </div>
+      </Alert>,
+    );
+    expect(getByText("Build failed")).toBeTruthy();
+    expect(getByText("Exit code 1.")).toBeTruthy();
   });
 });

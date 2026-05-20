@@ -40,7 +40,6 @@ export default defineConfig({
       ],
       exclude: [
         'lib/types.ts',
-        'components/ui/**',
         'next-env.d.ts',
         'next.config.ts',
         'playwright.config.ts',
