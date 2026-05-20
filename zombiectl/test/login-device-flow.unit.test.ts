@@ -359,13 +359,13 @@ describe("decryptIssuedToken — opaque-channel failure", () => {
 });
 
 describe("pollUntilVerificationPending — terminal-state mapping", () => {
-  test("410 / UZ-AUTH-EXPIRED maps to the expired outcome", async () => {
+  test("410 (UZ-AUTH-013 aborted) maps to the expired outcome", async () => {
     const outcome = await Effect.runPromise(
       pollUntilVerificationPending(
         "sess_poll",
         { deadline: Date.now() + 10_000, pollMs: 500 },
         new AbortController().signal,
-      ).pipe(Effect.provide(failingHttp(410, "UZ-AUTH-EXPIRED"))),
+      ).pipe(Effect.provide(failingHttp(410, "UZ-AUTH-013"))),
     );
     expect(outcome.status).toBe("expired");
   });
@@ -381,21 +381,11 @@ describe("pollUntilVerificationPending — terminal-state mapping", () => {
     expect(failureValue(exit)).toBeInstanceOf(ServerError);
   });
 
-  // The terminal-state guard is `code === "UZ-AUTH-EXPIRED" || status === 410
-  // || status === 404`. Exercise each clause independently so a regression
-  // that drops one side (e.g. only checking status) is caught.
-  test("UZ-AUTH-EXPIRED with a non-410 status still maps to expired (code clause)", async () => {
-    const outcome = await Effect.runPromise(
-      pollUntilVerificationPending(
-        "sess_poll",
-        { deadline: Date.now() + 10_000, pollMs: 500 },
-        new AbortController().signal,
-      ).pipe(Effect.provide(failingHttp(400, "UZ-AUTH-EXPIRED"))),
-    );
-    expect(outcome.status).toBe("expired");
-  });
-
-  test("status 410 with an unrelated code still maps to expired (status clause)", async () => {
+  // The terminal-state guard is purely status-based (`status === 410 ||
+  // status === 404`); the error code is irrelevant. Exercise 410 and 404 with
+  // an unrelated code so a regression that re-couples to a specific code is
+  // caught, and a non-terminal status propagates (above).
+  test("status 410 with an unrelated code still maps to expired", async () => {
     const outcome = await Effect.runPromise(
       pollUntilVerificationPending(
         "sess_poll",
