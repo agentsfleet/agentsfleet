@@ -15,11 +15,11 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M75
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — not blocking any other workstream, but the broken curl path is an onboarding hazard (every doc page that names `usezombie.sh/skills.md` today serves a DNS failure to readers). Captain decision May 18, 2026 to make `usezombie.sh` the canonical entrypoint, replacing the M51/M72 plan that had it serving per-skill `*.md` files.
 **Categories:** CLI, DOCS, INFRA
 **Batch:** B1
-**Branch:** feat/m75-001-usezombie-sh-install-domain (to be created)
+**Branch:** feat/m75-001-usezombie-sh-install-domain
 **Depends on:** None — greenfield install path. M71_001 (DONE) and M72_001 (DONE) shipped the docs that today reference the broken `usezombie.sh/skills.md`; this spec fixes those references as part of §3.
 **Provenance:** agent-generated. Captain in-session decision on May 18, 2026 after PR #330 (M71_001 P2) cycle surfaced that `usezombie.sh/skills.md` is referenced in four user-facing docs but the domain doesn't resolve (DNS NXDOMAIN). Captain settled the intent as "`https://usezombie.sh` should start the install of zombiectl AND `npx skills add`" — both, one URL, classic one-liner installer.
 
