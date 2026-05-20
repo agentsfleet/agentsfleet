@@ -37,6 +37,16 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## PR Intent & comprehension handshake
+
+> The bridge from spec to merged PR — the agent confirms intent before writing code.
+
+- **PR title (eventual):** Settings self-service: dashboard API-key management + theme/avatar
+- **Intent (one sentence):** Operators manage `zmb_t_*` API keys (mint / list / revoke / delete) from the dashboard with zero `curl`, plus a working light/dark toggle and a themed avatar fallback — closing the operator-experience gap on the settings surface.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). The load-bearing one: **§8 account deletion needs new backend** (a delete endpoint + scheduled hard-delete + the ignored Clerk `user.deleted` webhook) + a billing-policy decision, and touches `src/http/handlers/auth/` (M74_002's reserved surface) — it is a graduate-to-own-spec candidate and must NOT be bundled into this PR without that decision. A mismatch with the Intent above → STOP and reconcile before any edit.
+
+---
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — universal; pay attention to RULE NDC, RULE NLR, RULE TST-NAM.
@@ -47,6 +57,21 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## Applicable Gates
+
+> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: new `*.tsx`/`*.ts` under `ui/packages/app/`, one comment-only `*.zig` edit, an `e2e` `*.ts` spec. No new schema, no new HTTP route.
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | yes (comment-only) | the `tenant.zig` edit is a comment correction — no logic; still cross-compile both linux targets to confirm no break. |
+| PUB / Struct-Shape | no | the `*.zig` edit adds no `pub`; UI is TypeScript. |
+| File & Function Length (≤350/≤50/≤70) | yes | the surface is split into list / create-dialog / revoke-confirm / loading components (see Files Changed) so no single `.tsx` approaches the cap. |
+| UFS (repeated/semantic literals) | yes | share the `zmb_t_` prefix, the `[A-Za-z0-9_\-]{1,64}` name regex, and the sort allowlist verbatim with the Zig handler's constants; the `ERR_*`→toast map is named once. |
+| UI Substitution / DESIGN TOKEN | yes | use design-system primitives (`asChild` for HTML semantics) and `theme.css` tokens — no raw HTML, no arbitrary values; §10 reuses the existing `[data-theme="light"]` palette (no new color tokens). |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING: yes | the raw key is secret from the network boundary — no `console.log(result/key)` in `actions.ts` (Invariant 2). ERROR REGISTRY: no (consumes existing `ERR_*`, mints none — §8's new codes graduate with §8). SCHEMA: no (existing `core.api_keys`). LIFECYCLE: no. |
+
+---
+
 ## Overview
 
 **Goal (testable):** From `/settings/api-keys`, an operator-role tenant user can mint a `zmb_t_*` API key (raw value revealed exactly once and copyable), list all keys with status + last-used timestamp, revoke an active key, and delete an already-revoked key — entirely through the dashboard, with zero `curl` use, gated by RBAC role at the page and action layer.
@@ -54,6 +79,16 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Problem:** Today the only way to obtain a tenant API key is `POST /v1/api-keys` with a Clerk session bearer. The `src/http/handlers/api_keys/tenant.zig` module documents itself as "Operational/bootstrap-only surface today. No first-party UI/CLI consumes these routes." Operators cannot rotate or revoke keys without shell access; the `bearer_or_api_key` substitution path that this token type was built to enable is unreachable for normal product users.
 
 **Solution summary:** Add a `/settings/api-keys` route under the existing dashboard shell. Render a list of the tenant's keys with name, status, created/last-used/revoked timestamps. A "New API key" dialog calls a server action that proxies to `POST /v1/api-keys`, then reveals the raw `zmb_t_…` exactly once in a copy-to-clipboard panel with a "Done — I've stored it" confirm. Revoke and delete buttons hit the existing PATCH/DELETE endpoints with confirm modals. The settings index gains a third card linking to the new page. The backend stays untouched except for a comment-block correction in `tenant.zig`.
+
+---
+
+## Prior-Art / Reference Implementations
+
+> Mirror the existing dashboard pattern — don't invent a new page shape.
+
+- **UI** → `ui/packages/app/app/(dashboard)/credentials/page.tsx` (+ `components/`, `actions.ts`): mirror this layout for `/settings/api-keys` — server-rendered list, server-action mutations, dialog-driven create, optimistic UI. Typed server-only client follows `lib/api/tenant_provider.ts`. Build from design-system primitives + `theme.css` tokens; §10's toggle reuses the existing `[data-theme="light"]` palette in `tokens.css`.
+- **Backend contract** → `src/http/handlers/api_keys/tenant.zig` + `list.zig` — the endpoints the UI consumes (mint/revoke/delete + pagination/sort allowlist), unchanged.
+- **Alignment:** mirror `/credentials` verbatim. **Divergence:** the one-time secret-reveal panel is new UX with no in-repo analog — design it deliberately (locked dismissal, no DOM persistence after close), per Invariants 1.
 
 ---
 
@@ -80,6 +115,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/app/lib/clerkAppearance.ts` (+ test) | EDIT | Theme the Clerk default initials avatar with design-system tokens (or an identicon component if chosen). |
 | **§10 theme toggle** | | |
 | `ui/packages/app/app/layout.tsx` + a `ThemeToggle.tsx` + cookie helper | EDIT/CREATE | SSR-stamp `data-theme` from cookie; client toggle writes cookie + flips attribute. No new color tokens (`[data-theme="light"]` already exists). |
+
+---
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** §1–§7 (API-keys UI over *existing* endpoints, zero new backend) are the shippable core; §9 (avatar fallback) and §10 (theme toggle) are small, token-complete riders kept here because they're cheap. §8 (account deletion) is explicitly carved out as a **graduate-to-own-spec** candidate.
+- **Alternatives considered:** (a) ship §8 inline — rejected; it violates M76's "no new endpoints" rule, needs a billing-policy decision, and couples to M74_002's auth surface. (b) hold §9/§10 for a separate polish PR — viable, but they're token-complete and low-risk, so they ride along.
+- **Patch-vs-refactor verdict:** §1–§7/§9/§10 are an **additive feature over existing endpoints** (UI + one comment edit) — a patch in blast-radius terms. §8 is a **new-backend change** that should land as its own spec; name that follow-up rather than mud-patching a delete endpoint into this PR.
 
 ---
 
@@ -304,6 +347,16 @@ After every push: `kishore-babysit-prs` per CLAUDE.md.
 | No new routes | `git diff origin/main -- src/http/router.zig src/http/route_table.zig` | {paste, expect empty} | |
 | Gitleaks | `gitleaks detect` | {paste} | |
 | 350L gate | `wc -l` audit | {paste} | |
+
+---
+
+## Discovery (consult log)
+
+**May 18, 2026 — API-keys self-service acked by Indy** (split out of M71_001 P2, same rationale that split API-keys out before). **Scope expanded May 20, 2026** (Indy ask) to the broader settings surface: §8 account deletion, §9 avatar fallback, §10 theme toggle.
+
+**Current-state findings (May 20, 2026):** no tenant/account delete route exists and Clerk's `user.deleted` event is ignored (`identity_events_clerk.zig:113-114`), so self-deletion today orphans tenant → workspaces → zombies → credentials → events → billing; billing is prepaid credits (no arrears model), so deletion isn't debt-blocked at v2.0. The design system already ships both palettes (`tokens.css` `:root` dark + `[data-theme="light"]`) but nothing sets `data-theme` — light mode is dormant, only the wiring is missing.
+
+**Recommendation of record:** graduate §8 to its own milestone (new endpoint + scheduled hard-delete + webhook reconciliation + billing decision + M74_002 coordination); keep §1–§7/§9/§10 as the shippable core. Further consults logged here during EXECUTE.
 
 ---
 

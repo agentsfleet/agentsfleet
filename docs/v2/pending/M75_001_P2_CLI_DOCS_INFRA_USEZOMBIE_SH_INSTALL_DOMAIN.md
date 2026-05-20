@@ -37,6 +37,16 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## PR Intent & comprehension handshake
+
+> The bridge from spec to merged PR — the agent confirms intent before writing code.
+
+- **PR title (eventual):** usezombie.sh: one-URL cross-platform installer (POSIX + PowerShell)
+- **Intent (one sentence):** `https://usezombie.sh` resolves and installs `zombiectl` + the platform-ops skill in one documented command on Linux/macOS/Windows, retiring the broken `usezombie.sh/skills.md` curl path.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). Three to name: (1) the canonical one-liner is the bare-root form `curl -fsSL https://usezombie.sh | bash` (no `/install` path); (2) DNS/TLS lands out-of-tree and must be verified live before merge; (3) the M51 `usezombie.sh/install.sh` banned-strings entry is deliberately removed, not worked around. A mismatch with the Intent above → STOP and reconcile before any edit.
+
+---
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — universal repo discipline. RULE NDC (no dead code), RULE NLR (touch-it-fix-it), RULE UFS (unique-functionality strings — the install one-liner is shared between the script comments, both docs sites, and the `marketing-spec.test.ts` positive assertion; pin once).
@@ -49,6 +59,21 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## Applicable Gates
+
+> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: `infra/install/*.{sh,ps1,md}`, out-of-tree DNS/TLS config, cross-repo docs `.mdx`, and two `.ts` marketing-spec tests (+ one `.tsx` fixture verify). No Zig, no schema.
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | no | `install.sh` is bash, `install.ps1` is PowerShell — no Zig touched. |
+| PUB / Struct-Shape | no | no Zig surface. |
+| File & Function Length (≤350/≤50/≤70) | yes | `.sh` is in the length surface — use a `main()` wrapper + small helpers; keep each script ≤350 lines and shell functions ≤50; split if the script approaches the cap. |
+| UFS (repeated/semantic literals) | yes | the install one-liner is shared across script comments, both docs sites, and the `marketing-spec.test.ts` positive assertion — pin once and reference verbatim (RULE UFS). |
+| UI Substitution / DESIGN TOKEN | no | `InstallBlock.test.tsx` is a fixture-string verify, not a component-markup change. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING: yes | `.sh` is in the LOGGING surface; script output is user-facing install progress (not the app's structured logger) — no secrets echoed, errors actionable and to stderr, color gated on `[[ -t 1 ]]`. ERROR REGISTRY/LIFECYCLE/SCHEMA: no (numeric exit codes 0–5, no `UZ-*` codes, no Zig lifecycle, no schema). |
+
+---
+
 ## Overview
 
 **Goal (testable):** a user on Linux, macOS, or Windows can run a single documented one-liner that downloads `zombiectl`, installs it on PATH, runs `npx skills add usezombie/usezombie --host=<detected>`, and prints a "next command" hint. The one-liner resolves DNS, the cert is valid, and the script fails fast with an actionable error on any of: missing node toolchain, network unreachable, install-dir not writable, host detection ambiguous.
@@ -56,6 +81,16 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Problem:** Four user-facing doc pages today print `curl -fsSL https://usezombie.sh/skills.md > <path>/SKILL.md` as the curl-fallback install. `usezombie.sh` does not resolve — DNS NXDOMAIN. Every reader who follows the docs literally sees `curl: (6) Could not resolve host: usezombie.sh`. The skill-per-MD path was the M51 plan; Captain superseded it on May 18, 2026 with the one-URL one-liner pattern.
 
 **Solution summary:** Author two installer scripts (`install.sh` for POSIX, `install.ps1` for Windows) under `infra/install/` in the main repo. Wire `usezombie.sh` DNS + TLS + static host to serve `install.sh` content at `/` and `/install.sh`, and `install.ps1` content at `/install.ps1`. Sweep the four docs to print the new one-liners (POSIX one-liner primary, PowerShell one-liner secondary). Remove `usezombie.sh/install.sh` from the `marketing-spec.test.ts` banned-strings list and add a positive assertion that the canonical one-liner appears in at least one user-facing doc page. The `InstallBlock.tsx` test fixture already references the new shape — verify it still aligns.
+
+---
+
+## Prior-Art / Reference Implementations
+
+> Mirror a known-good installer shape — don't invent a bootstrap pattern.
+
+- **Installer scripts** → `~/Projects/oss/resend-cli/install.sh` + `install.ps1` (Implementing-agent read #1): two scripts at two URLs from the same domain, `main()` wrapper for partial-download safety, color gated on `[[ -t 1 ]]`, GitHub-release tarball with a version pin, install-dir env override. Mirror verbatim. Largest-scale example: bun's `bun.sh/install` + `bun.sh/install.ps1`.
+- **CLI DX** → `docs/CLI_DX_PILLARS.md`. The 7 Pillars target the `zombiectl` CLI itself; the installer is *pre-zombiectl bootstrap*, so they apply loosely — the relevant ones are actionable structured errors (the numeric exit-code table) and clear human-vs-machine output.
+- **Alignment:** the two-URL, no-content-negotiation convention is universal across resend / bun / deno / starship / rustup. No divergence.
 
 ---
 
@@ -79,6 +114,14 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/packages/design-system/src/design-system/InstallBlock.test.tsx` | VERIFY (no edit expected) | Fixture at line 7 already references `https://usezombie.sh/install | bash`. Verify the new install URL the spec settles on matches verbatim, or update the fixture in this PR. |
 
 > **Anti-pattern guard:** no file in `src/` (Zig), `zombiectl/` (TypeScript CLI), or `ui/packages/app/` is touched by this spec. The CLI install logic lives in the bash/PowerShell scripts; the dashboard surface is untouched.
+
+---
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** six slices — POSIX installer, PowerShell installer, DNS + static-host wiring, docs sweep, marketing-spec banned-string flip, `InstallBlock` fixture verify. Two scripts at two URLs, no content negotiation.
+- **Alternatives considered:** (a) a single script served at one URL with User-Agent content negotiation — rejected; fragile, and no adjacent project does it. (b) keep the per-skill `*.md` curl plan from M51/M72 — superseded by Indy's one-URL decision (May 18, 2026).
+- **Patch-vs-refactor verdict:** **neither a patch nor a refactor of existing code** — a greenfield install path. The only edits to existing files are the docs sweep and the banned-strings flip (cleanup of now-wrong references), kept tight rather than bundled with unrelated changes.
 
 ---
 

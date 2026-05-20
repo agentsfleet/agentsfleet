@@ -28,10 +28,35 @@
 
 ---
 
+## PR Intent & comprehension handshake
+
+> The bridge from spec to merged PR — the agent confirms intent before writing code.
+
+- **PR title (eventual):** zombiectl steer: enter interactive REPL when stdin is a TTY
+- **Intent (one sentence):** A human running `zombiectl steer <id>` at a terminal gets a multi-turn prompt loop; agents and pipes keep today's single-shot behavior byte-for-byte.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). The two assumptions most likely to bite: (1) TTY detection reuses `isTty` from `capability.js` — no parallel `process.stdin.isTTY` check; (2) the non-TTY path stays byte-identical, proven by regression test. A mismatch with the Intent above → STOP and reconcile before any edit.
+
+---
+
 ## Applicable Rules
 
 - **`docs/greptile-learnings/RULES.md`** — RULE NDC (no dead code at write time), RULE UFS (consistent identifiers across CLI/Zig boundary).
 - **`docs/BUN_RULES.md`** — TypeScript/Bun editing discipline for `zombiectl/`.
+
+---
+
+## Applicable Gates
+
+> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: `zombiectl/src/**` (TypeScript/JS CLI) + a new `repl.js` + a test file + one docs `.mdx`. No Zig, no UI components, no schema, no server change.
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | no | no `*.zig` touched; the steer endpoint is unchanged. |
+| PUB / Struct-Shape | no | TypeScript/JS, not a Zig pub surface. |
+| File & Function Length (≤350/≤50/≤70) | yes | isolate the prompt loop in `repl.js`; keep the per-turn function ≤50 lines and the dispatch table thin so `zombie_steer.js` stays under the file cap. |
+| UFS (repeated/semantic literals) | yes | reuse the existing `> ` prompt style and the terminal-event constants from `event-status.js`; the `--tty` flag string is named once. No duplicated literals. |
+| UI Substitution / DESIGN TOKEN | no | no `*.tsx`/`*.jsx`. |
+| LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | no | REPL output is CLI stdout/stderr (not the structured-logging surface); SSE-connection close on SIGINT is handled in code (LIFECYCLE GATE is Zig-only); error codes stay server-side. |
 
 ---
 
@@ -45,6 +70,16 @@
 
 ---
 
+## Prior-Art / Reference Implementations
+
+> Mirror the existing CLI shape; don't invent a new interaction model.
+
+- **In-repo** → `zombiectl/src/commands/zombie_steer.js` (single-shot path, preserved byte-identically), `zombiectl/src/output/capability.js`'s `isTty` (M64_001 — the one source of truth for TTY detection, reused not re-implemented), `zombiectl/src/lib/sse.js` (SSE reader), and `docs/v2/done/M63_004_*` for SIGINT/clean-exit patterns.
+- **CLI DX** → `docs/CLI_DX_PILLARS.md`. Aligns with **handler purity** and **output-as-a-service**: the interactive prompt loop lives in the new `repl.js` renderer so the `steer` handler stays thin, and the non-TTY/piped path is the "auto-behavior-when-piped" single-shot preserved verbatim. **Divergence:** a REPL is inherently stateful/interactive — that statefulness is contained in `repl.js`, not leaked into the handler.
+- The three-tier test pyramid maps here to mocked-SSE / mocked-stdin unit tests — no real TTY needed for determinism.
+
+---
+
 ## Files Changed (blast radius)
 
 | File | Action | Why |
@@ -54,6 +89,14 @@
 | `zombiectl/src/lib/repl.js` (NEW) | CREATE | Small helper isolating the prompt-loop logic so it can be unit-tested without a real TTY. Imports `isTty` from `zombiectl/src/output/capability.js` (M64_001 infra) — no parallel TTY detection. |
 | `zombiectl/tests/commands/zombie_steer_repl.test.ts` | CREATE | Tests below. |
 | `docs/cli/reference/zombie.mdx` (docs repo) | EDIT | Document the new TTY behavior + `--tty` flag. |
+
+---
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** one command edit + one small new helper (`repl.js`) + tests. A four-mode dispatch table at the top of `zombie_steer.js` routes auto-REPL / force-REPL / single-shot / explicit-one-shot; the loop body is isolated in `repl.js` so it's unit-testable without a real TTY.
+- **Alternatives considered:** (a) build the REPL inline in `zombie_steer.js` — rejected; untestable without a real TTY and pushes the handler past the length gate. (b) a separate `zombiectl repl` subcommand — rejected; fragments the steer surface and contradicts the "detect the human, stay one command" decision.
+- **Patch-vs-refactor verdict:** this is a **patch** — additive mode-dispatch on an existing command with the single-shot path untouched. No follow-up refactor is implied.
 
 ---
 
@@ -220,6 +263,12 @@ N/A — no files deleted, only added/edited.
 ## Verification Evidence
 
 (Filled during VERIFY.)
+
+---
+
+## Discovery (consult log)
+
+**May 14, 2026 — scoped from an Indy Q&A session.** Decision: "detect a human at the terminal → REPL; an agent (non-TTY) keeps single-shot — no REPL needed; `--tty` forces REPL." Reuse `isTty` from `capability.js` (M64_001) as the single TTY-detection source rather than a parallel `process.stdin.isTTY` check. The two-call shape (POST messages → 202 + `event_id`; GET activity SSE drain) was confirmed against `docs/architecture/data_flow.md`. Further consults logged here during EXECUTE.
 
 ---
 
