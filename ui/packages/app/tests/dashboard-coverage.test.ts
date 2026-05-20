@@ -16,6 +16,7 @@ const redirect = vi.fn((path: string) => {
   throw new Error(`redirect:${path}`);
 });
 const setActiveWorkspaceMock = vi.fn().mockResolvedValue(undefined);
+const createWorkspaceActionMock = vi.fn().mockResolvedValue({ ok: true, data: { workspace_id: "ws_new", name: "fresh-name" } });
 const getTokenFn = vi.fn().mockResolvedValue("token_abc");
 const stopZombieMock = vi.fn();
 const listZombiesMock = vi.fn();
@@ -202,6 +203,7 @@ vi.mock("@/app/(dashboard)/credentials/components/CredentialsList", () => ({
 
 vi.mock("@/app/(dashboard)/actions", () => ({
   setActiveWorkspace: setActiveWorkspaceMock,
+  createWorkspaceAction: createWorkspaceActionMock,
 }));
 
 vi.mock("lucide-react", () => {
@@ -961,14 +963,23 @@ describe("WorkspaceSwitcher component", () => {
     );
   }
 
-  it("renders nothing when workspaces is empty", async () => {
-    const { container } = render(
+  it("still renders with a New workspace affordance when workspaces is empty", async () => {
+    render(
       React.createElement(
         (await import("../components/layout/WorkspaceSwitcher")).default,
         { workspaces: [], activeId: null, onSwitch: setActiveWorkspaceMock } as never,
       ),
     );
-    expect(container.textContent).toBe("");
+    // The empty case is exactly when create matters most — switcher must show.
+    expect(screen.getByLabelText(/select workspace/i).textContent).toContain("No workspace");
+    expect(screen.getByTestId("workspace-new")).toBeTruthy();
+  });
+
+  it("opens the create dialog from the New workspace item", async () => {
+    const user = userEvent.setup();
+    await renderSwitcher();
+    await user.click(screen.getByTestId("workspace-new"));
+    await waitFor(() => expect(screen.getByTestId("workspace-name-input")).toBeTruthy());
   });
 
   it("renders the active workspace label", async () => {

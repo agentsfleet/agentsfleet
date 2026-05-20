@@ -58,6 +58,8 @@ vi.mock("lucide-react", () => ({
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
   MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
+  ChevronDownIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ChevronDownIcon" }),
+  PlusIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PlusIcon" }),
 }));
 
 type ClickableElement = React.ReactElement<{ children?: React.ReactNode; onClick?: (...args: unknown[]) => unknown }>;
