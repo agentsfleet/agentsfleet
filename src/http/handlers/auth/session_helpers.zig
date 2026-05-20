@@ -64,9 +64,18 @@ pub fn computeFingerprintHex(
     ua: []const u8,
     sid: []const u8,
 ) []const u8 {
+    // 0x00 separator between fields. Without it, `update(ip) || update(ua) ||
+    // update(sid)` is byte-equal to `update(ip||ua||sid)`, so a user-controlled
+    // UA can be crafted such that `ip2 || ua2 == ip1 || ua1` and two distinct
+    // requests collide on the same fingerprint within the 60s replay window.
+    // 0x00 isn't a valid byte in IPv4/IPv6 textual form or any HTTP header
+    // value (RFC 7230 section 3.2.6), so the separator can't appear inside
+    // `ip` or `ua` and cannot be smuggled into the hash from either field.
     var h = Sha256.init(.{});
     h.update(ip);
+    h.update(&.{0x00});
     h.update(ua);
+    h.update(&.{0x00});
     h.update(sid);
     var digest: [Sha256.digest_length]u8 = undefined;
     h.final(&digest);

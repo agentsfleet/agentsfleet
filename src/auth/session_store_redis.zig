@@ -1,15 +1,7 @@
-//! Redis-backed CRUD for CLI device-flow auth sessions.
-//!
-//! Every session lives at `auth:session:{session_id}` as a JSON blob with
-//! a 5-minute per-key TTL. The whole `verification_pending → consumed`
-//! transition runs in one Lua-EVAL so two simultaneous correct-code POSTs
-//! cannot both win (Invariant 15).
-//!
-//! Audit emit lives in the handler; this module stays pure CRUD plus the
-//! background-sweep helper. `runBackgroundSweep` is the only event source
-//! here (it logs at warn when it prunes anything), because the sweep is
-//! a store-level defensive belt-and-suspenders that the handler does not
-//! see.
+//! Redis-backed CRUD for CLI device-flow auth sessions. Sessions live at
+//! `auth:session:{id}` with a 5-min TTL. The verification_pending → consumed
+//! transition runs in one Lua EVAL (Invariant 15). Audit emit lives in the
+//! handler layer.
 
 const std = @import("std");
 const logging = @import("log");
@@ -32,11 +24,18 @@ pub const SESSION_TTL_SECONDS: u32 = 300;
 pub const CONSUME_REPLAY_WINDOW_MS: i64 = 60_000;
 pub const MAX_VERIFY_ATTEMPTS: u8 = 5;
 pub const TOKEN_NAME_MAX_LEN: usize = 64;
+// approve() envelope caps. Production ceilings: P-256 SPKI base64url is
+// 124 chars; AES-256-GCM nonce base64url is 16 chars; ciphertext tracks
+// Clerk JWT size at ~2 KB + 16 B tag. Caps bound an authenticated-but-
+// malicious actor's ability to stash blobs in Redis per session.
+pub const DASHBOARD_PUBKEY_MAX_LEN: usize = 200;
+pub const NONCE_MAX_LEN: usize = 32;
+pub const CIPHERTEXT_MAX_LEN: usize = 4096;
 pub const ABORTED_REASON_RATE_LIMIT: []const u8 = "rate_limit_exceeded";
 pub const ABORTED_REASON_EXPLICIT_CANCEL: []const u8 = "explicit_cancel";
 pub const ABORTED_REASON_REPLACED: []const u8 = "replaced";
 
-const SESSION_KEY_BUF_LEN: usize = SESSION_KEY_PREFIX.len + 36;
+pub const SESSION_KEY_BUF_LEN: usize = SESSION_KEY_PREFIX.len + 36;
 const SCAN_PAGE_BUF: usize = 128;
 
 pub const SessionStore = struct {
@@ -117,9 +116,13 @@ pub const SessionStore = struct {
         verification_code: []const u8,
         clerk_user_id: []const u8,
     ) Error!void {
-        if (dashboard_public_key.len == 0) return Error.InvalidPublicKey;
-        if (ciphertext.len == 0) return Error.InvalidCipherText;
-        if (nonce.len == 0) return Error.InvalidNonce;
+        if (dashboard_public_key.len == 0 or dashboard_public_key.len > DASHBOARD_PUBKEY_MAX_LEN) {
+            return Error.InvalidPublicKey;
+        }
+        if (ciphertext.len == 0 or ciphertext.len > CIPHERTEXT_MAX_LEN) {
+            return Error.InvalidCipherText;
+        }
+        if (nonce.len == 0 or nonce.len > NONCE_MAX_LEN) return Error.InvalidNonce;
         if (verification_code.len != 6 or !isDigits(verification_code)) {
             return Error.InvalidVerificationCode;
         }
@@ -180,16 +183,13 @@ pub const SessionStore = struct {
             att_str,  ttl_str,
         });
         defer resp.deinit(self.alloc);
-        // parseVerifyOutcome returns slices borrowed from `resp`. The
-        // `defer` above frees those slices the moment this function
-        // returns, so the caller would read freed memory. Dupe before
-        // return; caller calls `outcome.deinit(alloc)`.
+        // parseVerifyOutcome returns slices borrowed from `resp`; dupe so they
+        // outlive the deinit. Caller pairs with `outcome.deinit(alloc)`.
         const borrowed = try proto.parseVerifyOutcome(resp);
-        return borrowed.dupe(self.alloc) catch return Error.OutOfMemory;
+        return try borrowed.dupe(self.alloc);
     }
 
-    /// Atomic owner-checked transition to `aborted/explicit_cancel`. Used
-    /// by the explicit dashboard cancel button.
+    /// Atomic owner-checked abort to `aborted/explicit_cancel`.
     pub fn delete(self: *SessionStore, session_id: []const u8, clerk_user_id: []const u8) Error!void {
         var key_buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
         const key = formatSessionKey(&key_buf, session_id) catch return Error.SessionMissing;
@@ -204,11 +204,22 @@ pub const SessionStore = struct {
         return proto.mapDeleteOutcome(resp);
     }
 
-    /// Abort every in-flight session (pending / verification_pending) owned
-    /// by `clerk_user_id`. Iterates via SCAN — O(total_sessions); acceptable
-    /// because the universe caps at the 5-min-TTL volume.
-    pub fn deleteAllForUser(self: *SessionStore, clerk_user_id: []const u8) !u32 {
-        return self.scanLoop(.{ .abort = .{ .clerk_user_id = clerk_user_id } });
+    /// Fires per aborted session inside `deleteAllForUser` so the handler
+    /// can emit a per-session `.auth_audit` record. `session_id` is
+    /// non-owned and only valid during the callback.
+    pub const SessionAbortObserver = struct {
+        ctx: *anyopaque,
+        on_aborted: *const fn (*anyopaque, session_id: []const u8) void,
+    };
+
+    /// Abort every in-flight session owned by `clerk_user_id`. SCAN-based;
+    /// O(total_sessions) but capped by the 5-min TTL.
+    pub fn deleteAllForUser(
+        self: *SessionStore,
+        clerk_user_id: []const u8,
+        observer: ?SessionAbortObserver,
+    ) !u32 {
+        return self.scanLoop(.{ .abort = .{ .clerk_user_id = clerk_user_id, .observer = observer } });
     }
 
     /// Defensive scan — finds blobs whose `expires_at_ms` elapsed but whose
@@ -220,7 +231,10 @@ pub const SessionStore = struct {
     }
 
     const ScanOp = union(enum) {
-        abort: struct { clerk_user_id: []const u8 },
+        abort: struct {
+            clerk_user_id: []const u8,
+            observer: ?SessionAbortObserver,
+        },
         prune: struct { now_ms: i64 },
     };
 
@@ -245,12 +259,17 @@ pub const SessionStore = struct {
 
     fn applyScanOp(self: *SessionStore, op: ScanOp, key: []const u8) !u32 {
         return switch (op) {
-            .abort => |a| self.abortIfOwnedBy(key, a.clerk_user_id),
+            .abort => |a| self.abortIfOwnedBy(key, a.clerk_user_id, a.observer),
             .prune => |p| self.pruneIfExpired(key, p.now_ms),
         };
     }
 
-    fn abortIfOwnedBy(self: *SessionStore, key: []const u8, clerk_user_id: []const u8) !u32 {
+    fn abortIfOwnedBy(
+        self: *SessionStore,
+        key: []const u8,
+        clerk_user_id: []const u8,
+        observer: ?SessionAbortObserver,
+    ) !u32 {
         var ttl_buf: [12]u8 = undefined;
         const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS});
         var resp = try self.client.command(&.{
@@ -259,7 +278,10 @@ pub const SessionStore = struct {
         });
         defer resp.deinit(self.alloc);
         const tag = proto.firstTag(resp) orelse return 0;
-        return if (std.mem.eql(u8, tag, "ok")) @as(u32, 1) else 0;
+        if (!std.mem.eql(u8, tag, "ok")) return 0;
+        // `key` is `auth:session:{uuid}`; strip the prefix for the handler's audit emitter.
+        if (observer) |o| if (key.len > SESSION_KEY_PREFIX.len) o.on_aborted(o.ctx, key[SESSION_KEY_PREFIX.len..]);
+        return 1;
     }
 
     fn pruneIfExpired(self: *SessionStore, key: []const u8, now_ms: i64) !u32 {
@@ -278,17 +300,17 @@ pub const SessionStore = struct {
     }
 };
 
-fn formatSessionKey(buf: []u8, session_id: []const u8) ![]const u8 {
+pub fn formatSessionKey(buf: []u8, session_id: []const u8) ![]const u8 {
     if (!id_format.isUuidV7(session_id)) return error.InvalidSessionId;
     return std.fmt.bufPrint(buf, "{s}{s}", .{ SESSION_KEY_PREFIX, session_id });
 }
 
-fn isDigits(s: []const u8) bool {
+pub fn isDigits(s: []const u8) bool {
     for (s) |c| if (c < '0' or c > '9') return false;
     return true;
 }
 
-fn computeCodeHmacHex(
+pub fn computeCodeHmacHex(
     out: *[hmac_sig.MAC_LEN * 2]u8,
     pepper: []const u8,
     session_id: []const u8,
@@ -300,45 +322,7 @@ fn computeCodeHmacHex(
     return out;
 }
 
-// ── Pure-function tests (no Redis required) ──────────────────────────────
-
-const testing = std.testing;
-
-test "formatSessionKey rejects non-UUIDv7" {
-    var buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
-    try testing.expectError(error.InvalidSessionId, formatSessionKey(&buf, "abc"));
-    try testing.expectError(error.InvalidSessionId, formatSessionKey(&buf, "'; DROP TABLE sessions; --"));
-}
-
-test "formatSessionKey accepts a UUIDv7" {
-    var buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
-    const key = try formatSessionKey(&buf, "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa40");
-    try testing.expectEqualStrings("auth:session:0195b4ba-8d3a-7f13-8abc-2b3e1e0caa40", key);
-}
-
-test "isDigits accepts 6-digit code; rejects mixed input" {
-    try testing.expect(isDigits("123456"));
-    try testing.expect(isDigits("000000"));
-    try testing.expect(!isDigits("12345a"));
-    try testing.expect(!isDigits("12345 "));
-}
-
-test "computeCodeHmacHex is deterministic per (pepper, sid, code)" {
-    var a: [hmac_sig.MAC_LEN * 2]u8 = undefined;
-    var b: [hmac_sig.MAC_LEN * 2]u8 = undefined;
-    const pepper = "test-pepper-bytes-32-len--padded";
-    const sid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa40";
-    _ = computeCodeHmacHex(&a, pepper, sid, "123456");
-    _ = computeCodeHmacHex(&b, pepper, sid, "123456");
-    try testing.expectEqualSlices(u8, &a, &b);
-}
-
-test "computeCodeHmacHex differs when the code changes" {
-    var a: [hmac_sig.MAC_LEN * 2]u8 = undefined;
-    var b: [hmac_sig.MAC_LEN * 2]u8 = undefined;
-    const pepper = "test-pepper-bytes-32-len--padded";
-    const sid = "0195b4ba-8d3a-7f13-8abc-2b3e1e0caa40";
-    _ = computeCodeHmacHex(&a, pepper, sid, "123456");
-    _ = computeCodeHmacHex(&b, pepper, sid, "123457");
-    try testing.expect(!std.mem.eql(u8, &a, &b));
+// Pure-function tests live in `session_store_redis_helpers_test.zig`.
+test {
+    _ = @import("session_store_redis_helpers_test.zig");
 }

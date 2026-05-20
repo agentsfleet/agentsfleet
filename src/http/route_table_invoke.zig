@@ -105,7 +105,7 @@ pub fn invokeDeleteAuthSession(hx: *Hx, req: *httpz.Request, route: router.Route
 pub fn invokeDeleteAllAuthSessions(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     _ = route;
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
-    auth_sessions.innerDeleteAllAuthSessions(hx.*);
+    auth_sessions.innerDeleteAllAuthSessions(hx.*, req);
 }
 
 // ── Workspace lifecycle ───────────────────────────────────────────────────

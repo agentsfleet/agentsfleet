@@ -25,6 +25,8 @@ const error_codes = @import("../../../errors/error_registry.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const audit_events = @import("../../../auth/audit_events.zig");
+const auth_sessions_store = @import("../../../auth/session_store_redis.zig");
+const trusted_ip = @import("../../../auth/middleware/trusted_client_ip.zig");
 const helpers = @import("session_helpers.zig");
 
 const log = logging.scoped(.auth);
@@ -133,8 +135,23 @@ pub fn innerApproveAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: [
 }
 
 fn finishApprove(hx: hx_mod.Hx, session_id: []const u8, clerk_user_id: []const u8, scratch: helpers.RequestScratch) void {
-    var maybe_parsed = hx.ctx.auth_sessions.get(session_id) catch null;
-    const token_name = if (maybe_parsed) |p| p.value.token_name else "";
+    // The approve LUA already succeeded by the time we get here. The
+    // post-approve get() is best-effort for the audit token_name field —
+    // a Redis error here cannot roll the approve back, so we surface the
+    // degraded state into the audit blob rather than logging an empty
+    // string that's indistinguishable from a session that never had a
+    // token_name set. A security reviewer scanning .auth_audit can grep
+    // on "<lookup_failed>" to find these and correlate against Redis
+    // incidents.
+    var maybe_parsed = hx.ctx.auth_sessions.get(session_id) catch |err| blk: {
+        log.warn("auth_session_approve_audit_lookup_failed", .{
+            .session_id = session_id,
+            .req_id = hx.req_id,
+            .err = @errorName(err),
+        });
+        break :blk null;
+    };
+    const token_name = if (maybe_parsed) |p| p.value.token_name else "<lookup_failed>";
     defer if (maybe_parsed) |*p| p.deinit();
 
     audit_events.emitSessionApproved(
@@ -207,15 +224,52 @@ pub fn innerDeleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
 
 // ── DELETE /v1/auth/sessions/all ─────────────────────────────────────────
 
-pub fn innerDeleteAllAuthSessions(hx: hx_mod.Hx) void {
+pub fn innerDeleteAllAuthSessions(hx: hx_mod.Hx, req: *httpz.Request) void {
     const clerk_user_id = hx.principal.user_id orelse {
         hx.fail(error_codes.ERR_UNAUTHORIZED, "Clerk user context missing");
         return;
     };
-    const count = hx.ctx.auth_sessions.deleteAllForUser(clerk_user_id) catch {
+    // SAFETY: every field is populated by `helpers.buildScratch` on the next line before any read.
+    var scratch: helpers.RequestScratch = undefined;
+    helpers.buildScratch(&scratch, req);
+
+    // Pass an observer that fires per-session into the scan loop so each
+    // abort produces an `.auth_audit` record alongside the bulk count
+    // log. The observer state lives on the stack frame for the duration
+    // of the deleteAllForUser call.
+    var obs_state = BulkAbortObserverState{
+        .audit_ctx = hx.ctx.audit_ctx,
+        .clerk_user_id = clerk_user_id,
+        .derived_ip = scratch.derived,
+        .req_id = hx.req_id,
+    };
+    const observer = auth_sessions_store.SessionStore.SessionAbortObserver{
+        .ctx = @ptrCast(&obs_state),
+        .on_aborted = bulkAbortObserverOnAborted,
+    };
+    const count = hx.ctx.auth_sessions.deleteAllForUser(clerk_user_id, observer) catch {
         common.internalOperationError(hx.res, "Bulk session abort failed", hx.req_id);
         return;
     };
     log.info("auth_sessions_bulk_aborted", .{ .clerk_user_id = clerk_user_id, .count = count, .req_id = hx.req_id });
     hx.ok(.ok, .{ .aborted_count = count });
+}
+
+const BulkAbortObserverState = struct {
+    audit_ctx: audit_events.AuditCtx,
+    clerk_user_id: []const u8,
+    derived_ip: trusted_ip.DerivedClientIp,
+    req_id: []const u8,
+};
+
+fn bulkAbortObserverOnAborted(ctx: *anyopaque, session_id: []const u8) void {
+    const state: *const BulkAbortObserverState = @ptrCast(@alignCast(ctx));
+    audit_events.emitSessionAborted(
+        state.audit_ctx,
+        session_id,
+        audit_events.REASON_EXPLICIT_CANCEL,
+        state.clerk_user_id,
+        state.derived_ip,
+        state.req_id,
+    );
 }
