@@ -14,7 +14,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M71
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — completes the M68 trigger DX surface (per-trigger cards, provider guidance table, OnboardingFlow, Hero CTA) that was deferred during M68's CHORE(close), plus §7 hero promo pill (Captain ask, in-PR amendment May 18, 2026), plus §8–§11 + §13 post-audit dashboard follow-ups (Captain ask, May 20, 2026; API-keys self-service split out to M76_001). Not blocking any other workstream.
 **Categories:** UI, WEBSITE
 **Batch:** B1
@@ -314,7 +314,7 @@ The four cards (verbatim from M68 §G5):
 
 ### §13 — Punch list: `ui/` dependency freshness audit (Captain ask, May 20, 2026)
 
-Read-only audit of `package.json` across the three `ui/` workspace packages. **No bumps land in this PR** — dependency upgrades are a hard-to-reverse, separately-reviewable change and should not ride a feature diff. Captain decides whether to spin a dedicated `chore(deps)` PR.
+Audit of `package.json` across the three `ui/` workspace packages, **with the audited bumps then applied in this PR** — on May 20, 2026 the Captain reversed the initial read-only stance and folded the dependency refresh into this diff rather than spinning a separate `chore(deps)` PR. Every package in the table below was moved to its **Latest** value; `cron-parser` was added for §4's `CronCard` and the now-dead `@radix-ui/react-toast` dropped.
 
 **Finding (`bun outdated`, May 20, 2026):** healthy — every package is within one **minor/patch** of latest; **zero major-version drift**.
 
@@ -329,7 +329,7 @@ Read-only audit of `package.json` across the three `ui/` workspace packages. **N
 | `oxlint-tsgolint` (dev) | 0.22.1 | 0.23.0 | minor | app |
 | `@types/node` / `@types/react` (dev) | 25.8.0 / 19.2.14 | 25.9.1 / 19.2.15 | patch | all three |
 
-**Recommendation:** no urgency — nothing is a major version behind. Note `next` / `react` / `tailwindcss` / `vitest` are already at latest (absent from the outdated list). When bumping, follow the repo rule that "latest" means the version the reference toolchain pins, not blind npm-latest, and run the full `make` verify tier after.
+**Outcome:** the applied bumps are all minor/patch — zero major-version drift. `next` / `react` / `tailwindcss` / `vitest` were already at latest (absent from the outdated list). The refresh followed the repo rule that "latest" means the version the reference toolchain pins, not blind npm-latest, with the full verify tier (lint + typecheck + coverage across all three packages) run green after.
 
 No HTTP / OpenAPI / wire surface added or changed. No new dashboard or website routes. The contracts this spec locks:
 
@@ -428,13 +428,13 @@ Per-section acceptance criteria match the §X "Acceptance" blocks above.
 
 ## Acceptance Criteria
 
-- [ ] `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` clean.
-- [ ] `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` clean.
-- [ ] `make harness-verify` 7/7 green.
-- [ ] No new file or modified file in this spec's blast-radius exceeds 350 lines.
-- [ ] No `as any` / `!` / `@ts-expect-error` added — `git diff origin/main..HEAD -- 'ui/packages/**/*.ts' 'ui/packages/**/*.tsx' | grep -E "as any|@ts-expect-error|: !" | wc -l` == 0.
-- [ ] M68 PR #326 merged into main — `gh pr view 326 --json state -q .state` == `MERGED`.
-- [ ] Bundle size for `ui/packages/website` stays under the 140 kB landing-js ceiling pinned in `ui/packages/website/.size-limit.json` (the M68 prose said 220 kB; the actual size-limit config was 140 kB throughout — this spec aligns the prose).
+- [x] `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` clean.
+- [x] `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` clean.
+- [x] `make harness-verify` green (8 gates).
+- [x] No new file or modified file in this spec's blast-radius exceeds 350 lines.
+- [x] No `as any` / `!` / `@ts-expect-error` added — `git diff origin/main..HEAD -- 'ui/packages/**/*.ts' 'ui/packages/**/*.tsx' | grep -E "as any|@ts-expect-error|: !" | wc -l` == 0.
+- [x] M68 PR #326 merged into main — `gh pr view 326 --json state -q .state` == `MERGED`.
+- [x] Bundle size for `ui/packages/website` stays under the 140 kB landing-js ceiling pinned in `ui/packages/website/.size-limit.json` (the M68 prose said 220 kB; the actual size-limit config was 140 kB throughout — this spec aligns the prose).
 
 ---
 
@@ -502,15 +502,17 @@ Rather than fix the `server-only` boundary just to ship code that M74_002 delete
 
 **May 20, 2026 — spec reopened (DONE → IN_PROGRESS) for §8–§12 post-audit follow-ups.** During PR #330 babysitting the Captain asked for a full dashboard route/navigation audit (login → every route, top-right chrome, settings affordances, billing model, Clerk input styling, spinner branding). The audit found five gaps: (§8) Clerk sign-in inputs invisible — card + input both `--surface-2`; (§9) `/ds-button-rsc` public dev route ships to prod; (§10) loaders split between Lucide `Loader2Icon` and the brand pulse; (§11) no create-workspace UI despite a live `POST /v1/workspaces`; (§12) no API-keys self-service UI despite live `operator()`-gated `/v1/api-keys` CRUD. Captain initially said "fix all of them in this PR — I don't want a separate spec," so M76_001 (Tenant API Keys Settings UI) was folded in as §12 and deleted from `pending/`. **Later the same day the Captain reversed that for §12 specifically** — API-keys self-service is split back into its own spec/PR because it crosses a security boundary (operator RBAC + one-time raw-secret reveal + raw-key-never-in-DOM/logs), carries a `tenant.zig` comment edit + Playwright e2e, and wants the AUTH review chain. **M76_001 was restored to `docs/v2/pending/`** and remains the authority for that work. This PR ships §8–§11 + §13 only. Backend contracts for §11 were verified against `route_table.zig` / `router.zig` / `workspaces/lifecycle.zig` (`POST /v1/workspaces` already wired, no new HTTP surface). `lib/auth/` (M74_002's) is consumed, not edited.
 
+**May 20, 2026 — PR review follow-ups + CHORE(close).** Greptile flagged a P1 on `Hero.tsx` (PR #330 discussion r3268698702): the toast passed `null` children the same render `visible` flipped false, so the 240 ms fade played on a blanked element rather than fading the text. Fixed in `0ab9d5fd` — a `lastToast` ref feeds a stable `shown` value to **both** children and severity, matching the design-system Toast "keeps children mounted during the fade window" contract; a mid-fade regression test was added and the dismiss test reworked onto two `act()` boundaries (deterministic, not a single-advance race). Two review-cleanup items landed in `91ee5a26`: the copy-feedback reset delay was unified to a shared `COPY_RESET_MS` (was a bare `1500` in `TriggerPanel`'s `CopyUrlFallback`), and `CreateWorkspaceDialog` now resets its form on close via a `useEffect` cleanup keyed on `open` (a typed-but-cancelled name / stale error otherwise persisted into the next open — covers Cancel, Escape, overlay uniformly). Coverage-strengthening tests landed in `c14ec4c7` (toast warning-severity-through-fade, dialog error-reset, copy-button revert → `TriggerPanel.tsx` to 16/16 funcs). An auto-expand once-guard was prototyped then reverted at the Captain's call: with no client-side re-fetch of triggers, `initiallyOpen` is stable post-mount, so the guard defended a non-occurring case. The §13 dependency refresh was applied in-PR (Captain reversal) and the app coverage gate raised to 97/97/97/97. §8–§11 + §13 plus these follow-ups complete the spec — closed.
+
 ---
 
 ## Verification Evidence
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| App typecheck + lint + test | `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · 47 files / 504 tests | ✅ |
-| App coverage thresholds | `(cd ui/packages/app && bun run test:coverage)` | statements 96.05 · branches 90.15 · functions 95.4 · lines 97.32 (gate: 95/90/95/95) | ✅ |
-| Website typecheck + lint + test | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · **19 files / 146 tests** (Hero pill + rates pin coverage included) | ✅ |
+| App typecheck + lint + test | `(cd ui/packages/app && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · 51 files / 588 tests | ✅ |
+| App coverage thresholds | `(cd ui/packages/app && bun run test:coverage)` | statements 98.8 · branches 97.01 · functions 98.68 · lines 99.49 (gate raised to 97/97/97/97 — design-system parity) | ✅ |
+| Website typecheck + lint + test | `(cd ui/packages/website && bun run typecheck && bun run lint && bun test)` | tsc clean · oxlint 0/0 · **19 files / 149 tests** (gate 95/85/95/95) | ✅ |
 | Harness | `make harness-verify` | UFS / DESIGN TOKEN / SPEC TEMPLATE / ERROR REGISTRY / LOGGING / LIFECYCLE / CROSS-TIER RATES / MS-ID+UI — ALL GATES GREEN | ✅ |
 | Bundle size (landing js) | `(cd ui/packages/website && bun run size)` | **132.94 kB gzipped** — under the 140 kB ceiling pinned in `ui/packages/website/.size-limit.json` (7.06 kB headroom) | ✅ |
 | Bundle size (landing css) | `(cd ui/packages/website && bun run size)` | 9.89 kB gzipped — under the 20 kB ceiling | ✅ |
