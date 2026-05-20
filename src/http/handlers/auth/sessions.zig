@@ -208,7 +208,7 @@ pub fn innerDeleteAuthSession(hx: hx_mod.Hx, req: *httpz.Request, session_id: []
     var scratch: helpers.RequestScratch = undefined;
     helpers.buildScratch(&scratch, req);
 
-    const outcome = hx.ctx.auth_sessions.delete(session_id, clerk_user_id) catch |err| {
+    const outcome = hx.ctx.auth_sessions.delete(session_id, clerk_user_id, audit_events.REASON_EXPLICIT_CANCEL) catch |err| {
         return helpers.failFromStoreError(hx, err, session_id);
     };
 
@@ -254,7 +254,7 @@ pub fn innerDeleteAllAuthSessions(hx: hx_mod.Hx, req: *httpz.Request) void {
         .ctx = @ptrCast(&obs_state),
         .on_aborted = bulkAbortObserverOnAborted,
     };
-    const count = hx.ctx.auth_sessions.deleteAllForUser(clerk_user_id, observer) catch {
+    const count = hx.ctx.auth_sessions.deleteAllForUser(clerk_user_id, audit_events.REASON_EXPLICIT_CANCEL, observer) catch {
         common.internalOperationError(hx.res, "Bulk session abort failed", hx.req_id);
         return;
     };

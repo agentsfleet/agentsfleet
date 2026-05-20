@@ -12,6 +12,7 @@ const std = @import("std");
 const queue_redis = @import("../queue/redis.zig");
 const session_store_redis = @import("session_store_redis.zig");
 const session_state = @import("session_state.zig");
+const audit_events = @import("audit_events.zig");
 
 const SessionStore = session_store_redis.SessionStore;
 const VerifyOutcome = session_store_redis.VerifyOutcome;
@@ -111,14 +112,23 @@ test "delete is idempotent: first call aborts, second reports already_aborted" {
     // First DELETE performs the abort.
     try std.testing.expectEqual(
         session_store_redis.DeleteOutcome.aborted,
-        try store.delete(sid, TEST_CLERK_USER_ID),
+        try store.delete(sid, TEST_CLERK_USER_ID, audit_events.REASON_EXPLICIT_CANCEL),
     );
+    // The caller-supplied reason must land verbatim in the stored blob. The
+    // store no longer hardcodes it, so this assertion is what guards against
+    // the stored `aborted_reason` drifting from the audited reason.
+    {
+        var parsed = (try store.get(sid)).?;
+        defer parsed.deinit();
+        try std.testing.expectEqual(session_state.SessionStatus.aborted, parsed.value.status);
+        try std.testing.expectEqualStrings(audit_events.REASON_EXPLICIT_CANCEL, parsed.value.aborted_reason.?);
+    }
     // Second DELETE is idempotent and must report `.already_aborted` — the
     // handler keys its audit emit on `.aborted`, so a re-delete writes no
     // duplicate explicit_cancel record over the prior reason.
     try std.testing.expectEqual(
         session_store_redis.DeleteOutcome.already_aborted,
-        try store.delete(sid, TEST_CLERK_USER_ID),
+        try store.delete(sid, TEST_CLERK_USER_ID, audit_events.REASON_EXPLICIT_CANCEL),
     );
 }
 

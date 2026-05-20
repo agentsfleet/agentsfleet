@@ -36,9 +36,6 @@ pub const CLI_PUBLIC_KEY_MAX_LEN: usize = 200;
 pub const DASHBOARD_PUBKEY_MAX_LEN: usize = 200;
 pub const NONCE_MAX_LEN: usize = 32;
 pub const CIPHERTEXT_MAX_LEN: usize = 4096;
-pub const ABORTED_REASON_RATE_LIMIT: []const u8 = "rate_limit_exceeded";
-pub const ABORTED_REASON_EXPLICIT_CANCEL: []const u8 = "explicit_cancel";
-pub const ABORTED_REASON_REPLACED: []const u8 = "replaced";
 
 pub const SESSION_KEY_BUF_LEN: usize = SESSION_KEY_PREFIX.len + 36;
 const SCAN_PAGE_BUF: usize = 128;
@@ -191,19 +188,21 @@ pub const SessionStore = struct {
         return try borrowed.dupe(self.alloc);
     }
 
-    /// Atomic owner-checked abort to `aborted/explicit_cancel`. Returns
-    /// `.aborted` when this call performed the abort, `.already_aborted`
-    /// when the session was already terminal (idempotent re-delete) so the
-    /// caller can avoid emitting a duplicate audit record.
-    pub fn delete(self: *SessionStore, session_id: []const u8, clerk_user_id: []const u8) Error!proto.DeleteOutcome {
+    /// Atomic owner-checked abort with the caller-supplied `reason` (stored as
+    /// the session's `aborted_reason`). Pass the same `audit_events.REASON_*`
+    /// the handler emits so the stored reason cannot diverge from the audited
+    /// one. Returns `.aborted` when this call performed the abort,
+    /// `.already_aborted` when the session was already terminal (idempotent
+    /// re-delete) so the caller can avoid emitting a duplicate audit record.
+    pub fn delete(self: *SessionStore, session_id: []const u8, clerk_user_id: []const u8, reason: []const u8) Error!proto.DeleteOutcome {
         var key_buf: [SESSION_KEY_BUF_LEN]u8 = undefined;
         const key = formatSessionKey(&key_buf, session_id) catch return Error.SessionMissing;
         var ttl_buf: [12]u8 = undefined;
         const ttl_str = std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS}) catch return Error.RedisError;
 
         var resp = self.client.command(&.{
-            "EVAL",        proto.DELETE_OWNER_LUA,         "1",     key,
-            clerk_user_id, ABORTED_REASON_EXPLICIT_CANCEL, ttl_str,
+            "EVAL",        proto.DELETE_OWNER_LUA, "1",     key,
+            clerk_user_id, reason,                 ttl_str,
         }) catch return Error.RedisError;
         defer resp.deinit(self.alloc);
         return proto.mapDeleteOutcome(resp);
@@ -217,14 +216,16 @@ pub const SessionStore = struct {
         on_aborted: *const fn (*anyopaque, session_id: []const u8) void,
     };
 
-    /// Abort every in-flight session owned by `clerk_user_id`. SCAN-based;
-    /// O(total_sessions) but capped by the 5-min TTL.
+    /// Abort every in-flight session owned by `clerk_user_id` with the
+    /// caller-supplied `reason` (see `delete`). SCAN-based; O(total_sessions)
+    /// but capped by the 5-min TTL.
     pub fn deleteAllForUser(
         self: *SessionStore,
         clerk_user_id: []const u8,
+        reason: []const u8,
         observer: ?SessionAbortObserver,
     ) !u32 {
-        return self.scanLoop(.{ .abort = .{ .clerk_user_id = clerk_user_id, .observer = observer } });
+        return self.scanLoop(.{ .abort = .{ .clerk_user_id = clerk_user_id, .reason = reason, .observer = observer } });
     }
 
     /// Defensive scan — finds blobs whose `expires_at_ms` elapsed but whose
@@ -238,6 +239,7 @@ pub const SessionStore = struct {
     const ScanOp = union(enum) {
         abort: struct {
             clerk_user_id: []const u8,
+            reason: []const u8,
             observer: ?SessionAbortObserver,
         },
         prune: struct { now_ms: i64 },
@@ -264,7 +266,7 @@ pub const SessionStore = struct {
 
     fn applyScanOp(self: *SessionStore, op: ScanOp, key: []const u8) !u32 {
         return switch (op) {
-            .abort => |a| self.abortIfOwnedBy(key, a.clerk_user_id, a.observer),
+            .abort => |a| self.abortIfOwnedBy(key, a.clerk_user_id, a.reason, a.observer),
             .prune => |p| self.pruneIfExpired(key, p.now_ms),
         };
     }
@@ -273,13 +275,14 @@ pub const SessionStore = struct {
         self: *SessionStore,
         key: []const u8,
         clerk_user_id: []const u8,
+        reason: []const u8,
         observer: ?SessionAbortObserver,
     ) !u32 {
         var ttl_buf: [12]u8 = undefined;
         const ttl_str = try std.fmt.bufPrint(&ttl_buf, "{d}", .{SESSION_TTL_SECONDS});
         var resp = try self.client.command(&.{
-            "EVAL",        proto.DELETE_OWNER_LUA,         "1",     key,
-            clerk_user_id, ABORTED_REASON_EXPLICIT_CANCEL, ttl_str,
+            "EVAL",        proto.DELETE_OWNER_LUA, "1",     key,
+            clerk_user_id, reason,                 ttl_str,
         });
         defer resp.deinit(self.alloc);
         const tag = proto.firstTag(resp) orelse return 0;
