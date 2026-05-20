@@ -71,6 +71,20 @@ describe("useResettableTimeout", () => {
     expect(cb).not.toHaveBeenCalled();
   });
 
+  it("cancel() is a safe no-op when no timer is pending", () => {
+    const { result } = renderHook(() => useResettableTimeout());
+    // No start() was called — handle.current is null, so cancel() takes the
+    // `if (handle.current !== null)` false branch and does nothing.
+    expect(() => act(() => result.current.cancel())).not.toThrow();
+    // A subsequent start still works after the no-op cancel.
+    vi.useFakeTimers();
+    const cb = vi.fn();
+    act(() => result.current.start(cb, 100));
+    act(() => vi.advanceTimersByTime(100));
+    expect(cb).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("returns a stable identity across re-renders (safe to read in event handlers)", () => {
     const { result, rerender } = renderHook(() => useResettableTimeout());
     const first = result.current;
