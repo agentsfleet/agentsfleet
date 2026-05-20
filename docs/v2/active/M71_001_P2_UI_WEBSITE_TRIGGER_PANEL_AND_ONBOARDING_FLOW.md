@@ -334,9 +334,24 @@ Validation: `key_name` `[A-Za-z0-9_-]{1,64}`, `description` ≤256. sort allowli
 
 **Acceptance:** the M76_001 Test Specification rows are the floor (settings-card link, role redirect, list, mint-reveal-once, name validation, name-collision keeps-dialog-open, revoke, revoke-already-revoked toast, delete, delete-active toast). E2e round-trip mint→reveal→revoke→delete.
 
----
+### §13 — Punch list: `ui/` dependency freshness audit (Captain ask, May 20, 2026)
 
-## Interfaces
+Read-only audit of `package.json` across the three `ui/` workspace packages. **No bumps land in this PR** — dependency upgrades are a hard-to-reverse, separately-reviewable change and should not ride a feature diff. Captain decides whether to spin a dedicated `chore(deps)` PR.
+
+**Finding (`bun outdated`, May 20, 2026):** healthy — every package is within one **minor/patch** of latest; **zero major-version drift**.
+
+| Package | Current | Latest | Δ | Packages |
+|---|---|---|---|---|
+| `@clerk/nextjs` | 7.3.4 | 7.3.7 | patch | app |
+| `posthog-js` | 1.373.4 | 1.374.2 | patch | app, website |
+| `react-hook-form` | 7.75.0 | 7.76.0 | minor | app, design-system |
+| `@clerk/testing` (dev) | 2.0.28 | 2.0.31 | patch | app |
+| `svix` (dev) | 1.93.0 | 1.94.0 | minor | app |
+| `oxlint` (dev) | 1.64.0 | 1.66.0 | minor | all three |
+| `oxlint-tsgolint` (dev) | 0.22.1 | 0.23.0 | minor | app |
+| `@types/node` / `@types/react` (dev) | 25.8.0 / 19.2.14 | 25.9.1 / 19.2.15 | patch | all three |
+
+**Recommendation:** no urgency — nothing is a major version behind. Note `next` / `react` / `tailwindcss` / `vitest` are already at latest (absent from the outdated list). When bumping, follow the repo rule that "latest" means the version the reference toolchain pins, not blind npm-latest, and run the full `make` verify tier after.
 
 No HTTP / OpenAPI / wire surface added or changed. No new dashboard or website routes. The contracts this spec locks:
 
