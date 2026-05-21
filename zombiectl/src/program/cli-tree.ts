@@ -11,8 +11,9 @@
 // renders as `error: option '--foo <v>' argument '<x>' is invalid. <why>`
 // then exits 2.
 
-import { Command, type Help } from "commander";
+import { Command, Option as CommanderOption, type Help } from "commander";
 import { ZombieHelp, styleTagline } from "./help.ts";
+import { OPT_TTY } from "../constants/cli-flags.ts";
 import { parseIntOption, parseIdOption } from "./validators.ts";
 import { buildZombieTree } from "./cli-tree-zombie.ts";
 import type {
@@ -141,7 +142,9 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .option("--api <url>", "API base URL")
     .option("--json", "Machine-readable JSON output", false)
     .option("--no-input", "Disable interactive prompts")
-    .option("--no-open", "Skip auto-opening the browser on login");
+    .option("--no-open", "Skip auto-opening the browser on login")
+    .addOption(new CommanderOption(`--${OPT_TTY}`, "Force terminal prompt mode for steer").hideHelp())
+    .configureHelp({ showGlobalOptions: false });
 
   // ── User commands ────────────────────────────────────────────────
 
