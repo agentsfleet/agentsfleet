@@ -28,7 +28,16 @@ export default defineConfig({
     // work under happy-dom (it provides a superset of the globals they use).
     environment: 'happy-dom',
     coverage: {
-      provider: 'v8',
+      // Istanbul (source-instrumented counters), not the default v8 provider.
+      // v8 maps executed byte-ranges back onto the AST and merges across
+      // workers; for async React components (ZombieThread's steer/retry paths)
+      // that remap is non-deterministic under parallel load — branch coverage
+      // flickered run-to-run at this suite's exact-97% margin (vitest#7660,
+      // "v8 does not properly report react coverage, istanbul does"; #9725).
+      // Istanbul increments a per-branch counter at execution, so the count is
+      // deterministic. Other packages keep v8 (website has slack; design-system
+      // can switch the same way if it ever flakes).
+      provider: 'istanbul',
       reporter: ['text', 'lcov'],
       include: [
         'app/**/*.tsx',
@@ -45,6 +54,11 @@ export default defineConfig({
         'playwright.config.ts',
         'global.d.ts',
         'proxy.ts',
+        // Test infrastructure, not production code. The shared mock harnesses
+        // (tests/helpers/*.tsx) build React elements via React.createElement,
+        // so the `app/**/*.tsx` include glob otherwise sweeps them into the
+        // production-coverage denominator. Coverage measures shipped code.
+        'tests/**',
       ],
       thresholds: {
         statements: 97,

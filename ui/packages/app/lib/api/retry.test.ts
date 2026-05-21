@@ -118,7 +118,7 @@ describe("requestWithRetry — happy path", () => {
 
 describe("requestWithRetry — retries", () => {
   it("retries on 503 then succeeds; fires onRetry once + onAttempt(terminal) once", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "svc" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
     const onAttempt = vi.fn();
     const onRetry = vi.fn();
@@ -143,7 +143,7 @@ describe("requestWithRetry — retries", () => {
   });
 
   it("honors Retry-After header on 429", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(429, { error: "slow" }, "5"));
+    fetchMock.mockResolvedValueOnce(jsonResponse(429, { detail: "slow" }, "5"));
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
     let slept = 0;
     const sleep = (ms: number) => {
@@ -162,7 +162,7 @@ describe("requestWithRetry — retries", () => {
 
   it("does NOT retry on 400 (non-retryable)", async () => {
     fetchMock.mockResolvedValueOnce(
-      jsonResponse(400, { error: "bad", code: "UZ-VALIDATE-001" }),
+      jsonResponse(400, { detail: "bad", error_code: "UZ-VALIDATE-001" }),
     );
     const onRetry = vi.fn();
     await expect(
@@ -178,7 +178,7 @@ describe("requestWithRetry — retries", () => {
   });
 
   it("retries up to maxAttempts then throws the last error", async () => {
-    fetchMock.mockResolvedValue(jsonResponse(503, { error: "svc" }));
+    fetchMock.mockResolvedValue(jsonResponse(503, { detail: "svc" }));
     const onAttempt = vi.fn();
     const onRetry = vi.fn();
     await expect(
@@ -240,7 +240,7 @@ describe("requestWithRetry — config", () => {
   });
 
   it("uses the built-in sleep when no sleepImpl is injected", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse(503, { error: "svc" }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(503, { detail: "svc" }));
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: 1 }));
     // Tiny base/cap so the real setTimeout-backed sleep returns in ~1ms.
     const result = await requestWithRetry<{ ok: number }>(
@@ -256,7 +256,7 @@ describe("requestWithRetry — config", () => {
     const prev = process.env.ZOMBIE_NO_RETRY;
     process.env.ZOMBIE_NO_RETRY = "1";
     try {
-      fetchMock.mockResolvedValue(jsonResponse(503, { error: "svc" }));
+      fetchMock.mockResolvedValue(jsonResponse(503, { detail: "svc" }));
       const onRetry = vi.fn();
       await expect(
         requestWithRetry("/v1/x", { method: "GET" }, "tok", {

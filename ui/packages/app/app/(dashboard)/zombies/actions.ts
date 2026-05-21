@@ -9,8 +9,9 @@ import {
   steerZombie as apiSteerZombie,
   type ZombieListResponse,
   type ZombieStatusSettable,
+  type ZombieStatusUpdate,
 } from "@/lib/api/zombies";
-import type { InstallZombieRequest, InstallZombieResponse, Zombie } from "@/lib/types";
+import type { InstallZombieRequest, InstallZombieResponse } from "@/lib/types";
 
 export async function listZombiesAction(
   workspaceId: string,
@@ -23,7 +24,7 @@ export async function setZombieStatusAction(
   workspaceId: string,
   zombieId: string,
   status: ZombieStatusSettable,
-): Promise<ActionResult<Zombie>> {
+): Promise<ActionResult<ZombieStatusUpdate>> {
   return withToken((t) => apiSetZombieStatus(workspaceId, zombieId, status, t));
 }
 

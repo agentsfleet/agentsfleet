@@ -23,7 +23,7 @@ describe("getTenantBilling", () => {
   it("throws ApiError on 500", async () => {
     fetchMock.mockResolvedValue({
       ok: false, status: 500,
-      json: async () => ({ error: "internal", code: "ERR_INTERNAL_OPERATION_FAILED" }),
+      json: async () => ({ detail: "internal", error_code: "UZ-INTERNAL-003" }),
     });
     const { getTenantBilling } = await import("./tenant_billing");
     await expect(getTenantBilling("tok")).rejects.toBeInstanceOf(ApiError);

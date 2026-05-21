@@ -1,337 +1,29 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { renderToStaticMarkup } from "react-dom/server";
-import { NANOS_PER_USD } from "@/lib/types";
+import { routerPush, routerRefresh, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
 
-// ── Shared mocks ───────────────────────────────────────────────────────────
-
-const redirect = vi.fn((path: string) => {
-  throw new Error(`redirect:${path}`);
-});
-const notFound = vi.fn(() => {
-  throw new Error("notFound");
-});
-const usePathname = vi.fn(() => "/zombies");
-const routerPush = vi.fn();
-const routerRefresh = vi.fn();
-const useRouter = vi.fn(() => ({ push: routerPush, refresh: routerRefresh }));
-const auth = vi.fn();
-const getTokenFn = vi.fn().mockResolvedValue("token_xyz");
-const useAuth = vi.fn(() => ({ getToken: getTokenFn }));
-
-const resolveActiveWorkspace = vi.fn();
-const fetchMock = vi.fn();
-const clipboardWriteText = vi.fn().mockResolvedValue(undefined);
-
+// Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.stubGlobal("fetch", fetchMock);
-
-vi.mock("next/navigation", () => ({ redirect, notFound, usePathname, useRouter }));
-vi.mock("@clerk/nextjs/server", () => ({ auth }));
-vi.mock("@clerk/nextjs", () => ({
-  useAuth,
-  useUser: vi.fn(() => ({ isLoaded: true, isSignedIn: true, user: null })),
-  UserButton: () => React.createElement("div", { "data-user-button": "1" }),
-  ClerkProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
-  SignIn: () => React.createElement("div", { "data-sign-in": "1" }),
-  SignUp: () => React.createElement("div", { "data-sign-up": "1" }),
-}));
-vi.mock("next/link", () => ({
-  default: ({ href, children, ...rest }: { href: string; children: React.ReactNode }) =>
-    React.createElement("a", { href, ...rest }, children),
-}));
-vi.mock("@/lib/workspace", () => ({
-  resolveActiveWorkspace,
-  listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
-}));
-// ZombieApprovalsPanel is an async server component that internally renders
-// a client-only list. renderToStaticMarkup() cannot resolve the suspended
-// boundary in the test environment; stub it to a synchronous placeholder.
-vi.mock("@/components/domain/ZombieApprovalsPanel", () => ({
-  default: () => React.createElement("div", { "data-stub": "ZombieApprovalsPanel" }),
-}));
-
-vi.mock("lucide-react", () => {
-  function Icon(name: string) {
-    const Component = (props: Record<string, unknown>) =>
-      React.createElement("svg", { ...props, "data-icon": name });
-    Component.displayName = name;
-    return Component;
-  }
-  return {
-    AlertTriangleIcon: Icon("AlertTriangleIcon"),
-    CheckIcon: Icon("CheckIcon"),
-    CopyIcon: Icon("CopyIcon"),
-    Loader2Icon: Icon("Loader2Icon"),
-    PlusIcon: Icon("PlusIcon"),
-    ShieldIcon: Icon("ShieldIcon"),
-    KeyRoundIcon: Icon("KeyRoundIcon"),
-    Trash2Icon: Icon("Trash2Icon"),
-  };
-});
-
-const TabsCtx = React.createContext<{ active: string; setActive: (v: string) => void }>({
-  active: "",
-  setActive: () => {},
-});
-
-vi.mock("@usezombie/design-system", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@usezombie/design-system")>();
-  return {
-  ...actual,
-  buttonClassName: (variant: string, size: string) => `btn-${variant}-${size}`,
-  Button: ({ children, variant, size, ...rest }: { children: React.ReactNode; variant?: string; size?: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) =>
-    React.createElement("button", { "data-variant": variant, "data-size": size, ...rest }, children),
-  ConfirmDialog: ({ open, onOpenChange, title, description, confirmLabel = "Confirm", cancelLabel = "Cancel", onConfirm, errorMessage, onError }: { open: boolean; onOpenChange: (v: boolean) => void; title: string; description?: React.ReactNode; confirmLabel?: string; cancelLabel?: string; onConfirm: () => void | Promise<void>; errorMessage?: string | null; onError?: (e: unknown) => void }) =>
-    open
-      ? React.createElement(
-          "div",
-          { role: "alertdialog", "data-confirm-dialog": title },
-          React.createElement("div", { key: "title" }, title),
-          description ? React.createElement("div", { key: "desc" }, description) : null,
-          errorMessage ? React.createElement("div", { key: "err", role: "alert" }, errorMessage) : null,
-          React.createElement(
-            "button",
-            { key: "cancel", type: "button", onClick: () => onOpenChange(false) },
-            cancelLabel,
-          ),
-          React.createElement(
-            "button",
-            {
-              key: "confirm",
-              type: "button",
-              onClick: async () => {
-                try {
-                  await onConfirm();
-                } catch (e) {
-                  if (onError) onError(e);
-                }
-              },
-            },
-            confirmLabel,
-          ),
-        )
-      : null,
-  EmptyState: ({ title, description }: { title: string; description?: string }) =>
-    React.createElement("div", { "data-empty-state": title }, description),
-  Input: (props: React.InputHTMLAttributes<HTMLInputElement>) =>
-    React.createElement("input", props),
-  Textarea: (props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) =>
-    React.createElement("textarea", props),
-  Tabs: ({ children, defaultValue, value: controlled, onValueChange }: { children: React.ReactNode; defaultValue?: string; value?: string; onValueChange?: (v: string) => void }) => {
-    const [active, setActive] = React.useState<string>(controlled ?? defaultValue ?? "");
-    const ctxValue = controlled ?? active;
-    return React.createElement(
-      TabsCtx.Provider,
-      { value: { active: ctxValue, setActive: (v: string) => { setActive(v); onValueChange?.(v); } } },
-      React.createElement("div", { "data-tabs-root": ctxValue }, children),
-    );
-  },
-  TabsList: ({ children, ...rest }: { children: React.ReactNode } & React.HTMLAttributes<HTMLDivElement>) =>
-    React.createElement("div", { role: "tablist", ...rest }, children),
-  TabsTrigger: ({ children, value, ...rest }: { children: React.ReactNode; value: string } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
-    const ctx = React.useContext(TabsCtx);
-    const isActive = ctx.active === value;
-    return React.createElement(
-      "button",
-      {
-        role: "tab",
-        "data-tab-value": value,
-        "data-state": isActive ? "active" : "inactive",
-        type: "button",
-        onClick: () => ctx.setActive(value),
-        ...rest,
-      },
-      children,
-    );
-  },
-  TabsContent: ({ children, value, ...rest }: { children: React.ReactNode; value: string } & React.HTMLAttributes<HTMLDivElement>) => {
-    const ctx = React.useContext(TabsCtx);
-    if (ctx.active !== value) return null;
-    return React.createElement("div", { role: "tabpanel", "data-tab-value": value, ...rest }, children);
-  },
-  PageHeader: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("header", { "data-page-header": "1" }, children),
-  PageTitle: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("h1", { "data-page-title": "1" }, children),
-  SectionLabel: ({ children }: { children: React.ReactNode }) =>
-    React.createElement("h2", { "data-section-label": "1" }, children),
-  };
+vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
+vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-mocks")).clerkServerMock());
+vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
+vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
+vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
+vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
+vi.mock("@usezombie/design-system", async (orig) => {
+  const h = await import("./helpers/dashboard-mocks");
+  return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };
 });
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getTokenFn.mockResolvedValue("token_xyz");
-  usePathname.mockReturnValue("/zombies");
-  useRouter.mockReturnValue({ push: routerPush, refresh: routerRefresh });
-  useAuth.mockReturnValue({ getToken: getTokenFn });
-  auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("token_xyz") });
-  Object.defineProperty(window.navigator, "clipboard", {
-    value: { writeText: clipboardWriteText },
-    configurable: true,
-  });
+  resetCommonMocks({ pathname: "/zombies" });
 });
-
 afterEach(() => {
   cleanup();
   fetchMock.mockReset();
-});
-
-// ── lib/api/zombies.ts ─────────────────────────────────────────────────────
-
-describe("lib/api/zombies", () => {
-  it("listZombies sends GET with bearer and parses the envelope", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ items: [{ id: "zom_1" }], total: 1, next_cursor: null }),
-    });
-    const mod = await import("../lib/api/zombies");
-    const res = await mod.listZombies("ws_1", "tkn");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/zombies"),
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({ Authorization: "Bearer tkn" }),
-      }),
-    );
-    expect(res.items[0]?.id).toBe("zom_1");
-  });
-
-  it("installZombie sends POST body and returns the created zombie", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: async () => ({ zombie_id: "zom_2", status: "active" }),
-    });
-    const mod = await import("../lib/api/zombies");
-    const body = {
-      trigger_markdown:
-        "---\nname: platform-ops\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n",
-      source_markdown: "---\nname: platform-ops\n---\nhi",
-    };
-    const res = await mod.installZombie("ws_1", body, "tkn");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/zombies"),
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    );
-    expect(res.zombie_id).toBe("zom_2");
-  });
-
-  it("installZombie surfaces API error status + code", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 409,
-      statusText: "Conflict",
-      json: async () => ({ error: "name taken", code: "UZ-ZOM-002" }),
-    });
-    const mod = await import("../lib/api/zombies");
-    await expect(
-      mod.installZombie(
-        "ws_1",
-        { trigger_markdown: "---\nname: dup\n---\n", source_markdown: "s" },
-        "tkn",
-      ),
-    ).rejects.toMatchObject({ status: 409, code: "UZ-ZOM-002", message: "name taken" });
-  });
-
-  it("installZombie falls back to statusText when body is unparseable", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Server Error",
-      json: async () => {
-        throw new Error("bad json");
-      },
-    });
-    const mod = await import("../lib/api/zombies");
-    await expect(
-      mod.installZombie(
-        "ws_1",
-        { trigger_markdown: "---\nname: x\n---\n", source_markdown: "y" },
-        "tkn",
-      ),
-    ).rejects.toMatchObject({ status: 500, message: "Server Error" });
-  });
-
-  it("deleteZombie sends DELETE and returns void on 204", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 204 });
-    const mod = await import("../lib/api/zombies");
-    const res = await mod.deleteZombie("ws_1", "zom_2", "tkn");
-    expect(res).toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/workspaces/ws_1/zombies/zom_2"),
-      expect.objectContaining({ method: "DELETE" }),
-    );
-  });
-
-  it("webhookUrlFor composes the deterministic webhook URL", async () => {
-    const mod = await import("../lib/api/zombies");
-    expect(mod.webhookUrlFor("zom_abc")).toBe(
-      "https://api-dev.usezombie.com/v1/webhooks/zom_abc",
-    );
-  });
-});
-
-// ── lib/api/tenant_billing.ts ──────────────────────────────────────────────
-
-describe("lib/api/tenant_billing", () => {
-  it("getTenantBilling sends GET with bearer and returns the snapshot", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        balance_nanos: NANOS_PER_USD,
-        updated_at: 1713700000000,
-        is_exhausted: false,
-        exhausted_at: null,
-      }),
-    });
-    const mod = await import("../lib/api/tenant_billing");
-    const res = await mod.getTenantBilling("tok");
-    expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringContaining("/v1/tenants/me/billing"),
-      expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
-      }),
-    );
-    expect(res.is_exhausted).toBe(false);
-  });
-
-  it("getTenantBilling throws with status + code on error", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 401,
-      statusText: "Unauthorized",
-      json: async () => ({ error: "bad token", code: "UZ-AUTH-001" }),
-    });
-    const mod = await import("../lib/api/tenant_billing");
-    await expect(mod.getTenantBilling("bad")).rejects.toMatchObject({
-      status: 401,
-      code: "UZ-AUTH-001",
-      message: "bad token",
-    });
-  });
-
-  it("getTenantBilling falls back to statusText when body parse fails", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Server Error",
-      json: async () => {
-        throw new Error("bad json");
-      },
-    });
-    const mod = await import("../lib/api/tenant_billing");
-    await expect(mod.getTenantBilling("tok")).rejects.toMatchObject({
-      status: 500,
-      message: "Server Error",
-    });
-  });
 });
 
 // ── ExhaustionBadge + ExhaustionBanner ─────────────────────────────────────
@@ -376,6 +68,7 @@ describe("exhaustion components", () => {
           updated_at: 0,
           is_exhausted: false,
           exhausted_at: null,
+          free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
         },
       }),
     );
@@ -393,6 +86,7 @@ describe("exhaustion components", () => {
           updated_at: 1713700000000,
           is_exhausted: true,
           exhausted_at: 1713700400000,
+          free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
         },
       }),
     );
@@ -414,6 +108,7 @@ describe("exhaustion components", () => {
           updated_at: 0,
           is_exhausted: true,
           exhausted_at: null,
+          free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
         },
       }),
     );
@@ -423,301 +118,7 @@ describe("exhaustion components", () => {
   });
 });
 
-// ── Zombies route — page, loading, detail, new ─────────────────────────────
-
-type BillingSnapshot = {
-  balance_nanos: number;
-  updated_at: number;
-  is_exhausted: boolean;
-  exhausted_at: number | null;
-};
-
-describe("zombies routes", () => {
-  const happyBilling: BillingSnapshot = {
-    balance_nanos: NANOS_PER_USD,
-    updated_at: 0,
-    is_exhausted: false,
-    exhausted_at: null,
-  };
-  const exhaustedBilling: BillingSnapshot = {
-    ...happyBilling,
-    is_exhausted: true,
-    exhausted_at: 1,
-  };
-
-  function mockFetchBilling(billing: BillingSnapshot) {
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => billing };
-      }
-      if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
-      }
-      if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              id: "zom_1",
-              name: "platform-ops",
-              status: "active",
-              created_at: 1713700000000,
-              updated_at: 1713700000000,
-            },
-          ],
-          total: 1,
-        }),
-      };
-    });
-  }
-
-  it("loading.tsx renders a spinner with status role", async () => {
-    const { default: Loading } = await import("../app/(dashboard)/zombies/loading");
-    render(React.createElement(Loading));
-    const el = screen.getByRole("status");
-    expect(el.textContent).toContain("Loading zombies");
-    // Branded WakePulse dot (data-live), not the off-system Loader2Icon spin.
-    const dot = el.querySelector("[data-live]");
-    expect(dot).toBeTruthy();
-    expect(dot?.className).toContain("bg-pulse");
-  });
-
-  it("zombies list page redirects to /sign-in when no token", async () => {
-    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/zombies/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
-  });
-
-  it("zombies list page renders empty-workspace state", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/zombies/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("No workspace yet");
-  });
-
-  it("zombies list page renders empty-zombies state with banner suppressed", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], total: 0, next_cursor: null }),
-      };
-    });
-    const { default: Page } = await import("../app/(dashboard)/zombies/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("No zombies yet");
-    expect(markup).toContain("Install Zombie");
-    expect(markup).not.toContain("credit balance is exhausted");
-  });
-
-  it("zombies list page renders populated list + exhaustion banner", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    mockFetchBilling(exhaustedBilling);
-    const { default: Page } = await import("../app/(dashboard)/zombies/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("href=\"/zombies/zom_1\"");
-    expect(markup).toContain("platform-ops");
-    expect(markup).toContain("credit balance is exhausted");
-  });
-
-  it("zombies list page swallows a failed billing fetch and still renders", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: false, status: 500, statusText: "err", json: async () => ({}) };
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({ items: [], total: 0, next_cursor: null }),
-      };
-    });
-    const { default: Page } = await import("../app/(dashboard)/zombies/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("No zombies yet");
-  });
-
-  it("zombies new page redirects to /sign-in when no token", async () => {
-    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
-  });
-
-  it("zombies new page renders empty-workspace guard", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Create a workspace before installing zombies");
-  });
-
-  it("zombies new page renders the install form when a workspace exists", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    const { default: Page } = await import("../app/(dashboard)/zombies/new/page");
-    const markup = renderToStaticMarkup(await Page());
-    expect(markup).toContain("Install Zombie");
-    expect(markup).toContain("name=\"trigger_markdown\"");
-    expect(markup).toContain("name=\"source_markdown\"");
-  });
-
-  it("zombies detail page redirects to /sign-in when no token", async () => {
-    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    await expect(Page({ params: Promise.resolve({ id: "zom_1" }) })).rejects.toThrow(
-      "redirect:/sign-in",
-    );
-  });
-
-  it("zombies detail page notFound when no workspace", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce(null);
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    await expect(Page({ params: Promise.resolve({ id: "zom_1" }) })).rejects.toThrow(
-      "notFound",
-    );
-  });
-
-  it("zombies detail page notFound when zombie id is not in the list", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    await expect(
-      Page({ params: Promise.resolve({ id: "missing" }) }),
-    ).rejects.toThrow("notFound");
-  });
-
-  it("zombies detail page renders panels + exhaustion badge when tenant is exhausted", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    mockFetchBilling(exhaustedBilling);
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
-    );
-    expect(markup).toContain("platform-ops");
-    expect(markup).toContain("Trigger");
-    expect(markup).toContain("Configuration");
-    expect(markup).toContain("Balance exhausted");
-  });
-
-  it("zombies detail page renders without badge when not exhausted", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    mockFetchBilling(happyBilling);
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
-    );
-    expect(markup).not.toContain("Balance exhausted");
-  });
-
-  it("zombies detail page renders pending-approvals badge + 50+ label when next_cursor set", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/approvals")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            items: [{ gate_id: "g1", zombie_id: "zom_1", zombie_name: "platform-ops" }],
-            next_cursor: "cur_xyz",
-          }),
-        };
-      }
-      if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
-      };
-    });
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
-    );
-    expect(markup).toMatch(/1\+ pending approval/i);
-  });
-
-  it("zombies detail page handles billing fetch failure gracefully (catch branch)", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        throw new Error("network down");
-      }
-      if (url.includes("/approvals")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
-      }
-      if (url.includes("/events")) {
-        return { ok: true, status: 200, json: async () => ({ items: [], next_cursor: null }) };
-      }
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [
-            {
-              id: "zom_1",
-              name: "platform-ops",
-              status: "active",
-              created_at: 1713700000000,
-              updated_at: 1713700000000,
-            },
-          ],
-          total: 1,
-        }),
-      };
-    });
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
-    );
-    expect(markup).toContain("platform-ops");
-    expect(markup).not.toContain("Balance exhausted");
-  });
-
-  it("zombies detail page degrades to empty when the events + approvals fetches fail (catch branches)", async () => {
-    resolveActiveWorkspace.mockResolvedValueOnce({ id: "ws_1" });
-    fetchMock.mockImplementation(async (url: string) => {
-      if (url.endsWith("/v1/tenants/me/billing")) {
-        return { ok: true, status: 200, json: async () => happyBilling };
-      }
-      if (url.includes("/approvals")) throw new Error("approvals down");
-      if (url.includes("/events")) throw new Error("events down");
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          items: [{ id: "zom_1", name: "platform-ops", status: "active", created_at: 1, updated_at: 1 }],
-          total: 1,
-        }),
-      };
-    });
-    const { default: Page } = await import("../app/(dashboard)/zombies/[id]/page");
-    const markup = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ id: "zom_1" }) }),
-    );
-    // The zombie still renders; the failed events + approvals calls degrade
-    // to empty via their `.catch` arms (the events list shows its empty state).
-    expect(markup).toContain("platform-ops");
-    expect(markup).toContain("No events yet");
-  });
-});
-
-// TriggerPanel coverage moved to a co-located test file with the
-// per-trigger accordion rewrite (`components/TriggerPanel.test.tsx`).
-// The legacy Tabs UI tested in this block no longer exists.
+// ── ZombieConfig — delete flow ─────────────────────────────────────────────
 
 describe("ZombieConfig interactions", () => {
   it("delete flow: confirm dialog → DELETE call → push to /zombies", async () => {
@@ -725,7 +126,7 @@ describe("ZombieConfig interactions", () => {
     const { default: ZombieConfig } = await import(
       "../app/(dashboard)/zombies/[id]/components/ZombieConfig"
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
@@ -760,7 +161,7 @@ describe("ZombieConfig interactions", () => {
     const { default: ZombieConfig } = await import(
       "../app/(dashboard)/zombies/[id]/components/ZombieConfig"
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
@@ -784,12 +185,12 @@ describe("ZombieConfig interactions", () => {
       ok: false,
       status: 409,
       statusText: "Conflict",
-      json: async () => ({ error: "run in progress", code: "UZ-ZOM-004" }),
+      json: async () => ({ detail: "run in progress", error_code: "UZ-ZOM-004" }),
     });
     const { default: ZombieConfig } = await import(
       "../app/(dashboard)/zombies/[id]/components/ZombieConfig"
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
@@ -809,7 +210,7 @@ describe("ZombieConfig interactions", () => {
     const { default: ZombieConfig } = await import(
       "../app/(dashboard)/zombies/[id]/components/ZombieConfig"
     );
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     render(
       React.createElement(ZombieConfig, {
         workspaceId: "ws_1",
@@ -822,131 +223,5 @@ describe("ZombieConfig interactions", () => {
     await user.click(screen.getByRole("button", { name: /cancel/i }));
     expect(screen.queryByRole("alertdialog")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-  });
-});
-
-describe("InstallZombieForm interactions", () => {
-  async function renderForm() {
-    const { default: Form } = await import(
-      "../app/(dashboard)/zombies/new/InstallZombieForm"
-    );
-    return render(React.createElement(Form, { workspaceId: "ws_1" }));
-  }
-
-  const FIXTURE_TRIGGER =
-    "---\nname: platform-ops\nx-usezombie:\n  trigger:\n    type: api\n  tools:\n    - agentmail\n  budget:\n    daily_dollars: 1.0\n---\n";
-
-  it("empty TRIGGER.md blocks submit and shows the required-field error", async () => {
-    const user = userEvent.setup();
-    await renderForm();
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/TRIGGER\.md body is required/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("empty SKILL.md blocks submit and shows the required-field error", async () => {
-    const user = userEvent.setup();
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("happy path: fills form, POSTs trigger+source markdown, redirects to detail", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 201,
-      json: async () => ({ zombie_id: "zom_new", status: "active" }),
-    });
-    const user = userEvent.setup();
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill body");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/workspaces/ws_1/zombies"),
-        expect.objectContaining({ method: "POST" }),
-      ),
-    );
-    const callBody = JSON.parse(
-      (fetchMock.mock.calls[0]![1] as RequestInit).body as string,
-    ) as { trigger_markdown: string; source_markdown: string };
-    // userEvent.type may normalize whitespace slightly when typing multi-line
-    // YAML into a happy-dom textarea; assert the load-bearing tokens are
-    // present in the POSTed body rather than byte-for-byte equality with the
-    // source fixture.
-    expect(Object.keys(callBody).sort()).toEqual(["source_markdown", "trigger_markdown"]);
-    expect(callBody.trigger_markdown).toContain("name: platform-ops");
-    expect(callBody.trigger_markdown).toContain("x-usezombie:");
-    expect(callBody.source_markdown).toContain("skill body");
-    expect(routerPush).toHaveBeenCalledWith("/zombies/zom_new");
-    // No router.refresh() — InstallZombieForm intentionally drops the refresh
-    // after push to avoid racing the destination URL commit.
-    expect(routerRefresh).not.toHaveBeenCalled();
-  });
-
-  it("409 conflict renders a name-collision hint", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 409,
-      statusText: "Conflict",
-      json: async () => ({ error: "dup", code: "UZ-ZOM-002" }),
-    });
-    const user = userEvent.setup();
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
-    );
-    expect(routerPush).not.toHaveBeenCalled();
-  });
-
-  it("non-409 errors render the raw error message", async () => {
-    fetchMock.mockResolvedValue({
-      ok: false,
-      status: 500,
-      statusText: "Server Error",
-      json: async () => ({ error: "boom", code: "UZ-SRV" }),
-    });
-    const user = userEvent.setup();
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/boom/)).toBeTruthy(),
-    );
-  });
-
-  it("missing token surfaces Not authenticated", async () => {
-    // Server-side auth() returns no token → installZombieAction returns
-    // { ok: false, status: 401 }; the form surfaces it as the api-error alert.
-    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const user = userEvent.setup();
-    await renderForm();
-    await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
-    // Same UZ-AUTH-401 mapping — "Your session expired" copy in the alert.
-    await waitFor(() =>
-      expect(screen.getByText(/Your session expired/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("Cancel button navigates back to /zombies", async () => {
-    const user = userEvent.setup();
-    await renderForm();
-    await user.click(screen.getByRole("button", { name: /cancel/i }));
-    expect(routerPush).toHaveBeenCalledWith("/zombies");
   });
 });

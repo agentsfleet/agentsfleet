@@ -534,6 +534,10 @@
               }
             }
           },
+          "401": {
+            "description": "Session expired (`UZ-AUTH-006`) — the 5-minute TTL elapsed before this poll.",
+            "$ref": "#/components/responses/Error"
+          },
           "404": {
             "$ref": "#/components/responses/Error"
           },
@@ -681,7 +685,7 @@
       "post": {
         "operationId": "verify_auth_session",
         "summary": "CLI submits the 6-digit verification code and receives the encrypted JWT",
-        "description": "Step 4 of the CLI device flow. Atomically transitions\n`verification_pending → consumed` and releases the ciphertext\npayload in a single Lua-EVAL write.\n\nNo bearer authentication — the verification code IS the auth. The\ncode is single-use; success and failure paths both surface through\nErrorBody response codes:\n\n  * `UZ-AUTH-011` (400) — code did not match; `verification_attempts`\n    incremented. The fifth failed attempt transitions the session to\n    `aborted` with `reason=\"rate_limit_exceeded\"` (the L3 rate limit\n    per `docs/AUTH.md` Flow 1).\n  * `UZ-AUTH-012` (410) — session already consumed (outside the 60-second\n    same-fingerprint replay window, or different fingerprint).\n  * `UZ-AUTH-013` (410) — session aborted (5 wrong codes, explicit cancel,\n    or replaced by a newer session).\n  * `UZ-AUTH-014` (410) — session not yet approved (no dashboard PATCH yet).\n  * `UZ-AUTH-006` (401) — session expired (5-min TTL elapsed).\n\nOn success the response carries `{ dashboard_public_key, ciphertext,\nnonce }`. The CLI derives the same AES-256-GCM key (ECDH × HKDF as\non the dashboard side; `info` MUST be `\"m74-002-v1\"` verbatim) and\ndecrypts the JWT.\n\nConsume-idempotency window: on success the server records\n`consumed_client_fingerprint = sha256(remote_addr || user_agent || session_id)`\nand `consume_payload_expires_at_ms = now_ms + 60_000`. A second\nPOST inside that window from the same fingerprint returns the same\npayload (so \"consume succeeded, response lost, client retried\"\nconverges). Outside the window or from a different fingerprint →\n410 `UZ-AUTH-012`.\n",
+        "description": "Step 4 of the CLI device flow. Atomically transitions\n`verification_pending → consumed` and releases the ciphertext\npayload in a single Lua-EVAL write.\n\nNo bearer authentication — the verification code IS the auth. The\ncode is single-use; success and failure paths both surface through\nErrorBody response codes:\n\n  * `UZ-AUTH-011` (400) — code did not match; `verification_attempts`\n    incremented. The fifth failed attempt transitions the session to\n    `aborted` with `reason=\"rate_limit_exceeded\"` (the L3 rate limit\n    per `docs/AUTH.md` Flow 1).\n  * `UZ-AUTH-018` (400) — verification code malformed (must be exactly\n    6 ASCII digits). The CLI distinguishes this from `UZ-AUTH-011` to\n    reprompt for a correctly-shaped code rather than reporting a mismatch.\n  * `UZ-AUTH-012` (410) — session already consumed (outside the 60-second\n    same-fingerprint replay window, or different fingerprint).\n  * `UZ-AUTH-013` (410) — session aborted (5 wrong codes, explicit cancel,\n    or replaced by a newer session).\n  * `UZ-AUTH-014` (410) — session not yet approved (no dashboard PATCH yet).\n  * `UZ-AUTH-006` (401) — session expired (5-min TTL elapsed).\n\nOn success the response carries `{ dashboard_public_key, ciphertext,\nnonce }`. The CLI derives the same AES-256-GCM key (ECDH × HKDF as\non the dashboard side; `info` MUST be `\"m74-002-v1\"` verbatim) and\ndecrypts the JWT.\n\nConsume-idempotency window: on success the server records\n`consumed_client_fingerprint = sha256(remote_addr || user_agent || session_id)`\nand `consume_payload_expires_at_ms = now_ms + 60_000`. A second\nPOST inside that window from the same fingerprint returns the same\npayload (so \"consume succeeded, response lost, client retried\"\nconverges). Outside the window or from a different fingerprint →\n410 `UZ-AUTH-012`.\n",
         "tags": [
           "Authentication"
         ],
@@ -1732,7 +1736,8 @@
                     "balance_nanos",
                     "updated_at",
                     "is_exhausted",
-                    "exhausted_at"
+                    "exhausted_at",
+                    "free_trial"
                   ],
                   "properties": {
                     "balance_nanos": {
@@ -1754,6 +1759,25 @@
                       "format": "int64",
                       "nullable": true,
                       "description": "Epoch ms of the first exhausting debit. Null until the balance is exhausted."
+                    },
+                    "free_trial": {
+                      "type": "object",
+                      "description": "Promotional free-trial window state (src/state/tenant_billing.zig).",
+                      "required": [
+                        "active",
+                        "ends_at_ms"
+                      ],
+                      "properties": {
+                        "active": {
+                          "type": "boolean",
+                          "description": "True while the free-trial window is in effect."
+                        },
+                        "ends_at_ms": {
+                          "type": "integer",
+                          "format": "int64",
+                          "description": "Epoch ms when the free-trial window closes."
+                        }
+                      }
                     }
                   }
                 }
@@ -4213,6 +4237,68 @@
           }
         }
       },
+      "ZombieTrigger": {
+        "type": "object",
+        "description": "A single trigger projected into the zombie list row.",
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "source"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "webhook"
+                ]
+              },
+              "source": {
+                "type": "string"
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type",
+              "schedule"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "cron"
+                ]
+              },
+              "schedule": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "api"
+                ]
+              }
+            }
+          }
+        ]
+      },
       "ZombieSummary": {
         "type": "object",
         "required": [
@@ -4235,6 +4321,7 @@
             "enum": [
               "active",
               "paused",
+              "stopped",
               "killed"
             ]
           },
@@ -4246,6 +4333,14 @@
           "updated_at": {
             "type": "integer",
             "format": "int64"
+          },
+          "triggers": {
+            "type": "array",
+            "nullable": true,
+            "description": "Projected from config_json `x-usezombie.triggers`; null when the row has no triggers entry.",
+            "items": {
+              "$ref": "#/components/schemas/ZombieTrigger"
+            }
           }
         }
       },
