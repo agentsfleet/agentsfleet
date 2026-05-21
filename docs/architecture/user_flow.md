@@ -69,14 +69,14 @@ Once the files are ready, the user installs the zombie into the workspace.
 The canonical entry is the one-liner served from `https://usezombie.sh` — it wraps the first two steps below (install `zombiectl`, add the skill):
 
 ```bash
-curl -fsSL https://usezombie.sh | bash   # installs zombiectl, then npx skills add usezombie/usezombie
+curl -fsSL https://usezombie.sh | bash   # installs zombiectl, then npx skills add usezombie/skills
 ```
 
 Or run the chain explicitly (skip any step already in place):
 
 ```bash
 npm install -g @usezombie/zombiectl     # CLI binary + bundled samples/skills postinstall
-npx skills add usezombie/usezombie      # symlinks /usezombie-* into host skill paths
+npx skills add usezombie/skills      # symlinks /usezombie-* into host skill paths
 zombiectl auth login                     # Clerk OAuth → token in ~/.config/usezombie/auth.json
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
 ```
