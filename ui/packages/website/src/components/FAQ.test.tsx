@@ -58,4 +58,20 @@ describe("FAQ", () => {
     await user.click(button);
     expect(button).toHaveAttribute("aria-expanded", "true");
   });
+
+  it("places the heading on the page left rail, not inside the reading-measure column", () => {
+    const { container } = render(<FAQ />);
+    const heading = screen.getByRole("heading", { level: 2, name: /common questions/i });
+    // The heading aligns with the rest of the page; only the answers keep the
+    // narrower reading measure.
+    expect(heading.closest(".max-w-measure")).toBeNull();
+    const measure = container.querySelector(".max-w-measure");
+    expect(measure).not.toBeNull();
+    expect(measure!.querySelector('[data-testid="faq-item-0"]')).not.toBeNull();
+  });
+
+  it("does not render the operational-extras FAQ entry (extras were removed from pricing)", () => {
+    render(<FAQ />);
+    expect(screen.queryByText(/extras provisioned per workspace/i)).not.toBeInTheDocument();
+  });
 });

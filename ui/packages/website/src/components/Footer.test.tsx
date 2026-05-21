@@ -17,13 +17,13 @@ describe("Footer", () => {
     expect(screen.getByText(/^usezombie$/)).toBeInTheDocument();
   });
 
-  it("renders the tagline", () => {
+  it("renders the tagline without the self-managed/open-source tail", () => {
     renderFooter();
     expect(
       screen.getByText(/durable, markdown-defined agents that wake on your events/i),
     ).toBeInTheDocument();
-    // Capitalization fix — "Self-managed" not lowercase "self-managed".
-    expect(screen.getByText(/Self-managed\. Open source\./)).toBeInTheDocument();
+    // "Self-managed. Open source." was pulled from the footer tagline.
+    expect(screen.queryByText(/Self-managed\. Open source\./)).not.toBeInTheDocument();
   });
 
   it("renders product column with links", () => {

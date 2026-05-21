@@ -26,10 +26,6 @@ const items: { q: string; a: ReactNode }[] = [
     a: "Yes — that's the deliberate gradient. Once the free-trial window closes, platform default carries a per-stage rate (usezombie is paying your model provider for tokens) and self-managed is ~10× cheaper per stage (you pay your provider directly). The spread is the friction-reducer: on-ramp on platform without bringing a key, graduate to self-managed once volume justifies it. Current rates on the Pricing section above; usezombie marks up zero on inference in either posture.",
   },
   {
-    q: "What does 'extras provisioned per workspace' mean?",
-    a: "Operational features — multi-workspace, approval gating, workspace-scoped credentials and webhooks, higher concurrency, longer per-stage windows, priority support — turn on per workspace as you scale, not as paywalled tier upgrades. Need bigger caps? Ask; we lift them.",
-  },
-  {
     q: "Can I self-host?",
     a: "Not in v2. v2 ships hosted-only on api.usezombie.com via Clerk OAuth. Self-host arrives in v3 — the runtime is open source today, and the auth substrate plus KMS adapter are the only deployment-specific layers.",
   },
@@ -67,12 +63,12 @@ const items: { q: string; a: ReactNode }[] = [
 export default function FAQ() {
   return (
     <section className="site-section" data-testid="faq">
-      <div className="wrap flex flex-col gap-8 max-w-measure">
+      <div className="wrap flex flex-col gap-8">
         <div className="flex flex-col gap-3">
           <SectionLabel className="mb-0">FAQ</SectionLabel>
           <DisplayLG>Common questions</DisplayLG>
         </div>
-        <Accordion type="single" collapsible>
+        <Accordion type="single" collapsible className="max-w-measure">
           {items.map((item, i) => (
             <AccordionItem
               key={i}
