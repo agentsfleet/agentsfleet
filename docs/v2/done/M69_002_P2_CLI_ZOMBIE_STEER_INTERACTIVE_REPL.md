@@ -88,7 +88,7 @@
 | `zombiectl/src/lib/sse.ts` | EDIT | Accept an external abort signal so SIGINT can close the in-flight stream promptly. |
 | `zombiectl/src/lib/repl.ts` (NEW) | CREATE | Small helper isolating the prompt-loop logic so it can be unit-tested without a real TTY. Imports `isTty` from `zombiectl/src/output/capability.ts` (M64_001 infra) — no parallel TTY detection. |
 | `zombiectl/src/constants/cli-flags.ts` | EDIT | Add the named `tty` flag constant for the hidden force-REPL flag. |
-| `zombiectl/src/program/cli-tree.ts` | EDIT | Register hidden global `--tty` parsing without widening top-level help output. |
+| `zombiectl/src/program/cli-tree.ts` | EDIT | Register hidden global `--tty` parsing without widening top-level help output (a `steer`-scoped option makes commander render `steer [options]`, overflowing the 80-column help golden). |
 | `zombiectl/src/program/cli-tree-zombie.ts` | EDIT | Make the `steer` message positional optional. |
 | `zombiectl/src/program/handlers-bind-zombie.ts` | EDIT | Thread parsed `--tty` into the steer handler. |
 | `zombiectl/test/repl.unit.test.ts` (NEW) | CREATE | Unit coverage for mode selection, prompt loop, EOF, empty-line skip, and SIGINT abort. |
