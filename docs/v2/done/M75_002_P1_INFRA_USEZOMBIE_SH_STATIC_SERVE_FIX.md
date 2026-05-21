@@ -10,21 +10,21 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M75
 **Workstream:** 002
 **Date:** May 22, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — `curl -fsSL https://usezombie.sh | bash` is the install path advertised on the live marketing site (M78 hero); it currently returns HTML, so the installer is broken for every visitor.
 **Categories:** INFRA
 **Batch:** B1 — sequence after the platform decision (Cloudflare Pages vs Vercel) below.
-**Branch:** {feat/mNN-name — added at CHORE(open)}
+**Branch:** feat/m75-002-usezombie-sh-serve
 **Depends on:** M75_001 (active) — owns the `usezombie.sh` domain + the static `ui/usezombie.sh/dist/` installer files. This fixes how that output is served.
 **Provenance:** agent-generated (pre-spec) — Orly diagnosis during the M79 `/design-consultation` session, May 22, 2026 (live Vercel + repo inspection).
 
-**Canonical architecture:** `playbooks/014_usezombie_sh_deploy/001_playbook.md` (the static-installer deploy) + `ui/usezombie.sh/dist/` (the `cloudflare-pages.md`-format `_redirects`/`_headers`).
+**Canonical architecture:** `playbooks/014_usezombie_sh_deploy/001_playbook.md` (the static-installer deploy, now Vercel) + `ui/usezombie.sh/dist/` (`install.sh` + `vercel.json` — the Vercel rewrite + shellscript content-type).
 
 ---
 
 ## Implementing agent — read these first
 
-1. `ui/usezombie.sh/dist/` — the deployable: `install.sh` + `_redirects` (`/ → /install.sh 200`) + `_headers` (shellscript content-type). **Cloudflare Pages format** — Vercel ignores both files.
+1. `ui/usezombie.sh/dist/` — the deployable: `install.sh` + `vercel.json` (rewrite `/ → /install.sh` + `text/x-shellscript` content-type + 5-min cache). The original Cloudflare `_redirects`/`_headers` were deleted (RULE NDC) — Vercel ignores that format.
 2. `playbooks/014_usezombie_sh_deploy/001_playbook.md` — the intended static, no-build deploy; notes the project was repurposed from the old `usezombie-agents-sh` Vite app.
 3. Live state (verified May 22, 2026): the Vercel project `usezombie-agents-sh` serves the domain `usezombie.sh`; `framework` was `vite` (now `Other`/null after a session fix), `rootDirectory=ui/usezombie.sh/dist/`. The current production deploy was built under an **old config** and serves the marketing-site SPA (`index.html`) for every path.
 
@@ -79,7 +79,9 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | `ui/usezombie.sh/dist/vercel.json` | CREATE (Vercel path only) | rewrite `/ → /install.sh` + shellscript content-type + short cache, replacing the Cloudflare-only `_redirects`/`_headers` Vercel ignores. |
 | Vercel project `usezombie-agents-sh` settings + a fresh production deploy | CONFIG (Vercel path) | framework `Other` (done), serve `dist/`; redeploy so production stops serving the stale SPA build. Not a repo file. |
 | Cloudflare Pages project + DNS for `usezombie.sh` | CONFIG (Cloudflare path) | if chosen instead: deploy `dist/` on Pages (honors `_redirects`/`_headers`); detach the domain from the Vercel project. Not a repo file. |
-| `ui/usezombie.sh/dist/_redirects`, `_headers` | EDIT/DELETE (post-decision) | RULE NDC — remove the platform's dead config once one platform is chosen (keep Cloudflare files iff Cloudflare; drop them iff Vercel-only). |
+| `ui/usezombie.sh/dist/_redirects`, `_headers` | DELETE | RULE NDC — Vercel ignores these Cloudflare-Pages files; drop them now that Vercel is chosen. |
+| `playbooks/014_usezombie_sh_deploy/001_playbook.md` | EDIT | Architecture gate (doc-wins-until-reconciled): reconcile the stale Cloudflare-Pages deploy narrative to the actual Vercel git-integration deploy. |
+| `ui/usezombie.sh/README.md` | EDIT | Same reconciliation — the "Deploying" + "Layout" sections describe Cloudflare Pages; correct to Vercel + `vercel.json`. |
 
 ---
 
@@ -96,18 +98,18 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 ### §1 — Choose the platform (blocks the rest)
 Settle Cloudflare Pages vs Vercel for `usezombie.sh` (Discovery decision). Everything downstream depends on this; do not EXECUTE until it is recorded.
 
-- **Dimension 1.1** — platform recorded in Discovery with rationale → verified by the Discovery entry (no code).
+- **Dimension 1.1** — platform recorded in Discovery with rationale → verified by the Discovery entry (no code). **DONE** — Vercel, recorded in Discovery (Indy decision, May 22, 2026).
 
 ### §2 — Serve the static installer on the chosen platform
 Vercel: add `dist/vercel.json` (rewrite + content-type), framework Other, fresh production build. Cloudflare: deploy `dist/` on Pages, detach the domain from Vercel.
 
-- **Dimension 2.1** — `/install.sh` returns the shell script with `text/x-shellscript` → Test `installer_serves_shellscript_at_install_path`
-- **Dimension 2.2** — `/` (bare root) returns the same shell script body (rewrite applied) → Test `installer_serves_shellscript_at_root`
+- **Dimension 2.1** — `/install.sh` returns the shell script with `text/x-shellscript` → Test `installer_serves_shellscript_at_install_path`. **DONE** — preview deploy (sha 7159925a): `/install.sh` → 200, `#!/usr/bin/env bash`, `text/x-shellscript; charset=utf-8`.
+- **Dimension 2.2** — `/` (bare root) returns the same shell script body (rewrite applied) → Test `installer_serves_shellscript_at_root`. **DONE** — preview deploy: `/` → 200, body identical to `/install.sh`, `text/x-shellscript`. (Prod custom domain auto-confirms on merge — `ssoProtection: all_except_custom_domains`.)
 
 ### §3 — Remove the dead-platform config (RULE NDC)
 Once the platform is chosen, drop the other platform's now-dead config (the Cloudflare `_redirects`/`_headers` if Vercel-only, or the Vercel project/`vercel.json` if Cloudflare).
 
-- **Dimension 3.1** — repo + hosting carry exactly one platform's serving config → verified by grep + the live smoke check.
+- **Dimension 3.1** — repo + hosting carry exactly one platform's serving config → verified by grep + the live smoke check. **DONE** (repo side) — `_redirects`/`_headers` deleted; `dist/` holds only `install.sh` + `vercel.json`. Live single-platform confirmed at VERIFY.
 
 ---
 
@@ -186,7 +188,9 @@ gitleaks detect 2>&1 | tail -3
 
 ## Discovery (consult log)
 
-> **OPEN DECISION (blocks §1): Cloudflare Pages vs Vercel for usezombie.sh.** The `dist/` files are authored for **Cloudflare Pages** (`_redirects`/`_headers`, comments cite `cloudflare-pages.md`), but the domain is currently on a **Vercel** project (`usezombie-agents-sh`). Pick one.
+> **RESOLVED (§1): Vercel.** Indy chose Vercel (May 22, 2026). Rationale: the rest of the static front-end stack already ships on Vercel via a `vercel.json` rewrite (`ui/packages/website/vercel.json`), the `usezombie.sh` domain is already verified on the Vercel `usezombie-agents-sh` project (git-linked to `usezombie/usezombie`, production branch `main`, framework `None`, rootDir `ui/usezombie.sh/dist/`), and there is **no Cloudflare Pages project anywhere in the repo** (no `wrangler.*`; the only `cloudflare` hits are `cloudflared` *tunnels* on Fly for the backend, unrelated). The Cloudflare Pages framing in `playbooks/014_usezombie_sh_deploy/001_playbook.md` + `ui/usezombie.sh/README.md` was authored but never executed — it is **stale doc** and is reconciled to Vercel as part of this work (Architecture gate: doc-wins-until-reconciled). Cloudflare was rejected: it would stand up a second hosting platform and move DNS off Vercel for a single static file.
+>
+> **OPEN DECISION (now closed): Cloudflare Pages vs Vercel for usezombie.sh.** The `dist/` files were authored for **Cloudflare Pages** (`_redirects`/`_headers`, comments cite `cloudflare-pages.md`); the domain landed on a **Vercel** project (`usezombie-agents-sh`) instead. Resolved to Vercel above.
 
 **Diagnosis (Orly, May 22, 2026 — live + repo inspection):**
 - `usezombie.sh` is aliased to the Vercel `usezombie-agents-sh` production deploy (`main@50484f8`); `server: Vercel`.
@@ -210,15 +214,19 @@ gitleaks detect 2>&1 | tail -3
 
 ## Verification Evidence
 
-> Filled during VERIFY.
+Verified against the Vercel **preview** deploy (sha 7159925a, via `x-vercel-protection-bypass`); the prod custom domain is unprotected (`ssoProtection: all_except_custom_domains`) and auto-deploys the same artifact on merge.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Root serves script | `curl -fsSL https://usezombie.sh \| head -1` | {paste} | |
-| install.sh content-type | `curl -sSI https://usezombie.sh/install.sh` | {paste} | |
-| Uncached probe not SPA | Eval E3 | {paste} | |
-| Single platform | alias/DNS check | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
+| Root serves script | preview `GET /` | `200`, `#!/usr/bin/env bash`, `text/x-shellscript; charset=utf-8` | ✅ |
+| Root == install.sh body | `diff` of both bodies | IDENTICAL | ✅ |
+| install.sh content-type | preview `GET /install.sh` | `200`, `text/x-shellscript; charset=utf-8` | ✅ |
+| Uncached probe not SPA | preview `GET /probe-<ts>` | `404`, `text/plain` ("page could not be found") | ✅ |
+| Single platform | `git grep` + Vercel domain check | `dist/` holds only `install.sh` + `vercel.json`; domain on one Vercel project | ✅ |
+| shellcheck + install_test | `shellcheck`; `bash install_test.sh` | clean; 43 passed, 0 failed | ✅ |
+| harness-verify | `make harness-verify` | ALL GATES GREEN | ✅ |
+| Gitleaks | pre-commit `gitleaks protect --staged` | no leaks found | ✅ |
+| Prod live | `curl -fsSL https://usezombie.sh \| head -1` | pending merge → prod deploy | ⏳ |
 
 ---
 

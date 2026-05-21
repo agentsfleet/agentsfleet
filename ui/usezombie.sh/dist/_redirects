@@ -1,6 +1,0 @@
-# Cloudflare Pages redirect rules — copied into the Pages build output (see cloudflare-pages.md).
-#
-# Serve the installer at the bare root so `curl -fsSL https://usezombie.sh | bash` works
-# without naming a path. The trailing 200 makes this a rewrite (same URL, install.sh body),
-# not a 3xx redirect that curl would have to follow.
-/    /install.sh    200
