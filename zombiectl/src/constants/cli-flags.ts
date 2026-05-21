@@ -17,3 +17,4 @@ export const OPT_AGENT_ID = "agent-id";
 export const OPT_NAME = "name";
 export const OPT_DESCRIPTION = "description";
 export const OPT_FROM = "from";
+export const OPT_TTY = "tty";
