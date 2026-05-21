@@ -4,11 +4,11 @@
 **Milestone:** M79
 **Workstream:** 001
 **Date:** May 21, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the public marketing landing is the first-touch conversion surface; one flagged item (step card off-screen) is a real content-overflow bug.
 **Categories:** UI
 **Batch:** B1 — standalone; no parallel workstream shares this surface.
-**Branch:** feat/m79-001-landing-simplify-polish — added at CHORE(open).
+**Branch:** feat/m79-001-landing-simplify-polish
 **Depends on:** M78_001 (DONE) — this edits the hero/pricing/footer surface M78 shipped and **supersedes M78 §5's trial-aware billing cards** (Option B removes that grid). No merge-ordering issue — M78 is on main.
 **Provenance:** agent-generated (pre-spec) — Indy `/design-consultation`, May 21, 2026 (seven flagged polish issues; Indy chose pricing Option B, remove the replay link, left-rail the headings, build all).
 
