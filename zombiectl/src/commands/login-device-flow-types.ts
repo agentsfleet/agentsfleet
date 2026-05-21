@@ -7,22 +7,9 @@
 // sessions.zig + session_helpers.zig — see the login-device-flow.ts header for
 // the per-endpoint status-code map.
 
-export type PollOutcome =
-  | { readonly status: "verification_pending" }
-  | { readonly status: "expired" }
-  | { readonly status: "interrupted" }
-  | { readonly status: "timeout" };
-
 export interface SessionCreatedResponse {
   readonly session_id: string;
   readonly request_id?: string;
-}
-
-export interface SessionStatusResponse {
-  readonly status: "pending" | "verification_pending";
-  readonly cli_public_key: string;
-  readonly token_name: string;
-  readonly expires_at_ms: number;
 }
 
 export interface VerifySuccessResponse {

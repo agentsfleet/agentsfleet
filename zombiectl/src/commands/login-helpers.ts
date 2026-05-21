@@ -5,7 +5,6 @@
 import { Effect, Option, Redacted } from "effect";
 import { HttpClient } from "../services/http-client.ts";
 import { Output } from "../services/output.ts";
-import { Spinner } from "../services/spinner.ts";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { Stdin } from "../services/stdin.ts";
@@ -145,26 +144,6 @@ export const withSigintAbort = <A, E, R>(
         process.removeListener(SIGINT, handler);
       }),
   );
-
-export interface SpinnerHandles {
-  readonly succeed: Effect.Effect<void>;
-  readonly fail: Effect.Effect<void>;
-}
-
-export const startSpinner = (
-  label: string,
-): Effect.Effect<SpinnerHandles, never, CliConfig | Spinner> =>
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    const spinner = yield* Spinner;
-    const enabled = !config.jsonMode && Boolean((process.stderr as { isTTY?: boolean }).isTTY);
-    const handle = yield* spinner.start({
-      enabled,
-      stream: process.stderr,
-      label,
-    });
-    return { succeed: handle.succeed(), fail: handle.fail() };
-  });
 
 // Identify under the post-login distinct id so subsequent emits in the
 // same fiber attribute correctly, then persist via saveDistinctId so

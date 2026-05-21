@@ -27,14 +27,10 @@ import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
 import { Output } from "../services/output.ts";
-import { Spinner } from "../services/spinner.ts";
 import { Stdin } from "../services/stdin.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   AuthError,
-  ExpiredSessionError,
-  InterruptedError,
-  TimeoutError,
   type CliError,
   type MeValidationError,
 } from "../errors/index.ts";
@@ -44,7 +40,6 @@ import {
   defaultTokenName,
   generateKeypair,
   idempotencyCheck,
-  pollUntilVerificationPending,
   verifyAndDecryptWithRetry,
 } from "./login-device-flow.ts";
 import {
@@ -52,23 +47,11 @@ import {
   hydrateWorkspacesAfterLogin,
   resolveDirectToken,
   saveDirectToken,
-  startSpinner,
   withSigintAbort,
 } from "./login-helpers.ts";
 import { pingMe } from "../lib/me-ping.ts";
 
-const DEFAULT_TIMEOUT_SEC = 300;
-const DEFAULT_POLL_MS = 2000;
-
-type FinalOutcome =
-  | { readonly status: "complete"; readonly token: string }
-  | { readonly status: "expired" }
-  | { readonly status: "interrupted" }
-  | { readonly status: "timeout" };
-
 export interface LoginFlags {
-  readonly timeoutSec: number;
-  readonly pollMs: number;
   readonly noOpen: boolean;
   readonly noInput: boolean;
   readonly force: boolean;
@@ -81,8 +64,6 @@ export interface LoginFlags {
 }
 
 export interface LoginFlagsRaw {
-  readonly timeoutSec: number | undefined;
-  readonly pollMs: number | undefined;
   readonly noOpen: boolean | undefined;
   readonly noInput: boolean | undefined;
   readonly force: boolean | undefined;
@@ -125,37 +106,23 @@ const maybeOpenBrowser = Effect.fnUntraced(function* (
   return opened;
 });
 
-const renderOutcome = Effect.fnUntraced(function* (
-  outcome: FinalOutcome,
-  sessionId: string,
-) {
+// Success rendering for both paths (direct token + device flow). Every
+// non-success path is an Effect failure routed through the dispatcher's
+// exit-code map, so this only handles "complete". `sessionId` is null for
+// the direct-token path (no device-flow session to report).
+const renderSuccess = Effect.fnUntraced(function* (sessionId: string | null) {
   const config = yield* CliConfig;
   const output = yield* Output;
-  if (outcome.status === "complete") {
-    if (config.jsonMode) {
-      yield* output.printJson({
-        status: "complete",
-        session_id: sessionId,
-        token_saved: true,
-        api_url: config.apiUrl,
-      });
-    } else {
-      yield* output.success("login complete");
-    }
-    return 0;
-  }
-  const detailMap: Record<Exclude<FinalOutcome["status"], "complete">, string> = {
-    expired: "login session expired",
-    interrupted: "login interrupted",
-    timeout: "login timed out",
-  };
-  const detail = detailMap[outcome.status];
   if (config.jsonMode) {
-    yield* output.printJson({ status: outcome.status, session_id: sessionId });
+    yield* output.printJson({
+      status: "complete",
+      session_id: sessionId ?? "",
+      token_saved: true,
+      api_url: config.apiUrl,
+    });
   } else {
-    yield* output.error(detail);
+    yield* output.success("login complete");
   }
-  return outcome.status === "interrupted" ? 130 : 1;
 });
 
 const persistSuccess = Effect.fnUntraced(function* (
@@ -173,27 +140,6 @@ const persistSuccess = Effect.fnUntraced(function* (
   return redacted;
 });
 
-export const failedOutcomeError = (
-  outcome: FinalOutcome,
-): ExpiredSessionError | InterruptedError | TimeoutError => {
-  if (outcome.status === "expired") {
-    return new ExpiredSessionError({
-      detail: "login session expired",
-      suggestion: "retry `zombiectl login`",
-    });
-  }
-  if (outcome.status === "interrupted") {
-    return new InterruptedError({
-      detail: "login interrupted",
-      suggestion: "retry `zombiectl login`",
-    });
-  }
-  return new TimeoutError({
-    detail: "login timed out",
-    suggestion: "retry `zombiectl login`",
-  });
-};
-
 // /me ping failure → wipe credentials.json before propagating the error.
 // The token was persisted moments ago but failed validation; leaving it
 // on disk would route subsequent commands to the same dead-on-arrival
@@ -205,28 +151,29 @@ const rollbackOnMeFailure = Effect.fnUntraced(function* (err: MeValidationError)
   return yield* Effect.fail(err);
 });
 
-// Verification-pending branch: prompt → /verify → decrypt → persist →
-// /me ping → hydrate → telemetry. Lives outside loginCore so the
-// orchestrator stays linear (no nested generators) under the 350-line cap.
+// Verify branch: prompt → /verify → decrypt → persist → /me ping → hydrate
+// → telemetry. SIGINT/EOF at the prompt aborts via `signal` before any
+// persist. Lives outside loginCore so the orchestrator stays linear (no
+// nested generators) under the 350-line cap.
 const completeVerificationBranch = Effect.fnUntraced(function* (
   sessionId: string,
   keypair: import("../lib/cli-flow.ts").CliKeypair,
   noInput: boolean,
+  signal: AbortSignal,
 ) {
-  const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput });
+  const token = yield* verifyAndDecryptWithRetry(sessionId, keypair, { noInput, signal });
   const redacted = yield* persistSuccess(sessionId, token);
   yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
   yield* hydrateWorkspacesAfterLogin(redacted);
   yield* captureLoginCompleted(sessionId, token, "browser");
-  return { status: "complete", token } as FinalOutcome;
 });
 
 // Login surface contract: every failure exits 1. Transport / server
-// errors during create-session or poll get re-wrapped as AuthError so
-// the dispatcher's exit-code map still routes them as AuthError(1)
-// rather than ServerError(3) / NetworkError(2). VerificationFailed,
-// DecryptError, and the rate-limit-exceeded SessionAborted all come
-// through already-typed as AuthError from the device-flow helpers.
+// errors during create-session get re-wrapped as AuthError so the
+// dispatcher's exit-code map still routes them as AuthError(1) rather than
+// ServerError(3) / NetworkError(2). VerificationFailed, DecryptError, and
+// the rate-limit-exceeded SessionAborted all come through already-typed as
+// AuthError from the device-flow helpers.
 const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   const config = yield* CliConfig;
 
@@ -252,7 +199,7 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
       );
     }
     yield* saveDirectToken(direct.value);
-    yield* renderOutcome({ status: "complete", token: direct.value }, "");
+    yield* renderSuccess(null);
     return;
   }
 
@@ -264,33 +211,18 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   yield* announceSession(created.session_id, loginUrl);
   yield* maybeOpenBrowser(loginUrl, flags.noOpen);
 
-  const handles = yield* startSpinner("waiting for browser approval");
-  const deadline = Date.now() + Math.max(1, flags.timeoutSec) * 1000;
-  const pollOutcome = yield* withSigintAbort((signal) =>
-    pollUntilVerificationPending(
-      created.session_id,
-      { deadline, pollMs: flags.pollMs },
-      signal,
-    ),
-  ).pipe(
-    Effect.tap((res) =>
-      res.status === "verification_pending" ? handles.succeed : handles.fail,
-    ),
-    Effect.tapError(() => handles.fail),
+  // Prompt for the code immediately — possessing it implies the dashboard
+  // approved, so there's no poll-gate to wait through. SIGINT/EOF at the
+  // prompt aborts cleanly (exit 130) with nothing persisted.
+  yield* withSigintAbort((signal) =>
+    completeVerificationBranch(created.session_id, keypair, flags.noInput, signal),
   );
-
-  const final: FinalOutcome =
-    pollOutcome.status === "verification_pending"
-      ? yield* completeVerificationBranch(created.session_id, keypair, flags.noInput)
-      : pollOutcome;
-
-  const exitCode = yield* renderOutcome(final, created.session_id);
-  if (exitCode !== 0) return yield* Effect.fail(failedOutcomeError(final));
+  yield* renderSuccess(created.session_id);
 });
 
-// Re-map transport errors during create-session / poll so every login
-// failure exits 1 (AuthError). VerificationFailed / DecryptError /
-// SessionAborted / SessionConsumed are already AuthError-typed.
+// Re-map transport errors during create-session so every login failure
+// exits 1 (AuthError). VerificationFailed / DecryptError / SessionAborted /
+// SessionConsumed are already AuthError-typed.
 const remapTransportErrors = (err: CliError): CliError => {
   if (err._tag === "ServerError") {
     return new AuthError({
@@ -318,7 +250,6 @@ type MainLayerCarry =
   | HttpClient
   | Input
   | Output
-  | Spinner
   | Stdin
   | TelemetryRuntime
   | Workspaces;
@@ -332,8 +263,6 @@ export const loginEffectFromFlags = (
   raw: LoginFlagsRaw,
 ): ReturnType<typeof loginEffect> =>
   loginEffect({
-    timeoutSec: raw.timeoutSec ?? DEFAULT_TIMEOUT_SEC,
-    pollMs: raw.pollMs ?? DEFAULT_POLL_MS,
     noOpen: raw.noOpen ?? false,
     noInput: raw.noInput ?? false,
     force: raw.force ?? false,

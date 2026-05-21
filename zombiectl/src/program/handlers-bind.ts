@@ -33,7 +33,6 @@ import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import type { CommandCtx, CommandDeps, Workspaces } from "../commands/types.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
-import { parseIntOption } from "./validators.ts";
 
 export interface Lifecycle {
   ctx: CommandCtx;
@@ -127,7 +126,7 @@ function wrapEffect<A, E extends CliError, R extends MainLayerServices>(
 }
 
 // Variant for command Effects whose flags come from the parsed frame
-// (login's --timeout-sec / --poll-ms / --no-open). The factory receives
+// (login's --no-open / --token, billing's cursor). The factory receives
 // the frame and returns the Effect; everything else is the same as
 // wrapEffect.
 function wrapEffectFn<A, E extends CliError, R extends MainLayerServices>(
@@ -146,20 +145,6 @@ function wrapEffectFn<A, E extends CliError, R extends MainLayerServices>(
   };
 }
 
-// Permissive post-handoff reader — wraps `parseIntOption` from
-// validators.ts, swallowing its InvalidArgumentError so the commander
-// parser doubles as a try/Either-style integer reader here. Number
-// fast-path skips the `String(value).trim()` round-trip; the parser
-// covers every other shape (string, undefined, junk).
-const numericOption = (value: unknown): number | undefined => {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  try {
-    return parseIntOption()(value);
-  } catch {
-    return undefined;
-  }
-};
-
 export function buildHandlers(lifecycle: Lifecycle): Handlers {
   const wrapE = <A, E extends CliError, R extends MainLayerServices>(
     name: string,
@@ -176,8 +161,6 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
         // credentials.json must not be re-read as a "direct token".
         const envToken = lifecycle.ctx.env?.[ZOMBIE_TOKEN_ENV];
         return loginEffectFromFlags({
-          timeoutSec: numericOption(opts["timeoutSec"] ?? opts["timeout-sec"]),
-          pollMs: numericOption(opts["pollMs"] ?? opts["poll-ms"]),
           noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
           noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,
           force: opts["force"] === true,
