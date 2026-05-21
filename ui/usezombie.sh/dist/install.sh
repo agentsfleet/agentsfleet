@@ -19,7 +19,7 @@
 # ─── Constants ───────────────────────────────────────────────────────────────
 
 readonly PKG="@usezombie/zombiectl"
-readonly SKILL_REF="usezombie/usezombie"
+readonly SKILL_REF="usezombie/skills"
 readonly NEXT_CMD="/usezombie-install-platform-ops"
 readonly NODE_MIN="18"
 readonly NODE_URL="https://nodejs.org"
