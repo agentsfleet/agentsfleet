@@ -24,6 +24,7 @@ const common = @import("../common.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const svix_verify = @import("../../../auth/crypto/svix_verify.zig");
 const signup_bootstrap = @import("../../../state/signup_bootstrap.zig");
+const account_teardown = @import("../../../state/account_teardown.zig");
 const metrics = @import("../../../observability/metrics_counters.zig");
 const telemetry_mod = @import("../../../observability/telemetry.zig");
 const clerk_backend = @import("../../../auth/clerk_backend.zig");
@@ -314,28 +315,12 @@ fn runDelete(hx: Hx, oidc_subject: []const u8) void {
     };
     defer hx.ctx.pool.release(conn);
 
-    _ = conn.exec(
-        \\WITH doomed_users AS (
-        \\    SELECT user_id, tenant_id FROM core.users WHERE oidc_subject = $1
-        \\), deleted_workspaces AS (
-        \\    DELETE FROM core.workspaces
-        \\    WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
-        \\), deleted_memberships AS (
-        \\    DELETE FROM core.memberships
-        \\    WHERE user_id IN (SELECT user_id FROM doomed_users)
-        \\), deleted_users AS (
-        \\    DELETE FROM core.users
-        \\    WHERE oidc_subject = $1
-        \\    RETURNING tenant_id
-        \\)
-        \\DELETE FROM core.tenants
-        \\WHERE tenant_id IN (SELECT tenant_id FROM deleted_users)
-    , .{oidc_subject}) catch |err| {
+    const purged = account_teardown.purgeByOidcSubject(conn, hx.alloc, oidc_subject) catch |err| {
         log.warn("delete_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .oidc = oidc_subject, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
-    log.info("user_deleted", .{ .oidc = oidc_subject, .req_id = hx.req_id });
+    log.info("user_deleted", .{ .oidc = oidc_subject, .purged = purged, .req_id = hx.req_id });
     hx.ok(.ok, .{ .deleted = true });
 }
