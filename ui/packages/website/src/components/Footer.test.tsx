@@ -19,7 +19,11 @@ describe("Footer", () => {
 
   it("renders the tagline", () => {
     renderFooter();
-    expect(screen.getByText(/durable, markdown-defined agent runtime/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/durable, markdown-defined agents that wake on your events/i),
+    ).toBeInTheDocument();
+    // Capitalization fix — "Self-managed" not lowercase "self-managed".
+    expect(screen.getByText(/Self-managed\. Open source\./)).toBeInTheDocument();
   });
 
   it("renders product column with links", () => {
