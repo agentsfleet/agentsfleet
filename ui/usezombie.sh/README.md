@@ -25,7 +25,7 @@ The Windows PowerShell installer (`install.ps1`) is a separate follow-up — not
 1. Requires Node.js (`node` + `npm`) — `zombiectl` is an npm-distributed Node CLI (`bin: ./dist/bin/zombiectl.js`), so there is no standalone binary to fall back to. Missing Node exits `5` with an install link.
 2. Detects the agent host on `$PATH` (`claude` / `amp` / `codex` / `opencode`); ambiguous (more than one) exits `4` unless `USEZOMBIE_HOST` is set.
 3. `npm install -g --prefix "$USEZOMBIE_INSTALL" @usezombie/zombiectl[@version]` (default prefix `~/.usezombie`), then adds `<prefix>/bin` to PATH.
-4. `npx --yes skills add usezombie/usezombie --host=<detected>`.
+4. `npx --yes skills add usezombie/skills --host=<detected>`.
 5. Prints the next command: `/usezombie-install-platform-ops`.
 
 ### Environment / flags

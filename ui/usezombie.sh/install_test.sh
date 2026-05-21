@@ -70,7 +70,7 @@ test_happy_path_posix() {
   assert_rc "happy_path: exit 0" 0
   assert_log "happy_path: npm install argv" "install -g" "$NPM_LOG"
   assert_log "happy_path: npm package" "@usezombie/zombiectl" "$NPM_LOG"
-  assert_log "happy_path: npx skills --host" "skills add usezombie/usezombie --host=claude" "$NPX_LOG"
+  assert_log "happy_path: npx skills --host" "skills add usezombie/skills --host=claude" "$NPX_LOG"
   assert_out "happy_path: next-command hint" "/usezombie-install-platform-ops"
   cleanup
 }
@@ -197,7 +197,7 @@ test_generic_host_no_flag() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0   # no host binaries
   run_install
   assert_rc "generic_host: exit 0" 0
-  assert_log "generic_host: npx skills add" "skills add usezombie/usezombie" "$NPX_LOG"
+  assert_log "generic_host: npx skills add" "skills add usezombie/skills" "$NPX_LOG"
   if grep -qF -- "--host" "$NPX_LOG"; then
     fail "generic_host: no --host flag" "unexpected --host passed for generic host"
   else

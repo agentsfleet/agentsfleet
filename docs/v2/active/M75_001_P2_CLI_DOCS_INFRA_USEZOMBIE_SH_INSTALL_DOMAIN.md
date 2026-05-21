@@ -29,7 +29,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ## Scope amendments (May 21, 2026 — during implementation)
 
-Three Captain-acked changes from the original plan. Reality and Indy decisions trump the spec; sections below were trimmed to match.
+Four Captain-acked changes from the original plan. Reality and Indy decisions trump the spec; sections below were trimmed to match.
 
 1. **npm-only install — no tarball fallback.** `zombiectl` is an npm-distributed Node CLI (`bin: ./dist/bin/zombiectl.js`); there is no standalone binary and no `zombiectl-{platform}-{arch}` release tarball (GitHub Releases ship the `zombied-*` daemon, not the CLI). Node is a hard prerequisite — missing `node`/`npm` exits 5 with an "install Node.js ≥18" message. §1, the exit-code table, Failure Modes, and the Test Spec were amended accordingly.
 2. **Live DNS/TLS cutover deferred.**
@@ -40,6 +40,8 @@ Three Captain-acked changes from the original plan. Reality and Indy decisions t
    > Indy (2026-05-21): chose "Drop PowerShell from this PR" — `install.ps1` + `install_test.ps1` + the Windows test / exit-6 / PS-floor rows leave M75 scope; ship POSIX-only. Docs show only the `curl … | bash` one-liner until the follow-up lands.
 
    The Windows installer becomes its own spec (authored via `kishore-spec-new` when that work begins).
+4. **Skill ref is `usezombie/skills`, not `usezombie/usezombie`.**
+   > Indy (2026-05-21): the canonical skill source is the public skills repo `usezombie/skills` (populated by M69 `PUBLIC_SKILLS_REPO`, merging the same day). `install.sh` (`SKILL_REF`), its tests, the README, and the docs sweep all reference `usezombie/skills` so the `curl … | bash` path and the documented `npx skills add` path pull from the same repo.
 
 ---
 
@@ -93,7 +95,7 @@ Three Captain-acked changes from the original plan. Reality and Indy decisions t
 
 ## Overview
 
-**Goal (testable):** a user on Linux or macOS can run a single documented one-liner (`curl -fsSL https://usezombie.sh | bash`) that installs `zombiectl` via npm, puts it on PATH, runs `npx skills add usezombie/usezombie --host=<detected>`, and prints a "next command" hint. The script fails fast with an actionable error on any of: missing Node toolchain, network unreachable, npm install failure, install-dir not writable, host detection ambiguous. (Windows PowerShell + live DNS/TLS are deferred — Scope-amendments 2–3.)
+**Goal (testable):** a user on Linux or macOS can run a single documented one-liner (`curl -fsSL https://usezombie.sh | bash`) that installs `zombiectl` via npm, puts it on PATH, runs `npx skills add usezombie/skills --host=<detected>`, and prints a "next command" hint. The script fails fast with an actionable error on any of: missing Node toolchain, network unreachable, npm install failure, install-dir not writable, host detection ambiguous. (Windows PowerShell + live DNS/TLS are deferred — Scope-amendments 2–3.)
 
 **Problem:** Four user-facing doc pages today print `curl -fsSL https://usezombie.sh/skills.md > <path>/SKILL.md` as the curl-fallback install. `usezombie.sh` does not resolve — DNS NXDOMAIN. Every reader who follows the docs literally sees `curl: (6) Could not resolve host: usezombie.sh`. The skill-per-MD path was the M51 plan; Captain superseded it on May 18, 2026 with the one-URL one-liner pattern.
 
@@ -115,7 +117,7 @@ Three Captain-acked changes from the original plan. Reality and Indy decisions t
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/usezombie.sh/dist/install.sh` | NEW | POSIX installer. Top-level helpers + thin `main()` (partial-download safe — only the final `main "$@"` has side effects); detects host (`claude`, `amp`, `codex`, `opencode`, generic); installs `zombiectl` via `npm install -g --prefix` (Node a hard prereq, no tarball fallback); runs `npx --yes skills add usezombie/usezombie --host=<detected>`; sets PATH; prints success + next-command hint. |
+| `ui/usezombie.sh/dist/install.sh` | NEW | POSIX installer. Top-level helpers + thin `main()` (partial-download safe — only the final `main "$@"` has side effects); detects host (`claude`, `amp`, `codex`, `opencode`, generic); installs `zombiectl` via `npm install -g --prefix` (Node a hard prereq, no tarball fallback); runs `npx --yes skills add usezombie/skills --host=<detected>`; sets PATH; prints success + next-command hint. |
 | `ui/usezombie.sh/dist/_redirects` + `ui/usezombie.sh/dist/_headers` | NEW | Cloudflare Pages static-host config (committed, served as-is — no build): serve `install.sh` at `/` and `/install.sh`; shell content-type + 5-min cache. |
 | `.gitignore` | EDIT | The repo-wide `dist/` ignore swallowed `ui/usezombie.sh/dist/` (the committed static site). Replace it with build-output-anchored rules (`zombiectl/dist/`, `ui/packages/*/dist/`) so the installer payload is tracked while real build artifacts stay ignored. |
 | `ui/usezombie.sh/install_test.sh` | NEW | Black-box smoke test for `dist/install.sh` — hermetic fake `npm`/`npx`/`node`/host-bins on a sandboxed `$PATH`, asserts argv + exit codes per failure mode + the next-command hint. |
@@ -124,7 +126,7 @@ Three Captain-acked changes from the original plan. Reality and Indy decisions t
 | `playbooks/014_usezombie_sh_deploy/001_playbook.md` | NEW | One-time human-run setup: create the git-connected `usezombie-sh` Cloudflare Pages project (output `ui/usezombie.sh/dist`, no build), attach `usezombie.sh` custom domain (→ apex A/AAAA + TLS), verify. No CI credentials (Cloudflare's GitHub App auths). |
 | `ui/usezombie.sh/dist/install.ps1` + `install_test.ps1` | DEFERRED | Windows PowerShell installer — out of M75 scope (Scope-amendment 3); ships in a PowerShell follow-up spec. |
 | `~/Projects/docs/changelog.mdx` | EDIT | Replace the May 17, 2026 entry's `usezombie.sh/skills.md` mention (line ~44) with the new one-liner. Don't rewrite history for prior entries — only touch the line that's actively wrong. |
-| `~/Projects/docs/quickstart.mdx` | EDIT | Replace `curl -fsSL https://usezombie.sh/skills.md \` block with the POSIX one-liner `curl -fsSL https://usezombie.sh | bash`. Keep `npx skills add usezombie/usezombie` as a parallel option for users who already have a node toolchain. |
+| `~/Projects/docs/quickstart.mdx` | EDIT | Replace `curl -fsSL https://usezombie.sh/skills.md \` block with the POSIX one-liner `curl -fsSL https://usezombie.sh | bash`. Keep `npx skills add usezombie/skills` as a parallel option for users who already have a node toolchain. |
 | `~/Projects/docs/cli/install.mdx` | EDIT | Same swap. |
 | `~/Projects/docs/zombies/install.mdx` | EDIT | Same swap. |
 | `docs/architecture/user_flow.md` | EDIT | The text naming `https://usezombie.sh/skills.md` as the fetch path is superseded — reconcile to the bare-root `curl -fsSL https://usezombie.sh | bash` one-liner. |
@@ -148,7 +150,7 @@ Three Captain-acked changes from the original plan. Reality and Indy decisions t
 
 ### §1 — POSIX installer (`install.sh`)
 
-Bash script that bootstraps `zombiectl` + the platform-ops skill on Linux + macOS. **Implementation default**: mirror the resend-cli `install.sh` shape — `main() { ... }` wrapper for partial-download protection, `set -euo pipefail`, colored output gated on `[[ -t 1 ]]`, install-dir defaults to `~/.usezombie` with `USEZOMBIE_INSTALL` env override, version pin via `bash -s vX.Y.Z`. Host detection inspects `$PATH` for `claude`, `amp`, `codex`, `opencode` binaries in that order, honouring a `USEZOMBIE_HOST` override; falls back to `generic` if none found. **Install mechanism — npm-only (amended May 21, 2026).** `zombiectl` is an npm-distributed Node CLI (`bin: ./dist/bin/zombiectl.js`); there is no standalone binary and no `zombiectl-{platform}-{arch}` release tarball (GitHub Releases ship the compiled `zombied-*` daemon, not the CLI). The CLI and `npx skills add` both require Node, so **Node is a hard prerequisite**: the script runs `npm install -g --prefix "${USEZOMBIE_INSTALL}" @usezombie/zombiectl[@version]`, adds `${USEZOMBIE_INSTALL}/bin` to PATH, then runs `npx skills add usezombie/usezombie --host=<detected>`. If `node`/`npm` is absent the script exits 5 with an actionable "install Node.js ≥18 from nodejs.org" message — there is no tarball fallback (it could not run a `.js` CLI anyway). Print a "next command" hint that depends on detected host (`/usezombie-install-platform-ops` for Claude Code and the other slash-command hosts).
+Bash script that bootstraps `zombiectl` + the platform-ops skill on Linux + macOS. **Implementation default**: mirror the resend-cli `install.sh` shape — `main() { ... }` wrapper for partial-download protection, `set -euo pipefail`, colored output gated on `[[ -t 1 ]]`, install-dir defaults to `~/.usezombie` with `USEZOMBIE_INSTALL` env override, version pin via `bash -s vX.Y.Z`. Host detection inspects `$PATH` for `claude`, `amp`, `codex`, `opencode` binaries in that order, honouring a `USEZOMBIE_HOST` override; falls back to `generic` if none found. **Install mechanism — npm-only (amended May 21, 2026).** `zombiectl` is an npm-distributed Node CLI (`bin: ./dist/bin/zombiectl.js`); there is no standalone binary and no `zombiectl-{platform}-{arch}` release tarball (GitHub Releases ship the compiled `zombied-*` daemon, not the CLI). The CLI and `npx skills add` both require Node, so **Node is a hard prerequisite**: the script runs `npm install -g --prefix "${USEZOMBIE_INSTALL}" @usezombie/zombiectl[@version]`, adds `${USEZOMBIE_INSTALL}/bin` to PATH, then runs `npx skills add usezombie/skills --host=<detected>`. If `node`/`npm` is absent the script exits 5 with an actionable "install Node.js ≥18 from nodejs.org" message — there is no tarball fallback (it could not run a `.js` CLI anyway). Print a "next command" hint that depends on detected host (`/usezombie-install-platform-ops` for Claude Code and the other slash-command hosts).
 
 ### §2 — Windows installer (`install.ps1`) — DEFERRED
 
@@ -175,7 +177,7 @@ Replace every `curl -fsSL https://usezombie.sh/skills.md \` block in `~/Projects
 
 - POSIX (Linux/macOS/WSL): `curl -fsSL https://usezombie.sh | bash`
 
-The `npx skills add usezombie/usezombie` line stays as the "I already have a node toolchain" parallel option — it's not removed, it's positioned alongside the curl one-liner. The Windows PowerShell one-liner (`irm https://usezombie.sh/install.ps1 | iex`) is added by the PowerShell follow-up spec (Scope-amendment 3), not here. Run the existing `~/Projects/docs/` build (`mintlify dev` or equivalent) and verify no MDX parse errors.
+The `npx skills add usezombie/skills` line stays as the "I already have a node toolchain" parallel option — it's not removed, it's positioned alongside the curl one-liner. The Windows PowerShell one-liner (`irm https://usezombie.sh/install.ps1 | iex`) is added by the PowerShell follow-up spec (Scope-amendment 3), not here. Run the existing `~/Projects/docs/` build (`mintlify dev` or equivalent) and verify no MDX parse errors.
 
 ### §5 — `marketing-spec.test.ts` banned-string flip
 
