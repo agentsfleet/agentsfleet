@@ -9,7 +9,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - See docs/TEMPLATE.md "Prohibited" section above for canonical list.
 -->
 
-# M75_001: `usezombie.sh` — one-URL cross-platform installer (POSIX + PowerShell)
+# M75_001: `usezombie.sh` — one-URL installer (POSIX; PowerShell follow-up)
 
 **Prototype:** v2.0.0
 **Milestone:** M75
@@ -27,6 +27,22 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ---
 
+## Scope amendments (May 21, 2026 — during implementation)
+
+Three Captain-acked changes from the original plan. Reality and Indy decisions trump the spec; sections below were trimmed to match.
+
+1. **npm-only install — no tarball fallback.** `zombiectl` is an npm-distributed Node CLI (`bin: ./dist/bin/zombiectl.js`); there is no standalone binary and no `zombiectl-{platform}-{arch}` release tarball (GitHub Releases ship the `zombied-*` daemon, not the CLI). Node is a hard prerequisite — missing `node`/`npm` exits 5 with an "install Node.js ≥18" message. §1, the exit-code table, Failure Modes, and the Test Spec were amended accordingly.
+2. **Live DNS/TLS cutover deferred.**
+   > Indy (2026-05-21): chose "Author config, defer live cutover" — this PR ships scripts + tests + Cloudflare Pages config + README in-repo; live DNS provisioning + the live-only acceptance criteria (DNS A/AAAA, TLS, containerized E2E) are deferred to a post-merge cutover.
+
+   Stale npm (`0.3.0`) / GH-release (`v0.4.0`) artifacts vs repo `0.37.0` are out of scope here (a CLI republish is a separate release task).
+3. **PowerShell installer deferred to a follow-up spec/PR.**
+   > Indy (2026-05-21): chose "Drop PowerShell from this PR" — `install.ps1` + `install_test.ps1` + the Windows test / exit-6 / PS-floor rows leave M75 scope; ship POSIX-only. Docs show only the `curl … | bash` one-liner until the follow-up lands.
+
+   The Windows installer becomes its own spec (authored via `kishore-spec-new` when that work begins).
+
+---
+
 ## Implementing agent — read these first
 
 1. `~/Projects/oss/resend-cli/install.sh` + `~/Projects/oss/resend-cli/install.ps1` — closest pattern reference. Two scripts (POSIX bash + Windows PowerShell) served at two URLs from the same domain (`resend.com/install.sh` and `resend.com/install.ps1`). The `install.sh` wraps in a `main()` function for partial-download protection, colored output gated on `[[ -t 1 ]]`, GitHub-release tarball fetch with a `RESEND_VERSION` pin, install-dir env override, version-pin via `bash -s vX.Y.Z`. Mirror this shape verbatim — substitute zombiectl-specific bits.
@@ -41,8 +57,8 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 > The bridge from spec to merged PR — the agent confirms intent before writing code.
 
-- **PR title (eventual):** usezombie.sh: one-URL cross-platform installer (POSIX + PowerShell)
-- **Intent (one sentence):** `https://usezombie.sh` resolves and installs `zombiectl` + the platform-ops skill in one documented command on Linux/macOS/Windows, retiring the broken `usezombie.sh/skills.md` curl path.
+- **PR title (eventual):** usezombie.sh: one-URL POSIX installer for zombiectl + platform-ops skill
+- **Intent (one sentence):** `https://usezombie.sh | bash` installs `zombiectl` + the platform-ops skill in one documented command on Linux/macOS, retiring the broken `usezombie.sh/skills.md` curl path; live DNS/TLS and the Windows PowerShell installer are deferred (Scope-amendments 2–3).
 - **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). Three to name: (1) the canonical one-liner is the bare-root form `curl -fsSL https://usezombie.sh | bash` (no `/install` path); (2) DNS/TLS lands out-of-tree and must be verified live before merge; (3) the M51 `usezombie.sh/install.sh` banned-strings entry is deliberately removed, not worked around. A mismatch with the Intent above → STOP and reconcile before any edit.
 
 ---
@@ -53,34 +69,35 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - **`docs/greptile-learnings/RULES.md` RULE NLG** — no "legacy" framing for the M51 banned-strings entry being removed. The old `usezombie.sh/skills.md` plan was superseded, not deprecated; remove the entry cleanly without legacy-shim prose.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — N/A; this spec adds no HTTP handlers on the usezombie service.
 - **`docs/SCHEMA_CONVENTIONS.md`** — N/A; no schema changes.
-- **`docs/ZIG_RULES.md`** — N/A; `infra/install/install.sh` is bash, `install.ps1` is PowerShell, no Zig touched.
+- **`docs/ZIG_RULES.md`** — N/A; `ui/usezombie.sh/dist/install.sh` is bash, no Zig touched.
 - **`docs/AUTH.md`** — N/A; install path is unauthenticated. Authenticated install variants are explicitly Out of Scope.
-- Shellcheck — `install.sh` must pass `shellcheck -s bash install.sh` with zero warnings. PowerShell equivalent: `Invoke-ScriptAnalyzer install.ps1` must surface zero `Error` / `Warning` rules.
+- Shellcheck — `install.sh` (and `install_test.sh`) must pass `shellcheck -s bash` with zero warnings. (The PowerShell `Invoke-ScriptAnalyzer` gate moves to the follow-up spec.)
 
 ---
 
 ## Applicable Gates
 
-> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: `infra/install/*.{sh,ps1,md}`, out-of-tree DNS/TLS config, cross-repo docs `.mdx`, and two `.ts` marketing-spec tests (+ one `.tsx` fixture verify). No Zig, no schema.
+> Which Action-Triggered Guards this PR trips, and how each stays clean. Blast radius: `ui/usezombie.sh/{dist/install.sh,dist/_redirects,dist/_headers,install_test.sh,README.md}`, `.github/workflows/lint.yml` (one new `lint-usezombie-sh` job), `playbooks/014_usezombie_sh_deploy/`, cross-repo docs `.mdx`, and two `.ts` marketing-spec tests (+ one `.tsx` fixture). No Zig, no schema, no PowerShell (deferred).
 
 | Gate | Fires? | Satisfaction strategy |
 |------|--------|-----------------------|
-| ZIG GATE | no | `install.sh` is bash, `install.ps1` is PowerShell — no Zig touched. |
+| ZIG GATE | no | `install.sh` is bash — no Zig touched. |
 | PUB / Struct-Shape | no | no Zig surface. |
 | File & Function Length (≤350/≤50/≤70) | yes | `.sh` is in the length surface — use a `main()` wrapper + small helpers; keep each script ≤350 lines and shell functions ≤50; split if the script approaches the cap. |
 | UFS (repeated/semantic literals) | yes | the install one-liner is shared across script comments, both docs sites, and the `marketing-spec.test.ts` positive assertion — pin once and reference verbatim (RULE UFS). |
 | UI Substitution / DESIGN TOKEN | no | `InstallBlock.test.tsx` is a fixture-string verify, not a component-markup change. |
 | LOGGING / LIFECYCLE / ERROR REGISTRY / SCHEMA | LOGGING: yes | `.sh` is in the LOGGING surface; script output is user-facing install progress (not the app's structured logger) — no secrets echoed, errors actionable and to stderr, color gated on `[[ -t 1 ]]`. ERROR REGISTRY/LIFECYCLE/SCHEMA: no (numeric exit codes 0–5, no `UZ-*` codes, no Zig lifecycle, no schema). |
+| `check-gh-actions-valid` (CI/CD edit) | yes | `lint.yml` gains a `lint-usezombie-sh` job (shellcheck + `install_test.sh`) that gates the merge — actionlint clean. No deploy workflow: `usezombie.sh` is a git-connected Cloudflare Pages project (Captain direction, May 21, 2026), auto preview-on-PR + prod-on-merge, no CI credentials. |
 
 ---
 
 ## Overview
 
-**Goal (testable):** a user on Linux, macOS, or Windows can run a single documented one-liner that downloads `zombiectl`, installs it on PATH, runs `npx skills add usezombie/usezombie --host=<detected>`, and prints a "next command" hint. The one-liner resolves DNS, the cert is valid, and the script fails fast with an actionable error on any of: missing node toolchain, network unreachable, install-dir not writable, host detection ambiguous.
+**Goal (testable):** a user on Linux or macOS can run a single documented one-liner (`curl -fsSL https://usezombie.sh | bash`) that installs `zombiectl` via npm, puts it on PATH, runs `npx skills add usezombie/usezombie --host=<detected>`, and prints a "next command" hint. The script fails fast with an actionable error on any of: missing Node toolchain, network unreachable, npm install failure, install-dir not writable, host detection ambiguous. (Windows PowerShell + live DNS/TLS are deferred — Scope-amendments 2–3.)
 
 **Problem:** Four user-facing doc pages today print `curl -fsSL https://usezombie.sh/skills.md > <path>/SKILL.md` as the curl-fallback install. `usezombie.sh` does not resolve — DNS NXDOMAIN. Every reader who follows the docs literally sees `curl: (6) Could not resolve host: usezombie.sh`. The skill-per-MD path was the M51 plan; Captain superseded it on May 18, 2026 with the one-URL one-liner pattern.
 
-**Solution summary:** Author two installer scripts (`install.sh` for POSIX, `install.ps1` for Windows) under `infra/install/` in the main repo. Wire `usezombie.sh` DNS + TLS + static host to serve `install.sh` content at `/` and `/install.sh`, and `install.ps1` content at `/install.ps1`. Sweep the four docs to print the new one-liners (POSIX one-liner primary, PowerShell one-liner secondary). Remove `usezombie.sh/install.sh` from the `marketing-spec.test.ts` banned-strings list and add a positive assertion that the canonical one-liner appears in at least one user-facing doc page. The `InstallBlock.tsx` test fixture already references the new shape — verify it still aligns.
+**Solution summary:** Author the POSIX `install.sh` (+ `install_test.sh`) as a static site under `ui/usezombie.sh/` (`dist/` committed + served as-is, no build), with `_redirects`/`_headers` to serve it at `/` and `/install.sh`. Deploy via a **git-connected Cloudflare Pages project** (same pattern as the other `ui/` sites — auto preview-on-PR + prod-on-merge, no workflow, no CI creds); a new `lint-usezombie-sh` CI job (shellcheck + `install_test.sh`) gates the merge. One-time provisioning is `playbooks/014_usezombie_sh_deploy/` (live provisioning deferred). Sweep the four docs to print the canonical POSIX one-liner. Remove `usezombie.sh/install.sh` from the `marketing-spec.test.ts` banned-strings list and add a positive assertion that the canonical one-liner appears in at least one user-facing doc page. Update the `InstallBlock.tsx` fixture to the bare-root one-liner. The Windows PowerShell installer is a deferred follow-up (Scope-amendment 3).
 
 ---
 
@@ -98,28 +115,30 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 | File | Action | Why |
 |------|--------|-----|
-| `infra/install/install.sh` | NEW | POSIX installer. `main() { ... }` wrapper for partial-download safety; detects host (`claude`, `amp`, `codex`, `opencode`, generic); installs `zombiectl` via npm (curl tarball fallback for nodeless environments); runs `npx skills add usezombie/usezombie --host=<detected>`; prints success + next-command hint. |
-| `infra/install/install.ps1` | NEW | Windows PowerShell installer. Mirror of `install.sh` adapted to PowerShell idioms (`Set-StrictMode -Version Latest`, `$ErrorActionPreference = 'Stop'`, `Invoke-WebRequest` instead of curl). |
-| `infra/install/install_test.sh` | NEW | Black-box dry-run smoke test for `install.sh` — fake `npm`/`npx`/`curl` on `$PATH`, assert the script invokes them with the expected argv, asserts exit codes for each failure mode, asserts the next-command hint is printed on success. |
-| `infra/install/install_test.ps1` | NEW | PowerShell counterpart — same assertions adapted to Pester (or a simple PowerShell test harness, implementer choice). |
-| `infra/install/README.md` | NEW | One-page contributor doc — what these scripts do, how the DNS/static-host wiring lives outside the repo (provider config not in tree), how to test locally, how to bump pinned versions. |
-| `infra/dns/usezombie-sh.tf` or equivalent | NEW (out-of-tree allowed) | DNS A/AAAA records, TLS cert, static-host config. Implementer picks Cloudflare Pages, Vercel, or a generic S3+CloudFront — pick the cheapest path that gives sub-100ms TTFB globally. If this lands in the existing infra repo, link the PR in the Discovery section. |
+| `ui/usezombie.sh/dist/install.sh` | NEW | POSIX installer. Top-level helpers + thin `main()` (partial-download safe — only the final `main "$@"` has side effects); detects host (`claude`, `amp`, `codex`, `opencode`, generic); installs `zombiectl` via `npm install -g --prefix` (Node a hard prereq, no tarball fallback); runs `npx --yes skills add usezombie/usezombie --host=<detected>`; sets PATH; prints success + next-command hint. |
+| `ui/usezombie.sh/dist/_redirects` + `ui/usezombie.sh/dist/_headers` | NEW | Cloudflare Pages static-host config (committed, served as-is — no build): serve `install.sh` at `/` and `/install.sh`; shell content-type + 5-min cache. |
+| `.gitignore` | EDIT | The repo-wide `dist/` ignore swallowed `ui/usezombie.sh/dist/` (the committed static site). Replace it with build-output-anchored rules (`zombiectl/dist/`, `ui/packages/*/dist/`) so the installer payload is tracked while real build artifacts stay ignored. |
+| `ui/usezombie.sh/install_test.sh` | NEW | Black-box smoke test for `dist/install.sh` — hermetic fake `npm`/`npx`/`node`/host-bins on a sandboxed `$PATH`, asserts argv + exit codes per failure mode + the next-command hint. |
+| `ui/usezombie.sh/README.md` | NEW | One-page contributor doc — what the installer does, the `dist/` layout, how to test locally, how to deploy (workflow dispatch). |
+| `.github/workflows/lint.yml` | EDIT | Add a `lint-usezombie-sh` job (shellcheck `dist/install.sh` + `install_test.sh`) to the PR lint umbrella — gates the merge so a broken installer can't reach `main` (and therefore can't auto-deploy). |
+| `playbooks/014_usezombie_sh_deploy/001_playbook.md` | NEW | One-time human-run setup: create the git-connected `usezombie-sh` Cloudflare Pages project (output `ui/usezombie.sh/dist`, no build), attach `usezombie.sh` custom domain (→ apex A/AAAA + TLS), verify. No CI credentials (Cloudflare's GitHub App auths). |
+| `ui/usezombie.sh/dist/install.ps1` + `install_test.ps1` | DEFERRED | Windows PowerShell installer — out of M75 scope (Scope-amendment 3); ships in a PowerShell follow-up spec. |
 | `~/Projects/docs/changelog.mdx` | EDIT | Replace the May 17, 2026 entry's `usezombie.sh/skills.md` mention (line ~44) with the new one-liner. Don't rewrite history for prior entries — only touch the line that's actively wrong. |
-| `~/Projects/docs/quickstart.mdx` | EDIT | Replace `curl -fsSL https://usezombie.sh/skills.md \` block (~line 74) with the new POSIX + PowerShell one-liner pair. Keep `npx skills add usezombie/usezombie` as a parallel option for users who already have a node toolchain. |
-| `~/Projects/docs/cli/install.mdx` | EDIT | Same swap, ~line 48. |
-| `~/Projects/docs/zombies/install.mdx` | EDIT | Same swap, ~line 43. |
-| `docs/architecture/user_flow.md` | EDIT | §8 verification — the doc already names `https://usezombie.sh` as canonical; verify the install-path subsection is consistent with the new two-script reality (POSIX + PowerShell) and amend if it implied a single script. |
+| `~/Projects/docs/quickstart.mdx` | EDIT | Replace `curl -fsSL https://usezombie.sh/skills.md \` block with the POSIX one-liner `curl -fsSL https://usezombie.sh | bash`. Keep `npx skills add usezombie/usezombie` as a parallel option for users who already have a node toolchain. |
+| `~/Projects/docs/cli/install.mdx` | EDIT | Same swap. |
+| `~/Projects/docs/zombies/install.mdx` | EDIT | Same swap. |
+| `docs/architecture/user_flow.md` | EDIT | The text naming `https://usezombie.sh/skills.md` as the fetch path is superseded — reconcile to the bare-root `curl -fsSL https://usezombie.sh | bash` one-liner. |
 | `ui/packages/website/src/marketing-spec.test.ts` | EDIT | Remove `usezombie.sh/install.sh` from the banned-strings list (was banned per M51 when the plan was different). Add a positive assertion: at least one user-facing doc page contains the canonical one-liner. |
 | `ui/packages/website/src/marketing-no-pr-validator-framing.test.ts` | EDIT | Mirror the banned-strings update; this file shares the dead-string list. |
 | `ui/packages/design-system/src/design-system/InstallBlock.test.tsx` | VERIFY (no edit expected) | Fixture at line 7 already references `https://usezombie.sh/install | bash`. Verify the new install URL the spec settles on matches verbatim, or update the fixture in this PR. |
 
-> **Anti-pattern guard:** no file in `src/` (Zig), `zombiectl/` (TypeScript CLI), or `ui/packages/app/` is touched by this spec. The CLI install logic lives in the bash/PowerShell scripts; the dashboard surface is untouched.
+> **Anti-pattern guard:** no file in `src/` (Zig), `zombiectl/` (TypeScript CLI), or `ui/packages/app/` is touched by this spec. The install logic lives in the `install.sh` bash script; the dashboard surface is untouched.
 
 ---
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** six slices — POSIX installer, PowerShell installer, DNS + static-host wiring, docs sweep, marketing-spec banned-string flip, `InstallBlock` fixture verify. Two scripts at two URLs, no content negotiation.
+- **Chosen shape (POSIX-only this PR):** five slices — POSIX installer + its test, Cloudflare Pages static-host config, docs sweep, marketing-spec banned-string flip, `InstallBlock` fixture. The PowerShell installer is a deferred sixth slice in a follow-up spec (Scope-amendment 3). Two-URL convention preserved, no content negotiation.
 - **Alternatives considered:** (a) a single script served at one URL with User-Agent content negotiation — rejected; fragile, and no adjacent project does it. (b) keep the per-skill `*.md` curl plan from M51/M72 — superseded by Indy's one-URL decision (May 18, 2026).
 - **Patch-vs-refactor verdict:** **neither a patch nor a refactor of existing code** — a greenfield install path. The only edits to existing files are the docs sweep and the banned-strings flip (cleanup of now-wrong references), kept tight rather than bundled with unrelated changes.
 
@@ -129,28 +148,43 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 
 ### §1 — POSIX installer (`install.sh`)
 
-Bash script that bootstraps `zombiectl` + the platform-ops skill on Linux + macOS. **Implementation default**: mirror the resend-cli `install.sh` shape — `main() { ... }` wrapper for partial-download protection, `set -euo pipefail`, colored output gated on `[[ -t 1 ]]`, install-dir defaults to `~/.usezombie` with `USEZOMBIE_INSTALL` env override, version pin via `bash -s vX.Y.Z`. Host detection inspects `$PATH` for `claude`, `amp`, `codex`, `opencode` binaries in that order; falls back to `generic` if none found. Install path: prefer `npm install -g @usezombie/zombiectl` when node is on `$PATH`; fall back to downloading the `zombiectl-{platform}-{arch}` tarball from GitHub Releases and unpacking to `${USEZOMBIE_INSTALL}/bin/`. After zombiectl install, run `npx skills add usezombie/usezombie --host=<detected>` if node is available, else print the manual `git clone` fallback. Print a "next command" hint that depends on detected host (e.g., `/usezombie-install-platform-ops` for Claude Code).
+Bash script that bootstraps `zombiectl` + the platform-ops skill on Linux + macOS. **Implementation default**: mirror the resend-cli `install.sh` shape — `main() { ... }` wrapper for partial-download protection, `set -euo pipefail`, colored output gated on `[[ -t 1 ]]`, install-dir defaults to `~/.usezombie` with `USEZOMBIE_INSTALL` env override, version pin via `bash -s vX.Y.Z`. Host detection inspects `$PATH` for `claude`, `amp`, `codex`, `opencode` binaries in that order, honouring a `USEZOMBIE_HOST` override; falls back to `generic` if none found. **Install mechanism — npm-only (amended May 21, 2026).** `zombiectl` is an npm-distributed Node CLI (`bin: ./dist/bin/zombiectl.js`); there is no standalone binary and no `zombiectl-{platform}-{arch}` release tarball (GitHub Releases ship the compiled `zombied-*` daemon, not the CLI). The CLI and `npx skills add` both require Node, so **Node is a hard prerequisite**: the script runs `npm install -g --prefix "${USEZOMBIE_INSTALL}" @usezombie/zombiectl[@version]`, adds `${USEZOMBIE_INSTALL}/bin` to PATH, then runs `npx skills add usezombie/usezombie --host=<detected>`. If `node`/`npm` is absent the script exits 5 with an actionable "install Node.js ≥18 from nodejs.org" message — there is no tarball fallback (it could not run a `.js` CLI anyway). Print a "next command" hint that depends on detected host (`/usezombie-install-platform-ops` for Claude Code and the other slash-command hosts).
 
-### §2 — Windows installer (`install.ps1`)
+### §2 — Windows installer (`install.ps1`) — DEFERRED
 
-PowerShell mirror of §1. **Implementation default**: mirror resend-cli's `install.ps1` shape — `Set-StrictMode -Version Latest`, `$ErrorActionPreference = 'Stop'`, `Invoke-WebRequest` for downloads, `$env:USEZOMBIE_INSTALL` for install-dir override (default `$HOME\.usezombie`), version pin via `$env:USEZOMBIE_VERSION`. Host detection inspects `$env:PATH` for the same four host binaries plus `claude.exe` variants. Install path: same npm-first / tarball-fallback pattern, with `.zip` instead of `.tar.gz`. Skill install: same `npx skills add` call, with the PowerShell equivalent fallback (`git clone` + manual symlink) for nodeless Windows hosts.
+Out of M75 scope per Scope-amendment 3. The PowerShell installer (`install.ps1` + `install_test.ps1`, the PS-floor exit-6 path, and the Windows test rows) ships in a separate follow-up spec. POSIX-only this PR.
 
-### §3 — DNS + static host wiring
+### §3 — Deployable site + git-connected deploy + provisioning playbook
 
-`usezombie.sh` resolves over IPv4 + IPv6, serves valid TLS, returns `install.sh` content at `/` (so `curl -fsSL usezombie.sh | bash` works without naming the path) and `/install.sh` (for `wget`-style two-step users), and `install.ps1` content at `/install.ps1` (for the PowerShell one-liner). **Implementation default**: Cloudflare Pages serving a static `_redirects` or `_headers`-driven router off a small build that copies `infra/install/install.{sh,ps1}` into the deploy. Set cache TTLs short (5 min) so a script bump is live globally fast. The provider config lives in the existing infra repo or in `infra/dns/usezombie-sh.tf` — implementer's call.
+The installer is a **static site under `ui/usezombie.sh/`** (Captain decision, May 21, 2026 — no npm-style "build", `dist/` is committed and served as-is):
+
+- `ui/usezombie.sh/dist/install.sh` — the script (single source of truth).
+- `ui/usezombie.sh/dist/_redirects` — `/ → /install.sh 200` so the bare-root `curl … | bash` works.
+- `ui/usezombie.sh/dist/_headers` — shell content-type + 5-min cache.
+- `ui/usezombie.sh/{install_test.sh,README.md}` — not served.
+
+`usezombie.sh` serves the installer at the apex (bare-root) — it does **not** forward to `usezombie.com/agents` (that prior approach is replaced). Browser visitors get the script; the canonical contract is `curl -fsSL https://usezombie.sh | bash`.
+
+Deploy uses a **git-connected Cloudflare Pages project** — the same pattern as `usezombie-website`/`usezombie-app` (verified: there is no `wrangler` config or `pages deploy` workflow anywhere in the repo; Cloudflare's GitHub App builds + deploys those projects). Cloudflare auto-deploys a **preview** on every PR (and comments the URL) and **production** on merge to `main` → `usezombie.sh`. No deploy workflow, no `wrangler`, no Cloudflare credentials in CI. The merge is gated by a new `lint-usezombie-sh` job in `lint.yml` (shellcheck `dist/install.sh` + run `install_test.sh`), so a broken installer never reaches `main` and therefore never auto-deploys.
+
+The one-time Cloudflare provisioning (Pages project, `usezombie.sh` custom domain → apex A/AAAA + TLS, vault item) lives in `playbooks/014_usezombie_sh_deploy/001_playbook.md`. Live provisioning is the deferred post-merge cutover (Scope-amendment 2). The `/install.ps1` route is added by the PowerShell follow-up spec.
 
 ### §4 — Docs sweep (the four broken pages)
 
-Replace every `curl -fsSL https://usezombie.sh/skills.md \` block in `~/Projects/docs/{changelog,quickstart,cli/install,zombies/install}.mdx` with a two-line block:
+Replace every `curl -fsSL https://usezombie.sh/skills.md \` block in `~/Projects/docs/{changelog,quickstart,cli/install,zombies/install}.mdx` with the canonical POSIX one-liner:
 
-- Primary (POSIX): `curl -fsSL https://usezombie.sh | bash`
-- Secondary (Windows PowerShell): `irm https://usezombie.sh/install.ps1 | iex`
+- POSIX (Linux/macOS/WSL): `curl -fsSL https://usezombie.sh | bash`
 
-The `npx skills add usezombie/usezombie` line stays as the "I already have a node toolchain" parallel option — it's not removed, it's positioned alongside the curl one-liner. Run the existing `~/Projects/docs/` build (`mintlify dev` or equivalent) and verify no MDX parse errors.
+The `npx skills add usezombie/usezombie` line stays as the "I already have a node toolchain" parallel option — it's not removed, it's positioned alongside the curl one-liner. The Windows PowerShell one-liner (`irm https://usezombie.sh/install.ps1 | iex`) is added by the PowerShell follow-up spec (Scope-amendment 3), not here. Run the existing `~/Projects/docs/` build (`mintlify dev` or equivalent) and verify no MDX parse errors.
 
 ### §5 — `marketing-spec.test.ts` banned-string flip
 
-Two changes: (1) remove `usezombie.sh/install.sh` (and `usezombie.sh/install`) from the banned-strings array — the M51 ban was based on a now-superseded plan. (2) Add a positive test row asserting that at least one user-facing doc page contains the new canonical one-liner. The positive test grep's against `~/Projects/docs/**/*.mdx` (or whatever path the website's test harness can reach — implementer reads the existing test for the pattern). RULE NDC: no comment carries the M51 framing forward; the entry is removed cleanly.
+Two test files share the obsolete ban; the M51 ban is removed cleanly (RULE NDC — no comment carries M51 framing forward):
+
+1. `marketing-no-pr-validator-framing.test.ts` — drop `"usezombie.sh/install.sh"` from the `FORBIDDEN_STRINGS` array.
+2. `marketing-spec.test.ts` — drop the dedicated negative `it("zero hits on the dead usezombie.sh/install.sh path")` block; keep the existing positive `it` asserting `npm install -g @usezombie/zombiectl` appears in the marketing `src/` (that *is* the website's documented install — the marketing site installs via npm through `<InstallBlock>`, not the curl one-liner).
+
+**Reality note:** these tests run via Vite `import.meta.glob` over the **website package `src/` only** — they cannot reach `~/Projects/docs`. So the docs-site grep (zero `skills.md`, canonical one-liner present) is verified by the Eval Commands (E4/E5) in the docs repo, not the website test. The original spec's claim that `marketing-spec.test.ts` greps the docs repo was infeasible and is corrected here.
 
 ### §6 — `InstallBlock.tsx` fixture verify
 
@@ -161,22 +195,20 @@ The design-system test fixture at `ui/packages/design-system/src/design-system/I
 ## Interfaces
 
 ```
-# Public CLI contract — invariant across script versions
+# Public CLI contract — invariant across script versions (POSIX; PowerShell follow-up)
 curl -fsSL https://usezombie.sh | bash
 curl -fsSL https://usezombie.sh | bash -s v0.X.Y          # version-pinned
+curl -fsSL https://usezombie.sh | bash -s -- --force       # reinstall, no prompt
 USEZOMBIE_INSTALL=/opt/uz curl ... | bash                  # custom install dir
+USEZOMBIE_HOST=claude curl ... | bash                      # force agent host
 
-irm https://usezombie.sh/install.ps1 | iex
-$env:USEZOMBIE_VERSION = 'v0.X.Y'; irm ... | iex           # version-pinned
-$env:USEZOMBIE_INSTALL = 'C:\opt\uz'; irm ... | iex        # custom install dir
-
-# Exit codes (both scripts)
-0  - install succeeded; zombiectl on PATH; skill installed (if node available)
-1  - network unreachable / DNS failure
-2  - GitHub release fetch failed (tarball download)
-3  - install-dir not writable
+# Exit codes (install.sh)
+0  - install succeeded; zombiectl on PATH; skill installed
+1  - network unreachable / DNS failure (npm registry unreachable)
+2  - zombiectl npm install failed (non-network registry / install error)
+3  - install prefix not writable (USEZOMBIE_INSTALL)
 4  - host detection ambiguous (multiple host binaries found, no override given)
-5  - node toolchain missing AND tarball fallback failed
+5  - Node toolchain missing (node/npm not on PATH) — install Node.js >=18
 ```
 
 No new HTTP/REST surface on the usezombie service. No OpenAPI changes. No new CLI subcommands on `zombiectl` itself (the installers are pre-zombiectl bootstrap).
@@ -188,23 +220,23 @@ No new HTTP/REST surface on the usezombie service. No OpenAPI changes. No new CL
 | Mode | Cause | Handling |
 |------|-------|----------|
 | DNS NXDOMAIN on `usezombie.sh` | Domain not provisioned / DNS lag during cutover | Pre-launch: docs continue to show the npm + git-clone paths as parallel options, not standalone fallbacks. Launch: `make verify-dns` ping (§Eval Commands) blocks the PR from merging until DNS is global. |
-| TLS cert validation failure | Cert misissued / not auto-renewing | Cloudflare Pages auto-issues + auto-renews; if a custom provider, surface in `infra/install/README.md` with the rotation SLA. Script aborts with exit 1 + actionable error. |
-| `npm` missing AND tarball fetch fails | Air-gapped or restricted-network host | Exit 5 with a printed manual install URL pointing at the GitHub Releases page. Don't silently succeed. |
+| TLS cert validation failure | Cert misissued / not auto-renewing | Cloudflare Pages auto-issues + auto-renews; if a custom provider, surface in `ui/usezombie.sh/README.md` with the rotation SLA. Script aborts with exit 1 + actionable error. |
+| `node`/`npm` toolchain missing | Host has no Node runtime | Exit 5 with an actionable "install Node.js ≥18 from nodejs.org" message. zombiectl is a Node CLI — no tarball fallback can run it, so the script does not pretend one exists. Don't silently succeed. |
+| `npm install` fails (non-network) | Registry 4xx, permission, corrupt cache | Exit 2 with the captured npm error tail. Network/DNS errors in npm's output (`ENOTFOUND`/`ECONNREFUSED`/`getaddrinfo`) are reclassified to exit 1. |
 | Host detection ambiguous (multiple hosts on `$PATH`) | User has Claude Code + Amp + Codex installed | Exit 4 with prompt to set `USEZOMBIE_HOST=<one>` and re-run. Don't pick arbitrarily — the install destination differs per host. |
 | Partial download (connection drops mid-curl) | Network blip during the curl-pipe-bash | `main() { ... }` wrapper means bash refuses to execute a truncated script; user sees a no-op exit, not a half-installed system. |
 | User runs as root needlessly | Habit from other installers | Script detects `$EUID == 0` and warns (not aborts) — root is fine for `/opt/uz`, but not required for `~/.usezombie`. Print the warning, continue. |
-| Re-install over existing install | Idempotent re-run | Each run is idempotent: detects existing `${USEZOMBIE_INSTALL}/bin/zombiectl`, prompts to upgrade or skip. `-s --force` flag bypasses the prompt. |
-| Windows PowerShell version too old | PowerShell 5.0 / Windows 7 | Detect `$PSVersionTable.PSVersion.Major < 5`; print upgrade link + exit. PowerShell 5.1+ is the floor. |
+| Re-install over existing install | Idempotent re-run | Each run is idempotent: detects an existing `zombiectl` (`${USEZOMBIE_INSTALL}/bin/zombiectl` or on PATH) and prints an "existing install detected — upgrading" line before re-running `npm install -g` (which upgrades to the target version). Interactive shells (`/dev/tty`) prompt upgrade/skip; piped `curl … \| bash` (no TTY) defaults to upgrade. `-s -- --force` reinstalls without prompting. |
 
 ---
 
 ## Invariants
 
 1. **`usezombie.sh` resolves over IPv4 AND IPv6.** Enforced by §Eval Commands `make verify-dns` running `dig +short A usezombie.sh` + `dig +short AAAA usezombie.sh` and asserting both return non-empty.
-2. **Both `install.sh` and `install.ps1` exit non-zero on every documented failure mode.** Enforced by `install_test.sh` + `install_test.ps1` — one test per row in the Failure Modes table.
-3. **The four docs/* MDX files contain zero references to `usezombie.sh/skills.md`** after §4. Enforced by a grep assertion in `marketing-spec.test.ts` (positive test added in §5).
-4. **`usezombie.sh/install.sh` is no longer on the banned-strings list.** Enforced by the §5 test edit itself — if a future agent re-bans the string, the marketing-spec test fails because the positive assertion stops finding the canonical one-liner.
-5. **`install.sh` passes `shellcheck -s bash` with zero warnings.** Enforced as a CI step (added in §3 or §1 — implementer's choice).
+2. **`install.sh` exits non-zero on every documented failure mode.** Enforced by `install_test.sh` — one test per failure row (node-missing, npm-failed, network, ambiguous-host, install-dir, partial-download).
+3. **The four `~/Projects/docs/*` MDX files contain zero references to `usezombie.sh/skills.md`** after §4. Enforced by the Eval Commands grep (E4) in the docs repo — the website test harness can't reach `~/Projects/docs`, so this is a docs-repo / VERIFY check, not a website unit test.
+4. **`usezombie.sh/install.sh` is no longer on the banned-strings list** in either marketing test. Enforced by the §5 edits themselves (the ban is deleted, not shimmed).
+5. **`install.sh` (and `install_test.sh`) pass `shellcheck -s bash` with zero warnings.** Verified at VERIFY; the `install_test.sh` `shellcheck_clean` test re-checks `install.sh` in-suite.
 
 ---
 
@@ -213,19 +245,24 @@ No new HTTP/REST surface on the usezombie service. No OpenAPI changes. No new CL
 | Test | Asserts |
 |------|---------|
 | `test_install_sh_happy_path_posix` | Fake `npm` + `npx` on `$PATH`, run `install.sh`; argv passed to `npm install -g @usezombie/zombiectl` is exact; argv to `npx skills add` includes `--host=<detected>`; exit code 0; next-command hint printed. |
-| `test_install_sh_tarball_fallback` | `npm` absent on `$PATH`, fake `curl` returning a known tarball; assert extraction to `${USEZOMBIE_INSTALL}/bin/`; exit code 0. |
+| `test_install_sh_node_missing` | `node`/`npm` absent on `$PATH`; assert exit code 5 + the "install Node.js ≥18 from nodejs.org" message. |
 | `test_install_sh_host_detection_claude` | Fake `claude` on `$PATH`; assert detection picks `claude` and `npx skills add --host=claude` is invoked. |
 | `test_install_sh_host_detection_ambiguous` | Fake `claude` + `amp` both on `$PATH`, no `USEZOMBIE_HOST` env; assert exit code 4 + diagnostic prompt. |
-| `test_install_sh_network_failure` | Fake `curl` returning exit 6 (DNS); assert exit code 1 + actionable error. |
+| `test_install_sh_host_override` | Fake `claude` + `amp` on `$PATH` with `USEZOMBIE_HOST=codex`; assert override wins (`--host=codex`), exit 0. |
+| `test_install_sh_network_failure` | Fake `npm` emitting `ENOTFOUND`/`getaddrinfo` on stderr and exiting non-zero; assert exit code 1 + actionable error. |
+| `test_install_sh_npm_install_failed` | Fake `npm` exiting non-zero with a non-network error; assert exit code 2 + npm error tail printed. |
 | `test_install_sh_install_dir_not_writable` | `USEZOMBIE_INSTALL=/proc/forbidden`; assert exit code 3. |
-| `test_install_sh_version_pin` | `bash -s v0.42.0`; assert the tarball URL contains `v0.42.0`. |
+| `test_install_sh_version_pin` | `bash -s v0.42.0`; assert the `npm install -g` argv targets `@usezombie/zombiectl@0.42.0`. |
 | `test_install_sh_partial_download_safety` | Pipe a truncated `install.sh` to bash; assert bash refuses to execute (no `main` call). |
-| `test_install_sh_reinstall_idempotent` | Run twice; assert second run detects existing install and prompts (or skips with `--force`). |
+| `test_install_sh_reinstall_idempotent` | Pre-place a fake `zombiectl` on `$PATH`, run twice; assert each run prints "existing install detected" and exits 0 (upgrade path). |
+| `test_install_sh_invalid_version_rejected` | `bash -s vNOPE`; assert exit 2 + "invalid version", npm not called. |
+| `test_install_sh_unknown_flag_rejected` | `bash -s -- --bogus`; assert exit 2 + "unknown flag". |
+| `test_install_sh_npm_missing_node_present` | `node` present, `npm` absent; assert exit 5 (covers the npm half of the Node check). |
+| `test_install_sh_generic_host_no_flag` | No host binary on `$PATH`; assert host=`generic`, `npx skills add` invoked **without** `--host`, generic hint printed, exit 0. |
+| `test_install_sh_skill_add_failure_nonfatal` | Fake `npx` exits non-zero; assert install still exits 0 with a "skill install did not complete" warning + manual command (skill failure is non-fatal). |
 | `test_install_sh_shellcheck_clean` | `shellcheck -s bash install.sh` exit 0, zero warnings. |
-| `test_install_ps1_happy_path_windows` | Mirror of `_happy_path_posix` on Windows. |
-| `test_install_ps1_old_powershell_rejected` | Fake `$PSVersionTable.PSVersion.Major = 4`; assert exit + upgrade link. |
-| `test_dns_resolves_a_and_aaaa` | `dig +short A usezombie.sh` and `dig +short AAAA usezombie.sh` both return non-empty. |
-| `test_tls_cert_valid` | `curl -fsSL https://usezombie.sh -o /dev/null` exit 0, no `--insecure` needed. |
+| `test_dns_resolves_a_and_aaaa` *(deferred — live cutover)* | `dig +short A usezombie.sh` and `dig +short AAAA usezombie.sh` both return non-empty. |
+| `test_tls_cert_valid` *(deferred — live cutover)* | `curl -fsSL https://usezombie.sh -o /dev/null` exit 0, no `--insecure` needed. |
 | `test_marketing_spec_no_skills_md_references` | `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/` returns 0 hits. |
 | `test_marketing_spec_canonical_one_liner_documented` | `grep -rn 'curl -fsSL https://usezombie.sh \\| bash' ~/Projects/docs/` returns ≥ 1 hit. |
 | `test_install_block_fixture_matches_canonical` | The `InstallBlock.test.tsx` fixture command matches the docs' canonical one-liner verbatim. |
@@ -234,39 +271,35 @@ No new HTTP/REST surface on the usezombie service. No OpenAPI changes. No new CL
 
 ## Acceptance Criteria
 
-- [ ] `usezombie.sh` resolves over A + AAAA — verify: `dig +short A usezombie.sh && dig +short AAAA usezombie.sh`
-- [ ] TLS valid — verify: `curl -fsSL https://usezombie.sh -o /dev/null -w "%{http_code}\n"` prints `200`
-- [ ] `install.sh` happy-path runs — verify: in a clean container, `curl -fsSL https://usezombie.sh | bash && zombiectl --version`
-- [ ] `install.ps1` happy-path runs — verify: in a Windows VM / GitHub Actions Windows runner, `irm https://usezombie.sh/install.ps1 | iex; zombiectl --version`
-- [ ] Shellcheck clean — verify: `shellcheck -s bash infra/install/install.sh`
-- [ ] `install_test.sh` passes — verify: `bash infra/install/install_test.sh` exit 0
-- [ ] `install_test.ps1` passes — verify: `pwsh infra/install/install_test.ps1` exit 0
-- [ ] No `usezombie.sh/skills.md` references remain — verify: `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ | wc -l` == 0
-- [ ] Canonical one-liner documented — verify: `grep -rn 'curl -fsSL https://usezombie.sh | bash' ~/Projects/docs/ | wc -l` ≥ 1
-- [ ] `(cd ui/packages/website && bun run test)` — marketing-spec tests pass (positive + negative assertions)
-- [ ] `make harness-verify` 8/8 green
-- [ ] `gitleaks detect` clean
-- [ ] No new file over 350 lines
-- [ ] No `as any` / `!` / `@ts-expect-error` introduced
+- [ ] **(deferred — live cutover)** `usezombie.sh` resolves over A + AAAA — verify: `dig +short A usezombie.sh && dig +short AAAA usezombie.sh`
+- [ ] **(deferred — live cutover)** TLS valid — verify: `curl -fsSL https://usezombie.sh -o /dev/null -w "%{http_code}\n"` prints `200`
+- [ ] **(deferred — live cutover)** `install.sh` happy-path runs — verify: in a clean container, `curl -fsSL https://usezombie.sh | bash && zombiectl --version`
+- [x] Shellcheck clean — `shellcheck -s bash ui/usezombie.sh/dist/install.sh ui/usezombie.sh/install_test.sh` → clean
+- [x] `install_test.sh` passes — `bash ui/usezombie.sh/install_test.sh` → 42 passed, 0 failed
+- [ ] *(docs-repo PR)* No `usezombie.sh/skills.md` references remain — `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ | wc -l` == 0
+- [ ] *(docs-repo PR)* Canonical one-liner documented — `grep -rn 'curl -fsSL https://usezombie.sh | bash' ~/Projects/docs/ | wc -l` ≥ 1
+- [x] marketing-spec tests pass — `make test-unit-website` → 148 passed; `InstallBlock.test.tsx` → 10 passed
+- [x] `make harness-verify` — ALL GATES GREEN
+- [x] `gitleaks detect` — no leaks found
+- [x] No new file over 350 lines — `install.sh` 244, `install_test.sh` 250
+- [x] No `as any` / `!` / `@ts-expect-error` introduced — `make lint-website` + `make lint-apps-ds-ctl` pass
 
 ---
 
 ## Eval Commands (Post-Implementation Verification)
 
 ```bash
-# E1: DNS + TLS sanity (run from any clean shell — no repo deps)
+# E1: DNS + TLS sanity (DEFERRED — live cutover; run from any clean shell)
 dig +short A usezombie.sh
 dig +short AAAA usezombie.sh
 curl -fsSL https://usezombie.sh -o /tmp/install.sh && echo PASS || echo FAIL
-curl -fsSL https://usezombie.sh/install.ps1 -o /tmp/install.ps1 && echo PASS || echo FAIL
 
 # E2: Shellcheck
-shellcheck -s bash infra/install/install.sh 2>&1 | tee /tmp/shellcheck.log
+shellcheck -s bash ui/usezombie.sh/dist/install.sh 2>&1 | tee /tmp/shellcheck.log
 test -s /tmp/shellcheck.log && echo FAIL || echo PASS
 
-# E3: Local script tests
-bash infra/install/install_test.sh && echo PASS || echo FAIL
-pwsh infra/install/install_test.ps1 && echo PASS || echo FAIL
+# E3: Local script test
+bash ui/usezombie.sh/install_test.sh && echo PASS || echo FAIL
 
 # E4: Docs grep — zero usezombie.sh/skills.md references
 test "$(grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ 2>/dev/null | wc -l)" = "0" && echo PASS || echo FAIL
@@ -277,11 +310,8 @@ test "$(grep -rn 'curl -fsSL https://usezombie.sh | bash' ~/Projects/docs/ 2>/de
 # E6: Marketing-spec test
 (cd ui/packages/website && bun run test src/marketing-spec.test.ts) && echo PASS || echo FAIL
 
-# E7: Containerized end-to-end (POSIX)
+# E7: Containerized end-to-end (POSIX) — DEFERRED until live cutover
 docker run --rm ubuntu:24.04 bash -c "apt-get update && apt-get install -y curl nodejs npm && curl -fsSL https://usezombie.sh | bash && zombiectl --version" && echo PASS || echo FAIL
-
-# E8: Containerized end-to-end (Windows) — runs in CI on windows-latest only
-# pwsh -c "iwr https://usezombie.sh/install.ps1 | iex; zombiectl --version"
 
 # E9: Gitleaks
 gitleaks detect 2>&1 | tail -3
@@ -310,7 +340,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 | When | Skill | What it does |
 |------|-------|--------------|
-| After implementation, before CHORE(close) | `/write-unit-test` | Audits `install_test.sh` + `install_test.ps1` coverage against the 17 rows in this spec's Test Specification. Catches missing negative paths (e.g., partial-download safety, ambiguous-host case). |
+| After implementation, before CHORE(close) | `/write-unit-test` | Audits `install_test.sh` coverage against the in-scope rows in this spec's Test Specification. Catches missing negative paths (e.g., partial-download safety, ambiguous-host case). |
 | After tests pass, still before CHORE(close) | `/review` | Adversarial diff review against this spec + `docs/architecture/user_flow.md` §8 + the resend-cli reference. Particular targets: TOCTOU between version check and download, race between two concurrent installs on the same machine, install-dir write atomicity, shell-injection surface in `USEZOMBIE_INSTALL` env var. |
 | After `gh pr create` | `/review-pr` | Post-merge-diff review on the open PR. The DNS + TLS lanes will require live verification — record the verification run in PR Session Notes. |
 
@@ -320,18 +350,17 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| DNS A/AAAA | `dig +short A usezombie.sh; dig +short AAAA usezombie.sh` | {filled at VERIFY} | |
-| TLS | `curl -fsSL https://usezombie.sh -w "%{http_code}\n"` | {filled at VERIFY} | |
-| Shellcheck | `shellcheck -s bash infra/install/install.sh` | {filled at VERIFY} | |
-| install.sh tests | `bash infra/install/install_test.sh` | {filled at VERIFY} | |
-| install.ps1 tests | `pwsh infra/install/install_test.ps1` | {filled at VERIFY} | |
-| Docs sweep (negative) | `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ \| wc -l` | {filled at VERIFY} | |
-| Docs sweep (positive) | `grep -rn 'curl -fsSL https://usezombie.sh \| bash' ~/Projects/docs/ \| wc -l` | {filled at VERIFY} | |
-| Marketing spec | `(cd ui/packages/website && bun run test src/marketing-spec.test.ts)` | {filled at VERIFY} | |
-| Harness | `make harness-verify` | {filled at VERIFY} | |
-| Gitleaks | `gitleaks detect` | {filled at VERIFY} | |
-| Containerized E2E (POSIX) | E7 in Eval Commands | {filled at VERIFY} | |
-| Containerized E2E (Windows) | E8 in Eval Commands | {filled at VERIFY} | |
+| Shellcheck | `shellcheck -s bash ui/usezombie.sh/dist/install.sh ui/usezombie.sh/install_test.sh` | clean | ✅ |
+| install.sh tests | `bash ui/usezombie.sh/install_test.sh` | 42 passed, 0 failed | ✅ |
+| Docs sweep (negative) *(docs-repo PR)* | `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ \| wc -l` | {docs PR} | |
+| Docs sweep (positive) *(docs-repo PR)* | `grep -rn 'curl -fsSL https://usezombie.sh \| bash' ~/Projects/docs/ \| wc -l` | {docs PR} | |
+| Marketing + InstallBlock | `make test-unit-website`; `InstallBlock.test.tsx` | 148 passed; 10 passed | ✅ |
+| Lint | `make lint-website` + `make lint-apps-ds-ctl` | passed | ✅ |
+| Harness | `make harness-verify` | ALL GATES GREEN | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found | ✅ |
+| DNS A/AAAA *(deferred — live cutover)* | `dig +short A usezombie.sh; dig +short AAAA usezombie.sh` | {cutover} | |
+| TLS *(deferred — live cutover)* | `curl -fsSL https://usezombie.sh -w "%{http_code}\n"` | {cutover} | |
+| Containerized E2E POSIX *(deferred — live cutover)* | E7 in Eval Commands | {cutover} | |
 
 ---
 
@@ -345,6 +374,8 @@ The M51/M72 plan (a single domain serving per-skill `*.md` files for `curl ... >
 
 ## Out of Scope
 
+- **Windows PowerShell installer** (`install.ps1`, `install_test.ps1`, the `/install.ps1` route, the PowerShell one-liner in docs, the PS-floor exit-6 path) — deferred to a follow-up spec per Scope-amendment 3 (Indy decision, May 21, 2026). WSL users use the POSIX one-liner verbatim until then.
+- **Live DNS/TLS provisioning + the live-only acceptance criteria** (DNS A/AAAA, TLS, containerized E2E) — deferred to a post-merge Cloudflare cutover per Scope-amendment 2.
 - **Authenticated install paths** (private skills, tenant-scoped distribution) — separate workstream when private skills land.
 - **Windows installer for non-PowerShell shells** (cmd.exe, WSL bash) — WSL users use the POSIX one-liner verbatim; cmd.exe users use PowerShell. No third path.
 - **Skill-by-name fetching at `usezombie.sh/skills/<name>.md`** — superseded by the one-URL plan. If a future spec wants per-skill curl-able URLs, it adds a sibling subpath; this spec doesn't reserve one.

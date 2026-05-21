@@ -16,7 +16,7 @@ For the full end-to-end install + first-trigger walkthroughs (platform-managed a
 
 ## §8.0 The wedge surface: `/usezombie-install-platform-ops` skill
 
-The MVP's user-facing wedge is not raw `zombiectl install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path), or fetch it from `https://usezombie.sh/skills.md`. No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
+The MVP's user-facing wedge is not raw `zombiectl install`. It is a host-neutral SKILL.md invoked as **`/usezombie-install-platform-ops`** — the same slash-command in every host (Claude Code, Amp, Codex CLI, OpenCode). One install procedure: drop the SKILL.md directory into the host's skills folder (`~/.claude/skills/usezombie-install-platform-ops/` or the host-equivalent path), or run the one-liner `curl -fsSL https://usezombie.sh | bash`, which installs `zombiectl` and adds the skill into the host path in one step (§8.2.1). No plugin manifest, no per-host packaging fork. The brand is in the slash-command itself; future skills follow the same pattern (`/usezombie-steer`, `/usezombie-doctor`).
 
 The skill is the install UX; `zombiectl install --from <path>` is the substrate it drives.
 
@@ -66,6 +66,14 @@ Once the files are ready, the user installs the zombie into the workspace.
 
 ### §8.2.1 Cold-machine bootstrap (run once per machine)
 
+The canonical entry is the one-liner served from `https://usezombie.sh` — it wraps the first two steps below (install `zombiectl`, add the skill):
+
+```bash
+curl -fsSL https://usezombie.sh | bash   # installs zombiectl, then npx skills add usezombie/usezombie
+```
+
+Or run the chain explicitly (skip any step already in place):
+
 ```bash
 npm install -g @usezombie/zombiectl     # CLI binary + bundled samples/skills postinstall
 npx skills add usezombie/usezombie      # symlinks /usezombie-* into host skill paths
@@ -73,7 +81,7 @@ zombiectl auth login                     # Clerk OAuth → token in ~/.config/us
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
 ```
 
-The install-skill's first action (§8.2.2 step 1) is a `which zombiectl && which gh && zombiectl doctor --json` precondition check; on any miss it prints the exact one-liner above and stops. The four commands are deliberately separate so a user with most of the chain already in place skips what they already have.
+The install-skill's first action (§8.2.2 step 1) is a `which zombiectl && which gh && zombiectl doctor --json` precondition check; on any miss it prints the explicit four-command block above and stops. The commands are deliberately separate so a user with most of the chain already in place skips what they already have.
 
 ### §8.2.2 Per-zombie install flow
 
