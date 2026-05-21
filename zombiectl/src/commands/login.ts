@@ -223,7 +223,7 @@ const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
 
   // Pre-flight (D20 + D26b). idempotencyCheck refuses to overwrite an
   // existing credential without --force or a Y/yes prompt; envTokenAwareness
-  // surfaces the precedence gotcha when ZMB_TOKEN/ZOMBIE_TOKEN is set.
+  // surfaces the precedence gotcha when ZOMBIE_TOKEN is set.
   // Both honor --no-input by aborting with NoInputAbort instead of prompting.
   const preflightGuards = { force: flags.force, noInput: flags.noInput };
   yield* idempotencyCheck(preflightGuards);

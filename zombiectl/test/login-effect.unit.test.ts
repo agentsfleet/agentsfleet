@@ -3,7 +3,7 @@
 // trip). This file pins the non-prompting branches that 5.C.1 wired:
 //
 //   - D20 idempotency  — existing creds + --no-input + no --force aborts
-//   - D26b env-token   — ZMB_TOKEN set + --no-input + no --force aborts
+//   - D26b env-token   — ZOMBIE_TOKEN set + --no-input + no --force aborts
 //   - verify --no-input — verification prompt is skipped → InterruptedError
 //   - transport remap  — ServerError/NetworkError on POST /sessions become
 //                        AuthError so every login failure exits 1
@@ -250,18 +250,18 @@ describe("loginEffect — pre-flight aborts", () => {
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
   });
 
-  test("D26b: ZMB_TOKEN set + --no-input + no --force aborts as InterruptedError", async () => {
+  test("D26b: ZOMBIE_TOKEN set + --no-input + no --force aborts as InterruptedError", async () => {
     const rec = makeRec();
-    const prev = process.env["ZMB_TOKEN"];
-    process.env["ZMB_TOKEN"] = "env-tok";
+    const prev = process.env["ZOMBIE_TOKEN"];
+    process.env["ZOMBIE_TOKEN"] = "env-tok";
     try {
       const exit = await Effect.runPromiseExit(
         provideAll(rec, noNetworkHttp)(loginEffect({ ...DEFAULT_FLAGS, force: false })),
       );
       expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
     } finally {
-      if (prev === undefined) delete process.env["ZMB_TOKEN"];
-      else process.env["ZMB_TOKEN"] = prev;
+      if (prev === undefined) delete process.env["ZOMBIE_TOKEN"];
+      else process.env["ZOMBIE_TOKEN"] = prev;
     }
   });
 

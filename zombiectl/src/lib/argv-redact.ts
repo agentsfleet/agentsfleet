@@ -3,8 +3,8 @@
 // process.env, no environment introspection — so it's trivially testable
 // and safe to call before any logging/output service is wired.
 //
-// The CLI's token-resolution chain is creds.json → ZMB_TOKEN → ZOMBIE_TOKEN
-// (D26). `--token` is NOT in that chain — it isn't accepted as a global
+// The CLI's token-resolution chain is creds.json → ZOMBIE_TOKEN. `--token`
+// is NOT in that chain today — it isn't accepted as a global
 // flag and is not parsed by commander. Operators sometimes pass it
 // expecting it'll work, and bash history captures the secret verbatim
 // either way. We surface the warning so the next attempt routes through
@@ -20,7 +20,7 @@
 //     flag) is harmless — there's nothing for the shell to capture.
 
 export const TOKEN_LEAK_WARNING =
-  "warning: --token leaks into shell history and process lists; prefer ZMB_TOKEN/ZOMBIE_TOKEN.";
+  "warning: --token leaks into shell history and process lists; prefer ZOMBIE_TOKEN.";
 
 const TOKEN_FLAG = "--token";
 const TOKEN_EQ_PREFIX = "--token=";
