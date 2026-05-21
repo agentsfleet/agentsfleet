@@ -1,8 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { ChevronRightIcon, ZapIcon, WalletIcon } from "lucide-react";
+import { ChevronRightIcon, ZapIcon, WalletIcon, KeyRoundIcon } from "lucide-react";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   DescriptionList,
   DescriptionTerm,
   DescriptionDetails,
@@ -17,18 +20,34 @@ import { resolveActiveWorkspace } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ notice?: string }>;
+} = {}) {
   const { getToken, userId } = await auth();
   const token = await getToken();
   if (!token) redirect("/sign-in");
 
   const workspace = await resolveActiveWorkspace(token);
+  const { notice } = (await searchParams) ?? {};
 
   return (
     <div className="space-y-8">
       <PageHeader>
         <PageTitle>Settings</PageTitle>
       </PageHeader>
+
+      {notice === "api-keys-operator-only" ? (
+        <Alert variant="warning">
+          <div>
+            <AlertTitle>API keys need operator access</AlertTitle>
+            <AlertDescription>
+              Ask a tenant operator or admin to manage API keys.
+            </AlertDescription>
+          </div>
+        </Alert>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-6 max-w-4xl md:grid-cols-2">
         <Section asChild className="min-w-0">
@@ -65,6 +84,12 @@ export default async function SettingsPage() {
                 icon={<WalletIcon size={16} />}
                 label="Billing"
                 description="Tenant balance, credit-pool charges, invoices."
+              />
+              <SettingsLink
+                href="/settings/api-keys"
+                icon={<KeyRoundIcon size={16} />}
+                label="API keys"
+                description="Mint, list, and revoke tenant API keys (zmb_t_…)."
               />
             </List>
           </section>

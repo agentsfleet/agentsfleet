@@ -1,17 +1,4 @@
-// `zombiectl steer <zombie_id> "<message>"` — batch steer + stream.
-//
-//   1. POST  /messages          → captures `event_id` from the 202.
-//   2. Opens GET /events/stream (SSE) with the bearer.
-//   3. For every frame matching `event_id`, prints `[claw] <chunk>`
-//      / `[tool] ...`; stops on `event_complete`.
-//   4. If SSE drops mid-event, falls back to polling
-//      GET /events?since=<event_id_ms>&limit=1 until the row reaches
-//      a terminal status (60 s timeout).
-//
-// Interactive REPL (no message) lands in a follow-up. Batch mode is
-// the primary integration with chat-style UIs and operator scripts.
-
-import { Effect, Redacted } from "effect";
+import { Effect, Exit, Layer, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -29,10 +16,21 @@ import { ui } from "../output/index.ts";
 import { authHeaders } from "../lib/http.ts";
 import {
   ConfigError,
+  InterruptedError,
   ServerError,
+  UnexpectedError,
   ValidationError,
   type CliError,
 } from "../errors/index.ts";
+import {
+  readPipedMessage,
+  runSteerRepl,
+  shouldEnterSteerRepl,
+  type ReplInputStream,
+  type ReplOutputStream,
+  type ReplSignalSource,
+} from "../lib/repl.ts";
+import { exitToCliError, renderCliError } from "../lib/cli-error-render.ts";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
@@ -43,24 +41,25 @@ type SteerOutcome =
   | { readonly kind: "timeout" }
   | { readonly kind: "sse_disconnected" }
   | { readonly kind: "sse_error"; readonly detail: string };
-
 interface MessagesResponse {
   readonly event_id?: string;
 }
-
 interface EventsResponse {
   readonly items?: ReadonlyArray<EventRow>;
 }
-
 interface EventRow {
   readonly event_id?: string;
   readonly status?: string;
 }
-
 type StreamGetFn = typeof defaultStreamGet;
-
 export interface SteerDeps {
   readonly streamGet?: StreamGetFn;
+  readonly stdin?: ReplInputStream;
+  readonly stdout?: ReplOutputStream;
+  readonly signalSource?: ReplSignalSource;
+}
+export interface SteerOptions {
+  readonly forceTty?: boolean;
 }
 
 const isTerminal = (status: string): boolean =>
@@ -68,10 +67,6 @@ const isTerminal = (status: string): boolean =>
   status === EVENT_STATUS.AGENT_ERROR ||
   status === EVENT_STATUS.GATE_BLOCKED;
 
-// Redis stream IDs are `<ms>-<seq>`. The events endpoint's `since=`
-// accepts RFC 3339 (`YYYY-MM-DDTHH:MM:SSZ`, no fractional seconds).
-// Convert the milliseconds prefix back, rounded to the start of the
-// second the message was XADDed so the row itself is included.
 const eventIdToSince = (eventId: string): string | null => {
   const dash = eventId.indexOf("-");
   if (dash <= 0) return null;
@@ -122,6 +117,7 @@ const tailEventStream = (
   eventId: string,
   token: Redacted.Redacted<string>,
   streamGet: StreamGetFn,
+  signal?: AbortSignal,
 ): Effect.Effect<SteerOutcome, never, CliConfig | Output> =>
   Effect.gen(function* () {
     const config = yield* CliConfig;
@@ -131,9 +127,6 @@ const tailEventStream = (
     const printLine = (line: string): void => {
       Effect.runSync(output.info(line));
     };
-    // Mutated by `event_complete` in the SSE callback below; read after
-    // the stream resolves. Default = disconnected (stream closed before
-    // an event_complete frame).
     let outcome: SteerOutcome = { kind: "sse_disconnected" };
     const cb = makeFrameCallback({ printLine, eventId }, (next) => {
       outcome = next;
@@ -141,17 +134,13 @@ const tailEventStream = (
 
     const work = Effect.tryPromise<void, SteerOutcome>({
       try: async () => {
-        await streamGet(url, headers, cb);
+        await streamGet(url, headers, cb, signal ? { signal } : undefined);
       },
       catch: (err): SteerOutcome => ({
         kind: "sse_error",
         detail: err instanceof Error ? err.message : String(err),
       }),
     });
-    // streamGet runs to completion → success arm returns the mutated
-    // `outcome` (set by event_complete inside the callback, or left as
-    // sse_disconnected). Throw path lands in failure arm with a
-    // pre-shaped SteerOutcome.
     return yield* work.pipe(
       Effect.match({
         onSuccess: (): SteerOutcome => outcome,
@@ -160,17 +149,61 @@ const tailEventStream = (
     );
   });
 
+const steerTurnEffect = (
+  wsId: string,
+  zombieId: string,
+  message: string,
+  token: Redacted.Redacted<string>,
+  streamGet: StreamGetFn,
+  signal?: AbortSignal,
+): Effect.Effect<void, CliError, CliConfig | HttpClient | Output> =>
+  Effect.gen(function* () {
+    const http = yield* HttpClient;
+    const post = yield* http.request<MessagesResponse>({
+      path: wsZombieMessagesPath(wsId, zombieId),
+      method: "POST",
+      body: { message },
+      token,
+    });
+    if (!post.event_id) {
+      return yield* Effect.fail(
+        new ServerError({
+          detail: "messages response missing event_id",
+          suggestion: "retry; report request_id if the issue persists",
+          code: "BAD_RESPONSE",
+          status: 502,
+          requestId: null,
+        }),
+      );
+    }
+
+    let outcome = yield* tailEventStream(wsId, zombieId, post.event_id, token, streamGet, signal);
+    if (outcome.kind !== "complete" && !signal?.aborted) {
+      outcome = yield* pollEventTerminal(wsId, zombieId, post.event_id, token, signal);
+    }
+    if (signal?.aborted) {
+      return yield* Effect.fail(
+        new InterruptedError({
+          detail: "steer interrupted",
+          suggestion: "rerun the command to continue",
+        }),
+      );
+    }
+    yield* renderOutcome(outcome, post.event_id, zombieId);
+  });
+
 const pollEventTerminal = (
   wsId: string,
   zombieId: string,
   eventId: string,
   token: Redacted.Redacted<string>,
+  signal?: AbortSignal,
 ): Effect.Effect<SteerOutcome, never, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const sinceParam = eventIdToSince(eventId);
     const deadline = Date.now() + SSE_FALLBACK_TIMEOUT_MS;
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !signal?.aborted) {
       const path = `${wsZombieEventsPath(wsId, zombieId)}?limit=${FALLBACK_POLL_LIMIT}${sinceParam ? `&since=${encodeURIComponent(sinceParam)}` : ""}`;
       const res = yield* http.request<EventsResponse>({ path, token }).pipe(
         Effect.orElseSucceed((): EventsResponse => ({ items: [] })),
@@ -179,6 +212,7 @@ const pollEventTerminal = (
       if (match && typeof match.status === "string" && isTerminal(match.status)) {
         return { kind: "complete", status: match.status } as SteerOutcome;
       }
+      if (signal?.aborted) break;
       yield* Effect.sleep(`${FALLBACK_POLL_MS} millis`);
     }
     return { kind: "timeout" } as SteerOutcome;
@@ -230,6 +264,7 @@ const renderOutcome = (
 export const steerEffectFromArgs = (
   zombieId: string | undefined,
   message: string | undefined,
+  options: SteerOptions = {},
   deps: SteerDeps = {},
 ): Effect.Effect<
   void,
@@ -238,50 +273,77 @@ export const steerEffectFromArgs = (
 > =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
+    const config = yield* CliConfig;
+    const output = yield* Output;
     const streamGet = deps.streamGet ?? defaultStreamGet;
+    const stdin = deps.stdin ?? (process.stdin as ReplInputStream);
+    const stdout = deps.stdout ?? (process.stdout as ReplOutputStream);
+    const forceTty = options.forceTty === true;
 
     if (!zombieId) {
       return yield* Effect.fail(
-        new ValidationError({
-          detail: "zombie_id is required",
-          suggestion: 'usage: zombiectl steer <zombie_id> "<message>"',
-        }),
-      );
-    }
-    if (!message || message.trim().length === 0) {
-      return yield* Effect.fail(
-        new ValidationError({
-          detail: "interactive steer is not yet implemented",
-          suggestion: 'pass a message: zombiectl steer <zombie_id> "<msg>"',
-        }),
+        new ValidationError({ detail: "zombie_id is required", suggestion: 'usage: zombiectl steer <zombie_id> "<message>"' }),
       );
     }
 
     const wsId = yield* requireWorkspaceId;
     const token = yield* resolveAuthToken;
+    const enterRepl = shouldEnterSteerRepl(stdin, message, forceTty);
+    if (enterRepl) {
+      const turnLayer = Layer.mergeAll(
+        Layer.succeed(CliConfig, config),
+        Layer.succeed(HttpClient, http),
+        Layer.succeed(Output, output),
+      );
+      const exitCode = yield* Effect.tryPromise({
+        try: () =>
+          runSteerRepl({
+            input: stdin,
+            output: stdout,
+            ...(deps.signalSource ? { signalSource: deps.signalSource } : {}),
+            runTurn: async (line, signal) => {
+              const turn = steerTurnEffect(wsId, zombieId, line, token, streamGet, signal);
+              const exit = await Effect.runPromiseExit(turn.pipe(Effect.provide(turnLayer)));
+              if (Exit.isFailure(exit)) throw exitToCliError(exit);
+            },
+            onTurnError: async (cause) => {
+              const err = cause && typeof cause === "object" && "_tag" in cause
+                ? (cause as CliError)
+                : new UnexpectedError({
+                    detail: cause instanceof Error ? cause.message : String(cause),
+                    suggestion: "report this with the command you ran",
+                  });
+              await Effect.runPromise(renderCliError(err).pipe(Effect.provide(turnLayer)));
+            },
+          }),
+        catch: (cause): CliError =>
+          cause && typeof cause === "object" && "_tag" in cause
+            ? (cause as CliError)
+            : new UnexpectedError({
+                detail: cause instanceof Error ? cause.message : String(cause),
+                suggestion: "report this with the command you ran",
+              }),
+      });
+      if (exitCode === 130) {
+        return yield* Effect.fail(
+          new InterruptedError({
+            detail: "steer interrupted",
+            suggestion: "rerun the command to continue",
+          }),
+        );
+      }
+      return;
+    }
 
-    const post = yield* http.request<MessagesResponse>({
-      path: wsZombieMessagesPath(wsId, zombieId),
-      method: "POST",
-      body: { message },
-      token,
-    });
-    if (!post.event_id) {
+    const singleMessage = message ?? (yield* Effect.promise(() => readPipedMessage(stdin)));
+    if (singleMessage.trim().length === 0) {
       return yield* Effect.fail(
-        new ServerError({
-          detail: "messages response missing event_id",
-          suggestion: "retry; report request_id if the issue persists",
-          code: "BAD_RESPONSE",
-          status: 502,
-          requestId: null,
+        new ValidationError({
+          detail: "message is required",
+          suggestion: 'usage: zombiectl steer <zombie_id> "<message>"',
         }),
       );
     }
 
-    let outcome = yield* tailEventStream(wsId, zombieId, post.event_id, token, streamGet);
-    if (outcome.kind !== "complete") {
-      outcome = yield* pollEventTerminal(wsId, zombieId, post.event_id, token);
-    }
-
-    yield* renderOutcome(outcome, post.event_id, zombieId);
+    yield* steerTurnEffect(wsId, zombieId, singleMessage, token, streamGet);
   });

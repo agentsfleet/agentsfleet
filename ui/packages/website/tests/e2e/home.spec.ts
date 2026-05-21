@@ -18,19 +18,15 @@ test.describe("Home page", () => {
   });
 
   test("renders hero CTAs", async ({ page }) => {
-    // Primary CTA is a clipboard-copy button that carries the install
-    // one-liner as its visible label — not a docs anchor.
+    // The install one-liner sits in a copy-row; the primary CTA is a
+    // copy-only button (no docs anchor, no scroll).
+    const command = page.getByTestId("hero-install-command");
+    await expect(command).toContainText("curl -fsSL https://usezombie.sh | bash");
     const install = page.getByTestId("hero-cta-primary");
     await expect(install).toBeVisible();
     await expect(install).toHaveJSProperty("tagName", "BUTTON");
     await expect(install).not.toHaveAttribute("href", /./);
-    await expect(install).toContainText(
-      "npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie",
-    );
-
-    const replay = page.getByTestId("hero-cta-secondary");
-    await expect(replay).toBeVisible();
-    await expect(replay).toHaveAttribute("href", "/agents");
+    await expect(install).toContainText(/copy/i);
 
     // Promo pill between the LIVE eyebrow and the headline links to the
     // inline /pricing anchor and surfaces the rates-pin trial-end string
@@ -43,8 +39,8 @@ test.describe("Home page", () => {
     await expect(page.getByRole("link", { name: /talk to us/i })).toHaveCount(0);
   });
 
-  test("renders hero install transcript Terminal", async ({ page }) => {
-    const term = page.getByLabel(/install platform-ops via claude code/i);
+  test("renders the animated hero install Terminal", async ({ page }) => {
+    const term = page.getByLabel(/install via usezombie\.sh/i);
     await expect(term).toBeVisible();
     await expect(term).toContainText("/usezombie-install-platform-ops");
   });
@@ -58,14 +54,24 @@ test.describe("Home page", () => {
   });
 
   test("renders OnboardingFlow steps", async ({ page }) => {
-    // `OnboardingFlow.tsx` is the home page's four-step pictorial. Anchors at
-    // `#onboarding-flow` for the Hero CTA's smooth-scroll target.
+    // `OnboardingFlow.tsx` is the home page's four-step pictorial, anchored at
+    // `#onboarding-flow`.
     const flow = page.locator('[aria-label="Onboarding flow"]');
     await expect(flow).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Install the CLI" })).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Run the install skill" })).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Wire your trigger" })).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Steer your zombie" })).toBeVisible();
+
+    // Regression: the four cards used to be a single non-wrapping row that ran
+    // the fourth card ("Steer your zombie") off the right edge. Pin the desktop
+    // breakpoint (>=1024px) the bug lived at so this guard stays meaningful
+    // regardless of the Playwright project's device viewport.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const overflowsX = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(overflowsX).toBe(false);
   });
 
   test("renders how it works steps", async ({ page }) => {
@@ -75,15 +81,12 @@ test.describe("Home page", () => {
     await expect(how.getByRole("heading", { name: "Diagnosis posts; the run is auditable", exact: true })).toBeVisible();
   });
 
-  test("renders final install block actions", async ({ page }) => {
+  test("does not render a duplicate install block below pricing", async ({ page }) => {
+    // The standalone InstallBlock was removed — the OnboardingFlow steps at the
+    // top of the page already cover install + the slash command.
     await expect(
-      page.getByRole("heading", { level: 2, name: "Install zombiectl, then run /usezombie-install-platform-ops" }),
-    ).toBeVisible();
-    await expect(page.getByRole("link", { name: /read the docs/i })).toBeVisible();
-    await expect(page.getByRole("link", { name: /start an agent/i })).toHaveAttribute(
-      "href",
-      /docs\.usezombie\.com\/quickstart/,
-    );
+      page.getByRole("heading", { level: 2, name: /install zombiectl, then run/i }),
+    ).toHaveCount(0);
   });
 
   test("topbar Pricing link scrolls to inline pricing section", async ({ page }) => {

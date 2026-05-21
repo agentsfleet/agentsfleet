@@ -5,8 +5,7 @@ import HowItWorks from "../components/HowItWorks";
 import Pricing from "../components/Pricing";
 import CTABlock from "../components/CTABlock";
 import FAQ from "../components/FAQ";
-import { DisplayLG, InstallBlock, SectionLabel } from "@usezombie/design-system";
-import { DOCS_QUICKSTART_URL, DOCS_URL } from "../config";
+import { DisplayLG, SectionLabel } from "@usezombie/design-system";
 
 const features = [
   {
@@ -63,19 +62,6 @@ export default function Home() {
       <HowItWorks />
 
       <Pricing />
-
-      <section className="site-section">
-        <div className="wrap">
-          <InstallBlock
-            title="Install zombiectl, then run /usezombie-install-platform-ops"
-            command="npm install -g @usezombie/zombiectl"
-            actions={[
-              { label: "read the docs", to: DOCS_URL, variant: "ghost" },
-              { label: "→ start an agent", to: DOCS_QUICKSTART_URL, variant: "default" },
-            ]}
-          />
-        </div>
-      </section>
 
       <FAQ />
       <CTABlock />

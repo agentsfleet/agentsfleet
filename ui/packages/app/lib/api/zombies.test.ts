@@ -21,7 +21,7 @@ describe("listZombies", () => {
   });
 
   it("throws ApiError on 401", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({ error: "unauthorized", code: "UZ-AUTH-001" }) });
+    fetchMock.mockResolvedValue({ ok: false, status: 401, json: async () => ({ detail: "unauthorized", error_code: "UZ-AUTH-001" }) });
     const { listZombies } = await import("./zombies");
     await expect(listZombies("ws_1", "bad")).rejects.toBeInstanceOf(ApiError);
   });
@@ -107,7 +107,7 @@ describe("setZombieStatus", () => {
   });
 
   it("throws ApiError UZ-ZMB-010 on 409 (transition not allowed)", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: "transition not allowed", code: "UZ-ZMB-010" }) });
+    fetchMock.mockResolvedValue({ ok: false, status: 409, json: async () => ({ detail: "transition not allowed", error_code: "UZ-ZMB-010" }) });
     const { stopZombie } = await import("./zombies");
     const err = await stopZombie("ws_1", "zom_1", "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
@@ -129,7 +129,7 @@ describe("deleteZombie", () => {
   });
 
   it("throws ApiError on 404", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => ({ error: "not found", code: "UZ-ZMB-009" }) });
+    fetchMock.mockResolvedValue({ ok: false, status: 404, json: async () => ({ detail: "not found", error_code: "UZ-ZMB-009" }) });
     const { deleteZombie } = await import("./zombies");
     await expect(deleteZombie("ws_1", "zom_1", "tok")).rejects.toBeInstanceOf(ApiError);
   });
@@ -158,7 +158,7 @@ describe("steerZombie", () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 400,
-      json: async () => ({ error: "empty message", code: "UZ-ZMB-020" }),
+      json: async () => ({ detail: "empty message", error_code: "UZ-ZMB-020" }),
     });
     const { steerZombie } = await import("./zombies");
     const err = await steerZombie("ws_1", "zom_1", "", "tok").catch((e) => e) as ApiError;

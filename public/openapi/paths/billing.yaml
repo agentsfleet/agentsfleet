@@ -22,6 +22,7 @@
               - updated_at
               - is_exhausted
               - exhausted_at
+              - free_trial
               properties:
                 balance_nanos:
                   type: integer
@@ -39,6 +40,20 @@
                   format: int64
                   nullable: true
                   description: Epoch ms of the first exhausting debit. Null until the balance is exhausted.
+                free_trial:
+                  type: object
+                  description: Promotional free-trial window state (src/state/tenant_billing.zig).
+                  required:
+                  - active
+                  - ends_at_ms
+                  properties:
+                    active:
+                      type: boolean
+                      description: True while the free-trial window is in effect.
+                    ends_at_ms:
+                      type: integer
+                      format: int64
+                      description: Epoch ms when the free-trial window closes.
       default:
         $ref: ../components/responses.yaml#/components/responses/Error
 /v1/tenants/me/billing/charges:

@@ -36,7 +36,7 @@ function inRadioGroup(children: React.ReactNode, value: string) {
   return React.createElement(RadioGroup, { value, onValueChange: () => {} }, children);
 }
 
-const CRED = { name: "fw-key", created_at: "2026-04-30T00:00:00Z" } as const;
+const CRED = { name: "fw-key", created_at: 1_777_507_200_000 } as const;
 const WORKSPACE_ID = "ws_provider_test";
 
 beforeEach(() => {

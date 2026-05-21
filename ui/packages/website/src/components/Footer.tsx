@@ -25,7 +25,8 @@ export default function Footer() {
             {BRAND_NAME}
           </span>
           <p className="font-sans text-body-sm leading-body text-text-muted m-0 max-w-tagline">
-            Durable, markdown-defined agent runtime. self-managed. Open source.
+            Durable, markdown-defined agents that wake on your events and own
+            the outcome.
           </p>
         </div>
 

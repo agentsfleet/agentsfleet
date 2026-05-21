@@ -23,16 +23,24 @@ describe("OnboardingFlow", () => {
     );
   });
 
-  it("renders three arrows — one between each consecutive pair of cards", () => {
-    render(<OnboardingFlow />);
-    expect(screen.getAllByTestId("onboarding-flow-arrow")).toHaveLength(3);
+  it("renders the steps in a responsive grid with no arrow connectors", () => {
+    const { container } = render(<OnboardingFlow />);
+    // Steps live in a grid (1 col → 2×2), not a single flex row that
+    // overflows the page; the inline arrow connectors are gone.
+    expect(screen.queryAllByTestId("onboarding-flow-arrow")).toHaveLength(0);
+    const grid = container.querySelector(".grid");
+    expect(grid).not.toBeNull();
+    ["install", "skill", "wire", "steer"].forEach((id) => {
+      expect(
+        grid!.querySelector(`[data-testid="onboarding-step-${id}"]`),
+      ).not.toBeNull();
+    });
   });
 
   it("renders each spec'd snippet inside its card's Terminal", () => {
     render(<OnboardingFlow />);
     const install = within(screen.getByTestId("onboarding-step-install"));
-    expect(install.getByText(/npm install -g @usezombie\/zombiectl/)).toBeInTheDocument();
-    expect(install.getByText(/npx skills add usezombie\/usezombie/)).toBeInTheDocument();
+    expect(install.getByText(/curl -fsSL https:\/\/usezombie\.sh \| bash/)).toBeInTheDocument();
 
     const skill = within(screen.getByTestId("onboarding-step-skill"));
     expect(skill.getByText(/\/usezombie-install-platform-ops/)).toBeInTheDocument();
@@ -44,7 +52,7 @@ describe("OnboardingFlow", () => {
     expect(steer.getByText(/zombiectl steer/)).toBeInTheDocument();
   });
 
-  it("anchors the outer section at #onboarding-flow for Hero scroll targeting", () => {
+  it("anchors the outer section at #onboarding-flow (deep-link target)", () => {
     render(<OnboardingFlow />);
     const section = screen.getByTestId("onboarding-flow");
     expect(section.getAttribute("id")).toBe("onboarding-flow");

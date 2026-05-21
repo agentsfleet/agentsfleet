@@ -12,6 +12,7 @@ const HEALTHY: TenantBilling = {
   updated_at: 1,
   is_exhausted: false,
   exhausted_at: null,
+  free_trial: { active: false, ends_at_ms: 1_785_542_400_000 },
 };
 
 afterEach(() => cleanup());

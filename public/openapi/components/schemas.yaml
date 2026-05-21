@@ -278,6 +278,7 @@ components:
           enum:
           - active
           - paused
+          - stopped
           - killed
         created_at:
           type: integer
@@ -286,3 +287,47 @@ components:
         updated_at:
           type: integer
           format: int64
+        triggers:
+          type: array
+          nullable: true
+          description: Projected from config_json `x-usezombie.triggers`; null when the row has no triggers entry.
+          items:
+            $ref: '#/components/schemas/ZombieTrigger'
+    ZombieTrigger:
+      type: object
+      description: A single trigger projected into the zombie list row.
+      oneOf:
+      - type: object
+        required:
+        - type
+        - source
+        properties:
+          type:
+            type: string
+            enum:
+            - webhook
+          source:
+            type: string
+          events:
+            type: array
+            items:
+              type: string
+      - type: object
+        required:
+        - type
+        - schedule
+        properties:
+          type:
+            type: string
+            enum:
+            - cron
+          schedule:
+            type: string
+      - type: object
+        required:
+        - type
+        properties:
+          type:
+            type: string
+            enum:
+            - api

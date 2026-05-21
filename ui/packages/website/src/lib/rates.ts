@@ -49,6 +49,6 @@ export const RATES_DISPLAY = {
   STAGE_PLATFORM: "$0.001",
   STAGE_SELF_MANAGED: "$0.0001",
   HEADLINE: "Get early access",
-  FREE_TRIAL_BANNER: `Free until ${FREE_TRIAL_END_DISPLAY} — every event receipt and stage execution is on us while we gather traction. Self-managed posture still recommended for production-grade isolation.`,
+  FREE_TRIAL_BANNER: `Free until ${FREE_TRIAL_END_DISPLAY} — every event receipt and stage execution is on us while we gather traction.`,
   FREE_TRIAL_PILL: `Free until ${FREE_TRIAL_END_DISPLAY}`,
 } as const;

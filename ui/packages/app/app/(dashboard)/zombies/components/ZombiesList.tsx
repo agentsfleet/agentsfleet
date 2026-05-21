@@ -19,7 +19,7 @@ type LiveState = "live" | "parked" | "failed";
 
 function liveStateOf(status: string): LiveState {
   if (status === ZOMBIE_STATUS.ACTIVE) return "live";
-  if (status === ZOMBIE_STATUS.KILLED || status === ZOMBIE_STATUS.ERRORED) return "failed";
+  if (status === ZOMBIE_STATUS.KILLED) return "failed";
   return "parked";
 }
 

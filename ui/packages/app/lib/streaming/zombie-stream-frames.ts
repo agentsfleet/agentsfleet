@@ -10,7 +10,8 @@ export type ZombieEventStatus =
   | "processed"
   | "agent_error"
   | "gate_blocked"
-  | "optimistic";
+  | "optimistic"
+  | "failed";
 
 export type ZombieEvent = {
   id: string;

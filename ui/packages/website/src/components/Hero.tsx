@@ -3,25 +3,15 @@ import { Link } from "react-router-dom";
 import {
   Button,
   LogLine,
+  LogToken,
   Terminal,
   Toast,
   WakePulse,
   useResettableTimeout,
 } from "@usezombie/design-system";
 import { trackNavigationClicked, trackSignupStarted } from "../analytics/posthog";
-import { INSTALL_COMMAND } from "../config";
+import { INSTALL_COMMAND, INSTALL_SKILL_COMMAND } from "../config";
 import { RATES_DISPLAY } from "../lib/rates";
-
-// Plain-text payload for the clipboard. Visible terminal renders
-// each line through <LogLine severity=...> so the prompt, debug
-// breadcrumbs, and success markers each carry their token-driven
-// colour per `preview.html` §03 — copy still hands the user a
-// straight-from-the-terminal transcript with no escape codes.
-const HERO_INSTALL_TRANSCRIPT = `$ claude /usezombie-install-platform-ops
-› fetching SKILL.md from registry...
-✓ installed platform-ops (SKILL.md · TRIGGER.md · 2 secrets injected via vault)
-✓ webhook registered github.com/your-org/your-repo
-› awaiting first event...`;
 
 const TOAST_VISIBLE_MS = 2000;
 
@@ -31,13 +21,14 @@ const TOAST_VISIBLE_MS = 2000;
  *   eyebrow:  <WakePulse live> + LIVE label (mono, uppercase)
  *   headline: mono, two-line, "memorable thing" voice
  *   lede:     sans body, max 640px
- *   ctas:     terminal-style install button + ghost replay link
- *   cli:      inline <Terminal> showing the install transcript
+ *   cta:      install command copy-row (curl one-liner) + ghost replay link
+ *   cli:      animated <Terminal> showing the install running line-by-line
  *
- * Primary CTA copies the bootstrap one-liner, surfaces an inline
- * design-system <Toast>, and smooth-scrolls down to the OnboardingFlow
- * anchor on the same page (#onboarding-flow). No portal — the toast
- * lives in the hero's own DOM so it ships under the same a11y tree.
+ * The Copy affordance writes INSTALL_COMMAND to the clipboard and surfaces
+ * an inline design-system <Toast> — copy only, no navigation (the old giant
+ * button scrolled the page out from under the reader). The animated terminal
+ * demos the install and copies the next-step slash command. The toast lives
+ * in the hero's own DOM so it ships under the same a11y tree.
  */
 export default function Hero() {
   const [toast, setToast] = useState<null | "copied" | "manual">(null);
@@ -56,23 +47,13 @@ export default function Hero() {
     toastTimer.start(() => setToast(null), TOAST_VISIBLE_MS);
   }
 
-  async function onInstallClick() {
+  async function onCopyInstall() {
     trackSignupStarted({ source: "hero_primary", surface: "hero", mode: "humans" });
     try {
       await navigator.clipboard.writeText(INSTALL_COMMAND);
       showToast("copied");
     } catch {
       showToast("manual");
-    }
-    const target = document.getElementById("onboarding-flow");
-    if (target) {
-      const prefersReducedMotion =
-        typeof window.matchMedia === "function" &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      target.scrollIntoView({
-        behavior: prefersReducedMotion ? "auto" : "smooth",
-        block: "start",
-      });
     }
   }
 
@@ -129,60 +110,65 @@ export default function Hero() {
           evidenced answers — never chats.
         </p>
 
-        <div className="flex flex-wrap gap-3 items-center">
-          <Button
-            type="button"
-            onClick={() => void onInstallClick()}
-            data-testid="hero-cta-primary"
-            className="font-mono"
-            aria-label="Copy the install command and scroll to onboarding"
-          >
+        <div className="flex flex-col gap-3 max-w-wide">
+          {/* Install command — copy-only, no navigation. The long one-liner
+            * gets an explicit Copy affordance instead of being a giant click
+            * target that scrolled the page out from under the reader. */}
+          <div className="flex items-center gap-3 rounded-md border border-border bg-surface-deep px-md py-sm">
             <span className="text-pulse" aria-hidden="true">
               $
-            </span>{" "}
-            {INSTALL_COMMAND}
-          </Button>
-          <Button asChild variant="ghost" data-testid="hero-cta-secondary">
-            <Link
-              to="/agents"
-              onClick={() =>
-                trackNavigationClicked({
-                  source: "hero_secondary_replay",
-                  surface: "hero",
-                  target: "agents",
-                })
-              }
+            </span>
+            <code
+              className="flex-1 overflow-x-auto whitespace-nowrap font-mono text-mono text-text"
+              data-testid="hero-install-command"
             >
-              view a real wake (replay)
-            </Link>
-          </Button>
-          <Toast
-            visible={toast !== null}
-            severity={shown === "manual" ? "warning" : "info"}
-            data-testid="hero-cta-toast"
-          >
-            {shown === "copied"
-              ? "Copied — paste into your terminal"
-              : "Clipboard blocked — select the command above and copy manually"}
-          </Toast>
+              {INSTALL_COMMAND}
+            </code>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void onCopyInstall()}
+              data-testid="hero-cta-primary"
+              className="ml-auto shrink-0 h-auto py-0.5 font-mono text-label"
+              aria-label="Copy the install command"
+            >
+              Copy
+            </Button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Toast
+              visible={toast !== null}
+              severity={shown === "manual" ? "warning" : "info"}
+              data-testid="hero-cta-toast"
+            >
+              {shown === "copied"
+                ? "Copied — paste into your terminal"
+                : "Clipboard blocked — select the command above and copy manually"}
+            </Toast>
+          </div>
         </div>
 
         <Terminal
-          label="install platform-ops via Claude Code"
+          label="install via usezombie.sh"
           data-testid="hero-cli"
           copyable
-          copyText={HERO_INSTALL_TRANSCRIPT}
+          animate
+          copyText={INSTALL_SKILL_COMMAND}
           className="max-w-wide"
         >
-          {/* Severity-coloured transcript per `preview.html` §03 logs
-            * specimen. Prompt + breadcrumbs read as muted; success
-            * markers (✓) carry the success token; the terminal stays
-            * monochrome elsewhere. */}
-          <LogLine severity="debug">$ claude /usezombie-install-platform-ops</LogLine>
-          <LogLine severity="debug">› fetching SKILL.md from registry...</LogLine>
-          <LogLine severity="done">✓ installed platform-ops (SKILL.md · TRIGGER.md · 2 secrets injected via vault)</LogLine>
-          <LogLine severity="done">✓ webhook registered github.com/your-org/your-repo</LogLine>
-          <LogLine severity="debug">› awaiting first event...</LogLine>
+          {/* Animated, multi-colour demo of the one-command install
+            * (curl → zombiectl + skill bundle), ending in the next-step
+            * slash command. Per-token colour via <LogToken> (prompt, host,
+            * binaries, identifiers, next command) so it reads live, not
+            * monotone. Copy hands back exactly that slash command. */}
+          <LogLine severity="info"><LogToken severity="pulse">$</LogToken> {INSTALL_COMMAND}</LogLine>
+          <LogLine severity="debug">› detecting host… <LogToken severity="info">claude code</LogToken></LogLine>
+          <LogLine severity="debug">› installing <LogToken severity="info">zombiectl</LogToken> + skill bundle…</LogLine>
+          <LogLine severity="done">✓ zombiectl on PATH · skill added (<LogToken severity="evidence">usezombie/usezombie</LogToken>)</LogLine>
+          <LogLine severity="done">✓ webhook registered <LogToken severity="evidence">github.com/your-org/your-repo</LogToken></LogLine>
+          <LogLine severity="debug">→ next: <LogToken severity="pulse">{INSTALL_SKILL_COMMAND}</LogToken></LogLine>
         </Terminal>
       </div>
     </section>

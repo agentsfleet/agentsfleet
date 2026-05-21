@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { BrowserRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,8 +11,8 @@ vi.mock("../analytics/posthog", () => analytics);
 
 import Hero from "./Hero";
 
-const INSTALL_COMMAND =
-  "npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie";
+const INSTALL_COMMAND = "curl -fsSL https://usezombie.sh | bash";
+const INSTALL_SKILL_COMMAND = "claude /usezombie-install-platform-ops";
 
 function renderHero() {
   return render(
@@ -60,13 +60,15 @@ describe("Hero", () => {
     expect(screen.getByText(/durable, replayable log/i)).toBeInTheDocument();
   });
 
-  it("renders the primary CTA as a terminal-style $ install button (not a docs link)", () => {
+  it("renders the install command in a copy-row with a copy-only Copy button", () => {
     installClipboard();
     renderHero();
+    // The long command lives in its own copy-row, not inside the button.
+    const command = screen.getByTestId("hero-install-command");
+    expect(command.textContent).toContain(INSTALL_COMMAND);
     const cta = screen.getByTestId("hero-cta-primary");
     expect(cta.tagName).toBe("BUTTON");
-    expect(cta.textContent).toContain(INSTALL_COMMAND);
-    expect(cta.textContent).toContain("$");
+    expect(cta.textContent).toMatch(/copy/i);
     expect(cta.getAttribute("href")).toBeNull();
   });
 
@@ -83,8 +85,11 @@ describe("Hero", () => {
     });
   });
 
-  it("scrolls the #onboarding-flow anchor into view after copying", async () => {
-    installClipboard();
+  it("copies only — does not scroll/navigate on primary CTA click (no #onboarding-flow jump)", async () => {
+    const writeText = installClipboard();
+    // A real #onboarding-flow anchor exists on the page; the old hero scrolled
+    // to it on click. The copy-row must NOT — that was the "jumps to a different
+    // page" bug. Clicking copies and stays put.
     const anchor = document.createElement("section");
     anchor.id = "onboarding-flow";
     const scrollIntoView = vi.fn();
@@ -93,47 +98,10 @@ describe("Hero", () => {
     try {
       renderHero();
       fireEvent.click(screen.getByTestId("hero-cta-primary"));
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
-      expect(scrollIntoView.mock.calls[0][0]).toMatchObject({ block: "start" });
+      await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView).not.toHaveBeenCalled();
     } finally {
       document.body.removeChild(anchor);
-    }
-  });
-
-  it("honors prefers-reduced-motion: reduce by using behavior='auto' on scroll", async () => {
-    installClipboard();
-    const anchor = document.createElement("section");
-    anchor.id = "onboarding-flow";
-    const scrollIntoView = vi.fn();
-    anchor.scrollIntoView = scrollIntoView;
-    document.body.appendChild(anchor);
-    const matchMedia = vi.fn().mockImplementation((query: string) => ({
-      matches: query === "(prefers-reduced-motion: reduce)",
-      media: query,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-      onchange: null,
-    }));
-    Object.defineProperty(window, "matchMedia", {
-      configurable: true,
-      writable: true,
-      value: matchMedia,
-    });
-    try {
-      renderHero();
-      fireEvent.click(screen.getByTestId("hero-cta-primary"));
-      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
-      expect(scrollIntoView.mock.calls[0][0]).toMatchObject({ behavior: "auto" });
-    } finally {
-      document.body.removeChild(anchor);
-      Object.defineProperty(window, "matchMedia", {
-        configurable: true,
-        writable: true,
-        value: undefined,
-      });
     }
   });
 
@@ -254,27 +222,26 @@ describe("Hero", () => {
     expect(fading.getAttribute("aria-live")).toBe("assertive");
   });
 
-  it("renders the secondary CTA pointing at /agents", () => {
+  it("renders no replay link — the install copy-row is the only primary action", () => {
     renderHero();
-    const cta = screen.getByTestId("hero-cta-secondary");
-    expect(cta).toHaveAttribute("href", "/agents");
-    expect(cta.textContent).toMatch(/view a real wake/i);
-  });
-
-  it("tracks clicks on the secondary CTA", () => {
-    renderHero();
-    fireEvent.click(screen.getByTestId("hero-cta-secondary"));
-    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
-      source: "hero_secondary_replay",
-      surface: "hero",
-      target: "agents",
-    });
-  });
-
-  it("renders the install transcript Terminal", () => {
-    renderHero();
+    expect(screen.queryByTestId("hero-cta-secondary")).toBeNull();
+    expect(screen.queryByText(/view a real wake/i)).toBeNull();
+    // The install copy-row and the animated install terminal remain.
+    expect(screen.getByTestId("hero-install-command")).toBeInTheDocument();
     expect(screen.getByTestId("hero-cli")).toBeInTheDocument();
-    expect(screen.getByLabelText(/install platform-ops via claude code/i)).toBeInTheDocument();
+  });
+
+  it("renders the animated install Terminal whose Copy yields only the slash command", () => {
+    const writeText = installClipboard();
+    renderHero();
+    const cli = screen.getByTestId("hero-cli");
+    expect(cli).toBeInTheDocument();
+    expect(screen.getByLabelText(/install via usezombie\.sh/i)).toBeInTheDocument();
+    // `animate` hooks the CSS reveal onto the code block.
+    expect(cli.querySelector("[data-terminal-reveal]")).not.toBeNull();
+    // Copy hands back the next-step slash command, not the whole transcript.
+    fireEvent.click(within(cli).getByTestId("copy-btn"));
+    expect(writeText).toHaveBeenCalledWith(INSTALL_SKILL_COMMAND);
   });
 
   it("does not render orange-era hero scaffolding", () => {

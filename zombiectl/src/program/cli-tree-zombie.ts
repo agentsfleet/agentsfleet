@@ -100,7 +100,7 @@ export function buildZombieTree(
     .action(actionFor("zombie.events", (frame) => runHandler(state, frame, handlers.zombie.events)));
 
   program
-    .command("steer <zombie_id> <message>")
+    .command("steer <zombie_id> [message]")
     .description("Send a message; stream the response")
     .action(actionFor("zombie.steer", (frame) => runHandler(state, frame, handlers.zombie.steer)));
 

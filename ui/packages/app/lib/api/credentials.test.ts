@@ -33,7 +33,7 @@ describe("listCredentials", () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 401,
-      json: async () => ({ error: "unauthorized", code: "UZ-AUTH-001" }),
+      json: async () => ({ detail: "unauthorized", error_code: "UZ-AUTH-001" }),
     });
     const { listCredentials } = await import("./credentials");
     await expect(listCredentials("ws_1", "bad")).rejects.toBeInstanceOf(ApiError);
@@ -66,7 +66,7 @@ describe("createCredential", () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 400,
-      json: async () => ({ error: "data must be a non-empty JSON object", code: "UZ-VAULT-001" }),
+      json: async () => ({ detail: "data must be a non-empty JSON object", error_code: "UZ-VAULT-001" }),
     });
     const { createCredential } = await import("./credentials");
     const err = await createCredential("ws_1", { name: "x", data: {} }, "tok").catch(
@@ -99,7 +99,7 @@ describe("deleteCredential", () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 403,
-      json: async () => ({ error: "forbidden", code: "UZ-AUTH-003" }),
+      json: async () => ({ detail: "forbidden", error_code: "UZ-AUTH-003" }),
     });
     const { deleteCredential } = await import("./credentials");
     await expect(deleteCredential("ws_1", "fly", "tok")).rejects.toBeInstanceOf(ApiError);

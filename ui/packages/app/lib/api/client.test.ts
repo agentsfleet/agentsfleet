@@ -69,24 +69,42 @@ describe("request", () => {
     expect(jsonFn).not.toHaveBeenCalled();
   });
 
-  it("throws ApiError with status, code, and requestId on error response", async () => {
+  it("maps the RFC 7807 error body (detail, error_code, request_id) onto ApiError", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 409,
-      json: async () => ({ error: "already stopped", code: "UZ-ZMB-010", request_id: "req_1" }),
+      json: async () => ({
+        docs_uri: "https://docs.usezombie.com/error-codes#UZ-ZMB-010",
+        title: "Transition not allowed",
+        detail: "already stopped",
+        error_code: "UZ-ZMB-010",
+        request_id: "req_1",
+      }),
     });
     const err = await request("/v1/test", { method: "DELETE" }, "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(409);
     expect(err.code).toBe("UZ-ZMB-010");
+    expect(err.message).toBe("already stopped");
     expect(err.requestId).toBe("req_1");
   });
 
-  it("falls back to UZ-UNKNOWN code when error body has no code field", async () => {
+  it("falls back to the title when the error body omits detail", async () => {
+    fetchMock.mockResolvedValue({
+      ok: false,
+      status: 403,
+      json: async () => ({ title: "Operator access required", error_code: "UZ-AUTH-001" }),
+    });
+    const err = await request("/v1/test", { method: "GET" }, "tok").catch((e) => e) as ApiError;
+    expect(err.message).toBe("Operator access required");
+    expect(err.code).toBe("UZ-AUTH-001");
+  });
+
+  it("falls back to UZ-UNKNOWN code when error body has no error_code field", async () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 500,
-      json: async () => ({ error: "internal error" }),
+      json: async () => ({ detail: "internal error" }),
     });
     const err = await request("/v1/test", { method: "GET" }, "tok").catch((e) => e) as ApiError;
     expect(err).toBeInstanceOf(ApiError);

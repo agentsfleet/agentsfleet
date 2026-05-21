@@ -83,6 +83,34 @@ const CODE_MAP = {
     title: "That zombie is in a state that blocks this action",
     body: "Check the current status on the detail page and try the right transition.",
   },
+  "UZ-AUTH-001": {
+    title: "You need operator access for that",
+    body: "Ask a tenant operator or admin to manage API keys.",
+  },
+  "UZ-REQ-001": {
+    title: "That request wasn't valid",
+    body: "We reset to the defaults — try again.",
+  },
+  "UZ-APIKEY-003": {
+    title: "We couldn't find that API key",
+    body: "It may have already been deleted — refresh the list.",
+  },
+  "UZ-APIKEY-005": {
+    title: "An API key with that name already exists",
+    body: "Pick a different name for this tenant.",
+  },
+  "UZ-APIKEY-006": {
+    title: "That API key is already revoked",
+    body: "Refresh the list to see its current state.",
+  },
+  "UZ-APIKEY-007": {
+    title: "A revoked key can't be reactivated",
+    body: "Mint a new key instead.",
+  },
+  "UZ-APIKEY-008": {
+    title: "Revoke this key before deleting it",
+    body: "Revoke it first, then delete the revoked key.",
+  },
 } as const satisfies Record<string, CodeEntry>;
 
 /** Every code the dashboard currently maps to operator-friendly copy. */
