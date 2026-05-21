@@ -18,13 +18,13 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Depends on:** M75_001 (active) — owns the `usezombie.sh` domain + the static `ui/usezombie.sh/dist/` installer files. This fixes how that output is served.
 **Provenance:** agent-generated (pre-spec) — Orly diagnosis during the M79 `/design-consultation` session, May 22, 2026 (live Vercel + repo inspection).
 
-**Canonical architecture:** `playbooks/014_usezombie_sh_deploy/001_playbook.md` (the static-installer deploy) + `ui/usezombie.sh/dist/` (the `cloudflare-pages.md`-format `_redirects`/`_headers`).
+**Canonical architecture:** `playbooks/014_usezombie_sh_deploy/001_playbook.md` (the static-installer deploy, now Vercel) + `ui/usezombie.sh/dist/` (`install.sh` + `vercel.json` — the Vercel rewrite + shellscript content-type).
 
 ---
 
 ## Implementing agent — read these first
 
-1. `ui/usezombie.sh/dist/` — the deployable: `install.sh` + `_redirects` (`/ → /install.sh 200`) + `_headers` (shellscript content-type). **Cloudflare Pages format** — Vercel ignores both files.
+1. `ui/usezombie.sh/dist/` — the deployable: `install.sh` + `vercel.json` (rewrite `/ → /install.sh` + `text/x-shellscript` content-type + 5-min cache). The original Cloudflare `_redirects`/`_headers` were deleted (RULE NDC) — Vercel ignores that format.
 2. `playbooks/014_usezombie_sh_deploy/001_playbook.md` — the intended static, no-build deploy; notes the project was repurposed from the old `usezombie-agents-sh` Vite app.
 3. Live state (verified May 22, 2026): the Vercel project `usezombie-agents-sh` serves the domain `usezombie.sh`; `framework` was `vite` (now `Other`/null after a session fix), `rootDirectory=ui/usezombie.sh/dist/`. The current production deploy was built under an **old config** and serves the marketing-site SPA (`index.html`) for every path.
 
@@ -109,7 +109,7 @@ Vercel: add `dist/vercel.json` (rewrite + content-type), framework Other, fresh 
 ### §3 — Remove the dead-platform config (RULE NDC)
 Once the platform is chosen, drop the other platform's now-dead config (the Cloudflare `_redirects`/`_headers` if Vercel-only, or the Vercel project/`vercel.json` if Cloudflare).
 
-- **Dimension 3.1** — repo + hosting carry exactly one platform's serving config → verified by grep + the live smoke check.
+- **Dimension 3.1** — repo + hosting carry exactly one platform's serving config → verified by grep + the live smoke check. **DONE** (repo side) — `_redirects`/`_headers` deleted; `dist/` holds only `install.sh` + `vercel.json`. Live single-platform confirmed at VERIFY.
 
 ---
 
