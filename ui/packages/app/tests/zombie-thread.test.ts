@@ -19,13 +19,13 @@ import type { ThreadMessageLike } from "@assistant-ui/react";
 
 // ── Hoisted mocks ────────────────────────────────────────────────────────
 
-const { steerZombieMock, useZombieEventStreamMock } = vi.hoisted(() => ({
-  steerZombieMock: vi.fn(),
+const { steerZombieActionMock, useZombieEventStreamMock } = vi.hoisted(() => ({
+  steerZombieActionMock: vi.fn(),
   useZombieEventStreamMock: vi.fn(),
 }));
 
-vi.mock("@/lib/api/zombies", () => ({
-  steerZombie: steerZombieMock,
+vi.mock("@/app/(dashboard)/zombies/actions", () => ({
+  steerZombieAction: steerZombieActionMock,
 }));
 
 vi.mock("@/components/domain/useZombieEventStream", async () => {
@@ -49,7 +49,6 @@ import {
 
 const WS = "ws_test";
 const ZID = "zomb_test";
-const TOKEN = "tok_test";
 
 function ev(over: Partial<ZombieEvent> & { actor: string; role: ZombieEvent["role"] }): ZombieEvent {
   return {
@@ -80,36 +79,39 @@ function toThreadMessage(e: ZombieEvent): ThreadMessageLike {
   };
 }
 
-function mockStream(
-  events: ZombieEvent[],
-  opts?: {
-    isRunning?: boolean;
-    connectionStatus?: (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
-  },
-) {
+type StreamMockOverrides = {
+  events?: ZombieEvent[];
+  isRunning?: boolean;
+  connectionStatus?: (typeof CONNECTION_STATUS)[keyof typeof CONNECTION_STATUS];
+  appendOptimistic?: ReturnType<typeof vi.fn>;
+  reconcileOptimistic?: ReturnType<typeof vi.fn>;
+  markOptimisticFailed?: ReturnType<typeof vi.fn>;
+};
+
+function mockStream(events: ZombieEvent[], opts?: Omit<StreamMockOverrides, "events">) {
   useZombieEventStreamMock.mockReturnValue({
     events,
     connectionStatus: opts?.connectionStatus ?? CONNECTION_STATUS.LIVE,
     isRunning: opts?.isRunning ?? false,
-    appendOptimistic: vi.fn().mockReturnValue("temp_1"),
-    reconcileOptimistic: vi.fn(),
+    appendOptimistic: opts?.appendOptimistic ?? vi.fn().mockReturnValue("temp_1"),
+    reconcileOptimistic: opts?.reconcileOptimistic ?? vi.fn(),
+    markOptimisticFailed: opts?.markOptimisticFailed ?? vi.fn(),
     convertEvent: toThreadMessage,
-    retryState: null,
   });
 }
 
-function renderThread(token: string | null = TOKEN) {
+function renderThread() {
   return render(
     React.createElement(ZombieThread, {
       workspaceId: WS,
       zombieId: ZID,
-      token,
+      initial: [],
     }),
   );
 }
 
 beforeEach(() => {
-  steerZombieMock.mockReset();
+  steerZombieActionMock.mockReset();
   useZombieEventStreamMock.mockReset();
 });
 
@@ -140,9 +142,7 @@ describe("ZombieThread — empty state", () => {
   it("renders the waiting-for-activity hint when no events", () => {
     mockStream([]);
     renderThread();
-    expect(
-      screen.getByText(/waiting for activity/i),
-    ).toBeTruthy();
+    expect(screen.getByText(/waiting for activity/i)).toBeTruthy();
     expect(screen.getByText(/0 events/i)).toBeTruthy();
   });
 });
@@ -170,7 +170,6 @@ describe("ZombieThread — role rendering", () => {
     ]);
     renderThread();
     expect(screen.getByText(/morning health check/)).toBeTruthy();
-    // The steer glyph is rendered as plain text inside the user row.
     const glyphs = screen.getAllByText("›");
     expect(glyphs.length).toBeGreaterThan(0);
   });
@@ -239,6 +238,22 @@ describe("ZombieThread — role rendering", () => {
     expect(screen.getByText(/^queued$/i)).toBeTruthy();
   });
 
+  it("renders a failed user message with the destructive failed badge", () => {
+    mockStream([
+      ev({
+        role: "user",
+        actor: "steer:pending",
+        text: "this steer did not land",
+        status: "failed",
+      }),
+    ]);
+    renderThread();
+    expect(screen.getByText(/this steer did not land/)).toBeTruthy();
+    expect(screen.getByText(/^failed$/i)).toBeTruthy();
+    // The optimistic "queued" badge must not also render for a failed row.
+    expect(screen.queryByText(/^queued$/i)).toBeNull();
+  });
+
   it("renders an agent_error as a destructive meta-row", () => {
     mockStream([
       ev({
@@ -261,9 +276,7 @@ describe("ZombieThread — composer disabled-while-running", () => {
       { isRunning: true },
     );
     renderThread();
-    expect(
-      screen.getByPlaceholderText(/zombie is working/i),
-    ).toBeTruthy();
+    expect(screen.getByPlaceholderText(/zombie is working/i)).toBeTruthy();
   });
 
   it("uses the idle placeholder when not running", () => {
@@ -274,33 +287,24 @@ describe("ZombieThread — composer disabled-while-running", () => {
 });
 
 describe("ZombieThread — steer submission", () => {
-  it("calls steerZombie and reconciles the optimistic message on send", async () => {
+  it("calls steerZombieAction and reconciles the optimistic message on ok", async () => {
     const appendOptimistic = vi.fn().mockReturnValue("temp_42");
     const reconcileOptimistic = vi.fn();
-    useZombieEventStreamMock.mockReturnValue({
-      events: [],
-      connectionStatus: CONNECTION_STATUS.LIVE,
-      isRunning: false,
-      appendOptimistic,
-      reconcileOptimistic,
-      convertEvent: toThreadMessage,
-    retryState: null,
+    const markOptimisticFailed = vi.fn();
+    mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
+    steerZombieActionMock.mockResolvedValueOnce({
+      ok: true,
+      data: { event_id: "evt_real_42" },
     });
-    steerZombieMock.mockResolvedValueOnce({ event_id: "evt_real_42" });
     renderThread();
     const textarea = screen.getByPlaceholderText(/steer this zombie/i);
     fireEvent.change(textarea, { target: { value: "deploy the canary" } });
     fireEvent.submit(textarea.closest("form")!);
     await waitFor(() =>
-      expect(steerZombieMock).toHaveBeenCalledWith(
+      expect(steerZombieActionMock).toHaveBeenCalledWith(
         WS,
         ZID,
         "deploy the canary",
-        TOKEN,
-        expect.objectContaining({
-          onRetry: expect.any(Function),
-          onAttempt: expect.any(Function),
-        }),
       ),
     );
     expect(appendOptimistic).toHaveBeenCalledWith(
@@ -308,28 +312,27 @@ describe("ZombieThread — steer submission", () => {
       "steer:pending",
     );
     expect(reconcileOptimistic).toHaveBeenCalledWith("temp_42", "evt_real_42");
+    expect(markOptimisticFailed).not.toHaveBeenCalled();
   });
 
-  it("keeps the optimistic message and does not throw when steerZombie rejects", async () => {
+  it("marks the optimistic message failed when the action returns ok:false", async () => {
     const appendOptimistic = vi.fn().mockReturnValue("temp_99");
     const reconcileOptimistic = vi.fn();
-    useZombieEventStreamMock.mockReturnValue({
-      events: [],
-      connectionStatus: CONNECTION_STATUS.LIVE,
-      isRunning: false,
-      appendOptimistic,
-      reconcileOptimistic,
-      convertEvent: toThreadMessage,
-    retryState: null,
+    const markOptimisticFailed = vi.fn();
+    mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
+    steerZombieActionMock.mockResolvedValueOnce({
+      ok: false,
+      error: "Not authenticated",
+      status: 401,
+      errorCode: "UZ-AUTH-401",
     });
-    steerZombieMock.mockRejectedValueOnce(new Error("HTTP 503 from steer"));
     renderThread();
     const textarea = screen.getByPlaceholderText(/steer this zombie/i);
     fireEvent.change(textarea, { target: { value: "deploy that fails" } });
     fireEvent.submit(textarea.closest("form")!);
-    await waitFor(() => expect(steerZombieMock).toHaveBeenCalled());
-    // Optimistic message was appended, but reconcile is NOT called: the
-    // message stays in `optimistic` state for the user to retry.
+    await waitFor(() =>
+      expect(markOptimisticFailed).toHaveBeenCalledWith("temp_99"),
+    );
     expect(appendOptimistic).toHaveBeenCalledWith(
       "deploy that fails",
       "steer:pending",
@@ -337,111 +340,43 @@ describe("ZombieThread — steer submission", () => {
     expect(reconcileOptimistic).not.toHaveBeenCalled();
   });
 
-  it("drives the steer retry indicator from the client's onRetry/onAttempt hooks", async () => {
-    const appendOptimistic = vi.fn().mockReturnValue("temp_r");
+  it("marks the optimistic message failed when the action invocation throws", async () => {
+    const appendOptimistic = vi.fn().mockReturnValue("temp_t");
     const reconcileOptimistic = vi.fn();
-    useZombieEventStreamMock.mockReturnValue({
-      events: [],
-      connectionStatus: CONNECTION_STATUS.LIVE,
-      isRunning: false,
-      appendOptimistic,
-      reconcileOptimistic,
-      convertEvent: toThreadMessage,
-      retryState: null,
-    });
-    // Mirror the real client: a retry, a non-terminal attempt, then a
-    // terminal attempt that clears the indicator.
-    steerZombieMock.mockImplementationOnce(
-      async (
-        _ws: string,
-        _zid: string,
-        _text: string,
-        _tok: string | null,
-        opts: {
-          onRetry?: (i: { attempt: number; status?: number; durationMs?: number; reason: string }) => void;
-          onAttempt?: (i: { terminal: boolean }) => void;
-        },
-      ) => {
-        opts.onRetry?.({ attempt: 1, status: 503, durationMs: 5, reason: "5xx" });
-        opts.onAttempt?.({ terminal: false });
-        opts.onAttempt?.({ terminal: true });
-        return { event_id: "evt_retry" };
-      },
-    );
+    const markOptimisticFailed = vi.fn();
+    mockStream([], { appendOptimistic, reconcileOptimistic, markOptimisticFailed });
+    steerZombieActionMock.mockRejectedValueOnce(new Error("RSC transport failed"));
     renderThread();
     const textarea = screen.getByPlaceholderText(/steer this zombie/i);
-    fireEvent.change(textarea, { target: { value: "retry me" } });
+    fireEvent.change(textarea, { target: { value: "offline send" } });
     fireEvent.submit(textarea.closest("form")!);
     await waitFor(() =>
-      expect(reconcileOptimistic).toHaveBeenCalledWith("temp_r", "evt_retry"),
+      expect(markOptimisticFailed).toHaveBeenCalledWith("temp_t"),
     );
+    expect(reconcileOptimistic).not.toHaveBeenCalled();
   });
 
-  it("renders the retry indicator line while a backfill retry is in flight", () => {
-    useZombieEventStreamMock.mockReturnValue({
-      events: [],
-      connectionStatus: CONNECTION_STATUS.RECONNECTING,
-      isRunning: false,
-      appendOptimistic: vi.fn(),
-      reconcileOptimistic: vi.fn(),
-      convertEvent: toThreadMessage,
-      retryState: { phase: "backfill", attempt: 2, max: 3, reason: "5xx" },
-    });
+  it("does not call the action when the submitted message text is empty", async () => {
+    const appendOptimistic = vi.fn();
+    mockStream([], { appendOptimistic });
     renderThread();
-    // RetryLine renders `steerRetry ?? stream.retryState`; the backfill state drives it here.
-    const line = screen.getByRole("status");
-    expect(line.textContent).toMatch(/Retrying backfill/i);
-    expect(line.textContent).toMatch(/attempt 2 of 3/);
-    expect(line.textContent).toMatch(/5xx/);
-  });
-
-  it("does not call steerZombie when token is null", async () => {
-    const appendOptimistic = vi.fn().mockReturnValue("temp_x");
-    useZombieEventStreamMock.mockReturnValue({
-      events: [],
-      connectionStatus: CONNECTION_STATUS.CONNECTING,
-      isRunning: false,
-      appendOptimistic,
-      reconcileOptimistic: vi.fn(),
-      convertEvent: toThreadMessage,
-    retryState: null,
-    });
-    renderThread(null);
     const textarea = screen.getByPlaceholderText(/steer this zombie/i);
-    fireEvent.change(textarea, { target: { value: "no token, no steer" } });
     fireEvent.submit(textarea.closest("form")!);
-    // Wait a beat to give any errant async path a chance to fire.
-    await new Promise((r) => setTimeout(r, 50));
-    expect(steerZombieMock).not.toHaveBeenCalled();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(steerZombieActionMock).not.toHaveBeenCalled();
     expect(appendOptimistic).not.toHaveBeenCalled();
   });
 });
 
 describe("ZombieThread — connection-state header", () => {
   it("renders the Reconnecting badge while connectionStatus=RECONNECTING", () => {
-    useZombieEventStreamMock.mockReturnValue({
-      events: [],
-      connectionStatus: CONNECTION_STATUS.RECONNECTING,
-      isRunning: false,
-      appendOptimistic: vi.fn(),
-      reconcileOptimistic: vi.fn(),
-      convertEvent: toThreadMessage,
-    retryState: null,
-    });
+    mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
     renderThread();
     expect(screen.getByText(/Reconnecting…/)).toBeTruthy();
   });
 
   it("renders the Connecting badge while connectionStatus=CONNECTING", () => {
-    useZombieEventStreamMock.mockReturnValue({
-      events: [],
-      connectionStatus: CONNECTION_STATUS.CONNECTING,
-      isRunning: false,
-      appendOptimistic: vi.fn(),
-      reconcileOptimistic: vi.fn(),
-      convertEvent: toThreadMessage,
-    retryState: null,
-    });
+    mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
     renderThread();
     expect(screen.getByText(/Connecting…/)).toBeTruthy();
   });
@@ -449,10 +384,9 @@ describe("ZombieThread — connection-state header", () => {
 
 describe("ZombieThread — robustness against malformed metadata", () => {
   it("does not throw when an event's custom.actor is a non-string", () => {
-    // Bypass the type system: simulate a frame whose convertEvent emits
-    // metadata.custom with a non-string actor (e.g., the server ships a
-    // number or null). The renderer must gracefully degrade to an empty
-    // actor label rather than throw.
+    // Simulate a frame whose convertEvent emits metadata.custom with a
+    // non-string actor. The renderer must degrade to an empty actor label
+    // rather than throw.
     const broken: ZombieEvent = {
       id: "e_broken",
       role: "system",
@@ -480,16 +414,14 @@ describe("ZombieThread — robustness against malformed metadata", () => {
       isRunning: false,
       appendOptimistic: vi.fn(),
       reconcileOptimistic: vi.fn(),
+      markOptimisticFailed: vi.fn(),
       convertEvent: customAnyConverter,
-      retryState: null,
     });
     expect(() => renderThread()).not.toThrow();
     expect(screen.getByText(/config has non-string actor/)).toBeTruthy();
   });
 
-  // ── Polish bundle (#16–#20) ─────────────────────────────────────────────
-
-  it("#16 — viewport carries role=log, aria-live=polite, aria-label", () => {
+  it("viewport carries role=log, aria-live=polite, aria-label", () => {
     mockStream([ev({ role: "system", actor: "config_reload", text: "ok" })]);
     const { container } = renderThread();
     const viewport = container.querySelector('[role="log"]');
@@ -498,28 +430,27 @@ describe("ZombieThread — robustness against malformed metadata", () => {
     expect(viewport?.getAttribute("aria-label")).toBe("Live activity");
   });
 
-  it("#17 — renders the backfill skeleton when CONNECTING with no events", () => {
+  it("renders the backfill skeleton when CONNECTING with no events", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.CONNECTING });
     const { container } = renderThread();
     expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeTruthy();
-    // The idle empty-state hint is suppressed during connect.
     expect(screen.queryByText(/waiting for activity/i)).toBeNull();
   });
 
-  it("#17 — renders the backfill skeleton when RECONNECTING with no events", () => {
+  it("renders the backfill skeleton when RECONNECTING with no events", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.RECONNECTING });
     const { container } = renderThread();
     expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeTruthy();
   });
 
-  it("#17 — shows the idle empty-state hint (not skeleton) when LIVE with no events", () => {
+  it("shows the idle empty-state hint (not skeleton) when LIVE with no events", () => {
     mockStream([], { connectionStatus: CONNECTION_STATUS.LIVE });
     const { container } = renderThread();
     expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeNull();
     expect(screen.getByText(/waiting for activity/i)).toBeTruthy();
   });
 
-  it("#17 — never renders the skeleton once any event is present", () => {
+  it("never renders the skeleton once any event is present", () => {
     mockStream(
       [ev({ role: "assistant", actor: "agent", text: "first frame" })],
       { connectionStatus: CONNECTION_STATUS.CONNECTING },
@@ -528,7 +459,7 @@ describe("ZombieThread — robustness against malformed metadata", () => {
     expect(container.querySelector('[data-testid="backfill-skeleton"]')).toBeNull();
   });
 
-  it("#18 — every rendered row carries the frame-enter fade-in classes", () => {
+  it("every rendered row carries the frame-enter fade-in classes", () => {
     mockStream([
       ev({ role: "user", actor: "steer:k@e2e.com", text: "u" }),
       ev({ role: "assistant", actor: "agent", text: "a" }),
@@ -551,26 +482,23 @@ describe("ZombieThread — robustness against malformed metadata", () => {
     }
   });
 
-  it("#19 — renders the jump-to-latest scroll button", () => {
+  it("renders the jump-to-latest scroll button", () => {
     mockStream([ev({ role: "assistant", actor: "agent", text: "x" })]);
     renderThread();
     expect(screen.getByRole("button", { name: /jump to latest/i })).toBeTruthy();
   });
 
-  it("#20 — message rows apply responsive grid modifiers + actor-rail var", () => {
+  it("message rows apply responsive grid modifiers + actor-rail var", () => {
     mockStream([ev({ role: "assistant", actor: "agent", text: "x" })]);
     const { container } = renderThread();
     const row = container.querySelector('[data-role="assistant"]') as HTMLElement;
     expect(row).toBeTruthy();
-    // Single column at <md, project-token grid template at md+.
     expect(row.className).toMatch(/grid-cols-1/);
     expect(row.className).toMatch(/md:grid-cols-\[var\(--actor-rail-w\)_1fr\]/);
-    // The actor-rail CSS variable is injected inline so the grid template
-    // resolves without per-row repetition of the literal width.
     expect(row.style.getPropertyValue("--actor-rail-w")).toBe("72px");
   });
 
-  it("#20 — composer stacks vertically at <sm, row-aligned at sm+", () => {
+  it("composer stacks vertically at <sm, row-aligned at sm+", () => {
     mockStream([]);
     const { container } = renderThread();
     const composerInner = container.querySelector('[aria-label="Steer composer"] > div');
@@ -591,10 +519,7 @@ describe("ZombieThread — robustness against malformed metadata", () => {
     ]);
     renderThread();
     expect(screen.getByText(/Slack ping · no body/)).toBeTruthy();
-    // Source tag still renders.
     expect(screen.getByText("slack")).toBeTruthy();
-    // The collapsible summary line exists, but the <pre> payload is omitted
-    // when requestJson is empty. Asserting absence by role:
     expect(screen.queryByText(/"action":/)).toBeNull();
   });
 });

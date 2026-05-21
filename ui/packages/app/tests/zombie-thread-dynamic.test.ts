@@ -39,7 +39,7 @@ describe("ZombieThreadDynamic", () => {
       React.createElement(ZombieThreadDynamic, {
         workspaceId: "ws_1",
         zombieId: "zomb_1",
-        token: "tok",
+        initial: [],
       }),
     );
     await waitFor(async () => {
@@ -47,17 +47,16 @@ describe("ZombieThreadDynamic", () => {
     });
   });
 
-  it("forwards workspace/zombie/token props to the inner component", async () => {
+  it("forwards workspace/zombie props to the inner component", async () => {
     const { findByTestId } = render(
       React.createElement(ZombieThreadDynamic, {
         workspaceId: "ws_prod",
         zombieId: "zomb_42",
-        token: "tok_abc",
+        initial: [],
       }),
     );
     const inner = await findByTestId("mounted-inner");
     expect(inner.getAttribute("workspaceid")).toBe("ws_prod");
     expect(inner.getAttribute("zombieid")).toBe("zomb_42");
-    expect(inner.getAttribute("token")).toBe("tok_abc");
   });
 });

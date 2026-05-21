@@ -1,15 +1,16 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useRef, useSyncExternalStore } from "react";
 import type { ThreadMessageLike } from "@assistant-ui/react";
+import type { EventRow } from "@/lib/api/events";
 import {
   appendOptimistic as registryAppendOptimistic,
   CONNECTION_STATUS,
   getSnapshot,
+  markOptimisticFailed as registryMarkOptimisticFailed,
   reconcileOptimistic as registryReconcileOptimistic,
   subscribe,
   type ConnectionStatus,
-  type RetryState,
   type ZombieEvent,
   type ZombieEventStatus,
 } from "@/lib/streaming/zombie-stream-registry";
@@ -18,7 +19,6 @@ import {
 export {
   CONNECTION_STATUS,
   type ConnectionStatus,
-  type RetryState,
   type ZombieEvent,
   type ZombieEventStatus,
 };
@@ -27,29 +27,39 @@ export type UseZombieEventStreamResult = {
   events: ZombieEvent[];
   connectionStatus: ConnectionStatus;
   isRunning: boolean;
-  retryState: RetryState;
   appendOptimistic: (text: string, actor: string) => string;
   reconcileOptimistic: (tempId: string, realEventId: string) => void;
+  markOptimisticFailed: (tempId: string) => void;
   convertEvent: (event: ZombieEvent) => ThreadMessageLike;
 };
 
 /**
  * React boundary over the module-level zombie-stream registry. Multiple
- * mounts of this hook for the same `zombieId` share one EventSource +
- * backfill — and the connection survives a /dashboard ↔ /zombies/[id]
- * round-trip up to the registry's idle release window.
+ * mounts of this hook for the same `zombieId` share one EventSource — and
+ * the connection survives a /dashboard ↔ /zombies/[id] round-trip up to
+ * the registry's idle release window.
  *
- * `token === null` returns an inert result (CONNECTING, no events); the
- * registry never opens a connection for an unauthenticated mount.
+ * `initial` seeds the first subscriber's event list from server-rendered
+ * data; the browser holds no token. Live updates arrive over the
+ * cookie-authed SSE route handler. Later re-renders do not re-seed an
+ * existing subscription (that would clobber live frames with stale data).
  */
 export function useZombieEventStream(
   workspaceId: string,
   zombieId: string,
-  token: string | null,
+  initial: EventRow[],
 ): UseZombieEventStreamResult {
+  // Hold the latest `initial` without making it a `subscribe` dependency:
+  // a fresh array identity each render must not resubscribe. Updating the
+  // ref every render (rather than capturing first-render only) keeps the
+  // value current if `zombieId` changes within a live instance — the
+  // registry ignores `initial` for an existing entry, so seed-once holds.
+  const initialRef = useRef(initial);
+  initialRef.current = initial;
   const subscribeFn = useCallback(
-    (listener: () => void) => subscribe(workspaceId, zombieId, token, listener),
-    [workspaceId, zombieId, token],
+    (listener: () => void) =>
+      subscribe(workspaceId, zombieId, initialRef.current, listener),
+    [workspaceId, zombieId],
   );
   const snapshotFn = useCallback(() => getSnapshot(zombieId), [zombieId]);
   const snapshot = useSyncExternalStore(subscribeFn, snapshotFn, snapshotFn);
@@ -64,14 +74,18 @@ export function useZombieEventStream(
       registryReconcileOptimistic(zombieId, tempId, realEventId),
     [zombieId],
   );
+  const markOptimisticFailed = useCallback(
+    (tempId: string) => registryMarkOptimisticFailed(zombieId, tempId),
+    [zombieId],
+  );
 
   return {
     events: snapshot.events,
     connectionStatus: snapshot.connectionStatus,
     isRunning: snapshot.events.some((ev) => ev.status === "received"),
-    retryState: snapshot.retryState,
     appendOptimistic,
     reconcileOptimistic,
+    markOptimisticFailed,
     convertEvent,
   };
 }

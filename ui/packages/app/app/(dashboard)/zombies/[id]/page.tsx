@@ -116,7 +116,7 @@ export default async function ZombieDetailPage({
           <ZombieThreadDynamic
             workspaceId={workspace.id}
             zombieId={zombie.id}
-            token={token}
+            initial={eventsPage.items}
           />
         </section>
       </Section>

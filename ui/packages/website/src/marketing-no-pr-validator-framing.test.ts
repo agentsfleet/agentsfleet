@@ -18,7 +18,6 @@ const FORBIDDEN_STRINGS = [
   "Queue work",
   "queued engineering work",
   "Validation before review",
-  "usezombie.sh/install.sh",
 ] as const;
 
 // import.meta.glob with `query: "?raw"` returns every matched file's text.

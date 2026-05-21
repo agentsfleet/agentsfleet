@@ -13,6 +13,7 @@ const ACTOR_CONFIG_RELOAD = "config_reload";
 const ACTOR_GATE_BLOCKED = "gate_blocked";
 
 const STATUS_OPTIMISTIC = "optimistic";
+const STATUS_FAILED = "failed";
 const STATUS_AGENT_ERROR = "agent_error";
 const RUN_STATUS_RUNNING = "running";
 
@@ -53,7 +54,9 @@ export function renderZombieMessage({
 function UserRow({ message }: { message: MessageState }) {
   const actor = readActor(message);
   const text = readText(message);
-  const optimistic = readCustomStatus(message) === STATUS_OPTIMISTIC;
+  const status = readCustomStatus(message);
+  const optimistic = status === STATUS_OPTIMISTIC;
+  const failed = status === STATUS_FAILED;
   return (
     <div
       style={ACTOR_RAIL_VARS}
@@ -66,6 +69,7 @@ function UserRow({ message }: { message: MessageState }) {
       )}
       data-role="user"
       data-optimistic={optimistic || undefined}
+      data-failed={failed || undefined}
     >
       <ActorRail label={formatActorLabel(actor)} createdAt={message.createdAt} />
       <div className="font-mono text-mono leading-mono text-foreground">
@@ -76,6 +80,11 @@ function UserRow({ message }: { message: MessageState }) {
         {optimistic ? (
           <Badge variant="evidence" className="ml-md">
             queued
+          </Badge>
+        ) : null}
+        {failed ? (
+          <Badge variant="destructive" className="ml-md">
+            failed
           </Badge>
         ) : null}
       </div>

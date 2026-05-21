@@ -1,0 +1,10 @@
+# Cloudflare Pages header rules — copied into the Pages build output (see cloudflare-pages.md).
+#
+# Short max-age so a script bump is live globally within minutes. Shell content-type is
+# advisory (curl pipes raw bytes regardless) but keeps browsers from offering a download.
+/install.sh
+  Content-Type: text/x-shellscript; charset=utf-8
+  Cache-Control: public, max-age=300
+/
+  Content-Type: text/x-shellscript; charset=utf-8
+  Cache-Control: public, max-age=300

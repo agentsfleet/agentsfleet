@@ -7,7 +7,9 @@ zig-cache/
 *.log
 .tmp/
 node_modules/
-dist/
+# Build outputs only — ui/usezombie.sh/dist is a committed static site, not a build artifact
+zombiectl/dist/
+ui/packages/*/dist/
 coverage/
 .next/
 **/.next/
