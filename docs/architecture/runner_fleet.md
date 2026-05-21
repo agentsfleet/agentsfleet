@@ -51,7 +51,7 @@ Four verbs. The mothership translates them into the Postgres writes and Redis st
 | Verb | Direction | Purpose |
 |---|---|---|
 | `register` | runner → mothership | exchange a short-lived **enrollment token** for a durable per-runner `runner_token`; report `sandbox_tier` + labels |
-| `heartbeat` | runner → mothership | liveness + capacity; the seam for fleet failover (M80_006) |
+| `heartbeat` | runner → mothership | liveness + capacity; reply carries a `status` (`ok` in S0; `drain`/`stop` reserved for the M80_006 failover seam) |
 | `lease` | runner → mothership (long-poll) | claim the next event; response carries the event envelope, the zombie's resolved config, and (mode A) the `secrets_map` |
 | `report` | runner → mothership | one idempotent batched transaction: `zombie_events` received→terminal, telemetry, debit, session checkpoint, then `XACK` |
 
@@ -84,12 +84,12 @@ Landlock + cgroups + bubblewrap are Linux-only. A runner reports its isolation s
 
 | `sandbox_tier` | Where | Eligible for |
 |---|---|---|
-| `landlock-full` | Linux host | any work |
-| `container-nested` | runner inside a container on a Linux host (or a Linux Virtual Machine, VM) | any work — full sandbox, nested |
-| `macos-seatbelt` | macOS, Apple Seatbelt profile (weaker) | own-tenant / dev work |
-| `dev-none` | no real sandbox | own-tenant dev work |
+| `landlock_full` | Linux host | any work |
+| `container_nested` | runner inside a container on a Linux host (or a Linux Virtual Machine, VM) | any work — full sandbox, nested |
+| `macos_seatbelt` | macOS, Apple Seatbelt profile (weaker) | own-tenant / dev work |
+| `dev_none` | no real sandbox | own-tenant dev work |
 
-Containerizing the runner is a first-class deployment mode. Landlock is a stackable Linux Security Module (LSM) and nests for free; bubblewrap needs user-namespace + mount permission; per-agent cgroup limits need cgroup-v2 delegation — `sysbox` grants those safely without full `--privileged`. On macOS, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is exactly how a laptop earns `container-nested` instead of the degraded `macos-seatbelt`.
+Containerizing the runner is a first-class deployment mode. Landlock is a stackable Linux Security Module (LSM) and nests for free; bubblewrap needs user-namespace + mount permission; per-agent cgroup limits need cgroup-v2 delegation — `sysbox` grants those safely without full `--privileged`. On macOS, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is exactly how a laptop earns `container_nested` instead of the degraded `macos_seatbelt`.
 
 ## Scaling
 
