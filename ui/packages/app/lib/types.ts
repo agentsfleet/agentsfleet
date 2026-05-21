@@ -81,6 +81,9 @@ export type TenantBilling = {
   updated_at: number;
   is_exhausted: boolean;
   exhausted_at: number | null;
+  // Promotional free-trial window state, from src/state/tenant_billing.zig.
+  // `ends_at_ms` is epoch milliseconds (pass straight to `new Date(n)`).
+  free_trial: { active: boolean; ends_at_ms: number };
 };
 
 // ── Tenant LLM provider ──
@@ -109,13 +112,6 @@ export type TenantProvider = {
   model: string;
   context_cap_tokens: number;
   credential_ref: string | null;
-  // Set when no tenant_providers row exists and the resolver returned the
-  // platform default. UI uses this to surface "this is the default" copy.
-  synthesised_default?: boolean;
-  // Set when the resolver tried to load a self-managed credential and
-  // failed (credential row missing from the vault). The UI surfaces this
-  // as a warning banner.
-  error?: string;
 };
 
 export type TenantBillingChargesResponse = {

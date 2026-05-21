@@ -18,7 +18,6 @@ describe("getTenantProvider", () => {
         model: "kimi-k2.6",
         context_cap_tokens: 256000,
         credential_ref: null,
-        synthesised_default: true,
       }),
     });
     const { getTenantProvider } = await import("./tenant_provider");
@@ -31,7 +30,8 @@ describe("getTenantProvider", () => {
       }),
     );
     expect(res.mode).toBe(PROVIDER_MODE.platform);
-    expect(res.synthesised_default).toBe(true);
+    expect(res.provider).toBe("fireworks");
+    expect(res.credential_ref).toBeNull();
   });
 });
 
@@ -80,7 +80,7 @@ describe("setTenantProviderSelfManaged", () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 400,
-      json: async () => ({ error: "credential body missing required fields", code: "credential_data_malformed" }),
+      json: async () => ({ detail: "credential body missing required fields", error_code: "UZ-PROVIDER-002" }),
     });
     const { setTenantProviderSelfManaged } = await import("./tenant_provider");
     await expect(setTenantProviderSelfManaged({ credential_ref: "junk" }, "tok"))

@@ -47,12 +47,19 @@ vi.mock("lucide-react", () => ({
   KeyRoundIcon: () => React.createElement("svg", { "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: () => React.createElement("svg", { "data-icon": "CheckCircle2Icon" }),
   MenuIcon: () => React.createElement("svg", { "data-icon": "MenuIcon" }),
+  SunIcon: () => React.createElement("svg", { "data-icon": "SunIcon" }),
+  MoonIcon: () => React.createElement("svg", { "data-icon": "MoonIcon" }),
   ChevronDownIcon: () => React.createElement("svg", { "data-icon": "ChevronDownIcon" }),
 }));
 
 vi.mock("@/lib/workspace", () => ({
   resolveActiveWorkspace: vi.fn().mockResolvedValue(null),
   listTenantWorkspacesCached: vi.fn().mockResolvedValue({ items: [], total: 0 }),
+}));
+
+// RootLayout reads the theme cookie server-side (SSR data-theme stamp).
+vi.mock("next/headers", () => ({
+  cookies: vi.fn().mockResolvedValue({ get: () => undefined }),
 }));
 
 beforeEach(() => {
@@ -68,7 +75,9 @@ describe("app layouts and pages", () => {
     const { default: DashboardLayout } = await import("../app/(dashboard)/layout");
     const { default: AuthLayout } = await import("../app/(auth)/layout");
 
-    const rootMarkup = renderToStaticMarkup(React.createElement(RootLayout, null, React.createElement("div", null, "root child")));
+    const rootMarkup = renderToStaticMarkup(
+      await RootLayout({ children: React.createElement("div", null, "root child") }),
+    );
     const dashboardMarkup = renderToStaticMarkup(
       await DashboardLayout({ children: React.createElement("div", null, "dash child") }),
     );

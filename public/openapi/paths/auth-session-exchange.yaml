@@ -1,0 +1,191 @@
+/v1/auth/sessions/{session_id}/approve:
+  patch:
+    operationId: approve_auth_session
+    summary: Dashboard approves a pending session and submits the encrypted JWT
+    description: |
+      Step 3 of the CLI device flow. Called by the dashboard JS process
+      after the operator clicks Approve on `/cli-auth/{session_id}`.
+
+      The dashboard:
+        1. Generates an ephemeral P-256 ECDH keypair (`dash_priv` / `dash_pub`).
+        2. Derives the shared secret = `dash_priv × cli_public_key`.
+        3. Runs HKDF-SHA-256 with empty salt and `info = "m74-002-v1"` to
+           produce a 32-byte AES-256-GCM key.
+        4. Encrypts the Clerk JWT (template `api`) with a fresh 96-bit nonce
+           via `crypto.subtle.encrypt({ name: "AES-GCM", iv: nonce }, key, jwt)`.
+        5. Generates a 6-digit verification code via
+           `crypto.getRandomValues(new Uint32Array(1)) mod 1_000_000`.
+        6. PATCHes this endpoint with `{ dashboard_public_key, ciphertext,
+           nonce, verification_code }`.
+
+      The API computes `verification_code_hmac =
+      HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, session_id || verification_code)`
+      and persists the HMAC (never the plaintext code). The session
+      transitions atomically `pending → verification_pending`. The
+      single-write invariant: any subsequent PATCH for the same session
+      returns 409 `UZ-AUTH-015`.
+
+      Memory hygiene on the dashboard: discard `dash_priv` and the shared
+      key after this call resolves. Never persist crypto material.
+    tags:
+    - Authentication
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - dashboard_public_key
+            - ciphertext
+            - nonce
+            - verification_code
+            properties:
+              dashboard_public_key:
+                type: string
+                description: Base64url P-256 SubjectPublicKeyInfo (the dashboard's ephemeral ECDH public key).
+              ciphertext:
+                type: string
+                description: Base64url AES-256-GCM output over the Clerk JWT plaintext.
+              nonce:
+                type: string
+                description: Base64url 12-byte (96-bit) AES-GCM nonce. Random per call.
+              verification_code:
+                type: string
+                pattern: '^[0-9]{6}$'
+                description: |
+                  Exactly 6 ASCII digits. Travels plaintext over TLS to this
+                  Clerk-authenticated endpoint, exists momentarily in the API
+                  process to compute the HMAC, then is discarded. The
+                  alternative (dashboard pre-hashes locally) does not work
+                  because only the API holds the pepper.
+    responses:
+      '200':
+        description: Session transitioned to verification_pending
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - request_id
+              properties:
+                request_id:
+                  type: string
+                  format: uuid
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '409':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '410':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
+
+/v1/auth/sessions/{session_id}/verify:
+  post:
+    operationId: verify_auth_session
+    summary: CLI submits the 6-digit verification code and receives the encrypted JWT
+    description: |
+      Step 4 of the CLI device flow. Atomically transitions
+      `verification_pending → consumed` and releases the ciphertext
+      payload in a single Lua-EVAL write.
+
+      No bearer authentication — the verification code IS the auth. The
+      code is single-use; success and failure paths both surface through
+      ErrorBody response codes:
+
+        * `UZ-AUTH-011` (400) — code did not match; `verification_attempts`
+          incremented. The fifth failed attempt transitions the session to
+          `aborted` with `reason="rate_limit_exceeded"` (the L3 rate limit
+          per `docs/AUTH.md` Flow 1).
+        * `UZ-AUTH-018` (400) — verification code malformed (must be exactly
+          6 ASCII digits). The CLI distinguishes this from `UZ-AUTH-011` to
+          reprompt for a correctly-shaped code rather than reporting a mismatch.
+        * `UZ-AUTH-012` (410) — session already consumed (outside the 60-second
+          same-fingerprint replay window, or different fingerprint).
+        * `UZ-AUTH-013` (410) — session aborted (5 wrong codes, explicit cancel,
+          or replaced by a newer session).
+        * `UZ-AUTH-014` (410) — session not yet approved (no dashboard PATCH yet).
+        * `UZ-AUTH-006` (401) — session expired (5-min TTL elapsed).
+
+      On success the response carries `{ dashboard_public_key, ciphertext,
+      nonce }`. The CLI derives the same AES-256-GCM key (ECDH × HKDF as
+      on the dashboard side; `info` MUST be `"m74-002-v1"` verbatim) and
+      decrypts the JWT.
+
+      Consume-idempotency window: on success the server records
+      `consumed_client_fingerprint = sha256(remote_addr || user_agent || session_id)`
+      and `consume_payload_expires_at_ms = now_ms + 60_000`. A second
+      POST inside that window from the same fingerprint returns the same
+      payload (so "consume succeeded, response lost, client retried"
+      converges). Outside the window or from a different fingerprint →
+      410 `UZ-AUTH-012`.
+    tags:
+    - Authentication
+    security: []
+    parameters:
+    - name: session_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required:
+            - verification_code
+            properties:
+              verification_code:
+                type: string
+                pattern: '^[0-9]{6}$'
+                description: The 6-digit code the dashboard displayed to the user.
+    responses:
+      '200':
+        description: |
+          Verification succeeded; ciphertext payload released. The CLI
+          decrypts `ciphertext` using `dashboard_public_key` + its own
+          ECDH private key per the HKDF / AES-GCM derivation described
+          on `PATCH /v1/auth/sessions/{session_id}/approve`.
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - dashboard_public_key
+              - ciphertext
+              - nonce
+              properties:
+                dashboard_public_key:
+                  type: string
+                  description: Base64url P-256 SPKI — the dashboard's ephemeral ECDH public key from the matching approve call.
+                ciphertext:
+                  type: string
+                  description: Base64url AES-256-GCM output over the Clerk JWT.
+                nonce:
+                  type: string
+                  description: Base64url 12-byte AES-GCM nonce used during encryption.
+      '400':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '401':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '410':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      '429':
+        $ref: ../components/responses.yaml#/components/responses/Error
+      default:
+        $ref: ../components/responses.yaml#/components/responses/Error
