@@ -10,7 +10,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M75
 **Workstream:** 002
 **Date:** May 22, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — `curl -fsSL https://usezombie.sh | bash` is the install path advertised on the live marketing site (M78 hero); it currently returns HTML, so the installer is broken for every visitor.
 **Categories:** INFRA
 **Batch:** B1 — sequence after the platform decision (Cloudflare Pages vs Vercel) below.
@@ -103,8 +103,8 @@ Settle Cloudflare Pages vs Vercel for `usezombie.sh` (Discovery decision). Every
 ### §2 — Serve the static installer on the chosen platform
 Vercel: add `dist/vercel.json` (rewrite + content-type), framework Other, fresh production build. Cloudflare: deploy `dist/` on Pages, detach the domain from Vercel.
 
-- **Dimension 2.1** — `/install.sh` returns the shell script with `text/x-shellscript` → Test `installer_serves_shellscript_at_install_path`
-- **Dimension 2.2** — `/` (bare root) returns the same shell script body (rewrite applied) → Test `installer_serves_shellscript_at_root`
+- **Dimension 2.1** — `/install.sh` returns the shell script with `text/x-shellscript` → Test `installer_serves_shellscript_at_install_path`. **DONE** — preview deploy (sha 7159925a): `/install.sh` → 200, `#!/usr/bin/env bash`, `text/x-shellscript; charset=utf-8`.
+- **Dimension 2.2** — `/` (bare root) returns the same shell script body (rewrite applied) → Test `installer_serves_shellscript_at_root`. **DONE** — preview deploy: `/` → 200, body identical to `/install.sh`, `text/x-shellscript`. (Prod custom domain auto-confirms on merge — `ssoProtection: all_except_custom_domains`.)
 
 ### §3 — Remove the dead-platform config (RULE NDC)
 Once the platform is chosen, drop the other platform's now-dead config (the Cloudflare `_redirects`/`_headers` if Vercel-only, or the Vercel project/`vercel.json` if Cloudflare).
@@ -214,15 +214,19 @@ gitleaks detect 2>&1 | tail -3
 
 ## Verification Evidence
 
-> Filled during VERIFY.
+Verified against the Vercel **preview** deploy (sha 7159925a, via `x-vercel-protection-bypass`); the prod custom domain is unprotected (`ssoProtection: all_except_custom_domains`) and auto-deploys the same artifact on merge.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Root serves script | `curl -fsSL https://usezombie.sh \| head -1` | {paste} | |
-| install.sh content-type | `curl -sSI https://usezombie.sh/install.sh` | {paste} | |
-| Uncached probe not SPA | Eval E3 | {paste} | |
-| Single platform | alias/DNS check | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
+| Root serves script | preview `GET /` | `200`, `#!/usr/bin/env bash`, `text/x-shellscript; charset=utf-8` | ✅ |
+| Root == install.sh body | `diff` of both bodies | IDENTICAL | ✅ |
+| install.sh content-type | preview `GET /install.sh` | `200`, `text/x-shellscript; charset=utf-8` | ✅ |
+| Uncached probe not SPA | preview `GET /probe-<ts>` | `404`, `text/plain` ("page could not be found") | ✅ |
+| Single platform | `git grep` + Vercel domain check | `dist/` holds only `install.sh` + `vercel.json`; domain on one Vercel project | ✅ |
+| shellcheck + install_test | `shellcheck`; `bash install_test.sh` | clean; 43 passed, 0 failed | ✅ |
+| harness-verify | `make harness-verify` | ALL GATES GREEN | ✅ |
+| Gitleaks | pre-commit `gitleaks protect --staged` | no leaks found | ✅ |
+| Prod live | `curl -fsSL https://usezombie.sh \| head -1` | pending merge → prod deploy | ⏳ |
 
 ---
 
