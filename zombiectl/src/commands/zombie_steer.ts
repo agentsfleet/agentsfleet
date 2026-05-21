@@ -178,6 +178,9 @@ const steerTurnEffect = (
     }
 
     let outcome = yield* tailEventStream(wsId, zombieId, post.event_id, token, streamGet, signal);
+    if (outcome.kind !== "complete" && !signal?.aborted) {
+      outcome = yield* pollEventTerminal(wsId, zombieId, post.event_id, token, signal);
+    }
     if (signal?.aborted) {
       return yield* Effect.fail(
         new InterruptedError({
@@ -186,10 +189,6 @@ const steerTurnEffect = (
         }),
       );
     }
-    if (outcome.kind !== "complete") {
-      outcome = yield* pollEventTerminal(wsId, zombieId, post.event_id, token);
-    }
-
     yield* renderOutcome(outcome, post.event_id, zombieId);
   });
 
@@ -198,12 +197,13 @@ const pollEventTerminal = (
   zombieId: string,
   eventId: string,
   token: Redacted.Redacted<string>,
+  signal?: AbortSignal,
 ): Effect.Effect<SteerOutcome, never, HttpClient> =>
   Effect.gen(function* () {
     const http = yield* HttpClient;
     const sinceParam = eventIdToSince(eventId);
     const deadline = Date.now() + SSE_FALLBACK_TIMEOUT_MS;
-    while (Date.now() < deadline) {
+    while (Date.now() < deadline && !signal?.aborted) {
       const path = `${wsZombieEventsPath(wsId, zombieId)}?limit=${FALLBACK_POLL_LIMIT}${sinceParam ? `&since=${encodeURIComponent(sinceParam)}` : ""}`;
       const res = yield* http.request<EventsResponse>({ path, token }).pipe(
         Effect.orElseSucceed((): EventsResponse => ({ items: [] })),
@@ -212,6 +212,7 @@ const pollEventTerminal = (
       if (match && typeof match.status === "string" && isTerminal(match.status)) {
         return { kind: "complete", status: match.status } as SteerOutcome;
       }
+      if (signal?.aborted) break;
       yield* Effect.sleep(`${FALLBACK_POLL_MS} millis`);
     }
     return { kind: "timeout" } as SteerOutcome;

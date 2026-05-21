@@ -8,8 +8,9 @@ import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
-import type { ReplInputStream, ReplOutputStream } from "../src/lib/repl.ts";
+import { ReplSignalEmitter, type ReplInputStream, type ReplOutputStream } from "../src/lib/repl.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";
+import { SIGINT } from "../src/constants/signals.ts";
 
 const WS_ID = "0195b4ba-8d3a-7f13-8abc-000000000010";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-000000000020";
@@ -179,5 +180,34 @@ describe("steerEffectFromArgs REPL dispatch", () => {
     ]);
     expect(rec.stderr.join("\n")).toContain("messages response missing event_id");
     expect(rec.streamSignals).toHaveLength(1);
+  });
+
+  test("SIGINT during the fallback poll breaks promptly instead of waiting out the timeout", async () => {
+    const rec = makeRecorder();
+    const signalSource = new ReplSignalEmitter();
+    const noTerminalStream = async (
+      _url: string,
+      _headers: Record<string, string>,
+      _onEvent: StreamGetCallback,
+      options?: { signal?: AbortSignal },
+    ): Promise<void> => {
+      if (options?.signal) rec.streamSignals.push(options.signal);
+    };
+    let polls = 0;
+    const effect = steerEffectFromArgs(
+      ZOMBIE_ID,
+      undefined,
+      { forceTty: true },
+      { stdin: streamFrom(["howdy\n"], false), stdout: nullOutput(), streamGet: noTerminalStream, signalSource },
+    ).pipe(Effect.provide(testLayer(rec, <T>(input: HttpRequestInput) => {
+      if (input.method === POST) return { event_id: EVENT_ID } as T;
+      polls += 1;
+      signalSource.emit(SIGINT);
+      return { items: [] } as T;
+    })));
+
+    const exit = await Effect.runPromiseExit(effect);
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(polls).toBe(1);
   });
 });
