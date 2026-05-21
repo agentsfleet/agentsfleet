@@ -35,6 +35,10 @@ describe("steer REPL mode selection", () => {
   test("--tty forces REPL for piped stdin", () => {
     expect(shouldEnterSteerRepl({ isTTY: false }, undefined, true)).toBe(true);
   });
+
+  test("explicit message stays single-shot even with --tty", () => {
+    expect(shouldEnterSteerRepl({ isTTY: true }, "howdy", true)).toBe(false);
+  });
 });
 
 describe("steer REPL loop", () => {
@@ -67,6 +71,25 @@ describe("steer REPL loop", () => {
 
     await expect(codePromise).resolves.toBe(130);
     expect(aborted).toBe(true);
+  });
+
+  test("turn errors are reported and the prompt continues", async () => {
+    const seen: string[] = [];
+    const errors: string[] = [];
+    const code = await runSteerRepl({
+      input: streamFrom(["first\n", "second\n"]),
+      output: nullOutput(),
+      runTurn: async (message) => {
+        seen.push(message);
+        if (message === "first") throw new Error("nope");
+      },
+      onTurnError: async (err) => {
+        errors.push(err instanceof Error ? err.message : String(err));
+      },
+    });
+    expect(code).toBe(0);
+    expect(seen).toEqual(["first", "second"]);
+    expect(errors).toEqual(["nope"]);
   });
 });
 
