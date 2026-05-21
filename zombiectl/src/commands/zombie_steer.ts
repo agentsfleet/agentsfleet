@@ -295,7 +295,7 @@ export const steerEffectFromArgs = (
         Layer.succeed(HttpClient, http),
         Layer.succeed(Output, output),
       );
-      const exitCode = yield* Effect.tryPromise<number, CliError>({
+      const exitCode = yield* Effect.tryPromise({
         try: () =>
           runSteerRepl({
             input: stdin,

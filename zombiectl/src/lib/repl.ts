@@ -50,7 +50,7 @@ export async function readPipedMessage(input: NodeJS.ReadableStream): Promise<st
   return body.trim();
 }
 
-export async function runSteerRepl(options: ReplOptions): Promise<number> {
+export async function runSteerRepl(options: ReplOptions): Promise<typeof EXIT_OK | typeof EXIT_SIGINT> {
   const signalSource = options.signalSource ?? process;
   const rl = readline.createInterface({
     input: options.input,
