@@ -8,17 +8,19 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 - Enforced by SPEC TEMPLATE GATE (`docs/gates/spec-template.md`).
 -->
 
-# M74_003: e2e / acceptance / dry make targets mirror CI + acceptance-suite hardening
+# M74_003: e2e/acceptance/dry make targets mirror CI + acceptance hardening + zombiectl login non-interactive path & DX hardening
 
 **Prototype:** v2.0.0
 **Milestone:** M74
 **Workstream:** 003
 **Date:** May 21, 2026
-**Status:** DONE
-**Priority:** P2 — local developer make targets pointed at the wrong things, two valueless CI jobs, and a flaky/red acceptance suite. No production-code risk; the change restores real signal, gives developers local commands that match the pipeline, and unblocks the dashboard acceptance suite.
-**Categories:** INFRA, TESTING
-**Batch:** B1
-**Branch:** feat/m74-003-live-e2e-auth-portability
+**Status:** IN_PROGRESS
+**Priority:** P2 (B1) — local make targets pointed at the wrong things, two valueless CI jobs, a flaky/red acceptance suite. P1 (B2) — `zombiectl login` has no non-interactive direct-token path (Continuous Integration (CI)/scripts cannot pass a token), carries a stale `ZMB_TOKEN` env alias that wins over the canonical `ZOMBIE_TOKEN`, and the verification-code prompt has developer-experience gaps (poll-lag before the prompt, no client-side validation, unclean Ctrl-C / End-of-File (EOF) handling).
+**Categories:** INFRA, TESTING, AUTH, CLI
+**Batch:** B1 (make-targets + acceptance hardening — DONE) · B2 (zombiectl login non-interactive path + env consolidation + prompt DX — IN_PROGRESS)
+
+> **Scope expansion (B2).** B1 (make-targets + acceptance fixtures) already shipped — all `DONE` below. Per Indy's explicit direction the `zombiectl login` changes are folded into this same spec file + PR #339 rather than split to their own milestone (the split-security-features default would carve them out — registered, overridden). **The login flow itself is UNCHANGED (Pick A — keep the typed verification code + Elliptic-Curve Diffie-Hellman (ECDH) handshake, matching the Supabase reference CLI at `~/Projects/oss/cli/apps/cli/src/next/commands/login`).** A loopback + Proof Key for Code Exchange (PKCE) redesign was considered and **dropped**: the reference does not use loopback, so adopting it would diverge from the reference (needs ack) AND defeat reference parity. B2 is bounded to four moves: (1) a non-interactive direct-token path (Supabase `resolveToken` shape — `--token` > `ZOMBIE_TOKEN` env > piped stdin > browser); (2) delete the `ZMB_TOKEN` env alias, `ZOMBIE_TOKEN`-only; (3) prompt UX + edge-case hardening with tests; (4) document two used-but-undocumented env vars. AUTH.md gets a light env-var/non-interactive touch — no threat-model rewrite, since the flow is unchanged. Docs PR [`usezombie/docs#67`](https://github.com/usezombie/docs/pull/67) documents the flow we are KEEPING, so it stays valid and can merge.
+**Branch:** feat/m74-003-login-loopback (B2 working branch, off `feat/m74-003-live-e2e-auth-portability`; merges into PR #339). The `-login-loopback` suffix is stale from the abandoned loopback premise — harmless, not renamed.
 **Depends on:** None.
 **Provenance:** Consolidates the original M74_003 (authored wrongly as "restore the `src/auth/` portability gate via an `error_registry` named module") and M74_004 (`make live-e2e-all` placeholder-filter cleanup) into one workstream. **Two corrections happened during implementation:** (1) `live-e2e-*` is the **live-API acceptance** namespace, not a Zig compile gate — the abandoned `error_registry` sweep is parked in a branch stash, do not resurrect; (2) the interim wiring `live-e2e-all: _test-integration-full` made `live-e2e-all` a behavioural twin of `make test-integration` — a duplicate target with no added signal. Caught against memory (`live-e2e-all` must not clone `test-integration`) and independently confirmed by the M74_004 sibling agent before it tore down. **Resolution: `live-e2e-all` is removed entirely** — `acceptance-e2e` + `cli-acceptance` are the correct local twins of the CI acceptance jobs, and `test-integration` already owns the full backend suite. The acceptance-suite drift fixes that lived uncommitted in the M74_004 worktree are folded in here.
 
@@ -224,6 +226,108 @@ No HTTP/REST/OpenAPI/CLI/schema surface. The acceptance suites read their standa
 | `make lint-app` | fixture TS changes pass Oxlint + `tsc --noEmit` | local / CI |
 
 The acceptance/integration assertions themselves are owned by M65_001, M65_002, and the existing integration suite; this spec wires the entrypoints and corrects the fixtures that the suite depends on.
+
+---
+
+## B2 — zombiectl login: non-interactive path + env consolidation + prompt DX
+
+> Everything below is B2. B1 (Sections §1–§5, all `DONE`) is unchanged. **The login *flow* is unchanged** — typed verification code + ECDH handshake stay (Pick A, matching the Supabase reference `~/Projects/oss/cli/apps/cli/src/next/commands/login`). B2 only adds a non-interactive path, consolidates the token env var, hardens the prompt, and documents two strays. AUTH.md gets a light env-var/non-interactive touch — **no Flow 1 threat-model rewrite**, since the protocol is unchanged.
+
+### B2 Problem
+
+Three independent gaps on the shipped `zombiectl login`:
+1. **No non-interactive path.** `loginCore` always runs the browser device flow. There is no `--token` flag and no piped-stdin token; the only non-interactive credential is exporting `ZOMBIE_TOKEN` out-of-band, which `login` merely *warns* about (`login-device-flow.ts:envTokenAwareness`). The Supabase reference handles this with `resolveToken` (`--token` > env > piped stdin > browser) + a direct `saveDirectToken`.
+2. **`ZMB_TOKEN` is a stale alias that *wins*.** The resolver treats `ZMB_TOKEN` as canonical and prefers it over `ZOMBIE_TOKEN` (`auth-token.ts:15,76`, `config.ts:56,61`), while every other env var is `ZOMBIE_`-prefixed. Two names for one thing, and the outlier wins.
+3. **Prompt DX / edge-case gaps.** The CLI polls `GET /sessions` to `verification_pending` *then* prompts — up to one poll interval of lag after Approve, behind a bare spinner. The prompt (`input.readLine`) has no client-side validation (empty/garbage round-trips to the server as `UZ-AUTH-018`), and `catch → ""` masks cancel/EOF. Ctrl-C at the prompt is not routed to the clean exit-130 path the poll phase has; Ctrl-D/EOF can loop.
+
+### B2 Design
+
+1. **Non-interactive resolve order** (mirrors Supabase `resolveToken`): `--token <pat>` flag → `ZOMBIE_TOKEN` env → piped stdin (non-TTY) → browser device flow. A directly-supplied token is validated (`pingMe`) and persisted to `credentials.json` (0o600) with no browser. The interactive device flow (typed code + ECDH) is the unchanged fallback.
+2. **`ZOMBIE_TOKEN`-only.** Delete every `ZMB_TOKEN` env reference (and the lowercase `zmb` local in `auth-token.ts:76`); `ZOMBIE_TOKEN` is the single name. **Surgical** — the `zmb_` / `zmb_t_` API-key prefixes, `UZ-ZMB-*` error codes, and `ZMB_CD_*` vault names are NOT touched (case-insensitive blast-radius sweep confirms the overload).
+3. **Prompt UX.** Prompt for the code immediately after opening the browser (drop the poll-gate lag, matching Supabase); validate the 6-digit shape client-side before the network call; route Ctrl-C to the existing interrupted→exit-130 path (no partial `credentials.json`); make EOF a clean exit, not a loop; empty Enter re-prompts locally.
+4. **Env-var doc hygiene.** Add the two used-but-undocumented vars (`ZOMBIE_DASHBOARD_URL`, `ZOMBIE_PROGRESS_STYLE`) to the `--help` env block + golden. No removals — both have live callers.
+
+### B2 Sections (implementation slices)
+
+#### §B2.1 — Non-interactive direct-token path — PENDING
+Add a `resolveToken`-equivalent ahead of the device flow in `login.ts`: `--token` flag (new, on `cli-tree.ts`) → `ZOMBIE_TOKEN` env → piped stdin (non-TTY) → browser. Direct token → `validateToken` / `pingMe` → persist → done, no browser. Keep `--token-name`, `--no-open`, `--timeout-sec`, `--force`, `--no-input`.
+
+#### §B2.2 — `ZMB_TOKEN` → `ZOMBIE_TOKEN` consolidation — PENDING
+Remove `ZMB_TOKEN` as the canonical/winning env name across `auth-token.ts` (incl. the `zmb` local at :76), `config.ts`, `cli.ts`, `argv-redact.ts`, `login-device-flow.ts` (`ZMB_TOKEN_ENV_KEYS` / `envTokenAwareness`), `cli-tree.ts` help text. Regenerate the `help-no-color.txt` golden. Update `auth-token-resolve.unit.test.ts`, `login-effect.unit.test.ts`, `login-device-flow.unit.test.ts`. **Prefix-safe per the case-insensitive sweep** — `zmb_` / `zmb_t_` / `UZ-ZMB-*` / `ZMB_CD_*` untouched.
+
+#### §B2.3 — Prompt UX: immediate prompt + client-side validation — PENDING
+In `login.ts` / `login-device-flow.ts`: prompt for the code immediately after opening the browser (remove the `pollUntilVerificationPending` gate before the prompt; keep a lightweight expiry check if it earns its keep). Validate the 6-digit shape in `promptVerificationCode` before `submitVerificationCode` — no wasted round-trip on empty/garbage.
+
+#### §B2.4 — Edge-case hardening (Ctrl-C / EOF / Enter / ESC) + tests — PENDING
+Route SIGINT at the code prompt to the existing `InterruptedError` → exit-130 path (never a partial `credentials.json`), matching the poll phase. Make `input.readLine` distinguish cancel/EOF from empty input (stop the `catch → ""` masking); EOF → clean non-zero exit, not a re-prompt loop; empty Enter → local re-prompt. Add `zombiectl` tests for each: Ctrl-C → exit 130 + no creds written; EOF → clean exit; empty Enter → re-prompt with no server call; client-side invalid-code rejection.
+
+#### §B2.5 — Env-var doc hygiene — PENDING
+Add `ZOMBIE_DASHBOARD_URL` (`config.ts:55`) + `ZOMBIE_PROGRESS_STYLE` (`ui-progress.ts:43`) to the `cli-tree.ts` env block; regenerate the golden help. No removals.
+
+#### §B2.6 — AUTH.md + user-docs light touch — PENDING
+`docs/AUTH.md`: update token env-var references (`ZMB_TOKEN` → `ZOMBIE_TOKEN`) and add a sentence on the non-interactive `--token` / env / stdin path. **No Flow 1 threat-model rewrite — the protocol is unchanged.** `usezombie/docs#67` stays valid (it documents the kept flow); add the `--token` flag + the corrected env-var name where it lists them.
+
+### B2 Interfaces
+
+```
+# zombiectl login — flags
+--token <pat>          NEW — non-interactive: validate + persist a token, no browser
+--token-name <label>   keep
+--no-open / --no-input / --timeout-sec / --force   keep
+
+# Token resolution order (new)
+--token flag > ZOMBIE_TOKEN env > piped stdin (non-TTY) > interactive device flow
+
+# Env var (consolidated)
+ZOMBIE_TOKEN           the only auth-token env var (ZMB_TOKEN deleted)
+
+# Backend / dashboard / device-flow protocol — UNCHANGED (Pick A)
+```
+
+### B2 Failure Modes
+
+| Mode | Cause | Handling |
+|------|-------|----------|
+| `--token <invalid>` | bad/expired PAT supplied directly | `pingMe` rejects → exit ≠ 0, **nothing persisted**. |
+| Piped stdin but empty | `printf '' \| zombiectl login` | Treated as no token → falls through to browser flow (or fails under `--no-input`). |
+| Ctrl-C at the code prompt | user aborts mid-prompt | `InterruptedError` → exit 130, no partial `credentials.json` (same as poll phase). |
+| Ctrl-D / EOF at the prompt | closed stdin / piped EOF | Clean non-zero exit — **no re-prompt loop** (current `catch → ""` masking removed). |
+| Empty / non-6-digit Enter | typo | Client-side validation → local re-prompt, **no server round-trip**. |
+| `ZMB_TOKEN` still set in a user's shell post-upgrade | muscle memory / old docs | No longer honored; `--help` + AUTH.md document `ZOMBIE_TOKEN`. (Acceptable break — pre-2.0, RULE NLG: no compat alias.) |
+
+### B2 Invariants
+
+1. **`ZMB_TOKEN` is gone** — `git grep -i 'ZMB_TOKEN' -- zombiectl/src zombiectl/test` returns 0; the `zmb_` / `zmb_t_` / `UZ-ZMB-*` / `ZMB_CD_*` families remain untouched.
+2. **`ZOMBIE_TOKEN` resolves auth everywhere** — no env path depends on `ZMB_TOKEN`.
+3. **Direct token = no browser** — `--token` / env / stdin validates + persists without opening a browser or prompting.
+4. **Ctrl-C at the prompt exits 130 with no `credentials.json` written** — same contract the poll phase already holds (M65_002 flags-and-env spec).
+5. **Empty/garbage code never hits the server** — client-side 6-digit validation gates `POST /verify`.
+6. **The device-flow protocol is byte-identical to M74_002** — typed code + ECDH + endpoints + state machine unchanged (Pick A).
+
+### B2 Acceptance Criteria
+
+- `zombiectl login --token <valid>` persists creds + exits 0 with **no browser opened**; an invalid token exits ≠ 0 and writes nothing.
+- `printf '%s' "$TOK" | zombiectl login` (non-TTY) authenticates via piped stdin.
+- `git grep -i ZMB_TOKEN -- zombiectl/src zombiectl/test` → 0 hits; `make lint-zombiectl` + the golden-help test green; the `zmb_t_` / `UZ-ZMB-*` families still present.
+- Interactive login prompts for the code immediately after Approve (no poll-gate lag); a non-6-digit entry is rejected locally with no network call.
+- Ctrl-C at the prompt → exit 130, no `credentials.json`; Ctrl-D/EOF → clean non-zero exit, no loop — both covered by new `zombiectl` tests.
+- `ZOMBIE_DASHBOARD_URL` + `ZOMBIE_PROGRESS_STYLE` appear in `--help`; golden updated.
+
+### B2 Blast radius (case-insensitive-verified)
+
+| Area | Files | Action |
+|------|-------|--------|
+| CLI — non-interactive | `login.ts`, `login-device-flow.ts`, `program/cli-tree.ts`, `program/handlers-bind.ts` | add `--token` / env / stdin resolve order + direct-token persist |
+| CLI — env consolidation | `auth-token.ts`, `config.ts`, `cli.ts`, `argv-redact.ts`, `login-device-flow.ts`, `cli-tree.ts` | delete `ZMB_TOKEN` (surgical), `ZOMBIE_TOKEN`-only |
+| CLI — prompt UX | `login.ts`, `login-device-flow.ts`, `services/input.ts` | immediate prompt, client validation, clean cancel/EOF |
+| Docs | `cli-tree.ts` help + golden `help-no-color.txt`; `docs/AUTH.md` (light); `usezombie/docs` (`--token` + env name) | document new flag + 2 strays; consolidate env name |
+| Tests | `auth-token-resolve.unit.test.ts`, `login-effect.unit.test.ts`, `login-device-flow.unit.test.ts`, new edge-case `zombiectl/test/*` | env consolidation + non-interactive + edge cases |
+| **Untouched** | `zmb_` / `zmb_t_` key prefixes, `UZ-ZMB-*` codes, `ZMB_CD_*` vaults; backend `sessions.zig` / `session_store_redis.zig` / `session_state.zig`; dashboard `cli-auth` page; the device-flow protocol | Pick A — flow unchanged |
+
+### B2 Open decisions
+
+1. **`--no-input` semantics** — with the new non-interactive `--token` / env / stdin path, `--no-input` keeps its current meaning (abort rather than prompt). Confirm no ambiguity once the resolve order lands.
+2. **Drop the poll entirely vs keep a lightweight expiry check** when prompting immediately — Supabase drops it; a thin background expiry poll may be worth keeping so a stale session fails fast instead of on a wrong-code submit.
 
 ---
 
