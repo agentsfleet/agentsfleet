@@ -99,6 +99,14 @@ test("steer <id> <message> dispatches with two positionals", async () => {
   expect(calls[0]?.frame.parsed.positionals).toEqual([VALID_ID, "hello there"]);
 });
 
+test("steer <id> --tty dispatches without a message", async () => {
+  const { handlers, calls } = makeSpyTree();
+  await dispatch(["steer", VALID_ID, "--tty"], handlers);
+  expect(calls[0]?.name).toBe("zombie.steer");
+  expect(calls[0]?.frame.parsed.positionals).toEqual([VALID_ID]);
+  expect(calls[0]?.frame.parsed.options.tty).toBe(true);
+});
+
 test("credential add <name> accepts --data / --force", async () => {
   const { handlers, calls } = makeSpyTree();
   await dispatch([

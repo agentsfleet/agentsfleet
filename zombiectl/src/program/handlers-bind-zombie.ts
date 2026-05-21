@@ -8,6 +8,7 @@ import type { CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import type { MainLayerServices } from "../lib/run-effect.ts";
 import type { CliError } from "../errors/index.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
+import { OPT_TTY } from "../constants/cli-flags.ts";
 import {
   statusEffect,
   stopEffectFromId,
@@ -113,6 +114,7 @@ export const buildZombieHandlers = (
       steerEffectFromArgs(
         frame.parsed.positionals[0],
         frame.parsed.positionals[1],
+        { forceTty: frame.parsed.options[OPT_TTY] === true },
       ),
   ),
   credential: {

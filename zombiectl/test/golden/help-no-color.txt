@@ -31,7 +31,7 @@ Commands:
   delete <zombie_id>            Hard-delete a killed zombie
   logs [options] [zombie_id]    Tail zombie activity
   events [options] <zombie_id>  Page through historical events
-  steer <zombie_id> <message>   Send a message; stream the response
+  steer <zombie_id> [message]   Send a message; stream the response
   credential                    Workspace credential vault
   help [command]                display help for command
 
