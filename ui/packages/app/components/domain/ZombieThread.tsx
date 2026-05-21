@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import {
   AssistantRuntimeProvider,
   ThreadPrimitive,
@@ -22,11 +22,10 @@ import {
   CONNECTION_STATUS,
   useZombieEventStream,
   type ConnectionStatus,
-  type RetryState,
   type ZombieEvent,
 } from "./useZombieEventStream";
-import { steerZombie } from "@/lib/api/zombies";
-import { RETRY_DEFAULTS, type RetryReason } from "@/lib/api/retry";
+import type { EventRow } from "@/lib/api/events";
+import { steerZombieAction } from "@/app/(dashboard)/zombies/actions";
 import { SteerComposer } from "./SteerComposer";
 import { renderZombieMessage } from "./zombieMessageRenderers";
 
@@ -51,51 +50,33 @@ const STATUS_VARIANT: Record<ConnectionStatus, "cyan" | "live" | "amber"> = {
 // The server's actor (the authenticated user's email) replaces this.
 const OPTIMISTIC_ACTOR = "steer:pending";
 
-type SteerRetryState = {
-  phase: "steer";
-  attempt: number;
-  max: number;
-  reason: RetryReason;
-} | null;
-
-type AnyRetryState = RetryState | SteerRetryState;
-
 export type ZombieThreadProps = {
   workspaceId: string;
   zombieId: string;
   /**
-   * Server-acquired API token forwarded from the parent server component.
-   * Per `docs/AUTH.md`, dashboard client components do not call Clerk's
-   * `getToken` directly — the token is resolved server-side and passed
-   * down as a prop.
+   * Server-rendered initial event rows. The browser holds no credential —
+   * this data is fetched in the parent Server Component and passed as a
+   * prop; live updates arrive over the cookie-authed SSE route handler.
    */
-  token: string | null;
+  initial: EventRow[];
 };
 
 /**
  * Operator-facing chat surface backed by the durable event log. Wraps
- * `@assistant-ui/react` over `useZombieEventStream` (D3) + `steerZombie`
- * (D6); custom renderers under `zombieMessageRenderers` paint the
+ * `@assistant-ui/react` over `useZombieEventStream` + the `steerZombieAction`
+ * Server Action; custom renderers under `zombieMessageRenderers` paint the
  * per-actor system chips (webhook / cron / continuation / config_reload
- * / gate_blocked) plus the streaming + optimistic states.
+ * / gate_blocked) plus the streaming, optimistic, and failed states.
  */
-export function ZombieThread({ workspaceId, zombieId, token }: ZombieThreadProps) {
-  const stream = useZombieEventStream(workspaceId, zombieId, token);
-  const [steerRetry, setSteerRetry] = useState<SteerRetryState>(null);
-  const onNew = useNewMessageHandler({
-    workspaceId,
-    zombieId,
-    token,
-    stream,
-    onSteerRetry: setSteerRetry,
-  });
+export function ZombieThread({ workspaceId, zombieId, initial }: ZombieThreadProps) {
+  const stream = useZombieEventStream(workspaceId, zombieId, initial);
+  const onNew = useNewMessageHandler({ workspaceId, zombieId, stream });
   const runtime = useExternalStoreRuntime<ZombieEvent>({
     messages: stream.events,
     convertMessage: stream.convertEvent,
     isRunning: stream.isRunning,
     onNew,
   });
-  const activeRetry: AnyRetryState = steerRetry ?? stream.retryState;
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <Card aria-label="Live activity stream">
@@ -117,7 +98,6 @@ export function ZombieThread({ workspaceId, zombieId, token }: ZombieThreadProps
               </Badge>
             </div>
           </CardHeader>
-          <RetryLine state={activeRetry} />
           <CardContent className="p-0">
             <ThreadViewport
               eventsCount={stream.events.length}
@@ -127,30 +107,6 @@ export function ZombieThread({ workspaceId, zombieId, token }: ZombieThreadProps
           </CardContent>
       </Card>
     </AssistantRuntimeProvider>
-  );
-}
-
-/**
- * Visible retry counter ("Retrying backfill… attempt 2 of 3 · 503"),
- * rendered between header and viewport while either the backfill GET
- * or the steer POST is mid-retry. Mirrors the CLI's visible-retry
- * UX so agents + humans observe the same "trying N of M" signal in
- * both surfaces. `role="status" aria-live="polite"` so screen readers
- * announce the attempt updates without interrupting the user.
- */
-function RetryLine({ state }: { state: AnyRetryState }) {
-  if (state === null) return null;
-  return (
-    <output
-      aria-live="polite"
-      className={cn(
-        "block border-b border-border bg-muted px-xl py-xs",
-        "font-mono text-label leading-mono text-evidence",
-      )}
-      data-retry-phase={state.phase}
-    >
-      Retrying {state.phase}… attempt {state.attempt} of {state.max} · {state.reason}
-    </output>
   );
 }
 
@@ -226,54 +182,34 @@ function BackfillSkeleton() {
 type NewHandlerCtx = {
   workspaceId: string;
   zombieId: string;
-  token: string | null;
   stream: ReturnType<typeof useZombieEventStream>;
-  onSteerRetry: (state: SteerRetryState) => void;
 };
 
 function useNewMessageHandler({
   workspaceId,
   zombieId,
-  token,
   stream,
-  onSteerRetry,
 }: NewHandlerCtx): (msg: AppendMessage) => Promise<void> {
   return useCallback(
     async (msg: AppendMessage) => {
-      if (!token) return;
       const text = extractMessageText(msg);
       if (text.length === 0) return;
       const tempId = stream.appendOptimistic(text, OPTIMISTIC_ACTOR);
       try {
-        const { event_id } = await steerZombie(
-          workspaceId,
-          zombieId,
-          text,
-          token,
-          {
-            onRetry: ({ attempt, reason }) => {
-              onSteerRetry({
-                phase: "steer",
-                attempt,
-                max: RETRY_DEFAULTS.maxAttempts,
-                reason,
-              });
-            },
-            onAttempt: ({ terminal }) => {
-              if (terminal) onSteerRetry(null);
-            },
-          },
-        );
-        stream.reconcileOptimistic(tempId, event_id);
+        const result = await steerZombieAction(workspaceId, zombieId, text);
+        if (result.ok) {
+          stream.reconcileOptimistic(tempId, result.data.event_id);
+        } else {
+          stream.markOptimisticFailed(tempId);
+        }
       } catch {
-        // Failed steers stay optimistic until the user re-steers or
-        // reloads; explicit failure surfacing is handled by a future
-        // task (the steer endpoint's 4xx returns surface in the SSE
-        // stream as `gate_blocked` events). The terminal `onAttempt`
-        // already cleared the retry indicator.
+        // The Server Action's RPC transport itself failed (offline, or the
+        // action invocation errored) — surface the same `failed` row the
+        // ok:false path produces so the user knows the steer didn't land.
+        stream.markOptimisticFailed(tempId);
       }
     },
-    [workspaceId, zombieId, token, stream, onSteerRetry],
+    [workspaceId, zombieId, stream],
   );
 }
 

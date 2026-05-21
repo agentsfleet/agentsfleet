@@ -4,7 +4,7 @@
 **Milestone:** M77
 **Workstream:** 001
 **Date:** May 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — a live api-audience JWT is currently serialized into the dashboard's hydration payload; passive token exposure on a security boundary.
 **Categories:** UI
 **Batch:** B1 — standalone.
@@ -81,16 +81,22 @@
 
 | File | Action | Why |
 |------|--------|-----|
-| `ui/packages/app/app/(dashboard)/zombies/actions.ts` | EDIT | add `steerZombieAction` (mirrors the existing six). |
-| `ui/packages/app/components/domain/ZombieThread.tsx` | EDIT | drop the `token` prop; call `steerZombieAction`; stop passing token to the stream hook. |
-| `ui/packages/app/components/domain/ZombieThreadDynamic.tsx` | EDIT | drop the forwarded `token` prop. |
-| `ui/packages/app/components/domain/` event-stream hook (`use-zombie-event-stream*`) + `useNewMessageHandler` | EDIT | remove the `token` param; backfill server-side; SSE via the existing route handler. |
-| `ui/packages/app/components/domain/ZombieApprovalsPanel*` | EDIT | drop the `token` prop; use the existing approve/deny Server Actions. |
-| `ui/packages/app/app/(dashboard)/zombies/[id]/page.tsx` | EDIT | stop forwarding `token={token}` to client components; pass server-rendered data instead. |
-| `ui/packages/app/tests/grep-gates/no-api-template-mint.test.ts` | EDIT | extend to forbid client `getToken()` + token-typed props to client components. |
+| `ui/packages/app/app/(dashboard)/zombies/actions.ts` | EDIT | add `steerZombieAction` (mirrors the existing six; positional args). |
+| `ui/packages/app/components/domain/ZombieThread.tsx` | EDIT | drop the `token` prop (add `initial: EventRow[]`); route steer through `steerZombieAction`; flip to `failed` on `!ok`/throw; remove the client retry-line UI. |
+| `ui/packages/app/components/domain/ZombieThreadDynamic.tsx` | UNCHANGED | spreads `ZombieThreadProps`; the prop-type change (`token` → `initial`) flows through with no code edit. |
+| `ui/packages/app/components/domain/useZombieEventStream.ts` | EDIT | replace the `token` param with server-rendered `initial: EventRow[]`; drop `retryState`; expose `markOptimisticFailed`. |
+| `ui/packages/app/lib/streaming/zombie-stream-registry.ts` | EDIT | seed from `initial`; remove the client backfill GET, the bearer token, and the retry-indicator state; add `markOptimisticFailed`. |
+| `ui/packages/app/lib/streaming/zombie-stream-frames.ts` | EDIT | add `"failed"` to the `ZombieEventStatus` union. |
+| `ui/packages/app/components/domain/zombieMessageRenderers.tsx` | EDIT | render a destructive `failed` badge on a `failed` user row, alongside the optimistic `queued` badge. |
+| `ui/packages/app/components/domain/SteerComposer.tsx` | EDIT (comment) | one-line doc fix — the composer posts via `steerZombieAction`, not `steerZombie`. |
+| `ui/packages/app/components/domain/ZombieApprovalsPanel.tsx` | UNCHANGED | **Server** component — resolves the token server-side and passes only data to its client child; a server-component prop is never serialized into the hydration payload, so its `token` is not a leak. (Corrects this table's original "EDIT" framing — see Discovery.) |
+| `ui/packages/app/app/(dashboard)/zombies/[id]/page.tsx` | EDIT | pass `initial={eventsPage.items}` (already fetched) to the thread; keep `token={token}` on the server-side `ZombieApprovalsPanel`. |
+| `ui/packages/app/tests/grep-gates/no-api-template-mint.test.ts` | EDIT | add scans: zero `getToken()`, zero `Authorization: Bearer`, zero token-typed props across `"use client"` files (cli-auth carve-out + test fixtures excepted). |
+| `ui/packages/app/tests/use-zombie-event-stream.test.ts` · `tests/zombie-thread.test.ts` · `tests/zombie-thread-dynamic.test.ts` · `lib/streaming/zombie-stream-registry.test.ts` | EDIT | re-seat tests on the server-seed + Server-Action shape; swap the dynamic shim's `token` prop for `initial`; add `failed`-state + `markOptimisticFailed` coverage. |
+| `ui/packages/app/tests/e2e/acceptance/zombie-thread.spec.ts` | EDIT | add the Dimension 1.1 steer e2e — submit fires a Server-Action POST; no same-origin request carries a client `Authorization` header. |
 | `docs/AUTH.md` | EDIT | reconcile the stale Flow 2 section + Roadmap to current direction (this slice) vs future direction (the deferred full BFF). DOCUMENT stage. |
 
-> Absent on purpose: `cli-auth/[session_id]/page.tsx`, `next.config.ts` (the `/backend` proxy stays — still used by the carve-out), all `lib/api/*` (kept), and any `src/**` (zombied unchanged).
+> Absent on purpose: `cli-auth/[session_id]/page.tsx`, `next.config.ts` (the `/backend` proxy stays — still used by the carve-out), all `lib/api/*` (kept), and any `src/**` (zombied unchanged). `ZombieApprovalsPanel.tsx` is touched only at its call-site in `page.tsx` (its `token` is intentionally retained — Server Component, no leak).
 
 ---
 
@@ -104,20 +110,20 @@
 
 ## Sections (implementation slices)
 
-### §1 — Remove client token props; route consumers server-side
+### §1 — Remove client token props; route consumers server-side — ✅ DONE
 
 The dashboard must hold no token in client state. `steerZombie` moves to a Server Action; the event-stream backfill runs server-side; the SSE connection keeps using the route handler. Every `token` prop on a dashboard client component is removed, and the zombie-detail page stops forwarding it. **Implementation default:** the stream's initial events are fetched in the server component and passed as *data* (not a token); live updates ride the existing SSE route handler.
 
-- **Dimension 1.1** — `steerZombie` is invoked via `steerZombieAction`; `ZombieThread` contains no `getToken`, no `Authorization`, no `token` prop → Test `steer_routed_through_server_action`.
-- **Dimension 1.2** — the event-stream hook needs no client token: backfill is server-side and the SSE connection carries only the `__session` cookie → Test `event_stream_carries_no_client_token`.
-- **Dimension 1.3** — the `token` prop is gone from every dashboard client component and the zombie-detail page no longer forwards it → Test `no_token_prop_on_client_components`.
+- ✅ **Dimension 1.1** — `steerZombie` is invoked via `steerZombieAction`; `ZombieThread` contains no `getToken`, no `Authorization`, no `token` prop → Test `steer_routed_through_server_action`.
+- ✅ **Dimension 1.2** — the event-stream hook needs no client token: backfill is server-side and the SSE connection carries only the `__session` cookie → Test `event_stream_carries_no_client_token`.
+- ✅ **Dimension 1.3** — the `token` prop is gone from every dashboard client component and the zombie-detail page no longer forwards it → Test `no_token_prop_on_client_components`.
 
-### §2 — Lock the invariant (grep-gate)
+### §2 — Lock the invariant (grep-gate) — ✅ DONE
 
 Make "the browser holds no dashboard token" enforceable so it cannot regress without the full BFF in place.
 
-- **Dimension 2.1** — grep-gate: zero `getToken(` and zero `Authorization: Bearer` in any `"use client"` file, and zero token-typed props passed to a client component → Test `no_client_side_credentials_gate`.
-- **Dimension 2.2** — the gate preserves the single api-template carve-out (`cli-auth/[session_id]/page.tsx`) — neither deleted nor duplicated → Test `api_template_carveout_preserved`.
+- ✅ **Dimension 2.1** — grep-gate: zero `getToken(` and zero `Authorization: Bearer` in any `"use client"` file, and zero token-typed props passed to a client component → Test `no_client_side_credentials_gate`.
+- ✅ **Dimension 2.2** — the gate preserves the single api-template carve-out (`cli-auth/[session_id]/page.tsx`) — neither deleted nor duplicated → Test `api_template_carveout_preserved`.
 
 ---
 
@@ -166,7 +172,7 @@ The customized session token shape, `NEXT_PUBLIC_API_URL`, the SSE route handler
 
 | Dimension | Tier | Test | Asserts (concrete inputs → expected output) |
 |-----------|------|------|---------------------------------------------|
-| 1.1 | e2e | `steer_routed_through_server_action` | Playwright: sending a steer message triggers a Server Action; network trace shows no client `Authorization` header. |
+| 1.1 | e2e | `steer_routed_through_server_action` (in `tests/e2e/acceptance/zombie-thread.spec.ts`) | Playwright: composer submit fires a Server-Action POST (`Next-Action` header); no same-origin request carries a client `Authorization` header. Runs in the CI acceptance lane (live harness; not runnable in the authoring sandbox). The static grep-gate (§2.1) is the primary, CI-enforced lock for the same invariant. |
 | 1.2 | unit | `event_stream_carries_no_client_token` | the stream hook builds the SSE URL + consumes backfill data without a token argument; no token in the request. |
 | 1.3 | unit (grep) | `no_token_prop_on_client_components` | scan: zero `token=` props passed to `"use client"` components; `ZombieThread`/`ZombieApprovalsPanel` props have no `token` field. |
 | 2.1 | unit (grep) | `no_client_side_credentials_gate` | scan of `"use client"` files: `getToken(` and `Authorization: Bearer` counts == 0. |
@@ -222,6 +228,12 @@ git diff --name-only origin/main -- src/ ui/packages/app/app/cli-auth
 > **Empty at creation.** Append as work surfaces consults, skill outcomes, and Indy-acked deferral quotes.
 
 - **Scope decision (captured at authoring):** Indy chose to descope from the full BFF to this hygiene slice on May 21, 2026 — no near-term need for tenant rate-limiting or operator-facing authz audit; a real authz audit belongs in zombied (covers all flows), not the dashboard `/api` layer; v3 not imminent.
+- **EXECUTE — `ZombieApprovalsPanel` is a Server Component (Files-Changed corrected):** the file has no `"use client"` directive — it's an `async` Server Component that resolves the token server-side and passes only data to its `ApprovalsList` client child. Server-component props are never serialized into the hydration payload, so its `token` is not a leak. The original Files-Changed row listing it as EDIT contradicted this spec's own client-scoped invariants (Invariant 1, §2.1); corrected to UNCHANGED. The existing approve/deny Server Actions and `lib/api/approvals` are untouched.
+- **EXECUTE — `steerZombieAction` arg shape is positional**, matching the existing six actions verbatim (`setZombieStatusAction(ws, id, status)` etc.) per "mirror them exactly; do not invent a second mutation shape." The Interfaces block's object-form `{ workspaceId, zombieId, message }` is illustrative; positional wins for codebase uniformity.
+- **EXECUTE — `"failed"` added to the `ZombieEventStatus` union** (`zombie-stream-frames.ts`), not kept as a registry-local string. `"optimistic"` was already a union member; `STATUS_OPTIMISTIC`/`STATUS_FAILED` are UFS named-constants for the literal at each call-site, not a parallel type. Indy (2026-05-21): *"I leaning towards 2 [add to union] … shouldn't we [be] having ZombieEventStatus?"*
+- **EXECUTE — seed depth: keep 20, reuse the existing fetch.** The stream seeds from `eventsPage.items` (the page's existing `limit: 20` fetch, already shared with `EventsList`) rather than restoring the old client backfill's 50 — zero new round-trips. Indy chose "Keep 20 (reuse fetch)" (2026-05-21) over bumping the page limit to 50 or adding a second server fetch.
+- **EXECUTE — `SteerComposer.tsx` one-line comment fix** (outside the original Files-Changed): its doc described the composer posting to `steerZombie`, made stale by this change. Corrected to `steerZombieAction` to keep the diff's own docs accurate; no behavior change.
+- **EXECUTE — Dimension 1.1 e2e: authored + grep-gate as primary lock (Indy: "Both").** The Playwright network-trace test (no client `Authorization` header on steer; Server-Action POST fires) is authored in `tests/e2e/acceptance/zombie-thread.spec.ts` but **cannot run in the authoring sandbox** (no live app/Clerk acceptance harness — the existing spec already deferred steer-roundtrip for the same M68 harness gap). It runs in the CI acceptance lane. The static grep-gate (§2.1) is the primary, CI-enforced lock for the same invariant and is green now. Indy chose "Both" (2026-05-21): author the e2e AND keep the grep-gate as primary. Not a deferral — the test is committed.
 - **Consults / Skill chain / Deferrals** — appended during EXECUTE; any deferral needs an Indy-acked verbatim quote.
 
 ---
@@ -244,12 +256,13 @@ Skill unavailable (MCP down) → document the skip in Discovery + the PR with a 
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit + grep-gates | `cd ui/packages/app && bun run test` | {paste} | |
-| Coverage gate | `cd ui/packages/app && bun run test:coverage` | {paste} | |
-| e2e steer | `bun run test-e2e -- --grep steer` | {paste} | |
-| Lint | `make lint` | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
-| zombied/cli-auth untouched | `git diff --name-only origin/main -- src/ ui/.../cli-auth` | {paste} | |
+| Unit + grep-gates | `cd ui/packages/app && bun run test` | 614 passed / 53 files | ✅ |
+| Coverage gate | `cd ui/packages/app && bun run test:coverage` | 98.83 stmt / 97.05 br / 98.71 fn / 99.53 ln (≥97) | ✅ |
+| Build | `cd ui/packages/app && bun run build` | Compiled + TypeScript clean | ✅ |
+| e2e steer (1.1) | `bun run test:e2e:acceptance --grep "steer submits"` | Authored; runs in CI acceptance lane — not runnable in the authoring sandbox (no live app/Clerk). Static grep-gate is the primary lock. | ⏳ CI |
+| Lint | `make lint-apps-ds-ctl` | app + design-system + zombiectl pass (oxlint --type-aware + tsc) | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks (2123 commits) | ✅ |
+| zombied/cli-auth untouched | `git diff --name-only main -- src/ ui/packages/app/app/cli-auth \| wc -l` | 0 | ✅ |
 
 ---
 
