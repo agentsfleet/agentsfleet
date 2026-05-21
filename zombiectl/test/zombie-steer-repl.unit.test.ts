@@ -46,7 +46,12 @@ const makeRecorder = (): Recorder => ({
   streamSignals: [],
 });
 
-const testLayer = (rec: Recorder) =>
+const defaultReply = <T = unknown>(): T => ({ event_id: EVENT_ID } as T);
+
+const testLayer = (
+  rec: Recorder,
+  reply: <T = unknown>(input: HttpRequestInput) => T = defaultReply,
+) =>
   Layer.mergeAll(
     Layer.succeed(CliConfig, {
       apiUrl: API_URL,
@@ -73,7 +78,7 @@ const testLayer = (rec: Recorder) =>
       request: <T = unknown>(input: HttpRequestInput) =>
         Effect.sync(() => {
           rec.requests.push(input);
-          return { event_id: EVENT_ID } as T;
+          return reply<T>(input);
         }),
     }),
     Layer.succeed(Output, {
@@ -136,5 +141,43 @@ describe("steerEffectFromArgs REPL dispatch", () => {
       { message: "second" },
     ]);
     expect(rec.streamSignals).toHaveLength(2);
+  });
+
+  test("explicit message stays single-shot even when --tty is present", async () => {
+    const rec = makeRecorder();
+    const effect = steerEffectFromArgs(
+      ZOMBIE_ID,
+      "explicit",
+      { forceTty: true },
+      { stdin: streamFrom(["ignored\n"], false), stdout: nullOutput(), streamGet: completeStream(rec) },
+    ).pipe(Effect.provide(testLayer(rec)));
+
+    const exit = await Effect.runPromiseExit(effect);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.requests).toHaveLength(1);
+    expect(rec.requests[0]?.body).toEqual({ message: "explicit" });
+  });
+
+  test("REPL turn failure is reported and later turns continue", async () => {
+    const rec = makeRecorder();
+    let replies = 0;
+    const effect = steerEffectFromArgs(
+      ZOMBIE_ID,
+      undefined,
+      { forceTty: true },
+      { stdin: streamFrom(["first\nsecond\n"], false), stdout: nullOutput(), streamGet: completeStream(rec) },
+    ).pipe(Effect.provide(testLayer(rec, <T>() => {
+      replies += 1;
+      return (replies === 1 ? {} : { event_id: EVENT_ID }) as T;
+    })));
+
+    const exit = await Effect.runPromiseExit(effect);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.requests.map((request) => request.body)).toEqual([
+      { message: "first" },
+      { message: "second" },
+    ]);
+    expect(rec.stderr.join("\n")).toContain("messages response missing event_id");
+    expect(rec.streamSignals).toHaveLength(1);
   });
 });

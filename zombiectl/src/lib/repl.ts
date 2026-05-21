@@ -26,6 +26,7 @@ export interface ReplOptions {
   readonly input: ReplInputStream;
   readonly output: ReplOutputStream;
   readonly runTurn: ReplTurn;
+  readonly onTurnError?: (err: unknown) => Promise<void> | void;
   readonly signalSource?: ReplSignalSource;
 }
 
@@ -38,7 +39,7 @@ export const shouldEnterSteerRepl = (
   stdin: IsTtyStream,
   message: string | undefined,
   forceTty: boolean,
-): boolean => forceTty || (!message && isTty(stdin));
+): boolean => message === undefined && (forceTty || isTty(stdin));
 
 export async function readPipedMessage(input: NodeJS.ReadableStream): Promise<string> {
   input.setEncoding(TEXT_ENCODING);
@@ -78,7 +79,8 @@ export async function runSteerRepl(options: ReplOptions): Promise<number> {
           await options.runTurn(line, currentTurn.signal);
         } catch (err) {
           if (interrupted) return EXIT_SIGINT;
-          throw err;
+          if (!options.onTurnError) throw err;
+          await options.onTurnError(err);
         }
       }
       if (interrupted) return EXIT_SIGINT;

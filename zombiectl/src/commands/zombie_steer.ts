@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Effect, Exit, Layer, Redacted } from "effect";
 import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
@@ -30,6 +30,7 @@ import {
   type ReplOutputStream,
   type ReplSignalSource,
 } from "../lib/repl.ts";
+import { exitToCliError, renderCliError } from "../lib/cli-error-render.ts";
 
 const SSE_FALLBACK_TIMEOUT_MS = 60_000;
 const FALLBACK_POLL_MS = 1_500;
@@ -192,16 +193,6 @@ const steerTurnEffect = (
     yield* renderOutcome(outcome, post.event_id, zombieId);
   });
 
-const exitToCliError = (exit: Exit.Exit<void, CliError>): CliError => {
-  if (Exit.isSuccess(exit)) return new UnexpectedError({ detail: "unexpected successful exit", suggestion: "report this" });
-  const failure = Cause.findErrorOption(exit.cause);
-  if (Option.isSome(failure)) return failure.value as CliError;
-  return new UnexpectedError({
-    detail: Cause.pretty(exit.cause),
-    suggestion: "report this with the output above and the command you ran",
-  });
-};
-
 const pollEventTerminal = (
   wsId: string,
   zombieId: string,
@@ -313,6 +304,15 @@ export const steerEffectFromArgs = (
               const turn = steerTurnEffect(wsId, zombieId, line, token, streamGet, signal);
               const exit = await Effect.runPromiseExit(turn.pipe(Effect.provide(turnLayer)));
               if (Exit.isFailure(exit)) throw exitToCliError(exit);
+            },
+            onTurnError: async (cause) => {
+              const err = cause && typeof cause === "object" && "_tag" in cause
+                ? (cause as CliError)
+                : new UnexpectedError({
+                    detail: cause instanceof Error ? cause.message : String(cause),
+                    suggestion: "report this with the command you ran",
+                  });
+              await Effect.runPromise(renderCliError(err).pipe(Effect.provide(turnLayer)));
             },
           }),
         catch: (cause): CliError =>
