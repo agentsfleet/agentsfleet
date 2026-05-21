@@ -23,9 +23,18 @@ describe("OnboardingFlow", () => {
     );
   });
 
-  it("renders three arrows — one between each consecutive pair of cards", () => {
-    render(<OnboardingFlow />);
-    expect(screen.getAllByTestId("onboarding-flow-arrow")).toHaveLength(3);
+  it("renders the steps in a responsive grid with no arrow connectors", () => {
+    const { container } = render(<OnboardingFlow />);
+    // Steps live in a grid (1 col → 2×2), not a single flex row that
+    // overflows the page; the inline arrow connectors are gone.
+    expect(screen.queryAllByTestId("onboarding-flow-arrow")).toHaveLength(0);
+    const grid = container.querySelector(".grid");
+    expect(grid).not.toBeNull();
+    ["install", "skill", "wire", "steer"].forEach((id) => {
+      expect(
+        grid!.querySelector(`[data-testid="onboarding-step-${id}"]`),
+      ).not.toBeNull();
+    });
   });
 
   it("renders each spec'd snippet inside its card's Terminal", () => {

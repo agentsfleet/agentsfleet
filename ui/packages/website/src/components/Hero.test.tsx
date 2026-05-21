@@ -222,30 +222,13 @@ describe("Hero", () => {
     expect(fading.getAttribute("aria-live")).toBe("assertive");
   });
 
-  it("renders the secondary CTA pointing at /agents", () => {
+  it("renders no replay link — the install copy-row is the only primary action", () => {
     renderHero();
-    const cta = screen.getByTestId("hero-cta-secondary");
-    expect(cta).toHaveAttribute("href", "/agents");
-    expect(cta.textContent).toMatch(/view a real wake/i);
-  });
-
-  it("places the replay link after the install command row", () => {
-    renderHero();
-    const command = screen.getByTestId("hero-install-command");
-    const replay = screen.getByTestId("hero-cta-secondary");
-    expect(
-      command.compareDocumentPosition(replay) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  it("tracks clicks on the secondary CTA", () => {
-    renderHero();
-    fireEvent.click(screen.getByTestId("hero-cta-secondary"));
-    expect(analytics.trackNavigationClicked).toHaveBeenCalledWith({
-      source: "hero_secondary_replay",
-      surface: "hero",
-      target: "agents",
-    });
+    expect(screen.queryByTestId("hero-cta-secondary")).toBeNull();
+    expect(screen.queryByText(/view a real wake/i)).toBeNull();
+    // The install copy-row and the animated install terminal remain.
+    expect(screen.getByTestId("hero-install-command")).toBeInTheDocument();
+    expect(screen.getByTestId("hero-cli")).toBeInTheDocument();
   });
 
   it("renders the animated install Terminal whose Copy yields only the slash command", () => {
