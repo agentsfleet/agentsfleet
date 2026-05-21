@@ -4,7 +4,7 @@
 **Milestone:** M69
 **Workstream:** 002
 **Date:** May 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — terminal-ergonomic improvement on top of an already-working single-shot path; not a correctness fix.
 **Categories:** CLI
 **Batch:** B1 — independent of other M69 workstreams.
