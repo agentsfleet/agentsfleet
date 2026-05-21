@@ -1,11 +1,8 @@
 # =============================================================================
-# ACCEPTANCE — live-e2e-all full integration suite + dashboard/CLI acceptance e2e
+# ACCEPTANCE — dashboard + CLI live-API acceptance e2e (local twins of CI)
 # =============================================================================
 
-.PHONY: live-e2e-all acceptance-e2e cli-acceptance
-
-live-e2e-all: _test-integration-full  ## Run the FULL Zig integration suite unfiltered vs real Postgres + Redis (no -Dtest-filter)
-	@echo "✓ [zombied] live-e2e-all (full integration suite, unfiltered) passed"
+.PHONY: acceptance-e2e cli-acceptance
 
 # Local twins of the pipeline acceptance jobs — same command, env-driven target
 # (local / vercel.app / api-dev / api), so a developer runs exactly what CI runs.

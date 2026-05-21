@@ -37,7 +37,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 // worktree root is six levels up from its containing directory.
 const THIS_DIR = path.dirname(fileURLToPath(import.meta.url));
 const WORKTREE_ROOT = path.resolve(THIS_DIR, "../../../../../..");
-const ZOMBIECTL_BIN = path.join(WORKTREE_ROOT, "zombiectl/bin/zombiectl.js");
+const ZOMBIECTL_BIN = path.join(WORKTREE_ROOT, "zombiectl/dist/bin/zombiectl.js");
 
 function loadFixtureCache(): Record<string, { sessionJwt: string }> {
   const cachePath = path.join(process.cwd(), ".fixture-jwts.json");
@@ -50,8 +50,9 @@ function triggerMd(name: string): string {
     `name: ${name}`,
     "",
     "x-usezombie:",
-    "  trigger:",
-    "    type: api",
+    "  triggers:",
+    "    - type: cron",
+    '      schedule: "0 0 * * *"',
     "  tools:",
     "    - agentmail",
     "  budget:",
