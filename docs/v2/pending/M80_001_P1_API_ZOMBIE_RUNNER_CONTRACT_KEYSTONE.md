@@ -1,0 +1,301 @@
+# M80_001: Freeze the `/v1/runner` contract and prove it with a loopback walking skeleton
+
+**Prototype:** v2.0.0
+**Milestone:** M80
+**Workstream:** 001
+**Date:** May 22, 2026
+**Status:** PENDING
+**Priority:** P1 — keystone; the four parallel M80 workstreams build against the contract this freezes, so it lands first and alone.
+**Categories:** API
+**Batch:** B1 — serial keystone; B2 (M80_002…005) fans out only after this lands.
+**Branch:** — set at CHORE(open); this spec is created on `main` in `pending/`.
+**Depends on:** none — this is the dependency root of the M80 arc.
+**Provenance:** agent-generated (pre-spec, plan-eng-review session May 21–22 2026; decisions captured in memory `project_zombie_runner_split_architecture`).
+
+> **Provenance is load-bearing.** LLM/agent-drafted — cross-check every claim against the codebase before EXECUTE; do not assume the author read the code.
+
+**Canonical architecture:** `docs/architecture/runner_fleet.md` (the M80 target this freezes) and `docs/architecture/data_flow.md` (the current single-fleet runtime the `report` verb must reproduce).
+
+---
+
+## Implementing agent — read these first
+
+1. `docs/architecture/runner_fleet.md` — the contract shape, the event-leasing + sticky-routing decision, the `secret_delivery` modes, and the `sandbox_tier` tiers this workstream freezes.
+2. `docs/architecture/data_flow.md` §C (EXECUTE) — the worker's per-event hot path (`zombie_events` received→terminal, telemetry, debit, session checkpoint, `XACK`) the `report` verb must reproduce idempotently in one transaction.
+3. `src/http/route_table.zig` + `src/http/router.zig` — the route-registration pattern to mirror for the `/v1/runner/*` stubs (one of the three shared-file conflict points to pre-claim).
+4. `schema/embed.zig` + `schema/020_tenant_providers.sql` — the append-only migration array and the nearest table migration to mirror for `021_core_runners.sql`.
+5. `src/cmd/worker.zig` + `src/cmd/worker_zombie.zig` — the loop the flag-gated skeleton forks exactly one path out of; the direct path stays the default.
+
+---
+
+## PR Intent & comprehension handshake
+
+- **PR title (eventual):** Freeze /v1/runner contract + loopback walking skeleton (M80 keystone)
+- **Intent (one sentence):** Stand up the frozen runner control contract and prove it end-to-end with one zombie over loopback, so the four parallel M80 workstreams build against a validated interface instead of a guessed one.
+- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent and list `ASSUMPTIONS I'M MAKING: …`. Mismatch with the Intent above → STOP and reconcile before any edit.
+
+---
+
+## Applicable Rules
+
+- **`docs/greptile-learnings/RULES.md`** — pin: **NDC** (stubs must be reachable + tested, never orphaned), **UFS** (the `/v1/runner` path segments, `secret_delivery` + `sandbox_tier` wire values, and the seam flag name are single-sourced named constants shared verbatim Zig↔TS), **MIG** (migration array append-only + ordered), **SCM** (schema conventions), **VLT** (`secrets_map` resolved just-in-time, never logged), **ERH** (errors via registry), **CFG** (the seam feature flag), **XCC** (cross-compile both linux targets), **ORP** (orphan sweep), **TST**.
+- **`docs/ZIG_RULES.md`** — pg-drain lifecycle (the `report` handler queries PG), tagged-union results, multi-step `errdefer`, cross-compile.
+- **`docs/REST_API_DESIGN_GUIDELINES.md`** — `/v1/runner` URL design, route registration, handler signature.
+- **`docs/SCHEMA_CONVENTIONS.md`** — `021_core_runners.sql` (CREATE) + `022_zombie_sessions_runner_affinity.sql` (ALTER), `embed.zig`.
+- **`docs/AUTH.md`** — `runner_token` is a credential-typed principal; even the S0 stub follows the principal/token pattern (full hardening is M80_005).
+- **`docs/LOGGING_STANDARD.md`** / **`docs/LIFECYCLE_PATTERNS.md`** — new log emits; init/deinit + errdefer on new mothership-side structs holding PG/Redis handles.
+
+---
+
+## Applicable Gates
+
+| Gate | Fires? | Satisfaction strategy |
+|------|--------|-----------------------|
+| ZIG GATE | yes | new `*.zig` under `src/`; cross-compile x86_64+aarch64-linux; read ZIG_RULES before EXECUTE. |
+| PUB / Struct-Shape | yes | own shape verdict per new file (contract types, mothership service, loopback client); no inheritance. |
+| File & Function Length (≤350/≤50/≤70) | yes | split contract types / handlers / service across files; one verb per handler file. |
+| UFS | yes | path segments, `secret_delivery`/`sandbox_tier` values, `ZOMBIE_RUNNER_SEAM` flag name as named constants shared verbatim across Zig + TS. |
+| LOGGING | yes | logfmt emits in register/lease/report; `secrets_map` + `runner_token` never logged. |
+| LIFECYCLE | yes | mothership service holds pooled handles; init/deinit + errdefer adjacent to alloc. |
+| ERROR REGISTRY | yes | declare `UZ-RUN-001…` in `src/errors/error_registry.zig` before use. |
+| SCHEMA GUARD | yes | `021` create + `022` alter; single-concern ≤100 lines/file; update `embed.zig` + migration array. |
+| MILESTONE-ID | yes | code/test names carry NO `M80`/§/dim IDs (RULE TST-NAM); milestone id lives only in spec + flag-doc prose. |
+| UI / DESIGN TOKEN | no | no UI surface in S0. |
+
+---
+
+## Overview
+
+**Goal (testable):** with `ZOMBIE_RUNNER_SEAM=1`, one zombie's steer event flows register → lease → executor → report over loopback and writes the same `zombie_events`/`zombie_execution_telemetry`/`zombie_sessions` rows and `XACK` the direct worker writes today; with the flag unset, the direct path is byte-for-byte unchanged.
+
+**Problem:** the worker can only run where it reaches Postgres and Redis directly, and the four planned runner workstreams have no validated interface to build against in parallel — a guessed contract risks reworking up to four streams.
+
+**Solution summary:** freeze the `/v1/runner` contract (request/response types + the four endpoints) and ALL runner schema, pre-claim the three shared-file conflict points (route table, build target, migration array) as stubs so the parallel streams touch only disjoint directories, and implement exactly one happy-path vertical — one zombie, loopback, flag-gated — that exercises register/lease/report against the real datastores via the mothership while the production direct path remains the default. The skeleton both freezes and validates the contract before fan-out.
+
+---
+
+## Prior-Art / Reference Implementations
+
+- **API** → `docs/REST_API_DESIGN_GUIDELINES.md` + the nearest existing handler under `src/http/handlers/` (webhook receiver / api_keys); route registration mirrors `src/http/route_table.zig`.
+- **Internal versioned contract** → `src/executor/protocol.zig` — the executor's explicit method names + numeric error codes are the in-repo model for a versioned RPC surface; `/v1/runner` mirrors that explicitness over HTTPS.
+- **Schema** → `schema/020_tenant_providers.sql` + `docs/SCHEMA_CONVENTIONS.md`.
+- **Connection topology** → M80_001 reuses the mothership pool from M69_004 (Redis pool/subscriber unify); the lease/report handlers use short-lived pooled commands, never a blocking connection in the request path.
+- **Contract shape itself** → greenfield; defined in `docs/architecture/runner_fleet.md`.
+
+---
+
+## Files Changed (blast radius)
+
+| File | Action | Why |
+|------|--------|-----|
+| `src/runner/contract.zig` (+ split files) | CREATE | the frozen request/response types, `secret_delivery` + `sandbox_tier` enums, shared wire-value constants |
+| `src/runner/mothership_service.zig` (+ splits) | CREATE | mothership-side lease/report/register logic over the pool; the one-txn report |
+| `src/runner/loopback_client.zig` | CREATE | the client the flag-gated skeleton uses to call the mothership over loopback |
+| `src/http/handlers/runner/{register,heartbeat,lease,report}.zig` | CREATE | the four handlers; non-skeleton verbs return declared not-implemented |
+| `schema/021_core_runners.sql` | CREATE | `core.runners` table (identity, token hash, sandbox_tier, labels, last_seen, status) |
+| `schema/022_zombie_sessions_runner_affinity.sql` | CREATE | ALTER `core.zombie_sessions` add nullable `last_runner_id` sticky-routing hint |
+| `schema/embed.zig` | EDIT | append `021` + `022` to the migration array (shared conflict point — pre-claimed here) |
+| `src/http/route_table.zig`, `src/http/router.zig` | EDIT | register `/v1/runner/*` (shared conflict point — pre-claimed here) |
+| `build.zig` | EDIT | add the `zombie-runner` executable target skeleton (shared conflict point — pre-claimed here) |
+| `src/errors/error_registry.zig` | EDIT | declare `UZ-RUN-*` codes |
+| `src/cmd/worker.zig`, `src/cmd/worker_config.zig` | EDIT | the single flag gate forking the skeleton path; flag config |
+| `src/runner/*_test.zig`, `src/http/handlers/runner/*_test.zig` | CREATE | per-Dimension unit + integration + e2e tests |
+
+---
+
+## Decomposition & alternatives (patch vs refactor)
+
+- **Chosen shape:** contract-first keystone, then parallel fan-out (plan-eng-review D2). S0 freezes + validates the interface before four streams commit to it; it pre-claims the three shared files as stubs so the streams never collide on `build.zig`, the route table, or `embed.zig`.
+- **Alternatives considered:** big-bang single branch (rejected — a ~20k-line unreviewable PR; tenant-secret risk unmitigated); linear strangler (rejected — serializes the four streams, wasting the parallel capacity); eager fan-out with no skeleton (rejected — a wrong contract reworks up to four streams).
+- **Patch-vs-refactor verdict:** this is a **refactor-enabling seam** ("make the change easy, then make the easy change"), scoped to the interface + one proof path. It is NOT the worker migration (that is M80_003); the direct path is untouched and default.
+
+---
+
+## Sections (implementation slices)
+
+### §1 — Contract & schema freeze
+
+The durable interface the parallel streams depend on. Freezes types and tables; the logic that *uses* them (real assignment, sticky routing) is M80_002+. **Implementation default:** wire values are snake_case strings single-sourced as named constants, because UFS requires Zig and the future TS client to share them verbatim.
+
+- **Dimension 1.1** — contract request/response types + `secret_delivery` + `sandbox_tier` enums round-trip serialize/deserialize → Test `test_runner_contract_roundtrip`
+- **Dimension 1.2** — `021_core_runners` + `022` affinity migrate clean on a fresh database → Test `test_runner_schema_migrates`
+- **Dimension 1.3** — `embed.zig` array + migration runner apply `021`/`022` in order and are idempotent on re-run → Test `test_runner_migrations_idempotent`
+
+### §2 — Shared-file stubs (pre-claim the conflict points)
+
+Register the three shared files as stubs so the four streams edit only their own directories.
+
+- **Dimension 2.1** — `/v1/runner/{register,heartbeat,lease,report}` resolve in the route table; non-skeleton verbs return a declared not-implemented error, not a 404 → Test `test_runner_routes_registered`
+- **Dimension 2.2** — the `zombie-runner` build target compiles (skeleton `main` that logs a health line and exits cleanly) → Acceptance: `zig build zombie-runner`
+
+### §3 — Loopback walking skeleton (flag-gated)
+
+One zombie, register→lease→report over loopback, behind `ZOMBIE_RUNNER_SEAM=1`.
+
+- **Dimension 3.1** — `register` exchanges a stub enrollment token for a `runner_token` and inserts a `core.runners` row with `sandbox_tier` + labels → Test `test_register_mints_runner_token`
+- **Dimension 3.2** — `lease` returns the next event for the one assigned zombie with resolved config and (mode `inline`) `secrets_map` → Test `test_lease_returns_event_with_secrets`
+- **Dimension 3.3** — `report` writes received→terminal + telemetry + debit + session checkpoint in one transaction then `XACK`s, idempotent on replay → Test `test_report_batched_idempotent`
+- **Dimension 3.4** — end-to-end: flag on, one zombie's steer flows register→lease→executor→report over loopback; the user-visible rows equal the direct path's → Test `test_e2e_loopback_one_zombie`
+
+### §4 — Flag parity & isolation
+
+- **Dimension 4.1** — with `ZOMBIE_RUNNER_SEAM` unset, the worker takes the unchanged direct path and `src/executor/**` is untouched → Test `test_flag_off_parity`
+
+---
+
+## Interfaces
+
+> The frozen surface. The agent must NOT change these without amending the spec. Shapes shown as field lists (not pseudocode); the agent derives exact types from the codebase.
+
+```
+POST /v1/runner/register
+  request:  enrollment_token, host_id, sandbox_tier, labels[]
+  response: runner_id, runner_token            errors: UZ-RUN-002 invalid_enrollment_token
+POST /v1/runner/heartbeat   (auth: Bearer runner_token)
+  request:  runner_id
+  response: status (see enum)                  errors: UZ-RUN-001 invalid_runner_token
+POST /v1/runner/lease       (auth: Bearer runner_token, long-poll; POST — leasing mutates the PEL)
+  response: event envelope + resolved zombie config + secrets_map(mode inline) | 204 no-work
+  errors:   UZ-RUN-001, UZ-RUN-003 unsupported_secret_delivery
+POST /v1/runner/report      (auth: Bearer runner_token)
+  request:  runner_id, event_id, outcome, response_text, tokens, telemetry, checkpoint
+  response: ok (idempotent — replay returns the recorded result, no double write)
+
+secret_delivery : inline | scoped | proxy        (S0 implements inline only; scoped/proxy = M80 later)
+sandbox_tier    : landlock_full | container_nested | macos_seatbelt | dev_none
+outcome         : processed | agent_error        (terminal execution result the runner reports;
+                  mirrors core.zombie_events.status — gate_blocked / dead_lettered are
+                  mothership-side in event-leasing, never runner-reported)
+status          : ok                             (heartbeat reply; drain | stop reserved for
+                  M80_006 fleet failover — the field exists in S0 so M80_006 needn't recut)
+flag            : ZOMBIE_RUNNER_SEAM (unset|1) — single-sourced constant, shared Zig↔TS
+```
+
+---
+
+## Failure Modes
+
+| Mode | Cause | Handling (system response + what the caller observes) |
+|------|-------|--------------------------------------------------------|
+| No work to lease | empty stream | `lease` returns 204; runner re-polls (long-poll) |
+| Report replay | retry / PEL reclaim | `INSERT … ON CONFLICT` → idempotent no-op; returns recorded result |
+| Invalid/expired runner_token | unregistered runner | 401 `UZ-RUN-001` |
+| Bad enrollment token | register with wrong/expired token | 401 `UZ-RUN-002` |
+| Unsupported secret mode | `secret_delivery` ≠ inline in S0 | 400 `UZ-RUN-003` |
+| Executor unavailable on runner | local Unix socket down | report carries `agent_error`; lease redeliverable; no datastore corruption |
+| Mothership unreachable (loopback) | mothership down mid-skeleton | loopback client retries with backoff; lease un-acked → no event loss |
+| Report after reclaim | slow runner, another already ran it | idempotent — second report observes the conflict and no-ops |
+
+---
+
+## Invariants
+
+1. **Flag-off = unchanged direct path** — a single gate at the worker entry; `test_flag_off_parity` + no edits to the direct write path in the diff.
+2. **`report` idempotent per `event_id`** — `INSERT … ON CONFLICT` in the handler; `test_report_batched_idempotent` double-reports.
+3. **Executor binary unchanged** — `src/executor/**` absent from Files Changed; CI builds the identical executor artifact.
+4. **No `secrets_map` bytes or `runner_token` in logs** — LOGGING gate + redaction; grep test asserts absence.
+5. **`embed.zig` append-only, migrations ordered + idempotent** — migration runner + `test_runner_migrations_idempotent`.
+6. **Wire constants single-sourced** — path segments, enum values, flag name are named constants; UFS gate enforces verbatim sharing.
+
+---
+
+## Test Specification (tiered)
+
+| Dimension | Tier | Test | Asserts (inputs → expected) |
+|-----------|------|------|------------------------------|
+| 1.1 | unit | `test_runner_contract_roundtrip` | every request/response + enum serializes and parses back equal |
+| 1.2 | integration | `test_runner_schema_migrates` | fresh DB applies 021+022; `core.runners` + `last_runner_id` exist with constraints |
+| 1.3 | integration | `test_runner_migrations_idempotent` | re-running the migration set is a no-op; order preserved |
+| 2.1 | integration | `test_runner_routes_registered` | all four paths resolve; non-skeleton verbs return declared not-implemented (not 404) |
+| 2.2 | e2e | (acceptance) | `zig build zombie-runner` produces a binary that logs health and exits 0 |
+| 3.1 | integration | `test_register_mints_runner_token` | valid enrollment token → runner_token + a `core.runners` row; bad token → `UZ-RUN-002` |
+| 3.2 | integration | `test_lease_returns_event_with_secrets` | leased event carries resolved config + inline `secrets_map`; empty stream → 204 |
+| 3.3 | integration | `test_report_batched_idempotent` | one txn writes all rows + XACK; second identical report no-ops, same result |
+| 3.4 | e2e | `test_e2e_loopback_one_zombie` | flag on: steer → register→lease→executor→report; rows equal the direct path |
+| 4.1 | integration | `test_flag_off_parity` | flag unset: direct path runs unchanged; executor untouched |
+
+**Regression:** the existing direct path is guarded by `test_flag_off_parity` (4.1) — flag-off must be byte-identical. **Idempotency/replay:** 3.3 + the report-replay failure mode. Non-self-evident payloads → `samples/fixtures/m80-fixtures/`.
+
+---
+
+## Acceptance Criteria
+
+- [ ] `make lint` clean · `make test` passes
+- [ ] `make test-integration` passes (HTTP + schema + Redis touched)
+- [ ] `make memleak` clean (mothership handlers allocate)
+- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
+- [ ] `zig build zombie-runner` produces the skeleton binary
+- [ ] `test_flag_off_parity` green (the existing path is unchanged)
+- [ ] `gitleaks detect` clean · no file over 350 lines added · `bash scripts/audit-spec-template.sh` clean
+
+---
+
+## Eval Commands (post-implementation)
+
+```bash
+# E1: flag-off parity — existing path unchanged
+make test-integration 2>&1 | grep -E "flag_off_parity|PASS|FAIL"
+# E2: Build — full + runner skeleton
+zig build && zig build zombie-runner 2>&1 | tail -3
+# E3: Tests
+make test 2>&1 | tail -5
+# E4: Lint
+make lint 2>&1 | grep -E "✓|FAIL"
+# E5: Cross-compile (Zig)
+zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux 2>&1 | tail -3
+# E6: Gitleaks
+gitleaks detect 2>&1 | tail -3
+# E7: 350-line gate (exempts .md)
+git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | awk '$1 > 350 {print "OVER: "$2": "$1}'
+# E8: no secret/token in logs (empty = pass)
+grep -rnE "secrets_map|runner_token" src/runner src/http/handlers/runner | grep -iE "log\.|print" | head
+```
+
+---
+
+## Dead Code Sweep
+
+N/A — no files deleted. The direct worker path is retained until the M80 cutover (RULE NLR cleanup happens there, not here). The stubs are reachable (routes wired + tested in 2.1), so NDC is satisfied.
+
+---
+
+## Discovery (consult log)
+
+> Empty at creation. Append consults, skill-chain outcomes, and Indy-acked deferral quotes as work proceeds.
+
+- **Provenance:** decisions D1–D5 from the plan-eng-review session (May 21–22 2026) — staged contract-first fan-out, trusted-fleet (`inline`) secrets, name `zombie-runner`, event-leasing + sticky routing. See memory `project_zombie_runner_split_architecture`.
+
+---
+
+## Skill-Driven Review Chain (mandatory)
+
+| When | Skill | Required output |
+|------|-------|-----------------|
+| After implementation, before CHORE(close) | `/write-unit-test` | Clean; iteration count + coverage in Discovery. |
+| After tests pass, before CHORE(close) | `/review` | Clean OR every finding dispositioned. |
+| After `gh pr create` | `/review-pr` | Comments addressed before human review/merge. |
+
+---
+
+## Verification Evidence
+
+| Check | Command | Result | Pass? |
+|-------|---------|--------|-------|
+| Unit tests | `make test` | | |
+| Integration tests | `make test-integration` | | |
+| e2e (loopback one zombie) | `make test-integration` (e2e target) | | |
+| Lint | `make lint` | | |
+| Cross-compile (Zig) | `zig build -Dtarget=x86_64-linux` | | |
+| Gitleaks | `gitleaks detect` | | |
+| Runner skeleton build | `zig build zombie-runner` | | |
+
+---
+
+## Out of Scope
+
+- **M80_002** — mothership API: real assignment across all zombies, sticky-routing logic (schema frozen here, logic there).
+- **M80_003** — worker thinning + removal of the direct PG/Redis path (the cutover).
+- **M80_004** — `zombie-runner` packaging, macOS Seatbelt backend, distribution/CI.
+- **M80_005** — enrollment/identity/TLS hardening (S0 stubs auth only; security spec/PR of its own).
+- **M80_006 / M80_007** — fleet inventory/heartbeat/failover; scheduler.
+- `secret_delivery` modes `scoped` (per-tenant) and `proxy` (zero-trust); multi-zombie scale; the flag flip itself.
