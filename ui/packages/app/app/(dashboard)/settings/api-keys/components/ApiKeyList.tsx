@@ -56,14 +56,16 @@ export default function ApiKeyList({ initial }: { initial: ApiKeyListResponse })
 
   // User-initiated sort/page navigation. Clears the error on a clean load; an
   // invalid sort/page (UZ-REQ-001) resets to the defaults rather than blanking.
-  function loadPage(next: { page?: number; sort?: ApiKeySort }) {
+  // `retried` guards the reset: if the backend rejects even the defaults
+  // (contract drift), self-calling again would loop forever — reset at most once.
+  function loadPage(next: { page?: number; sort?: ApiKeySort }, retried = false) {
     const nextPage = next.page ?? page;
     const nextSort = next.sort ?? sort;
     startTransition(async () => {
       const r = await listApiKeysAction({ page: nextPage, page_size: DEFAULT_PAGE_SIZE, sort: nextSort });
       if (!r.ok) {
         setError(presentErrorString({ errorCode: r.errorCode, message: r.error, action: "load API keys" }));
-        if (r.errorCode === "UZ-REQ-001") loadPage({ page: 1, sort: DEFAULT_SORT });
+        if (r.errorCode === "UZ-REQ-001" && !retried) loadPage({ page: 1, sort: DEFAULT_SORT }, true);
         return;
       }
       setError(null);

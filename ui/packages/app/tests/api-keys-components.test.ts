@@ -166,6 +166,22 @@ describe("ApiKeyList component", () => {
     );
   });
 
+  it("resets to defaults at most once on UZ-REQ-001 (no infinite retry loop)", async () => {
+    // Backend rejects every request, including the defaults the reset falls back
+    // to — the `retried` guard must stop after one reset, not loop forever.
+    listApiKeysActionMock.mockResolvedValue({ ok: false, error: "invalid sort", errorCode: "UZ-REQ-001" });
+    await renderList(listResponse([ACTIVE], 30));
+    const trigger = screen.getByLabelText(/sort api keys/i);
+    fireEvent.pointerDown(trigger, { button: 0, pointerType: "mouse" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByText("Name A–Z"));
+    // Original load + exactly one defaults-reset = 2 calls; never a third.
+    await waitFor(() => expect(listApiKeysActionMock.mock.calls.length).toBe(2));
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(listApiKeysActionMock.mock.calls.length).toBe(2);
+  });
+
   it("re-fetches the first page after a key is minted and the reveal is closed", async () => {
     const user = userEvent.setup();
     await renderList(listResponse([ACTIVE]));
