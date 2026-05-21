@@ -54,9 +54,15 @@ fake_present() {
 }
 
 run_install() {
+  # Only export USEZOMBIE_HOST when the test actually sets one, so "no override"
+  # scenarios leave the var unset (matching the real user environment) rather
+  # than passing an empty string. The "${arr[@]+...}" guard keeps the empty-array
+  # expansion safe under `set -u` on bash 3.2 (macOS system bash).
+  local _host_env=()
+  [[ -n "$UZ_HOST_ENV" ]] && _host_env=("USEZOMBIE_HOST=$UZ_HOST_ENV")
   OUT="$(
     env "PATH=$FAKE_BIN" "HOME=$HOME_DIR" "SHELL=/bin/bash" \
-        "USEZOMBIE_INSTALL=$UZ_INSTALL_ENV" "USEZOMBIE_HOST=$UZ_HOST_ENV" \
+        "USEZOMBIE_INSTALL=$UZ_INSTALL_ENV" "${_host_env[@]+"${_host_env[@]}"}" \
         bash "$INSTALL_SH" "$@" </dev/null 2>&1
   )"
   RC=$?
@@ -149,12 +155,13 @@ test_partial_download_safety() {
   new_sandbox; fake_present node; fake_logged npm "$NPM_LOG" 0; fake_logged npx "$NPX_LOG" 0; fake_present claude
   local n; n="$(wc -l <"$INSTALL_SH")"
   OUT="$(head -n "$((n - 2))" "$INSTALL_SH" | PATH="$FAKE_BIN" HOME="$HOME_DIR" bash 2>&1)"; RC=$?
-  if printf '%s' "$OUT" | grep -qF "Installing"; then
-    fail "partial_download: main not invoked" "ran despite truncation"
-  else
-    pass "partial_download: main not invoked"
-  fi
   assert_log_empty "$NPM_LOG" "partial_download: npm not called"
+  assert_log_empty "$NPX_LOG" "partial_download: npx not called"
+  if [[ -z "$OUT" ]]; then
+    pass "partial_download: main not invoked"
+  else
+    fail "partial_download: main not invoked" "unexpected output: $OUT"
+  fi
   cleanup
 }
 

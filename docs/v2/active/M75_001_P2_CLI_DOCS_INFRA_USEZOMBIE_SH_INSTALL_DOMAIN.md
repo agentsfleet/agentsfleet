@@ -277,7 +277,7 @@ No new HTTP/REST surface on the usezombie service. No OpenAPI changes. No new CL
 - [ ] **(deferred — live cutover)** TLS valid — verify: `curl -fsSL https://usezombie.sh -o /dev/null -w "%{http_code}\n"` prints `200`
 - [ ] **(deferred — live cutover)** `install.sh` happy-path runs — verify: in a clean container, `curl -fsSL https://usezombie.sh | bash && zombiectl --version`
 - [x] Shellcheck clean — `shellcheck -s bash ui/usezombie.sh/dist/install.sh ui/usezombie.sh/install_test.sh` → clean
-- [x] `install_test.sh` passes — `bash ui/usezombie.sh/install_test.sh` → 42 passed, 0 failed
+- [x] `install_test.sh` passes — `bash ui/usezombie.sh/install_test.sh` → 43 passed, 0 failed
 - [ ] *(docs-repo PR)* No `usezombie.sh/skills.md` references remain — `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ | wc -l` == 0
 - [ ] *(docs-repo PR)* Canonical one-liner documented — `grep -rn 'curl -fsSL https://usezombie.sh | bash' ~/Projects/docs/ | wc -l` ≥ 1
 - [x] marketing-spec tests pass — `make test-unit-website` → 148 passed; `InstallBlock.test.tsx` → 10 passed
@@ -353,7 +353,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
 | Shellcheck | `shellcheck -s bash ui/usezombie.sh/dist/install.sh ui/usezombie.sh/install_test.sh` | clean | ✅ |
-| install.sh tests | `bash ui/usezombie.sh/install_test.sh` | 42 passed, 0 failed | ✅ |
+| install.sh tests | `bash ui/usezombie.sh/install_test.sh` | 43 passed, 0 failed | ✅ |
 | Docs sweep (negative) *(docs-repo PR)* | `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ \| wc -l` | {docs PR} | |
 | Docs sweep (positive) *(docs-repo PR)* | `grep -rn 'curl -fsSL https://usezombie.sh \| bash' ~/Projects/docs/ \| wc -l` | {docs PR} | |
 | Marketing + InstallBlock | `make test-unit-website`; `InstallBlock.test.tsx` | 148 passed; 10 passed | ✅ |
