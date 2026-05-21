@@ -191,4 +191,46 @@ describe("Terminal", () => {
       errSpy.mockRestore();
     });
   });
+
+  describe("animate (install-demo line reveal)", () => {
+    it("hooks the CSS reveal onto the code block when animate is set", () => {
+      const { container } = render(
+        <Terminal animate>
+          <div>line one</div>
+          <div>line two</div>
+        </Terminal>,
+      );
+      const code = container.querySelector("[data-terminal-reveal]");
+      expect(code).not.toBeNull();
+      // The hook lives on the <code> wrapping the lines; the staggered reveal
+      // is driven by tokens.css [data-terminal-reveal] > * (CSS-only).
+      expect(code?.tagName).toBe("CODE");
+      expect(code?.children).toHaveLength(2);
+    });
+
+    it("does not set the reveal hook when animate is absent (static default)", () => {
+      const { container } = render(
+        <Terminal>
+          <div>line one</div>
+        </Terminal>,
+      );
+      expect(container.querySelector("[data-terminal-reveal]")).toBeNull();
+    });
+
+    it("renders every line in the DOM regardless of animate (reduced-motion safety is CSS-only)", () => {
+      // animate is purely presentational — content is never JS-gated, so under
+      // prefers-reduced-motion (handled entirely in tokens.css) every line is
+      // present and shown at once.
+      render(
+        <Terminal animate>
+          <div>alpha</div>
+          <div>beta</div>
+          <div>gamma</div>
+        </Terminal>,
+      );
+      expect(screen.getByText("alpha")).toBeInTheDocument();
+      expect(screen.getByText("beta")).toBeInTheDocument();
+      expect(screen.getByText("gamma")).toBeInTheDocument();
+    });
+  });
 });
