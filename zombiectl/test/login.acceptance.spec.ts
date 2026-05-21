@@ -28,6 +28,7 @@ import { HttpClient, type HttpRequestInput } from "../src/services/http-client.t
 import { Input } from "../src/services/input.ts";
 import { Output } from "../src/services/output.ts";
 import { Spinner } from "../src/services/spinner.ts";
+import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
   telemetryRuntimeFromValuesLayer,
@@ -273,6 +274,13 @@ const makeConfig = (jsonMode: boolean): Layer.Layer<CliConfig> =>
 
 const configLayer: Layer.Layer<CliConfig> = makeConfig(false);
 
+// Interactive terminal so the resolve step returns `none` and the device
+// flow runs — this suite is the full ECDH round trip, not the direct path.
+const stdinLayer: Layer.Layer<Stdin> = Layer.succeed(Stdin, {
+  isTTY: true,
+  readToEnd: Effect.succeed(""),
+});
+
 const telemetryLayer: Layer.Layer<TelemetryRuntime> = telemetryRuntimeFromValuesLayer({
   configDir: "/tmp/test-config",
   tracesDir: "/tmp/test-traces",
@@ -303,6 +311,8 @@ describe("login acceptance — full device flow end-to-end", () => {
       noInput: false,
       force: true,
       tokenName: undefined,
+      tokenFlag: undefined,
+      envToken: undefined,
     }).pipe(
       Effect.provide(httpLayer(fixture)),
       Effect.provide(inputLayer(rec, VERIFICATION_CODE)),
@@ -314,6 +324,7 @@ describe("login acceptance — full device flow end-to-end", () => {
       Effect.provide(analyticsLayer(rec)),
       Effect.provide(configLayer),
       Effect.provide(telemetryLayer),
+      Effect.provide(stdinLayer),
     ) as Effect.Effect<void, CliError, never>;
 
     const exit = await Effect.runPromiseExit(program);
@@ -349,6 +360,8 @@ const runLogin = (
     noInput: false,
     force: true,
     tokenName: undefined,
+    tokenFlag: undefined,
+    envToken: undefined,
   }).pipe(
     Effect.provide(
       httpLayer(fixture, {
@@ -365,6 +378,7 @@ const runLogin = (
     Effect.provide(analyticsLayer(rec)),
     Effect.provide(makeConfig(opts.jsonMode ?? false)),
     Effect.provide(telemetryLayer),
+    Effect.provide(stdinLayer),
   ) as Effect.Effect<void, CliError, never>;
 
 const freshFixture = (): DeviceFlowFixture => ({

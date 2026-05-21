@@ -249,10 +249,10 @@ Three independent gaps on the shipped `zombiectl login`:
 
 ### B2 Sections (implementation slices)
 
-#### §B2.1 — Non-interactive direct-token path — PENDING
+#### §B2.1 — Non-interactive direct-token path — DONE
 Add a `resolveToken`-equivalent ahead of the device flow in `login.ts`: `--token` flag (new, on `cli-tree.ts`) → `ZOMBIE_TOKEN` env → piped stdin (non-TTY) → browser. Direct token → `validateToken` / `pingMe` → persist → done, no browser. Keep `--token-name`, `--no-open`, `--timeout-sec`, `--force`, `--no-input`.
 
-#### §B2.2 — `ZMB_TOKEN` → `ZOMBIE_TOKEN` consolidation — PENDING
+#### §B2.2 — `ZMB_TOKEN` → `ZOMBIE_TOKEN` consolidation — DONE
 Remove `ZMB_TOKEN` as the canonical/winning env name across `auth-token.ts` (incl. the `zmb` local at :76), `config.ts`, `cli.ts`, `argv-redact.ts`, `login-device-flow.ts` (`ZMB_TOKEN_ENV_KEYS` / `envTokenAwareness`), `cli-tree.ts` help text. Regenerate the `help-no-color.txt` golden. Update `auth-token-resolve.unit.test.ts`, `login-effect.unit.test.ts`, `login-device-flow.unit.test.ts`. **Prefix-safe per the case-insensitive sweep** — `zmb_` / `zmb_t_` / `UZ-ZMB-*` / `ZMB_CD_*` untouched.
 
 #### §B2.3 — Prompt UX: immediate prompt + client-side validation — PENDING
@@ -326,8 +326,8 @@ ZOMBIE_TOKEN           the only auth-token env var (ZMB_TOKEN deleted)
 
 ### B2 Open decisions
 
-1. **`--no-input` semantics** — with the new non-interactive `--token` / env / stdin path, `--no-input` keeps its current meaning (abort rather than prompt). Confirm no ambiguity once the resolve order lands.
-2. **Drop the poll entirely vs keep a lightweight expiry check** when prompting immediately — Supabase drops it; a thin background expiry poll may be worth keeping so a stale session fails fast instead of on a wrong-code submit.
+1. **`--no-input` semantics — RESOLVED (Indy, 2026-05-22): token-only-or-fail.** `--no-input` **or** non-TTY ⟹ a token must come from `--token` / `ZOMBIE_TOKEN` / piped stdin; with none, login fails (it cannot complete the typed-code device flow non-interactively). Implementation: `resolveDirectToken` fast-fails on **non-TTY + no token** (the CI case); `--no-input` on a real TTY still fails, via the existing verify-prompt `InterruptedError` (exit 130). Consequence: **the browser device flow is now TTY-only.** The two spawned-binary acceptance tests that drove the device flow over a piped (non-TTY) stdin (`--no-open` browser-suppression, SIGINT-during-poll) were reframed to assert the new fast-fail (no browser, no partial `credentials.json`); the device-flow + abort mechanics they covered remain unit-tested. A PTY harness for spawned interactive coverage is a possible follow-up.
+2. **Drop the poll entirely vs keep a lightweight expiry check** when prompting immediately — Supabase drops it; a thin background expiry poll may be worth keeping so a stale session fails fast instead of on a wrong-code submit. _(Deferred to §B2.3.)_
 
 ---
 
@@ -338,6 +338,8 @@ ZOMBIE_TOKEN           the only auth-token env var (ZMB_TOKEN deleted)
 - **Orphaned Zig `test-auth` build step.** `build.zig` still defines a `test-auth` step that nothing invokes and that is red on `main` (M62 `error_registry` + M74_002 `auth → src/queue/` escapes, the latter on a non-portable `queue → src/zombie/event_envelope` chain). Whether to keep/rename/remove the `src/auth/` portability concept is a separate decision — likely its own spec, since the auth→queue coupling means `src/auth/` is no longer cleanly extractable.
 - **TRIGGER.md fixture is duplicated three ways** — `seed.ts:triggerMd`, `install-zombie-cli.spec.ts:triggerMd`, and `install-ui.ts:fixtureTriggerMd` each hand-roll the same minimal-valid bundle YAML (they diverged: only `install-ui.ts` still carried the rejected `type: api`, which is why one slipped the scavenge). All three now emit the valid `triggers:`/`cron` shape, but the duplication is a UFS smell — a shared `validTriggerMd()` fixture helper is a sensible follow-up (out of scope here to keep the diff to the correctness fix Indy authorized).
 - **Branch name** carries a stale `-portability` suffix from the abandoned premise; harmless, not renamed.
+- **§B2.1 env source = raw `ctx.env["ZOMBIE_TOKEN"]`, not `CliConfig.accessToken`.** The plan said the env token was "merged into `CliConfig.accessToken`," but at the login command `handlers-bind` overrides `accessToken` with the file-or-env-merged `ctx.token` — so reading it would treat an existing `credentials.json` as a "direct token" and re-persist it instead of opening the browser. `handlers-bind` reads the raw env value and passes it as `LoginFlags.envToken`; `resolveDirectToken` trims it.
+- **§B2.1 piped stdin = a small `Stdin` service** (`src/services/stdin.ts`: `isTTY` + `readToEnd` over an injectable stream), threaded `cli.ts (io.stdin) → ctx.stdin → handlers-bind → mainLayerFor`. Mirrors the `Output`-streams seam; reads a generic Readable rather than global `Bun.stdin` so integration tests can pin TTY-ness without consuming the runner's stdin. The 5 in-process URL-resolution / failure-mode login tests inject an `isTTY:true` stdin to keep exercising the device flow.
 
 ---
 

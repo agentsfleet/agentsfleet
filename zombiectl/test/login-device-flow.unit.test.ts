@@ -11,14 +11,12 @@ import {
   buildLoginUrl,
   decryptIssuedToken,
   defaultTokenName,
-  envTokenAwareness,
   idempotencyCheck,
   mapVerifyFailure,
   pollUntilVerificationPending,
   verifyAndDecryptWithRetry,
 } from "../src/commands/login-device-flow.ts";
 import { generateCliKeypair } from "../src/lib/cli-flow.ts";
-import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
@@ -64,17 +62,6 @@ const credsWith = (
     getApiUrl: Effect.sync(() => null),
     saveAccessToken: () => Effect.void,
     clearAccessToken: Effect.void,
-  });
-
-const configWith = (jsonMode: boolean): Layer.Layer<CliConfig> =>
-  Layer.succeed(CliConfig, {
-    apiUrl: "https://api.test.local",
-    dashboardUrl: "https://dash.test.local",
-    accessToken: Option.none(),
-    jsonMode,
-    noOpen: true,
-    telemetryPosthogKey: "phc_test",
-    telemetryPosthogHost: "https://us.i.posthog.com",
   });
 
 // Every request fails with the given status/code — enough to drive the
@@ -275,67 +262,6 @@ describe("idempotencyCheck — early-return guards", () => {
     const exit = await Effect.runPromiseExit(
       idempotencyCheck({ force: false, noInput: false }).pipe(
         Effect.provide(credsWith(Option.none())),
-        Effect.provide(inputReturning("n")),
-        Effect.provide(outputNoop),
-      ),
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-  });
-});
-
-describe("envTokenAwareness — interactive continue prompt (D26b)", () => {
-  // Inject the env-keys-set probe directly so the test never touches
-  // process.env — the function takes the fake as its second argument.
-  const envSet = (): readonly string[] => ["ZOMBIE_TOKEN"];
-
-  test("env token set + interactive 'yes' continues without aborting", async () => {
-    const exit = await Effect.runPromiseExit(
-      envTokenAwareness({ force: false, noInput: false }, envSet).pipe(
-        Effect.provide(configWith(false)),
-        Effect.provide(inputReturning("yes")),
-        Effect.provide(outputNoop),
-      ),
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-  });
-
-  test("env token set + interactive 'n' aborts as InterruptedError", async () => {
-    const exit = await Effect.runPromiseExit(
-      envTokenAwareness({ force: false, noInput: false }, envSet).pipe(
-        Effect.provide(configWith(false)),
-        Effect.provide(inputReturning("n")),
-        Effect.provide(outputNoop),
-      ),
-    );
-    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
-  });
-
-  test("env token set + jsonMode returns silently (no prompt, no abort)", async () => {
-    const exit = await Effect.runPromiseExit(
-      envTokenAwareness({ force: false, noInput: false }, envSet).pipe(
-        Effect.provide(configWith(true)),
-        Effect.provide(inputReturning("n")),
-        Effect.provide(outputNoop),
-      ),
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-  });
-
-  test("env token set + --force continues after the precedence warning", async () => {
-    const exit = await Effect.runPromiseExit(
-      envTokenAwareness({ force: true, noInput: false }, envSet).pipe(
-        Effect.provide(configWith(false)),
-        Effect.provide(inputReturning("n")),
-        Effect.provide(outputNoop),
-      ),
-    );
-    expect(Exit.isSuccess(exit)).toBe(true);
-  });
-
-  test("no env token set → returns immediately, no prompt, no warning", async () => {
-    const exit = await Effect.runPromiseExit(
-      envTokenAwareness({ force: false, noInput: false }, () => []).pipe(
-        Effect.provide(configWith(false)),
         Effect.provide(inputReturning("n")),
         Effect.provide(outputNoop),
       ),

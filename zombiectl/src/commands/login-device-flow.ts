@@ -29,7 +29,6 @@ import {
   type CliKeypair,
 } from "../lib/cli-flow.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.ts";
-import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
@@ -71,8 +70,6 @@ export type {
 };
 export { defaultTokenName } from "./login-device-flow-types.ts";
 
-const TOKEN_ENV_KEYS = ["ZOMBIE_TOKEN"] as const;
-
 const noInputAbort = (detail: string): InterruptedError =>
   new InterruptedError({
     detail,
@@ -81,8 +78,8 @@ const noInputAbort = (detail: string): InterruptedError =>
 
 // Reads stdin via Input.readLine and returns true on y/Y/yes/<empty>.
 // The empty-string default biases toward "Yes" because the calling
-// prompts (D20 replace-existing, D26b env-var notice) treat continuing
-// as the safe choice — the user has to type "n" to abort.
+// prompt (D20 replace-existing) treats continuing as the safe choice —
+// the user has to type "n" to abort.
 const promptYesNo = (
   question: string,
 ): Effect.Effect<boolean, never, Input | Output> =>
@@ -119,49 +116,6 @@ export const idempotencyCheck = (
         new InterruptedError({
           detail: "login aborted — existing credential kept",
           suggestion: "re-run with --force to overwrite without prompting",
-        }),
-      );
-    }
-  });
-
-// D26b — surface a notice when ZOMBIE_TOKEN is set in the
-// environment. The login flow only writes credentials.json; env-var
-// tokens are out-of-band and take precedence on interactive shells, so
-// the operator may run `zombiectl login` expecting it to "fix"
-// authentication and be confused when the env-var token keeps winning.
-// Read process.env directly — CliConfig.accessToken is the *resolved*
-// token (could be from creds.json or env), we want to know specifically
-// whether the env variant was set.
-const envTokenKeysSet = (): readonly string[] =>
-  TOKEN_ENV_KEYS.filter((k) => typeof process.env[k] === "string" && process.env[k] !== "");
-
-export const envTokenAwareness = (
-  opts: { readonly force: boolean; readonly noInput: boolean },
-  envKeysSetFn: () => readonly string[] = envTokenKeysSet,
-): Effect.Effect<void, CliError, CliConfig | Input | Output> =>
-  Effect.gen(function* () {
-    const keysSet = envKeysSetFn();
-    if (keysSet.length === 0) return;
-    const config = yield* CliConfig;
-    if (config.jsonMode) return;
-    const output = yield* Output;
-    const list = keysSet.join(" / ");
-    yield* output.warn(
-      `${list} is set in your environment — on interactive shells it takes precedence over credentials.json.\n  ` +
-        "`zombiectl login` only replaces credentials.json; your env-var token is unaffected.",
-    );
-    if (opts.force) return;
-    if (opts.noInput) {
-      return yield* Effect.fail(
-        noInputAbort(`${list} is set; login would not change which token wins on this shell`),
-      );
-    }
-    const proceed = yield* promptYesNo("Continue with login anyway?");
-    if (!proceed) {
-      return yield* Effect.fail(
-        new InterruptedError({
-          detail: "login aborted — env-var token left in place",
-          suggestion: `unset ${list} or re-run with --force`,
         }),
       );
     }

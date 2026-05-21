@@ -29,6 +29,9 @@ import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.t
 
 const WS_ID = "01900000-0000-7000-8000-000000fa17e1";
 const ZOMBIE_ID = "01900000-0000-7000-8000-000000fa17e2";
+// Interactive-terminal stdin so `login` runs the device flow (where the
+// auth-service 503 is surfaced) rather than the non-TTY direct-token resolve.
+const ttyStdin = { isTTY: true } as unknown as NodeJS.ReadableStream;
 const authedScope = <T>(fn: (stateDir: string) => Promise<T>): Promise<T> =>
   withAuthedStateDir({ workspaceId: WS_ID, sessionId: "sess_fail" }, fn);
 
@@ -52,7 +55,7 @@ describe("failure modes — login surface", () => {
         const err = bufferStream();
         const code = await runCli(
           ["login", "--no-open", "--no-input", "--timeout-sec", "2", "--poll-ms", "50"],
-          { stdout: out.stream, stderr: err.stream, env: { ZOMBIE_API_URL: apiUrl } },
+          { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ZOMBIE_API_URL: apiUrl } },
         );
         expect(code).toBe(1);
         const text = err.read();

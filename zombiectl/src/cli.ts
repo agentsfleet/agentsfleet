@@ -228,6 +228,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     // smaller honest seam.
     stdout: stdout as unknown as NodeJS.WritableStream,
     stderr: stderr as unknown as NodeJS.WritableStream,
+    stdin: stdinSrc,
     env,
     fetchImpl,
   };
