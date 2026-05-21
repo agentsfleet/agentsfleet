@@ -18,7 +18,7 @@
 // on the error channel; the dispatcher's exit-code map keys all of them
 // to 1 (130 for interrupted).
 
-import { Effect, Redacted } from "effect";
+import { Effect, Option, Redacted } from "effect";
 import { Analytics } from "../services/telemetry/analytics.service.ts";
 import { TelemetryRuntime } from "../services/telemetry/runtime.service.ts";
 import { Browser } from "../services/browser.service.ts";
@@ -28,6 +28,7 @@ import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
 import { Output } from "../services/output.ts";
 import { Spinner } from "../services/spinner.ts";
+import { Stdin } from "../services/stdin.ts";
 import { Workspaces } from "../services/workspaces.ts";
 import {
   AuthError,
@@ -41,7 +42,6 @@ import {
   buildLoginUrl,
   createSession,
   defaultTokenName,
-  envTokenAwareness,
   generateKeypair,
   idempotencyCheck,
   pollUntilVerificationPending,
@@ -50,6 +50,8 @@ import {
 import {
   captureLoginCompleted,
   hydrateWorkspacesAfterLogin,
+  resolveDirectToken,
+  saveDirectToken,
   startSpinner,
   withSigintAbort,
 } from "./login-helpers.ts";
@@ -71,6 +73,11 @@ export interface LoginFlags {
   readonly noInput: boolean;
   readonly force: boolean;
   readonly tokenName: string | undefined;
+  // --token <pat>; non-interactive direct-token source (highest priority).
+  readonly tokenFlag: string | undefined;
+  // Raw ZOMBIE_TOKEN env value (not the file-merged CliConfig.accessToken)
+  // so an existing credentials.json is never mistaken for a direct token.
+  readonly envToken: string | undefined;
 }
 
 export interface LoginFlagsRaw {
@@ -80,6 +87,8 @@ export interface LoginFlagsRaw {
   readonly noInput: boolean | undefined;
   readonly force: boolean | undefined;
   readonly tokenName: string | undefined;
+  readonly tokenFlag: string | undefined;
+  readonly envToken: string | undefined;
 }
 
 const announceSession = Effect.fnUntraced(function* (
@@ -208,7 +217,7 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
   const redacted = yield* persistSuccess(sessionId, token);
   yield* pingMe(redacted).pipe(Effect.catchTag("MeValidationError", rollbackOnMeFailure));
   yield* hydrateWorkspacesAfterLogin(redacted);
-  yield* captureLoginCompleted(sessionId, token);
+  yield* captureLoginCompleted(sessionId, token, "browser");
   return { status: "complete", token } as FinalOutcome;
 });
 
@@ -221,13 +230,31 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
 const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   const config = yield* CliConfig;
 
-  // Pre-flight (D20 + D26b). idempotencyCheck refuses to overwrite an
-  // existing credential without --force or a Y/yes prompt; envTokenAwareness
-  // surfaces the precedence gotcha when ZOMBIE_TOKEN is set.
-  // Both honor --no-input by aborting with NoInputAbort instead of prompting.
+  // Pre-flight (D20). idempotencyCheck refuses to overwrite an existing
+  // credential without --force or a Y/yes prompt; --no-input aborts loudly
+  // instead of prompting so scripts don't silently clobber a token.
   const preflightGuards = { force: flags.force, noInput: flags.noInput };
   yield* idempotencyCheck(preflightGuards);
-  yield* envTokenAwareness(preflightGuards);
+
+  // Non-interactive resolve (--token > ZOMBIE_TOKEN env > piped stdin)
+  // ahead of the browser device flow. A directly-supplied token is
+  // validated + persisted with no browser; `none` falls through to the
+  // device flow below.
+  const direct = yield* resolveDirectToken({
+    tokenFlag: flags.tokenFlag,
+    envToken: flags.envToken,
+  });
+  if (Option.isSome(direct)) {
+    if (flags.tokenName !== undefined && !config.jsonMode) {
+      const output = yield* Output;
+      yield* output.info(
+        "--token-name is ignored with a direct token (no browser session to label)",
+      );
+    }
+    yield* saveDirectToken(direct.value);
+    yield* renderOutcome({ status: "complete", token: direct.value }, "");
+    return;
+  }
 
   const keypair = yield* generateKeypair;
   const tokenName = flags.tokenName ?? defaultTokenName();
@@ -292,6 +319,7 @@ type MainLayerCarry =
   | Input
   | Output
   | Spinner
+  | Stdin
   | TelemetryRuntime
   | Workspaces;
 
@@ -310,4 +338,6 @@ export const loginEffectFromFlags = (
     noInput: raw.noInput ?? false,
     force: raw.force ?? false,
     tokenName: raw.tokenName,
+    tokenFlag: raw.tokenFlag,
+    envToken: raw.envToken,
   });

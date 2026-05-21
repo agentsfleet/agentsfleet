@@ -3,12 +3,11 @@
 // process.env, no environment introspection — so it's trivially testable
 // and safe to call before any logging/output service is wired.
 //
-// The CLI's token-resolution chain is creds.json → ZOMBIE_TOKEN. `--token`
-// is NOT in that chain today — it isn't accepted as a global
-// flag and is not parsed by commander. Operators sometimes pass it
-// expecting it'll work, and bash history captures the secret verbatim
-// either way. We surface the warning so the next attempt routes through
-// the env-var path instead.
+// `zombiectl login --token <pat>` is an accepted, non-interactive auth
+// path — but the secret still lands in shell history and process lists.
+// We emit this caveat whenever `--token` appears in argv, then let the
+// command proceed (the flag works); the message just nudges operators
+// toward ZOMBIE_TOKEN or piped stdin, which don't leak.
 //
 // Detection rules (POSIX-faithful):
 //   - `--` ends the option-scanning window (anything after it is a

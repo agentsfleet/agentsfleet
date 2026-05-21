@@ -23,6 +23,11 @@ const asFetchOverride = (
   impl: (url: string, options?: { method?: string }) => Promise<ResponseLike>,
 ): typeof fetch => impl as unknown as typeof fetch;
 
+// An interactive-terminal stdin so `login` takes the device flow (the path
+// these URL-resolution cases drive) instead of the non-TTY direct-token
+// resolve, which would fast-fail before any fetch.
+const ttyStdin = { isTTY: true } as unknown as NodeJS.ReadableStream;
+
 function makeFetchRecorder(): FetchRecorder {
   const calls: RecordedCall[] = [];
   const fetchImpl = async (
@@ -57,7 +62,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
         ["login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50"],
-        { stdout: out.stream, stderr: err.stream, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(1);
       expect(calls.length).toBeGreaterThan(0);
@@ -77,6 +82,7 @@ describe("api url resolution drives every fetch from runCli", () => {
         {
           stdout: out.stream,
           stderr: err.stream,
+          stdin: ttyStdin,
           env: { ZOMBIE_API_URL: "http://localhost:3000" },
           fetchImpl: asFetchOverride(fetchImpl),
         },
@@ -99,6 +105,7 @@ describe("api url resolution drives every fetch from runCli", () => {
         {
           stdout: out.stream,
           stderr: err.stream,
+          stdin: ttyStdin,
           env: { ZOMBIE_API_URL: "http://localhost:3000" },
           fetchImpl: asFetchOverride(fetchImpl),
         },
@@ -240,7 +247,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           "--api", "https://api.usezombie.com//",
           "login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50",
         ],
-        { stdout: out.stream, stderr: err.stream, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
+        { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
       );
       expect(code).toBe(1);
       expect(calls[0]?.url).toBe("https://api.usezombie.com/v1/auth/sessions");

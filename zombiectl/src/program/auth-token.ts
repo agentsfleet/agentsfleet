@@ -12,6 +12,8 @@
 // (CI, cron, pipes) prefer the on-disk credential a previous `zombiectl
 // login` wrote, falling through to env only if no file exists.
 
+import { ZOMBIE_TOKEN_ENV } from "../services/config.ts";
+
 export type RoleClaim = "user" | "operator" | "admin";
 
 // Subset of Clerk-style claims the CLI consumes. Index signature carries
@@ -71,7 +73,7 @@ const trimOrNull = (raw: string | undefined | null): string | null => {
 // inspected before file, but only "win" in TTY mode; non-TTY callers
 // fall through to file first.
 export function resolveAuthTokenForCli(input: ResolveAuthTokenInput): ResolvedAuthToken {
-  const zombie = trimOrNull(input.env["ZOMBIE_TOKEN"]);
+  const zombie = trimOrNull(input.env[ZOMBIE_TOKEN_ENV]);
   const file = trimOrNull(input.fileToken);
   const fileResolved: ResolvedAuthToken | null = file ? { token: file, source: "file" } : null;
   const zombieResolved: ResolvedAuthToken | null = zombie

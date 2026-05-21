@@ -152,7 +152,8 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
     .description("Authenticate via browser")
     .option("--timeout-sec <n>", "Wait up to N seconds for browser callback", parseIntOption(TIMEOUT_SEC_BOUNDS))
     .option("--poll-ms <n>", "Poll cadence in milliseconds", parseIntOption(POLL_MS_BOUNDS))
-    .option("--token-name <label>", "Label this session in audit logs (default: platform family)")
+    .option("--token <token>", "Authenticate with this token directly, no browser (prefer ZOMBIE_TOKEN or piped stdin to keep it out of shell history)")
+    .option("--token-name <label>", "Label for this session, shown on the approval page and in `auth status` (default: platform family)")
     .option("--force", "Skip the existing-credential prompt and overwrite", false)
     .action(actionFor("login", (frame) => runHandler(state, frame, handlers.login)));
 
