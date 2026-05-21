@@ -12,16 +12,19 @@ function renderCtaBlock() {
 }
 
 describe("CTABlock", () => {
-  it("renders the heading", () => {
+  it("renders the human-voice heading", () => {
     renderCtaBlock();
     expect(
-      screen.getByRole("heading", { level: 2, name: /building agents on usezombie\?/i }),
+      screen.getByRole("heading", { level: 2, name: /stop chasing failed deploys/i }),
     ).toBeInTheDocument();
   });
 
-  it("renders the description", () => {
+  it("speaks to the operator, not the machine API", () => {
     renderCtaBlock();
-    expect(screen.getByText(/stable machine surface via openapi 3\.1/i)).toBeInTheDocument();
+    expect(screen.getByText(/install one zombie, wire one webhook/i)).toBeInTheDocument();
+    // The OpenAPI / machine-surface pitch belongs on /agents, not the human closer.
+    expect(screen.queryByText(/openapi 3\.1/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/machine surface/i)).not.toBeInTheDocument();
   });
 
   it("renders quickstart CTA with correct href", () => {

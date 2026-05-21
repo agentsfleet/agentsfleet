@@ -13,8 +13,16 @@ export const DISCORD_URL = "https://discord.gg/H9hH2nqQjh";
 export const TEAM_EMAIL = "team@usezombie.com";
 export const MARKETING_LEAD_CAPTURE_URL = import.meta.env.VITE_MARKETING_LEAD_CAPTURE_URL?.trim() || "";
 
-// Bootstrap one-liner — shared by Hero CTA (clipboard payload + visible
-// label) and OnboardingFlow step 01 (rendered command block). Single
+// Bootstrap one-liner — one command that installs zombiectl AND the skill
+// bundle (host-detected) via the usezombie.sh installer. Bare-root form (no
+// /install.sh path) per the M75 canonical one-liner. Shared by Hero CTA
+// (clipboard payload + visible label) and OnboardingFlow step 01 — single
 // source so the two surfaces cannot drift independently.
-export const INSTALL_COMMAND =
-  "npm install -g @usezombie/zombiectl && npx skills add usezombie/usezombie";
+export const INSTALL_COMMAND = "curl -fsSL https://usezombie.sh | bash";
+
+// The platform-ops install skill — step two, run inside the coding agent
+// after INSTALL_COMMAND has registered the slash command. INSTALL_SKILL_SLASH
+// is the bare command (OnboardingFlow step 02); INSTALL_SKILL_COMMAND is the
+// Claude Code invocation the hero terminal demos and copies. Single source.
+export const INSTALL_SKILL_SLASH = "/usezombie-install-platform-ops";
+export const INSTALL_SKILL_COMMAND = `claude ${INSTALL_SKILL_SLASH}`;
