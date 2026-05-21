@@ -90,41 +90,59 @@ function clientFiles(): string[] {
   }
 }
 
-function scanClientFiles(pattern: string): string[] {
+// `ere` drives the grep prefilter; `js` re-validates the match against the
+// code with comments removed, so a needle that lives only in a comment is
+// never a violation. Both forms describe the same pattern.
+function scanClientFiles(ere: string, js: RegExp): string[] {
   const files = clientFiles();
   if (files.length === 0) return [];
   const fileArgs = files.map((f) => `'${f}'`).join(" ");
+  let out = "";
   try {
-    const out = execSync(`grep -HnE -- '${pattern}' ${fileArgs}`, {
+    out = execSync(`grep -HnE -- '${ere}' ${fileArgs}`, {
       cwd: APP_ROOT,
       encoding: "utf8",
     });
-    return out
-      .split("\n")
-      .filter((line) => line.trim().length > 0)
-      // Comments are allowed — only live code references are violations.
-      .filter((line) => !/^[^:]+:\d+:\s*(\/\/|\*|\/\*)/.test(line));
   } catch (err) {
     if ((err as { status?: number }).status === 1) return [];
     throw err;
   }
+  return out
+    .split("\n")
+    .filter((line) => line.trim().length > 0)
+    .filter((line) => {
+      // grep emits `path:lineno:code`; isolate the code portion.
+      const code = line.replace(/^[^:]+:\d+:/, "");
+      // Drop comment-only lines (`//…`, `/*…`, JSDoc `*` continuation).
+      if (/^\s*(\/\/|\*|\/\*)/.test(code)) return false;
+      // Strip trailing line + inline block comments, then re-validate —
+      // a match that survives only inside `… // token: note` is not live.
+      const stripped = code.replace(/\/\/.*$/, "").replace(/\/\*.*?\*\//g, "");
+      return js.test(stripped);
+    });
 }
 
 describe("the browser holds no dashboard credential", () => {
   it("no getToken() call in any \"use client\" file", () => {
-    const hits = scanClientFiles("getToken\\(");
+    const hits = scanClientFiles("getToken\\(", /getToken\(/);
     expect(hits, hits.join("\n")).toEqual([]);
   });
 
   it("no Authorization: Bearer header built in any \"use client\" file", () => {
-    const hits = scanClientFiles("Authorization[[:space:]]*:[[:space:]]*.?Bearer");
+    const hits = scanClientFiles(
+      "Authorization[[:space:]]*:[[:space:]]*.?Bearer",
+      /Authorization\s*:\s*.?Bearer/,
+    );
     expect(hits, hits.join("\n")).toEqual([]);
   });
 
   it("no token-typed prop declared or passed in any \"use client\" file", () => {
     // `token:` (type/declaration) and `token=` (JSX prop), anchored so
     // camelCase/underscore neighbours (getToken, access_token) don't hit.
-    const hits = scanClientFiles("(^|[^A-Za-z_])token[[:space:]]*[?:=]");
+    const hits = scanClientFiles(
+      "(^|[^A-Za-z_])token[[:space:]]*[?:=]",
+      /(^|[^A-Za-z_])token\s*[?:=]/,
+    );
     expect(hits, hits.join("\n")).toEqual([]);
   });
 });

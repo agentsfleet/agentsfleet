@@ -70,7 +70,16 @@ export type ZombieThreadProps = {
  */
 export function ZombieThread({ workspaceId, zombieId, initial }: ZombieThreadProps) {
   const stream = useZombieEventStream(workspaceId, zombieId, initial);
-  const onNew = useNewMessageHandler({ workspaceId, zombieId, stream });
+  // Pass the registry methods (each `useCallback([zombieId])`-stable), not
+  // the whole `stream` object — `stream` is a fresh reference on every SSE
+  // frame, so listing it would rebuild `onNew` per frame for no benefit.
+  const onNew = useNewMessageHandler({
+    workspaceId,
+    zombieId,
+    appendOptimistic: stream.appendOptimistic,
+    reconcileOptimistic: stream.reconcileOptimistic,
+    markOptimisticFailed: stream.markOptimisticFailed,
+  });
   const runtime = useExternalStoreRuntime<ZombieEvent>({
     messages: stream.events,
     convertMessage: stream.convertEvent,
@@ -179,37 +188,42 @@ function BackfillSkeleton() {
   );
 }
 
+type StreamApi = ReturnType<typeof useZombieEventStream>;
 type NewHandlerCtx = {
   workspaceId: string;
   zombieId: string;
-  stream: ReturnType<typeof useZombieEventStream>;
+  appendOptimistic: StreamApi["appendOptimistic"];
+  reconcileOptimistic: StreamApi["reconcileOptimistic"];
+  markOptimisticFailed: StreamApi["markOptimisticFailed"];
 };
 
 function useNewMessageHandler({
   workspaceId,
   zombieId,
-  stream,
+  appendOptimistic,
+  reconcileOptimistic,
+  markOptimisticFailed,
 }: NewHandlerCtx): (msg: AppendMessage) => Promise<void> {
   return useCallback(
     async (msg: AppendMessage) => {
       const text = extractMessageText(msg);
       if (text.length === 0) return;
-      const tempId = stream.appendOptimistic(text, OPTIMISTIC_ACTOR);
+      const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR);
       try {
         const result = await steerZombieAction(workspaceId, zombieId, text);
         if (result.ok) {
-          stream.reconcileOptimistic(tempId, result.data.event_id);
+          reconcileOptimistic(tempId, result.data.event_id);
         } else {
-          stream.markOptimisticFailed(tempId);
+          markOptimisticFailed(tempId);
         }
       } catch {
         // The Server Action's RPC transport itself failed (offline, or the
         // action invocation errored) — surface the same `failed` row the
         // ok:false path produces so the user knows the steer didn't land.
-        stream.markOptimisticFailed(tempId);
+        markOptimisticFailed(tempId);
       }
     },
-    [workspaceId, zombieId, stream],
+    [workspaceId, zombieId, appendOptimistic, reconcileOptimistic, markOptimisticFailed],
   );
 }
 
