@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   EVENT_NANOS,
+  FREE_TRIAL_END_MS,
+  isWithinFreeTrial,
   NANOS_PER_USD,
   RATES_DISPLAY,
   STAGE_PLATFORM_NANOS,
@@ -106,5 +108,25 @@ describe("free-trial display strings (banner + hero pill share a single date sub
     const TRIAL_END_DISPLAY = "July 31, 2026";
     expect(RATES_DISPLAY.FREE_TRIAL_PILL).toContain(TRIAL_END_DISPLAY);
     expect(RATES_DISPLAY.FREE_TRIAL_BANNER).toContain(TRIAL_END_DISPLAY);
+  });
+});
+
+describe("isWithinFreeTrial (drives the pricing billing-card display)", () => {
+  it("returns true just before the trial-end boundary", () => {
+    expect(isWithinFreeTrial(Number(FREE_TRIAL_END_MS) - 1)).toBe(true);
+  });
+
+  it("returns false at and after the trial-end boundary", () => {
+    expect(isWithinFreeTrial(Number(FREE_TRIAL_END_MS))).toBe(false);
+    expect(isWithinFreeTrial(Number(FREE_TRIAL_END_MS) + 86_400_000)).toBe(false);
+  });
+
+  it("treats a clearly pre-launch timestamp as within the trial", () => {
+    expect(isWithinFreeTrial(Date.parse("2026-06-01T00:00:00Z"))).toBe(true);
+  });
+
+  it("returns false for non-finite input rather than throwing (BigInt(NaN) guard)", () => {
+    expect(isWithinFreeTrial(Number.NaN)).toBe(false);
+    expect(isWithinFreeTrial(Number.POSITIVE_INFINITY)).toBe(false);
   });
 });

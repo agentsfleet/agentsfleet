@@ -34,6 +34,13 @@ export const STAGE_SELF_MANAGED_NANOS = 100_000n;
 export const FREE_TRIAL_END_MS = 1_785_542_400_000n; // 2026-08-01T00:00:00Z
 export const FREE_TRIAL_STAGE_NANOS = 0n;
 
+// Display mirror of FREE_TRIAL_STAGE_NANOS = 0 — the word the pricing stage
+// cells show while the trial window is open. Deliberately separate from
+// EVENT_RATE despite sharing "free" today: an event is permanently free, a
+// stage is free only during the trial. Keeping them distinct stops a future
+// EVENT_RATE change from silently rewording the stage cells.
+export const FREE_TRIAL_STAGE_DISPLAY = "free";
+
 // Single source of truth for the trial-end *display* string. The pricing
 // banner and the landing hero pill both consume this — drifting the date in
 // one without the other would mis-message customers. The numeric authority
@@ -52,3 +59,15 @@ export const RATES_DISPLAY = {
   FREE_TRIAL_BANNER: `Free until ${FREE_TRIAL_END_DISPLAY} — every event receipt and stage execution is on us while we gather traction. Self-managed posture still recommended for production-grade isolation.`,
   FREE_TRIAL_PILL: `Free until ${FREE_TRIAL_END_DISPLAY}`,
 } as const;
+
+// True while the promotional free-trial window is open (now < FREE_TRIAL_END_MS),
+// when the server bills stages at FREE_TRIAL_STAGE_NANOS (0). The pricing "how a
+// run is billed" cards read this so they show stages as free during the window —
+// matching the headline — instead of the post-trial per-stage rate. `nowMs` is
+// injectable so the cards' trial-vs-paid rendering is deterministically testable.
+export function isWithinFreeTrial(nowMs: number = Date.now()): boolean {
+  // Guard non-finite input (NaN / Infinity) — BigInt(NaN) throws. An unusable
+  // clock is treated as "trial over" (show real rates), the conservative side.
+  if (!Number.isFinite(nowMs)) return false;
+  return BigInt(Math.trunc(nowMs)) < FREE_TRIAL_END_MS;
+}

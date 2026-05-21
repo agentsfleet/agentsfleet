@@ -2,18 +2,27 @@ import { Badge, Button, Card, List, ListItem, SectionLabel } from "@usezombie/de
 import { APP_BASE_URL } from "../config";
 import { trackSignupStarted } from "../analytics/posthog";
 import { SUPPORT_EMAIL } from "../lib/contact";
-import { RATES_DISPLAY } from "../lib/rates";
+import { FREE_TRIAL_STAGE_DISPLAY, isWithinFreeTrial, RATES_DISPLAY } from "../lib/rates";
 
-type FlowCell = { id: string; label: string; price: string; sub: string };
+type FlowCell = {
+  id: string;
+  label: string;
+  price: string;
+  sub: string;
+  kind: "event" | "stage";
+};
 
 // Concrete platform-ops run — what an end user actually sees when a
 // deploy webhook fires. Mirrors the install transcript on Hero.tsx;
 // "stage N" lands on the resolving step (Slack diagnosis posted).
+// `price` is the post-trial rate; stage cells render "free" while the
+// trial window is open (see isWithinFreeTrial), so the cards never
+// contradict the "free until …" headline above them.
 const BILLED_FLOW: FlowCell[] = [
-  { id: "event", label: "event", price: RATES_DISPLAY.EVENT_RATE, sub: "deploy webhook fires" },
-  { id: "stage-1", label: "stage 1", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "read CI logs" },
-  { id: "stage-2", label: "stage 2", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "correlate commits" },
-  { id: "stage-n", label: "stage N", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "post Slack diagnosis" },
+  { id: "event", label: "event", price: RATES_DISPLAY.EVENT_RATE, sub: "deploy webhook fires", kind: "event" },
+  { id: "stage-1", label: "stage 1", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "read CI logs", kind: "stage" },
+  { id: "stage-2", label: "stage 2", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "correlate commits", kind: "stage" },
+  { id: "stage-n", label: "stage N", price: RATES_DISPLAY.STAGE_PLATFORM, sub: "post Slack diagnosis", kind: "stage" },
 ];
 
 const EXTRAS: string[] = [
@@ -25,6 +34,9 @@ const EXTRAS: string[] = [
 ];
 
 export default function Pricing() {
+  // While the trial window is open, stage cells render "free" to match the
+  // headline; after it closes they show the per-stage rate.
+  const trial = isWithinFreeTrial();
   return (
     <section id="pricing" className="site-section" data-testid="pricing-block">
       <div className="wrap flex flex-col gap-10">
@@ -129,7 +141,7 @@ export default function Pricing() {
               >
                 <SectionLabel className="mb-0">{cell.label}</SectionLabel>
                 <span className="font-mono text-heading leading-heading tabular-nums text-text">
-                  {cell.price}
+                  {trial && cell.kind === "stage" ? FREE_TRIAL_STAGE_DISPLAY : cell.price}
                 </span>
                 <span className="font-sans text-eyebrow leading-eyebrow text-text-muted">
                   {cell.sub}
@@ -137,6 +149,16 @@ export default function Pricing() {
               </div>
             ))}
           </div>
+
+          {trial && (
+            <p
+              className="font-sans text-body-sm leading-body text-text-muted m-0"
+              data-testid="pricing-flow-trial-note"
+            >
+              Stages are free during the trial — billed at {RATES_DISPLAY.STAGE_PLATFORM}/stage
+              once the free window closes.
+            </p>
+          )}
 
           <div
             data-testid="pricing-flow-llm"
