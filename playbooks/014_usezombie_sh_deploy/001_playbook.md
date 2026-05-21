@@ -1,65 +1,66 @@
 # Playbook — `usezombie.sh` installer domain
 
-**Updated:** May 21, 2026
-**Owner:** Human (one-time Cloudflare Pages project + custom domain)
-**Prerequisite:** Cloudflare account access to the `usezombie.sh` zone (already delegated — nameservers `clint.ns.cloudflare.com` / `natasha.ns.cloudflare.com`); the Cloudflare GitHub App connected to `usezombie/usezombie` (already used by `usezombie-website` / `usezombie-app` / `usezombie-agents-sh`).
+**Updated:** May 22, 2026
+**Owner:** Human (one-time Vercel project + custom domain — already provisioned)
+**Prerequisite:** Vercel team access (`indykishs-projects`); the Vercel GitHub integration connected to `usezombie/usezombie` (already used by `usezombie-website` and `usezombie-agents-sh`).
 
 ## Why this playbook exists
 
-`https://usezombie.sh` serves the one-URL installer (`curl -fsSL https://usezombie.sh | bash`). The deployable is a static directory (`ui/usezombie.sh/dist/` — `install.sh` + `_redirects` + `_headers`); there is no build step.
+`https://usezombie.sh` serves the one-URL installer (`curl -fsSL https://usezombie.sh | bash`). The deployable is a static directory (`ui/usezombie.sh/dist/` — `install.sh` + `vercel.json`); there is no build step.
 
-It deploys the **same way as the other Pages sites**: a **git-connected** Cloudflare Pages project. Cloudflare's GitHub App builds + deploys a **preview** on every PR (and comments the URL) and **production** on merge to `main`. No GitHub Actions workflow, no `wrangler`, no Cloudflare credentials in CI — Cloudflare's own GitHub auth handles it. The merge is gated by the `lint-usezombie-sh` job (shellcheck + `install_test.sh`), so a broken installer never reaches `main`.
+It deploys the **same way as `usezombie-website`**: a **git-connected** Vercel project. Vercel's GitHub integration builds + deploys a **preview** on every PR (and comments the URL) and **production** on merge to `main`. No GitHub Actions workflow, no Vercel credentials in CI — Vercel's own GitHub auth handles it. The merge is gated by the `lint-usezombie-sh` job (shellcheck + `install_test.sh`), so a broken installer never reaches `main`.
+
+`dist/vercel.json` carries the serving config: the `/ → /install.sh` rewrite (so the bare root pipes into bash) and the `text/x-shellscript` content-type + 5-minute cache. Vercel does **not** read Cloudflare-Pages `_redirects`/`_headers`, which is why the config lives in `vercel.json`.
 
 ## Sequence
 
 ```
-1. (once)  create the git-connected `usezombie-sh` Pages project
-2. (once)  attach usezombie.sh as a custom domain  -> Cloudflare writes apex A/AAAA + TLS
-3. (per change)  open a PR -> Cloudflare auto-deploys a preview; merge to main -> auto prod
-4. (verify)  dig + curl the live domain
+1. (once, done)  git-connected Vercel project `usezombie-agents-sh`, rootDir ui/usezombie.sh/dist
+2. (once, done)  usezombie.sh attached as a custom domain  -> Vercel provisions apex DNS + TLS
+3. (per change)  open a PR -> Vercel auto-deploys a preview; merge to main -> auto prod
+4. (verify)      dig + curl the live domain
 ```
 
 ## Human vs Agent split
 
 | Step | Owner | Why |
 |------|-------|-----|
-| Create git-connected Pages project | Human | One-time Cloudflare dashboard action |
-| Attach `usezombie.sh` custom domain | Human | Cloudflare auto-provisions apex A/AAAA + TLS on the existing zone |
-| Deploy | Cloudflare | Automatic — preview on PR, production on merge to `main` |
+| Create git-connected Vercel project | Human | One-time Vercel dashboard action (done) |
+| Attach `usezombie.sh` custom domain | Human | Vercel auto-provisions apex DNS + TLS (done) |
+| Deploy | Vercel | Automatic — preview on PR, production on merge to `main` |
 | Verify live DNS/TLS | Agent | Read-only `dig` + `curl` |
 
 ---
 
-## Step 1 — Create the git-connected Pages project
+## Step 1 — The git-connected Vercel project (already provisioned)
 
-Cloudflare dashboard → **Workers & Pages → Create → Pages → Connect to Git** → `usezombie/usezombie`.
+Vercel dashboard → **Add New → Project → Import** `usezombie/usezombie`. Current config:
 
 | Setting | Value |
 |---------|-------|
-| Project name | `usezombie-sh` |
+| Project name | `usezombie-agents-sh` |
 | Production branch | `main` |
-| Framework preset | None |
+| Framework preset | Other / None |
 | Build command | *(empty — no build)* |
-| Build output directory | `ui/usezombie.sh/dist` |
-| Path-based build watching (optional) | `ui/usezombie.sh/**` so unrelated pushes don't trigger a (no-op) redeploy |
+| Root directory | `ui/usezombie.sh/dist` |
 
-(There is already a `usezombie-agents-sh` project that fronted the old "forward to usezombie.com/agents" approach. `usezombie.sh` now serves the installer instead — either repurpose that project's domain binding or create `usezombie-sh` fresh and move the custom domain. Either is fine; the served output dir is what matters.)
+(The project was repurposed from the old "forward to usezombie.com/agents" approach; `usezombie.sh` now serves the installer. The serving config lives in `dist/vercel.json`.)
 
-## Step 2 — Attach the custom domain
+## Step 2 — The custom domain (already attached)
 
-In the project → **Custom domains → Set up a domain → `usezombie.sh`**. Cloudflare writes the apex `A`/`AAAA` records and issues the TLS certificate automatically (the zone is already on this account). No manual DNS edits.
+Project → **Settings → Domains → `usezombie.sh`**. Vercel issues the TLS certificate and provisions the apex DNS automatically. No manual DNS edits.
 
 ## Step 3 — Deploy
 
-Automatic. Open a PR touching `ui/usezombie.sh/**` → Cloudflare posts a preview URL on the PR. Merge to `main` → Cloudflare deploys production → `https://usezombie.sh`. The `_headers` 5-minute `Cache-Control` propagates a bump globally within minutes. To change the served script, edit `ui/usezombie.sh/dist/install.sh` and merge.
+Automatic. Open a PR touching `ui/usezombie.sh/**` → Vercel posts a preview URL on the PR. Merge to `main` → Vercel deploys production → `https://usezombie.sh`. The `vercel.json` 5-minute `Cache-Control` propagates a bump globally within minutes. To change the served script, edit `ui/usezombie.sh/dist/install.sh` and merge.
 
 ## Step 4 — Verify (live cutover acceptance)
 
 ```bash
 dig +short A usezombie.sh                 # non-empty
-dig +short AAAA usezombie.sh              # non-empty
 curl -fsSL https://usezombie.sh -o /tmp/install.sh    # HTTP 200, valid TLS, no --insecure
 curl -fsSL https://usezombie.sh | head -1             # -> #!/usr/bin/env bash
+curl -sSI https://usezombie.sh/install.sh | grep -i content-type   # -> text/x-shellscript
 ```
 
 ## Prerequisite for a meaningful end-to-end install

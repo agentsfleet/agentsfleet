@@ -6,15 +6,14 @@ The one-URL installer for `zombiectl` + the platform-ops skill, served at `https
 curl -fsSL https://usezombie.sh | bash
 ```
 
-This is a static site — no build step. `dist/` is committed and served by Cloudflare Pages as-is.
+This is a static site — no build step. `dist/` is committed and served by Vercel as-is.
 
 ## Layout
 
 | Path | Purpose | Served? |
 |------|---------|---------|
 | `dist/install.sh` | POSIX (Linux/macOS) installer. npm-only — see below. | yes (at `/` and `/install.sh`) |
-| `dist/_redirects` | Serves `install.sh` at the bare root (`/  →  /install.sh  200`). | config |
-| `dist/_headers` | Shell content-type + 5-min cache. | config |
+| `dist/vercel.json` | Rewrites the bare root to the installer (`/  →  /install.sh`), sets the shell content-type + 5-min cache. | config |
 | `install_test.sh` | Hermetic black-box smoke tests for `dist/install.sh`. | no |
 | `README.md` | This file. | no |
 
@@ -53,13 +52,16 @@ network is ever touched.
 
 ## Deploying
 
-The served bytes are `dist/`, deployed by a **git-connected Cloudflare Pages project** — the same
-pattern as `usezombie-website` / `usezombie-app`. There is no deploy workflow and no CI credentials:
+The served bytes are `dist/`, deployed by a **git-connected Vercel project** (`usezombie-agents-sh`,
+framework `None`, root directory `ui/usezombie.sh/dist`) — the same pattern as `usezombie-website`.
+There is no deploy workflow and no CI credentials; Vercel's GitHub integration handles it:
 
-- Open a PR touching `ui/usezombie.sh/**` → Cloudflare auto-deploys a **preview** and comments the URL.
-- Merge to `main` → Cloudflare deploys **production** → `https://usezombie.sh`.
+- Open a PR touching `ui/usezombie.sh/**` → Vercel auto-deploys a **preview** and comments the URL.
+- Merge to `main` → Vercel deploys **production** → `https://usezombie.sh`.
 
-The `lint-usezombie-sh` CI job (shellcheck + `install_test.sh`) gates the merge, so a broken installer
-can't reach `main`. The 5-minute `Cache-Control` propagates a bump globally within minutes. One-time
-Cloudflare provisioning (Pages project + custom domain) lives in
+`dist/vercel.json` carries the serving config Vercel reads (the `/ → /install.sh` rewrite, the
+`text/x-shellscript` content-type, and the 5-minute cache) — Vercel does **not** read Cloudflare
+`_redirects`/`_headers`. The `lint-usezombie-sh` CI job (shellcheck + `install_test.sh`) gates the
+merge, so a broken installer can't reach `main`. The 5-minute `Cache-Control` propagates a bump
+globally within minutes. One-time Vercel provisioning (project + custom domain) lives in
 [`playbooks/014_usezombie_sh_deploy/`](../../playbooks/014_usezombie_sh_deploy/).
