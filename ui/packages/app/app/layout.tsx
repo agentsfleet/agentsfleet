@@ -10,19 +10,18 @@ export const metadata: Metadata = {
   description: "Agent delivery control plane. Manage workspaces, runs, and pipeline visibility.",
 };
 
-// Pre-paint theme init: the SSR-stamped data-theme below already reflects a
-// saved cookie. This only covers the cookie-less first visit — fall back to the
-// OS preference before hydration (prefers-color-scheme can't be read
-// server-side). suppressHydrationWarning on <html> permits the attribute write.
-const THEME_INIT_SCRIPT = `try{var m=document.cookie.match(/(?:^|; )${THEME_COOKIE}=(light|dark)/);if(m){document.documentElement.dataset.theme=m[1];}else if(window.matchMedia&&window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.dataset.theme='light';}}catch(e){}`;
-
+// Dark is the brand default; the only other palette is `[data-theme="light"]`.
+// The SSR stamp below reads the saved cookie (absent → dark), so the server
+// renders the correct palette with no flash and no client-side re-paint. The
+// header toggle flips `data-theme` + writes the cookie; the next SSR load
+// re-stamps from it. Auth pages stay dark because a logged-out first visit has
+// no cookie — we deliberately do NOT auto-switch to the OS light preference.
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const theme = normalizeTheme((await cookies()).get(THEME_COOKIE)?.value);
   return (
     <AuthProvider>
       <html lang="en" data-theme={theme} suppressHydrationWarning>
         <body>
-          <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
           <AnalyticsBootstrap />
           {children}
         </body>

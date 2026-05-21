@@ -102,7 +102,7 @@ describe("CreateApiKeyDialog component", () => {
   });
 
   it("falls back to manual selection when the clipboard API is blocked", async () => {
-    const writeText = stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
+    stubClipboardWriteText().mockRejectedValue(new Error("blocked"));
     const { user } = await openDialog();
     await reachReveal(user);
     await user.click(screen.getByRole("button", { name: /copy to clipboard/i }));
