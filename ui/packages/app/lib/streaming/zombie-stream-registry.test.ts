@@ -1,24 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { listZombieEventsMock } = vi.hoisted(() => ({
-  listZombieEventsMock: vi.fn(),
-}));
-
-vi.mock("@/lib/api/events", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/api/events")>(
-    "@/lib/api/events",
-  );
-  return { ...actual, listZombieEvents: listZombieEventsMock };
-});
-
 import {
   __resetRegistryForTests,
   CONNECTION_STATUS,
   appendOptimistic,
   getSnapshot,
+  markOptimisticFailed,
   reconcileOptimistic,
   subscribe,
 } from "./zombie-stream-registry";
+import type { EventRow } from "@/lib/api/events";
 
 // Mirrors the FakeEventSource pattern in tests/use-zombie-event-stream.test.ts.
 // Centralizing was considered and rejected — the helper is small and the
@@ -39,18 +30,38 @@ class FakeEventSource {
   }
 }
 
+function row(over: Partial<EventRow> = {}): EventRow {
+  const now = Date.UTC(2026, 4, 15, 18, 30, 0);
+  return {
+    event_id: "evt_seed",
+    zombie_id: "zomb_a",
+    workspace_id: "ws_1",
+    actor: "alice@example.com",
+    event_type: "chat",
+    status: "processed",
+    request_json: "{}",
+    response_text: "seed body",
+    tokens: 1,
+    wall_ms: 10,
+    failure_label: null,
+    checkpoint_id: null,
+    resumes_event_id: null,
+    created_at: now,
+    updated_at: now,
+    ...over,
+  };
+}
+
 const WS = "ws_1";
 const Z_A = "zomb_a";
 const Z_B = "zomb_b";
-const TOKEN = "tok_test";
+const NO_SEED: EventRow[] = [];
 const IDLE_RELEASE_MS = 30_000;
 
 beforeEach(() => {
   vi.useFakeTimers();
   FakeEventSource.instances = [];
   (globalThis as unknown as { EventSource: unknown }).EventSource = FakeEventSource;
-  listZombieEventsMock.mockReset();
-  listZombieEventsMock.mockResolvedValue({ items: [], next_cursor: null });
   __resetRegistryForTests();
 });
 
@@ -62,8 +73,8 @@ afterEach(() => {
 
 describe("zombie-stream-registry — subscribe lifecycle", () => {
   it("opens a single EventSource per zombieId regardless of subscriber count", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
-    const b = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const b = subscribe(WS, Z_A, NO_SEED, () => {});
     expect(FakeEventSource.instances.length).toBe(1);
     expect(FakeEventSource.instances[0]!.closed).toBe(false);
     a();
@@ -73,8 +84,8 @@ describe("zombie-stream-registry — subscribe lifecycle", () => {
   it("notifies every active listener when the snapshot changes", () => {
     const l1 = vi.fn();
     const l2 = vi.fn();
-    const a = subscribe(WS, Z_A, TOKEN, l1);
-    const b = subscribe(WS, Z_A, TOKEN, l2);
+    const a = subscribe(WS, Z_A, NO_SEED, l1);
+    const b = subscribe(WS, Z_A, NO_SEED, l2);
     const es = FakeEventSource.instances[0]!;
     es.onopen?.call(es as unknown as EventSource, {} as Event);
     expect(l1).toHaveBeenCalled();
@@ -85,27 +96,56 @@ describe("zombie-stream-registry — subscribe lifecycle", () => {
   });
 });
 
+describe("zombie-stream-registry — server-rendered seed", () => {
+  it("seeds the event list from the initial rows and sorts ascending", () => {
+    const t0 = Date.UTC(2026, 4, 15, 18, 0, 0);
+    const t1 = Date.UTC(2026, 4, 15, 18, 30, 0);
+    const a = subscribe(WS, Z_A, [
+      row({ event_id: "evt_newer", created_at: t1 }),
+      row({ event_id: "evt_older", created_at: t0 }),
+    ], () => {});
+    const snap = getSnapshot(Z_A);
+    expect(snap.events.map((e) => e.id)).toEqual(["evt_older", "evt_newer"]);
+    a();
+  });
+
+  it("seeds nothing (no client backfill GET) when initial is empty", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    expect(getSnapshot(Z_A).events).toEqual([]);
+    // A single cookie-authed SSE connection opens; no bearer-authed fetch.
+    expect(FakeEventSource.instances.length).toBe(1);
+    a();
+  });
+
+  it("ignores the second subscriber's initial rows — the live entry is authoritative", () => {
+    const a = subscribe(WS, Z_A, [row({ event_id: "evt_first" })], () => {});
+    const b = subscribe(WS, Z_A, [row({ event_id: "evt_second" })], () => {});
+    const ids = getSnapshot(Z_A).events.map((e) => e.id);
+    expect(ids).toEqual(["evt_first"]);
+    a();
+    b();
+  });
+});
+
 describe("zombie-stream-registry — refcount + idle release", () => {
   it("keeps the EventSource alive when one of two subscribers detaches", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
-    const b = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const b = subscribe(WS, Z_A, NO_SEED, () => {});
     a();
-    // Refcount still 1 — connection stays open.
     expect(FakeEventSource.instances[0]!.closed).toBe(false);
     b();
   });
 
   it("starts an idle timer (not an immediate close) when refcount hits zero", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
     a();
     expect(FakeEventSource.instances[0]!.closed).toBe(false);
-    // Advance just shy of the idle window — still open.
     vi.advanceTimersByTime(IDLE_RELEASE_MS - 1);
     expect(FakeEventSource.instances[0]!.closed).toBe(false);
   });
 
   it("tears the EventSource down once the idle window elapses with no resubscribe", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
     a();
     vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
     expect(FakeEventSource.instances[0]!.closed).toBe(true);
@@ -115,22 +155,20 @@ describe("zombie-stream-registry — refcount + idle release", () => {
     // Same-zombie /dashboard ↔ /zombies/[id] round-trip is the load-bearing
     // DX case: the EventSource must NOT reconnect when the user comes back
     // within IDLE_RELEASE_MS.
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
     a();
     vi.advanceTimersByTime(IDLE_RELEASE_MS / 2);
-    const b = subscribe(WS, Z_A, TOKEN, () => {});
+    const b = subscribe(WS, Z_A, NO_SEED, () => {});
     expect(FakeEventSource.instances.length).toBe(1);
     expect(FakeEventSource.instances[0]!.closed).toBe(false);
-    // Advance well past the original idle window — the resubscription
-    // cancelled the timer, so the connection still stands.
     vi.advanceTimersByTime(IDLE_RELEASE_MS * 2);
     expect(FakeEventSource.instances[0]!.closed).toBe(false);
     b();
   });
 
   it("opens a fresh EventSource on cross-zombie subscription", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
-    const b = subscribe(WS, Z_B, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const b = subscribe(WS, Z_B, NO_SEED, () => {});
     expect(FakeEventSource.instances.length).toBe(2);
     expect(FakeEventSource.instances[0]!.url).toContain(Z_A);
     expect(FakeEventSource.instances[1]!.url).toContain(Z_B);
@@ -139,30 +177,9 @@ describe("zombie-stream-registry — refcount + idle release", () => {
   });
 });
 
-describe("zombie-stream-registry — token presence", () => {
-  it("opens SSE without a bearer token (cookie-authed stream) but skips backfill", () => {
-    const a = subscribe(WS, Z_A, null, () => {});
-    expect(FakeEventSource.instances.length).toBe(1);
-    expect(listZombieEventsMock).not.toHaveBeenCalled();
-    a();
-  });
-
-  it("kicks off the previously-skipped backfill when a later subscriber brings a token", async () => {
-    const a = subscribe(WS, Z_A, null, () => {});
-    expect(listZombieEventsMock).not.toHaveBeenCalled();
-    const b = subscribe(WS, Z_A, TOKEN, () => {});
-    // Backfill is fire-and-forget; the call must have been issued
-    // synchronously even if the Promise settles later.
-    expect(listZombieEventsMock).toHaveBeenCalledTimes(1);
-    expect(listZombieEventsMock.mock.calls[0]![2]).toBe(TOKEN);
-    a();
-    b();
-  });
-});
-
 describe("zombie-stream-registry — optimistic mutations", () => {
   it("appendOptimistic adds a 'optimistic' row and returns a tempId", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "deploy canary", "steer:k@e2e.com");
     expect(tempId).toMatch(/^optim-/);
     const snap = getSnapshot(Z_A);
@@ -174,13 +191,24 @@ describe("zombie-stream-registry — optimistic mutations", () => {
   });
 
   it("reconcileOptimistic swaps tempId for the real event_id and clears optimistic", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const tempId = appendOptimistic(Z_A, "x", "steer:k@e2e.com");
     reconcileOptimistic(Z_A, tempId, "evt_real");
     const snap = getSnapshot(Z_A);
     expect(snap.events).toHaveLength(1);
     expect(snap.events[0]!.id).toBe("evt_real");
     expect(snap.events[0]!.status).toBe("received");
+    a();
+  });
+
+  it("markOptimisticFailed flips the matching row to 'failed', keeping its tempId", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const tempId = appendOptimistic(Z_A, "send that fails", "steer:k@e2e.com");
+    markOptimisticFailed(Z_A, tempId);
+    const snap = getSnapshot(Z_A);
+    expect(snap.events).toHaveLength(1);
+    expect(snap.events[0]!.id).toBe(tempId);
+    expect(snap.events[0]!.status).toBe("failed");
     a();
   });
 
@@ -191,95 +219,43 @@ describe("zombie-stream-registry — optimistic mutations", () => {
   });
 });
 
-describe("zombie-stream-registry — backfill retry indicator", () => {
-  it("patches the snapshot retryState when backfill reports a retry", () => {
-    listZombieEventsMock.mockImplementationOnce(
-      (
-        _ws: string,
-        _z: string,
-        _tok: string,
-        _opts: unknown,
-        retry: { onRetry: (i: { attempt: number; reason: string }) => void },
-      ) => {
-        retry.onRetry({ attempt: 2, reason: "5xx" });
-        return new Promise(() => {}); // never settles → indicator stays up
-      },
-    );
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
-    expect(getSnapshot(Z_A).retryState).toMatchObject({
-      phase: "backfill",
-      attempt: 2,
-      reason: "5xx",
-    });
-    a();
-  });
-
-  it("clears retryState on a terminal backfill attempt, ignoring non-terminal ones", () => {
-    listZombieEventsMock.mockImplementationOnce(
-      (
-        _ws: string,
-        _z: string,
-        _tok: string,
-        _opts: unknown,
-        retry: {
-          onRetry: (i: { attempt: number; reason: string }) => void;
-          onAttempt: (i: { terminal: boolean }) => void;
-        },
-      ) => {
-        retry.onRetry({ attempt: 1, reason: "network" });
-        retry.onAttempt({ terminal: false }); // non-terminal → no clear
-        retry.onAttempt({ terminal: true }); // terminal → clears
-        return Promise.resolve({ items: [], next_cursor: null });
-      },
-    );
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
-    expect(getSnapshot(Z_A).retryState).toBeNull();
-    a();
-  });
-
-  it("ignores late backfill retry callbacks once the subscription is released (aborted)", () => {
-    let hooks!: {
-      onRetry: (i: { attempt: number; reason: string }) => void;
-      onAttempt: (i: { terminal: boolean }) => void;
-    };
-    listZombieEventsMock.mockImplementationOnce(
-      (_ws: string, _z: string, _tok: string, _opts: unknown, retry: typeof hooks) => {
-        hooks = retry;
-        return new Promise(() => {});
-      },
-    );
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
-    a(); // refcount → 0
-    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1); // idle release aborts the backfill controller
-    // Late callbacks must be no-ops now that the controller is aborted.
-    hooks.onRetry({ attempt: 9, reason: "5xx" });
-    hooks.onAttempt({ terminal: true });
-    expect(getSnapshot(Z_A).retryState).toBeNull();
-  });
-});
-
-describe("zombie-stream-registry — reconcileOptimistic edges", () => {
-  it("is a no-op for a zombie with no active subscription", () => {
+describe("zombie-stream-registry — mutation edges", () => {
+  it("reconcileOptimistic is a no-op for a zombie with no active subscription", () => {
     reconcileOptimistic("never_subscribed", "temp_x", "evt_x");
     expect(getSnapshot("never_subscribed").events).toHaveLength(0);
   });
 
+  it("markOptimisticFailed is a no-op for a zombie with no active subscription", () => {
+    markOptimisticFailed("never_subscribed", "temp_x");
+    expect(getSnapshot("never_subscribed").events).toHaveLength(0);
+  });
+
   it("rewrites only the matching optimistic row and leaves the others untouched", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
     const keep = appendOptimistic(Z_A, "first", "steer:k");
     const target = appendOptimistic(Z_A, "second", "steer:k");
     reconcileOptimistic(Z_A, target, "evt_real");
     const snap = getSnapshot(Z_A);
     expect(snap.events.find((e) => e.id === "evt_real")?.status).toBe("received");
-    // The non-matching optimistic row stays exactly as it was.
+    expect(snap.events.find((e) => e.id === keep)?.status).toBe("optimistic");
+    a();
+  });
+
+  it("markOptimisticFailed touches only the matching row", () => {
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    const keep = appendOptimistic(Z_A, "first", "steer:k");
+    const target = appendOptimistic(Z_A, "second", "steer:k");
+    markOptimisticFailed(Z_A, target);
+    const snap = getSnapshot(Z_A);
+    expect(snap.events.find((e) => e.id === target)?.status).toBe("failed");
     expect(snap.events.find((e) => e.id === keep)?.status).toBe("optimistic");
     a();
   });
 
   it("calling the returned unsubscribe again after teardown is a no-op", () => {
-    const a = subscribe(WS, Z_A, TOKEN, () => {});
-    a(); // refcount → 0, idle timer armed
-    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1); // teardown deletes the entry
-    expect(() => a()).not.toThrow(); // releaseSubscriber hits its `!entry` guard
+    const a = subscribe(WS, Z_A, NO_SEED, () => {});
+    a();
+    vi.advanceTimersByTime(IDLE_RELEASE_MS + 1);
+    expect(() => a()).not.toThrow();
   });
 });

@@ -6,6 +6,7 @@ import {
   installZombie as apiInstallZombie,
   listZombies as apiListZombies,
   setZombieStatus as apiSetZombieStatus,
+  steerZombie as apiSteerZombie,
   type ZombieListResponse,
   type ZombieStatusSettable,
 } from "@/lib/api/zombies";
@@ -38,4 +39,17 @@ export async function installZombieAction(
   body: InstallZombieRequest,
 ): Promise<ActionResult<InstallZombieResponse>> {
   return withToken((t) => apiInstallZombie(workspaceId, body, t));
+}
+
+// Submits a steer message server-side so the browser never holds the
+// api-audience token. Retry runs inside `steerZombie` with its defaults —
+// no client-visible per-attempt callback. The caller reconciles its
+// optimistic frame against the returned event_id on success, or flips it
+// to `failed` when `ok` is false.
+export async function steerZombieAction(
+  workspaceId: string,
+  zombieId: string,
+  message: string,
+): Promise<ActionResult<{ event_id: string }>> {
+  return withToken((t) => apiSteerZombie(workspaceId, zombieId, message, t));
 }

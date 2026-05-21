@@ -22,8 +22,8 @@ export type SteerComposerProps = {
  * Wraps assistant-ui's `<ComposerPrimitive.*>` with design-system
  * primitives so the visible chrome (textarea + send button) lives in
  * the project token system. The composer's Root is the form: submit
- * fires assistant-ui's onNew, which in `ZombieThread` posts to
- * `steerZombie` and appends an optimistic message.
+ * fires assistant-ui's onNew, which in `ZombieThread` posts via the
+ * `steerZombieAction` Server Action and appends an optimistic message.
  */
 export function SteerComposer({ isRunning }: SteerComposerProps) {
   const placeholder = isRunning ? PLACEHOLDER_RUNNING : PLACEHOLDER_IDLE;

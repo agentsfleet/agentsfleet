@@ -115,4 +115,65 @@ test.describe("zombie thread surface", () => {
       page.getByLabel("Live activity stream").getByLabel(COMPOSER_LABEL),
     ).toBeVisible();
   });
+
+  test("steer submits via a Server Action and no same-origin request carries a client Authorization header", async ({
+    page,
+  }) => {
+    // Dimension 1.1 — the security invariant of this milestone. Steering
+    // rides a Server Action (POST with a `Next-Action` header), not a
+    // client fetch to /backend; and no same-origin request (the page
+    // route, the /backend SSE proxy, any app fetch) ever carries a
+    // browser-set bearer token. The SSE route handler injects the token
+    // server-side, so its request is cookie-only here too.
+    await signInAs(page, FIXTURE_KEY.regular);
+    const workspaceId = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
+    const existing = await listZombies(FIXTURE_KEY.regular, workspaceId);
+    const zombie =
+      existing[0] ??
+      (await seedZombie(FIXTURE_KEY.regular, workspaceId, {
+        name: "steer-probe-target",
+      }));
+
+    const seen: { method: string; url: string; auth: boolean; serverAction: boolean }[] = [];
+    page.on("request", (req) => {
+      const h = req.headers();
+      seen.push({
+        method: req.method(),
+        url: req.url(),
+        auth: Boolean(h["authorization"]),
+        serverAction: Boolean(h["next-action"]),
+      });
+    });
+
+    await page.goto(`/zombies/${zombie.id}`);
+    const appOrigin = new URL(page.url()).origin;
+    const threadCard = page.getByLabel("Live activity stream");
+    await expect(threadCard).toBeVisible({ timeout: 10_000 });
+
+    const composer = threadCard.getByLabel(COMPOSER_LABEL);
+    const textarea = composer.getByPlaceholder(/steer this zombie/i);
+    await expect(textarea).toBeVisible();
+    await textarea.fill("acceptance steer probe");
+    await composer.getByRole("button", { name: /steer/i }).click();
+
+    // The optimistic row renders the message text immediately, regardless
+    // of whether the steer ultimately resolves queued→received or →failed.
+    await expect(threadCard.getByText(/acceptance steer probe/)).toBeVisible({
+      timeout: 5_000,
+    });
+
+    // A Server Action POST carried the steer (not a client /backend fetch).
+    await expect
+      .poll(() => seen.filter((r) => r.method === "POST" && r.serverAction).length, {
+        timeout: 10_000,
+      })
+      .toBeGreaterThan(0);
+
+    // Load-bearing assertion: zero same-origin requests carried a
+    // browser-set Authorization header.
+    const authHits = seen
+      .filter((r) => r.url.startsWith(appOrigin) && r.auth)
+      .map((r) => `${r.method} ${r.url}`);
+    expect(authHits, authHits.join("\n")).toEqual([]);
+  });
 });
