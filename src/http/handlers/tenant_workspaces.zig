@@ -18,34 +18,25 @@ const Hx = hx_mod.Hx;
 
 pub fn innerListTenantWorkspaces(hx: Hx, req: *httpz.Request) void {
     _ = req;
+    // No tenant context at all → forbidden without touching the DB.
+    if (hx.principal.user_id == null and hx.principal.tenant_id == null) {
+        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
+        return;
+    }
+
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
     defer hx.ctx.pool.release(conn);
 
-    const resolved_tenant_id = resolveTenantId(conn, hx.alloc, hx.principal) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return;
-    };
-    defer if (resolved_tenant_id.owned) |owned| hx.alloc.free(owned);
-    const tenant_id = resolved_tenant_id.value orelse {
-        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
-        return;
-    };
-
-    const rows = fetchWorkspacesOnConn(conn, hx.alloc, tenant_id) catch {
+    const rows = fetchWorkspacesForPrincipal(conn, hx.alloc, hx.principal) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
     hx.ok(.ok, .{ .items = rows, .total = rows.len });
 }
-
-const TenantIdResolution = struct {
-    value: ?[]const u8,
-    owned: ?[]u8 = null,
-};
 
 const WorkspaceRow = struct {
     id: []const u8,
@@ -58,34 +49,36 @@ const WorkspaceRow = struct {
 // test fixture can't spill an unbounded result into the ArrayList.
 const MAX_TENANT_WORKSPACES: u32 = 200;
 
-const LIST_WORKSPACES_SQL = std.fmt.comptimePrint(
-    "SELECT workspace_id::text, name, created_at " ++
-        "FROM core.workspaces WHERE tenant_id = $1::uuid " ++
-        "ORDER BY created_at ASC, workspace_id ASC LIMIT {d}",
+// One round trip: resolve the caller's tenant and list its workspaces in a
+// single query. The subject→tenant lookup is authoritative — it overrides a
+// stale JWT tenant claim (see the override regression test); the JWT claim is
+// only a COALESCE fallback for a caller with no users row yet (fresh signup).
+const WS_HEAD = "SELECT workspace_id::text, name, created_at FROM core.workspaces WHERE tenant_id = ";
+const DB_TENANT_OF_SUBJECT = "(SELECT tenant_id FROM core.users WHERE oidc_subject = $1)";
+const WS_TAIL = std.fmt.comptimePrint(
+    " ORDER BY created_at ASC, workspace_id ASC LIMIT {d}",
     .{MAX_TENANT_WORKSPACES},
 );
 
-fn resolveTenantId(conn: *pg.Conn, alloc: std.mem.Allocator, principal: common.AuthPrincipal) !TenantIdResolution {
+// $1 = oidc_subject, $2 = JWT tenant claim. DB mapping wins; claim is fallback.
+const SQL_BY_SUBJECT_OR_CLAIM = WS_HEAD ++ "COALESCE(" ++ DB_TENANT_OF_SUBJECT ++ ", $2::uuid)" ++ WS_TAIL;
+// $1 = oidc_subject, no claim available.
+const SQL_BY_SUBJECT = WS_HEAD ++ DB_TENANT_OF_SUBJECT ++ WS_TAIL;
+// $1 = tenant_id claim, no user subject (e.g. agent/API-key principal).
+const SQL_BY_TENANT = WS_HEAD ++ "$1::uuid" ++ WS_TAIL;
+
+fn fetchWorkspacesForPrincipal(conn: *pg.Conn, alloc: std.mem.Allocator, principal: common.AuthPrincipal) ![]WorkspaceRow {
     if (principal.user_id) |subject| {
-        var q = PgQuery.from(try conn.query(
-            "SELECT tenant_id::text FROM core.users WHERE oidc_subject = $1 LIMIT 1",
-            .{subject},
-        ));
-        defer q.deinit();
-        defer q.drain();
-
-        if (try q.next()) |row| {
-            const tenant_id = try alloc.dupe(u8, try row.get([]const u8, 0));
-            return .{ .value = tenant_id, .owned = tenant_id };
+        if (principal.tenant_id) |claim| {
+            return fetchWorkspaces(conn, alloc, SQL_BY_SUBJECT_OR_CLAIM, .{ subject, claim });
         }
+        return fetchWorkspaces(conn, alloc, SQL_BY_SUBJECT, .{subject});
     }
-
-    if (principal.tenant_id) |tenant_id| return .{ .value = tenant_id };
-    return .{ .value = null };
+    return fetchWorkspaces(conn, alloc, SQL_BY_TENANT, .{principal.tenant_id.?});
 }
 
-fn fetchWorkspacesOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []const u8) ![]WorkspaceRow {
-    var q = PgQuery.from(try conn.query(LIST_WORKSPACES_SQL, .{tenant_id}));
+fn fetchWorkspaces(conn: *pg.Conn, alloc: std.mem.Allocator, comptime sql: []const u8, args: anytype) ![]WorkspaceRow {
+    var q = PgQuery.from(try conn.query(sql, args));
     defer q.deinit();
 
     var rows: std.ArrayList(WorkspaceRow) = .{};
