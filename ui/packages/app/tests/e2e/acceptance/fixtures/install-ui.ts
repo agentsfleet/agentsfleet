@@ -21,12 +21,15 @@ import { expect, type Page } from "@playwright/test";
 const INSTALL_TIMEOUT_MS = 30_000;
 
 function fixtureTriggerMd(name: string): string {
+  // `triggers` is a list and `type: api` is rejected by the parser
+  // (config_helpers.zig) — use a single `cron` trigger, the smallest valid shape.
   return [
     "---",
     `name: ${name}`,
     "x-usezombie:",
-    "  trigger:",
-    "    type: api",
+    "  triggers:",
+    "    - type: cron",
+    '      schedule: "0 0 * * *"',
     "  tools:",
     "    - agentmail",
     "  budget:",

@@ -2,8 +2,10 @@
  * Minimal authenticated fetch wrapper for fixture-driven API calls.
  *
  * Reads the JWT cache produced by global-setup.ts and returns a typed client
- * bound to a specific fixture user. No retry logic — fixture seeding/teardown
- * runs in a controlled environment, failures should fail tests loudly.
+ * bound to a specific fixture user. The only retry is a single re-mint on a
+ * 401: the cached Bearer outlives its ~15-min TTL on a long suite run, so we
+ * mint a fresh token on the same Clerk session and retry once. Any other
+ * failure throws loudly — fixture seeding/teardown is a controlled path.
  *
  * ClientHandle accepts either a cached fixture key (persistent regular/admin
  * fixtures from .fixture-jwts.json) OR a raw `{ sessionJwt }` object for the
@@ -14,14 +16,16 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { FixtureKey } from "./constants";
+import { refreshSessionToken } from "./clerk-admin";
 
 const JWT_CACHE_PATH = path.join(process.cwd(), ".fixture-jwts.json");
+const UNAUTHORIZED = 401;
 
 interface JwtEntry {
   email: string;
   clerkUserId: string;
+  sessionId: string;
   sessionJwt: string;
-  cookieJwt: string;
 }
 
 function loadEntry(key: FixtureKey): JwtEntry {
@@ -47,20 +51,36 @@ export interface ApiClient {
   delete(p: string): Promise<void>;
 }
 
-export type ClientHandle = FixtureKey | { sessionJwt: string };
+export type ClientHandle = FixtureKey | { sessionJwt: string; sessionId?: string };
 
 export function clientFor(handle: ClientHandle): ApiClient {
-  const sessionJwt =
-    typeof handle === "string" ? loadEntry(handle).sessionJwt : handle.sessionJwt;
+  // `sessionJwt` is mutable: a long suite run outlives the cached token's TTL,
+  // so on a 401 we re-mint a fresh token on the same Clerk session and retry
+  // once (AUTH.md: re-mint on 401). The ephemeral signup handle has no
+  // sessionId, so it can't re-mint — but it's used immediately after mint.
+  let sessionJwt: string;
+  let sessionId: string | null;
+  if (typeof handle === "string") {
+    const entry = loadEntry(handle);
+    sessionJwt = entry.sessionJwt;
+    sessionId = entry.sessionId;
+  } else {
+    sessionJwt = handle.sessionJwt;
+    sessionId = handle.sessionId ?? null;
+  }
   const base = apiBase();
-  const headers = { Authorization: `Bearer ${sessionJwt}` };
 
-  async function request(method: string, p: string, body?: unknown): Promise<Response> {
+  async function request(method: string, p: string, body?: unknown, reminted = false): Promise<Response> {
+    const auth = { Authorization: `Bearer ${sessionJwt}` };
     const res = await fetch(`${base}${p}`, {
       method,
-      headers: body !== undefined ? { ...headers, "Content-Type": "application/json" } : headers,
+      headers: body !== undefined ? { ...auth, "Content-Type": "application/json" } : auth,
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
+    if (res.status === UNAUTHORIZED && sessionId && !reminted) {
+      sessionJwt = await refreshSessionToken(sessionId);
+      return request(method, p, body, true);
+    }
     if (!res.ok) {
       const detail = await res.text();
       throw new Error(`${method} ${p} → ${res.status}: ${detail}`);

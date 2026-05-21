@@ -1,8 +1,8 @@
 /**
  * Idempotent fixture seeding helpers.
  *
- * Per the M64_005 spec, fixture rows are conceptually tagged with
- * `x-test-fixture: true` for cleanup discrimination. zombied does not
+ * Fixture rows are conceptually tagged with `x-test-fixture: true` for
+ * cleanup discrimination. zombied does not
  * currently read that header, but each fixture user has its own dedicated
  * tenant + workspace — every zombie in that workspace is a fixture row by
  * construction. Per-spec cleanup deletes everything in the fixture user's
@@ -47,14 +47,17 @@ export async function getDefaultWorkspaceId(handle: ClientHandle): Promise<strin
 
 function triggerMd(name: string): string {
   // Minimum valid shape for create_zombie. Mirrors
-  // samples/fixtures/frontmatter/bundles/name_mismatch/TRIGGER.md.
+  // samples/fixtures/frontmatter/bundles/name_mismatch/TRIGGER.md: `triggers`
+  // is a list, and `type: api` is rejected by the parser (config_helpers.zig)
+  // — use a single `cron` trigger, the smallest valid shape.
   return [
     "---",
     `name: ${name}`,
     "",
     "x-usezombie:",
-    "  trigger:",
-    "    type: api",
+    "  triggers:",
+    "    - type: cron",
+    '      schedule: "0 0 * * *"',
     "  tools:",
     "    - agentmail",
     "  budget:",

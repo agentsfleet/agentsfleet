@@ -150,15 +150,24 @@ export async function mintTokens(
   userId: string,
 ): Promise<{ sessionId: string; sessionJwt: string }> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
-  // Post-Stage-1: bare `/tokens` (no template suffix). Custom
-  // claims arrive automatically via Clerk's Session Token Customization
-  // configured in the org dashboard (see the Clerk session-token claim playbook).
+  return { sessionId: session.id, sessionJwt: await refreshSessionToken(session.id) };
+}
+
+/**
+ * Mint a fresh customized-session JWT on an *existing* session. The token
+ * carries the same `aud` + `tenant_id` + `role` claims (Session Token
+ * Customization applies per-session), so the api-client can recover from a
+ * 401 when the cached Bearer outlives its TTL on a long suite run —
+ * AUTH.md's documented "re-mint on 401" posture. Bare `/tokens` (no template
+ * suffix); Clerk's Backend API takes mint params in the JSON body.
+ */
+export async function refreshSessionToken(sessionId: string): Promise<string> {
   const minted = await clerkRequest<ClerkSessionToken>(
     "POST",
-    `/sessions/${session.id}/tokens`,
+    `/sessions/${sessionId}/tokens`,
     { expires_in_seconds: SESSION_TOKEN_TTL_SECONDS },
   );
-  return { sessionId: session.id, sessionJwt: minted.jwt };
+  return minted.jwt;
 }
 
 /**

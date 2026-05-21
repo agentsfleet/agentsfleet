@@ -42,7 +42,6 @@ help:  ## Show all available Makefile targets
 	@echo "Acceptance:"
 	@echo "  dry                      Dry lanes — website + app Playwright page renders (no Clerk auth)"
 	@echo "  dry-smoke                Smoke dry lanes — fast website + app (no Clerk auth)"
-	@echo "  live-e2e-all             Run the FULL Zig integration suite unfiltered vs real Postgres + Redis (no -Dtest-filter)"
 	@echo "  acceptance-e2e           Dashboard auth acceptance — Clerk sign-in + lifecycle vs live API (mirrors CI acceptance-e2e-{dev,prod})"
 	@echo "  cli-acceptance           CLI auth acceptance — zombiectl login + token lifecycle vs live API (mirrors CI cli-acceptance-{dev,prod})"
 	@echo ""
