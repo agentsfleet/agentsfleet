@@ -38,4 +38,18 @@ describe("CTABlock", () => {
     const cta = screen.getByRole("link", { name: /view pricing/i });
     expect(cta).toHaveAttribute("href", "/#pricing");
   });
+
+  it("places the heading on the page left rail, not inside the reading-measure column", () => {
+    const { container } = renderCtaBlock();
+    const heading = screen.getByRole("heading", {
+      level: 2,
+      name: /stop chasing failed deploys/i,
+    });
+    // Heading aligns with the page's left rail; the prose + buttons keep the
+    // narrower reading measure.
+    expect(heading.closest(".max-w-measure")).toBeNull();
+    const measure = container.querySelector(".max-w-measure");
+    expect(measure).not.toBeNull();
+    expect(measure!.textContent).toMatch(/install one zombie/i);
+  });
 });
