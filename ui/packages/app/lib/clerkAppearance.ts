@@ -1,5 +1,6 @@
 /*
- * Clerk widget theming for sign-in / sign-up. Tokens map to the
+ * Clerk widget theming for sign-in / sign-up + the dashboard UserButton
+ * avatar. Tokens map to the
  * Operational Restraint design system (docs/DESIGN_SYSTEM.md):
  *   --surface-1   cards
  *   --surface-2   inputs / elevated chrome
@@ -27,6 +28,13 @@ export const AUTH_APPEARANCE = {
     fontFamily: "var(--ff-sans)",
   },
   elements: {
+    // Dashboard header avatar (UserButton). With no uploaded image Clerk renders
+    // an initials fallback — theme its fill + initials with design tokens so it
+    // matches the app instead of Clerk's stock palette.
+    userButtonAvatarBox: {
+      backgroundColor: "var(--surface-2)",
+      color: "var(--text)",
+    },
     cardBox: {
       // --surface-2 over the page's --bg gives the card real visual lift on
       // the auth route — at --surface-1 (luminance delta = 3 units) the card

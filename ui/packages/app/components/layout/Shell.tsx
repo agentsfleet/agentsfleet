@@ -27,6 +27,7 @@ import { setActiveWorkspace } from "@/app/(dashboard)/actions";
 import { AUTH_APPEARANCE } from "@/lib/clerkAppearance";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
+import ThemeToggle from "./ThemeToggle";
 
 const NAV = [
   { label: "Dashboard", href: "/", icon: LayoutDashboardIcon },
@@ -115,6 +116,8 @@ export default function Shell({
             usezombie.com
           </a>
         </nav>
+
+        <ThemeToggle />
 
         <AuthUserButton appearance={AUTH_APPEARANCE} />
       </header>

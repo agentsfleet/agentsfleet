@@ -2,12 +2,11 @@
 //! Every SQL query filters WHERE tenant_id = principal.tenant_id; env-var
 //! bootstrap principals (tenant_id == null) are rejected with 403.
 //!
-//! Operational/bootstrap-only surface today. Primary callers are humans/agents
-//! provisioning the admin tenant via
+//! First-party consumer: the dashboard `/settings/api-keys` page mints, lists,
+//! revokes, and deletes keys over these routes (operator role). Admin-tenant
+//! bootstrap also provisions keys here via
 //! `playbooks/012_usezombie_admin_bootstrap/001_playbook.md` (steps 4 + 5 +
-//! rollback step 1). No first-party UI/CLI consumes these routes; if you add
-//! one (e.g. self-service key rotation in the dashboard), drop the playbook
-//! reference.
+//! rollback step 1).
 
 const std = @import("std");
 const logging = @import("log");

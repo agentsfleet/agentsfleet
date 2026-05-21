@@ -63,30 +63,39 @@ export async function installZombie(
 }
 
 // Every zombie status the API can return. Source of truth — every consumer
-// that switches/compares against a status value reads from this const.
+// that switches/compares against a status value reads from this const. Mirrors
+// the backend `ZombieStatus` enum in src/zombie/config_types.zig.
 export const ZOMBIE_STATUS = {
   ACTIVE: "active",
   PAUSED: "paused",
   STOPPED: "stopped",
   KILLED: "killed",
-  ERRORED: "errored",
 } as const;
 export type ZombieStatus = typeof ZOMBIE_STATUS[keyof typeof ZOMBIE_STATUS];
 
-// Subset PATCH /v1/workspaces/{ws}/zombies/{id} accepts. `paused` and
-// `errored` are gate-set states — the API never lets callers transition to
-// them. Throws ApiError UZ-ZMB-010 on 409 (transition not allowed from
-// current state, e.g. resume on an active zombie) and UZ-ZMB-009 on 404
-// (zombie missing or already-killed tombstone).
+// Subset PATCH /v1/workspaces/{ws}/zombies/{id} accepts. `paused` is a gate-set
+// state — the API never lets callers transition to it. Throws ApiError
+// UZ-ZMB-010 on 409 (transition not allowed from current state, e.g. resume on
+// an active zombie) and UZ-ZMB-009 on 404 (zombie missing or already-killed
+// tombstone).
 export type ZombieStatusSettable = "active" | "stopped" | "killed";
+
+// PATCH response. The handler echoes the new status only when the request set
+// one (src/http/handlers/zombies/patch.zig); `setZombieStatus` always sends a
+// status, so it always comes back. `config_revision` is the post-write revision.
+export interface ZombieStatusUpdate {
+  zombie_id: string;
+  status: ZombieStatus;
+  config_revision: number;
+}
 
 export async function setZombieStatus(
   workspaceId: string,
   zombieId: string,
   status: ZombieStatusSettable,
   token: string,
-): Promise<Zombie> {
-  return request<Zombie>(
+): Promise<ZombieStatusUpdate> {
+  return request<ZombieStatusUpdate>(
     `/v1/workspaces/${workspaceId}/zombies/${zombieId}`,
     { method: "PATCH", body: JSON.stringify({ status }) },
     token,

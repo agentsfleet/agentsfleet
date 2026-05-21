@@ -58,8 +58,17 @@ vi.mock("lucide-react", () => ({
   KeyRoundIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "KeyRoundIcon" }),
   CheckCircle2Icon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "CheckCircle2Icon" }),
   MenuIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MenuIcon" }),
+  SunIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "SunIcon" }),
+  MoonIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "MoonIcon" }),
   ChevronDownIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "ChevronDownIcon" }),
   PlusIcon: (props: Record<string, unknown>) => React.createElement("svg", { ...props, "data-icon": "PlusIcon" }),
+}));
+
+// ThemeToggle setStates inside a useEffect; this file's synchronous useEffect
+// mock (runs every render, ignores deps) would loop on it. These tests cover
+// Shell nav, not theming — stub it.
+vi.mock("@/components/layout/ThemeToggle", () => ({
+  default: () => React.createElement("button", { "data-theme-toggle": "1" }),
 }));
 
 type ClickableElement = React.ReactElement<{ children?: React.ReactNode; onClick?: (...args: unknown[]) => unknown }>;

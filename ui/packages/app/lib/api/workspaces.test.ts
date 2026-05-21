@@ -33,7 +33,7 @@ describe("listTenantWorkspaces", () => {
     fetchMock.mockResolvedValue({
       ok: false,
       status: 401,
-      json: async () => ({ error: "unauthorized", code: "UZ-AUTH-001" }),
+      json: async () => ({ detail: "unauthorized", error_code: "UZ-AUTH-001" }),
     });
     const { listTenantWorkspaces } = await import("./workspaces");
     await expect(listTenantWorkspaces("bad")).rejects.toBeInstanceOf(ApiError);

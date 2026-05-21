@@ -37,7 +37,11 @@ export async function request<T>(
 
   if (res.status === 204) return undefined as T;
 
-  const body = await res.json().catch(() => ({ error: res.statusText }));
+  // Error bodies are RFC 7807 problem+json: `{ docs_uri, title, detail,
+  // error_code, request_id }` (see src/http/handlers/common.zig errorResponse).
+  // The human-facing message is `detail` (instance-specific), falling back to
+  // `title` (the short label) then the HTTP reason phrase.
+  const body = await res.json().catch(() => ({ detail: res.statusText }));
 
   if (!res.ok) {
     // Defensive access — test doubles and rare runtimes may omit
@@ -47,9 +51,9 @@ export async function request<T>(
       typeof res.headers?.get === "function" ? res.headers.get("retry-after") : null,
     );
     throw new ApiError(
-      body.error ?? res.statusText,
+      body.detail ?? body.title ?? res.statusText,
       res.status,
-      body.code ?? "UZ-UNKNOWN",
+      body.error_code ?? "UZ-UNKNOWN",
       body.request_id,
       retryAfterMs,
     );

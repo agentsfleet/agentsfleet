@@ -7,7 +7,8 @@ import { request } from "./client";
 
 export interface CredentialSummary {
   name: string;
-  created_at: string;
+  /** Epoch milliseconds — `vault.secrets.created_at`, serialized as int64. */
+  created_at: number;
 }
 
 export interface CredentialListResponse {

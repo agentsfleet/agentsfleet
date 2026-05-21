@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M76
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — backend already ships for API keys; closing the operator-experience gap across the settings surface (API-key mint/revoke today requires `curl`; no avatar fallback control; no light/dark toggle despite the tokens existing).
 **Categories:** API, AUTH, DOCS, UI
 **Batch:** B1 — no parallel siblings; the settings surface.
@@ -109,7 +109,21 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 | **§9 avatar fallback** | | |
 | `ui/packages/app/lib/clerkAppearance.ts` (+ test) | EDIT | Theme the Clerk default initials avatar with design-system tokens (or an identicon component if chosen). |
 | **§10 theme toggle** | | |
-| `ui/packages/app/app/layout.tsx` + a `ThemeToggle.tsx` + cookie helper | EDIT/CREATE | SSR-stamp `data-theme` from cookie; client toggle writes cookie + flips attribute. No new color tokens (`[data-theme="light"]` already exists). |
+| `ui/packages/app/app/layout.tsx`, `components/layout/ThemeToggle.tsx`, `lib/theme.ts` (+ `theme-toggle.test.ts`), `components/layout/Shell.tsx` | EDIT/CREATE | SSR-stamp `data-theme` from cookie; client toggle writes cookie + flips attribute. No new color tokens (`[data-theme="light"]` already exists). |
+| **Folded API parity** (Captain override 2026-05-21 — see Discovery + memory `project_m76_folded_parity_scope`; **Zig is source of truth**) | | |
+| `ui/packages/app/lib/api/client.ts` (+ `client.test.ts`) | EDIT | Parse the RFC 7807 envelope the backend actually emits (`detail`/`title`/`error_code`/`request_id`), not phantom `error`/`code` — this silently broke every dashboard error map, including M76's own `UZ-APIKEY-*` toasts. |
+| `ui/packages/app/lib/api/credentials.ts` (+ test) | EDIT | `created_at` is epoch-ms `number`, not `string`. |
+| `ui/packages/app/lib/api/tenant_billing.ts`, `lib/types.ts`, `lib/errors.ts` (+ tests) | EDIT | Add `free_trial` (emitted by Zig, missing from TS); shared type/error-map alignment. |
+| `ui/packages/app/app/(dashboard)/settings/provider/page.tsx` (+ tenant_provider type, tests) | EDIT | Remove phantom `synthesised_default`/`error` fields (never emitted) + their dead UI branches. |
+| `ui/packages/app/lib/api/zombies.ts`, `app/(dashboard)/zombies/{actions.ts,components/ZombiesList.tsx}` (+ tests) | EDIT | `setZombieStatus` return type; remove phantom `errored` status enum. |
+| `public/openapi/{root,components/schemas,paths/authentication,paths/billing}.yaml`, `paths/auth-session-exchange.yaml` (new), regenerated `public/openapi.json` | EDIT/CREATE | `ZombieSummary` +`triggers`/`stopped`; auth `/verify` +`UZ-AUTH-018`, `GET sessions` +401-on-expired; billing `free_trial`. |
+| ~8 dashboard test-mock files (`tests/{app-components,app-pages,billing-card,clerk-appearance,provider-selector}.test.ts`, `lib/api/{retry,tenant_billing,tenant_provider,workspaces}.test.ts`) | EDIT | Migrate mocks to the corrected RFC 7807 envelope + epoch-ms shapes. |
+| **Test-file splits + coverage determinism** (Captain calls: split not override; build a shared harness) | | |
+| `tests/helpers/dashboard-mocks.tsx`, `tests/helpers/dashboard-app-mocks.tsx` | CREATE | Shared mock harness (common + dashboard app-specific) so the monolith test files split into ≤350-line shards via hoist-safe `vi.mock` delegation. |
+| `tests/zombies.test.ts` + `zombies-{api-client,routes,install-form}.test.ts` | EDIT/CREATE | Split the 952-line monolith into ≤350 shards. |
+| `tests/api-keys-components.test.ts` + `api-keys-create-dialog.test.ts` | EDIT/CREATE | Split the 364-line file. |
+| `tests/dashboard-coverage.test.ts` → `dashboard-{placeholder,overview,killswitch,zombies-list,workspace}.test.ts` | DELETE/CREATE | Split the 1277-line monolith into 5 shards; original removed. |
+| `ui/packages/app/vitest.config.ts`, `package.json`, root `bun.lock` | EDIT | Coverage provider `v8`→`istanbul` (deterministic; v8 mis-attributes async-React branch coverage at the exact-97% margin — vitest #7660/#9725) + `@vitest/coverage-istanbul@4.1.6` dep; exclude `tests/**` mock harnesses from coverage. |
 
 ---
 
@@ -234,17 +248,17 @@ Regression: existing `settings-provider.spec.ts`, `settings-billing.spec.ts`, `s
 
 ## Acceptance Criteria
 
-- [ ] `/settings/api-keys` route renders for operator+ roles — verify: `bun run test --filter settings-api-keys`
-- [ ] One-time-reveal invariant holds in Playwright — verify: `bun playwright test tests/e2e/acceptance/settings-api-keys.spec.ts`
-- [ ] No raw-key string survives the reveal close — verify: included in the e2e assertion above
-- [ ] Comment block in `src/http/handlers/api_keys/tenant.zig` no longer claims "no first-party UI" — verify: `grep -n "No first-party UI" src/http/handlers/api_keys/tenant.zig` returns 0 matches
-- [ ] `make lint` clean
-- [ ] `make test` passes (ui + zig)
-- [ ] `make test-integration` passes (the existing `tenant_integration_test.zig` still asserts the HTTP surface unchanged)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` (the one Zig comment edit must not break either target)
-- [ ] `gitleaks detect` clean
-- [ ] No file over 350 lines added
-- [ ] No new HTTP route appears in `src/http/router.zig` or `src/http/route_table.zig` — verify: `git diff origin/main -- src/http/router.zig src/http/route_table.zig` is empty
+- [x] `/settings/api-keys` route renders for operator+ roles — `api-keys-page.test.ts` (RBAC redirect on `user` role + operator render)
+- [ ] One-time-reveal invariant holds in Playwright — **acceptance lane (post-deploy local→vercel→prod), not a local pre-merge gate**; spec present at `tests/e2e/acceptance/settings-api-keys.spec.ts`
+- [x] No raw-key string survives the reveal close — `api-keys-create-dialog.test.ts` (discard-on-close) + new `tests/no-api-key-logging.test.ts` (Invariant 2 grep-gate) + `ph-no-capture` on the reveal panel
+- [x] Comment block in `src/http/handlers/api_keys/tenant.zig` no longer claims "no first-party UI" — `grep -c` returns 0
+- [x] `make lint-all` clean (zig + website + app + design-system + zombiectl + shell + openapi + schema-gate + gh-actions)
+- [x] `make test` passes (ui: 662 tests, istanbul coverage 97.15% branches deterministic over 8 runs)
+- [ ] `make test-integration` — **deferred to CI (canonical DB+Redis gate)**; no Zig logic changed this PR (comment-only `tenant.zig`), HTTP surface unchanged
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` — both OK
+- [x] `gitleaks detect` clean (no leaks, 2137 commits)
+- [x] No file over 350 lines added
+- [x] No new HTTP route appears in `src/http/router.zig` or `src/http/route_table.zig` — diff empty
 
 ---
 
@@ -302,15 +316,16 @@ After every push: `kishore-babysit-prs` per CLAUDE.md.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| UI unit tests | `bun --filter @usezombie/app run test` | {paste} | |
-| Playwright e2e | `bun --filter @usezombie/app run e2e settings-api-keys.spec.ts` | {paste} | |
-| Zig build | `zig build` | {paste} | |
-| Cross-compile linux x86_64 | `zig build -Dtarget=x86_64-linux` | {paste} | |
-| Cross-compile linux aarch64 | `zig build -Dtarget=aarch64-linux` | {paste} | |
-| Comment correction | `grep -n "No first-party UI" src/http/handlers/api_keys/tenant.zig` | {paste, expect 0} | |
-| No new routes | `git diff origin/main -- src/http/router.zig src/http/route_table.zig` | {paste, expect empty} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
-| 350L gate | `wc -l` audit | {paste} | |
+| UI unit tests + coverage | `bun --filter @usezombie/app run test:coverage` | 659 passed; istanbul deterministic over 8 runs — branches 97.15% (1025/1055), stmts 98.8%, funcs 98.63%, lines 99.57% (all ≥97% gate) | ✅ |
+| Playwright e2e | `bun --filter @usezombie/app run e2e settings-api-keys.spec.ts` | Not run this session — needs a live app + Clerk auth (acceptance lane); spec file present. Deferred to CI/live acceptance. | ⏸ |
+| Lint (all packages) | `make lint-all` | ✓ All lint checks passed (lint-zig + website + app + design-system + zombiectl + shell + openapi + schema-gate + gh-actions) | ✅ |
+| Cross-compile linux x86_64 | `zig build -Dtarget=x86_64-linux` | X86_64_OK | ✅ |
+| Cross-compile linux aarch64 | `zig build -Dtarget=aarch64-linux` | AARCH64_OK | ✅ |
+| Comment correction | `grep -c "No first-party UI" src/http/handlers/api_keys/tenant.zig` | 0 | ✅ |
+| No new routes | `git diff origin/main -- src/http/router.zig src/http/route_table.zig` | empty | ✅ |
+| OpenAPI | `make check-openapi` | bundle + lint + error-schema (problem+json) + URL-shape all green | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found (2137 commits) | ✅ |
+| 350L gate | `wc -l` audit over changed+untracked source | no file >350 | ✅ |
 
 ---
 
@@ -321,6 +336,12 @@ After every push: `kishore-babysit-prs` per CLAUDE.md.
 **May 21, 2026 — scope narrowed (Indy ask):** "Ship API Keys + Theme Toggle + Avatar all into this PR." Account deletion **graduated to M76_002** (new endpoint + scheduled hard-delete + Clerk `user.deleted` reconciliation + billing-policy decision + M74_002 coordination); its design-of-record (current-state findings + 7-step process) was carried into M76_002 verbatim. This PR keeps §1–§7 (API keys) + §9 (avatar) + §10 (theme) as the shippable core.
 
 **Current-state findings (May 20, 2026), still relevant here:** the design system already ships both palettes (`tokens.css` `:root` dark + `[data-theme="light"]`) but nothing sets `data-theme` — light mode is dormant, only the wiring is missing (§10). The top-right avatar is Clerk's `<UserButton>`; with no image it renders Clerk's stock initials fallback, not a themed one (§9).
+
+**May 21, 2026 — folded API parity sweep (Captain override).** After the split-preference conflict (`feedback_split_security_features`) was surfaced twice, Indy confirmed "fold everything into M76." Folded in (**Zig = source of truth**): (1) `client.ts` RFC 7807 envelope — backend emits `{detail, title, error_code, request_id}`, the client read phantom `error`/`code`, breaking all dashboard error mapping incl. M76's own `UZ-APIKEY-*` toasts; (2) domain type/OpenAPI drift — credentials `created_at` epoch-ms `number`, tenant_billing `free_trial`, tenant_provider phantom `synthesised_default`/`error` removed, zombies `setZombieStatus` return type + phantom `errored` enum removed, `ZombieSummary` +`triggers`/`stopped`; (3) auth OpenAPI gaps — `/verify` +`UZ-AUTH-018`, `GET sessions` +401-on-expired. The general split-preference still stands for future work; this was a one-time, explicitly-acked override.
+
+**May 21, 2026 — test-monolith splits + shared harness (Captain calls).** Four decisions: (1) fold all parity into M76 (above); (2) **remove** provider phantom fields rather than keep+document them; (3) **split** the over-cap test monoliths (not a LENGTH-gate override); (4) build a shared mock harness now. Splits: `zombies.test.ts` (952L), `dashboard-coverage.test.ts` (1277L), `api-keys-components.test.ts` (364L) → ≤350-line shards over `tests/helpers/dashboard{,-app}-mocks.tsx`. Hoist-safe pattern: `vi.mock("mod", async () => (await import("./helpers/…")).fooMock())` resolves to the same instance as the shard's static import. Shards use `userEvent.setup({ delay: null })` — instant typing, immune to the per-test timeout starvation the higher file-parallelism otherwise introduced.
+
+**May 21, 2026 — coverage gate flake → istanbul provider.** Under v8 the app's 97% **branch** gate flaked (1021⇆1024/1055) at zero margin: v8's byte-range→AST remap mis-attributes async-React branch coverage in `ZombieThread.tsx` (covered in isolation, dropped under parallel load — the "more statements / fewer branches" signature of a remap artifact, not a real test race). Confirmed pre-existing (ZombieThread + its tests untouched; flakes even sequentially). Per Indy, switched the **app** coverage provider `v8`→`istanbul` (source-instrumented counters → deterministic): 8/8 runs now 97.15% (1025/1055). Grounded in vitest's own guidance (istanbul is the sanctioned fallback for v8 accuracy edge cases) + issues #7660 (v8 mis-reports React coverage) / #9725. An `act()` test fix was tried first but reverted as redundant once istanbul fixed the root cause — keeping M76 from touching the pre-existing 600-line `zombie-thread.test.ts`. website (85% branch margin) + design-system stay on v8 unless they flake. The 6 pre-existing over-cap test files (`zombie-thread` 600, `approvals-list` 655, `cli-auth-page` 382, `use-zombie-event-stream` 370, …) are **out of M76 scope** — a dedicated test-infra pass.
 
 Further consults logged here during EXECUTE.
 

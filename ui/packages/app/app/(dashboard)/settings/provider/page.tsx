@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import {
-  Alert,
   DescriptionList,
   DescriptionTerm,
   DescriptionDetails,
@@ -89,27 +88,6 @@ export default async function ProviderSettingsPage() {
                 <DescriptionDetails mono>{provider.credential_ref ?? "—"}</DescriptionDetails>
               </div>
             </DescriptionList>
-            {provider.synthesised_default ? (
-              <p className="mt-4 text-xs italic text-muted-foreground animate-in fade-in-0 duration-200">
-                This is the platform default — no tenant override is set.
-              </p>
-            ) : null}
-            {provider.error ? (
-              <Alert variant="destructive" className="mt-4 text-xs">
-                <span>
-                  ⚠ Provider resolver error:{" "}
-                  <code className="font-mono">{provider.error}</code>
-                  {provider.credential_ref ? (
-                    <>
-                      {" "}(credential_ref=
-                      <code className="font-mono">{provider.credential_ref}</code>)
-                    </>
-                  ) : null}
-                  . Re-add the credential under the same name OR reset to the
-                  platform default.
-                </span>
-              </Alert>
-            ) : null}
           </section>
         </Section>
         <Section asChild>

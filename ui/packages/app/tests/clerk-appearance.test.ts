@@ -21,4 +21,11 @@ describe("AUTH_APPEARANCE", () => {
     expect(elements.formFieldInput.backgroundColor).toBe("var(--surface-1)");
     expect(elements.formFieldInput.borderColor).toBe("var(--border-strong)");
   });
+
+  it("themes the UserButton avatar fallback with design tokens, not Clerk's palette", () => {
+    // With no uploaded image Clerk renders an initials fallback; pin its fill +
+    // text to design tokens so "what you see with no avatar" matches the app.
+    expect(elements.userButtonAvatarBox.backgroundColor).toBe("var(--surface-2)");
+    expect(elements.userButtonAvatarBox.color).toBe("var(--text)");
+  });
 });
