@@ -54,7 +54,7 @@ describe("failure modes — login surface", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["login", "--no-open", "--no-input", "--timeout-sec", "2", "--poll-ms", "50"],
+          ["login", "--no-open", "--no-input"],
           { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: { ZOMBIE_API_URL: apiUrl } },
         );
         expect(code).toBe(1);

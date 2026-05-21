@@ -117,7 +117,7 @@ describe("--help bodies use angle-bracket metavar convention", () => {
     ["zombiectl logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--zombie <id>"]],
     ["zombiectl events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
     ["zombiectl install --help",              ["install", "--help"],              ["--from <path>"]],
-    ["zombiectl login --help",                ["login", "--help"],                ["--timeout-sec <n>", "--poll-ms <n>"]],
+    ["zombiectl login --help",                ["login", "--help"],                ["--token <token>", "--token-name <label>"]],
     ["zombiectl billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
     ["zombiectl agent add --help",            ["agent", "add", "--help"],         ["--workspace <id>", "--zombie <id>", "--name <name>"]],
     ["zombiectl tenant provider add --help",  ["tenant", "provider", "add", "--help"], ["--credential <name>", "--model <name>"]],
@@ -153,8 +153,6 @@ describe("validators reject invalid values with clear error stem", () => {
     ["billing show --limit 9999", ["billing", "show", "--limit", "9999"], /must be ≤ 100/],
     ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
     ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
-    ["login --timeout-sec 0", ["login", "--timeout-sec", "0"],   /must be ≥ 1/],
-    ["login --poll-ms 999999", ["login", "--poll-ms", "999999"], /must be ≤ 60000/],
     // parseIdOption rejections (uuidv7 enforced)
     ["agent add --workspace not-a-uuid", ["agent", "add", "--workspace", "not-a-uuid", "--zombie", FIXTURE_UUIDV7], /uuidv7 format/],
     ["agent add --zombie not-a-uuid",    ["agent", "add", "--workspace", FIXTURE_UUIDV7, "--zombie", "not-a-uuid"], /uuidv7 format/],
@@ -280,30 +278,4 @@ describe("non-wire option values reach the handler", () => {
     assert.match(combined, /marker-7b/, `expected --from path in error output; combined=${combined}`);
   });
 
-  // login --timeout-sec + --poll-ms drive a poll loop. Bare integer
-  // pin: --timeout-sec 1 should produce wall-clock exit ≤ 5s (vs the
-  // 300s default). We exercise both options together — the timeout
-  // value is the falsifiable assertion; --poll-ms only has to parse.
-  it("login --no-open --no-input --timeout-sec 1 --poll-ms 250 exits within 5s", async () => {
-    const stub = await startCapturingStub({
-      "POST /v1/auth/sessions": {
-        session_id: "sess_metavar_test",
-        login_url: "http://127.0.0.1:65535/cli-auth/stub",
-        status: "pending",
-      },
-      "GET /v1/auth/sessions/sess_metavar_test": { status: "pending" },
-    });
-    try {
-      const t0 = Date.now();
-      const result = await runZombiectl(
-        ["login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "250"],
-        { env: composeEnv({ ZOMBIE_API_URL: stub.baseUrl, ZOMBIE_STATE_DIR: stateDir.dir, NO_COLOR: "1" }), timeoutMs: 15_000 },
-      );
-      const elapsed = Date.now() - t0;
-      assert.notEqual(result.code, 0, `expected non-zero (timeout) exit; stdout=${result.stdout}`);
-      assert.ok(elapsed < 5_000, `expected exit within 5s, took ${elapsed}ms`);
-    } finally {
-      await stub.close();
-    }
-  });
 });

@@ -305,8 +305,6 @@ describe("login acceptance — full device flow end-to-end", () => {
     };
 
     const program = loginEffect({
-      timeoutSec: 30,
-      pollMs: 500,
       noOpen: true,
       noInput: false,
       force: true,
@@ -354,8 +352,6 @@ const runLogin = (
   opts: { jsonMode?: boolean; billingFails?: boolean; firstVerifyFails?: boolean } = {},
 ): Effect.Effect<void, CliError, never> =>
   loginEffect({
-    timeoutSec: 30,
-    pollMs: 500,
     noOpen: true,
     noInput: false,
     force: true,

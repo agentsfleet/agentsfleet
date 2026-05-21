@@ -178,11 +178,10 @@ if (!isLive) {
     // CLI login handshake — drive the dashboard's /cli-auth approve action.
     describe("handshake", () => {
       it("login --no-open --no-input → approve via Chromium → credentials.json 0600", async () => {
-        const args = [
-          "login", "--no-open", "--no-input",
-          "--timeout-sec", "90",
-          "--poll-ms", "500",
-        ];
+        // NOTE: the device flow is now terminal-only (a spawned non-TTY login
+        // with no token fast-fails). Driving it here will need a PTY harness;
+        // until then this live case cannot reach the code prompt.
+        const args = ["login", "--no-open", "--no-input"];
         const child = spawnZombiectl(args, { env: baseEnv });
         const seen = await waitForLine(child, (line: string) => /login_url/i.test(line), 30_000);
         const apiLoginUrl = parseLoginUrl(seen);

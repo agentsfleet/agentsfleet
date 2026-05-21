@@ -61,14 +61,14 @@ describe("api url resolution drives every fetch from runCli", () => {
       const err = bufferStream();
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
-        ["login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50"],
+        ["login", "--no-open", "--no-input"],
         { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
       );
-      expect(code).toBe(1);
+      // --no-input aborts at the verify prompt → exit 130, but only AFTER
+      // createSession's POST has gone out to the resolved base URL (no poll).
+      expect(code).toBe(130);
       expect(calls.length).toBeGreaterThan(0);
       expect(calls[0]).toEqual({ url: "https://api.usezombie.com/v1/auth/sessions", method: "POST" });
-      const sessionPoll = calls.find((c) => c.method === "GET");
-      expect(sessionPoll?.url).toBe("https://api.usezombie.com/v1/auth/sessions/sess_test_url_resolution");
     });
   });
 
@@ -78,7 +78,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const err = bufferStream();
       const { calls, fetchImpl } = makeFetchRecorder();
       const code = await runCli(
-        ["login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50"],
+        ["login", "--no-open", "--no-input"],
         {
           stdout: out.stream,
           stderr: err.stream,
@@ -87,7 +87,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
-      expect(code).toBe(1);
+      expect(code).toBe(130);
       expect(calls[0]).toEqual({ url: "http://localhost:3000/v1/auth/sessions", method: "POST" });
     });
   });
@@ -100,7 +100,7 @@ describe("api url resolution drives every fetch from runCli", () => {
       const code = await runCli(
         [
           "--api", "https://api-dev.usezombie.com",
-          "login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50",
+          "login", "--no-open", "--no-input",
         ],
         {
           stdout: out.stream,
@@ -110,7 +110,7 @@ describe("api url resolution drives every fetch from runCli", () => {
           fetchImpl: asFetchOverride(fetchImpl),
         },
       );
-      expect(code).toBe(1);
+      expect(code).toBe(130);
       expect(calls[0]).toEqual({ url: "https://api-dev.usezombie.com/v1/auth/sessions", method: "POST" });
     });
   });
@@ -245,11 +245,11 @@ describe("api url resolution drives every fetch from runCli", () => {
       const code = await runCli(
         [
           "--api", "https://api.usezombie.com//",
-          "login", "--no-open", "--no-input", "--timeout-sec", "1", "--poll-ms", "50",
+          "login", "--no-open", "--no-input",
         ],
         { stdout: out.stream, stderr: err.stream, stdin: ttyStdin, env: {}, fetchImpl: asFetchOverride(fetchImpl) },
       );
-      expect(code).toBe(1);
+      expect(code).toBe(130);
       expect(calls[0]?.url).toBe("https://api.usezombie.com/v1/auth/sessions");
     });
   });

@@ -25,12 +25,6 @@ import type {
 } from "./cli-tree-types.ts";
 import type { ParsedArgs } from "../commands/types.ts";
 
-const TIMEOUT_SEC_BOUNDS = { min: 1, max: 3600 };
-// Floor (1ms) is the validator's job; the handler enforces a hard
-// 500ms minimum sleep at runtime. Keeping the validator permissive
-// lets fast integration tests pass `--poll-ms 50` without commander
-// rejecting it before reaching the handler.
-const POLL_MS_BOUNDS = { min: 1, max: 60_000 };
 const BILLING_LIMIT_BOUNDS = { min: 1, max: 100 };
 
 function helpTail(): string {
@@ -150,8 +144,6 @@ export function buildProgram({ handlers, version, state, helpFactory }: BuildPro
   program
     .command("login")
     .description("Authenticate via browser")
-    .option("--timeout-sec <n>", "Wait up to N seconds for browser callback", parseIntOption(TIMEOUT_SEC_BOUNDS))
-    .option("--poll-ms <n>", "Poll cadence in milliseconds", parseIntOption(POLL_MS_BOUNDS))
     .option("--token <token>", "Authenticate with this token directly, no browser (prefer ZOMBIE_TOKEN or piped stdin to keep it out of shell history)")
     .option("--token-name <label>", "Label for this session, shown on the approval page and in `auth status` (default: platform family)")
     .option("--force", "Skip the existing-credential prompt and overwrite", false)

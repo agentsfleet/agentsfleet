@@ -13,7 +13,6 @@ import {
   defaultTokenName,
   idempotencyCheck,
   mapVerifyFailure,
-  pollUntilVerificationPending,
   verifyAndDecryptWithRetry,
 } from "../src/commands/login-device-flow.ts";
 import { generateCliKeypair } from "../src/lib/cli-flow.ts";
@@ -51,6 +50,16 @@ const outputNoop: Layer.Layer<Output> = Layer.succeed(Output, {
 
 const inputReturning = (answer: string): Layer.Layer<Input> =>
   Layer.succeed(Input, { readLine: () => Effect.sync(() => answer) });
+
+// Returns each answer in turn, then null (EOF / canceled) once exhausted —
+// lets a test drive the local re-prompt loop deterministically without
+// looping forever on a fixed invalid answer.
+const inputSequence = (answers: ReadonlyArray<string | null>): Layer.Layer<Input> => {
+  let i = 0;
+  return Layer.succeed(Input, {
+    readLine: () => Effect.sync(() => (i < answers.length ? (answers[i++] ?? null) : null)),
+  });
+};
 
 const credsWith = (
   token: Option.Option<Redacted.Redacted<string>>,
@@ -284,81 +293,7 @@ describe("decryptIssuedToken — opaque-channel failure", () => {
   });
 });
 
-describe("pollUntilVerificationPending — terminal-state mapping", () => {
-  test("410 (UZ-AUTH-013 aborted) maps to the expired outcome", async () => {
-    const outcome = await Effect.runPromise(
-      pollUntilVerificationPending(
-        "sess_poll",
-        { deadline: Date.now() + 10_000, pollMs: 500 },
-        new AbortController().signal,
-      ).pipe(Effect.provide(failingHttp(410, "UZ-AUTH-013"))),
-    );
-    expect(outcome.status).toBe("expired");
-  });
-
-  test("non-terminal ServerError propagates (caller decides)", async () => {
-    const exit = await Effect.runPromiseExit(
-      pollUntilVerificationPending(
-        "sess_poll",
-        { deadline: Date.now() + 10_000, pollMs: 500 },
-        new AbortController().signal,
-      ).pipe(Effect.provide(failingHttp(500, "UZ-INTERNAL-001"))),
-    );
-    expect(failureValue(exit)).toBeInstanceOf(ServerError);
-  });
-
-  // The terminal-state guard is purely status-based (`status === 410 ||
-  // status === 404`); the error code is irrelevant. Exercise 410 and 404 with
-  // an unrelated code so a regression that re-couples to a specific code is
-  // caught, and a non-terminal status propagates (above).
-  test("status 410 with an unrelated code still maps to expired", async () => {
-    const outcome = await Effect.runPromise(
-      pollUntilVerificationPending(
-        "sess_poll",
-        { deadline: Date.now() + 10_000, pollMs: 500 },
-        new AbortController().signal,
-      ).pipe(Effect.provide(failingHttp(410, "UZ-SOMETHING-ELSE"))),
-    );
-    expect(outcome.status).toBe("expired");
-  });
-
-  test("status 404 maps to expired (session row gone mid-poll)", async () => {
-    const outcome = await Effect.runPromise(
-      pollUntilVerificationPending(
-        "sess_poll",
-        { deadline: Date.now() + 10_000, pollMs: 500 },
-        new AbortController().signal,
-      ).pipe(Effect.provide(failingHttp(404, "UZ-SOMETHING-ELSE"))),
-    );
-    expect(outcome.status).toBe("expired");
-  });
-
-  test("already-aborted signal short-circuits to interrupted before any request", async () => {
-    const controller = new AbortController();
-    controller.abort();
-    const outcome = await Effect.runPromise(
-      pollUntilVerificationPending(
-        "sess_poll",
-        { deadline: Date.now() + 10_000, pollMs: 500 },
-        controller.signal,
-      ).pipe(Effect.provide(failingHttp(500, "UZ-SHOULD-NOT-BE-CALLED"))),
-    );
-    expect(outcome.status).toBe("interrupted");
-  });
-
-  test("deadline already in the past yields timeout (no abort)", async () => {
-    const outcome = await Effect.runPromise(
-      pollUntilVerificationPending(
-        "sess_poll",
-        { deadline: Date.now() - 1, pollMs: 500 },
-        new AbortController().signal,
-      ).pipe(Effect.provide(failingHttp(500, "UZ-SHOULD-NOT-BE-CALLED"))),
-    );
-    expect(outcome.status).toBe("timeout");
-  });
-});
-
-describe("verifyAndDecryptWithRetry — one retry then fail", () => {
+describe("verifyAndDecryptWithRetry — prompt, validation, retry", () => {
   test("two wrong codes surface VerificationFailedError after the retry prompt", async () => {
     const keypair = await generateCliKeypair();
     const exit = await Effect.runPromiseExit(
@@ -371,23 +306,47 @@ describe("verifyAndDecryptWithRetry — one retry then fail", () => {
     expect(failureValue(exit)).toBeInstanceOf(VerificationFailedError);
   });
 
-  test("a malformed code (UZ-AUTH-018) re-prompts without spending a wrong-code strike", async () => {
+  test("non-6-digit and empty entries re-prompt locally with no /verify round-trip", async () => {
     const keypair = await generateCliKeypair();
-    // 018 = bad shape: re-enter, no strike. Then two 011 wrong codes exhaust
-    // the 2-strike budget. If 018 had burned a strike, only 2 requests fire.
-    const http = countingHttp([
-      { status: 400, code: "UZ-AUTH-018" },
-      { status: 400, code: "UZ-AUTH-011" },
-      { status: 400, code: "UZ-AUTH-011" },
-    ]);
+    // Every entry fails the client-side 6-digit shape check, so the loop
+    // never reaches the network; the exhausted sequence yields null → cancel.
+    const http = countingHttp([{ status: 400, code: "UZ-AUTH-011" }]);
     const exit = await Effect.runPromiseExit(
-      verifyAndDecryptWithRetry("sess_retry", keypair, { noInput: false }).pipe(
+      verifyAndDecryptWithRetry("sess_shape", keypair, { noInput: false }).pipe(
         Effect.provide(http.layer),
-        Effect.provide(inputReturning("000000")),
+        Effect.provide(inputSequence(["abc", "12345", "", "1234567", "12 34 56"])),
         Effect.provide(outputNoop),
       ),
     );
-    expect(failureValue(exit)).toBeInstanceOf(VerificationFailedError);
-    expect(http.calls()).toBe(3);
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+    expect(http.calls()).toBe(0);
+  });
+
+  test("a null read (EOF / canceled) aborts as InterruptedError with no /verify round-trip", async () => {
+    const keypair = await generateCliKeypair();
+    const http = countingHttp([{ status: 400, code: "UZ-AUTH-011" }]);
+    const exit = await Effect.runPromiseExit(
+      verifyAndDecryptWithRetry("sess_eof", keypair, { noInput: false }).pipe(
+        Effect.provide(http.layer),
+        Effect.provide(inputSequence([])),
+        Effect.provide(outputNoop),
+      ),
+    );
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+    expect(http.calls()).toBe(0);
+  });
+
+  test("--no-input aborts before any prompt or network call", async () => {
+    const keypair = await generateCliKeypair();
+    const http = countingHttp([{ status: 400, code: "UZ-AUTH-011" }]);
+    const exit = await Effect.runPromiseExit(
+      verifyAndDecryptWithRetry("sess_ni", keypair, { noInput: true }).pipe(
+        Effect.provide(http.layer),
+        Effect.provide(inputReturning("424242")),
+        Effect.provide(outputNoop),
+      ),
+    );
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+    expect(http.calls()).toBe(0);
   });
 });
