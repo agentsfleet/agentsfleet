@@ -31,8 +31,7 @@ describe("OnboardingFlow", () => {
   it("renders each spec'd snippet inside its card's Terminal", () => {
     render(<OnboardingFlow />);
     const install = within(screen.getByTestId("onboarding-step-install"));
-    expect(install.getByText(/npm install -g @usezombie\/zombiectl/)).toBeInTheDocument();
-    expect(install.getByText(/npx skills add usezombie\/usezombie/)).toBeInTheDocument();
+    expect(install.getByText(/curl -fsSL https:\/\/usezombie\.sh \| bash/)).toBeInTheDocument();
 
     const skill = within(screen.getByTestId("onboarding-step-skill"));
     expect(skill.getByText(/\/usezombie-install-platform-ops/)).toBeInTheDocument();
@@ -44,7 +43,7 @@ describe("OnboardingFlow", () => {
     expect(steer.getByText(/zombiectl steer/)).toBeInTheDocument();
   });
 
-  it("anchors the outer section at #onboarding-flow for Hero scroll targeting", () => {
+  it("anchors the outer section at #onboarding-flow (deep-link target)", () => {
     render(<OnboardingFlow />);
     const section = screen.getByTestId("onboarding-flow");
     expect(section.getAttribute("id")).toBe("onboarding-flow");

@@ -1,5 +1,5 @@
 import { Card, Terminal } from "@usezombie/design-system";
-import { DOCS_QUICKSTART_URL, INSTALL_COMMAND } from "../config";
+import { DOCS_QUICKSTART_URL, INSTALL_COMMAND, INSTALL_SKILL_SLASH } from "../config";
 
 type Step = {
   id: string;
@@ -16,13 +16,13 @@ const STEPS: readonly Step[] = [
     number: "01",
     title: "Install the CLI",
     command: INSTALL_COMMAND,
-    caption: "One npm + one skill. Host-neutral — Claude Code, Amp, Codex, OpenCode.",
+    caption: "One command — installs zombiectl + the skill bundle, host-detected (Claude Code, Amp, Codex, OpenCode).",
   },
   {
     id: "skill",
     number: "02",
     title: "Run the install skill",
-    command: "/usezombie-install-platform-ops",
+    command: INSTALL_SKILL_SLASH,
     caption:
       "Drop the slash command into Claude Code, or paste TRIGGER.md + SKILL.md at /zombies/new in the Dashboard.",
   },

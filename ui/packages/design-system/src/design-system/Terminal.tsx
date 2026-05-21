@@ -25,6 +25,15 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
    * silent no-op affordance is worse than no affordance.
    */
   copyText?: string;
+  /**
+   * Opt-in install-demo animation: reveals child lines in sequence via CSS
+   * (`[data-terminal-reveal]` in tokens.css), so the demo reads as "running
+   * live". Reduced-motion shows every line at once. Purely presentational —
+   * content is always in the DOM, never JS-gated. The per-line stagger in
+   * tokens.css is tuned for up to ~6 lines; beyond that, extra lines still
+   * reveal but without the staggered delay.
+   */
+  animate?: boolean;
   children: ReactNode;
 };
 
@@ -41,7 +50,7 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
  * --text (text-foreground) for the body. The `green` variant flips
  * the body border to success-green for "success"-flavoured demos.
  */
-export default function Terminal({ label, green, copyable, copyText, children, className, ...rest }: Props) {
+export default function Terminal({ label, green, copyable, copyText, animate, children, className, ...rest }: Props) {
   const id = useId();
   const [copied, setCopied] = useState(false);
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -149,7 +158,9 @@ export default function Terminal({ label, green, copyable, copyText, children, c
         aria-describedby={label ? undefined : id}
         data-command={typeof children === "string" ? children : undefined}
       >
-        <code>{children}</code>
+        {/* `data-terminal-reveal` drives the staggered line-in animation in
+          * tokens.css when `animate` is set; absent otherwise (static). */}
+        <code data-terminal-reveal={animate ? "" : undefined}>{children}</code>
         {!label && (
           <span id={id} className="sr-only">
             Code block

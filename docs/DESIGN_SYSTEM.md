@@ -163,7 +163,7 @@ Dark is the **primary** brand surface. All hero shots, marketing screenshots, do
 
 ## Motion
 
-The system has **one** signature animation. Everything else is functional or absent.
+The system has **two** sanctioned animations: the wake pulse (live-signal, system-wide) and the install-demo terminal reveal (marketing hero only). Everything else is functional or absent.
 
 ### Wake pulse (signature)
 
@@ -182,18 +182,31 @@ The system has **one** signature animation. Everything else is functional or abs
 - Failed/degraded zombies get a static ring in their status color; no pulse.
 - Maximum on-screen: ~5 simultaneous pulses. More than that is visual noise; consolidate to a count.
 
+### Install-demo terminal reveal (marketing)
+
+The marketing hero's `<Terminal animate>` reveals its install transcript
+line-by-line (staggered `animation-delay`, opacity-only — no slide) so the demo
+reads as "running live". CSS-driven (`[data-terminal-reveal]` in tokens.css),
+no JS timer — same discipline as the wake pulse.
+
+**Rules:**
+- Marketing surfaces only. Operational log streams (the dashboard event log)
+  keep the functional 80ms fade below — no stagger there.
+- One-shot: lines hold their final visible frame (`forwards`); the reveal never loops.
+- `prefers-reduced-motion: reduce` → every line visible at once, no reveal.
+
 ### Functional motion
 
 - **Hovers:** `transition: 50ms ease-out`. Snap. No bounce, no spring, no `cubic-bezier` overshoot.
 - **Focus rings:** instant, no animated draw-on. `box-shadow: 0 0 0 3px var(--pulse-glow)`.
 - **Page transitions:** instant. No fade, no slide. Operational software does not perform.
-- **Log streams:** new lines fade in over 80ms (`opacity 0 → 1`). No slide-up, no stagger.
+- **Log streams (operational):** new lines fade in over 80ms (`opacity 0 → 1`). No slide-up, no stagger. (The marketing install-demo terminal is the one sanctioned staggered reveal — see above.)
 - **Loading states:** prefer skeleton bars (1-pixel-thick borders) over spinners. If a spinner is required, use a 2px monochrome arc, not a circular pulse.
 
 ### `prefers-reduced-motion: reduce`
 
 - Pulse animations become a static ring at `0.2` opacity (`box-shadow: 0 0 0 4px var(--pulse-glow)`).
-- Log-stream fade disabled.
+- Log-stream fade disabled; the install-demo terminal reveal shows all lines at once.
 - Hover transitions retained at 50ms (functional, not decorative).
 
 ### Forbidden motion
@@ -265,6 +278,7 @@ Each workstream is its own spec. Use `kishore-spec-new` to create them once you'
 | 2026-05-08 | 4px base unit | Engineers want information density. 8px reads SaaS-marketing. |
 | 2026-05-08 | Light mode is secondary, never the brand's hero shot | Devtools category baseline is dark; the brand's first impression must be dark. Light mode is a polite afterthought. |
 | 2026-05-11 | Lift `--text-subtle` to ≥4.5:1 WCAG AA in both themes | Audit found the pre-existing values failed body-text AA (dark 3.23:1, light 2.99:1). Tertiary text + CLI subtle output + eyebrow labels were borderline-illegible at small sizes. Dark `#5C6469 → #7A8085` (4.88:1); light `#8A918A → #67706B` (4.73:1); CLI xterm256 `240 → 244`. |
+| 2026-05-21 | Add a second sanctioned animation: the marketing install-demo terminal reveal | Supersedes the 2026-05-08 "only signature animation" call for marketing surfaces. The hero shows the install "running" via a one-shot staggered line reveal (opacity-only, CSS-driven, reduced-motion-safe). Scoped to marketing; operational log streams stay non-staggered. |
 
 ---
 
