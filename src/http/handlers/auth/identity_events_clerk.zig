@@ -308,6 +308,7 @@ fn captureSignupEvent(hx: Hx, oidc_subject: []const u8, email: []const u8, boots
 
 fn runDelete(hx: Hx, oidc_subject: []const u8) void {
     const conn = hx.ctx.pool.acquire() catch {
+        log.warn("delete_pool_acquire_failed", .{ .error_code = ec.ERR_INTERNAL_DB_UNAVAILABLE, .oidc = oidc_subject, .req_id = hx.req_id });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
@@ -329,10 +330,12 @@ fn runDelete(hx: Hx, oidc_subject: []const u8) void {
         \\)
         \\DELETE FROM core.tenants
         \\WHERE tenant_id IN (SELECT tenant_id FROM deleted_users)
-    , .{oidc_subject}) catch {
+    , .{oidc_subject}) catch |err| {
+        log.warn("delete_failed", .{ .error_code = ec.ERR_INTERNAL_DB_QUERY, .oidc = oidc_subject, .err = @errorName(err), .req_id = hx.req_id });
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
 
+    log.info("user_deleted", .{ .oidc = oidc_subject, .req_id = hx.req_id });
     hx.ok(.ok, .{ .deleted = true });
 }

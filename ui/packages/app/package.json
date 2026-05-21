@@ -17,7 +17,6 @@
     "test:e2e:acceptance:local": "NEXT_PUBLIC_API_URL=http://localhost:3000 bunx playwright test --config=playwright.acceptance.config.ts",
     "test:e2e:acceptance:dev": "BASE_URL=https://usezombie-app.vercel.app NEXT_PUBLIC_API_URL=https://api-dev.usezombie.com bunx playwright test --config=playwright.acceptance.config.ts",
     "test:e2e:acceptance:prod": "BASE_URL=https://app.usezombie.com NEXT_PUBLIC_API_URL=https://api.usezombie.com bunx playwright test --config=playwright.acceptance.config.ts",
-    "test:e2e:acceptance:all": "bun run test:e2e:acceptance:local && bun run test:e2e:acceptance:dev && bun run test:e2e:acceptance:prod",
     "qa": "bun run test && bun run test:e2e",
     "test:coverage": "vitest run tests/*.test.ts lib/*.test.ts lib/**/*.test.ts 'app/(dashboard)' --coverage",
     "qa:smoke": "bun run test:smoke && bun run test:e2e:smoke"
