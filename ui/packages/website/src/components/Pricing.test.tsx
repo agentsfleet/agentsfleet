@@ -127,6 +127,7 @@ describe("Pricing component", () => {
       // During the trial the stage cells read "free" — matching the headline —
       // not the post-trial per-stage rate, so the cards stop contradicting it.
       expect(screen.getByTestId("pricing-flow-cell-stage-1")).toHaveTextContent("free");
+      expect(screen.getByTestId("pricing-flow-cell-stage-2")).toHaveTextContent("free");
       expect(screen.getByTestId("pricing-flow-cell-stage-n")).toHaveTextContent("free");
       expect(screen.getByTestId("pricing-flow-cell-stage-1")).not.toHaveTextContent(
         RATES_DISPLAY.STAGE_PLATFORM,
