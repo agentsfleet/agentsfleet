@@ -6,13 +6,11 @@
 // returns null when input shape is wrong, so callers can't trap on
 // malformed tokens.
 //
-// Resolution (D26 / spec §5): which of {credentials.json, ZMB_TOKEN,
-// ZOMBIE_TOKEN} wins is TTY-dependent. Interactive shells prefer the
-// env-var the operator just exported in the current session over a
-// possibly-stale file; scripts (CI, cron, pipes) prefer the on-disk
-// credential a previous `zombiectl login` wrote, falling through to env
-// only if no file exists. ZMB_TOKEN and ZOMBIE_TOKEN are both accepted;
-// ZMB_TOKEN wins the env-var tiebreaker (shorter canonical spelling).
+// Resolution: whether `credentials.json` or `ZOMBIE_TOKEN` wins is
+// TTY-dependent. Interactive shells prefer the env-var the operator just
+// exported in the current session over a possibly-stale file; scripts
+// (CI, cron, pipes) prefer the on-disk credential a previous `zombiectl
+// login` wrote, falling through to env only if no file exists.
 
 export type RoleClaim = "user" | "operator" | "admin";
 
@@ -48,7 +46,7 @@ export interface JwtClaims {
 const ROLE_NAMESPACE_DEV = "https://usezombie.dev/role";
 const ROLE_NAMESPACE_COM = "https://usezombie.com/role";
 
-export type AuthTokenSource = "file" | "zmb_env" | "zombie_env" | "none";
+export type AuthTokenSource = "file" | "zombie_env" | "none";
 
 export interface ResolvedAuthToken {
   readonly token: string | null;
@@ -73,17 +71,15 @@ const trimOrNull = (raw: string | undefined | null): string | null => {
 // inspected before file, but only "win" in TTY mode; non-TTY callers
 // fall through to file first.
 export function resolveAuthTokenForCli(input: ResolveAuthTokenInput): ResolvedAuthToken {
-  const zmb = trimOrNull(input.env["ZMB_TOKEN"]);
   const zombie = trimOrNull(input.env["ZOMBIE_TOKEN"]);
   const file = trimOrNull(input.fileToken);
   const fileResolved: ResolvedAuthToken | null = file ? { token: file, source: "file" } : null;
-  const zmbResolved: ResolvedAuthToken | null = zmb ? { token: zmb, source: "zmb_env" } : null;
   const zombieResolved: ResolvedAuthToken | null = zombie
     ? { token: zombie, source: "zombie_env" }
     : null;
   const order: ReadonlyArray<ResolvedAuthToken | null> = input.isTty
-    ? [zmbResolved, zombieResolved, fileResolved]
-    : [fileResolved, zmbResolved, zombieResolved];
+    ? [zombieResolved, fileResolved]
+    : [fileResolved, zombieResolved];
   for (const candidate of order) if (candidate) return candidate;
   return { token: null, source: "none" };
 }

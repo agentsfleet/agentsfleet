@@ -71,7 +71,7 @@ export type {
 };
 export { defaultTokenName } from "./login-device-flow-types.ts";
 
-const ZMB_TOKEN_ENV_KEYS = ["ZMB_TOKEN", "ZOMBIE_TOKEN"] as const;
+const TOKEN_ENV_KEYS = ["ZOMBIE_TOKEN"] as const;
 
 const noInputAbort = (detail: string): InterruptedError =>
   new InterruptedError({
@@ -124,7 +124,7 @@ export const idempotencyCheck = (
     }
   });
 
-// D26b — surface a notice when ZMB_TOKEN / ZOMBIE_TOKEN is set in the
+// D26b — surface a notice when ZOMBIE_TOKEN is set in the
 // environment. The login flow only writes credentials.json; env-var
 // tokens are out-of-band and take precedence on interactive shells, so
 // the operator may run `zombiectl login` expecting it to "fix"
@@ -133,7 +133,7 @@ export const idempotencyCheck = (
 // token (could be from creds.json or env), we want to know specifically
 // whether the env variant was set.
 const envTokenKeysSet = (): readonly string[] =>
-  ZMB_TOKEN_ENV_KEYS.filter((k) => typeof process.env[k] === "string" && process.env[k] !== "");
+  TOKEN_ENV_KEYS.filter((k) => typeof process.env[k] === "string" && process.env[k] !== "");
 
 export const envTokenAwareness = (
   opts: { readonly force: boolean; readonly noInput: boolean },

@@ -286,7 +286,7 @@ describe("idempotencyCheck — early-return guards", () => {
 describe("envTokenAwareness — interactive continue prompt (D26b)", () => {
   // Inject the env-keys-set probe directly so the test never touches
   // process.env — the function takes the fake as its second argument.
-  const envSet = (): readonly string[] => ["ZMB_TOKEN"];
+  const envSet = (): readonly string[] => ["ZOMBIE_TOKEN"];
 
   test("env token set + interactive 'yes' continues without aborting", async () => {
     const exit = await Effect.runPromiseExit(
