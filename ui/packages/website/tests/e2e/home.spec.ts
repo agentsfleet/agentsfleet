@@ -64,8 +64,10 @@ test.describe("Home page", () => {
     await expect(flow.getByRole("heading", { name: "Steer your zombie" })).toBeVisible();
 
     // Regression: the four cards used to be a single non-wrapping row that ran
-    // the fourth card ("Steer your zombie") off the right edge. The responsive
-    // grid must not overflow the page horizontally.
+    // the fourth card ("Steer your zombie") off the right edge. Pin the desktop
+    // breakpoint (>=1024px) the bug lived at so this guard stays meaningful
+    // regardless of the Playwright project's device viewport.
+    await page.setViewportSize({ width: 1280, height: 800 });
     const overflowsX = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
