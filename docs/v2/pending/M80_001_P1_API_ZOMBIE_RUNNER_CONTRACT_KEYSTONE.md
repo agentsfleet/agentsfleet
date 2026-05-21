@@ -152,8 +152,9 @@ POST /v1/runner/register
   request:  enrollment_token, host_id, sandbox_tier, labels[]
   response: runner_id, runner_token            errors: UZ-RUN-002 invalid_enrollment_token
 POST /v1/runner/heartbeat   (auth: Bearer runner_token)
-  request:  runner_id                          response: ok        errors: UZ-RUN-001 invalid_runner_token
-GET  /v1/runner/lease       (auth: Bearer runner_token, long-poll)
+  request:  runner_id
+  response: status (see enum)                  errors: UZ-RUN-001 invalid_runner_token
+POST /v1/runner/lease       (auth: Bearer runner_token, long-poll; POST — leasing mutates the PEL)
   response: event envelope + resolved zombie config + secrets_map(mode inline) | 204 no-work
   errors:   UZ-RUN-001, UZ-RUN-003 unsupported_secret_delivery
 POST /v1/runner/report      (auth: Bearer runner_token)
@@ -162,6 +163,11 @@ POST /v1/runner/report      (auth: Bearer runner_token)
 
 secret_delivery : inline | scoped | proxy        (S0 implements inline only; scoped/proxy = M80 later)
 sandbox_tier    : landlock_full | container_nested | macos_seatbelt | dev_none
+outcome         : processed | agent_error        (terminal execution result the runner reports;
+                  mirrors core.zombie_events.status — gate_blocked / dead_lettered are
+                  mothership-side in event-leasing, never runner-reported)
+status          : ok                             (heartbeat reply; drain | stop reserved for
+                  M80_006 fleet failover — the field exists in S0 so M80_006 needn't recut)
 flag            : ZOMBIE_RUNNER_SEAM (unset|1) — single-sourced constant, shared Zig↔TS
 ```
 
