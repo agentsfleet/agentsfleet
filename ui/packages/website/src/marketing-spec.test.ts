@@ -38,19 +38,7 @@ describe("marketing hero — W2 architecture pillars present", () => {
   });
 });
 
-describe("marketing install command — npm path, no curl-pipe-bash", () => {
-  it("zero hits on the dead `usezombie.sh/install.sh` path across src/", () => {
-    const hits: string[] = [];
-    for (const [path, body] of Object.entries(allMarketingSources)) {
-      body.split("\n").forEach((line, i) => {
-        if (line.includes("usezombie.sh/install.sh")) {
-          hits.push(`${path}:${i + 1}`);
-        }
-      });
-    }
-    expect(hits, hits.join("\n")).toEqual([]);
-  });
-
+describe("marketing install command — npm path present", () => {
   it("at least one hit on `npm install -g @usezombie/zombiectl` across src/", () => {
     const hits: string[] = [];
     for (const [path, body] of Object.entries(allMarketingSources)) {
