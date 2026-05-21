@@ -4,11 +4,11 @@
 **Milestone:** M69
 **Workstream:** 002
 **Date:** May 14, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — terminal-ergonomic improvement on top of an already-working single-shot path; not a correctness fix.
 **Categories:** CLI
 **Batch:** B1 — independent of other M69 workstreams.
-**Branch:** {feat/m69-steer-repl — added when work begins}
+**Branch:** feat/m69-steer-repl
 **Depends on:** M23_001 (existing `zombie steer` endpoint + SSE response), M63_004 (CLI obs/resilience patterns).
 **Provenance:** LLM-drafted (claude-opus-4-7, 2026-05-14) from Captain Q&A scoping 2026-05-14 (decision: "detect human at terminal and go to repl or else it stay for an agent like said no repl needed for an agent. If --tty or some flag then the repl can be forced.").
 
@@ -34,7 +34,7 @@
 
 - **PR title (eventual):** zombiectl steer: enter interactive REPL when stdin is a TTY
 - **Intent (one sentence):** A human running `zombiectl steer <id>` at a terminal gets a multi-turn prompt loop; agents and pipes keep today's single-shot behavior byte-for-byte.
-- **Handshake (agent fills at PLAN, before EXECUTE):** restate the intent in your own words and list the assumptions you proceed on (`ASSUMPTIONS I'M MAKING: …`). The two assumptions most likely to bite: (1) TTY detection reuses `isTty` from `capability.js` — no parallel `process.stdin.isTTY` check; (2) the non-TTY path stays byte-identical, proven by regression test. A mismatch with the Intent above → STOP and reconcile before any edit.
+- **Handshake (agent fills at PLAN, before EXECUTE):** A terminal human running `zombiectl steer <id>` should get a prompt loop only when no message was supplied, while explicit messages and non-TTY agent/piped calls keep the existing single-shot path. ASSUMPTIONS I'M MAKING: 1. TTY detection reuses `isTty` from `capability.js`; no parallel `process.stdin.isTTY` check. 2. A positional message always selects single-shot mode, even in a terminal. 3. The REPL helper can be tested with injected streams and injected steer/SSE functions so no real TTY is required for unit coverage. 4. Docs-repo changelog/reference edits wait until implementation is proven because cross-repo writes need their own branch flow.
 
 ---
 
