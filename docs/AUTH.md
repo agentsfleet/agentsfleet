@@ -363,9 +363,9 @@ On `401 token_expired`, the CLI re-runs `zombiectl login`. Clerk JWTs are short-
 
 ---
 
-## Flow 2 — UI (browser dashboard) — UNCHANGED by M74_002
+## Flow 2 — UI (browser dashboard)
 
-This flow is **unchanged** by the M74_002 device-flow work. Every property documented below — Clerk-hosted sign-in, `__session` cookie on the dashboard origin, Token B mint via `getToken({template:"api"})`, dashboard → `/backend/:path*` rewrite → zombied — continues to work byte-identically.
+> **Post-Stage-1 reconciliation (M74_002 §9 shipped).** The Token A / Token B description in this section is the **historical pre-Stage-1 shape**, kept for context on *why* the split existed. **Current shape:** the dashboard rides **one** token — the customized session token (`auth().getToken()`, no template arg). The browser holds no token of its own: reads run in React Server Components, mutations in Server Actions (both server-side), and the SSE route handler mints server-side. The single remaining client-held token — the `token` prop on the zombie-detail thread, serialized into hydration data — is closed by **M77_001** (`docs/v2/active/M77_001_P1_UI_AUTH_CLIENT_TOKEN_REMOVAL.md`). For where this is headed, see *Roadmap — Flow 2 dashboard cleanup → Current direction vs future direction* below.
 
 ### Shape
 
@@ -819,12 +819,37 @@ Local coding agents that run on the same workstation where the human can complet
 
 ## Roadmap — Flow 2 dashboard cleanup
 
-> **Status:** Stage 1 SHIPPED in M74_002 §9 (dashboard single-token collapse). Stage 2 (BFF) PLANNED as a future milestone.
-> **Scope:** dashboard (`ui/packages/app/`) and Clerk org config only. **Flow 1 (CLI) is unaffected by either stage** — see *CLI carve-out* below for the invariants the M74_002 work continues to satisfy throughout.
+> **Status:** Stage 1 SHIPPED (M74_002 §9, dashboard single-token collapse). **Current slice:** M77_001 — remove the last client-held token (the hydration-payload `token` prop). **The full Backend-for-Frontend (was "Stage 2"): DEFERRED** — see *Current direction vs future direction* below.
+> **Scope:** dashboard (`ui/packages/app/`) and Clerk org config only. **Flow 1 (CLI) is unaffected by any stage** — see *CLI carve-out* below for the invariants the M74_002 work continues to satisfy throughout.
 
 The Token A / Token B split documented in *The two tokens at a glance* is not load-bearing on zombied's side. `src/auth/jwks.zig` validates `sub`, `iss`, `exp`, and `aud`; `sid` is never checked. The split exists because Clerk's *default* session token does not carry `aud=https://api.usezombie.com` (zombied's strict-check rejects it) and Clerk's *custom JWT templates* (the `api` template) cannot include `sid` per Clerk's docs (so the template can't double as the dashboard's `clerkMiddleware()` session token). Hence two distinct JWTs running in parallel today.
 
 Clerk's **session-token claim customization** — a separate Clerk feature from JWT templates — lifts the constraint. Adding `aud`, `metadata.tenant_id`, `metadata.role` to the session token produces one JWT that satisfies both `clerkMiddleware()` (it already carries `sid`) and zombied (the new `aud` claim passes the existing strict-check). Token B as a separate artifact for Flow 2 becomes unnecessary.
+
+### Current direction vs future direction
+
+> **Where we are, and where this is headed.** Stage 1 collapsed the dashboard to one token. The remaining *current* work (M77_001) is a hygiene slice — close the last client-held token. The full Backend-for-Frontend (BFF) is **deferred**: its value is a single audited boundary + a rate-limit home, neither needed now, and it would re-line the dashboard's Clerk-JWT plumbing that the v3 capability-token work rewrites anyway. A real authorization audit belongs in **zombied** (it sees CLI + dashboard + API-key flows), not a dashboard-only `/api` layer.
+
+```mermaid
+flowchart TB
+    subgraph NOW["CURRENT — do now"]
+        direction TB
+        C1["Stage 1 (shipped): dashboard rides ONE customized session token"]
+        C2["Browser holds __session cookie only; reads in RSC, mutations in Server Actions (server-side)"]
+        C3["M77_001: remove the last client token prop (steer + event stream) + grep-gate lock"]
+        C1 --> C2 --> C3
+    end
+    subgraph FUT["FUTURE — deferred, build WITH v3 (not before)"]
+        direction TB
+        F1["Full BFF: /api/* route handlers, delete lib/api, remove /backend proxy"]
+        F2["+ IDOR + rate-limit + authz audit at one boundary — only if a real need lands"]
+        F3["v3: zombied stops trusting Clerk JWKS; usezombie mints scoped, revocable capability tokens"]
+        F1 --> F2 --> F3
+    end
+    C3 -.->|"build the boundary once, around the final token shape"| F1
+```
+
+- **Not a token-secrecy fix.** Even after the full BFF, the `__session` cookie still mints an api-audience JWT via `getToken()` — so a compromised page can still obtain a token. Closing that is Content-Security-Policy + Subresource-Integrity (a separate spec), not this roadmap.
 
 ### Stage 1 — Option 2: single-token via session-token claim customization (shipped, M74_002 §9)
 
@@ -869,6 +894,8 @@ Clerk's **session-token claim customization** — a separate Clerk feature from 
 **Reversibility:** Clerk dashboard → **Sessions → Customize session token** → reset to default. Next minted token lacks `aud`; dashboard fetches fail loudly with `AudienceMismatch` 401 on the next refresh. Re-apply the claims to restore. No zombied or schema state involved.
 
 ### Stage 2 — Option 3: BFF on top of single-token
+
+> **DEFERRED (future direction, not scheduled).** The full BFF below is the target end-state, not near-term work — see *Current direction vs future direction* above. Build it **with** the v3 capability-token migration so the boundary is built once around the final token shape. The only near-term slice is **M77_001** (client-token removal); everything below — `/api/*` route handlers, `lib/api` teardown, `/backend` proxy removal, the IDOR + audit defense-in-depth — waits.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
