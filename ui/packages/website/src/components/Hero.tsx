@@ -138,20 +138,6 @@ export default function Hero() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <Button asChild variant="ghost" data-testid="hero-cta-secondary">
-              <Link
-                to="/agents"
-                onClick={() =>
-                  trackNavigationClicked({
-                    source: "hero_secondary_replay",
-                    surface: "hero",
-                    target: "agents",
-                  })
-                }
-              >
-                → view a real wake (replay)
-              </Link>
-            </Button>
             <Toast
               visible={toast !== null}
               severity={shown === "manual" ? "warning" : "info"}

@@ -28,10 +28,6 @@ test.describe("Home page", () => {
     await expect(install).not.toHaveAttribute("href", /./);
     await expect(install).toContainText(/copy/i);
 
-    const replay = page.getByTestId("hero-cta-secondary");
-    await expect(replay).toBeVisible();
-    await expect(replay).toHaveAttribute("href", "/agents");
-
     // Promo pill between the LIVE eyebrow and the headline links to the
     // inline /pricing anchor and surfaces the rates-pin trial-end string
     // (`RATES_DISPLAY.FREE_TRIAL_PILL` in lib/rates.ts).
@@ -66,6 +62,16 @@ test.describe("Home page", () => {
     await expect(flow.getByRole("heading", { name: "Run the install skill" })).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Wire your trigger" })).toBeVisible();
     await expect(flow.getByRole("heading", { name: "Steer your zombie" })).toBeVisible();
+
+    // Regression: the four cards used to be a single non-wrapping row that ran
+    // the fourth card ("Steer your zombie") off the right edge. Pin the desktop
+    // breakpoint (>=1024px) the bug lived at so this guard stays meaningful
+    // regardless of the Playwright project's device viewport.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const overflowsX = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(overflowsX).toBe(false);
   });
 
   test("renders how it works steps", async ({ page }) => {
