@@ -109,8 +109,8 @@ export async function seedZombie(
   return { id: resp.zombie_id, name: resp.name };
 }
 
-export async function listZombies(key: FixtureKey, workspaceId: string): Promise<Zombie[]> {
-  const c = clientFor(key);
+export async function listZombies(handle: ClientHandle, workspaceId: string): Promise<Zombie[]> {
+  const c = clientFor(handle);
   const res = await c.get<ListResp<Zombie>>(`/v1/workspaces/${workspaceId}/zombies`);
   return res.items;
 }

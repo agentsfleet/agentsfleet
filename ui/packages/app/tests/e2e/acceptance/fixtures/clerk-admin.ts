@@ -31,6 +31,9 @@ const CLERK_API_BASE = "https://api.clerk.com/v1";
 // .fixture-jwts.json file. `clientFor` callers that exceed this window
 // will fail loud with a 401 from zombied — re-mint if/when that happens.
 const SESSION_TOKEN_TTL_SECONDS = 900;
+const CLERK_METADATA_POLL_MS = 500;
+const CLERK_METADATA_TIMEOUT_MS = 15_000;
+const TENANT_ID_METADATA_KEY = "tenant_id";
 
 export interface FixtureUserSpec {
   key: FixtureKey;
@@ -57,6 +60,7 @@ export interface MintedFixture {
 interface ClerkUser {
   id: string;
   email_addresses: Array<{ email_address: string }>;
+  public_metadata?: Record<string, unknown>;
 }
 
 interface ClerkSession {
@@ -93,6 +97,10 @@ async function findUserByEmail(email: string): Promise<ClerkUser | null> {
   const params = new URLSearchParams({ email_address: email });
   const list = await clerkRequest<ClerkUser[]>("GET", `/users?${params.toString()}`);
   return list[0] ?? null;
+}
+
+async function getUser(userId: string): Promise<ClerkUser> {
+  return clerkRequest<ClerkUser>("GET", `/users/${userId}`);
 }
 
 async function createUser(spec: FixtureUserSpec): Promise<ClerkUser> {
@@ -217,6 +225,16 @@ export async function attachJwt(user: ProvisionedUser): Promise<MintedFixture> {
 export async function findUserIdByEmail(email: string): Promise<string | null> {
   const user = await findUserByEmail(email);
   return user?.id ?? null;
+}
+
+export async function waitForTenantMetadata(userId: string): Promise<void> {
+  const deadline = Date.now() + CLERK_METADATA_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const user = await getUser(userId);
+    if (typeof user.public_metadata?.[TENANT_ID_METADATA_KEY] === "string") return;
+    await new Promise((resolve) => setTimeout(resolve, CLERK_METADATA_POLL_MS));
+  }
+  throw new Error(`Clerk user ${userId} missing public_metadata.${TENANT_ID_METADATA_KEY}`);
 }
 
 export async function deleteUser(userId: string): Promise<void> {

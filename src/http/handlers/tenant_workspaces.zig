@@ -18,16 +18,21 @@ const Hx = hx_mod.Hx;
 
 pub fn innerListTenantWorkspaces(hx: Hx, req: *httpz.Request) void {
     _ = req;
-    const tenant_id = hx.principal.tenant_id orelse {
-        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
-        return;
-    };
-
     const conn = hx.ctx.pool.acquire() catch {
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
     };
     defer hx.ctx.pool.release(conn);
+
+    const resolved_tenant_id = resolveTenantId(conn, hx.alloc, hx.principal) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    defer if (resolved_tenant_id.owned) |owned| hx.alloc.free(owned);
+    const tenant_id = resolved_tenant_id.value orelse {
+        hx.fail(ec.ERR_FORBIDDEN, "Tenant context required");
+        return;
+    };
 
     const rows = fetchWorkspacesOnConn(conn, hx.alloc, tenant_id) catch {
         common.internalDbError(hx.res, hx.req_id);
@@ -36,6 +41,11 @@ pub fn innerListTenantWorkspaces(hx: Hx, req: *httpz.Request) void {
 
     hx.ok(.ok, .{ .items = rows, .total = rows.len });
 }
+
+const TenantIdResolution = struct {
+    value: ?[]const u8,
+    owned: ?[]u8 = null,
+};
 
 const WorkspaceRow = struct {
     id: []const u8,
@@ -54,6 +64,25 @@ const LIST_WORKSPACES_SQL = std.fmt.comptimePrint(
         "ORDER BY created_at ASC, workspace_id ASC LIMIT {d}",
     .{MAX_TENANT_WORKSPACES},
 );
+
+fn resolveTenantId(conn: *pg.Conn, alloc: std.mem.Allocator, principal: common.AuthPrincipal) !TenantIdResolution {
+    if (principal.user_id) |subject| {
+        var q = PgQuery.from(try conn.query(
+            "SELECT tenant_id::text FROM core.users WHERE oidc_subject = $1 LIMIT 1",
+            .{subject},
+        ));
+        defer q.deinit();
+        defer q.drain();
+
+        if (try q.next()) |row| {
+            const tenant_id = try alloc.dupe(u8, try row.get([]const u8, 0));
+            return .{ .value = tenant_id, .owned = tenant_id };
+        }
+    }
+
+    if (principal.tenant_id) |tenant_id| return .{ .value = tenant_id };
+    return .{ .value = null };
+}
 
 fn fetchWorkspacesOnConn(conn: *pg.Conn, alloc: std.mem.Allocator, tenant_id: []const u8) ![]WorkspaceRow {
     var q = PgQuery.from(try conn.query(LIST_WORKSPACES_SQL, .{tenant_id}));

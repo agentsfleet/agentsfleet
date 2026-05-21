@@ -110,8 +110,10 @@ pub fn innerClerkWebhook(hx: Hx, req: *httpz.Request) void {
     defer parsed.deinit();
 
     const event = parsed.value;
-    // Only user.created is in scope. Other event types (user.updated,
-    // user.deleted) are ignored with 200 so Clerk stops retrying.
+    if (std.mem.eql(u8, event.type, "user.deleted")) {
+        runDelete(hx, event.data.id);
+        return;
+    }
     if (!std.mem.eql(u8, event.type, "user.created")) {
         log.info("event_ignored", .{ .type = event.type, .req_id = hx.req_id });
         hx.ok(.ok, .{ .status = "ignored", .type = event.type });
@@ -302,4 +304,35 @@ fn captureSignupEvent(hx: Hx, oidc_subject: []const u8, email: []const u8, boots
         .created = bootstrap.created,
         .request_id = hx.req_id,
     });
+}
+
+fn runDelete(hx: Hx, oidc_subject: []const u8) void {
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    _ = conn.exec(
+        \\WITH doomed_users AS (
+        \\    SELECT user_id, tenant_id FROM core.users WHERE oidc_subject = $1
+        \\), deleted_workspaces AS (
+        \\    DELETE FROM core.workspaces
+        \\    WHERE tenant_id IN (SELECT tenant_id FROM doomed_users)
+        \\), deleted_memberships AS (
+        \\    DELETE FROM core.memberships
+        \\    WHERE user_id IN (SELECT user_id FROM doomed_users)
+        \\), deleted_users AS (
+        \\    DELETE FROM core.users
+        \\    WHERE oidc_subject = $1
+        \\    RETURNING tenant_id
+        \\)
+        \\DELETE FROM core.tenants
+        \\WHERE tenant_id IN (SELECT tenant_id FROM deleted_users)
+    , .{oidc_subject}) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+
+    hx.ok(.ok, .{ .deleted = true });
 }
