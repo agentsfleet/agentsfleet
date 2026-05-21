@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M76
 **Workstream:** 002
 **Date:** May 21, 2026
-**Status:** PENDING
+**Status:** DEFERRED
 **Priority:** P2 — operator self-service account deletion; also closes a latent orphan-data gap (Clerk `user.deleted` is ignored today). Backend-heavy and gated on a billing-policy decision, hence graduated out of M76_001.
 **Categories:** API, AUTH, INFRA, UI
 **Batch:** B1 — sequence after M76_001 (shares the settings surface) and after the billing-policy decision lands.
@@ -250,6 +250,8 @@ N/A — no files deleted. This spec adds an endpoint, a worker, a webhook branch
 ---
 
 ## Discovery (consult log)
+
+**Deferred May 22, 2026 (Indy).** Cleared out of the pending queue — not shipping now; moved to `done/` as a record. The design-of-record below is preserved verbatim. **Reactivation conditions:** (a) operator self-service account deletion gets prioritized, OR (b) the latent orphan-data bug needs closing on its own — Clerk `user.deleted` is still ignored (`src/http/handlers/auth/identity_events_clerk.zig`), so a Clerk-initiated self-deletion orphans tenant → workspaces → zombies → credentials → events → billing rows. The webhook-reconciliation slice (§6) can graduate to its own spec independently of the full delete UX if only the orphan gap needs closing.
 
 **May 21, 2026 — graduated from M76_001 §8.** Captain ack: "Ship API Keys + Theme Toggle + Avatar all into this PR" — account deletion splits out (backend-heavy + billing-policy decision + auth-surface coordination). The §8 design-of-record is carried forward below verbatim so nothing is lost.
 
