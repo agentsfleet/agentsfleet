@@ -56,7 +56,6 @@ function helpTail(): string {
     "  ZOMBIE_API_KEY                  API key for service auth",
     "  ZOMBIE_STATE_DIR                Directory for local CLI state files",
     "  NO_COLOR                        Any non-empty value disables color",
-    "  ZOMBIE_PROGRESS_STYLE           Progress spinner style (default | dotmatrix)",
     "  ZOMBIE_TELEMETRY_DISABLED       Set to 1 to opt out of analytics + tracing",
     "  DO_NOT_TRACK                    Set to 1 to opt out (industry-standard signal)",
     "  ZOMBIE_TELEMETRY_POSTHOG_KEY    Override the PostHog project key",
