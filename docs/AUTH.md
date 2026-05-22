@@ -173,10 +173,15 @@ sequenceDiagram
 
     alt direct token — resolveDirectToken: --token flag > ZOMBIE_TOKEN env > piped stdin (non-TTY)
         Note over CLI: first source wins; no browser, no session_id
-        CLI->>API: GET /v1/me   (validate-first)
-        API-->>CLI: 200
-        CLI->>CLI: write { token, token_name } → credentials.json<br/>(0o600, session_id: null)
-        CLI-->>User: "logged in" — an invalid token persists nothing
+        CLI->>API: GET /v1/me   (validate-first — before any write)
+        alt token valid
+            API-->>CLI: 200
+            CLI->>CLI: write { token, token_name } → credentials.json<br/>(0o600, session_id: null)
+            CLI-->>User: "logged in" (no browser)
+        else token invalid
+            API-->>CLI: 4xx
+            CLI-->>User: error — exit ≠ 0, credentials.json untouched
+        end
     else interactive device flow — TTY, no direct token
         Note over CLI: generate (cli_priv, cli_pub) via crypto.subtle<br/>default token_name = platform family<br/>("macos-cli" / "linux-cli" / "windows-cli")
 
@@ -211,9 +216,15 @@ sequenceDiagram
         Note over CLI: shared = cli_priv × dashboard_public_key<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>jwt = AES-256-GCM-decrypt(ciphertext, key, nonce)
 
         CLI->>CLI: write { token, token_name } → credentials.json (0o600)
-        CLI->>API: GET /v1/me   (post-write validation ping; rollback on 401)
-        API-->>CLI: 200
-        CLI-->>User: "logged in as {token_name}"
+        CLI->>API: GET /v1/me   (post-write validation ping)
+        alt ping ok
+            API-->>CLI: 200
+            CLI-->>User: "logged in as {token_name}"
+        else 401 / network error
+            API-->>CLI: 401
+            CLI->>CLI: rollback — delete credentials.json
+            CLI-->>User: error — exit ≠ 0
+        end
     end
 ```
 
