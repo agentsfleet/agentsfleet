@@ -93,8 +93,8 @@
 | `src/runner/loopback_client.zig` | CREATE | the client the flag-gated skeleton uses to call the mothership over loopback |
 | `src/http/handlers/runner/{register,heartbeat,lease,report}.zig` | CREATE | the four handlers; non-skeleton verbs return declared not-implemented |
 | `schema/021_core_runners.sql` | CREATE | `core.runners` table (identity, token hash, sandbox_tier, labels, last_seen, status) |
-| `schema/022_zombie_sessions_runner_affinity.sql` | CREATE | ALTER `core.zombie_sessions` add nullable `last_runner_id` sticky-routing hint |
-| `schema/embed.zig` | EDIT | append `021` + `022` to the migration array (shared conflict point — pre-claimed here) |
+| `schema/008_core_zombie_sessions.sql` | EDIT | add nullable `last_runner_id` sticky-routing hint inline (no FK) — pre-v2.0 teardown gate forbids a `022` ALTER (see Discovery) |
+| `schema/embed.zig` | EDIT | append `021` to the migration array (shared conflict point — pre-claimed here) |
 | `src/http/route_table.zig`, `src/http/router.zig` | EDIT | register `/v1/runner/*` (shared conflict point — pre-claimed here) |
 | `build.zig` | EDIT | add the `zombie-runner` executable target skeleton (shared conflict point — pre-claimed here) |
 | `src/errors/error_registry.zig` | EDIT | declare `UZ-RUN-*` codes |
@@ -264,6 +264,14 @@ N/A — no files deleted. The direct worker path is retained until the M80 cutov
 > Empty at creation. Append consults, skill-chain outcomes, and Indy-acked deferral quotes as work proceeds.
 
 - **Provenance:** decisions D1–D5 from the plan-eng-review session (May 21–22 2026) — staged contract-first fan-out, trusted-fleet (`inline`) secrets, name `zombie-runner`, event-leasing + sticky routing. See memory `project_zombie_runner_split_architecture`.
+
+- **Fan-out gate (Indy, May 22, 2026):** chose the **freeze gate** over the validate gate. The four parallel streams (M80_002–005) unblock the moment the *freeze* lands (frozen contract types + schema `021`/`022` + the three shared-file stubs), not after the loopback skeleton validates the contract. Tradeoff accepted: the streams build against a not-yet-validated contract until the skeleton lands; if the skeleton forces a contract change, the streams absorb it. Delivery therefore splits into two PRs (one spec, park-midway): **PR #1 = §1 + §2 (freeze + stubs)**; **PR #2 = §3 + §4 (loopback skeleton)**.
+
+- **Comprehension handshake (PLAN, before EXECUTE):** intent restated — freeze + pre-claim the shared files now (PR #1); *prove* one zombie over loopback in PR #2. Matches the spec Intent; the "prove" half moves to the follow-on PR per the freeze-gate decision above. `ASSUMPTIONS I'M MAKING:` (1) stub handlers parse their request type and return a declared `UZ-RUN-*` not-implemented error (reachable + tested → NDC) — real register/lease/report logic is PR #2; (2) the nullable sticky-routing hint `last_runner_id` is added to `core.zombie_sessions` (folded inline into `008` per the pre-v2.0 teardown gate — see Discovery); (3) wire constants are single-sourced in Zig for the freeze (no TS consumer exists yet — the TS mirror + verbatim-match lands with the first TS client); (4) loopback transport in §3 is real HTTP over `127.0.0.1` through the router — firmed in PR #2.
+
+- **`core.runners.tenant_id` optional scope — INCLUDED (Indy, May 22, 2026).** I initially proposed omitting the nullable tenant-scope column (spec's column list omits it; additive ALTER would make it cheap later). Indy directed including it: pre-ship there is no production-data migration cost and no live always-NULL column to look speculative, and `runner_fleet.md` explicitly commits the optional tenant scope in S0 so modes C/B needn't re-cut the table. Added as `tenant_id UUID NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE`; stays NULL (trusted-fleet, mode inline) until the per-tenant-scoped mode wires it.
+
+- **`last_runner_id` folded inline into `008` — `022` ALTER removed (Indy, May 22, 2026).** `check-schema-gate` (`make/quality.mk` `_schema_gate_check`) forbids `ALTER TABLE`/`DROP` in `schema/*.sql` while VERSION major < 2 (we are at 0.37.0) — the pre-v2.0 teardown convention. The `022` ALTER would fail that gate, so the hint column is added inline to `008_core_zombie_sessions.sql` (sanctioned pre-ship: "free to update existing SQL"). It carries **no FK** — its target `core.runners` is a later migration than `008`, so a FK there would dangle at apply time; referential integrity + stale-hint clearing move to app code (the repo's value-enforced-in-app convention; the hint is best-effort anyway). I had defended `022`-as-ALTER on FK-ordering grounds; that was wrong — the gate forbids the ALTER regardless, and dropping the FK resolves the ordering cleanly.
 
 ---
 
