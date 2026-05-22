@@ -24,7 +24,6 @@ import {
 } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
 import { Output } from "../src/services/output.ts";
-import { Spinner } from "../src/services/spinner.ts";
 import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
@@ -110,15 +109,6 @@ const credentialsLayer = (
 
 const browserLayer: Layer.Layer<Browser> = Layer.succeed(Browser, {
   open: () => Effect.succeed(true),
-});
-
-const spinnerLayer: Layer.Layer<Spinner> = Layer.succeed(Spinner, {
-  start: () =>
-    Effect.succeed({
-      succeed: () => Effect.void,
-      fail: () => Effect.void,
-      stop: Effect.void,
-    }),
 });
 
 const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(Workspaces, {
@@ -213,7 +203,6 @@ const provideAll = (
       Effect.provide(outputLayer(rec)),
       Effect.provide(credentialsLayer(fileToken)),
       Effect.provide(browserLayer),
-      Effect.provide(spinnerLayer),
       Effect.provide(workspacesLayer),
       Effect.provide(analyticsLayer),
       Effect.provide(config),
@@ -352,7 +341,6 @@ describe("loginEffect — cancel at the code prompt", () => {
         Effect.provide(outputLayer(rec)),
         Effect.provide(recordingCreds),
         Effect.provide(browserLayer),
-        Effect.provide(spinnerLayer),
         Effect.provide(workspacesLayer),
         Effect.provide(analyticsLayer),
         Effect.provide(configLayer),
@@ -451,7 +439,6 @@ describe("loginEffect — non-interactive direct-token path", () => {
         Effect.provide(outputLayer(rec)),
         Effect.provide(layers.creds),
         Effect.provide(layers.browser),
-        Effect.provide(spinnerLayer),
         Effect.provide(workspacesLayer),
         Effect.provide(analyticsLayer),
         Effect.provide(configLayer),

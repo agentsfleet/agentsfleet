@@ -22,7 +22,6 @@ import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
-import { createSpinner } from "./ui-progress.ts";
 import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
@@ -99,7 +98,6 @@ function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): s
 function buildDeps(): CommandDeps {
   return {
     clearCredentials,
-    createSpinner,
     loadCredentials,
     newIdempotencyKey,
     openUrl,

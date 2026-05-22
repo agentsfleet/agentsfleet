@@ -27,7 +27,6 @@ import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
 import { Output } from "../src/services/output.ts";
-import { Spinner } from "../src/services/spinner.ts";
 import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
@@ -236,15 +235,6 @@ const browserLayer = (rec: Recorder): Layer.Layer<Browser> =>
       }),
   });
 
-const spinnerLayer: Layer.Layer<Spinner> = Layer.succeed(Spinner, {
-  start: () =>
-    Effect.succeed({
-      succeed: () => Effect.void,
-      fail: () => Effect.void,
-      stop: Effect.void,
-    }),
-});
-
 const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(Workspaces, {
   load: Effect.succeed({ current_workspace_id: null, items: [] }),
   save: () => Effect.void,
@@ -317,7 +307,6 @@ describe("login acceptance — full device flow end-to-end", () => {
       Effect.provide(outputLayer(rec)),
       Effect.provide(credentialsLayer(rec)),
       Effect.provide(browserLayer(rec)),
-      Effect.provide(spinnerLayer),
       Effect.provide(workspacesLayer),
       Effect.provide(analyticsLayer(rec)),
       Effect.provide(configLayer),
@@ -369,7 +358,6 @@ const runLogin = (
     Effect.provide(outputLayer(rec)),
     Effect.provide(credentialsLayer(rec)),
     Effect.provide(browserLayer(rec)),
-    Effect.provide(spinnerLayer),
     Effect.provide(workspacesLayer),
     Effect.provide(analyticsLayer(rec)),
     Effect.provide(makeConfig(opts.jsonMode ?? false)),
