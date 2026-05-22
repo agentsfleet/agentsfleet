@@ -239,6 +239,24 @@ describe("loginEffect — pre-flight aborts", () => {
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
   });
 
+  test("non-TTY stdin + existing credential + no --force aborts loudly (never reads the piped token as a Y/n answer)", async () => {
+    // Regression: idempotencyCheck must treat a piped (non-TTY) stdin like
+    // --no-input. Otherwise the replace-prompt consumes the piped token as
+    // its answer and `echo $TOKEN | zombiectl login` silently fails to
+    // re-auth on a machine that already has a credential.
+    const rec = makeRec();
+    const exit = await Effect.runPromiseExit(
+      provideAll(
+        rec,
+        noNetworkHttp,
+        Option.some(Redacted.make("preexisting-token")),
+        configLayer,
+        stdinPiped("piped-token-not-a-prompt-answer\n"),
+      )(loginEffect({ ...DEFAULT_FLAGS, force: false, noInput: false })),
+    );
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+  });
+
   test("verify --no-input aborts at the prompt with InterruptedError (exit 130)", async () => {
     const rec = makeRec();
     const exit = await Effect.runPromiseExit(

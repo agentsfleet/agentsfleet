@@ -176,12 +176,16 @@ const completeVerificationBranch = Effect.fnUntraced(function* (
 // AuthError from the device-flow helpers.
 const loginCore = Effect.fnUntraced(function* (flags: LoginFlags) {
   const config = yield* CliConfig;
+  const stdin = yield* Stdin;
 
   // Pre-flight (D20). idempotencyCheck refuses to overwrite an existing
   // credential without --force or a Y/yes prompt; --no-input aborts loudly
-  // instead of prompting so scripts don't silently clobber a token.
-  const preflightGuards = { force: flags.force, noInput: flags.noInput };
-  yield* idempotencyCheck(preflightGuards);
+  // instead of prompting so scripts don't silently clobber a token. A
+  // non-TTY stdin is a pipe carrying a token (resolveDirectToken's
+  // lowest-priority source), never a Y/n answer — treat it like --no-input
+  // so the piped token is never consumed as the replace-prompt response.
+  const noInput = flags.noInput || !stdin.isTTY;
+  yield* idempotencyCheck({ force: flags.force, noInput });
 
   // Non-interactive resolve (--token > ZOMBIE_TOKEN env > piped stdin)
   // ahead of the browser device flow. A directly-supplied token is
