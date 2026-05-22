@@ -168,49 +168,64 @@ sequenceDiagram
     participant API as Zig backend<br/>(api.usezombie.com)
     participant Clerk
 
-    User->>CLI: zombiectl login [--token-name LABEL]
-    Note over CLI: generate (cli_priv, cli_pub) via crypto.subtle<br/>default token_name = platform family<br/>("macos-cli" / "linux-cli" / "windows-cli")
+    User->>CLI: zombiectl login [--token <pat>] [--token-name LABEL]
+    Note over CLI: idempotencyCheck — refuse to overwrite an existing<br/>credential without --force. A non-TTY stdin counts as<br/>--no-input: it fails loudly rather than consuming a piped<br/>token as the replace-prompt answer.
 
-    CLI->>API: POST /v1/auth/sessions<br/>{ public_key: cli_pub, token_name }
-    API-->>CLI: 201 { session_id }
-    CLI-->>User: open https://app.usezombie.com/cli-auth/{session_id}
+    alt direct token — resolveDirectToken: --token flag > ZOMBIE_TOKEN env > piped stdin (non-TTY)
+        Note over CLI: first source wins; no browser, no session_id
+        CLI->>API: GET /v1/me   (validate-first — before any write)
+        alt token valid
+            API-->>CLI: 200
+            CLI->>CLI: write { token, token_name } → credentials.json<br/>(0o600, session_id: null)
+            CLI-->>User: "logged in" (no browser)
+        else token invalid
+            API-->>CLI: 4xx
+            CLI-->>User: error — exit ≠ 0, credentials.json untouched
+        end
+    else interactive device flow — TTY, no direct token
+        Note over CLI: generate (cli_priv, cli_pub) via crypto.subtle<br/>default token_name = platform family<br/>("macos-cli" / "linux-cli" / "windows-cli")
 
-    Note over CLI: poll with exp backoff (1s → 5s, ±20% jitter)<br/>+ live countdown "Session expires in MM:SS"<br/>+ single-blip tolerance
+        CLI->>API: POST /v1/auth/sessions<br/>{ public_key: cli_pub, token_name }
+        API-->>CLI: 201 { session_id }
+        CLI-->>User: open https://app.usezombie.com/cli-auth/{session_id}
 
-    User->>UI: open verify URL in browser
-    Note over UI: Clerk session validates (__session cookie)
-    UI->>API: GET /v1/auth/sessions/{id}
-    API-->>UI: { status: pending, cli_public_key, token_name }
-    UI-->>User: "Approve CLI login for {token_name}?"
-    User->>UI: click Approve
+        Note over CLI: prompt "Verification code:" immediately — no polling.<br/>Possessing the code implies the dashboard approved.<br/>6-digit shape validated client-side (bad input re-prompts,<br/>no round-trip); SIGINT / EOF → exit 130, nothing persisted.
 
-    UI->>Clerk: POST /tokens (template: api)<br/>+ __session cookie
-    Clerk-->>UI: { user-jwt }
+        User->>UI: open verify URL in browser
+        Note over UI: Clerk session validates (__session cookie)
+        UI->>API: GET /v1/auth/sessions/{id}
+        API-->>UI: { status: pending, cli_public_key, token_name }
+        UI-->>User: "Approve CLI login for {token_name}?"
+        User->>UI: click Approve
 
-    Note over UI: generate (dash_priv, dash_pub)<br/>shared = dash_priv × cli_pub<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>ciphertext = AES-256-GCM(jwt, key, nonce)<br/>verification_code = random 6 digits (CSPRNG)
+        UI->>Clerk: POST /tokens (template: api)<br/>+ __session cookie
+        Clerk-->>UI: { user-jwt }
 
-    UI->>API: PATCH /v1/auth/sessions/{id}/approve<br/>{ dashboard_public_key, ciphertext, nonce, verification_code }<br/>Authorization: Bearer <user-jwt>
-    Note over API: server computes verification_code_hmac<br/>= HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, sid ‖ code)<br/>persists ciphertext + nonce + dash_pub + HMAC<br/>discards plaintext code<br/>state: pending → verification_pending
-    API-->>UI: 200
-    UI-->>User: "Type {verification_code} into your CLI"
+        Note over UI: generate (dash_priv, dash_pub)<br/>shared = dash_priv × cli_pub<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>ciphertext = AES-256-GCM(jwt, key, nonce)<br/>verification_code = random 6 digits (CSPRNG)
 
-    loop CLI poll
-        CLI->>API: GET /v1/auth/sessions/{id}
-        API-->>CLI: { status: verification_pending }
+        UI->>API: PATCH /v1/auth/sessions/{id}/approve<br/>{ dashboard_public_key, ciphertext, nonce, verification_code }<br/>Authorization: Bearer <user-jwt>
+        Note over API: server computes verification_code_hmac<br/>= HMAC-SHA256(AUTH_SESSION_CODE_PEPPER, sid ‖ code)<br/>persists ciphertext + nonce + dash_pub + HMAC<br/>discards plaintext code<br/>state: pending → verification_pending
+        API-->>UI: 200
+        UI-->>User: "Type {verification_code} into your CLI"
+
+        User->>CLI: types verification_code into the waiting prompt
+        CLI->>API: POST /v1/auth/sessions/{id}/verify<br/>{ verification_code }
+        Note over API: Lua-EVAL atomic transition:<br/>compare HMAC (constant-time);<br/>match → verification_pending → consumed<br/>in the same write; return payload
+        API-->>CLI: 200 { dashboard_public_key, ciphertext, nonce }
+
+        Note over CLI: shared = cli_priv × dashboard_public_key<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>jwt = AES-256-GCM-decrypt(ciphertext, key, nonce)
+
+        CLI->>CLI: write { token, token_name } → credentials.json (0o600)
+        CLI->>API: GET /v1/me   (post-write validation ping)
+        alt ping ok
+            API-->>CLI: 200
+            CLI-->>User: "logged in as {token_name}"
+        else 401 / network error
+            API-->>CLI: 401
+            CLI->>CLI: rollback — delete credentials.json
+            CLI-->>User: error — exit ≠ 0
+        end
     end
-
-    Note over CLI: prompt "Verification code:" (suppressed in --no-input)
-    User->>CLI: types verification_code
-    CLI->>API: POST /v1/auth/sessions/{id}/verify<br/>{ verification_code }
-    Note over API: Lua-EVAL atomic transition:<br/>compare HMAC (constant-time);<br/>match → verification_pending → consumed<br/>in the same write; return payload
-    API-->>CLI: 200 { dashboard_public_key, ciphertext, nonce }
-
-    Note over CLI: shared = cli_priv × dashboard_public_key<br/>key = HKDF-SHA256(shared, info="m74-002-v1")<br/>jwt = AES-256-GCM-decrypt(ciphertext, key, nonce)
-
-    CLI->>CLI: write { token, token_name } → credentials.json (0o600)
-    CLI->>API: GET /v1/me   (post-write validation ping)
-    API-->>CLI: 200
-    CLI-->>User: "logged in as {token_name}"
 ```
 
 Two facts the diagram pins:
@@ -248,7 +263,7 @@ Two facts the diagram pins:
 | Endpoint | Trusted actor | Auth |
 |---|---|---|
 | `POST /v1/auth/sessions` | unauthenticated CLI | rate-limited at edge — Cloudflare WAF, 10 / IP / min (L2) |
-| `GET /v1/auth/sessions/{id}` | unauthenticated CLI poll | CLI-honored backoff ≥ 750 ms; server does not enforce |
+| `GET /v1/auth/sessions/{id}` | unauthenticated dashboard fetch (renders the approve page) | no CLI poll — M74_003 dropped CLI polling; the CLI prompts for the code immediately. The dashboard reads the session once to show `token_name` |
 | `PATCH /v1/auth/sessions/{id}/approve` | dashboard JS process | Clerk JWT (`api` template) · per-Clerk-user backstop deferred post-launch — Clerk-edge per-IP on sign-in / sign-up (L1) bounds upstream identity supply |
 | `POST /v1/auth/sessions/{id}/verify` | CLI with the verification code | the code IS the auth · ≤5 attempts per session (Lua-internal, L3) |
 | `DELETE /v1/auth/sessions/{id}` | dashboard JS process | Clerk JWT · must match session's `clerk_user_id` |
@@ -790,7 +805,7 @@ Flow 1's protocol assumes the following deploy contract. Diverging from these tu
 | **Redis required** | `REDIS_URL` env must resolve to a single-node Redis reachable from every API pod (acceptable for dev / single-region prod) OR a Redis Sentinel / Cluster with ≥1 reachable primary per pod. In-memory session storage is **not** acceptable under any multi-pod topology. zombied fails fast on boot if `REDIS_URL` is unset. |
 | `maxmemory-policy allkeys-lfu` (recommended) | Under memory pressure, least-frequently-accessed session keys evict first. Deploy-time config, not enforced by code. |
 | Client-IP attribution | `src/auth/middleware/trusted_client_ip.zig` derives the client IP from two header signals — `X-Forwarded-For` (industry-standard, default attribution source) and `Fly-Client-IP` (Fly's authoritative single-value header, the trust anchor since Fly's proxy is the only path to zombied in any non-dev deploy and Fly strips client-supplied copies of its own header). When both are present we compare; agree → use XFF, disagree → flip to `Fly-Client-IP` + stamp `client_ip_divergent=true` in audit events (forgery signal). Local-dev / direct-internet → neither header → fall back to raw TCP peer. **No env / no allowlist** (Captain decision May 18 2026 — Q8 in spec). Per-IP rate-limit buckets and consume-idempotency fingerprints both consume the derived IP. |
-| **NTP-synced pod clocks** within ≤1s drift | Server-authoritative expiry uses a 30-second grace window over `expires_at_ms`; the CLI's countdown is informational only. Cross-pod drift >1s is a deploy bug. |
+| **NTP-synced pod clocks** within ≤1s drift | Server-authoritative expiry uses a 30-second grace window over `expires_at_ms`; expiry surfaces to the CLI at `POST /verify` (410), since M74_003 the CLI no longer polls or shows a countdown. Cross-pod drift >1s is a deploy bug. |
 | **Two peppers in Vault** | `AUTH_SESSION_CODE_PEPPER` (defeats offline brute-force of the verification code) and `AUDIT_LOG_PEPPER` (pseudonymizes `session_id` in the `.auth_audit` log scope) — both at `op://ops/ZMB_CD_{PROD,DEV,LOCAL_DEV}/{auth-session-code,audit-log}-pepper/credential`. Boot fails fast if either is missing. Provisioning is documented in `playbooks/001_bootstrap/001_playbook.md §1.3b`. |
 | **`.auth_audit` sink isolation** | The `.auth_audit` Zig log scope MUST route to a destination distinct from customer-visible logs — separate ACL, separate destination (e.g., security-team-only S3 bucket, separate Loki tenant, separate syslog facility). Deploy-side discipline, not enforced by code. |
 
@@ -1083,7 +1098,7 @@ Each of these is a real concern, named here so future agents and security-review
 | 4 | **Verification-code entropy uplift** — 6 digits (1M entries) → 8 alphanumeric in a TOTP-style segmented format (e.g. `X4K9-TQ`). ~37× entropy improvement; human-typability preserved. Hygiene, not correctness — the 5-attempt cap + 5-min TTL already caps brute-force success at 0.0005% per session-lifetime. | Future follow-up spec (no milestone yet). |
 | 5 | **Dashboard-JS-compromise hardening** — Sub-Resource Integrity (SRI) on the dashboard bundle, Content Security Policy (CSP) hardening, dependency-supply-chain pinning. Addresses Flow 1 *Threats this flow does NOT close* row 1. | Future spec (no milestone yet). |
 | 6 | **API-minted scoped access tokens** instead of raw Clerk-JWT transport — long-term the dashboard should not act as a Clerk-JWT broker; the API should mint its own scoped, short-lived access tokens (derived from a verified Clerk session) and the dashboard hands those to the CLI. Lets the API revoke server-side; supports per-CLI-install scopes. | Future spec (no milestone yet). v2.0 ships raw Clerk JWT transport for delivery speed; do not fossilize the choice. |
-| 7 | **Pub/sub for sub-second session-state push** — replaces the 1-5s CLI poll with a Redis pub/sub channel on `auth:session:{id}:state`. UX improvement, not behavior. | Tracked separately. |
+| 7 | **Pub/sub for sub-second session-state push** — *obsolete.* Would have replaced the 1-5s CLI poll with a Redis pub/sub channel on `auth:session:{id}:state`, but M74_003 dropped CLI polling entirely (the CLI prompts for the code immediately), so no CLI-side poll remains to optimize. | Closed — superseded by the M74_003 poll removal. |
 | 8 | **Hardware-backed CLI key storage** (TPM / Secure Enclave / WebAuthn / passkey) — closes Flow 1 *Threats this flow does NOT close* row 2 (malware on the CLI host). | Future spec (no milestone yet). |
 
 ---

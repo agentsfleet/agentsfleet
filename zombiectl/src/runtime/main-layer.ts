@@ -12,7 +12,7 @@
 //     also consumes CliConfig for telemetryPosthogKey/Host.
 //   - CommandRuntime is per-invocation; populated from MainLayerInput.commandPath
 //   - HttpClient consumes CliConfig
-//   - Output, Credentials, Browser, Workspaces, Spinner have no service deps
+//   - Output, Credentials, Browser, Workspaces have no service deps
 //
 // Two entry points:
 //   - `MainLayer` — defaults-only constant, used by callers that don't
@@ -41,7 +41,6 @@ import { Stdin, stdinLayer, stdinFromStreamLayer } from "../services/stdin.ts";
 import { Browser } from "../services/browser.service.ts";
 import { browserLayer } from "../services/browser.layer.ts";
 import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
-import { Spinner, spinnerLayer } from "../services/spinner.ts";
 import {
   CommandRuntime,
   commandRuntimeFromValuesLayer,
@@ -69,7 +68,6 @@ export type MainLayerServices =
   | HttpClient
   | Input
   | Output
-  | Spinner
   | Stdin
   | TelemetryRuntime
   | Workspaces;
@@ -125,7 +123,6 @@ export const mainLayerFor = (
     credentialsLayer,
     browserLayer,
     workspacesLayer,
-    spinnerLayer,
     inputLayer,
     stdinBase,
     commandRuntime,

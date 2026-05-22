@@ -67,20 +67,6 @@ export interface ParsedArgs {
 // Body returned by deps.request — commands narrow per-endpoint.
 export type ApiResponse = unknown;
 
-export interface SpinnerOptions {
-  enabled?: boolean | undefined;
-  stream?: NodeJS.WritableStream | null | undefined;
-  label?: string | undefined;
-  style?: string | undefined;
-}
-
-export interface SpinnerHandle {
-  start: () => void;
-  stop: (final?: string) => void;
-  succeed: (message?: string) => void;
-  fail: (message?: string) => void;
-}
-
 // The deps bag passed to every command. Shape matches buildDeps() in
 // src/cli.ts verbatim. writeError is widened to accept any subset of
 // CommandDeps that the call site assembles (some commands call it with
@@ -90,7 +76,6 @@ export interface SpinnerHandle {
 // goes through the Effect HttpClient service.
 export interface CommandDeps {
   clearCredentials: () => Promise<void> | void;
-  createSpinner: (options: SpinnerOptions) => SpinnerHandle;
   loadCredentials: () => Promise<Credentials> | Credentials;
   newIdempotencyKey: () => string;
   openUrl: (
