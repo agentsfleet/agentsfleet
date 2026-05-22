@@ -22,6 +22,14 @@ CREATE TABLE IF NOT EXISTS core.zombie_sessions (
     -- Active execution tracking (NULL = idle)
     execution_id         TEXT   NULL,
     execution_started_at BIGINT NULL,
+    -- Sticky-routing affinity hint (runner fleet): the runner that last executed
+    -- an event for this zombie, so the mothership can prefer a runner with a warm
+    -- executor session. NULL = no affinity (fresh zombie or evicted runner). No
+    -- FK — core.runners is a later migration; referential integrity and stale-hint
+    -- clearing are enforced in app code (assignment falls back to any eligible
+    -- runner). Best-effort only; correctness derives from context_json, never from
+    -- runner-local state.
+    last_runner_id       UUID   NULL,
     CONSTRAINT uq_zombie_sessions_zombie UNIQUE (zombie_id)
 );
 

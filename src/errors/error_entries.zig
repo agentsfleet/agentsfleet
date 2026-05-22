@@ -226,6 +226,15 @@ pub const ENTRIES = [_]Entry{
     e("UZ-STARTUP-007", .internal_server_error, "Redis group creation failed",
         "Redis connected but consumer group creation failed. " ++
         "Check Redis ACL permissions allow XGROUP CREATE."),
+    // ── RUNNER (zombie-runner /v1/runner control contract) ───────────────────
+    e("UZ-RUN-001", .unauthorized, "Invalid runner token",
+        "The Bearer runner_token is missing, malformed, or not recognized. Re-register the runner."),
+    e("UZ-RUN-002", .unauthorized, "Invalid enrollment token",
+        "The enrollment token is missing, expired, or invalid. Obtain a fresh enrollment token and retry register."),
+    e("UZ-RUN-003", .bad_request, "Unsupported secret delivery mode",
+        "The requested secret delivery mode is not supported. This deployment delivers secrets inline only."),
+    e("UZ-RUN-004", .not_implemented, "Runner endpoint not yet implemented",
+        "This /v1/runner endpoint is registered but not yet implemented. It lands in a later runner workstream."),
     // Runtime / execute-path entries (sandbox, executor, relay, credentials,
     // approval-gate, memory, api-keys, grants, tool/credential, proxy,
     // gate-execute) live in error_entries_runtime.zig and are concatenated

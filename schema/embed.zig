@@ -15,3 +15,4 @@ pub const tenant_billing_sql = @embedFile("017_tenant_billing.sql");
 pub const zombie_events_sql = @embedFile("018_zombie_events.sql");
 pub const model_caps_sql = @embedFile("019_model_caps.sql");
 pub const tenant_providers_sql = @embedFile("020_tenant_providers.sql");
+pub const core_runners_sql = @embedFile("021_core_runners.sql");
