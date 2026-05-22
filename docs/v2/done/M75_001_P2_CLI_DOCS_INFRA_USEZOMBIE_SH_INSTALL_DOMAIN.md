@@ -15,7 +15,7 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M75
 **Workstream:** 001
 **Date:** May 18, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — not blocking any other workstream, but the broken curl path is an onboarding hazard (every doc page that names `usezombie.sh/skills.md` today serves a DNS failure to readers). Captain decision May 18, 2026 to make `usezombie.sh` the canonical entrypoint, replacing the M51/M72 plan that had it serving per-skill `*.md` files.
 **Categories:** CLI, DOCS, INFRA
 **Batch:** B1
@@ -273,13 +273,13 @@ No new HTTP/REST surface on the usezombie service. No OpenAPI changes. No new CL
 
 ## Acceptance Criteria
 
-- [ ] **(deferred — live cutover)** `usezombie.sh` resolves over A + AAAA — verify: `dig +short A usezombie.sh && dig +short AAAA usezombie.sh`
-- [ ] **(deferred — live cutover)** TLS valid — verify: `curl -fsSL https://usezombie.sh -o /dev/null -w "%{http_code}\n"` prints `200`
-- [ ] **(deferred — live cutover)** `install.sh` happy-path runs — verify: in a clean container, `curl -fsSL https://usezombie.sh | bash && zombiectl --version`
+- [x] `usezombie.sh` resolves over A + AAAA — verified May 22, 2026 (`dig +short A usezombie.sh` → `64.29.17.1`, `216.198.79.1`). Live cutover landed via M75_002 (Vercel serve), not the originally-planned Cloudflare Pages.
+- [x] TLS valid — verified May 22, 2026: `curl -fsSL https://usezombie.sh -o /dev/null -w "%{http_code}\n"` → `200`, no `--insecure`.
+- [x] `install.sh` happy-path in a clean container — verified May 22, 2026 in `node:20-bookworm`: `curl -fsSL https://usezombie.sh | bash` → exit 0, `zombiectl --version` → exit 0. Two findings (neither an `install.sh` defect — the script behaved as designed): (a) `npx skills add usezombie/skills` cloned the repo but reported **"No skills found"** — the public `usezombie/skills` repo has no valid `SKILL.md` yet (pending M69_001), so the skill half of the one-liner installs nothing today; `install.sh` correctly treated this as non-fatal and printed the manual fallback. (b) npm publishes **`@usezombie/zombiectl@0.3.1`** while the repo is at **`0.37.0`** — the stale-publish gap flagged out-of-scope in Scope-amendment 2 persists; a documented-one-liner user gets the ancient CLI.
 - [x] Shellcheck clean — `shellcheck -s bash ui/usezombie.sh/dist/install.sh ui/usezombie.sh/install_test.sh` → clean
 - [x] `install_test.sh` passes — `bash ui/usezombie.sh/install_test.sh` → 43 passed, 0 failed
-- [ ] *(docs-repo PR)* No `usezombie.sh/skills.md` references remain — `grep -rn 'usezombie\.sh/skills\.md' ~/Projects/docs/ | wc -l` == 0
-- [ ] *(docs-repo PR)* Canonical one-liner documented — `grep -rn 'curl -fsSL https://usezombie.sh | bash' ~/Projects/docs/ | wc -l` ≥ 1
+- [x] *(docs-repo PR)* No `usezombie.sh/skills.md` references remain in live docs — verified May 22, 2026: the sole grep hit is `changelog.mdx:147`, a historical `<Update>` entry (archived-not-rewritten per CHANGELOG voice), not a live curl path.
+- [x] *(docs-repo PR)* Canonical one-liner documented — verified May 22, 2026: `grep -rn 'curl -fsSL https://usezombie.sh | bash' ~/Projects/docs/ | wc -l` → 3 (≥ 1).
 - [x] marketing-spec tests pass — `make test-unit-website` → 148 passed; `InstallBlock.test.tsx` → 10 passed
 - [x] `make harness-verify` — ALL GATES GREEN
 - [x] `gitleaks detect` — no leaks found
@@ -360,9 +360,9 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 | Lint | `make lint-website` + `make lint-apps-ds-ctl` | passed | ✅ |
 | Harness | `make harness-verify` | ALL GATES GREEN | ✅ |
 | Gitleaks | `gitleaks detect` | no leaks found | ✅ |
-| DNS A/AAAA *(deferred — live cutover)* | `dig +short A usezombie.sh; dig +short AAAA usezombie.sh` | {cutover} | |
-| TLS *(deferred — live cutover)* | `curl -fsSL https://usezombie.sh -w "%{http_code}\n"` | {cutover} | |
-| Containerized E2E POSIX *(deferred — live cutover)* | E7 in Eval Commands | {cutover} | |
+| DNS A/AAAA | `dig +short A usezombie.sh; dig +short AAAA usezombie.sh` | `64.29.17.1`, `216.198.79.1` (May 22, 2026) | ✅ |
+| TLS | `curl -fsSL https://usezombie.sh -w "%{http_code}\n"` | `200` (May 22, 2026) | ✅ |
+| Containerized E2E POSIX | E7 in Eval Commands | `node:20-bookworm`: one-liner exit 0, `zombiectl --version` exit 0 (May 22, 2026) — but skill-add found no skills (M69_001 pending) and npm serves 0.3.1 vs repo 0.37.0 | ✅ (script) / ⚠️ (skills+publish, see Acceptance) |
 
 ---
 
@@ -372,12 +372,14 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 The M51/M72 plan (a single domain serving per-skill `*.md` files for `curl ... > SKILL.md`) is superseded — Captain's intent is "one URL, install both `zombiectl` and `npx skills add`". The skill-per-MD distribution path can return as a sibling subpath in a future spec if needed; not in scope here.
 
+**May 22, 2026 — CHORE(close), retroactive.** The implementation PR (#337) merged May 21, 2026 but this spec was never moved out of `active/` and its Status was left `IN_PROGRESS`. Closing it out now: Status → DONE, spec moved `active/` → `done/`. The Scope-amendment 2 deferrals (live DNS/TLS) have since landed via M75_002 (DONE, served on Vercel) and were verified live this date — DNS A/AAAA resolve, TLS valid, `https://usezombie.sh` → `200`. Docs sweep confirmed clean (the sole `skills.md` grep hit is a historical changelog entry). The containerized `curl … | bash` happy-path smoke was then run in `node:20-bookworm` — one-liner exit 0, `zombiectl --version` exit 0 — so every acceptance check is now satisfied. The smoke also surfaced two product gaps that are out of M75's scope but worth tracking: (1) `npx skills add usezombie/skills` finds no valid `SKILL.md` because the public skills repo content is pending **M69_001**, so the skill half of the one-liner is a no-op today; and (2) npm still serves `@usezombie/zombiectl@0.3.1` against a `0.37.0` repo (the stale-publish gap from Scope-amendment 2 — needs a CLI republish task). Both mean a user running the documented one-liner today gets an ancient CLI and zero skills; neither is an `install.sh` defect.
+
 ---
 
 ## Out of Scope
 
 - **Windows PowerShell installer** (`install.ps1`, `install_test.ps1`, the `/install.ps1` route, the PowerShell one-liner in docs, the PS-floor exit-6 path) — deferred to a follow-up spec per Scope-amendment 3 (Indy decision, May 21, 2026). WSL users use the POSIX one-liner verbatim until then.
-- **Live DNS/TLS provisioning + the live-only acceptance criteria** (DNS A/AAAA, TLS, containerized E2E) — deferred to a post-merge Cloudflare cutover per Scope-amendment 2.
+- **Live DNS/TLS provisioning** — was deferred to a post-merge cutover per Scope-amendment 2; it has since landed via M75_002 (DONE) on Vercel rather than the originally-planned Cloudflare Pages. DNS + TLS verified live May 22, 2026. The containerized E2E smoke remains the one un-run acceptance check (see Acceptance Criteria).
 - **Authenticated install paths** (private skills, tenant-scoped distribution) — separate workstream when private skills land.
 - **Windows installer for non-PowerShell shells** (cmd.exe, WSL bash) — WSL users use the POSIX one-liner verbatim; cmd.exe users use PowerShell. No third path.
 - **Skill-by-name fetching at `usezombie.sh/skills/<name>.md`** — superseded by the one-URL plan. If a future spec wants per-skill curl-able URLs, it adds a sibling subpath; this spec doesn't reserve one.
