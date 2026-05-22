@@ -169,7 +169,7 @@ describe("captureLoginCompleted", () => {
   test("token with sub claim → alias + identify + saveDistinctId writes telemetry.json", async () => {
     const rec = makeRecorder();
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_abc", tokenWithSub("user-distinct-9")).pipe(
+      captureLoginCompleted("sess_abc", tokenWithSub("user-distinct-9"), "browser").pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),
@@ -199,7 +199,7 @@ describe("captureLoginCompleted", () => {
       }),
     );
     const exit = await Effect.runPromiseExit(
-      captureLoginCompleted("sess_xyz", tokenWithoutSub()).pipe(
+      captureLoginCompleted("sess_xyz", tokenWithoutSub(), "token").pipe(
         Effect.provide(analyticsLayer(rec)),
         Effect.provide(telemetryRuntime),
       ),

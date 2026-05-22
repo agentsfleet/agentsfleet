@@ -201,7 +201,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // (mirrors supabase). No session file maintained here.
   // D26: TTY-priority — interactive shells let an env-var the operator
   // just exported beat a possibly-stale credentials.json; scripted runs
-  // prefer the on-disk credential. ZMB_TOKEN > ZOMBIE_TOKEN within env.
+  // prefer the on-disk credential.
   const stdinSrc = io.stdin ?? process.stdin;
   const resolvedAuth = resolveAuthTokenForCli({
     fileToken: creds.token ?? null,
@@ -228,6 +228,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     // smaller honest seam.
     stdout: stdout as unknown as NodeJS.WritableStream,
     stderr: stderr as unknown as NodeJS.WritableStream,
+    stdin: stdinSrc,
     env,
     fetchImpl,
   };
