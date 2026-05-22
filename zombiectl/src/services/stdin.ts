@@ -28,11 +28,29 @@ export class Stdin extends Context.Service<Stdin, StdinShape>()(
 const readStreamToEnd = (stream: NodeJS.ReadableStream): Promise<string> =>
   new Promise<string>((resolve, reject) => {
     const chunks: Buffer[] = [];
-    stream.on("data", (chunk: Buffer | string) =>
-      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk),
-    );
-    stream.once("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    stream.once("error", reject);
+    const onData = (chunk: Buffer | string): void => {
+      chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    };
+    // Remove every listener on settle. `data` is registered with `on`, and
+    // the `once` end/error pair only self-removes the handler that fires —
+    // the others linger and trip MaxListenersExceededWarning if the stream
+    // outlives one read (long-lived streams, test harnesses).
+    const cleanup = (): void => {
+      stream.removeListener("data", onData);
+      stream.removeListener("end", onEnd);
+      stream.removeListener("error", onError);
+    };
+    const onEnd = (): void => {
+      cleanup();
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    };
+    const onError = (err: Error): void => {
+      cleanup();
+      reject(err);
+    };
+    stream.on("data", onData);
+    stream.once("end", onEnd);
+    stream.once("error", onError);
   });
 
 export const makeLive = (stream: NodeJS.ReadableStream = process.stdin): StdinShape => ({
