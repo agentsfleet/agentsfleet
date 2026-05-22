@@ -29,7 +29,6 @@ import {
   type CliKeypair,
 } from "../lib/cli-flow.ts";
 import { AUTH_SESSIONS_PATH } from "../lib/api-paths.ts";
-import { CliConfig } from "../services/config.ts";
 import { Credentials } from "../services/credentials.ts";
 import { HttpClient } from "../services/http-client.ts";
 import { Input } from "../services/input.ts";
@@ -43,18 +42,14 @@ import {
   type ServerError,
 } from "../errors/index.ts";
 import type {
-  PollOutcome,
   SessionCreatedResponse,
-  SessionStatusResponse,
   VerifySuccessResponse,
 } from "./login-device-flow-types.ts";
 
-const MIN_POLL_MS = 500;
-
-// Wrong-code budget for the interactive verify prompt. A malformed code
-// (UZ-AUTH-018) is a re-enterable typo and does NOT spend a strike; only a
-// wrong code (UZ-AUTH-011 → VerificationFailedError) does. Separate from the
-// server's session-level MAX_VERIFY_ATTEMPTS (5) cap.
+// Wrong-code budget for the interactive verify prompt. Only a wrong code
+// (UZ-AUTH-011 → VerificationFailedError) spends a strike; the 6-digit shape
+// is validated client-side before submit, so a malformed code never reaches
+// the server. Separate from the server's session-level MAX_VERIFY_ATTEMPTS (5).
 const MAX_CLI_VERIFY_ATTEMPTS = 2;
 
 // Server code for a malformed verification code (not 6 digits). Identifier
@@ -64,14 +59,10 @@ const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 // Re-export the device-flow wire shapes + platform default from their sibling
 // module so existing consumers (login.ts, tests) keep importing them from here.
 export type {
-  PollOutcome,
   SessionCreatedResponse,
-  SessionStatusResponse,
   VerifySuccessResponse,
 };
 export { defaultTokenName } from "./login-device-flow-types.ts";
-
-const ZMB_TOKEN_ENV_KEYS = ["ZMB_TOKEN", "ZOMBIE_TOKEN"] as const;
 
 const noInputAbort = (detail: string): InterruptedError =>
   new InterruptedError({
@@ -81,14 +72,15 @@ const noInputAbort = (detail: string): InterruptedError =>
 
 // Reads stdin via Input.readLine and returns true on y/Y/yes/<empty>.
 // The empty-string default biases toward "Yes" because the calling
-// prompts (D20 replace-existing, D26b env-var notice) treat continuing
-// as the safe choice — the user has to type "n" to abort.
+// prompt (D20 replace-existing) treats continuing as the safe choice —
+// the user has to type "n" to abort.
 const promptYesNo = (
   question: string,
 ): Effect.Effect<boolean, never, Input | Output> =>
   Effect.gen(function* () {
     const input = yield* Input;
     const raw = yield* input.readLine(`${question} [Y/n] `);
+    if (raw === null) return false; // EOF / canceled → don't proceed
     const trimmed = raw.trim().toLowerCase();
     return trimmed === "" || trimmed === "y" || trimmed === "yes";
   });
@@ -124,49 +116,6 @@ export const idempotencyCheck = (
     }
   });
 
-// D26b — surface a notice when ZMB_TOKEN / ZOMBIE_TOKEN is set in the
-// environment. The login flow only writes credentials.json; env-var
-// tokens are out-of-band and take precedence on interactive shells, so
-// the operator may run `zombiectl login` expecting it to "fix"
-// authentication and be confused when the env-var token keeps winning.
-// Read process.env directly — CliConfig.accessToken is the *resolved*
-// token (could be from creds.json or env), we want to know specifically
-// whether the env variant was set.
-const envTokenKeysSet = (): readonly string[] =>
-  ZMB_TOKEN_ENV_KEYS.filter((k) => typeof process.env[k] === "string" && process.env[k] !== "");
-
-export const envTokenAwareness = (
-  opts: { readonly force: boolean; readonly noInput: boolean },
-  envKeysSetFn: () => readonly string[] = envTokenKeysSet,
-): Effect.Effect<void, CliError, CliConfig | Input | Output> =>
-  Effect.gen(function* () {
-    const keysSet = envKeysSetFn();
-    if (keysSet.length === 0) return;
-    const config = yield* CliConfig;
-    if (config.jsonMode) return;
-    const output = yield* Output;
-    const list = keysSet.join(" / ");
-    yield* output.warn(
-      `${list} is set in your environment — on interactive shells it takes precedence over credentials.json.\n  ` +
-        "`zombiectl login` only replaces credentials.json; your env-var token is unaffected.",
-    );
-    if (opts.force) return;
-    if (opts.noInput) {
-      return yield* Effect.fail(
-        noInputAbort(`${list} is set; login would not change which token wins on this shell`),
-      );
-    }
-    const proceed = yield* promptYesNo("Continue with login anyway?");
-    if (!proceed) {
-      return yield* Effect.fail(
-        new InterruptedError({
-          detail: "login aborted — env-var token left in place",
-          suggestion: `unset ${list} or re-run with --force`,
-        }),
-      );
-    }
-  });
-
 export const buildLoginUrl = (dashboardUrl: string, sessionId: string): string =>
   `${dashboardUrl.replace(/\/$/, "")}/cli-auth/${encodeURIComponent(sessionId)}`;
 
@@ -182,16 +131,6 @@ export const createSession = (
       path: AUTH_SESSIONS_PATH,
       method: "POST",
       body: { public_key: publicKeyBase64Url, token_name: tokenName },
-    });
-  });
-
-export const pollSessionStatus = (
-  sessionId: string,
-): Effect.Effect<SessionStatusResponse, NetworkError | ServerError, HttpClient> =>
-  Effect.gen(function* () {
-    const http = yield* HttpClient;
-    return yield* http.request<SessionStatusResponse>({
-      path: `${AUTH_SESSIONS_PATH}/${encodeURIComponent(sessionId)}`,
     });
   });
 
@@ -244,46 +183,36 @@ export const mapVerifyFailure = (err: CliError): CliError => {
   });
 };
 
-// Poll loop. Returns when status flips to verification_pending, when the
-// server-side TTL expires, or when the local deadline is reached. SIGINT
-// surfaces as `interrupted`.
-export const pollUntilVerificationPending = (
-  sessionId: string,
-  flags: { readonly deadline: number; readonly pollMs: number },
-  abort: AbortSignal,
-): Effect.Effect<PollOutcome, CliError, HttpClient> =>
-  Effect.gen(function* () {
-    const pollIntervalMs = Math.max(MIN_POLL_MS, flags.pollMs);
-    while (Date.now() < flags.deadline) {
-      if (abort.aborted) return { status: "interrupted" } as PollOutcome;
-      const latest = yield* pollSessionStatus(sessionId).pipe(
-        Effect.map((r) => ({ kind: "ok" as const, value: r })),
-        Effect.catchTag("ServerError", (err) => {
-          // 404 = the session row is gone (TTL-evicted or deleted) mid-poll;
-          // 410 = explicit terminal expiry. Both mean "stop polling, expired"
-          // rather than surfacing a hard transport error to the operator.
-          if (err.status === 410 || err.status === 404) {
-            return Effect.succeed({ kind: "expired" as const });
-          }
-          return Effect.fail(err);
-        }),
-      );
-      if (latest.kind === "expired") return { status: "expired" } as PollOutcome;
-      if (latest.value.status === "verification_pending") {
-        return { status: "verification_pending" } as PollOutcome;
-      }
-      yield* Effect.sleep(`${pollIntervalMs} millis`);
-    }
-    return (abort.aborted ? { status: "interrupted" } : { status: "timeout" }) as PollOutcome;
-  });
+// Prompt for the 6-digit code, validating its shape client-side so an
+// empty Enter or a non-6-digit typo re-prompts locally — no wasted /verify
+// round-trip. A null read (EOF / Ctrl-D, or SIGINT via `signal`) is a clean
+// cancel, not a re-prompt loop.
+const VERIFICATION_CODE_RE = /^\d{6}$/;
 
-const promptVerificationCode: Effect.Effect<string, never, Input | Output> =
+const promptVerificationCode = (
+  signal?: AbortSignal,
+): Effect.Effect<string, InterruptedError, Input | Output> =>
   Effect.gen(function* () {
     const input = yield* Input;
     const output = yield* Output;
     yield* output.info("");
-    const raw = yield* input.readLine("Enter the 6-digit verification code shown in your browser: ");
-    return raw.trim();
+    for (;;) {
+      const raw = yield* input.readLine(
+        "Enter the 6-digit verification code shown in your browser: ",
+        signal,
+      );
+      if (raw === null) {
+        return yield* Effect.fail(
+          new InterruptedError({
+            detail: "login canceled",
+            suggestion: "re-run `zombiectl login` and enter the code shown in your browser",
+          }),
+        );
+      }
+      const code = raw.trim();
+      if (VERIFICATION_CODE_RE.test(code)) return code;
+      yield* output.warn("that isn't a 6-digit code — enter the 6 digits shown in your browser");
+    }
   });
 
 const verifyAndDecrypt = (
@@ -298,17 +227,18 @@ const verifyAndDecrypt = (
     return yield* decryptIssuedToken(keypair, response);
   });
 
-// Interactive code submission. A wrong code (UZ-AUTH-011) spends one of
-// MAX_CLI_VERIFY_ATTEMPTS strikes; a malformed code (UZ-AUTH-018) is a typo
-// the operator re-enters, costing no strike. DecryptError and terminal-state
-// ServerErrors propagate without retry — those signal protocol or session
-// breakage, not a human typo. --no-input aborts before any prompt — the
-// verification code is a human-readable per-flow secret typed into the
-// terminal; non-interactive shells have no way to supply it.
+// Interactive code submission. The 6-digit shape is validated client-side
+// (promptVerificationCode), so only a wrong code (UZ-AUTH-011 →
+// VerificationFailedError) reaches here and spends one of
+// MAX_CLI_VERIFY_ATTEMPTS strikes. DecryptError and terminal-state
+// ServerErrors (410 expired/aborted) propagate without retry — protocol or
+// session breakage, not a human typo. SIGINT/EOF at the prompt surfaces as
+// InterruptedError. --no-input aborts before any prompt — the verification
+// code is a human-typed per-flow secret with no non-interactive source.
 export const verifyAndDecryptWithRetry = (
   sessionId: string,
   keypair: CliKeypair,
-  opts: { readonly noInput: boolean } = { noInput: false },
+  opts: { readonly noInput: boolean; readonly signal?: AbortSignal } = { noInput: false },
 ): Effect.Effect<string, CliError, HttpClient | Input | Output> =>
   Effect.gen(function* () {
     if (opts.noInput) {
@@ -322,23 +252,14 @@ export const verifyAndDecryptWithRetry = (
     const output = yield* Output;
     let strikesLeft = MAX_CLI_VERIFY_ATTEMPTS;
     for (;;) {
-      const code = yield* promptVerificationCode;
+      const code = yield* promptVerificationCode(opts.signal);
       const attempt = yield* verifyAndDecrypt(sessionId, keypair, code).pipe(
         Effect.map((token) => ({ kind: "ok" as const, token })),
         Effect.catchTag("VerificationFailedError", (err) =>
           Effect.succeed({ kind: "wrong" as const, err }),
         ),
-        Effect.catchTag("ServerError", (err) =>
-          err.code === ERR_INVALID_VERIFICATION_CODE
-            ? Effect.succeed({ kind: "malformed" as const })
-            : Effect.fail(err),
-        ),
       );
       if (attempt.kind === "ok") return attempt.token;
-      if (attempt.kind === "malformed") {
-        yield* output.warn("that isn't a 6-digit code — check the digits and try again");
-        continue;
-      }
       strikesLeft -= 1;
       if (strikesLeft <= 0) return yield* Effect.fail(attempt.err);
       yield* output.warn("verification code didn't match — one more try");

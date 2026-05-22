@@ -37,6 +37,7 @@ import {
 import { Credentials, credentialsLayer } from "../services/credentials.ts";
 import { HttpClient, httpClientLayer } from "../services/http-client.ts";
 import { Input, inputLayer } from "../services/input.ts";
+import { Stdin, stdinLayer, stdinFromStreamLayer } from "../services/stdin.ts";
 import { Browser } from "../services/browser.service.ts";
 import { browserLayer } from "../services/browser.layer.ts";
 import { Workspaces, workspacesLayer } from "../services/workspaces.ts";
@@ -69,6 +70,7 @@ export type MainLayerServices =
   | Input
   | Output
   | Spinner
+  | Stdin
   | TelemetryRuntime
   | Workspaces;
 
@@ -78,6 +80,10 @@ export interface MainLayerInput {
     readonly stdout: NodeJS.WritableStream;
     readonly stderr: NodeJS.WritableStream;
   };
+  // Injected stdin (runCli threads io.stdin here). Defaults to process.stdin
+  // via stdinLayer when omitted. The login direct-token resolve reads its
+  // isTTY + piped payload from this seam.
+  readonly stdin?: NodeJS.ReadableStream;
   // commandPath populates CommandRuntime so the supabase-pattern span
   // name + analytics command label are non-empty. handlers-bind.ts
   // passes the wrap site's `name` (e.g. "agent.add") split by "."; the
@@ -97,6 +103,8 @@ export const mainLayerFor = (
     input.config !== undefined ? cliConfigFromValuesLayer(input.config) : cliConfigLayer;
   const outputBase =
     input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer;
+  const stdinBase =
+    input.stdin !== undefined ? stdinFromStreamLayer(input.stdin) : stdinLayer;
 
   const commandRuntime = commandRuntimeFromValuesLayer({
     commandPath: input.commandPath ?? ["unknown"],
@@ -119,6 +127,7 @@ export const mainLayerFor = (
     workspacesLayer,
     spinnerLayer,
     inputLayer,
+    stdinBase,
     commandRuntime,
     http,
     analytics,
