@@ -14,10 +14,10 @@ SPEC AUTHORING RULES (load-bearing — do not delete):
 **Milestone:** M74
 **Workstream:** 003
 **Date:** May 21, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 (B1) — local make targets pointed at the wrong things, two valueless CI jobs, a flaky/red acceptance suite. P1 (B2) — `zombiectl login` has no non-interactive direct-token path (Continuous Integration (CI)/scripts cannot pass a token), carries a stale `ZMB_TOKEN` env alias that wins over the canonical `ZOMBIE_TOKEN`, and the verification-code prompt has developer-experience gaps (poll-lag before the prompt, no client-side validation, unclean Ctrl-C / End-of-File (EOF) handling).
 **Categories:** INFRA, TESTING, AUTH, CLI
-**Batch:** B1 (make-targets + acceptance hardening — DONE) · B2 (zombiectl login non-interactive path + env consolidation + prompt DX — IN_PROGRESS)
+**Batch:** B1 (make-targets + acceptance hardening — DONE) · B2 (zombiectl login non-interactive path + env consolidation + prompt DX — DONE)
 
 > **Scope expansion (B2).** B1 (make-targets + acceptance fixtures) already shipped — all `DONE` below. Per Indy's explicit direction the `zombiectl login` changes are folded into this same spec file + PR #339 rather than split to their own milestone (the split-security-features default would carve them out — registered, overridden). **The login flow itself is UNCHANGED (Pick A — keep the typed verification code + Elliptic-Curve Diffie-Hellman (ECDH) handshake, matching the Supabase reference CLI at `~/Projects/oss/cli/apps/cli/src/next/commands/login`).** A loopback + Proof Key for Code Exchange (PKCE) redesign was considered and **dropped**: the reference does not use loopback, so adopting it would diverge from the reference (needs ack) AND defeat reference parity. B2 is bounded to four moves: (1) a non-interactive direct-token path (Supabase `resolveToken` shape — `--token` > `ZOMBIE_TOKEN` env > piped stdin > browser); (2) delete the `ZMB_TOKEN` env alias, `ZOMBIE_TOKEN`-only; (3) prompt UX + edge-case hardening with tests; (4) document two used-but-undocumented env vars. AUTH.md gets a light env-var/non-interactive touch — no threat-model rewrite, since the flow is unchanged. Docs PR [`usezombie/docs#67`](https://github.com/usezombie/docs/pull/67) documents the flow we are KEEPING, so it stays valid and can merge.
 **Branch:** feat/m74-003-login-loopback (B2 working branch, off `feat/m74-003-live-e2e-auth-portability`; merges into PR #339). The `-login-loopback` suffix is stale from the abandoned loopback premise — harmless, not renamed.
@@ -261,11 +261,11 @@ In `login.ts` / `login-device-flow.ts`: prompt for the code immediately after op
 #### §B2.4 — Edge-case hardening (Ctrl-C / EOF / Enter) + tests — DONE
 SIGINT at the code prompt aborts via the prompt's `AbortSignal` (`withSigintAbort` now wraps the prompt, not the poll) → `InterruptedError` (exit 130), nothing persisted. `input.readLine(prompt, signal?)` returns `string | null` — `null` (EOF / closed stdin / abort) is a clean cancel, `""` (bare Enter) re-prompts; the `catch → ""` masking is gone. `promptYesNo` treats `null` as "don't proceed". Tests: client-side re-prompt with no round-trip, EOF→InterruptedError, `--no-input`→abort, cancel→no creds written. **Live caveat:** the device flow is now terminal-only, so the spawned-binary live device-flow acceptance (`lifecycle-after-login.spec.ts`, flags-and-env) can't drive it without a PTY harness — reframed/noted as a follow-up; mechanics are unit-covered.
 
-#### §B2.5 — Env-var doc hygiene — PENDING
-Add `ZOMBIE_DASHBOARD_URL` (`config.ts:55`) + `ZOMBIE_PROGRESS_STYLE` (`ui-progress.ts:43`) to the `cli-tree.ts` env block; regenerate the golden help. No removals.
+#### §B2.5 — Env-var doc hygiene — DONE
+Add `ZOMBIE_DASHBOARD_URL` (`config.ts:55`) + `ZOMBIE_PROGRESS_STYLE` (`ui-progress.ts:43`) to the `cli-tree.ts` env block; regenerate the golden help. No removals. Both added to the `helpTail()` env block (URL var beside `ZOMBIE_API_URL`, style var beside `NO_COLOR`); `test/golden/help-no-color.txt` regenerated; golden suite (byte-exact + ≤80-col) green.
 
-#### §B2.6 — AUTH.md + user-docs light touch — PENDING
-`docs/AUTH.md`: update token env-var references (`ZMB_TOKEN` → `ZOMBIE_TOKEN`) and add a sentence on the non-interactive `--token` / env / stdin path. **No Flow 1 threat-model rewrite — the protocol is unchanged.** `usezombie/docs#67` stays valid (it documents the kept flow); add the `--token` flag + the corrected env-var name where it lists them.
+#### §B2.6 — AUTH.md + user-docs light touch — DONE
+`docs/AUTH.md`: update token env-var references (`ZMB_TOKEN` → `ZOMBIE_TOKEN`) and add a sentence on the non-interactive `--token` / env / stdin path. **No Flow 1 threat-model rewrite — the protocol is unchanged.** `usezombie/docs#67` stays valid (it documents the kept flow); add the `--token` flag + the corrected env-var name where it lists them. The `ZMB_TOKEN`→`ZOMBIE_TOKEN` half was a no-op (AUTH.md never referenced `ZMB_TOKEN`); added a "Non-interactive token seeding" note in Flow 1 covering the `--token`/`ZOMBIE_TOKEN`/stdin resolve order, validate-first persist, and the device flow staying terminal-only. `usezombie/docs#67` covers the user-docs half (pushed, greptile-clean).
 
 ### B2 Interfaces
 
