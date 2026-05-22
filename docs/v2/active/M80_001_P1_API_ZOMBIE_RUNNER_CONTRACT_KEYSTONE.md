@@ -4,11 +4,11 @@
 **Milestone:** M80
 **Workstream:** 001
 **Date:** May 22, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — keystone; the four parallel M80 workstreams build against the contract this freezes, so it lands first and alone.
 **Categories:** API
 **Batch:** B1 — serial keystone; B2 (M80_002…005) fans out only after this lands.
-**Branch:** — set at CHORE(open); this spec is created on `main` in `pending/`.
+**Branch:** `feat/m80-001-runner-contract-keystone`
 **Depends on:** none — this is the dependency root of the M80 arc.
 **Provenance:** agent-generated (pre-spec, plan-eng-review session May 21–22 2026; decisions captured in memory `project_zombie_runner_split_architecture`).
 
