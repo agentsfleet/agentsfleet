@@ -379,7 +379,7 @@ The M51/M72 plan (a single domain serving per-skill `*.md` files for `curl ... >
 ## Out of Scope
 
 - **Windows PowerShell installer** (`install.ps1`, `install_test.ps1`, the `/install.ps1` route, the PowerShell one-liner in docs, the PS-floor exit-6 path) — deferred to a follow-up spec per Scope-amendment 3 (Indy decision, May 21, 2026). WSL users use the POSIX one-liner verbatim until then.
-- **Live DNS/TLS provisioning** — was deferred to a post-merge cutover per Scope-amendment 2; it has since landed via M75_002 (DONE) on Vercel rather than the originally-planned Cloudflare Pages. DNS + TLS verified live May 22, 2026. The containerized E2E smoke remains the one un-run acceptance check (see Acceptance Criteria).
+- **Live DNS/TLS provisioning** — was deferred to a post-merge cutover per Scope-amendment 2; it has since landed via M75_002 (DONE) on Vercel rather than the originally-planned Cloudflare Pages. DNS + TLS + the containerized E2E smoke were all verified May 22, 2026 (see Acceptance Criteria) — no acceptance checks remain un-run.
 - **Authenticated install paths** (private skills, tenant-scoped distribution) — separate workstream when private skills land.
 - **Windows installer for non-PowerShell shells** (cmd.exe, WSL bash) — WSL users use the POSIX one-liner verbatim; cmd.exe users use PowerShell. No third path.
 - **Skill-by-name fetching at `usezombie.sh/skills/<name>.md`** — superseded by the one-URL plan. If a future spec wants per-skill curl-able URLs, it adds a sibling subpath; this spec doesn't reserve one.
