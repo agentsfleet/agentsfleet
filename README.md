@@ -22,9 +22,7 @@ Agents are defined in Markdown playbooks with tools, triggers, and investigation
 
 ```bash
 bun install -g zombiectl
-zombiectl signup
-zombiectl init
-zombiectl dev
+zombiectl login
 ```
 
 Define a zombie in Markdown, connect a webhook, and get a Slack diagnosis on your next deploy failure. Full walkthrough at **[docs.usezombie.com/quickstart](https://docs.usezombie.com/quickstart)** — free to try, no card, under five minutes.
