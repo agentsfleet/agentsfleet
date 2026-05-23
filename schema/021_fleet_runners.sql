@@ -1,4 +1,11 @@
--- Host-resident runner fleet (zombie-runner split).
+-- Runner fleet control plane (zombie-runner split). The `fleet` schema holds
+-- runner identity and — in later migrations — leases, heartbeats, executions,
+-- and fleet-level policy/regions. It is deliberately separate from `core` (the
+-- tenant data plane) so the control plane and data plane do not share a trust
+-- boundary. This matters most for the open-fleet vision where untrusted hosts
+-- enroll: their identity never sits in the tenant-data schema. `fleet` is the
+-- system boundary; a runner is one instance within it.
+--
 -- A runner enrolls via POST /v1/runner/register, exchanging a short-lived
 -- enrollment token for a durable per-runner bearer token. The token itself is
 -- returned once at register; this table stores only its hash, and the mothership
@@ -15,7 +22,9 @@
 --   ON DELETE CASCADE removes a scoped runner when its tenant is deleted.
 -- last_seen_at: liveness bookmark, refreshed on heartbeat.
 
-CREATE TABLE IF NOT EXISTS core.runners (
+CREATE SCHEMA IF NOT EXISTS fleet;
+
+CREATE TABLE IF NOT EXISTS fleet.runners (
     id            UUID   PRIMARY KEY,
     CONSTRAINT ck_runners_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     host_id       TEXT   NOT NULL,
@@ -33,4 +42,5 @@ CREATE TABLE IF NOT EXISTS core.runners (
 -- api_runtime: the serve tier owns /v1/runner (register/heartbeat/lease/report);
 -- it inserts at register, updates last_seen_at/status on heartbeat, and reads on
 -- every authed call to resolve the runner from its presented token.
-GRANT SELECT, INSERT, UPDATE ON core.runners TO api_runtime;
+GRANT USAGE ON SCHEMA fleet TO api_runtime;
+GRANT SELECT, INSERT, UPDATE ON fleet.runners TO api_runtime;

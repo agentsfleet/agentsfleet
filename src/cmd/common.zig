@@ -36,7 +36,7 @@ pub fn canonicalMigrations() [18]db.Migration {
         .{ .version = 18, .sql = schema.zombie_events_sql },
         .{ .version = 19, .sql = schema.model_caps_sql },
         .{ .version = 20, .sql = schema.tenant_providers_sql },
-        .{ .version = 21, .sql = schema.core_runners_sql },
+        .{ .version = 21, .sql = schema.fleet_runners_sql },
     };
 }
 

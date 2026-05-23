@@ -78,6 +78,35 @@ The cost of pure event-leasing is a cold executor session per event. We recover 
 
 The runner topology (S0-S6) is **identical** under any mode. The open-fleet vision is a secret-delivery problem layered on top, not a topology problem, so it is deferred — S0 only commits the `secret_delivery` field and an optional tenant scope on enrollment so modes C/B don't require re-cutting the contract.
 
+## Enrolling a runner — operator flow + trust gates
+
+Adding a host is **pull-based enrollment**, not a push registration. The operator hands the host a short-lived enrollment token; the host trades it for a durable identity, then pulls work:
+
+```
+  Operator                 Mothership                       Host (zombie-runner)
+   │ 1. request enrollment                          🔒 GATE 1 — WHO MAY ENROLL
+   ├───────────────────────▶│ mint ENROLLMENT_TOKEN       short-lived · single-use ·
+   │◀───────────────────────┤  (TTL, single-use, scoped)   scoped to tier/tenant
+   │ 2. install runner, hand it the token
+   ├───────────────────────────────────────────────────────────────▶│
+   │            3. register {enrollment_token, host_id,               │  🔒 GATE 2 — ENROLLMENT
+   │               sandbox_tier, labels}  ── over TLS ────────────────┤  validate token; reject if
+   │               │ mint runner_token (256-bit random)               │  missing / expired / used
+   │               │ store ONLY hash(runner_token) in fleet.runners   │  → a rogue without a valid
+   │               ├─────────────────────────────────────────────────▶│    token is stopped here
+   │               │  runner_token (returned once)                    │  persist locally
+   │            4. steady loop — Authorization: Bearer runner_token       🔒 GATE 3 — per-call auth
+   │               │◀── heartbeat · lease · report ───────────────────┤  hash(Bearer) == token_hash
+   │               │  eligibility: sandbox_tier + tenant scope         │  (timing-safe)
+   │               │  + secret_delivery bound what the runner receives │  🔒 GATE 4 — blast radius
+```
+
+Where the trust actually lives:
+
+- **Gate 1 (issue) + Gate 2 (register)** are what stop a rogue runner — no valid enrollment token, no entry. This is the enrollment-token + TLS work in M80_005.
+- **Gate 3 (`token_hash`)** only *authenticates* an already-enrolled runner per call. Necessary, not sufficient — it does not decide who may enroll.
+- **Gate 4 (`sandbox_tier` + tenant scope + `secret_delivery`)** bounds a runner's blast radius. In mode A secrets ship inline to every enrolled runner, so mode A is for **operator-owned fleets only**; untrusted hosts wait for the per-tenant-scoped mode.
+
 ## Sandbox tiers (and how a Mac gets a real sandbox)
 
 Landlock + cgroups + bubblewrap are Linux-only. A runner reports its isolation strength at enrollment as a label; assignment (and later the scheduler) refuses to place other-tenant or production work on a weak tier.

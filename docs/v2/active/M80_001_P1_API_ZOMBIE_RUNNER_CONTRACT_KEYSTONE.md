@@ -23,7 +23,7 @@
 1. `docs/architecture/runner_fleet.md` — the contract shape, the event-leasing + sticky-routing decision, the `secret_delivery` modes, and the `sandbox_tier` tiers this workstream freezes.
 2. `docs/architecture/data_flow.md` §C (EXECUTE) — the worker's per-event hot path (`zombie_events` received→terminal, telemetry, debit, session checkpoint, `XACK`) the `report` verb must reproduce idempotently in one transaction.
 3. `src/http/route_table.zig` + `src/http/router.zig` — the route-registration pattern to mirror for the `/v1/runner/*` stubs (one of the three shared-file conflict points to pre-claim).
-4. `schema/embed.zig` + `schema/020_tenant_providers.sql` — the append-only migration array and the nearest table migration to mirror for `021_core_runners.sql`.
+4. `schema/embed.zig` + `schema/020_tenant_providers.sql` — the append-only migration array and the nearest table migration to mirror for `021_fleet_runners.sql`.
 5. `src/cmd/worker.zig` + `src/cmd/worker_zombie.zig` — the loop the flag-gated skeleton forks exactly one path out of; the direct path stays the default.
 
 ---
@@ -41,7 +41,7 @@
 - **`docs/greptile-learnings/RULES.md`** — pin: **NDC** (stubs must be reachable + tested, never orphaned), **UFS** (the `/v1/runner` path segments, `secret_delivery` + `sandbox_tier` wire values, and the seam flag name are single-sourced named constants shared verbatim Zig↔TS), **MIG** (migration array append-only + ordered), **SCM** (schema conventions), **VLT** (`secrets_map` resolved just-in-time, never logged), **ERH** (errors via registry), **CFG** (the seam feature flag), **XCC** (cross-compile both linux targets), **ORP** (orphan sweep), **TST**.
 - **`docs/ZIG_RULES.md`** — pg-drain lifecycle (the `report` handler queries PG), tagged-union results, multi-step `errdefer`, cross-compile.
 - **`docs/REST_API_DESIGN_GUIDELINES.md`** — `/v1/runner` URL design, route registration, handler signature.
-- **`docs/SCHEMA_CONVENTIONS.md`** — `021_core_runners.sql` (CREATE) + `022_zombie_sessions_runner_affinity.sql` (ALTER), `embed.zig`.
+- **`docs/SCHEMA_CONVENTIONS.md`** — `021_fleet_runners.sql` (CREATE `fleet.runners` in the `fleet` schema), `embed.zig`.
 - **`docs/AUTH.md`** — `runner_token` is a credential-typed principal; even the S0 stub follows the principal/token pattern (full hardening is M80_005).
 - **`docs/LOGGING_STANDARD.md`** / **`docs/LIFECYCLE_PATTERNS.md`** — new log emits; init/deinit + errdefer on new mothership-side structs holding PG/Redis handles.
 
@@ -92,14 +92,14 @@
 | `src/runner/mothership_service.zig` (+ splits) | CREATE | mothership-side lease/report/register logic over the pool; the one-txn report |
 | `src/runner/loopback_client.zig` | CREATE | the client the flag-gated skeleton uses to call the mothership over loopback |
 | `src/http/handlers/runner/{register,heartbeat,lease,report}.zig` | CREATE | the four handlers; non-skeleton verbs return declared not-implemented |
-| `schema/021_core_runners.sql` | CREATE | `core.runners` table (identity, token hash, sandbox_tier, labels, last_seen, status) |
-| `schema/008_core_zombie_sessions.sql` | EDIT | add nullable `last_runner_id` sticky-routing hint inline (no FK) — pre-v2.0 teardown gate forbids a `022` ALTER (see Discovery) |
+| `schema/021_fleet_runners.sql` | CREATE | `fleet.runners` in a dedicated `fleet` control-plane schema (identity, token hash, sandbox_tier, labels, last_seen, status, optional tenant scope) |
 | `schema/embed.zig` | EDIT | append `021` to the migration array (shared conflict point — pre-claimed here) |
 | `src/http/route_table.zig`, `src/http/router.zig` | EDIT | register `/v1/runner/*` (shared conflict point — pre-claimed here) |
 | `build.zig` | EDIT | add the `zombie-runner` executable target skeleton (shared conflict point — pre-claimed here) |
 | `src/errors/error_registry.zig` | EDIT | declare `UZ-RUN-*` codes |
 | `src/cmd/worker.zig`, `src/cmd/worker_config.zig` | EDIT | the single flag gate forking the skeleton path; flag config |
 | `src/runner/*_test.zig`, `src/http/handlers/runner/*_test.zig` | CREATE | per-Dimension unit + integration + e2e tests |
+| `docs/architecture/runner_fleet.md` | EDIT | add the operator-enrollment sequence + trust-gate model (Gates 1–4) — bundled into this PR per Indy |
 
 ---
 
@@ -118,7 +118,7 @@
 The durable interface the parallel streams depend on. Freezes types and tables; the logic that *uses* them (real assignment, sticky routing) is M80_002+. **Implementation default:** wire values are snake_case strings single-sourced as named constants, because UFS requires Zig and the future TS client to share them verbatim.
 
 - **Dimension 1.1** — contract request/response types + `secret_delivery` + `sandbox_tier` enums round-trip serialize/deserialize → Test `test_runner_contract_roundtrip`
-- **Dimension 1.2** — `021_core_runners` + `022` affinity migrate clean on a fresh database → Test `test_runner_schema_migrates`
+- **Dimension 1.2** — `021_fleet_runners` (`fleet.runners`) migrates clean on a fresh database → Test `test_runner_schema_migrates`
 - **Dimension 1.3** — `embed.zig` array + migration runner apply `021`/`022` in order and are idempotent on re-run → Test `test_runner_migrations_idempotent`
 
 ### §2 — Shared-file stubs (pre-claim the conflict points)
@@ -132,7 +132,7 @@ Register the three shared files as stubs so the four streams edit only their own
 
 One zombie, register→lease→report over loopback, behind `ZOMBIE_RUNNER_SEAM=1`.
 
-- **Dimension 3.1** — `register` exchanges a stub enrollment token for a `runner_token` and inserts a `core.runners` row with `sandbox_tier` + labels → Test `test_register_mints_runner_token`
+- **Dimension 3.1** — `register` exchanges a stub enrollment token for a `runner_token` and inserts a `fleet.runners` row with `sandbox_tier` + labels → Test `test_register_mints_runner_token`
 - **Dimension 3.2** — `lease` returns the next event for the one assigned zombie with resolved config and (mode `inline`) `secrets_map` → Test `test_lease_returns_event_with_secrets`
 - **Dimension 3.3** — `report` writes received→terminal + telemetry + debit + session checkpoint in one transaction then `XACK`s, idempotent on replay → Test `test_report_batched_idempotent`
 - **Dimension 3.4** — end-to-end: flag on, one zombie's steer flows register→lease→executor→report over loopback; the user-visible rows equal the direct path's → Test `test_e2e_loopback_one_zombie`
@@ -204,11 +204,11 @@ flag            : ZOMBIE_RUNNER_SEAM (unset|1) — single-sourced constant, shar
 | Dimension | Tier | Test | Asserts (inputs → expected) |
 |-----------|------|------|------------------------------|
 | 1.1 | unit | `test_runner_contract_roundtrip` | every request/response + enum serializes and parses back equal |
-| 1.2 | integration | `test_runner_schema_migrates` | fresh DB applies 021+022; `core.runners` + `last_runner_id` exist with constraints |
+| 1.2 | integration | `test_runner_schema_migrates` | fresh DB applies 021; `fleet.runners` exists with its constraints |
 | 1.3 | integration | `test_runner_migrations_idempotent` | re-running the migration set is a no-op; order preserved |
 | 2.1 | integration | `test_runner_routes_registered` | all four paths resolve; non-skeleton verbs return declared not-implemented (not 404) |
 | 2.2 | e2e | (acceptance) | `zig build zombie-runner` produces a binary that logs health and exits 0 |
-| 3.1 | integration | `test_register_mints_runner_token` | valid enrollment token → runner_token + a `core.runners` row; bad token → `UZ-RUN-002` |
+| 3.1 | integration | `test_register_mints_runner_token` | valid enrollment token → runner_token + a `fleet.runners` row; bad token → `UZ-RUN-002` |
 | 3.2 | integration | `test_lease_returns_event_with_secrets` | leased event carries resolved config + inline `secrets_map`; empty stream → 204 |
 | 3.3 | integration | `test_report_batched_idempotent` | one txn writes all rows + XACK; second identical report no-ops, same result |
 | 3.4 | e2e | `test_e2e_loopback_one_zombie` | flag on: steer → register→lease→executor→report; rows equal the direct path |
@@ -267,11 +267,11 @@ N/A — no files deleted. The direct worker path is retained until the M80 cutov
 
 - **Fan-out gate (Indy, May 22, 2026):** chose the **freeze gate** over the validate gate. The four parallel streams (M80_002–005) unblock the moment the *freeze* lands (frozen contract types + schema `021`/`022` + the three shared-file stubs), not after the loopback skeleton validates the contract. Tradeoff accepted: the streams build against a not-yet-validated contract until the skeleton lands; if the skeleton forces a contract change, the streams absorb it. Delivery therefore splits into two PRs (one spec, park-midway): **PR #1 = §1 + §2 (freeze + stubs)**; **PR #2 = §3 + §4 (loopback skeleton)**.
 
-- **Comprehension handshake (PLAN, before EXECUTE):** intent restated — freeze + pre-claim the shared files now (PR #1); *prove* one zombie over loopback in PR #2. Matches the spec Intent; the "prove" half moves to the follow-on PR per the freeze-gate decision above. `ASSUMPTIONS I'M MAKING:` (1) stub handlers parse their request type and return a declared `UZ-RUN-*` not-implemented error (reachable + tested → NDC) — real register/lease/report logic is PR #2; (2) the nullable sticky-routing hint `last_runner_id` is added to `core.zombie_sessions` (folded inline into `008` per the pre-v2.0 teardown gate — see Discovery); (3) wire constants are single-sourced in Zig for the freeze (no TS consumer exists yet — the TS mirror + verbatim-match lands with the first TS client); (4) loopback transport in §3 is real HTTP over `127.0.0.1` through the router — firmed in PR #2.
+- **Comprehension handshake (PLAN, before EXECUTE):** intent restated — freeze + pre-claim the shared files now (PR #1); *prove* one zombie over loopback in PR #2. Matches the spec Intent; the "prove" half moves to the follow-on PR per the freeze-gate decision above. `ASSUMPTIONS I'M MAKING:` (1) stub handlers parse their request type and return a declared `UZ-RUN-*` not-implemented error (reachable + tested → NDC) — real register/lease/report logic is PR #2; (2) runner identity lives in a dedicated `fleet` schema (`fleet.runners`), not `core`; the sticky-routing affinity hint is M80_002's concern in `fleet`, not on `core.zombie_sessions` (see Discovery); (3) wire constants are single-sourced in Zig for the freeze (no TS consumer exists yet — the TS mirror + verbatim-match lands with the first TS client); (4) loopback transport in §3 is real HTTP over `127.0.0.1` through the router — firmed in PR #2.
 
 - **`core.runners.tenant_id` optional scope — INCLUDED (Indy, May 22, 2026).** I initially proposed omitting the nullable tenant-scope column (spec's column list omits it; additive ALTER would make it cheap later). Indy directed including it: pre-ship there is no production-data migration cost and no live always-NULL column to look speculative, and `runner_fleet.md` explicitly commits the optional tenant scope in S0 so modes C/B needn't re-cut the table. Added as `tenant_id UUID NULL REFERENCES core.tenants(tenant_id) ON DELETE CASCADE`; stays NULL (trusted-fleet, mode inline) until the per-tenant-scoped mode wires it.
 
-- **`last_runner_id` folded inline into `008` — `022` ALTER removed (Indy, May 22, 2026).** `check-schema-gate` (`make/quality.mk` `_schema_gate_check`) forbids `ALTER TABLE`/`DROP` in `schema/*.sql` while VERSION major < 2 (we are at 0.37.0) — the pre-v2.0 teardown convention. The `022` ALTER would fail that gate, so the hint column is added inline to `008_core_zombie_sessions.sql` (sanctioned pre-ship: "free to update existing SQL"). It carries **no FK** — its target `core.runners` is a later migration than `008`, so a FK there would dangle at apply time; referential integrity + stale-hint clearing move to app code (the repo's value-enforced-in-app convention; the hint is best-effort anyway). I had defended `022`-as-ALTER on FK-ordering grounds; that was wrong — the gate forbids the ALTER regardless, and dropping the FK resolves the ordering cleanly.
+- **Runner identity → dedicated `fleet` schema; affinity → M80_002; `008` left untouched (Indy + Bishop CTO review, May 22–23, 2026).** Runners live in a new `fleet` schema (`fleet.runners`), not `core` — the control plane (runner identity/tokens) must not share a trust boundary with the tenant data plane, and `fleet` scales to `fleet.runner_leases`/`fleet.fleets`/etc. without renaming (a runner is an *instance*; `fleet` is the *boundary*). The sticky-routing hint (`last_runner_id`) was briefly folded into `core.zombie_sessions`, then reverted: it references a runner (control-plane) and doesn't belong on a data-plane table — its storage is M80_002's concern in `fleet`. S0's frozen schema is therefore just `fleet.runners`. (Aside on migrations: the pre-v2.0 `check-schema-gate` forbids `ALTER TABLE`/`DROP` while major < 2 — that's why `021` is a `CREATE`, not an ALTER. The doc that misled me, `SCHEMA_CONVENTIONS.md`, said the cutoff was v0.5.0; corrected to v2.0.0 in dotfiles `67b925a`.)
 
 ---
 
