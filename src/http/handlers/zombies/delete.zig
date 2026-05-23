@@ -130,13 +130,20 @@ fn purgeZombieOnConn(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []cons
     // agent_keys. Status guard is belt-and-suspenders against TOCTOU between
     // the pre-flight probe and here — if a concurrent PATCH resurrected the
     // zombie, the row count is 0 and we surface 409.
-    var del = PgQuery.from(try conn.query(
-        \\DELETE FROM core.zombies
-        \\WHERE id = $1::uuid AND workspace_id = $2::uuid AND status = $3
-        \\RETURNING id
-    , .{ zombie_id, workspace_id, killed }));
-    defer del.deinit();
-    const purged = (try del.next()) != null;
+    //
+    // Scoped so PgQuery.deinit() drains the RETURNING result before the
+    // COMMIT/ROLLBACK below: exec() on a connection still holding an in-flight
+    // result throws ConnectionBusy, which then poisons the pooled connection
+    // (left mid-transaction) for the next acquirer.
+    const purged = blk: {
+        var del = PgQuery.from(try conn.query(
+            \\DELETE FROM core.zombies
+            \\WHERE id = $1::uuid AND workspace_id = $2::uuid AND status = $3
+            \\RETURNING id
+        , .{ zombie_id, workspace_id, killed }));
+        defer del.deinit();
+        break :blk (try del.next()) != null;
+    };
     if (!purged) {
         _ = conn.exec(S_ROLLBACK, .{}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
         return .not_killed;
