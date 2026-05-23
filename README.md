@@ -1,10 +1,12 @@
-<img src="branding/usezombie-mark-glow.png" width="180" alt="usezombie" />
+<div align="center"><img src="branding/usezombie-mark-glow.png" width="180" alt="usezombie" />
 
 # Your deploy failed. The agent already knows why.
 
 [![CI](https://github.com/usezombie/usezombie/actions/workflows/test.yml/badge.svg?branch=main)](https://github.com/usezombie/usezombie/actions/workflows/test.yml?query=branch%3Amain)
 [![Docs](https://img.shields.io/badge/Docs-blue)](https://docs.usezombie.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+</div>
 
 **[usezombie](https://usezombie.com)** automates incident investigation. When a deploy fails, a zombie wakes — gathers evidence from your logs, metrics, health endpoints, and recent commits — then posts a diagnosis to Slack with a replayable event log.
 
@@ -51,7 +53,7 @@ Define a zombie in Markdown, connect a webhook, and get a Slack diagnosis on you
 git clone https://github.com/usezombie/usezombie.git
 cd usezombie
 
-# Hydrate .env from 1Password. Full bootstrap: playbooks/001_bootstrap/001_playbook.md
+# Populate .env before running make up. See playbooks/001_bootstrap/001_playbook.md for the full bootstrap.
 make up           # Postgres + Redis + zombied (auto-migrates DB)
 
 cd ui/packages/app
