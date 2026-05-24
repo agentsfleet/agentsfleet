@@ -188,9 +188,8 @@ pub const ERR_APIKEY_MUST_REVOKE_FIRST = "UZ-APIKEY-008";
 pub const ERR_GRANT_NOT_FOUND = "UZ-GRANT-001";
 pub const ERR_GRANT_PENDING = "UZ-GRANT-002";
 pub const ERR_GRANT_DENIED = "UZ-GRANT-003";
-// RUNNER (zombie-runner /v1/runner control contract)
+// RUNNER (zombie-runner /v1/runners control contract)
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = "UZ-RUN-001";
-pub const ERR_RUN_INVALID_ENROLLMENT_TOKEN = "UZ-RUN-002";
 pub const ERR_RUN_UNSUPPORTED_SECRET_DELIVERY = "UZ-RUN-003";
 pub const ERR_RUN_NOT_IMPLEMENTED = "UZ-RUN-004";
 

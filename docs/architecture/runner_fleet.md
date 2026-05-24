@@ -1,161 +1,205 @@
-# Runner Fleet — splitting `zombied` into a mothership + host-resident `zombie-runner`
+# Runner Fleet — splitting `zombied` into a control plane + a host-resident `zombie-runner`
 
-> Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (the **current** single-fleet runtime)
+> Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (the **current** single-process runtime).
 
-Date: May 22, 2026
-Status: **Target architecture for the M80 milestone, being built S0 → S6.** This file describes where the runtime is going; [`data_flow.md`](./data_flow.md) describes what runs in production today. Until the M80 cutover lands, `data_flow.md` is the operational truth and this file is the destination every M80 workstream builds toward. When cutover completes, the two reconcile and this becomes canon.
+Date: May 24, 2026
+Status: **Target architecture for the M80 milestone, built S0 → S6.** [`data_flow.md`](./data_flow.md) describes the single-process model the codebase implements now; this file is the target the M80 workstreams build toward. The two reconcile at the M80_003 cutover.
 
-Read this when a spec touches the `zombie-runner` binary, the `/v1/runner` control API, runner enrollment, the node fleet, or the scheduler.
+Read this when a spec touches the `zombie-runner` binary, the `/v1/runners` control protocol, runner registration, the node fleet, or the scheduler.
 
 ---
 
-## The problem
+## Why split
 
-Today one `zombied` binary runs as `serve` (the Application Programming Interface, API) or `worker` (the orchestration loop), chosen by subcommand, plus a `zombied-executor` sidecar that already owns sandboxing. Two structural facts make it hard to run work on hosts the platform doesn't fully own:
+Today one `zombied` binary runs as `serve` (the HTTP API) or `worker` (the orchestration loop), plus a `zombied-executor` sidecar that owns sandboxing. Two facts make it hard to run work on hosts the platform does not fully own:
 
-1. **The worker is welded to the datastores.** It opens a Postgres pool and Redis connections directly, runs ~15 write patterns on the per-event hot path, and *discovers its own work* by querying `core.zombies` and racing peers on the `zombie:control` consumer group. A worker cannot run anywhere it can't reach Postgres and Redis.
-2. **Connection budget grows with the fleet.** Each per-zombie thread holds a dedicated blocking Redis connection (see [`scaling.md`](./scaling.md)); zombie count is bounded by the Redis pool ceiling, not by compute.
+1. **The worker is welded to the datastores.** Each per-zombie worker thread opens its own Postgres pool and Redis connections, runs ~15 write patterns on the per-event hot path, and discovers its own work by `XREADGROUP` on `zombie:{id}:events`. It cannot run anywhere it can't reach Postgres and Redis directly.
+2. **The connection budget grows with the fleet.** Every per-zombie thread holds a dedicated blocking Redis connection (see [`scaling.md`](./scaling.md)); the zombie count is capped by the Redis pool ceiling, not by compute.
 
-The executor is **not** the problem. It is already a separate binary speaking a length-prefixed JSON Remote Procedure Call (RPC) over a Unix socket, already sandboxed (Landlock + cgroups v2 + bubblewrap), already has a lease and a `Heartbeat`. It does not change in this architecture.
+The goal: move execution onto arbitrary hosts (bare metal, a Mac, a pod) that hold **no datastore credentials**, reaching the platform only over an authenticated HTTP control protocol.
 
-## The split
+## The split — two binaries, no sidecar
 
-`zombied` becomes the **mothership** (control plane: owns Postgres, Redis, the API, assignment). A new host-resident binary, **`zombie-runner`**, packages the worker's orchestration logic plus the unchanged executor, and reaches the mothership only over a network control channel. It holds **zero** datastore credentials.
+- **`zombied`** — the control plane. Owns Postgres, Redis, the Vault API, the HTTP API, and work assignment. Unchanged in role; it gains the `/v1/runners` endpoints.
+- **`zombie-runner`** — a new host-resident binary. It is the worker's orchestration loop **plus the NullClaw execution logic linked in directly** (the old `zombied-executor` sidecar is gone as a separate process). It holds zero datastore credentials and talks to `zombied` only over HTTPS, carrying a `runner_token`.
 
 ```
-            CURRENT (data_flow.md)                    TARGET (this doc)
-  ┌──────── ONE TRUST ZONE ─────────┐     ┌─ PLATFORM ─┐      ┌─ HOST (baremetal / Mac / pod) ─┐
-  │ zombied serve ─┐ PG, vault       │     │ zombied    │      │ zombie-runner                  │
-  │                ▼                 │     │ MOTHERSHIP │◀────▶│  thin loop: register,          │
-  │ PG ◀── 15 writes ── zombied      │     │ owns PG +  │ TLS  │  heartbeat, lease, report      │
-  │ Redis ◀── XREADGROUP ─ worker    │     │ Redis +    │ pull │   │ Unix-socket RPC (local)    │
-  │                │ Unix socket RPC │     │ assignment │      │   ▼                            │
-  │                ▼                 │     └─────┬──────┘      │  zombied-executor (UNCHANGED)  │
-  │           zombied-executor       │       PG, Redis         │  sandbox: NullClaw             │
-  └──────────────────────────────────┘    (never leave zone)   └────────────────────────────────┘
+        CURRENT (data_flow.md)                      TARGET (this doc)
+ ┌──────── ONE TRUST ZONE ─────────┐    ┌─ PLATFORM ──┐      ┌─ HOST (bare metal / Mac / pod) ─┐
+ │ zombied serve ─┐  PG, Vault      │    │ zombied     │      │ zombie-runner  (one binary)     │
+ │                ▼                 │    │ control     │◀────▶│  parent loop: register,         │
+ │ PG ◀─ 15 writes ─ zombied worker │    │ plane:      │HTTPS │  heartbeat, lease, report,      │
+ │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  activity                       │
+ │                │ Unix-socket RPC │    │ Redis +     │ zrn_ │    │ fork + sandbox per event    │
+ │                ▼                 │    │ Vault API + │      │    ▼                            │
+ │           zombied-executor       │    │ assignment  │      │  sandboxed child: NullClaw      │
+ └──────────────────────────────────┘   └──────┬──────┘      └─────────────────────────────────┘
+                                          PG · Redis · Vault
+                                          (never leave the platform)
 ```
 
-**Control plane vs data plane.** The mothership owns all durable state and all queueing. The `zombie-runner` owns only ephemeral execution: a leased event, a warm executor session, the runner's own identity token. Two channels, two transports, deliberately kept apart:
+**Why the executor folds in but still forks.** NullClaw runs the agent: language-model calls plus tool calls, with tenant secrets substituted at the tool bridge. It needs a sandbox — Landlock (filesystem) + cgroups (memory/CPU) + a network namespace. Landlock is one-way and irreversible for a process, and the `zombie-runner` parent loop needs un-sandboxed network to reach `zombied`. So the runner **forks a sandboxed child per event** and talks to it over a local pipe. One binary, two process roles: an un-sandboxed parent that speaks the control protocol, and a sandboxed child that runs NullClaw. There is no separate daemon to deploy.
 
-| Channel | Transport | Scope | Auth |
+## The control protocol — `/v1/runners`
+
+Five verbs. `zombied` translates them into the Postgres writes and Redis stream operations the worker does directly today, so the runner never sees a datastore.
+
+| Verb | Path | Auth | Purpose |
 |---|---|---|---|
-| mothership ↔ runner | HTTPS + JSON, long-poll (pull) | network, NAT-friendly | bearer `runner_token` |
-| runner ↔ executor | length-prefixed JSON-RPC, Unix socket | local, inside the runner | none (loopback, unchanged) |
+| `register` | `POST /v1/runners/register` | `Bearer` Clerk JWT **or** `zmb_t_` api_key | exchange a human/service credential for a durable `runner_token` (`zrn_`); record `host_id`, `sandbox_tier`, `labels` |
+| `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer zrn_` | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
+| `lease` | `POST /v1/runners/me/leases` | `Bearer zrn_` | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
+| `report` | `POST /v1/runners/me/reports` | `Bearer zrn_` | terminal result for a lease; `zombied` persists + `XACK`s |
+| `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer zrn_` | write-only progress stream for the live tail; best-effort, no ack |
 
-Pull, not push: a host behind Network Address Translation (NAT) or a firewall needs only outbound HTTPS. This is the GitLab-runner / GitHub-Actions / Nomad-client topology.
+`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human/service* credential; everything else is authed by the machine credential it returns. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal).
 
-## The `/v1/runner` control contract
+## Registering a runner
 
-Four verbs. The mothership translates them into the Postgres writes and Redis stream operations the worker does directly today, so the runner never sees a datastore.
+A runner needs a `zrn_` token before it can pull work. It gets one by calling `register` with an existing credential — a Clerk JWT (an operator from the dashboard or CLI) or a `zmb_t_` api_key (an automated provisioner). There is no separate admin endpoint and no enrollment token; the open-fleet, self-enrolling case is mode C, later.
 
-| Verb | Direction | Purpose |
+```
+ caller (operator w/ Clerk JWT  OR  host w/ zmb_t_)         zombied                  host: zombie-runner
+   │ POST /v1/runners/register                       🔒 GATE 1 — who may register:
+   │   Authorization: Bearer <Clerk-JWT | zmb_t_>    a valid Clerk JWT or api_key
+   │   { host_id, sandbox_tier, labels[] }           is required
+   ├────────────────────────────────────────────────►│ mint zrn_ (256-bit random)
+   │                                                  │ store ONLY sha256(zrn_) in fleet.runners
+   │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: zrn_ }  (shown once)
+   │ install zrn_ on the host (env ZOMBIE_RUNNER_TOKEN)
+   ├──────────────────────────────────────────────────────────────────────────────►│ persist locally
+   │ steady loop — Authorization: Bearer zrn_         🔒 GATE 2 — per-call auth:
+   │      ◀── heartbeat · lease · report · activity ─┤ sha256(Bearer) == token_hash (timing-safe)
+   │      eligibility: sandbox_tier + scope + secret_delivery   🔒 GATE 3 — blast radius
+```
+
+`zombied` owns the Postgres pool, the Redis pool, and the Vault API; `zombie-runner` owns none of them and holds only the `zrn_` token. Rotating a token swaps `token_hash`; revoking sets `status='revoked'` so the next call gets a 401.
+
+## Running one event (NullClaw)
+
+A `lease` reply is the runner's entire input for an event. The runner forks a sandboxed child, the child runs NullClaw, and the result goes back via `report`.
+
+```
+lease → { event, ExecutionPolicy(config + secrets_map + network_policy + tool_allowlist),
+          lease_id, fencing_token, checkpoint? }
+   │
+zombie-runner: fork a sandboxed child (Landlock + cgroups + network namespace)
+   │
+   └─ child runs NullClaw: build config from the policy, build the tool set from the
+      allowlist, run the agent turn — language-model calls + tool calls, secrets
+      substituted at the tool bridge — and return content + tokens + timing
+   │
+report → zombied: persist terminal state + telemetry + checkpoint, then XACK
+```
+
+The executor RPC (`createExecution` → `startStage` → `getUsage` → `destroyExecution`) and its TOCTOU guards (lease re-check before a stage, orphan reaping, idempotent destroy) move inside the runner as parent↔child supervision. The durable lease guard moves to `zombied` via `lease_expires_at` + `fencing_token` (see **Reclaim** below).
+
+### Multi-stage events
+
+A *stage* is one NullClaw run inside one language-model context window. When a single event needs more reasoning than one window holds, NullClaw stops at `stage_chunk_threshold` (0.75 of the context cap), checkpoints, and signals "resume me." `zombied` enqueues a **continuation event** chained by `resumes_event_id`, and the next lease resumes from the checkpoint in a fresh window. One lease = one stage.
+
+```
+trigger event E0 ─► STAGE 1 (lease, checkpoint=∅) ─► NullClaw hits 0.75 cap ─► report{continue, C1}
+                                                            │ zombied persists checkpoint C1,
+                                                            │ enqueues continuation (resumes_event_id=E0)
+                ─► STAGE 2 (lease, checkpoint=C1) ─► … ─► report{continue, C2}
+                ─► STAGE 3 (lease, checkpoint=C2) ─► NullClaw finishes ─► report{processed}
+```
+
+Durable state across stages is the checkpoint in `zombied`, never runner-local — which is why a different runner can pick up stage 2. A chain hard-stops at 10 continuations (escalates to a human). Sticky routing (below) prefers the runner that ran the previous stage, but correctness never depends on it.
+
+## Live activity (the SSE tail)
+
+NullClaw emits progress frames mid-run (tool started, response chunk, tool completed). Today the worker `PUBLISH`es them to `zombie:{id}:activity` for the Server-Sent-Events (SSE) live tail. A runner holds no Redis, so it forwards frames to `zombied` over the `activity` verb, and `zombied` does the `PUBLISH`. Downstream SSE is unchanged.
+
+```
+NullClaw child ─pipe─► runner parent ─POST .../activity (chunked, no ack)─► zombied ─PUBLISH─► SSE
+```
+
+Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a dropped frame is cosmetic); **report** is the durable system of record. The live tail is never the source of truth.
+
+## Steer, kill, pause
+
+All three are decided by `zombied`, which owns both `core.zombies.status` and lease issuance. A runner learns of an in-flight change on its next `heartbeat`, so cancel latency is bounded by the heartbeat interval.
+
+- **Steer** — a human message. `zombied` enqueues a `steer` event; it is leased like any other. The current stage finishes first; the steer runs next. Not an interrupt.
+- **Pause** — `zombied` sets `status=paused` and stops issuing leases for the zombie. Any in-flight lease runs to completion.
+- **Kill** — `zombied` sets `status=killed` and marks the in-flight lease revoked. The runner sees the revocation in its next heartbeat reply, kills the sandboxed child, and reports `cancelled`. A late report from a killed runner is rejected by the fencing token.
+
+A dedicated low-latency cancel channel can come later; heartbeat-carried revocation is the S0 mechanism.
+
+## Cold and warm execution
+
+Default is **cold**: every lease forks a fresh sandbox, runs, and tears it down. No pinning, no stale state, no idle cost.
+
+A later, opt-in **warm** mode keeps the sandbox shell alive across leases for the same zombie to skip cold setup. Warm reuses only the sandbox shell — never agent state or config. Two guards make it safe: the lease always carries fresh config + secrets (config is never cached, see below) and the checkpoint is the only carried state; and sticky routing is a *hint*, not ownership — if the warm runner is busy or dead, any eligible runner takes the event, and idle warm children self-evict. A zombie is never stuck waiting for one runner.
+
+## Config
+
+A zombie's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is parsed from `TRIGGER.md` frontmatter into `core.zombies.config_json`. A `PATCH /v1/workspaces/{ws}/zombies/{id}` updates it — including reparsing `trigger_markdown` to add a tool.
+
+In the split, `zombied` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling — the same boundary at which the worker reloads config today, just without the in-memory cache and the `zombie_config_changed` signal. A config change never alters a language-model turn already in flight; the next stage picks it up.
+
+## Money gates
+
+The credit-pool billing model debits twice per event, and both debits move to `zombied`'s lease/report path — the runner never touches billing.
+
+- At **lease issue**, before handing work to a runner: the balance gate (does the tenant cover the receive + stage estimate?), then the `receive` debit (flat, posture-based), then the approval gate, then the `stage` debit (a conservative estimate at floor tokens). Any gate failure means no lease is issued.
+- At **report**: reconcile the stage telemetry row to the actual token counts. The charged amount stays at the pre-execution estimate — report updates telemetry, it does not re-charge.
+
+Receive credits are not refunded if the stage later exhausts. This mirrors today's `metering.zig` exactly; only the caller moves from the worker to `zombied`.
+
+## Redis topology — what changes
+
+Today there are three Redis surfaces. The split keeps two (shifting their producer/consumer to `zombied`) and retires one.
+
+| Surface | Today | Split |
 |---|---|---|
-| `register` | runner → mothership | exchange a short-lived **enrollment token** for a durable per-runner `runner_token`; report `sandbox_tier` + labels |
-| `heartbeat` | runner → mothership | liveness + capacity; reply carries a `status` (`ok` in S0; `drain`/`stop` reserved for the M80_006 failover seam) |
-| `lease` | runner → mothership (long-poll) | claim the next event; response carries the event envelope, the zombie's resolved config, and (mode A) the `secrets_map` |
-| `report` | runner → mothership | one idempotent batched transaction: `zombie_events` received→terminal, telemetry, debit, session checkpoint, then `XACK` |
+| `zombie:{id}:events` (work stream, group `zombie_workers`) | the per-zombie worker thread is the consumer (`worker-{host}-{ts}`); `XREADGROUP`, `XAUTOCLAIM`, `XACK` | **`zombied` is the consumer.** `XREADGROUP` on `lease`, `XACK` on `report`. The runner is not a Redis consumer. |
+| reclaim of a dead processor | `XAUTOCLAIM` by consumer idle (5 min) — a dead worker is a dead consumer | **lease expiry + `fencing_token`.** A dead runner is *not* a dead Redis consumer (`zombied` is), so consumer-idle can't see it. The lease layer is the reclaim mechanism. |
+| `zombie:control` (control stream) | the watcher consumes `zombie_created` / `zombie_status_changed` / `zombie_config_changed` / `worker_drain_request` to spawn/cancel/reload per-zombie threads | **retired.** No per-zombie threads to orchestrate: created is moot, status/config live in Postgres + heartbeat/lease, drain is the heartbeat reply. Kept only if serve replicas need their own coordination. |
+| `zombie:{id}:activity` (pub/sub) | the worker `PUBLISH`es; SSE handlers subscribe | same channel + SSE; `zombied` `PUBLISH`es, fed by the runner's `activity` stream. |
 
-The hot path collapses from the worker's 5-7 sequential Postgres roundtrips into **one `lease` + one `report`**. Idempotency that lives in the worker's `INSERT … ON CONFLICT` today moves into the `report` handler (replay-safe by `event_id`).
+The reclaim shift is the load-bearing one: moving the processor off-platform means Redis can no longer observe its death, so the durable lease (`lease_expires_at` + `fencing_token`, frozen in M80_001) replaces `XAUTOCLAIM`.
 
-### Event-leasing + sticky routing
+## Sandbox tiers
 
-A `zombie-runner` is a **stateless event-leaser** (the GitHub-Actions model): it pulls the next event for any zombie it is eligible for, runs it, reports, repeats. A dead runner's in-flight lease expires and another runner reclaims it — the Redis Pending-Entries-List (PEL) reclaim already provides this.
-
-The cost of pure event-leasing is a cold executor session per event. We recover most of the warmth with **best-effort sticky routing**: the mothership prefers to hand a zombie's next event to the runner that last ran it (hint stored as `last_runner_id`), falling back to any eligible runner. Warmth is an optimization; **correctness always derives from the durable `core.zombie_sessions` checkpoint**, never from runner-local state.
-
-### Secret boundary — the real trust decision
-
-"Agnostic of Postgres/Redis" is the easy part: those are platform credentials the runner never needed. The runner still needs the tenant `secrets_map` to make tool calls — that is the entire job. So `secret_delivery` is a contract field with a swappable mode:
-
-```
-  "anyone can run a zombie-runner"
-    ├── anyone the OPERATOR enrolls (mode A, NOW)  → secrets ship in the lease over TLS,
-    │     trusted fleet, same posture as the executor today
-    └── anyone GLOBALLY incl. untrusted (LATER)    → mode C: per-tenant-scoped runners
-          (a runner only receives work + secrets for tenants that enrolled it), or
-          mode B: zero-trust, secrets never leave the mothership (egress proxy)
-```
-
-The runner topology (S0-S6) is **identical** under any mode. The open-fleet vision is a secret-delivery problem layered on top, not a topology problem, so it is deferred — S0 only commits the `secret_delivery` field and an optional tenant scope on enrollment so modes C/B don't require re-cutting the contract.
-
-## Enrolling a runner — operator flow + trust gates
-
-Adding a host is **pull-based enrollment**, not a push registration. The operator hands the host a short-lived enrollment token; the host trades it for a durable identity, then pulls work:
-
-```
-  Operator                 Mothership                       Host (zombie-runner)
-   │ 1. request enrollment                          🔒 GATE 1 — WHO MAY ENROLL
-   ├───────────────────────▶│ mint ENROLLMENT_TOKEN       short-lived · single-use ·
-   │◀───────────────────────┤  (TTL, single-use, scoped)   scoped to tier/tenant
-   │ 2. install runner, hand it the token
-   ├───────────────────────────────────────────────────────────────▶│
-   │            3. register {enrollment_token, host_id,               │  🔒 GATE 2 — ENROLLMENT
-   │               sandbox_tier, labels}  ── over TLS ────────────────┤  validate token; reject if
-   │               │ mint runner_token (256-bit random)               │  missing / expired / used
-   │               │ store ONLY hash(runner_token) in fleet.runners   │  → a rogue without a valid
-   │               ├─────────────────────────────────────────────────▶│    token is stopped here
-   │               │  runner_token (returned once)                    │  persist locally
-   │            4. steady loop — Authorization: Bearer runner_token       🔒 GATE 3 — per-call auth
-   │               │◀── heartbeat · lease · report ───────────────────┤  hash(Bearer) == token_hash
-   │               │  eligibility: sandbox_tier + tenant scope         │  (timing-safe)
-   │               │  + secret_delivery bound what the runner receives │  🔒 GATE 4 — blast radius
-```
-
-Where the trust actually lives:
-
-- **Gate 1 (issue) + Gate 2 (register)** are what stop a rogue runner — no valid enrollment token, no entry. This is the enrollment-token + TLS work in M80_005.
-- **Gate 3 (`token_hash`)** only *authenticates* an already-enrolled runner per call. Necessary, not sufficient — it does not decide who may enroll.
-- **Gate 4 (`sandbox_tier` + tenant scope + `secret_delivery`)** bounds a runner's blast radius. In mode A secrets ship inline to every enrolled runner, so mode A is for **operator-owned fleets only**; untrusted hosts wait for the per-tenant-scoped mode.
-
-## Sandbox tiers (and how a Mac gets a real sandbox)
-
-Landlock + cgroups + bubblewrap are Linux-only. A runner reports its isolation strength at enrollment as a label; assignment (and later the scheduler) refuses to place other-tenant or production work on a weak tier.
+A runner reports its isolation strength at registration. Assignment (and later the scheduler) refuses to place other-tenant or production work on a weak tier. The reported tier is telemetry; trust for placement is operator-assigned, not self-claimed.
 
 | `sandbox_tier` | Where | Eligible for |
 |---|---|---|
 | `landlock_full` | Linux host | any work |
-| `container_nested` | runner inside a container on a Linux host (or a Linux Virtual Machine, VM) | any work — full sandbox, nested |
-| `macos_seatbelt` | macOS, Apple Seatbelt profile (weaker) | own-tenant / dev work |
+| `container_nested` | runner inside a container on a Linux host or VM | any work — full sandbox, nested |
+| `macos_seatbelt` | macOS, Seatbelt profile (weaker) | own-tenant / dev work |
 | `dev_none` | no real sandbox | own-tenant dev work |
 
-Containerizing the runner is a first-class deployment mode. Landlock is a stackable Linux Security Module (LSM) and nests for free; bubblewrap needs user-namespace + mount permission; per-agent cgroup limits need cgroup-v2 delegation — `sysbox` grants those safely without full `--privileged`. On macOS, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is exactly how a laptop earns `container_nested` instead of the degraded `macos_seatbelt`.
+On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack / Lima) is how a laptop earns `container_nested` instead of the degraded `macos_seatbelt`.
 
 ## Scaling
 
-The split inverts the binding constraint:
+The split inverts the binding constraint. Today N zombies need N Redis connections and the pool ceiling is the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — add hosts, they register, they pull. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M80_006/007 concern; the hot path (lease / report) is shardable.
 
-```
-        TODAY                                  TARGET
-  N zombies → N Redis conns             N zombies → bounded mothership pool
-  (pool ceiling is the wall)            runners hold 0 datastore conns
-  bottleneck: Redis connections         bottleneck: mothership API replicas + PG writes
-                                        both scale HORIZONTALLY
-```
+## What does not change
 
-Runners scale out with zero coordination (add hosts, they enroll, they pull). The mothership serve tier replicates behind a load balancer; the `lease` endpoint shards by zombie/queue. The one piece needing care at multi-replica scale is **placement** (assignment/scheduler) — multiple replicas making placement decisions need leader-election or partitioning, which is the M80_006/007 concern. The hot path (lease/report) is already shardable.
-
-## What does NOT change
-
-- The `zombied-executor` binary, its RPC, its sandbox, its secret substitution at the tool bridge.
-- Event ingress: steer / webhook / cron / continuation still `XADD zombie:{id}:events` (see `data_flow.md §B`).
-- The user read path: `GET /events`, the Server-Sent-Events (SSE) live tail, `zombiectl status/events`.
-- The three durable stores and their contracts (`data_flow.md` "three durable stores").
+- NullClaw's agent loop, its tool inventory, and secret substitution at the tool bridge. It moves into the runner as a linked module and a sandboxed child, but its behaviour is identical.
+- Event ingress: steer / webhook / cron / continuation still `XADD zombie:{id}:events`.
+- The user read path: `GET /events`, the SSE live tail, `zombiectl status/events`.
+- The three durable stores and their contracts (see `data_flow.md`).
 
 ## Roadmap (M80 workstreams)
 
 ```
- S0  M80_001  KEYSTONE   freeze /v1/runner contract + ALL schema + route/build stubs;
-                         prove ONE zombie register→lease→report over loopback, flag-gated  ← serial, first
- ── parallel fan-out against the frozen contract ───────────────────────────────────────
- S1  M80_002  API        mothership lease/report/assignment over real PG + Redis
- S2  M80_003  WORKER     thin the worker to call the contract; strip direct PG/Redis
- S3  M80_004  RUNNER     the `zombie-runner` binary + macOS Seatbelt backend + distribution
- S4  M80_005  IDENTITY   enrollment + per-runner token + TLS  (own security spec/PR)
- ── cutover: flip flag, delete old direct path (RULE NLR) ───────────────────────────────
- S5  M80_006  FLEET      node inventory + heartbeat + lease reassignment on death
- S6  M80_007  SCHEDULER  placement on labels/capacity/sandbox-tier; autoscale by queue depth
- ── later ────────────────────────────────────────────────────────────────────────────
-     mode C    per-tenant-scoped runners — the open "run it on your laptop" vision
+ S0  M80_001  KEYSTONE   freeze /v1/runners protocol + fleet schema + route/build stubs;
+                         prove ONE zombie register→lease→report over loopback, flag-gated   ← serial, first
+ ── parallel fan-out against the frozen protocol ────────────────────────────────────────────
+ S1  M80_002  API        zombied lease/report/assignment + fencing + reclaim over PG + Redis
+ S2  M80_003  WORKER     thin the worker to call the protocol; strip the direct PG/Redis path;
+                         reconcile data_flow.md / capabilities.md / scaling.md to the split (Dimension)
+ S3  M80_004  RUNNER     the zombie-runner binary, NullClaw fold-in, macOS backend, distribution
+ S4  M80_005  IDENTITY   register hardening (Clerk/api_key → zrn_), runnerBearer middleware, TLS
+ ── cutover: flip the flag, delete the old direct path ───────────────────────────────────────
+ S5  M80_006  FLEET      node inventory + heartbeat + lease reassignment on death; operator plane
+ S6  M80_007  SCHEDULER  placement on labels / capacity / sandbox-tier; autoscale by queue depth
+ ── later ─────────────────────────────────────────────────────────────────────────────────────
+     mode C    self-enrolling runners — the open "run it on your own host" case
 ```
-
-The heartbeat/failover gap this fills is the one [`data_flow.md`](./data_flow.md) already flags ("Recovery needs a heartbeat or XAUTOCLAIM sweep ... Multi-replica high availability remains a later concern").
