@@ -1,8 +1,8 @@
-//! Round-trip serialization proof for the frozen /v1/runner contract: every
-//! request/response type and enum serializes to JSON and parses back to a
-//! value that re-serializes identically. Stability (stringify → parse →
-//! stringify equality) is the equality check — it covers the std.json.Value
-//! secrets_map without a hand-rolled deep compare.
+//! Round-trip serialization proof for the frozen /v1/runners contract: every
+//! request/response type and enum serializes to JSON and parses back to a value
+//! that re-serializes identically. Stability (stringify → parse → stringify
+//! equality) is the equality check — it covers the std.json.Value secrets_map
+//! without a hand-rolled deep compare.
 
 const std = @import("std");
 const contract = @import("contract.zig");
@@ -27,9 +27,8 @@ test "runner contract enums round-trip via their tag names" {
     }
 }
 
-test "register request and response round-trip" {
+test "register request and response round-trip (no runner_id; token is in the header)" {
     try expectStable(contract.RegisterRequest, .{
-        .enrollment_token = "enr_abc",
         .host_id = "host-01",
         .sandbox_tier = .macos_seatbelt,
         .labels = &.{ "linux", "gpu" },
@@ -40,15 +39,15 @@ test "register request and response round-trip" {
     });
 }
 
-test "heartbeat request and response round-trip" {
-    try expectStable(contract.HeartbeatRequest, .{ .runner_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee" });
+test "heartbeat response round-trips" {
     try expectStable(contract.HeartbeatResponse, .{ .status = .ok });
 }
 
-test "report request and response round-trip" {
+test "report request and response round-trip (fenced, no runner_id)" {
     try expectStable(contract.ReportRequest, .{
-        .runner_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+        .lease_id = "lease_0190aaaa",
         .event_id = "1700000000000-0",
+        .fencing_token = 184,
         .outcome = .processed,
         .response_text = "done",
         .tokens = 1234,
@@ -58,36 +57,47 @@ test "report request and response round-trip" {
     try expectStable(contract.ReportResponse, .{ .ok = true });
 }
 
-test "lease response round-trips event envelope and execution policy without secrets" {
+test "lease response — work payload round-trips (fencing + event + policy)" {
     try expectStable(contract.LeaseResponse, .{
-        .event = .{
-            .event_id = "1700000000000-0",
-            .zombie_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
-            .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
-            .actor = "steer:kishore",
-            .event_type = .chat,
-            .request_json = "{\"message\":\"hi\"}",
-            .created_at = 1700000000000,
-        },
-        .policy = .{
-            .network_policy = .{ .allow = &.{"api.example.com"} },
-            .tools = &.{"bash"},
-            .secrets_map = null,
-            .context = .{
-                .tool_window = 20,
-                .memory_checkpoint_every = 5,
-                .stage_chunk_threshold = 0.75,
-                .model = "claude-opus-4-7",
-                .context_cap_tokens = 200000,
+        .lease = .{
+            .lease_id = "lease_0190aaaa",
+            .fencing_token = 184,
+            .lease_expires_at = 1700000030000,
+            .secret_delivery = .@"inline",
+            .event = .{
+                .event_id = "1700000000000-0",
+                .zombie_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+                .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
+                .actor = "steer:kishore",
+                .event_type = .chat,
+                .request_json = "{\"message\":\"hi\"}",
+                .created_at = 1700000000000,
+            },
+            .policy = .{
+                .network_policy = .{ .allow = &.{"api.example.com"} },
+                .tools = &.{"bash"},
+                .secrets_map = null,
+                .context = .{
+                    .tool_window = 20,
+                    .memory_checkpoint_every = 5,
+                    .stage_chunk_threshold = 0.75,
+                    .model = "claude-opus-4-7",
+                    .context_cap_tokens = 200000,
+                },
             },
         },
+        .retry_after_ms = null,
     });
+}
+
+test "lease response — no-work carries a backoff hint" {
+    try expectStable(contract.LeaseResponse, .{ .lease = null, .retry_after_ms = 1000 });
 }
 
 test "lease response carries an inline secrets_map across the round-trip" {
     const a = std.testing.allocator;
     const json_in =
-        \\{"event":{"event_id":"1700000000000-0","zombie_id":"0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee","workspace_id":"0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa","actor":"steer:kishore","event_type":"webhook","request_json":"{}","created_at":1700000000000},"policy":{"network_policy":{"allow":["api.github.com"]},"tools":["bash"],"secrets_map":{"github":{"token":"ghp_x"}},"context":{"tool_window":20,"memory_checkpoint_every":5,"stage_chunk_threshold":0.75,"model":"claude-opus-4-7","context_cap_tokens":200000}}}
+        \\{"lease":{"lease_id":"lease_0190aaaa","fencing_token":184,"lease_expires_at":1700000030000,"secret_delivery":"inline","event":{"event_id":"1700000000000-0","zombie_id":"0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee","workspace_id":"0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa","actor":"steer:kishore","event_type":"webhook","request_json":"{}","created_at":1700000000000},"policy":{"network_policy":{"allow":["api.github.com"]},"tools":["bash"],"secrets_map":{"github":{"token":"ghp_x"}},"context":{"tool_window":20,"memory_checkpoint_every":5,"stage_chunk_threshold":0.75,"model":"claude-opus-4-7","context_cap_tokens":200000}}},"retry_after_ms":null}
     ;
     const p1 = try std.json.parseFromSlice(contract.LeaseResponse, a, json_in, .{});
     defer p1.deinit();
@@ -98,5 +108,5 @@ test "lease response carries an inline secrets_map across the round-trip" {
     const j3 = try std.json.Stringify.valueAlloc(a, p2.value, .{});
     defer a.free(j3);
     try std.testing.expectEqualStrings(j2, j3);
-    try std.testing.expect(p2.value.policy.secrets_map != null);
+    try std.testing.expect(p1.value.lease.?.policy.secrets_map != null);
 }

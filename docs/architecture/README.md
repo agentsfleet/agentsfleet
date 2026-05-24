@@ -13,7 +13,7 @@ The architecture doc used to be a single ~1,500-line file. That was hard to read
 
 Read in this order if you've never seen the project:
 
-1. [`high_level.md`](./high_level.md) — what the product is, what it isn't, why it exists, and why the obvious alternatives don't make it redundant.
+1. [`high_level.md`](./high_level.md) — what the product is, what it isn't, and why it exists.
 2. [`user_flow.md`](./user_flow.md) — how a user gets from "I want a zombie" to "the zombie is running on my repo."
 3. [`scenarios/`](./scenarios/) — three end-to-end walkthroughs following one persona (John Doe) across his journey: default cold install, switching to self-managed with Fireworks + Kimi 2.6, and the credit pool draining and tripping the gate.
 
@@ -21,18 +21,17 @@ After that, dip into whichever of these matches the change you're making:
 
 | File | Topic |
 |---|---|
-| [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases, why-not-OpenClaw. The "why this exists" reading for new contributors. |
+| [`high_level.md`](./high_level.md) | Product thesis, problem statement, why-now, MVP thesis, initial use cases. The "why this exists" reading for new contributors. |
 | [`direction.md`](./direction.md) | The architectural constants. When a spec proposes something that conflicts with these, the spec gets amended — not the constants. |
 | [`user_flow.md`](./user_flow.md) | How a user authors, installs, triggers, and supervises a zombie. Includes the install-skill walkthrough, deployment posture, and the model-cap origin story (§8.7). |
 | [`data_flow.md`](./data_flow.md) | Where a webhook, a steer, or a cron fire ends up. Covers the two agents in play, the three durable stores, the Redis streams + pub/sub channel, the install / trigger / execute / watch / kill sequences, multi-tenancy boundary, install-failure recovery, and the load-bearing invariants. |
-| [`runner_fleet.md`](./runner_fleet.md) | **Target architecture (M80, in progress).** Splitting `zombied` into a mothership + host-resident `zombie-runner` fleet: the `/v1/runner` control contract, event-leasing + sticky routing, the secret-delivery trust modes, sandbox tiers (containers / macOS), the scaling inversion, and the S0-S6 roadmap. Grounded in `data_flow.md` (the current single-fleet runtime). |
+| [`runner_fleet.md`](./runner_fleet.md) | **Target architecture (M80, in progress).** Splitting `zombied` into a control plane + host-resident `zombie-runner` fleet: the `/v1/runners` control protocol, event-leasing + sticky routing, the secret-delivery trust modes, sandbox tiers (containers / macOS), the scaling inversion, and the S0-S6 roadmap. Grounded in `data_flow.md` (the current single-process runtime). |
 | [`capabilities.md`](./capabilities.md) | What the zombie has, what the platform enforces, and the context-lifecycle layers (memory checkpoint, rolling tool window, stage chunking) that keep long incidents reasoning past the model's context window. |
 | [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) | How users pay for what they run. The credit-pool model (Amp-style), the one-time starter grant, the two debit points (receive + stage), `compute_receive_charge` / `compute_stage_charge`, the free-trial window through 2026-07-31, the self-managed credential shape, the api_key visibility boundary, NullClaw's provider routing, the model-caps endpoint with per-model token rates, and the read-only billing dashboard + CLI surface. **Current dollar amounts live on [usezombie.com/#pricing](https://usezombie.com/#pricing)** — this doc covers shape and behaviour. |
 | [`scenarios/`](./scenarios/) | Three concrete end-to-end walkthroughs: [`01_default_install.md`](./scenarios/01_default_install.md), [`02_self_managed.md`](./scenarios/02_self_managed.md), [`03_balance_gate.md`](./scenarios/03_balance_gate.md). |
-| [`bastion.md`](./bastion.md) | Where the wedge points after launch. Not part of v2 scope; documented so spec authors avoid foreclosing it. |
-| [`office_hours.md`](./office_hours.md) | Historical — the product-design session that produced the v2 wedge. Persona context, demand-bucket honesty check, rejected approaches. Not enforceable canon. |
-| [`plan_engg_review.md`](./plan_engg_review.md) | Historical — the engineering-review pass that produced the substrate-tier vs packaging-tier split. Test framing, critical paths, regression surface. Not enforceable canon. |
-| [`../AUTH.md`](../AUTH.md) | The three principal types (CLI, UI, API key), the cookie-vs-Bearer reasoning, the full auth-flow sequences, and the planned dashboard token-model cleanup roadmap (Stage 1 single-token collapse + Stage 2 BFF, post-M74_002). The canonical reference any time auth is in scope. |
+| [`roadmap.md`](./roadmap.md) | Deferred / forward-looking direction: v2.1 scope-based auth, the agent-keys first-class revamp, the bastion post-MVP shape, open-fleet (mode C). Direction, not commitment. |
+| [`archive/`](./archive/) | Historical, non-canon records: `office_hours.md` (the product-design session behind the v2 wedge) and `plan_engg_review.md` (the pre-launch engineering review). Context for past decisions; not the truth about today. |
+| [`../AUTH.md`](../AUTH.md) | The principal model (CLI, UI, tenant api key, agent key, and the `zrn_` runner machine principal), the bearer-routing middleware, and the per-flow detail. The canonical reference any time auth is in scope. |
 
 ---
 
@@ -52,8 +51,8 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 |---|---|
 | **Zombie** | A long-lived, durable runtime instance defined by `SKILL.md` + `TRIGGER.md`; owns one operational outcome. [(more)](./high_level.md#1-product-thesis) |
 | **NullClaw** | The language-model agent loop that runs inside the executor sandbox — the "zombie's agent." [(more)](./capabilities.md#1-reasoning--tool-inventory-declared-in-the-zombies-own-files) |
-| **Mothership** | The `zombied` control plane: owns Postgres, Redis, the API, and work assignment. Host runners reach it only over the `/v1/runner` channel. Target architecture, M80. [(more)](./runner_fleet.md) |
-| **zombie-runner** | The host-resident binary (worker orchestration + the unchanged executor) that registers to the mothership and pulls work; holds no datastore credentials. Target architecture, M80. [(more)](./runner_fleet.md) |
+| **`zombied` (control plane)** | Owns Postgres, Redis, the Vault API, the HTTP API, and work assignment. Host runners reach it only over the `/v1/runners` protocol. Target architecture, M80. [(more)](./runner_fleet.md) |
+| **zombie-runner** | The host-resident binary (worker orchestration + NullClaw execution linked in — no separate executor sidecar) that registers to `zombied` and pulls work; holds no datastore credentials. Target architecture, M80. [(more)](./runner_fleet.md) |
 | **User's agent** | The workstation tool the human types into (Claude Code / Amp / Codex CLI / OpenCode) — drives `zombiectl`; distinct from the zombie's agent. [(more)](./user_flow.md#§8.0-the-wedge-surface-usezombie-install-platform-ops-skill) |
 | **Steer** | A human-initiated message via `zombiectl steer {id} "…"` or the dashboard chat composer; lands as `actor=steer:<user>`. [(more)](./user_flow.md#§8.3-triggering-the-zombie) |
 | **Webhook trigger** | An external system POSTing to `/v1/webhooks/{zombie_id}/{source}`; lands as `actor=webhook:<source>`. [(more)](./user_flow.md#§8.3-triggering-the-zombie) |
@@ -63,4 +62,4 @@ One-line definitions for quick lookup. The canonical, full definition lives in t
 | **Stage** | One `runner.execute` call inside the executor — one language-model context window's worth of reasoning. Long incidents span multiple stages via continuation events. [(more)](./capabilities.md#4-context-lifecycle--keeping-a-long-incident-reasoning-past-the-models-working-memory-limit) |
 | **Tool bridge** | The substitution layer inside the executor that replaces `${secrets.NAME.FIELD}` placeholders with real bytes after sandbox entry. [(more)](./capabilities.md#3-platform-level-guarantees-the-substrate-that-wraps-every-tool-call) |
 | **Self-managed provider keys** | The posture where the user stores their own LLM provider credential in the vault and activates it via `zombiectl tenant provider set --credential <name>`. [(more)](./billing_and_provider_keys.md#1-the-two-postures) |
-| **Bastion** | The post-launch framing where the same zombie owns both internal triage and customer-facing status communication. [(more)](./bastion.md) |
+| **Bastion** | The post-launch framing where the same zombie owns both internal triage and customer-facing status communication. [(more)](./roadmap.md#bastion--post-mvp-shape) |

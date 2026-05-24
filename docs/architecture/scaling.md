@@ -1,6 +1,8 @@
 # Scaling and tuneup — how the runtime grows on Upstash
 
 > Parent: [`README.md`](./README.md) · Companion: [`data_flow.md`](./data_flow.md) §"Connection topology — pool vs. dedicated"
+>
+> **Scope:** the connection math assumes per-zombie worker threads holding dedicated Redis connections. The M80 split ([`runner_fleet.md`](./runner_fleet.md)) moves datastore connections off the host into `zombied`, which changes these numbers; re-derive in M80_003.
 
 Read this when you need to size a deployment, pick env-var values, or decide whether the next bottleneck is the Upstash plan, worker-box fan-out, or process-local pool sizing.
 

@@ -1,6 +1,8 @@
 # Data Flow — how an event moves through the system
 
 > Parent: [`README.md`](./README.md)
+>
+> **Scope:** this file describes the single-process model — `zombied` running the `worker` loop plus the `zombied-executor` sidecar. The M80 split moves execution into a host-resident `zombie-runner` that holds no datastore credentials (see [`runner_fleet.md`](./runner_fleet.md)); the two reconcile in M80_003.
 
 Read this when you need to know where a webhook, a steer, or a cron fire ends up. Many specs reference this file as the canonical picture of the runtime.
 

@@ -6,17 +6,19 @@
 -- enroll: their identity never sits in the tenant-data schema. `fleet` is the
 -- system boundary; a runner is one instance within it.
 --
--- A runner enrolls via POST /v1/runner/register, exchanging a short-lived
--- enrollment token for a durable per-runner bearer token. The token itself is
--- returned once at register; this table stores only its hash, and the mothership
--- verifies later calls by hashing the presented Bearer (no plaintext token).
+-- A runner enrolls via POST /v1/runners/register, authed by an existing
+-- operator/provisioner credential (a Clerk JWT or a zmb_t_ api_key, via
+-- bearer_or_api_key — there is no enrollment token). register mints a durable
+-- per-runner bearer token (zrn_), returned once; this table stores only its
+-- hash, and the mothership verifies later calls by hashing the presented Bearer
+-- (no plaintext token).
 --
--- sandbox_tier: isolation strength reported at enrollment
+-- sandbox_tier: isolation strength reported at register
 --   (landlock_full | container_nested | macos_seatbelt | dev_none) — values
 --   enforced in application code (RULE STS forbids static-string CHECKs).
 -- status: runner lifecycle state — app-enforced values, no static CHECK.
 -- labels: free-form capability labels, app-supplied JSON array (never NULL).
--- tenant_id: OPTIONAL enrollment scope. NULL = trusted fleet (secrets ship
+-- tenant_id: OPTIONAL registration scope. NULL = trusted fleet (secrets ship
 --   inline over TLS, the only mode wired today). A non-NULL scope reserves the
 --   per-tenant-scoped-runner mode so that vision needn't re-cut this table;
 --   ON DELETE CASCADE removes a scoped runner when its tenant is deleted.
@@ -39,7 +41,7 @@ CREATE TABLE IF NOT EXISTS fleet.runners (
     CONSTRAINT uq_runners_token_hash UNIQUE (token_hash)
 );
 
--- api_runtime: the serve tier owns /v1/runner (register/heartbeat/lease/report);
+-- api_runtime: the serve tier owns /v1/runners (register/heartbeat/lease/report);
 -- it inserts at register, updates last_seen_at/status on heartbeat, and reads on
 -- every authed call to resolve the runner from its presented token.
 GRANT USAGE ON SCHEMA fleet TO api_runtime;

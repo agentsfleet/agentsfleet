@@ -1,6 +1,8 @@
 # Capabilities — what the zombie has, what the platform guarantees
 
 > Parent: [`README.md`](./README.md)
+>
+> **Scope:** the platform *guarantees* below are binding and unchanged by the M80 split. Where this file describes the *mechanism* (worker watcher, per-zombie threads), that is the single-process model; the split moves execution into a host-resident runner — see [`runner_fleet.md`](./runner_fleet.md).
 
 A zombie's capabilities split into two layers: what the language model is told it can do (a soft layer the model can ignore or get wrong), and what the platform actually enforces (a hard layer the model cannot escape from inside the sandbox). Both matter; the second is what makes the first safe.
 
