@@ -191,6 +191,8 @@ pub const ERR_GRANT_DENIED = "UZ-GRANT-003";
 // RUNNER (zombie-runner /v1/runners control contract)
 pub const ERR_RUN_INVALID_RUNNER_TOKEN = "UZ-RUN-001";
 pub const ERR_RUN_UNSUPPORTED_SECRET_DELIVERY = "UZ-RUN-003";
+pub const ERR_RUN_STALE_FENCING_TOKEN = "UZ-RUN-005";
+pub const ERR_RUN_LEASE_NOT_FOUND = "UZ-RUN-006";
 
 // ── Error mapping table (bvisor pattern) ─────────────────────────────────────
 // Shared type for modules that map Zig errors to registry codes + messages.

@@ -57,10 +57,12 @@ pub const RUNNER_STATUS_ACTIVE = "active";
 
 /// `fleet.runner_leases.status` lifecycle values — app-enforced (no SQL CHECK,
 /// per RULE STS). `active` at lease issue, `reported` once the runner's report
-/// finalizes. Single-sourced here (insert in the lease service, update in the
-/// report service); not a wire value.
+/// finalizes, `expired` when reclaim re-leases a dead holder's event to another
+/// runner. Single-sourced here (insert in the lease service, update in the
+/// report + reclaim services); not a wire value.
 pub const RUNNER_LEASE_STATUS_ACTIVE = "active";
 pub const RUNNER_LEASE_STATUS_REPORTED = "reported";
+pub const RUNNER_LEASE_STATUS_EXPIRED = "expired";
 
 /// POST /v1/runners — register. Auth: an existing credential —
 /// `Bearer <Clerk JWT | zmb_t_ api_key>` (via bearer_or_api_key), not an

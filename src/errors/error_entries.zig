@@ -231,6 +231,10 @@ pub const ENTRIES = [_]Entry{
         "The Bearer runner_token is missing, malformed, or not recognized. Re-register the runner."),
     e("UZ-RUN-003", .bad_request, "Unsupported secret delivery mode",
         "The requested secret delivery mode is not supported. This deployment delivers secrets inline only."),
+    e("UZ-RUN-005", .conflict, "Stale fencing token",
+        "The lease was reclaimed by a newer holder. This report is rejected; the current holder's result wins."),
+    e("UZ-RUN-006", .not_found, "Lease not found",
+        "No active lease matches this lease_id for the presenting runner; it may have expired, been reclaimed, or never existed."),
     // Runtime / execute-path entries (sandbox, executor, relay, credentials,
     // approval-gate, memory, api-keys, grants, tool/credential, proxy,
     // gate-execute) live in error_entries_runtime.zig and are concatenated
