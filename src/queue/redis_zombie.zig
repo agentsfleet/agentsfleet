@@ -88,6 +88,28 @@ pub fn xreadgroupZombie(
     return decodeSingleZombieEvent(client.alloc, resp);
 }
 
+/// XREADGROUP on zombie:{id}:events WITHOUT BLOCK — returns the next undelivered
+/// event immediately, or null. The runner control plane's assignment scan
+/// probes many zombies per poll and must not park on any single stream; the
+/// runner long-polls client-side (via retry_after_ms) instead.
+pub fn xreadgroupZombieOnce(
+    client: *redis_client.Client,
+    zombie_id: []const u8,
+    consumer_id: []const u8,
+) !?ZombieEvent {
+    var key_buf: [128]u8 = undefined;
+    const stream_key = try zombieStreamKey(&key_buf, zombie_id);
+    var resp = try client.command(&.{
+        "XREADGROUP",                       "GROUP",
+        queue_consts.zombie_consumer_group, consumer_id,
+        S_COUNT,                            queue_consts.zombie_xread_count,
+        "STREAMS",                          stream_key,
+        ">",
+    });
+    defer resp.deinit(client.alloc);
+    return decodeSingleZombieEvent(client.alloc, resp);
+}
+
 /// XAUTOCLAIM stale zombie events (idle > 5 min).
 pub fn xautoclaimZombie(
     client: *redis_client.Client,

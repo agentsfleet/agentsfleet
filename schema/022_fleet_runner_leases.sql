@@ -11,6 +11,12 @@
 -- checkpointZombieSession (zombie_id). The lease persists exactly that context
 -- so report rebuilds it without re-resolving the tenant/provider.
 --
+-- Event envelope (actor, event_type, request_json, event_created_at): the
+-- runner's input event, persisted so an expired lease can be RE-LEASED to
+-- another runner from Postgres alone (the durable reclaim source) without
+-- re-reading Redis — durable state lives in zombied, never runner-local. Not
+-- credentials: secrets are resolved fresh per lease, never stored here (VLT).
+--
 -- fencing_token: monotonic per lease; frozen here for the later fleet reclaim
 --   logic (lease_expires_at + fencing rejection). The control plane records it
 --   but does not verify it yet — the single-zombie loopback skeleton has no
@@ -28,6 +34,10 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
     workspace_id      UUID   NOT NULL,
     tenant_id         UUID   NOT NULL,
     event_id          TEXT   NOT NULL,
+    actor             TEXT   NOT NULL,
+    event_type        TEXT   NOT NULL,
+    request_json      TEXT   NOT NULL,
+    event_created_at  BIGINT NOT NULL,
     posture           TEXT   NOT NULL,
     model             TEXT   NOT NULL,
     fencing_token     BIGINT NOT NULL,
