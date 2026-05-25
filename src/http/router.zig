@@ -2,6 +2,7 @@ const std = @import("std");
 const httpz = @import("httpz");
 const matchers = @import("route_matchers.zig");
 const model_caps_h = @import("handlers/model_caps.zig");
+const runner_protocol = @import("../runner/protocol.zig");
 
 const S_EVENTS = "events";
 
@@ -93,6 +94,13 @@ pub const Route = union(enum) {
     // Tenant API key CRUD.
     tenant_api_keys, // POST|GET /v1/api-keys
     tenant_api_key_by_id: []const u8, // PATCH|DELETE /v1/api-keys/{id}
+    // Runner control plane — POST-only, identity from the Bearer token (no
+    // runner_id in the path). register is admin-gated; the self-plane verbs
+    // (heartbeat/lease/report) are gated by runnerBearer.
+    register_runner, // POST /v1/runners
+    runner_heartbeat, // POST /v1/runners/me/heartbeats
+    runner_lease, // POST /v1/runners/me/leases
+    runner_report, // POST /v1/runners/me/reports
 };
 
 pub fn match(path: []const u8, method: httpz.Method) ?Route {
@@ -111,6 +119,12 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     if (std.mem.eql(u8, path, "/v1/api-keys")) return .tenant_api_keys;
     // Clerk user.created signup event — internal auth-plane path. Exact-match.
     if (std.mem.eql(u8, path, "/v1/auth/identity-events/clerk")) return .auth_identity_event_clerk;
+    // Runner control plane — static exact-match paths (method-agnostic here;
+    // the invoke fn enforces POST). `me` resolves from the Bearer token.
+    if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNERS)) return .register_runner;
+    if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_HEARTBEATS)) return .runner_heartbeat;
+    if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_LEASES)) return .runner_lease;
+    if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_REPORTS)) return .runner_report;
 
     // Single canonical parse + version dispatch. The "v1" literal lives in
     // exactly one place — adding v2 is a new branch here, not a sweep across

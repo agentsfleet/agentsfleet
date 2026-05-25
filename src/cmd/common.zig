@@ -16,7 +16,7 @@ const ServeMigrationDecision = enum {
     run_required,
 };
 
-pub fn canonicalMigrations() [18]db.Migration {
+pub fn canonicalMigrations() [19]db.Migration {
     const schema = @import("schema");
     return .{
         .{ .version = 1, .sql = schema.core_foundation_sql },
@@ -37,6 +37,7 @@ pub fn canonicalMigrations() [18]db.Migration {
         .{ .version = 19, .sql = schema.model_caps_sql },
         .{ .version = 20, .sql = schema.tenant_providers_sql },
         .{ .version = 21, .sql = schema.fleet_runners_sql },
+        .{ .version = 22, .sql = schema.fleet_runner_leases_sql },
     };
 }
 
@@ -186,9 +187,9 @@ test "integration: startup with pending migrations proceeds when enabled and loc
     try std.testing.expectEqual(.run_required, decision);
 }
 
-test "canonical schema bootstrap: last version is 21" {
+test "canonical schema bootstrap: last version is 22" {
     const migrations = canonicalMigrations();
-    try std.testing.expectEqual(@as(i32, 21), migrations[migrations.len - 1].version);
+    try std.testing.expectEqual(@as(i32, 22), migrations[migrations.len - 1].version);
 }
 
 test "every migration SQL is parseable by SqlStatementSplitter" {

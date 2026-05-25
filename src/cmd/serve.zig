@@ -10,6 +10,7 @@ const audit_events = @import("../auth/audit_events.zig");
 const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
 const api_key_lookup = @import("api_key_lookup.zig");
+const serve_runner_lookup = @import("serve_runner_lookup.zig");
 const metrics = @import("../observability/metrics.zig");
 const logging = @import("log");
 const telemetry_mod = @import("../observability/telemetry.zig");
@@ -240,6 +241,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
     const approval_signing_secret: []const u8 = if (approval_signing_secret_owned) |s| s else "";
 
     var api_key_lookup_ctx = api_key_lookup.Ctx{ .pool = ctx.pool };
+    var runner_lookup_ctx = serve_runner_lookup.Ctx{ .pool = ctx.pool };
 
     var registry = auth_mw.MiddlewareRegistry{
         .bearer_or_api_key = .{
@@ -248,6 +250,10 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .tenant_api_key_mw = .{
             .host = &api_key_lookup_ctx,
             .lookup = api_key_lookup.lookup,
+        },
+        .runner_bearer_mw = .{
+            .host = &runner_lookup_ctx,
+            .lookup = serve_runner_lookup.lookup,
         },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },

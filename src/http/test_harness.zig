@@ -256,6 +256,9 @@ fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
         .bearer_or_api_key = .{ .verifier = &h.verifier },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKey },
+        // SAFETY: stubRunnerLookup ignores host and returns null, so .host is
+        // never dereferenced; runner-authed routes 401 in this harness.
+        .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
         .webhook_hmac_mw = .{ .secret = "" },
@@ -263,6 +266,10 @@ fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
 }
 
 fn stubTenantApiKey(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.tenant_api_key.LookupResult {
+    return null;
+}
+
+fn stubRunnerLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.runner_bearer.LookupResult {
     return null;
 }
 

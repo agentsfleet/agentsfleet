@@ -116,6 +116,17 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         // Tenant API keys — operator-minimum per RULE BIL.
         .tenant_api_keys => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeys },
         .tenant_api_key_by_id => .{ .middlewares = registry.operator(), .invoke = invoke.invokeTenantApiKeyById },
+
+        // Runner control plane. register is authed by an existing operator
+        // credential (bearer_or_api_key + admin role); the self-plane verbs are
+        // authed by the minted runner_token via runnerBearer (zrn_ only, no
+        // JWKS/tenant fall-through) — a runner token can't satisfy a tenant
+        // route and a tenant/user token can't satisfy a runner route, enforced
+        // by which middleware guards the route.
+        .register_runner => .{ .middlewares = registry.admin(), .invoke = invoke.invokeRegisterRunner },
+        .runner_heartbeat => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerHeartbeat },
+        .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },
+        .runner_report => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerReport },
     };
 }
 
@@ -165,4 +176,8 @@ test "specFor returns a RouteSpec for every Route variant (Batch D — full tabl
     try testing.expect(specFor(.{ .workspace_approvals = "ws1" }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_approval_detail = .{ .workspace_id = "ws1", .gate_id = "g1" } }, &reg) != null);
     try testing.expect(specFor(.{ .workspace_approval_resolve = .{ .workspace_id = "ws1", .gate_id = "g1", .decision = .approve } }, &reg) != null);
+    try testing.expect(specFor(.register_runner, &reg) != null);
+    try testing.expect(specFor(.runner_heartbeat, &reg) != null);
+    try testing.expect(specFor(.runner_lease, &reg) != null);
+    try testing.expect(specFor(.runner_report, &reg) != null);
 }

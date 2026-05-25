@@ -37,6 +37,10 @@ pub const invokeTenantApiKeys = api_keys_invokes.invokeTenantApiKeys;
 pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const clerk_webhook_h = @import("handlers/auth/identity_events_clerk.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
+const runner_register = @import("handlers/runner/register.zig");
+const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
+const runner_lease = @import("handlers/runner/lease.zig");
+const runner_report = @import("handlers/runner/report.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
 const events_invokes = @import("route_table_invoke_events.zig");
@@ -293,5 +297,33 @@ pub fn invokeDeleteAgentKey(hx: *Hx, req: *httpz.Request, route: router.Route) v
     if (req.method != .DELETE) { common.respondMethodNotAllowed(hx.res); return; }
     const r = route.delete_agent_key;
     agent_keys_h.innerDeleteAgentKey(hx.*, r.workspace_id, r.agent_id);
+}
+
+// ── Runner control plane ──────────────────────────────────────────────────
+// POST-only; wrong methods get 405. Each invoke delegates to the real handler
+// (register mints + persists; heartbeat/lease/report drive the control plane).
+
+pub fn invokeRegisterRunner(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    runner_register.innerRegisterRunner(hx.*, req);
+}
+
+pub fn invokeRunnerHeartbeat(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    runner_heartbeat.innerRunnerHeartbeat(hx.*, req);
+}
+
+pub fn invokeRunnerLease(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    runner_lease.innerRunnerLease(hx.*, req);
+}
+
+pub fn invokeRunnerReport(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    runner_report.innerRunnerReport(hx.*, req);
 }
 

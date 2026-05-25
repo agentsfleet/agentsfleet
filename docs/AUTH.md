@@ -284,7 +284,7 @@ A runner has no credential until someone with an *existing* credential registers
 
 ```
 Operator / provisioner                              zombied
-   │ POST /v1/runners/register
+   │ POST /v1/runners
    │   Authorization: Bearer <Clerk-JWT | zmb_t_>
    │   { host_id, sandbox_tier, labels[] }
    ▼
@@ -316,7 +316,7 @@ A runner principal authorizes exactly four self-scoped verbs — heartbeat, leas
 
 ### What ships when
 
-M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes. The `register` handler, the `runnerBearer` middleware, and Transport-Layer-Security (TLS) hardening land in M80_005.
+M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes — and, per the keystone's single-PR delivery, ships the working `register` handler, the `runnerBearer` middleware, and `AuthPrincipal.runner_id`. They land here rather than later because the `/v1/runners/*` routes are registered always-on: a real `lease`/`report` handler on `none` middleware would be a live, unauthenticated endpoint handing a tenant's `secrets_map` to any caller. M80_005 narrows to Transport-Layer-Security (TLS) hardening and the operator-assigned-trust authz fields (`trust_class`, `allowed_workspace_ids`).
 
 ---
 

@@ -261,6 +261,10 @@ pub fn build(b: *std.Build) void {
     const install_executor_stub = b.addInstallArtifact(executor_stub_exe, .{});
     b.getInstallStep().dependOn(&install_executor_stub.step);
 
+    // The host-resident `zombie-runner` daemon has its own build graph —
+    // `build_runner.zig` — so it never links zombied's server infrastructure
+    // (pg/httpz/redis). It shares only the frozen wire protocol by source.
+
     // ── Executor test step ───────────────────────────────────────────────────
     const executor_tests = b.addTest(.{
         .name = "zombied-executor-tests",

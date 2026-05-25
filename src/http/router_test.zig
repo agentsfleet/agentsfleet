@@ -4,6 +4,7 @@ const std = @import("std");
 const router = @import("router.zig");
 const Route = router.Route;
 const match = router.match;
+const runner_protocol = @import("../runner/protocol.zig");
 
 test "tenant billing route resolves" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing, match("/v1/tenants/me/billing", .GET).?);
@@ -427,5 +428,21 @@ test "custom-method subpath: empty ids are rejected" {
     try std.testing.expect(match("/v1/workspaces/ws1/zombies//current-run", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//pause", .GET) == null);
     try std.testing.expect(match("/v1/workspaces//sync", .GET) == null);
+}
+
+test "runner control-plane routes resolve (static, identity-from-token paths)" {
+    try std.testing.expectEqualDeep(Route.register_runner, match(runner_protocol.PATH_RUNNERS, .POST).?);
+    try std.testing.expectEqualDeep(Route.runner_heartbeat, match(runner_protocol.PATH_RUNNER_HEARTBEATS, .POST).?);
+    try std.testing.expectEqualDeep(Route.runner_lease, match(runner_protocol.PATH_RUNNER_LEASES, .POST).?);
+    try std.testing.expectEqualDeep(Route.runner_report, match(runner_protocol.PATH_RUNNER_REPORTS, .POST).?);
+    // Static exact-match is method-agnostic; the invoke fn enforces POST.
+    try std.testing.expectEqualDeep(Route.register_runner, match(runner_protocol.PATH_RUNNERS, .GET).?);
+}
+
+test "runner control-plane rejects malformed sibling paths (404, no runner_id shape)" {
+    try std.testing.expect(match("/v1/runners/me", .POST) == null);
+    try std.testing.expect(match("/v1/runners/me/unknown", .POST) == null);
+    try std.testing.expect(match("/v1/runners/r_123/leases", .POST) == null);
+    try std.testing.expect(match("/v1/runners/", .POST) == null);
 }
 

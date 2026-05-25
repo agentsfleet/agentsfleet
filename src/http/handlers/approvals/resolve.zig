@@ -149,6 +149,9 @@ fn formatResolverAttribution(hx: hx_mod.Hx) ![]const u8 {
     return switch (hx.principal.mode) {
         .jwt_oidc => resolver.user(hx.alloc, subject),
         .api_key => resolver.apiKey(hx.alloc, subject),
+        // A runner principal never reaches a tenant approval route —
+        // runnerBearer guards only /v1/runners/me/*. Traps in ReleaseSafe.
+        .runner => unreachable,
     };
 }
 

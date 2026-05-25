@@ -27,6 +27,7 @@ pub const WriteErrorFn = auth_ctx.WriteErrorFn;
 pub const bearer_oidc = @import("bearer_oidc.zig");
 pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
+pub const runner_bearer = @import("runner_bearer.zig");
 pub const require_role = @import("require_role.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
@@ -37,6 +38,7 @@ pub const trusted_client_ip = @import("trusted_client_ip.zig");
 pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const TenantApiKey = tenant_api_key.TenantApiKey;
+pub const RunnerBearer = runner_bearer.RunnerBearer;
 pub const RequireRole = require_role.RequireRole;
 pub const WebhookHmac = webhook_hmac.WebhookHmac;
 pub const SvixSignature = svix_signature_mod.SvixSignature;
@@ -55,6 +57,7 @@ pub const MiddlewareRegistry = struct {
     // ── Concrete middleware instances ─────────────────────────────────────
     bearer_or_api_key: BearerOrApiKey,
     tenant_api_key_mw: TenantApiKey,
+    runner_bearer_mw: RunnerBearer,
     require_role_admin: RequireRole,
     require_role_operator: RequireRole,
     webhook_hmac_mw: WebhookHmac,
@@ -64,6 +67,8 @@ pub const MiddlewareRegistry = struct {
     // return slices without allocating per request.
     // SAFETY: populated by initChains() before any policy method reads it.
     _bearer_chain: [1]Middleware(AuthCtx) = undefined,
+    // SAFETY: populated by initChains() before any policy method reads it.
+    _runner_chain: [1]Middleware(AuthCtx) = undefined,
     // SAFETY: populated by initChains() before any policy method reads it.
     _admin_chain: [2]Middleware(AuthCtx) = undefined,
     // SAFETY: populated by initChains() before any policy method reads it.
@@ -87,6 +92,7 @@ pub const MiddlewareRegistry = struct {
         // prefixed tokens delegate to the DB-backed lookup path.
         self.bearer_or_api_key.tenant_api_key = &self.tenant_api_key_mw;
         self._bearer_chain = .{self.bearer_or_api_key.middleware()};
+        self._runner_chain = .{self.runner_bearer_mw.middleware()};
         self._admin_chain = .{
             self.bearer_or_api_key.middleware(),
             self.require_role_admin.middleware(),
@@ -124,6 +130,12 @@ pub const MiddlewareRegistry = struct {
     /// Bearer token or admin API key, admin role required.
     pub fn admin(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._admin_chain;
+    }
+
+    /// Runner-token (`zrn_`) machine principal — wired only onto
+    /// `/v1/runners/me/*`. No JWKS/tenant fall-through.
+    pub fn runnerBearer(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._runner_chain;
     }
 
     /// Bearer token or admin API key, operator role required.

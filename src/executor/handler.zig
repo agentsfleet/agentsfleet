@@ -170,7 +170,7 @@ pub const Handler = struct {
         // it needs into its own arena before this one tears down.
         var policy_arena = std.heap.ArenaAllocator.init(alloc);
         defer policy_arena.deinit();
-        const policy = context_budget.ExecutionPolicy.fromJson(policy_arena.allocator(), p) catch {
+        const policy = context_budget.fromJson(policy_arena.allocator(), p) catch {
             return self.errorResponse(alloc, id, protocol.ErrorCode.internal_error, Msg.parse_policy_failed);
         };
 

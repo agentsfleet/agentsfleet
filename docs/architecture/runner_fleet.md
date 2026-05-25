@@ -46,7 +46,7 @@ Five verbs. `zombied` translates them into the Postgres writes and Redis stream 
 
 | Verb | Path | Auth | Purpose |
 |---|---|---|---|
-| `register` | `POST /v1/runners/register` | `Bearer` Clerk JWT **or** `zmb_t_` api_key | exchange a human/service credential for a durable `runner_token` (`zrn_`); record `host_id`, `sandbox_tier`, `labels` |
+| `register` | `POST /v1/runners` | `Bearer` Clerk JWT **or** `zmb_t_` api_key | exchange a human/service credential for a durable `runner_token` (`zrn_`); record `host_id`, `sandbox_tier`, `labels` |
 | `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer zrn_` | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
 | `lease` | `POST /v1/runners/me/leases` | `Bearer zrn_` | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
 | `report` | `POST /v1/runners/me/reports` | `Bearer zrn_` | terminal result for a lease; `zombied` persists + `XACK`s |
@@ -60,7 +60,7 @@ A runner needs a `zrn_` token before it can pull work. It gets one by calling `r
 
 ```
  caller (operator w/ Clerk JWT  OR  host w/ zmb_t_)         zombied                  host: zombie-runner
-   │ POST /v1/runners/register                       🔒 GATE 1 — who may register:
+   │ POST /v1/runners                                🔒 GATE 1 — who may register:
    │   Authorization: Bearer <Clerk-JWT | zmb_t_>    a valid Clerk JWT or api_key
    │   { host_id, sandbox_tier, labels[] }           is required
    ├────────────────────────────────────────────────►│ mint zrn_ (256-bit random)
@@ -196,7 +196,7 @@ The split inverts the binding constraint. Today N zombies need N Redis connectio
  S2  M80_003  WORKER     thin the worker to call the protocol; strip the direct PG/Redis path;
                          reconcile data_flow.md / capabilities.md / scaling.md to the split (Dimension)
  S3  M80_004  RUNNER     the zombie-runner binary, NullClaw fold-in, macOS backend, distribution
- S4  M80_005  IDENTITY   register hardening (Clerk/api_key → zrn_), runnerBearer middleware, TLS
+ S4  M80_005  IDENTITY   TLS hardening + trust_class/allowed_workspace_ids authz (register + runnerBearer shipped in S0/M80_001)
  ── cutover: flip the flag, delete the old direct path ───────────────────────────────────────
  S5  M80_006  FLEET      node inventory + heartbeat + lease reassignment on death; operator plane
  S6  M80_007  SCHEDULER  placement on labels / capacity / sandbox-tier; autoscale by queue depth

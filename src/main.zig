@@ -220,8 +220,9 @@ test {
     _ = @import("cmd/worker_dynamic_discovery_integration_test.zig");
     _ = @import("util/strings/string_builder.zig");
     _ = @import("executor/context_budget.zig");
-    _ = @import("runner/contract.zig");
-    _ = @import("runner/contract_test.zig");
+    _ = @import("runner/protocol.zig");
+    _ = @import("runner/protocol_test.zig");
+    _ = @import("runner/schema_migration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");

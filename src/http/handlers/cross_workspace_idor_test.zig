@@ -67,6 +67,10 @@ fn stubTenantApiKeyLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) an
     return null;
 }
 
+fn stubRunnerLookup(_: *anyopaque, _: std.mem.Allocator, _: []const u8) anyerror!?auth_mw.runner_bearer.LookupResult {
+    return null;
+}
+
 const HttpResp = struct {
     status: u16,
     body: []u8,
@@ -249,6 +253,8 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .bearer_or_api_key = .{ .verifier = &srv.verifier },
         // SAFETY: test fixture; field is populated by the surrounding builder before any read.
         .tenant_api_key_mw = .{ .host = undefined, .lookup = stubTenantApiKeyLookup },
+        // SAFETY: stubRunnerLookup ignores host and returns null; .host unread.
+        .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
         .webhook_hmac_mw = .{ .secret = "" },

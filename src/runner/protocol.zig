@@ -1,5 +1,5 @@
-//! Frozen /v1/runners control contract — the request/response types and enums
-//! the mothership and the host-resident runner exchange over HTTPS.
+//! Frozen /v1/runners control protocol — the request/response types and enums
+//! `zombied` (the control plane) and the host-resident runner exchange over HTTPS.
 //!
 //! These shapes are the interface the parallel runner workstreams build against;
 //! do not change a field without amending the keystone spec. Two conventions
@@ -19,7 +19,16 @@
 //! `ExecutionPolicy`. Leases are fenced — see `LeasePayload.fencing_token`.
 
 const EventEnvelope = @import("../zombie/event_envelope.zig");
-const ExecutionPolicy = @import("../executor/context_budget.zig").ExecutionPolicy;
+const ExecutionPolicy = @import("../executor/execution_policy.zig").ExecutionPolicy;
+
+// ── Wire paths ──────────────────────────────────────────────────────────────
+// Single-sourced (RULE UFS) so the router and the future TS client share them
+// verbatim. Identity is the Bearer token, so the self-plane is `me` — no
+// runner_id ever appears in a path (mirrors `/v1/tenants/me/...`).
+pub const PATH_RUNNERS = "/v1/runners";
+pub const PATH_RUNNER_HEARTBEATS = PATH_RUNNERS ++ "/me/heartbeats";
+pub const PATH_RUNNER_LEASES = PATH_RUNNERS ++ "/me/leases";
+pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
 
 /// Isolation strength a runner *self-reports* at enrollment. Stored as telemetry
 /// only — placement keys off operator-assigned trust, not this claim (a runner
@@ -34,12 +43,24 @@ pub const SecretDelivery = enum { @"inline", scoped, proxy };
 
 /// Terminal execution result the runner reports. Mirrors the
 /// `core.zombie_events.status` values a runner can produce —
-/// `gate_blocked`/`dead_lettered` are mothership-side and never runner-reported.
+/// `gate_blocked`/`dead_lettered` are `zombied`-side and never runner-reported.
 pub const Outcome = enum { processed, agent_error };
 
 /// Heartbeat reply status. `ok` is the only S0 value; `drain`/`stop` are
 /// reserved for fleet failover so that workstream needn't recut the type.
 pub const HeartbeatStatus = enum { ok, drain, stop };
+
+/// `fleet.runners.status` lifecycle value — app-enforced (no SQL CHECK, per
+/// RULE STS). Single-sourced here for register (insert) and the runnerBearer
+/// lookup (active gate). Not a wire value.
+pub const RUNNER_STATUS_ACTIVE = "active";
+
+/// `fleet.runner_leases.status` lifecycle values — app-enforced (no SQL CHECK,
+/// per RULE STS). `active` at lease issue, `reported` once the runner's report
+/// finalizes. Single-sourced here (insert in the lease service, update in the
+/// report service); not a wire value.
+pub const RUNNER_LEASE_STATUS_ACTIVE = "active";
+pub const RUNNER_LEASE_STATUS_REPORTED = "reported";
 
 /// POST /v1/runners — register. Auth: an existing credential —
 /// `Bearer <Clerk JWT | zmb_t_ api_key>` (via bearer_or_api_key), not an
@@ -52,7 +73,7 @@ pub const RegisterRequest = struct {
 };
 
 /// register reply: the durable runner identity + its bearer token (returned once;
-/// the mothership stores only the token hash).
+/// `zombied` stores only the token hash).
 pub const RegisterResponse = struct {
     runner_id: []const u8,
     runner_token: []const u8,
@@ -99,9 +120,10 @@ pub const ReportCheckpoint = struct {
     last_response: []const u8,
 };
 
-/// POST /v1/runners/me/reports (Bearer runner_token) — one idempotent batched
-/// write keyed by `event_id`, guarded by `fencing_token` against a reclaimed
-/// lease. No runner_id: the token owns the identity.
+/// POST /v1/runners/me/reports (Bearer runner_token) — one batched write keyed
+/// by `event_id`. `fencing_token` is echoed and recorded for the later reclaim
+/// logic; the control plane does not yet verify it (the loopback skeleton has
+/// no reclaim path). No runner_id: the token owns the identity.
 pub const ReportRequest = struct {
     lease_id: []const u8,
     event_id: []const u8,
@@ -114,7 +136,10 @@ pub const ReportRequest = struct {
     checkpoint: ReportCheckpoint,
 };
 
-/// report reply — idempotent; a replay returns the recorded result, no double write.
+/// report reply. S0 reproduces the direct worker's finalize() writes (terminal
+/// status + telemetry actuals + session checkpoint) then XACKs; true
+/// idempotency (`INSERT … ON CONFLICT`) + fencing verification are the later
+/// `zombied` lease/report logic.
 pub const ReportResponse = struct {
     ok: bool,
 };

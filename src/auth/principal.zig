@@ -12,6 +12,9 @@ pub const AuthRole = rbac.AuthRole;
 pub const AuthMode = enum {
     api_key,
     jwt_oidc,
+    /// Host-resident `zombie-runner`, authed by a `zrn_` runner token via
+    /// `runnerBearer`. Carries no tenant identity (`tenant_id == null`).
+    runner,
 };
 
 pub const AuthPrincipal = struct {
@@ -20,4 +23,7 @@ pub const AuthPrincipal = struct {
     user_id: ?[]const u8 = null,
     tenant_id: ?[]const u8 = null,
     workspace_scope_id: ?[]const u8 = null,
+    /// Set only when `mode == .runner` — the `fleet.runners` row id resolved
+    /// from the presented runner token. Freed with the other principal fields.
+    runner_id: ?[]const u8 = null,
 };
