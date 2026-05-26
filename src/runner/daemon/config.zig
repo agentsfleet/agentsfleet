@@ -5,95 +5,78 @@
 //! RUNNER_ prefix scopes variables that are runner-only and have no counterpart
 //! in zombied's config. All vars are required unless a default is documented.
 //!
-//! This struct is datastore-free (string slices only) so it links cleanly into
-//! the runner build graph, which deliberately omits pg/redis.
+//! File-as-struct: the file IS the `Config` value. All slices are owned by the
+//! allocator passed to `load()`; call `deinit()` when done. Datastore-free
+//! (string slices only) so it links cleanly into the runner build graph, which
+//! deliberately omits pg/redis.
 
-const std = @import("std");
-const Allocator = std.mem.Allocator;
-const contract = @import("contract");
+const Config = @This();
 
-/// Environment variable names — single-sourced (RULE UFS).
-pub const ENV_ZOMBIE_API_URL = "ZOMBIE_API_URL";
-pub const ENV_ZOMBIE_RUNNER_TOKEN = "ZOMBIE_RUNNER_TOKEN";
-pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
-pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
-pub const ENV_RUNNER_LABELS = "RUNNER_LABELS";
-pub const ENV_RUNNER_WORKSPACE_BASE = "RUNNER_WORKSPACE_BASE";
+/// Base URL of the zombied control plane, e.g. `http://127.0.0.1:8080`.
+control_plane_url: []const u8,
+/// Provisioner credential (`zmb_t_` api_key or Clerk JSON Web Token) that
+/// authorizes POST /v1/runners. Consumed once at register(); never logged.
+register_token: []const u8,
+/// Stable machine identifier reported to the control plane at enrollment.
+host_id: []const u8,
+/// Self-reported isolation tier (stored as telemetry; placement uses
+/// operator-assigned trust, not this claim). Defaults to `dev_none`.
+sandbox_tier: []const u8,
+/// Comma-separated label string forwarded to the control plane verbatim.
+labels: []const []const u8,
+/// Base directory under which per-lease workspace subdirs are created.
+workspace_base: []const u8,
 
-// Derived from the SandboxTier enum (RULE UFS: single source). dev_none is the
-// only tier that runs without isolation — dev default; prod must override.
-const DEFAULT_SANDBOX_TIER = @tagName(contract.protocol.SandboxTier.dev_none);
-const DEFAULT_WORKSPACE_BASE = "/tmp/zombie-runner";
+alloc: Allocator,
 
 pub const ConfigError = error{ MissingEnvVar, OutOfMemory };
 
-/// Startup configuration for the runner daemon. All slices are owned by the
-/// allocator passed to `load()`; call `deinit()` when done.
-pub const Config = struct {
-    /// Base URL of the zombied control plane, e.g. `http://127.0.0.1:8080`.
-    control_plane_url: []const u8,
-    /// Provisioner credential (`zmb_t_` api_key or Clerk JSON Web Token) that
-    /// authorizes POST /v1/runners. Consumed once at register(); never logged.
-    register_token: []const u8,
-    /// Stable machine identifier reported to the control plane at enrollment.
-    host_id: []const u8,
-    /// Self-reported isolation tier (stored as telemetry; placement uses
-    /// operator-assigned trust, not this claim). Defaults to `dev_none`.
-    sandbox_tier: []const u8,
-    /// Comma-separated label string forwarded to the control plane verbatim.
-    labels: []const []const u8,
-    /// Base directory under which per-lease workspace subdirs are created.
-    workspace_base: []const u8,
+/// Read configuration from the process environment. Returns
+/// `ConfigError.MissingEnvVar` for required vars that are absent.
+pub fn load(alloc: Allocator) ConfigError!Config {
+    const url = getRequired(alloc, ENV_ZOMBIE_API_URL) catch
+        return ConfigError.MissingEnvVar;
+    errdefer alloc.free(url);
 
-    alloc: Allocator,
+    const token = getRequired(alloc, ENV_ZOMBIE_RUNNER_TOKEN) catch
+        return ConfigError.MissingEnvVar;
+    errdefer alloc.free(token);
 
-    /// Read configuration from the process environment. Returns
-    /// `ConfigError.MissingEnvVar` for required vars that are absent.
-    pub fn load(alloc: Allocator) ConfigError!Config {
-        const url = getRequired(alloc, ENV_ZOMBIE_API_URL) catch
-            return ConfigError.MissingEnvVar;
-        errdefer alloc.free(url);
+    const host_id = getRequired(alloc, ENV_RUNNER_HOST_ID) catch
+        return ConfigError.MissingEnvVar;
+    errdefer alloc.free(host_id);
 
-        const token = getRequired(alloc, ENV_ZOMBIE_RUNNER_TOKEN) catch
-            return ConfigError.MissingEnvVar;
-        errdefer alloc.free(token);
+    const tier = std.process.getEnvVarOwned(alloc, ENV_RUNNER_SANDBOX_TIER) catch
+        alloc.dupe(u8, DEFAULT_SANDBOX_TIER) catch return ConfigError.OutOfMemory;
+    errdefer alloc.free(tier);
 
-        const host_id = getRequired(alloc, ENV_RUNNER_HOST_ID) catch
-            return ConfigError.MissingEnvVar;
-        errdefer alloc.free(host_id);
+    const labels = parseLabels(alloc, std.process.getEnvVarOwned(alloc, ENV_RUNNER_LABELS) catch
+        alloc.dupe(u8, "") catch return ConfigError.OutOfMemory) catch return ConfigError.OutOfMemory;
+    errdefer freeLabels(alloc, labels);
 
-        const tier = std.process.getEnvVarOwned(alloc, ENV_RUNNER_SANDBOX_TIER) catch
-            alloc.dupe(u8, DEFAULT_SANDBOX_TIER) catch return ConfigError.OutOfMemory;
-        errdefer alloc.free(tier);
+    const workspace_base = std.process.getEnvVarOwned(alloc, ENV_RUNNER_WORKSPACE_BASE) catch
+        alloc.dupe(u8, DEFAULT_WORKSPACE_BASE) catch return ConfigError.OutOfMemory;
+    errdefer alloc.free(workspace_base);
 
-        const labels = parseLabels(alloc, std.process.getEnvVarOwned(alloc, ENV_RUNNER_LABELS) catch
-            alloc.dupe(u8, "") catch return ConfigError.OutOfMemory) catch return ConfigError.OutOfMemory;
-        errdefer freeLabels(alloc, labels);
+    return Config{
+        .control_plane_url = url,
+        .register_token = token,
+        .host_id = host_id,
+        .sandbox_tier = tier,
+        .labels = labels,
+        .workspace_base = workspace_base,
+        .alloc = alloc,
+    };
+}
 
-        const workspace_base = std.process.getEnvVarOwned(alloc, ENV_RUNNER_WORKSPACE_BASE) catch
-            alloc.dupe(u8, DEFAULT_WORKSPACE_BASE) catch return ConfigError.OutOfMemory;
-        errdefer alloc.free(workspace_base);
-
-        return Config{
-            .control_plane_url = url,
-            .register_token = token,
-            .host_id = host_id,
-            .sandbox_tier = tier,
-            .labels = labels,
-            .workspace_base = workspace_base,
-            .alloc = alloc,
-        };
-    }
-
-    pub fn deinit(self: Config) void {
-        self.alloc.free(self.control_plane_url);
-        self.alloc.free(self.register_token);
-        self.alloc.free(self.host_id);
-        self.alloc.free(self.sandbox_tier);
-        freeLabels(self.alloc, self.labels);
-        self.alloc.free(self.workspace_base);
-    }
-};
+pub fn deinit(self: Config) void {
+    self.alloc.free(self.control_plane_url);
+    self.alloc.free(self.register_token);
+    self.alloc.free(self.host_id);
+    self.alloc.free(self.sandbox_tier);
+    freeLabels(self.alloc, self.labels);
+    self.alloc.free(self.workspace_base);
+}
 
 fn getRequired(alloc: Allocator, name: []const u8) ![]u8 {
     return std.process.getEnvVarOwned(alloc, name) catch error.MissingEnvVar;
@@ -122,3 +105,20 @@ fn freeLabels(alloc: Allocator, labels: []const []const u8) void {
     for (labels) |s| alloc.free(s);
     alloc.free(labels);
 }
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const contract = @import("contract");
+
+/// Environment variable names — single-sourced (RULE UFS).
+pub const ENV_ZOMBIE_API_URL = "ZOMBIE_API_URL";
+pub const ENV_ZOMBIE_RUNNER_TOKEN = "ZOMBIE_RUNNER_TOKEN";
+pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
+pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
+pub const ENV_RUNNER_LABELS = "RUNNER_LABELS";
+pub const ENV_RUNNER_WORKSPACE_BASE = "RUNNER_WORKSPACE_BASE";
+
+// Derived from the SandboxTier enum (RULE UFS: single source). dev_none is the
+// only tier that runs without isolation — dev default; prod must override.
+const DEFAULT_SANDBOX_TIER = @tagName(contract.protocol.SandboxTier.dev_none);
+const DEFAULT_WORKSPACE_BASE = "/tmp/zombie-runner";

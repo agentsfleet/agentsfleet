@@ -11,7 +11,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const contract = @import("contract");
 
-const daemon_config = @import("daemon/config.zig");
+const Config = @import("daemon/config.zig");
 const network = @import("engine/network.zig");
 const child_exec = @import("child_exec.zig");
 
@@ -29,7 +29,7 @@ const SHARE_NET = "--share-net";
 /// Every entry is dup'd into `alloc`; free with `freeArgv`. Errors when a
 /// sandboxed tier has no `bwrap` binary — the caller then fails the lease
 /// closed (Invariant 7) rather than running unsandboxed.
-pub fn buildArgv(alloc: std.mem.Allocator, cfg: daemon_config.Config, workspace_path: []const u8) ![]const []const u8 {
+pub fn buildArgv(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) ![]const []const u8 {
     var list: std.ArrayList([]const u8) = .{};
     errdefer freeList(alloc, &list);
 
@@ -68,10 +68,10 @@ fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8
 fn appendBwrap(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), self_exe: []const u8, workspace: []const u8) !void {
     const bwrap = bwrapPath() orelse return error.BwrapUnavailable;
     const base = [_][]const u8{
-        bwrap,           "--die-with-parent", "--unshare-all",
-        "--proc",        "/proc",             "--dev",
-        "/dev",          "--tmpfs",           "/tmp",
-        RO_BIND,         "/usr",              "/usr",
+        bwrap,    "--die-with-parent", "--unshare-all",
+        "--proc", "/proc",             "--dev",
+        "/dev",   "--tmpfs",           "/tmp",
+        RO_BIND,  "/usr",              "/usr",
     };
     for (base) |a| try dup(alloc, list, a);
     for (RO_SYSTEM_PATHS) |p| {

@@ -9,7 +9,7 @@ const logging = @import("log");
 const contract = @import("contract");
 const constants = @import("common");
 
-const daemon_config = @import("daemon/config.zig");
+const Config = @import("daemon/config.zig");
 const client_mod = @import("daemon/control_plane_client.zig");
 const child_supervisor = @import("child_supervisor.zig");
 const child_exec = @import("child_exec.zig");
@@ -57,7 +57,7 @@ pub fn main() void {
         std.process.exit(child_exec.run(alloc));
     }
 
-    const cfg = daemon_config.Config.load(alloc) catch |err| {
+    const cfg = Config.load(alloc) catch |err| {
         log.err("config_load_failed", .{ .err = @errorName(err) });
         std.process.exit(1);
     };
@@ -86,7 +86,7 @@ pub fn main() void {
 }
 
 /// POST register with infinite retry + backoff until the control plane responds.
-fn registerWithRetry(alloc: std.mem.Allocator, cp: client_mod, cfg: daemon_config.Config) []u8 {
+fn registerWithRetry(alloc: std.mem.Allocator, cp: client_mod, cfg: Config) []u8 {
     const reg_req = protocol.RegisterRequest{
         .host_id = cfg.host_id,
         .sandbox_tier = sandboxTierFromStr(cfg.sandbox_tier),
@@ -124,7 +124,7 @@ fn installDrainHandlers() void {
 }
 
 /// Heartbeat → lease → execute → report loop. Returns on stop or drain signal.
-fn runLoop(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: daemon_config.Config) void {
+fn runLoop(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config) void {
     var draining = false;
     var heartbeat_errors: u32 = 0;
 
@@ -167,7 +167,7 @@ fn runLoop(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, c
 /// Long-poll one lease; execute + report it when present, else back off the
 /// server-supplied (or default) retry interval. Errors back off and return — the
 /// caller's loop retries on the next iteration.
-fn pollAndProcess(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: daemon_config.Config) void {
+fn pollAndProcess(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: Config) void {
     const lease_parsed = cp.lease(alloc, runner_token) catch |err| {
         log.warn("lease_failed", .{ .err = @errorName(err) });
         sleepMs(TRANSPORT_ERROR_BACKOFF_MS);
@@ -207,7 +207,7 @@ fn executeAndReport(
     alloc: std.mem.Allocator,
     cp: client_mod,
     runner_token: []const u8,
-    cfg: daemon_config.Config,
+    cfg: Config,
     payload: protocol.LeasePayload,
 ) void {
     log.info("lease_acquired", .{

@@ -25,7 +25,7 @@ const logging = @import("log");
 const types = @import("engine/types.zig");
 const cgroup = @import("engine/cgroup.zig");
 const sandbox = @import("sandbox_args.zig");
-const daemon_config = @import("daemon/config.zig");
+const Config = @import("daemon/config.zig");
 const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
 
@@ -74,7 +74,7 @@ const ReadOutcome = struct {
 /// so the caller always has an outcome to report.
 pub fn run(
     alloc: std.mem.Allocator,
-    cfg: daemon_config.Config,
+    cfg: Config,
     workspace_path: []const u8,
     payload: LeasePayload,
     sink: ActivitySink,
@@ -97,7 +97,7 @@ fn failed(class: types.FailureClass) ExecutionResult {
 /// `defer` reaps the child and destroys the scope on every path (errors too).
 fn supervise(
     alloc: std.mem.Allocator,
-    cfg: daemon_config.Config,
+    cfg: Config,
     workspace_path: []const u8,
     payload: LeasePayload,
     lease_json: []const u8,
@@ -163,7 +163,7 @@ fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupSco
 /// Fork and, in the child, dup the pipes onto stdin/stdout, lead a new process
 /// group (so the parent can signal the whole group on the dev path), and exec
 /// the sandbox wrapper. Returns the child pid + parent pipe ends.
-fn forkExec(alloc: std.mem.Allocator, cfg: daemon_config.Config, workspace_path: []const u8) !Child {
+fn forkExec(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !Child {
     const in_pipe = try std.posix.pipe(); // [0]=read (child), [1]=write (parent)
     const out_pipe = try std.posix.pipe(); // [0]=read (parent), [1]=write (child)
 
