@@ -79,11 +79,10 @@ _zig_target_lint:
 # Do NOT add new entries — shrink this list over time.
 # Policy: RULE FLL in docs/greptile-learnings/RULES.md
 ZIG_LINE_LIMIT_ALLOWLIST := \
-	src/auth/claims.zig \
-	src/auth/github.zig \
-	src/auth/jwks.zig \
-	src/cmd/doctor.zig \
-	src/cmd/serve.zig \
+	src/zombied/auth/claims.zig \
+	src/zombied/auth/jwks.zig \
+	src/zombied/cmd/doctor.zig \
+	src/zombied/cmd/serve.zig \
 	src/config/runtime.zig \
 	src/db/pool.zig \
 	src/executor/client.zig \
@@ -93,11 +92,11 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/executor/transport.zig \
 	src/git/pr.zig \
 	src/git/repo.zig \
-	src/http/handlers/common.zig \
+	src/zombied/http/handlers/common.zig \
 	src/http/workspace_guards.zig \
 	src/observability/metrics_counters.zig \
-	src/observability/otel_logs.zig \
-	src/observability/otel_traces.zig \
+	src/zombied/observability/otel_logs.zig \
+	src/zombied/observability/otel_traces.zig \
 	src/observability/posthog_events.zig \
 	src/queue/redis_client.zig \
 	src/state/entitlements.zig \

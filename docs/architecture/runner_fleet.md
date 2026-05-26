@@ -40,6 +40,19 @@ The goal: move execution onto arbitrary hosts (bare metal, a Mac, a pod) that ho
 
 **Why the executor folds in but still forks.** NullClaw runs the agent: language-model calls plus tool calls, with tenant secrets substituted at the tool bridge. It needs a sandbox — Landlock (filesystem) + cgroups (memory/CPU) + a network namespace. Landlock is one-way and irreversible for a process, and the `zombie-runner` parent loop needs un-sandboxed network to reach `zombied`. So the runner **forks a sandboxed child per event** and talks to it over a local pipe. One binary, two process roles: an un-sandboxed parent that speaks the control protocol, and a sandboxed child that runs NullClaw. There is no separate daemon to deploy.
 
+### Where the code lives
+
+The directory layout mirrors this split so the "runner holds zero datastore credentials" invariant is **structural and grep-visible**, not merely enforced by `build_runner.zig`'s import list. The two planes never share a tree; the only surface they both reach is the frozen wire contract, consumed as a named Zig module (`@import("contract")`) so neither build graph reaches into the other's source.
+
+| Layer | Path | Build graph | Links | Role |
+|---|---|---|---|---|
+| `contract` | `src/lib/contract/` | both (named module) | none | frozen `/v1/runners` wire types — `protocol`, `event_envelope`, `execution_policy` |
+| `control_plane` | `src/runner/control_plane/` | `zombied` (`build.zig`) | `pg`, `redis` | lease / fence / reclaim / assignment engine |
+| `daemon` | `src/runner/daemon/` | `zombie-runner` (`build_runner.zig`) | none | runner-side process; imports nothing from `control_plane` |
+| `common` | `src/runner/common/` | both | none | single-source knobs both layers key off |
+
+Consumers import the `src/runner.zig` root and reach a layer (`runner.control_plane.service`) rather than a deep file path.
+
 ## The control protocol — `/v1/runners`
 
 Five verbs. `zombied` translates them into the Postgres writes and Redis stream operations the worker does directly today, so the runner never sees a datastore.
