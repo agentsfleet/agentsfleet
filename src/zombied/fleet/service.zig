@@ -72,13 +72,13 @@ pub fn leaseNext(hx: Hx) void {
 
     var session = zombie_session.claimZombie(hx.alloc, acq.zombie_id, hx.ctx.pool) catch |err| {
         log.info("lease_claim_unavailable", .{ .zombie_id = acq.zombie_id, .err = @errorName(err) });
-        releaseClaim(hx, acq.zombie_id);
+        releaseClaim(hx, acq.zombie_id, acq.fencing_token);
         return replyNoWork(hx);
     };
     defer session.deinit(hx.alloc);
 
     const billed = resolveBilling(hx, &session, acq) orelse {
-        releaseClaim(hx, acq.zombie_id);
+        releaseClaim(hx, acq.zombie_id, acq.fencing_token);
         return replyNoWork(hx);
     };
 
@@ -187,7 +187,7 @@ fn resolveTenant(alloc: std.mem.Allocator, pool: *@import("pg").Pool, workspace_
 fn issueLease(hx: Hx, runner_id: []const u8, session: *zombie_session.ZombieSession, acq: assign.Acquired, billed: Billed) !void {
     const ev_type = event_envelope.EventType.fromSlice(acq.event_type) orelse {
         log.warn("lease_unknown_event_type", .{ .zombie_id = acq.zombie_id, .event_type = acq.event_type });
-        releaseClaim(hx, acq.zombie_id);
+        releaseClaim(hx, acq.zombie_id, acq.fencing_token);
         return replyNoWork(hx);
     };
     const envelope = event_envelope{
@@ -270,10 +270,11 @@ fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: B
 
 /// Free the affinity claim won by `assign` when this lease cannot be issued
 /// (claim/billing failure), so the zombie is not stuck claimed until its TTL.
-fn releaseClaim(hx: Hx, zombie_id: []const u8) void {
+/// Token-guarded: frees the slot only while this claim's token is still live.
+fn releaseClaim(hx: Hx, zombie_id: []const u8, token: u64) void {
     const conn = hx.ctx.pool.acquire() catch return;
     defer hx.ctx.pool.release(conn);
-    affinity.release(conn, zombie_id) catch |err| {
+    affinity.release(conn, zombie_id, token) catch |err| {
         log.warn("lease_claim_release_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
     };
 }

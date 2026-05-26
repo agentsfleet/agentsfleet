@@ -2,11 +2,12 @@
 //!
 //! When `affinity.claim` wins a zombie whose prior claim had expired, the dead
 //! holder's still-`active` lease row carries the durable event envelope + the
-//! billing context. `findPriorActive` returns it and `markExpired` retires it,
-//! so the caller can re-lease the SAME event under the fresh higher fencing
-//! token — no Redis re-read (the envelope is durable in Postgres) and no
-//! re-billing (the original lease already debited). If there is no prior active
-//! lease the zombie is simply free and the caller takes a fresh event instead.
+//! billing context. `reclaimPriorActive` selects that row (locked), marks it
+//! `expired`, and returns it in ONE atomic statement, so the caller can re-lease
+//! the SAME event under the fresh higher fencing token — no Redis re-read (the
+//! envelope is durable in Postgres) and no re-billing (the original lease already
+//! debited). If there is no prior active lease the zombie is simply free and the
+//! caller takes a fresh event instead.
 //!
 //! Arena allocator (`hx.alloc`): every returned slice is arena-dup'd and freed
 //! when the request ends — see service.zig's module note.
@@ -31,18 +32,30 @@ pub const PriorLease = struct {
     model: []const u8,
 };
 
-/// The zombie's latest `active` lease — the holder whose claim just expired, or
-/// null when the zombie is free (no active lease ⇒ the caller takes a fresh
-/// event). Called only after `affinity.claim` won, so an active row here is
-/// unambiguously the reclaimed holder.
-pub fn findPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id: []const u8) !?PriorLease {
+/// Atomically reclaim the zombie's latest `active` lease: one statement selects
+/// that row (locked `FOR UPDATE`), marks it `expired`, and returns its event
+/// envelope + billing context — so the find and the expire cannot be split by a
+/// concurrent write. The returned columns are the pre-update envelope (the UPDATE
+/// only touches status/updated_at), re-leased under the fresh higher fencing
+/// token: no Redis re-read, no re-billing. Null when the zombie has no active
+/// lease ⇒ it is free and the caller takes a fresh event. Called only after
+/// `affinity.claim` won, so the row found here is unambiguously the reclaimed
+/// holder. All slices arena-dup'd before drain.
+pub fn reclaimPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id: []const u8) !?PriorLease {
+    const now_ms = std.time.milliTimestamp();
     var q = PgQuery.from(try conn.query(
-        \\SELECT id::text, event_id, actor, event_type, request_json,
-        \\       event_created_at, workspace_id::text, tenant_id::text, posture, model
-        \\FROM fleet.runner_leases
-        \\WHERE zombie_id = $1::uuid AND status = $2
-        \\ORDER BY fencing_token DESC LIMIT 1
-    , .{ zombie_id, protocol.RUNNER_LEASE_STATUS_ACTIVE }));
+        \\UPDATE fleet.runner_leases AS l
+        \\SET status = $3, updated_at = $4
+        \\WHERE l.id = (
+        \\    SELECT id FROM fleet.runner_leases
+        \\    WHERE zombie_id = $1::uuid AND status = $2
+        \\    ORDER BY fencing_token DESC LIMIT 1
+        \\    FOR UPDATE
+        \\)
+        \\RETURNING l.id::text, l.event_id, l.actor, l.event_type, l.request_json,
+        \\          l.event_created_at, l.workspace_id::text, l.tenant_id::text,
+        \\          l.posture, l.model
+    , .{ zombie_id, protocol.RUNNER_LEASE_STATUS_ACTIVE, protocol.RUNNER_LEASE_STATUS_EXPIRED, now_ms }));
     defer q.deinit();
     const row = try q.next() orelse return null;
     return PriorLease{
@@ -57,13 +70,4 @@ pub fn findPriorActive(conn: *pg.Conn, alloc: std.mem.Allocator, zombie_id: []co
         .posture = try alloc.dupe(u8, try row.get([]const u8, 8)),
         .model = try alloc.dupe(u8, try row.get([]const u8, 9)),
     };
-}
-
-/// Retire the reclaimed holder's lease so it is no longer the zombie's active
-/// lease. Its late report is independently fenced by the bumped token.
-pub fn markExpired(conn: *pg.Conn, lease_id: []const u8) !void {
-    const now_ms = std.time.milliTimestamp();
-    _ = conn.exec(
-        \\UPDATE fleet.runner_leases SET status = $2, updated_at = $3 WHERE id = $1::uuid
-    , .{ lease_id, protocol.RUNNER_LEASE_STATUS_EXPIRED, now_ms }) catch return error.LeaseExpireFailed;
 }

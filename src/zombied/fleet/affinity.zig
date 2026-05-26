@@ -6,11 +6,12 @@
 //! monotonic `fencing_seq` and recording the runner as the sticky hint. Exactly
 //! one of N racing runners wins the row; losers get `.taken` and move on — and
 //! crucially the claim precedes the event read, so a loser has consumed no
-//! event (nothing is orphaned). `release` frees the slot at report so the
-//! zombie's next event is claimable; a dead runner never releases, so its claim
-//! expires and another runner re-claims with a strictly higher token (the late
-//! report is then fenced). `currentToken` reads the live `fencing_seq` for that
-//! verification at report.
+//! event (nothing is orphaned). `release` frees the slot at report, but is
+//! token-guarded (`WHERE fencing_seq = token`) so a holder superseded by a
+//! reclaim cannot free the current holder's slot; a dead runner never releases,
+//! so its claim expires and another runner re-claims with a strictly higher
+//! token. The report-time fence itself is a compare-and-swap in `service_report`
+//! against this same `fencing_seq`.
 //!
 //! All functions run on a caller-supplied pooled connection (drained via
 //! PgQuery / conn.exec).
@@ -67,22 +68,13 @@ pub fn claim(
 }
 
 /// Free the slot (report / abandoned no-work claim) so the zombie's next event
-/// is claimable. Idempotent — a no-op if the row is gone.
-pub fn release(conn: *pg.Conn, zombie_id: []const u8) !void {
+/// is claimable — but only when `token` still equals the live `fencing_seq`, so
+/// a holder superseded by a reclaim cannot free the current holder's slot.
+/// Idempotent: a no-op if the row is gone or the token has been bumped.
+pub fn release(conn: *pg.Conn, zombie_id: []const u8, token: u64) !void {
     const now_ms = std.time.milliTimestamp();
     _ = conn.exec(
         \\UPDATE fleet.runner_affinity SET leased_until = $2, updated_at = $2
-        \\WHERE zombie_id = $1::uuid
-    , .{ zombie_id, now_ms }) catch return error.AffinityReleaseFailed;
-}
-
-/// The zombie's live fencing token (0 if never leased) — the report-side
-/// authority that fences a stale/reclaimed holder.
-pub fn currentToken(conn: *pg.Conn, zombie_id: []const u8) !u64 {
-    var q = PgQuery.from(try conn.query(
-        \\SELECT fencing_seq FROM fleet.runner_affinity WHERE zombie_id = $1::uuid
-    , .{zombie_id}));
-    defer q.deinit();
-    const row = try q.next() orelse return 0;
-    return @intCast(try row.get(i64, 0));
+        \\WHERE zombie_id = $1::uuid AND fencing_seq = $3
+    , .{ zombie_id, now_ms, @as(i64, @intCast(token)) }) catch return error.AffinityReleaseFailed;
 }
