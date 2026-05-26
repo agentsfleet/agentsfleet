@@ -163,6 +163,8 @@ The runner becomes a real processor.
 
 - **Dimension 6.1** — execution defaults to the runner path; the direct path is not selectable (the flag is deleted, not flipped) → Test `test_runner_is_default_processor`.
 
+> **§6 gating decision — the renewal gap.** `LEASE_TTL_MS = 30_000` with **no per-lease heartbeat renewal yet** caps any single agent run at 30s before it is killed and its event reclaimed + re-run (see Failure Modes; state stays correct via fencing, but the work is redone). Flipping the runner to default is therefore safe **only for agents that finish within the TTL**. For **>30s agents**, the cutover must **not** flip until **M80_006** lands per-lease renewal (activity-stream-driven; `tool_call_progress` is the long-tool heartbeat) **or** ship with `LEASE_TTL_MS` raised to cover the max expected agent runtime, with a separate hard max-runtime cap.
+
 ### §7 — Documentation & spec reconciliation
 
 - **Dimension 7.1** — `runner_fleet.md` roadmap collapses S1–S4 into this cutover; `data_flow.md` / `capabilities.md` / `scaling.md` describe the post-cutover runtime (direct path gone) → Verified by the Architecture Consult & Update Gate (doc + spec coherent in the diff).
@@ -202,6 +204,7 @@ secret_delivery : inline only (trusted fleet, over TLS); scoped/proxy remain res
 | Two runners race the same zombie | sticky miss + concurrent lease | only one lease is active per zombie (fencing monotonic); the loser gets no lease or is fenced at report → `test_sticky_routing_is_hint_not_ownership` |
 | Config changed between stages | operator PATCH mid-chain | next lease resolves config fresh from Postgres; in-flight stage unaffected → `test_config_resolved_fresh_per_lease` |
 | Control plane unreachable | zombied down / TLS failure | runner retries with backoff; un-acked lease redelivers; no event loss → `test_runner_retries_on_control_plane_unreachable` |
+| Agent outruns the lease TTL | a child runs longer than `LEASE_TTL_MS` (30s) — there is **no** per-lease heartbeat renewal yet | the lease expires at `lease_expires_at`; the reclaim sweep re-leases + re-runs the event while the original child is killed at its deadline. Fencing keeps **state** correct (the late report is rejected `UZ-RUN-005`, no double-write) but the work is **redone and capped at the TTL — broken for agents >30s**. Fix: per-lease renewal driven by the activity stream → **M80_006** (unwritten). Constant: `src/lib/common/constants.zig` `LEASE_TTL_MS`. |
 
 ---
 
