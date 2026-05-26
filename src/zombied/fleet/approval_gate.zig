@@ -13,7 +13,7 @@ const resolver = @import("../zombie/approval_gate_resolver.zig");
 const queue_redis = @import("../queue/redis_client.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const error_codes = @import("../errors/error_registry.zig");
-const zombie_session = @import("zombie_session.zig");
+const ZombieSession = @import("zombie_session.zig");
 const logging = @import("log");
 
 const log = logging.scoped(.zombie_event_loop_gate);
@@ -31,7 +31,7 @@ const GateCheckResult = union(enum) {
 /// Returns .passed if execution should proceed, .blocked or .auto_killed otherwise.
 pub fn checkApprovalGate(
     alloc: Allocator,
-    session: *zombie_session.ZombieSession,
+    session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     pool: *pg.Pool,
     redis: *queue_redis.Client,
@@ -80,7 +80,7 @@ pub fn checkApprovalGate(
 
 fn handleApprovalFlow(
     alloc: Allocator,
-    session: *zombie_session.ZombieSession,
+    session: *ZombieSession,
     event: *const redis_zombie.ZombieEvent,
     pool: *pg.Pool,
     redis: *queue_redis.Client,
@@ -161,7 +161,7 @@ fn handleApprovalFlow(
 /// Best-effort gate-event log. Gate transitions currently emit structured
 /// logs; durable terminal state lands in core.zombie_events via the worker's
 /// terminal UPDATE.
-fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *zombie_session.ZombieSession, event_type: []const u8, detail: []const u8) void {
+fn logGateActivity(pool: *pg.Pool, alloc: Allocator, session: *ZombieSession, event_type: []const u8, detail: []const u8) void {
     _ = pool;
     _ = alloc;
     log.info("gate_event", .{ .zombie_id = session.zombie_id, .workspace_id = session.workspace_id, .type = event_type, .detail = detail });

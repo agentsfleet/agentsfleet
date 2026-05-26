@@ -6,52 +6,41 @@
 //! Postgres and hands back a caller-owned `ZombieSession`; the lease verb
 //! (`fleet/service.zig`) calls it once per fresh claim. The run-loop that
 //! used to wrap it lives only in the deleted worker.
+//!
+//! Caller-owned allocator: methods that allocate (incl. deinit) take the
+//! allocator as a parameter.
 
-const std = @import("std");
-const pg = @import("pg");
-const PgQuery = @import("../db/pg_query.zig").PgQuery;
-const Allocator = std.mem.Allocator;
+const ZombieSession = @This();
 
-const zombie_config = @import("../zombie/config.zig");
-const error_codes = @import("../errors/error_registry.zig");
-const logging = @import("log");
+zombie_id: []const u8,
+workspace_id: []const u8,
+config: zombie_config.ZombieConfig,
+instructions: []const u8,
+/// Session context (conversation memory) from core.zombie_sessions.
+/// JSON string. "{}" for a fresh session.
+context_json: []const u8,
+/// Source markdown — owns the memory that instructions borrows from.
+source_markdown: []const u8,
+/// Active execution session handle. NULL when zombie is idle.
+/// Set at createExecution, cleared at destroyExecution and on claimZombie (crash recovery).
+/// Persisted to core.zombie_sessions.execution_id so the steer API can read it.
+execution_id: ?[]const u8 = null,
+/// Millis timestamp when execution_id was set. 0 when idle.
+execution_started_at: i64 = 0,
 
-const log = logging.scoped(.zombie_event_loop);
+comptime {
+    const actual = @sizeOf(ZombieSession);
+    if (actual != 320) @compileError(std.fmt.comptimePrint("ZombieSession size changed: {d}, expected 320", .{actual}));
+}
 
-const S_FRESH_CONTEXT = "{}";
-
-/// Caller-owned allocator: methods that allocate (incl. deinit) take the allocator as a parameter.
-pub const ZombieSession = struct {
-    zombie_id: []const u8,
-    workspace_id: []const u8,
-    config: zombie_config.ZombieConfig,
-    instructions: []const u8,
-    /// Session context (conversation memory) from core.zombie_sessions.
-    /// JSON string. "{}" for a fresh session.
-    context_json: []const u8,
-    /// Source markdown — owns the memory that instructions borrows from.
-    source_markdown: []const u8,
-    /// Active execution session handle. NULL when zombie is idle.
-    /// Set at createExecution, cleared at destroyExecution and on claimZombie (crash recovery).
-    /// Persisted to core.zombie_sessions.execution_id so the steer API can read it.
-    execution_id: ?[]const u8 = null,
-    /// Millis timestamp when execution_id was set. 0 when idle.
-    execution_started_at: i64 = 0,
-
-    comptime {
-        const actual = @sizeOf(ZombieSession);
-        if (actual != 320) @compileError(std.fmt.comptimePrint("ZombieSession size changed: {d}, expected 320", .{actual}));
-    }
-
-    pub fn deinit(self: *ZombieSession, alloc: Allocator) void {
-        alloc.free(self.zombie_id);
-        alloc.free(self.workspace_id);
-        self.config.deinit(alloc);
-        alloc.free(self.source_markdown);
-        alloc.free(self.context_json);
-        if (self.execution_id) |eid| alloc.free(eid);
-    }
-};
+pub fn deinit(self: *ZombieSession, alloc: Allocator) void {
+    alloc.free(self.zombie_id);
+    alloc.free(self.workspace_id);
+    self.config.deinit(alloc);
+    alloc.free(self.source_markdown);
+    alloc.free(self.context_json);
+    if (self.execution_id) |eid| alloc.free(eid);
+}
 
 /// Claim a Zombie: load config + session checkpoint from Postgres.
 /// Returns a ZombieSession that the caller owns and must deinit.
@@ -162,3 +151,13 @@ pub fn clearExecutionActive(alloc: Allocator, session: *ZombieSession, pool: *pg
         \\WHERE zombie_id = $1::uuid
     , .{session.zombie_id}) catch |err| log.warn("ignored_error", .{ .err = @errorName(err) });
 }
+
+const std = @import("std");
+const pg = @import("pg");
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
+const Allocator = std.mem.Allocator;
+const zombie_config = @import("../zombie/config.zig");
+const error_codes = @import("../errors/error_registry.zig");
+const logging = @import("log");
+const log = logging.scoped(.zombie_event_loop);
+const S_FRESH_CONTEXT = "{}";

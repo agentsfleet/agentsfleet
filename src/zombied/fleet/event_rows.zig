@@ -20,9 +20,7 @@ const id_format = @import("../types/id_format.zig");
 const contract = @import("contract");
 const logging = @import("log");
 const redis_zombie = @import("../queue/redis_zombie.zig");
-const zombie_session = @import("zombie_session.zig");
-
-const ZombieSession = zombie_session.ZombieSession;
+const ZombieSession = @import("zombie_session.zig");
 
 const log = logging.scoped(.runner_report_rows);
 

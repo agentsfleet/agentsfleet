@@ -34,7 +34,7 @@ const id_format = @import("../types/id_format.zig");
 const assign = @import("assign.zig");
 const affinity = @import("affinity.zig");
 
-const zombie_session = @import("zombie_session.zig");
+const ZombieSession = @import("zombie_session.zig");
 const secrets_resolve = @import("secrets_resolve.zig");
 const context_resolve = @import("context_resolve.zig");
 const approval_gate = @import("approval_gate.zig");
@@ -70,7 +70,7 @@ pub fn leaseNext(hx: Hx) void {
     };
     const acq = assign.select(hx, runner_id) orelse return replyNoWork(hx);
 
-    var session = zombie_session.claimZombie(hx.alloc, acq.zombie_id, hx.ctx.pool) catch |err| {
+    var session = ZombieSession.claimZombie(hx.alloc, acq.zombie_id, hx.ctx.pool) catch |err| {
         log.info("lease_claim_unavailable", .{ .zombie_id = acq.zombie_id, .err = @errorName(err) });
         releaseClaim(hx, acq.zombie_id, acq.fencing_token);
         return replyNoWork(hx);
@@ -90,7 +90,7 @@ pub fn leaseNext(hx: Hx) void {
 
 /// Fresh → run the pre-execution write-path billing; reclaim → reuse the prior
 /// lease's billing (the original lease already debited; never re-charged).
-fn resolveBilling(hx: Hx, session: *zombie_session.ZombieSession, acq: assign.Acquired) ?Billed {
+fn resolveBilling(hx: Hx, session: *ZombieSession, acq: assign.Acquired) ?Billed {
     switch (acq.kind) {
         .reclaim => {
             const r = acq.reused.?;
@@ -121,7 +121,7 @@ fn eventView(acq: assign.Acquired) redis_zombie.ZombieEvent {
 /// gate returns null → the caller releases the claim and answers no-work. (A
 /// blocked-gate event stays un-acked; markBlocked/dead-letter handling is a
 /// follow-up, as in the direct path.)
-fn runBilling(hx: Hx, session: *zombie_session.ZombieSession, event: *const redis_zombie.ZombieEvent) ?Billed {
+fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.ZombieEvent) ?Billed {
     const alloc = hx.alloc;
     const pool = hx.ctx.pool;
 
@@ -184,7 +184,7 @@ fn resolveTenant(alloc: std.mem.Allocator, pool: *@import("pg").Pool, workspace_
 
 /// Build the lease payload + persist the `fleet.runner_leases` row (with the
 /// durable envelope + the claim's fencing token), then 200.
-fn issueLease(hx: Hx, runner_id: []const u8, session: *zombie_session.ZombieSession, acq: assign.Acquired, billed: Billed) !void {
+fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assign.Acquired, billed: Billed) !void {
     const ev_type = event_envelope.EventType.fromSlice(acq.event_type) orelse {
         log.warn("lease_unknown_event_type", .{ .zombie_id = acq.zombie_id, .event_type = acq.event_type });
         releaseClaim(hx, acq.zombie_id, acq.fencing_token);
@@ -218,7 +218,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *zombie_session.ZombieSess
 /// `executeInSandbox` does per execution, lifted onto the lease wire. Secret
 /// bodies are arena-scoped and serialized synchronously by `hx.ok`; they are
 /// never logged (Invariant: no `secrets_map` bytes in logs).
-fn resolveExecutionPolicy(hx: Hx, session: *zombie_session.ZombieSession) execution_policy.ExecutionPolicy {
+fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession) execution_policy.ExecutionPolicy {
     const alloc = hx.alloc;
     const budget = context_resolve.resolveContextBudget(session.config.context, session.config.model);
     var secrets_map: ?std.json.Value = null;

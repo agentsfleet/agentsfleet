@@ -328,7 +328,7 @@ test "PgQuery size pinned at 8 bytes (single pointer)" {
 }
 
 test "ZombieSession size pinned at 320 bytes" {
-    const ZombieSession = @import("../fleet/zombie_session.zig").ZombieSession;
+    const ZombieSession = @import("../fleet/zombie_session.zig");
     try std.testing.expectEqual(@as(usize, 320), @sizeOf(ZombieSession));
 }
 
