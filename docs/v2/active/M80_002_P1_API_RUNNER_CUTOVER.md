@@ -107,6 +107,12 @@
 | `docs/v2/active/M80_001_*.md` → `docs/v2/done/` | MOVE/AMEND | rescope to the durable keystone; mark loopback §3.4/§4 superseded |
 | build targets (`build.zig` sidecar targets; `build_runner.zig`) | EDIT | drop `zombied-executor`/`-harness`/`-stub`; the runner build gains the engine + sandbox |
 | `make/test.mk`, `Makefile` (help), `.github/workflows/test.yml` | EDIT | wire the two Zig surfaces this cutover creates into `test-unit-all` + CI: `test-unit-zigrunner` (runner binary) and `test-unit-ziglib` (`src/lib` modules) were orphaned (no chainer, no CI job) |
+| `.github/workflows/{release,deploy-dev,test-integration}.yml` | EDIT | executor binary gone → drop all `zombied-executor`/`test-unit-executor` build·verify·ship·test refs; build + ship `zombie-runner` (amd64+arm64); baremetal deploy → `deploy.sh runner` (gated off until Step-2 provisioning); Fly `*_WORKER` datastore secrets KEPT (control plane still needs them) |
+| `make/{build,quality,test-integration,test-unit}.mk`, `Makefile` | EDIT | drop dead `zombied-executor` packaging + `src/executor/*` lint-allowlist + the `test-unit-executor` lane (ran `zig build test-executor`, gone) — engine-test re-land into `test-unit-zigrunner` is Step 5 |
+| `deploy/baremetal/deploy.sh` · `zombie-runner.service` (CREATE) · `zombied-{worker,executor}.service` (DELETE) | EDIT | collapse worker+executor → one `runner` component + unit; arch-aware release artifact; bootstrap-ordering note |
+| `build_runner.zig` | EDIT | stale executor-sidecar comments → current daemon state |
+| `src/runner/daemon/config.zig` | EDIT | env rename `ZMB_*`→`ZOMBIE_*` (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`) — match the `zombied`/`zombiectl` convention (Discovery) |
+| `src/runner/main.zig` | EDIT | SIGTERM/SIGINT graceful-drain handler — finish in-flight lease + report, then exit; + test (Discovery) |
 
 ---
 
@@ -291,6 +297,14 @@ The direct worker path (`worker_zombie` direct loop, `event_loop*` worker entry)
   2. **Guarantees-first docs (§7):** `runner_fleet.md` reconciliation leads with a **System Guarantees** block + a **Failure Recovery Model** framing (SLA target · mechanism · tradeoff · M80_006 path), then mechanics. "Runners are cattle, not pets" stated as the principle.
   3. **M80_006 reframed mandatory, not optional:** heartbeat-renewed leases + decoupled liveness/execution TTL + sub-10s recovery + cordon/reaping of stale runners. The S0 ~30s lazy-reclaim SLA is accepted *as S0 only*; recovery latency is emergent from fleet polling density — acceptable now, explicit operational debt.
   4. **Scope decision (PENDING Indy ack):** execution plane vs control plane. Recommendation = **execution plane** — borrow K8s lease/fencing/heartbeat semantics deliberately, with explicit **non-goals** (not a general scheduler, no autoscale, no fairness engine, no arbitrary workload types; placement capped at sticky + any-eligible → M80_007 label/capacity). Blessed before §2; the control-plane path is a larger conversation (inventory / reconciliation / HA) if chosen.
+- **Step-1 deploy/CI/build infra migration + runner drain (May 26, 2026).** The cutover deleted the executor from the code + `build.zig`, leaving every downstream consumer broken; this session migrated the full deploy/CI/build surface executor→`zombie-runner` (3 workflows · 4 make files + `Makefile` · `deploy.sh` · systemd units → one `zombie-runner.service` · `build_runner.zig` comments) and added the runner graceful-drain handler. Decisions:
+  - **Env rename (Indy ack).** The runner's `ZMB_` prefix matched nothing in `zombied`/`zombiectl` (they use `ZOMBIE_*`). `ZOMBIE_RUNNER_TOKEN` holds the admin-minted `zmb_t_` register credential; registration mints the runner-scoped `zrn_` token used after.
+    > Indy (2026-05-26): "it must be ZOMBIE_RUNNER_TOKEN ZOMBIE_API_URL" — context: runner config env var names.
+  - **Graceful drain implemented now, not punch-listed (Indy ack).** SIGTERM/SIGINT flips the `draining` flag; the loop finishes the in-flight lease + reports, then exits — so an upgrade `systemctl stop` drains instead of cgroup-SIGKILL'ing in-flight NullClaws (which would otherwise reclaim + re-run). Tuning: `deploy.sh DRAIN_TIMEOUT` (120; CI 60) + unit `TimeoutStopSec` (300) must cover max NullClaw runtime for long runs to drain rather than SIGKILL+reclaim.
+    > Indy (2026-05-26): "just add it in now" — context: SIGTERM graceful-drain handler, after first suggesting the punch-list.
+  - **Step-2 live-infra deferral.** Live-infra renames (host `worker-ant`/`bird`, vault `worker-url`/`-connection-string`, DB roles) + runner enrollment provisioning are deferred to the Step-2 runner-bootstrap playbooks; the baremetal runner deploy stays gated off (`DEV_WORKER_READY`/`PROD_WORKER_READY`) until then. Bootstrap order (chicken-and-egg): deploy updated `zombied` first (serves `POST /v1/runners`) → admin mints a `zmb_t_` key via the live API → 1Password → provision `/etc/default/zombie-runner` → enroll.
+  - **Fly `*_WORKER` datastore secrets KEPT.** `zombied` still reads the `worker` DB/Redis role (`db/pool.zig`, `serve.zig`, `doctor.zig`); "DB roles obsolete" applies only to the baremetal host, not Fly.
+  - **arm64 runner + arch-aware deploy; engine-test re-land → Step 5.** `release.yml` builds/ships `zombie-runner` amd64+arm64 (matching `zombied`); `deploy.sh` release-download is arch-aware; the removed `test-unit-executor` lane was already broken — its migrated coverage (redactor contract + executor RPC tests, now `src/runner/engine`) folds into `test-unit-zigrunner` at Step 5.
 
 ---
 
@@ -310,14 +324,16 @@ The direct worker path (`worker_zombie` direct loop, `event_loop*` worker entry)
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
 | Unit tests (zombied) | `make test-unit-zombied` | 1196 passed / 230 DB-skip / 0 fail | ✅ |
-| Unit tests (runner + lib lanes) | `make test-unit-zigrunner && make test-unit-ziglib` | 75/75 + 19/19 passed | ✅ |
+| Unit tests (runner + lib lanes) | `make test-unit-zigrunner && make test-unit-ziglib` | 76/76 + 19/19 passed (incl. drain handler) | ✅ |
 | Integration | `make test-integration` | — | ⏳ |
 | e2e (runner default) | `make test-integration` (e2e) | — | ⏳ |
 | Lint | `make lint` | — | ⏳ |
 | Cross-compile | `zig build -Dtarget={x86_64,aarch64}-linux` (both binaries) | — | ⏳ |
 | Memleak | `make memleak` | — | ⏳ |
 | Runner build (no datastore linkage) | `zig build --build-file build_runner.zig` | builds (native) | ✅ |
-| Gitleaks | `gitleaks detect` | — | ⏳ |
+| Gitleaks | `gitleaks detect` | no leaks (2178 commits) | ✅ |
+| Cross-compile (runner) | `zig build --build-file build_runner.zig -Dtarget={x86_64,aarch64}-linux` | both arches build | ✅ |
+| Workflow lint | `make check-gh-actions-valid` | actionlint + make-target refs green | ✅ |
 
 ---
 

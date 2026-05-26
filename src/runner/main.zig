@@ -23,6 +23,11 @@ const TRANSPORT_ERROR_BACKOFF_MS: u64 = 2_000;
 /// Consecutive heartbeat errors before escalating the sleep multiplier.
 const HEARTBEAT_MAX_CONSECUTIVE_ERRORS: u32 = 5;
 
+/// Set by the SIGTERM/SIGINT handler to request a graceful drain. The handler
+/// does nothing but this atomic store (async-signal-safe); the loop reads it at
+/// its boundary, finishes the in-flight lease, then exits.
+var drain_requested = std.atomic.Value(bool).init(false);
+
 pub const std_options: std.Options = .{
     .logFn = runnerLog,
 };
@@ -75,6 +80,7 @@ pub fn main() void {
     const runner_token: []u8 = registerWithRetry(alloc, cp, cfg);
     defer alloc.free(runner_token);
 
+    installDrainHandlers();
     runLoop(alloc, cp, runner_token, cfg);
     log.info("runner_exit", .{});
 }
@@ -97,12 +103,41 @@ fn registerWithRetry(alloc: std.mem.Allocator, cp: client_mod, cfg: daemon_confi
     }
 }
 
+/// SIGTERM/SIGINT → request graceful drain. Async-signal-safe: a lone atomic
+/// store, nothing else. `systemctl stop` sends SIGTERM; the loop honors it at its
+/// next boundary. The in-flight child is never interrupted — poll/read/waitpid in
+/// the execute path all retry EINTR — so the leased NullClaw runs to completion
+/// before the runner exits.
+fn requestDrain(_: i32) callconv(.c) void {
+    drain_requested.store(true, .seq_cst);
+}
+
+/// Install the drain signal handlers (mirrors the daemon shutdown idiom).
+fn installDrainHandlers() void {
+    const action = std.posix.Sigaction{
+        .handler = .{ .handler = requestDrain },
+        .mask = std.posix.sigemptyset(),
+        .flags = 0,
+    };
+    std.posix.sigaction(std.posix.SIG.TERM, &action, null);
+    std.posix.sigaction(std.posix.SIG.INT, &action, null);
+}
+
 /// Heartbeat → lease → execute → report loop. Returns on stop or drain signal.
 fn runLoop(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: daemon_config.Config) void {
     var draining = false;
     var heartbeat_errors: u32 = 0;
 
     outer: while (true) {
+        if (drain_requested.load(.seq_cst) and !draining) {
+            log.info("signal_drain", .{});
+            draining = true;
+        }
+        if (draining) {
+            log.info("drain_idle_exit", .{});
+            break :outer;
+        }
+
         const hb = cp.heartbeat(alloc, runner_token) catch |err| {
             heartbeat_errors += 1;
             log.warn("heartbeat_failed", .{ .err = @errorName(err), .consecutive = heartbeat_errors });
@@ -113,30 +148,42 @@ fn runLoop(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, c
         heartbeat_errors = 0;
 
         switch (hb.status) {
-            .stop => { log.info("fleet_stop", .{}); break :outer; },
-            .drain => { if (!draining) log.info("fleet_drain", .{}); draining = true; },
+            .stop => {
+                log.info("fleet_stop", .{});
+                break :outer;
+            },
+            .drain => {
+                if (!draining) log.info("fleet_drain", .{});
+                draining = true;
+                continue :outer;
+            },
             .ok => {},
         }
 
-        if (draining) { log.info("drain_idle_exit", .{}); break :outer; }
-
-        const lease_parsed = cp.lease(alloc, runner_token) catch |err| {
-            log.warn("lease_failed", .{ .err = @errorName(err) });
-            sleepMs(TRANSPORT_ERROR_BACKOFF_MS);
-            continue :outer;
-        };
-        defer lease_parsed.deinit();
-
-        const lease_resp = lease_parsed.value;
-        if (lease_resp.lease == null) {
-            const wait_ms: u64 = lease_resp.retry_after_ms orelse constants.NO_WORK_RETRY_AFTER_MS;
-            log.info("no_work", .{ .retry_after_ms = wait_ms });
-            sleepMs(wait_ms);
-            continue :outer;
-        }
-
-        executeAndReport(alloc, cp, runner_token, cfg, lease_resp.lease.?);
+        pollAndProcess(alloc, cp, runner_token, cfg);
     }
+}
+
+/// Long-poll one lease; execute + report it when present, else back off the
+/// server-supplied (or default) retry interval. Errors back off and return — the
+/// caller's loop retries on the next iteration.
+fn pollAndProcess(alloc: std.mem.Allocator, cp: client_mod, runner_token: []const u8, cfg: daemon_config.Config) void {
+    const lease_parsed = cp.lease(alloc, runner_token) catch |err| {
+        log.warn("lease_failed", .{ .err = @errorName(err) });
+        sleepMs(TRANSPORT_ERROR_BACKOFF_MS);
+        return;
+    };
+    defer lease_parsed.deinit();
+
+    const lease_resp = lease_parsed.value;
+    if (lease_resp.lease == null) {
+        const wait_ms: u64 = lease_resp.retry_after_ms orelse constants.NO_WORK_RETRY_AFTER_MS;
+        log.info("no_work", .{ .retry_after_ms = wait_ms });
+        sleepMs(wait_ms);
+        return;
+    }
+
+    executeAndReport(alloc, cp, runner_token, cfg, lease_resp.lease.?);
 }
 
 /// Forwards each `activity` frame the sandboxed child streams to the control
@@ -209,7 +256,10 @@ fn prepareWorkspace(buf: *[std.fs.max_path_bytes]u8, base: []const u8, lease_id:
     };
     std.fs.makeDirAbsolute(path) catch |err| switch (err) {
         error.PathAlreadyExists => {},
-        else => { log.err("workspace_mkdir_failed", .{ .path = path, .err = @errorName(err) }); return null; },
+        else => {
+            log.err("workspace_mkdir_failed", .{ .path = path, .err = @errorName(err) });
+            return null;
+        },
     };
     return path;
 }
@@ -230,6 +280,14 @@ fn sandboxTierFromStr(s: []const u8) protocol.SandboxTier {
 /// Sleep for `ms` milliseconds.
 fn sleepMs(ms: u64) void {
     std.Thread.sleep(ms * std.time.ns_per_ms);
+}
+
+test "drain signal handler requests a graceful drain" {
+    defer drain_requested.store(false, .seq_cst);
+    drain_requested.store(false, .seq_cst);
+    try std.testing.expect(!drain_requested.load(.seq_cst));
+    requestDrain(std.posix.SIG.TERM);
+    try std.testing.expect(drain_requested.load(.seq_cst));
 }
 
 // ── Test aggregator ─────────────────────────────────────────────────────────
