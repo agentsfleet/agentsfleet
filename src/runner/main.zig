@@ -5,6 +5,7 @@
 //! `activity` frames over the pipe, which the parent forwards to the control plane.
 
 const std = @import("std");
+const builtin = @import("builtin");
 const logging = @import("log");
 const contract = @import("contract");
 const constants = @import("common");
@@ -67,6 +68,15 @@ pub fn main() void {
         .host_id = cfg.host_id,
         .sandbox_tier = cfg.sandbox_tier,
     });
+
+    // Fail-closed (Invariant 7): a release build is a real deployment, so refuse
+    // the no-isolation `dev_none` tier (or any unrecognized tier) at startup
+    // rather than let it become the production default. Debug builds keep
+    // dev_none for local development. `builtin.mode` matches zombied's dev gate.
+    if (devNoneForbidden(builtin.mode, sandboxTierFromStr(cfg.sandbox_tier))) {
+        log.err("dev_none_rejected_in_release_build", .{ .sandbox_tier = cfg.sandbox_tier });
+        std.process.exit(1);
+    }
 
     std.fs.makeDirAbsolute(cfg.workspace_base) catch |err| switch (err) {
         error.PathAlreadyExists => {},
@@ -229,7 +239,7 @@ fn executeAndReport(
 
     log.info("execute_done", .{ .lease_id = payload.lease_id, .exit_ok = result.exit_ok, .wall_ms = wall_ms });
 
-    const outcome: protocol.Outcome = if (result.exit_ok) .processed else .agent_error;
+    const outcome = outcomeFor(result.exit_ok);
     cp.report(alloc, runner_token, protocol.ReportRequest{
         .lease_id = payload.lease_id,
         .event_id = payload.event.event_id,
@@ -277,6 +287,19 @@ fn sandboxTierFromStr(s: []const u8) protocol.SandboxTier {
     return std.meta.stringToEnum(protocol.SandboxTier, s) orelse .dev_none;
 }
 
+/// Startup security gate (Invariant 7): a release build refuses the no-isolation
+/// `dev_none` tier so it can never be the production default. Debug builds allow
+/// it for local development. Pure so the matrix is unit-testable.
+fn devNoneForbidden(mode: std.builtin.OptimizeMode, tier: protocol.SandboxTier) bool {
+    return mode != .Debug and tier == .dev_none;
+}
+
+/// Map a child's clean-exit flag to the reported outcome. A failed execution
+/// (incl. a fail-closed sandbox setup) is reported as `agent_error`.
+fn outcomeFor(exit_ok: bool) protocol.Outcome {
+    return if (exit_ok) .processed else .agent_error;
+}
+
 /// Sleep for `ms` milliseconds.
 fn sleepMs(ms: u64) void {
     std.Thread.sleep(ms * std.time.ns_per_ms);
@@ -288,6 +311,19 @@ test "drain signal handler requests a graceful drain" {
     try std.testing.expect(!drain_requested.load(.seq_cst));
     requestDrain(std.posix.SIG.TERM);
     try std.testing.expect(drain_requested.load(.seq_cst));
+}
+
+test "release build forbids dev_none and unknown tiers; Debug allows dev_none" {
+    try std.testing.expect(devNoneForbidden(.ReleaseSafe, .dev_none));
+    try std.testing.expect(devNoneForbidden(.ReleaseFast, .dev_none));
+    try std.testing.expect(devNoneForbidden(.ReleaseSafe, sandboxTierFromStr("garbage"))); // unknown → dev_none
+    try std.testing.expect(!devNoneForbidden(.Debug, .dev_none)); // dev convenience
+    try std.testing.expect(!devNoneForbidden(.ReleaseSafe, .landlock_full)); // a real tier is fine in prod
+}
+
+test "a failed execution reports agent_error; a clean one reports processed" {
+    try std.testing.expectEqual(protocol.Outcome.agent_error, outcomeFor(false)); // the startup_posture path
+    try std.testing.expectEqual(protocol.Outcome.processed, outcomeFor(true));
 }
 
 // ── Test aggregator ─────────────────────────────────────────────────────────
