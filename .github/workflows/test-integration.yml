@@ -12,20 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Stub-binary contract suite — executor-side unit tests including the
-  # redactor contract table. No Postgres / Redis needed; runs in seconds.
-  # Carved out so a redactor regression fails fast in its own job, parallel
-  # to the heavy worker integration suite.
-  test-unit-executor:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.15.2
-    steps:
-      - uses: actions/checkout@v6
-      - name: Run executor-side mocked unit tests
-        run: make test-unit-executor
-
   test-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 10

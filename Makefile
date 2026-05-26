@@ -34,7 +34,6 @@ help:  ## Show all available Makefile targets
 	@echo "  test-unit-ziglib         Run shared src/lib module Zig unit tests (no datastore)"
 	@echo "  test-unit-website        Run website unit tests (vitest, no coverage)"
 	@echo "  test-unit-zombiectl      Run zombiectl CLI unit tests (bun, no coverage)"
-	@echo "  test-unit-executor       Run executor-side unit tests against the mocked executor (no DB/Redis)"
 	@echo "  test-unit-skills         Run agent-skill substitution + invariant unit tests (node --test)"
 	@echo "  test-coverage-all        Coverage gate: app + website + zombiectl + design-system (vitest/bun --coverage)"
 	@echo "  test-integration         Run full real integration suite (DB + Redis, CI canonical gate)"

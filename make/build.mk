@@ -29,12 +29,10 @@ _prepare_prebuilt_linux_binaries:
 	mkdir -p dist
 	zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 	cp zig-out/bin/zombied dist/zombied-linux-amd64
-	cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
-	chmod +x dist/zombied-linux-amd64 dist/zombied-executor-linux-amd64
+	chmod +x dist/zombied-linux-amd64
 	zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux
 	cp zig-out/bin/zombied dist/zombied-linux-arm64
-	cp zig-out/bin/zombied-executor dist/zombied-executor-linux-arm64
-	chmod +x dist/zombied-linux-arm64 dist/zombied-executor-linux-arm64
+	chmod +x dist/zombied-linux-arm64
 
 build: _prepare_prebuilt_linux_binaries ## Build production container (uses prebuilt linux binaries)
 	$(call _buildx,Dockerfile,$(_PROD_TAGS),)
@@ -61,7 +59,7 @@ build-linux-alpine:  ## Compile inside Alpine with musl-native OpenSSL; asserts 
 			(cd /tmp && wget -q "$$ZIG_URL" -O zig.tar.xz && tar xf zig.tar.xz && cp zig-*/zig /usr/local/bin/ && cp -r zig-*/lib /usr/local/lib/zig) && \
 			echo "  compiling zombied (aarch64-linux, static OpenSSL)..." && \
 			zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux && \
-			for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do \
+			for bin in zig-out/bin/zombied; do \
 				test -f "$$bin" || { echo "FAIL: $$bin not found"; exit 1; }; \
 				if readelf -d "$$bin" 2>/dev/null | grep -q " (NEEDED)"; then \
 					echo "FAIL: $$bin has dynamic NEEDED entries"; \

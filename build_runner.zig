@@ -1,7 +1,7 @@
 //! Dedicated build graph for the host-resident `zombie-runner` daemon.
 //!
-//! Separate from the root `build.zig` (which builds `zombied` + the executor)
-//! by design: the runner holds zero datastore credentials and links no server
+//! Separate from the root `build.zig` (which builds `zombied`) by design:
+//! the runner holds zero datastore credentials and links no server
 //! infrastructure — it can only ever depend on what is imported here, and
 //! `pg` / `httpz` / `redis` are deliberately absent. The runner is a
 //! long-running daemon and an HTTP *client* of `zombied` (it long-polls
@@ -10,8 +10,9 @@
 //!
 //! The frozen wire protocol (`src/lib/contract`) is shared with `zombied` as a
 //! named module (`@import("contract")`) — one source, two build graphs — so the
-//! server and the client cannot drift. The keystone skeleton built here logs one
-//! health line and exits 0; the lease loop + folded-in executor land later.
+//! server and the client cannot drift. `src/runner/main.zig` runs the real
+//! register → heartbeat → lease → forked-sandboxed-child → report loop, with
+//! the NullClaw engine folded in (`src/runner/engine`) and no datastore linked.
 //!
 //! Build:  zig build --build-file build_runner.zig
 //! Run:    zig build --build-file build_runner.zig run
@@ -28,15 +29,15 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Logfmt logging, shared by source with zombied + the executor sidecar.
+    // Logfmt logging, shared by source with zombied.
     const log_mod = b.createModule(.{
         .root_source_file = b.path("src/lib/logging/mod.zig"),
     });
 
     // The shared `/v1/runners` wire contract (src/lib/contract), reached as a
     // named module — the runner's ONLY shared surface beyond `log`. This is the
-    // entire reason it compiles the protocol without crossing into src/zombie/
-    // or src/executor/. `pg`/`httpz`/`redis` remain deliberately absent.
+    // entire reason it compiles the protocol without crossing into src/zombied/.
+    // `pg`/`httpz`/`redis` remain deliberately absent.
     const contract_mod = b.createModule(.{
         .root_source_file = b.path("src/lib/contract/contract.zig"),
     });

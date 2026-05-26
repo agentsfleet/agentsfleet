@@ -1,0 +1,53 @@
+# usezombie Runner — host-resident execution-plane daemon.
+# Leases work from the zombied control plane over HTTPS, runs each event in a
+# forked sandboxed child, and reports back. Holds zero datastore credentials.
+#
+# Install:
+#   sudo cp zombie-runner.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now zombie-runner
+
+[Unit]
+Description=usezombie Runner
+Documentation=https://docs.usezombie.com
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/zombie-runner
+Restart=always
+RestartSec=5
+# A stopped runner's in-flight lease is reclaimed by the control plane
+# (lease_expires_at + fencing_token), so a bounded stop never loses or
+# double-runs work; the timeout just lets an in-flight child finish.
+TimeoutStopSec=300
+KillMode=mixed
+
+# Required runner config — provisioned per host into the env file below by the
+# runner bootstrap playbook (never committed; the register token is a secret):
+#   ZOMBIE_API_URL       — zombied HTTPS API base, e.g. https://api.usezombie.com
+#   ZOMBIE_RUNNER_TOKEN  — admin-minted zmb_t_ API key authorizing POST /v1/runners;
+#                          consumed once at register(), which mints the runner-scoped
+#                          zrn_ runner_token used for every later call
+#   RUNNER_HOST_ID       — stable machine identifier
+#   (optional) RUNNER_SANDBOX_TIER (prod must override the dev_none default),
+#              RUNNER_LABELS, RUNNER_WORKSPACE_BASE
+# Bootstrap order (chicken-and-egg): the updated zombied serves POST /v1/runners,
+# so it must be deployed FIRST; then an admin mints the zmb_t_ key via that live
+# API and stores it in 1Password; only then can this runner enroll.
+EnvironmentFile=-/etc/default/zombie-runner
+
+# Ensure the sandbox runtime directory exists.
+RuntimeDirectory=zombie
+RuntimeDirectoryMode=0755
+
+# Security hardening — the runner forks bwrap user-namespace sandboxes per lease
+# (no suid needed). Mirrors the isolation the executor sidecar carried before
+# the engine folded into the runner.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/run/zombie /sys/fs/cgroup /tmp
+ProtectHome=yes
+
+[Install]
+WantedBy=multi-user.target

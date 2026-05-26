@@ -18,7 +18,6 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 $${redis_tls_test_url:+TEST_REDIS_TLS_URL="$$redis_tls_test_url"} \
 	 zig build test --summary all
-	@$(MAKE) test-unit-executor
 	@$(MAKE) _lint_zig_test_depth
 
 test-unit-zigrunner:  ## Run zombie-runner unit tests (Zig; own build graph, no datastore)

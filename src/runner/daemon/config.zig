@@ -1,7 +1,7 @@
 //! Runner daemon startup configuration — read once from the environment at
 //! launch, before any control-plane contact.
 //!
-//! Env var naming follows the ZMB_ namespace convention used by zombied; the
+//! Env var naming follows the ZOMBIE_ namespace convention used by zombied; the
 //! RUNNER_ prefix scopes variables that are runner-only and have no counterpart
 //! in zombied's config. All vars are required unless a default is documented.
 //!
@@ -13,8 +13,8 @@ const Allocator = std.mem.Allocator;
 const contract = @import("contract");
 
 /// Environment variable names — single-sourced (RULE UFS).
-pub const ENV_ZMB_CONTROL_PLANE_URL = "ZMB_CONTROL_PLANE_URL";
-pub const ENV_ZMB_RUNNER_REGISTER_TOKEN = "ZMB_RUNNER_REGISTER_TOKEN";
+pub const ENV_ZOMBIE_API_URL = "ZOMBIE_API_URL";
+pub const ENV_ZOMBIE_RUNNER_TOKEN = "ZOMBIE_RUNNER_TOKEN";
 pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
 pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
 pub const ENV_RUNNER_LABELS = "RUNNER_LABELS";
@@ -50,11 +50,11 @@ pub const Config = struct {
     /// Read configuration from the process environment. Returns
     /// `ConfigError.MissingEnvVar` for required vars that are absent.
     pub fn load(alloc: Allocator) ConfigError!Config {
-        const url = getRequired(alloc, ENV_ZMB_CONTROL_PLANE_URL) catch
+        const url = getRequired(alloc, ENV_ZOMBIE_API_URL) catch
             return ConfigError.MissingEnvVar;
         errdefer alloc.free(url);
 
-        const token = getRequired(alloc, ENV_ZMB_RUNNER_REGISTER_TOKEN) catch
+        const token = getRequired(alloc, ENV_ZOMBIE_RUNNER_TOKEN) catch
             return ConfigError.MissingEnvVar;
         errdefer alloc.free(token);
 

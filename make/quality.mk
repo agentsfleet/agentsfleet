@@ -85,11 +85,6 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/zombied/cmd/serve.zig \
 	src/config/runtime.zig \
 	src/db/pool.zig \
-	src/executor/client.zig \
-	src/executor/handler.zig \
-	src/executor/runner.zig \
-	src/executor/session.zig \
-	src/executor/transport.zig \
 	src/git/pr.zig \
 	src/git/repo.zig \
 	src/zombied/http/handlers/common.zig \
@@ -104,8 +99,7 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/types.zig \
 	src/types/id_format.zig \
 	src/zombie/approval_gate.zig \
-	src/zombie/config.zig \
-	src/zombie/event_loop.zig
+	src/zombie/config.zig
 
 _zig_line_limit_check:
 	@echo "→ [zombied] Checking Zig file line limit (max 350 lines — RULE FLL)..."
