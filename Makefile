@@ -18,7 +18,7 @@ help:  ## Show all available Makefile targets
 	@echo ""
 	@echo "Static Analysis:"
 	@echo "  lint-all                 Run every linter + quality gate (umbrella for all checks below)"
-	@echo "  lint-zig                 Lint zombied (fmt + ZLint + pg-drain + test-depth + cross-target + line-limit + role/legacy guards)"
+	@echo "  lint-zig                 Lint all Zig source — zombied/runner/lib (fmt + ZLint + pg-drain + test-depth + cross-target + line-limit + role/legacy guards)"
 	@echo "  lint-website             Lint website (Oxlint + tsc)"
 	@echo "  lint-apps-ds-ctl         Lint app + design-system + zombiectl"
 	@echo ""
