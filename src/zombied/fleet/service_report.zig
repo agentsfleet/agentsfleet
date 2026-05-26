@@ -73,32 +73,41 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
         return;
     };
 
-    if (fencedOrUnverifiable(hx, lease, body.lease_id, runner_id)) return;
+    const won = claimReport(hx, body.lease_id, runner_id) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    if (!won) {
+        log.info("report_fenced", .{ .zombie_id = lease.zombie_id, .lease_id = body.lease_id, .fencing_token = lease.fencing_token, .runner_id = runner_id });
+        hx.fail(ec.ERR_RUN_STALE_FENCING_TOKEN, "Lease superseded by a newer holder; report rejected");
+        return;
+    }
 
     finalize(hx, lease, body);
     hx.ok(.ok, protocol.ReportResponse{ .ok = true });
 }
 
-/// Reject (and stop) a report whose lease was superseded by a reclaim: the
-/// lease's fencing token is below the zombie's live sequence (UZ-RUN-005), so a
-/// stale/reclaimed holder cannot mutate state. Fails closed if the token cannot
-/// be read (the report is retryable).
-fn fencedOrUnverifiable(hx: Hx, lease: Lease, lease_id: []const u8, runner_id: []const u8) bool {
-    const conn = hx.ctx.pool.acquire() catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return true;
-    };
+/// Atomically claim the report: flip the lease active→reported in ONE statement
+/// guarded by the live fence (`fencing_token >= fencing_seq`). A reclaim that
+/// bumped the sequence makes the guard fail → 0 rows → `false` (fenced,
+/// UZ-RUN-005); the row also won't flip if it is no longer `active` (already
+/// reported/expired). The check and the state change cannot be split by a
+/// concurrent reclaim — that is the fence. Errors propagate so the caller
+/// answers 500 (the report is retryable).
+fn claimReport(hx: Hx, lease_id: []const u8, runner_id: []const u8) !bool {
+    const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
-    const current = affinity.currentToken(conn, lease.zombie_id) catch {
-        common.internalDbError(hx.res, hx.req_id);
-        return true;
-    };
-    if (lease.fencing_token < current) {
-        log.info("report_fenced", .{ .zombie_id = lease.zombie_id, .lease_id = lease_id, .fencing_token = lease.fencing_token, .current_token = current, .runner_id = runner_id });
-        hx.fail(ec.ERR_RUN_STALE_FENCING_TOKEN, "Lease superseded by a newer holder; report rejected");
-        return true;
-    }
-    return false;
+    const now_ms = std.time.milliTimestamp();
+    var q = PgQuery.from(try conn.query(
+        \\UPDATE fleet.runner_leases AS l
+        \\SET status = $3, updated_at = $4
+        \\FROM fleet.runner_affinity AS a
+        \\WHERE l.id = $1::uuid AND l.runner_id = $2::uuid AND l.status = $5
+        \\  AND a.zombie_id = l.zombie_id AND l.fencing_token >= a.fencing_seq
+        \\RETURNING l.id
+    , .{ lease_id, runner_id, protocol.RUNNER_LEASE_STATUS_REPORTED, now_ms, protocol.RUNNER_LEASE_STATUS_ACTIVE }));
+    defer q.deinit();
+    return (try q.next()) != null;
 }
 
 /// Load the lease scoped to the presenting runner. A foreign or stale
@@ -171,7 +180,7 @@ fn finalize(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
     redis_zombie.xackZombie(hx.ctx.queue, lease.zombie_id, lease.event_id) catch |err| {
         log.warn("report_xack_failed", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .err = @errorName(err) });
     };
-    settleLease(hx, body.lease_id, lease.zombie_id);
+    releaseAffinity(hx, lease.zombie_id, lease.fencing_token);
     log.info("report_finalized", .{ .zombie_id = lease.zombie_id, .event_id = lease.event_id, .lease_id = body.lease_id });
 }
 
@@ -193,19 +202,14 @@ fn parsePosture(label: []const u8) tenant_provider.Mode {
     return .platform;
 }
 
-/// Mark the lease reported AND release the zombie's affinity claim on one
-/// connection, so its next event becomes leasable. Best-effort — a DB blip here
-/// must not fail an already-finalized report.
-fn settleLease(hx: Hx, lease_id: []const u8, zombie_id: []const u8) void {
+/// Release the zombie's affinity claim so its next event becomes leasable. The
+/// active→reported flip already happened atomically in `claimReport`; this only
+/// frees the slot, token-guarded so a superseded holder can't free the current
+/// one. Best-effort — a DB blip here must not fail an already-finalized report.
+fn releaseAffinity(hx: Hx, zombie_id: []const u8, token: u64) void {
     const conn = hx.ctx.pool.acquire() catch return;
     defer hx.ctx.pool.release(conn);
-    const now_ms = std.time.milliTimestamp();
-    _ = conn.exec(
-        \\UPDATE fleet.runner_leases SET status = $2, updated_at = $3 WHERE id = $1::uuid
-    , .{ lease_id, protocol.RUNNER_LEASE_STATUS_REPORTED, now_ms }) catch |err| {
-        log.warn("report_lease_status_failed", .{ .lease_id = lease_id, .err = @errorName(err) });
-    };
-    affinity.release(conn, zombie_id) catch |err| {
+    affinity.release(conn, zombie_id, token) catch |err| {
         log.warn("report_claim_release_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
     };
 }

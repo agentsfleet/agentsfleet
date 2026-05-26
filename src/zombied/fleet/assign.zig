@@ -102,8 +102,7 @@ fn tryCandidate(hx: Hx, conn: *pg.Conn, runner_id: []const u8, zombie_id: []cons
         .taken => return null,
         .won => |w| w,
     };
-    if (try reclaim.findPriorActive(conn, hx.alloc, zombie_id)) |prior| {
-        try reclaim.markExpired(conn, prior.lease_id);
+    if (try reclaim.reclaimPriorActive(conn, hx.alloc, zombie_id)) |prior| {
         log.info("lease_reclaimed", .{ .zombie_id = zombie_id, .event_id = prior.event_id, .lease_id = prior.lease_id, .fencing_token = won.token, .runner_id = runner_id });
         return fromReclaim(zombie_id, won, prior);
     }
@@ -116,16 +115,16 @@ fn acquireFresh(hx: Hx, conn: *pg.Conn, zombie_id: []const u8, won: affinity.Won
     _ = runner_id;
     redis_zombie.ensureZombieConsumerGroup(hx.ctx.queue, zombie_id) catch |err| {
         log.warn("assign_group_ensure_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
-        try affinity.release(conn, zombie_id);
+        try affinity.release(conn, zombie_id, won.token);
         return null;
     };
     const consumer_id = queue_redis.makeConsumerId(hx.alloc) catch constants.RUNNER_CONSUMER_FALLBACK;
     var event = (redis_zombie.xreadgroupZombieOnce(hx.ctx.queue, zombie_id, consumer_id) catch |err| {
         log.warn("assign_xreadgroup_failed", .{ .zombie_id = zombie_id, .err = @errorName(err) });
-        try affinity.release(conn, zombie_id);
+        try affinity.release(conn, zombie_id, won.token);
         return null;
     }) orelse {
-        try affinity.release(conn, zombie_id);
+        try affinity.release(conn, zombie_id, won.token);
         return null;
     };
     defer event.deinit(hx.ctx.queue.alloc);

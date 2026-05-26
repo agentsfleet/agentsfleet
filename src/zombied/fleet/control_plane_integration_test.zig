@@ -20,6 +20,7 @@ const TestHarness = harness_mod.TestHarness;
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
+const affinity = @import("affinity.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -177,6 +178,13 @@ fn leaseStatusIs(conn: *pg.Conn, lease_id: []const u8, expected: []const u8) !bo
     return std.mem.eql(u8, try row.get([]const u8, 0), expected);
 }
 
+fn leasedUntilOf(conn: *pg.Conn, zombie_id: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query("SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{zombie_id}));
+    defer q.deinit();
+    const row = try q.next() orelse return error.AffinityRowMissing;
+    return row.get(i64, 0);
+}
+
 fn activeLeaseRunnerIs(conn: *pg.Conn, zombie_id: []const u8, runner_id: []const u8) !bool {
     var q = PgQuery.from(try conn.query(
         \\SELECT runner_id::text FROM fleet.runner_leases
@@ -332,4 +340,28 @@ test "integration: runner control plane — sticky routing is a hint, not owners
 
     // The new active lease belongs to B, not the sticky-preferred A.
     try std.testing.expect(try activeLeaseRunnerIs(conn, ZOMBIE_1_ID, RUNNER_B_ID));
+}
+
+test "integration: runner control plane — release is token-guarded: a superseded holder cannot free the live slot" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    // The live holder owns the slot at fencing_seq=2, claim valid into the future.
+    const live_until = std.time.milliTimestamp() + 60_000;
+    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 2, live_until);
+
+    // A superseded holder (token 1 < seq 2, as a reclaim would leave it) releases
+    // → no-op: the slot stays held, leased_until unchanged.
+    try affinity.release(conn, ZOMBIE_1_ID, 1);
+    try std.testing.expectEqual(live_until, try leasedUntilOf(conn, ZOMBIE_1_ID));
+
+    // The live holder (token == seq) releases → slot freed (leased_until → ~now).
+    try affinity.release(conn, ZOMBIE_1_ID, 2);
+    try std.testing.expect(try leasedUntilOf(conn, ZOMBIE_1_ID) < live_until);
 }
