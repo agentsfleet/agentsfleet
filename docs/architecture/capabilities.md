@@ -28,7 +28,7 @@ These are two different fields on two different tables. Mixing them up is the mo
 
 A `trigger.type: api` zombie typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` zombie receives `event_type: webhook`. A worker re-enqueue under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
 
-Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `trigger.type`; `src/zombie/event_envelope.zig` (`EventType`) for `event_type`.
+Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `trigger.type`; `src/lib/contract/event_envelope.zig` (`EventType`) for `event_type`.
 
 ---
 

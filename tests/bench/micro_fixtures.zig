@@ -26,14 +26,6 @@ pub const CHUNK_TEXT =
     S_THE_QUICK_BROWN_FOX_JUMPS_OVER_THE_LAZY_DOG ++
     "Pack my box with five dozen liquor jugs. The end.";
 
-// ── progress_frame_decode ─────────────────────────────────────────────────
-// Wire-shape JSON-RPC notification produced by the executor. Mirrors what
-// `progress_callbacks.encodeProgress` emits for an agent_response_chunk;
-// the bench feeds this verbatim into the transport read loop.
-pub const PROGRESS_FRAME_BYTES =
-    \\{"jsonrpc":"2.0","id":1,"method":"Progress","params":{"kind":"agent_response_chunk","text":"hello world streaming chunk payload of moderate size for the bench"}}
-;
-
 // ── route_match ───────────────────────────────────────────────────────────
 // Representative paths covering every Route arm (one per group). Enough
 // diversity that the worst-case fall-through path is exercised on each sweep.

@@ -106,6 +106,7 @@
 | `docs/architecture/{runner_fleet,data_flow,capabilities,scaling,README}.md` | EDIT | §7 reconciliation — roadmap collapse + the post-cutover runtime |
 | `docs/v2/active/M80_001_*.md` → `docs/v2/done/` | MOVE/AMEND | rescope to the durable keystone; mark loopback §3.4/§4 superseded |
 | build targets (`build.zig` sidecar targets; `build_runner.zig`) | EDIT | drop `zombied-executor`/`-harness`/`-stub`; the runner build gains the engine + sandbox |
+| `make/test.mk`, `Makefile` (help), `.github/workflows/test.yml` | EDIT | wire the two Zig surfaces this cutover creates into `test-unit-all` + CI: `test-unit-zigrunner` (runner binary) and `test-unit-ziglib` (`src/lib` modules) were orphaned (no chainer, no CI job) |
 
 ---
 
@@ -308,13 +309,14 @@ The direct worker path (`worker_zombie` direct loop, `event_loop*` worker entry)
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test-unit-zombied` | — | ⏳ |
+| Unit tests (zombied) | `make test-unit-zombied` | 1196 passed / 230 DB-skip / 0 fail | ✅ |
+| Unit tests (runner + lib lanes) | `make test-unit-zigrunner && make test-unit-ziglib` | 75/75 + 19/19 passed | ✅ |
 | Integration | `make test-integration` | — | ⏳ |
 | e2e (runner default) | `make test-integration` (e2e) | — | ⏳ |
 | Lint | `make lint` | — | ⏳ |
 | Cross-compile | `zig build -Dtarget={x86_64,aarch64}-linux` (both binaries) | — | ⏳ |
 | Memleak | `make memleak` | — | ⏳ |
-| Runner build (no datastore linkage) | `zig build --build-file build_runner.zig` | — | ⏳ |
+| Runner build (no datastore linkage) | `zig build --build-file build_runner.zig` | builds (native) | ✅ |
 | Gitleaks | `gitleaks detect` | — | ⏳ |
 
 ---

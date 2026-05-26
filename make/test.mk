@@ -19,5 +19,5 @@ MEMLEAK_CPU    ?= baseline
 
 .PHONY: test-unit-all
 
-test-unit-all: test-unit-zombied test-coverage-all test-unit-skills  ## Run all unit lanes (Zig + multi-package coverage + agent-skills)
+test-unit-all: test-unit-zombied test-unit-zigrunner test-unit-ziglib test-coverage-all test-unit-skills  ## Run all unit lanes (Zig + multi-package coverage + agent-skills)
 	@echo "✓ All unit lanes passed"
