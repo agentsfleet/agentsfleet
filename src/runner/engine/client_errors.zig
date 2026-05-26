@@ -16,11 +16,11 @@ pub const ClientError = error{
     LandlockDenied,
 };
 
-// Error-code mirrors of src/errors/error_registry.zig — the engine
-// binary tree forbids imports outside src/runner/ (build_runner.zig keeps the
-// engine portable) so the canonical strings are duplicated here. Every engine
-// source needing a UZ-EXEC-* / UZ-TOOL-* literal MUST import from this file —
-// never declare a local `const ERR_X` in another engine source file.
+// Error-code mirrors of src/zombied/errors/error_registry.zig — the runner
+// binary tree forbids imports into src/zombied/ (build_runner.zig keeps the
+// runner portable) so the canonical strings are duplicated here. Every runner
+// source needing a UZ-EXEC-* / UZ-TOOL-* / UZ-RUN-* literal MUST import from
+// this file — never declare a local `const ERR_X` in another runner source.
 // `audit-error-codes.sh --strict` flags raw `"UZ-…"` literals outside this file.
 pub const ERR_EXEC_SESSION_CREATE_FAILED: []const u8 = "UZ-EXEC-001";
 pub const ERR_EXEC_STAGE_START_FAILED: []const u8 = "UZ-EXEC-002";
@@ -37,3 +37,6 @@ pub const ERR_EXEC_RUNNER_AGENT_RUN: []const u8 = "UZ-EXEC-013";
 pub const ERR_EXEC_RUNNER_INVALID_CONFIG: []const u8 = "UZ-EXEC-014";
 pub const ERR_TOOL_UNKNOWN: []const u8 = "UZ-TOOL-005";
 
+// Fleet control-plane code the parent supervisor emits when a lease's mandatory
+// sandbox cannot be established and the lease is refused unrun (Invariant 7).
+pub const ERR_RUN_SANDBOX_ESTABLISH_FAILED: []const u8 = "UZ-RUN-007";

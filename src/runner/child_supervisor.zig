@@ -24,6 +24,7 @@ const logging = @import("log");
 
 const types = @import("engine/types.zig");
 const cgroup = @import("engine/cgroup.zig");
+const client_errors = @import("engine/client_errors.zig");
 const sandbox = @import("sandbox_args.zig");
 const Config = @import("daemon/config.zig");
 const contract = @import("contract");
@@ -108,7 +109,11 @@ fn supervise(
     // execution unsandboxed.
     const requires_sandbox = !std.mem.eql(u8, cfg.sandbox_tier, SANDBOX_TIER_DEV_NONE);
     var scope: ?cgroup.CgroupScope = establishSandbox(alloc, requires_sandbox) catch {
-        log.err("sandbox_unavailable_fail_closed", .{ .lease_id = payload.lease_id, .tier = cfg.sandbox_tier });
+        log.err("sandbox_unavailable_fail_closed", .{
+            .error_code = client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED,
+            .lease_id = payload.lease_id,
+            .tier = cfg.sandbox_tier,
+        });
         return failed(.startup_posture);
     };
     defer if (scope) |*s| {
@@ -328,4 +333,14 @@ test "readResult tolerates a malformed activity frame and still returns the resu
     const outcome = try readResult(std.testing.allocator, fds[0], dl, sink);
     defer std.testing.allocator.free(outcome.bytes);
     try std.testing.expectEqualStrings("{\"exit_ok\":false}", outcome.bytes);
+}
+
+test "sandbox setup fails closed (Invariant 7): dev_none runs bare, a required tier with no domain refuses" {
+    // dev_none = explicit no-isolation. Every other tier MUST establish its
+    // domain or the lease is refused unrun (never executed unsandboxed). The
+    // non-Linux arm is here; the Linux cgroup-failure arm is in test-integration.
+    try std.testing.expect((try establishSandbox(std.testing.allocator, false)) == null);
+    if (builtin.os.tag != .linux)
+        try std.testing.expectError(error.SandboxUnavailable, establishSandbox(std.testing.allocator, true));
+    try std.testing.expect(client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED.len > 0);
 }
