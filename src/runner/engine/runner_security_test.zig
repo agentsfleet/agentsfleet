@@ -135,3 +135,30 @@ test "T8: composeMessage allowlist is tight — only 5 known keys produce sectio
     try std.testing.expect(std.mem.indexOf(u8, composed, "## Plan") != null);
     try std.testing.expect(std.mem.indexOf(u8, composed, "## Spec") == null);
 }
+
+// ── Re-landed from the deleted runner_test.zig (cutover, RULE ORP) ───────────
+
+test "mapError maps each RunnerError to its FailureClass; unknown → executor_crash" {
+    try std.testing.expectEqual(types.FailureClass.startup_posture, runner.mapError(runner.RunnerError.InvalidConfig));
+    try std.testing.expectEqual(types.FailureClass.startup_posture, runner.mapError(runner.RunnerError.AgentInitFailed));
+    try std.testing.expectEqual(types.FailureClass.timeout_kill, runner.mapError(runner.RunnerError.Timeout));
+    try std.testing.expectEqual(types.FailureClass.oom_kill, runner.mapError(runner.RunnerError.OutOfMemory));
+    try std.testing.expectEqual(types.FailureClass.executor_crash, runner.mapError(runner.RunnerError.AgentRunFailed));
+    try std.testing.expectEqual(types.FailureClass.executor_crash, runner.mapError(error.Unexpected));
+}
+
+test "collectSecrets extracts the llm api_key from agent_config" {
+    const alloc = std.testing.allocator;
+    var ac = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer ac.object.deinit();
+    try ac.object.put("api_key", .{ .string = "sk-secret" });
+    try std.testing.expectEqualStrings("sk-secret", runner.collectSecrets(ac)[0].value);
+}
+
+test "collectSecrets yields an empty value when agent_config is null or the key is absent" {
+    try std.testing.expectEqualStrings("", runner.collectSecrets(null)[0].value);
+    const alloc = std.testing.allocator;
+    var ac = std.json.Value{ .object = std.json.ObjectMap.init(alloc) };
+    defer ac.object.deinit();
+    try std.testing.expectEqualStrings("", runner.collectSecrets(ac)[0].value);
+}

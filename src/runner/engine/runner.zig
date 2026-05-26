@@ -318,4 +318,11 @@ fn elapsedSeconds(start_ms: i64) u64 {
     return @as(u64, @intCast(@max(0, elapsed_ms))) / 1000;
 }
 
-// Tests live in runner_test.zig and runner_security_test.zig.
+// Engine test aggregator — these sibling suites are reachable only through
+// here (the runner test root is src/runner/main.zig → engine/runner.zig). They
+// were orphaned when the cutover deleted runner_test.zig (RULE ORP).
+test {
+    _ = @import("runner_security_test.zig");
+    _ = @import("sandbox_edge_test.zig");
+    _ = @import("resource_security_test.zig");
+}
