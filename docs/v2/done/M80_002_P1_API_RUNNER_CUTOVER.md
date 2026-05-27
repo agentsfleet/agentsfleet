@@ -4,7 +4,7 @@
 **Milestone:** M80
 **Workstream:** 002
 **Date:** May 25, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the execution-architecture cutover; it makes the runner the real processor and removes the datastore-welded worker. Customer/operator-facing (work can run on hosts holding no datastore credentials).
 **Categories:** API
 **Batch:** B2 — single collapsed cutover; absorbs roadmap S1–S4 (see Discovery) and ships in one PR atop the M80_001 keystone.
@@ -167,8 +167,8 @@ The runner becomes a real processor.
 
 ### §7 — Documentation & spec reconciliation
 
-- **Dimension 7.1** — `runner_fleet.md` roadmap collapses S1–S4 into this cutover; `data_flow.md` / `capabilities.md` / `scaling.md` describe the post-cutover runtime (direct path gone) → Verified by the Architecture Consult & Update Gate (doc + spec coherent in the diff).
-- **Dimension 7.2** — M80_001 rescoped to its durable keystone, loopback §3.4/§4 marked superseded, moved to `done/` → Verified by the spec-template audit + the M80_001 diff.
+- **Dimension 7.1** — DONE. `runner_fleet.md` now leads guarantees-first (System Guarantees + Failure Recovery Model, "cattle not pets") then mechanics, and collapses the roadmap (S1–S4 absorbed); `data_flow.md` / `capabilities.md` / `scaling.md` / `README.md` describe the post-cutover lease/runner/report runtime (direct path gone, `zombie:control` retired). Doc + spec coherent in the same PR diff (Architecture Consult & Update Gate).
+- **Dimension 7.2** — DONE. M80_001 rescoped to its durable keystone, loopback §3.4/§4 superseded, in `done/`; spec-template audit clean.
 
 ---
 
@@ -246,15 +246,15 @@ secret_delivery : inline only (trusted fleet, over TLS); scoped/proxy remain res
 
 ## Acceptance Criteria
 
-- [ ] `make lint` clean · `make test` passes
-- [ ] `make test-integration` passes (assignment + fencing + reclaim + activity, against PG + Redis)
-- [ ] `make memleak` clean (runner child-supervisor + sandbox lifecycle is the highest-risk allocator surface)
-- [ ] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` (zombied + runner)
-- [ ] `zig build --build-file build_runner.zig` produces the runner with the engine folded in and **no** pg/httpz/redis linkage
-- [ ] `test_runner_is_default_processor` + `test_expired_lease_reclaimed_and_refenced` + `test_report_rejects_stale_fencing_token` green
-- [ ] Direct worker path + sidecar transport deleted; orphan sweep clean; `gitleaks detect` clean; no file over 350 lines added
-- [ ] `docs/architecture/{runner_fleet,data_flow,capabilities,scaling}.md` reconciled; M80_001 in `done/`
-- [ ] `bash scripts/audit-spec-template.sh` clean
+- [x] `make lint-zig` clean · `zig build test` (zombied unit) passes
+- [x] `make test-integration` passes (assignment + fencing + reclaim + activity, against PG + Redis)
+- [x] `make memleak` clean (1163 passed / 231 skip / 0 fail; runner child-supervisor + sandbox lifecycle is the highest-risk allocator surface)
+- [x] Cross-compile clean: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` (zombied + runner — all 4 exit 0)
+- [x] `zig build --build-file build_runner.zig` produces the runner with the engine folded in and **no** pg/httpz/redis linkage
+- [x] `test_runner_is_default_processor` + `test_expired_lease_reclaimed_and_refenced` + `test_report_rejects_stale_fencing_token` green (via `make test-integration`)
+- [x] Direct worker path + sidecar transport deleted; orphan sweep clean (incl. the dead `zombie:control` producer); `gitleaks detect` clean; no file over 350 lines added
+- [x] `docs/architecture/{runner_fleet,data_flow,capabilities,scaling,README}.md` reconciled to the post-cutover runtime; M80_001 in `done/`
+- [x] `bash scripts/audit-spec-template.sh` clean
 
 ---
 
@@ -308,6 +308,11 @@ The direct worker path (`worker_zombie` direct loop, `event_loop*` worker entry)
   - **Step-2 live-infra deferral.** Live-infra renames (host `worker-ant`/`bird`, vault `worker-url`/`-connection-string`, DB roles) + runner enrollment provisioning are deferred to the Step-2 runner-bootstrap playbooks; the baremetal runner deploy stays gated off (`DEV_WORKER_READY`/`PROD_WORKER_READY`) until then. Bootstrap order (chicken-and-egg): deploy updated `zombied` first (serves `POST /v1/runners`) → admin mints a `zmb_t_` key via the live API → 1Password → provision `/etc/default/zombie-runner` → enroll.
   - **Fly `*_WORKER` datastore secrets KEPT.** `zombied` still reads the `worker` DB/Redis role (`db/pool.zig`, `serve.zig`, `doctor.zig`); "DB roles obsolete" applies only to the baremetal host, not Fly.
   - **arm64 runner + arch-aware deploy; engine-test re-land → Step 5.** `release.yml` builds/ships `zombie-runner` amd64+arm64 (matching `zombied`); `deploy.sh` release-download is arch-aware; the removed `test-unit-executor` lane was already broken — its migrated coverage (redactor contract + executor RPC tests, now `src/runner/engine`) folds into `test-unit-zigrunner` at Step 5.
+- **§7 docs reconcile + `zombie:control` dead-write cleanup (May 27, 2026).** Closed Dimension 7.1/7.2. Rewrote all five `docs/architecture/*.md` to the post-cutover lease/runner/report runtime; `runner_fleet.md` now leads guarantees-first (System Guarantees + Failure Recovery Model + "cattle not pets", per the Bishy review). While grounding the docs in code, found the `zombie:control` stream was a **dead write** — still published by `create.zig`/`patch.zig` but with **zero consumers** after the worker/watcher deletion. Indy chose "clean it all now" (vs defer):
+    > Indy (2026-05-27): "Clean it all now" — context: scope of the dead `zombie:control` cleanup; AskUserQuestion, recommended option.
+  Deleted the dead `control_stream` module (4 files: `control_stream.zig` + `_parse` + `_consts` + `_test`); repointed install to the existing twin `redis_zombie.ensureZombieConsumerGroup` (a UFS/NDC de-dup); dropped the 3 `control_stream.publish` calls (PATCH is now Postgres-only — status/config are read fresh per lease, `assign.zig:87`); fixed the stale watcher-reconcile comments + log keys in `create.zig`. The double-fault install orphan is no longer auto-healed (the watcher reconcile sweep was deleted with the worker) — documented in `data_flow.md` as a future control-plane reconcile job.
+  - **`/write-unit-test`:** diff ledger resolved — every changed unit covered or n/a. The retry/backoff wrapper keeps its 3 (renamed) unit tests; `redis_zombie.ensureZombieConsumerGroup` is exercised E2E by `control_plane_integration_test.zig:121`; PATCH persistence by `patch_body_fields_integration_test`. No new test owed (deletion + call-delegation swap; no behavioral gap).
+  - **`/review`:** CLEAN. The removed publish had no consumer post-cutover, so no live kill/pause/config signal was dropped (those read `core.zombies.status` fresh per lease + heartbeat revocation, neither via `control_stream`); zero dangling importers; PATCH correct with no Redis signal. Codex cross-model pass skipped as a deliberate call for a verified dead-code deletion.
 
 ---
 
@@ -328,13 +333,13 @@ The direct worker path (`worker_zombie` direct loop, `event_loop*` worker entry)
 |-------|---------|--------|-------|
 | Unit tests (zombied) | `make test-unit-zombied` | 1196 passed / 230 DB-skip / 0 fail | ✅ |
 | Unit tests (runner + lib lanes) | `make test-unit-zigrunner && make test-unit-ziglib` | 76/76 + 19/19 passed (incl. drain handler) | ✅ |
-| Integration | `make test-integration` | — | ⏳ |
-| e2e (runner default) | `make test-integration` (e2e) | — | ⏳ |
-| Lint | `make lint` | — | ⏳ |
-| Cross-compile | `zig build -Dtarget={x86_64,aarch64}-linux` (both binaries) | — | ⏳ |
-| Memleak | `make memleak` | — | ⏳ |
+| Integration | `make test-integration` | All integration tests passed (assignment + fencing + reclaim + activity) | ✅ |
+| e2e (runner default) | `make test-integration` (e2e) | passed within the integration suite | ✅ |
+| Lint | `make lint-zig` | Lint passed (zlint clean; FLL/role/orphan checks green) | ✅ |
+| Cross-compile | `zig build -Dtarget={x86_64,aarch64}-linux` (both binaries) | zombied + runner × both arches, all exit 0 | ✅ |
+| Memleak | `make memleak` | 1163 passed / 231 skip / 0 fail; 0 leaks | ✅ |
 | Runner build (no datastore linkage) | `zig build --build-file build_runner.zig` | builds (native) | ✅ |
-| Gitleaks | `gitleaks detect` | no leaks (2178 commits) | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks (2190 commits) | ✅ |
 | Cross-compile (runner) | `zig build --build-file build_runner.zig -Dtarget={x86_64,aarch64}-linux` | both arches build | ✅ |
 | Workflow lint | `make check-gh-actions-valid` | actionlint + make-target refs green | ✅ |
 
