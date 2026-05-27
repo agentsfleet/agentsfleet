@@ -1,6 +1,8 @@
 # Capabilities — what the zombie has, what the platform guarantees
 
 > Parent: [`README.md`](./README.md)
+>
+> **Scope:** the platform *guarantees* below are binding and unchanged by the M80_002 cutover. The *mechanism* now runs on the split — `zombied` (control plane) assigns work + resolves policy on `lease`; the host-resident `zombie-runner`'s sandboxed child enforces the hard layer. See [`runner_fleet.md`](./runner_fleet.md) and [`data_flow.md`](./data_flow.md).
 
 A zombie's capabilities split into two layers: what the language model is told it can do (a soft layer the model can ignore or get wrong), and what the platform actually enforces (a hard layer the model cannot escape from inside the sandbox). Both matter; the second is what makes the first safe.
 
@@ -11,9 +13,9 @@ A zombie's capabilities split into two layers: what the language model is told i
 | File | What it carries | Enforced by |
 |---|---|---|
 | `SKILL.md` | Natural-language reasoning prompt: how to think, what's safe, what to gather, when to ask for approval. Free-form prose. | The language model reading its own prompt — soft enforcement only. The model can drift; the platform-level guarantees below contain the consequences. |
-| `TRIGGER.md` | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs | Code-enforced at the executor sandbox boundary — the language model cannot escape these |
+| `TRIGGER.md` | The `tools:` list, `credentials:` list, `network.allow:` list, `budget:` caps, `trigger.type:` (`webhook` / `api` / `cron` / `chain`), and `context:` budget knobs | Code-enforced inside the runner's sandboxed child — the language model cannot escape these |
 
-The split matters. `SKILL.md` is *advisory* — the model reads it and tries to comply. `TRIGGER.md` is *binding* — the executor refuses tool calls that would violate it, regardless of what the model wants.
+The split matters. `SKILL.md` is *advisory* — the model reads it and tries to comply. `TRIGGER.md` is *binding* — the runner's sandboxed child refuses tool calls that would violate it, regardless of what the model wants.
 
 ### 1.1 `trigger.type` vs `event_type` — orthogonal fields, common confusion
 
@@ -24,9 +26,9 @@ These are two different fields on two different tables. Mixing them up is the mo
 | `trigger.type` | `TRIGGER.md` frontmatter (static config) | `webhook` / `api` / `cron` / `chain` | **How a zombie gets triggered** — the wiring at install time. |
 | `event_type` | `core.zombie_events` column (per delivery) | `chat` / `webhook` / `cron` / `continuation` | **What an individual event on the stream is** — the runtime label per delivery. |
 
-A `trigger.type: api` zombie typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` zombie receives `event_type: webhook`. A worker re-enqueue under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
+A `trigger.type: api` zombie typically receives `event_type: chat` events from the steer/chat API. A `trigger.type: webhook` zombie receives `event_type: webhook`. A continuation `zombied` enqueues under context chunking produces `event_type: continuation` regardless of the original `trigger.type`. The two fields are orthogonal — never the same value, never the same table.
 
-Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `trigger.type`; `src/zombie/event_envelope.zig` (`EventType`) for `event_type`.
+Source of truth: `src/zombie/config_helpers.zig` (`parseZombieTrigger`) for `trigger.type`; `src/lib/contract/event_envelope.zig` (`EventType`) for `event_type`.
 
 ---
 
@@ -47,13 +49,13 @@ These are the tool primitives NullClaw exposes. The zombie's `tools:` allowlist 
 
 | Capability | What it does | Primary owner |
 |---|---|---|
-| Worker control stream | A watcher thread on `zombie:control` claims new zombies, spawns per-zombie threads, and propagates kill within milliseconds (not on the 5-second `XREADGROUP` cycle). | Worker control plane |
-| Per-execution policy | Each `executor.createExecution` carries `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The tool bridge substitutes secrets at the sandbox boundary. | Executor session policy |
+| Work assignment + kill | `zombied` assigns the next event on `lease` (atomic affinity claim + monotonic fencing token; status/config resolved fresh from Postgres per lease), and propagates kill via heartbeat-carried lease revocation. | zombied control plane |
+| Per-lease policy | Each `lease` reply carries an `ExecutionPolicy` — `secrets_map`, `network_policy`, `tools` list, and `context` knobs. The tool bridge substitutes secrets inside the runner's sandboxed child. | Lease ExecutionPolicy |
 | Event stream + history | Every steer / webhook / cron event lands on `zombie:{id}:events` with actor provenance. `core.zombie_events` rows are opened at receive and closed at completion. | Event ingest + history path |
 | Webhook ingest (GitHub Actions in v1) | The HTTP receiver verifies the hash-based-message-authentication signature, normalises the payload, and writes a synthetic event with `actor=webhook:github`. | Webhook receiver |
 | Credential vault | Stores opaque-JSON-object credentials, encrypted with a tenant-scoped data key sealed by the cloud key-management-service. The tool bridge substitutes at sandbox entry. | Vault + secret resolution |
-| Provider config (self-managed) | Per-tenant posture choice between platform-managed inference and self-managed provider key. Tenant-scoped `core.tenant_providers` row carries `mode / provider / model / context_cap_tokens / credential_ref`; the user-named credential pointed to by `credential_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → executor → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2. | Provider resolution path |
-| Approval gating | Risky actions block until a human clicks Approve in the dashboard or a Slack DM. The state machine survives worker restarts. | Approval workflow |
+| Provider config (self-managed) | Per-tenant posture choice between platform-managed inference and self-managed provider key. Tenant-scoped `core.tenant_providers` row carries `mode / provider / model / context_cap_tokens / credential_ref`; the user-named credential pointed to by `credential_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → lease `ExecutionPolicy` → runner's sandboxed child → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2. | Provider resolution path |
+| Approval gating | Risky actions block until a human clicks Approve in the dashboard or a Slack DM. The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
 | Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-zombie in `TRIGGER.md`. | Billing gate |
 | Per-stage context lifecycle | Rolling tool-result window, memory-store nudge, stage chunking, and continuation events. See §4. | Context lifecycle |
 
@@ -68,14 +70,15 @@ Every zombie reasoning loop lives inside a single `runner.execute` call. As the 
 ```yaml
 # In the zombie's TRIGGER.md frontmatter under x-usezombie:
 x-usezombie:
-  model: accounts/fireworks/models/kimi-k2.6   # opaque pass-through; the worker
-                                                # forwards it to the executor's
-                                                # ContextBudget.model. Empty
+  model: accounts/fireworks/models/kimi-k2.6   # opaque pass-through; the control
+                                                # plane forwards it into the lease
+                                                # ExecutionPolicy (the engine's
+                                                # ContextBudget.model). Empty
                                                 # string ("") = self-managed overlay
-                                                # sentinel: the worker resolves
+                                                # sentinel: zombied resolves
                                                 # the real model from
                                                 # core.tenant_providers at
-                                                # trigger time.
+                                                # lease time.
   context:
     tool_window: auto              # rolling tool-result window size; "auto"
                                     # (bare YAML string) and 0 are equivalent
@@ -91,13 +94,10 @@ x-usezombie:
 ```
 
 **Wire-shape parser status.** Both `x-usezombie.model` and the four
-`x-usezombie.context.*` knobs are parsed into `ZombieConfig` and forwarded
-to the executor's `ContextBudget` at every `executeInSandbox` call. Before
-the M46 parser extension that landed alongside M49, the doc described
-these fields but the parser dropped them silently — every zombie ran on
-runtime auto-defaults regardless of authoring. Operator overrides now take
-effect; absent or zero fields still fall through to the runtime defaults
-below via `applyContextDefaults`.
+`x-usezombie.context.*` knobs are parsed into `ZombieConfig`, carried in the
+lease `ExecutionPolicy`, and applied by the engine's `ContextBudget` on every
+stage. Operator overrides take effect; absent or zero fields fall through to
+the runtime defaults below via `applyContextDefaults`.
 
 ### How the three layers compose (defence-in-depth, not override)
 
@@ -114,7 +114,7 @@ flowchart TD
     L2 -->|no| Fill
     Drop --> Fill[continue tool calls]
     Fill --> L3{context fill<br/>over stage_chunk_threshold?}
-    L3 -->|yes| Chunk[L3 fires:<br/>agent writes final snapshot<br/>returns exit_ok=false<br/>worker re-enqueues]
+    L3 -->|yes| Chunk[L3 fires:<br/>agent writes final snapshot<br/>returns exit_ok=false<br/>zombied enqueues continuation]
     L3 -->|no| Tool4[tool call N+1]
     Tool4 --> L1
     Chunk --> NextStage([Next stage:<br/>memory_recall<br/>incident:X])
@@ -125,13 +125,13 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the agent works. Forces the agent to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.zombie_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot, returns `{exit_ok: false, content: "needs continuation", checkpoint_id: ...}`, and the worker re-enqueues the same event chain as a synthetic event with `actor=continuation:<original_actor>`. The next stage starts fresh and immediately calls `memory_recall` to load the snapshot.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `zombied` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh stage and immediately calls `memory_recall` to load the snapshot — possibly on a different runner.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 
 ### The chain-cap escape hatch — `chunk_chain_escalate_human`
 
-A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: worker stops re-enqueueing, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `zombiectl events <zombie_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the zombie itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
+A pathological agent can in principle chunk forever. The runtime caps each chain at **10 continuations**. On the 11th attempt: `zombied` stops enqueueing continuations, writes `failure_label = chunk_chain_escalate_human` on the originating event row (visible via `zombiectl events <zombie_id>`, the dashboard Events tab, and the terminal `event_complete` SSE frame). Only this chain is forfeit; the zombie itself stays alive and processes future webhooks, cron fires, and steers as fresh chains with their own 10-chunk budgets.
 
 Notification today is silent — observability only. Resume by steering a fresh message that calls `memory_recall` against whatever snapshot key the zombie's own SKILL.md prose chose (the runtime never invents the key shape).
 

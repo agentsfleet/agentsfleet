@@ -2,7 +2,7 @@
 # TEST-INTEGRATION — all integration tests (Zig in-process, DB, Redis)
 # =============================================================================
 
-.PHONY: test-integration test-unit-executor test-integration-db test-integration-redis _test-integration-zombied _test-unit-executor _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
+.PHONY: test-integration test-integration-db test-integration-redis _test-integration-zombied _test-integration-db _test-integration-redis _test-integration-full _ensure-test-infra _reset-test-db
 TEST_DATABASE_URL_LOCAL ?= postgres://usezombie:usezombie@localhost:5432/usezombiedb
 TEST_REDIS_TLS_URL_LOCAL ?= rediss://:usezombie@localhost:6379
 # Cert path — populated by _ensure-test-infra after Redis is healthy. Do NOT shell-expand
@@ -136,25 +136,9 @@ _test-integration-full: _reset-test-db
 	zig build test
 	@echo "✓ [zombied] Full integration suite passed"
 
-# Executor-side unit tests against the mocked/stubbed executor sidecar.
-# Runs `zig build test-executor` which includes the redactor contract table
-# pinning the byte-level invariants the `zombied-executor-stub` binary's
-# canned-response provider depends on. No Postgres / Redis needed —
-# pure-process tests, seconds-fast. Lives in this file (not test-unit.mk)
-# because the build step shares cache wiring with the integration lanes.
-_test-unit-executor:
-	@echo "→ [zombied] Running executor-side unit tests (mocked executor)..."
-	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
-	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
-	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
-	 zig build test-executor --summary all 2>&1 | tee /dev/stderr | grep -q "passed"
-	@echo "✓ [zombied] Executor-side unit tests passed"
-
 test-integration-db: _test-integration-db  ## Run real DB-backed integration suite only
 
 test-integration-redis: _test-integration-redis  ## Run Redis-backed integration suite only
 
 test-integration: _test-integration-full  ## Run worker integration tests against real DB + Redis
 	@echo "✓ [zombied] All integration tests passed"
-
-test-unit-executor: _test-unit-executor  ## Run executor-side unit tests against the mocked executor (no DB/Redis)

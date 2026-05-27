@@ -53,16 +53,17 @@ jobs:
       - name: Build linux/amd64 binaries
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
+          zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
           mkdir -p dist
-          cp zig-out/bin/zombied          dist/zombied-linux-amd64
-          cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
+          cp zig-out/bin/zombied       dist/zombied-linux-amd64
+          cp zig-out/bin/zombie-runner dist/zombie-runner-linux-amd64
 
       - uses: actions/upload-artifact@v7
         with:
           name: dev-binaries
           path: |
             dist/zombied-linux-amd64
-            dist/zombied-executor-linux-amd64
+            dist/zombie-runner-linux-amd64
           retention-days: 3
 
   # ── 1b. Build Docker image and push dev-latest to GHCR ───────────────────
@@ -215,7 +216,7 @@ jobs:
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
-      - name: Deploy executor + worker to bare-metal
+      - name: Deploy runner to bare-metal
         timeout-minutes: 8
         run: |
           ANT_KEY="$RUNNER_TEMP/dev-worker-ant.key"
@@ -228,14 +229,13 @@ jobs:
 
           # Stage binaries, deploy script, and systemd units on the server
           $SSH "$TARGET" "mkdir -p /opt/zombie/bin /opt/zombie/deploy"
-          $SCP dist/zombied-linux-amd64          "$TARGET:/opt/zombie/bin/zombied"
-          $SCP dist/zombied-executor-linux-amd64  "$TARGET:/opt/zombie/bin/zombied-executor"
-          $SCP deploy/baremetal/deploy.sh         "$TARGET:/opt/zombie/deploy/deploy.sh"
-          $SCP deploy/baremetal/*.service          "$TARGET:/opt/zombie/deploy/"
+          $SCP dist/zombie-runner-linux-amd64 "$TARGET:/opt/zombie/bin/zombie-runner"
+          $SCP deploy/baremetal/deploy.sh     "$TARGET:/opt/zombie/deploy/deploy.sh"
+          $SCP deploy/baremetal/*.service     "$TARGET:/opt/zombie/deploy/"
           $SSH "$TARGET" "chmod +x /opt/zombie/deploy/deploy.sh /opt/zombie/bin/*"
 
           # Log binary type and shared library deps for diagnostics
-          $SSH "$TARGET" "file /opt/zombie/bin/zombied /opt/zombie/bin/zombied-executor && ldd /opt/zombie/bin/zombied /opt/zombie/bin/zombied-executor 2>&1 || true"
+          $SSH "$TARGET" "file /opt/zombie/bin/zombie-runner && ldd /opt/zombie/bin/zombie-runner 2>&1 || true"
 
           # Write Discord webhook to server env file. deploy.sh sources this file
           # at startup so the value never appears in sudo's argument list and stays
@@ -246,19 +246,17 @@ jobs:
           echo "::group::sudo diagnostics"
           $SSH "$TARGET" "echo 'ssh ok'; sudo -n true && echo 'sudo NOPASSWD ok' || echo 'FAIL: sudo requires password'"
           $SSH "$TARGET" "sudo -n id && echo 'sudo id ok' || echo 'FAIL: sudo -n id failed'"
-          $SSH "$TARGET" "systemctl is-active zombied-executor.service 2>&1 || echo 'executor: not active (first deploy?)'"
-          $SSH "$TARGET" "systemctl is-active zombied-worker.service 2>&1 || echo 'worker: not active (first deploy?)'"
+          $SSH "$TARGET" "systemctl is-active zombie-runner.service 2>&1 || echo 'runner: not active (first deploy?)'"
           echo "::endgroup::"
 
-          # Deploy executor first (worker Requires= it), then worker.
-          # DRAIN_TIMEOUT=60 keeps drain within CI budget.
+          # Deploy the runner. DRAIN_TIMEOUT=60 keeps drain within CI budget.
           # deploy.sh sources /opt/zombie/.discord-env for DISCORD_WEBHOOK_URL.
-          echo ">>> deploying executor..."
+          # NOTE: the runner needs ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN in
+          # /etc/default/zombie-runner — provisioned by the step-2 runner bootstrap
+          # playbook; this job stays gated off (DEV_WORKER_READY) until then.
+          echo ">>> deploying runner..."
           $SSH "$TARGET" \
-            "sudo DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh executor $VERSION /opt/zombie/bin/zombied-executor"
-          echo ">>> deploying worker..."
-          $SSH "$TARGET" \
-            "sudo DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh worker $VERSION /opt/zombie/bin/zombied"
+            "sudo DRAIN_TIMEOUT=60 /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/zombie-runner"
 
       - name: Clean up Discord env file on server
         if: always()
