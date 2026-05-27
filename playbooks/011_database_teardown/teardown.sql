@@ -2,15 +2,27 @@
 -- Drops all user schemas and their contents
 -- For PlanetScale (via psql) or local Docker containers
 
--- Drop all user-created schemas with CASCADE
--- This removes tables, views, indexes, functions, triggers, etc.
-DROP SCHEMA IF EXISTS memory CASCADE;
-DROP SCHEMA IF EXISTS vault CASCADE;
-DROP SCHEMA IF EXISTS ops_ro CASCADE;
-DROP SCHEMA IF EXISTS audit CASCADE;
-DROP SCHEMA IF EXISTS billing CASCADE;
-DROP SCHEMA IF EXISTS agent CASCADE;
-DROP SCHEMA IF EXISTS core CASCADE;
+-- Drop every user-created schema with CASCADE (tables, views, indexes,
+-- functions, triggers, etc.). Catalog-derived, NOT a hand-maintained list:
+-- a static list silently rots the moment a migration adds a schema (the
+-- `fleet` schema was added by the M80 runner cutover and a hardcoded list
+-- left it standing, tripping the "0 objects remain" check below and blocking
+-- the whole integration suite). The exclusion filter MUST match the
+-- verification filter at the bottom so the two counts stay consistent.
+DO $$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'public')
+        AND schema_name NOT LIKE 'pg_%'
+        AND schema_name NOT LIKE 'pscale%'
+    LOOP
+        EXECUTE 'DROP SCHEMA IF EXISTS ' || quote_ident(r.schema_name) || ' CASCADE';
+    END LOOP;
+END $$;
 
 -- Drop any remaining tables in public schema (excluding system tables)
 DO $$

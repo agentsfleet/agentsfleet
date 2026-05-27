@@ -8,18 +8,18 @@ ZLINT ?= zlint
 ACTIONLINT ?= actionlint
 
 _fmt:
-	@echo "→ [zombied] Formatting Zig code..."
+	@echo "→ [zig] Formatting Zig code..."
 	@find src -name '*.zig' -exec zig fmt {} \;
 
 _fmt_check:
-	@echo "→ [zombied] Checking Zig formatting..."
+	@echo "→ [zig] Checking Zig formatting..."
 	@find src -name '*.zig' -exec zig fmt --check {} \;
 
 _zlint_check:
-	@echo "→ [zombied] Running ZLint..."
+	@echo "→ [zig] Running ZLint..."
 	@command -v $(ZLINT) >/dev/null 2>&1 || { echo "ZLint not found. Install v0.8.1 or set ZLINT=/path/to/zlint."; exit 1; }
 	@$(ZLINT) --deny-warnings
-	@echo "✓ [zombied] ZLint passed"
+	@echo "✓ [zig] ZLint passed"
 
 _website_lint:
 	@echo "→ [website] Running Oxlint + TypeScript check..."
@@ -44,9 +44,9 @@ _zombiectl_lint:
 	@echo "✓ [zombiectl] Lint passed"
 
 _lint_zig_pg_drain:
-	@echo "→ [zombied] Checking pg query drain discipline..."
+	@echo "→ [zig] Checking pg query drain discipline..."
 	@python3 lint-zig.py src
-	@echo "✓ [zombied] pg-drain check passed"
+	@echo "✓ [zig] pg-drain check passed"
 
 _lint_zig_test_depth:
 	@mkdir -p .tmp
@@ -55,7 +55,7 @@ _lint_zig_test_depth:
 	 printf 'zombied_test_cases=%s\nzombied_integration_cases=%s\n' "$$unit_count" "$$integration_count" | tee .tmp/zombied-test-depth.txt >/dev/null; \
 	 if [ "$$unit_count" -lt 25 ]; then echo "✗ expected at least 25 Zig tests, got $$unit_count"; exit 1; fi; \
 	 if [ "$$integration_count" -lt 3 ]; then echo "✗ expected at least 3 Zig integration tests, got $$integration_count"; exit 1; fi; \
-	 echo "✓ [zombied] test depth gate passed (unit=$$unit_count integration=$$integration_count)"
+	 echo "✓ [zig] test depth gate passed (unit=$$unit_count integration=$$integration_count)"
 
 _zig_target_lint:
 	@echo "→ [ci] Checking Zig target triples for -gnu suffix..."
@@ -79,25 +79,19 @@ _zig_target_lint:
 # Do NOT add new entries — shrink this list over time.
 # Policy: RULE FLL in docs/greptile-learnings/RULES.md
 ZIG_LINE_LIMIT_ALLOWLIST := \
-	src/auth/claims.zig \
-	src/auth/github.zig \
-	src/auth/jwks.zig \
-	src/cmd/doctor.zig \
-	src/cmd/serve.zig \
+	src/zombied/auth/claims.zig \
+	src/zombied/auth/jwks.zig \
+	src/zombied/cmd/doctor.zig \
+	src/zombied/cmd/serve.zig \
 	src/config/runtime.zig \
 	src/db/pool.zig \
-	src/executor/client.zig \
-	src/executor/handler.zig \
-	src/executor/runner.zig \
-	src/executor/session.zig \
-	src/executor/transport.zig \
 	src/git/pr.zig \
 	src/git/repo.zig \
-	src/http/handlers/common.zig \
+	src/zombied/http/handlers/common.zig \
 	src/http/workspace_guards.zig \
 	src/observability/metrics_counters.zig \
-	src/observability/otel_logs.zig \
-	src/observability/otel_traces.zig \
+	src/zombied/observability/otel_logs.zig \
+	src/zombied/observability/otel_traces.zig \
 	src/observability/posthog_events.zig \
 	src/queue/redis_client.zig \
 	src/state/entitlements.zig \
@@ -105,11 +99,10 @@ ZIG_LINE_LIMIT_ALLOWLIST := \
 	src/types.zig \
 	src/types/id_format.zig \
 	src/zombie/approval_gate.zig \
-	src/zombie/config.zig \
-	src/zombie/event_loop.zig
+	src/zombie/config.zig
 
 _zig_line_limit_check:
-	@echo "→ [zombied] Checking Zig file line limit (max 350 lines — RULE FLL)..."
+	@echo "→ [zig] Checking Zig file line limit (max 350 lines — RULE FLL)..."
 	@FAIL=0; \
 	for f in $$(find src -name '*.zig' ! -path '*/.zig-cache/*' ! -name '*_test.zig' ! -name '*_test_*.zig' ! -name 'tests*.zig' ! -name '*test*.zig' | sort); do \
 		lines=$$(wc -l < "$$f"); \
@@ -128,10 +121,10 @@ _zig_line_limit_check:
 		echo "  Fix: split the file into focused modules under 350 lines."; \
 		exit 1; \
 	fi; \
-	echo "✓ [zombied] All new Zig files within 350-line limit"
+	echo "✓ [zig] All new Zig files within 350-line limit"
 
 _hardcoded_role_check:
-	@echo "→ [zombied] Checking for banned hardcoded role constants..."
+	@echo "→ [zig] Checking for banned hardcoded role constants..."
 	@FAIL=0; \
 	if grep -rn 'ROLE_SCOUT\|ROLE_ECHO\|ROLE_WARDEN' src/ --include='*.zig' | grep -v '_test\.zig' | grep -q .; then \
 		echo "✗ Banned role constants found (ROLE_SCOUT/ROLE_ECHO/ROLE_WARDEN). Remove them — roles are loaded from config."; \
@@ -149,12 +142,12 @@ _hardcoded_role_check:
 		FAIL=1; \
 	fi; \
 	if [ "$$FAIL" = "1" ]; then exit 1; fi; \
-	echo "✓ [zombied] No hardcoded role constants found"
+	echo "✓ [zig] No hardcoded role constants found"
 
 
 
 _schema_gate_check:
-	@echo "→ [zombied] Checking schema/*.sql against pre-v2.0 teardown convention..."
+	@echo "→ [zig] Checking schema/*.sql against pre-v2.0 teardown convention..."
 	@version=$$(cat VERSION); \
 	major=$$(echo "$$version" | cut -d. -f1); \
 	if [ "$$major" -ge 2 ]; then \
@@ -179,7 +172,7 @@ _schema_gate_check:
 		echo "  See CLAUDE.md → 'Schema Table Removal Guard'."; \
 		exit 1; \
 	fi; \
-	echo "✓ [zombied] schema-gate check passed (VERSION=$$version, pre-v2.0 teardown convention)"
+	echo "✓ [zig] schema-gate check passed (VERSION=$$version, pre-v2.0 teardown convention)"
 
 check-schema-gate: _schema_gate_check  ## Enforce pre-v2.0 teardown convention on schema/*.sql
 
@@ -210,7 +203,7 @@ _shell_lint:
 	@echo "✓ [shell] shellcheck passed (error-level)"
 
 _legacy_symbols_check:
-	@echo "→ [zombied] Checking for legacy event-substrate symbols (orphan sweep — RULE ORP)..."
+	@echo "→ [zig] Checking for legacy event-substrate symbols (orphan sweep — RULE ORP)..."
 	@FAIL=0; \
 	PATTERNS='\bactivity_events\b|\bactivity_stream\b|\bactivity_cursor\b|\bzombie_steer_key_suffix\b|"GETDEL".*"zombie:'; \
 	HITS=$$(grep -rEn "$$PATTERNS" src/ --include='*.zig' \
@@ -221,10 +214,10 @@ _legacy_symbols_check:
 		FAIL=1; \
 	fi; \
 	if [ $$FAIL -eq 1 ]; then exit 1; fi; \
-	echo "✓ [zombied] No legacy event-substrate symbols in active code"
+	echo "✓ [zig] No legacy event-substrate symbols in active code"
 
-lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint zombied (Zig)
-	@echo "✓ [zombied] Lint passed"
+lint-zig: _fmt_check _zlint_check _lint_zig_pg_drain _lint_zig_test_depth _schema_gate_check _zig_target_lint _zig_line_limit_check _hardcoded_role_check _legacy_symbols_check  ## Lint all Zig source (zombied/runner/lib)
+	@echo "✓ [zig] Lint passed"
 
 lint-website: _website_lint  ## Lint website only (Oxlint + tsc)
 

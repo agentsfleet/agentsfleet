@@ -2,7 +2,7 @@
 # TEST-UNIT — zombied, zombiectl, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-zombied test-unit-zombiectl test-unit-website test-unit-app test-unit-design-system test-unit-skills test-coverage-all _test-coverage-zombied
+.PHONY: test-unit-zombied test-unit-zigrunner test-unit-ziglib test-unit-zombiectl test-unit-website test-unit-app test-unit-design-system test-unit-skills test-coverage-all _test-coverage-zombied
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -18,8 +18,23 @@ test-unit-zombied:  ## Run zombied unit tests (Zig)
 	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	 $${redis_tls_test_url:+TEST_REDIS_TLS_URL="$$redis_tls_test_url"} \
 	 zig build test --summary all
-	@$(MAKE) test-unit-executor
 	@$(MAKE) _lint_zig_test_depth
+
+test-unit-zigrunner:  ## Run zombie-runner unit tests (Zig; own build graph, no datastore)
+	@echo "→ [zombie-runner] Running Zig unit tests via build_runner.zig (contract + daemon + common)..."
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build --build-file build_runner.zig test --summary all
+	@echo "✓ [zombie-runner] Unit tests passed (independent of zombied/src)"
+
+test-unit-ziglib:  ## Run shared src/lib module unit tests (Zig; named modules, no datastore)
+	@echo "→ [lib] Running shared src/lib module unit tests..."
+	@mkdir -p "$(ZIG_GLOBAL_CACHE_DIR)" "$(ZIG_LOCAL_CACHE_DIR)"
+	@ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	 ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	 zig build test-lib --summary all
+	@echo "✓ [lib] Shared src/lib unit tests passed (consumed by zombied + zombie-runner)"
 
 test-unit-zombiectl:  ## Run zombiectl CLI unit tests (bun)
 	@echo "→ [zombiectl] Building dist/ (tests spawn dist/bin/zombiectl.js)..."

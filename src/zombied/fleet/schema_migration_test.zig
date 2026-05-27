@@ -1,0 +1,104 @@
+//! Integration: the runner-fleet schema migrations land `fleet.runners` (`021`)
+//! and `fleet.runner_leases` (`022`) with their columns and constraints in a
+//! migrated database.
+//!
+//! DB-gated — skips when `TEST_DATABASE_URL` is unset; the live test DB has the
+//! migrations applied by `_reset-test-db`. The migration array's ordering and
+//! SQL parseability are unit-tested in `cmd/common.zig`; both are idempotent by
+//! construction (`CREATE SCHEMA/TABLE IF NOT EXISTS`).
+
+const std = @import("std");
+const pg = @import("pg");
+const parseUrl = @import("../db/pool.zig").parseUrl;
+const PgQuery = @import("../db/pg_query.zig").PgQuery;
+
+// `id host_id token_hash sandbox_tier status labels tenant_id last_seen_at
+//  created_at updated_at` — the frozen `fleet.runners` column set.
+const EXPECTED_COLUMN_COUNT: i64 = 10;
+const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
+
+// `id runner_id zombie_id workspace_id tenant_id event_id actor event_type
+//  request_json event_created_at posture model fencing_token lease_expires_at
+//  status created_at updated_at` — the frozen `fleet.runner_leases` column set.
+//  The actor/event_type/request_json/event_created_at envelope is stored so a
+//  reclaim can re-lease the event from Postgres alone (no Redis re-read).
+const EXPECTED_LEASE_COLUMN_COUNT: i64 = 17;
+
+fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
+    const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch return null;
+    defer alloc.free(url);
+    // parseUrl allocates host/auth strings that must outlive the pool.
+    const opts = try parseUrl(std.heap.page_allocator, url);
+    const pool = pg.Pool.init(alloc, opts) catch return null;
+    errdefer pool.deinit();
+    const conn = pool.acquire() catch {
+        pool.deinit();
+        return null;
+    };
+    return .{ .pool = pool, .conn = conn };
+}
+
+/// Run a scalar `bigint` query and fully drain it before returning, so the
+/// caller can issue the next query on the same connection without
+/// `error.ConnectionBusy` — a deferred `deinit` leaves the prior result in
+/// flight until the test exits.
+fn scalarI64(conn: *pg.Conn, sql: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(sql, .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    return row.get(i64, 0);
+}
+
+/// Drain-safe `to_regclass(...) IS NOT NULL` probe (see `scalarI64`).
+fn regclassExists(conn: *pg.Conn, sql: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(sql, .{}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.TestUnexpectedResult;
+    return (try row.get(?[]const u8, 0)) != null;
+}
+
+test "runner schema: fleet.runners is migrated with its columns and constraints" {
+    const alloc = std.testing.allocator;
+    const ctx = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    // Table present in the `fleet` control-plane schema.
+    try std.testing.expect(try regclassExists(ctx.conn, "SELECT to_regclass('fleet.runners')::text"));
+
+    // Full column set.
+    try std.testing.expectEqual(EXPECTED_COLUMN_COUNT, try scalarI64(
+        ctx.conn,
+        "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'fleet' AND table_name = 'runners'",
+    ));
+
+    // Named constraints: token-hash uniqueness + the UUIDv7 id check.
+    // pin test: constraint names are the schema contract.
+    try std.testing.expectEqual(EXPECTED_NAMED_CONSTRAINTS, try scalarI64(
+        ctx.conn,
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname IN ('uq_runners_token_hash', 'ck_runners_id_uuidv7')",
+    ));
+}
+
+test "runner schema: fleet.runner_leases is migrated with its columns and constraint" {
+    const alloc = std.testing.allocator;
+    const ctx = (try openConnOrSkip(alloc)) orelse return error.SkipZigTest;
+    defer ctx.pool.deinit();
+    defer ctx.pool.release(ctx.conn);
+
+    // Table present in the `fleet` control-plane schema.
+    try std.testing.expect(try regclassExists(ctx.conn, "SELECT to_regclass('fleet.runner_leases')::text"));
+
+    // Full column set.
+    try std.testing.expectEqual(EXPECTED_LEASE_COLUMN_COUNT, try scalarI64(
+        ctx.conn,
+        "SELECT count(*)::bigint FROM information_schema.columns WHERE table_schema = 'fleet' AND table_name = 'runner_leases'",
+    ));
+
+    // Named UUIDv7 id check constraint.
+    // pin test: constraint name is the schema contract.
+    try std.testing.expectEqual(@as(i64, 1), try scalarI64(
+        ctx.conn,
+        "SELECT count(*)::bigint FROM pg_constraint WHERE conname = 'ck_runner_leases_id_uuidv7'",
+    ));
+}

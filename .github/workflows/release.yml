@@ -56,10 +56,11 @@ jobs:
       - name: Build (x86_64-linux)
         run: |
           zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
+          zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
-          for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
+          for bin in zig-out/bin/zombied zig-out/bin/zombie-runner; do
             test -f "$bin"
             if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
               echo "FAIL: $bin has dynamic NEEDED entries"
@@ -76,11 +77,11 @@ jobs:
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/zombied dist/zombied-linux-amd64
-          cp zig-out/bin/zombied-executor dist/zombied-executor-linux-amd64
-          chmod +x dist/zombied-linux-amd64 dist/zombied-executor-linux-amd64
+          cp zig-out/bin/zombied       dist/zombied-linux-amd64
+          cp zig-out/bin/zombie-runner dist/zombie-runner-linux-amd64
+          chmod +x dist/zombied-linux-amd64 dist/zombie-runner-linux-amd64
           tar czf dist/zombied-linux-amd64.tar.gz -C dist zombied-linux-amd64
-          tar czf dist/zombied-executor-linux-amd64.tar.gz -C dist zombied-executor-linux-amd64
+          tar czf dist/zombie-runner-linux-amd64.tar.gz -C dist zombie-runner-linux-amd64
 
       - uses: actions/upload-artifact@v7
         with:
@@ -89,8 +90,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: zombied-executor-linux-amd64
-          path: dist/zombied-executor-linux-amd64.tar.gz
+          name: zombie-runner-linux-amd64
+          path: dist/zombie-runner-linux-amd64.tar.gz
 
       # Upload unpackaged binary for runtime compat verification job below.
       - uses: actions/upload-artifact@v7
@@ -161,9 +162,10 @@ jobs:
               set -e
               cp -a /src/. /build
               cd /build
-              echo "  compiling zombied + zombied-executor (aarch64-linux)..."
+              echo "  compiling zombied + zombie-runner (aarch64-linux)..."
               zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl -Dgit-commit="${GITHUB_SHA::7}"
-              for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
+              zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl
+              for bin in zig-out/bin/zombied zig-out/bin/zombie-runner; do
                 test -f "$bin"
                 if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
                   echo "FAIL: $bin has dynamic NEEDED entries"
@@ -176,18 +178,18 @@ jobs:
                 fi
                 echo "  ✓ $bin: fully static (zero NEEDED, no INTERP)"
               done
-              cp zig-out/bin/zombied          /zig-out/bin/zombied
-              cp zig-out/bin/zombied-executor /zig-out/bin/zombied-executor
+              cp zig-out/bin/zombied       /zig-out/bin/zombied
+              cp zig-out/bin/zombie-runner /zig-out/bin/zombie-runner
             '
 
       - name: Package
         run: |
           mkdir -p dist
-          cp zig-out/bin/zombied dist/zombied-linux-arm64
-          cp zig-out/bin/zombied-executor dist/zombied-executor-linux-arm64
-          chmod +x dist/zombied-linux-arm64 dist/zombied-executor-linux-arm64
+          cp zig-out/bin/zombied       dist/zombied-linux-arm64
+          cp zig-out/bin/zombie-runner dist/zombie-runner-linux-arm64
+          chmod +x dist/zombied-linux-arm64 dist/zombie-runner-linux-arm64
           tar czf dist/zombied-linux-arm64.tar.gz -C dist zombied-linux-arm64
-          tar czf dist/zombied-executor-linux-arm64.tar.gz -C dist zombied-executor-linux-arm64
+          tar czf dist/zombie-runner-linux-arm64.tar.gz -C dist zombie-runner-linux-arm64
 
       - uses: actions/upload-artifact@v7
         with:
@@ -196,8 +198,8 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: zombied-executor-linux-arm64
-          path: dist/zombied-executor-linux-arm64.tar.gz
+          name: zombie-runner-linux-arm64
+          path: dist/zombie-runner-linux-arm64.tar.gz
 
   binaries-macos:
     needs: verify-tag
@@ -557,7 +559,7 @@ jobs:
 
           echo "Deploying canary: $NAME ($HOST) ..."
           ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$WORKER_DEPLOY_USER@$HOST" \
-            "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh executor $VERSION && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh worker $VERSION"
+            "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"
           rm -f "$KEY_FILE"
           echo "✓ Canary $NAME deployed"
 
@@ -611,7 +613,7 @@ jobs:
             chmod 600 "$KEY_FILE"
 
             if ssh -i "$KEY_FILE" -o StrictHostKeyChecking=no "$DEPLOY_USER@$HOST" \
-              "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh executor $VERSION && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh worker $VERSION"; then
+              "cd /opt/zombie/deploy && sudo DISCORD_WEBHOOK_URL='$DISCORD_WEBHOOK_URL' ./deploy.sh runner $VERSION"; then
               echo "✓ $NAME deployed"
               SUMMARY="${SUMMARY}✅ ${NAME}\\n"
             else

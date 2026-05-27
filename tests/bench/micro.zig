@@ -12,7 +12,6 @@ const error_registry = app.error_registry;
 const keyset_cursor = app.keyset_cursor;
 const id_format = app.id_format;
 const webhook_verify = app.webhook_verify;
-const pc = app.progress_callbacks;
 const fx = @import("micro_fixtures.zig");
 
 // ── route_match ───────────────────────────────────────────────────────────
@@ -97,17 +96,8 @@ fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
     std.mem.doNotOptimizeAway(bench_chunk_scratch.written().ptr);
 }
 
-// ── progress_frame_decode ─ executor → worker hot path
-// Mirrors transport.sendRequestStreaming: parse once, discriminate
-// progress vs terminal, decode the frame from the already-parsed value.
-fn benchProgressFrameDecode(allocator: std.mem.Allocator) void {
-    var parsed = std.json.parseFromSlice(std.json.Value, allocator, fx.PROGRESS_FRAME_BYTES, .{}) catch @panic("progress parse failed");
-    defer parsed.deinit();
-    const is_progress = pc.isProgressPayload(parsed.value);
-    if (!is_progress) @panic("progress fixture invalid");
-    const decoded = pc.decodeProgressFromValue(parsed.value) catch @panic("progress decode failed");
-    std.mem.doNotOptimizeAway(&decoded.frame);
-}
+// The progress_frame_decode bench mirrored the executor→worker transport
+// decode, removed at the M80 cutover when execution moved to the runner.
 
 // ── Entry point ───────────────────────────────────────────────────────────
 
@@ -131,7 +121,6 @@ pub fn main() !void {
     try bench.add("uuid_v7_generate", benchUuidV7Generate, .{});
     try bench.add("webhook_signature_verify", benchWebhookSignatureVerify, .{});
     try bench.add("activity_chunk_encode", benchActivityChunkEncode, .{});
-    try bench.add("progress_frame_decode", benchProgressFrameDecode, .{});
 
     const stdout: std.fs.File = .stdout();
     var buf: [4096]u8 = undefined;

@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
-# deploy.sh — install a zombied component binary and restart its systemd service.
+# deploy.sh — install the zombie-runner binary and restart its systemd service.
 #
 # Two modes:
-#   Local:    deploy.sh <component> <version> <binary-path>
+#   Local:    deploy.sh runner <version> <binary-path>
 #             Installs from a local file (CI scp'd the binary to the server).
 #
-#   Release:  deploy.sh <component> <version>
+#   Release:  deploy.sh runner <version>
 #             Downloads from GitHub Releases (tagged release deploys).
 #
 # Environment:
 #   DISCORD_WEBHOOK_URL — if set, sends deploy status to Discord
 #   DEPLOY_HOSTNAME     — override hostname in notifications (default: $(hostname))
+#   DRAIN_TIMEOUT       — seconds to wait for a graceful stop (default: 120)
 #
 # Examples:
-#   deploy.sh executor v0.1.0 /opt/zombie/bin/zombied-executor
-#   deploy.sh worker   v0.1.0 /opt/zombie/bin/zombied
-#   deploy.sh worker   v0.2.0                                  # downloads from GH release
+#   deploy.sh runner v0.1.0 /opt/zombie/bin/zombie-runner
+#   deploy.sh runner v0.2.0                              # downloads from GH release
+#
+# The runner holds zero datastore credentials: if it stops abruptly the control
+# plane reclaims its in-flight lease (lease_expires_at + fencing_token), so a
+# bounded stop never loses or double-runs work.
 
 set -euo pipefail
 
@@ -39,36 +43,28 @@ readonly INSTALL_DIR="/usr/local/bin"
 readonly SYSTEMD_DIR="/etc/systemd/system"
 readonly DEPLOY_DIR="/opt/zombie/deploy"
 readonly ENV_FILE="/opt/zombie/.env"
-readonly ENV_DEST="/etc/default/zombied-worker"
+readonly ENV_DEST="/etc/default/zombie-runner"
 readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 
-# Populated by resolve_component()
-BINARY_NAME=""
-RELEASE_ARTIFACT=""
-SERVICE_NAME=""
+# The single deployable component. Kept as an explicit argument so the call site
+# names what it deploys; the resolver rejects any other value (catches stale
+# callers still passing the retired 'worker'/'executor' components).
+readonly COMPONENT_RUNNER="runner"
+readonly BINARY_NAME="zombie-runner"
+readonly SERVICE_NAME="zombie-runner.service"
+# Release-download artifact is arch-specific. CI's local-binary mode skips this —
+# it scp's the right-arch binary and passes its path.
+case "$(uname -m)" in
+  x86_64 | amd64) _arch="amd64" ;;
+  aarch64 | arm64) _arch="arm64" ;;
+  *) _arch="$(uname -m)" ;;
+esac
+readonly RELEASE_ARTIFACT="${BINARY_NAME}-linux-${_arch}"
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 
 log()  { echo "[deploy] $*"; }
 die()  { log "FATAL: $*"; notify_discord "fail"; exit 1; }
-
-# ── Component resolution ─────────────────────────────────────────────────────
-
-resolve_component() {
-  case "$1" in
-    worker)
-      BINARY_NAME="zombied"
-      RELEASE_ARTIFACT="zombied-linux-amd64"
-      SERVICE_NAME="zombied-worker.service"
-      ;;
-    executor)
-      BINARY_NAME="zombied-executor"
-      RELEASE_ARTIFACT="zombied-executor-linux-amd64"
-      SERVICE_NAME="zombied-executor.service"
-      ;;
-    *) die "Unknown component '$1'. Must be 'worker' or 'executor'." ;;
-  esac
-}
 
 # ── Version check ────────────────────────────────────────────────────────────
 
@@ -119,79 +115,35 @@ sync_systemd_unit() {
 }
 
 sync_env() {
-  [[ "$COMPONENT" == "worker" && -f "$ENV_FILE" ]] || return 0
+  [[ -f "$ENV_FILE" ]] || return 0
   cp "$ENV_FILE" "$ENV_DEST"
   log "Synced .env → ${ENV_DEST}"
 }
 
 # ── Service restart ──────────────────────────────────────────────────────────
 
-drain_worker() {
-  # 120s is safely within zombied-worker.service TimeoutStopSec=300.
+drain_runner() {
+  # Bounded graceful stop. Lease reclaim (lease_expires_at + fencing_token) is
+  # the safety net for a forced stop, so the timeout only gives an in-flight
+  # child a chance to finish before SIGKILL.
   local timeout="${DRAIN_TIMEOUT:-120}"
 
-  if ! systemctl is-active --quiet zombied-worker.service; then
-    log "Worker not running — skipping drain."
+  if ! systemctl is-active --quiet "$SERVICE_NAME"; then
+    log "Runner not running — skipping drain."
     return 0
   fi
 
-  log "Draining worker (timeout=${timeout}s) ..."
-  # Use 'stop' not 'kill': stop tells systemd to deactivate the unit
-  # (prevents Restart=always from respawning), while kill only signals the
-  # process and systemd immediately restarts it.
-  systemctl stop zombied-worker.service &
-  local stop_pid=$!
-
-  local elapsed=0
-  while [ "$elapsed" -lt "$timeout" ]; do
-    if ! systemctl is-active --quiet zombied-worker.service; then
-      log "✓ Worker drained and stopped after ${elapsed}s."
-      wait "$stop_pid" 2>/dev/null || true
-      return 0
-    fi
-
-    if journalctl -u zombied-worker.service --since "${timeout} seconds ago" --no-pager -q 2>/dev/null \
-        | grep -qE 'worker\.drain_complete|worker\.drain_timeout'; then
-      log "✓ Worker drain signal detected after ${elapsed}s."
-      wait "$stop_pid" 2>/dev/null || true
-      return 0
-    fi
-
-    sleep 5
-    elapsed=$((elapsed + 5))
-  done
-
-  log "⚠ Drain timeout (${timeout}s) — killing worker forcefully."
-  systemctl kill --signal=SIGKILL zombied-worker.service 2>/dev/null || true
-  wait "$stop_pid" 2>/dev/null || true
+  log "Stopping runner (timeout=${timeout}s) ..."
+  if ! timeout "$timeout" systemctl stop "$SERVICE_NAME"; then
+    log "⚠ Stop timeout (${timeout}s) — killing runner forcefully."
+    systemctl kill --signal=SIGKILL "$SERVICE_NAME" 2>/dev/null || true
+  fi
 }
 
 restart_services() {
-  if [[ "$COMPONENT" == "executor" ]]; then
-    log "Draining worker before executor restart (Requires= dependency) ..."
-    drain_worker
-    # Unconditionally stop the worker — drain checks is-active which returns
-    # false for "activating (auto-restart)" crash-loops, so drain skips them.
-    # A bare stop here catches every state (active, activating, failed).
-    # Timeout prevents hanging on TimeoutStopSec=300; SIGKILL as fallback.
-    timeout 15 systemctl stop zombied-worker.service 2>/dev/null \
-      || systemctl kill --signal=SIGKILL zombied-worker.service 2>/dev/null \
-      || true
-    log "Restarting executor ..."
-    systemctl restart zombied-executor.service
-    # Only restart the worker if its binary is installed. CI deploys executor
-    # before worker, so on first deploy the worker binary does not exist yet.
-    if [[ -x "${INSTALL_DIR}/zombied" ]]; then
-      sleep 2
-      systemctl restart zombied-worker.service || true
-    else
-      log "Worker binary not installed yet — skipping worker start."
-    fi
-  else
-    drain_worker
-    log "Restarting worker ..."
-    systemctl restart zombied-worker.service
-  fi
+  drain_runner
+  log "Restarting runner ..."
+  systemctl restart "$SERVICE_NAME"
 }
 
 verify_healthy() {
@@ -240,8 +192,7 @@ notify_discord() {
 
 main() {
   if [[ $# -lt 2 || $# -gt 3 ]]; then
-    echo "Usage: deploy.sh <component> <version> [binary-path]"
-    echo "  component:   worker | executor"
+    echo "Usage: deploy.sh runner <version> [binary-path]"
     echo "  version:     GitHub release tag (e.g. v0.1.0) or dev SHA (e.g. dev-abc1234)"
     echo "  binary-path: local path to pre-staged binary (optional; downloads from GH release if omitted)"
     exit 1
@@ -251,7 +202,8 @@ main() {
   VERSION="$2"
   LOCAL_BINARY="${3:-}"
 
-  resolve_component "$COMPONENT"
+  [[ "$COMPONENT" == "$COMPONENT_RUNNER" ]] \
+    || die "Unknown component '$COMPONENT'. The only deployable component is '${COMPONENT_RUNNER}'."
 
   # Skip version check when CI provides a local binary — always do a full
   # install+restart cycle. The shortcut is only for release-download mode.

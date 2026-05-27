@@ -47,11 +47,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Compile zombied + zombied-executor (x86_64-linux)
+      - name: Compile zombied + zombie-runner (x86_64-linux)
         # Retry on transient GitHub CDN 5xx when fetching transitive zig deps.
         run: |
           attempt=1
-          until zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl; do
+          until zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl \
+             && zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=x86_64-linux-musl; do
             if [ "$attempt" -ge 3 ]; then
               echo "FAIL: zig build failed after 3 attempts"
               exit 1
@@ -63,7 +64,7 @@ jobs:
 
       - name: Verify static ELF — zero NEEDED, no INTERP (x86_64-linux)
         run: |
-          for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
+          for bin in zig-out/bin/zombied zig-out/bin/zombie-runner; do
             test -f "$bin"
             if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
               echo "FAIL: $bin has dynamic NEEDED entries"
@@ -110,14 +111,15 @@ jobs:
               set -e
               cp -a /src/. /build
               cd /build
-              echo "  compiling zombied + zombied-executor (aarch64-linux)..."
+              echo "  compiling zombied + zombie-runner (aarch64-linux)..."
               # Retry zig build up to 3x — transitive deps declared in
               # vendor/httpz/build.zig.zon are fetched from github.com
               # and github'\''s archive CDN occasionally returns 5xx.
               # Retries handle the transient-network failure mode without
               # vendoring every transitive package.
               attempt=1
-              until zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl; do
+              until zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl \
+                 && zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-linux-musl; do
                 if [ "$attempt" -ge 3 ]; then
                   echo "FAIL: zig build failed after 3 attempts"
                   exit 1
@@ -126,7 +128,7 @@ jobs:
                 sleep $((attempt * 10))
                 attempt=$((attempt + 1))
               done
-              for bin in zig-out/bin/zombied zig-out/bin/zombied-executor; do
+              for bin in zig-out/bin/zombied zig-out/bin/zombie-runner; do
                 test -f "$bin"
                 if readelf -d "$bin" 2>/dev/null | grep -q " (NEEDED)"; then
                   echo "FAIL: $bin has dynamic NEEDED entries"
@@ -139,14 +141,14 @@ jobs:
                 fi
                 echo "  ✓ $bin: fully static (zero NEEDED, no INTERP)"
               done
-              cp zig-out/bin/zombied          /zig-out/bin/zombied
-              cp zig-out/bin/zombied-executor /zig-out/bin/zombied-executor
+              cp zig-out/bin/zombied       /zig-out/bin/zombied
+              cp zig-out/bin/zombie-runner /zig-out/bin/zombie-runner
             '
 
       - name: Verify output artifacts (aarch64-linux)
         run: |
           test -f zig-out/bin/zombied
-          test -f zig-out/bin/zombied-executor
+          test -f zig-out/bin/zombie-runner
           echo "✓ aarch64-linux artifacts present"
 
   # Verify the static x86_64 binary runs on all target Linux environments
@@ -198,10 +200,12 @@ jobs:
       - name: Ensure OpenSSL is available (macOS)
         run: brew install openssl@3 || true
 
-      - name: Compile zombied + zombied-executor (aarch64-macos)
-        run: zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
+      - name: Compile zombied + zombie-runner (aarch64-macos)
+        run: |
+          zig build -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
+          zig build --build-file build_runner.zig -Doptimize=ReleaseSafe -Dtarget=aarch64-macos
 
       - name: Verify binaries (aarch64-macos)
         run: |
           test -f zig-out/bin/zombied
-          test -f zig-out/bin/zombied-executor
+          test -f zig-out/bin/zombie-runner

@@ -4,17 +4,16 @@ const builtin = @import("builtin");
 const S_POSTHOG = "posthog";
 const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
-const S_EXECUTOR_PROVIDER_STUB = "executor_provider_stub";
-const S_SRC_EXECUTOR_MAIN_ZIG = "src/executor/main.zig";
 const S_SCHEMA = "schema";
-const S_SRC_MAIN_ZIG = "src/main.zig";
+const S_SRC_MAIN_ZIG = "src/zombied/main.zig";
 const S_NULLCLAW = "nullclaw";
-const S_EXECUTOR_HARNESS = "executor_harness";
 const S_ZOMBIED_TESTS = "zombied-tests";
 const S_LOG = "log";
 const S_HMAC_SIG = "hmac_sig";
 const S_PG = "pg";
 const S_YAML = "yaml";
+const S_CONTRACT = "contract";
+const S_COMMON = "common";
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -120,7 +119,7 @@ pub fn build(b: *std.Build) void {
     // test-auth portability gate, and from src/zombie/ as the canonical source
     // for webhook signature verification primitives.
     const hmac_sig_mod = b.createModule(.{
-        .root_source_file = b.path("src/crypto/hmac_sig.zig"),
+        .root_source_file = b.path("src/zombied/crypto/hmac_sig.zig"),
     });
 
     // ── Logging module ───────────────────────────────────────────────────────
@@ -141,7 +140,22 @@ pub fn build(b: *std.Build) void {
     // struct field (`.{ .error_code = error_codes.ERR_X, ... }`), keeping
     // logging/ pure of business knowledge.
     const log_mod = b.createModule(.{
-        .root_source_file = b.path("src/logging/mod.zig"),
+        .root_source_file = b.path("src/lib/logging/mod.zig"),
+    });
+
+    // Shared `/v1/runners` wire contract (src/lib/contract). A named module so
+    // both build graphs reach it without crossing module boundaries (see
+    // docs/ZIG_RULES.md "Module Boundaries & Shared Modules"). No deps — its
+    // files import only std + each other within src/lib/contract/.
+    const contract_mod = b.createModule(.{
+        .root_source_file = b.path("src/lib/contract/contract.zig"),
+    });
+
+    // Single-source lease/runner knobs (src/lib/common) the control plane (fleet)
+    // and the runner daemon both key off (RULE UFS). Named module: src/lib sits
+    // outside the zombied module root, so it cannot be relative-imported.
+    const common_mod = b.createModule(.{
+        .root_source_file = b.path("src/lib/common/constants.zig"),
     });
 
     // ── usezombie executable ───────────────────────────────────────────────────
@@ -160,6 +174,8 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_CONTRACT, .module = contract_mod },
+                .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
             },
         }),
@@ -173,109 +189,27 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    // ── Sandbox executor sidecar ─────────────────────────────────────────────
-    // Separate binary that serves the executor API over a Unix socket.
-    // Embeds NullClaw and owns host-level Linux sandboxing.
-    //
-    // Built twice with different `executor_harness` build options:
-    //   - `zombied-executor` (production): harness=false. Real LLM agent loop.
-    //   - `zombied-executor-harness` (test fixture): harness=true. Comptime
-    //     branch in runner.zig dispatches to runner_harness, which emits a
-    //     scripted sequence of progress frames per the EXECUTOR_HARNESS_SCRIPT
-    //     env var. Used by integration tests that need deterministic frame
-    //     emission without spending tokens on a real LLM.
-    //
-    // Comptime gating means harness code is stripped from the production
-    // binary — `if (build_options.executor_harness)` is dead code under
-    // false. Verified via `cargo nm` / `objdump --syms` if paranoid; trust
-    // the optimizer for routine cases.
+    // Execution left this build graph at the M80 cutover: the sandbox executor
+    // sidecar (`zombied-executor` + its harness/stub fixtures) is gone, replaced
+    // by the host-resident `zombie-runner` daemon, which has its own build graph
+    // (`build_runner.zig`) and never links zombied's server infrastructure
+    // (pg/httpz/redis). It shares only the frozen wire protocol by source.
 
-    const exec_opts_prod = b.addOptions();
-    exec_opts_prod.addOption(bool, S_EXECUTOR_HARNESS, false);
-    exec_opts_prod.addOption(bool, S_EXECUTOR_PROVIDER_STUB, false);
-
-    const exec_opts_harness = b.addOptions();
-    exec_opts_harness.addOption(bool, S_EXECUTOR_HARNESS, true);
-    exec_opts_harness.addOption(bool, S_EXECUTOR_PROVIDER_STUB, false);
-
-    // `zombied-executor-stub` (test fixture for wire-level redaction):
-    // production NullClaw pipeline (observer + redactor adapter all live)
-    // but with the LLM provider swapped for a canned-response stub. Used
-    // by integration tests asserting that resolved secrets never leak onto
-    // RPC frames or Redis pub/sub. See test_stub_provider.zig.
-    const exec_opts_stub = b.addOptions();
-    exec_opts_stub.addOption(bool, S_EXECUTOR_HARNESS, false);
-    exec_opts_stub.addOption(bool, S_EXECUTOR_PROVIDER_STUB, true);
-
-    const executor_exe = b.addExecutable(.{
-        .name = "zombied-executor",
+    // ── Shared src/lib test step ─────────────────────────────────────────────
+    // One pass over every shared module under src/lib (each is a named module
+    // reused across build graphs); their own tests run here, in each module's
+    // own instance, so they reach internals consumers never see. The aggregator
+    // (src/lib/tests.zig) grows by one line per new src/lib module.
+    const lib_tests = b.addTest(.{
+        .name = "zombie-lib-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
+            .root_source_file = b.path("src/lib/tests.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{
-                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = S_LOG, .module = log_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_prod.createModule() },
-            },
         }),
+        .filters = test_filters,
     });
-
-    if (optimize == .ReleaseSmall) {
-        executor_exe.root_module.strip = true;
-    }
-
-    b.installArtifact(executor_exe);
-
-    const executor_harness_exe = b.addExecutable(.{
-        .name = "zombied-executor-harness",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = S_LOG, .module = log_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_harness.createModule() },
-            },
-        }),
-    });
-
-    const install_executor_harness = b.addInstallArtifact(executor_harness_exe, .{});
-    b.getInstallStep().dependOn(&install_executor_harness.step);
-
-    const executor_stub_exe = b.addExecutable(.{
-        .name = "zombied-executor-stub",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = S_LOG, .module = log_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_stub.createModule() },
-            },
-        }),
-    });
-
-    const install_executor_stub = b.addInstallArtifact(executor_stub_exe, .{});
-    b.getInstallStep().dependOn(&install_executor_stub.step);
-
-    // ── Executor test step ───────────────────────────────────────────────────
-    const executor_tests = b.addTest(.{
-        .name = "zombied-executor-tests",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path(S_SRC_EXECUTOR_MAIN_ZIG),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = S_NULLCLAW, .module = nullclaw_mod },
-                .{ .name = S_LOG, .module = log_mod },
-                .{ .name = S_BUILD_OPTIONS, .module = exec_opts_prod.createModule() },
-            },
-        }),
-    });
-    b.step("test-executor", "Run executor unit tests").dependOn(&b.addRunArtifact(executor_tests).step);
+    b.step("test-lib", "Run shared src/lib module unit tests").dependOn(&b.addRunArtifact(lib_tests).step);
 
     // ── Run step ─────────────────────────────────────────────────────────────
     const run_cmd = b.addRunArtifact(exe);
@@ -299,20 +233,14 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_CONTRACT, .module = contract_mod },
+                .{ .name = S_COMMON, .module = common_mod },
                 .{ .name = S_YAML, .module = yaml_mod },
             },
         }),
         .filters = test_filters,
     });
-    // Worker-side integration tests spawn `zombied-executor-harness` as a
-    // child process for deterministic frame emission; depend on its install
-    // step so `zig build test` produces the binary at the canonical
-    // `zig-out/bin/` path that the harness fixture probes. The stub binary
-    // (`zombied-executor-stub`) is required by redaction-harness tests via
-    // the same fixture (binary = .stub).
     const run_tests = b.addRunArtifact(tests);
-    run_tests.step.dependOn(&install_executor_harness.step);
-    run_tests.step.dependOn(&install_executor_stub.step);
     b.step("test", "Run unit tests").dependOn(&run_tests.step);
 
     // ── test-auth (M18_002 §1.3) ─────────────────────────────────────────────
@@ -323,13 +251,14 @@ pub fn build(b: *std.Build) void {
     const test_auth = b.addTest(.{
         .name = "zombied-test-auth",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/auth/tests.zig"),
+            .root_source_file = b.path("src/zombied/auth/tests.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "httpz", .module = httpz_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_CONTRACT, .module = contract_mod },
             },
         }),
         .filters = test_filters,
@@ -354,13 +283,14 @@ pub fn build(b: *std.Build) void {
         // reach them. Rooted at `src/bench_exports.zig` (inside src/) so the
         // module-root walk stays legal under Zig 0.15.2's strict boundaries.
         const bench_app_mod = b.createModule(.{
-            .root_source_file = b.path("src/bench_exports.zig"),
+            .root_source_file = b.path("src/zombied/bench_exports.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "httpz", .module = httpz_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
                 .{ .name = S_LOG, .module = log_mod },
+                .{ .name = S_CONTRACT, .module = contract_mod },
             },
         });
 
