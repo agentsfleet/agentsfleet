@@ -1,6 +1,6 @@
 //! Single source of truth for the synthetic-secret literal used by the
 //! redaction-harness tests. Imported by `test_stub_provider.zig` (which
-//! emits the canary in its canned ChatResponse) and by the worker-side
+//! emits the canary in its canned ChatResponse) and by the runner-side
 //! redaction tests (which assert the canary never reaches the wire).
 //!
 //! The literal is distinctive enough that `!recorder.contains(...)` will

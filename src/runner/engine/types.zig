@@ -1,15 +1,16 @@
-//! Shared types for the sandbox executor API.
+//! Shared types for the sandbox execution engine.
 //!
-//! These types define the contract between the worker (client) and the
-//! zombied-executor sidecar (server). They are intentionally backend-neutral
-//! so that a future Firecracker backend can implement the same API.
+//! These types define the data the runner parent passes to the sandboxed
+//! child (the lease + execution policy) and the result the child returns.
+//! They are intentionally backend-neutral so a future Firecracker backend
+//! can implement the same engine API.
 
 const std = @import("std");
 
 /// Opaque handle returned by CreateExecution.
 pub const ExecutionId = [16]u8;
 
-/// Correlation context threaded through every RPC.
+/// Correlation context threaded through one execution.
 /// Zombie-native fields: zombie_id identifies the agent, session_id identifies
 /// the conversation turn within that zombie.
 pub const CorrelationContext = struct {

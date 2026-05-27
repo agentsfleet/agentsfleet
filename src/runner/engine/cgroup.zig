@@ -13,7 +13,7 @@ const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
 const types = @import("types.zig");
-const executor_metrics = @import("executor_metrics.zig");
+const runner_metrics = @import("runner_metrics.zig");
 
 const log = logging.scoped(.executor_cgroup);
 
@@ -179,14 +179,14 @@ pub const CgroupScope = struct {
 
         const peak = self.readMemoryPeak();
         if (peak > 0) {
-            executor_metrics.setExecutorMemoryPeakBytes(peak);
+            runner_metrics.setExecutorMemoryPeakBytes(peak);
             result.memory_peak_bytes = peak;
         }
 
         const throttled_us = self.readCpuThrottledUs();
         if (throttled_us > 0) {
             const throttled_ms = throttled_us / 1000;
-            executor_metrics.addExecutorCpuThrottledMs(throttled_ms);
+            runner_metrics.addExecutorCpuThrottledMs(throttled_ms);
             result.cpu_throttled_ms = throttled_ms;
         }
 

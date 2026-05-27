@@ -1,14 +1,14 @@
-//! Executor RPC wire-schema field names.
+//! Engine wire-schema field names.
 //!
-//! Single source of truth for every JSON object key the worker writes
-//! (via `client.zig`) and the executor sidecar parses (via `handler.zig`
-//! + `context_budget.zig`). One declaration per field — RULE UFS at the
-//! protocol level. Adding a new field means adding it here first; both
-//! sides reference these constants instead of repeating string literals.
+//! Single source of truth for every JSON object key the engine serializes
+//! when the runner parent feeds a lease to the sandboxed child and the child
+//! returns its result (via `child_exec.zig` + `context_budget.zig`). One
+//! declaration per field — RULE UFS at the protocol level. Adding a new field
+//! means adding it here first; both the writer and the reader reference these
+//! constants instead of repeating string literals.
 //!
-//! JSON-RPC envelope fields (`id`, `result`, `error`, `code`, `message`
-//! when used as RPC error message) are protocol-level and live in
-//! `protocol.zig` next to `Method` and `ErrorCode`.
+//! The pipe framing itself (`[type][len][payload]`) lives in
+//! `runner/pipe_proto.zig`; the `/v1/runners` wire types live in `protocol.zig`.
 
 // ── Identity / correlation ──────────────────────────────────────────────
 pub const workspace_path = "workspace_path";

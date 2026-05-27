@@ -18,7 +18,7 @@
 const std = @import("std");
 const runner = @import("runner.zig");
 const types = @import("types.zig");
-const executor_metrics = @import("executor_metrics.zig");
+const runner_metrics = @import("runner_metrics.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const network = @import("network.zig");
@@ -28,41 +28,41 @@ const network = @import("network.zig");
 // ─────────────────────────────────────────────────────────────────────────────
 
 test "T3: incFailureMetric increments resource_kill counter" {
-    const before = executor_metrics.executorSnapshot().resource_kills_total;
+    const before = runner_metrics.executorSnapshot().resource_kills_total;
     runner.incFailureMetric(.resource_kill);
-    const after = executor_metrics.executorSnapshot().resource_kills_total;
+    const after = runner_metrics.executorSnapshot().resource_kills_total;
     try std.testing.expect(after > before);
 }
 
 test "T3: incFailureMetric increments landlock_deny counter" {
-    const before = executor_metrics.executorSnapshot().landlock_denials_total;
+    const before = runner_metrics.executorSnapshot().landlock_denials_total;
     runner.incFailureMetric(.landlock_deny);
-    const after = executor_metrics.executorSnapshot().landlock_denials_total;
+    const after = runner_metrics.executorSnapshot().landlock_denials_total;
     try std.testing.expect(after > before);
 }
 
 test "T3: incFailureMetric increments lease_expired counter" {
-    const before = executor_metrics.executorSnapshot().lease_expired_total;
+    const before = runner_metrics.executorSnapshot().lease_expired_total;
     runner.incFailureMetric(.lease_expired);
-    const after = executor_metrics.executorSnapshot().lease_expired_total;
+    const after = runner_metrics.executorSnapshot().lease_expired_total;
     try std.testing.expect(after > before);
 }
 
 // policy_deny / startup_posture / executor_crash / transport_loss fall into
 // else => {} — they must not crash or increment any counter by mistake.
 test "T3: incFailureMetric policy_deny does not crash" {
-    const snap_before = executor_metrics.executorSnapshot();
+    const snap_before = runner_metrics.executorSnapshot();
     runner.incFailureMetric(.policy_deny);
-    const snap_after = executor_metrics.executorSnapshot();
+    const snap_after = runner_metrics.executorSnapshot();
     // No counter dedicated to policy_deny — verify nothing unexpected changed.
     try std.testing.expectEqual(snap_before.resource_kills_total, snap_after.resource_kills_total);
     try std.testing.expectEqual(snap_before.oom_kills_total, snap_after.oom_kills_total);
 }
 
 test "T3: incFailureMetric startup_posture does not crash" {
-    const snap_before = executor_metrics.executorSnapshot();
+    const snap_before = runner_metrics.executorSnapshot();
     runner.incFailureMetric(.startup_posture);
-    const snap_after = executor_metrics.executorSnapshot();
+    const snap_after = runner_metrics.executorSnapshot();
     try std.testing.expectEqual(snap_before.oom_kills_total, snap_after.oom_kills_total);
     try std.testing.expectEqual(snap_before.timeout_kills_total, snap_after.timeout_kills_total);
 }

@@ -1,6 +1,6 @@
 //! Execution session lifecycle. File-as-struct: this file IS `Session`.
-//! Each session represents a single execution (run) driven by the worker.
-//! The executor owns the NullClaw runtime and sandbox enforcement within
+//! Each session represents a single execution (run) driven by the runner.
+//! The sandboxed child owns the NullClaw runtime and sandbox enforcement within
 //! the session boundary.
 //!
 //! Consumers `@import` it directly:

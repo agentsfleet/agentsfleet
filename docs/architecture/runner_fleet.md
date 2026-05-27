@@ -114,18 +114,18 @@ Five verbs. `zombied` translates them into the Postgres writes and Redis stream 
 
 ## Registering a runner
 
-A runner needs a `zrn_` token before it can pull work. It gets one by calling `register` with an existing credential — a Clerk JWT (an operator from the dashboard or CLI) or a `zmb_t_` api_key (an automated provisioner). There is no separate admin endpoint and no enrollment token; the open-fleet, self-enrolling case is mode C, later.
+A runner needs a `zrn_` token before it can pull work. It gets one by calling `register` **on startup** with a *bootstrap* credential it reads from the `ZOMBIE_RUNNER_TOKEN` env var — a `zmb_t_` admin api_key (an automated provisioner) or a Clerk JWT (an operator). `register` mints the `zrn_`, which the runner holds **in process memory** for the rest of the loop and re-mints on restart (the `zrn_` is never written to disk). There is no separate admin endpoint and no enrollment token; the caller must hold **admin role**. The open-fleet, self-enrolling case is mode C, later.
 
 ```
- caller (operator w/ Clerk JWT  OR  host w/ zmb_t_)         zombied                  host: zombie-runner
-   │ POST /v1/runners                                🔒 GATE 1 — who may register:
-   │   Authorization: Bearer <Clerk-JWT | zmb_t_>    a valid Clerk JWT or api_key
-   │   { host_id, sandbox_tier, labels[] }           is required
+ host: zombie-runner                                     zombied
+ (env ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN=<zmb_t_|JWT>)
+   │ on startup: POST /v1/runners                    🔒 GATE 1 — who may register:
+   │   Authorization: Bearer <zmb_t_ | Clerk-JWT>    valid admin-role api_key or JWT
+   │   { host_id, sandbox_tier, labels[] }           (no enrollment token)
    ├────────────────────────────────────────────────►│ mint zrn_ (256-bit random)
    │                                                  │ store ONLY sha256(zrn_) in fleet.runners
    │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: zrn_ }  (shown once)
-   │ install zrn_ on the host (env ZOMBIE_RUNNER_TOKEN)
-   ├──────────────────────────────────────────────────────────────────────────────►│ persist locally
+   │ hold zrn_ in process memory (re-register on restart; never on disk)
    │ steady loop — Authorization: Bearer zrn_         🔒 GATE 2 — per-call auth:
    │      ◀── heartbeat · lease · report · activity ─┤ sha256(Bearer) == token_hash (timing-safe)
    │      eligibility: sandbox_tier + scope + secret_delivery   🔒 GATE 3 — blast radius

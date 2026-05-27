@@ -1,6 +1,6 @@
 //! Normalized event envelope shared by every producer (operator steer,
 //! webhook ingest, cron trigger, continuation re-enqueue) and every
-//! consumer (worker write-path, history endpoint, SSE handler).
+//! consumer (control-plane lease/report write-path, history endpoint, SSE handler).
 //!
 //! The Redis stream entry ID IS the canonical event_id — never carry a
 //! separate ID in the payload fields. XADD `*` returns the stream ID;

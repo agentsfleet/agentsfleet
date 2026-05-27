@@ -29,7 +29,7 @@ const observability = nullclaw.observability;
 const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const types = @import("types.zig");
-const executor_metrics = @import("executor_metrics.zig");
+const runner_metrics = @import("runner_metrics.zig");
 const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -76,17 +76,17 @@ pub fn execute(
 ) types.ExecutionResult {
     const msg = message orelse {
         log.err("invalid_config", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .reason = "missing_message" });
-        executor_metrics.incStagesFailed();
+        runner_metrics.incStagesFailed();
         return .{ .content = "", .exit_ok = false, .failure = .startup_posture };
     };
 
-    executor_metrics.incStagesStarted();
+    runner_metrics.incStagesStarted();
     const start = std.time.milliTimestamp();
 
     const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, policy, progress_fd) catch |err| {
         const elapsed = elapsedSeconds(start);
-        executor_metrics.incStagesFailed();
-        executor_metrics.observeAgentDurationSeconds(elapsed);
+        runner_metrics.incStagesFailed();
+        runner_metrics.observeAgentDurationSeconds(elapsed);
         const failure = mapError(err);
         incFailureMetric(failure);
         log.err("failed", .{
@@ -98,9 +98,9 @@ pub fn execute(
     };
 
     const elapsed = elapsedSeconds(start);
-    executor_metrics.incStagesCompleted();
-    executor_metrics.addAgentTokens(result.token_count);
-    executor_metrics.observeAgentDurationSeconds(elapsed);
+    runner_metrics.incStagesCompleted();
+    runner_metrics.addAgentTokens(result.token_count);
+    runner_metrics.observeAgentDurationSeconds(elapsed);
 
     log.info("done", .{ .exit_ok = true, .tokens = result.token_count, .wall_seconds = elapsed });
 
@@ -294,11 +294,11 @@ pub fn mapError(err: anyerror) types.FailureClass {
 
 pub fn incFailureMetric(failure: types.FailureClass) void {
     switch (failure) {
-        .oom_kill => executor_metrics.incExecutorOomKills(),
-        .timeout_kill => executor_metrics.incExecutorTimeoutKills(),
-        .landlock_deny => executor_metrics.incExecutorLandlockDenials(),
-        .resource_kill => executor_metrics.incExecutorResourceKills(),
-        .lease_expired => executor_metrics.incExecutorLeaseExpired(),
+        .oom_kill => runner_metrics.incExecutorOomKills(),
+        .timeout_kill => runner_metrics.incExecutorTimeoutKills(),
+        .landlock_deny => runner_metrics.incExecutorLandlockDenials(),
+        .resource_kill => runner_metrics.incExecutorResourceKills(),
+        .lease_expired => runner_metrics.incExecutorLeaseExpired(),
         else => {},
     }
 }

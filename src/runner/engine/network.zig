@@ -7,14 +7,14 @@
 //!                       so package managers can reach public registries.
 //!                       Bare-metal deploy sets EXECUTOR_NETWORK_POLICY=registry_allowlist.
 //!
-//! Allowlist hostnames are compile-time constants in executor_network_policy.zig.
+//! Allowlist hostnames are compile-time constants in runner_network_policy.zig.
 //! Full TCP-layer enforcement with nftables is outside this batch.
 
 const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
 
-const policy_config = @import("executor_network_policy.zig");
+const policy_config = @import("runner_network_policy.zig");
 
 const log = logging.scoped(.executor_network);
 
@@ -22,7 +22,7 @@ pub const PolicyMode = enum {
     /// No network access (default). Uses --unshare-net via bubblewrap.
     deny_all,
     /// Allow egress to the public package registries defined in
-    /// executor_network_policy.REGISTRY_ALLOWLIST. Uses --share-net.
+    /// runner_network_policy.REGISTRY_ALLOWLIST. Uses --share-net.
     registry_allowlist,
 };
 
