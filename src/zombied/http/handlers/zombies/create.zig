@@ -1,9 +1,10 @@
 //! POST /v1/workspaces/{ws}/zombies — atomic install. INSERT core.zombies →
-//! XGROUP CREATE MKSTREAM zombie:{id}:events → XADD zombie:control synchronously
-//! before the 201, so a webhook 1ms later finds the consumer group already
-//! (worker-substrate Invariant 1). Post-INSERT publish failure rolls the
-//! PG row back; a reconcile job (out of scope) heals any orphan from a
-//! double-fault rollback failure.
+//! XGROUP CREATE MKSTREAM zombie:{id}:events synchronously before the 201, so
+//! an event 1ms later finds the consumer group the lease XREADGROUP needs.
+//! Post-INSERT group-setup failure rolls the PG row back. A rare double-fault
+//! (setup retries exhausted AND rollback also fails) leaves an orphan that is
+//! not auto-healed — a control-plane reconcile job is the planned replacement
+//! for the deleted worker watcher's sweep (out of scope here).
 
 const std = @import("std");
 const httpz = @import("httpz");
@@ -16,7 +17,7 @@ const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const zombie_config = @import("../../../zombie/config.zig");
 const queue_redis = @import("../../../queue/redis_client.zig");
-const control_stream = @import("../../../zombie/control_stream.zig");
+const redis_zombie = @import("../../../queue/redis_zombie.zig");
 
 const log = logging.scoped(.zombie_api);
 
@@ -121,21 +122,22 @@ pub fn innerCreateZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8) 
         return;
     };
 
-    publishInstallSignals(hx.ctx.queue, zombie_id, workspace_id) catch |err| {
+    ensureEventStream(hx.ctx.queue, zombie_id) catch |err| {
         log.err(
-            "create_publish_failed",
+            "create_stream_setup_failed",
             .{ .err = @errorName(err), .zombie_id = zombie_id, .req_id = hx.req_id, .hint = "rolling_back_pg_row" },
         );
         // Roll back the PG row so the caller can retry cleanly without leaving
         // an orphan behind. If the rollback also fails (rare — PG flapping in
-        // the same handler), the watcher's reconcile sweep is the safety net.
+        // the same handler), the orphan is not auto-healed: a control-plane
+        // reconcile job is the planned replacement for the deleted watcher.
         deleteZombieRow(conn, workspace_id, zombie_id) catch |rollback_err| {
             log.err(
                 "create_rollback_failed",
-                .{ .err = @errorName(rollback_err), .zombie_id = zombie_id, .req_id = hx.req_id, .hint = "row_orphaned_reconcile_will_heal" },
+                .{ .err = @errorName(rollback_err), .zombie_id = zombie_id, .req_id = hx.req_id, .hint = "row_orphaned_manual_recovery" },
             );
         };
-        common.internalOperationError(hx.res, "control-stream publish failed; install rolled back", hx.req_id);
+        common.internalOperationError(hx.res, "event-stream setup failed; install rolled back", hx.req_id);
         return;
     };
 
@@ -203,7 +205,7 @@ fn insertZombieOnConn(
     });
 }
 
-/// Fixed backoff schedule for install-time `XGROUP CREATE` + `XADD` retries.
+/// Fixed backoff schedule for install-time `XGROUP CREATE` retries.
 /// Total wall budget = sum = 2.1s. Three sleeps means four attempts (one
 /// extra try after the last sleep). See `installBackoffMs` for the lookup.
 const install_backoff_schedule = [_]u32{ 100, 500, 1500 };
@@ -218,19 +220,18 @@ fn installBackoffMs(attempt: usize) ?u32 {
     return install_backoff_schedule[attempt];
 }
 
-/// Invariant 1: by the time this returns successfully, both the per-zombie
-/// events stream + consumer group AND the control-stream `zombie_created`
-/// signal exist. Retries up to 4 attempts with `install_backoff_schedule`
-/// between each (2.1s total wall) so a sub-second Redis blip does not
-/// surface as a user-visible 500. On final failure, the caller rolls back
-/// the PG row so the orphan never reaches the worker.
-fn publishInstallSignals(redis: *queue_redis.Client, zombie_id: []const u8, workspace_id: []const u8) !void {
+/// By the time this returns successfully, the per-zombie events stream +
+/// consumer group exist — the lease XREADGROUP needs the group present.
+/// Retries up to 4 attempts with `install_backoff_schedule` between each
+/// (2.1s total wall) so a sub-second Redis blip does not surface as a
+/// user-visible 500. On final failure the caller rolls back the PG row.
+fn ensureEventStream(redis: *queue_redis.Client, zombie_id: []const u8) !void {
     var attempt: usize = 0;
     while (true) : (attempt += 1) {
-        publishOnce(redis, zombie_id, workspace_id) catch |err| {
+        redis_zombie.ensureZombieConsumerGroup(redis, zombie_id) catch |err| {
             const sleep_ms = installBackoffMs(attempt) orelse return err;
             log.warn(
-                "create_publish_retry",
+                "create_stream_setup_retry",
                 .{ .attempt = attempt + 1, .err = @errorName(err), .zombie_id = zombie_id, .sleep_ms = sleep_ms },
             );
             std.Thread.sleep(@as(u64, sleep_ms) * std.time.ns_per_ms);
@@ -238,13 +239,6 @@ fn publishInstallSignals(redis: *queue_redis.Client, zombie_id: []const u8, work
         };
         return;
     }
-}
-
-fn publishOnce(redis: *queue_redis.Client, zombie_id: []const u8, workspace_id: []const u8) !void {
-    try control_stream.ensureZombieEventsGroup(redis, zombie_id);
-    try control_stream.publish(redis, .{
-        .zombie_created = .{ .zombie_id = zombie_id, .workspace_id = workspace_id },
-    });
 }
 
 /// Roll back a freshly-INSERTed zombie row. Workspace-scoped to prevent
@@ -289,8 +283,8 @@ test "install_backoff_schedule: total wall budget is 2.1s as documented" {
     try std.testing.expectEqual(@as(u64, 2100), sum);
 }
 
-test "publishInstallSignals retry loop: 4 attempts on permanent failure" {
-    // Drives the exact loop shape from publishInstallSignals against an
+test "ensureEventStream retry loop: 4 attempts on permanent failure" {
+    // Drives the exact loop shape from ensureEventStream against an
     // injected counter — proves four calls, three sleeps, terminating
     // err.PermanentFail. Uses installBackoffMs directly (no Thread.sleep
     // — tests run in microseconds).
@@ -298,7 +292,7 @@ test "publishInstallSignals retry loop: 4 attempts on permanent failure" {
     var attempt: usize = 0;
     const result: error{PermanentFail}!void = blk: while (true) : (attempt += 1) {
         calls += 1;
-        // Simulated publishOnce: always fails.
+        // Simulated group-ensure: always fails.
         const op_err: error{PermanentFail} = error.PermanentFail;
         const sleep_ms = installBackoffMs(attempt) orelse break :blk op_err;
         // In production this is `std.Thread.sleep(sleep_ms * ns_per_ms)`.
@@ -310,12 +304,12 @@ test "publishInstallSignals retry loop: 4 attempts on permanent failure" {
     try std.testing.expectEqual(@as(usize, 4), calls);
 }
 
-test "publishInstallSignals retry loop: succeeds on first attempt → no retries" {
+test "ensureEventStream retry loop: succeeds on first attempt → no retries" {
     var calls: usize = 0;
     var attempt: usize = 0;
     while (true) : (attempt += 1) {
         calls += 1;
-        // Simulated publishOnce: succeeds immediately.
+        // Simulated group-ensure: succeeds immediately.
         const op_result: error{}!void = {};
         op_result catch |err| {
             const sleep_ms = installBackoffMs(attempt) orelse return err;
@@ -327,7 +321,7 @@ test "publishInstallSignals retry loop: succeeds on first attempt → no retries
     try std.testing.expectEqual(@as(usize, 1), calls);
 }
 
-test "publishInstallSignals retry loop: succeeds on attempt 2 (after 100ms+500ms sleeps)" {
+test "ensureEventStream retry loop: succeeds on attempt 2 (after 100ms+500ms sleeps)" {
     var calls: usize = 0;
     var attempt: usize = 0;
     while (true) : (attempt += 1) {

@@ -35,8 +35,6 @@ const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const id_format = @import("../../../types/id_format.zig");
 const zombie_config = @import("../../../zombie/config.zig");
-const queue_redis = @import("../../../queue/redis_client.zig");
-const control_stream = @import("../../../zombie/control_stream.zig");
 const workspace_guards = @import("../../workspace_guards.zig");
 
 const log = logging.scoped(.zombie_api);
@@ -132,17 +130,9 @@ pub fn innerPatchZombie(hx: Hx, req: *httpz.Request, workspace_id: []const u8, z
         },
     };
 
-    if (body.status) |s| publishStatusChange(hx.ctx.queue, zombie_id, s) catch |err| {
-        // PG row already reflects new status; watcher's reconcile (~30s) heals control-plane drift.
-        log.warn("status_publish_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .status = s, .req_id = hx.req_id });
-    };
-    // Any of config_json/trigger_markdown/source_markdown changes what the
-    // worker needs to reload (config blob OR source_markdown body).
-    const config_dirty = body.config_json != null or body.trigger_markdown != null or body.source_markdown != null;
-    if (config_dirty) publishConfigChange(hx.ctx.queue, zombie_id, revision) catch |err| {
-        log.warn("patch_publish_failed", .{ .err = @errorName(err), .zombie_id = zombie_id, .revision = revision, .req_id = hx.req_id });
-    };
-
+    // No control-stream signal: `zombied` resolves a zombie's status + config
+    // fresh from Postgres on every lease, so the PATCH'd row (already committed
+    // above) takes effect on the next lease with nothing to notify.
     log.info("patched", .{ .id = zombie_id, .workspace = workspace_id, .revision = revision, .status_set = body.status });
     if (body.status) |s| {
         hx.ok(.ok, .{ .zombie_id = zombie_id, .status = s, .config_revision = revision });
@@ -329,21 +319,3 @@ fn mapPgErr(conn: *pg.Conn, err: anyerror) anyerror!TxnOutcome {
     return err;
 }
 
-fn publishConfigChange(redis: *queue_redis.Client, zombie_id: []const u8, revision: i64) !void {
-    try control_stream.publish(redis, .{
-        .zombie_config_changed = .{
-            .zombie_id = zombie_id,
-            .config_revision = revision,
-        },
-    });
-}
-
-fn publishStatusChange(redis: *queue_redis.Client, zombie_id: []const u8, status_str: []const u8) !void {
-    const cs_status = control_stream.ZombieStatus.fromSlice(status_str) orelse return error.UnknownStatus;
-    try control_stream.publish(redis, .{
-        .zombie_status_changed = .{
-            .zombie_id = zombie_id,
-            .status = cs_status,
-        },
-    });
-}

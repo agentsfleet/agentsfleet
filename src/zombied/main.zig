@@ -199,9 +199,6 @@ test {
     _ = @import("http/route_matchers.zig");
     _ = @import("zombie/activity_publisher.zig");
     _ = @import("zombie/metering.zig");
-    _ = @import("zombie/control_stream.zig");
-    _ = @import("zombie/control_stream_parse.zig");
-    _ = @import("zombie/control_stream_test.zig");
     _ = @import("util/strings/string_builder.zig");
     // Runner control-plane verbs' per-event prep, lifted from the deleted worker.
     _ = @import("fleet/zombie_session.zig");
