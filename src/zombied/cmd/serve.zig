@@ -257,6 +257,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
+        .platform_admin_mw = .{},
         .webhook_hmac_mw = .{ .secret = approval_signing_secret },
     };
     // M28_001: construct the generic WebhookSig with concrete *pg.Pool type.

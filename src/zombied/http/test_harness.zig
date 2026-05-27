@@ -261,6 +261,7 @@ fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
         .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
+        .platform_admin_mw = .{},
         .webhook_hmac_mw = .{ .secret = "" },
     };
 }

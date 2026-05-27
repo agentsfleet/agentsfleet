@@ -14,6 +14,7 @@ pub const ERR_TOKEN_EXPIRED = registry.ERR_TOKEN_EXPIRED;
 pub const ERR_AUTH_UNAVAILABLE = registry.ERR_AUTH_UNAVAILABLE;
 pub const ERR_INSUFFICIENT_ROLE = registry.ERR_INSUFFICIENT_ROLE;
 pub const ERR_UNSUPPORTED_ROLE = registry.ERR_UNSUPPORTED_ROLE;
+pub const ERR_PLATFORM_ADMIN_REQUIRED = registry.ERR_PLATFORM_ADMIN_REQUIRED;
 pub const ERR_APPROVAL_INVALID_SIGNATURE = registry.ERR_APPROVAL_INVALID_SIGNATURE;
 // Generic webhook signature codes — shared by webhook_sig and svix_signature.
 // Named without provider prefix because the same code fires for every

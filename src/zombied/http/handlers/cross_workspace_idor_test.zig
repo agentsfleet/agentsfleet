@@ -257,6 +257,7 @@ fn startTestServer(alloc: std.mem.Allocator) !*TestServer {
         .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
+        .platform_admin_mw = .{},
         .webhook_hmac_mw = .{ .secret = "" },
     };
     srv.registry.initChains();
