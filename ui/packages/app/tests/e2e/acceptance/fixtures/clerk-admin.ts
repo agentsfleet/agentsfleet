@@ -31,6 +31,9 @@ const CLERK_API_BASE = "https://api.clerk.com/v1";
 // .fixture-jwts.json file. `clientFor` callers that exceed this window
 // will fail loud with a 401 from zombied — re-mint if/when that happens.
 const SESSION_TOKEN_TTL_SECONDS = 900;
+const CLERK_METADATA_POLL_MS = 500;
+const CLERK_METADATA_TIMEOUT_MS = 15_000;
+const TENANT_ID_METADATA_KEY = "tenant_id";
 
 export interface FixtureUserSpec {
   key: FixtureKey;
@@ -57,6 +60,7 @@ export interface MintedFixture {
 interface ClerkUser {
   id: string;
   email_addresses: Array<{ email_address: string }>;
+  public_metadata?: Record<string, unknown>;
 }
 
 interface ClerkSession {
@@ -93,6 +97,10 @@ async function findUserByEmail(email: string): Promise<ClerkUser | null> {
   const params = new URLSearchParams({ email_address: email });
   const list = await clerkRequest<ClerkUser[]>("GET", `/users?${params.toString()}`);
   return list[0] ?? null;
+}
+
+async function getUser(userId: string): Promise<ClerkUser> {
+  return clerkRequest<ClerkUser>("GET", `/users/${userId}`);
 }
 
 async function createUser(spec: FixtureUserSpec): Promise<ClerkUser> {
@@ -150,15 +158,24 @@ export async function mintTokens(
   userId: string,
 ): Promise<{ sessionId: string; sessionJwt: string }> {
   const session = await clerkRequest<ClerkSession>("POST", "/sessions", { user_id: userId });
-  // Post-Stage-1: bare `/tokens` (no template suffix). Custom
-  // claims arrive automatically via Clerk's Session Token Customization
-  // configured in the org dashboard (see the Clerk session-token claim playbook).
+  return { sessionId: session.id, sessionJwt: await refreshSessionToken(session.id) };
+}
+
+/**
+ * Mint a fresh customized-session JWT on an *existing* session. The token
+ * carries the same `aud` + `tenant_id` + `role` claims (Session Token
+ * Customization applies per-session), so the api-client can recover from a
+ * 401 when the cached Bearer outlives its TTL on a long suite run —
+ * AUTH.md's documented "re-mint on 401" posture. Bare `/tokens` (no template
+ * suffix); Clerk's Backend API takes mint params in the JSON body.
+ */
+export async function refreshSessionToken(sessionId: string): Promise<string> {
   const minted = await clerkRequest<ClerkSessionToken>(
     "POST",
-    `/sessions/${session.id}/tokens`,
+    `/sessions/${sessionId}/tokens`,
     { expires_in_seconds: SESSION_TOKEN_TTL_SECONDS },
   );
-  return { sessionId: session.id, sessionJwt: minted.jwt };
+  return minted.jwt;
 }
 
 /**
@@ -208,6 +225,16 @@ export async function attachJwt(user: ProvisionedUser): Promise<MintedFixture> {
 export async function findUserIdByEmail(email: string): Promise<string | null> {
   const user = await findUserByEmail(email);
   return user?.id ?? null;
+}
+
+export async function waitForTenantMetadata(userId: string): Promise<void> {
+  const deadline = Date.now() + CLERK_METADATA_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    const user = await getUser(userId);
+    if (typeof user.public_metadata?.[TENANT_ID_METADATA_KEY] === "string") return;
+    await new Promise((resolve) => setTimeout(resolve, CLERK_METADATA_POLL_MS));
+  }
+  throw new Error(`Clerk user ${userId} missing public_metadata.${TENANT_ID_METADATA_KEY}`);
 }
 
 export async function deleteUser(userId: string): Promise<void> {

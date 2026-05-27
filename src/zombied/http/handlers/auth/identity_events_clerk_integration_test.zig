@@ -25,6 +25,11 @@ const WHSEC_KEY: []const u8 = "whsec_MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3";
 
 const OIDC_HAPPY: []const u8 = "oidc-clerk-http-happy-01";
 const OIDC_REPLAY: []const u8 = "oidc-clerk-http-replay-02";
+const OIDC_DELETE_ZOMBIES: []const u8 = "oidc-clerk-http-del-zmb-03";
+
+// Valid UUIDv7 (version char '7' at position 15) for the seeded zombie row;
+// satisfies core.zombies' ck_zombies_id_uuidv7 CHECK.
+const SEED_ZOMBIE_ID: []const u8 = "0195b4ba-8d3a-7f13-8abc-000000000903";
 
 fn noopConfigureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     _ = reg;
@@ -41,11 +46,17 @@ fn unsetSecret() void {
 }
 
 fn cleanupAccount(conn: *pg.Conn, oidc_subject: []const u8) void {
-    // FK-safe order: workspaces/memberships first (reference tenant/user),
-    // then users + tenants in a CTE so the RETURNING clause can feed the
-    // tenant delete after users are gone. core.users.tenant_id → core.tenants
-    // has no ON DELETE CASCADE, so tenants cannot drop while users reference
-    // them.
+    // FK-safe order: zombies first (reference workspaces, no cascade), then
+    // workspaces/memberships (reference tenant/user), then users + tenants in
+    // a CTE so the RETURNING clause can feed the tenant delete after users are
+    // gone. core.users.tenant_id → core.tenants has no ON DELETE CASCADE, so
+    // tenants cannot drop while users reference them.
+    _ = conn.exec(
+        \\DELETE FROM core.zombies
+        \\WHERE workspace_id IN (
+        \\  SELECT workspace_id FROM core.workspaces
+        \\  WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1))
+    , .{oidc_subject}) catch |err| std.log.warn("ignored: {s}", .{@errorName(err)});
     _ = conn.exec(
         \\DELETE FROM core.workspaces
         \\WHERE tenant_id IN (SELECT tenant_id FROM core.users WHERE oidc_subject = $1)
@@ -91,6 +102,32 @@ fn countUsers(conn: *pg.Conn, oidc_subject: []const u8) !i64 {
     defer q.deinit();
     const row = (try q.next()) orelse return 0;
     return row.get(i64, 0);
+}
+
+fn userDeletedBody(alloc: std.mem.Allocator, clerk_user_id: []const u8) ![]u8 {
+    return std.fmt.allocPrint(alloc,
+        \\{{"type":"user.deleted","data":{{"id":"{s}"}}}}
+    , .{clerk_user_id});
+}
+
+/// First workspace of the subject's tenant. Caller owns the returned slice.
+fn fetchWorkspaceId(conn: *pg.Conn, alloc: std.mem.Allocator, oidc_subject: []const u8) ![]u8 {
+    var q = PgQuery.from(try conn.query(
+        \\SELECT workspace_id::text FROM core.workspaces
+        \\WHERE tenant_id = (SELECT tenant_id FROM core.users WHERE oidc_subject = $1)
+        \\LIMIT 1
+    , .{oidc_subject}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.WorkspaceNotFound;
+    return alloc.dupe(u8, try row.get([]const u8, 0));
+}
+
+fn insertZombie(conn: *pg.Conn, workspace_id: []const u8, zombie_id: []const u8) !void {
+    _ = try conn.exec(
+        \\INSERT INTO core.zombies
+        \\  (id, workspace_id, name, source_markdown, config_json, status, created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, 'purge-victim', '# z', '{}'::jsonb, 'active', 0, 0)
+    , .{ zombie_id, workspace_id });
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────────
@@ -395,4 +432,69 @@ test "clerk webhook: replay of same user.created returns created:false with no n
     defer h.releaseConn(conn);
     defer cleanupAccount(conn, OIDC_REPLAY);
     try std.testing.expectEqual(@as(i64, 1), try countUsers(conn, OIDC_REPLAY));
+}
+
+test "clerk webhook: user.deleted purges an account that still owns zombies" {
+    const h = startHarness(ALLOC) catch |err| switch (err) {
+        error.SkipZigTest => return error.SkipZigTest,
+        else => return err,
+    };
+    defer h.deinit();
+    defer unsetSecret();
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        cleanupAccount(conn, OIDC_DELETE_ZOMBIES);
+    }
+
+    // Bootstrap the account (tenant + workspace + user) via user.created.
+    {
+        const ts = try nowTsAlloc(ALLOC);
+        defer ALLOC.free(ts);
+        const body = try userCreatedBody(ALLOC, OIDC_DELETE_ZOMBIES, "delzmb@acme.test");
+        defer ALLOC.free(body);
+        const sig = try signEntry(ALLOC, "msg_del_zmb_create", ts, body);
+        defer ALLOC.free(sig);
+        const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
+            .header(svix.SVIX_ID_HEADER, "msg_del_zmb_create"))
+            .header(svix.SVIX_TS_HEADER, ts))
+            .header(svix.SVIX_SIG_HEADER, sig))
+            .json(body)).send();
+        defer resp.deinit();
+        try resp.expectStatus(.ok);
+    }
+
+    // Seed a zombie in the account's workspace. core.zombies.workspace_id has
+    // no ON DELETE CASCADE, so without child-first cleanup the workspace delete
+    // throws an FK violation and the webhook 500s (Clerk then retries forever).
+    {
+        const conn = try h.acquireConn();
+        defer h.releaseConn(conn);
+        const ws = try fetchWorkspaceId(conn, ALLOC, OIDC_DELETE_ZOMBIES);
+        defer ALLOC.free(ws);
+        try insertZombie(conn, ws, SEED_ZOMBIE_ID);
+    }
+
+    // user.deleted must purge the whole account without an FK violation.
+    const ts = try nowTsAlloc(ALLOC);
+    defer ALLOC.free(ts);
+    const body = try userDeletedBody(ALLOC, OIDC_DELETE_ZOMBIES);
+    defer ALLOC.free(body);
+    const sig = try signEntry(ALLOC, "msg_del_zmb_delete", ts, body);
+    defer ALLOC.free(sig);
+    const resp = try (try (try (try (try h.post("/v1/auth/identity-events/clerk")
+        .header(svix.SVIX_ID_HEADER, "msg_del_zmb_delete"))
+        .header(svix.SVIX_TS_HEADER, ts))
+        .header(svix.SVIX_SIG_HEADER, sig))
+        .json(body)).send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    try std.testing.expect(resp.bodyContains("\"deleted\":true"));
+
+    // The cascade reached the user/tenant: a rollback (the old bug) would have
+    // left the user row intact.
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAccount(conn, OIDC_DELETE_ZOMBIES);
+    try std.testing.expectEqual(@as(i64, 0), try countUsers(conn, OIDC_DELETE_ZOMBIES));
 }

@@ -22,7 +22,6 @@ import { printJson, writeError, writeLine } from "./program/io.ts";
 import { printVersion, printPreReleaseWarning } from "./program/banner.ts";
 import { requireAuth, AUTH_FAIL_MESSAGE } from "./program/auth-guard.ts";
 import { ui, printKeyValue, printSection, printTable } from "./output/index.ts";
-import { createSpinner } from "./ui-progress.ts";
 import { DEFAULT_API_URL, normalizeApiUrl } from "./util/url.ts";
 import { buildProgram } from "./program/cli-tree.ts";
 import { buildHandlers, type Lifecycle } from "./program/handlers-bind.ts";
@@ -99,7 +98,6 @@ function resolveGlobalApiUrl(argv: readonly string[], env: NodeJS.ProcessEnv): s
 function buildDeps(): CommandDeps {
   return {
     clearCredentials,
-    createSpinner,
     loadCredentials,
     newIdempotencyKey,
     openUrl,
@@ -201,7 +199,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
   // (mirrors supabase). No session file maintained here.
   // D26: TTY-priority — interactive shells let an env-var the operator
   // just exported beat a possibly-stale credentials.json; scripted runs
-  // prefer the on-disk credential. ZMB_TOKEN > ZOMBIE_TOKEN within env.
+  // prefer the on-disk credential.
   const stdinSrc = io.stdin ?? process.stdin;
   const resolvedAuth = resolveAuthTokenForCli({
     fileToken: creds.token ?? null,
@@ -228,6 +226,7 @@ export async function runCli(argv: readonly string[], io: RunCliIo = {}): Promis
     // smaller honest seam.
     stdout: stdout as unknown as NodeJS.WritableStream,
     stderr: stderr as unknown as NodeJS.WritableStream,
+    stdin: stdinSrc,
     env,
     fetchImpl,
   };

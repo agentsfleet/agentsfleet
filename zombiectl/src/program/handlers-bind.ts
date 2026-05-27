@@ -5,6 +5,7 @@
 import { Option, Redacted, type Effect } from "effect";
 import { runEffect, type MainLayerServices } from "../lib/run-effect.ts";
 import { mainLayerFor } from "../runtime/main-layer.ts";
+import { ZOMBIE_TOKEN_ENV } from "../services/config.ts";
 import { withCommandInstrumentation } from "../services/telemetry/command-instrumentation.ts";
 
 import { authStatusEffect, logoutEffect } from "../commands/auth.ts";
@@ -32,7 +33,6 @@ import { buildWorkspaceHandlers } from "./handlers-bind-workspace.ts";
 import type { ActionFrame, CommandHandlerFn, Handlers } from "./cli-tree-types.ts";
 import type { CommandCtx, CommandDeps, Workspaces } from "../commands/types.ts";
 import { readStringOpt as optString } from "../commands/types.ts";
-import { parseIntOption } from "./validators.ts";
 
 export interface Lifecycle {
   ctx: CommandCtx;
@@ -74,6 +74,16 @@ function streamsFromCtx(
   return { stdout: ctx.stdout, stderr: ctx.stderr };
 }
 
+// Only thread a non-default stdin stream (a string/null ctx.stdin is a test
+// convenience the Stdin layer doesn't model). process.stdin is the layer's
+// own default, so passing it through would be a no-op.
+function stdinFromCtx(ctx: Lifecycle["ctx"]): NodeJS.ReadableStream | undefined {
+  const s = ctx.stdin;
+  if (!s || typeof s === "string") return undefined;
+  if (s === process.stdin) return undefined;
+  return s;
+}
+
 // Compose the per-invocation MainLayer at the handler-bind site
 // (mirrors Supabase's shared/cli/run.ts::cliProgramFor — compose at one
 // site, Effect.provide at the dispatcher boundary). Reads ctx AFTER
@@ -86,10 +96,12 @@ function streamsFromCtx(
 // "agent add").
 function mainLayerForCtx(lifecycle: Lifecycle, name: string): ReturnType<typeof mainLayerFor> {
   const streams = streamsFromCtx(lifecycle.ctx);
+  const stdin = stdinFromCtx(lifecycle.ctx);
   return mainLayerFor({
     config: configOverrideFromCtx(lifecycle.ctx),
     commandPath: name.split("."),
     ...(streams !== undefined ? { streams } : {}),
+    ...(stdin !== undefined ? { stdin } : {}),
   });
 }
 
@@ -114,7 +126,7 @@ function wrapEffect<A, E extends CliError, R extends MainLayerServices>(
 }
 
 // Variant for command Effects whose flags come from the parsed frame
-// (login's --timeout-sec / --poll-ms / --no-open). The factory receives
+// (login's --no-open / --token, billing's cursor). The factory receives
 // the frame and returns the Effect; everything else is the same as
 // wrapEffect.
 function wrapEffectFn<A, E extends CliError, R extends MainLayerServices>(
@@ -133,20 +145,6 @@ function wrapEffectFn<A, E extends CliError, R extends MainLayerServices>(
   };
 }
 
-// Permissive post-handoff reader — wraps `parseIntOption` from
-// validators.ts, swallowing its InvalidArgumentError so the commander
-// parser doubles as a try/Either-style integer reader here. Number
-// fast-path skips the `String(value).trim()` round-trip; the parser
-// covers every other shape (string, undefined, junk).
-const numericOption = (value: unknown): number | undefined => {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  try {
-    return parseIntOption()(value);
-  } catch {
-    return undefined;
-  }
-};
-
 export function buildHandlers(lifecycle: Lifecycle): Handlers {
   const wrapE = <A, E extends CliError, R extends MainLayerServices>(
     name: string,
@@ -158,13 +156,17 @@ export function buildHandlers(lifecycle: Lifecycle): Handlers {
       (frame) => {
         const opts = frame.parsed.options;
         const tokenNameOpt = opts["tokenName"] ?? opts["token-name"];
+        const tokenOpt = opts["token"];
+        // Raw env value (not the file-merged ctx.token) — an existing
+        // credentials.json must not be re-read as a "direct token".
+        const envToken = lifecycle.ctx.env?.[ZOMBIE_TOKEN_ENV];
         return loginEffectFromFlags({
-          timeoutSec: numericOption(opts["timeoutSec"] ?? opts["timeout-sec"]),
-          pollMs: numericOption(opts["pollMs"] ?? opts["poll-ms"]),
           noOpen: opts["open"] === false || opts["noOpen"] === true || opts["no-open"] === true,
           noInput: opts["input"] === false || opts["noInput"] === true || opts["no-input"] === true,
           force: opts["force"] === true,
           tokenName: typeof tokenNameOpt === "string" ? tokenNameOpt : undefined,
+          tokenFlag: typeof tokenOpt === "string" ? tokenOpt : undefined,
+          envToken: typeof envToken === "string" ? envToken : undefined,
         });
       },
       lifecycle,

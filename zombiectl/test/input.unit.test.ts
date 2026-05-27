@@ -10,7 +10,7 @@ import { Input, inputLayer, makeLive } from "../src/services/input.ts";
 
 // A fake readline interface the createInterface seam returns. `answer`
 // either resolves (typed input) or, when null, rejects (SIGINT / closed
-// stdin) so we can hit the catch → "" path. `closed` records the finally.
+// stdin) so we can hit the catch → null path. `closed` records the finally.
 const fakeInterface = (answer: string | null) => {
   const state = { closed: false };
   const iface = {
@@ -62,11 +62,11 @@ describe("makeLive — live readline body", () => {
     expect(state.closed).toBe(true);
   });
 
-  test("swallows a question rejection as empty string and still closes", async () => {
+  test("maps a question rejection (EOF / SIGINT) to null and still closes", async () => {
     const { iface, state } = fakeInterface(null);
     const live = makeLive(() => iface);
     const result = await Effect.runPromise(live.readLine("Enter code: "));
-    expect(result).toBe("");
+    expect(result).toBeNull();
     expect(state.closed).toBe(true);
   });
 });

@@ -27,7 +27,7 @@ import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
 import { Output } from "../src/services/output.ts";
-import { Spinner } from "../src/services/spinner.ts";
+import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
   telemetryRuntimeFromValuesLayer,
@@ -235,15 +235,6 @@ const browserLayer = (rec: Recorder): Layer.Layer<Browser> =>
       }),
   });
 
-const spinnerLayer: Layer.Layer<Spinner> = Layer.succeed(Spinner, {
-  start: () =>
-    Effect.succeed({
-      succeed: () => Effect.void,
-      fail: () => Effect.void,
-      stop: Effect.void,
-    }),
-});
-
 const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(Workspaces, {
   load: Effect.succeed({ current_workspace_id: null, items: [] }),
   save: () => Effect.void,
@@ -273,6 +264,13 @@ const makeConfig = (jsonMode: boolean): Layer.Layer<CliConfig> =>
 
 const configLayer: Layer.Layer<CliConfig> = makeConfig(false);
 
+// Interactive terminal so the resolve step returns `none` and the device
+// flow runs — this suite is the full ECDH round trip, not the direct path.
+const stdinLayer: Layer.Layer<Stdin> = Layer.succeed(Stdin, {
+  isTTY: true,
+  readToEnd: Effect.succeed(""),
+});
+
 const telemetryLayer: Layer.Layer<TelemetryRuntime> = telemetryRuntimeFromValuesLayer({
   configDir: "/tmp/test-config",
   tracesDir: "/tmp/test-traces",
@@ -297,23 +295,23 @@ describe("login acceptance — full device flow end-to-end", () => {
     };
 
     const program = loginEffect({
-      timeoutSec: 30,
-      pollMs: 500,
       noOpen: true,
       noInput: false,
       force: true,
       tokenName: undefined,
+      tokenFlag: undefined,
+      envToken: undefined,
     }).pipe(
       Effect.provide(httpLayer(fixture)),
       Effect.provide(inputLayer(rec, VERIFICATION_CODE)),
       Effect.provide(outputLayer(rec)),
       Effect.provide(credentialsLayer(rec)),
       Effect.provide(browserLayer(rec)),
-      Effect.provide(spinnerLayer),
       Effect.provide(workspacesLayer),
       Effect.provide(analyticsLayer(rec)),
       Effect.provide(configLayer),
       Effect.provide(telemetryLayer),
+      Effect.provide(stdinLayer),
     ) as Effect.Effect<void, CliError, never>;
 
     const exit = await Effect.runPromiseExit(program);
@@ -343,12 +341,12 @@ const runLogin = (
   opts: { jsonMode?: boolean; billingFails?: boolean; firstVerifyFails?: boolean } = {},
 ): Effect.Effect<void, CliError, never> =>
   loginEffect({
-    timeoutSec: 30,
-    pollMs: 500,
     noOpen: true,
     noInput: false,
     force: true,
     tokenName: undefined,
+    tokenFlag: undefined,
+    envToken: undefined,
   }).pipe(
     Effect.provide(
       httpLayer(fixture, {
@@ -360,11 +358,11 @@ const runLogin = (
     Effect.provide(outputLayer(rec)),
     Effect.provide(credentialsLayer(rec)),
     Effect.provide(browserLayer(rec)),
-    Effect.provide(spinnerLayer),
     Effect.provide(workspacesLayer),
     Effect.provide(analyticsLayer(rec)),
     Effect.provide(makeConfig(opts.jsonMode ?? false)),
     Effect.provide(telemetryLayer),
+    Effect.provide(stdinLayer),
   ) as Effect.Effect<void, CliError, never>;
 
 const freshFixture = (): DeviceFlowFixture => ({
