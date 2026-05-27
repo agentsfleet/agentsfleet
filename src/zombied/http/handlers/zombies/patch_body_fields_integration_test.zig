@@ -382,11 +382,11 @@ test "integration: PATCH malformed trigger_markdown — 400, next PATCH on same 
     cleanup(c);
 }
 
-// The §10a config-reload seam test that lived here drove the worker-only
-// `event_loop.reloadZombieConfig`, deleted at the M80 cutover (the reload
-// consumer moves to the runner). The `zombie_config_changed` signal plumbing
-// (control_stream + patch.zig) is unchanged; only the dead in-process consumer
-// and its assertion were removed.
+// The config-reload seam test that lived here drove the worker-only
+// `event_loop.reloadZombieConfig`, deleted at the M80 cutover. Config is now
+// resolved fresh from Postgres on every lease, so PATCH writes the row and the
+// next lease picks it up — there is no reload signal to assert. The vestigial
+// `zombie:control` publish was removed with the dead `control_stream` module.
 
 // Comptime JSON-string-encode a multi-line literal. `comptime`-block
 // concatenation needs `return` outside the block so the caller sees the
