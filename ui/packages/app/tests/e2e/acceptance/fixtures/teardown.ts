@@ -10,9 +10,9 @@
  * only zombies/credentials/events get torn down.
  */
 import { clientFor } from "./api-client";
+import type { ClientHandle } from "./api-client";
 import { listZombies } from "./seed";
 import { ZOMBIE_STATUS } from "./constants";
-import type { FixtureKey } from "./constants";
 
 /**
  * zombied enforces a state-machine transition before delete:
@@ -23,11 +23,11 @@ import type { FixtureKey } from "./constants";
  * the rest. Returns the count successfully removed.
  */
 export async function cleanWorkspaceZombies(
-  key: FixtureKey,
+  handle: ClientHandle,
   workspaceId: string,
 ): Promise<number> {
-  const c = clientFor(key);
-  const zombies = await listZombies(key, workspaceId);
+  const c = clientFor(handle);
+  const zombies = await listZombies(handle, workspaceId);
   let removed = 0;
   for (const z of zombies) {
     try {

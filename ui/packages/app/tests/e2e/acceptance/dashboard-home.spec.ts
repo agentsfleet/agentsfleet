@@ -25,10 +25,10 @@ test.describe("dashboard home", () => {
     await expect(page.getByRole("heading", { name: /^dashboard$/i })).toBeVisible();
 
     // Either render path is correct. data-testid="status-card" comes from
-    // the StatusCard primitive; aria-label="Install your first zombie"
-    // comes from FirstInstallCard's <section>.
+    // the StatusCard primitive; role=region narrows the FirstInstallCard
+    // section and avoids matching its command block label.
     const tiles = page.getByTestId("status-card");
-    const firstInstall = page.getByLabel("Install your first zombie");
+    const firstInstall = page.getByRole("region", { name: "Install your first zombie" });
     await expect(tiles.first().or(firstInstall)).toBeVisible({ timeout: 15_000 });
   });
 });

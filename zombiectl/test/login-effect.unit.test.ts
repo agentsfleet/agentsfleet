@@ -3,7 +3,7 @@
 // trip). This file pins the non-prompting branches that 5.C.1 wired:
 //
 //   - D20 idempotency  — existing creds + --no-input + no --force aborts
-//   - D26b env-token   — ZMB_TOKEN set + --no-input + no --force aborts
+//   - D26b env-token   — ZOMBIE_TOKEN set + --no-input + no --force aborts
 //   - verify --no-input — verification prompt is skipped → InterruptedError
 //   - transport remap  — ServerError/NetworkError on POST /sessions become
 //                        AuthError so every login failure exits 1
@@ -13,7 +13,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { loginEffect, failedOutcomeError, type LoginFlags } from "../src/commands/login.ts";
+import { loginEffect, type LoginFlags } from "../src/commands/login.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { Browser } from "../src/services/browser.service.ts";
 import { CliConfig } from "../src/services/config.ts";
@@ -24,7 +24,7 @@ import {
 } from "../src/services/http-client.ts";
 import { Input } from "../src/services/input.ts";
 import { Output } from "../src/services/output.ts";
-import { Spinner } from "../src/services/spinner.ts";
+import { Stdin } from "../src/services/stdin.ts";
 import {
   TelemetryRuntime,
   telemetryRuntimeFromValuesLayer,
@@ -32,22 +32,21 @@ import {
 import { Workspaces } from "../src/services/workspaces.ts";
 import {
   AuthError,
-  ExpiredSessionError,
   InterruptedError,
+  MeValidationError,
   NetworkError,
   ServerError,
-  TimeoutError,
   type CliError,
 } from "../src/errors/index.ts";
 
 const SESSION_ID = "sess_branch_test";
 const DEFAULT_FLAGS: LoginFlags = {
-  timeoutSec: 5,
-  pollMs: 500,
   noOpen: true,
   noInput: true,
   force: false,
   tokenName: undefined,
+  tokenFlag: undefined,
+  envToken: undefined,
 };
 
 interface Rec {
@@ -79,6 +78,16 @@ const inputAlwaysEmpty: Layer.Layer<Input> = Layer.succeed(Input, {
   readLine: () => Effect.sync(() => ""),
 });
 
+// Default: an interactive terminal with nothing piped → resolveDirectToken
+// returns `none` and the device flow runs (what the pre-existing branch
+// tests below exercise). The direct-token suite swaps in a piped variant.
+const stdinTty: Layer.Layer<Stdin> = Layer.succeed(Stdin, {
+  isTTY: true,
+  readToEnd: Effect.succeed(""),
+});
+const stdinPiped = (text: string): Layer.Layer<Stdin> =>
+  Layer.succeed(Stdin, { isTTY: false, readToEnd: Effect.succeed(text) });
+
 const credentialsLayer = (
   initial: Option.Option<Redacted.Redacted<string>>,
 ): Layer.Layer<Credentials> => {
@@ -100,15 +109,6 @@ const credentialsLayer = (
 
 const browserLayer: Layer.Layer<Browser> = Layer.succeed(Browser, {
   open: () => Effect.succeed(true),
-});
-
-const spinnerLayer: Layer.Layer<Spinner> = Layer.succeed(Spinner, {
-  start: () =>
-    Effect.succeed({
-      succeed: () => Effect.void,
-      fail: () => Effect.void,
-      stop: Effect.void,
-    }),
 });
 
 const workspacesLayer: Layer.Layer<Workspaces> = Layer.succeed(Workspaces, {
@@ -194,6 +194,7 @@ const provideAll = (
   http: Layer.Layer<HttpClient>,
   fileToken: Option.Option<Redacted.Redacted<string>> = Option.none(),
   config: Layer.Layer<CliConfig> = configLayer,
+  stdin: Layer.Layer<Stdin> = stdinTty,
 ) =>
   (e: ReturnType<typeof loginEffect>) =>
     e.pipe(
@@ -202,35 +203,12 @@ const provideAll = (
       Effect.provide(outputLayer(rec)),
       Effect.provide(credentialsLayer(fileToken)),
       Effect.provide(browserLayer),
-      Effect.provide(spinnerLayer),
       Effect.provide(workspacesLayer),
       Effect.provide(analyticsLayer),
       Effect.provide(config),
       Effect.provide(telemetryLayer),
+      Effect.provide(stdin),
     ) as Effect.Effect<void, CliError, never>;
-
-// POST /sessions succeeds, then GET /sessions returns 410 — drives the
-// poll loop into its terminal `expired` outcome without any prompt.
-const expiredPollHttp: Layer.Layer<HttpClient> = Layer.succeed(HttpClient, {
-  request: <T>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
-    const { path, method = "GET" } = input;
-    if (method === "POST" && path === "/v1/auth/sessions") {
-      return Effect.succeed({ session_id: SESSION_ID } as T);
-    }
-    if (method === "GET" && path === `/v1/auth/sessions/${SESSION_ID}`) {
-      return Effect.fail(
-        new ServerError({
-          detail: "session gone",
-          suggestion: "retry",
-          code: "UZ-AUTH-013",
-          status: 410,
-          requestId: null,
-        }),
-      );
-    }
-    return Effect.die(`unexpected ${method} ${path}`);
-  },
-});
 
 const failureValue = <T>(exit: Exit.Exit<T, CliError>): CliError | null => {
   if (!Exit.isFailure(exit)) return null;
@@ -250,19 +228,22 @@ describe("loginEffect — pre-flight aborts", () => {
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
   });
 
-  test("D26b: ZMB_TOKEN set + --no-input + no --force aborts as InterruptedError", async () => {
+  test("non-TTY stdin + existing credential + no --force aborts loudly (never reads the piped token as a Y/n answer)", async () => {
+    // Regression: idempotencyCheck must treat a piped (non-TTY) stdin like
+    // --no-input. Otherwise the replace-prompt consumes the piped token as
+    // its answer and `echo $TOKEN | zombiectl login` silently fails to
+    // re-auth on a machine that already has a credential.
     const rec = makeRec();
-    const prev = process.env["ZMB_TOKEN"];
-    process.env["ZMB_TOKEN"] = "env-tok";
-    try {
-      const exit = await Effect.runPromiseExit(
-        provideAll(rec, noNetworkHttp)(loginEffect({ ...DEFAULT_FLAGS, force: false })),
-      );
-      expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
-    } finally {
-      if (prev === undefined) delete process.env["ZMB_TOKEN"];
-      else process.env["ZMB_TOKEN"] = prev;
-    }
+    const exit = await Effect.runPromiseExit(
+      provideAll(
+        rec,
+        noNetworkHttp,
+        Option.some(Redacted.make("preexisting-token")),
+        configLayer,
+        stdinPiped("piped-token-not-a-prompt-answer\n"),
+      )(loginEffect({ ...DEFAULT_FLAGS, force: false, noInput: false })),
+    );
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
   });
 
   test("verify --no-input aborts at the prompt with InterruptedError (exit 130)", async () => {
@@ -333,27 +314,219 @@ describe("loginEffect — browser open + outcome rendering", () => {
     expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
     expect(rec.stdout.some((l) => l.includes("browser: opened"))).toBe(true);
   });
+});
 
-  test("expired poll + jsonMode prints the JSON outcome and fails ExpiredSessionError", async () => {
+describe("loginEffect — cancel at the code prompt", () => {
+  test("a null read (EOF / Ctrl-C) exits InterruptedError with no credentials written", async () => {
     const rec = makeRec();
+    let saves = 0;
+    const recordingCreds: Layer.Layer<Credentials> = Layer.succeed(Credentials, {
+      getAccessToken: Effect.sync(() => Option.none()),
+      getSavedAt: Effect.sync(() => null),
+      getSessionId: Effect.sync(() => null),
+      getApiUrl: Effect.sync(() => null),
+      saveAccessToken: () => Effect.sync(() => { saves += 1; }),
+      clearAccessToken: Effect.void,
+    });
+    const nullInput: Layer.Layer<Input> = Layer.succeed(Input, {
+      readLine: () => Effect.sync(() => null),
+    });
+    // Device flow reached (interactive stdin, no token), prompt returns null
+    // → InterruptedError before persistSuccess, so credentials.json is never
+    // written.
     const exit = await Effect.runPromiseExit(
-      provideAll(rec, expiredPollHttp, Option.none(), makeConfig({ jsonMode: true }))(
-        loginEffect({ ...DEFAULT_FLAGS, force: true }),
-      ),
+      loginEffect({ ...DEFAULT_FLAGS, force: true, noInput: false }).pipe(
+        Effect.provide(successPollHttp),
+        Effect.provide(nullInput),
+        Effect.provide(outputLayer(rec)),
+        Effect.provide(recordingCreds),
+        Effect.provide(browserLayer),
+        Effect.provide(workspacesLayer),
+        Effect.provide(analyticsLayer),
+        Effect.provide(configLayer),
+        Effect.provide(telemetryLayer),
+        Effect.provide(stdinTty),
+      ) as Effect.Effect<void, CliError, never>,
     );
-    expect(failureValue(exit)).toBeInstanceOf(ExpiredSessionError);
-    expect(rec.stdout.some((l) => l.includes('"status":"expired"'))).toBe(true);
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+    expect(saves).toBe(0);
   });
 });
 
-describe("failedOutcomeError — outcome → typed error mapping", () => {
-  test("expired → ExpiredSessionError", () => {
-    expect(failedOutcomeError({ status: "expired" })).toBeInstanceOf(ExpiredSessionError);
+describe("loginEffect — non-interactive direct-token path", () => {
+  const BILLING_PATH = "/v1/tenants/me/billing";
+  const WORKSPACES_PATH = "/v1/tenants/me/workspaces";
+
+  // Answers the validate (GET billing) + hydrate (GET workspaces) probes;
+  // dies on the device-flow POST so any test that fell through to the
+  // browser flow crashes loudly instead of passing by accident.
+  const directHttp = (validateOk: boolean): Layer.Layer<HttpClient> =>
+    Layer.succeed(HttpClient, {
+      request: <T>(input: HttpRequestInput): Effect.Effect<T, NetworkError | ServerError> => {
+        const { path, method = "GET" } = input;
+        if (method === "GET" && path === BILLING_PATH) {
+          return validateOk
+            ? Effect.succeed({} as T)
+            : Effect.fail(
+                new ServerError({
+                  detail: "unauthorized",
+                  suggestion: "re-login",
+                  code: "UZ-AUTH-001",
+                  status: 401,
+                  requestId: null,
+                }),
+              );
+        }
+        if (method === "GET" && path === WORKSPACES_PATH) {
+          return Effect.succeed({ items: [] } as T);
+        }
+        return Effect.die(`direct-token path must not reach ${method} ${path}`);
+      },
+    });
+
+  const recordingBrowser = (): { readonly layer: Layer.Layer<Browser>; readonly opens: () => number } => {
+    let opens = 0;
+    return {
+      layer: Layer.succeed(Browser, {
+        open: () =>
+          Effect.sync(() => {
+            opens += 1;
+            return true;
+          }),
+      }),
+      opens: () => opens,
+    };
+  };
+
+  const recordingCreds = (): {
+    readonly layer: Layer.Layer<Credentials>;
+    readonly saves: () => number;
+  } => {
+    const state = { token: Option.none<Redacted.Redacted<string>>(), saves: 0 };
+    return {
+      layer: Layer.succeed(Credentials, {
+        getAccessToken: Effect.sync(() => state.token),
+        getSavedAt: Effect.sync(() => null),
+        getSessionId: Effect.sync(() => null),
+        getApiUrl: Effect.sync(() => null),
+        saveAccessToken: (input) =>
+          Effect.sync(() => {
+            state.token = Option.some(input.token);
+            state.saves += 1;
+          }),
+        clearAccessToken: Effect.sync(() => {
+          state.token = Option.none();
+        }),
+      }),
+      saves: () => state.saves,
+    };
+  };
+
+  const run = (
+    rec: Rec,
+    flags: LoginFlags,
+    layers: {
+      readonly http: Layer.Layer<HttpClient>;
+      readonly stdin: Layer.Layer<Stdin>;
+      readonly browser: Layer.Layer<Browser>;
+      readonly creds: Layer.Layer<Credentials>;
+    },
+  ) =>
+    Effect.runPromiseExit(
+      loginEffect(flags).pipe(
+        Effect.provide(layers.http),
+        Effect.provide(inputAlwaysEmpty),
+        Effect.provide(outputLayer(rec)),
+        Effect.provide(layers.creds),
+        Effect.provide(layers.browser),
+        Effect.provide(workspacesLayer),
+        Effect.provide(analyticsLayer),
+        Effect.provide(configLayer),
+        Effect.provide(telemetryLayer),
+        Effect.provide(layers.stdin),
+      ) as Effect.Effect<void, CliError, never>,
+    );
+
+  test("--token validates + persists with no browser opened", async () => {
+    const rec = makeRec();
+    const browser = recordingBrowser();
+    const creds = recordingCreds();
+    const exit = await run(
+      rec,
+      { ...DEFAULT_FLAGS, force: true, tokenFlag: "direct-token" },
+      { http: directHttp(true), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(browser.opens()).toBe(0);
+    expect(creds.saves()).toBe(1);
   });
-  test("interrupted → InterruptedError", () => {
-    expect(failedOutcomeError({ status: "interrupted" })).toBeInstanceOf(InterruptedError);
+
+  test("--token-name alongside --token emits the ignored note (not silently swallowed)", async () => {
+    const rec = makeRec();
+    const browser = recordingBrowser();
+    const creds = recordingCreds();
+    const exit = await run(
+      rec,
+      { ...DEFAULT_FLAGS, force: true, tokenFlag: "direct-token", tokenName: "my-laptop" },
+      { http: directHttp(true), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(rec.stdout.some((l) => l.includes("--token-name is ignored"))).toBe(true);
   });
-  test("timeout → TimeoutError", () => {
-    expect(failedOutcomeError({ status: "timeout" })).toBeInstanceOf(TimeoutError);
+
+  test("invalid --token fails validation and persists nothing", async () => {
+    const rec = makeRec();
+    const browser = recordingBrowser();
+    const creds = recordingCreds();
+    const exit = await run(
+      rec,
+      { ...DEFAULT_FLAGS, force: true, tokenFlag: "bad-token" },
+      { http: directHttp(false), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
+    );
+    expect(failureValue(exit)).toBeInstanceOf(MeValidationError);
+    expect(creds.saves()).toBe(0);
+    expect(browser.opens()).toBe(0);
+  });
+
+  test("ZOMBIE_TOKEN env resolves the token with no browser opened", async () => {
+    const rec = makeRec();
+    const browser = recordingBrowser();
+    const creds = recordingCreds();
+    const exit = await run(
+      rec,
+      { ...DEFAULT_FLAGS, force: true, envToken: "env-token" },
+      { http: directHttp(true), stdin: stdinTty, browser: browser.layer, creds: creds.layer },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(browser.opens()).toBe(0);
+    expect(creds.saves()).toBe(1);
+  });
+
+  test("piped stdin (non-TTY) resolves the token with no browser opened", async () => {
+    const rec = makeRec();
+    const browser = recordingBrowser();
+    const creds = recordingCreds();
+    const exit = await run(
+      rec,
+      { ...DEFAULT_FLAGS, force: true },
+      { http: directHttp(true), stdin: stdinPiped("  piped-token\n"), browser: browser.layer, creds: creds.layer },
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    expect(browser.opens()).toBe(0);
+    expect(creds.saves()).toBe(1);
+  });
+
+  test("non-TTY + empty stdin + no token fails fast, nothing persisted, no browser", async () => {
+    const rec = makeRec();
+    const browser = recordingBrowser();
+    const creds = recordingCreds();
+    const exit = await run(
+      rec,
+      { ...DEFAULT_FLAGS, force: true },
+      { http: noNetworkHttp, stdin: stdinPiped(""), browser: browser.layer, creds: creds.layer },
+    );
+    expect(failureValue(exit)).toBeInstanceOf(InterruptedError);
+    expect(browser.opens()).toBe(0);
+    expect(creds.saves()).toBe(0);
   });
 });

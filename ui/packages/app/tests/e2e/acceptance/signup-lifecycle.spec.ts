@@ -29,6 +29,7 @@ import {
   stopZombie,
 } from "./fixtures/lifecycle";
 import { signUpAs } from "./fixtures/signup";
+import { cleanWorkspaceZombies } from "./fixtures/teardown";
 
 const PASSWORD = "SignupFixture!2026-stable";
 const FLOW_TIMEOUT_MS = 120_000;
@@ -49,8 +50,16 @@ test.describe("signup → install → lifecycle", () => {
   test.setTimeout(FLOW_TIMEOUT_MS);
 
   let createdEmail: string | null = null;
+  let cleanupSession: { sessionJwt: string; workspaceId: string } | null = null;
 
   test.afterEach(async () => {
+    if (cleanupSession) {
+      await cleanWorkspaceZombies(
+        { sessionJwt: cleanupSession.sessionJwt },
+        cleanupSession.workspaceId,
+      ).catch(() => undefined);
+      cleanupSession = null;
+    }
     if (!createdEmail) return;
     const userId = await findUserIdByEmail(createdEmail).catch(() => null);
     if (userId) await deleteUser(userId).catch(() => undefined);
@@ -68,7 +77,9 @@ test.describe("signup → install → lifecycle", () => {
     // even with the testing-token captcha-bypass in place. `signUpAs`
     // drives Clerk's browser SDK directly to skip the form — see
     // fixtures/signup.ts for why this is equivalent to a real signup.
-    await signUpAs(page, email, PASSWORD);
+    const signup = await signUpAs(page, email, PASSWORD, { requireWorkspaceSession: true });
+    if (!signup.workspaceId) throw new Error("signup did not return a workspace id");
+    cleanupSession = { sessionJwt: signup.sessionJwt, workspaceId: signup.workspaceId };
 
     // Dashboard /zombies renders auto-provisioned workspace + empty state.
     // First-deploy regression surface lives here (route-guard chain on a
@@ -86,7 +97,7 @@ test.describe("signup → install → lifecycle", () => {
     // section is the section-scaffolding assertion (matches logs-detail's
     // downgrade — section presence, not payload contents).
     await expect(page).toHaveURL(new RegExp(`/zombies/${zombieId}(\\?|$)`));
-    await expect(page.getByLabel("Recent Activity")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Recent Activity" })).toBeVisible();
 
     // Listing shows the new row live.
     await page.goto("/zombies");

@@ -60,8 +60,8 @@ Subcommands:
 
 Environment variables:
   ZOMBIE_API_URL                  API base URL (overridden by --api)
-  ZMB_TOKEN                       Auth token (interactive shells prefer env)
-  ZOMBIE_TOKEN                    Auth token (alternate spelling of ZMB_TOKEN)
+  ZOMBIE_DASHBOARD_URL            Dashboard base URL (login verify page)
+  ZOMBIE_TOKEN                    Auth token (interactive shells prefer env)
   ZOMBIE_API_KEY                  API key for service auth
   ZOMBIE_STATE_DIR                Directory for local CLI state files
   NO_COLOR                        Any non-empty value disables color

@@ -17,15 +17,12 @@ import type { Handlers } from "../src/program/cli-tree-types.ts";
 
 // ── User commands ───────────────────────────────────────────────────────
 
-test("login dispatches and propagates --timeout-sec / --poll-ms options", async () => {
+test("login dispatches and propagates --token", async () => {
   const { handlers, calls } = makeSpyTree();
-  await dispatch(["login", "--timeout-sec", "10", "--poll-ms", "50"], handlers);
+  await dispatch(["login", "--token", "pat_abc123"], handlers);
   expect(calls).toHaveLength(1);
   expect(calls[0]?.name).toBe("login");
-  expect(calls[0]?.frame.parsed.options.timeoutSec).toBe(10);
-  expect(calls[0]?.frame.parsed.options["timeout-sec"]).toBe(10);
-  expect(calls[0]?.frame.parsed.options.pollMs).toBe(50);
-  expect(calls[0]?.frame.parsed.options["poll-ms"]).toBe(50);
+  expect(calls[0]?.frame.parsed.options.token).toBe("pat_abc123");
 });
 
 test("logout dispatches with no options", async () => {

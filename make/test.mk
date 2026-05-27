@@ -5,6 +5,7 @@
 include make/test-unit.mk
 include make/test-integration.mk
 include make/acceptance.mk
+include make/dry.mk
 include make/bench.mk
 
 ZIG_GLOBAL_CACHE_DIR ?= $(CURDIR)/.tmp/zig-global-cache

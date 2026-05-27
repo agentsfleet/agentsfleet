@@ -12,15 +12,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  dry-backend:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/usezombie/ci-zig-ubuntu:0.15.2
-    steps:
-      - uses: actions/checkout@v6
-      - name: Run backend live-e2e lane
-        run: make live-e2e-all
-
   dry-website:
     runs-on: ubuntu-latest
     steps:
@@ -81,7 +72,7 @@ jobs:
 
   dry:
     runs-on: ubuntu-latest
-    needs: [dry-backend, dry-website, dry-app]
+    needs: [dry-website, dry-app]
     steps:
       - name: All dry lanes green
         run: echo "All dry lanes passed"

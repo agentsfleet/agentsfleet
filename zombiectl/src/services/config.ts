@@ -21,6 +21,10 @@ const DEFAULT_DASHBOARD_URL = "https://app.usezombie.com";
 // theirs as a plain string in cli-config.layer.ts; we match that.
 export const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 export const DEFAULT_POSTHOG_KEY = "phc_XmuRIXBSTRfxka7IgfkU0VPMD3LDRR3IqILXNg3bXzv"; // gitleaks:allow — public phc_ key (write-only capture scope), see header comment
+// The single auth-token env-var name. One identifier shared by the
+// config resolver, the TTY-aware file/env resolver, and the login
+// command's direct-token source so the three never drift.
+export const ZOMBIE_TOKEN_ENV = "ZOMBIE_TOKEN";
 
 export interface CliConfigShape {
   readonly apiUrl: string;
@@ -53,12 +57,10 @@ export const resolveCliConfig = (): CliConfigShape => {
   const apiUrl = trimmed(readEnv("ZOMBIE_API_URL")) ?? DEFAULT_API_URL;
   const dashboardUrl =
     trimmed(readEnv("ZOMBIE_DASHBOARD_URL")) ?? DEFAULT_DASHBOARD_URL;
-  // ZMB_TOKEN is the canonical short name; ZOMBIE_TOKEN remains accepted
-  // for shells that exported it before the alias landed. Either yields
-  // the same Effect-side accessToken. TTY-aware precedence (D26) is
-  // resolved in cli.ts before this layer; tests that bypass runCli see
-  // the merged value here.
-  const envToken = trimmed(readEnv("ZMB_TOKEN")) ?? trimmed(readEnv("ZOMBIE_TOKEN"));
+  // ZOMBIE_TOKEN is the auth-token env var. TTY-aware precedence vs
+  // credentials.json is resolved in cli.ts before this layer; tests that
+  // bypass runCli see the env value here.
+  const envToken = trimmed(readEnv(ZOMBIE_TOKEN_ENV));
   const telemetryPosthogKey =
     trimmed(readEnv("ZOMBIE_TELEMETRY_POSTHOG_KEY")) ?? DEFAULT_POSTHOG_KEY;
   const telemetryPosthogHost =

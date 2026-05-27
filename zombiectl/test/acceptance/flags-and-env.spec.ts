@@ -4,9 +4,8 @@
  * Covered here:
  *   - global-flag matrix and precedence (no backend needed)
  *   - NO_COLOR semantics (no backend needed)
- *   - --no-open suppresses browser spawn (uses local stub backend)
- *   - SIGINT during `zombiectl login` exits non-zero, never persists
- *     a partial credentials.json (uses local stub backend)
+ *   - a spawned (non-TTY) `zombiectl login` with no token fast-fails:
+ *     no browser, no partial credentials.json (token-only contract)
  *
  * Live-API precedence tests (--api / ZOMBIE_API_URL, env-var auth
  * permutations) only register when `ZOMBIE_ACCEPTANCE_TARGET` is an
@@ -23,7 +22,6 @@ import { runZombiectl, spawnZombiectl, composeEnv } from "./fixtures/cli.js";
 import type { RunResult } from "./fixtures/cli.js";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
-import { startLocalStubServer, type LocalStubHandle } from "./fixtures/local-stub-server.ts";
 import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
 import { attachJwt } from "./fixtures/clerk-admin.ts";
 
@@ -32,9 +30,6 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 const ZOMBIECTL_ROOT = path.resolve(HERE, "..", "..");
 const ANSI_RE = /\x1b\[/;
-
-const SIGINT_POLL_MS = 250;
-const SIGINT_DEADLINE_SEC = 60;
 
 interface ExitResult {
   readonly code: number | null;
@@ -61,33 +56,6 @@ function waitForExit(child: ChildProcessWithoutNullStreams): Promise<ExitResult>
     child.stdout.on("data", (chunk: Buffer | string) => { stdout += String(chunk); });
     child.stderr.on("data", (chunk: Buffer | string) => { stderr += String(chunk); });
     child.on("close", (code: number | null, signal: NodeJS.Signals | null) => resolve({ code, signal, stdout, stderr }));
-  });
-}
-
-function waitForLine(
-  child: ChildProcessWithoutNullStreams,
-  predicate: (line: string) => boolean,
-  timeoutMs: number,
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let buffer = "";
-    const timer = setTimeout(() => {
-      child.stdout.off("data", onData);
-      reject(new Error(`timed out waiting for stdout line; saw: ${buffer.slice(0, 300)}`));
-    }, timeoutMs);
-    function onData(chunk: Buffer | string): void {
-      buffer += String(chunk);
-      const lines = buffer.split(/\r?\n/);
-      for (const line of lines) {
-        if (predicate(line)) {
-          clearTimeout(timer);
-          child.stdout.off("data", onData);
-          resolve(buffer);
-          return;
-        }
-      }
-    }
-    child.stdout.on("data", onData);
   });
 }
 
@@ -161,109 +129,58 @@ describe("telemetry env-var advertisement (--help)", () => {
   });
 });
 
-describe("--no-open suppresses browser spawn (stub backend)", () => {
-  let stub: LocalStubHandle | null = null;
+describe("non-TTY login fast-fails", () => {
+  // A spawned `zombiectl login` inherits a piped (non-TTY) stdin. Per the
+  // non-interactive contract (no token + non-TTY → token-only), it aborts
+  // before the browser device flow — never opening a browser and never
+  // writing a partial credentials.json. The device-flow + SIGINT-abort
+  // mechanics are unit-covered (login-device-flow / login-effect); driving
+  // the device flow through a spawned binary would need a PTY harness.
   let stateDir: StubbedStateDir | null = null;
 
   beforeAll(async () => {
-    stub = await startLocalStubServer();
     stateDir = await makeStubbedStateDir();
   });
 
   afterAll(async () => {
-    if (stub) await stub.close();
     if (stateDir) await stateDir.cleanup();
   });
 
-  it("emits a login_url on stdout and does not spawn a browser", async () => {
-    if (!stub || !stateDir) throw new Error("fixtures not initialised");
+  // --force skips the D20 idempotency gate (makeStubbedStateDir pre-seeds a
+  // credential), so the run reaches the token resolve, where a non-TTY shell
+  // with no token aborts. Ending the child's stdin gives that read an EOF
+  // instead of a hang. The API is never contacted — the abort precedes it.
+  function spawnNonTtyLogin(): ChildProcessWithoutNullStreams {
+    if (!stateDir) throw new Error("fixtures not initialised");
     const env = composeEnv({
-      ZOMBIE_API_URL: stub.baseUrl,
+      ZOMBIE_API_URL: UNROUTABLE_API_URL,
       ZOMBIE_STATE_DIR: stateDir.dir,
       NO_COLOR: "1",
     });
-    // Short timeout — we just want to confirm the CLI prints the URL
-    // then polls; not waiting for "complete".
-    // --force overrides the D20 idempotency prompt — makeStubbedStateDir
-    // pre-seeds credentials.json with STUB_TOKEN, which would otherwise
-    // abort login under --no-input (InterruptedError) before the poll
-    // loop ever prints login_url. The test's intent is "verify --no-open
-    // suppresses browser spawn"; the idempotency gate is orthogonal.
-    const child = spawnZombiectl(
-      ["login", "--no-open", "--no-input", "--force", "--timeout-sec", "2", "--poll-ms", "200"],
-      { env },
-    );
-    const result = await waitForExit(child);
-    // Pending forever → eventual timeout → exit 1. Either way, no browser was launched.
-    assert.notEqual(result.code, 0, `expected timeout exit, got ${result.code}; stdout=${result.stdout}`);
-    assert.ok(
-      /login_url/i.test(result.stdout) || /127\.0\.0\.1/.test(result.stdout),
-      `expected login_url in stdout: ${result.stdout}`,
-    );
-  });
-});
-
-describe("SIGINT during login (stub backend)", () => {
-  let stub: LocalStubHandle | null = null;
-  let stateDir: StubbedStateDir | null = null;
-
-  beforeAll(async () => {
-    stub = await startLocalStubServer();
-    stateDir = await makeStubbedStateDir();
-  });
-
-  afterAll(async () => {
-    if (stub) await stub.close();
-    if (stateDir) await stateDir.cleanup();
-  });
-
-  async function spawnLoginAndInterrupt(extraArgs?: ReadonlyArray<string>): Promise<ExitResult> {
-    if (!stub || !stateDir) throw new Error("fixtures not initialised");
-    const env = composeEnv({
-      ZOMBIE_API_URL: stub.baseUrl,
-      ZOMBIE_STATE_DIR: stateDir.dir,
-      NO_COLOR: "1",
-    });
-    const args = [
-      "login",
-      "--no-input",
-      "--force", // bypass D20 idempotency on the stubbed-creds state dir
-      "--timeout-sec",
-      String(SIGINT_DEADLINE_SEC),
-      "--poll-ms",
-      String(SIGINT_POLL_MS),
-      ...(extraArgs ?? []),
-    ];
-    const child = spawnZombiectl(args, { env });
-    await waitForLine(child, (line: string) => /login_url|127\.0\.0\.1/i.test(line), 10_000);
-    // Give the CLI time to enter the poll loop.
-    await new Promise<void>((r) => setTimeout(r, 400));
-    child.kill("SIGINT");
-    const result = await waitForExit(child);
-    return result;
+    const child = spawnZombiectl(["login", "--no-open", "--force"], { env });
+    child.stdin.end();
+    return child;
   }
 
-  // Only the `--no-open` SIGINT variant is exercised here. The bare-login
-  // form (no `--no-open`) calls `openUrl(loginUrl)`, which on a macOS dev
-  // machine hands the stub `login_url` to the default browser and pops up
-  // a "can't connect" tab. The CI surface this spec gates is headless
-  // (openUrl silently no-ops there), so the bare-login regression isn't
-  // lost — the workflow can opt into it via a
-  // `ZOMBIE_ACCEPTANCE_INCLUDE_BARE_LOGIN` env gate in a follow-on PR.
-  // Discovery: parameterise the stub `login_url` so a noop scheme (e.g.
-  // data: or about:blank) can be opted into for local SIGINT coverage.
-  it("`--no-open` poll: SIGINT exits non-zero, no credentials.json written", async () => {
-    const result = await spawnLoginAndInterrupt(["--no-open"]);
-    assert.notEqual(result.code, 0, `expected non-zero exit, got ${result.code}; stdout=${result.stdout}; stderr=${result.stderr}`);
-    if (!stateDir) throw new Error("stateDir not initialised");
-    const credsPath = path.join(stateDir.dir, "credentials.json");
-    const credsRaw = await fs.readFile(credsPath, "utf8").catch(() => null);
+  it("exits non-zero with token guidance and never opens a browser", async () => {
+    const result = await waitForExit(spawnNonTtyLogin());
+    assert.notEqual(result.code, 0, `expected fast-fail, got ${result.code}; stderr=${result.stderr}`);
+    assert.match(result.stderr, /--token|ZOMBIE_TOKEN/, `expected token guidance: ${result.stderr}`);
+    assert.ok(
+      !/login_url|127\.0\.0\.1/i.test(result.stdout),
+      `device flow must not start: ${result.stdout}`,
+    );
+  });
+
+  it("leaves a pre-existing credentials.json untouched", async () => {
+    if (!stateDir) throw new Error("fixtures not initialised");
+    await waitForExit(spawnNonTtyLogin());
+    const credsRaw = await fs
+      .readFile(path.join(stateDir.dir, "credentials.json"), "utf8")
+      .catch(() => null);
     if (credsRaw) {
-      // Stubbed state-dir pre-seeds a syntactically-valid token; the SIGINT
-      // path must not have overwritten it with a "complete" session token
-      // (no `complete` ever arrived from the stub server).
       const parsed = JSON.parse(credsRaw) as { token: string };
-      assert.equal(parsed.token, "header.payload.sig", `SIGINT path wrote a real token: ${credsRaw}`);
+      assert.equal(parsed.token, "header.payload.sig", `fast-fail wrote a token: ${credsRaw}`);
     }
   });
 });
