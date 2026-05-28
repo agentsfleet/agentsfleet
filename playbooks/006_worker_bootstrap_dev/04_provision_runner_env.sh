@@ -106,7 +106,11 @@ fi
 
 ssh_opts=(-o StrictHostKeyChecking=no -o ConnectTimeout=15 -o BatchMode=yes)
 ssh_id=$(mktemp)
-trap 'rm -f "$ssh_id"' EXIT
+env_local=""
+# Cover both tmpfiles: env_local holds the runner-token in cleartext between
+# write and scp success, so a mid-script failure under `set -e` must not leak
+# it. `${env_local:-}` is empty before mktemp runs — rm -f "" is a no-op.
+trap 'rm -f "$ssh_id" "${env_local:-}"' EXIT
 printf '%s\n' "$ssh_key" > "$ssh_id"
 chmod 600 "$ssh_id"
 
@@ -122,16 +126,26 @@ EOF
 chmod 600 "$env_local"
 scp -i "$ssh_id" "${ssh_opts[@]}" "$env_local" \
   "${ssh_user}@${ssh_host}:/opt/zombie/.env"
-rm -f "$env_local"
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
   "chmod 600 /opt/zombie/.env"
 
+# Restart only — env-write owns provisioning. The daemon's own startup prefix
+# check (assertRunnerTokenPrefix) + deploy.sh sync_env's validation (next time
+# CI runs) cover the validation surface; wrapping deploy.sh here just to
+# restart would mask its hardened exit on a missing key or zrn_FAKE_… token.
 echo "-- restarting zombie-runner.service"
 ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-  "sudo /opt/zombie/deploy/deploy.sh runner provisioning /opt/zombie/bin/zombie-runner 2>&1 || sudo systemctl restart zombie-runner.service"
-sleep 3
-status=$(ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
-  "systemctl is-active zombie-runner.service 2>&1 || true")
+  "sudo systemctl restart zombie-runner.service"
+
+# Poll up to ~10s so we don't race systemd's RestartSec=5 (a daemon that
+# crashes and is in `scheduled-restart` would read as `failed` at +3s).
+status=""
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  sleep 1
+  status=$(ssh -i "$ssh_id" "${ssh_opts[@]}" "${ssh_user}@${ssh_host}" \
+    "systemctl is-active zombie-runner.service 2>&1 || true")
+  [ "$status" = "active" ] && break
+done
 
 if [ "$status" = "active" ]; then
   echo "  ✓ zombie-runner.service is active"
