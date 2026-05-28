@@ -30,8 +30,8 @@ pub const AuthCtx = auth_ctx.AuthCtx;
 
 pub const TENANT_KEY_PREFIX = "zmb_t_";
 
-const registry = @import("../../errors/error_registry.zig");
-const ERR_APIKEY_REVOKED = registry.ERR_APIKEY_REVOKED;
+const auth_codes = @import("auth_codes");
+const ERR_APIKEY_REVOKED = auth_codes.ERR_APIKEY_REVOKED;
 
 const log = logging.scoped(.api_keys);
 
