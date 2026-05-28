@@ -89,6 +89,7 @@ pub const ERR_INVALID_TOKEN_NAME = "UZ-AUTH-017";
 pub const ERR_INVALID_VERIFICATION_CODE = "UZ-AUTH-018";
 pub const ERR_INVALID_CIPHERTEXT = "UZ-AUTH-019";
 pub const ERR_INVALID_NONCE = "UZ-AUTH-020";
+pub const ERR_PLATFORM_ADMIN_REQUIRED = "UZ-AUTH-021";
 // API
 // WORKSPACE
 pub const ERR_WORKSPACE_NOT_FOUND = "UZ-WORKSPACE-001";
@@ -281,6 +282,33 @@ comptime {
                 @compileError("ERR_* constant not in REGISTRY: " ++ code);
             }
         }
+    }
+}
+
+// ── Comptime mirror-pin: auth_codes leaf must byte-match these codes ───────
+// The auth plane imports these via the `auth_codes` named module (it cannot
+// relative-import this file without breaking the test-auth portability gate).
+// That leaf duplicates the literals; this pin makes any drift a compile error.
+comptime {
+    const auth_codes = @import("auth_codes");
+    const pairs = .{
+        .{ ERR_FORBIDDEN, auth_codes.ERR_FORBIDDEN },
+        .{ ERR_UNAUTHORIZED, auth_codes.ERR_UNAUTHORIZED },
+        .{ ERR_TOKEN_EXPIRED, auth_codes.ERR_TOKEN_EXPIRED },
+        .{ ERR_AUTH_UNAVAILABLE, auth_codes.ERR_AUTH_UNAVAILABLE },
+        .{ ERR_INSUFFICIENT_ROLE, auth_codes.ERR_INSUFFICIENT_ROLE },
+        .{ ERR_UNSUPPORTED_ROLE, auth_codes.ERR_UNSUPPORTED_ROLE },
+        .{ ERR_PLATFORM_ADMIN_REQUIRED, auth_codes.ERR_PLATFORM_ADMIN_REQUIRED },
+        .{ ERR_APPROVAL_INVALID_SIGNATURE, auth_codes.ERR_APPROVAL_INVALID_SIGNATURE },
+        .{ ERR_WEBHOOK_SIG_INVALID, auth_codes.ERR_WEBHOOK_SIG_INVALID },
+        .{ ERR_WEBHOOK_TIMESTAMP_STALE, auth_codes.ERR_WEBHOOK_TIMESTAMP_STALE },
+        .{ ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED, auth_codes.ERR_WEBHOOK_CREDENTIAL_NOT_CONFIGURED },
+        .{ ERR_APIKEY_REVOKED, auth_codes.ERR_APIKEY_REVOKED },
+        .{ ERR_RUN_INVALID_RUNNER_TOKEN, auth_codes.ERR_RUN_INVALID_RUNNER_TOKEN },
+    };
+    for (pairs) |p| {
+        if (!std.mem.eql(u8, p[0], p[1]))
+            @compileError("auth_codes mirror drift: " ++ p[0]);
     }
 }
 

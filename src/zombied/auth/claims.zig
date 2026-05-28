@@ -19,6 +19,10 @@ pub const IdentityClaims = struct {
     role: ?[]u8,
     audience: ?[]u8,
     scopes: ?[]u8,
+    /// usezombie platform-operator flag. Read from the `platform_admin` boolean
+    /// claim (top-level or nested under metadata/custom_claims). Fail-closed:
+    /// absent or non-bool ⇒ false. A bool, so it carries no allocation.
+    platform_admin: bool,
 };
 
 const ClerkClaims = IdentityClaims;
@@ -34,6 +38,7 @@ const CLAIM_SCOPES = "scopes";
 const CLAIM_SCP = "scp";
 const CLAIM_AUD = "aud";
 const CLAIM_ROLE = "role";
+const CLAIM_PLATFORM_ADMIN = "platform_admin";
 
 // JWT claim namespace prefixes — these must match the identity provider's
 // custom claim configuration (Clerk/Auth0). Not user-configurable.
@@ -68,6 +73,7 @@ pub fn extractClerkClaims(alloc: std.mem.Allocator, claims_json: []const u8) !Cl
         .role = getClerkRole(parsed.value.object),
         .audience = getAudience(parsed.value.object),
         .scopes = try getScopesOwned(alloc, parsed.value.object),
+        .platform_admin = getClerkPlatformAdmin(parsed.value.object),
     });
 }
 
@@ -91,6 +97,7 @@ pub fn extractCustomClaims(alloc: std.mem.Allocator, claims_json: []const u8) !C
         .role = getCustomRole(parsed.value.object),
         .audience = getAudience(parsed.value.object),
         .scopes = try getScopesOwned(alloc, parsed.value.object),
+        .platform_admin = getCustomPlatformAdmin(parsed.value.object),
     });
 }
 
@@ -111,6 +118,7 @@ fn duplicateClaims(alloc: std.mem.Allocator, view: struct {
     role: ?[]const u8,
     audience: ?[]const u8,
     scopes: ?[]u8,
+    platform_admin: bool,
 }) !IdentityClaims {
     errdefer if (view.scopes) |v| alloc.free(v);
 
@@ -121,6 +129,7 @@ fn duplicateClaims(alloc: std.mem.Allocator, view: struct {
         .role = if (view.role) |v| try alloc.dupe(u8, v) else null,
         .audience = if (view.audience) |v| try alloc.dupe(u8, v) else null,
         .scopes = view.scopes,
+        .platform_admin = view.platform_admin,
     };
 }
 
@@ -152,6 +161,38 @@ fn getClerkRole(obj: std.json.ObjectMap) ?[]const u8 {
         NAMESPACE_DEV ++ CLAIM_ROLE,
         NAMESPACE_PROD ++ CLAIM_ROLE,
     }, &.{S_METADATA});
+}
+
+/// Read the `platform_admin` boolean claim, top-level or nested under metadata.
+/// Fail-closed: any absent, non-object, or non-bool value resolves to `false`.
+fn getClerkPlatformAdmin(obj: std.json.ObjectMap) bool {
+    return getFirstBool(obj, CLAIM_PLATFORM_ADMIN, &.{S_METADATA});
+}
+
+/// Custom-OIDC variant: the deployment's own identity provider is the trust
+/// root, so honor the bool from the common nest sites. Still fail-closed.
+fn getCustomPlatformAdmin(obj: std.json.ObjectMap) bool {
+    return getFirstBool(obj, CLAIM_PLATFORM_ADMIN, &.{ S_CUSTOM_CLAIMS, S_METADATA, S_APP_METADATA });
+}
+
+/// Look up a boolean claim at the top level, then in each nested object.
+/// Returns `false` unless a real JSON `true` is found (never coerces strings).
+fn getFirstBool(obj: std.json.ObjectMap, key: []const u8, nested_objects: []const []const u8) bool {
+    if (boolValue(obj, key)) |v| return v;
+    for (nested_objects) |nested| {
+        const child = obj.get(nested) orelse continue;
+        if (child != .object) continue;
+        if (boolValue(child.object, key)) |v| return v;
+    }
+    return false;
+}
+
+fn boolValue(obj: std.json.ObjectMap, key: []const u8) ?bool {
+    const v = obj.get(key) orelse return null;
+    return switch (v) {
+        .bool => |b| b,
+        else => null,
+    };
 }
 
 fn getCustomTenantId(obj: std.json.ObjectMap) ?[]const u8 {
@@ -621,4 +662,49 @@ test "extractCustomClaims returns null scopes for non-string array elements" {
         if (result.scopes) |v| std.testing.allocator.free(v);
     }
     try std.testing.expect(result.scopes == null);
+}
+
+fn freeClaims(result: IdentityClaims) void {
+    if (result.tenant_id) |v| std.testing.allocator.free(v);
+    if (result.org_id) |v| std.testing.allocator.free(v);
+    if (result.workspace_id) |v| std.testing.allocator.free(v);
+    if (result.role) |v| std.testing.allocator.free(v);
+    if (result.audience) |v| std.testing.allocator.free(v);
+    if (result.scopes) |v| std.testing.allocator.free(v);
+}
+
+test "extractClerkClaims parses platform_admin, fail-closed on absent/non-bool" {
+    const cases = [_]struct { json: []const u8, want: bool }{
+        // nested under metadata (the documented placement)
+        .{ .json = "{\"sub\":\"u\",\"iss\":\"i\",\"metadata\":{\"platform_admin\":true}}", .want = true },
+        // top-level boolean is honored too
+        .{ .json = "{\"sub\":\"u\",\"iss\":\"i\",\"platform_admin\":true}", .want = true },
+        // explicit false ⇒ false
+        .{ .json = "{\"sub\":\"u\",\"iss\":\"i\",\"metadata\":{\"platform_admin\":false}}", .want = false },
+        // absent ⇒ false (fail-closed)
+        .{ .json = "{\"sub\":\"u\",\"iss\":\"i\",\"metadata\":{\"tenant_id\":\"t\"}}", .want = false },
+        // a string "true" is NOT coerced ⇒ false
+        .{ .json = "{\"sub\":\"u\",\"iss\":\"i\",\"platform_admin\":\"true\"}", .want = false },
+    };
+    for (cases) |c| {
+        const result = try extractClerkClaims(std.testing.allocator, c.json);
+        defer freeClaims(result);
+        try std.testing.expectEqual(c.want, result.platform_admin);
+    }
+}
+
+test "extractCustomClaims parses platform_admin from custom_claims, fail-closed when absent" {
+    const present = try extractCustomClaims(
+        std.testing.allocator,
+        "{\"sub\":\"u\",\"iss\":\"i\",\"custom_claims\":{\"platform_admin\":true}}",
+    );
+    defer freeClaims(present);
+    try std.testing.expect(present.platform_admin);
+
+    const absent = try extractCustomClaims(
+        std.testing.allocator,
+        "{\"sub\":\"u\",\"iss\":\"i\",\"custom_claims\":{\"tenant_id\":\"t\"}}",
+    );
+    defer freeClaims(absent);
+    try std.testing.expect(!absent.platform_admin);
 }

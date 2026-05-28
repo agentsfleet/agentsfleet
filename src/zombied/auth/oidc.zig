@@ -38,6 +38,9 @@ pub const Principal = struct {
     role: ?[]u8,
     audience: ?[]u8,
     scopes: ?[]u8,
+    /// Platform-operator flag from the verified JWT. A bool, so it carries no
+    /// allocation and needs no free. Defaults false (fail-closed).
+    platform_admin: bool = false,
 };
 
 pub const Config = struct {
@@ -99,6 +102,7 @@ pub const Verifier = struct {
             .role = normalized.role,
             .audience = normalized.audience,
             .scopes = normalized.scopes,
+            .platform_admin = normalized.platform_admin,
         };
     }
 

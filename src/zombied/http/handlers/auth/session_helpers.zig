@@ -14,7 +14,7 @@ const hx_mod = @import("../hx.zig");
 const audit = @import("../../../auth/audit.zig");
 const audit_events = @import("../../../auth/audit_events.zig");
 const trusted_ip = @import("../../../auth/middleware/trusted_client_ip.zig");
-const session_store = @import("../../../auth/session_store_redis.zig");
+const session_store = @import("../../../session/session_store_redis.zig");
 
 const log = logging.scoped(.auth);
 const Sha256 = std.crypto.hash.sha2.Sha256;

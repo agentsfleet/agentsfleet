@@ -11,6 +11,7 @@
 #
 # Surfaces:
 #   - lint-zig                 (*.zig, schema/*.sql)
+#   - test-auth                (*.zig, schema/*.sql — src/zombied/auth/** portability gate)
 #   - lint-website             (ui/packages/website/*)
 #   - lint-app                 (ui/packages/app/*, design-system/* triggers both)
 #   - lint-design-system       (ui/packages/design-system/*)
@@ -39,6 +40,7 @@ gitleaks protect --staged --redact --verbose --no-banner
 staged="$(git diff --cached --name-only --diff-filter=ACMR)"
 
 needs_lint_zig=0
+needs_test_auth=0
 needs_lint_website=0
 needs_lint_app=0
 needs_lint_design_system=0
@@ -53,10 +55,12 @@ while IFS= read -r f; do
   [ -z "$f" ] && continue
   case "$f" in
     *.zig)
-      needs_lint_zig=1 ;;
+      needs_lint_zig=1
+      needs_test_auth=1 ;;
     schema/*.sql)
       needs_check_schema_gate=1
-      needs_lint_zig=1 ;;
+      needs_lint_zig=1
+      needs_test_auth=1 ;;
     public/openapi/*|public/openapi.json)
       needs_check_openapi=1 ;;
     ui/packages/website/*)
@@ -84,7 +88,7 @@ while IFS= read -r f; do
   esac
 done <<< "$staged"
 
-any_needed=$(( needs_lint_zig + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_zombiectl + needs_lint_shell + needs_check_openapi + needs_check_schema_gate + needs_check_gh_actions + needs_harness_only ))
+any_needed=$(( needs_lint_zig + needs_test_auth + needs_lint_website + needs_lint_app + needs_lint_design_system + needs_lint_zombiectl + needs_lint_shell + needs_check_openapi + needs_check_schema_gate + needs_check_gh_actions + needs_harness_only ))
 
 if [ "$any_needed" -eq 0 ]; then
   echo "pre-commit: no lint-relevant files staged, skipping harness-verify + targeted lint"
@@ -112,6 +116,7 @@ launch() {
 }
 
 [ "$needs_lint_zig"           = 1 ] && launch lint-zig            make lint-zig
+[ "$needs_test_auth"          = 1 ] && launch test-auth           zig build test-auth
 [ "$needs_lint_website"       = 1 ] && launch lint-website        make lint-website
 [ "$needs_lint_app"           = 1 ] && launch lint-app            make lint-app
 [ "$needs_lint_design_system" = 1 ] && launch lint-design-system  make lint-design-system

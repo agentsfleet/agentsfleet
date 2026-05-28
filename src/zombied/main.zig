@@ -218,9 +218,9 @@ test {
     _ = cli_commands;
     _ = @import("auth/claims.zig");
     _ = @import("auth/jwks.zig");
-    _ = @import("auth/session_store_redis_proto_test.zig");
-    _ = @import("auth/session_store_redis_integration_test.zig");
-    _ = @import("auth/session_store_redis_ttl_integration_test.zig");
+    _ = @import("session/session_store_redis_proto_test.zig");
+    _ = @import("session/session_store_redis_integration_test.zig");
+    _ = @import("session/session_store_redis_ttl_integration_test.zig");
     _ = @import("observability/trace.zig");
     _ = @import("observability/metrics_redis_pool.zig");
     _ = otel_logs;

@@ -116,6 +116,8 @@ pub const ENTRIES = [_]Entry{
         "ciphertext is missing or empty. Expect a base64url-encoded AES-256-GCM output."),
     e("UZ-AUTH-020", .bad_request, "Invalid nonce",
         "nonce is missing, empty, or the wrong length. Expect a base64url-encoded 12-byte value."),
+    e("UZ-AUTH-021", .forbidden, "Platform-admin privileges required",
+        "This action is restricted to usezombie platform operators. Your account does not carry platform-admin privileges."),
     // ── WORKSPACE ────────────────────────────────────────────────────────────
     e("UZ-WORKSPACE-001", .not_found, "Workspace not found",
         "Workspace not found. Verify the workspace ID."),

@@ -1,13 +1,10 @@
-# M4_001: Playbook — DEV Worker Bootstrap (`zombie-dev-worker-ant`)
+# DEV Worker Bootstrap (`zombie-dev-worker-ant`)
 
-**Milestone:** M4
-**Workstream:** 001
-**Updated:** Mar 27, 2026
+**Updated:** May 28, 2026
+**Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
 **Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
-Bootstrap the DEV bare-metal worker node so CI can deploy the `zombied worker` + `zombied-executor` processes autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required.
-
-**Current provider:** OVHCloud (Beauharnois CA). See `docs/spec/v2/M1_002_AUTOPROCURER_PROVIDER.md` for the multi-provider design that will replace step 0 entirely.
+Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `zombie-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services, `zombied-worker` + `zombied-executor`; the M80 cutover folded them into the single `zombie-runner` daemon.)
 
 Environment setup for all commands in this playbook:
 
@@ -146,14 +143,14 @@ All remaining steps use the Tailscale hostname `zombie-dev-worker-ant`.
 
 ## 3.0 Agent: Install Runtime Dependencies
 
-**Goal:** Packages required by `zombied` and `zombied-executor` at runtime are installed.
+**Goal:** Packages required by `zombie-runner` at runtime are installed.
 
 | Package | Required by | Why |
 |---------|------------|-----|
-| `bubblewrap` | `zombied-executor` | Sandbox isolation — `bwrap --unshare-all` for agent process namespacing |
-| `git` | `zombied-executor` | Clones repos into workspace for agent runs |
-| `ca-certificates` | `zombied` (worker + executor) | TLS connections to Upstash, PlanetScale, GitHub |
-| `openssl` | `zombied` (worker + executor) | TLS runtime libraries |
+| `bubblewrap` | `zombie-runner` | Sandbox isolation — `bwrap --unshare-all` for per-lease process namespacing |
+| `git` | `zombie-runner` | Clones repos into workspace for agent runs |
+| `ca-certificates` | `zombie-runner` | TLS connection to the zombied control plane |
+| `openssl` | `zombie-runner` | TLS runtime libraries |
 
 Landlock and cgroups v2 require **no packages** — Landlock uses raw syscalls (kernel 5.13+, included in Debian 12), cgroups v2 is the default hierarchy on Debian 12.
 
@@ -197,7 +194,7 @@ ssh -i <(printf '%s\n' "$KEY") -o StrictHostKeyChecking=no zombie-dev-worker-ant
 
 ## 4.0 Agent: Bootstrap `/opt/zombie/`
 
-**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh`, systemd units) are copied via scp, and `.env` is populated from vault.
+**Goal:** Server directory structure is created, repo deploy artifacts (`deploy.sh` + `zombie-runner.service`) are copied via scp, and `/opt/zombie/.env` is populated from vault with the three runner env vars the Option B daemon requires (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_TOKEN`, `RUNNER_HOST_ID`).
 
 ### 4.1 Create directory structure + copy deploy artifacts
 
@@ -211,40 +208,50 @@ SSH_OPTS="-i <(printf '%s\n' \"\$KEY\") -o StrictHostKeyChecking=no"
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
   "sudo mkdir -p /opt/zombie/{bin,deploy} && sudo chown -R ${USER}:${USER} /opt/zombie"
 
-# Copy deploy script and systemd units from repo
-scp $SSH_OPTS deploy/baremetal/deploy.sh     "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/deploy.sh"
-scp $SSH_OPTS deploy/baremetal/*.service     "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/"
+# Copy deploy script + the single runner systemd unit from repo
+scp $SSH_OPTS deploy/baremetal/deploy.sh             "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/deploy.sh"
+scp $SSH_OPTS deploy/baremetal/zombie-runner.service "${USER}@zombie-dev-worker-ant:/opt/zombie/deploy/"
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/deploy/deploy.sh"
 ```
 
-### 4.2 Populate `.env` from vault
+### 4.2 Populate `/opt/zombie/.env` from vault
 
 ```bash
-DB_URL=$(op read "op://$VAULT_DEV/planetscale-dev/worker-connection-string")
-REDIS_URL=$(op read "op://$VAULT_DEV/upstash-dev/worker-url")
-ENC_KEY=$(op read "op://$VAULT_DEV/encryption-master-key/credential")
-GH_APP_ID=$(op read "op://$VAULT_DEV/github-app/app-id")
-GH_APP_KEY=$(op read "op://$VAULT_DEV/github-app/private-key")
+# The runner daemon needs exactly three env vars (Option B contract):
+#   - ZOMBIE_API_URL       — control-plane base, dev: https://api-dev.usezombie.com
+#   - ZOMBIE_RUNNER_TOKEN  — pre-minted zrn_ token (vault field: runner-token)
+#   - RUNNER_HOST_ID       — stable machine identifier (reuse vault: hostname)
+#
+# A real zrn_ requires the platform-admin enrollment gate (M80_005) served by
+# a live dev control plane. Until that's wired, store a placeholder
+# (`zrn_FAKE_REPLACE_BEFORE_DEV_WORKER_READY_TRUE`) in the vault field so the
+# bootstrap structure verifies end-to-end — DEV_WORKER_READY must stay `false`
+# until the placeholder is swapped for a real admin-minted token.
+
+RUNNER_TOKEN=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/runner-token")
+HOST_ID=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/hostname")
+API_URL="https://api-dev.usezombie.com"
 
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << EOF
 cat > /opt/zombie/.env << 'ENVFILE'
-DATABASE_URL_WORKER=${DB_URL}
-REDIS_URL_WORKER=${REDIS_URL}
-ENCRYPTION_MASTER_KEY=${ENC_KEY}
-GITHUB_APP_ID=${GH_APP_ID}
-GITHUB_APP_PRIVATE_KEY=${GH_APP_KEY}
-ENVIRONMENT=dev
+ZOMBIE_API_URL=${API_URL}
+ZOMBIE_RUNNER_TOKEN=${RUNNER_TOKEN}
+RUNNER_HOST_ID=${HOST_ID}
 ENVFILE
 chmod 600 /opt/zombie/.env
 EOF
 ```
 
-### 4.3 Install systemd units
+The end-to-end provisioning above is also packaged as
+[`04_provision_runner_env.sh`](./04_provision_runner_env.sh) — run that for
+an idempotent one-shot (it also restarts `zombie-runner.service` and verifies
+it stays active).
+
+### 4.3 Install the systemd unit
 
 ```bash
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
-sudo cp /opt/zombie/deploy/zombied-executor.service /etc/systemd/system/
-sudo cp /opt/zombie/deploy/zombied-worker.service   /etc/systemd/system/
+sudo cp /opt/zombie/deploy/zombie-runner.service /etc/systemd/system/
 sudo systemctl daemon-reload
 REMOTE
 ```
@@ -253,60 +260,55 @@ REMOTE
 
 ```bash
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/*.service"
+  "stat -c '%a %n' /opt/zombie/deploy/deploy.sh /opt/zombie/.env /opt/zombie/deploy/zombie-runner.service"
 # Expected:
 #   755 /opt/zombie/deploy/deploy.sh
 #   600 /opt/zombie/.env
-#   644 /opt/zombie/deploy/zombied-executor.service
-#   644 /opt/zombie/deploy/zombied-worker.service
+#   644 /opt/zombie/deploy/zombie-runner.service
 
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/zombied-*.service"
+ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "ls /etc/systemd/system/zombie-runner.service"
 # Expected:
-#   /etc/systemd/system/zombied-executor.service
-#   /etc/systemd/system/zombied-worker.service
+#   /etc/systemd/system/zombie-runner.service
 ```
 
-**Gate check:** `SECTIONS=3 ./playbooks/gates/m4_001/run.sh`
+**Gate check:** run `./04_provision_runner_env.sh` — it verifies vault refs, writes the env file, restarts the service, and confirms `is-active`.
 
 ---
 
 ## 5.0 Agent: First Deploy + Activate CI
 
-**Goal:** First deploy runs end-to-end. Services stay up. CI gate is lifted.
+**Goal:** First deploy runs end-to-end. `zombie-runner.service` stays active. CI gate is lifted.
 
-After this step, all future deploys happen automatically via `deploy-dev.yml` on every push to `main`. The CI job (`deploy-dev-worker`) scp's freshly compiled binaries, the latest `deploy.sh`, and systemd units to the server — then calls `deploy.sh` to install and restart. No manual intervention needed after bootstrap.
+After this step, all future deploys happen automatically via `deploy-dev.yml` on every push to `main`. The CI job (`deploy-worker-dev`) scp's the freshly compiled `zombie-runner` binary, the latest `deploy.sh`, and `zombie-runner.service` to the server — then calls `deploy.sh runner` to install and restart. No manual intervention needed after bootstrap.
 
 ```bash
 KEY=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/ssh-private-key")
 USER=$(op read "op://$VAULT_DEV/zombie-dev-worker-ant/deploy-user")
 SSH_OPTS="-i <(printf '%s\n' \"\$KEY\") -o StrictHostKeyChecking=no"
 
-# Build binaries for linux/amd64
+# Build the runner binary for linux/amd64
 zig build -Doptimize=ReleaseSafe -Dtarget=x86_64-linux
 
-# scp binaries to server
-scp $SSH_OPTS zig-out/bin/zombied          "${USER}@zombie-dev-worker-ant:/opt/zombie/bin/zombied"
-scp $SSH_OPTS zig-out/bin/zombied-executor "${USER}@zombie-dev-worker-ant:/opt/zombie/bin/zombied-executor"
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/bin/*"
+# scp binary to server
+scp $SSH_OPTS zig-out/bin/zombie-runner "${USER}@zombie-dev-worker-ant:/opt/zombie/bin/zombie-runner"
+ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" "chmod +x /opt/zombie/bin/zombie-runner"
 
-# Deploy executor first (worker Requires= it), then worker
+# Deploy (single runner component)
 VERSION="bootstrap-$(date +%Y%m%d)"
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "sudo /opt/zombie/deploy/deploy.sh executor $VERSION /opt/zombie/bin/zombied-executor"
-ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" \
-  "sudo /opt/zombie/deploy/deploy.sh worker   $VERSION /opt/zombie/bin/zombied"
+  "sudo /opt/zombie/deploy/deploy.sh runner $VERSION /opt/zombie/bin/zombie-runner"
 
-# Verify systemd services
+# Verify
 ssh $SSH_OPTS "${USER}@zombie-dev-worker-ant" << 'REMOTE'
 sleep 3
-systemctl is-active zombied-executor
-systemctl is-active zombied-worker
-ls -l /run/zombie/executor.sock
-journalctl -u zombied-executor --no-pager -n 5
-journalctl -u zombied-worker   --no-pager -n 5
+systemctl is-active zombie-runner.service
+journalctl -u zombie-runner.service --no-pager -n 10
 REMOTE
 
-# Activate CI — set GitHub variable so deploy-dev-worker job runs on every push
+# Activate CI — flip the gate ONLY after the runner is verified active with a
+# real (non-placeholder) zrn_ runner-token in the vault. The placeholder shape
+# (zrn_FAKE_…) is rejected by deploy.sh and by the daemon's startup prefix check;
+# leaving the gate true with a placeholder would just produce a red deploy.
 gh variable set DEV_WORKER_READY --body "true" --repo usezombie/usezombie
 echo "CI activated. Next push to main will deploy to zombie-dev-worker-ant."
 ```
@@ -314,30 +316,27 @@ echo "CI activated. Next push to main will deploy to zombie-dev-worker-ant."
 ### Acceptance
 
 ```
-active                          <- zombied-executor running
-active                          <- zombied-worker running
-/run/zombie/executor.sock       <- executor socket exists
-<executor startup log lines>    <- no crash or panic
-<worker startup log lines>      <- connected to executor
-DEV_WORKER_READY set            <- CI guard lifted
+active                            <- zombie-runner.service running
+<runner startup log lines>        <- no MissingEnvVar / InvalidRunnerToken
+DEV_WORKER_READY set              <- CI guard lifted
 ```
 
-**Full gate check:** `./playbooks/gates/m4_001/run.sh` — runs all sections; must pass before CI activation.
+**Full gate check:** `./04_provision_runner_env.sh` — provisions the env file, restarts the service, confirms it stays active.
 
 ---
 
 ## What CI does after bootstrap
 
-Once `DEV_WORKER_READY=true` is set, every push to `main` triggers the `deploy-dev-worker` job in `deploy-dev.yml`. It automatically:
+Once `DEV_WORKER_READY=true` is set, every push to `main` triggers the `deploy-worker-dev` job in `deploy-dev.yml`. It automatically:
 
-1. Downloads freshly compiled `zombied` + `zombied-executor` binaries (from the `build-dev` job)
+1. Downloads the freshly compiled `zombie-runner` binary (from the `compile-dev` job)
 2. Joins the Tailscale network
-3. Runs `m4_001` gate section 3 (deploy readiness check)
-4. scp's binaries + `deploy/baremetal/deploy.sh` + `*.service` to the server
-5. Calls `deploy.sh executor` then `deploy.sh worker` with the local binary path
+3. Verifies worker host readiness (`03_deploy_readiness.sh`)
+4. scp's the binary + `deploy/baremetal/deploy.sh` + `zombie-runner.service` to the server
+5. Calls `sudo deploy.sh runner $VERSION /opt/zombie/bin/zombie-runner` with the local binary path
 6. Sends Discord notification on success/failure
 
-No manual steps after bootstrap — the server is fully CI-managed.
+No manual steps after bootstrap — the server is fully CI-managed. The env file (`/opt/zombie/.env`) is **not** rewritten by CI; it's host-resident state, provisioned once via section 4.0 and rotated only via the credential-rotation playbook.
 
 ---
 
@@ -348,9 +347,9 @@ No manual steps after bootstrap — the server is fully CI-managed.
 1.0  Agent: Verify SSH key from vault reaches server
 2.0  Agent: Install Tailscale + join tailnet (switch to hostname, drop public IP)
 3.0  Agent: Install runtime deps (bubblewrap, git, openssl, ca-certificates)
-4.0  Agent: scp deploy/baremetal/* -> /opt/zombie/deploy/, populate .env from vault, install systemd units
-5.0  Agent: Build + scp binaries, run deploy.sh (executor then worker), gh variable set DEV_WORKER_READY=true
+4.0  Agent: scp deploy/baremetal/{deploy.sh,zombie-runner.service} -> /opt/zombie/deploy/, provision /opt/zombie/.env (ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN + RUNNER_HOST_ID), install systemd unit
+5.0  Agent: Build + scp the zombie-runner binary, run deploy.sh runner, gh variable set DEV_WORKER_READY=true (only with a real zrn_ in vault)
 --- CI-automated after this point ---
 ```
 
-**PROD workers** follow the same sequence. Replace `ZMB_CD_DEV` -> `ZMB_CD_PROD`, `ENVIRONMENT=dev` -> `ENVIRONMENT=prod`, hostnames accordingly.
+**PROD workers** follow the same sequence. Replace `ZMB_CD_DEV` -> `ZMB_CD_PROD` and the hostnames accordingly. The runner-token vault field on the prod host entry must be admin-minted from the prod control plane; placeholders are dev-only.

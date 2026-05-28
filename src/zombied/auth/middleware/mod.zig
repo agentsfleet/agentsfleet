@@ -29,6 +29,7 @@ pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
 pub const runner_bearer = @import("runner_bearer.zig");
 pub const require_role = @import("require_role.zig");
+pub const platform_admin = @import("platform_admin.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
@@ -40,6 +41,7 @@ pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const TenantApiKey = tenant_api_key.TenantApiKey;
 pub const RunnerBearer = runner_bearer.RunnerBearer;
 pub const RequireRole = require_role.RequireRole;
+pub const PlatformAdmin = platform_admin.PlatformAdmin;
 pub const WebhookHmac = webhook_hmac.WebhookHmac;
 pub const SvixSignature = svix_signature_mod.SvixSignature;
 
@@ -60,6 +62,7 @@ pub const MiddlewareRegistry = struct {
     runner_bearer_mw: RunnerBearer,
     require_role_admin: RequireRole,
     require_role_operator: RequireRole,
+    platform_admin_mw: PlatformAdmin,
     webhook_hmac_mw: WebhookHmac,
 
     // ── Pre-built policy chains ────────────────────────────────────────────
@@ -73,6 +76,8 @@ pub const MiddlewareRegistry = struct {
     _admin_chain: [2]Middleware(AuthCtx) = undefined,
     // SAFETY: populated by initChains() before any policy method reads it.
     _operator_chain: [2]Middleware(AuthCtx) = undefined,
+    // SAFETY: populated by initChains() before any policy method reads it.
+    _platform_admin_chain: [2]Middleware(AuthCtx) = undefined,
     // SAFETY: populated by initChains() before any policy method reads it.
     _webhook_hmac_chain: [1]Middleware(AuthCtx) = undefined,
     // webhook_sig is generic over LookupCtx, so the host calls
@@ -100,6 +105,10 @@ pub const MiddlewareRegistry = struct {
         self._operator_chain = .{
             self.bearer_or_api_key.middleware(),
             self.require_role_operator.middleware(),
+        };
+        self._platform_admin_chain = .{
+            self.bearer_or_api_key.middleware(),
+            self.platform_admin_mw.middleware(),
         };
         self._webhook_hmac_chain = .{self.webhook_hmac_mw.middleware()};
         // _webhook_sig_chain is set by the host via setWebhookSig()
@@ -141,6 +150,14 @@ pub const MiddlewareRegistry = struct {
     /// Bearer token or admin API key, operator role required.
     pub fn operator(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
         return &self._operator_chain;
+    }
+
+    /// Bearer token or admin API key, plus the verified `platform_admin`
+    /// claim. The one policy that gates runner enrollment (`POST /v1/runners`):
+    /// only usezombie's platform operator passes; a tenant admin or any
+    /// `zmb_t_` api_key is rejected 403.
+    pub fn platformAdmin(self: *MiddlewareRegistry) []const Middleware(AuthCtx) {
+        return &self._platform_admin_chain;
     }
 
     /// HMAC-SHA256 body signature (approval/generic webhooks).

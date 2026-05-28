@@ -10,6 +10,7 @@ const S_NULLCLAW = "nullclaw";
 const S_ZOMBIED_TESTS = "zombied-tests";
 const S_LOG = "log";
 const S_HMAC_SIG = "hmac_sig";
+const S_AUTH_CODES = "auth_codes";
 const S_PG = "pg";
 const S_YAML = "yaml";
 const S_CONTRACT = "contract";
@@ -122,6 +123,11 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/zombied/crypto/hmac_sig.zig"),
     });
 
+    // Auth-plane error-code mirror leaf — see auth_codes.zig header.
+    const auth_codes_mod = b.createModule(.{
+        .root_source_file = b.path("src/zombied/errors/auth_codes.zig"),
+    });
+
     // ── Logging module ───────────────────────────────────────────────────────
     // Shared `log.scoped` API + pretty-printer + fatalStderr per
     // docs/LOGGING_STANDARD.md. Importable from every binary AND from
@@ -173,6 +179,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_SCHEMA, .module = schema_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+                .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
@@ -232,6 +239,7 @@ pub fn build(b: *std.Build) void {
                 .{ .name = S_SCHEMA, .module = schema_mod },
                 .{ .name = S_BUILD_OPTIONS, .module = build_opts.createModule() },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+                .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
                 .{ .name = S_COMMON, .module = common_mod },
@@ -257,6 +265,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "httpz", .module = httpz_mod },
                 .{ .name = S_HMAC_SIG, .module = hmac_sig_mod },
+                .{ .name = S_AUTH_CODES, .module = auth_codes_mod },
                 .{ .name = S_LOG, .module = log_mod },
                 .{ .name = S_CONTRACT, .module = contract_mod },
             },

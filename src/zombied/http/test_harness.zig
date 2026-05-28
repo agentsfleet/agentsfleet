@@ -21,7 +21,7 @@
 
 const std = @import("std");
 const pg = @import("pg");
-const session_store_redis = @import("../auth/session_store_redis.zig");
+const session_store_redis = @import("../session/session_store_redis.zig");
 const audit_events = @import("../auth/audit_events.zig");
 const oidc = @import("../auth/oidc.zig");
 const queue_redis = @import("../queue/redis.zig");
@@ -261,6 +261,7 @@ fn defaultRegistry(h: *TestHarness, cfg: Config) auth_mw.MiddlewareRegistry {
         .runner_bearer_mw = .{ .host = undefined, .lookup = stubRunnerLookup },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
+        .platform_admin_mw = .{},
         .webhook_hmac_mw = .{ .secret = "" },
     };
 }
