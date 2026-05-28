@@ -11,8 +11,8 @@
 const std = @import("std");
 const queue_redis = @import("../queue/redis.zig");
 const session_store_redis = @import("session_store_redis.zig");
-const session_state = @import("session_state.zig");
-const audit_events = @import("audit_events.zig");
+const session_state = @import("../auth/session_state.zig");
+const audit_events = @import("../auth/audit_events.zig");
 
 const SessionStore = session_store_redis.SessionStore;
 const VerifyOutcome = session_store_redis.VerifyOutcome;

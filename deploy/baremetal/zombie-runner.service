@@ -24,17 +24,20 @@ TimeoutStopSec=300
 KillMode=mixed
 
 # Required runner config — provisioned per host into the env file below by the
-# runner bootstrap playbook (never committed; the register token is a secret):
+# runner bootstrap playbook (never committed; the runner-token is a secret):
 #   ZOMBIE_API_URL       — zombied HTTPS API base, e.g. https://api.usezombie.com
-#   ZOMBIE_RUNNER_TOKEN  — admin-minted zmb_t_ API key authorizing POST /v1/runners;
-#                          consumed once at register(), which mints the runner-scoped
-#                          zrn_ runner_token used for every later call
-#   RUNNER_HOST_ID       — stable machine identifier
+#   ZOMBIE_RUNNER_TOKEN  — pre-minted `zrn_…` token (Option B): the platform
+#                          admin mints it via `POST /v1/runners` on the live
+#                          control plane and stores it in 1Password under
+#                          `…/zombie-…-worker-ant/runner-token`; the daemon
+#                          authenticates with it directly and NEVER self-registers
+#   RUNNER_HOST_ID       — stable machine identifier (reuse the host's vault
+#                          `hostname` field for consistency)
 #   (optional) RUNNER_SANDBOX_TIER (prod must override the dev_none default),
-#              RUNNER_LABELS, RUNNER_WORKSPACE_BASE
-# Bootstrap order (chicken-and-egg): the updated zombied serves POST /v1/runners,
-# so it must be deployed FIRST; then an admin mints the zmb_t_ key via that live
-# API and stores it in 1Password; only then can this runner enroll.
+#              RUNNER_WORKSPACE_BASE
+# Bootstrap order (chicken-and-egg): the updated zombied (with the platform-
+# admin enrollment gate) must be deployed FIRST; only then can an admin mint a
+# `zrn_` for this host. Until that's done, DEV_WORKER_READY stays `false`.
 EnvironmentFile=-/etc/default/zombie-runner
 
 # Ensure the sandbox runtime directory exists.

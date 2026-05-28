@@ -5,7 +5,7 @@ const events_bus = @import("../events/bus.zig");
 const oidc_auth = @import("../auth/oidc.zig");
 const http_server = @import("../http/server.zig");
 const http_handler = @import("../http/handler.zig");
-const session_store_redis = @import("../auth/session_store_redis.zig");
+const session_store_redis = @import("../session/session_store_redis.zig");
 const audit_events = @import("../auth/audit_events.zig");
 const queue_redis = @import("../queue/redis.zig");
 const auth_mw = @import("../auth/middleware/mod.zig");
@@ -257,6 +257,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         },
         .require_role_admin = .{ .required = .admin },
         .require_role_operator = .{ .required = .operator },
+        .platform_admin_mw = .{},
         .webhook_hmac_mw = .{ .secret = approval_signing_secret },
     };
     // M28_001: construct the generic WebhookSig with concrete *pg.Pool type.

@@ -106,6 +106,7 @@ pub const BearerOrApiKey = struct {
             .user_id = verified.subject,
             .tenant_id = verified.tenant_id,
             .workspace_scope_id = verified.workspace_id,
+            .platform_admin = verified.platform_admin,
         };
         return .next;
     }

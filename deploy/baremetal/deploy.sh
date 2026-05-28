@@ -115,9 +115,31 @@ sync_systemd_unit() {
 }
 
 sync_env() {
-  [[ -f "$ENV_FILE" ]] || return 0
+  [[ -f "$ENV_FILE" ]] \
+    || die "missing $ENV_FILE — provision via playbooks/006_worker_bootstrap_dev/04_provision_runner_env.sh (dev) or the equivalent prod path"
   cp "$ENV_FILE" "$ENV_DEST"
   log "Synced .env → ${ENV_DEST}"
+
+  # Fail loud when any required runner env var is absent. The daemon's own
+  # startup check (getRequired in src/runner/daemon/config.zig) would catch
+  # this too, but a 1/FAILURE systemd loop with `MissingEnvVar` is a confusing
+  # surface for an operator — die here with the specific missing keys instead.
+  local required=(ZOMBIE_API_URL ZOMBIE_RUNNER_TOKEN RUNNER_HOST_ID)
+  local missing=()
+  local k
+  for k in "${required[@]}"; do
+    grep -qE "^${k}=" "$ENV_DEST" || missing+=("$k")
+  done
+  if [[ ${#missing[@]} -gt 0 ]]; then
+    die "missing required runner env vars in $ENV_DEST: ${missing[*]}"
+  fi
+
+  # Reject the documented placeholder shape (`zrn_FAKE_…`). The daemon's prefix
+  # check only enforces `zrn_*`, which a placeholder satisfies — that would
+  # loop on 401s. Better to fail at deploy time with a clear cause.
+  if grep -qE '^ZOMBIE_RUNNER_TOKEN=zrn_FAKE' "$ENV_DEST"; then
+    die "ZOMBIE_RUNNER_TOKEN in $ENV_DEST is the placeholder; mint a real zrn_ via POST /v1/runners and update 1Password before re-running"
+  fi
 }
 
 # ── Service restart ──────────────────────────────────────────────────────────

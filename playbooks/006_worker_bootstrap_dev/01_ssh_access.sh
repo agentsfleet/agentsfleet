@@ -68,6 +68,9 @@ check_ref "op://$vault_dev/zombie-dev-worker-ant/ssh-private-key"
 check_ref "op://$vault_dev/zombie-dev-worker-ant/hostname"
 check_ref "op://$vault_dev/zombie-dev-worker-ant/tailscale-hostname"
 check_ref "op://$vault_dev/zombie-dev-worker-ant/deploy-user"
+# Pre-minted `zrn_…` (Option B) the runner daemon authenticates with directly.
+# Placeholder allowed until DEV_WORKER_READY flips back to true.
+check_ref "op://$vault_dev/zombie-dev-worker-ant/runner-token"
 
 # SSH connectivity test using vault key + tailscale-hostname
 echo "-- checking SSH connectivity"

@@ -1,34 +1,19 @@
-//! HTTP client the flag-gated walking skeleton uses to drive the `/v1/runners`
-//! control plane over loopback. It POSTs register/lease/report to a `zombied`
-//! instance (`127.0.0.1:<port>` in S0) using the same frozen `protocol` shapes
-//! the server speaks, so server and client cannot drift.
+//! HTTP client the host daemon uses to drive the `/v1/runners/me/*` control
+//! plane. It POSTs lease/heartbeat/report/activity to a `zombied` instance
+//! using the same frozen `protocol` shapes the server speaks, so server and
+//! client cannot drift. Enrollment is not a daemon concern (Option B): the
+//! operator pre-mints the `zrn_` and the daemon authenticates with it directly.
 //!
 //! Uses the high-level `std.http.Client.fetch` (cross-platform; the manual
 //! `open()`/`readVec()` path is Linux-broken under Zig 0.15). One client per
-//! call — register/lease/report are infrequent relative to a stage execution.
+//! call — these verbs are infrequent relative to a stage execution.
 
 const LoopbackClient = @This();
 
 /// Base origin of the control plane, e.g. `http://127.0.0.1:8080` (no path).
 base_url: []const u8,
-/// Operator/provisioner credential (`zmb_t_` api_key or Clerk JWT) that authorizes
-/// `register`. The minted runner token authorizes every later call.
-register_token: []const u8,
 
 pub const ClientError = error{ RequestFailed, BadStatus, MalformedResponse };
-
-/// POST /v1/runners → mint a runner token. Returns the token owned by `alloc`.
-pub fn register(self: LoopbackClient, alloc: Allocator, req: protocol.RegisterRequest) ![]u8 {
-    const payload = try std.json.Stringify.valueAlloc(alloc, req, .{});
-    defer alloc.free(payload);
-    const res = try self.post(alloc, protocol.PATH_RUNNERS, self.register_token, payload);
-    defer alloc.free(res.body);
-    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
-    const parsed = std.json.parseFromSlice(protocol.RegisterResponse, alloc, res.body, .{}) catch
-        return ClientError.MalformedResponse;
-    defer parsed.deinit();
-    return alloc.dupe(u8, parsed.value.runner_token);
-}
 
 /// POST /v1/runners/me/leases → the next event + resolved policy, or no-work.
 /// The whole tree (event envelope + secrets_map + budget) lives in the returned

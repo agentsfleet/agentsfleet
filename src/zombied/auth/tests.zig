@@ -17,11 +17,10 @@ test {
     _ = @import("principal.zig");
     _ = @import("rbac.zig");
     _ = @import("session_state.zig");
-    _ = @import("session_store_redis.zig");
-    _ = @import("session_store_redis_proto.zig");
-    _ = @import("session_store_redis_proto_test.zig");
-    _ = @import("session_store_redis_integration_test.zig");
-    _ = @import("session_store_redis_ttl_integration_test.zig");
+    // The redis-backed session store (session_store_redis*) lives in
+    // src/zombied/session/ — it depends on the queue/redis client and is NOT
+    // part of the extractable auth core. It runs under test-unit-zombied via
+    // src/main.zig, not this portability aggregator.
     _ = @import("middleware/chain.zig");
     _ = @import("middleware/mod.zig");
     _ = @import("middleware/auth_ctx.zig");

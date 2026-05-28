@@ -25,7 +25,7 @@ const error_codes = @import("../../../errors/error_registry.zig");
 const common = @import("../common.zig");
 const hx_mod = @import("../hx.zig");
 const audit_events = @import("../../../auth/audit_events.zig");
-const auth_sessions_store = @import("../../../auth/session_store_redis.zig");
+const auth_sessions_store = @import("../../../session/session_store_redis.zig");
 const trusted_ip = @import("../../../auth/middleware/trusted_client_ip.zig");
 const helpers = @import("session_helpers.zig");
 
