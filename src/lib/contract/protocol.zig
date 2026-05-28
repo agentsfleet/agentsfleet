@@ -26,6 +26,14 @@ const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
 // verbatim. Identity is the Bearer token, so the self-plane is `me` — no
 // runner_id ever appears in a path (mirrors `/v1/tenants/me/...`).
 pub const PATH_RUNNERS = "/v1/runners";
+
+/// Runner-token prefix — the wire contract for the machine principal. Single-
+/// sourced here (RULE UFS) because BOTH build graphs reference it: zombied mints
+/// + validates it (`runner_bearer.zig`, `register.zig`) and the host daemon
+/// validates the env-supplied token's prefix before the lease loop. The literal
+/// must stay `zrn_` verbatim — runner_bearer carries the pin test.
+pub const RUNNER_TOKEN_PREFIX = "zrn_";
+
 pub const PATH_RUNNER_HEARTBEATS = PATH_RUNNERS ++ "/me/heartbeats";
 pub const PATH_RUNNER_LEASES = PATH_RUNNERS ++ "/me/leases";
 pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
