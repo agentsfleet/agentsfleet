@@ -1,6 +1,8 @@
 //! `zombie-runner` — host-resident runner daemon, parent event-leasing loop.
-//! register() once → heartbeat/lease/execute/report/activity loop. Transport
-//! errors back off without crashing; un-acked leases re-deliver via reclaim.
+//! Boot from the operator-installed `zrn_` (env `ZOMBIE_RUNNER_TOKEN`) straight
+//! into the heartbeat/lease/execute/report/activity loop — the host never
+//! self-registers (Option B). Transport errors back off without crashing;
+//! un-acked leases re-deliver via reclaim.
 //! Each lease runs in a forked, sandboxed child; the child streams live-tail
 //! `activity` frames over the pipe, which the parent forwards to the control plane.
 
@@ -86,31 +88,14 @@ pub fn main() void {
         },
     };
 
-    const cp = client_mod{ .base_url = cfg.control_plane_url, .register_token = cfg.register_token };
-    const runner_token: []u8 = registerWithRetry(alloc, cp, cfg);
-    defer alloc.free(runner_token);
+    // Option B: the env-supplied `zrn_` IS this runner's identity (prefix-
+    // validated in Config.load). No register call — go straight to the loop.
+    const cp = client_mod{ .base_url = cfg.control_plane_url };
+    const runner_token: []const u8 = cfg.runner_token;
 
     installDrainHandlers();
     runLoop(alloc, cp, runner_token, cfg);
     log.info("runner_exit", .{});
-}
-
-/// POST register with infinite retry + backoff until the control plane responds.
-fn registerWithRetry(alloc: std.mem.Allocator, cp: client_mod, cfg: Config) []u8 {
-    const reg_req = protocol.RegisterRequest{
-        .host_id = cfg.host_id,
-        .sandbox_tier = sandboxTierFromStr(cfg.sandbox_tier),
-        .labels = cfg.labels,
-    };
-    while (true) {
-        const tok = cp.register(alloc, reg_req) catch |err| {
-            log.err("register_failed", .{ .err = @errorName(err) });
-            sleepMs(TRANSPORT_ERROR_BACKOFF_MS);
-            continue;
-        };
-        log.info("registered", .{});
-        return tok;
-    }
 }
 
 /// SIGTERM/SIGINT → request graceful drain. Async-signal-safe: a lone atomic

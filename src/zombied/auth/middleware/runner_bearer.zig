@@ -24,12 +24,14 @@ const bearer = @import("bearer.zig");
 const errors = @import("errors.zig");
 const api_key = @import("../api_key.zig");
 const logging = @import("log");
+const contract = @import("contract");
 
 pub const AuthCtx = auth_ctx.AuthCtx;
 
-/// The runner-token prefix. Single-sourced here and reused verbatim by the
-/// register handler that mints the token (RULE UFS).
-pub const RUNNER_TOKEN_PREFIX = "zrn_";
+/// The runner-token prefix. Single-sourced in the shared `contract` module
+/// (RULE UFS) so the host daemon's config validator references the same literal;
+/// re-exported here for the register handler + this middleware. Pin-tested below.
+pub const RUNNER_TOKEN_PREFIX = contract.protocol.RUNNER_TOKEN_PREFIX;
 
 const log = logging.scoped(.runner_auth);
 
