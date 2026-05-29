@@ -4,11 +4,11 @@
 **Milestone:** M80
 **Workstream:** 009
 **Date:** May 29, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — runner-enablement blocker: a platform-managed zombie is billed as if usezombie supplies the Large Language Model (LLM) key, but the hermetic runner never receives it, so platform-managed execution can't authenticate to the provider.
 **Categories:** API
 **Batch:** B1
-**Branch:** {feat/mNN-name — added when work begins}
+**Branch:** feat/m80-009-provider-key
 **Depends on:** M80_002 (cutover — establishes the runner execution path this rides; the lease + `ExecutionPolicy` wire it touches)
 **Provenance:** LLM-drafted (Opus 4.8, May 29, 2026 — from the M80_005 PR #351 open finding + a code-verified investigation on `main`)
 
