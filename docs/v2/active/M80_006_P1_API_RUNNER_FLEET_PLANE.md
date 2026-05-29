@@ -4,11 +4,11 @@
 **Milestone:** M80
 **Workstream:** 006
 **Date:** May 27, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — operators can't see/revoke runners, dead runners are only reclaimed lazily after the TTL, and any agent running longer than 30s is killed + redone (the renewal gap M80_002 ships with).
 **Categories:** API
 **Batch:** B1
-**Branch:** {feat/mNN-name — added when work begins}
+**Branch:** feat/m80-006-fleet-plane
 **Depends on:** M80_002 (lease/fencing/reclaim + the activity stream this renews from), M80_005 (trust fields the inventory surfaces)
 **Provenance:** agent-generated (Opus 4.7, May 27, 2026 — from `runner_fleet.md` S5 + the M80_002 §6 renewal-gap gating decision)
 
