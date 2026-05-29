@@ -25,6 +25,10 @@ Today agent keys (`zmb_`) authenticate via a bespoke handler-local lookup (`inte
 - **Dashboard token model** — the Backend-For-Frontend (BFF) direction. Deferred; detail currently lives in `AUTH.md` and should move here or into its own spec when revisited.
 - **Open fleet (mode C)** — self-enrolling runners. See [`runner_fleet.md`](./runner_fleet.md).
 
+## Runner resilience — deferred to the Zig 0.16 toolchain bump
+
+- **Control-plane read-timeout** — the runner drives every `/v1/runners/me/*` call through `std.http.Client.fetch` in `src/runner/daemon/control_plane_client.zig` (`post`), which exposes **no timeout knob in Zig 0.15.2**. A hung control plane therefore wedges the runner until the operating-system socket timeout eventually fires. The native fix is `fetch`'s `timeout` field, which first lands in **Zig 0.16** (`std.http.Client` gains `timeout: Io.Timeout`) — wire it at the `post` call site when the toolchain bumps. The only in-0.15.2 alternatives were rejected as heavier than the gap: a detached-thread watchdog with a leaked, self-cleaning result mailbox (use-after-free hazard the moment it shares the per-call request arena), or the manual `open()`/`readVec()` socket path that is Linux-broken under 0.15. Interim guard: the boot-path watchdog in `src/runner/daemon/loop.zig` bounds the test only, not production. Surfaced during M80_005 (PR #351).
+
 ## Bastion — post-MVP shape
 
 Where the v2 wedge points after launch. Not part of v2; documented so spec authors don't foreclose it.

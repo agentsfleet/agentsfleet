@@ -97,14 +97,14 @@ The release pipeline deploys in three stages:
 1. Load tailscale authkey + Discord webhook from 1Password
 2. Parse the first entry from `PROD_WORKER_HOSTS` GitHub variable
 3. Load that host's SSH key dynamically from vault (`op://$VAULT_PROD/<vault_key>/ssh-private-key`)
-4. Join tailnet, SSH to canary host, run `deploy.sh executor` then `deploy.sh worker`
-5. `deploy.sh` now **drains the worker gracefully** before restart: sends SIGTERM, watches journalctl for `worker.drain_complete` or `worker.drain_timeout` log lines (up to 300s), then restarts
+4. Join tailnet, SSH to canary host, run `deploy.sh runner <version>`
+5. `deploy.sh` **drains the runner gracefully** before restart via `systemctl stop` (SIGTERM with a timeout — the runner finishes its in-flight lease, then exits; SIGKILL fallback on timeout), then restarts the unit
 
 ### 3.3 `deploy-prod-fleet` — Remaining Hosts (Approval Gate)
 
 1. Requires manual approval via the `production-fleet` GitHub environment
 2. Loops sequentially over remaining hosts in `PROD_WORKER_HOSTS` (index 1+)
-3. Each host: load SSH key from vault → drain → deploy executor → deploy worker → verify healthy
+3. Each host: load SSH key from vault → drain → deploy runner → verify healthy
 4. Posts fleet-level Discord summary with per-host ✅/❌ status
 
 ### 3.4 `PROD_WORKER_HOSTS` Variable Format
@@ -178,7 +178,7 @@ Confirm:
 
 - `release.yml` fully green: binaries, docker, npm, GitHub Release, deploy-prod-api, deploy-prod-canary, deploy-prod-fleet all pass
 - PROD `/healthz` and `/readyz` green
-- workers drained gracefully then redeployed over Tailscale SSH; `zombied-executor` + `zombied-worker` systemd services active; run queue consumed
+- runner hosts drained gracefully then redeployed over Tailscale SSH; `zombie-runner` systemd service active; lease queue consumed
 - canary host verified healthy before fleet approval gate
 - CLI PROD smoke complete (§6.0)
 - evidence recorded (see M7_003_PROD_ACCEPTANCE.md §9.0)

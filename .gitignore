@@ -1,6 +1,7 @@
 zig-out/
 zig-cache/
 .zig-cache/
+*.o
 /dist/
 .env
 .env.*

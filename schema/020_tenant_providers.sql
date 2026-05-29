@@ -32,5 +32,6 @@ CREATE INDEX IF NOT EXISTS idx_tenant_providers_mode
 -- api_runtime: GET/PUT/DELETE /v1/tenants/me/provider.
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.tenant_providers TO api_runtime;
 
--- worker_runtime: resolveActiveProvider reads on every event during processEvent.
+-- worker_runtime: grant predates the cutover; resolveActiveProvider now runs in
+-- zombied at lease issue. This grant retires with the worker role.
 GRANT SELECT ON core.tenant_providers TO worker_runtime;
