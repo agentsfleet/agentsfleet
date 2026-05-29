@@ -30,8 +30,9 @@ Bearer token: Authorization: Bearer <api_key>
 ## Execution model
 A Zombie is a long-lived, event-driven autonomous worker scoped to a workspace.
 Inbound events arrive via `POST /v1/webhooks/{zombie_id}` (or other configured
-triggers) and are appended to the Zombie's event stream. The worker watcher
-dispatches each event to the Zombie's loop, which can call tools, update state,
+triggers) and are appended to the Zombie's event stream. The control plane
+(`zombied`) assigns each event to a host-resident `zombie-runner` via a lease;
+the runner runs the Zombie's loop, which can call tools, update state,
 and emit further events. Operators steer or kill running Zombies through the
 control-plane endpoints above.
 

@@ -33,7 +33,7 @@ Define a zombie in Markdown, connect a webhook, and get a Slack diagnosis on you
 
 | Directory | What |
 |---|---|
-| `src/` | Control plane — Zig backend, HTTP server, worker runtime |
+| `src/` | Zig backend — `zombied` control plane (HTTP, leases) + `zombie-runner` execution daemon |
 | `ui/packages/app/` | Dashboard — Next.js, Clerk auth |
 | `ui/packages/website/` | Marketing site — [usezombie.com](https://usezombie.com) |
 | `ui/packages/design-system/` | Shared UI components |
@@ -77,7 +77,7 @@ Bootstrap steps and coding conventions live in [`playbooks/`](playbooks/) and [`
 
 | Repo | What |
 |---|---|
-| [usezombie/usezombie](https://github.com/usezombie/usezombie) | Control plane + worker + CLI (this repo) |
+| [usezombie/usezombie](https://github.com/usezombie/usezombie) | Control plane + runner + CLI (this repo) |
 | [usezombie/docs](https://github.com/usezombie/docs) | User docs ([docs.usezombie.com](https://docs.usezombie.com)) |
 | [usezombie/skills](https://github.com/usezombie/skills) | Agent skill libraries |
 | [usezombie/posthog-zig](https://github.com/usezombie/posthog-zig) | PostHog SDK for Zig |

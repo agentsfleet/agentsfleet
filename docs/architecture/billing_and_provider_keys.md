@@ -4,7 +4,7 @@
 
 How users pay for what they run, and how the runtime stays neutral between two cost realities: us paying the language-model provider, or the user paying the language-model provider directly.
 
-This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the executor + worker path, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
+This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the control plane's lease path (`zombied`) and the runner's NullClaw child, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
 The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **stage** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
@@ -18,8 +18,8 @@ One persona carries the worked examples through this doc and the scenarios: **Jo
 
 A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
 
-- **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** usezombie routes platform-managed inference through the **admin tenant's self-managed credential**. The `usezombie-admin` user (one global account per environment, bootstrapped via [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's self-managed uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At resolution time the worker follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays usezombie a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
-- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. usezombie's executor uses that key to call the provider's API. The user pays their provider directly for inference; usezombie charges a smaller flat orchestration fee per event with no token markup.
+- **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** usezombie routes platform-managed inference through the **admin tenant's self-managed credential**. The `usezombie-admin` user (one global account per environment, bootstrapped via [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's self-managed uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`zombied`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays usezombie a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
+- **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. The runner's NullClaw child uses that key to call the provider's API. The user pays their provider directly for inference; usezombie charges a smaller flat orchestration fee per event with no token markup.
 
 **Why Fireworks Kimi K2.6 is the v2.0 platform default.** Kimi K2.6 is a strong general-purpose model with a 256K context window at significantly cheaper wholesale than Anthropic Sonnet or OpenAI GPT-class. Fireworks is OpenAI-compatible (NullClaw routes through `compatible.zig`), so the same code path serves both postures — under platform it dials Fireworks with the api_key the admin tenant provisioned via `PUT /v1/admin/platform-keys`; under self-managed it dials Fireworks (or any other provider in the catalogue) with the user's own key. The runtime is uniform; only which workspace's vault holds the key (and the cost-function-vs-flat-fee distinction) differs.
 
@@ -62,16 +62,16 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
 | 1 | **Receive** | Right after `INSERT zombie_events (status='received')` and the gate passes | `computeReceiveCharge(posture)` = `EVENT_NANOS` | No today — both postures use the same `EVENT_NANOS` constant. Function signature keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
-| 2 | **Stage** | Right before `executor.startStage` is invoked | `computeStageCharge(posture, model, in_tok, out_tok)` | Yes — platform: `STAGE_PLATFORM_NANOS` + per-token cost from the model-caps cache. self-managed: flat `STAGE_SELF_MANAGED_NANOS`. |
+| 2 | **Stage** | At lease issue, before the runner executes (pre-execution estimate) | `computeStageCharge(posture, model, in_tok, out_tok)` | Yes — platform: `STAGE_PLATFORM_NANOS` + per-token cost from the model-caps cache. self-managed: flat `STAGE_SELF_MANAGED_NANOS`. |
 
 Why two debit points and not one:
 
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
-- **Stage captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the executor RPC, the sandbox setup, and the StageResult plumbing.
+- **Stage captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
 Each debit produces its own row in `core.zombie_execution_telemetry` with a `charge_type` discriminator (`'receive'` or `'stage'`). One event → two telemetry rows. This is auditable: a quarterly question like "what fraction of last month's revenue came from receive overhead vs LLM markup" is a one-line SQL query.
 
-The stage debit happens **before** `startStage` returns. We deduct on the conservative side — using the worst-case input-token estimate from the prompt size — and then the post-execution telemetry update reconciles to the actual token count. If the actual usage is lower than the estimate, the difference is *not* refunded in v2.0; the conservative estimate is the charge. (Refund-on-actual is a v3 candidate; today it would add reconciliation complexity for marginal accuracy gains.)
+The stage debit happens at lease issue, **before** the runner executes. We deduct on the conservative side — using the worst-case input-token estimate from the prompt size — and then the post-execution telemetry update (at report) reconciles to the actual token count. If the actual usage is lower than the estimate, the difference is *not* refunded in v2.0; the conservative estimate is the charge. (Refund-on-actual is a v3 candidate; today it would add reconciliation complexity for marginal accuracy gains.)
 
 ---
 
@@ -99,7 +99,7 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
 }
 ```
 
-Receive is a single named constant, `EVENT_NANOS`, defined in `src/state/tenant_billing.zig`. Both postures currently resolve to the same value via this function; the `posture` parameter stays on the signature so a future ratchet can re-introduce asymmetry without touching callers. The function shape is what matters: posture-aware, plan-independent, plumbed through `processEvent`. Live value lives in the source — read it there; pin tests lock it.
+Receive is a single named constant, `EVENT_NANOS`, defined in `src/state/tenant_billing.zig`. Both postures currently resolve to the same value via this function; the `posture` parameter stays on the signature so a future ratchet can re-introduce asymmetry without touching callers. The function shape is what matters: posture-aware, plan-independent, plumbed through the lease path (`leaseNext` / `runBilling`). Live value lives in the source — read it there; pin tests lock it.
 
 ### 4.2 Stage charge
 
@@ -131,7 +131,7 @@ The gradient between the two stage constants is the friction-reducing signal the
 
 `lookup_model_rate` reads from a process-local cache populated on API server start (and refreshed when the model-caps endpoint updates). The model-caps endpoint is the single source of truth; the API server caches it to keep `computeStageCharge` synchronous and free of network calls in the hot path.
 
-`std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach `processEvent` — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want to crash the worker, alert, and investigate, not silently use a default.
+`std.debug.panic` under platform is correct: a model that's not in the catalogue should never reach the lease path's billing — it would have been rejected at `tenant provider set` time (`400 model_not_in_caps_catalogue`) or at install-skill frontmatter generation. Reaching `computeStageCharge` with an unknown model is an internal inconsistency; we want `zombied` to fail the lease loudly, alert, and investigate, not silently use a default.
 
 ### 4.3 What an event costs — by shape, not by number
 
@@ -161,7 +161,7 @@ One named constant for each posture's flat overhead, one named constant for rece
 
 ## 5. The balance gate — code path
 
-`processEvent` runs both the gate and both debits. Single code path for both postures.
+`runBilling` (on the lease path, in `zombied`) runs both the gate and both debits. Single code path for both postures.
 
 ```mermaid
 flowchart TD
@@ -176,8 +176,8 @@ flowchart TD
     G -->|blocked| Wait[gate_blocked until<br/>user resumes]
     G -->|pass| H[Resolve secrets_map]
     H --> I[DEDUCT STAGE<br/>UPDATE balance_nanos -=<br/>compute_stage_charge<br/>INSERT telemetry charge_type=stage]
-    I --> J[executor.createExecution<br/>+ startStage]
-    J --> K[StageResult]
+    I --> J[Issue lease<br/>runner forks NullClaw child]
+    J --> K[Runner reports result]
     K --> L[UPDATE zombie_events<br/>SET status=processed<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
     L --> X2([XACK])
 ```
@@ -185,7 +185,7 @@ flowchart TD
 Properties:
 
 - **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the stage portion.
-- **Two deductions, two telemetry rows, in transaction.** Receive deduct + telemetry insert is one transaction; stage deduct + telemetry insert is another. If the worker crashes between them, the receive-row is the durable record that the receive overhead was charged; on retry the gate re-runs and either passes (still in credit) or blocks (not enough left for the stage portion).
+- **Two deductions, two telemetry rows, in transaction.** Receive deduct + telemetry insert is one transaction; stage deduct + telemetry insert is another. If `zombied` crashes between them, the receive-row is the durable record that the receive overhead was charged; on retry the gate re-runs and either passes (still in credit) or blocks (not enough left for the stage portion).
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
 
@@ -249,18 +249,18 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 **The api_key MAY exist in:**
 
 - `core.vault` rows (encrypted at rest via M45's tenant-scoped data key).
-- Server-side process memory — return value of `tenant_provider.resolveActiveProvider`, the executor session, the per-call HTTP client.
+- Server-side process memory — return value of `tenant_provider.resolveActiveProvider` (in `zombied`), the runner's NullClaw session, the per-call HTTP client.
 - Outbound HTTPS request headers to the LLM provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**
 
 - HTTP response bodies — `zombiectl doctor --json` output, `GET /v1/tenants/me/provider`, any other JSON the user sees.
-- Logs — worker, executor, structured logs, request logs.
-- The agent's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (`executor.startStage`, not `secrets_map`).
+- Logs — `zombied`, runner, structured logs, request logs.
+- The agent's tool context — placeholders are substituted *after* sandbox entry by the tool bridge; the provider key is on a different path entirely (the runner's NullClaw uses it for the inference call only, never via `secrets_map`).
 - Persisted event rows — `core.zombie_events`, `zombie_execution_telemetry`, anything else under `core.*`.
 - User-facing artefacts — frontmatter, the dashboard, CLI table output, status-page bodies.
 
-The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, worker logs, executor logs, and HTTP responses for the api_key bytes after a self-managed run is a CI-level invariant (M48 acceptance criteria).
+The boundary is "process-internal vs user-facing," not "in memory vs not in memory." A grep across the event log, `zombied` logs, runner logs, and HTTP responses for the api_key bytes after a self-managed run is a CI-level invariant (M48 acceptance criteria).
 
 ---
 

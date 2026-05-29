@@ -118,8 +118,10 @@ Delivers a reproducible build that cross-compiles both binaries for both arches 
 
 Delivers operator subcommands on the runner binary (enroll / status / doctor) that speak the frozen contract over the same endpoint flag `zombiectl` uses. Why: operators need to enroll and inspect a host without hand-crafting HTTP.
 
+> **Option B reconciliation (M80_005).** `enroll` is an **operator** action, not the daemon self-registering. The host daemon never calls `POST /v1/runners` on boot — it reads a pre-minted `zrn_` from `ZOMBIE_RUNNER_TOKEN` and goes straight to the lease loop (M80_005 §3). `zombie-runner enroll` is the operator-run convenience that calls `POST /v1/runners` (now gated by the `platform_admin` claim — M80_005 §2) and writes the env file; it must authenticate with a platform-admin Clerk JWT, and a tenant `admin`/`zmb_t_` caller gets `403`. See `docs/AUTH.md` (Runner token → Provisioning).
+
 - **Dimension 3.1** — `zombie-runner status` reports registration + current lease state as human text, and as JSON when stdout is piped → Test `test_runner_cli_status_human_and_json`
-- **Dimension 3.2** — `zombie-runner enroll` mints/stores the runner token via the contract and writes the env file; a transport failure returns a structured error with a `suggestion` → Test `test_runner_cli_enroll_structured_error`
+- **Dimension 3.2** — `zombie-runner enroll` (operator-run, platform-admin Clerk JWT) mints/stores the runner token via the contract and writes the env file; a non-platform-admin caller gets `403` and a transport failure returns a structured error with a `suggestion` → Test `test_runner_cli_enroll_structured_error`
 
 ---
 
@@ -127,7 +129,7 @@ Delivers operator subcommands on the runner binary (enroll / status / doctor) th
 
 ```
 zombie-runner status   [--endpoint URL] [--json]   → registration + lease state
-zombie-runner enroll   --endpoint URL              → POST /v1/runners (mints zrn_), writes /etc/default/zombie-runner
+zombie-runner enroll   --endpoint URL              → operator-run; POST /v1/runners (platform_admin JWT, mints zrn_), writes /etc/default/zombie-runner. NOT called by the daemon on boot (Option B)
 zombie-runner doctor   [--endpoint URL]            → preflight: env present, control plane reachable, sandbox tier appliable
 
 Seatbelt backend (internal):

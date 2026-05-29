@@ -23,7 +23,7 @@ The runner fleet is an **execution plane**: stateless runners lease work, run it
 
 ### Runners are cattle, not pets
 
-A runner has no durable identity that the system depends on. It registers, leases, runs, reports, and may vanish at any moment; the control plane notices via lease expiry and hands the work to whichever runner leases next. There is no runner the fleet cannot lose. Sticky routing (below) is a *performance hint*, never ownership — correctness never blocks on one runner being alive.
+A runner has no durable identity that the system depends on. It is enrolled once by the operator, then leases, runs, reports, and may vanish at any moment; the control plane notices via lease expiry and hands the work to whichever runner leases next. There is no runner the fleet cannot lose. Sticky routing (below) is a *performance hint*, never ownership — correctness never blocks on one runner being alive.
 
 ## Failure recovery model
 
@@ -70,9 +70,9 @@ The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that
         BEFORE (deleted)                            NOW (this doc + data_flow.md)
  ┌──────── ONE TRUST ZONE ─────────┐    ┌─ PLATFORM ──┐      ┌─ HOST (bare metal / Mac / pod) ─┐
  │ zombied serve ─┐  PG, Vault      │    │ zombied     │      │ zombie-runner  (one binary)     │
- │                ▼                 │    │ control     │◀────▶│  parent loop: register,         │
- │ PG ◀─ 15 writes ─ zombied worker │    │ plane:      │HTTPS │  heartbeat, lease, report,      │
- │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  activity                       │
+ │                ▼                 │    │ control     │◀────▶│  parent loop: heartbeat,        │
+ │ PG ◀─ 15 writes ─ zombied worker │    │ plane:      │HTTPS │  lease, report, activity        │
+ │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  (boots from pre-minted zrn_)   │
  │                │ Unix-socket RPC │    │ Redis +     │ zrn_ │    │ fork + sandbox per event    │
  │                ▼                 │    │ Vault API + │      │    ▼                            │
  │           zombied-executor       │    │ assignment  │      │  sandboxed child: NullClaw      │
@@ -104,34 +104,38 @@ Five verbs. `zombied` translates them into the Postgres writes and Redis stream 
 
 | Verb | Path | Auth | Handler | Purpose |
 |---|---|---|---|---|
-| `register` | `POST /v1/runners` | `Bearer` Clerk JWT **or** `zmb_t_` api_key | `runner/register.zig` | exchange a human/service credential for a durable `runner_token` (`zrn_`); record `host_id`, `sandbox_tier`, `labels` |
+| `register` | `POST /v1/runners` | `Bearer` Clerk JWT carrying `platform_admin` | `runner/register.zig` | platform operator mints a durable `runner_token` (`zrn_`) for a host; record `host_id`, `sandbox_tier`, `labels`. Tenant `admin` JWT / `zmb_t_` api_key → `403`. The host does not call this — the operator does, then installs the `zrn_` |
 | `heartbeat` | `POST /v1/runners/me/heartbeats` | `Bearer zrn_` | `runner/heartbeat.zig` | liveness; reply carries `status` (`ok` / `drain` / `stop`) and any revoked lease IDs |
 | `lease` | `POST /v1/runners/me/leases` | `Bearer zrn_` | `runner/lease.zig` | long-poll for the next event; reply carries the event, resolved config, secrets, `lease_id`, `fencing_token` — or `null` + `retry_after_ms` |
 | `report` | `POST /v1/runners/me/reports` | `Bearer zrn_` | `runner/report.zig` | terminal result for a lease; `zombied` persists + `XACK`s after a fencing check |
 | `activity` | `POST /v1/runners/me/leases/{lease_id}/activity` | `Bearer zrn_` | `runner/activity.zig` | write-only progress stream for the live tail; best-effort, no ack |
 
-`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human/service* credential; everything else is authed by the machine credential it returns. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). The Java Web Token (JWT) and `zmb_t_` api_key paths for `register` are both gated by the standard bearer-routing middleware.
+`me` resolves from the token — no `runner_id` in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints. Identity and auth are covered in [`../AUTH.md`](../AUTH.md) (the runner is the first machine principal). `register` is gated by the `platform_admin` claim — only usezombie's platform operator may enroll a host into the shared fleet — so a tenant `admin` JWT or a `zmb_t_` api_key is rejected `403`.
 
 ## Registering a runner
 
-A runner needs a `zrn_` token before it can pull work. It gets one by calling `register` **on startup** with a *bootstrap* credential it reads from the `ZOMBIE_RUNNER_TOKEN` env var — a `zmb_t_` admin api_key (an automated provisioner) or a Clerk JWT (an operator). `register` mints the `zrn_`, which the runner holds **in process memory** for the rest of the loop and re-mints on restart (the `zrn_` is never written to disk). There is no separate admin endpoint and no enrollment token; the caller must hold **admin role**. The open-fleet, self-enrolling case is mode C, later.
+A runner needs a `zrn_` token before it can pull work. The **platform operator pre-mints it** and installs it on the host — the host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model). The operator calls `register` once with a Clerk JWT carrying `platform_admin`; `zombied` mints the `zrn_` and the operator drops it into the host's `ZOMBIE_RUNNER_TOKEN` env var. On boot the daemon validates the `zrn_` prefix (fail-loud, not a silent 401 loop) and goes straight to the heartbeat/lease loop — no register call, so no host ever holds an enrollment-grade credential. There is no enrollment token; the operator-as-minter must hold `platform_admin`. The open-fleet, self-enrolling case is mode C, later.
 
 ```
- host: zombie-runner                                     zombied
- (env ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN=<zmb_t_|JWT>)
-   │ on startup: POST /v1/runners                    🔒 GATE 1 — who may register:
-   │   Authorization: Bearer <zmb_t_ | Clerk-JWT>    valid admin-role api_key or JWT
-   │   { host_id, sandbox_tier, labels[] }           (no enrollment token)
+ platform operator                                       zombied
+ (Clerk JWT, metadata.platform_admin=true)
+   │ POST /v1/runners                                🔒 GATE 1 — who may enroll:
+   │   Authorization: Bearer <Clerk-JWT>             platform_admin claim required
+   │   { host_id, sandbox_tier, labels[] }           (tenant admin / zmb_t_ → 403)
    ├────────────────────────────────────────────────►│ mint zrn_ (256-bit random)
    │                                                  │ store ONLY sha256(zrn_) in fleet.runners
    │◀──────────────────────────────────────────────────┤ 201 { runner_id, runner_token: zrn_ }  (shown once)
-   │ hold zrn_ in process memory (re-register on restart; never on disk)
+   │ operator installs zrn_ on the host (env ZOMBIE_RUNNER_TOKEN)
+   ▼
+ host: zombie-runner
+ (env ZOMBIE_API_URL + ZOMBIE_RUNNER_TOKEN=zrn_…)
+   │ boot: validate zrn_ prefix, NO register call
    │ steady loop — Authorization: Bearer zrn_         🔒 GATE 2 — per-call auth:
    │      ◀── heartbeat · lease · report · activity ─┤ sha256(Bearer) == token_hash (timing-safe)
    │      eligibility: sandbox_tier + scope + secret_delivery   🔒 GATE 3 — blast radius
 ```
 
-`zombied` owns the Postgres pool, the Redis pool, and the Vault API; `zombie-runner` owns none of them and holds only the `zrn_` token. Rotating a token swaps `token_hash`; revoking sets `status='revoked'` so the next call gets a 401. The runner's env is `ZOMBIE_API_URL` + `ZOMBIE_RUNNER_TOKEN` (matching the `zombied` / `zombiectl` convention): the env token holds the admin-minted `zmb_t_` register credential, and registration mints the `zrn_` token used thereafter.
+`zombied` owns the Postgres pool, the Redis pool, and the Vault API; `zombie-runner` owns none of them and holds only the `zrn_` token. Rotating a token swaps `token_hash`; revoking sets `status='revoked'` so the next call gets a 401. The runner's env is `ZOMBIE_API_URL` + `ZOMBIE_RUNNER_TOKEN` (matching the `zombied` / `zombiectl` convention), and `ZOMBIE_RUNNER_TOKEN` holds the operator-minted `zrn_` directly — there is no bootstrap credential on the host and no datastore secret.
 
 ## Running one event (NullClaw)
 
@@ -237,7 +241,7 @@ On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack /
 
 ## Scaling
 
-The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N zombies and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — add hosts, they register, they pull. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M80_006/007 concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
+The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N zombies and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M80_006/007 concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
 ## What does not change
 
@@ -256,10 +260,13 @@ The split inverts the binding constraint. The pre-cutover runtime needed N Redis
                                  data_flow.md / capabilities.md / scaling.md reconciled here
  ── cutover landed: the runner is the processor; the old direct path is gone ──────────────────
  S5  M80_004  PLATFORM   macOS Seatbelt backend + distribution / CI + runner CLI                  (pending)
- S5  M80_005  IDENTITY   trust_class + allowed_workspace_ids + trust-gated placement              (pending)
+ S5  M80_005  IDENTITY   DONE — platform_admin gate on enrollment (POST /v1/runners) + Option B host
+                                 (operator pre-mints zrn_, no self-register); trust_class +
+                                 allowed_workspace_ids + trust-gated placement deferred to M80_007
  S5  M80_006  FLEET      node inventory + heartbeat-driven reassignment + PER-LEASE RENEWAL        (pending, MANDATORY)
                          (closes the > 30 s renewal gap; sub-10 s recovery; cordon / reaping)
- S6  M80_007  SCHEDULER  placement on labels / capacity / sandbox-tier; autoscale by queue depth   (later)
+ S6  M80_007  SCHEDULER  placement on labels / capacity / sandbox-tier + trust-gated placement
+                         (trust_class + allowed_workspace_ids); autoscale by queue depth           (later)
  ── later ─────────────────────────────────────────────────────────────────────────────────────
      mode C    self-enrolling runners — the open "run it on your own host" case
 ```
