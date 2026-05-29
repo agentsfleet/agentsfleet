@@ -112,7 +112,7 @@ cg_result="$(remote_cmd "test -f /sys/fs/cgroup/cgroup.controllers && echo 'cgv2
 if echo "$cg_result" | grep -q "cgv2_ok"; then
   echo "  ✓ cgroups v2 active"
 else
-  echo "  ✗ cgroups v2 not active — executor resource limits will not work"
+  echo "  ✗ cgroups v2 not active — runner sandbox resource limits will not work"
   missing=$((missing + 1))
 fi
 

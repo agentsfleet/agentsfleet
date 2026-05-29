@@ -18,8 +18,8 @@ flowchart TD
     Approve -->|blocked| Wait[gate_blocked until<br/>user resumes]
     Approve -->|pass| Secrets[Resolve secrets_map]
     Secrets --> SDeduct[DEDUCT stage cents<br/>UPDATE balance_nanos<br/>INSERT telemetry charge_type=stage]
-    SDeduct --> Exec[executor.createExecution<br/>+ startStage]
-    Exec --> Result[StageResult returns<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
+    SDeduct --> Exec[Issue lease<br/>runner forks NullClaw child]
+    Exec --> Result[Runner reports<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
     Result --> End([XACK])
     Block --> EndBlocked([XACK])
 ```
@@ -40,7 +40,7 @@ SELECT balance_nanos FROM core.tenant_billing WHERE tenant_id = $1;
 (1 row)
 ```
 
-That's $10 USD, granted once at tenant-create. There is no monthly refill. There are no plan tiers in the gate — every tenant runs through the same `processEvent` code path and the same `compute_*_charge` functions. The only number that varies is the drain rate, and the drain rate is purely posture-dependent.
+That's $10 USD, granted once at tenant-create. There is no monthly refill. There are no plan tiers in the gate — every tenant runs through the same lease/billing code path (`runBilling`) and the same `compute_*_charge` functions. The only number that varies is the drain rate, and the drain rate is purely posture-dependent.
 
 Plans (Free / Team / Scale, if they exist as marketing constructs) only show up at credit-grant time as bigger or smaller starting numbers — never inside the gate or the cost function. In v2.0 we ship one tier: $10 starter grant for every new tenant.
 
@@ -48,7 +48,7 @@ Plans (Free / Team / Scale, if they exist as marketing constructs) only show up 
 
 ## 2. Phase 1 — John on platform-managed (Week 1-2 of his journey)
 
-**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key usezombie pays Fireworks with is **not** a magic constant. It lives in the `usezombie-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's self-managed uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the resolver-to-executor path; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
+**Setup recap.** John ran the wedge demo (Scenario 01). His tenant has no `core.tenant_providers` row — the resolver synthesises the platform default: `mode=platform`, `provider=fireworks`, `model=accounts/fireworks/models/kimi-k2.6`, `context_cap_tokens=256000`. The actual Fireworks api_key usezombie pays Fireworks with is **not** a magic constant. It lives in the `usezombie-admin` user's workspace `vault.secrets` (same M45 crypto_store path any user's self-managed uses); `core.platform_llm_keys` carries a pointer `(provider="fireworks", source_workspace_id=<admin's workspace>)` registered via `PUT /v1/admin/platform-keys` after the admin ran [`playbooks/012_usezombie_admin_bootstrap/001_playbook.md`](../../../playbooks/012_usezombie_admin_bootstrap/001_playbook.md). The resolver follows the pointer to fetch the key on-demand. The api_key never leaves the path from `zombied`'s resolver to the runner's inference call; user-facing surfaces (CLI, doctor, dashboard, event log) never see it.
 
 ### 2.1 First webhook fires (Monday morning, week 1)
 
@@ -78,9 +78,9 @@ DEDUCT STAGE
     (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
      charge_type='stage', credit_deducted_cents=2)
 
-executor.createExecution → executor.startStage
+issue lease → runner forks NullClaw child
   outbound to api.fireworks.ai/inference/v1
-  StageResult returns: tokens(in=820, out=1040), wall=8.2s
+  runner reports: tokens(in=820, out=1040), wall=8.2s
 
 UPDATE zombie_execution_telemetry  (the stage row)
   SET token_count_input=820, token_count_output=1040, wall_ms=8210
@@ -135,9 +135,9 @@ DEDUCT STAGE → 1¢ deducted
   UPDATE balance_nanos = 150 - 1 = 149
   INSERT telemetry (charge_type='stage', credit_deducted_cents=1)
 
-executor.startStage with provider_api_key=fw_LIVE_… → outbound to
+runner's NullClaw child (provider key fw_LIVE_…) → outbound to
   api.fireworks.ai/inference/v1/chat/completions
-StageResult returns: tokens(in=820, out=1320), wall=11.4s
+runner reports: tokens(in=820, out=1320), wall=11.4s
   — tokens recorded on the row, but compute_stage_charge under self-managed
     does NOT consume them (flat 1¢ regardless of token count)
 
@@ -150,7 +150,7 @@ XACK
 
 Fireworks bills John's Fireworks account directly for the 820+1320 tokens
 of Kimi K2.6 on his own monthly invoice. usezombie sees only the
-StageResult.tokens count for telemetry; we do not know what Fireworks
+reported token count for telemetry; we do not know what Fireworks
 charged John for those tokens, and we do not care.
 ```
 
@@ -166,7 +166,7 @@ By end of week 4: balance ≈ 30¢ left.
 
 ## 4. Phase 3 — the gate eventually trips
 
-Week 5 opens. John's balance is hovering around 30¢. A flaky deploy triggers a 30-event burst from his CD pipeline. `processEvent` runs through the first 30 events at 1¢ each, draining to 0¢:
+Week 5 opens. John's balance is hovering around 30¢. A flaky deploy triggers a 30-event burst from his CD pipeline. The lease path runs through the first 30 events at 1¢ each, draining to 0¢:
 
 ```
 estimate cost = 1¢
@@ -178,7 +178,7 @@ PUBLISH event_complete (status=gate_blocked)
 XACK terminal
 ```
 
-The next event (and every event after) gate-blocks identically. None of them touch the executor; usezombie's costs for them are SQL-only.
+The next event (and every event after) gate-blocks identically. None of them reach the runner; usezombie's costs for them are SQL-only.
 
 John's experience:
 
@@ -300,7 +300,7 @@ In-flight events finish under the posture they were claimed under (gate snapshot
 
 ### 8.1 Mid-event balance crossing zero
 
-In-flight events finish at the snapshot taken at gate time. Both deductions (receive + stage) committed before the executor ran; the executor's success or failure does not retroactively adjust the deduction. If the user's balance crosses zero during a long stage, the next event hits the gate cleanly and blocks.
+In-flight events finish at the snapshot taken at gate time. Both deductions (receive + stage) committed at lease issue, before the runner ran; the runner's success or failure does not retroactively adjust the deduction. If the user's balance crosses zero during a long stage, the next event hits the gate cleanly and blocks.
 
 ### 8.2 Concurrent events on near-zero balance
 
@@ -320,8 +320,8 @@ Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_lab
 
 - **Same code path serves both postures.** The gate, the receive deduct, the stage deduct, and the telemetry rows are identical SQL; only the cents differ.
 - **Drain rate is the self-managed signal.** John's usezombie credits last ~3× longer under self-managed than they would have under continued platform use — a transparent, observable benefit of bringing a key.
-- **Plan tiers are not a code-path concept.** They never appear inside `processEvent` or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
-- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, worker logs, executor logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
+- **Plan tiers are not a code-path concept.** They never appear inside the lease path or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
+- **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, `zombied` logs, runner logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
 - **The credit-exhausted UX is a dashboard story, not a CLI story.** The CLI surfaces the state and points at the dashboard. Purchase / top-up are dashboard-shipping concerns (and ship empty in v2.0, with the actual Stripe integration in v2.1).
 
 ---

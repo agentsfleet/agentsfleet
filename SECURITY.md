@@ -16,15 +16,15 @@ This is the short policy entrypoint for usezombie.
 3. Queue boundary
 4. Identity boundary
 5. GitHub automation boundary
-6. Execution boundary: worker orchestrates, `zombied-executor` executes
+6. Execution boundary: `zombied` assigns work via leases; `zombie-runner` forks a sandboxed NullClaw child to execute
 
 ## Sandbox Rules
 
-1. Worker calls a typed executor API instead of owning the entire agent runtime forever.
-2. `zombied-executor` embeds NullClaw and owns Linux sandbox enforcement.
-3. If executor posture is unsafe, startup or run admission must fail closed.
-4. If executor dies mid-stage, the run is retried or blocked from persisted stage state.
-5. Active runs are not guaranteed to survive worker or executor upgrades.
+1. `zombie-runner` leases one event and forks a sandboxed NullClaw child per run instead of owning the agent runtime forever.
+2. `zombie-runner` embeds NullClaw and owns Linux sandbox enforcement for each forked child.
+3. If the sandbox posture is unsafe, run admission must fail closed.
+4. If a sandboxed child dies mid-stage, the lease expires and the run is reclaimed + re-run by another runner, or blocked from persisted stage state.
+5. Active runs are not guaranteed to survive `zombie-runner` upgrades.
 
 ## Detection
 

@@ -210,6 +210,7 @@ test {
     _ = @import("fleet/secrets_resolve_test.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
+    _ = @import("http/runner_register_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
     _ = @import("zombie/webhook_verify.zig");

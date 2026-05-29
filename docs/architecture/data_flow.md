@@ -11,7 +11,7 @@ Read this when you need to know where a webhook, a steer, or a cron fire ends up
 | Process | Role |
 |---|---|
 | **`zombied-api`** (`zombied serve`) | The control plane. HTTP routes for the user surface **and** the `/v1/runners` machine surface. Owns Postgres, the Redis pool, and the Vault. Steer, webhook, cron, and continuation handlers all `XADD` directly to `zombie:{id}:events` — single ingress. On `lease` it does a non-blocking `XREADGROUP` to claim the next event, runs the gates + billing + secret resolution, and issues a `fleet.runner_leases` row; on `report` it persists the terminal state and `XACK`s. It is the sole `PUBLISH`er on `zombie:{id}:activity`. Never runs language-model code. |
-| **`zombie-runner`** (host-resident daemon) | The execution plane. Registers to `zombied`, then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying a `zrn_` token. Holds **zero datastore credentials**. Per lease it forks a sandboxed child (Landlock + cgroups + network namespace via bwrap) that runs the NullClaw agent; credential substitution happens at the tool bridge inside that child. Frames stream back to the parent over a stdout pipe and are forwarded to `zombied` over the `activity` verb. |
+| **`zombie-runner`** (host-resident daemon) | The execution plane. Boots from an operator-installed `zrn_` token (env `ZOMBIE_RUNNER_TOKEN`, no self-register — Option B), then loops `heartbeat → lease → execute → report → activity` over HTTPS carrying that `zrn_` token. Holds **zero datastore credentials**. Per lease it forks a sandboxed child (Landlock + cgroups + network namespace via bwrap) that runs the NullClaw agent; credential substitution happens at the tool bridge inside that child. Frames stream back to the parent over a stdout pipe and are forwarded to `zombied` over the `activity` verb. |
 
 | Target | Producer | Consumer |
 |---|---|---|
@@ -651,7 +651,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
 |---|---|
 | PG (`core.zombies`, `core.zombie_events`, etc.) | Row-Level Security by `workspace_id`. The API enforces via `app.workspace_id` session var; the control-plane lease/report path uses the service role with explicit WHERE filtering. |
 | Redis data plane (`zombie:{id}:events`) | Key namespaced by zombie UUID (globally unique); no cross-tenant collision possible. No RLS in Redis — protected by `zombie_id` being unguessable + API gatekeeping. |
-| Runner ↔ control plane | The `zrn_` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one zombie's event + scoped secrets; a runner never sees another tenant's data plane. Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, hardening in M80_005. |
+| Runner ↔ control plane | The `zrn_` token authenticates the runner per call; `me` resolves from the token. The lease carries exactly one zombie's event + scoped secrets; a runner never sees another tenant's data plane. Enrollment is gated on the `platform_admin` claim (M80_005) — only usezombie's operator may add a host to the shared fleet. Trust-gated placement (don't put other-tenant work on a weak sandbox tier) is operator-assigned, deferred to M80_007. |
 | Sandboxed child | Per-execution: secrets resolved at the lease, delivered via the child's stdin only, substituted at the tool bridge inside the sandbox, never flowing as raw strings into agent context. |
 
 ## One active lease per zombie — the ownership model

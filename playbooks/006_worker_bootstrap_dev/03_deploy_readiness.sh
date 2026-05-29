@@ -2,8 +2,9 @@
 # M4_001 Section 3: deploy readiness gate
 # Verifies playbook step 6.0:
 #   - /opt/zombie/deploy/deploy.sh exists and is executable
-#   - /opt/zombie/deploy/zombied-executor.service exists
-#   - /opt/zombie/deploy/zombied-worker.service exists
+#   - /opt/zombie/deploy/zombie-runner.service exists
+#     (the worker/executor cutover folded both units into the single
+#      zombie-runner daemon — see runner_fleet.md)
 #   - /opt/zombie/.env exists with correct permissions (600)
 #   - Systemd units installed in /etc/systemd/system/
 set -euo pipefail
@@ -13,6 +14,9 @@ echo "== M4_001 Section 3: deploy readiness =="
 
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 missing=0
+
+# Single host-resident unit since the cutover folded worker + executor into it.
+readonly RUNNER_UNIT="zombie-runner.service"
 
 declare -A OP_CACHE_VALUE
 declare -A OP_CACHE_STATUS
@@ -129,8 +133,7 @@ check_remote_executable() {
 echo "-- checking deploy artifacts (step 6.1)"
 check_remote_file "/opt/zombie/deploy/deploy.sh" "deploy script"
 check_remote_executable "/opt/zombie/deploy/deploy.sh" "deploy script"
-check_remote_file "/opt/zombie/deploy/zombied-executor.service" "executor unit"
-check_remote_file "/opt/zombie/deploy/zombied-worker.service" "worker unit"
+check_remote_file "/opt/zombie/deploy/$RUNNER_UNIT" "runner unit"
 
 # 6.2 Environment file
 echo "-- checking .env (step 6.2)"
@@ -138,8 +141,7 @@ check_remote_file "/opt/zombie/.env" "env file" "600"
 
 # 6.3 Systemd units installed
 echo "-- checking systemd units (step 6.3)"
-check_remote_file "/etc/systemd/system/zombied-executor.service" "systemd executor unit"
-check_remote_file "/etc/systemd/system/zombied-worker.service" "systemd worker unit"
+check_remote_file "/etc/systemd/system/$RUNNER_UNIT" "systemd runner unit"
 
 if [ "$missing" -gt 0 ]; then
   echo ""

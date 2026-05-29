@@ -3,9 +3,9 @@
 ## What usezombie does
 Hosts long-lived, event-driven autonomous workers (Zombies) scoped to a
 workspace. Inbound events arrive via webhooks (or other configured triggers)
-and are appended to each Zombie's event stream; the worker watcher dispatches
-them to the Zombie's loop, which can call tools, update state, and emit
-further events. Operators steer or kill running Zombies through the
+and are appended to each Zombie's event stream; the control plane assigns
+them to a host-resident `zombie-runner` via a lease, which runs the Zombie's
+loop — calling tools, updating state, and emitting further events. Operators steer or kill running Zombies through the
 control-plane API.
 
 ## API endpoints

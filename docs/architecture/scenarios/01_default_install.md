@@ -17,7 +17,7 @@ sequenceDiagram
     participant Skill as /usezombie-install-platform-ops
     participant CLI as zombiectl
     participant API as zombied-api
-    participant Worker as zombied-worker
+    participant Runner as zombie-runner
     participant GH as GitHub Actions
     participant Slack
 
@@ -31,8 +31,7 @@ sequenceDiagram
     CLI->>API: PUT /credentials
     Skill->>CLI: install --from .usezombie/platform-ops/
     CLI->>API: POST /zombies<br/>{trigger_markdown, source_markdown}
-    API->>Worker: XADD zombie:control (zombie_created)
-    Worker-->>API: ≤1s thread spawned
+    API->>API: XGROUP CREATE zombie:{id}:events (+ consumer group)
     API-->>Skill: { id, webhook_urls: { github: "..." } }
     Skill->>GH: gh api repos/owner/repo/hooks<br/>(events[]=workflow_run, config.url, secret)
     GH-->>Skill: { id, active: true }
@@ -40,12 +39,14 @@ sequenceDiagram
     API-->>Skill: 202
     Skill->>CLI: steer {id} "morning health check"
     CLI->>API: POST /steer
-    API->>Worker: XADD zombie:{id}:events
-    Worker->>Slack: posts first-pass health summary
+    API->>API: XADD zombie:{id}:events
+    Runner->>API: lease (POST /v1/runners/me/leases)
+    Runner->>Slack: posts first-pass health summary
     Note over Op,Slack: Hours later, real CD failure...
     GH->>API: POST /v1/webhooks/{zombie_id} (HMAC verified)
-    API->>Worker: XADD zombie:{id}:events
-    Worker->>Slack: posts evidenced diagnosis
+    API->>API: XADD zombie:{id}:events
+    Runner->>API: lease (POST /v1/runners/me/leases)
+    Runner->>Slack: posts evidenced diagnosis
 ```
 
 ---
@@ -109,7 +110,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ---
    <SKILL.md prose body — operational behaviour in plain English>
    ```
-7. **Install.** `zombiectl install --from .usezombie/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, atomically `XGROUP CREATE`s the events stream and `XADD`s `zombie:control`. The worker watcher claims within ≤1s, spawns the per-zombie thread, and no worker restart is required. The 201 response carries `{ zombie_id, name, status, webhook_urls: { github: "https://api.usezombie.com/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
+7. **Install.** `zombiectl install --from .usezombie/platform-ops/ --json`. The CLI POSTs `{trigger_markdown, source_markdown}`; the API parses frontmatter server-side, derives `name` + `config_json`, persists the row, and atomically `XGROUP CREATE`s the `zombie:{id}:events` stream + consumer group before returning. No restart and no watcher thread (the `zombie:control` watcher was retired at the cutover): a later trigger `XADD`s to `zombie:{id}:events`, and the control plane hands that event to whichever `zombie-runner` leases next. The 201 response carries `{ zombie_id, name, status, webhook_urls: { github: "https://api.usezombie.com/v1/webhooks/{id}/github" } }`. The dashboard install form exercises the same wire shape.
 8. **Parse rendered TRIGGER.md.** The skill reads its own freshly-written `.usezombie/platform-ops/TRIGGER.md`, extracts `triggers[]`, captures each webhook entry's `source` + `events[]` for the next step.
 9. **Register webhook(s) on the provider via the user's local `gh`.** For each webhook trigger in `triggers[]`, the skill runs:
    ```bash
@@ -134,7 +135,7 @@ The "morning health check" is **not** a canned ack. It enters the same reasoning
 - fetching Upstash Redis ping if configured
 - posting a one-line "all healthy at HH:MM Z" or a real diagnosis to Slack
 
-So the user sees a **real first-pass evidence sweep**, not a "hello world." This is the install-time proof that everything (creds, network, executor, slack) is wired correctly. If any of the four `http_request` calls fails, the user sees the failure inline and can fix it before any real production webhook arrives.
+So the user sees a **real first-pass evidence sweep**, not a "hello world." This is the install-time proof that everything (creds, network, sandbox, slack) is wired correctly. If any of the four `http_request` calls fails, the user sees the failure inline and can fix it before any real production webhook arrives.
 
 The webhook-driven path (next section) and this steer path are the **same reasoning loop**. The asymmetry is purely in the input: the webhook brings a `workflow_run` payload; the steer brings the user's text. The SKILL.md prose decides what to do with whichever input arrives. There is no "install-time mode" vs. "production mode" branch — the runtime never sees that distinction.
 
@@ -149,7 +150,7 @@ A few hours later, the user pushes a commit. CD fails on a Fly OOM. GitHub Actio
 3. `XADD zombie:{id}:events *` with the envelope.
 4. Returns 202 to GitHub.
 
-The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent` walks the credit-pool gate path (the same code path that scenario 03 walks more deeply):
+A `zombie-runner` leases the event within ≤5s. The lease path (in `zombied`) walks the credit-pool gate path (the same code path that scenario 03 walks more deeply):
 
 1. INSERT `core.zombie_events` (`status='received'`, `actor='webhook:github'`, `request_json=<normalised payload>`).
 2. PUBLISH `zombie:{id}:activity` (`event_received`).
@@ -157,10 +158,10 @@ The per-zombie thread unblocks from `XREADGROUP` within ≤5s. `processEvent` wa
 4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_nanos=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
 5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
 6. Approval gate (no destructive tools wired in this zombie) → pass.
-7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map` — it travels separately from resolveActiveProvider's return value into `executor.startStage`.
+7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map` — it travels separately from resolveActiveProvider's return value to the runner's inference call.
 8. **Stage deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
-9. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, tool_window=auto, memory_checkpoint_every=5, stage_chunk_threshold=0.75}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: <fetched from admin workspace vault via platform_llm_keys pointer>})`.
-10. `executor.startStage(execution_id, message=<webhook payload as text>)`.
+9. `zombied` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `zombied` and used by the runner's NullClaw child for the inference call only — not carried in `secrets_map`.
+10. The runner forks a sandboxed NullClaw child and runs the event (the webhook payload as the message).
 
 NullClaw runs the SKILL.md prose against the webhook payload. The agent makes its calls — `http_request GET .../actions/runs/{run_id}/logs`, `http_request GET ${fly.host}/v1/apps/{app}/logs`, etc. — credentials substituted at the tool bridge after sandbox entry. Posts a remediation diagnosis to Slack.
 

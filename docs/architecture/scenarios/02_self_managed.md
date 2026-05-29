@@ -27,14 +27,14 @@ flowchart LR
         B --> C{API resolves<br/>cap from<br/>caps endpoint}
         C -->|writes| D[(tenant_providers<br/>mode=self_managed<br/>provider/model<br/>context_cap_tokens<br/>credential_ref)]
     end
-    subgraph Trigger["Per event (worker)"]
-        E[XADD zombie:id:events] --> F[processEvent]
+    subgraph Trigger["Per event (lease path, zombied)"]
+        E[XADD zombie:id:events] --> F[lease: gate + billing]
         F --> G[resolveActiveProvider]
         G --> D
         F --> H{frontmatter<br/>sentinels?}
         H -->|model: '' or<br/>cap: 0| I[overlay from<br/>tenant_providers]
         H -->|frontmatter pinned| J[use frontmatter]
-        I --> K[executor.createExecution]
+        I --> K[issue lease<br/>runner forks NullClaw child]
         J --> K
         K --> L[NullClaw routes via<br/>compatible.zig to<br/>api.fireworks.ai/inference/v1]
     end
@@ -80,16 +80,16 @@ When John runs `/usezombie-install-platform-ops` after self-managed is set:
 2. The skill writes `.usezombie/platform-ops/SKILL.md` with sentinel frontmatter:
    ```yaml
    x-usezombie:
-     model: ""                       # sentinel: worker overlays from tenant_providers
+     model: ""                       # sentinel: control plane overlays from tenant_providers
      context:
-       context_cap_tokens: 0         # sentinel: worker overlays from tenant_providers
+       context_cap_tokens: 0         # sentinel: control plane overlays from tenant_providers
        tool_window: auto
        memory_checkpoint_every: 5
        stage_chunk_threshold: 0.75
    ```
 3. Everything else (tool credentials, webhook URL, first steer) is identical to Scenario 01.
 
-**Worker overlay rule:** `model == ""` OR the `model:` key absent from the frontmatter ⇒ worker overlays from `tenant_providers.model`. Same rule for `context_cap_tokens: 0` OR absent. The two fields overlay independently: John could pin a custom model in frontmatter while leaving the cap at zero (inherit), or vice versa. The install-skill emits the **visible sentinels** (`""` / `0`) under self-managed posture rather than omitting the keys, so a human reading the file can spot at a glance that "this zombie inherits from tenant config." Hand-edits that strip the keys still work — absent-key is the safety net.
+**Overlay rule (at lease time):** `model == ""` OR the `model:` key absent from the frontmatter ⇒ the control plane overlays from `tenant_providers.model`. Same rule for `context_cap_tokens: 0` OR absent. The two fields overlay independently: John could pin a custom model in frontmatter while leaving the cap at zero (inherit), or vice versa. The install-skill emits the **visible sentinels** (`""` / `0`) under self-managed posture rather than omitting the keys, so a human reading the file can spot at a glance that "this zombie inherits from tenant config." Hand-edits that strip the keys still work — absent-key is the safety net.
 
 If John later runs `zombiectl tenant provider set --credential account-fireworks-key` again with a different `--model` (or after editing the credential body), the API re-resolves the cap from the public endpoint and overwrites `tenant_providers.{model, context_cap_tokens}`. Existing zombies pick up the new model + cap on their **next** event; in-flight events finish with the snapshot they were claimed under.
 
@@ -97,7 +97,7 @@ If John later runs `zombiectl tenant provider set --credential account-fireworks
 
 ## 4. Trigger and execute — the divergence point
 
-When a webhook arrives or the user steers, the worker's `processEvent`:
+When a webhook arrives or the user steers, `zombied` builds the lease (the lease path):
 
 1. INSERT `core.zombie_events` (status='received').
 2. Balance gate fires. **Important:** the gate runs for self-managed too — see Scenario 03 for the full billing model. (Earlier drafts said self-managed skips the gate; that's wrong. self-managed skips only the **LLM-token meter**, not the orchestration-fee meter. The gate stays on.)
@@ -108,15 +108,15 @@ When a webhook arrives or the user steers, the worker's `processEvent`:
    - if `frontmatter.context_cap_tokens == 0` → use `tenant_providers.context_cap_tokens`.
    - if `frontmatter.model == ""` → use `tenant_providers.model`.
    - both are mutually independent overlays; either can be pinned in frontmatter and overridden in tenant config or vice versa. The platform path leaves frontmatter populated; the self-managed path leaves it empty.
-7. `executor.createExecution(workspace_path, {network_policy, tools, secrets_map, context: {context_cap_tokens=256000, ...}, model: "accounts/fireworks/models/kimi-k2.6", provider_api_key: "fw_…", provider_endpoint: "https://api.fireworks.ai/inference/v1"})`.
+7. `zombied` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, context: {context_cap_tokens: 256000, model: "accounts/fireworks/models/kimi-k2.6", …}}`; the runner forks a sandboxed NullClaw child to execute it.
 
-The provider key flows through `executor.createExecution` as a separate field from `secrets_map` — it never enters the agent's tool context, never substitutes into a tool call, never logs. NullClaw's HTTP client uses it as the `Authorization: Bearer <key>` on the inference call only.
+The provider key stays **separate** from `secrets_map` — `zombied` resolves it (`resolveActiveProvider`) and the runner's NullClaw child uses it as the `Authorization: Bearer <key>` on the inference call only. It never enters the agent's tool context, never substitutes into a tool call, never logs.
 
-NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks.ai/inference/v1/chat/completions` with `model: accounts/fireworks/models/kimi-k2.6` and the agent's prompt. Fireworks bills the user. The diagnosis returns over the Unix socket; the worker handles it the same way as Scenario 01.
+NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks.ai/inference/v1/chat/completions` with `model: accounts/fireworks/models/kimi-k2.6` and the agent's prompt. Fireworks bills the user. The diagnosis streams from the sandboxed child to the runner over the pipe; the runner reports it to `zombied`, which handles it the same way as Scenario 01.
 
-`StageResult` arrives. Two telemetry rows exist for this event (per the credit-pool model — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3):
+The runner's report arrives. Two telemetry rows exist for this event (per the credit-pool model — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3):
 - The receive row was INSERTed earlier at gate time: `charge_type='receive'`, `posture='self_managed'`, `credit_deducted_nanos=0` (events are free both postures under M66).
-- The stage row was INSERTed before `startStage`: `charge_type='stage'`, `posture='self_managed'`, `credit_deducted_nanos=100000` (flat $0.0001 orchestration overhead under self-managed; no token markup).
+- The stage row was INSERTed at lease issue, before the runner executed: `charge_type='stage'`, `posture='self_managed'`, `credit_deducted_nanos=100000` (flat $0.0001 orchestration overhead under self-managed; no token markup).
 - Now UPDATEd post-execution with `token_count_input=820, token_count_output=1320, wall_ms=11400` — recorded for transparency on the Usage tab and for John's separate Fireworks-bill review, but the `credit_deducted_nanos` column does **not** change because self-managed pricing is flat.
 
 L3 stage chunking (M41 §6) sees `context_cap_tokens=256000`, sets the chunk-trigger threshold at `0.75 * 256000 = 192000`. Same code path as Scenario 01; only the number differs.
@@ -239,7 +239,7 @@ $ zombiectl tenant provider set --credential account-fireworks-key
     Credential ref:     account-fireworks-key  (unchanged)
 ```
 
-John's `.usezombie/platform-ops/SKILL.md` does not need regeneration. The sentinels (`model: ""`, `context_cap_tokens: 0`) keep working — the worker just overlays the new values on the next event. In-flight events claimed under Kimi K2 finish under Kimi K2.
+John's `.usezombie/platform-ops/SKILL.md` does not need regeneration. The sentinels (`model: ""`, `context_cap_tokens: 0`) keep working — the control plane just overlays the new values on the next event's lease. In-flight events claimed under Kimi K2 finish under Kimi K2.
 
 ### 6.4 Failure mode — credential deleted while still in self-managed
 
@@ -273,12 +273,12 @@ The system never auto-reverts the mode to platform. Either John re-adds the cred
 
 ## 7. What this scenario proves
 
-- self-managed is a tenant-scoped credential + provider-config flip. It does **not** require any code path that knows about provider identity inside the worker or executor — both stay model-agnostic; the routing happens inside NullClaw.
-- The model→cap source of truth is the **same endpoint** for both platform and self-managed paths. The difference is *where the resolved cap is stored after lookup* (synth-default constants for tenants with no row, `tenant_providers` row for tenants with explicit config) and *when the worker resolves it* (the resolver runs once per event; sentinels in frontmatter trigger overlay from `tenant_providers`).
+- self-managed is a tenant-scoped credential + provider-config flip. It does **not** require any code path that knows about provider identity inside `zombied` or the runner — both stay model-agnostic; the routing happens inside NullClaw.
+- The model→cap source of truth is the **same endpoint** for both platform and self-managed paths. The difference is *where the resolved cap is stored after lookup* (synth-default constants for tenants with no row, `tenant_providers` row for tenants with explicit config) and *when the control plane resolves it* (the resolver runs once per lease; sentinels in frontmatter trigger overlay from `tenant_providers`).
 - Fireworks + Kimi 2.6 works today because NullClaw already speaks OpenAI-compatible. No provider-specific work in this repo. The same path opens up Together AI, Groq, Cerebras, Moonshot, OpenRouter, DeepSeek, Nebius, xAI — every compatible provider in NullClaw's catalogue.
 - The self-managed credential body is `{provider, api_key, model}` only. Cap lives in `tenant_providers`. Splitting the two means the cap can be re-resolved when the model changes without touching vault.
 - The credential name is user-chosen, not a hardcoded convention. Multi-credential tenants are supported; the active credential is whichever name `tenant_providers.credential_ref` points at.
-- The api_key crosses one boundary cleanly — vault → resolver → executor → outbound HTTPS — and is absent from every user-facing surface (doctor, CLI output, dashboard, event log, frontmatter). See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.2.
+- The api_key crosses one boundary cleanly — vault → resolver (`zombied`) → runner's NullClaw → outbound HTTPS — and is absent from every user-facing surface (doctor, CLI output, dashboard, event log, frontmatter). See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §8.2.
 
 ---
 

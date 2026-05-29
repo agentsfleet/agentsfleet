@@ -4,11 +4,11 @@
 **Milestone:** M80
 **Workstream:** 005
 **Date:** May 27, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — multi-tenant secret confinement: today any tenant's API key can enroll a host into the shared fleet that receives every tenant's inline `secrets_map`. This gates who may add a host to that fleet down to usezombie's platform operator.
 **Categories:** API
 **Batch:** B1
-**Branch:** feat/m80-005-runner-trust-authz
+**Branch:** feat/m80-005-runner-trust-authz (implementation, PR #350) → feat/m80-005-finish-authz (Tasks 2.1/3.1/5.1 + close)
 **Depends on:** M80_001 (register handler + `runnerBearer` + `fleet.runners`), M80_002 (assignment/fencing/reclaim cutover)
 **Provenance:** agent-generated (Opus 4.7, May 27, 2026), then reshaped after a CEO review (SCOPE REDUCTION), an engineering review, and a Codex outside-voice pass on May 27, 2026.
 
@@ -124,14 +124,14 @@ The data: a `platform_admin` boolean on `AuthPrincipal`, parsed from the verifie
 
 The enforcement: a `PlatformAdmin` middleware (mirror of `RequireRole`) short-circuits `403 platform_admin_required` unless `principal.platform_admin == true`, and `401` when no principal ran (composition bug). `route_table.zig` swaps `register_runner` from `admin()` to a `platformAdmin()` chain `[bearer_or_api_key, PlatformAdmin]`.
 
-- **Dimension 2.1** — a JWT with the claim mints a `zrn_` (201); a tenant-admin JWT without it → `403`; a `zmb_t_` api_key → `403` → Tests `test_register_requires_platform_admin`, `test_api_key_cannot_enroll_runner` → **IN_PROGRESS** (`ea2f33b8` — unit assertions on the middleware + route gating committed; the full register-handler integration assertion is pending Task 6)
+- **Dimension 2.1** — a JWT with the claim mints a `zrn_` (201); a tenant-admin JWT without it → `403`; a `zmb_t_` api_key → `403` → **DONE** — register-handler integration test `src/zombied/http/runner_register_integration_test.zig` drives all three arms through the live router (platform-admin → 201 + `zrn_`; tenant-admin → 403 `UZ-AUTH-021`; seeded `zmb_t_` → 403 `UZ-AUTH-021`), plus the prior middleware/route-gating unit assertions (`ea2f33b8`). The fixture token is proven against the real `oidc.Verifier` (DB-free arm: JWKS RS256 + `extractClerkClaims` → `platform_admin==true`), negative-control verified.
 - **Dimension 2.2** — absent claim fails closed (`403`), and a chain with no auth middleware before it `401`s rather than granting → Tests `test_platform_admin_absent_claim_fails_closed`, `test_platform_admin_null_principal_401` → **DONE** (`ea2f33b8` — both unit tests green)
 
 ### §3 — Runner daemon flip (Option B)
 
 The host stops self-registering: `main.zig` drops `registerWithRetry` and uses the env token directly for the heartbeat/lease loop; `config.zig` renames `register_token` → `runner_token` and validates the `zrn_` prefix (fail loud, not a silent auth loop); `control_plane_client.register()` is removed as dead.
 
-- **Dimension 3.1** — the daemon boots from `ZOMBIE_RUNNER_TOKEN=zrn_...` and reaches the lease loop with no register call → Test `test_runner_boots_from_env_token_without_register` → **IN_PROGRESS** (`c1ac7343` — `register()` dead-code removed + `registerWithRetry` gone + `runner_token` rename landed; the daemon-boot integration test that asserts "zero register calls during lease-loop entry" is pending Task 6)
+- **Dimension 3.1** — the daemon boots from `ZOMBIE_RUNNER_TOKEN=zrn_...` and reaches the lease loop with no register call → **DONE** — integration test in `src/runner/daemon/loop.zig` drives the real `runLoop` against a recording loopback control plane (returns `stop`) and asserts the first and only control-plane contact is `POST /v1/runners/me/heartbeats`, never `POST /v1/runners` (negative-control verified). Builds on `c1ac7343` (`register()` dead-code removed, `registerWithRetry` gone, `runner_token` rename). The lease loop was extracted from `main.zig` into `daemon/loop.zig` so the test owns the loop seam without breaching the 350-line gate on `main.zig`.
 - **Dimension 3.2** — a non-`zrn_` token (e.g. a stale `zmb_t_`) fails config load with a clear prefix error, not a downstream 401 loop → Test `test_runner_rejects_non_zrn_token_loudly` → **DONE** (`c1ac7343` — `assertRunnerTokenPrefix` unit test green, covers `zmb_t_` / empty / `zrn` prefix-only)
 
 ### §4 — Deploy + bootstrap migration (the CI fix)
@@ -145,7 +145,7 @@ The bootstrap playbooks write the runner env (`ZOMBIE_API_URL`, `ZOMBIE_RUNNER_T
 
 `AUTH.md` gains the platform-admin principal + the claim placement; `runner_fleet.md` "Registering a runner" is rewritten to operator-creates + host-holds-`zrn_` and its roadmap line 259 corrected; `data_flow.md` register row + `user_flow.md` §8.2.2 step 6 (which still cites the deleted `zombie:control` watcher) are reconciled; `M80_004` self-enroll flow is reconciled to Option B.
 
-- **Dimension 5.1** — no architecture doc describes register-on-startup or `zombie:control`-watcher claim as current → Test `test_docs_no_stale_register_flow` (grep-gate) → **IN_PROGRESS** (`c2305c19` — `deploy/baremetal/zombie-runner.service` comment and `.github/workflows/deploy-dev.yml` line 254 comment reconciled to Option B; bootstrap playbooks 006 + 007 fully retired worker-era prose. **Pending:** `docs/AUTH.md` platform-admin principal addition, `docs/architecture/runner_fleet.md` "Registering a runner" rewrite + roadmap line 259, `docs/architecture/data_flow.md` register row, `docs/architecture/user_flow.md` §8.2.2 step 6 (`zombie:control` watcher), and `M80_004` self-enroll flow reconciliation.)
+- **Dimension 5.1** — no architecture doc describes register-on-startup or `zombie:control`-watcher claim as current → Test `test_docs_no_stale_register_flow` (grep-gate) → **DONE** — reconciled across all live docs: `docs/AUTH.md` (added the platform-admin principal to the auth-model overview + rewrote *Provisioning (register)* to the platform-admin gate + Option B + corrected the "What ships when" M80_005 line); `docs/architecture/runner_fleet.md` (register-row auth, the *Registering a runner* rewrite + ASCII flow, the BEFORE/NOW diagram's host loop, and the roadmap M80_005 row); `docs/architecture/data_flow.md` (the `zombie-runner` row + the Runner↔control-plane guarantee row); `docs/architecture/user_flow.md` §8.2.2 step 6; `docs/architecture/scenarios/01_default_install.md` (install step + mermaid `zombie:control` reference); and `docs/v2/pending/M80_004` (the `zombie-runner enroll` flow reconciled to operator-run + platform-admin, never daemon self-enroll). Grep gate clean: no live arch doc cites register-on-startup or the `zombie:control` watcher as current. Builds on `c2305c19` (deploy unit + CI comment + bootstrap playbooks).
 
 ---
 
@@ -261,7 +261,14 @@ Regression: M80_001's `runner_bearer` tests + M80_002's lease/fence tests stay g
   > Indy (May 28, 2026): "I would like to do a combination of 2 and 1. Meaning keep everything ready with a fake runner_token in 1Password. And i will move dev_worker_ready and prod_worker_Ready to false manually" — context: the F1+F2 scope split.
   > Indy (May 28, 2026): "I have add the runner-token in the vault. the runner-token is fake, its gated as worker-dev-ready as false in github" — context: confirmed the placeholder + GH variable flip; verified via `gh variable list` showing both `DEV_WORKER_READY=false` and `PROD_WORKER_READY=false`.
 - **Operational state (out of diff):** `DEV_WORKER_READY=false`, `PROD_WORKER_READY=false`. 1Password entries `op://ZMB_CD_{DEV,PROD}/zombie-{dev,prod}-worker-ant/runner-token` hold a placeholder `zrn_…`. The gates stay false until a real admin-minted `zrn_` (via this PR's `POST /v1/runners` enrollment gate on a live control plane) replaces the placeholders.
-- **Deferred to follow-up (captured for next spec):** (a) directory rename `playbooks/006_worker_bootstrap_dev/` → `runner_bootstrap_dev/` (touches refs across `.github/workflows/deploy-dev.yml`, the playbook scripts, and the docs); (b) broader playbook header normalization for `001_bootstrap`, `002_preflight`, `003_priming_infra`, `004_deploy_dev`, `005_deploy_prod`, `008_credential_rotation_dev`, `009_grafana_observability`, `012_usezombie_admin_bootstrap` (all still carry the spec-template frontmatter); (c) formal test wrappers for the §4 grep-gate (E5) and `deploy.sh sync_env` validation (a bats-style or shell test); (d) Task 6 — `2.1` register-handler integration test + `3.1` daemon-boot integration test.
+- **Deferred to follow-up (captured for next spec):** (a) directory rename `playbooks/006_worker_bootstrap_dev/` → `runner_bootstrap_dev/` (touches refs across `.github/workflows/deploy-dev.yml`, the playbook scripts, and the docs); (b) broader playbook header normalization for `001_bootstrap`, `002_preflight`, `003_priming_infra`, `004_deploy_dev`, `005_deploy_prod`, `008_credential_rotation_dev`, `009_grafana_observability`, `012_usezombie_admin_bootstrap` (all still carry the spec-template frontmatter); (c) formal test wrappers for the §4 grep-gate (E5) and `deploy.sh sync_env` validation (a bats-style or shell test). **(d) Task 6 — LANDED in the finish pass below; no longer deferred.**
+- **Finish pass + Indy-directed fold-in (May 29, 2026):** completed the three IN_PROGRESS dimensions and folded in the cutover doc reconciliation.
+  - **Task 6 (dims 2.1 + 3.1):** `src/zombied/http/runner_register_integration_test.zig` drives `POST /v1/runners` through the live router (platform-admin → 201 + `zrn_`; tenant-admin → 403 `UZ-AUTH-021`; seeded `zmb_t_` → 403) — proven 28/28, 0 skipped, with a negative-control run (flipping the 201 expectation surfaced `want 403, got 201; runner_token:"zrn_…"`). A DB-free arm drives the real `oidc.Verifier` (JWKS RS256 + `extractClerkClaims`) to prove the fixture token verifies (also negative-controlled). `src/runner/daemon/loop.zig` holds the daemon-boot test: drives the real `runLoop` against a recording loopback control plane, asserts first contact is `POST /v1/runners/me/heartbeats`, never register (negative-controlled). The lease loop was extracted `main.zig` → `daemon/loop.zig` to keep `main.zig` under the 350-line gate (was 403).
+  - **§5.1 grep-gate clean** across all live arch docs (no register-on-startup / `zombie:control`-watcher as current).
+  - **Fold-in (Indy-directed):** reconciled the worker→runner cutover residue beyond §5.1's enrollment scope — `SECURITY.md`, `README.md`, `direction.md`, `high_level.md`, `user_flow.md`, `billing_and_provider_keys.md`, all three `scenarios/*`, `public/llms.txt`, `public/skill.md`, `005_deploy_prod` + the `006` readiness scripts, and the `schema/020` comment (`processEvent` removed; `worker_runtime` role left for M80_008). The detailed pseudo-code (`executor.createExecution`/`startStage`) was re-authored against the real lease/`ExecutionPolicy`/`runBilling` shapes; a doc-accuracy reviewer verified no false claims were introduced.
+    > Indy (2026-05-29): "I want to fold it into this PR" — context: the worker→runner cutover doc reconciliation (M80_002/003 residue), discovered while answering "search worker/executor → none?"; folded in here instead of a follow-up spec.
+  - **Finding — provider-key delivery to the runner is unwired.** `resolveExecutionPolicy` puts only `secrets_map` + `context` (incl. `model`) on the lease; `ExecutionPolicy` has no provider-key field, and the resolved `api_key` is never added to the lease. The runner engine (`runner.zig`) is wired to inject an `api_key` from its child RPC config, but nothing populates it from the lease. Consistent with "runners not enabled in production yet." Docs were written to describe the boundary (key resolved by `zombied`, used by the runner's NullClaw child for the inference call only) **without** asserting a lease wire that doesn't exist. Surfaced for a follow-up (likely M80_007/scheduler or a dedicated wiring spec).
+  - **Left for M80_008 (not touched):** the `worker_runtime` DB role + its `GRANT`s + the `*_WORKER` env vars — a security-posture change + deploy-coordinated live teardown (Indy-confirmed: rename to `runner_*` is wrong; removal is the correct action).
 
 ---
 
@@ -279,10 +286,12 @@ Regression: M80_001's `runner_bearer` tests + M80_002's lease/fence tests stay g
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Integration (authz) | `make test-integration` | {paste at VERIFY} | |
-| Lint | `make lint` | {paste at VERIFY} | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` / `aarch64-linux` | {paste at VERIFY} | |
-| Bootstrap env audit | E5 above | {paste at VERIFY} | |
+| Integration (authz) | `make test-integration` | Full suite green; register arms 28/28, 0 skipped (negative-controlled) | ✅ |
+| Runner unit (boot test) | `zig build --build-file build_runner.zig test` | 197/197 (negative-controlled) | ✅ |
+| Lint | `make lint-zig` | ZLint 0/0, pg-drain, test-depth, schema-gate, 350-line, role/legacy guards all pass | ✅ |
+| Cross-compile | runner + zombied × `x86_64-linux` / `aarch64-linux` | all 4 green | ✅ |
+| Secrets | `gitleaks detect` | no leaks (test JWTs are throwaway-key fixtures) | ✅ |
+| §5.1 + fold-in doc gate | grep over live arch docs | no register-on-startup / `zombie:control`-watcher / worker-executor-as-current remains | ✅ |
 
 ---
 

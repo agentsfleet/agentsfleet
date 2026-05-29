@@ -87,6 +87,8 @@ Routing in `bearer_or_api_key.zig`: `zmb_t_` → tenant-key DB lookup; anything 
 
 Authorization is **role-based** today: `AuthRole = user < operator < admin` (`src/auth/rbac.zig`), enforced by `RequireRole`. Scope-based authz (`fleet:write`, finer tenant scopes) is a v2.1 item — see [`architecture/roadmap.md`](./architecture/roadmap.md).
 
+One authorization signal sits *outside* the role ladder: **`platform_admin`** — a boolean claim on `AuthPrincipal`, parsed from a verified JWT's `metadata.platform_admin` and granted by a manual Clerk `publicMetadata` flip on usezombie's operator user (no redeploy to grant). It is orthogonal to `role` because a tenant `admin` is admin *of their tenant*, whereas `platform_admin` is usezombie-the-operator authority. It gates exactly one endpoint — runner enrollment (`POST /v1/runners`) — fail-closed when the claim is absent, and the `zmb_t_` api_key path never sets it (so no tenant key can enroll a host). See *Runner token → Provisioning* below.
+
 Everything below is per-surface detail. For the CLI device-flow threat model + crypto, see [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md).
 
 ---
@@ -282,19 +284,23 @@ Flows 1–3 and agent keys all act *on behalf of* a human or a tenant. The **run
 
 ### Provisioning (register)
 
-A runner has no credential until someone with an *existing* credential registers it. `register` is authed by a Clerk JWT (an operator at the dashboard/CLI) or a `zmb_t_` api_key (an automated provisioner) — there is no enrollment token and no separate admin endpoint.
+A runner has no credential until **usezombie's platform operator** mints one. Enrollment is the trust decision — a runner that joins the shared fleet receives every tenant's inline `secrets_map` via the leases it is placed — so the one endpoint that mints a `zrn_` (`POST /v1/runners`) is gated by the `platform_admin` claim, **not** per-tenant `admin`. A tenant `admin` JWT and any `zmb_t_` api_key are rejected `403 platform_admin_required`; an absent claim fails closed. There is no open enrollment token.
+
+The host **never self-registers** (Option B, the GitLab-16 "create runner → authentication token" model): the operator pre-mints the `zrn_` and installs it on the host as `ZOMBIE_RUNNER_TOKEN`; the daemon validates the `zrn_` prefix at boot and goes straight to the heartbeat/lease loop. No host ever holds an enrollment-grade credential.
 
 ```
-Operator / provisioner                              zombied
+Platform operator (Clerk JWT, metadata.platform_admin=true)        zombied
    │ POST /v1/runners
-   │   Authorization: Bearer <Clerk-JWT | zmb_t_>
+   │   Authorization: Bearer <Clerk-JWT>
    │   { host_id, sandbox_tier, labels[] }
    ▼
-   bearer_or_api_key validates the caller; the handler mints zrn_<random>,
-   stores ONLY sha256(zrn_) in fleet.runners, returns the raw token ONCE
+   platformAdmin() chain [bearer_or_api_key, PlatformAdmin] gates the route;
+   the handler mints zrn_<random>, stores ONLY sha256(zrn_) in fleet.runners,
+   returns the raw token ONCE
    │
-   ◄── 201 { runner_id, runner_token: "zrn_…" }
-   the operator installs zrn_ on the host (env ZOMBIE_RUNNER_TOKEN)
+   ◄── 201 { runner_id, runner_token: "zrn_…" }   (tenant admin / zmb_t_ → 403)
+   the operator installs zrn_ on the host (env ZOMBIE_RUNNER_TOKEN); the host
+   does NOT call register — it authenticates every later call with that zrn_
 ```
 
 `fleet.runners` is a dedicated schema — runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `status='revoked'`.
@@ -318,7 +324,7 @@ A runner principal authorizes exactly four self-scoped verbs — heartbeat, leas
 
 ### What ships when
 
-M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes — and, per the keystone's single-PR delivery, ships the working `register` handler, the `runnerBearer` middleware, and `AuthPrincipal.runner_id`. They land here rather than later because the `/v1/runners/*` routes are registered always-on: a real `lease`/`report` handler on `none` middleware would be a live, unauthenticated endpoint handing a tenant's `secrets_map` to any caller. M80_005 narrows to Transport-Layer-Security (TLS) hardening and the operator-assigned-trust authz fields (`trust_class`, `allowed_workspace_ids`).
+M80_001 freezes the protocol, the `fleet.runners` schema, and the error codes — and, per the keystone's single-PR delivery, ships the working `register` handler, the `runnerBearer` middleware, and `AuthPrincipal.runner_id`. They land here rather than later because the `/v1/runners/*` routes are registered always-on: a real `lease`/`report` handler on `none` middleware would be a live, unauthenticated endpoint handing a tenant's `secrets_map` to any caller. M80_005 adds the `platform_admin` principal and re-gates `POST /v1/runners` from per-tenant `admin` to `platformAdmin()`, and flips the host to Option B (pre-minted `zrn_`, no self-register). Operator-assigned-trust placement fields (`trust_class`, `allowed_workspace_ids`) are deferred to M80_007 (scheduler), where a "required trust" data source lands; runner revocation/rotation and the fleet operator plane are M80_006.
 
 ---
 

@@ -87,10 +87,10 @@ The install-skill's first action (§8.2.2 step 1) is a `which zombiectl && which
 
 1. Claude (or another agent), typically driven by the `/usezombie-install-platform-ops` skill (§8.0), helps author or refine `SKILL.md` and `TRIGGER.md`.
 2. **`zombiectl doctor --json` runs first** as the deterministic readiness gate after login. Doctor is auth-gated, fast, and verifies token validity, server reachability, an active workspace, workspace binding, tenant provider readiness, and (M68) free-trial state. The skill (and any future caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message instead of letting `install` fail with a confusing 401. Doctor is the only sanctioned preflight surface — no parallel `preflight` command exists.
-3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the dashboard install form at `/zombies/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/zombies`; the API parses frontmatter, derives `name` + `config_json`, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-worker claim sequence.
+3. The user (or skill) installs or updates the zombie through `zombiectl install --from <path>` or the dashboard install form at `/zombies/new`. Both surfaces POST `{trigger_markdown, source_markdown}` to `POST /v1/workspaces/{ws}/zombies`; the API parses frontmatter, derives `name` + `config_json`, persists the zombie row, and synchronously creates the events stream + consumer group before returning 201. The 201 response carries `webhook_urls: { <source>: <url> }` — one entry per webhook trigger declared in `TRIGGER.md`. See [`data_flow.md`](./data_flow.md) for the install-to-lease sequence.
 4. The API stores the zombie config, linked credentials reference, approval policy, and trigger declarations (`triggers: [...]` array).
 5. **Webhook registration on the upstream provider runs from the user's own machine** — the install-skill loops over webhook entries in the rendered TRIGGER.md and shells out to `gh api repos/.../hooks` (for GitHub) or the equivalent provider command, using the user's existing `gh` auth or stored API token. The platform never holds the user's PAT for this step; the registration is logged on the provider side by the user. For UI-only installs, the Trigger panel on `/zombies/{id}` renders the exact terminal command pre-filled with the webhook URL and event list, ready to copy.
-6. The worker runtime becomes responsible for future triggers — no worker restart required (the watcher thread on `zombie:control` claims the new zombie within milliseconds).
+6. Future triggers are served with no restart and no watcher thread: the install created the zombie's events stream + consumer group up front (step 3), so each later trigger `XADD`s to `zombie:{id}:events` and the control plane hands that event to whichever `zombie-runner` leases next (`POST /v1/runners/me/leases`).
 
 After install, the zombie is no longer tied to the interactive Claude session that created it.
 
@@ -143,13 +143,14 @@ When a GH Actions deploy fails:
 1. GitHub posts to the zombie's webhook ingest URL `POST /v1/webhooks/{zombie_id}/github` with the failed `workflow_run` payload. The URL was registered earlier by the install-skill running `gh api repos/{repo}/hooks` from the user's machine; the platform never held the user's PAT for that step.
 2. The webhook receiver verifies the HMAC signature against the workspace's stored credential (vault credential `github`, field `webhook_secret`). The credential is workspace-scoped — every zombie in the workspace whose `triggers[]` contains a `source: github` entry shares it by default; rotating it once rotates everywhere. Resolver: `vault.loadJson(workspace_id, name=trigger.source)` (where `trigger` is the matching `triggers[]` entry); an optional `x-usezombie.triggers[].credential_name:` frontmatter override scopes a distinct vault row per zombie for the per-zombie credential-isolation case (multi-org GitHub, multi-app Slack, multi-tenant B2B-on-usezombie).
 3. The receiver normalizes the payload into a synthetic event and `XADD`s to `zombie:{id}:events` with `actor=webhook:github`, `type=webhook`, `workspace_id={ws}`, `request={run_url, head_sha, conclusion, ref, repo, attempt}`, `created_at=<epoch_ms>`.
-4. The worker's per-zombie thread unblocks from `XREADGROUP`, processes the event:
-   - INSERT `core.zombie_events` (status='received')
-   - balance + approval gates pass
-   - resolve credentials from the vault (GitHub PAT, Fly token, Slack bot token)
-   - resolve provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR self-managed key, depending on tenant posture
-   - `executor.createExecution` opens a sandbox session with `secrets_map`, `network_policy`, `tools` list, `context` knobs, and provider config
-   - `executor.startStage` invokes the NullClaw agent with the message
+4. A `zombie-runner` long-polls `POST /v1/runners/me/leases`; on the lease path `zombied`:
+   - INSERTs `core.zombie_events` (status='received')
+   - passes the balance + approval gates
+   - resolves credentials from the vault (GitHub PAT, Fly token, Slack bot token)
+   - resolves provider config (`tenant_provider.resolveActiveProvider`) — platform-managed key OR self-managed key, depending on tenant posture
+   - returns the lease carrying `secrets_map`, `network_policy`, `tools` list, `context` knobs, and provider config
+
+   The runner then forks a sandboxed child that runs the NullClaw agent on the leased event.
 5. The zombie's NullClaw agent reasons over the message:
    - calls `http_request GET https://api.github.com/repos/{repo}/actions/runs/{run_id}/logs` with `${secrets.github.api_token}` substituted at the tool bridge
    - calls `http_request GET ${fly.host}/v1/apps/{app}/logs`
@@ -183,7 +184,7 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 ## §8.7 Model and context-cap origin (platform vs. self-managed)
 
-Two things travel together: the **model** the executor invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and self-managed postures, and the worker's overlay logic is what reconciles them at trigger time.
+Two things travel together: the **model** the runner's agent invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
 
 The install-skill's job in both postures is the same shape: **call `zombiectl doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `zombiectl auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
@@ -212,7 +213,7 @@ set                stays in place)                            --credential accou
                                                                 {mode=self_managed, provider, model,
                                                                  context_cap_tokens, credential_ref}
 
-trigger fires  → processEvent:                            → processEvent:
+trigger fires  → lease resolve:                            → lease resolve:
                    resolveActiveProvider()                    resolveActiveProvider()
                      no row → synth-default                    follows credential_ref to vault
                    frontmatter has resolved cap →              returns mode=self_managed + cap + key
@@ -228,8 +229,8 @@ L3 stage chunking
                 → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
 ```
 
-**Worker overlay rule (per-field, independent):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
+**Overlay rule (per-field, independent, applied at lease time):** frontmatter `model: ""` OR `model:` key absent ⇒ overlay from `tenant_providers.model` (or synth-default if no row). Same rule for `context_cap_tokens: 0` OR absent. Non-empty / non-zero values respected as-is. The install-skill emits the *visible* sentinels (`""`, `0`) under self-managed posture so a human reading the frontmatter can spot at a glance that "this zombie inherits from tenant config"; absent-key is the safety net for hand-edits.
 
-The parser-side companion to this rule landed with M49: `x-usezombie.model` and `x-usezombie.context.*` are now first-class fields on `ZombieConfig`, plumbed through `event_loop_helpers.executeInSandbox` into the executor's `ContextBudget` *before* `applyContextDefaults` substitutes auto-sentinels. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
+The parser-side companion to this rule landed with M49: `x-usezombie.model` and `x-usezombie.context.*` are now first-class fields on `ZombieConfig`, carried on the lease as `ExecutionPolicy` / `ContextBudget` (`src/lib/contract/execution_policy.zig`) *before* auto-sentinel defaults are substituted. Frontmatter overrides therefore win against runtime defaults (the doc previously described this shape but the parser dropped the fields silently — now closed).
 
 Single source of truth for caps: `https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json`. Resolved at `tenant provider set` time (self-managed path) or hardcoded as a server-side synth-default constant (platform path). **Never resolved at trigger time** — would add a network dependency to the hot path. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §9 for the endpoint shape and [`scenarios/02_self_managed.md`](./scenarios/02_self_managed.md) for the full self-managed walkthrough.
