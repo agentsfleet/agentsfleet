@@ -247,17 +247,57 @@ fn serveOneStopHeartbeat(listener: *std.net.Server, probe: *BootProbe) void {
     ) catch {};
 }
 
+/// Upper bound the boot test can wait for the stub to respond. The happy path
+/// completes in well under a second; this only fires if the stub never responds.
+const BOOT_TEST_WATCHDOG_MS: u64 = 5_000;
+
+/// Guarantees the boot test cannot hang. `runLoop`'s control-plane client has no
+/// read timeout (`std.http.Client.fetch`), so if the stub never responds — its
+/// thread exits early, or a sandbox blocks loopback TCP — the heartbeat fetch
+/// would block forever and `join()` would never be reached. On timeout this
+/// requests drain and closes the listener: the blocked client read gets a reset,
+/// the fetch errors, and `runLoop` falls through its heartbeat-error path to the
+/// drain check and exits. A hang becomes a fast, loud failure (empty probe), not
+/// an indefinite stall.
+const BootWatchdog = struct {
+    listener: *std.net.Server,
+    done: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+    fired: std.atomic.Value(bool) = std.atomic.Value(bool).init(false),
+
+    fn run(self: *BootWatchdog) void {
+        var waited_ms: u64 = 0;
+        while (!self.done.load(.seq_cst) and waited_ms < BOOT_TEST_WATCHDOG_MS) {
+            std.Thread.sleep(50 * std.time.ns_per_ms);
+            waited_ms += 50;
+        }
+        if (self.done.load(.seq_cst)) return;
+        self.fired.store(true, .seq_cst);
+        drain_requested.store(true, .seq_cst);
+        // Unblock runLoop's timeout-less read. The stub never accepted, so the
+        // client's connection is queued on the listener; the client is blocked
+        // reading a response that will never come. Closing the *listener* does
+        // NOT reset an established-but-unaccepted connection on macOS/BSD — so
+        // accept the queued connection and close *that* fd, which sends the peer
+        // FIN/RST. The client read returns EOF, the heartbeat fetch errors, and
+        // runLoop falls through to the drain check and exits.
+        if (self.listener.accept()) |conn| conn.stream.close() else |_| {}
+        self.listener.deinit();
+    }
+};
+
 test "runner boots from a zrn_ token straight into the lease loop with no register call" {
     const alloc = std.testing.allocator;
     drain_requested.store(false, .seq_cst);
+    defer drain_requested.store(false, .seq_cst);
 
     const addr = try std.net.Address.parseIp4("127.0.0.1", 0);
     var listener = try addr.listen(.{ .reuse_address = true });
-    defer listener.deinit();
     const port = listener.listen_address.getPort();
 
     var probe: BootProbe = .{};
     var server_thread = try std.Thread.spawn(.{}, serveOneStopHeartbeat, .{ &listener, &probe });
+    var wd = BootWatchdog{ .listener = &listener };
+    var wd_thread = try std.Thread.spawn(.{}, BootWatchdog.run, .{&wd});
 
     const url = try std.fmt.allocPrint(alloc, "http://127.0.0.1:{d}", .{port});
     defer alloc.free(url);
@@ -273,10 +313,15 @@ test "runner boots from a zrn_ token straight into the lease loop with no regist
     };
     defer cfg.deinit();
 
-    runLoop(alloc, cfg); // returns on the `stop` heartbeat
+    runLoop(alloc, cfg); // returns on the `stop` heartbeat (or on drain if the watchdog fires)
+    wd.done.store(true, .seq_cst);
     server_thread.join();
+    wd_thread.join();
+    if (!wd.fired.load(.seq_cst)) listener.deinit(); // watchdog already closed it if it fired
 
     // First (and only) control-plane contact is the heartbeat — not register.
+    // If the watchdog fired (stub never responded), the probe is empty and this
+    // fails fast rather than hanging.
     const observed = probe.line_buf[0..probe.line_len];
     const expected = "POST " ++ protocol.PATH_RUNNER_HEARTBEATS ++ " ";
     try std.testing.expect(std.mem.startsWith(u8, observed, expected));
