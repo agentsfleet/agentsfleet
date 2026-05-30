@@ -111,6 +111,7 @@ test {
     _ = @import("daemon/loop.zig");
     _ = @import("common");
     _ = @import("child_supervisor.zig");
+    _ = @import("child_supervisor_test.zig");
     _ = @import("child_exec.zig");
     _ = @import("sandbox_args.zig");
     _ = @import("pipe_proto.zig");

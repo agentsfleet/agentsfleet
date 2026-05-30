@@ -63,7 +63,7 @@ const Child = struct {
 };
 
 /// What the parent observed reading the child's stdout.
-const ReadOutcome = struct {
+pub const ReadOutcome = struct {
     /// Result bytes the child wrote (alloc-owned; empty on timeout/crash).
     bytes: []u8 = &.{},
     /// The wall-clock deadline elapsed before the child finished.
@@ -154,7 +154,7 @@ fn supervise(
 /// rather than running the agent unsandboxed. (Landlock + netns are applied by
 /// the child before it runs the agent; this sets up the parent-side cgroup
 /// kill/limit domain.)
-fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupScope {
+pub fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupScope {
     if (!requires) return null;
     // macOS Seatbelt is not yet wired — a required sandbox we cannot apply must
     // fail closed rather than pretend. (Dev on macOS uses the dev_none tier.)
@@ -200,7 +200,7 @@ fn forkExec(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !
 /// the `result` frame's bytes are returned (caller-owned). EOF before a result
 /// yields empty bytes (the caller classifies that as a transport loss); deadline
 /// elapse sets `timed_out` and the caller kills the child.
-fn readResult(alloc: std.mem.Allocator, fd: std.posix.fd_t, deadline_ms: i64, sink: ActivitySink) !ReadOutcome {
+pub fn readResult(alloc: std.mem.Allocator, fd: std.posix.fd_t, deadline_ms: i64, sink: ActivitySink) !ReadOutcome {
     while (true) {
         switch (try pipe_proto.readFrame(alloc, fd, deadline_ms, MAX_RESULT_BYTES)) {
             .timed_out => return .{ .timed_out = true },
@@ -278,69 +278,5 @@ fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
     while (off < bytes.len) off += try std.posix.write(fd, bytes[off..]);
 }
 
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-test "readResult forwards activity frames in order and returns the result frame" {
-    const Cap = struct {
-        count: usize = 0,
-        name_buf: [64]u8 = [_]u8{0} ** 64,
-        name_len: usize = 0,
-        fn forward(ctx: *anyopaque, frame: ActivityFrame) void {
-            const self: *@This() = @ptrCast(@alignCast(ctx));
-            self.count += 1;
-            if (frame == .tool_call_started) {
-                const n = frame.tool_call_started.name;
-                @memcpy(self.name_buf[0..n.len], n);
-                self.name_len = n.len;
-            }
-        }
-    };
-
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    const af = ActivityFrame{ .tool_call_started = .{ .name = "fly_deploy", .args_redacted = "{}" } };
-    const af_json = try std.json.Stringify.valueAlloc(std.testing.allocator, af, .{});
-    defer std.testing.allocator.free(af_json);
-    try pipe_proto.writeFrame(fds[1], .activity, af_json);
-    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    std.posix.close(fds[1]);
-
-    var cap: Cap = .{};
-    const sink = ActivitySink{ .ctx = &cap, .forward = Cap.forward };
-    const dl = std.time.milliTimestamp() + 5_000;
-    const outcome = try readResult(std.testing.allocator, fds[0], dl, sink);
-    defer std.testing.allocator.free(outcome.bytes);
-
-    try std.testing.expect(!outcome.timed_out);
-    try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
-    try std.testing.expectEqual(@as(usize, 1), cap.count);
-    try std.testing.expectEqualStrings("fly_deploy", cap.name_buf[0..cap.name_len]);
-}
-
-test "readResult tolerates a malformed activity frame and still returns the result" {
-    const Noop = struct {
-        fn forward(_: *anyopaque, _: ActivityFrame) void {}
-    };
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    try pipe_proto.writeFrame(fds[1], .activity, "{not valid json"); // dropped
-    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":false}");
-    std.posix.close(fds[1]);
-
-    var dummy: u8 = 0;
-    const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
-    const dl = std.time.milliTimestamp() + 5_000;
-    const outcome = try readResult(std.testing.allocator, fds[0], dl, sink);
-    defer std.testing.allocator.free(outcome.bytes);
-    try std.testing.expectEqualStrings("{\"exit_ok\":false}", outcome.bytes);
-}
-
-test "sandbox setup fails closed (Invariant 7): dev_none runs bare, a required tier with no domain refuses" {
-    // dev_none = explicit no-isolation. Every other tier MUST establish its
-    // domain or the lease is refused unrun (never executed unsandboxed). The
-    // non-Linux arm is here; the Linux cgroup-failure arm is in test-integration.
-    try std.testing.expect((try establishSandbox(std.testing.allocator, false)) == null);
-    if (builtin.os.tag != .linux)
-        try std.testing.expectError(error.SandboxUnavailable, establishSandbox(std.testing.allocator, true));
-    try std.testing.expect(client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED.len > 0);
-}
+// Tests live in child_supervisor_test.zig (sibling) to keep this file within
+// the line budget; registered via the runner test aggregator in main.zig.
