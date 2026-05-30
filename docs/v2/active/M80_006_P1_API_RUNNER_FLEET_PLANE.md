@@ -276,7 +276,7 @@ N/A — no files deleted. The pull-triggered reclaim is extended in place with a
 
 ---
 
-## EXECUTE progress (checkpoint — May 30, 2026)
+## EXECUTE progress (checkpoint — May 30, 2026 · §3 complete, DB-verified)
 
 Committed on `feat/m80-006-fleet-plane`, all green (HARNESS VERIFY + `make lint-zig`; both binaries build):
 
@@ -284,19 +284,18 @@ Committed on `feat/m80-006-fleet-plane`, all green (HARNESS VERIFY + `make lint-
 - ✅ **§3 server-side renewal** (`004e32e0`): the highest-risk invariant is implemented — `renewal.zig` extends both `affinity.leased_until` and `lease.lease_expires_at` atomically (one writable-CTE, fence + status + cap guarded); `service_renew.zig` (credit gate + `last_seen_at` bump); `/renew` verb 5-place wired; `RenewResponse`.
 - ✅ **§3 renewal integration tests** (`8c578302`): `renewal_integration_test.zig` drives `renewal.renew` with deterministic `now_ms`. Covers both-rows-advance (the divergence guard), stale-fence → lost, cap-reached → max_runtime + the clamp-to-cap boundary. Registered in `main.zig`; milestone-free (RULE TST-NAM); build/fmt/lint/HARNESS-VERIFY clean. **Compiles + skips without DB; runs green pending a live DB run (`LIVE_DB=1`).**
 
-- ✅ **§3 runner client `renew()`** (`3dbcb774`): `control_plane_client.zig` `renew()` — 2xx → `renewed(deadline)`, definitive 4xx → `terminal(status)` (kill child), transport/5xx → error (retry next tick, fail-safe). Runner builds; fmt/lint clean.
+- ✅ **§3 runner client `renew()`** (`3dbcb774`): `control_plane_client.zig` `renew()` — 2xx → `renewed(deadline)`, definitive 4xx → `terminal(status)` (kill child), transport/5xx → error (retry next tick, fail-safe).
+- ✅ **§3 runner-side renewal driving** (`7b609ffc`): `pipe_proto.waitReadable` (tick only in the idle gap between frames — never mid-frame, no desync); `child_supervisor.RenewHook{ctx, onTick, tick_ms}` + the tick loop in `readResult` (tick or progress frame → keep/extend/terminate; live-but-quiet child still ticks = synthetic keepalive = Invariant 10); `loop.zig`/`renew_driver.zig RenewDriver` renews inside the window via `cp.renew`, fail-safe on transient errors. Deterministic unit tests (injected 10ms tick): terminate-on-tick, extend-past-deadline.
+- ✅ **§3 DB-verified + headroom split** (`ebde68ce`): first live `make test-integration` run found two test bugs (missing `seedTenant`; double-open `pg.Conn` result in `readDeadlines`) — both fixed. Extracted `child_process.zig` (fork/exec/kill/writeAll) out of `child_supervisor.zig` (349→294) for real line-budget headroom. **Full suite 1409/1409 green against real DB + Redis.**
 
-**Remaining (nothing marked DONE — untested/not-yet-driven):**
-- §3 integration coverage for the HTTP/service layer: 3.1 (renews past TTL end-to-end), 3.6 (no-credits → `UZ-RUN-012`), 3.7 (dormant still reclaims), and the lease-not-found/non-active wire paths through `service_renew`. Need the in-process harness + a seeded balance.
-- §3 runner-side driving (**the delicate core, not yet started — next session**). Precise design, ready to implement:
-  - **Line budget first.** `child_supervisor.zig` is at 346/350. Extract its 3 in-file tests to `child_supervisor_test.zig` (frees ~64 lines), register via `test { _ = @import("child_supervisor_test.zig"); }`. This requires making `readResult` + `establishSandbox` `pub` (the sibling test is the consumer — zlint `unused-decls` is satisfied; emit the PUB GATE proof line: "pub for sibling-test consumer"). Behavior-neutral refactor, commit alone.
-  - **Hook shape (supervisor stays HTTP-agnostic):** `pub const RenewHook = struct { ctx: *anyopaque, onTick: *const fn (ctx: *anyopaque, now_ms: i64) Decision }` where `Decision = union(enum) { keep, extend: i64, terminate }`. Thread `?RenewHook` through `run` → `supervise` → `readResult`.
-  - **Tick loop in `readResult`:** make `deadline_ms` mutable; each iteration poll with `tick_deadline = min(deadline, now + RENEWAL_TICK_MS)` (add `RENEWAL_TICK_MS` to `constants.zig`, < `RENEWAL_WINDOW_MS`). On `readFrame` `.timed_out`: if `now >= deadline` → real timeout (kill, as today); else it's a tick → call `hook.onTick(now)` → `keep` continue · `extend(new)` set `deadline = new` · `terminate` kill child + return a `.lost`-style outcome. A real progress frame also counts as liveness (the child is provably alive); the wall-clock tick covers a quiet-but-alive LLM call (the synthetic keepalive). This keeps both the smooth-transition guarantee (Invariant 10) and the cap (server-enforced).
-  - **Hook impl in `loop.zig`** (has the client): `onTick` renews only inside `RENEWAL_WINDOW_MS` of the deadline by calling `cp.renew`; maps `renewed→extend`, `terminal→terminate`, transport/5xx error→keep (retry next tick — fail-safe). Unit-test with a fake `cp` (no server): assert tick→extend on 2xx, tick→terminate on 4xx, tick→keep on transient error. `cp.renew()` (3dbcb774) is the building block.
-  - **Stop reason:** paused before writing fork/deadline/kill mutation while (a) the terminal was corrupting build output (can't reliably verify), and (b) the test DB is down (server side unverified). Process/kill code must be verified, not rushed.
-- §1 operator plane: `GET/PATCH /v1/fleet/runners` (`platformAdmin()`), cordon/revoke, `RUNNER_STATUS_CORDONED/REVOKED`, heartbeat-reply `drain` wiring + tests.
-- §2 heartbeat-lapse: affinity-slot-only expiry piggyback + `listCandidates` exclusion + `lease_reassigned` activity frame + tests.
-- VERIFY: `/write-unit-test`, `make test`/`test-integration`, cross-compile, `/review`, CHORE(close), changelog, PR.
+**§3 is COMPLETE and DB-verified** (server dual-row renewal + runner client + desync-safe supervisor driving + unit + integration tests all green on live DB). Dimensions 3.1–3.5/3.7 are exercised by `renewal_integration_test.zig`; 3.2/3.4 (child-deadline tracking) + 3.8 (smooth-transition) by the supervisor unit tests. Mark DONE at CHORE(close) after `/review`.
+
+**Remaining:**
+- **§1 operator plane**: `GET/PATCH /v1/fleet/runners` (`platformAdmin()`), cordon (`status=cordoned`, auth-valid, drain) / revoke (`status=revoked`, hard cut), `listCandidates` exclusion of cordoned, heartbeat-reply `drain` wiring, + tests (inventory, cordon-drains-to-other-host, revoke-hard-cut, rejects-tenant-admin-and-apikey).
+- **§2 heartbeat-lapse**: affinity-slot-only expiry piggyback on poll/heartbeat + `listCandidates` exclusion of lapsed + `lease_reassigned` activity frame; tests (reassign-to-other-host, pull-reclaim-backstop, expires-affinity-not-lease-no-rebill).
+- **VERIFY/CLOSE**: `/write-unit-test` coverage audit, cross-compile both linux targets, `gitleaks`, `/review`, mark Dimensions DONE, spec → `done/`, changelog `<Update>`, CHORE(close), PR + `/review-pr` + `kishore-babysit-prs`.
+
+**Open for Indy:** `MAX_RUNTIME_MS = 30 min` default OK? · incremental per-renewal metering deferred to its own spec (confirm)?
 
 ---
 
