@@ -503,15 +503,19 @@ The deleted worker's single in-process `processEvent` loop is now split across t
                       resolves, a fresh XADD lands with
                       actor=continuation:<original>, producing a NEW row.
      4. resolveSecretsMap from vault (per-zombie tool credentials,
-        workspace-scoped). The provider api_key is resolved separately and
-        crosses into the lease reply in process memory; it does NOT join
-        secrets_map and is never substituted into a tool placeholder.
+        workspace-scoped). The provider api_key is resolved separately
+        (resolveActiveProvider, fresh + reclaim) and delivered on the lease via
+        ExecutionPolicy.provider + ExecutionPolicy.api_key; it does NOT join
+        secrets_map and is never substituted into a tool placeholder. The
+        runner injects it into the NullClaw child for the inference call only,
+        and zombied secureZeros it after the lease serializes.
      5. UPSERT core.zombie_sessions                ← marks busy
           SET execution_id, execution_started_at = now()
      6. issue fleet.runner_leases row              ← durable ownership
           (lease_id, fencing_token, lease_expires_at = now + LEASE_TTL_MS)
      → 200 { event, ExecutionPolicy(config + secrets_map + network_policy
-              + tool_allowlist), lease_id, fencing_token, checkpoint? }
+              + tool_allowlist + provider + api_key), lease_id,
+              fencing_token, checkpoint? }
 
    zombie-runner — parent (child_supervisor.zig):
        establish cgroup → fork → exec self as `zombie-runner __execute`

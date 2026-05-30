@@ -94,6 +94,46 @@ test "lease response — no-work carries a backoff hint" {
     try expectStable(protocol.LeaseResponse, .{ .lease = null, .retry_after_ms = 1000 });
 }
 
+test "lease policy carries the resolved provider and api_key across the round-trip" {
+    try expectStable(protocol.LeaseResponse, .{
+        .lease = .{
+            .lease_id = "lease_0190aaaa",
+            .fencing_token = 184,
+            .lease_expires_at = 1700000030000,
+            .secret_delivery = .@"inline",
+            .event = .{
+                .event_id = "1700000000000-0",
+                .zombie_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+                .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
+                .actor = "steer:kishore",
+                .event_type = .chat,
+                .request_json = "{}",
+                .created_at = 1700000000000,
+            },
+            .policy = .{
+                .provider = "fireworks",
+                .api_key = "fw_secret_key",
+                .context = .{ .model = "accounts/fireworks/models/kimi-k2.6", .context_cap_tokens = 256000 },
+            },
+        },
+        .retry_after_ms = null,
+    });
+}
+
+test "lease policy without provider or api_key fields parses to empty defaults (backward-additive)" {
+    const a = std.testing.allocator;
+    // A lease emitted by an OLD zombied — no provider/api_key keys on the policy.
+    // The new runner must still parse it, defaulting both fields to "" (no key,
+    // surfaces downstream as a clean engine config error, never a parse failure).
+    const json_old =
+        \\{"lease":{"lease_id":"l1","fencing_token":1,"lease_expires_at":1700000030000,"secret_delivery":"inline","event":{"event_id":"1700000000000-0","zombie_id":"0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee","workspace_id":"0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa","actor":"steer:kishore","event_type":"webhook","request_json":"{}","created_at":1700000000000},"policy":{"network_policy":{"allow":[]},"tools":[],"secrets_map":null,"context":{"tool_window":20,"memory_checkpoint_every":5,"stage_chunk_threshold":0.75,"model":"m","context_cap_tokens":200000}}},"retry_after_ms":null}
+    ;
+    const p = try std.json.parseFromSlice(protocol.LeaseResponse, a, json_old, .{ .ignore_unknown_fields = true });
+    defer p.deinit();
+    try std.testing.expectEqualStrings("", p.value.lease.?.policy.provider);
+    try std.testing.expectEqualStrings("", p.value.lease.?.policy.api_key);
+}
+
 test "lease response carries an inline secrets_map across the round-trip" {
     const a = std.testing.allocator;
     const json_in =

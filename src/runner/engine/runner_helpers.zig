@@ -186,6 +186,20 @@ pub fn composeMessage(
     return parts.toOwnedSlice(alloc);
 }
 
+test "redactBytes scrubs the lease-delivered provider api_key from a frame" {
+    // Invariant: the provider key (now sourced from policy.api_key, captured by
+    // collectSecrets as agent_config.api_key) never reaches an activity frame.
+    const alloc = std.testing.allocator;
+    const secrets = [_]runner_progress.Secret{
+        .{ .value = "fw_live_provider_key", .placeholder = "${secrets.llm.api_key}" },
+    };
+    const raw = "POST api.fireworks.ai Authorization: Bearer fw_live_provider_key";
+    const out = try runner_progress.redactBytes(alloc, raw, &secrets);
+    defer if (out.ptr != raw.ptr) alloc.free(out);
+    try std.testing.expect(std.mem.indexOf(u8, out, "fw_live_provider_key") == null);
+    try std.testing.expect(std.mem.indexOf(u8, out, "${secrets.llm.api_key}") != null);
+}
+
 test "redactedFinalReply substitutes the placeholder and frees the input" {
     const alloc = std.testing.allocator;
     const secrets = [_]runner_progress.Secret{

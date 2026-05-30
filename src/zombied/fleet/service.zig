@@ -137,6 +137,10 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
     activity_publisher.publishEventReceived(hx.ctx.queue, &scratch, session.zombie_id, event.event_id, event.actor);
 
     const tr = resolveTenant(alloc, pool, session.workspace_id) orelse return null;
+    // The billing decision needs only mode/model; the resolved api_key is never
+    // used here and must not linger unzeroed in the request arena (arena teardown
+    // does not zero pages). The delivery path re-resolves + zeroes its own copy.
+    std.crypto.secureZero(u8, tr.resolved.api_key);
     const ctx = metering.PreflightContext{
         .workspace_id = session.workspace_id,
         .zombie_id = session.zombie_id,
@@ -203,6 +207,12 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
     const lease_id = try id_format.generateRunnerLeaseId(hx.alloc);
     try insertLeaseRow(hx, runner_id, acq, billed, lease_id);
 
+    // Owned provider+key; deinit (secureZero + free) runs after `hx.ok` has
+    // serialized the policy synchronously, so the key is zeroed before the
+    // arena memory is reused.
+    var resolved = resolveProviderForLease(hx, billed.tenant_id);
+    defer if (resolved) |*r| r.deinit(hx.alloc);
+
     log.info("lease_issued", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
     hx.ok(.ok, protocol.LeaseResponse{ .lease = .{
         .lease_id = lease_id,
@@ -210,22 +220,42 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
         .lease_expires_at = acq.leased_until,
         .secret_delivery = .@"inline",
         .event = envelope,
-        .policy = resolveExecutionPolicy(hx, session),
+        .policy = resolveExecutionPolicy(hx, session, resolved),
     } });
 }
 
-/// `secrets_map` (inline, parsed bodies) + context budget — the resolution
-/// `executeInSandbox` does per execution, lifted onto the lease wire. Secret
-/// bodies are arena-scoped and serialized synchronously by `hx.ok`; they are
-/// never logged (Invariant: no `secrets_map` bytes in logs).
-fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession) execution_policy.ExecutionPolicy {
+/// Resolve the tenant's active provider+key for the lease. Called for BOTH
+/// fresh and reclaim leases: `runBilling` discards the key it resolves for
+/// metering and the lease row never persists it (plaintext secret in a table is
+/// forbidden), so the key must be (re-)resolved here. Reclaim reuses its prior
+/// billing — this resolve never re-charges. Returns null on resolve failure;
+/// the lease then carries no key and the engine surfaces a clean config error.
+/// Caller owns the result and must `deinit` (secureZero) after `hx.ok`.
+fn resolveProviderForLease(hx: Hx, tenant_id: []const u8) ?tenant_provider.ResolvedProvider {
+    const conn = hx.ctx.pool.acquire() catch |err| {
+        log.warn("lease_provider_acquire_failed", .{ .err = @errorName(err) });
+        return null;
+    };
+    defer hx.ctx.pool.release(conn);
+    return tenant_provider.resolveActiveProvider(hx.alloc, conn, tenant_id) catch |err| {
+        log.warn("lease_provider_key_resolve_failed", .{ .err = @errorName(err) });
+        return null;
+    };
+}
+
+/// `secrets_map` (inline, parsed bodies) + context budget + the resolved
+/// provider+key — the resolution `executeInSandbox` does per execution, lifted
+/// onto the lease wire. Secret bodies and the provider key are arena-scoped and
+/// serialized synchronously by `hx.ok`; they are never logged (Invariant: no
+/// secret bytes in logs). `resolved` is owned by the caller and outlives `hx.ok`.
+fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession, resolved: ?tenant_provider.ResolvedProvider) execution_policy.ExecutionPolicy {
     const alloc = hx.alloc;
     const budget = context_resolve.resolveContextBudget(session.config.context, session.config.model);
     var secrets_map: ?std.json.Value = null;
     if (session.config.credentials.len > 0) {
-        if (secrets_resolve.resolveSecretsMap(alloc, hx.ctx.pool, session.workspace_id, session.config.credentials)) |resolved| {
+        if (secrets_resolve.resolveSecretsMap(alloc, hx.ctx.pool, session.workspace_id, session.config.credentials)) |entries| {
             var obj = std.json.ObjectMap.init(alloc);
-            for (resolved) |entry| {
+            for (entries) |entry| {
                 obj.put(entry.name, entry.parsed.value) catch |err| log.warn("lease_secret_put_failed", .{ .err = @errorName(err) });
             }
             secrets_map = .{ .object = obj };
@@ -233,7 +263,12 @@ fn resolveExecutionPolicy(hx: Hx, session: *ZombieSession) execution_policy.Exec
             log.warn("lease_secrets_resolve_failed", .{ .zombie_id = session.zombie_id, .err = @errorName(err) });
         }
     }
-    return .{ .secrets_map = secrets_map, .context = budget };
+    return .{
+        .secrets_map = secrets_map,
+        .context = budget,
+        .provider = if (resolved) |r| r.provider else "",
+        .api_key = if (resolved) |r| r.api_key else "",
+    };
 }
 
 fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: Billed, lease_id: []const u8) !void {
