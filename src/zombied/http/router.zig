@@ -103,6 +103,7 @@ pub const Route = union(enum) {
     runner_lease, // POST /v1/runners/me/leases
     runner_report, // POST /v1/runners/me/reports
     runner_activity: []const u8, // POST /v1/runners/me/leases/{lease_id}/activity
+    runner_renew: []const u8, // POST /v1/runners/me/leases/{lease_id}/renew
 };
 
 pub fn match(path: []const u8, method: httpz.Method) ?Route {
@@ -146,6 +147,7 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     // `register/heartbeat/lease/report` are exact-matched in `match()` before
     // the parse; only `…/leases/{lease_id}/activity` needs segment extraction.
     if (matchers.matchRunnerLeaseActivity(p)) |lease_id| return .{ .runner_activity = lease_id };
+    if (matchers.matchRunnerLeaseRenew(p)) |lease_id| return .{ .runner_renew = lease_id };
 
     // ── Auth sessions (deepest shape first) ───────────────────────────────
     // Approve / verify carry the {action} suffix; check before the bare

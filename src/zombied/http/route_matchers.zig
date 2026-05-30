@@ -330,6 +330,15 @@ pub fn matchRunnerLeaseActivity(p: Path) ?[]const u8 {
     return p.param(3);
 }
 
+/// `POST /v1/runners/me/leases/{lease_id}/renew` — same shape as activity, keyed
+/// on the `renew` suffix segment (single-sourced from the wire contract).
+pub fn matchRunnerLeaseRenew(p: Path) ?[]const u8 {
+    if (p.segs.len != 5) return null;
+    if (!p.eq(0, S_RUNNERS) or !p.eq(1, S_ME) or !p.eq(2, S_LEASES)) return null;
+    if (!p.eq(4, runner_protocol.RUNNER_LEASE_RENEW_SUFFIX)) return null;
+    return p.param(3);
+}
+
 test {
     _ = @import("route_matchers_test.zig");
 }

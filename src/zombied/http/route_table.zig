@@ -130,6 +130,7 @@ pub fn specFor(route: router.Route, registry: *auth_mw.MiddlewareRegistry) ?Rout
         .runner_lease => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerLease },
         .runner_report => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerReport },
         .runner_activity => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerActivity },
+        .runner_renew => .{ .middlewares = registry.runnerBearer(), .invoke = invoke.invokeRunnerRenew },
     };
 }
 

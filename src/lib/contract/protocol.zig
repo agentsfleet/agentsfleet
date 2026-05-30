@@ -44,6 +44,21 @@ pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
 /// `PATH_RUNNER_LEASES`, and the router matcher keys on this suffix segment.
 pub const RUNNER_LEASE_ACTIVITY_SUFFIX = "activity";
 
+/// Trailing segment of the per-lease renewal sub-resource —
+/// `POST /v1/runners/me/leases/{lease_id}/renew`. Like the activity suffix this
+/// stays a bare segment (the runner joins it onto `PATH_RUNNER_LEASES/{id}`) and
+/// the router matcher keys on it. The runner calls this inside the renewal
+/// window while actively executing, to push its kill deadline forward.
+pub const RUNNER_LEASE_RENEW_SUFFIX = "renew";
+
+/// renew reply (200): the authoritative new kill deadline (epoch ms). The runner
+/// retargets its child wall-clock deadline to this. A non-200 (`UZ-RUN-010`
+/// max-runtime, `011` lease_lost, `012` no-credits) means stop renewing and kill
+/// the child — the run is over.
+pub const RenewResponse = struct {
+    lease_expires_at: i64,
+};
+
 /// Isolation strength a runner *self-reports* at enrollment. Stored as telemetry
 /// only — placement keys off operator-assigned trust, not this claim (a runner
 /// can lie about its tier). The trust/attestation model lands in a later
