@@ -30,7 +30,7 @@ pub const RENEWAL_TICK_MS: i64 = 5_000;
 /// row's `created_at`. Renewal clamps to `min(now + LEASE_TTL_MS, created_at +
 /// MAX_RUNTIME_MS)` and is refused once exceeded — a wedged-but-emitting agent
 /// still terminates regardless of progress frames.
-pub const MAX_RUNTIME_MS: i64 = 1_800_000;
+pub const MAX_RUNTIME_MS: i64 = 43_200_000;
 
 /// A runner is treated as lapsed (its leases reassignable to other healthy
 /// hosts) when its `fleet.runners.last_seen_at` is older than this. Kept under

@@ -272,7 +272,7 @@ N/A — no files deleted. The pull-triggered reclaim is extended in place with a
   > "Just using the standard auth with platformAdmin() to manage runners." — A1 locked: `platformAdmin()` JWT-only; key-based scripting is a future spec.
   > "when we cordon, it shouldnt go to the same host? it must get leashed to the other hosts that are good to go?" — cordon/lapse reassign to *other* healthy hosts only (Invariant 8); `listCandidates` excludes the cordoned/lapsed host.
   > "what happens if renew fails? and i am in the middle of something? I suggest we assume an automatic renewal? or if the billing credits are none? Should we make the lease by default <x> mins since all autonomous agents are > 2 mins? and what happens if nothing the agent does? I suppose the lease gets extended even during remaining dormant?"
-  Resolutions: renewal is **automatic** (runner-driven, never manual); renew-fail is **fail-safe** (retry in-window → else deadline-kill + reclaim, never double-run); **credit-gated** (`UZ-RUN-012`, minimal guard; incremental metering deferred to its own spec — flagged for ack); base lease **stays short** (detection = `HEARTBEAT_LAPSE_MS`, not the lease window); a **truly dormant** agent is **NOT** renewed (progress-bearing only, Invariant 2), a quiet-but-active LLM call uses a synthetic keepalive. `MAX_RUNTIME_MS` proposed at 30 min (tunable).
+  Resolutions: renewal is **automatic** (runner-driven, never manual); renew-fail is **fail-safe** (retry in-window → else deadline-kill + reclaim, never double-run); **credit-gated** (`UZ-RUN-012`, minimal guard; incremental metering deferred to its own spec — flagged for ack); base lease **stays short** (detection = `HEARTBEAT_LAPSE_MS`, not the lease window); a **truly dormant** agent is **NOT** renewed (progress-bearing only, Invariant 2), a quiet-but-active LLM call uses a synthetic keepalive. `MAX_RUNTIME_MS` set to **12 h** (Indy, May 30 2026) — autonomous agentic runs are long-horizon; the credit gate (`balanceCoversEstimate` → `UZ-RUN-012`) is the real cost backstop, the cap is only the runaway ceiling.
 
 ---
 
@@ -295,7 +295,7 @@ Committed on `feat/m80-006-fleet-plane`, all green (HARNESS VERIFY + `make lint-
 - **§2 heartbeat-lapse**: affinity-slot-only expiry piggyback on poll/heartbeat + `listCandidates` exclusion of lapsed + `lease_reassigned` activity frame; tests (reassign-to-other-host, pull-reclaim-backstop, expires-affinity-not-lease-no-rebill).
 - **VERIFY/CLOSE**: `/write-unit-test` coverage audit, cross-compile both linux targets, `gitleaks`, `/review`, mark Dimensions DONE, spec → `done/`, changelog `<Update>`, CHORE(close), PR + `/review-pr` + `kishore-babysit-prs`.
 
-**Open for Indy:** `MAX_RUNTIME_MS = 30 min` default OK? · incremental per-renewal metering deferred to its own spec (confirm)?
+**Open for Indy — both resolved (May 30 2026):** ~~`MAX_RUNTIME_MS` default~~ → **12 h**. · ~~incremental per-renewal metering~~ → carved into its **own billing spec** (one-meter stage charge: cached-input tier + Δ-token incremental debit at renewal, waived on zero-token slices; PR opens after this milestone merges). Kept **out** of this fleet PR by design.
 
 ---
 
