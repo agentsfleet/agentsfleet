@@ -71,6 +71,45 @@ pub fn activity(
     alloc.free(res.body); // 202 expected; status ignored (best-effort, no ack).
 }
 
+/// Outcome of a renewal attempt the caller can act on without re-parsing.
+pub const RenewResult = union(enum) {
+    /// 2xx — the authoritative new kill deadline (epoch ms). Retarget the child.
+    renewed: i64,
+    /// A definitive 4xx (lease lost / max-runtime / no-credits): stop renewing
+    /// and kill the child. Carries the status for the caller's log; the specific
+    /// `UZ-RUN-010/011/012` distinction is server-logged.
+    terminal: u16,
+};
+
+/// POST /v1/runners/me/leases/{lease_id}/renew → extend the lease's kill
+/// deadline while the child is actively executing. `lease_id` is a path param.
+///
+/// Fail-safe by design: a 2xx yields `renewed`; a definitive 4xx yields
+/// `terminal` (the caller kills its child); a transport failure or 5xx returns
+/// an error so the caller simply retries on the next tick — if renewal keeps
+/// failing the lease just expires naturally and is reclaimed (never double-run).
+pub fn renew(
+    self: LoopbackClient,
+    alloc: Allocator,
+    runner_token: []const u8,
+    lease_id: []const u8,
+) !RenewResult {
+    const path = try std.fmt.allocPrint(alloc, "{s}/{s}/{s}", .{
+        protocol.PATH_RUNNER_LEASES, lease_id, protocol.RUNNER_LEASE_RENEW_SUFFIX,
+    });
+    defer alloc.free(path);
+    const res = try self.post(alloc, path, runner_token, "");
+    defer alloc.free(res.body);
+    if (res.status >= 200 and res.status < 300) {
+        const parsed = std.json.parseFromSlice(protocol.RenewResponse, alloc, res.body, .{}) catch
+            return ClientError.MalformedResponse;
+        defer parsed.deinit();
+        return .{ .renewed = parsed.value.lease_expires_at };
+    }
+    if (res.status >= 400 and res.status < 500) return .{ .terminal = res.status };
+    return ClientError.BadStatus; // 5xx → retryable; caller retries next tick.
+}
+
 const PostResult = struct { status: u16, body: []u8 };
 
 /// One bearer-authed POST. Returns the status + response body (owned by `alloc`).
