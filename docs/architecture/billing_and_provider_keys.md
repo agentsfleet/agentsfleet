@@ -35,7 +35,7 @@ Every tenant has exactly one balance: `core.tenant_billing.balance_nanos` (`BIGI
 
 Each new tenant receives a **one-time starter credit** at tenant-create time, named `STARTER_CREDIT_NANOS` in `src/state/tenant_billing.zig`. The credit is inserted into `tenant_billing.balance_nanos` synchronously when the tenant row is created. There is no replenish; it's a one-time onboarding allowance, not a recurring stipend. Read the source for the current dollar amount; it sits behind a pin test that fails if it drifts from the Mintlify display snippet.
 
-Under self-managed the grant covers `STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_NANOS` stages flat. Under platform default the math depends on the model the tenant runs against, because the stage charge layers a per-token component on top of the flat platform overhead (see §4.2). The grant is sized so a new user comfortably covers a few thousand stages on either posture without thinking about top-ups.
+Under M80_010's metering the grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed, and at the run fee plus the three-tier per-token cost under platform — so a quiet long run stretches the grant further than a token-heavy one, and platform spend depends on the model (see §4.2). The grant is sized so a new user comfortably covers a few thousand stages on either posture without thinking about top-ups.
 
 ### 2.2 What happens when the starter grant runs out
 
@@ -59,10 +59,23 @@ There are no plan tiers in the cost function. The flat-rate `compute_receive_cha
 
 Every event triggers two debits, in this order, from the same `tenant_billing.balance_nanos` column:
 
+> **M80_010 (pending) — the stage debit is metered incrementally, not estimated once.** The stage charge follows the real run: one debited value per `/renew`, computed from a per-second **run fee** plus (platform only) the **per-token cost** of the slice's token delta, settled on the last partial slice at report. The diagram is the per-slice model; §4.2 is the charge function.
+>
+> ```
+>  ONE event → the agent runs in a sandbox, renewing as it works:
+>    t0 ─renew─ renew ─renew─ … ─report(settle)─►   each tick meters the slice since the last:
+>      RUN FEE    = (now − last_metered_at)/1000 × RUN_NANOS_PER_SEC      (both postures)
+>      TOKEN COST = Δin·r_in + Δcached·r_cache + Δout·r_out               (platform only)
+>    platform debit      = RUN FEE + TOKEN COST
+>    self_managed debit  = RUN FEE          (tokens recorded, not charged — tenant paid the provider)
+>    dormant agent       = not renewed → not charged   (serverless; no zero-token waive)
+>    idempotent: the cumulative-token diff vs the lease cursor → a fail-safe retry charges ≈0
+> ```
+
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
 | 1 | **Receive** | Right after `INSERT zombie_events (status='received')` and the gate passes | `computeReceiveCharge(posture)` = `EVENT_NANOS` | No today — both postures use the same `EVENT_NANOS` constant. Function signature keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
-| 2 | **Stage** | At lease issue, before the runner executes (pre-execution estimate) | `computeStageCharge(posture, model, in_tok, out_tok)` | Yes — platform: `STAGE_PLATFORM_NANOS` + per-token cost from the model-caps cache. self-managed: flat `STAGE_SELF_MANAGED_NANOS`. |
+| 2 | **Stage** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (**M80_010**, pending; was a one-shot estimate at lease issue) | `computeStageCharge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model-caps cache. self-managed: the run fee only (tokens recorded, not charged). |
 
 Why two debit points and not one:
 
@@ -71,7 +84,7 @@ Why two debit points and not one:
 
 Each debit produces its own row in `core.zombie_execution_telemetry` with a `charge_type` discriminator (`'receive'` or `'stage'`). One event → two telemetry rows. This is auditable: a quarterly question like "what fraction of last month's revenue came from receive overhead vs LLM markup" is a one-line SQL query.
 
-The stage debit happens at lease issue, **before** the runner executes. We deduct on the conservative side — using the worst-case input-token estimate from the prompt size — and then the post-execution telemetry update (at report) reconciles to the actual token count. If the actual usage is lower than the estimate, the difference is *not* refunded in v2.0; the conservative estimate is the charge. (Refund-on-actual is a v3 candidate; today it would add reconciliation complexity for marginal accuracy gains.)
+**Stage metering (M80_010, pending).** The stage debit follows the real run instead of a one-shot estimate: on every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts, and the server charges the **delta** since the lease's last-metered cursor — a run fee `(now − last_metered_at) × RUN_NANOS_PER_SEC` plus (platform only) the per-token cost of the token delta — atomically inside M80_006's fenced renewal CTE, advancing the cursor in the same statement. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens. A fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency); a Δ that would compute negative clamps to 0 (never credits). Each `/renew`/settle writes a `charge_type='stage'` telemetry row carrying the per-period breakdown, so the one value debited from credit is reconstructable. (Until M80_010 lands, the stage debit is the historical one-shot floor estimate at lease issue.)
 
 ---
 
@@ -105,29 +118,35 @@ Receive is a single named constant, `EVENT_NANOS`, defined in `src/state/tenant_
 
 Function shape:
 
+Function shape (M80_010) — **deltas** in, run fee + three-tier token cost out; the cumulative→delta subtraction happens in the renewal CTE, so this function never sees cumulative counts:
+
 ```zig
 pub fn computeStageCharge(
-    posture:       Posture,
-    model:         []const u8,        // "accounts/fireworks/models/kimi-k2.6", "kimi-k2.6", …
-    input_tokens:  u32,
-    output_tokens: u32,
+    posture:    Posture,
+    model:      []const u8,    // "accounts/fireworks/models/kimi-k2.6", "kimi-k2.6", …
+    d_input:    u32,           // per-slice token deltas (CTE-computed max(0, cumulative − metered))
+    d_cached:   u32,
+    d_output:   u32,
+    elapsed_ms: i64,           // active wall time of the slice
 ) i64 {
+    const run = @divTrunc(elapsed_ms, 1000) * RUN_NANOS_PER_SEC;   // both postures
     return switch (posture) {
         .platform => blk: {
             const rate = model_rate_cache.lookup_model_rate(model) orelse
                 std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
-            const in_nanos  = @divTrunc(rate.input_nanos_per_mtok  * @as(i64, input_tokens),  1_000_000);
-            const out_nanos = @divTrunc(rate.output_nanos_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk STAGE_PLATFORM_NANOS + in_nanos + out_nanos;
+            const in_n     = @divTrunc(rate.input_nanos_per_mtok        * @as(i64, d_input),  1_000_000);
+            const cached_n = @divTrunc(rate.cached_input_nanos_per_mtok * @as(i64, d_cached), 1_000_000);
+            const out_n    = @divTrunc(rate.output_nanos_per_mtok       * @as(i64, d_output), 1_000_000);
+            break :blk run + in_n + cached_n + out_n;
         },
-        .self_managed => STAGE_SELF_MANAGED_NANOS,
+        .self_managed => run,   // tokens recorded by the caller, not charged
     };
 }
 ```
 
-Two named constants drive this — `STAGE_PLATFORM_NANOS` and `STAGE_SELF_MANAGED_NANOS`, defined in `src/state/tenant_billing.zig`. Under platform: the flat platform overhead plus a per-token component driven by the model-caps cache (§10). Under self-managed: the flat self-managed overhead, regardless of model or token count, because we did not pay for the tokens.
+One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/state/tenant_billing.zig`, applied identically to **both** postures (M80_010 retires the separate `STAGE_SELF_MANAGED_NANOS`; `STAGE_PLATFORM_NANOS` becomes this per-second rate). Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-caps cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the agent.
 
-The gradient between the two stage constants is the friction-reducing signal the marketing surface leans on: on-ramp on platform default without bringing a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. The specific ratio is asserted by pin tests in `tenant_billing_test.zig` + `ui/packages/website/src/lib/rates.test.ts` so a bump on either side surfaces immediately.
+Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `zombiectl/.../billing.ts`) by `audit-cross-tier-rates.sh` so a bump surfaces immediately.
 
 `lookup_model_rate` reads from a process-local cache populated on API server start (and refreshed when the model-caps endpoint updates). The model-caps endpoint is the single source of truth; the API server caches it to keep `computeStageCharge` synchronous and free of network calls in the hot path.
 
@@ -135,27 +154,28 @@ The gradient between the two stage constants is the friction-reducing signal the
 
 ### 4.3 What an event costs — by shape, not by number
 
-A worked example with hardcoded dollar amounts goes stale the moment a rate moves. Instead, here is the *cost shape* a caller can reason about without consulting the doc again after a rate ratchet:
+A worked example with hardcoded dollar amounts goes stale the moment a rate moves. Instead, here is the *cost shape* a caller can reason about without consulting the doc again after a rate ratchet — under M80_010 the stage is summed across the run's `/renew` slices (Σ over slices), each slice metered on its own deltas:
 
-**Platform posture, single event:**
-
-```
-total_nanos = EVENT_NANOS                          // receive
-            + STAGE_PLATFORM_NANOS                 // flat platform overhead
-            + (input_tokens  × rate.input_nanos_per_mtok)  / 1_000_000
-            + (output_tokens × rate.output_nanos_per_mtok) / 1_000_000
-```
-
-The token component dominates as `input_tokens + output_tokens` grow; the flat overhead dominates on small stages. `rate` is the row for the active model in the model-caps cache (§10).
-
-**Self-managed posture, single event:**
+**Platform posture, single event (M80_010):**
 
 ```
-total_nanos = EVENT_NANOS                          // receive
-            + STAGE_SELF_MANAGED_NANOS             // flat overhead, no token math
+total_nanos = EVENT_NANOS                              // receive
+            + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC            // run fee
+                       + (Δinput  × rate.input_nanos_per_mtok)        / 1_000_000
+                       + (Δcached × rate.cached_input_nanos_per_mtok) / 1_000_000
+                       + (Δoutput × rate.output_nanos_per_mtok)       / 1_000_000 ]
 ```
 
-One named constant for each posture's flat overhead, one named constant for receive, one rate lookup for platform's token component. To learn the live dollar amounts: read the constants in `src/state/tenant_billing.zig`, the model-caps response for token rates, and `~/Projects/docs/snippets/rates.mdx` for the marketing display strings.
+The token component dominates a token-heavy run; the run fee dominates a long, quiet one. `rate` is the row for the active model in the model-caps cache (§10).
+
+**Self-managed posture, single event (M80_010):**
+
+```
+total_nanos = EVENT_NANOS                              // receive
+            + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC ]         // run fee only, no token math
+```
+
+`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `EVENT_NANOS`); platform additionally layers the three-tier token cost. To learn the live dollar amounts: read the constants in `src/state/tenant_billing.zig`, the model-caps response for token rates, and `~/Projects/docs/snippets/rates.mdx` for the marketing display strings.
 
 ---
 
@@ -181,6 +201,8 @@ flowchart TD
     K --> L[UPDATE zombie_events<br/>SET status=processed<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
     L --> X2([XACK])
 ```
+
+> **M80_010 (pending) shifts the stage deduct.** The flowchart shows the historical single-deduct flow (whole stage charged at lease issue, node `I`). Under M80_010 the *entry gate* stays a one-shot coverage check, but the **stage DEBIT moves to the runner's `/renew` ticks + a settle at report** (§3): node `I` becomes a per-slice Δ-debit metered across the run, not a single pre-execution charge. The receive deduct and the gate are unchanged.
 
 Properties:
 
@@ -392,7 +414,7 @@ When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) p
 - **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement, CLI subcommand if/when warranted.
 - **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
 - **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in `compute_charge`.
-- **Refund-on-actual-tokens.** v3. Today the conservative estimate at stage-debit time is the charge; reconciling to actual tokens after `StageResult` would add bookkeeping for marginal accuracy gains.
+- **Refund-on-actual-tokens.** **Superseded by M80_010** (incremental per-renewal metering, pending). The stage debit follows the real run via per-`/renew` deltas + a settle at report, so the credit drained equals actual runtime × rate + actual tokens — there is nothing to reconcile or refund after the fact.
 - **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3 — needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.
 - **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.
