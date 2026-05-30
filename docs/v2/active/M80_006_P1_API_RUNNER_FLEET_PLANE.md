@@ -109,7 +109,7 @@
 
 ## Sections (implementation slices)
 
-### §1 — Fleet operator plane
+### §1 — Fleet operator plane — DEFERRED → new spec (see `roadmap.md` + Discovery)
 
 Delivers operator visibility + control: list runners with liveness + current lease, and cordon/revoke one. Why: a compromised or misbehaving runner must be removable, and an operator must see fleet state. **Authz:** `platformAdmin()` (Clerk JWT `platform_admin=true`) — the same gate as runner enrollment, NOT tenant-`admin`; the fleet is operator-owned cross-tenant infra. **Cordon vs revoke (resolves the auth landmine):** `runnerBearer` rejects any non-`active` runner row at auth, so a status flip alone hard-fails the runner's next call instead of draining. Therefore: **cordon** = `status='cordoned'`, which `runnerBearer` still accepts (auth-valid) so the runner can drain — `listCandidates` excludes it (no new leases) and the heartbeat reply returns `drain` so in-flight work finishes and reports; **revoke** = `status='revoked'`, which auth then rejects (`UZ-RUN-009`, hard cut, in-flight reclaimed via §2). Both reuse the app-enforced `status` column (no schema change). A cordoned/lapsed host's work reassigns to **other** healthy hosts, never back to itself (Indy: "must get leashed to the other hosts that are good to go").
 
@@ -118,7 +118,7 @@ Delivers operator visibility + control: list runners with liveness + current lea
 - **Dimension 1.3** — `PATCH /v1/fleet/runners/{id}` revoke: `status='revoked'`, runner's next call `403 UZ-RUN-009`, in-flight reclaimed via §2 → Test `test_fleet_revoke_hard_cuts_runner`
 - **Dimension 1.4** — the plane is `platformAdmin()`-only: a tenant-`admin` JWT and a `zmb_t_` api_key both get `403` (not just a runner token) → Test `test_fleet_plane_rejects_tenant_admin_and_apikey`
 
-### §2 — Heartbeat-driven proactive reassignment
+### §2 — Heartbeat-driven proactive reassignment — DEFERRED → new spec (see `roadmap.md` + Discovery)
 
 Delivers fast recovery: when a runner's heartbeat lapses (`last_seen_at` older than `HEARTBEAT_LAPSE_MS`), mark it dead and make its leases reclaimable *now* rather than waiting out the TTL. **Mechanism (there is no sweep to speed up — reclaim is pull-triggered):** detection piggybacks on existing traffic — a surviving runner's poll/heartbeat opportunistically scans for lapsed peers and **expires their affinity slots only** (`leased_until := now`), leaving the `active` lease rows intact so the next poll's `reclaimPriorActive` recovers the event durably with no re-bill. "Within one detection cycle" = one poll interval (`NO_WORK_RETRY_AFTER_MS`), well under the TTL. The pull-triggered claim is the backstop for a runner that vanishes silently. The lapsed host is excluded from candidate selection, so work moves to other healthy hosts.
 
@@ -259,6 +259,8 @@ N/A — no files deleted. The pull-triggered reclaim is extended in place with a
 ## Discovery (consult log)
 
 > **Empty at creation.** Append consults, skill-chain outcomes, and Indy-acked deferral quotes as work proceeds.
+
+- **§1/§2 DEFERRED — Indy (2026-05-31):** > "I think this can be a new spec with the problem noted down in the docs/architecture/roadmap.md, since the problem can be that all runners are down, and how are cordon going to be handled? Which runners can take it? cordon rules, drain rules and so on has to be studied first." — context: the operator plane (§1) + heartbeat-lapse reassignment (§2) are carved out of this PR into a **new spec** pending a cordon/drain/eligibility design study (problem captured in `docs/architecture/roadmap.md`). **M80_006 ships §3 (per-lease renewal) only.** The `/v1/fleet/runners` surface, `RUNNER_STATUS_{cordoned,revoked}`, and the `UZ-RUN-009` code are left unbuilt so the study isn't foreclosed.
 
 - **Provenance (May 27, 2026):** authored with M80_003/004/005 to formalize the remaining roadmap before M80_002's CHORE(close). The renewal half is the named fix for the gap recorded in M80_002 Failure Modes + §6; §6 (runner-as-default for >30s agents) blocks on this workstream.
 - **Indy (May 27, 2026):** "fix cleanly in M80_006" — the renewal gap is to be solved here, not patched in M80_002 (TTL bump is the rejected mud-patch). — context: M80_002 ships with the documented gap; this spec owns the fix.

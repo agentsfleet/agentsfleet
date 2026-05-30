@@ -59,17 +59,23 @@ There are no plan tiers in the cost function. The flat-rate `compute_receive_cha
 
 Every event triggers two debits, in this order, from the same `tenant_billing.balance_nanos` column:
 
-> **M80_010 (pending) — the stage debit is metered incrementally, not estimated once.** The stage charge follows the real run: one debited value per `/renew`, computed from a per-second **run fee** plus (platform only) the **per-token cost** of the slice's token delta, settled on the last partial slice at report. The diagram is the per-slice model; §4.2 is the charge function.
+> **M80_010 (pending) — the stage debit is metered incrementally, not estimated once.** On every `/renew` the runner reports cumulative token counts; the server charges the slice's delta and records it in **three places**, all inside M80_006's fenced renewal CTE (a `guard` arm gates every write — a lost/capped renewal writes none). §4.2 is the charge function.
 >
 > ```
 >  ONE event → the agent runs in a sandbox, renewing as it works:
 >    t0 ─renew─ renew ─renew─ … ─report(settle)─►   each tick meters the slice since the last:
->      RUN FEE    = (now − last_metered_at)/1000 × RUN_NANOS_PER_SEC      (both postures)
->      TOKEN COST = Δin·r_in + Δcached·r_cache + Δout·r_out               (platform only)
->    platform debit      = RUN FEE + TOKEN COST
->    self_managed debit  = RUN FEE          (tokens recorded, not charged — tenant paid the provider)
->    dormant agent       = not renewed → not charged   (serverless; no zero-token waive)
->    idempotent: the cumulative-token diff vs the lease cursor → a fail-safe retry charges ≈0
+>      slice = run_fee + token_cost
+>        run_fee    = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000   (both postures, ms-precision)
+>        token_cost = Δin·r_in + Δcached·r_cache + Δout·r_out              (platform only)
+>
+>    THREE guard-gated writes per slice (atomic in the renewal CTE):
+>      ① WALLET     balance_nanos := GREATEST(0, balance_nanos − slice)       clamp, never negative
+>      ② LEDGER     telemetry 'stage' row(event_id) += slice / Δtokens / Δt   per-EVENT total (Usage tab)
+>      ③ BREAKDOWN  INSERT fleet.metering_periods(event_id, slice_seq, …)     per-RENEWAL detail (new table)
+>
+>    self_managed: run_fee only (tokens recorded, not charged — tenant paid the provider)
+>    dormant agent: not renewed → not charged (serverless). credit exhausted → next /renew refused (UZ-RUN-012)
+>    idempotent: cumulative-token diff vs the lease cursor → a fail-safe retry charges ≈0
 > ```
 
 | # | Debit | When | Amount | Posture-dependent? |
@@ -82,9 +88,9 @@ Why two debit points and not one:
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
 - **Stage captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
-Each debit produces its own row in `core.zombie_execution_telemetry` with a `charge_type` discriminator (`'receive'` or `'stage'`). One event → two telemetry rows. This is auditable: a quarterly question like "what fraction of last month's revenue came from receive overhead vs LLM markup" is a one-line SQL query.
+**Telemetry rows (M80_010).** `core.zombie_execution_telemetry` is keyed `(event_id, charge_type)` — one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals (the `UNIQUE (event_id, charge_type)` constraint means the stage row is updated in place, never multiplied). The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `stage` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single stage debit accrued (slice by slice) is a join on `metering_periods`.
 
-**Stage metering (M80_010, pending).** The stage debit follows the real run instead of a one-shot estimate: on every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts, and the server charges the **delta** since the lease's last-metered cursor — a run fee `(now − last_metered_at) × RUN_NANOS_PER_SEC` plus (platform only) the per-token cost of the token delta — atomically inside M80_006's fenced renewal CTE, advancing the cursor in the same statement. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens. A fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency); a Δ that would compute negative clamps to 0 (never credits). Each `/renew`/settle writes a `charge_type='stage'` telemetry row carrying the per-period breakdown, so the one value debited from credit is reconstructable. (Until M80_010 lands, the stage debit is the historical one-shot floor estimate at lease issue.)
+**Stage metering (M80_010, pending) — three layers.** The stage debit follows the real run instead of a one-shot estimate. On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts; the server charges the **delta** since the lease's last-metered cursor — `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms-precision) plus (platform only) the per-token cost of the token delta — and applies three guard-gated writes (① debit the **wallet** `balance_nanos`, clamped at 0; ② accumulate the per-event `stage` **ledger** row; ③ INSERT the per-renewal `fleet.metering_periods` **breakdown** row), advancing the cursor, all atomically inside M80_006's fenced renewal CTE. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens. Properties: a fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency); a negative Δ clamps to 0 (never credits); the wallet debit is `GREATEST(0, …)` (never negative) and a balance that can no longer fund the run refuses the **next** renewal (`UZ-RUN-012`, run terminates); a lost/fenced-out renewal writes none of the three. (Until M80_010 lands, the stage debit is the historical one-shot floor estimate at lease issue.)
 
 ---
 
@@ -207,7 +213,7 @@ flowchart TD
 Properties:
 
 - **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the stage portion.
-- **Two deductions, two telemetry rows, in transaction.** Receive deduct + telemetry insert is one transaction; stage deduct + telemetry insert is another. If `zombied` crashes between them, the receive-row is the durable record that the receive overhead was charged; on retry the gate re-runs and either passes (still in credit) or blocks (not enough left for the stage portion).
+- **Two deductions, in transaction** (historical single-shot flow; M80_010 changes the stage half). Receive deduct + its telemetry insert is one transaction. The stage half, pre-M80_010, was a single deduct + telemetry insert at lease issue; under M80_010 it becomes the per-`/renew` accumulate (one `receive` row + one *accumulated* `stage` row + N `metering_periods` rows — see §3). If `zombied` crashes between writes, the receive row is the durable record that the receive overhead was charged; each settled metering slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
 
@@ -330,8 +336,9 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
     {
       "id":                    "<model identifier as the provider expects it>",
       "context_cap_tokens":    <int — context window in tokens>,
-      "input_nanos_per_mtok":  <int — retail rate per 1M input tokens, in nanos>,
-      "output_nanos_per_mtok": <int — retail rate per 1M output tokens, in nanos>
+      "input_nanos_per_mtok":        <int — retail rate per 1M input tokens, in nanos>,
+      "cached_input_nanos_per_mtok": <int — retail rate per 1M cached-input tokens, in nanos (M80_010)>,
+      "output_nanos_per_mtok":       <int — retail rate per 1M output tokens, in nanos>
     },
     …one row per supported model…
   ]
