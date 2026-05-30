@@ -4,7 +4,7 @@
 **Milestone:** M69
 **Workstream:** 001
 **Date:** May 14, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — unblocks independent skill iteration without main-repo PR ceremony; reverses an M49 decision that has aged out.
 **Categories:** SKILL, INFRA, DOCS
 **Batch:** B1 — independent of M68 and other M69 workstreams.
@@ -317,8 +317,11 @@ Captured during `/review` on `feat/m69-001-public-skills-repo` HEAD `fca3add7` (
 
 **Cross-repo doc sweep:** [`usezombie/docs#62`](https://github.com/usezombie/docs/pull/62) flips `index.mdx`, `quickstart.mdx`, `cli/install.mdx`, `zombies/install.mdx` from `usezombie/usezombie` → `usezombie/skills`. `changelog.mdx` historical entries deliberately untouched (CHANGELOG_VOICE.md: historical entries archived not rewritten); a new `<Update>` lands at CHORE(close) per release-template.
 
-**Outstanding (gated on PR merges):**
-- True clean-env smoke (`npm install -g @usezombie/zombiectl@X.Y.Z && npx skills add usezombie/skills` on fresh container/macOS account → `/usezombie-install-platform-ops` reachable in Claude Code) — requires (a) skills PR #1 merged, (b) this PR merged, (c) release tag → `npm publish`. Captured at CHORE(close).
+**Outstanding (deferred post-merge follow-up — Indy-acked):**
+
+> Indy (2026-05-30 10:35): "Move to done/ now" (AskUserQuestion selection) — context: marking M69_001 DONE with the clean-env smoke explicitly deferred to a post-merge follow-up, since it cannot run until this PR merges and a release publishes to npm.
+
+- True clean-env smoke (`npm install -g @usezombie/zombiectl@X.Y.Z && npx skills add usezombie/skills` on fresh container/macOS account → `/usezombie-install-platform-ops` reachable in Claude Code) — requires (a) skills PR #1 merged ✅, (b) this PR merged, (c) release tag → `npm publish`. Run as a post-merge follow-up.
 - 4-host symlink topology check (`~/.claude/skills/`, `~/.codex/skills/`, `~/.amp/skills/`, `~/.opencode/skills/`) — same gating.
 
 ---
