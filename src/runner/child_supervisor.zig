@@ -45,6 +45,24 @@ pub const ActivitySink = struct {
     forward: *const fn (ctx: *anyopaque, frame: ActivityFrame) void,
 };
 
+/// What the read loop should do after a renewal tick or a progress frame.
+/// `extend` carries the new absolute kill deadline (epoch ms).
+pub const RenewDecision = union(enum) { keep, extend: i64, terminate };
+
+/// Hook the daemon installs so the supervisor can drive lease renewal during a
+/// long execution without the supervisor knowing any HTTP. `onTick` is called
+/// with the current epoch ms in the idle gap between frames (renewal-tick
+/// cadence) and again after each progress frame; the daemon renews if inside the
+/// window and returns a decision. A live child that emits no frames still ticks,
+/// so a legitimate long run renews and is never falsely reclaimed.
+pub const RenewHook = struct {
+    ctx: *anyopaque,
+    onTick: *const fn (ctx: *anyopaque, now_ms: i64) RenewDecision,
+    /// How often (ms) the read loop wakes between frames to consider renewal.
+    /// Production sets `constants.RENEWAL_TICK_MS`; tests inject a small value.
+    tick_ms: i64,
+};
+
 /// Cap on the serialized result we read back from a child (defensive against a
 /// runaway child flooding stdout).
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
@@ -66,8 +84,12 @@ const Child = struct {
 pub const ReadOutcome = struct {
     /// Result bytes the child wrote (alloc-owned; empty on timeout/crash).
     bytes: []u8 = &.{},
-    /// The wall-clock deadline elapsed before the child finished.
+    /// The wall-clock lease deadline (possibly extended by renewals) elapsed
+    /// before the child produced a result.
     timed_out: bool = false,
+    /// A renewal hook returned `.terminate` (lease lost / capped / no credits) —
+    /// the child must be killed even though the deadline has not elapsed.
+    terminated: bool = false,
 };
 
 /// Run one leased event in a forked, sandboxed child and return its result.
@@ -79,12 +101,13 @@ pub fn run(
     workspace_path: []const u8,
     payload: LeasePayload,
     sink: ActivitySink,
+    renew_hook: ?RenewHook,
 ) ExecutionResult {
     const lease_json = std.json.Stringify.valueAlloc(alloc, payload, .{}) catch
         return failed(.startup_posture);
     defer alloc.free(lease_json);
 
-    return supervise(alloc, cfg, workspace_path, payload, lease_json, sink) catch |err| {
+    return supervise(alloc, cfg, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
         log.err("supervise_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.executor_crash);
     };
@@ -103,6 +126,7 @@ fn supervise(
     payload: LeasePayload,
     lease_json: []const u8,
     sink: ActivitySink,
+    renew_hook: ?RenewHook,
 ) !ExecutionResult {
     // Fail-closed (Invariant 7): if the tier requires isolation and it cannot
     // be established, refuse the lease — never run prompt-injectable tool
@@ -134,11 +158,14 @@ fn supervise(
         log.warn("lease_write_failed", .{ .err = @errorName(err) });
     std.posix.close(child.stdin_w);
 
-    const outcome = try readResult(alloc, child.stdout_r, payload.lease_expires_at, sink);
+    const outcome = try readResult(alloc, child.stdout_r, payload.lease_expires_at, sink, renew_hook);
     defer alloc.free(outcome.bytes);
     std.posix.close(child.stdout_r);
 
-    if (outcome.timed_out) {
+    if (outcome.terminated) {
+        log.warn("lease_terminated_by_renewal", .{ .lease_id = payload.lease_id });
+        killChild(child.pid, &scope);
+    } else if (outcome.timed_out) {
         log.warn("lease_timed_out", .{ .lease_id = payload.lease_id });
         killChild(child.pid, &scope);
     }
@@ -200,20 +227,58 @@ fn forkExec(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !
 /// the `result` frame's bytes are returned (caller-owned). EOF before a result
 /// yields empty bytes (the caller classifies that as a transport loss); deadline
 /// elapse sets `timed_out` and the caller kills the child.
-pub fn readResult(alloc: std.mem.Allocator, fd: std.posix.fd_t, deadline_ms: i64, sink: ActivitySink) !ReadOutcome {
+pub fn readResult(
+    alloc: std.mem.Allocator,
+    fd: std.posix.fd_t,
+    deadline_ms: i64,
+    sink: ActivitySink,
+    renew_hook: ?RenewHook,
+) !ReadOutcome {
+    var deadline = deadline_ms;
     while (true) {
-        switch (try pipe_proto.readFrame(alloc, fd, deadline_ms, MAX_RESULT_BYTES)) {
+        const tick_deadline = if (renew_hook) |h|
+            @min(deadline, std.time.milliTimestamp() + h.tick_ms)
+        else
+            deadline;
+        switch (try pipe_proto.waitReadable(fd, tick_deadline)) {
+            .timed_out => {
+                const now = std.time.milliTimestamp();
+                if (now >= deadline) return .{ .timed_out = true };
+                if (applyTick(renew_hook, &deadline, now)) return .{ .terminated = true };
+                continue;
+            },
+            .readable => {},
+        }
+        // Data is present: read one whole frame at the full lease deadline so a
+        // tick never interrupts a frame mid-read (which would desync the stream).
+        switch (try pipe_proto.readFrame(alloc, fd, deadline, MAX_RESULT_BYTES)) {
             .timed_out => return .{ .timed_out = true },
             .eof => return .{},
             .frame => |f| switch (f.ftype) {
                 .activity => {
                     defer alloc.free(f.payload);
                     forwardActivity(alloc, sink, f.payload);
+                    // A progress frame attests liveness and is a renewal point too.
+                    if (applyTick(renew_hook, &deadline, std.time.milliTimestamp()))
+                        return .{ .terminated = true };
                 },
                 .result => return .{ .bytes = f.payload },
             },
         }
     }
+}
+
+/// Ask the renewal hook for a decision and apply it to `deadline`. Returns true
+/// iff the child must be terminated (lease lost / capped / no credits). A null
+/// hook (no renewal configured) is a no-op.
+fn applyTick(renew_hook: ?RenewHook, deadline: *i64, now_ms: i64) bool {
+    const h = renew_hook orelse return false;
+    switch (h.onTick(h.ctx, now_ms)) {
+        .keep => {},
+        .extend => |new_deadline| deadline.* = new_deadline,
+        .terminate => return true,
+    }
+    return false;
 }
 
 /// Parse one `activity` frame payload and hand it to the sink. Best-effort: a
@@ -240,15 +305,17 @@ fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
 }
 
 /// Map the child's exit status + read outcome to an `ExecutionResult`.
-/// Precedence: deadline timeout → OOM (cgroup) → clean exit (parse result) →
-/// abnormal exit/signal (crash).
+/// Precedence: renewal-terminate / deadline timeout → OOM (cgroup) → clean exit
+/// (parse result) → abnormal exit/signal (crash). A renewal `.terminate` (lease
+/// lost / capped / no credits) is a killed-before-completion outcome, same class
+/// as a deadline kill — the work is handled elsewhere or stopped by policy.
 fn classify(
     alloc: std.mem.Allocator,
     outcome: ReadOutcome,
     status: u32,
     scope: *?cgroup.CgroupScope,
 ) ExecutionResult {
-    if (outcome.timed_out) return failed(.timeout_kill);
+    if (outcome.timed_out or outcome.terminated) return failed(.timeout_kill);
     if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
     if (!std.posix.W.IFEXITED(status) or std.posix.W.EXITSTATUS(status) != 0)
         return failed(.executor_crash);

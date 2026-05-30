@@ -18,6 +18,14 @@ pub const LEASE_TTL_MS: i64 = 30_000;
 /// unrenewed by the deadline → child killed + event reclaimed, never double-run).
 pub const RENEWAL_WINDOW_MS: i64 = 10_000;
 
+/// How often the runner's child-supervision read loop wakes to consider a
+/// renewal while waiting on a quiet-but-alive child (e.g. a long model call that
+/// emits no progress frames). Must be < `RENEWAL_WINDOW_MS` so at least one tick
+/// lands inside the window before the deadline. The wake is also the synthetic
+/// keepalive cadence — a tick on a live child attests liveness even with no
+/// frames, so a legitimate long run renews and is never falsely reclaimed.
+pub const RENEWAL_TICK_MS: i64 = 5_000;
+
 /// Hard ceiling on a single lease's total wall-clock, measured from the lease
 /// row's `created_at`. Renewal clamps to `min(now + LEASE_TTL_MS, created_at +
 /// MAX_RUNTIME_MS)` and is refused once exceeded — a wedged-but-emitting agent

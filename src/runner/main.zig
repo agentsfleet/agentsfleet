@@ -109,6 +109,7 @@ test {
     _ = @import("daemon/control_plane_client.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/loop.zig");
+    _ = @import("daemon/renew_driver.zig");
     _ = @import("common");
     _ = @import("child_supervisor.zig");
     _ = @import("child_supervisor_test.zig");
