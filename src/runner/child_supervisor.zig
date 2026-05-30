@@ -25,10 +25,10 @@ const logging = @import("log");
 const types = @import("engine/types.zig");
 const cgroup = @import("engine/cgroup.zig");
 const client_errors = @import("engine/client_errors.zig");
-const sandbox = @import("sandbox_args.zig");
 const Config = @import("daemon/config.zig");
 const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
+const child_process = @import("child_process.zig");
 
 const log = logging.scoped(.runner_supervisor);
 
@@ -72,13 +72,6 @@ const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 /// production startup guard must reject this tier so it can't become the prod
 /// default.
 const SANDBOX_TIER_DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
-
-/// A forked child and the parent ends of its stdio pipes.
-const Child = struct {
-    pid: std.posix.pid_t,
-    stdin_w: std.posix.fd_t,
-    stdout_r: std.posix.fd_t,
-};
 
 /// What the parent observed reading the child's stdout.
 pub const ReadOutcome = struct {
@@ -144,7 +137,7 @@ fn supervise(
         _ = s.destroy(.{});
     };
 
-    const child = try forkExec(alloc, cfg, workspace_path);
+    const child = try child_process.forkExec(alloc, cfg, workspace_path);
     var reaped = false;
     defer if (!reaped) {
         _ = std.posix.waitpid(child.pid, 0);
@@ -154,7 +147,7 @@ fn supervise(
         log.warn("cgroup_add_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
 
     // Feed the lease (incl. inline secrets) in, then EOF the child's stdin.
-    writeAll(child.stdin_w, lease_json) catch |err|
+    child_process.writeAll(child.stdin_w, lease_json) catch |err|
         log.warn("lease_write_failed", .{ .err = @errorName(err) });
     std.posix.close(child.stdin_w);
 
@@ -164,10 +157,10 @@ fn supervise(
 
     if (outcome.terminated) {
         log.warn("lease_terminated_by_renewal", .{ .lease_id = payload.lease_id });
-        killChild(child.pid, &scope);
+        child_process.killChild(child.pid, &scope);
     } else if (outcome.timed_out) {
         log.warn("lease_timed_out", .{ .lease_id = payload.lease_id });
-        killChild(child.pid, &scope);
+        child_process.killChild(child.pid, &scope);
     }
 
     const wait_result = std.posix.waitpid(child.pid, 0);
@@ -190,36 +183,6 @@ pub fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.Cgrou
     var exec_id: types.ExecutionId = undefined;
     std.crypto.random.bytes(&exec_id);
     return cgroup.CgroupScope.create(alloc, exec_id, .{}) catch error.SandboxUnavailable;
-}
-
-/// Fork and, in the child, dup the pipes onto stdin/stdout, lead a new process
-/// group (so the parent can signal the whole group on the dev path), and exec
-/// the sandbox wrapper. Returns the child pid + parent pipe ends.
-fn forkExec(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !Child {
-    const in_pipe = try std.posix.pipe(); // [0]=read (child), [1]=write (parent)
-    const out_pipe = try std.posix.pipe(); // [0]=read (parent), [1]=write (child)
-
-    const argv = try sandbox.buildArgv(alloc, cfg, workspace_path);
-    defer sandbox.freeArgv(alloc, argv);
-
-    const pid = try std.posix.fork();
-    if (pid == 0) {
-        // ── child ──
-        std.posix.dup2(in_pipe[0], std.posix.STDIN_FILENO) catch std.posix.exit(127);
-        std.posix.dup2(out_pipe[1], std.posix.STDOUT_FILENO) catch std.posix.exit(127);
-        std.posix.close(in_pipe[0]);
-        std.posix.close(in_pipe[1]);
-        std.posix.close(out_pipe[0]);
-        std.posix.close(out_pipe[1]);
-        std.posix.setpgid(0, 0) catch |err| log.warn("child_setpgid_failed", .{ .err = @errorName(err) });
-        const err = std.process.execv(alloc, argv);
-        log.err("child_execv_failed", .{ .err = @errorName(err) });
-        std.posix.exit(127);
-    }
-    // ── parent ──
-    std.posix.close(in_pipe[0]);
-    std.posix.close(out_pipe[1]);
-    return .{ .pid = pid, .stdin_w = in_pipe[1], .stdout_r = out_pipe[0] };
 }
 
 /// Read the child's framed stdout up to the terminal `result` frame, bounded by
@@ -291,19 +254,6 @@ fn forwardActivity(alloc: std.mem.Allocator, sink: ActivitySink, payload: []cons
     sink.forward(sink.ctx, frame);
 }
 
-/// Kill the whole child tree. On Linux the cgroup is the atomic kill domain;
-/// otherwise signal the child's process group (it leads its own via setpgid).
-fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
-    if (scope.*) |*s| {
-        s.kill() catch |err| {
-            log.warn("cgroup_kill_failed_fallback_signal", .{ .err = @errorName(err) });
-            std.posix.kill(-pid, std.posix.SIG.KILL) catch |kerr| log.warn("child_group_kill_failed", .{ .err = @errorName(kerr) });
-        };
-        return;
-    }
-    std.posix.kill(-pid, std.posix.SIG.KILL) catch |err| log.warn("child_group_kill_failed", .{ .err = @errorName(err) });
-}
-
 /// Map the child's exit status + read outcome to an `ExecutionResult`.
 /// Precedence: renewal-terminate / deadline timeout → OOM (cgroup) → clean exit
 /// (parse result) → abnormal exit/signal (crash). A renewal `.terminate` (lease
@@ -338,11 +288,6 @@ fn parseResult(alloc: std.mem.Allocator, bytes: []const u8) ExecutionResult {
         .exit_ok = v.exit_ok,
         .failure = v.failure,
     };
-}
-
-fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
-    var off: usize = 0;
-    while (off < bytes.len) off += try std.posix.write(fd, bytes[off..]);
 }
 
 // Tests live in child_supervisor_test.zig (sibling) to keep this file within
