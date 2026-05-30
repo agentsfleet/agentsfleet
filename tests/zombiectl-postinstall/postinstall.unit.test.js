@@ -114,3 +114,20 @@ test("prepublish bundles repo-root samples/ into the package dir", () => {
     assert.ok(existsSync(resolve(zombiectlDir, "samples", "platform-ops", "SKILL.md")));
   });
 });
+
+test("prepublish scrubs a stray local skills/ from the package dir", () => {
+  // A stale shell session could leave zombiectl/skills/ behind from before
+  // the skill bodies moved to their own repo. prepublish must actively remove
+  // it so it can never sneak into the published tarball. Seed it, assert gone.
+  const stray = resolve(zombiectlDir, "skills");
+  mkdirSync(resolve(stray, "usezombie-install-platform-ops"), { recursive: true });
+  writeFileSync(resolve(stray, "usezombie-install-platform-ops", "SKILL.md"), "stale\n");
+  try {
+    const r = runNode(prepublish);
+    assert.equal(r.status, 0, `prepublish failed: ${r.stderr}`);
+    assert.ok(!existsSync(stray), "stray skills/ should be scrubbed by prepublish");
+  } finally {
+    rmSync(stray, { recursive: true, force: true });
+    rmSync(resolve(zombiectlDir, "samples"), { recursive: true, force: true });
+  }
+});
