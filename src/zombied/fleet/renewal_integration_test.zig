@@ -89,25 +89,23 @@ fn teardown(conn: *pg.Conn) void {
     base.teardownWorkspace(conn, WORKSPACE_ID);
 }
 
-/// Read both rows' deadlines so a test can assert they moved together.
+/// Read both rows' deadlines so a test can assert they moved together. Each
+/// query is fully consumed + deinit'd in its own scope BEFORE the next is
+/// issued — a `pg.Conn` allows only one open result at a time (ZIG_RULES: never
+/// read/write on a conn while a result is open).
 fn readDeadlines(conn: *pg.Conn) !struct { lease: i64, affinity: i64 } {
-    var ql = PgQuery.from(try conn.query(
-        "SELECT lease_expires_at FROM fleet.runner_leases WHERE id = $1::uuid",
-        .{LEASE_ID},
-    ));
-    defer ql.deinit();
-    const lease_row = (try ql.next()) orelse return error.LeaseRowMissing;
-    const lease_until = try lease_row.get(i64, 0);
-
-    var qa = PgQuery.from(try conn.query(
-        "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid",
-        .{ZOMBIE_ID},
-    ));
-    defer qa.deinit();
-    const aff_row = (try qa.next()) orelse return error.AffinityRowMissing;
-    const aff_until = try aff_row.get(i64, 0);
-
+    const lease_until = try readBigint(conn, "SELECT lease_expires_at FROM fleet.runner_leases WHERE id = $1::uuid", LEASE_ID);
+    const aff_until = try readBigint(conn, "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", ZOMBIE_ID);
     return .{ .lease = lease_until, .affinity = aff_until };
+}
+
+/// Run a single-column bigint lookup bound to `id` and fully drain it before
+/// returning, so the next query on the same conn finds no open result.
+fn readBigint(conn: *pg.Conn, sql: []const u8, id: []const u8) !i64 {
+    var q = PgQuery.from(try conn.query(sql, .{id}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.RowMissing;
+    return row.get(i64, 0);
 }
 
 test "renew extends both the lease row and the affinity slot to the same clamped value" {
@@ -120,6 +118,7 @@ test "renew extends both the lease row and the affinity slot to the same clamped
     defer h.releaseConn(conn);
 
     teardown(conn);
+    try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
     // Fence holds (token == seq). created_at recent → cap not reached. Both rows
@@ -149,6 +148,7 @@ test "renew on a lease whose fence was bumped by a reclaim returns lost" {
     defer h.releaseConn(conn);
 
     teardown(conn);
+    try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
     // A reclaim bumped the affinity fence past the lease's token: lease holds
@@ -175,6 +175,7 @@ test "renew past the hard max-runtime cap returns max_runtime and does not exten
     defer h.releaseConn(conn);
 
     teardown(conn);
+    try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
     // Fence holds, but created_at is older than MAX_RUNTIME_MS, so the cap
@@ -205,6 +206,7 @@ test "renew clamps the new deadline to the hard cap when TTL would overshoot it"
     defer h.releaseConn(conn);
 
     teardown(conn);
+    try base.seedTenant(conn); // workspaces.tenant_id FK requires the tenant first
     try base.seedWorkspace(conn, WORKSPACE_ID);
     try seedRunner(conn);
     // created_at is set so the cap lands BETWEEN now and now+TTL: the renewal is
