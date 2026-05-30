@@ -282,9 +282,10 @@ Committed on `feat/m80-006-fleet-plane`, all green (HARNESS VERIFY + `make lint-
 
 - ✅ **Foundation** (`ab7da4a8`): `constants.zig` (`RENEWAL_WINDOW_MS`, `MAX_RUNTIME_MS`, `HEARTBEAT_LAPSE_MS`); `UZ-RUN-009/010/011/012` + runner mirrors.
 - ✅ **§3 server-side renewal** (`004e32e0`): the highest-risk invariant is implemented — `renewal.zig` extends both `affinity.leased_until` and `lease.lease_expires_at` atomically (one writable-CTE, fence + status + cap guarded); `service_renew.zig` (credit gate + `last_seen_at` bump); `/renew` verb 5-place wired; `RenewResponse`.
+- ✅ **§3 renewal integration tests** (`<this batch>`): `renewal_integration_test.zig` drives `renewal.renew` with deterministic `now_ms`. Covers Dim 3.2 (both rows advance to the same clamped value — the divergence guard), 3.3 (stale fence → lost, no row moves), 3.5 (cap reached → max_runtime + the clamp-to-cap boundary). Registered in `main.zig`; skips without DB; build/fmt/lint clean. **Runs green pending a live DB run (`LIVE_DB=1`).**
 
 **Remaining (nothing marked DONE — untested/not-yet-driven):**
-- §3 integration tests (3.1–3.8) — need live `TEST_DATABASE_URL` + the 13-column lease fixture; mirror `control_plane_integration_test.zig` (the M80_002 fleet integration suite).
+- §3 integration coverage for the HTTP/service layer: 3.1 (renews past TTL end-to-end), 3.6 (no-credits → `UZ-RUN-012`), 3.7 (dormant still reclaims), and the lease-not-found/non-active wire paths through `service_renew`. Need the in-process harness + a seeded balance.
 - §3 runner-side: drive `/renew` on progress/keepalive, track the renewed deadline in the supervisor read-loop, honor `409 lease_lost` (`loop.zig` + `child_supervisor.zig` + `control_plane_client.zig`).
 - §1 operator plane: `GET/PATCH /v1/fleet/runners` (`platformAdmin()`), cordon/revoke, `RUNNER_STATUS_CORDONED/REVOKED`, heartbeat-reply `drain` wiring + tests.
 - §2 heartbeat-lapse: affinity-slot-only expiry piggyback + `listCandidates` exclusion + `lease_reassigned` activity frame + tests.
