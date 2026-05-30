@@ -106,8 +106,17 @@ pub fn renew(
         defer parsed.deinit();
         return .{ .renewed = parsed.value.lease_expires_at };
     }
-    if (res.status >= 400 and res.status < 500) return .{ .terminal = res.status };
-    return ClientError.BadStatus; // 5xx → retryable; caller retries next tick.
+    if (isTerminalRenewStatus(res.status)) return .{ .terminal = res.status };
+    return ClientError.BadStatus; // other 4xx (400/429/…) + 5xx → retryable; caller retries next tick.
+}
+
+/// Definitive `/renew` rejections the runner must NOT retry (kill the child):
+/// 401 invalid/revoked token (UZ-RUN-001), 402 credit exhausted (UZ-RUN-012),
+/// 404 lease not found (UZ-RUN-006), 409 lease lost / max-runtime (UZ-RUN-010/011).
+/// Any other 4xx (400 body, 429 rate-limit, …) is retryable like a 5xx — a
+/// transient/non-terminal status must never kill a healthy in-flight run.
+fn isTerminalRenewStatus(status: u16) bool {
+    return status == 401 or status == 402 or status == 404 or status == 409;
 }
 
 const PostResult = struct { status: u16, body: []u8 };
