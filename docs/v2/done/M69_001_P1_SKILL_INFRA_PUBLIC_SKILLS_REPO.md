@@ -140,7 +140,7 @@ Delete `skills/` and `tests/skill-evals/usezombie-install-platform-ops/` from th
 
 `zombiectl/package.json` `files:` array drops `skills`. `npm pack` post-edit shows no `skills/` in the tarball. Other entries (`samples/`, `dist/`, etc.) unchanged.
 
-**Postinstall audit:** `zombiectl/scripts/postinstall.mjs` exists and **already operates on `samples/` only** — verified at spec time, no `skills/` references in the body. The script copies the bundled `samples/` tree to `~/.config/usezombie/samples/` (sha256-manifested, idempotent). **No edit needed.** Implementing agent: confirm by reading the file once more before §4; if it grew a skills reference between spec and execute, treat as a separate edit. Concrete check: `grep -n "skills" zombiectl/scripts/postinstall.mjs` → expect 0 matches.
+**Postinstall audit:** `zombiectl/scripts/postinstall.mjs` exists and **already operates on `samples/` only** — verified at spec time, no `skills/` references in the body. The script copies the bundled `samples/` tree to `~/.config/usezombie/samples/` (sha256-manifested, idempotent). **No edit needed.** Implementing agent: confirm by reading the file once more before §4; if it grew a `skills/` *operation* between spec and execute, treat as a separate edit. Concrete check: `grep -nE "skills/" zombiectl/scripts/postinstall.mjs` → expect 0 matches (no `skills/` path copy/scrub). The bare word `skills` may appear once in the file's header comment — explaining that bundled `samples/` let agent skills read canonical templates — which is documentation, not an operation, and is expected.
 
 ### §5 — Cross-repo doc sweep
 

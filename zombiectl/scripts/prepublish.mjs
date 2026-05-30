@@ -2,8 +2,8 @@
 //
 // Pre-publish copier — bundles `samples/` from the repo root into the npm
 // package directory so it ships inside the published tarball. Agent skills
-// live in their own repo (github.com/usezombie/skills) since M69_001 and
-// install via `npx skills add usezombie/skills` — they no longer travel
+// live in their own repo (github.com/usezombie/skills) and install via
+// `npx skills add usezombie/skills` — they no longer travel
 // with @usezombie/zombiectl.
 //
 // Why a copy rather than a symlink in `files:`? npm `files:` only resolves
@@ -23,17 +23,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, "..");
 const repoRoot = resolve(pkgRoot, "..");
 
-// Defense-in-depth: scrub any stray local dirs that used to be bundled but
-// no longer should be (e.g. `skills/` pre-M69_001). gitignore + `files:`
-// already guard these from publishing, but a manual `cpSync` in a stale
-// local shell session could resurrect them. Active rm at publish-time
-// closes that hole.
-for (const stale of ["skills"]) {
-  const p = resolve(pkgRoot, stale);
-  if (existsSync(p)) {
-    rmSync(p, { recursive: true, force: true });
-    console.log(`prepublish: scrubbed stale ${stale}/ from ${pkgRoot}`);
-  }
+// Defense-in-depth: scrub a stray local `skills/` that used to be bundled
+// but no longer should be. gitignore + `files:` already guard it from
+// publishing, but a manual `cpSync` in a stale local shell session
+// could resurrect it. Active rm at publish-time closes that hole.
+const staleSkills = resolve(pkgRoot, "skills");
+if (existsSync(staleSkills)) {
+  rmSync(staleSkills, { recursive: true, force: true });
+  console.log(`prepublish: scrubbed stale skills/ from ${pkgRoot}`);
 }
 
 const samplesSrc = resolve(repoRoot, "samples");
