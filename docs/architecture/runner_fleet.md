@@ -33,11 +33,41 @@ Recovery latency is **emergent from fleet polling density**, not a hard bound �
 |---|---|---|---|---|
 | Runner dies mid-lease | work resumes within ~`LEASE_TTL_MS` (30 s) + next lease latency | lease expiry + reclaim sweep re-leases with a higher fencing token | recovery latency is lazy (tied to the TTL), not push-driven | heartbeat-detected death → proactive reassignment; sub-10 s recovery |
 | Stale report after reclaim | immediate | `report` CAS verifies `fencing_token`; stale holder rejected (`UZ-RUN-005`) | the redone work by the new holder is the authority; the slow holder's compute is wasted | unchanged — fencing is the durable guard |
-| **Agent outruns the lease TTL** | **broken for agents > 30 s** | there is **no per-lease heartbeat renewal yet**: a child running past `lease_expires_at` is killed at its deadline and the event is reclaimed + re-run | state stays correct (the late report is fenced, no double-write) but the work is **redone and capped at 30 s** | **per-lease renewal driven by the activity stream** (`tool_call_progress` is the long-tool heartbeat) + decoupled liveness/execution TTL + a separate hard max-runtime cap |
+| **Agent outruns the lease TTL** | resolved (§3) — a live child renews its own lease | the runner auto-renews through the fenced `/renew` verb while the child is genuinely active (a progress frame, or a synthetic keepalive during a quiet-but-in-flight model call); liveness is decoupled from execution duration, bounded by a hard `MAX_RUNTIME_MS` cap | a child that stops emitting is **not** renewed — it expires at its deadline and is reclaimed + re-run; never double-run (fencing) | **shipped**; §1 cordon-drain + §2 heartbeat-lapse reassignment build on top |
 | Sandbox setup fails | immediate | child never starts; runner reports `agent_error` (`UZ-RUN-007`); lease redeliverable | a host with a broken sandbox burns one lease attempt before the operator cordons it | cordon / reaping of hosts that repeatedly fail to establish a sandbox |
 | Control plane unreachable | bounded by runner backoff | runner retries with backoff; the un-acked lease redelivers | a runner that can't reach `zombied` does no work until the link returns | unchanged — the runner is the reconnect handler |
 
-> **The renewal gap is live operational debt, not a bug.** `LEASE_TTL_MS = 30_000` (single-sourced in `src/lib/common/constants.zig`) with no renewal means the cutover is safe to default to the runner **only for agents that finish inside the TTL**. Flipping the runner to default for **> 30 s** agents must wait for M80_006's per-lease renewal, or ship with `LEASE_TTL_MS` raised to cover the max expected runtime plus a separate hard cap.
+> **The renewal gap is closed (§3).** A live child renews its lease through the fenced `/renew` verb before `lease_expires_at`, so execution duration is decoupled from `LEASE_TTL_MS` — which stays short (single-sourced in `src/lib/common/constants.zig`) as the silent-death backstop, *not* as the cap on how long an agent may run. Renewal is credit-gated and bounded by a hard `MAX_RUNTIME_MS` cap; a child that stops emitting is not renewed and is reclaimed at its deadline. The runner can now default for agents that run well past the TTL.
+
+### Per-lease renewal — how a long agent keeps its lease
+
+A renewal pushes the kill-deadline forward *only while the child is genuinely working*. The runner's supervisor wakes on a fixed tick; once inside the renewal window it calls `/renew`, which atomically extends **both** the lease row and the affinity slot under a fence + the hard cap:
+
+```
+ lease issued                                renewal window
+ (expires = now + LEASE_TTL_MS)              (RENEWAL_WINDOW_MS before expiry)
+   │            tick    tick    tick    tick ▼ tick
+   ●────────────●───────●───────●───────●────●──────────────────►
+                                              │ < window? → POST /renew
+                                              ▼
+   server, in ONE fenced atomic statement:
+     • still the fencing holder?  no → 409 lease_lost  → runner kills child
+     • credits cover the run?     no → 402 no_credits  → terminate
+     • past created_at+MAX_RUNTIME_MS? yes → 409 max_runtime → terminate + report
+     • else → extend lease_expires_at AND affinity.leased_until to
+              min(now+LEASE_TTL_MS, created_at+MAX_RUNTIME_MS); bump last_seen_at
+                                              │
+   ┌──────────────────────────────────────────┴───────────────────────────────┐
+   │ The tick on a live-but-quiet child IS the synthetic keepalive — a long     │
+   │ model call with no progress frames still renews. A truly dead/dormant      │
+   │ child emits nothing, is never renewed, and is reclaimed at the deadline.   │
+   │ The renewal doubles as the runner's heartbeat (it is single-threaded and   │
+   │ does not heartbeat mid-run), so §2 lapse-detection never reassigns a live  │
+   │ long-runner's own lease.                                                   │
+   └────────────────────────────────────────────────────────────────────────────┘
+```
+
+Fail-safe by construction: a transient `/renew` failure retries on the next tick (the window leaves slack); if it cannot renew by the deadline the child is killed and the event reclaimed + redone elsewhere — never double-run.
 
 ## Scope — an execution plane, deliberately not a control plane
 
