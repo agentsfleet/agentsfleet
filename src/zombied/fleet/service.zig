@@ -57,6 +57,12 @@ const Billed = struct {
     tenant_id: []const u8,
     posture: []const u8,
     model: []const u8,
+    /// Resolved provider for a FRESH lease, carried from `runBilling` so the key
+    /// the lease bills is the exact key it delivers — one vault decryption, no
+    /// rotation TOCTOU between billing and delivery. Null on reclaim (no billing
+    /// pass); `issueLease` re-resolves. Owned: `issueLease` deinits (secureZero)
+    /// after `hx.ok` serializes.
+    provider: ?tenant_provider.ResolvedProvider = null,
 };
 
 /// POST /v1/runners/me/leases — claim the next event across all active zombies
@@ -136,11 +142,13 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
     defer scratch.deinit();
     activity_publisher.publishEventReceived(hx.ctx.queue, &scratch, session.zombie_id, event.event_id, event.actor);
 
-    const tr = resolveTenant(alloc, pool, session.workspace_id) orelse return null;
-    // The billing decision needs only mode/model; the resolved api_key is never
-    // used here and must not linger unzeroed in the request arena (arena teardown
-    // does not zero pages). The delivery path re-resolves + zeroes its own copy.
-    std.crypto.secureZero(u8, tr.resolved.api_key);
+    var tr = resolveTenant(alloc, pool, session.workspace_id) orelse return null;
+    // Own the resolved provider for the whole billing pass: on success it is
+    // carried into `Billed` so the lease delivers the SAME key it billed (no
+    // second resolve, no rotation TOCTOU); on any gate failure the defer zeroes
+    // + frees it (arena teardown does not zero, so the secureZero is load-bearing).
+    var committed = false;
+    defer if (!committed) tr.resolved.deinit(alloc);
     const ctx = metering.PreflightContext{
         .workspace_id = session.workspace_id,
         .zombie_id = session.zombie_id,
@@ -164,7 +172,8 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
     }
     if (metering.debitStage(pool, alloc, tr.tenant_id, ctx, policy) != .deducted) return null;
 
-    return Billed{ .tenant_id = tr.tenant_id, .posture = tr.resolved.mode.label(), .model = tr.resolved.model };
+    committed = true; // ownership of tr.resolved transfers to the returned Billed
+    return Billed{ .tenant_id = tr.tenant_id, .posture = tr.resolved.mode.label(), .model = tr.resolved.model, .provider = tr.resolved };
 }
 
 /// One pooled connection resolves tenant id then active provider, mirroring
@@ -189,6 +198,15 @@ fn resolveTenant(alloc: std.mem.Allocator, pool: *@import("pg").Pool, workspace_
 /// Build the lease payload + persist the `fleet.runner_leases` row (with the
 /// durable envelope + the claim's fencing token), then 200.
 fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assign.Acquired, billed: Billed) !void {
+    // Provider key for the lease: a FRESH lease carried it from billing (bill key
+    // == deliver key, no second resolve); a reclaim has no billing pass, so
+    // re-resolve now (the key is never persisted to the lease row). deinit
+    // (secureZero + free) runs after `hx.ok` serializes; set up first so the
+    // defer also covers the early-return paths below.
+    var resolved: ?tenant_provider.ResolvedProvider = billed.provider;
+    if (resolved == null) resolved = resolveProviderForLease(hx, billed.tenant_id);
+    defer if (resolved) |*r| r.deinit(hx.alloc);
+
     const ev_type = event_envelope.EventType.fromSlice(acq.event_type) orelse {
         log.warn("lease_unknown_event_type", .{ .zombie_id = acq.zombie_id, .event_type = acq.event_type });
         releaseClaim(hx, acq.zombie_id, acq.fencing_token);
@@ -206,12 +224,6 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
 
     const lease_id = try id_format.generateRunnerLeaseId(hx.alloc);
     try insertLeaseRow(hx, runner_id, acq, billed, lease_id);
-
-    // Owned provider+key; deinit (secureZero + free) runs after `hx.ok` has
-    // serialized the policy synchronously, so the key is zeroed before the
-    // arena memory is reused.
-    var resolved = resolveProviderForLease(hx, billed.tenant_id);
-    defer if (resolved) |*r| r.deinit(hx.alloc);
 
     log.info("lease_issued", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
     hx.ok(.ok, protocol.LeaseResponse{ .lease = .{
