@@ -22,6 +22,10 @@ const log = logging.scoped(.redis_zombie);
 /// reads it from the stream entry header.
 const S_XACK_FAILED = "xack_failed";
 const S_COUNT = "COUNT";
+/// Default for a stream entry that omits the optional workspace_id field.
+const EMPTY_WORKSPACE = "";
+/// Default request body for an entry that omits the optional request field.
+const EMPTY_JSON_BODY = "{}";
 
 pub const ZombieEvent = struct {
     event_id: []u8,
@@ -186,44 +190,143 @@ fn decodeZombieEventTuple(alloc: std.mem.Allocator, item: redis_protocol.RespVal
     const fields = tuple[1].array orelse return error.RedisUnexpectedResponse;
     if (fields.len % 2 != 0) return error.RedisUnexpectedResponse;
 
-    var event_type: ?[]u8 = null;
-    var actor: ?[]u8 = null;
-    var workspace_id: ?[]u8 = null;
-    var request_json: ?[]u8 = null;
-    var created_at_ms: i64 = 0;
+    var parsed = try parseEventFields(alloc, fields);
+    if (parsed.event_type == null or parsed.actor == null) {
+        parsed.freeOwned(alloc);
+        return error.RedisUnexpectedResponse;
+    }
+    return parsed.intoOwned(alloc, event_id_raw);
+}
 
+/// Owned (heap-duped) fields decoded from the XADD field array, before the
+/// required-field check promotes them into a fully-owned `ZombieEvent`. Each
+/// non-null slice is caller-owned; `freeOwned` releases whatever is present.
+const ParsedFields = struct {
+    event_type: ?[]u8 = null,
+    actor: ?[]u8 = null,
+    workspace_id: ?[]u8 = null,
+    request_json: ?[]u8 = null,
+    created_at_ms: i64 = 0,
+
+    fn freeOwned(self: ParsedFields, alloc: std.mem.Allocator) void {
+        if (self.event_type) |e| alloc.free(e);
+        if (self.actor) |a| alloc.free(a);
+        if (self.workspace_id) |w| alloc.free(w);
+        if (self.request_json) |r| alloc.free(r);
+    }
+
+    /// Promote to a fully-owned `ZombieEvent`. Each dupe lands in a local with
+    /// its own `errdefer` so a late OOM frees every already-owned slice — Zig
+    /// does not unwind earlier struct-literal fields when a later one errors.
+    fn intoOwned(self: ParsedFields, alloc: std.mem.Allocator, event_id_raw: []const u8) !ZombieEvent {
+        const event_type = self.event_type.?;
+        errdefer alloc.free(event_type);
+        const actor = self.actor.?;
+        errdefer alloc.free(actor);
+        const workspace_id = self.workspace_id orelse try alloc.dupe(u8, EMPTY_WORKSPACE);
+        errdefer alloc.free(workspace_id);
+        const request_json = self.request_json orelse try alloc.dupe(u8, EMPTY_JSON_BODY);
+        errdefer alloc.free(request_json);
+        const event_id = try alloc.dupe(u8, event_id_raw);
+        return .{
+            .event_id = event_id,
+            .actor = actor,
+            .event_type = event_type,
+            .workspace_id = workspace_id,
+            .request_json = request_json,
+            .created_at_ms = self.created_at_ms,
+        };
+    }
+};
+
+/// Walk the `[key, val, key, val, …]` field array, duping recognized values.
+/// `errdefer freeOwned` unwinds partial dupes if a later `dupe` OOMs — the
+/// original inline literal leaked every earlier dupe on a mid-build failure.
+fn parseEventFields(alloc: std.mem.Allocator, fields: []const redis_protocol.RespValue) !ParsedFields {
+    var out: ParsedFields = .{};
+    errdefer out.freeOwned(alloc);
     var i: usize = 0;
     while (i < fields.len) : (i += 2) {
         const key = redis_protocol.valueAsString(fields[i]) orelse continue;
         const val = redis_protocol.valueAsString(fields[i + 1]) orelse continue;
 
         if (std.mem.eql(u8, key, queue_consts.zombie_field_type)) {
-            event_type = try alloc.dupe(u8, val);
+            out.event_type = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.zombie_field_actor)) {
-            actor = try alloc.dupe(u8, val);
+            out.actor = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.zombie_field_workspace_id)) {
-            workspace_id = try alloc.dupe(u8, val);
+            out.workspace_id = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.zombie_field_request)) {
-            request_json = try alloc.dupe(u8, val);
+            out.request_json = try alloc.dupe(u8, val);
         } else if (std.mem.eql(u8, key, queue_consts.zombie_field_created_at)) {
-            created_at_ms = std.fmt.parseInt(i64, val, 10) catch 0;
+            out.created_at_ms = std.fmt.parseInt(i64, val, 10) catch 0;
         }
     }
+    return out;
+}
 
-    if (event_type == null or actor == null) {
-        if (event_type) |e| alloc.free(e);
-        if (actor) |a| alloc.free(a);
-        if (workspace_id) |w| alloc.free(w);
-        if (request_json) |r| alloc.free(r);
-        return error.RedisUnexpectedResponse;
+// ── Tests ──────────────────────────────────────────────────────────────────
+
+const testing = std.testing;
+
+fn dupBulk(alloc: std.mem.Allocator, s: []const u8) !redis_protocol.RespValue {
+    return .{ .bulk = try alloc.dupe(u8, s) };
+}
+
+/// `[id, [type,…,actor,…(,workspace,…,request,…)]]` stream-entry tuple owned by
+/// `alloc`. `full` adds the optional workspace_id + request fields; omitting
+/// them drives `intoOwned`'s default-dupe path. The testing allocator never
+/// fails mid-build, so the whole tuple is always freed via the caller's deinit.
+fn buildTuple(alloc: std.mem.Allocator, full: bool) !redis_protocol.RespValue {
+    const n: usize = if (full) 8 else 4;
+    const fields = try alloc.alloc(redis_protocol.RespValue, n);
+    fields[0] = try dupBulk(alloc, queue_consts.zombie_field_type);
+    fields[1] = try dupBulk(alloc, "run.started");
+    fields[2] = try dupBulk(alloc, queue_consts.zombie_field_actor);
+    fields[3] = try dupBulk(alloc, "steer:x");
+    if (full) {
+        fields[4] = try dupBulk(alloc, queue_consts.zombie_field_workspace_id);
+        fields[5] = try dupBulk(alloc, "ws_1");
+        fields[6] = try dupBulk(alloc, queue_consts.zombie_field_request);
+        fields[7] = try dupBulk(alloc, "{\"k\":1}");
     }
+    const tuple = try alloc.alloc(redis_protocol.RespValue, 2);
+    tuple[0] = try dupBulk(alloc, "1700000000000-0");
+    tuple[1] = .{ .array = fields };
+    return .{ .array = tuple };
+}
 
-    return .{
-        .event_id = try alloc.dupe(u8, event_id_raw),
-        .event_type = event_type.?,
-        .actor = actor.?,
-        .workspace_id = workspace_id orelse try alloc.dupe(u8, ""),
-        .request_json = request_json orelse try alloc.dupe(u8, "{}"),
-        .created_at_ms = created_at_ms,
-    };
+fn decodeForLeakCheck(alloc: std.mem.Allocator, item: *const redis_protocol.RespValue) !void {
+    var ev = try decodeZombieEventTuple(alloc, item.*);
+    ev.deinit(alloc);
+}
+
+test "decodeZombieEventTuple unwinds every owned slice on OOM at any step" {
+    var item = try buildTuple(testing.allocator, false);
+    defer item.deinit(testing.allocator);
+    // Fails each internal dupe in turn (event_type, actor, the two defaulted
+    // slices, event_id) and asserts the only error is OutOfMemory with zero
+    // leaked bytes — proving the parseEventFields + intoOwned errdefer chain.
+    try testing.checkAllAllocationFailures(testing.allocator, decodeForLeakCheck, .{&item});
+}
+
+test "decodeZombieEventTuple round-trips all present fields" {
+    var item = try buildTuple(testing.allocator, true);
+    defer item.deinit(testing.allocator);
+    var ev = try decodeZombieEventTuple(testing.allocator, item);
+    defer ev.deinit(testing.allocator);
+    try testing.expectEqualStrings("1700000000000-0", ev.event_id);
+    try testing.expectEqualStrings("run.started", ev.event_type);
+    try testing.expectEqualStrings("steer:x", ev.actor);
+    try testing.expectEqualStrings("ws_1", ev.workspace_id);
+    try testing.expectEqualStrings("{\"k\":1}", ev.request_json);
+}
+
+test "decodeZombieEventTuple defaults workspace and request when absent" {
+    var item = try buildTuple(testing.allocator, false);
+    defer item.deinit(testing.allocator);
+    var ev = try decodeZombieEventTuple(testing.allocator, item);
+    defer ev.deinit(testing.allocator);
+    try testing.expectEqualStrings(EMPTY_WORKSPACE, ev.workspace_id);
+    try testing.expectEqualStrings(EMPTY_JSON_BODY, ev.request_json);
 }
