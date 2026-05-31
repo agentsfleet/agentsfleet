@@ -4,7 +4,8 @@
 **Milestone:** M80
 **Workstream:** 006
 **Date:** May 27, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
+**Shipped scope:** §3 (per-lease renewal) + the W1–W4 coverage sweep. §1/§2 (operator plane + heartbeat-lapse reassignment) carved to a follow-up spec — Indy-acked, see Discovery.
 **Priority:** P1 — operators can't see/revoke runners, dead runners are only reclaimed lazily after the TTL, and any agent running longer than 30s is killed + redone (the renewal gap M80_002 ships with).
 **Categories:** API
 **Batch:** B1
@@ -130,15 +131,15 @@ Delivers fast recovery: when a runner's heartbeat lapses (`last_seen_at` older t
 
 Delivers liveness/execution decoupling via a **dedicated fenced verb** `POST /v1/runners/me/leases/{id}/renew` (`runnerBearer`): it **atomically extends both `affinity.leased_until` AND `lease.lease_expires_at`** in one statement, guarded by `status='active'` AND the presenting runner still being the live fencing holder (mirrors `service_report`'s stored-lease + live-affinity fence). Returns the authoritative new deadline, or `409 UZ-RUN-011 lease_lost` if the lease was already reclaimed — on which the runner kills its child. The runner auto-renews (transparently, nobody renews by hand) inside a renewal window (`RENEWAL_WINDOW_MS` before expiry), driven by **child-liveness-attested progress**: a real progress frame, OR a **synthetic keepalive** emitted while the child is alive and a genuine operation is in flight (model call, long-running tool, inter-step processing). "Progress-bearing, not mere liveness" means *the runner attests an operation is genuinely in flight* — it cannot fake that for a dead host. Only a **truly stuck/dead** child emits nothing and is NOT renewed (it expires + reclaims — the recovery path, never hit by a healthy agent). Renewal is **credit-gated** (`balanceCoversEstimate`; exhausted → `UZ-RUN-012`, run terminates) and bounded by a hard `MAX_RUNTIME_MS` cap (`UZ-RUN-010`), both checked server-side. The child's kill-deadline tracks the renewed deadline (the supervisor read-loop polls a shared deadline updated by `/renew` responses). **Renew-fail is fail-safe:** a transient failure retries on the next tick (the window leaves slack); if it can't renew by the deadline, the child is killed and the event reclaimed + redone elsewhere (never double-run — fencing).
 
-- **Dimension 3.8** — **smooth-transition (no customer-visible flip).** A legitimate long-running agent (model call / long tool / inter-step) keeps its lease renewed via keepalive, so the Chat SSE tail and the terminal REPL never see a false restart. On a *real* host-death reclaim (§2), `zombied` publishes a `lease_reassigned` activity frame on `zombie:{id}:activity` so the UI/REPL renders continuity ("resuming on another runner") rather than a duplicate restart → Test `test_reassign_emits_resume_marker_no_visible_restart`
+- **Dimension 3.8** — **smooth-transition (no customer-visible flip).** A legitimate long-running agent (model call / long tool / inter-step) keeps its lease renewed via keepalive, so the Chat SSE tail and the terminal REPL never see a false restart. On a *real* host-death reclaim (§2), `zombied` publishes a `lease_reassigned` activity frame on `zombie:{id}:activity` so the UI/REPL renders continuity ("resuming on another runner") rather than a duplicate restart → Test `test_reassign_emits_resume_marker_no_visible_restart` — ⏸ **SPLIT: keepalive half ✅ DONE** (a renewed long run never false-restarts — supervisor unit tests, synthetic-keepalive path), **resume-marker half ⏸ DEFERRED with §2** (the `lease_reassigned` frame fires only on a real host-death reclaim, which §2 builds; carved out per the Discovery ack).
 
-- **Dimension 3.1** — a lease whose runner renews past `LEASE_TTL_MS` is NOT reclaimed; both rows extend atomically; the same agent run completes once → Test `test_active_lease_renews_past_ttl`
-- **Dimension 3.2** — renewal extends **both** `affinity.leased_until` and `lease.lease_expires_at`; a healthy long run is not reclaimed by the affinity-slot path → Test `test_renew_extends_both_affinity_and_lease`
-- **Dimension 3.3** — `/renew` on an already-reclaimed lease (status≠active or stale fence) returns `409 UZ-RUN-011`; the runner kills its child; no resurrection / no double-exec → Test `test_renew_on_reclaimed_lease_rejected`
-- **Dimension 3.4** — the child's kill-deadline tracks the renewed deadline (a renewed lease's child is not killed at the original 30s) → Test `test_child_deadline_tracks_renewal`
-- **Dimension 3.5** — a hard `MAX_RUNTIME_MS` cap (from `created_at`) terminates a still-emitting runaway and reports it (`UZ-RUN-010`); renewal cannot extend past it → Test `test_hard_max_runtime_caps_renewal`
-- **Dimension 3.6** — renewal refused when the tenant's credit balance is exhausted (`UZ-RUN-012`); the run terminates gracefully → Test `test_renew_refused_on_no_credits`
-- **Dimension 3.7** — a dormant (non-renewing) lease still expires + reclaims exactly as today → Test `test_non_renewing_lease_still_reclaims` (regression)
+- ✅ **Dimension 3.1 — DONE** — a lease whose runner renews past `LEASE_TTL_MS` is NOT reclaimed; both rows extend atomically; the same agent run completes once → Test `test_active_lease_renews_past_ttl`
+- ✅ **Dimension 3.2 — DONE** — renewal extends **both** `affinity.leased_until` and `lease.lease_expires_at`; a healthy long run is not reclaimed by the affinity-slot path → Test `test_renew_extends_both_affinity_and_lease`
+- ✅ **Dimension 3.3 — DONE** — `/renew` on an already-reclaimed lease (status≠active or stale fence) returns `409 UZ-RUN-011`; the runner kills its child; no resurrection / no double-exec → Test `test_renew_on_reclaimed_lease_rejected`
+- ✅ **Dimension 3.4 — DONE** — the child's kill-deadline tracks the renewed deadline (a renewed lease's child is not killed at the original 30s) → Test `test_child_deadline_tracks_renewal`
+- ✅ **Dimension 3.5 — DONE** — a hard `MAX_RUNTIME_MS` cap (from `created_at`) terminates a still-emitting runaway and reports it (`UZ-RUN-010`); renewal cannot extend past it → Test `test_hard_max_runtime_caps_renewal`
+- ✅ **Dimension 3.6 — DONE** — renewal refused when the tenant's credit balance is exhausted (`UZ-RUN-012`); the run terminates gracefully → Test `test_renew_refused_on_no_credits`
+- ✅ **Dimension 3.7 — DONE** — a dormant (non-renewing) lease still expires + reclaims exactly as today → Test `test_non_renewing_lease_still_reclaims` (regression)
 
 ---
 
@@ -290,12 +291,24 @@ Committed on `feat/m80-006-fleet-plane`, all green (HARNESS VERIFY + `make lint-
 - ✅ **§3 runner-side renewal driving** (`7b609ffc`): `pipe_proto.waitReadable` (tick only in the idle gap between frames — never mid-frame, no desync); `child_supervisor.RenewHook{ctx, onTick, tick_ms}` + the tick loop in `readResult` (tick or progress frame → keep/extend/terminate; live-but-quiet child still ticks = synthetic keepalive = Invariant 10); `loop.zig`/`renew_driver.zig RenewDriver` renews inside the window via `cp.renew`, fail-safe on transient errors. Deterministic unit tests (injected 10ms tick): terminate-on-tick, extend-past-deadline.
 - ✅ **§3 DB-verified + headroom split** (`ebde68ce`): first live `make test-integration` run found two test bugs (missing `seedTenant`; double-open `pg.Conn` result in `readDeadlines`) — both fixed. Extracted `child_process.zig` (fork/exec/kill/writeAll) out of `child_supervisor.zig` (349→294) for real line-budget headroom. **Full suite 1409/1409 green against real DB + Redis.**
 
-**§3 is COMPLETE and DB-verified** (server dual-row renewal + runner client + desync-safe supervisor driving + unit + integration tests all green on live DB). Dimensions 3.1–3.5/3.7 are exercised by `renewal_integration_test.zig`; 3.2/3.4 (child-deadline tracking) + 3.8 (smooth-transition) by the supervisor unit tests. Mark DONE at CHORE(close) after `/review`.
+**§3 is COMPLETE and DB-verified** (server dual-row renewal + runner client + desync-safe supervisor driving + unit + integration tests all green on live DB). Coverage attribution (corrected at CHORE close):
+- **3.1 / 3.3 / 3.5** — `renewal_integration_test.zig` (both-rows-advance, stale-fence → lost, cap-clamp); the cap + deadline boundary edges are reinforced by `renewal_edge_test.zig`.
+- **3.2 / 3.4** — supervisor unit tests (dual-row extend + child-deadline-tracks-renewal).
+- **3.6** — credit-exhausted `/renew` refusal (`UZ-RUN-012`, 402-pinned) in the `service_renew` HTTP test.
+- **3.7** — `control_plane_integration_test.zig` ("an expired lease is reclaimed and re-fenced with a higher token") — the non-renewing-still-reclaims regression.
+- **3.8** — keepalive half (no false restart on a renewed long run) by the supervisor unit tests; the `lease_reassigned` resume-marker half defers with §2 (frame only fires on a real host-death reclaim §2 builds).
 
-**Remaining:**
-- **§1 operator plane**: `GET/PATCH /v1/fleet/runners` (`platformAdmin()`), cordon (`status=cordoned`, auth-valid, drain) / revoke (`status=revoked`, hard cut), `listCandidates` exclusion of cordoned, heartbeat-reply `drain` wiring, + tests (inventory, cordon-drains-to-other-host, revoke-hard-cut, rejects-tenant-admin-and-apikey).
-- **§2 heartbeat-lapse**: affinity-slot-only expiry piggyback on poll/heartbeat + `listCandidates` exclusion of lapsed + `lease_reassigned` activity frame; tests (reassign-to-other-host, pull-reclaim-backstop, expires-affinity-not-lease-no-rebill).
-- **VERIFY/CLOSE**: `/write-unit-test` coverage audit, cross-compile both linux targets, `gitleaks`, `/review`, mark Dimensions DONE, spec → `done/`, changelog `<Update>`, CHORE(close), PR + `/review-pr` + `kishore-babysit-prs`.
+Dimensions 3.1–3.7 marked DONE at CHORE(close); 3.8 split (keepalive DONE, resume-marker deferred with §2 per the Discovery ack).
+
+**Coverage-hardening sweep (Indy-directed, May 31 2026 — landed in this PR):** four batches of risk-weighted tests + the two prod gaps they surfaced.
+- ✅ **W1/W2 runner-daemon + engine** (`158b2718`): +56 unit tests; fixed `renew_driver.onTick` integer-overflow (`deadline_ms > now_ms +| WINDOW`) and a `sandbox_args.buildArgv/dup` OOM-path leak (scoped `errdefer`s).
+- ✅ **W3 billing/credit** (`7a77717f`): `tenant_billing_edge_test`, `metering_edge_test` (stop-gate boundary, post-trial block), `metering_idempotent_test`, `metering_concurrency_test`.
+- ✅ **W4 fleet integration** (`97b88a17`): `concurrency_lease_test` (100-racer exactly-one-winner), `concurrency_renew_test`, `renewal_edge_test`, `renewal_malformed_test`, `integration_roundtrip_test`, `integration_session_continuation_test`; fixed `affinity.claim` UUID leak (missing `defer alloc.free`) surfaced under the test allocator.
+
+**Deferred to their own specs (Indy-acked — see Discovery):**
+- **§1 operator plane** + **§2 heartbeat-lapse reassignment** → new spec pending the cordon/drain/eligibility study (verbatim ack, 2026-05-31). The `lease_reassigned` resume-marker (3.8) lands with §2.
+
+**VERIFY/CLOSE (this PR):** ✅ `make test-integration` green on live Postgres+Redis (0 leaks), ✅ cross-compile x86_64+aarch64-linux, ✅ `gitleaks` + lint clean, `/write-unit-test` + `/review` → CHORE(close) → spec `done/` + changelog `<Update>` → PR + `/review-pr` + `kishore-babysit-prs`.
 
 **Open for Indy — both resolved (May 30 2026):** ~~`MAX_RUNTIME_MS` default~~ → **12 h**. · ~~incremental per-renewal metering~~ → carved into its **own billing spec** (one-meter stage charge: cached-input tier + Δ-token incremental debit at renewal, waived on zero-token slices; PR opens after this milestone merges). Kept **out** of this fleet PR by design.
 
