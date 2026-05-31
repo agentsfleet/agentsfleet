@@ -292,6 +292,8 @@ test {
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     // RLS tenant-context resolution (use-after-free regression on the null-tenant lookup)
     _ = @import("http/handlers/tenant_context_integration_test.zig");
+    // Applied-migration-version set (extracted from pool_migrations for FLL)
+    _ = @import("db/migration_versions.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
     // billing/credit edge, idempotency + concurrency coverage

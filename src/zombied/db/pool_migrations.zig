@@ -8,6 +8,8 @@ const logging = @import("log");
 const PgQuery = @import("pg_query.zig").PgQuery;
 const error_codes = @import("../errors/error_registry.zig");
 const sql_splitter = @import("sql_splitter.zig");
+const migration_versions = @import("migration_versions.zig");
+const AppliedVersionSet = migration_versions.AppliedVersionSet;
 
 const log = logging.scoped(.db_migrate);
 
@@ -24,6 +26,16 @@ const S_PG_ERROR = "pg_error";
 const S_SELECT_1_FROM_AUDIT_SCHEMA_MIGRATION_FAILURES_LIMI = "SELECT 1 FROM audit.schema_migration_failures LIMIT 1";
 
 const MigrationAdvisoryLockKey: i64 = 0x7A6F6D6269650001;
+
+// Stack scratch for reapOrphanedMigrationRows' IN-list (no heap): per-version
+// decimal width (incl. comma) × the version cap × live copies held at once
+// (ArrayList growth ~2x + the two rendered DELETEs) + fixed DELETE-template
+// overhead. The version cap lives in migration_versions.zig.
+const MAX_INLIST_DIGITS_PER_VERSION = 12;
+const REAP_SQL_TEMPLATE_BYTES = 128;
+const REAP_INLIST_COPIES = 4;
+const REAP_SCRATCH_BYTES =
+    migration_versions.MAX_TRACKED_MIGRATIONS * MAX_INLIST_DIGITS_PER_VERSION * REAP_INLIST_COPIES + REAP_SQL_TEMPLATE_BYTES * 2;
 
 fn ensureAuditSchema(conn: *Conn) !void {
     _ = try conn.exec("CREATE SCHEMA IF NOT EXISTS audit", .{});
@@ -47,15 +59,6 @@ fn ensureSchemaMigrationFailuresTable(conn: *Conn) !void {
         \\    error_text  TEXT NOT NULL
         \\)
     , .{});
-}
-
-fn isMigrationApplied(conn: *Conn, version: i32) !bool {
-    var result = PgQuery.from(try conn.query(
-        "SELECT 1 FROM audit.schema_migrations WHERE version = $1",
-        .{version},
-    ));
-    defer result.deinit();
-    return (try result.next()) != null;
 }
 
 fn hasFailedMigrationRecords(conn: *Conn) !bool {
@@ -104,12 +107,11 @@ fn clearMigrationFailure(conn: *Conn, version: i32) void {
 /// version is no longer in the canonical migration list. Keeps the bookkeeping
 /// table in sync when migrations are removed (pre-v2.0 teardown — RULE SCH).
 /// Safe to run on every migrate: a fresh DB with no orphan rows is a no-op.
-fn reapOrphanedMigrationRows(conn: *Conn, migrations: []const Migration) !void {
+fn reapOrphanedMigrationRows(allocator: std.mem.Allocator, conn: *Conn, migrations: []const Migration) !void {
     // Empty list → `DELETE … WHERE version NOT IN ()` is a Postgres syntax
     // error (sqlstate 42601). A no-migrations boot has nothing to reap.
     if (migrations.len == 0) return;
 
-    const allocator = std.heap.page_allocator;
     var buf = std.ArrayList(u8){};
     defer buf.deinit(allocator);
     var writer = buf.writer(allocator);
@@ -233,20 +235,16 @@ pub fn inspectMigrationState(pool: *Pool, migrations: []const Migration) !Migrat
 
     var applied_versions: u32 = 0;
     var latest_expected: i32 = 0;
-    if (has_schema_migrations) {
-        for (migrations) |migration| {
-            latest_expected = @max(latest_expected, migration.version);
-            if (isMigrationApplied(conn, migration.version) catch |err| {
-                if (err == error.PG) logPgErrorContext(conn, "inspect.is_migration_applied");
-                return err;
-            }) {
-                applied_versions += 1;
-            }
+    const applied = if (has_schema_migrations)
+        AppliedVersionSet.load(conn, migrations) catch |err| {
+            if (err == error.PG) logPgErrorContext(conn, "inspect.load_applied_versions");
+            return err;
         }
-    } else {
-        for (migrations) |migration| {
-            latest_expected = @max(latest_expected, migration.version);
-        }
+    else
+        AppliedVersionSet{};
+    for (migrations) |migration| {
+        latest_expected = @max(latest_expected, migration.version);
+        if (applied.contains(migration.version)) applied_versions += 1;
     }
 
     const latest_applied = if (has_schema_migrations)
@@ -301,16 +299,20 @@ pub fn runMigrations(pool: *Pool, migrations: []const Migration) !void {
     };
     defer releaseMigrationLock(conn);
 
-    reapOrphanedMigrationRows(conn, migrations) catch |err| {
+    var reap_scratch: [REAP_SCRATCH_BYTES]u8 = undefined;
+    var reap_fba = std.heap.FixedBufferAllocator.init(&reap_scratch);
+    reapOrphanedMigrationRows(reap_fba.allocator(), conn, migrations) catch |err| {
         if (err == error.PG) logPgErrorContext(conn, "migrate.reap_orphans");
         return err;
     };
 
+    const applied = AppliedVersionSet.load(conn, migrations) catch |err| {
+        if (err == error.PG) logPgErrorContext(conn, "migrate.load_applied_versions");
+        return err;
+    };
+
     for (migrations) |migration| {
-        if (isMigrationApplied(conn, migration.version) catch |err| {
-            if (err == error.PG) logPgErrorContext(conn, "migrate.is_migration_applied");
-            return err;
-        }) {
+        if (applied.contains(migration.version)) {
             clearMigrationFailure(conn, migration.version);
             continue;
         }
