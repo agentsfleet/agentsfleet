@@ -112,9 +112,11 @@ test "readResult: a hook returning .terminate kills the wait and reports termina
 }
 
 test "readResult: a hook .extend past a near deadline keeps reading to the result" {
-    // The lease deadline is near (100ms); without renewal the wait would time
-    // out before the writer (200ms) sends the result. The hook extends on the
-    // first 10ms tick, so the result is still read cleanly.
+    // The lease deadline is near (500ms); without renewal the wait would time
+    // out before the writer (1000ms) sends the result. The hook extends on an
+    // early 10ms tick, so the result is still read cleanly. Margins are sized
+    // at 50× the tick so scheduling jitter on a loaded CI box can't fire the
+    // deadline before the extend lands.
     const fds = try std.posix.pipe();
     defer std.posix.close(fds[0]);
 
@@ -125,7 +127,7 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
 
     const Writer = struct {
         fn run(write_fd: std.posix.fd_t) void {
-            std.Thread.sleep(200 * std.time.ns_per_ms);
+            std.Thread.sleep(1000 * std.time.ns_per_ms);
             pipe_proto.writeFrame(write_fd, .result, "{\"exit_ok\":true}") catch {};
             std.posix.close(write_fd);
         }
@@ -133,7 +135,7 @@ test "readResult: a hook .extend past a near deadline keeps reading to the resul
     var wt = try std.Thread.spawn(.{}, Writer.run, .{fds[1]});
     defer wt.join();
 
-    const near_dl = std.time.milliTimestamp() + 100;
+    const near_dl = std.time.milliTimestamp() + 500;
     const outcome = try supervisor.readResult(std.testing.allocator, fds[0], near_dl, sink, hook);
     defer std.testing.allocator.free(outcome.bytes);
 
