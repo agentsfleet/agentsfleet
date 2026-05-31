@@ -78,7 +78,11 @@ No external prior art — this mirrors the repo's own `<module>_<concern>.zig` s
 | `src/zombied/http/test_harness_server.zig` | CREATE | Server bring-up plumbing: `defaultRegistry`, the lookup stubs, `bringUpServer`, `serverThread`, `waitForServer`, bind-retry constant. |
 | `src/zombied/http/test_http_message.zig` | CREATE | `Request` builder (`header`/`bearer`/`json`/`send`) + `Response` (`expectStatus`/`expectErrorCode`/`bodyContains`). |
 | `src/zombied/http/test_harness_test.zig` | CREATE | The harness's own unit tests (`fakeHarness`/`makeResponse` + the `test "…"` blocks) relocated from the core file. |
-| `src/zombied/main.zig` | EDIT | Register `_ = @import("http/test_harness_test.zig");` so the relocated tests run (the helper modules carry no `test` blocks and are reached transitively). |
+| `src/zombied/main.zig` | EDIT | §1–3: register `test_harness_test.zig`. §4: remove the whole `test {}` aggregation block (moves to `tests.zig`), leaving the prod entry test-free. |
+| `src/zombied/tests.zig` | CREATE | §4: dedicated zombied test root — `@import`s the prod modules + every `*_test.zig`; `build.zig`'s test target roots here. |
+| `src/runner/tests.zig` | CREATE | §4: dedicated runner test root — same idiom for the runner binary. |
+| `build.zig` | EDIT | §4: point the `tests` target's `root_source_file` at `src/zombied/tests.zig` instead of `main.zig`. |
+| `build_runner.zig` | EDIT | §4: point the runner test target at `src/runner/tests.zig`. |
 
 ---
 
@@ -111,6 +115,14 @@ Move `fakeHarness`/`makeResponse` and the `test "…"` blocks into `test_harness
 
 - **Dimension 3.1** — the relocated harness unit tests run under the suite and pass → Test: the moved `test "…"` blocks themselves
 - **Dimension 3.2** — every resulting file is ≤350 lines → Test/AC: line-count check (E7)
+
+### §4 — Extract dedicated test roots (`src/zombied/tests.zig`, `src/runner/tests.zig`)
+
+Today both binaries aggregate every `_ = @import("…_test.zig")` inside a `test {}` block in their **production entry point** (`src/zombied/main.zig`, `src/runner/main.zig`). The block is correctly excluded from the release build (test decls are skipped in non-test compilation), but it mixes test wiring into the prod root and grows unboundedly. The repo already uses the cleaner idiom elsewhere (`src/lib/tests.zig`, `src/zombied/auth/tests.zig`): a dedicated test-root file that `@import`s the prod modules + every `*_test.zig`, with `build.zig`'s test target pointed at *it*. Mirror that for both binaries so `main.zig` stays production-pure.
+
+- **Dimension 4.1** — `src/zombied/tests.zig` owns the zombied test aggregation; `build.zig`'s `tests` target roots at it; `main.zig`'s `test {}` block is removed → Test: `make test-integration` runs the same test count as before (no test dropped; depth-gate count unchanged)
+- **Dimension 4.2** — `src/runner/tests.zig` owns the runner test aggregation; `build_runner.zig`'s test target roots at it; runner `main.zig`'s `test {}` block is removed → Test: `zig build --build-file build_runner.zig test` runs the same count
+- **Dimension 4.3** — the release exe/binary is byte-unaffected (test roots never reached in non-test builds) → Test/AC: `zig build -Dtarget=x86_64-linux` clean; no `*_test` symbol in the stripped exe
 
 ---
 
@@ -158,6 +170,9 @@ No signature changes. The only delta is which file a symbol is *defined* in; the
 | 2.1 | integration | existing `TestHarness.start` consumer | harness binds a free port (with retry) and serves a request post-split |
 | 3.1 | unit | relocated harness unit tests | `fakeHarness`/`makeResponse` blocks pass under the suite |
 | 3.2 | n/a | line-count gate (E7) | all `test_harness*.zig` + `test_http_message.zig` ≤350 lines |
+| 4.1 | integration | depth-gate count | zombied test count unchanged after moving aggregation to `src/zombied/tests.zig` |
+| 4.2 | integration | depth-gate count | runner test count unchanged after moving aggregation to `src/runner/tests.zig` |
+| 4.3 | regression | stripped-exe symbol scan | no `*_test` symbol in the release exe; `zig build -Dtarget=x86_64-linux` clean |
 
 **Regression:** the entire `make test-integration` suite is the regression proof — no consumer test changes, all pass. **Idempotency/replay:** N/A.
 
