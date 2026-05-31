@@ -43,7 +43,13 @@ pub fn buildArgv(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const 
     try dup(alloc, &list, child_exec.SUBCOMMAND);
     if (sandboxed) try dup(alloc, &list, child_exec.SANDBOXED_FLAG);
     const ws_flag = try std.fmt.allocPrint(alloc, "{s}{s}", .{ child_exec.WORKSPACE_FLAG_PREFIX, workspace_path });
-    try list.append(alloc, ws_flag); // already owned by alloc
+    {
+        // Scoped so a failed append frees ws_flag exactly once; once appended it
+        // is owned by `list` (the outer freeList errdefer), so a later
+        // toOwnedSlice failure must not double-free it.
+        errdefer alloc.free(ws_flag);
+        try list.append(alloc, ws_flag);
+    }
 
     return list.toOwnedSlice(alloc);
 }
@@ -60,7 +66,9 @@ fn freeList(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8)) void {
 }
 
 fn dup(alloc: std.mem.Allocator, list: *std.ArrayList([]const u8), s: []const u8) !void {
-    try list.append(alloc, try alloc.dupe(u8, s));
+    const copy = try alloc.dupe(u8, s);
+    errdefer alloc.free(copy); // freed once here if append fails; else owned by list
+    try list.append(alloc, copy);
 }
 
 /// Append the bubblewrap wrapper: namespaces + ro system + rw workspace + the

@@ -127,4 +127,15 @@ test {
     _ = @import("engine/cgroup.zig");
     _ = @import("engine/landlock.zig");
     _ = @import("engine/network.zig");
+    // W1 runner-daemon coverage
+    _ = @import("child_supervisor_edge_test.zig");
+    _ = @import("child_supervisor_concurrency_test.zig");
+    _ = @import("daemon/renew_driver_edge_test.zig");
+    _ = @import("daemon/renew_driver_concurrency_test.zig");
+    _ = @import("daemon/control_plane_client_edge_test.zig");
+    _ = @import("pipe_proto_edge_test.zig");
+    // W2 runner-engine coverage
+    _ = @import("child_exec_edge_test.zig");
+    _ = @import("sandbox_args_edge_test.zig");
+    _ = @import("tool_bridge_resolution_test.zig");
 }

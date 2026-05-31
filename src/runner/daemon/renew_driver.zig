@@ -58,7 +58,9 @@ pub fn RenewDriver(comptime Client: type) type {
         /// deadline on success.
         fn onTick(ctx: *anyopaque, now_ms: i64) child_supervisor.RenewDecision {
             const self: *Self = @ptrCast(@alignCast(ctx));
-            if (self.deadline_ms - now_ms > constants.RENEWAL_WINDOW_MS) return .keep;
+            // Equivalent to `deadline_ms - now_ms > WINDOW` but overflow-safe: a
+            // garbage/extreme deadline from the wire must not panic the tick loop.
+            if (self.deadline_ms > now_ms +| constants.RENEWAL_WINDOW_MS) return .keep;
             const res = self.cp.renew(self.alloc, self.runner_token, self.lease_id) catch |err| {
                 log.warn("renew_failed_retry", .{ .lease_id = self.lease_id, .err = @errorName(err) });
                 return .keep;
