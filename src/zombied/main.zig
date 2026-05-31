@@ -290,6 +290,8 @@ test {
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
+    // RLS tenant-context resolution (use-after-free regression on the null-tenant lookup)
+    _ = @import("http/handlers/tenant_context_integration_test.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
     // billing/credit edge, idempotency + concurrency coverage
