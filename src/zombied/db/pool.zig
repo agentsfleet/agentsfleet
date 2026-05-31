@@ -20,6 +20,33 @@ pub const Row = pg.Row;
 
 const S_SSLMODE = "sslmode=";
 
+// Pool sizing + acquire-timeout knobs (env-tunable, role-aware).
+//
+// `DATABASE_POOL_SIZE` / `DATABASE_ACQUIRE_TIMEOUT_MS` apply to every role;
+// a role-prefixed override (`DATABASE_POOL_SIZE_API`, ...) wins when present.
+const POOL_SIZE_ENV = "DATABASE_POOL_SIZE";
+const ACQUIRE_TIMEOUT_MS_ENV = "DATABASE_ACQUIRE_TIMEOUT_MS";
+
+// Default pool size is a small fraction of the API in-flight-request ceiling:
+// many concurrent requests share a handful of DB connections, so the pool need
+// not scale 1:1 with request concurrency. Mirrors the `API_MAX_IN_FLIGHT_REQUESTS`
+// loader default (256) divided by the per-connection request-sharing factor.
+const API_MAX_IN_FLIGHT_REQUESTS_DEFAULT: u16 = 256;
+const POOL_SIZE_INFLIGHT_DIVISOR: u16 = 64;
+const POOL_SIZE_DEFAULT: u16 = API_MAX_IN_FLIGHT_REQUESTS_DEFAULT / POOL_SIZE_INFLIGHT_DIVISOR;
+
+// Acquire timeout fails fast: a starved pool surfaces as a quick error rather
+// than a multi-second stall that masquerades as a slow request.
+const ACQUIRE_TIMEOUT_MS_DEFAULT: u32 = 2_000;
+
+// Connection (auth handshake) timeout — distinct from the pool acquire timeout.
+const CONNECT_TIMEOUT_MS_DEFAULT: u32 = 10_000;
+
+// Upper bound on a role tag ("migrator" is the longest) and on a fully
+// composed "<KNOB>_<ROLE>" env-var name; both leave slack for future roles.
+const ROLE_TAG_MAX = 16;
+const ROLE_ENV_NAME_MAX = 64;
+
 pub const DbRole = enum {
     default,
     api,
@@ -37,12 +64,6 @@ pub fn roleEnvVarName(role: DbRole) []const u8 {
         .default => "DATABASE_URL",
     };
 }
-
-pub const Config = struct {
-    url: []const u8,
-    pool_size: u32 = 4,
-    timeout_ms: u32 = 10_000,
-};
 
 pub const Migration = pool_types.Migration;
 pub const MigrationState = pool_types.MigrationState;
@@ -95,8 +116,11 @@ pub fn parseUrl(alloc: std.mem.Allocator, url: []const u8) !pg.Pool.Opts {
         port = std.fmt.parseInt(u16, hostport[colon + 1 ..], 10) catch return error.InvalidDatabaseUrl;
     }
 
+    // `.size` / `.timeout` (pool acquire timeout) default here and are
+    // overwritten from env-resolved sizing (resolveSizing) in initFromEnvForRole.
     return pg.Pool.Opts{
-        .size = 4,
+        .size = POOL_SIZE_DEFAULT,
+        .timeout = ACQUIRE_TIMEOUT_MS_DEFAULT,
         .connect = .{
             .host = try alloc.dupe(u8, host),
             .port = port,
@@ -106,7 +130,7 @@ pub fn parseUrl(alloc: std.mem.Allocator, url: []const u8) !pg.Pool.Opts {
             .username = try alloc.dupe(u8, username),
             .password = try alloc.dupe(u8, password),
             .database = try alloc.dupe(u8, dbname),
-            .timeout = 10_000,
+            .timeout = CONNECT_TIMEOUT_MS_DEFAULT,
         },
     };
 }
@@ -131,6 +155,49 @@ fn resolveDatabaseUrl(alloc: std.mem.Allocator, role: DbRole) ![]const u8 {
     return url;
 }
 
+/// Read a u32 env knob, preferring the role-prefixed override
+/// ("<base>_<ROLE>") over the generic `base`. Absent/blank → `default_value`;
+/// present-but-malformed → `default_value` (caller logs the fallback).
+fn readRoleEnvU32(alloc: std.mem.Allocator, base: []const u8, role: DbRole, default_value: u32) u32 {
+    var role_buf: [ROLE_TAG_MAX]u8 = undefined;
+    const role_upper = std.ascii.upperString(&role_buf, @tagName(role));
+
+    var name_buf: [ROLE_ENV_NAME_MAX]u8 = undefined;
+    const scoped = std.fmt.bufPrint(&name_buf, "{s}_{s}", .{ base, role_upper }) catch base;
+    if (parseEnvU32(alloc, scoped)) |v| return v;
+    if (parseEnvU32(alloc, base)) |v| return v;
+    return default_value;
+}
+
+/// Parse a non-empty u32 from a raw env value; null when blank or unparseable.
+fn parseSizeStr(raw: []const u8) ?u32 {
+    const trimmed = std.mem.trim(u8, raw, " \t\r\n");
+    if (trimmed.len == 0) return null;
+    return std.fmt.parseInt(u32, trimmed, 10) catch null;
+}
+
+/// Parse a non-empty u32 env var; null when unset, blank, or unparseable.
+fn parseEnvU32(alloc: std.mem.Allocator, name: []const u8) ?u32 {
+    const raw = std.process.getEnvVarOwned(alloc, name) catch return null;
+    defer alloc.free(raw);
+    return parseSizeStr(raw);
+}
+
+/// Clamp a raw pool size into the u16 connection-count domain; 0 or out-of-range
+/// falls back to the default (never a 0-connection pool).
+fn clampPoolSize(raw: u32) u16 {
+    if (raw == 0 or raw > std.math.maxInt(u16)) return POOL_SIZE_DEFAULT;
+    return @intCast(raw);
+}
+
+/// Resolve env-tunable pool sizing for a role, clamping pool size to the
+/// u16 connection-count domain. Defaults apply when env knobs are absent.
+fn resolveSizing(alloc: std.mem.Allocator, role: DbRole) struct { size: u16, timeout_ms: u32 } {
+    const size_raw = readRoleEnvU32(alloc, POOL_SIZE_ENV, role, POOL_SIZE_DEFAULT);
+    const timeout_ms = readRoleEnvU32(alloc, ACQUIRE_TIMEOUT_MS_ENV, role, ACQUIRE_TIMEOUT_MS_DEFAULT);
+    return .{ .size = clampPoolSize(size_raw), .timeout_ms = timeout_ms };
+}
+
 /// Initialize a pool using DATABASE_URL for the selected role.
 pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     const url = resolveDatabaseUrl(alloc, role) catch {
@@ -143,9 +210,17 @@ pub fn initFromEnvForRole(alloc: std.mem.Allocator, role: DbRole) !*Pool {
     // valid for the lifetime of the pool. Use page_allocator so these
     // process-lifetime strings are not tracked by a GPA/arena and do not
     // appear as leaks when the process exits.
-    const opts = try parseUrl(std.heap.page_allocator, url);
+    var opts = try parseUrl(std.heap.page_allocator, url);
+    const sizing = resolveSizing(alloc, role);
+    opts.size = sizing.size;
+    opts.timeout = sizing.timeout_ms;
     const pool = try pg.Pool.init(alloc, opts);
-    log.info("pool_initialized", .{ .role = @tagName(role), .size = 4, .host = opts.connect.host orelse "127.0.0.1" });
+    log.info("pool_initialized", .{
+        .role = @tagName(role),
+        .size = opts.size,
+        .acquire_timeout_ms = opts.timeout,
+        .host = opts.connect.host orelse "127.0.0.1",
+    });
     return pool;
 }
 
@@ -157,6 +232,22 @@ test "hasSslModeDisable detects disable in query string" {
     try std.testing.expect(!hasSslModeDisable("sslmode=verify-full"));
     try std.testing.expect(!hasSslModeDisable(""));
     try std.testing.expect(!hasSslModeDisable("application_name=test"));
+}
+
+test "parseSizeStr accepts a clean u32 and rejects blank/garbage" {
+    try std.testing.expectEqual(@as(?u32, 12), parseSizeStr("12"));
+    try std.testing.expectEqual(@as(?u32, 750), parseSizeStr("  750\n")); // trims surrounding ws
+    try std.testing.expectEqual(@as(?u32, null), parseSizeStr(""));
+    try std.testing.expectEqual(@as(?u32, null), parseSizeStr("   "));
+    try std.testing.expectEqual(@as(?u32, null), parseSizeStr("not-a-number"));
+}
+
+test "clampPoolSize keeps in-range sizes and floors invalid ones to the default" {
+    try std.testing.expectEqual(@as(u16, 12), clampPoolSize(12));
+    try std.testing.expectEqual(@as(u16, 1), clampPoolSize(1));
+    try std.testing.expectEqual(POOL_SIZE_DEFAULT, clampPoolSize(0)); // never a 0-conn pool
+    try std.testing.expectEqual(POOL_SIZE_DEFAULT, clampPoolSize(std.math.maxInt(u32))); // out of u16 range
+    try std.testing.expectEqual(@as(u16, std.math.maxInt(u16)), clampPoolSize(std.math.maxInt(u16)));
 }
 
 test {
