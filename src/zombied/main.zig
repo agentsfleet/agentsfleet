@@ -292,4 +292,9 @@ test {
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
+    // billing/credit edge, idempotency + concurrency coverage
+    _ = @import("state/tenant_billing_edge_test.zig");
+    _ = @import("zombie/metering_edge_test.zig");
+    _ = @import("zombie/metering_idempotent_test.zig");
+    _ = @import("zombie/metering_concurrency_test.zig");
 }
