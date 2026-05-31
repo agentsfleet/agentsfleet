@@ -107,9 +107,11 @@ test "release build forbids dev_none and unknown tiers; Debug allows dev_none" {
 // `zig build --build-file build_runner.zig test` — daemon/ + engine/, no pg/redis.
 test {
     _ = @import("daemon/control_plane_client.zig");
+    _ = @import("daemon/control_plane_client_test.zig");
     _ = @import("daemon/config.zig");
     _ = @import("daemon/loop.zig");
     _ = @import("daemon/renew_driver.zig");
+    _ = @import("daemon/renew_driver_test.zig");
     _ = @import("common");
     _ = @import("child_supervisor.zig");
     _ = @import("child_supervisor_test.zig");

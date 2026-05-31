@@ -13,7 +13,7 @@ const constants = @import("common");
 const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
-const RenewDriver = @import("renew_driver.zig");
+const RenewDriver = @import("renew_driver.zig").RenewDriver(client_mod);
 
 const protocol = contract.protocol;
 const log = logging.scoped(.zombie_runner);

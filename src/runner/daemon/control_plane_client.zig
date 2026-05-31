@@ -100,13 +100,22 @@ pub fn renew(
     defer alloc.free(path);
     const res = try self.post(alloc, path, runner_token, "");
     defer alloc.free(res.body);
-    if (res.status >= 200 and res.status < 300) {
-        const parsed = std.json.parseFromSlice(protocol.RenewResponse, alloc, res.body, .{}) catch
+    return classifyRenew(alloc, res.status, res.body);
+}
+
+/// Map a `/renew` HTTP response (status + body) to a `RenewResult` — the pure,
+/// I/O-free core of `renew`, so the status→outcome contract is unit-testable
+/// without a live server. A 2xx parses the new kill deadline; a definitive 4xx
+/// yields `.terminal`; every other status (other 4xx, 5xx) is `BadStatus` so the
+/// caller retries on the next tick.
+pub fn classifyRenew(alloc: Allocator, status: u16, body: []const u8) ClientError!RenewResult {
+    if (status >= 200 and status < 300) {
+        const parsed = std.json.parseFromSlice(protocol.RenewResponse, alloc, body, .{}) catch
             return ClientError.MalformedResponse;
         defer parsed.deinit();
         return .{ .renewed = parsed.value.lease_expires_at };
     }
-    if (isTerminalRenewStatus(res.status)) return .{ .terminal = res.status };
+    if (isTerminalRenewStatus(status)) return .{ .terminal = status };
     return ClientError.BadStatus; // other 4xx (400/429/…) + 5xx → retryable; caller retries next tick.
 }
 
@@ -115,7 +124,7 @@ pub fn renew(
 /// 404 lease not found (UZ-RUN-006), 409 lease lost / max-runtime (UZ-RUN-010/011).
 /// Any other 4xx (400 body, 429 rate-limit, …) is retryable like a 5xx — a
 /// transient/non-terminal status must never kill a healthy in-flight run.
-fn isTerminalRenewStatus(status: u16) bool {
+pub fn isTerminalRenewStatus(status: u16) bool {
     return status == 401 or status == 402 or status == 404 or status == 409;
 }
 
