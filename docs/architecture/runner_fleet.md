@@ -240,8 +240,9 @@ The credit-pool billing model debits twice per event, and both debits live on `z
 
 - At **lease issue**, before handing work to a runner: the balance gate (does the tenant cover the receive + stage estimate?), then the `receive` debit (flat, posture-based), then the approval gate, then the `stage` debit (a conservative estimate at floor tokens). Any gate failure means no lease is issued.
 - At **report**: reconcile the stage telemetry row to the actual token counts. The charged amount stays at the pre-execution estimate — report updates telemetry, it does not re-charge.
+- At **renewal** (M80_006 `/renew`): the same balance gate re-runs as a **coverage check only** — no debit, no telemetry row. A live child's renewal is refused with `UZ-RUN-012` when the tenant can no longer cover the run; the child is killed and the lease ends at its current deadline, never extended. In M80_006 a renewed lease is **not** re-billed — the stage charge at lease issue covers the whole run however many renewals extend it (M80_010 later moves the stage debit onto these ticks as a per-slice Δ-debit). The gate's exhaustion policy is resolved **once at startup** and carried on the request `Context` (`ctx.balance_policy`), shared by the lease and renewal paths — not re-read from the environment per request.
 
-Receive credits are not refunded if the stage later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `zombied`'s lease/report path.
+Receive credits are not refunded if the stage later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `zombied`'s lease/report path. **Metering never stops, but the gate only bites post-trial:** while the free-trial window is open the stage charge is `0`, so neither the lease gate nor the renewal gate can refuse any tenant — the `UZ-RUN-012` path is unreachable until `FREE_TRIAL_END_MS` passes (mechanism + the metering-vs-revenue split in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-promotional-windows-free-trial-mechanism)).
 
 ## Redis topology — what changed
 

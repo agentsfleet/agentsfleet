@@ -1,6 +1,7 @@
 const std = @import("std");
 const runtime_config = @import("../config/runtime.zig");
 const env_vars = @import("../config/env_vars.zig");
+const balance_policy = @import("../config/balance_policy.zig");
 const events_bus = @import("../events/bus.zig");
 const oidc_auth = @import("../auth/oidc.zig");
 const http_server = @import("../http/server.zig");
@@ -202,6 +203,7 @@ pub fn run(alloc: std.mem.Allocator) !void {
         .api_max_in_flight_requests = serve_cfg.api_max_in_flight_requests,
         .ready_max_queue_depth = serve_cfg.ready_max_queue_depth,
         .ready_max_queue_age_ms = serve_cfg.ready_max_queue_age_ms,
+        .balance_policy = balance_policy.resolveFromEnv(alloc),
         // SAFETY: written by surrounding init logic before any read of this storage.
         .telemetry = undefined,
     };

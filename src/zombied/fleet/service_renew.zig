@@ -29,7 +29,6 @@ const ec = @import("../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
 const renewal = @import("renewal.zig");
 const metering = @import("../zombie/metering.zig");
-const balance_policy = @import("../config/balance_policy.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 
 const Hx = hx_mod.Hx;
@@ -101,10 +100,10 @@ fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8) !renewal.RenewO
 }
 
 /// The tenant balance gate — reuse the exact check the lease path applies, so
-/// renewal and issue share one credit policy.
+/// renewal and issue share one credit policy. Policy is resolved once at
+/// startup and carried on the request context (not re-read from the env here).
 fn creditsCover(hx: Hx, lease: Lease) bool {
-    const policy = balance_policy.resolveFromEnv(hx.alloc);
-    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.model, policy);
+    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.model, hx.ctx.balance_policy);
 }
 
 fn loadLease(hx: Hx, runner_id: []const u8, lease_id: []const u8) ?Lease {

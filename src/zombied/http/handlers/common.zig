@@ -15,6 +15,7 @@ const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
 const http_auth = @import("../../db/test_fixtures_http_auth.zig");
+const balance_policy = @import("../../config/balance_policy.zig");
 
 pub const TraceContext = trace_ctx.TraceContext;
 
@@ -42,6 +43,10 @@ pub const Context = struct {
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     telemetry: *telemetry_mod.Telemetry,
+    /// Tenant balance-exhaustion gate policy, resolved once from the env at
+    /// startup (the credit gate reads this, not the env, per request). Defaults
+    /// so test/fixture Contexts that omit it get the production default.
+    balance_policy: balance_policy.Policy = balance_policy.DEFAULT,
 };
 
 /// Parse traceparent header from request, or generate a root trace context.

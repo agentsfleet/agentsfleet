@@ -44,7 +44,6 @@ const activity_publisher = @import("../zombie/activity_publisher.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
-const balance_policy = @import("../config/balance_policy.zig");
 const event_envelope = @import("contract").event_envelope;
 const execution_policy = @import("contract").execution_policy;
 
@@ -144,7 +143,7 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
         .posture = tr.resolved.mode,
         .model = tr.resolved.model,
     };
-    const policy = balance_policy.resolveFromEnv(alloc);
+    const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
 
     if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.model, policy)) {
         log.info("lease_balance_exhausted", .{ .zombie_id = session.zombie_id });
