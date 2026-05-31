@@ -297,4 +297,11 @@ test {
     _ = @import("zombie/metering_edge_test.zig");
     _ = @import("zombie/metering_idempotent_test.zig");
     _ = @import("zombie/metering_concurrency_test.zig");
+    // fleet lease/renewal concurrency + roundtrip integration coverage
+    _ = @import("fleet/renewal_edge_test.zig");
+    _ = @import("fleet/renewal_malformed_test.zig");
+    _ = @import("fleet/concurrency_lease_test.zig");
+    _ = @import("fleet/concurrency_renew_test.zig");
+    _ = @import("fleet/integration_roundtrip_test.zig");
+    _ = @import("fleet/integration_session_continuation_test.zig");
 }

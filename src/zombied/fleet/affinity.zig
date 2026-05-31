@@ -48,6 +48,7 @@ pub fn claim(
     ttl_ms: i64,
 ) !Claim {
     const affinity_id = try id_format.generateRunnerAffinityId(alloc);
+    defer alloc.free(affinity_id);
     const now_ms = std.time.milliTimestamp();
     const leased_until = now_ms + ttl_ms;
     var q = PgQuery.from(try conn.query(
