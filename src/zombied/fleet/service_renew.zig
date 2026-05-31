@@ -6,7 +6,9 @@
 //! `renewal.zig`:
 //!
 //!   1. Load the lease scoped to the presenting runner (ownership = runner_id).
-//!      No row → 404 lease_not_found; not `active` → 409 lease_lost.
+//!      Malformed lease_id or no row → 404 lease_not_found; not `active` → 409
+//!      lease_lost. A transient DB fault while loading → 5xx (retryable), never a
+//!      terminal 404 that would make the runner kill a healthy long-running child.
 //!   2. Credit gate: refuse (402) if the tenant balance can no longer cover the
 //!      run — reuses the same `balanceCoversEstimate` the lease path uses.
 //!   3. `renewal.renew` — atomic, fenced, capped extension of BOTH the lease row
@@ -25,8 +27,10 @@ const httpz = @import("httpz");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
 
 const hx_mod = @import("../http/handlers/hx.zig");
+const common = @import("../http/handlers/common.zig");
 const ec = @import("../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
+const id_format = @import("../types/id_format.zig");
 const renewal = @import("renewal.zig");
 const metering = @import("../zombie/metering.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
@@ -52,7 +56,20 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
         return;
     };
 
-    const lease = loadLease(hx, runner_id, lease_id) orelse {
+    // A malformed lease_id can never match a lease — reject it as not-found
+    // BEFORE the query, so the `::uuid` cast can never be the source of a load
+    // error. Any error from loadLease below is then a genuine transient DB fault.
+    if (!id_format.isUuidV7(lease_id)) {
+        hx.fail(ec.ERR_RUN_LEASE_NOT_FOUND, "No lease matches this lease_id for the runner");
+        return;
+    }
+    // Distinguish a transient DB fault (retryable 5xx — the runner renews again
+    // next tick) from a genuinely-absent lease (terminal 404). Conflating them
+    // would kill a healthy long-running child on a momentary pool/connection blip.
+    const lease = (loadLease(hx, runner_id, lease_id) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    }) orelse {
         hx.fail(ec.ERR_RUN_LEASE_NOT_FOUND, "No lease matches this lease_id for the runner");
         return;
     };
@@ -73,7 +90,7 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
 /// `renew` within the method-length budget.
 fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8) void {
     const outcome = runRenew(hx, lease_id, runner_id) catch {
-        @import("../http/handlers/common.zig").internalDbError(hx.res, hx.req_id);
+        common.internalDbError(hx.res, hx.req_id);
         return;
     };
     switch (outcome) {
@@ -106,10 +123,12 @@ fn creditsCover(hx: Hx, lease: Lease) bool {
     return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.model, hx.ctx.balance_policy);
 }
 
-fn loadLease(hx: Hx, runner_id: []const u8, lease_id: []const u8) ?Lease {
+/// Returns the lease, `null` when no row matches (terminal 404), or an error on
+/// a transient DB fault (the caller maps it to a retryable 5xx, not a 404).
+fn loadLease(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     return loadLeaseInner(hx, runner_id, lease_id) catch |err| {
         log.warn("renew_lease_load_failed", .{ .lease_id = lease_id, .err = @errorName(err) });
-        return null;
+        return err;
     };
 }
 

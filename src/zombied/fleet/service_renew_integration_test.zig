@@ -150,3 +150,69 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     // A refused renewal must never advance the kill deadline.
     try std.testing.expectEqual(before, try leaseExpiresAtOf(conn));
 }
+
+test "integration: a transient DB fault loading the lease is a retryable 5xx, not a terminal 404" {
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = configureRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    teardown(conn);
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try seedRunner(conn);
+    try seedActiveLease(conn, std.time.milliTimestamp() + 60_000);
+    defer teardown(conn);
+
+    // Inject a transient-style DB fault on a VALID, owned, active lease: rename a
+    // column the load query selects so the SELECT errors. DDL autocommits, so the
+    // handler's pooled connection sees it on its next parse. The fix must surface
+    // this as a retryable 5xx (the runner renews again next tick) — never a
+    // terminal 404 that would make it kill a healthy long-running child.
+    _ = try conn.exec("ALTER TABLE fleet.runner_leases RENAME COLUMN status TO status_faultinj", .{});
+    // Backstop restore if the immediate restore below is skipped (send errored).
+    defer _ = conn.exec("ALTER TABLE fleet.runner_leases RENAME COLUMN status_faultinj TO status", .{}) catch {};
+
+    const resp = try renewLease(h);
+    // Restore before any assertion can early-return, so the rest of the suite
+    // sees the original schema (the backstop defer above then no-ops).
+    _ = conn.exec("ALTER TABLE fleet.runner_leases RENAME COLUMN status_faultinj TO status", .{}) catch {};
+    defer resp.deinit();
+
+    try resp.expectStatus(.internal_server_error); // 5xx, retryable — not a terminal 404
+    try resp.expectErrorCode("UZ-INTERNAL-002");
+}
+
+test "integration: a malformed lease_id is a terminal 404, never a retryable 5xx" {
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = configureRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+
+    teardown(conn);
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try seedRunner(conn);
+    defer teardown(conn);
+
+    // A non-UUID lease_id can never match a lease. The uuidv7 gate rejects it as
+    // not-found BEFORE the query, so the ::uuid cast is never the error source —
+    // the runner gets a terminal 404, never a 5xx that would make it spin
+    // retrying a lease that cannot exist.
+    const path = try std.fmt.allocPrint(ALLOC, "{s}/{s}/{s}", .{
+        protocol.PATH_RUNNER_LEASES, "not-a-uuid", protocol.RUNNER_LEASE_RENEW_SUFFIX,
+    });
+    defer ALLOC.free(path);
+    const req = try (try h.post(path).bearer(RUNNER_TOKEN)).json("{}");
+    const resp = try req.send();
+    defer resp.deinit();
+
+    try resp.expectStatus(.not_found);
+    try resp.expectErrorCode("UZ-RUN-006");
+}
