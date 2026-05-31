@@ -144,6 +144,7 @@ test "integration: renew refused with UZ-RUN-012 on an exhausted tenant, deadlin
     const before = try leaseExpiresAtOf(conn);
     const resp = try renewLease(h);
     defer resp.deinit();
+    try resp.expectStatus(.payment_required); // 402 — refusal must carry the right status, not just the code
     try resp.expectErrorCode("UZ-RUN-012"); // lease_renewal_no_credits
 
     // A refused renewal must never advance the kill deadline.
