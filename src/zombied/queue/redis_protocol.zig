@@ -38,7 +38,18 @@ pub fn ensureSimpleOk(v: RespValue) !void {
     }
 }
 
+/// Hard cap on RESP array nesting. The replies we consume (XREADGROUP /
+/// XAUTOCLAIM) nest ~5 levels; a malformed or hostile `*1\r\n*1\r\n…` reply
+/// would otherwise recurse until the thread stack overflows — an unrecoverable
+/// crash, not a catchable error. 16 clears real traffic with wide margin.
+const MAX_RESP_DEPTH: u8 = 16;
+
 pub fn readRespValue(alloc: std.mem.Allocator, reader: *std.Io.Reader) !RespValue {
+    return readRespValueDepth(alloc, reader, 0);
+}
+
+fn readRespValueDepth(alloc: std.mem.Allocator, reader: *std.Io.Reader, depth: u8) !RespValue {
+    if (depth > MAX_RESP_DEPTH) return error.RedisMaxDepthExceeded;
     const prefix = try reader.takeByte();
     return switch (prefix) {
         '+' => RespValue{ .simple = try readRespLine(alloc, reader) },
@@ -73,7 +84,7 @@ pub fn readRespValue(alloc: std.mem.Allocator, reader: *std.Io.Reader) !RespValu
             const arr = try alloc.alloc(RespValue, usize_count);
             errdefer alloc.free(arr);
             for (arr, 0..) |*item, idx| {
-                item.* = readRespValue(alloc, reader) catch |err| {
+                item.* = readRespValueDepth(alloc, reader, depth + 1) catch |err| {
                     var j: usize = 0;
                     while (j < idx) : (j += 1) arr[j].deinit(alloc);
                     return err;
@@ -229,4 +240,23 @@ test "readRespValue rejects unknown prefix byte" {
     const alloc = std.testing.allocator;
     var reader = std.Io.Reader.fixed("?unknown\r\n");
     try std.testing.expectError(error.RedisProtocolError, readRespValue(alloc, &reader));
+}
+
+test "readRespValue parses arrays nested to the depth limit" {
+    const alloc = std.testing.allocator;
+    // 16 single-element arrays wrapping an integer leaf — exactly MAX_RESP_DEPTH.
+    const data = ("*1\r\n" ** 16) ++ ":7\r\n";
+    var reader = std.Io.Reader.fixed(data);
+    var v = try readRespValue(alloc, &reader);
+    defer v.deinit(alloc);
+    try std.testing.expect(v == .array);
+}
+
+test "readRespValue rejects arrays nested past the depth limit" {
+    const alloc = std.testing.allocator;
+    // 17 levels overflows the cap; the guard fires before the stack does, and
+    // the testing allocator confirms every partially-built level is freed.
+    const data = "*1\r\n" ** 17;
+    var reader = std.Io.Reader.fixed(data);
+    try std.testing.expectError(error.RedisMaxDepthExceeded, readRespValue(alloc, &reader));
 }
