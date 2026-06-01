@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 
 const PARENT_DIR = "..";
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const repoRoot = resolve(__dirname, PARENT_DIR, PARENT_DIR, PARENT_DIR);
+export const repoRoot = resolve(__dirname, PARENT_DIR, PARENT_DIR);
 export const platformOpsDir = resolve(repoRoot, "samples", "platform-ops");
 
 /** Apply `{{key}}` placeholder substitution. Throws on any `{{...}}` left
