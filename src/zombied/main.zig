@@ -210,6 +210,8 @@ test {
     _ = @import("fleet/secrets_resolve_test.zig");
     _ = @import("fleet/schema_migration_test.zig");
     _ = @import("fleet/control_plane_integration_test.zig");
+    _ = @import("fleet/renewal_integration_test.zig");
+    _ = @import("fleet/service_renew_integration_test.zig");
     _ = @import("http/runner_register_integration_test.zig");
     _ = @import("hmac_sig");
     _ = @import("crypto/hmac_sig_test.zig");
@@ -288,6 +290,22 @@ test {
     _ = @import("http/handlers/zombies/sse_streaming_integration_test.zig");
     // Cross-workspace IDOR regression tests (RULE WAUTH)
     _ = @import("http/handlers/cross_workspace_idor_test.zig");
+    // RLS tenant-context resolution (use-after-free regression on the null-tenant lookup)
+    _ = @import("http/handlers/tenant_context_integration_test.zig");
+    // Applied-migration-version set (extracted from pool_migrations for FLL)
+    _ = @import("db/migration_versions.zig");
     _ = @import("types/id_format.zig");
     _ = @import("types/id_format_test.zig");
+    // billing/credit edge, idempotency + concurrency coverage
+    _ = @import("state/tenant_billing_edge_test.zig");
+    _ = @import("zombie/metering_edge_test.zig");
+    _ = @import("zombie/metering_idempotent_test.zig");
+    _ = @import("zombie/metering_concurrency_test.zig");
+    // fleet lease/renewal concurrency + roundtrip integration coverage
+    _ = @import("fleet/renewal_edge_test.zig");
+    _ = @import("fleet/renewal_malformed_test.zig");
+    _ = @import("fleet/concurrency_lease_test.zig");
+    _ = @import("fleet/concurrency_renew_test.zig");
+    _ = @import("fleet/integration_roundtrip_test.zig");
+    _ = @import("fleet/integration_session_continuation_test.zig");
 }

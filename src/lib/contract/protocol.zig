@@ -20,6 +20,7 @@
 
 const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
+const FailureClass = @import("execution_result.zig").FailureClass;
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
@@ -43,6 +44,21 @@ pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
 /// joined const like the others: the runner builds the full path off
 /// `PATH_RUNNER_LEASES`, and the router matcher keys on this suffix segment.
 pub const RUNNER_LEASE_ACTIVITY_SUFFIX = "activity";
+
+/// Trailing segment of the per-lease renewal sub-resource —
+/// `POST /v1/runners/me/leases/{lease_id}/renew`. Like the activity suffix this
+/// stays a bare segment (the runner joins it onto `PATH_RUNNER_LEASES/{id}`) and
+/// the router matcher keys on it. The runner calls this inside the renewal
+/// window while actively executing, to push its kill deadline forward.
+pub const RUNNER_LEASE_RENEW_SUFFIX = "renew";
+
+/// renew reply (200): the authoritative new kill deadline (epoch ms). The runner
+/// retargets its child wall-clock deadline to this. A non-200 (`UZ-RUN-010`
+/// max-runtime, `011` lease_lost, `012` no-credits) means stop renewing and kill
+/// the child — the run is over.
+pub const RenewResponse = struct {
+    lease_expires_at: i64,
+};
 
 /// Isolation strength a runner *self-reports* at enrollment. Stored as telemetry
 /// only — placement keys off operator-assigned trust, not this claim (a runner
@@ -145,6 +161,12 @@ pub const ReportRequest = struct {
     event_id: []const u8,
     fencing_token: u64,
     outcome: Outcome,
+    /// Granular failure cause when the execution failed, the runner's own
+    /// `FailureClass` carried verbatim (std.json renders it via @tagName).
+    /// Optional + defaulted so a mixed-version fleet is safe: an older runner
+    /// omits it and the control plane treats absent as "reason unknown". The
+    /// coarse `outcome` above stays the binary processed/agent_error verdict.
+    failure_reason: ?FailureClass = null,
     response_text: []const u8,
     /// Billing token count → `zombie_execution_telemetry.token_count`.
     tokens: u64,

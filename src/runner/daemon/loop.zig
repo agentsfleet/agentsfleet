@@ -13,6 +13,7 @@ const constants = @import("common");
 const Config = @import("config.zig");
 const client_mod = @import("control_plane_client.zig");
 const child_supervisor = @import("../child_supervisor.zig");
+const RenewDriver = @import("renew_driver.zig").RenewDriver(client_mod);
 
 const protocol = contract.protocol;
 const log = logging.scoped(.zombie_runner);
@@ -149,9 +150,10 @@ fn executeAndReport(
 
     var forwarder = ActivityForwarder{ .alloc = alloc, .cp = cp, .runner_token = runner_token, .lease_id = payload.lease_id };
     const sink = child_supervisor.ActivitySink{ .ctx = &forwarder, .forward = ActivityForwarder.forward };
+    var driver = RenewDriver.init(alloc, cp, runner_token, payload);
 
     const start_ms = std.time.milliTimestamp();
-    const result = child_supervisor.run(alloc, cfg, workspace_path, payload, sink);
+    const result = child_supervisor.run(alloc, cfg, workspace_path, payload, sink, driver.hook());
     const wall_ms: u64 = @intCast(@max(0, std.time.milliTimestamp() - start_ms));
     defer if (result.content.len > 0) alloc.free(result.content);
 
@@ -163,6 +165,7 @@ fn executeAndReport(
         .event_id = payload.event.event_id,
         .fencing_token = payload.fencing_token,
         .outcome = outcome,
+        .failure_reason = result.failure,
         .response_text = result.content,
         .tokens = result.token_count,
         .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = wall_ms },

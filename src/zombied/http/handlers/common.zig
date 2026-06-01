@@ -15,6 +15,7 @@ const id_format = @import("../../types/id_format.zig");
 const rbac = @import("../../auth/rbac.zig");
 const principal_mod = @import("../../auth/principal.zig");
 const http_auth = @import("../../db/test_fixtures_http_auth.zig");
+const balance_policy = @import("../../config/balance_policy.zig");
 
 pub const TraceContext = trace_ctx.TraceContext;
 
@@ -42,6 +43,10 @@ pub const Context = struct {
     ready_max_queue_depth: ?i64,
     ready_max_queue_age_ms: ?i64,
     telemetry: *telemetry_mod.Telemetry,
+    /// Tenant balance-exhaustion gate policy, resolved once from the env at
+    /// startup (the credit gate reads this, not the env, per request). Defaults
+    /// so test/fixture Contexts that omit it get the production default.
+    balance_policy: balance_policy.Policy = balance_policy.DEFAULT,
 };
 
 /// Parse traceparent header from request, or generate a root trace context.
@@ -340,12 +345,25 @@ pub fn setTenantSessionContext(conn: *pg.Conn, tenant_id: []const u8) bool {
     return true;
 }
 
+/// A UUID rendered as text (`xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`) is 36 bytes.
+const UUID_TEXT_LEN: usize = 36;
+
 pub fn authorizeWorkspaceAndSetTenantContext(conn: *pg.Conn, principal: AuthPrincipal, workspace_id: []const u8) bool {
+    // Lives for the whole fn so the looked-up tenant_id survives `lookup.deinit()`.
+    var tenant_buf: [UUID_TEXT_LEN]u8 = undefined;
     const tenant_id = principal.tenant_id orelse blk: {
-        var lookup = PgQuery.from(conn.query("SELECT tenant_id FROM core.workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false);
+        var lookup = PgQuery.from(conn.query("SELECT tenant_id::text FROM core.workspaces WHERE workspace_id = $1", .{workspace_id}) catch return false);
         defer lookup.deinit();
         const row = (lookup.next() catch return false) orelse return false;
-        break :blk row.get([]u8, 0) catch return false;
+        const looked_up = row.get([]u8, 0) catch return false;
+        // Copy out of the pg.Result buffer BEFORE this block's `defer lookup.deinit()`
+        // fires: deinit both drains the query (required before the next op on `conn`)
+        // and frees the buffer `looked_up` points into. Without the copy, tenant_id
+        // would dangle into freed memory and serialize garbage as the RLS tenant
+        // context at setTenantSessionContext below — a cross-tenant security hazard.
+        if (looked_up.len != UUID_TEXT_LEN) return false;
+        @memcpy(tenant_buf[0..], looked_up);
+        break :blk tenant_buf[0..];
     };
     if (!setTenantSessionContext(conn, tenant_id)) return false;
     return authorizeWorkspace(conn, principal, workspace_id);

@@ -83,6 +83,23 @@ pub fn readFrame(
     return .{ .frame = .{ .ftype = ftype, .payload = payload } };
 }
 
+/// Whether `fd` became readable before the deadline. `.readable` includes a
+/// closed write end (a subsequent read returns 0 = EOF).
+pub const ReadyState = enum { readable, timed_out };
+
+/// Wait until `fd` has data (or EOF) to read, or `deadline_ms` (absolute epoch
+/// ms) passes. The supervisor uses this to wake at a renewal-tick cadence in the
+/// idle gap BETWEEN frames: a tick must never interrupt a frame mid-read (that
+/// would consume and discard partial bytes, desyncing the stream), so the frame
+/// read itself always runs at the full lease deadline once data is present.
+pub fn waitReadable(fd: std.posix.fd_t, deadline_ms: i64) !ReadyState {
+    const remaining = deadline_ms - std.time.milliTimestamp();
+    if (remaining <= 0) return .timed_out;
+    var fds = [_]std.posix.pollfd{.{ .fd = fd, .events = std.posix.POLL.IN, .revents = 0 }};
+    const ready = try std.posix.poll(&fds, @intCast(@min(remaining, std.math.maxInt(i32))));
+    return if (ready == 0) .timed_out else .readable;
+}
+
 /// Fill `buf` exactly, polling under the deadline. `.eof` carries how many bytes
 /// arrived before EOF (0 = clean boundary); `.full` means `buf` is filled.
 const FillState = union(enum) { full, eof: usize, timed_out };

@@ -41,6 +41,29 @@ const Hx = hx_mod.Hx;
 const channel_prefix = "zombie:";
 const channel_suffix = ":activity";
 
+/// Idle wake-up cadence for the SSE subscriber. Each tick with no pub/sub
+/// traffic sends a heartbeat comment so a vanished client is detected by the
+/// failing write — without it the worker parks on the Redis read forever,
+/// holding an httpz worker + a Redis connection until a publish that may never
+/// come (dead client + idle zombie = a wedged worker, eventually pool-starving).
+const SSE_HEARTBEAT_INTERVAL_MS: u32 = 15_000;
+/// A `nextMessage` null returning in under half the heartbeat window is a
+/// closed/RST socket, not an elapsed read timeout → exit instead of busy-
+/// looping heartbeats against a dead Redis.
+const SSE_TIMEOUT_MIN_ELAPSED_MS: i64 = SSE_HEARTBEAT_INTERVAL_MS / 2;
+/// SSE comment frame — ignored by EventSource clients, but the write probes
+/// client liveness and keeps intermediaries from idling the connection out.
+const SSE_HEARTBEAT_FRAME = ": heartbeat\n\n";
+
+const IdleAction = enum { heartbeat, close };
+
+/// Read a null `nextMessage` from how long the read blocked: a full idle window
+/// means SO_RCVTIMEO elapsed (heartbeat the client); a near-instant null means
+/// the socket closed or reset (exit the loop).
+fn classifyIdle(elapsed_ms: i64) IdleAction {
+    return if (elapsed_ms < SSE_TIMEOUT_MIN_ELAPSED_MS) .close else .heartbeat;
+}
+
 pub fn innerEventsStream(
     hx: Hx,
     req: *httpz.Request,
@@ -59,7 +82,7 @@ pub fn innerEventsStream(
 
     if (!authorize(hx, workspace_id, zombie_id)) return;
 
-    var subscriber = redis_subscriber.connectFromEnv(hx.alloc, redis_types.RedisRole.api, .{}) catch |err| {
+    var subscriber = redis_subscriber.connectFromEnv(hx.alloc, redis_types.RedisRole.api, .{ .read_timeout_ms = SSE_HEARTBEAT_INTERVAL_MS }) catch |err| {
         log.err("subscriber_connect_failed", .{ .err = @errorName(err) });
         common.internalDbUnavailable(hx.res, hx.req_id);
         return;
@@ -101,14 +124,22 @@ fn streamLoop(
     var seq: u64 = 0;
     var w = stream.writer(&.{});
     while (true) {
-        const msg_opt = try subscriber.nextMessage();
-        if (msg_opt == null) return; // clean disconnect from Redis side
-        var msg = msg_opt.?;
-        defer msg.deinit(alloc);
-
-        const kind = extractKind(msg.payload) orelse "message";
-        try writeFrame(&w, seq, kind, msg.payload);
-        seq +%= 1;
+        const before_ms = std.time.milliTimestamp();
+        if (try subscriber.nextMessage()) |raw| {
+            var msg = raw;
+            defer msg.deinit(alloc);
+            const kind = extractKind(msg.payload) orelse "message";
+            try writeFrame(&w, seq, kind, msg.payload);
+            seq +%= 1;
+            continue;
+        }
+        // null = idle read timeout OR a closed/broken socket; the block time
+        // tells them apart. A heartbeat write to a vanished client fails and
+        // unwinds the loop, releasing the worker thread + Redis connection.
+        switch (classifyIdle(std.time.milliTimestamp() - before_ms)) {
+            .close => return,
+            .heartbeat => try w.interface.writeAll(SSE_HEARTBEAT_FRAME),
+        }
     }
 }
 
@@ -206,4 +237,11 @@ test "extractKind: returns null when kind is not the leading field" {
 test "extractKind: handles short payloads without panicking" {
     try testing.expect(extractKind("") == null);
     try testing.expect(extractKind("{\"k\"") == null);
+}
+
+test "classifyIdle: a near-instant null closes, a full idle window heartbeats" {
+    try testing.expectEqual(IdleAction.close, classifyIdle(0));
+    try testing.expectEqual(IdleAction.close, classifyIdle(SSE_TIMEOUT_MIN_ELAPSED_MS - 1));
+    try testing.expectEqual(IdleAction.heartbeat, classifyIdle(SSE_TIMEOUT_MIN_ELAPSED_MS));
+    try testing.expectEqual(IdleAction.heartbeat, classifyIdle(@as(i64, SSE_HEARTBEAT_INTERVAL_MS)));
 }

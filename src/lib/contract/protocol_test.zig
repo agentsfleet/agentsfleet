@@ -6,6 +6,7 @@
 
 const std = @import("std");
 const protocol = @import("protocol.zig");
+const FailureClass = @import("execution_result.zig").FailureClass;
 
 /// Assert serialize → parse → serialize is stable for `value`.
 fn expectStable(comptime T: type, value: T) !void {
@@ -55,6 +56,35 @@ test "report request and response round-trip (fenced, no runner_id)" {
         .checkpoint = .{ .last_event_id = "1700000000000-0", .last_response = "ok" },
     });
     try expectStable(protocol.ReportResponse, .{ .ok = true });
+}
+
+test "report request carries the granular failure_reason across the round-trip" {
+    inline for (.{ FailureClass.oom_kill, FailureClass.renewal_terminate, FailureClass.timeout_kill }) |fc| {
+        try expectStable(protocol.ReportRequest, .{
+            .lease_id = "lease_0190aaaa",
+            .event_id = "1700000000000-0",
+            .fencing_token = 184,
+            .outcome = .agent_error,
+            .failure_reason = fc,
+            .response_text = "killed",
+            .tokens = 0,
+            .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = 1500 },
+            .checkpoint = .{ .last_event_id = "1700000000000-0", .last_response = "" },
+        });
+    }
+}
+
+test "report request without failure_reason parses to null (old runner, backward-additive)" {
+    const a = std.testing.allocator;
+    // A report emitted by an OLD runner — no failure_reason key. The new control
+    // plane must still parse it, defaulting the field to null (rendered downstream
+    // as the "unknown" failure bucket, never a parse failure).
+    const json_old =
+        \\{"lease_id":"l1","event_id":"1700000000000-0","fencing_token":1,"outcome":"agent_error","response_text":"x","tokens":0,"telemetry":{"time_to_first_token_ms":0,"wall_ms":10},"checkpoint":{"last_event_id":"1700000000000-0","last_response":""}}
+    ;
+    const p = try std.json.parseFromSlice(protocol.ReportRequest, a, json_old, .{});
+    defer p.deinit();
+    try std.testing.expect(p.value.failure_reason == null);
 }
 
 test "lease response — work payload round-trips (fencing + event + policy)" {

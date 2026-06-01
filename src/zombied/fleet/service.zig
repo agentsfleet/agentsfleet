@@ -44,7 +44,7 @@ const activity_publisher = @import("../zombie/activity_publisher.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const tenant_billing = @import("../state/tenant_billing.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
-const balance_policy = @import("../config/balance_policy.zig");
+const metrics_runner = @import("../observability/metrics_runner.zig");
 const event_envelope = @import("contract").event_envelope;
 const execution_policy = @import("contract").execution_policy;
 
@@ -156,7 +156,7 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
         .posture = tr.resolved.mode,
         .model = tr.resolved.model,
     };
-    const policy = balance_policy.resolveFromEnv(alloc);
+    const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
 
     if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.model, policy)) {
         log.info("lease_balance_exhausted", .{ .zombie_id = session.zombie_id });
@@ -224,6 +224,7 @@ fn issueLease(hx: Hx, runner_id: []const u8, session: *ZombieSession, acq: assig
 
     const lease_id = try id_format.generateRunnerLeaseId(hx.alloc);
     try insertLeaseRow(hx, runner_id, acq, billed, lease_id);
+    metrics_runner.incRunnerActiveLeases(runner_id); // in-memory gauge; decremented on the runner's report
 
     log.info("lease_issued", .{ .zombie_id = acq.zombie_id, .event_id = acq.event_id, .lease_id = lease_id, .fencing_token = acq.fencing_token, .runner_id = runner_id, .kind = @tagName(acq.kind) });
     hx.ok(.ok, protocol.LeaseResponse{ .lease = .{

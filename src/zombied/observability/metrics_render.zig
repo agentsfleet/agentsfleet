@@ -3,6 +3,7 @@
 const std = @import("std");
 const mc = @import("metrics_counters.zig");
 const mw = @import("metrics_workspace.zig");
+const mr = @import("metrics_runner.zig");
 const mrp = @import("metrics_redis_pool.zig");
 
 const S_TYPE_S_S_N = "# TYPE {s} {s}\n";
@@ -181,6 +182,9 @@ pub fn renderPrometheus(
 
     // Per-workspace metrics.
     try mw.renderPrometheus(writer);
+
+    // Per-runner failure metrics (pushed in on each runner report).
+    try mr.renderPrometheus(writer);
 
     try writer.writeAll("\n");
 

@@ -319,6 +319,137 @@ test "Pool.stats surfaces every PoolStats field" {
     _ = s.acquire_timeouts_total;
 }
 
+// Short acquire-wait budget so the hard-cap timeout test fails fast (50ms)
+// instead of the 5s production default. Named so the two cap tests below
+// can't drift apart.
+const SHORT_ACQUIRE_TIMEOUT_MS = 50;
+
+test "Pool hard max_active cap times out a saturated acquire and bumps acquire_timeouts_total" {
+    // Finding witness: with a hard ceiling set, an acquire that would push
+    // active past max_active must NOT grow the pool unbounded — it blocks on
+    // the not_full condvar up to acquire_timeout_ms, then returns
+    // AcquireTimeout. This is the first real producer of
+    // acquire_timeouts_total (it was hardwired to 0 before the cap landed).
+    const alloc = std.testing.allocator;
+
+    var fake: PingFake = undefined;
+    try fake.start(true);
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    var pool = try Pool.init(alloc, cfg, .{
+        .max_idle = 4, // deliberately > max_active to prove the cap check is
+        .max_active = 2, // separated from max_idle (Finding 1): the ceiling is
+        .eager_min = 0, // max_active, not max_idle.
+        .acquire_timeout_ms = SHORT_ACQUIRE_TIMEOUT_MS,
+    });
+    defer pool.deinit();
+
+    // Saturate the active ceiling: 2 live conns, active_count == max_active.
+    const a = try pool.acquire();
+    const b = try pool.acquire();
+    try std.testing.expectEqual(@as(usize, 2), pool.stats().active);
+
+    // Third acquire has no idle conn and active == max_active, so it blocks
+    // for the whole budget (nobody releases) and surfaces AcquireTimeout.
+    const start = std.time.nanoTimestamp();
+    const blocked = pool.acquire();
+    const waited_ns = std.time.nanoTimestamp() - start;
+    try std.testing.expectError(error.AcquireTimeout, blocked);
+
+    // The wait actually consumed the budget (not an instant fail-fast) and
+    // the timeout counter now has a real, non-zero value.
+    try std.testing.expect(waited_ns >= @as(i128, SHORT_ACQUIRE_TIMEOUT_MS) * std.time.ns_per_ms);
+    try std.testing.expectEqual(@as(u64, 1), pool.stats().acquire_timeouts_total);
+    // The failed acquire left active_count untouched at the ceiling — no
+    // phantom slot was reserved.
+    try std.testing.expectEqual(@as(usize, 2), pool.stats().active);
+
+    pool.release(a, true);
+    pool.release(b, true);
+}
+
+const CapWaiterCtx = struct {
+    pool: *Pool,
+    got_conn: std.atomic.Value(bool),
+
+    fn run(self: *CapWaiterCtx) void {
+        const c = self.pool.acquire() catch return;
+        self.got_conn.store(true, .release);
+        self.pool.release(c, true);
+    }
+};
+
+test "Pool hard max_active cap: release unblocks a waiting acquire without timing out" {
+    // Sibling to the timeout test: prove the condvar path is bidirectional.
+    // A waiter blocked on a full ceiling must wake and succeed the moment a
+    // holder releases — no AcquireTimeout, no leak. Uses a generous budget so
+    // the release (not the timeout) is what unblocks the waiter.
+    const alloc = std.testing.allocator;
+
+    var fake: PingFake = undefined;
+    try fake.start(true);
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    var pool = try Pool.init(alloc, cfg, .{
+        .max_idle = 2,
+        .max_active = 1, // single-slot ceiling: the waiter MUST block.
+        .eager_min = 0,
+        .acquire_timeout_ms = 5_000,
+    });
+    defer pool.deinit();
+
+    // Main thread holds the only slot.
+    const held = try pool.acquire();
+    try std.testing.expectEqual(@as(usize, 1), pool.stats().active);
+
+    var ctx = CapWaiterCtx{ .pool = &pool, .got_conn = std.atomic.Value(bool).init(false) };
+    const waiter = try std.Thread.spawn(.{}, CapWaiterCtx.run, .{&ctx});
+
+    // Give the waiter time to reach the blocked condvar wait, then free the
+    // slot. release() signals not_full → the waiter wakes, reuses the parked
+    // idle conn, and completes.
+    std.Thread.sleep(20 * std.time.ns_per_ms);
+    pool.release(held, true);
+    waiter.join();
+
+    try std.testing.expect(ctx.got_conn.load(.acquire));
+    // Release-driven wake, not budget exhaustion: timeout counter stays 0.
+    try std.testing.expectEqual(@as(u64, 0), pool.stats().acquire_timeouts_total);
+    try std.testing.expectEqual(@as(usize, 0), pool.stats().active);
+}
+
+test "Pool unbounded max_active default never blocks; overflow stays metric-only" {
+    // Finding-1 separation guard: with the default ceiling
+    // (max_active_unbounded) the at/over-cap check falls back to max_idle and
+    // is metric-only — acquiring past max_idle grows the pool transparently
+    // and bumps overflow_dials_total, never AcquireTimeout. Confirms the new
+    // ceiling is strictly opt-in and the historical behavior is preserved.
+    const alloc = std.testing.allocator;
+
+    var fake: PingFake = undefined;
+    try fake.start(true);
+    defer fake.shutdown();
+
+    const cfg = try fake.config(alloc);
+    var pool = try Pool.init(alloc, cfg, .{ .max_idle = 1, .eager_min = 0 });
+    defer pool.deinit();
+
+    // Acquire 3 with max_idle=1 and no hard ceiling: active climbs to 3 with
+    // zero blocking. Acquires 2 and 3 cross the metric threshold so
+    // overflow_dials_total is >= 2.
+    var held: [3]*Connection = undefined;
+    for (&held) |*slot| slot.* = try pool.acquire();
+
+    const peak = pool.stats();
+    try std.testing.expectEqual(@as(usize, 3), peak.active);
+    try std.testing.expect(peak.overflow_dials_total >= 2);
+    try std.testing.expectEqual(@as(u64, 0), peak.acquire_timeouts_total);
+
+    for (held) |c| pool.release(c, true);
+}
+
 // ── Integration tests (real Redis via TEST_REDIS_TLS_URL) ───────────────
 //
 // Pattern lifted from `redis_test.zig` "integration: rediss ping" — skip

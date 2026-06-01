@@ -42,6 +42,7 @@ const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
 const runner_lease = @import("handlers/runner/lease.zig");
 const runner_report = @import("handlers/runner/report.zig");
 const runner_activity = @import("handlers/runner/activity.zig");
+const runner_renew = @import("handlers/runner/renew.zig");
 
 // Sibling invoke files keep this file ≤ 350 lines per RULE FLL.
 const events_invokes = @import("route_table_invoke_events.zig");
@@ -331,5 +332,10 @@ pub fn invokeRunnerReport(hx: *Hx, req: *httpz.Request, route: router.Route) voi
 pub fn invokeRunnerActivity(hx: *Hx, req: *httpz.Request, route: router.Route) void {
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     runner_activity.innerRunnerActivity(hx.*, req, route.runner_activity);
+}
+
+pub fn invokeRunnerRenew(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
+    runner_renew.innerRunnerRenew(hx.*, req, route.runner_renew);
 }
 

@@ -40,3 +40,12 @@ pub const ERR_TOOL_UNKNOWN: []const u8 = "UZ-TOOL-005";
 // Fleet control-plane code the parent supervisor emits when a lease's mandatory
 // sandbox cannot be established and the lease is refused unrun (Invariant 7).
 pub const ERR_RUN_SANDBOX_ESTABLISH_FAILED: []const u8 = "UZ-RUN-007";
+
+// Fleet control-plane codes the runner OBSERVES on a `/renew` response and acts
+// on: 010/011 (→ kill the child: cap reached, or the lease was reassigned to
+// another runner); 012 when the tenant can no longer fund the run. (Operator-
+// revoke handling — the runner-revoked rejection — lands with the deferred
+// operator plane; see docs/architecture/roadmap.md.)
+pub const ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME: []const u8 = "UZ-RUN-010";
+pub const ERR_RUN_LEASE_LOST: []const u8 = "UZ-RUN-011";
+pub const ERR_RUN_LEASE_RENEWAL_NO_CREDITS: []const u8 = "UZ-RUN-012";

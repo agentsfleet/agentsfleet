@@ -25,10 +25,10 @@ const logging = @import("log");
 const types = @import("engine/types.zig");
 const cgroup = @import("engine/cgroup.zig");
 const client_errors = @import("engine/client_errors.zig");
-const sandbox = @import("sandbox_args.zig");
 const Config = @import("daemon/config.zig");
 const contract = @import("contract");
 const pipe_proto = @import("pipe_proto.zig");
+const child_process = @import("child_process.zig");
 
 const log = logging.scoped(.runner_supervisor);
 
@@ -45,6 +45,24 @@ pub const ActivitySink = struct {
     forward: *const fn (ctx: *anyopaque, frame: ActivityFrame) void,
 };
 
+/// What the read loop should do after a renewal tick or a progress frame.
+/// `extend` carries the new absolute kill deadline (epoch ms).
+pub const RenewDecision = union(enum) { keep, extend: i64, terminate };
+
+/// Hook the daemon installs so the supervisor can drive lease renewal during a
+/// long execution without the supervisor knowing any HTTP. `onTick` is called
+/// with the current epoch ms in the idle gap between frames (renewal-tick
+/// cadence) and again after each progress frame; the daemon renews if inside the
+/// window and returns a decision. A live child that emits no frames still ticks,
+/// so a legitimate long run renews and is never falsely reclaimed.
+pub const RenewHook = struct {
+    ctx: *anyopaque,
+    onTick: *const fn (ctx: *anyopaque, now_ms: i64) RenewDecision,
+    /// How often (ms) the read loop wakes between frames to consider renewal.
+    /// Production sets `constants.RENEWAL_TICK_MS`; tests inject a small value.
+    tick_ms: i64,
+};
+
 /// Cap on the serialized result we read back from a child (defensive against a
 /// runaway child flooding stdout).
 const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
@@ -55,19 +73,16 @@ const MAX_RESULT_BYTES: usize = 8 * 1024 * 1024;
 /// default.
 const SANDBOX_TIER_DEV_NONE = @tagName(contract.protocol.SandboxTier.dev_none);
 
-/// A forked child and the parent ends of its stdio pipes.
-const Child = struct {
-    pid: std.posix.pid_t,
-    stdin_w: std.posix.fd_t,
-    stdout_r: std.posix.fd_t,
-};
-
 /// What the parent observed reading the child's stdout.
-const ReadOutcome = struct {
+pub const ReadOutcome = struct {
     /// Result bytes the child wrote (alloc-owned; empty on timeout/crash).
     bytes: []u8 = &.{},
-    /// The wall-clock deadline elapsed before the child finished.
+    /// The wall-clock lease deadline (possibly extended by renewals) elapsed
+    /// before the child produced a result.
     timed_out: bool = false,
+    /// A renewal hook returned `.terminate` (lease lost / capped / no credits) —
+    /// the child must be killed even though the deadline has not elapsed.
+    terminated: bool = false,
 };
 
 /// Run one leased event in a forked, sandboxed child and return its result.
@@ -79,12 +94,13 @@ pub fn run(
     workspace_path: []const u8,
     payload: LeasePayload,
     sink: ActivitySink,
+    renew_hook: ?RenewHook,
 ) ExecutionResult {
     const lease_json = std.json.Stringify.valueAlloc(alloc, payload, .{}) catch
         return failed(.startup_posture);
     defer alloc.free(lease_json);
 
-    return supervise(alloc, cfg, workspace_path, payload, lease_json, sink) catch |err| {
+    return supervise(alloc, cfg, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
         log.err("supervise_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
         return failed(.executor_crash);
     };
@@ -103,6 +119,7 @@ fn supervise(
     payload: LeasePayload,
     lease_json: []const u8,
     sink: ActivitySink,
+    renew_hook: ?RenewHook,
 ) !ExecutionResult {
     // Fail-closed (Invariant 7): if the tier requires isolation and it cannot
     // be established, refuse the lease — never run prompt-injectable tool
@@ -120,7 +137,7 @@ fn supervise(
         _ = s.destroy(.{});
     };
 
-    const child = try forkExec(alloc, cfg, workspace_path);
+    const child = try child_process.forkExec(alloc, cfg, workspace_path);
     var reaped = false;
     defer if (!reaped) {
         _ = std.posix.waitpid(child.pid, 0);
@@ -130,17 +147,20 @@ fn supervise(
         log.warn("cgroup_add_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
 
     // Feed the lease (incl. inline secrets) in, then EOF the child's stdin.
-    writeAll(child.stdin_w, lease_json) catch |err|
+    child_process.writeAll(child.stdin_w, lease_json) catch |err|
         log.warn("lease_write_failed", .{ .err = @errorName(err) });
     std.posix.close(child.stdin_w);
 
-    const outcome = try readResult(alloc, child.stdout_r, payload.lease_expires_at, sink);
+    const outcome = try readResult(alloc, child.stdout_r, payload.lease_expires_at, sink, renew_hook);
     defer alloc.free(outcome.bytes);
     std.posix.close(child.stdout_r);
 
-    if (outcome.timed_out) {
+    if (outcome.terminated) {
+        log.warn("lease_terminated_by_renewal", .{ .lease_id = payload.lease_id });
+        child_process.killChild(child.pid, &scope);
+    } else if (outcome.timed_out) {
         log.warn("lease_timed_out", .{ .lease_id = payload.lease_id });
-        killChild(child.pid, &scope);
+        child_process.killChild(child.pid, &scope);
     }
 
     const wait_result = std.posix.waitpid(child.pid, 0);
@@ -154,7 +174,7 @@ fn supervise(
 /// rather than running the agent unsandboxed. (Landlock + netns are applied by
 /// the child before it runs the agent; this sets up the parent-side cgroup
 /// kill/limit domain.)
-fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupScope {
+pub fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupScope {
     if (!requires) return null;
     // macOS Seatbelt is not yet wired — a required sandbox we cannot apply must
     // fail closed rather than pretend. (Dev on macOS uses the dev_none tier.)
@@ -165,55 +185,63 @@ fn establishSandbox(alloc: std.mem.Allocator, requires: bool) !?cgroup.CgroupSco
     return cgroup.CgroupScope.create(alloc, exec_id, .{}) catch error.SandboxUnavailable;
 }
 
-/// Fork and, in the child, dup the pipes onto stdin/stdout, lead a new process
-/// group (so the parent can signal the whole group on the dev path), and exec
-/// the sandbox wrapper. Returns the child pid + parent pipe ends.
-fn forkExec(alloc: std.mem.Allocator, cfg: Config, workspace_path: []const u8) !Child {
-    const in_pipe = try std.posix.pipe(); // [0]=read (child), [1]=write (parent)
-    const out_pipe = try std.posix.pipe(); // [0]=read (parent), [1]=write (child)
-
-    const argv = try sandbox.buildArgv(alloc, cfg, workspace_path);
-    defer sandbox.freeArgv(alloc, argv);
-
-    const pid = try std.posix.fork();
-    if (pid == 0) {
-        // ── child ──
-        std.posix.dup2(in_pipe[0], std.posix.STDIN_FILENO) catch std.posix.exit(127);
-        std.posix.dup2(out_pipe[1], std.posix.STDOUT_FILENO) catch std.posix.exit(127);
-        std.posix.close(in_pipe[0]);
-        std.posix.close(in_pipe[1]);
-        std.posix.close(out_pipe[0]);
-        std.posix.close(out_pipe[1]);
-        std.posix.setpgid(0, 0) catch |err| log.warn("child_setpgid_failed", .{ .err = @errorName(err) });
-        const err = std.process.execv(alloc, argv);
-        log.err("child_execv_failed", .{ .err = @errorName(err) });
-        std.posix.exit(127);
-    }
-    // ── parent ──
-    std.posix.close(in_pipe[0]);
-    std.posix.close(out_pipe[1]);
-    return .{ .pid = pid, .stdin_w = in_pipe[1], .stdout_r = out_pipe[0] };
-}
-
 /// Read the child's framed stdout up to the terminal `result` frame, bounded by
 /// the lease deadline. Each `activity` frame is forwarded best-effort and freed;
 /// the `result` frame's bytes are returned (caller-owned). EOF before a result
 /// yields empty bytes (the caller classifies that as a transport loss); deadline
 /// elapse sets `timed_out` and the caller kills the child.
-fn readResult(alloc: std.mem.Allocator, fd: std.posix.fd_t, deadline_ms: i64, sink: ActivitySink) !ReadOutcome {
+pub fn readResult(
+    alloc: std.mem.Allocator,
+    fd: std.posix.fd_t,
+    deadline_ms: i64,
+    sink: ActivitySink,
+    renew_hook: ?RenewHook,
+) !ReadOutcome {
+    var deadline = deadline_ms;
     while (true) {
-        switch (try pipe_proto.readFrame(alloc, fd, deadline_ms, MAX_RESULT_BYTES)) {
+        const tick_deadline = if (renew_hook) |h|
+            @min(deadline, std.time.milliTimestamp() + h.tick_ms)
+        else
+            deadline;
+        switch (try pipe_proto.waitReadable(fd, tick_deadline)) {
+            .timed_out => {
+                const now = std.time.milliTimestamp();
+                if (now >= deadline) return .{ .timed_out = true };
+                if (applyTick(renew_hook, &deadline, now)) return .{ .terminated = true };
+                continue;
+            },
+            .readable => {},
+        }
+        // Data is present: read one whole frame at the full lease deadline so a
+        // tick never interrupts a frame mid-read (which would desync the stream).
+        switch (try pipe_proto.readFrame(alloc, fd, deadline, MAX_RESULT_BYTES)) {
             .timed_out => return .{ .timed_out = true },
             .eof => return .{},
             .frame => |f| switch (f.ftype) {
                 .activity => {
                     defer alloc.free(f.payload);
                     forwardActivity(alloc, sink, f.payload);
+                    // A progress frame attests liveness and is a renewal point too.
+                    if (applyTick(renew_hook, &deadline, std.time.milliTimestamp()))
+                        return .{ .terminated = true };
                 },
                 .result => return .{ .bytes = f.payload },
             },
         }
     }
+}
+
+/// Ask the renewal hook for a decision and apply it to `deadline`. Returns true
+/// iff the child must be terminated (lease lost / capped / no credits). A null
+/// hook (no renewal configured) is a no-op.
+fn applyTick(renew_hook: ?RenewHook, deadline: *i64, now_ms: i64) bool {
+    const h = renew_hook orelse return false;
+    switch (h.onTick(h.ctx, now_ms)) {
+        .keep => {},
+        .extend => |new_deadline| deadline.* = new_deadline,
+        .terminate => return true,
+    }
+    return false;
 }
 
 /// Parse one `activity` frame payload and hand it to the sink. Best-effort: a
@@ -226,28 +254,20 @@ fn forwardActivity(alloc: std.mem.Allocator, sink: ActivitySink, payload: []cons
     sink.forward(sink.ctx, frame);
 }
 
-/// Kill the whole child tree. On Linux the cgroup is the atomic kill domain;
-/// otherwise signal the child's process group (it leads its own via setpgid).
-fn killChild(pid: std.posix.pid_t, scope: *?cgroup.CgroupScope) void {
-    if (scope.*) |*s| {
-        s.kill() catch |err| {
-            log.warn("cgroup_kill_failed_fallback_signal", .{ .err = @errorName(err) });
-            std.posix.kill(-pid, std.posix.SIG.KILL) catch |kerr| log.warn("child_group_kill_failed", .{ .err = @errorName(kerr) });
-        };
-        return;
-    }
-    std.posix.kill(-pid, std.posix.SIG.KILL) catch |err| log.warn("child_group_kill_failed", .{ .err = @errorName(err) });
-}
-
 /// Map the child's exit status + read outcome to an `ExecutionResult`.
-/// Precedence: deadline timeout → OOM (cgroup) → clean exit (parse result) →
-/// abnormal exit/signal (crash).
-fn classify(
+/// Precedence: renewal-terminate → deadline timeout → OOM (cgroup) → clean exit
+/// (parse result) → abnormal exit/signal (crash). A renewal `.terminate` (lease
+/// lost / capped / no credits) is `renewal_terminate` — a policy stop, kept
+/// distinct from `timeout_kill` (the wall-clock deadline) so triage and billing
+/// can tell a policy kill from a clock kill. Terminate wins over a co-occurring
+/// timeout: the policy reason is the more actionable cause.
+pub fn classify(
     alloc: std.mem.Allocator,
     outcome: ReadOutcome,
     status: u32,
     scope: *?cgroup.CgroupScope,
 ) ExecutionResult {
+    if (outcome.terminated) return failed(.renewal_terminate);
     if (outcome.timed_out) return failed(.timeout_kill);
     if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
     if (!std.posix.W.IFEXITED(status) or std.posix.W.EXITSTATUS(status) != 0)
@@ -273,74 +293,5 @@ fn parseResult(alloc: std.mem.Allocator, bytes: []const u8) ExecutionResult {
     };
 }
 
-fn writeAll(fd: std.posix.fd_t, bytes: []const u8) !void {
-    var off: usize = 0;
-    while (off < bytes.len) off += try std.posix.write(fd, bytes[off..]);
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
-
-test "readResult forwards activity frames in order and returns the result frame" {
-    const Cap = struct {
-        count: usize = 0,
-        name_buf: [64]u8 = [_]u8{0} ** 64,
-        name_len: usize = 0,
-        fn forward(ctx: *anyopaque, frame: ActivityFrame) void {
-            const self: *@This() = @ptrCast(@alignCast(ctx));
-            self.count += 1;
-            if (frame == .tool_call_started) {
-                const n = frame.tool_call_started.name;
-                @memcpy(self.name_buf[0..n.len], n);
-                self.name_len = n.len;
-            }
-        }
-    };
-
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    const af = ActivityFrame{ .tool_call_started = .{ .name = "fly_deploy", .args_redacted = "{}" } };
-    const af_json = try std.json.Stringify.valueAlloc(std.testing.allocator, af, .{});
-    defer std.testing.allocator.free(af_json);
-    try pipe_proto.writeFrame(fds[1], .activity, af_json);
-    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":true}");
-    std.posix.close(fds[1]);
-
-    var cap: Cap = .{};
-    const sink = ActivitySink{ .ctx = &cap, .forward = Cap.forward };
-    const dl = std.time.milliTimestamp() + 5_000;
-    const outcome = try readResult(std.testing.allocator, fds[0], dl, sink);
-    defer std.testing.allocator.free(outcome.bytes);
-
-    try std.testing.expect(!outcome.timed_out);
-    try std.testing.expectEqualStrings("{\"exit_ok\":true}", outcome.bytes);
-    try std.testing.expectEqual(@as(usize, 1), cap.count);
-    try std.testing.expectEqualStrings("fly_deploy", cap.name_buf[0..cap.name_len]);
-}
-
-test "readResult tolerates a malformed activity frame and still returns the result" {
-    const Noop = struct {
-        fn forward(_: *anyopaque, _: ActivityFrame) void {}
-    };
-    const fds = try std.posix.pipe();
-    defer std.posix.close(fds[0]);
-    try pipe_proto.writeFrame(fds[1], .activity, "{not valid json"); // dropped
-    try pipe_proto.writeFrame(fds[1], .result, "{\"exit_ok\":false}");
-    std.posix.close(fds[1]);
-
-    var dummy: u8 = 0;
-    const sink = ActivitySink{ .ctx = &dummy, .forward = Noop.forward };
-    const dl = std.time.milliTimestamp() + 5_000;
-    const outcome = try readResult(std.testing.allocator, fds[0], dl, sink);
-    defer std.testing.allocator.free(outcome.bytes);
-    try std.testing.expectEqualStrings("{\"exit_ok\":false}", outcome.bytes);
-}
-
-test "sandbox setup fails closed (Invariant 7): dev_none runs bare, a required tier with no domain refuses" {
-    // dev_none = explicit no-isolation. Every other tier MUST establish its
-    // domain or the lease is refused unrun (never executed unsandboxed). The
-    // non-Linux arm is here; the Linux cgroup-failure arm is in test-integration.
-    try std.testing.expect((try establishSandbox(std.testing.allocator, false)) == null);
-    if (builtin.os.tag != .linux)
-        try std.testing.expectError(error.SandboxUnavailable, establishSandbox(std.testing.allocator, true));
-    try std.testing.expect(client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED.len > 0);
-}
+// Tests live in child_supervisor_test.zig (sibling) to keep this file within
+// the line budget; registered via the runner test aggregator in main.zig.

@@ -33,6 +33,7 @@ const metering = @import("../zombie/metering.zig");
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const tenant_provider = @import("../state/tenant_provider.zig");
 const activity_publisher = @import("../zombie/activity_publisher.zig");
+const metrics_runner = @import("../observability/metrics_runner.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_report);
@@ -84,6 +85,12 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
     }
 
     finalize(hx, lease, body);
+    // Per-runner telemetry (best-effort, in-memory — never gates the report).
+    // The lease is now released, so drop the active-leases gauge; bucket the run
+    // by outcome and stamp liveness; on failure, also bucket the granular reason.
+    metrics_runner.observeRunnerExecution(runner_id, body.outcome);
+    metrics_runner.decRunnerActiveLeases(runner_id);
+    if (body.outcome == .agent_error) metrics_runner.incRunnerFailure(runner_id, body.failure_reason);
     hx.ok(.ok, protocol.ReportResponse{ .ok = true });
 }
 
@@ -157,6 +164,10 @@ fn finalize(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
         .token_count = body.tokens,
         .wall_seconds = wall_ms / std.time.ms_per_s,
         .exit_ok = body.outcome == .processed,
+        // Trust-boundary invariant: failure_label is null iff the run is
+        // processed — never persist a reason a misbehaving runner pairs with
+        // a clean outcome.
+        .failure = if (body.outcome == .processed) null else body.failure_reason,
     };
 
     event_rows.markTerminal(pool, lease.zombie_id, lease.event_id, result, wall_ms);
