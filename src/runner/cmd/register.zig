@@ -49,7 +49,12 @@ pub fn run(alloc: std.mem.Allocator) u8 {
 }
 
 fn envOrDefault(alloc: std.mem.Allocator, env: []const u8, default: []const u8) ?[]const u8 {
-    return std.process.getEnvVarOwned(alloc, env) catch (alloc.dupe(u8, default) catch null);
+    return std.process.getEnvVarOwned(alloc, env) catch |err| switch (err) {
+        // Only an unset var falls through to the default; OOM / invalid encoding
+        // must not be masked as "use dev_none" — surface them as null (→ ERR_OOM).
+        error.EnvironmentVariableNotFound => alloc.dupe(u8, default) catch null,
+        else => null,
+    };
 }
 
 /// Write the runner env file deploy.sh consumes (0600 — it carries the `zrn_`).
@@ -63,6 +68,11 @@ fn writeEnvFile(alloc: std.mem.Allocator, path: []const u8, api: []const u8, tok
     defer alloc.free(content);
     var file = try std.fs.cwd().createFile(path, .{ .mode = 0o600 });
     defer file.close();
+    // `mode` on createFile only applies when the file is newly created; a
+    // pre-existing env file (e.g. 0644 from a prior tool) keeps its perms and
+    // truncate would write the zrn_ world-readable. chmod the fd so 0600 holds
+    // regardless of prior state (RULE VLT — the "(mode 0600)" claim must be true).
+    try file.chmod(0o600);
     try file.writeAll(content);
 }
 

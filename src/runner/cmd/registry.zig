@@ -6,6 +6,7 @@
 //! command set (Invariant 2).
 
 const std = @import("std");
+const args = @import("args.zig");
 const help = @import("help.zig");
 const register = @import("register.zig");
 const status = @import("status.zig");
@@ -37,6 +38,10 @@ pub fn summaryFor(cmd: Command) []const u8 {
 pub fn dispatch(alloc: std.mem.Allocator, name: []const u8) u8 {
     if (std.mem.eql(u8, name, "--help") or std.mem.eql(u8, name, "-h")) return help.run(alloc);
     const cmd = std.meta.stringToEnum(Command, name) orelse return help.runUnknown(alloc, name);
+    // `<cmd> --help` shows help instead of running the command — a subcommand must
+    // never perform a live action (mint a token, write the env file) when the
+    // operator asked for help.
+    if (args.has("--help") or args.has("-h")) return help.run(alloc);
     return specFor(cmd).handler(alloc);
 }
 
