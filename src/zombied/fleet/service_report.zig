@@ -47,6 +47,7 @@ const Lease = struct {
     tenant_id: []const u8,
     event_id: []const u8,
     posture: []const u8,
+    provider: []const u8,
     model: []const u8,
     fencing_token: u64,
 };
@@ -132,7 +133,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     defer hx.ctx.pool.release(conn);
     var q = PgQuery.from(try conn.query(
         \\SELECT zombie_id::text, workspace_id::text, tenant_id::text,
-        \\       event_id, posture, model, fencing_token
+        \\       event_id, posture, provider, model, fencing_token
         \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
     , .{ lease_id, runner_id }));
     defer q.deinit();
@@ -144,8 +145,9 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
         .event_id = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
         .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 4)),
-        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 5)),
-        .fencing_token = @intCast(try row.get(i64, 6)),
+        .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 5)),
+        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 6)),
+        .fencing_token = @intCast(try row.get(i64, 7)),
     };
 }
 
@@ -183,6 +185,7 @@ fn finalize(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
         .zombie_id = lease.zombie_id,
         .event_id = lease.event_id,
         .posture = parsePosture(lease.posture),
+        .provider = lease.provider,
         .model = lease.model,
     }, 0, body.tokens, wall_ms, std.time.milliTimestamp() - @as(i64, @intCast(wall_ms)));
     event_rows.checkpointZombieSession(alloc, pool, lease.zombie_id, buildContextJson(alloc, body.checkpoint)) catch |err| {

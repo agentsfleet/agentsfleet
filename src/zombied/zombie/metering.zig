@@ -44,6 +44,7 @@ pub const PreflightContext = struct {
     zombie_id: []const u8,
     event_id: []const u8,
     posture: tenant_provider.Mode,
+    provider: []const u8,
     model: []const u8,
 };
 
@@ -78,6 +79,7 @@ pub fn balanceCoversEstimate(
     alloc: Allocator,
     tenant_id: []const u8,
     posture: tenant_provider.Mode,
+    provider: []const u8,
     model: []const u8,
     policy: balance_policy.Policy,
 ) bool {
@@ -97,9 +99,11 @@ pub fn balanceCoversEstimate(
 
     const receive = tenant_billing.computeReceiveCharge(posture);
     const stage = tenant_billing.computeStageCharge(
+        provider,
         posture,
         model,
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
+        0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
     );
     return billing.balance_nanos >= (receive + stage);
@@ -131,9 +135,11 @@ pub fn debitStage(
     policy: balance_policy.Policy,
 ) DebitOutcome {
     const nanos = tenant_billing.computeStageCharge(
+        ctx.provider,
         ctx.posture,
         ctx.model,
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
+        0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
     );
     return debitAndInsert(pool, alloc, tenant_id, ctx, .stage, nanos, policy);

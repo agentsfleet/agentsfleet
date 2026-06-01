@@ -44,6 +44,7 @@ const log = logging.scoped(.runner_renew);
 const Lease = struct {
     tenant_id: []const u8,
     posture: []const u8,
+    provider: []const u8,
     model: []const u8,
     status: []const u8,
 };
@@ -120,7 +121,7 @@ fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8) !renewal.RenewO
 /// renewal and issue share one credit policy. Policy is resolved once at
 /// startup and carried on the request context (not re-read from the env here).
 fn creditsCover(hx: Hx, lease: Lease) bool {
-    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.model, hx.ctx.balance_policy);
+    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.provider, lease.model, hx.ctx.balance_policy);
 }
 
 /// Returns the lease, `null` when no row matches (terminal 404), or an error on
@@ -136,7 +137,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT tenant_id::text, posture, model, status
+        \\SELECT tenant_id::text, posture, provider, model, status
         \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
     , .{ lease_id, runner_id }));
     defer q.deinit();
@@ -144,8 +145,9 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     return Lease{
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
-        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
-        .status = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
+        .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
+        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
+        .status = try hx.alloc.dupe(u8, try row.get([]const u8, 4)),
     };
 }
 

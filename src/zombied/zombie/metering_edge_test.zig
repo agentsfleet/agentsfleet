@@ -26,6 +26,7 @@ fn platformCtx(workspace_id: []const u8, event_id: []const u8) metering.Prefligh
         .zombie_id = "zombie-edge-test",
         .event_id = event_id,
         .posture = .platform,
+        .provider = "anthropic",
         .model = "claude-sonnet-4-6",
     };
 }
@@ -53,9 +54,11 @@ test "should drain the platform stage charge and write stage telemetry post-tria
     const expected = blk: {
         if (try trialActive(db_ctx.conn)) break :blk @as(i64, 0);
         break :blk tenant_billing.computeStageCharge(
+            "anthropic",
             .platform,
             "claude-sonnet-4-6",
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
+            0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
     };
@@ -107,9 +110,11 @@ test "should pass the stop gate when balance exactly equals the conservative est
     // through the same public path the gate uses so the boundary is exact.
     const est_total = tenant_billing.computeReceiveCharge(.self_managed) +
         tenant_billing.computeStageCharge(
+            "self-managed-test",
             .self_managed,
             "any-model-self-managed",
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
+            0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, est_total, "test_gate_exact");
@@ -120,6 +125,7 @@ test "should pass the stop gate when balance exactly equals the conservative est
         ALLOC,
         uc1.TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model-self-managed",
         .stop,
     ));
@@ -135,9 +141,11 @@ test "should block the stop gate when balance is one nano below the estimate pos
 
     const est_total = tenant_billing.computeReceiveCharge(.self_managed) +
         tenant_billing.computeStageCharge(
+            "self-managed-test",
             .self_managed,
             "any-model-self-managed",
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
+            0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
     // Provision the exact estimate first: the billing row must exist for the
@@ -160,6 +168,7 @@ test "should block the stop gate when balance is one nano below the estimate pos
         ALLOC,
         uc1.TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model-self-managed",
         .stop,
     ));

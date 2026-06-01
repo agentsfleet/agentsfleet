@@ -96,32 +96,38 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
 /// have been rejected upstream by the tenant-provider PUT validator and
 /// the install-skill frontmatter check.
 pub fn computeStageCharge(
+    provider: []const u8,
     posture: Posture,
     model: []const u8,
     input_tokens: u32,
+    cached_input_tokens: u32,
     output_tokens: u32,
 ) i64 {
-    return computeStageChargeAt(posture, model, input_tokens, output_tokens, std.time.milliTimestamp());
+    return computeStageChargeAt(provider, posture, model, input_tokens, cached_input_tokens, output_tokens, std.time.milliTimestamp());
 }
 
 // Time-injected sibling of `computeStageCharge`. Private; inline tests below
 // access it for deterministic pre/mid/post-trial coverage. Production paths
-// call `computeStageCharge` (which reads the real clock).
+// call `computeStageCharge` (which reads the real clock). The (provider, model)
+// pair keys the rate row — the same model under two providers prices apart.
 fn computeStageChargeAt(
+    provider: []const u8,
     posture: Posture,
     model: []const u8,
     input_tokens: u32,
+    cached_input_tokens: u32,
     output_tokens: u32,
     now_ms: i64,
 ) i64 {
     if (isFreeTrialActive(now_ms)) return FREE_TRIAL_STAGE_NANOS;
     return switch (posture) {
         .platform => blk: {
-            const rate = model_rate_cache.lookup_model_rate(model) orelse
-                std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
+            const rate = model_rate_cache.lookup_model_rate(provider, model) orelse
+                std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in cached caps catalogue", .{ model, provider });
             const in_nanos = @divTrunc(rate.input_nanos_per_mtok * @as(i64, input_tokens), 1_000_000);
+            const cached_nanos = @divTrunc(rate.cached_input_nanos_per_mtok * @as(i64, cached_input_tokens), 1_000_000);
             const out_nanos = @divTrunc(rate.output_nanos_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk STAGE_PLATFORM_NANOS + in_nanos + out_nanos;
+            break :blk STAGE_PLATFORM_NANOS + in_nanos + cached_nanos + out_nanos;
         },
         .self_managed => STAGE_SELF_MANAGED_NANOS,
     };
@@ -195,17 +201,17 @@ const PRE_TRIAL_NOW_MS: i64 = FREE_TRIAL_END_MS - 1_000;
 test "computeStageChargeAt: self_managed returns flat overhead independent of tokens or model (post-trial)" {
     try std.testing.expectEqual(
         STAGE_SELF_MANAGED_NANOS,
-        computeStageChargeAt(.self_managed, "any-model", 0, 0, POST_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 0, 0, 0, POST_TRIAL_NOW_MS),
     );
     try std.testing.expectEqual(
         STAGE_SELF_MANAGED_NANOS,
-        computeStageChargeAt(.self_managed, "claude-opus-4-7", 1_000_000, 1_000_000, POST_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "claude-opus-4-8", 1_000_000, 1_000_000, 1_000_000, POST_TRIAL_NOW_MS),
     );
     // self_managed never consults the rate cache, so a missing model must
     // NOT panic — only platform mode requires a cached rate.
     try std.testing.expectEqual(
         @as(i64, 100_000),
-        computeStageChargeAt(.self_managed, "model-not-in-catalogue", 100, 100, POST_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "model-not-in-catalogue", 100, 100, 100, POST_TRIAL_NOW_MS),
     );
 }
 
@@ -215,17 +221,17 @@ test "computeStageChargeAt: free-trial window returns zero regardless of posture
     // short-circuit fires before the platform-branch lookup.
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt(.platform, "model-not-in-catalogue", 800, 1000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("pioneer", .platform, "model-not-in-catalogue", 800, 0, 1000, PRE_TRIAL_NOW_MS),
     );
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt(.self_managed, "any-model", 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 1_000_000, 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS),
     );
     // At the cutoff (now_ms == FREE_TRIAL_END_MS) the trial is over —
     // strict less-than gate.
     try std.testing.expectEqual(
         @as(i64, 100_000),
-        computeStageChargeAt(.self_managed, "any-model", 0, 0, FREE_TRIAL_END_MS),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 0, 0, 0, FREE_TRIAL_END_MS),
     );
 }
 

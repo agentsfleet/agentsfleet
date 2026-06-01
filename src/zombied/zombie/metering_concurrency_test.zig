@@ -40,6 +40,7 @@ const Job = struct {
             .zombie_id = "zombie-conc-test",
             .event_id = self.event_id[0..self.event_len],
             .posture = .self_managed,
+            .provider = "self-managed-test",
             .model = "any-model-self-managed",
         };
     }

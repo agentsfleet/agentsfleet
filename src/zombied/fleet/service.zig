@@ -154,11 +154,12 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
         .zombie_id = session.zombie_id,
         .event_id = event.event_id,
         .posture = tr.resolved.mode,
+        .provider = tr.resolved.provider,
         .model = tr.resolved.model,
     };
     const policy = hx.ctx.balance_policy; // resolved once at startup, carried on the context
 
-    if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.model, policy)) {
+    if (!metering.balanceCoversEstimate(pool, alloc, tr.tenant_id, tr.resolved.mode, tr.resolved.provider, tr.resolved.model, policy)) {
         log.info("lease_balance_exhausted", .{ .zombie_id = session.zombie_id });
         return null;
     }
@@ -288,14 +289,18 @@ fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: B
     const conn = hx.ctx.pool.acquire() catch return error.DbError;
     defer hx.ctx.pool.release(conn);
     const now_ms = std.time.milliTimestamp();
+    // The provider name resolved at billing — stored alongside posture/model so
+    // the renew credit gate + the report settle can key the rate row by
+    // (provider, model) without re-resolving. Fresh leases always carry it.
+    const provider_name: []const u8 = if (billed.provider) |p| p.provider else "";
     _ = conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id,
         \\   actor, event_type, request_json, event_created_at,
-        \\   posture, model, fencing_token, lease_expires_at, status,
+        \\   posture, provider, model, fencing_token, lease_expires_at, status,
         \\   created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, $6,
-        \\        $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $16)
+        \\        $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)
     , .{
         lease_id,
         runner_id,
@@ -308,6 +313,7 @@ fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: B
         acq.request_json,
         acq.event_created_at,
         billed.posture,
+        provider_name,
         billed.model,
         @as(i64, @intCast(acq.fencing_token)),
         acq.leased_until,

@@ -22,6 +22,7 @@ fn makeCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightCon
         .zombie_id = "zombie-test",
         .event_id = event_id,
         .posture = .self_managed,
+        .provider = "self-managed-test",
         .model = "any-model-self-managed-doesnt-need-cache",
     };
 }
@@ -67,6 +68,7 @@ test "balanceCoversEstimate: returns true under non-stop policies regardless of 
         ALLOC,
         uc1.TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model",
         .@"continue",
     ));
@@ -100,6 +102,7 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
         ALLOC,
         uc1.TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model",
         .stop,
     ));
@@ -121,6 +124,7 @@ test "balanceCoversEstimate: passes when stop policy AND balance covers est_tota
         ALLOC,
         uc1.TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model",
         .stop,
     ));

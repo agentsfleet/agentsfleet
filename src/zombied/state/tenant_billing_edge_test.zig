@@ -50,7 +50,7 @@ test "should charge the flat platform stage fee when both token counts are zero 
     // so the flat-fee assertion is post-trial only.
     if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
 
-    const charge = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", 0, 0);
+    const charge = tenant_billing.computeStageCharge("anthropic", .platform, "claude-sonnet-4-6", 0, 0, 0);
     try std.testing.expectEqual(tenant_billing.STAGE_PLATFORM_NANOS, charge);
 }
 
@@ -69,7 +69,7 @@ test "should not overflow when platform token counts approach u32 max" {
     // Near-u32-max token counts: rate math widens to i64 internally, so the
     // result must be a finite i64 >= the flat platform fee, no panic/overflow.
     const big: u32 = std.math.maxInt(u32) - 1;
-    const charge = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", big, big);
+    const charge = tenant_billing.computeStageCharge("anthropic", .platform, "claude-sonnet-4-6", big, big, big);
     try std.testing.expect(charge >= tenant_billing.STAGE_PLATFORM_NANOS);
     try std.testing.expect(charge < std.math.maxInt(i64));
 }

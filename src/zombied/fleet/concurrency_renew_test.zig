@@ -67,11 +67,11 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, model,
+        \\   event_type, request_json, event_created_at, posture, provider, model,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-conc-renew-1',
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
-        \\        'test-model', $6, $7, 'active', $8, $8)
+        \\        'test-provider', 'test-model', $6, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
 }
