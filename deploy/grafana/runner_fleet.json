@@ -9,6 +9,7 @@
   ],
   "title": "Runner Fleet",
   "uid": "zombie-runner-fleet",
+  "schemaVersion": 36,
   "version": 1,
   "time": { "from": "now-6h", "to": "now" },
   "templating": {
@@ -35,7 +36,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "sum by (runner_id, reason) (increase(zombie_runner_failures_total{runner_id=~\"$runner_id\"}[1h]))",
+          "expr": "sum by (runner_id, reason) (increase(zombie_runner_failures_total{runner_id=~\"$runner_id\"}[$__rate_interval]))",
           "legendFormat": "{{runner_id}} · {{reason}}"
         }
       ]
@@ -50,7 +51,7 @@
       "targets": [
         {
           "datasource": "${DS_PROMETHEUS}",
-          "expr": "sum by (runner_id, outcome) (increase(zombie_runner_executions_total{runner_id=~\"$runner_id\"}[1h]))",
+          "expr": "sum by (runner_id, outcome) (increase(zombie_runner_executions_total{runner_id=~\"$runner_id\"}[$__rate_interval]))",
           "legendFormat": "{{runner_id}} · {{outcome}}"
         }
       ]
