@@ -9,8 +9,11 @@ const pipe_proto = @import("pipe_proto.zig");
 const client_errors = @import("engine/client_errors.zig");
 const contract = @import("contract");
 
+const cgroup = @import("engine/cgroup.zig");
+
 const ActivityFrame = contract.activity.ActivityFrame;
 const ActivitySink = supervisor.ActivitySink;
+const FailureClass = contract.execution_result.FailureClass;
 
 test "readResult forwards activity frames in order and returns the result frame" {
     const Cap = struct {
@@ -152,4 +155,30 @@ test "sandbox setup fails closed: dev_none runs bare, a required tier with no do
     if (builtin.os.tag != .linux)
         try std.testing.expectError(error.SandboxUnavailable, supervisor.establishSandbox(std.testing.allocator, true));
     try std.testing.expect(client_errors.ERR_RUN_SANDBOX_ESTABLISH_FAILED.len > 0);
+}
+
+test "classify: a renewal terminate is renewal_terminate, distinct from a deadline timeout_kill" {
+    // Both branches return before touching `scope`, so a null scope is safe and
+    // keeps this a pure outcome→category check (no cgroup needed).
+    var scope: ?cgroup.CgroupScope = null;
+
+    // A renewal `.terminate` (lease lost / capped / no credits) → policy stop.
+    const terminated = supervisor.classify(std.testing.allocator, .{ .terminated = true }, 0, &scope);
+    try std.testing.expect(!terminated.exit_ok);
+    try std.testing.expectEqual(FailureClass.renewal_terminate, terminated.failure.?);
+
+    // A wall-clock deadline elapse → clock stop, a *different* category.
+    const timed_out = supervisor.classify(std.testing.allocator, .{ .timed_out = true }, 0, &scope);
+    try std.testing.expectEqual(FailureClass.timeout_kill, timed_out.failure.?);
+
+    // The whole point of the fix: the two no longer collapse together.
+    try std.testing.expect(terminated.failure.? != timed_out.failure.?);
+}
+
+test "classify: a policy terminate outranks a co-occurring deadline timeout" {
+    var scope: ?cgroup.CgroupScope = null;
+    // Deadline elapsed AND the renewal said terminate — the policy reason is the
+    // more actionable cause, so terminate wins.
+    const both = supervisor.classify(std.testing.allocator, .{ .terminated = true, .timed_out = true }, 0, &scope);
+    try std.testing.expectEqual(FailureClass.renewal_terminate, both.failure.?);
 }

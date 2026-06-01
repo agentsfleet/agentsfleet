@@ -255,17 +255,20 @@ fn forwardActivity(alloc: std.mem.Allocator, sink: ActivitySink, payload: []cons
 }
 
 /// Map the child's exit status + read outcome to an `ExecutionResult`.
-/// Precedence: renewal-terminate / deadline timeout → OOM (cgroup) → clean exit
+/// Precedence: renewal-terminate → deadline timeout → OOM (cgroup) → clean exit
 /// (parse result) → abnormal exit/signal (crash). A renewal `.terminate` (lease
-/// lost / capped / no credits) is a killed-before-completion outcome, same class
-/// as a deadline kill — the work is handled elsewhere or stopped by policy.
-fn classify(
+/// lost / capped / no credits) is `renewal_terminate` — a policy stop, kept
+/// distinct from `timeout_kill` (the wall-clock deadline) so triage and billing
+/// can tell a policy kill from a clock kill. Terminate wins over a co-occurring
+/// timeout: the policy reason is the more actionable cause.
+pub fn classify(
     alloc: std.mem.Allocator,
     outcome: ReadOutcome,
     status: u32,
     scope: *?cgroup.CgroupScope,
 ) ExecutionResult {
-    if (outcome.timed_out or outcome.terminated) return failed(.timeout_kill);
+    if (outcome.terminated) return failed(.renewal_terminate);
+    if (outcome.timed_out) return failed(.timeout_kill);
     if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
     if (!std.posix.W.IFEXITED(status) or std.posix.W.EXITSTATUS(status) != 0)
         return failed(.executor_crash);
