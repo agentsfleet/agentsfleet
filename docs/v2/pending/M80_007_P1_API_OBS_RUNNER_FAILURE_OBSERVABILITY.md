@@ -112,6 +112,8 @@
 
 ### §1 — Failure observability (the only runner/contract change)
 
+> **DELIVERED via PR #354** (`feat/m80-006-fleet-plane`), folded in per Indy's Jun 01 2026 decision — §1 completes the `renewal_terminate` reach M80_006 introduced, so it lands in that PR rather than a separate one. M80_007's own PR carries §2 only. See Discovery.
+
 Thread the granular `FailureClass` end-to-end so the durable record and the metric both carry *why* a run failed. **Implementation default:** the wire field is `?FailureClass` (optional) so a mixed-version fleet is safe — an old runner omits it and zombied treats absent as `unknown` (a render-time bucket, **not** a registered `FailureClass` variant — distinct sentinel, per the error-table sentinel rule).
 
 - **Dimension 1.1** — `ReportRequest` carries optional `failure_reason`; round-trips through serialize/deserialize. → Test `test_report_request_failure_reason_roundtrip`
@@ -238,6 +240,9 @@ N/A — no files deleted. (Additive field + new module; the `zombie_executor_*` 
 - **Decision (Indy, Jun 01 2026):** ship in-memory for all four series now; refresher is a later improvement. `active_leases` documented as best-effort.
   > Indy (2026-06-01): "I think for now keep it in what ever state like inmemory can be improved later" — context: chose in-memory v1 over the refresher; refresher deferred to Out of Scope, `active_leases` over-count of abandoned leases accepted as a known v1 limitation.
 - **Correction (authoring):** handoff claimed `renewal_terminate` is already on `FailureClass`; on `main` it is not → captured as `Depends on: M80_006`.
+- **Scope split (Indy, Jun 01 2026):** §1 folded into PR #354 (M80_006 branch) rather than shipping as a separate M80_007 PR — §1 completes the `renewal_terminate` reach that PR introduced (it was merging a `FailureClass` variant that the report path collapsed and never persisted). M80_007's own PR is now §2 only.
+  > Indy (2026-06-01): "Yes fold slice 1 into this PR" — context: #354 introduced `renewal_terminate` but dead-ended it; §1 closes that reach where it lives.
+  - **§1 implemented + verified on `feat/m80-006-fleet-plane`** (commits `529142fb`, `688fd3b7`): contract field + runner threading + `failure_label` persistence + `metrics_runner` counter + tests. Green on lint-zig, all Zig unit lanes, `make test-integration` (DB+Redis), cross-compile both linux targets, gitleaks. `/review` run pre-push — one finding (failure_label/outcome trust-boundary consistency) fixed in `688fd3b7`.
 
 ---
 
