@@ -4,7 +4,7 @@
 **Milestone:** M80
 **Workstream:** 008
 **Date:** May 27, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Branch:** feat/m80-008-worker-substrate-retirement
 **Priority:** P1 — collapses two datastore security roles to one and removes a dead startup requirement; operator-facing (deploy contract changes: `*_WORKER` secrets retire).
 **Categories:** API, INFRA
@@ -247,13 +247,14 @@ The `worker_runtime` Postgres role, the `worker` Redis ACL role, the `DATABASE_U
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| api-only boot | `zombied serve` (no `*_WORKER`) | — | ⏳ |
-| Integration | `make test-integration` | — | ⏳ |
-| Memleak | `make memleak` | — | ⏳ |
-| Lint | `make lint` | — | ⏳ |
-| Cross-compile | `zig build -Dtarget={x86_64,aarch64}-linux` | — | ⏳ |
-| Orphan sweep | grep `worker_runtime`/`*_WORKER` | — | ⏳ |
-| Spec template | `bash scripts/audit-spec-template.sh` | — | ⏳ |
+| api-only boot validation | `validateLoaded` api-only unit set + `make test-unit-zombied` | 1189 passed, 0 failed | ✅ |
+| Integration (DB) | `make test-integration-db` (`LIVE_DB=1`, role dropped) | green; grant-equivalence + role-absence tests pass | ✅ |
+| Grant-equivalence | `has_table_privilege(api_runtime, …)` on write-set | `t|t|t` on zombie_sessions + zombie_events | ✅ |
+| Memleak | `make memleak` | 0 leaks | ✅ |
+| Lint | `make lint-all` | all lint checks passed | ✅ |
+| Cross-compile | `zig build -Dtarget={x86_64,aarch64}-linux` | both exit 0 | ✅ |
+| Orphan sweep | grep `worker_runtime`/`*_WORKER` in src/schema/compose/.github | clean (only absence-test literal) | ✅ |
+| Spec template | `bash scripts/audit-spec-template.sh` | clean | ✅ |
 
 ---
 
