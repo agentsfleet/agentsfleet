@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M28_001 §3: Import dashboard and verify panels.
+# Import and verify every Grafana dashboard in deploy/grafana/.
 set -euo pipefail
 
 VAULT="${VAULT_DEV:-ZMB_CD_DEV}"
@@ -74,16 +74,22 @@ for DASHBOARD_JSON in "${DASHBOARDS[@]}"; do
   # declared datasource to its resolved uid. A Prometheus-only dashboard
   # (runner_fleet.json) gets only DS_PROMETHEUS; agent_run_breakdown.json gets
   # both. Avoids passing an input a dashboard never declared.
-  jq --arg prom "$PROM_UID" --arg pg "$PG_UID" \
+  # --fail-with-body: non-zero on HTTP >=400 but keep Grafana's error JSON on
+  # stdout so a rejected import names the dashboard AND what Grafana refused,
+  # instead of failing silently under set -e.
+  if ! IMPORT_RESP=$(jq --arg prom "$PROM_UID" --arg pg "$PG_UID" \
     '{ dashboard: ., overwrite: true,
        inputs: [ .__inputs[] | { name, type, pluginId,
          value: (if .name == "DS_PROMETHEUS" then $prom
                  elif .name == "DS_POSTGRES" then $pg
                  else "" end) } ] }' \
     "$DASHBOARD_JSON" | \
-    curl -sf -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
+    curl -sS --fail-with-body -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
       -H "Content-Type: application/json" \
-      "$GRAFANA_URL/api/dashboards/import" -d @- >/dev/null
+      "$GRAFANA_URL/api/dashboards/import" -d @-); then
+    echo "  FAIL: import of $NAME failed: $IMPORT_RESP"
+    exit 1
+  fi
   echo "  Imported $NAME (uid=$DASH_UID)."
 
   PANELS=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
