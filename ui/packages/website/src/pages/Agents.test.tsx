@@ -47,7 +47,7 @@ describe("Agents", () => {
     expect(block).toBeInTheDocument();
     expect(block).toHaveTextContent(/npm install -g @usezombie\/zombiectl/);
     expect(block).toHaveTextContent(/zombiectl login/);
-    expect(block).toHaveTextContent(/npx skills add usezombie\/usezombie/);
+    expect(block).toHaveTextContent(/npx skills add usezombie\/skills/);
     expect(block).toHaveTextContent(/usezombie-install-platform-ops/);
   });
 

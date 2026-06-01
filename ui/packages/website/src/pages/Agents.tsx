@@ -25,7 +25,7 @@ const apiOps = [
 const bootstrapScript = `# 1. Shell — install the CLI and the skill bundle
 npm install -g @usezombie/zombiectl
 zombiectl login
-npx skills add usezombie/usezombie
+npx skills add usezombie/skills
 
 # 2. Inside your coding agent (Claude Code / Amp / Codex CLI / OpenCode), run:
 #    /usezombie-install-platform-ops

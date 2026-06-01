@@ -41,6 +41,11 @@ pub fn fromJson(alloc: std.mem.Allocator, p: std.json.Value) !ExecutionPolicy {
         if (sm_val == .object) policy.secrets_map = sm_val;
     }
 
+    // Provider + key parse parity with the lease path (which decodes the policy
+    // by std.json struct reflection). Both paths must agree on these fields.
+    if (json.getStr(p, wire.provider)) |prov| policy.provider = prov;
+    if (json.getStr(p, wire.api_key)) |key| policy.api_key = key;
+
     if (p.object.get(wire.context)) |ctx_val| {
         if (ctx_val == .object) {
             if (ctx_val.object.get(wire.tool_window)) |tw| {
@@ -67,6 +72,24 @@ pub fn fromJson(alloc: std.mem.Allocator, p: std.json.Value) !ExecutionPolicy {
     }
 
     return policy;
+}
+
+test "fromJson carries the provider and api_key fields (parse parity with the lease path)" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{\"provider\":\"fireworks\",\"api_key\":\"fw_x\"}", .{});
+    defer parsed.deinit();
+    const policy = try fromJson(alloc, parsed.value);
+    try std.testing.expectEqualStrings("fireworks", policy.provider);
+    try std.testing.expectEqualStrings("fw_x", policy.api_key);
+}
+
+test "fromJson defaults provider and api_key to empty when absent" {
+    const alloc = std.testing.allocator;
+    var parsed = try std.json.parseFromSlice(std.json.Value, alloc, "{}", .{});
+    defer parsed.deinit();
+    const policy = try fromJson(alloc, parsed.value);
+    try std.testing.expectEqualStrings("", policy.provider);
+    try std.testing.expectEqualStrings("", policy.api_key);
 }
 
 test "ContextBudget.applyDefaults substitutes the three auto-sentinel knobs" {
