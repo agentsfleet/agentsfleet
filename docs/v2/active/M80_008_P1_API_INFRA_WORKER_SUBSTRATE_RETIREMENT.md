@@ -4,7 +4,8 @@
 **Milestone:** M80
 **Workstream:** 008
 **Date:** May 27, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
+**Branch:** feat/m80-008-worker-substrate-retirement
 **Priority:** P1 — collapses two datastore security roles to one and removes a dead startup requirement; operator-facing (deploy contract changes: `*_WORKER` secrets retire).
 **Categories:** API, INFRA
 **Batch:** B1 — single workstream; depends only on the M80_002 cutover already having moved execution-path writes onto the `api` role.
