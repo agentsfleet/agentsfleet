@@ -81,7 +81,7 @@
 |------|--------|-----|
 | `schema/002_vault_schema.sql` | EDIT | drop `worker_runtime` from the role array + the `CREATE ROLE` loop, its `GRANT USAGE`/table grants, the `REVOKE` line, and `ALTER ROLE worker_runtime SET search_path` |
 | `schema/006,007,008,009,010,014,017,018,020_*.sql` | EDIT | remove every `GRANT … TO worker_runtime` (api_runtime keeps its grants) |
-| `src/zombied/config/env_vars.zig` | EDIT | remove `CheckMode.worker`, the `db_worker`/`redis_worker` reads, the `Missing/SameDatabaseUrlForApiAndWorker` + `Missing/SameRedisUrlForApiAndWorker` + `RedisWorkerTlsRequired` errors, and the role-separation check; api-only validation |
+| `src/zombied/config/env_vars.zig` | EDIT | remove the `db_worker`/`redis_worker` reads + their `EnvVars` fields, the **entire `CheckMode` enum** + `validateLoadedWithMode` + `enforceFromEnvWithMode` (no non-test callers) + `validateRoleSeparatedValues`, and the `Missing/SameDatabaseUrlForApiAndWorker` + `Missing/SameRedisUrlForApiAndWorker` + `RedisWorkerTlsRequired` errors; `validateLoaded`/`enforceFromEnv` become api-only |
 | `src/zombied/db/pool.zig` | EDIT | remove `DbRole.worker` + its env-var mapping |
 | `src/zombied/queue/redis_types.zig` | EDIT | remove `RedisRole.worker` + its env-var mapping |
 | `src/zombied/cmd/doctor.zig` | EDIT | remove the worker DB + Redis readiness/ACL checks |
@@ -112,9 +112,9 @@
 
 ### §2 — Remove the worker role + env vars from the binary
 
-- **Dimension 2.1** — `DbRole.worker` / `RedisRole.worker` / `CheckMode.worker` and their env-var mappings are removed; the code compiles with the narrowed enums → Test `test_dbrole_has_no_worker` (compile-time / enum-exhaustiveness).
+- **Dimension 2.1** — `DbRole.worker` / `RedisRole.worker` and their `*_WORKER` env-var mappings are removed (the enums keep `.api` + the other live roles); **and the entire `CheckMode` enum is removed, not merely its `.worker` value** — with `worker` gone, `.both` becomes identical to `.api`, so the mode parameter is dead scaffolding (NDC). The code compiles with the narrowed enums → Test `test_dbrole_has_no_worker` (compile-time / enum-exhaustiveness; no `CheckMode` survives).
 - **Dimension 2.2** — `config/env_vars.zig` no longer reads or requires `DATABASE_URL_WORKER`/`REDIS_URL_WORKER`; `zombied serve` boots with only `DATABASE_URL_API` + `REDIS_URL_API` → Test `test_serve_boots_api_only` (startup validation passes with the worker vars unset).
-- **Dimension 2.3** — the `*Worker*` `EnvVarsErrors` variants and the api/worker role-separation check are removed; remaining validation is api-only → Test `test_env_validation_api_only` (no worker error reachable).
+- **Dimension 2.3** — the api/worker role-separation machinery is removed **wholesale**: `validateRoleSeparatedValues`, `validateLoadedWithMode`, and `enforceFromEnvWithMode` are deleted (the last two have **zero non-test callers** and collapse to a single behaviour once `worker` is gone), and `validateLoaded` / `enforceFromEnv` become api-only; the `*Worker*` `EnvVarsErrors` variants (`Missing/SameDatabaseUrlForApiAndWorker`, `Missing/SameRedisUrlForApiAndWorker`, `RedisWorkerTlsRequired`) are dropped from the error set → Test `test_env_validation_api_only` (no worker error reachable; no mode parameter survives).
 - **Dimension 2.4** — `cmd/doctor.zig` no longer probes a worker DB/Redis role → Test `test_doctor_no_worker_checks` (doctor output has no worker check ids).
 
 ### §3 — Retire the worker substrate from infra + playbooks
@@ -213,7 +213,7 @@ git grep -nE "worker_runtime|DATABASE_URL_WORKER|REDIS_URL_WORKER" -- src schema
 
 ## Dead Code Sweep
 
-The `worker_runtime` Postgres role, the `worker` Redis ACL role, the `DATABASE_URL_WORKER`/`REDIS_URL_WORKER` env vars, the `DbRole.worker`/`RedisRole.worker`/`CheckMode.worker` enum values, the `*Worker*` `EnvVarsErrors`, the `doctor` worker checks, and the `playbooks/006`/`007` worker bootstrap are **removed** (RULE NLR/NDC). The `.workers`/`api_http_workers` httpz thread-pool field is explicitly **out of scope** (it is the HTTP server's worker-thread count, not the deleted zombie worker). Orphan sweep (RULE ORP) is an acceptance criterion.
+The `worker_runtime` Postgres role, the `worker` Redis ACL role, the `DATABASE_URL_WORKER`/`REDIS_URL_WORKER` env vars, the `DbRole.worker`/`RedisRole.worker` enum values, the **entire `CheckMode` enum + its `validateLoadedWithMode`/`enforceFromEnvWithMode`/`validateRoleSeparatedValues` machinery** (no non-test callers; collapses to a single api-only path), the `*Worker*` `EnvVarsErrors`, the `doctor` worker checks, and the `playbooks/006`/`007` worker bootstrap are **removed** (RULE NLR/NDC). The `.workers`/`api_http_workers` httpz thread-pool field is explicitly **out of scope** (it is the HTTP server's worker-thread count, not the deleted zombie worker). Orphan sweep (RULE ORP) is an acceptance criterion.
 
 ---
 
