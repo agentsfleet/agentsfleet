@@ -129,7 +129,7 @@
 
 ### §4 — `zombie_workers` consumer-group rename (runtime drain-migration)
 
-- **Dimension 4.1** — the `zombie_workers` Redis consumer group is renamed to a name that reflects its post-cutover owner (`zombied` consumes it), via a **new-group + drain-old** migration (not an in-place rename); install (`ensureZombieConsumerGroup`) + lease (`xreadgroupZombieOnce`) + report (`xackZombie`) all use the new constant → Test `test_lease_uses_new_consumer_group` + a documented drain step. **Migration risk:** in-flight pending entries in the old group are abandoned on cutover; acceptable pre-launch, must be drained or accepted explicitly.
+- **Dimension 4.1 — DONE.** `zombie_consumer_group` renamed `"zombie_workers"`→`"zombie_lease"` (reflects the lease path that reads it; not runner-named). Single-sourced in `queue/constants.zig`, so install (`ensureZombieConsumerGroup`) + lease (`xreadgroupZombieOnce`) + report (`xackZombie`) all pick it up by construction; pinned by `test "queue constants: zombie consumer group reflects the lease path"`. **Drain decision (Indy, Jun 2, 2026: "If unused deleted? … simple rename"):** no drain — pre-launch the old group's Pending Entries List is empty, so there is nothing in flight to lose; new streams create `zombie_lease` via `ensureZombieConsumerGroup`, and any stale empty `zombie_workers` groups expire with their per-zombie streams. The drain would only be required under live traffic. **Left (separate):** `consumer_prefix = "worker"` (the per-consumer *name* prefix, not the group) — flagged, out of §4 scope.
 
 ---
 
