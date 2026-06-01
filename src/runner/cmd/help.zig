@@ -84,3 +84,15 @@ test "help body is ≤80 cols, ANSI-free, and lists every command" {
         try std.testing.expect(std.mem.indexOf(u8, text, f.name) != null);
     }
 }
+
+// Byte-exact drift guard against the checked-in golden (same contract as
+// zombiectl/test/golden/help-no-color.txt). @embedFile is compile-time and
+// in-bounds (testdata/ lives under this module's root), so the test needs no
+// cwd. Regenerate on an intentional help change:
+//   NO_COLOR=1 zig-out/bin/zombie-runner --help > src/runner/cmd/testdata/help.txt
+test "help matches the checked-in golden byte-for-byte" {
+    const alloc = std.testing.allocator;
+    const text = try render(alloc);
+    defer alloc.free(text);
+    try std.testing.expectEqualStrings(@embedFile("testdata/help.txt"), text);
+}
