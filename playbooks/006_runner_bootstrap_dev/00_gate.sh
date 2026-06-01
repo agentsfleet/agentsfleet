@@ -10,4 +10,4 @@ for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
   "$script"
 done
 
-echo "✅ 006_worker_bootstrap_dev gate complete"
+echo "✅ 006_runner_bootstrap_dev gate complete"
