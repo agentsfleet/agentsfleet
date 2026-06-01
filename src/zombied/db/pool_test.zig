@@ -601,3 +601,38 @@ test "integration: readonly roles cannot read vault.secrets" {
     const can_read_vault = try row.get(bool, 0);
     try std.testing.expect(!can_read_vault);
 }
+
+// Grant-equivalence regression for the worker-substrate retirement: api_runtime
+// is the sole data-plane role, and the lease/report path INSERTs/UPDATEs these
+// tables through the api pool. INSERT+UPDATE on zombie_sessions and zombie_events
+// formerly lived only on the removed worker role; the collapse must move them
+// onto api_runtime. has_table_privilege evaluates the named role directly, so
+// this proves the grant without a superuser bypass (the real statements are
+// exercised by the fleet integration suite).
+test "integration: api_runtime holds the fleet lease/report write grants" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    const write_set = [_][]const u8{
+        "core.zombie_events",
+        "core.zombie_sessions",
+        "core.zombie_execution_telemetry",
+        "core.zombie_approval_gates",
+    };
+    inline for (write_set) |tbl| {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT has_table_privilege('api_runtime', $1, 'SELECT'), " ++
+                "has_table_privilege('api_runtime', $1, 'INSERT'), " ++
+                "has_table_privilege('api_runtime', $1, 'UPDATE')",
+            .{tbl},
+        ));
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expect(try row.get(bool, 0)); // SELECT
+        try std.testing.expect(try row.get(bool, 1)); // INSERT
+        try std.testing.expect(try row.get(bool, 2)); // UPDATE
+    }
+}
