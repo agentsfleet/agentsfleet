@@ -167,6 +167,38 @@ A runner needs a `zrn_` token before it can pull work. The **platform operator p
 
 `zombied` owns the Postgres pool, the Redis pool, and the Vault API; `zombie-runner` owns none of them and holds only the `zrn_` token. Rotating a token swaps `token_hash`; revoking sets `status='revoked'` so the next call gets a 401. The runner's env is `ZOMBIE_API_URL` + `ZOMBIE_RUNNER_TOKEN` (matching the `zombied` / `zombiectl` convention), and `ZOMBIE_RUNNER_TOKEN` holds the operator-minted `zrn_` directly — there is no bootstrap credential on the host and no datastore secret.
 
+## Datastore role model — why there is no `runner_runtime`
+
+Access to the runner-domain tables (`fleet.runners`, `fleet.runner_leases`, `fleet.runner_affinity`) is governed at **two independent layers**. Conflating them is the recurring design error — the temptation to mint a `runner_runtime` database role "so the runner tables have an owner" collapses an authorization rule onto an authentication identity.
+
+| Layer | Mechanism | Answers | Enforced where |
+|-------|-----------|---------|----------------|
+| **App authorization** | `platform_admin` JSON Web Token (JWT) claim | *Which API caller* may enroll / list / manage runners | request handlers (`src/zombied/auth/claims.zig`) |
+| **Datastore identity** | `api_runtime` Postgres role | *Which process identity* writes the rows | Postgres `GRANT` |
+
+```
+   caller (Clerk JWT, platform_admin=true)            runner (zrn_ token, NO db creds)
+        │  GET/POST /v1/fleet, /v1/runners                  │  POST /v1/runners/me/leases
+        ▼                                                   ▼
+   ┌──────────────────────────────────────────────────────────────────┐
+   │ zombied                                                            │
+   │   Layer 1 — claim check: is caller platform_admin?  (admin routes) │
+   │   Layer 2 — writes fleet.* connecting to PG as api_runtime         │
+   └───────────────────────────────────┬────────────────────────────────┘
+                                        ▼
+            fleet.runners · fleet.runner_leases · fleet.runner_affinity
+            GRANT SELECT, INSERT, UPDATE … TO api_runtime   (schema 021/022/023)
+            — no worker_runtime grant, no runner_runtime role —
+```
+
+Three load-bearing facts:
+
+1. **The runner never authenticates to Postgres.** It holds zero datastore credentials and reaches the platform only over `/v1/runners`. `zombied` writes every `fleet.*` row *on the runner's behalf*, connecting as `api_runtime`. Schema files `021`/`022`/`023` grant the fleet tables to `api_runtime` only — the newest tables in the system never even mention `worker_runtime`, which is dead substrate removed wholesale in the worker-substrate retirement workstream.
+2. **`platform_admin` is not a Postgres role — it is an auth claim.** "platform_admin has access to the runner tables" is an *API-authorization* statement, already satisfied at Layer 1 (it gates `register` and the fleet-management routes). It is not, and must not become, a database `GRANT`.
+3. **Therefore there is no `runner_runtime` role, and there must never be one.** A `runner_*`-named datastore role would assert that the runner connects to the datastore — exactly the guarantee this fleet is built to deny. (An in-PR `worker_runtime`→`runner_runtime` rename was rejected for this reason; removal, not rename, is the correct direction.)
+
+If connection-level isolation of the fleet write path is ever warranted, that is a **control-plane** role — name it `fleet_runtime`, back it with its own pool, and justify it with a real threat model that treats the fleet writes as a distinct compromise surface. It is never a runner-named role, and it stays out of scope while `zombied` runs a single write pool: a second role with no second pool or code path is the dead-role anti-pattern the role-consolidation work exists to eliminate.
+
 ## Running one event (NullClaw)
 
 A `lease` reply is the runner's entire input for an event. The runner forks a sandboxed child, the child runs NullClaw, and the result goes back via `report`.
