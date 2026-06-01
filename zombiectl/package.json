@@ -16,7 +16,6 @@
   "files": [
     "dist",
     "samples",
-    "skills",
     "scripts/postinstall.mjs",
     "README.md"
   ],

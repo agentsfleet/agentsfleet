@@ -63,7 +63,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
 
 ### 1.1 Skill steps
 
-1. **Preconditions.** The skill runs `which zombiectl && which gh && zombiectl doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @usezombie/zombiectl`, `npx skills add usezombie/usezombie`, `zombiectl auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
+1. **Preconditions.** The skill runs `which zombiectl && which gh && zombiectl doctor --json`. Any miss → it prints the exact one-liner to fix (`npm install -g @usezombie/zombiectl`, `npx skills add usezombie/skills`, `zombiectl auth login`, or `gh auth login -s admin:repo_hook`) and stops. Doctor is the only sanctioned readiness check; the skill never duplicates the logic.
 2. **Repo detection.** The skill reads `.github/workflows/*.yml`, `fly.toml`, `Dockerfile`, `pyproject.toml`, and `package.json`. If no GH workflow is present, it bails clearly: "GitHub Actions detection required — non-GH CI is in a future version." It also runs `gh repo view --json nameWithOwner -q .nameWithOwner` to capture the upstream repo for step 9.
 3. **Three gating questions.** `slack_channel`, `prod_branch_glob`, `cron_schedule` (blank to skip). The skill never asks about model or self-managed in this scenario — both default to platform-managed.
 4. **Tool credentials.** For each of `fly`, `slack`, `github`, optional `upstash`:
