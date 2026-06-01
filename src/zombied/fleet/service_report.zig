@@ -161,7 +161,10 @@ fn finalize(hx: Hx, lease: Lease, body: protocol.ReportRequest) void {
         .token_count = body.tokens,
         .wall_seconds = wall_ms / std.time.ms_per_s,
         .exit_ok = body.outcome == .processed,
-        .failure = body.failure_reason,
+        // Trust-boundary invariant: failure_label is null iff the run is
+        // processed — never persist a reason a misbehaving runner pairs with
+        // a clean outcome.
+        .failure = if (body.outcome == .processed) null else body.failure_reason,
     };
 
     event_rows.markTerminal(pool, lease.zombie_id, lease.event_id, result, wall_ms);
