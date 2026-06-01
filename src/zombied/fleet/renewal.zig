@@ -79,7 +79,8 @@ pub fn renew(
         \\SELECT
         \\    (SELECT count(*) FROM probe)::bigint                    AS probe_found,
         \\    (SELECT capped FROM ext_lease)                          AS new_until,
-        \\    (SELECT created_at + $4::bigint FROM probe)             AS hard_cap
+        \\    (SELECT created_at + $4::bigint FROM probe)             AS hard_cap,
+        \\    (SELECT count(*) FROM ext_aff)::bigint                  AS aff_updated
     , .{
         lease_id,
         runner_id,
@@ -93,8 +94,17 @@ pub fn renew(
     const probe_found = try row.get(i64, 0);
     const new_until = try row.get(?i64, 1);
     const hard_cap = try row.get(?i64, 2);
+    const aff_updated = try row.get(i64, 3);
 
-    if (new_until) |until| return .{ .renewed = until };
+    // Both rows must advance together. If ext_lease wrote but ext_aff did not
+    // (a concurrent reclaim touched the affinity row between the statement
+    // snapshot and the UPDATE's EvalPlanQual recheck), the slot can be
+    // reclaimed before the deadline we'd report — so a half-applied renewal is
+    // treated as `.lost`, killing the child cleanly rather than trusting it.
+    if (new_until) |until| {
+        if (aff_updated == 1) return .{ .renewed = until };
+        return .lost;
+    }
     // No extension happened. If the lease isn't active/ours at all → lost.
     if (probe_found == 0) return .lost;
     // It IS still ours+active, so the only reason the guard failed is the cap
