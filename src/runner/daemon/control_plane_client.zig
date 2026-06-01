@@ -95,7 +95,11 @@ pub fn register(
     const res = try self.post(alloc, protocol.PATH_RUNNERS, admin_jwt, payload);
     defer alloc.free(res.body);
     if (res.status < 200 or res.status >= 300) return .{ .rejected = res.status };
-    const parsed = std.json.parseFromSlice(protocol.RegisterResponse, alloc, res.body, .{}) catch
+    // `.alloc_always`: the parsed value must own its strings (runner_id +
+    // runner_token) — `res.body` is freed above on return, and the caller reads
+    // `parsed.value` after that. Without this the strings dangle into freed
+    // memory (use-after-free), since the minted token needs no unescaping.
+    const parsed = std.json.parseFromSlice(protocol.RegisterResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
         return ClientError.MalformedResponse;
     return .{ .created = parsed };
 }
