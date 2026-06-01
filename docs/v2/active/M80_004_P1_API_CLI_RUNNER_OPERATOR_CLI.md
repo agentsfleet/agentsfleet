@@ -4,11 +4,11 @@
 **Milestone:** M80
 **Workstream:** 004
 **Date:** May 27, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — the runner binary builds and ships (M80_002), but an operator has no way to register a host, mint its `zrn_` token, or inspect it; and no test proves the register → authenticate → call loop end-to-end against a live `zombied`.
 **Categories:** API, CLI
 **Batch:** B1
-**Branch:** {feat/mNN-name — added when work begins}
+**Branch:** feat/m80-004-operator-cli
 **Depends on:** M80_002 (the runner binary + distribution pipeline this CLI rides on), M80_001 (the frozen contract the CLI speaks), M80_005 (the `platform_admin`-gated `POST /v1/runners` the `register` subcommand calls)
 **Provenance:** agent-generated (Opus 4.7, May 27, 2026), **re-scoped Jun 01, 2026** after an Indy-directed cross-check against `src/runner/`, the CI workflows, and `src/zombied/http/`. The macOS Seatbelt backend is deferred and the distribution pipeline was found already shipped in M80_002 — see Discovery and Out of Scope. The remaining live work is the operator CLI and its integration test.
 
