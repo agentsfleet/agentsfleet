@@ -4,11 +4,11 @@
 **Milestone:** M80
 **Workstream:** 010
 **Date:** May 30, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — billing correctness: a long platform run is currently billed at a frozen one-shot floor estimate taken at lease issue, so a slow agent leaks margin (run-time + actual tokens go uncharged) while a short estimate-heavy one overcharges. The stage debit must follow the real run.
 **Categories:** API
 **Batch:** B1
-**Branch:** {feat/mNN-name — added when work begins}
+**Branch:** feat/m80-010-incremental-renewal-metering
 **Depends on:** M80_006 §3 (the fenced `/renew` verb — this rides its dual-row reclaim/renew CTE and adds a last-metered cursor to it)
 **Provenance:** LLM-drafted (Opus 4.8, May 30, 2026 — from the billing brainstorm with Indy)
 
