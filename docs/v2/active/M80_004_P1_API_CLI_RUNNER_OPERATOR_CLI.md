@@ -61,7 +61,7 @@
 
 ## Overview
 
-**Goal (testable):** a platform-admin runs `zombie-runner register --endpoint <url>` against a live `zombied`, which mints a `zrn_` token via `POST /v1/runners`, writes `/etc/default/zombie-runner`, and the minted token then authenticates a real runner call — asserted end-to-end by `test_runner_register_mints_and_authenticates` (integration tier, against the same `zombied` `make test-integration` already brings up). A tenant `zmb_t_` caller running `register` gets `403`.
+**Goal (testable):** a platform-admin runs `zombie-runner register --api <url>` (admin Clerk JWT supplied via `ZOMBIE_TOKEN`/`--token`, same precedence as `zombiectl`) against a live `zombied`, which mints a `zrn_` token via `POST /v1/runners`, writes `/etc/default/zombie-runner`, and the minted token then authenticates a real runner call — asserted end-to-end by `test_runner_register_mints_and_authenticates` (integration tier, spawning the compiled binary against the same `zombied` `make test-integration` already brings up). A tenant `zmb_t_` caller running `register` gets `403`.
 
 **Problem:** the runner binary builds, cross-compiles, and ships (M80_002), but it is operable only by hand-writing an env file and HTTP. There is no `register`/`status`/`doctor` surface, no `--help`/`--version` (so `deploy.sh`'s idempotent-skip never fires), and no test proving a freshly-registered runner's `zrn_` actually authenticates.
 
@@ -110,7 +110,7 @@
 Delivers operator subcommands on the runner binary, dispatched through a typed command register that mirrors the HTTP `route_table.zig` shape. Why: operators need to register and inspect a host without hand-crafting HTTP, and the command set must stay in lockstep with its help output.
 
 - **Dimension 1.1** — a `Command` enum → `commandSpec` table dispatches `register`/`status`/`doctor`; an unknown command prints help and exits non-zero → Test `test_runner_cmd_register_dispatch`
-- **Dimension 1.2** — `zombie-runner register --endpoint <url>` authenticates with a platform-admin Clerk JWT, calls `POST /v1/runners`, receives a `zrn_` token, and writes `/etc/default/zombie-runner`; a tenant `zmb_t_` caller gets `403` and a transport failure returns a structured error with a `suggestion` → Test `test_runner_register_structured_error`
+- **Dimension 1.2** — `zombie-runner register --api <url>` authenticates with a platform-admin Clerk JWT taken from `ZOMBIE_TOKEN`/`--token` (verbatim zombiectl precedence), calls `POST /v1/runners`, receives a `zrn_` token, and writes `/etc/default/zombie-runner`; a tenant `zmb_t_` caller gets `403` and a transport failure returns a structured error with a `suggestion` → Test `test_runner_register_structured_error`
 - **Dimension 1.3** — `zombie-runner status` reports registration + lease state as human text, and as JSON when stdout is piped → Test `test_runner_status_human_and_json`
 - **Dimension 1.4** — `zombie-runner doctor` preflights env-present + control-plane-reachable and reports each check; a failed check is non-zero with a `suggestion` → Test `test_runner_doctor_reports_checks`
 - **Dimension 1.5** — `--help`, `<cmd> --help`, and `--version` render through the table-driven renderer: every line ≤80 columns, zero ANSI under `NO_COLOR`, no decorative emoji/box-drawing; the golden fixture matches byte-exact → Test `test_runner_help_golden_and_width`. Closing `--version` makes `deploy.sh`'s `is_already_installed()` version-skip actually fire.
@@ -129,12 +129,17 @@ Delivers an integration test that proves the whole loop end-to-end against the l
 ## Interfaces
 
 ```
-zombie-runner register --endpoint <url>            → operator-run; platform-admin Clerk JWT; POST /v1/runners (mints zrn_);
-                                                     writes /etc/default/zombie-runner. NOT called by the daemon on boot (Option B).
-zombie-runner status   [--endpoint <url>] [--json] → registration + lease state (auto-JSON when piped)
-zombie-runner doctor   [--endpoint <url>]          → preflight: env present, control plane reachable
+zombie-runner register --api <url> [--token <jwt>] → operator-run; platform-admin Clerk JWT (ZOMBIE_TOKEN env, else --token);
+                                                     POST /v1/runners (mints zrn_); writes /etc/default/zombie-runner.
+                                                     NOT called by the daemon on boot (Option B).
+zombie-runner status   [--api <url>] [--json]      → registration + lease state (auto-JSON when piped)
+zombie-runner doctor   [--api <url>]               → preflight: env present, control plane reachable
 zombie-runner --help | <cmd> --help                → table-driven help; ≤80 col; NO_COLOR-clean; golden-pinned
 zombie-runner --version                            → version string (closes the deploy.sh is_already_installed gap)
+
+Admin-JWT resolution (register only): ZOMBIE_TOKEN env (preferred) → --token flag. Same precedence + shell-history
+warning as zombiectl; the binary does NOT read zombiectl's credentials.json. The zrn_ for status/doctor and the daemon
+comes from ZOMBIE_RUNNER_TOKEN. Endpoint flag --api + env ZOMBIE_API_URL shared verbatim with zombiectl (UFS).
 
 Command register (internal):
   pub const Command = enum { register, status, doctor };           // single source for names + help rows
@@ -186,7 +191,7 @@ Regression: the existing `__execute` child-exec path and the daemon loop are unc
 - [ ] Operator can register a host and the minted token authenticates — verify: `test_runner_register_mints_and_authenticates` + `test_runner_register_tenant_admin_forbidden`
 - [ ] CLI dispatch + help/version land — verify: `test_runner_cmd_register_dispatch`, `test_runner_help_golden_and_width`, and `zombie-runner --version` returns a version string
 - [ ] Runner help conforms to the current help system — verify: golden fixture matches; every line ≤80 cols; zero ANSI under `NO_COLOR`
-- [ ] Runner CLI auto-JSON when piped — verify: `zombie-runner status --endpoint … | jq .`
+- [ ] Runner CLI auto-JSON when piped — verify: `zombie-runner status --api … | jq .`
 - [ ] Both binaries cross-compile both arches — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` and the same for `build_runner.zig`
 - [ ] `make lint` clean · `make test` passes · `make test-integration` passes · `gitleaks detect` clean · no file over 350 lines added
 
