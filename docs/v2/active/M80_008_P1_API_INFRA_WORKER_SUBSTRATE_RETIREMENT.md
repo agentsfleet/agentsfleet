@@ -124,8 +124,8 @@
 
 ### §3 — Retire the worker substrate from infra + playbooks
 
-- **Dimension 3.1** — `docker-compose.yml` + both workflows carry no `*_WORKER` datastore vars; CI deploy passes with api-only env → Verified by workflow lint + a green deploy-dev dry run.
-- **Dimension 3.2** — `playbooks/006`/`007` worker-bootstrap are retired (deleted or folded into runner enrollment); `002`/`003` role docs + `011` teardown verify carry no `worker_runtime` → Verified by grep + playbook review.
+- **Dimension 3.1 — DONE.** `docker-compose.yml` + both workflows carry no `*_WORKER` datastore vars (committed); `actionlint` green on both workflows. CI deploy passes with api-only env.
+- **Dimension 3.2** — `011` teardown verify no longer expects `worker_runtime` (**DONE**); `001`/`002`/`003`/`004` stale `*_WORKER` operator-instruction doc refs to be cleaned. **Correction (Jun 2, 2026):** the spec's original instruction to *delete/retire `playbooks/006`/`007`* was wrong — on inspection those are the **live runner-host bootstrap playbooks** (SSH/host-readiness/`zombie-runner` deploy/`zrn_` minting), already updated for the M80 cutover, and they carry **no `*_WORKER` datastore residue**. Deleting them would destroy live runbooks. They are kept as-is; the only residue is the legacy directory *name* (`worker_bootstrap`), whose rename to `runner_bootstrap` is deferred as separate hygiene (blast-radius rename, out of this milestone's scope).
 
 ### §4 — `zombie_workers` consumer-group rename (runtime drain-migration)
 
