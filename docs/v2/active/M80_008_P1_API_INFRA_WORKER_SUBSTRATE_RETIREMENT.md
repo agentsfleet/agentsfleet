@@ -108,10 +108,14 @@
 
 ### §1 — Remove the worker datastore role from the schema
 
+> **Status (Jun 2, 2026): code-complete; integration test pending live-DB run.** Role + all GRANTs removed across `002,006–010,014,017,018,020`; **`api_runtime` upgraded to `S,I,U` on `zombie_sessions` + `zombie_events`** (union collapse — see Discovery grant-equivalence note). `make check-schema-gate` green. The `test_schema_has_no_worker_runtime_role` absence assertion is authored in `pool_test.zig` but cannot pass against a persistent cluster until the operational `DROP ROLE` runs (roles are cluster-global; `_reset-test-db` resets schemas only) — passes on a fresh CI cluster.
+
 - **Dimension 1.1** — `worker_runtime` is removed from the role array + `CREATE ROLE` loop and every `GRANT … TO worker_runtime` across the schema files; `api_runtime` grants are unchanged → Test `test_schema_has_no_worker_runtime_role` (migration applies clean; `pg_roles` has no `worker_runtime`; `api_runtime` retains its grants).
 - **Dimension 1.2** — the `ALTER ROLE worker_runtime SET search_path` + the `REVOKE … FROM … worker_runtime` lines are removed without affecting the other roles → Verified by migration apply + the teardown verify script.
 
 ### §2 — Remove the worker role + env vars from the binary
+
+> **Status (Jun 2, 2026): code-complete + unit-verified** (`make test-unit-zombied` green — 1188 passed). 2.1 (enum + `CheckMode` wholesale) and 2.3 (validation collapse) proven by new unit tests; 2.4 doctor worker checks removed. 2.2 `test_serve_boots_api_only` is an integration assertion pending the live-DB run.
 
 - **Dimension 2.1** — `DbRole.worker` / `RedisRole.worker` and their `*_WORKER` env-var mappings are removed (the enums keep `.api` + the other live roles); **and the entire `CheckMode` enum is removed, not merely its `.worker` value** — with `worker` gone, `.both` becomes identical to `.api`, so the mode parameter is dead scaffolding (NDC). The code compiles with the narrowed enums → Test `test_dbrole_has_no_worker` (compile-time / enum-exhaustiveness; no `CheckMode` survives).
 - **Dimension 2.2** — `config/env_vars.zig` no longer reads or requires `DATABASE_URL_WORKER`/`REDIS_URL_WORKER`; `zombied serve` boots with only `DATABASE_URL_API` + `REDIS_URL_API` → Test `test_serve_boots_api_only` (startup validation passes with the worker vars unset).
@@ -159,7 +163,7 @@ pg roles  (after):   db_migrator, api_runtime, memory_runtime, ops_readonly_*
 2. **No dead datastore requirement** — `zombied serve` boots with `*_WORKER` unset; enforced by `test_serve_boots_api_only`.
 3. **Grant-equivalence** — every write the lease/report path performs succeeds as `api_runtime`; enforced by `make test-integration` run BEFORE the role is dropped (sequencing).
 4. **Runner holds zero datastore credentials** — unchanged and re-affirmed: no datastore role is named after the runner; the runner reaches the platform only over `/v1/runners`.
-5. **Orphan-clean** — no `worker_runtime` / `DATABASE_URL_WORKER` / `REDIS_URL_WORKER` symbol survives in `src/`, `schema/`, `docker-compose.yml`, workflows; enforced by the grep gate (RULE ORP).
+5. **Orphan-clean** — no *live* `worker_runtime` / `DATABASE_URL_WORKER` / `REDIS_URL_WORKER` reference survives in `src/`, `schema/`, `docker-compose.yml`, workflows; enforced by the grep gate (RULE ORP). Carve-out: the `worker_runtime`-absence regression test in `db/pool_test.zig` legitimately names the retired role to assert it is gone, and removal-documentation comments may describe the change in prose — neither is a live reference.
 
 ---
 
@@ -182,7 +186,7 @@ pg roles  (after):   db_migrator, api_runtime, memory_runtime, ops_readonly_*
 ## Acceptance Criteria
 
 - [ ] `zombied serve` boots + `make test-integration` + `make memleak` pass with **only** `DATABASE_URL_API` + `REDIS_URL_API`
-- [ ] Grep gate: zero `worker_runtime` / `DATABASE_URL_WORKER` / `REDIS_URL_WORKER` in `src/`, `schema/`, `docker-compose.yml`, `.github/workflows/`
+- [ ] Grep gate: zero *live* `worker_runtime` / `DATABASE_URL_WORKER` / `REDIS_URL_WORKER` in `src/`, `schema/`, `docker-compose.yml`, `.github/workflows/` (the `pool_test.zig` absence-regression assertion is the sole permitted occurrence)
 - [ ] `pg_roles` after migration has no `worker_runtime`; `api_runtime` grants unchanged + sufficient (`test_lease_report_writes_as_api_runtime`)
 - [ ] `make lint` clean; cross-compile clean (`zig build -Dtarget=x86_64-linux && -Dtarget=aarch64-linux`)
 - [ ] `zombie_workers` group migration documented (drain step) and tested
@@ -206,8 +210,9 @@ make lint 2>&1 | grep -E "✓|FAIL"
 zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux 2>&1 | tail -3
 # E6: gitleaks
 gitleaks detect 2>&1 | tail -3
-# E7: orphan sweep (empty = pass)
-git grep -nE "worker_runtime|DATABASE_URL_WORKER|REDIS_URL_WORKER" -- src schema docker-compose.yml .github | head
+# E7: orphan sweep (empty = pass) — excludes the absence-regression test that must name the role
+git grep -nE "worker_runtime|DATABASE_URL_WORKER|REDIS_URL_WORKER" -- src schema docker-compose.yml .github \
+  | grep -vE "pool_test\.zig:.*\"worker_runtime\"" | head
 ```
 
 ---
@@ -222,6 +227,8 @@ The `worker_runtime` Postgres role, the `worker` Redis ACL role, the `DATABASE_U
 
 - **Origin (Indy, May 27, 2026):** during the M80_002 docs/cleanup, Indy flagged `*_WORKER` vars as invalid and said the env vars must be nuked "since runners don't have access to db/redis." Investigation showed the worker DB/Redis role is dead post-cutover (`serve.zig` inits only the `.api` pool; the fleet write-path uses the api pool). An attempted in-PR rename `worker_runtime`→`runner_runtime` was discarded as the wrong direction (the runner holds zero datastore credentials → a `runner`-named DB role misleads); the correct action is removal, captured here as its own spec because collapsing two datastore security roles to one is a security-posture change that warrants an audited PR.
 - **Scope boundary (Indy):** runner enrollment hardening → M80_005; runner identity persistence → M80_004/006; `AUTH_DEVICE_LOGIN.md` refresh → doc task; `.workers` httpz field → not residue, leave.
+- **Grant-equivalence gap found during EXECUTE (Jun 2, 2026):** the handshake assumption — *"`api_runtime` already holds every GRANT the lease/report path needs"* — proved **false**. `core.zombie_sessions` (`008`) and `core.zombie_events` (`018`) grant `INSERT, UPDATE` to `worker_runtime` only; `api_runtime` had `SELECT` alone. The fleet execution path writes both through the api pool (`fleet/event_rows.zig:65,103,129`, `fleet/zombie_session.zig:149`). The gap was invisible because `make test-integration` connects as the `usezombie` superuser (`make/test-integration.mk:6`), which bypasses GRANT enforcement — so M80_002's passing integration suite never proved role-level sufficiency. M80_002 moved the writes onto the api pool but not the grants onto `api_runtime`.
+  - **Decision (Indy ack, Jun 2, 2026: "yeah a)" — context: collapse approach for the two under-granted tables + adding role-scoped verification):** (1) **union collapse** — `api_runtime` is granted `SELECT, INSERT, UPDATE` on `zombie_sessions` + `zombie_events` (union of the old api+worker grants) *before* `worker_runtime` is removed; the other 9 grant sites are already api ⊇ worker. (2) **role-scoped verification** — a new integration test connects *as `api_runtime`* (not superuser) and runs the full lease→report write set, since the superuser suite cannot prove grant-equivalence. This expands `api_runtime`'s write surface (the deliberate two-roles→one consolidation), acked as a security-posture change.
 
 ---
 

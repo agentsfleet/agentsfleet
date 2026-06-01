@@ -56,7 +56,6 @@ test "integration: rediss ping via TEST_REDIS_TLS_URL" {
 test "roleEnvVarName maps redis roles deterministically" {
     try std.testing.expectEqualStrings("REDIS_URL", redis.roleEnvVarName(.default));
     try std.testing.expectEqualStrings("REDIS_URL_API", redis.roleEnvVarName(.api));
-    try std.testing.expectEqualStrings("REDIS_URL_WORKER", redis.roleEnvVarName(.worker));
 }
 
 // ── Queue constants regression tests ─────────────────────────────────────

@@ -16,4 +16,3 @@ CREATE INDEX IF NOT EXISTS idx_tenant_billing_updated
     ON billing.tenant_billing (updated_at DESC);
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON billing.tenant_billing TO api_runtime;
-GRANT SELECT, UPDATE                 ON billing.tenant_billing TO worker_runtime;

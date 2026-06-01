@@ -22,9 +22,8 @@ CREATE TABLE IF NOT EXISTS core.zombies (
     CONSTRAINT uq_zombies_workspace_name UNIQUE (workspace_id, name)
 );
 
--- Worker reads config and status at claim time.
--- API creates, reads, updates zombies for CLI install/up/kill operations.
-GRANT SELECT ON core.zombies TO worker_runtime;
+-- api_runtime creates, reads, updates zombies for CLI install/up/kill operations
+-- and reads config + status at lease-issue time.
 GRANT SELECT, INSERT, UPDATE ON core.zombies TO api_runtime;
 
 -- Partial index for Slack event routing: find the active zombie with a

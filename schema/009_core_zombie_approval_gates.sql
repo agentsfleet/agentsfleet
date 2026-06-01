@@ -73,5 +73,4 @@ CREATE TRIGGER trg_zombie_approval_gates_append_only
     BEFORE UPDATE OR DELETE ON core.zombie_approval_gates
     FOR EACH ROW EXECUTE FUNCTION core.zombie_approval_gates_append_only();
 
-GRANT SELECT, INSERT, UPDATE ON core.zombie_approval_gates TO worker_runtime;
 GRANT SELECT, INSERT, UPDATE ON core.zombie_approval_gates TO api_runtime;
