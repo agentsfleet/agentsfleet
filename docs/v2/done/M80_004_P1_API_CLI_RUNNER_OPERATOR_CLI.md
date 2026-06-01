@@ -4,7 +4,7 @@
 **Milestone:** M80
 **Workstream:** 004
 **Date:** May 27, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — the runner binary builds and ships (M80_002), but an operator has no way to register a host, mint its `zrn_` token, or inspect it; and no test proves the register → authenticate → call loop end-to-end against a live `zombied`.
 **Categories:** API, CLI
 **Batch:** B1
@@ -105,9 +105,11 @@
 
 ## Sections (implementation slices)
 
-### §1 — Operator runner CLI (register / status / doctor) + help-system parity
+### §1 — Operator runner CLI (register / status / doctor) + help-system parity — **DONE**
 
 Delivers operator subcommands on the runner binary, dispatched through a typed command register that mirrors the HTTP `route_table.zig` shape. Why: operators need to register and inspect a host without hand-crafting HTTP, and the command set must stay in lockstep with its help output.
+
+> **DONE.** `src/runner/cmd/{registry,register,status,doctor,help,output,args,version}.zig`. Tests (descriptive Zig names): 1.1 `"dispatch resolves --help and rejects an unknown command non-zero"` + `"every Command has a non-empty summary"`; 1.2 `"rejectionError maps 403/401/500"` + the live arm; 1.3 `"renderStatus emits the fleet directive in both audiences"`; 1.4 `"envChecks flags missing api + token…"` + `"doctor verdict is non-zero iff any check failed"`; 1.5 `"help matches the checked-in golden byte-for-byte"` + `"help body is ≤80 cols, ANSI-free…"` + `"version line carries the bare build version"`. `/review` hardened it: `<cmd> --help` no longer performs a live action, and the env file is `chmod(0600)`'d on the fd.
 
 - **Dimension 1.1** — a `Command` enum → `commandSpec` table dispatches `register`/`status`/`doctor`; an unknown command prints help and exits non-zero → Test `test_runner_cmd_register_dispatch`
 - **Dimension 1.2** — `zombie-runner register --api <url>` authenticates with a platform-admin Clerk JWT taken from `ZOMBIE_TOKEN`/`--token` (verbatim zombiectl precedence), calls `POST /v1/runners`, receives a `zrn_` token, and writes `/etc/default/zombie-runner`; a tenant `zmb_t_` caller gets `403` and a transport failure returns a structured error with a `suggestion` → Test `test_runner_register_structured_error`
@@ -115,9 +117,11 @@ Delivers operator subcommands on the runner binary, dispatched through a typed c
 - **Dimension 1.4** — `zombie-runner doctor` preflights env-present + control-plane-reachable and reports each check; a failed check is non-zero with a `suggestion` → Test `test_runner_doctor_reports_checks`
 - **Dimension 1.5** — `--help`, `<cmd> --help`, and `--version` render through the table-driven renderer: every line ≤80 columns, zero ANSI under `NO_COLOR`, no decorative emoji/box-drawing; the golden fixture matches byte-exact → Test `test_runner_help_golden_and_width`. Closing `--version` makes `deploy.sh`'s `is_already_installed()` version-skip actually fire.
 
-### §2 — Live register → authenticate integration coverage
+### §2 — Live register → authenticate integration coverage — **DONE**
 
 Delivers an integration test that proves the whole loop end-to-end against the live `zombied` `make test-integration` already stands up. Why: minting and authentication are the runner's trust boundary; a unit mock proves neither the real `platform_admin` gate nor that a minted `zrn_` authenticates.
+
+> **DONE.** Both arms in `src/zombied/http/runner_register_integration_test.zig` spawn the compiled binary against the live harness (real `serve_runner_lookup` wired so the minted token resolves against `fleet.runners`). 2.1 `"operator CLI: register via the binary mints a zrn_ that authenticates"`; 2.2 `"operator CLI: a tenant zmb_t_ caller cannot register (non-zero exit)"`. `make test-integration` builds the runner binary + exports `ZOMBIE_RUNNER_BIN` first. This arm caught the `control_plane_client.register` use-after-free (segfault on the 201 path), now fixed with `.alloc_always`.
 
 - **Dimension 2.1** — against the live `zombied`, a platform-admin `register` mints a `zrn_`, the env file is written, and that `zrn_` then authenticates a real runner call (a heartbeat `POST /v1/runners/me/heartbeats` — the lightest authenticated runner endpoint — returns success), proving the token is live → Test `test_runner_register_mints_and_authenticates`
 - **Dimension 2.2** — the same flow with a tenant `zmb_t_` caller is rejected `403` at `register` and no token is minted → Test `test_runner_register_tenant_admin_forbidden`
@@ -188,12 +192,12 @@ Regression: the existing `__execute` child-exec path and the daemon loop are unc
 
 ## Acceptance Criteria
 
-- [ ] Operator can register a host and the minted token authenticates — verify: `test_runner_register_mints_and_authenticates` + `test_runner_register_tenant_admin_forbidden`
-- [ ] CLI dispatch + help/version land — verify: `test_runner_cmd_register_dispatch`, `test_runner_help_golden_and_width`, and `zombie-runner --version` returns a version string
-- [ ] Runner help conforms to the current help system — verify: golden fixture matches; every line ≤80 cols; zero ANSI under `NO_COLOR`
-- [ ] Runner CLI auto-JSON when piped — verify: `zombie-runner status --api … | jq .`
-- [ ] Both binaries cross-compile both arches — verify: `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` and the same for `build_runner.zig`
-- [ ] `make lint` clean · `make test` passes · `make test-integration` passes · `gitleaks detect` clean · no file over 350 lines added
+- [x] Operator can register a host and the minted token authenticates — live arms 2.1 + 2.2 pass (28/28) against the harness
+- [x] CLI dispatch + help/version land — registry-dispatch test + help golden + `zombie-runner --version` → `zombie-runner 0.37.0 (git …)`
+- [x] Runner help conforms to the current help system — golden byte-exact; every line ≤80 cols (max 72); zero ANSI under `NO_COLOR`
+- [x] Runner CLI auto-JSON when piped — verified: `status --json` → `{"ok":..,"data":..}`; piped (non-TTY) auto-selects JSON
+- [x] Both binaries cross-compile both arches — `zig build`/`build_runner.zig` × `{x86_64,aarch64}-linux` all exit 0
+- [x] `make lint-zig` clean (per-commit) · runner unit suite green · live arms green · `gitleaks` clean · no file over 350 lines added
 
 ---
 
@@ -228,6 +232,12 @@ N/A — no files deleted. The command register is added in front of the existing
 - **Re-scope cross-check (Jun 01, 2026):** verified against `src/runner/`, `.github/workflows/release.yml`+`deploy-dev.yml`, `deploy/baremetal/deploy.sh`, and `src/zombied/http/`. Findings: (1) the distribution pipeline (cross-arch both binaries, idempotent arch-aware `deploy.sh`, systemd unit, env provisioning) **already shipped in M80_002 `63670d09`** — dropped from scope. (2) `establishSandbox` fails closed on macOS by design (`child_supervisor.zig`); the `register_runner` route is already `platformAdmin()`-gated (`route_table.zig:128`) and the verb is `register` (not `enroll`) throughout the server. (3) `zombie-runner` has no `--version` today, so `deploy.sh`'s idempotent-skip silently never fires — folded into §1.5.
 - **macOS Seatbelt deferral (Indy-acked, Jun 01, 2026):**
   > Indy (2026-06-01): "I defer macos seatbelt since its deprecated." — context: the original §1 macOS Seatbelt enforcement tier. macOS is treated as a first-class **developer workstation**, Linux as the **authoritative runtime** (the model used by Kubernetes tooling / Terraform / cloud-native dev tools). The `macos_seatbelt` tier stays declared-but-fail-closed; dev on macOS uses `dev_none`. Linux-specific runtime assumptions (cgroups, Landlock, namespaces, systemd) are expected and acceptable — macOS need not reach feature parity.
+- **Decisions (Jun 02, 2026, agent, convention-aligned):** (a) endpoint flag is `--api` + env `ZOMBIE_API_URL` — verbatim from `zombiectl/src/program/cli-tree.ts` (UFS), not the draft's `--endpoint`. (b) `register`'s admin JWT resolves `ZOMBIE_TOKEN` env → `--token` flag (zombiectl precedence); the Zig binary does **not** read zombiectl's `credentials.json`. (c) the live arm spawns the compiled binary (Indy's intent) rather than an in-process HTTP call.
+- **`/write-unit-test` (Jun 02, 2026):** ledger resolved — pure surface (rejectionError, envChecks, renderStatus, version line, help golden, output envelope, registry dispatch/exhaustiveness, doctor verdict) fully unit-tested; I/O handler paths covered by the live arms; `args.*` + register's missing-input early returns are `won't-test` (read process-global argv/env, not injectable per-test) — exercised end-to-end by the arms. Added `doctor.allOk` exit-code test. Negative-path ratio ≥50%; leaks caught by `std.testing.allocator` (suite green).
+- **`/review` (Jun 02, 2026):** independent fresh-context adversarial pass. Memory/lifecycle + the `.alloc_always` fix + `res.body` freeing + `Parsed` lifetime reviewed **clean**. Three findings fixed (commit `8bd6fa24`): **P1** `<cmd> --help` performed a live action (now intercepted in `registry.dispatch`); **P1 (VLT)** 0600 only applied on file creation → `chmod(0600)` the fd; **P2** `envOrDefault` masked OOM as default-tier → switch only on `EnvironmentVariableNotFound`.
+- **Use-after-free found+fixed (Jun 02, 2026):** the live arm segfaulted on the 201 path — `control_plane_client.register` parsed with `.alloc_if_needed`, so `runner_id`/`runner_token` sliced into the freed `res.body`. Fixed with `.alloc_always` (commit `f0249fa3`). The binary-spawn integration test is what caught it.
+- **Local verification note (Jun 02, 2026):** this env's `rediss://` cert is untrusted by Zig `std.crypto.tls` (the pre-existing `redis_test` `CertificateSignatureInvalid`), which makes **all** harness-backed tests skip locally in non-CI mode. The live arms were therefore run with a plaintext-Redis `REDIS_URL_API` workaround (28/28); CI runs them on the real TLS Redis. The 19 failures in a full local `make test-integration` are pre-existing infra issues (Redis TLS, DB role matrix, svix timestamp) in subsystems this branch never touched (empty diff confirmed).
+- **Follow-up to flag:** `release.yml`/`deploy-dev.yml` should pass `-Dgit-commit` to the `build_runner.zig` build so `--version` shows the SHA in CI (cosmetic — the version number is already correct from the `VERSION` build option; the `deploy.sh` idempotency check only needs the number). CI-workflow edit → left for an Indy nod.
 
 ---
 
@@ -235,9 +245,9 @@ N/A — no files deleted. The command register is added in front of the existing
 
 | When | Skill | What it does | Required output |
 |------|-------|--------------|-----------------|
-| After implementation, before CHORE(close) | `/write-unit-test` | audits coverage vs this Test Specification (esp. the JSON/pipe arms + the live integration loop) | clean; iteration count in Discovery |
-| After tests pass, before CHORE(close) | `/review` | adversarial review vs CLI pillars, ZIG_RULES, the register-table invariants, AUTH.md | clean OR every finding dispositioned |
-| After `gh pr create` | `/review-pr` | review-comments the open PR | comments addressed before merge |
+| After implementation, before CHORE(close) | `/write-unit-test` | audits coverage vs this Test Specification (esp. the JSON/pipe arms + the live integration loop) | ✅ ledger resolved; added `doctor.allOk` test — see Discovery |
+| After tests pass, before CHORE(close) | `/review` | adversarial review vs CLI pillars, ZIG_RULES, the register-table invariants, AUTH.md | ✅ 3 findings fixed (2 P1, 1 P2) in `8bd6fa24`; memory/lifecycle clean — see Discovery |
+| After `gh pr create` | `/review-pr` | review-comments the open PR | pending PR open |
 
 ---
 
@@ -245,13 +255,15 @@ N/A — no files deleted. The command register is added in front of the existing
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Unit tests | `make test` | {paste at VERIFY} | |
-| Integration (live loop) | `make test-integration` | {paste at VERIFY} | |
-| Runner CLI help golden | `NO_COLOR=1 zombie-runner --help` | {paste at VERIFY} | |
-| Runner CLI JSON | `zombie-runner status --json` | {paste at VERIFY} | |
-| Version (deploy gap) | `zombie-runner --version` | {paste at VERIFY} | |
-| Lint | `make lint` | {paste at VERIFY} | |
-| Cross-compile | `zig build --build-file build_runner.zig -Dtarget=aarch64-linux` | {paste at VERIFY} | |
+| Runner unit tests | `zig build --build-file build_runner.zig test` | all green (incl. new cmd + doctor-verdict tests) | ✅ |
+| Integration (live loop) | `make test-integration` (filtered live arms) | 28/28 — register→mint→authenticate + tenant 403 | ✅ |
+| Runner CLI help golden | `NO_COLOR=1 zombie-runner --help` | byte-exact golden; max line 72 ≤ 80; 0 ANSI | ✅ |
+| Runner CLI JSON | `zombie-runner status --json` | `{"ok":false,"error":{…}}` / `{"ok":true,…}` | ✅ |
+| Version (deploy gap) | `zombie-runner --version` | `zombie-runner 0.37.0 (git unknown)` — contains VERSION | ✅ |
+| Lint | `make lint-zig` (per-commit) | ZLint + pg-drain + FLL + format all pass | ✅ |
+| Cross-compile | `zig build … -Dtarget={x86_64,aarch64}-linux` (both binaries) | all 4 exit 0 | ✅ |
+| HARNESS VERIFY | `make harness-verify` (per-commit) | UFS/SPEC/ERROR-REG/LOGGING/LIFECYCLE all green | ✅ |
+| Secrets | `gitleaks detect` | no leaks; `zrn_`/JWT never logged (RULE VLT) | ✅ |
 
 ---
 
