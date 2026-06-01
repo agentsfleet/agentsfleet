@@ -106,7 +106,6 @@ test {
     _ = @import("http/handlers/auth/identity_events_clerk_integration_test.zig");
     _ = @import("http/handlers/webhooks/github.zig");
     _ = @import("zombie/notifications/grant_notifier.zig");
-    _ = @import("http/route_matchers.zig");
     _ = @import("http/handlers/zombies/messages.zig");
     // Chat ingress — POST /v1/.../zombies/{id}/messages
     _ = @import("http/handlers/zombies/messages_integration_test.zig");
