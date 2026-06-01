@@ -12,7 +12,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(__dirname, "..", "..", "..");
+const repoRoot = resolve(__dirname, "..", "..");
 const postinstall = resolve(repoRoot, "zombiectl", "scripts", "postinstall.mjs");
 const prepublish = resolve(repoRoot, "zombiectl", "scripts", "prepublish.mjs");
 const zombiectlDir = resolve(repoRoot, "zombiectl");
@@ -36,11 +36,12 @@ function withTempHome(fn) {
 function withBundledSamples(fn) {
   // Mirror repo-root samples/ into zombiectl/samples/ via prepublish, run fn,
   // then clean up. Tests that need the bundled tree wrap with this helper.
+  // Skills no longer bundle through prepublish — they live in
+  // github.com/usezombie/skills and install via `npx skills add usezombie/skills`.
   const r = runNode(prepublish);
   if (r.status !== 0) throw new Error(`prepublish failed: ${r.stderr}`);
   try { return fn(); } finally {
     rmSync(resolve(zombiectlDir, "samples"), { recursive: true, force: true });
-    rmSync(resolve(zombiectlDir, "skills"), { recursive: true, force: true });
   }
 }
 
@@ -108,9 +109,25 @@ test("postinstall on a permission-denied HOME exits 0 (never crashes npm install
   });
 });
 
-test("prepublish bundles repo-root samples/ + skills/ into the package dir", () => {
+test("prepublish bundles repo-root samples/ into the package dir", () => {
   withBundledSamples(() => {
     assert.ok(existsSync(resolve(zombiectlDir, "samples", "platform-ops", "SKILL.md")));
-    assert.ok(existsSync(resolve(zombiectlDir, "skills", "usezombie-install-platform-ops", "SKILL.md")));
   });
+});
+
+test("prepublish scrubs a stray local skills/ from the package dir", () => {
+  // A stale shell session could leave zombiectl/skills/ behind from before
+  // the skill bodies moved to their own repo. prepublish must actively remove
+  // it so it can never sneak into the published tarball. Seed it, assert gone.
+  const stray = resolve(zombiectlDir, "skills");
+  mkdirSync(resolve(stray, "usezombie-install-platform-ops"), { recursive: true });
+  writeFileSync(resolve(stray, "usezombie-install-platform-ops", "SKILL.md"), "stale\n");
+  try {
+    const r = runNode(prepublish);
+    assert.equal(r.status, 0, `prepublish failed: ${r.stderr}`);
+    assert.ok(!existsSync(stray), "stray skills/ should be scrubbed by prepublish");
+  } finally {
+    rmSync(stray, { recursive: true, force: true });
+    rmSync(resolve(zombiectlDir, "samples"), { recursive: true, force: true });
+  }
 });

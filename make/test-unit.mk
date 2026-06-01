@@ -2,7 +2,7 @@
 # TEST-UNIT — zombied, zombiectl, website, app + multi-package coverage gate
 # =============================================================================
 
-.PHONY: test-unit-zombied test-unit-zigrunner test-unit-ziglib test-unit-zombiectl test-unit-website test-unit-app test-unit-design-system test-unit-skills test-coverage-all _test-coverage-zombied
+.PHONY: test-unit-zombied test-unit-zigrunner test-unit-ziglib test-unit-zombiectl test-unit-website test-unit-app test-unit-design-system test-unit-bundle test-coverage-all _test-coverage-zombied
 
 test-unit-zombied:  ## Run zombied unit tests (Zig)
 	@echo "→ [zombied] Running Zig unit tests..."
@@ -58,10 +58,10 @@ test-unit-design-system:  ## Run design-system unit tests (vitest, no coverage)
 	@cd ui/packages/design-system && bun run test
 	@echo "✓ [design-system] Unit tests passed"
 
-test-unit-skills:  ## Run agent-skill substitution + invariant unit tests (node --test, deterministic subset)
-	@echo "→ [skills] Running agent-skill substitution + invariant suite..."
-	@node --test --test-reporter=spec $$(find tests/skill-evals -name '*.test.js' | sort)
-	@echo "✓ [skills] All agent-skill checks passed"
+test-unit-bundle:  ## Run template-substitution + zombiectl-postinstall unit tests (node --test)
+	@echo "→ [bundle] Running template-substitution + zombiectl-postinstall suite..."
+	@node --test --test-reporter=spec $$(find tests/template-substitution tests/zombiectl-postinstall -name '*.test.js' | sort)
+	@echo "✓ [bundle] All bundle checks passed"
 
 test-coverage-all:  ## Run coverage gates across app + website + zombiectl + design-system
 	@echo "→ [app] Running Vitest with --coverage..."
