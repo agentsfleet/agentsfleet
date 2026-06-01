@@ -125,6 +125,8 @@ Thread the granular `FailureClass` end-to-end so the durable record and the metr
 
 ### §2 — Per-runner workload + liveness (zombied-only, in-memory)
 
+> **DELIVERED via PR #354** (`feat/m80-006-fleet-plane`), folded in per Indy's Jun 01 2026 decision to complete the feature now (so M80_007 drops off the v2-prod critical path). Both slices ship in that PR; M80_007 has no separate PR. See Discovery.
+
 Three series derived from zombied's own write paths; no runner or wire change. **Implementation default:** in-memory slot table keyed on `runner_id`, per the §Decomposition decision.
 
 - **Dimension 2.1** — every report increments `zombie_runner_executions_total{runner_id,outcome}` (outcome = `processed`|`agent_error`). → Test `test_executions_total_split_by_outcome`
@@ -243,6 +245,9 @@ N/A — no files deleted. (Additive field + new module; the `zombie_executor_*` 
 - **Scope split (Indy, Jun 01 2026):** §1 folded into PR #354 (M80_006 branch) rather than shipping as a separate M80_007 PR — §1 completes the `renewal_terminate` reach that PR introduced (it was merging a `FailureClass` variant that the report path collapsed and never persisted). M80_007's own PR is now §2 only.
   > Indy (2026-06-01): "Yes fold slice 1 into this PR" — context: #354 introduced `renewal_terminate` but dead-ended it; §1 closes that reach where it lives.
   - **§1 implemented + verified on `feat/m80-006-fleet-plane`** (commits `529142fb`, `688fd3b7`): contract field + runner threading + `failure_label` persistence + `metrics_runner` counter + tests. Green on lint-zig, all Zig unit lanes, `make test-integration` (DB+Redis), cross-compile both linux targets, gitleaks. `/review` run pre-push — one finding (failure_label/outcome trust-boundary consistency) fixed in `688fd3b7`.
+- **§2 folded in too (Indy, Jun 01 2026):** completed Slice 2 now rather than as a later M80_007 PR, so M80_007 leaves the v2-prod critical path entirely.
+  > Indy (2026-06-01): "I want the slice 2 to be completed so i could lower priority on m80_007 for v2 prod move" — context: both slices delivered via #354; M80_007 has no separate PR.
+  - **§2 implemented + verified on `feat/m80-006-fleet-plane`** (commit `3a691be0`): `executions_total{runner_id,outcome}` + `last_seen_seconds{runner_id}` + `active_leases{runner_id}` (all in-memory), hooked on report/heartbeat/lease-grant. Tests split to `metrics_runner_test.zig` (FLL gate). Green on lint-zig, zombied unit, full `make test-integration`, cross-compile both linux targets, gitleaks. **Both slices now ship via #354 → M80_007 implementation complete; spec moves `pending/`→`done/` once #354 merges.**
 
 ---
 
