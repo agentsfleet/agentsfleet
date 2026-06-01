@@ -88,7 +88,7 @@
 | `src/runner/cmd/doctor.zig` | CREATE | `doctor` handler — preflight (env present, control plane reachable) |
 | `src/runner/cmd/help.zig` | CREATE | help/version **renderer** driven by the register table — ≤80 col, NO_COLOR-clean (handler purity: no I/O in handlers) |
 | `src/runner/main.zig` | EDIT | dispatch to the command register before the daemon loop; wire `--help`/`--version` |
-| `test/golden/zombie-runner-help-no-color.txt` | CREATE | byte-exact help golden (counterpart to `zombiectl/test/golden/help-no-color.txt`) |
+| `src/runner/cmd/testdata/help.txt` | CREATE | byte-exact help golden (counterpart to `zombiectl/test/golden/help-no-color.txt`), `@embedFile`d by the drift-guard test — compile-time + cwd-independent |
 | `src/zombied/errors/error_entries.zig`, `error_registry.zig` | EDIT | a CLI transport/auth failure `UZ-RUN-*` (or CLI-surface) code if a distinct one is warranted |
 
 > The endpoint-flag string is **single-sourced and shared verbatim** with `zombiectl` (UFS); the implementing agent greps `zombiectl/src/` for the exact spelling rather than inventing one.
