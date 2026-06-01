@@ -4,11 +4,11 @@
 **Milestone:** M69
 **Workstream:** 001
 **Date:** May 14, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P1 — unblocks independent skill iteration without main-repo PR ceremony; reverses an M49 decision that has aged out.
 **Categories:** SKILL, INFRA, DOCS
 **Batch:** B1 — independent of M68 and other M69 workstreams.
-**Branch:** {feat/m69-public-skills-repo — added when work begins}
+**Branch:** feat/m69-001-public-skills-repo
 **Depends on:** M49_001 (reverses its "no separate repo" decision; M49 stays in `done/` as historical record).
 **Provenance:** LLM-drafted (claude-opus-4-7, 2026-05-14) from Captain Q&A scoping session 2026-05-14.
 
@@ -140,7 +140,7 @@ Delete `skills/` and `tests/skill-evals/usezombie-install-platform-ops/` from th
 
 `zombiectl/package.json` `files:` array drops `skills`. `npm pack` post-edit shows no `skills/` in the tarball. Other entries (`samples/`, `dist/`, etc.) unchanged.
 
-**Postinstall audit:** `zombiectl/scripts/postinstall.mjs` exists and **already operates on `samples/` only** — verified at spec time, no `skills/` references in the body. The script copies the bundled `samples/` tree to `~/.config/usezombie/samples/` (sha256-manifested, idempotent). **No edit needed.** Implementing agent: confirm by reading the file once more before §4; if it grew a skills reference between spec and execute, treat as a separate edit. Concrete check: `grep -n "skills" zombiectl/scripts/postinstall.mjs` → expect 0 matches.
+**Postinstall audit:** `zombiectl/scripts/postinstall.mjs` exists and **already operates on `samples/` only** — verified at spec time, no `skills/` references in the body. The script copies the bundled `samples/` tree to `~/.config/usezombie/samples/` (sha256-manifested, idempotent). **No edit needed.** Implementing agent: confirm by reading the file once more before §4; if it grew a `skills/` *operation* between spec and execute, treat as a separate edit. Concrete check: `grep -nE "skills/" zombiectl/scripts/postinstall.mjs` → expect 0 matches (no `skills/` path copy/scrub). The bare word `skills` may appear once in the file's header comment — explaining that bundled `samples/` let agent skills read canonical templates — which is documentation, not an operation, and is expected.
 
 ### §5 — Cross-repo doc sweep
 
@@ -206,7 +206,7 @@ github.com/usezombie/skills/
 1. After §3, `find skills/ -type f` returns empty in this repo — enforced by orphan-sweep CI grep on `skills/` path.
 2. After §4, `npm pack --dry-run` in `zombiectl/` does not list any `skills/` file — enforced by the `make` smoke target or a new check.
 3. Skill-repo `main` is the only release surface — no tags, no semver. Enforced by convention + docs.
-4. Every `npx skills add usezombie/usezombie` reference in the lead repo + `~/Projects/docs/` is dead post-§5 — enforced by `grep -rn "usezombie/usezombie" docs/ ui/ src/ zombiectl/` returning empty.
+4. Every `npx skills add usezombie/usezombie` reference in the lead repo + `~/Projects/docs/` is dead post-§5 — enforced by `grep -rn "npx skills add usezombie/usezombie" docs/ ui/ src/ zombiectl/` returning empty (active surface only — `docs/v2/done/**` is historical archive and is excluded from the sweep by spec convention; the bare-URL form `https://github.com/usezombie/usezombie` remains valid in repo URL references — website footer/config, zombiectl/README.md, zombiectl/package.json, architecture data_flow.md examples — and is NOT in scope of this invariant).
 
 ---
 
@@ -248,8 +248,8 @@ test ! -d tests/skill-evals/usezombie-install-platform-ops && echo "PASS" || ech
 # E3: package.json files: array no longer mentions skills
 cd zombiectl && jq -e '.files | contains(["skills"]) | not' package.json && echo "PASS" || echo "FAIL"
 
-# E4: no lingering references to old install path
-! grep -rn "npx skills add usezombie/usezombie" docs/ ui/ src/ zombiectl/ && echo "PASS: no stale refs" || echo "FAIL"
+# E4: no lingering references to old install path (active surface — exclude done/ archive)
+! grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done --exclude='M69_001*' docs/ ui/ src/ zombiectl/ && echo "PASS: no stale refs" || echo "FAIL"
 
 # E5: new repo reachable
 gh repo view usezombie/skills --json visibility | jq -e '.visibility == "PUBLIC"' && echo "PASS" || echo "FAIL"
@@ -277,7 +277,7 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 | Deleted symbol | Grep | Expected |
 |---|---|---|
-| `npx skills add usezombie/usezombie` | `grep -rn "usezombie/usezombie" docs/ ui/ src/ zombiectl/` | 0 matches |
+| `npx skills add usezombie/usezombie` | `grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done --exclude='M69_001*' docs/ ui/ src/ zombiectl/` | 0 matches (active surface; `done/` is historical archive) |
 | `skills/` path import or reference | `grep -rn "skills/usezombie-install-platform-ops" src/ zombiectl/` | 0 matches |
 
 ---
@@ -294,7 +294,35 @@ git diff --name-only origin/main | grep -v '\.md$' | xargs wc -l 2>/dev/null | a
 
 ## Verification Evidence
 
-(Filled during VERIFY.)
+Captured during `/review` on `feat/m69-001-public-skills-repo` HEAD `fca3add7` (rebased onto `origin/main` `e0a1e502`).
+
+**E1 — `skills/` removed from lead repo:** `test ! -d skills` → PASS.
+**E2 — `tests/skill-evals/usezombie-install-platform-ops/` removed:** `test ! -d` → PASS (entire `tests/skill-evals/` parent tree also empty).
+**E3 — `zombiectl/package.json` `files:` excludes `skills`:** `jq '.files'` → `["dist","samples","scripts/postinstall.mjs","README.md"]`. PASS.
+**E4 — no stale `npx skills add usezombie/usezombie` on active surface:** `grep -rn "npx skills add usezombie/usezombie" --exclude-dir=done --exclude='M69_001*' docs/ ui/ src/ zombiectl/` → 0 matches. PASS.
+**E5 — new repo public + reachable:** `gh repo view usezombie/skills --json visibility` → `{"visibility":"PUBLIC"}`. PASS.
+**E6 — `make lint`:** zombiectl `tsc --noEmit` clean via pre-commit hook on `357eaf1d`. PASS.
+**E7 — 350-line gate:** no non-md file in this branch exceeds 350 lines (max changed = 38L `prepublish.mjs`). PASS.
+
+**`test_npm_pack_excludes_skills`:** `cd zombiectl && npm pack --dry-run | grep skills` → 0 matches. PASS.
+**`test_skill_body_byte_identical_post_move`:** spec scope says "verbatim move except 3 corrective edits for post-M69 reality" — diverges from byte-identical by design (commit `4ead214` body in skills repo enumerates the 3 edits: metadata.source, install one-liner, manual symlink fallback). Spec test should be relaxed to "behaviour-identical."
+
+**Eval suite parity:** `cd usezombie-install-platform-ops/evals && bun test` (in `~/Projects/skills` PR branch `feat/m69-001-bootstrap-and-migrate`) → 21 pass, 0 fail, 84 expect() calls across `skill-body.test.ts` (10), `skill-runtime.test.ts` (8), `repo-detection.test.ts` (3). Matches the 4 deleted node:test files' assertion coverage (skill-body/skill-runtime/repo-detection/llm-judge), Bun-ported per spec line 70.
+
+**Lead-repo in-repo tests post-rebase:** 10/10 `tests/template-substitution/` + 6/6 `tests/zombiectl-postinstall/` → PASS. `MODULE_TYPELESS_PACKAGE_JSON` warnings silenced by new `{"type":"module"}` package.json in each test dir.
+
+**Predicted failure mode reproduced (pre-merge `usezombie/skills/main` is intentionally empty):** `HOME=$(mktemp -d) npx --yes -p skills@latest skills add usezombie/skills` → clones repo, prints **"No valid skills found"** (correct — `main` is bootstrap-only; PR [usezombie/skills#1](https://github.com/usezombie/skills/pull/1) brings the skill body). Confirms spec §Failure-Modes row "`npx skills add usezombie/usezombie` lingers post-merge" handling: when source has no `<skill>/SKILL.md` with frontmatter, the CLI errors clearly rather than silently no-opping.
+
+**Post-merge structural check:** `git ls-tree feat/m69-001-bootstrap-and-migrate -r --name-only` (in `~/Projects/skills`) shows `usezombie-install-platform-ops/SKILL.md` with valid `name: usezombie-install-platform-ops` + `description: …` frontmatter, full `references/`, full `evals/` with `package.json` + `tsconfig.json` + 3 Bun test files. Once PR #1 merges to `main`, `skills add usezombie/skills` will detect + install the skill at `~/.claude/skills/usezombie-install-platform-ops/` (plus codex/amp/opencode equivalents per the host the CLI detects).
+
+**Cross-repo doc sweep:** [`usezombie/docs#62`](https://github.com/usezombie/docs/pull/62) flips `index.mdx`, `quickstart.mdx`, `cli/install.mdx`, `zombies/install.mdx` from `usezombie/usezombie` → `usezombie/skills`. `changelog.mdx` historical entries deliberately untouched (CHANGELOG_VOICE.md: historical entries archived not rewritten); a new `<Update>` lands at CHORE(close) per release-template.
+
+**Outstanding (deferred post-merge follow-up — Indy-acked):**
+
+> Indy (2026-05-30 10:35): "Move to done/ now" (AskUserQuestion selection) — context: marking M69_001 DONE with the clean-env smoke explicitly deferred to a post-merge follow-up, since it cannot run until this PR merges and a release publishes to npm.
+
+- True clean-env smoke (`npm install -g @usezombie/zombiectl@X.Y.Z && npx skills add usezombie/skills` on fresh container/macOS account → `/usezombie-install-platform-ops` reachable in Claude Code) — requires (a) skills PR #1 merged ✅, (b) this PR merged, (c) release tag → `npm publish`. Run as a post-merge follow-up.
+- 4-host symlink topology check (`~/.claude/skills/`, `~/.codex/skills/`, `~/.amp/skills/`, `~/.opencode/skills/`) — same gating.
 
 ---
 

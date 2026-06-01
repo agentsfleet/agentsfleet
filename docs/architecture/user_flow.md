@@ -75,8 +75,8 @@ curl -fsSL https://usezombie.sh | bash   # installs zombiectl, then npx skills a
 Or run the chain explicitly (skip any step already in place):
 
 ```bash
-npm install -g @usezombie/zombiectl     # CLI binary + bundled samples/skills postinstall
-npx skills add usezombie/skills      # symlinks /usezombie-* into host skill paths
+npm install -g @usezombie/zombiectl     # CLI binary + bundled samples (postinstall copies to ~/.config/usezombie/samples/)
+npx skills add usezombie/skills         # symlinks /usezombie-* into host skill paths (skills now ship from github.com/usezombie/skills)
 zombiectl auth login                     # Clerk OAuth → token in ~/.config/usezombie/auth.json
 gh auth login -s admin:repo_hook         # one-time; lets the install-skill register webhooks
 ```
