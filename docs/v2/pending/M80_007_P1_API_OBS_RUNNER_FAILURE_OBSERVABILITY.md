@@ -127,7 +127,7 @@ Three series derived from zombied's own write paths; no runner or wire change. *
 
 - **Dimension 2.1** — every report increments `zombie_runner_executions_total{runner_id,outcome}` (outcome = `processed`|`agent_error`). → Test `test_executions_total_split_by_outcome`
 - **Dimension 2.2** — `zombie_runner_last_seen_seconds{runner_id}` = render-time delta from an in-memory last-seen stamp updated on report/heartbeat; a lapsed runner's value climbs. → Test `test_last_seen_seconds_climbs_when_idle`
-- **Dimension 2.3** — `zombie_runner_active_leases{runner_id}` inc on lease grant, dec on release/report; a held lease reads 1. → Test `test_active_leases_tracks_grant_and_release`
+- **Dimension 2.3** — `zombie_runner_active_leases{runner_id}` inc on lease grant, dec on release/report; a held lease reads 1. **Best-effort** (in-memory): an abandoned lease that expires without a report is not decremented — accepted v1 limitation, see Out of Scope. → Test `test_active_leases_tracks_grant_and_release`
 - **Dimension 2.4** — slot-table overflow past capacity routes to `runner_id="_other"`, never drops or crashes. → Test `test_runner_slot_overflow_routes_to_other`
 
 ---
@@ -163,6 +163,7 @@ Backward-compat contract: the field is optional; old runner ⇒ omitted ⇒ `rea
 | Runner cardinality exceeds slot capacity | >4096 distinct `runner_id` | overflow→`runner_id="_other"`; counters keep advancing; no alloc, no crash. |
 | Concurrent reports from same runner | parallel executions | lock-free `fetchAdd` on the claimed slot; CAS on first claim (mirror `metrics_workspace.zig`). |
 | `zombied` restart | process bounce | counters reset (Prometheus-counter semantics handle it); `last_seen` absent until next heartbeat; `active_leases` rebuilds from lease events — self-heal within one cycle. |
+| **Abandoned lease (runner dies/goes dark)** | lease expires by the clock (`lease_expires_at`) with no report — there is no release event | **known limitation of the in-memory approach:** in-memory `active_leases` is only decremented on an explicit report/release, so an abandoned lease leaves the gauge stuck high for that `runner_id`. `active_leases` is therefore **best-effort** until the refresher improvement lands (see Out of Scope). The other three series are unaffected. |
 | Report persists label but counter inc races | ordering | persistence is the source of truth; the counter is best-effort telemetry — never block the report on a counter update. |
 
 ---
@@ -232,7 +233,10 @@ N/A — no files deleted. (Additive field + new module; the `zombie_executor_*` 
 
 > Empty at creation. Appended as work surfaces consults, skill outcomes, and Indy-acked deferral quotes.
 
-- **Architecture consult (authoring, Jun 01 2026):** `docs/architecture/runner_fleet.md` is silent on the metrics render mechanism; the existing render path is pure in-memory. Chose in-memory write-path gauges over render-time PG read to keep `/metrics` DB-free. Doc to be updated in this PR (Architecture Consult & Update Gate). **Pending Indy confirmation of the in-memory-vs-render-DB-read call before CHORE(open).**
+- **Architecture consult (authoring, Jun 01 2026):** `docs/architecture/runner_fleet.md` is silent on the metrics render mechanism; the existing render path is pure in-memory.
+- **CTO review (Jun 01 2026):** challenged in-memory-only. Finding — counters (`failures_total`, `executions_total`) are correctly in-memory (no table to read), but gauges (`last_seen_seconds`, `active_leases`) reflect Postgres truth; in particular `active_leases` in-memory **over-counts abandoned leases** because leases expire by the clock (`lease_expires_at`, per `runner_fleet.md:227`) with no release event. The fully-correct shape is in-memory counters + a background PG **refresher** thread feeding an in-memory gauge snapshot (read off the scrape path) — see Out of Scope.
+- **Decision (Indy, Jun 01 2026):** ship in-memory for all four series now; refresher is a later improvement. `active_leases` documented as best-effort.
+  > Indy (2026-06-01): "I think for now keep it in what ever state like inmemory can be improved later" — context: chose in-memory v1 over the refresher; refresher deferred to Out of Scope, `active_leases` over-count of abandoned leases accepted as a known v1 limitation.
 - **Correction (authoring):** handoff claimed `renewal_terminate` is already on `FailureClass`; on `main` it is not → captured as `Depends on: M80_006`.
 
 ---
@@ -264,6 +268,7 @@ Indy additionally requested an **independent Orly CTO review** of the branch + P
 
 ## Out of Scope
 
+- **Gauge refresher (the correctness improvement for §2 gauges)** — replace in-memory write-path maintenance of `last_seen_seconds` / `active_leases` with a background thread (read-only; reuse the `approval_gate_sweeper.zig` *thread scaffolding* — interval loop + `sleepInterruptible` + shutdown join — but a refresher is read-into-cache, **not** a sweeper, so name it e.g. `runner_metrics_refresher`). It polls Postgres every ~15s for `last_seen_at` and `count(active leases WHERE lease_expires_at > now())`, overwrites an in-memory snapshot, and `/metrics` renders that snapshot — keeping the scrape path DB-free while making `active_leases` correct (no abandoned-lease over-count) and restart-resilient. Deferred per Indy's "in-memory now, improve later" decision (see Discovery).
 - **Slice 2b** — cpu/mem/disk per-runner telemetry + the `HeartbeatRequest` body that carries it (the heartbeat-wire change lands there, not here; premature while there is no runner-only data to carry — NLG).
 - **Slice 3** — cordon/drain + operator admin API → its own operator-plane spec.
 - **Runner `/metrics` endpoint** — trusted-fleet deep telemetry; far future.
