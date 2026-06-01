@@ -14,6 +14,7 @@ const Config = @import("daemon/config.zig");
 const loop = @import("daemon/loop.zig");
 const child_exec = @import("child_exec.zig");
 const version_cmd = @import("cmd/version.zig");
+const registry = @import("cmd/registry.zig");
 
 const protocol = contract.protocol;
 
@@ -94,7 +95,8 @@ fn dispatchCli(alloc: std.mem.Allocator) ?u8 {
     // and exit (no daemon loop, no env config). Hot path, checked first.
     if (std.mem.eql(u8, a1, child_exec.SUBCOMMAND)) return child_exec.run(alloc);
     if (std.mem.eql(u8, a1, "--version") or std.mem.eql(u8, a1, "-V")) return version_cmd.run();
-    return null;
+    // register / status / doctor / --help, and unknown → help + non-zero.
+    return registry.dispatch(alloc, a1);
 }
 
 /// Parse sandbox tier from env string; defaults to `.dev_none` for unknown

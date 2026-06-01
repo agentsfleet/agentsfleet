@@ -1,0 +1,52 @@
+//! Command register for the operator CLI — a typed `Command` enum mapped to a
+//! `Spec { handler, summary }`, mirroring the server's `route_table.specFor`
+//! (src/zombied/http/route_table.zig). It is the single source for both
+//! dispatch and help: a command with no summary (or a summary with no command)
+//! is impossible by construction, so `--help` can never drift from the real
+//! command set (Invariant 2).
+
+const std = @import("std");
+const help = @import("help.zig");
+const register = @import("register.zig");
+const status = @import("status.zig");
+const doctor = @import("doctor.zig");
+
+pub const Command = enum { register, status, doctor };
+
+const HandlerFn = *const fn (std.mem.Allocator) u8;
+const Spec = struct { handler: HandlerFn, summary: []const u8 };
+
+/// The register table. Summaries are kept short enough that `  <name>  <summary>`
+/// stays ≤80 columns (the help golden enforces it).
+fn specFor(cmd: Command) Spec {
+    return switch (cmd) {
+        .register => .{ .handler = register.run, .summary = "register this host (platform-admin); writes its zrn_ token" },
+        .status => .{ .handler = status.run, .summary = "show registration + fleet directive" },
+        .doctor => .{ .handler = doctor.run, .summary = "preflight env + control-plane reachability" },
+    };
+}
+
+/// One-line summary for help rendering — the single source help.zig reads.
+pub fn summaryFor(cmd: Command) []const u8 {
+    return specFor(cmd).summary;
+}
+
+/// Dispatch a non-daemon argv head. `--help`/`-h` renders help (exit 0); an
+/// unrecognized token renders help to stderr (exit 2); a known command runs its
+/// handler. Always handles — returns the process exit code.
+pub fn dispatch(alloc: std.mem.Allocator, name: []const u8) u8 {
+    if (std.mem.eql(u8, name, "--help") or std.mem.eql(u8, name, "-h")) return help.run(alloc);
+    const cmd = std.meta.stringToEnum(Command, name) orelse return help.runUnknown(alloc, name);
+    return specFor(cmd).handler(alloc);
+}
+
+test "every Command has a non-empty summary (no help drift)" {
+    inline for (std.meta.fields(Command)) |f| {
+        try std.testing.expect(summaryFor(@field(Command, f.name)).len > 0);
+    }
+}
+
+test "dispatch resolves --help and rejects an unknown command non-zero" {
+    // --help is exit 0; an unknown token is exit 2 (writes to stderr).
+    try std.testing.expectEqual(@as(u8, 2), dispatch(std.testing.allocator, "bogus-cmd"));
+}

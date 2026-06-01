@@ -1,0 +1,78 @@
+//! `zombie-runner doctor` — preflight a host before the daemon runs: are the
+//! required env vars present, and is the control plane reachable with this
+//! host's token? Reports each check; exits non-zero if any fails. Auto-JSON
+//! when piped. Reachability reuses the heartbeat verb (reachable + token-valid
+//! in one probe).
+
+const std = @import("std");
+const protocol = @import("contract").protocol;
+const Config = @import("../daemon/config.zig");
+const Client = @import("../daemon/control_plane_client.zig");
+const args = @import("args.zig");
+const output = @import("output.zig");
+
+const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
+
+pub fn run(alloc: std.mem.Allocator) u8 {
+    const a = output.audience(args.has(output.FLAG_JSON));
+    const api = args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL);
+    defer if (api) |v| alloc.free(v);
+    const token = args.envOwned(alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN);
+    defer if (token) |v| alloc.free(v);
+
+    const env = envChecks(api, token);
+    const checks = [_]Check{ env[0], env[1], reachCheck(alloc, api, token) };
+    return emit(a, alloc, &checks);
+}
+
+/// Pure evaluation of the two env preconditions — testable without I/O.
+fn envChecks(api: ?[]const u8, token: ?[]const u8) [2]Check {
+    const api_ok = api != null;
+    const token_ok = token != null and std.mem.startsWith(u8, token.?, protocol.RUNNER_TOKEN_PREFIX);
+    const api_detail: []const u8 = if (api_ok) "set" else "missing — pass --api or set ZOMBIE_API_URL";
+    const token_detail: []const u8 = if (token_ok) "present (zrn_)" else "missing or not a zrn_ token";
+    return .{
+        .{ .name = "api_url", .ok = api_ok, .detail = api_detail },
+        .{ .name = "runner_token", .ok = token_ok, .detail = token_detail },
+    };
+}
+
+/// Reachability + token validity in one heartbeat probe (skipped if either
+/// input is unset, so the env checks own that failure).
+fn reachCheck(alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]const u8) Check {
+    if (api == null or token == null) return .{ .name = "control_plane", .ok = false, .detail = "skipped — api/token unset" };
+    const client = Client{ .base_url = api.? };
+    _ = client.heartbeat(alloc, token.?) catch
+        return .{ .name = "control_plane", .ok = false, .detail = "unreachable or token rejected" };
+    return .{ .name = "control_plane", .ok = true, .detail = "reachable; token valid" };
+}
+
+fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 {
+    var all_ok = true;
+    for (checks) |c| {
+        if (!c.ok) all_ok = false;
+    }
+    switch (a) {
+        .json => {
+            const s = std.json.Stringify.valueAlloc(alloc, .{ .ok = all_ok, .checks = checks }, .{}) catch return 1;
+            defer alloc.free(s);
+            output.writeOut(s);
+            output.writeOut("\n");
+        },
+        .human => for (checks) |c| {
+            var buf: [256]u8 = undefined;
+            const mark = if (c.ok) "OK" else "!!";
+            output.writeOut(std.fmt.bufPrint(&buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch "\n");
+        },
+    }
+    return if (all_ok) 0 else 1;
+}
+
+test "envChecks flags missing api + token, passes a valid pair" {
+    const missing = envChecks(null, null);
+    try std.testing.expect(!missing[0].ok and !missing[1].ok);
+    const bad_token = envChecks("http://x", "zmb_t_deadbeef");
+    try std.testing.expect(bad_token[0].ok and !bad_token[1].ok); // wrong prefix
+    const good = envChecks("http://x", "zrn_" ++ "a" ** 64);
+    try std.testing.expect(good[0].ok and good[1].ok);
+}
