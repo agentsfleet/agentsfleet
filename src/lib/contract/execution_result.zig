@@ -21,6 +21,12 @@ pub const FailureClass = enum {
     transport_loss,
     landlock_deny,
     lease_expired,
+    /// Killed by renewal policy — the control plane's `/renew` returned a
+    /// definitive rejection (lease lost, max-runtime cap, or credit exhausted),
+    /// so the run was stopped before completion. Distinct from `timeout_kill`
+    /// (the wall-clock deadline elapsed) so triage and billing/analytics can
+    /// tell a policy stop from a clock stop.
+    renewal_terminate,
 
     pub fn label(self: FailureClass) []const u8 {
         return @tagName(self);
@@ -42,12 +48,13 @@ pub const ExecutionResult = struct {
 
 test "FailureClass.label returns the tag name for every variant" {
     const variants = [_]FailureClass{
-        .startup_posture, .policy_deny,    .timeout_kill,   .oom_kill,
-        .resource_kill,   .executor_crash, .transport_loss, .landlock_deny,
-        .lease_expired,
+        .startup_posture, .policy_deny,    .timeout_kill,      .oom_kill,
+        .resource_kill,   .executor_crash, .transport_loss,    .landlock_deny,
+        .lease_expired,   .renewal_terminate,
     };
     for (variants) |fc| try std.testing.expect(fc.label().len > 0);
     try std.testing.expectEqualStrings("oom_kill", FailureClass.oom_kill.label());
+    try std.testing.expectEqualStrings("renewal_terminate", FailureClass.renewal_terminate.label());
 }
 
 test "ExecutionResult defaults describe an unrun stage" {
