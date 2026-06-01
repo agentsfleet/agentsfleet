@@ -77,9 +77,14 @@ test "parseUrl respects sslmode=disable for local dev" {
 test "roleEnvVarName maps db roles deterministically" {
     try std.testing.expectEqualStrings("DATABASE_URL", roleEnvVarName(.default));
     try std.testing.expectEqualStrings("DATABASE_URL_API", roleEnvVarName(.api));
-    try std.testing.expectEqualStrings("DATABASE_URL_WORKER", roleEnvVarName(.worker));
     try std.testing.expectEqualStrings("DATABASE_URL_CALLBACK", roleEnvVarName(.callback));
     try std.testing.expectEqualStrings("DATABASE_URL_MIGRATOR", roleEnvVarName(.migrator));
+}
+
+test "DbRole carries no worker variant" {
+    inline for (@typeInfo(pool_mod.DbRole).@"enum".fields) |field| {
+        try std.testing.expect(!std.mem.eql(u8, field.name, "worker"));
+    }
 }
 
 fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, conn: *Conn } {
@@ -352,7 +357,6 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
     const role_checks = [_][]const u8{
         "db_migrator",
         "api_runtime",
-        "worker_runtime",
         "ops_readonly_human",
         "ops_readonly_agent",
     };
@@ -365,6 +369,16 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         try std.testing.expect((try role_q.next()) != null);
     }
 
+    // The worker datastore role is retired: a clean migration apply must not
+    // create it. The literal below is the role name we assert is absent.
+    {
+        var absent_q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT 1 FROM pg_roles WHERE rolname = $1",
+            .{"worker_runtime"},
+        ));
+        defer absent_q.deinit();
+        try std.testing.expect((try absent_q.next()) == null);
+    }
 }
 
 test "integration: runMigrations is idempotent when table exists but migration record is absent" {

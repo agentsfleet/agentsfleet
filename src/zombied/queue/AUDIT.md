@@ -139,7 +139,7 @@ Confirmed stays:
 - Per-zombie stream consumer groups (`redis_zombie.zig:50-66`).
 - `XREADGROUP` / `XAUTOCLAIM` / `XACK` lifecycle (`redis_zombie.zig:69-126`).
 - Pub/sub subscriber with SO_RCVTIMEO heartbeat (`redis_pubsub.zig:84-96`, `:103-117`).
-- Role-based ACL env vars `REDIS_URL` / `REDIS_URL_API` / `REDIS_URL_WORKER` (`redis_types.zig:9-15`, `redis_config.zig:32-39`).
+- Role-based ACL env vars `REDIS_URL` / `REDIS_URL_API` (`redis_types.zig`, `redis_config.zig`). The worker-role Redis URL retired with the worker substrate.
 
 **One thing this audit surfaces that the spec didn't.** There are **two** subscriber implementations and they have split responsibilities:
 - `src/queue/redis_subscriber.zig` — file-as-struct shape, used by **production** at `src/http/handlers/zombies/events_stream.zig:34` (SSE handler). API: `nextMessage()` loops internally past non-message frames (PSUBSCRIBE pmessage, pong, subscribe count) at `redis_subscriber.zig:88-111`, returns `null` only on `EndOfStream`/`ReadFailed` (`:90-93`). No SO_RCVTIMEO — relies on the client (browser) to retry; the SSE handler at `events_stream.zig:104-105` treats `null` as "clean disconnect from Redis side" and returns.

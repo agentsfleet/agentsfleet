@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS core.platform_llm_keys (
     CONSTRAINT uq_platform_llm_keys_provider UNIQUE (provider)
 );
 
--- worker_runtime reads during run execution to resolve platform default key.
--- api_runtime reads/writes via admin API (PUT/DELETE/GET /v1/admin/platform-keys).
-GRANT SELECT ON core.platform_llm_keys TO worker_runtime;
+-- api_runtime reads/writes via admin API (PUT/DELETE/GET /v1/admin/platform-keys)
+-- and reads during lease issue to resolve the platform default key.
 GRANT SELECT, INSERT, UPDATE ON core.platform_llm_keys TO api_runtime;

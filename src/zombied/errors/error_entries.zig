@@ -221,7 +221,7 @@ pub const ENTRIES = [_]Entry{
     e("UZ-STARTUP-003", .internal_server_error, "Database connect failed",
         "Database is unreachable. Check that DATABASE_URL is set and the database accepts connections."),
     e("UZ-STARTUP-004", .internal_server_error, "Redis connect failed",
-        "Redis is unreachable. Check that REDIS_URL_API and REDIS_URL_WORKER are set " ++
+        "Redis is unreachable. Check that REDIS_URL_API is set " ++
         "and the Redis server accepts connections. Run 'zombied doctor' to verify."),
     e("UZ-STARTUP-005", .internal_server_error, "Migration check failed",
         "Database migration state could not be verified. Check DB connectivity."),
