@@ -70,11 +70,16 @@ for DASHBOARD_JSON in "${DASHBOARDS[@]}"; do
   DASH_UID=$(jq -r '.uid' "$DASHBOARD_JSON")
   EXPECTED=$(jq '.panels | length' "$DASHBOARD_JSON")
 
+  # Build the inputs array from THIS dashboard's own __inputs, mapping each
+  # declared datasource to its resolved uid. A Prometheus-only dashboard
+  # (runner_fleet.json) gets only DS_PROMETHEUS; agent_run_breakdown.json gets
+  # both. Avoids passing an input a dashboard never declared.
   jq --arg prom "$PROM_UID" --arg pg "$PG_UID" \
-    '{ "dashboard": ., "inputs": [
-      {"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":$prom},
-      {"name":"DS_POSTGRES","type":"datasource","pluginId":"postgres","value":$pg}
-    ], "overwrite": true }' \
+    '{ dashboard: ., overwrite: true,
+       inputs: [ .__inputs[] | { name, type, pluginId,
+         value: (if .name == "DS_PROMETHEUS" then $prom
+                 elif .name == "DS_POSTGRES" then $pg
+                 else "" end) } ] }' \
     "$DASHBOARD_JSON" | \
     curl -sf -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
       -H "Content-Type: application/json" \
