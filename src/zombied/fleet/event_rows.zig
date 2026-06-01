@@ -79,9 +79,11 @@ pub fn insertReceivedRow(
     });
 }
 
-/// UPDATE the event row to its terminal status + response + telemetry. Reads
-/// only `exit_ok`/`content`/`token_count` off the result; the status is derived
-/// from `exit_ok`. Best-effort (acquire/exec failures are logged, not raised).
+/// UPDATE the event row to its terminal status + response + telemetry + the
+/// granular failure label. Reads `exit_ok`/`content`/`token_count`/`failure`
+/// off the result; status is derived from `exit_ok`, and `failure_label` carries
+/// the runner's `FailureClass` tag (NULL on a clean run, or a failure whose
+/// reason the runner did not report). Best-effort (failures logged, not raised).
 pub fn markTerminal(
     pool: *pg.Pool,
     zombie_id: []const u8,
@@ -96,9 +98,10 @@ pub fn markTerminal(
     defer pool.release(conn);
     const now_ms = std.time.milliTimestamp();
     const status_text: []const u8 = if (result.exit_ok) STATUS_PROCESSED else STATUS_AGENT_ERROR;
+    const failure_label: ?[]const u8 = if (result.failure) |f| f.label() else null;
     _ = conn.exec(
         \\UPDATE core.zombie_events
-        \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7
+        \\SET status = $3, response_text = $4, tokens = $5, wall_ms = $6, updated_at = $7, failure_label = $8
         \\WHERE zombie_id = $1::uuid AND event_id = $2
     , .{
         zombie_id,
@@ -108,6 +111,7 @@ pub fn markTerminal(
         @as(i64, @intCast(result.token_count)),
         @as(i64, @intCast(wall_ms)),
         now_ms,
+        failure_label,
     }) catch |err| {
         log.warn("terminal_update_failed", .{ .zombie_id = zombie_id, .event_id = event_id, .err = @errorName(err) });
     };

@@ -20,6 +20,7 @@
 
 const EventEnvelope = @import("event_envelope.zig");
 const ExecutionPolicy = @import("execution_policy.zig").ExecutionPolicy;
+const FailureClass = @import("execution_result.zig").FailureClass;
 
 // ── Wire paths ──────────────────────────────────────────────────────────────
 // Single-sourced (RULE UFS) so the router and the future TS client share them
@@ -160,6 +161,12 @@ pub const ReportRequest = struct {
     event_id: []const u8,
     fencing_token: u64,
     outcome: Outcome,
+    /// Granular failure cause when the execution failed, the runner's own
+    /// `FailureClass` carried verbatim (std.json renders it via @tagName).
+    /// Optional + defaulted so a mixed-version fleet is safe: an older runner
+    /// omits it and the control plane treats absent as "reason unknown". The
+    /// coarse `outcome` above stays the binary processed/agent_error verdict.
+    failure_reason: ?FailureClass = null,
     response_text: []const u8,
     /// Billing token count → `zombie_execution_telemetry.token_count`.
     tokens: u64,

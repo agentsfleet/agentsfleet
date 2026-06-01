@@ -26,6 +26,7 @@ const TestHarness = harness_mod.TestHarness;
 const redis_zombie = @import("../queue/redis_zombie.zig");
 const protocol = @import("contract").protocol;
 const base = @import("../db/test_fixtures.zig");
+const metrics_runner = @import("../observability/metrics_runner.zig");
 
 const ALLOC = std.testing.allocator;
 
@@ -188,6 +189,28 @@ fn reportAs(h: *TestHarness, token: []const u8, lease_id: []const u8, event_id: 
     return req.send();
 }
 
+fn reportFailureAs(h: *TestHarness, token: []const u8, lease_id: []const u8, event_id: []const u8, fencing_token: u64, reason: []const u8) !harness_mod.Response {
+    const body = try std.fmt.allocPrint(ALLOC,
+        \\{{"lease_id":"{s}","event_id":"{s}","fencing_token":{d},"outcome":"agent_error","failure_reason":"{s}","response_text":"killed","tokens":0,"telemetry":{{"time_to_first_token_ms":0,"wall_ms":50}},"checkpoint":{{"last_event_id":"{s}","last_response":""}}}}
+    , .{ lease_id, event_id, fencing_token, reason, event_id });
+    defer ALLOC.free(body);
+    const req = try (try h.post(protocol.PATH_RUNNER_REPORTS).bearer(token)).json(body);
+    return req.send();
+}
+
+/// True iff the event's persisted `failure_label` equals `expected`. Compared
+/// in-function so the row-backed slice never outlives the query.
+fn failureLabelMatches(conn: *pg.Conn, event_id: []const u8, expected: []const u8) !bool {
+    var q = PgQuery.from(try conn.query(
+        "SELECT failure_label FROM core.zombie_events WHERE zombie_id = $1::uuid AND event_id = $2",
+        .{ ZOMBIE_ID, event_id },
+    ));
+    defer q.deinit();
+    const row = try q.next() orelse return error.EventRowMissing;
+    const label = try row.get(?[]const u8, 0) orelse return false;
+    return std.mem.eql(u8, label, expected);
+}
+
 fn leaseStatusIs(conn: *pg.Conn, lease_id: []const u8, expected: []const u8) !bool {
     var q = PgQuery.from(try conn.query("SELECT status FROM fleet.runner_leases WHERE id = $1::uuid", .{lease_id}));
     defer q.deinit();
@@ -262,6 +285,47 @@ test "single runner completes a full lease then renew then report round-trip" {
     defer rep.deinit();
     try rep.expectStatus(.ok);
     try std.testing.expect(try leaseStatusIs(conn, lease_id, "reported"));
+}
+
+test "a failed runner report persists the granular failure_label and increments the failure metric" {
+    const h = startHarness() catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProvider(ALLOC, conn, WORKSPACE_ID);
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "roundtrip-a", RUNNER_A_TOKEN);
+    try seedActiveZombie(conn);
+    try publishFreshEvent(h);
+
+    // Lease (inserts the received core.zombie_events row), then report a FAILURE
+    // carrying the granular reason.
+    const lv = try leaseAs(h, RUNNER_A_TOKEN);
+    defer lv.free();
+    try std.testing.expect(lv.present);
+
+    const rep = try reportFailureAs(h, RUNNER_A_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token, "executor_crash");
+    defer rep.deinit();
+    try rep.expectStatus(.ok);
+
+    // The granular cause reached the durable record (not the coarse outcome) ...
+    try std.testing.expect(try leaseStatusIs(conn, lv.lease_id.?, "reported"));
+    try std.testing.expect(try failureLabelMatches(conn, lv.event_id.?, "executor_crash"));
+
+    // ... and the per-runner failure counter carries the same reason on /metrics.
+    var buf: [8192]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    try metrics_runner.renderPrometheus(fbs.writer());
+    const metrics = fbs.getWritten();
+    const needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"executor_crash\"";
+    try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, needle));
 }
 
 test "the reclaim chain enforces monotonic token ordering across runners" {

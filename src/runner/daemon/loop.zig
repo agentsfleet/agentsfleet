@@ -165,6 +165,7 @@ fn executeAndReport(
         .event_id = payload.event.event_id,
         .fencing_token = payload.fencing_token,
         .outcome = outcome,
+        .failure_reason = result.failure,
         .response_text = result.content,
         .tokens = result.token_count,
         .telemetry = .{ .time_to_first_token_ms = 0, .wall_ms = wall_ms },
