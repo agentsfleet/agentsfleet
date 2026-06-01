@@ -47,14 +47,20 @@ fn reachCheck(alloc: std.mem.Allocator, api: ?[]const u8, token: ?[]const u8) Ch
     return .{ .name = "control_plane", .ok = true, .detail = "reachable; token valid" };
 }
 
-fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 {
-    var all_ok = true;
+/// True only when every check passed — the doctor exit-code contract (any
+/// failed check → non-zero). Pure so the contract is unit-testable.
+fn allOk(checks: []const Check) bool {
     for (checks) |c| {
-        if (!c.ok) all_ok = false;
+        if (!c.ok) return false;
     }
+    return true;
+}
+
+fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 {
+    const ok = allOk(checks);
     switch (a) {
         .json => {
-            const s = std.json.Stringify.valueAlloc(alloc, .{ .ok = all_ok, .checks = checks }, .{}) catch return 1;
+            const s = std.json.Stringify.valueAlloc(alloc, .{ .ok = ok, .checks = checks }, .{}) catch return 1;
             defer alloc.free(s);
             output.writeOut(s);
             output.writeOut("\n");
@@ -65,7 +71,7 @@ fn emit(a: output.Audience, alloc: std.mem.Allocator, checks: []const Check) u8 
             output.writeOut(std.fmt.bufPrint(&buf, "[{s}] {s}: {s}\n", .{ mark, c.name, c.detail }) catch "\n");
         },
     }
-    return if (all_ok) 0 else 1;
+    return if (ok) 0 else 1;
 }
 
 test "envChecks flags missing api + token, passes a valid pair" {
@@ -75,4 +81,12 @@ test "envChecks flags missing api + token, passes a valid pair" {
     try std.testing.expect(bad_token[0].ok and !bad_token[1].ok); // wrong prefix
     const good = envChecks("http://x", "zrn_" ++ "a" ** 64);
     try std.testing.expect(good[0].ok and good[1].ok);
+}
+
+test "doctor verdict is non-zero iff any check failed (exit-code contract)" {
+    const ok_check = Check{ .name = "a", .ok = true, .detail = "" };
+    const bad_check = Check{ .name = "b", .ok = false, .detail = "" };
+    try std.testing.expect(allOk(&.{ ok_check, ok_check })); // all pass → 0
+    try std.testing.expect(!allOk(&.{ ok_check, bad_check })); // one fail → non-zero
+    try std.testing.expect(allOk(&.{})); // vacuously true
 }
