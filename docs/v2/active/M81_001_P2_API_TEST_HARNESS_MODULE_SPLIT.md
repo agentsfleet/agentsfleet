@@ -4,11 +4,11 @@
 **Milestone:** M81
 **Workstream:** 001
 **Date:** May 31, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P2 — test infrastructure hygiene; the single harness file is ~2× the file-length cap and blocks clean edits to it.
 **Categories:** API
 **Batch:** B1 — standalone; no concurrent dependency.
-**Branch:** {feat/m81-001-test-harness-split — added when work begins}
+**Branch:** feat/m81-001-test-harness-split
 **Depends on:** none.
 **Provenance:** LLM-drafted (Opus 4.8, May 31 2026)
 
