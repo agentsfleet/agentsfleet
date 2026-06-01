@@ -93,6 +93,10 @@ const contract = @import("contract");
 /// Environment variable names — single-sourced (RULE UFS).
 pub const ENV_ZOMBIE_API_URL = "ZOMBIE_API_URL";
 pub const ENV_ZOMBIE_RUNNER_TOKEN = "ZOMBIE_RUNNER_TOKEN";
+/// Platform-admin Clerk JWT the operator-run `register` subcommand authenticates
+/// with (env-preferred over `--token`, same precedence as `zombiectl` — RULE
+/// UFS). NOT read by the daemon: the daemon's identity is the `zrn_` above.
+pub const ENV_ZOMBIE_TOKEN = "ZOMBIE_TOKEN";
 pub const ENV_RUNNER_HOST_ID = "RUNNER_HOST_ID";
 pub const ENV_RUNNER_SANDBOX_TIER = "RUNNER_SANDBOX_TIER";
 pub const ENV_RUNNER_WORKSPACE_BASE = "RUNNER_WORKSPACE_BASE";
