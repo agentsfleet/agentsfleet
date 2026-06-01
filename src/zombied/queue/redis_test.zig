@@ -66,6 +66,13 @@ test "queue constants: consumer prefix is stable" {
     try std.testing.expectEqualStrings("worker", queue_consts.consumer_prefix);
 }
 
+// pin test: literal is the contract — install/lease/report (redis_zombie.zig)
+// all reference this one constant, so pinning the value pins the group used by
+// every step. Renamed from "zombie_workers" (worker-substrate retirement).
+test "queue constants: zombie consumer group reflects the lease path" {
+    try std.testing.expectEqualStrings("zombie_lease", queue_consts.zombie_consumer_group);
+}
+
 
 test "queue constants: XAUTOCLAIM cursor seed and batch size" {
     try std.testing.expectEqualStrings("0-0", queue_consts.xautoclaim_start);
