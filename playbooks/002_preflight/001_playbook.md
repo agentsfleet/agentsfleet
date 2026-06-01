@@ -43,10 +43,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `auth-session-code-pepper` | `credential` | Fly.io PROD `AUTH_SESSION_CODE_PEPPER` — `zombied` loads at boot via `src/state/vault.zig`; process fails fast if missing. Used to keyed-HMAC the CLI-login verification code (defeats offline brute-force from a Redis dump). |
 | `audit-log-pepper` | `credential` | Fly.io PROD `AUDIT_LOG_PEPPER` — `zombied` loads at boot; fails fast if missing. Used to keyed-HMAC `session_id` in the `.auth_audit` log scope (pseudonymization across audit events). |
 | `planetscale-prod` | `api-connection-string` | Fly.io PROD `DATABASE_URL_API` |
-| `planetscale-prod` | `worker-connection-string` | Fly.io PROD `DATABASE_URL_WORKER` |
 | `planetscale-prod` | `migrator-connection-string` | Fly.io PROD `DATABASE_URL_MIGRATOR` (release migrations) |
 | `upstash-prod` | `api-url` | Fly.io PROD `REDIS_URL_API` |
-| `upstash-prod` | `worker-url` | Fly.io PROD `REDIS_URL_WORKER` |
 | `tailscale` | `authkey` | worker node provision |
 | `zombie-prod-worker-ant` | `ssh-private-key` | CI → worker deploy SSH |
 | `zombie-prod-worker-bird` | `ssh-private-key` | CI → worker deploy SSH |
@@ -73,10 +71,8 @@ Every `op://` reference the agent will use across M2_002 and the deploy pipeline
 | `vercel-api-token` | `credential` | Vercel env var setup |
 | `posthog-dev` | `credential` | Website, app, zombied, worker, and CLI PostHog env injection |
 | `planetscale-dev` | `api-connection-string` | Fly.io DEV `DATABASE_URL_API` |
-| `planetscale-dev` | `worker-connection-string` | Fly.io DEV `DATABASE_URL_WORKER` |
 | `planetscale-dev` | `migrator-connection-string` | Fly.io DEV `DATABASE_URL_MIGRATOR` (`zombied migrate`) |
 | `upstash-dev` | `api-url` | Fly.io DEV `REDIS_URL_API` |
-| `upstash-dev` | `worker-url` | Fly.io DEV `REDIS_URL_WORKER` |
 | `fly-api-token` | `credential` | `deploy-dev.yml` → `fly deploy --app zombied-dev` (see M2_002 §2.6) |
 | `cloudflare-tunnel-dev` | `credential` | Cloudflare Tunnel credentials for DEV origin shield (see M2_002 §2.4) |
 
@@ -131,7 +127,6 @@ The workflow prints one line per item:
 ✓ op://$VAULT_PROD/cloudflare-api-token/credential
 ✗ MISSING: op://$VAULT_PROD/discord-ci-webhook/credential
 ✗ MISSING: op://$VAULT_DEV/planetscale-dev/api-connection-string
-✗ MISSING: op://$VAULT_DEV/planetscale-dev/worker-connection-string
 ✗ MISSING: op://$VAULT_DEV/planetscale-dev/migrator-connection-string
 ```
 
@@ -144,7 +139,6 @@ After all items are present, run live connectivity checks:
 ```bash
 # Postgres DEV
 DB_API=$(op read "op://$VAULT_DEV/planetscale-dev/api-connection-string")
-DB_WORKER=$(op read "op://$VAULT_DEV/planetscale-dev/worker-connection-string")
 DB_MIGRATOR=$(op read "op://$VAULT_DEV/planetscale-dev/migrator-connection-string")
 psql "$DB_API" -c "SELECT 1" && echo "✓ postgres dev api"
 psql "$DB_WORKER" -c "SELECT 1" && echo "✓ postgres dev worker"
@@ -152,7 +146,6 @@ psql "$DB_MIGRATOR" -c "SELECT 1" && echo "✓ postgres dev migrator"
 
 # Redis DEV
 REDIS_API=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
-REDIS_WORKER=$(op read "op://$VAULT_DEV/upstash-dev/worker-url")
 docker run --rm redis:7-alpine redis-cli -u "$REDIS_API" PING && echo "✓ redis dev api"
 docker run --rm redis:7-alpine redis-cli -u "$REDIS_WORKER" PING && echo "✓ redis dev worker"
 
@@ -188,10 +181,8 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | `discord-ci-webhook` | `credential` | Discord → Server Settings → Integrations → Webhooks → New Webhook → Copy URL |
 | `posthog-prod` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
 | `planetscale-prod` | `api-connection-string` | PlanetScale dashboard → create/get `api_runtime` connection string |
-| `planetscale-prod` | `worker-connection-string` | PlanetScale dashboard → create/get `worker_runtime` connection string |
 | `planetscale-prod` | `migrator-connection-string` | PlanetScale dashboard → create/get `db_migrator` connection string |
 | `upstash-prod` | `api-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get API role URL (`rediss://...`) |
-| `upstash-prod` | `worker-url` | Upstash dashboard → Redis → `usezombie-cache` → create/get worker role URL (`rediss://...`) |
 | `tailscale` | `authkey` | Tailscale admin → Settings → Keys → Generate auth key (reusable, no expiry for CI) |
 | `zombie-prod-worker-ant` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
 | `zombie-prod-worker-bird` | `ssh-private-key` | Already in vault ✅ — add public key to `~/.ssh/authorized_keys` on the node |
@@ -201,10 +192,8 @@ Items not yet in the vault that block M2_002. Create these before re-running:
 | Item name | Field | How to get the value |
 |---|---|---|
 | `planetscale-dev` | `api-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `api_runtime` connection string |
-| `planetscale-dev` | `worker-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `worker_runtime` connection string |
 | `planetscale-dev` | `migrator-connection-string` | PlanetScale → `usezombie-dev` DB → create/get `db_migrator` connection string |
 | `upstash-dev` | `api-url` | Upstash → Redis → `usezombie-dev` → create/get API role URL (`rediss://...`) |
-| `upstash-dev` | `worker-url` | Upstash → Redis → `usezombie-dev` → create/get worker role URL (`rediss://...`) |
 | `fly-api-token` | `credential` | `fly tokens create deploy -o <org>` — copy output. Scoped to org, used by CI to deploy. |
 | `cloudflare-tunnel-dev` | `credential` | Agent-created: `cloudflared tunnel create zombied-dev` → base64-encode the credentials JSON → store here (see M2_002 §2.4). |
 | `posthog-dev` | `credential` | PostHog project API key shared by website, app, zombied, worker, and CLI |
