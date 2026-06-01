@@ -249,7 +249,7 @@ The api_key — platform OR self-managed — crosses one boundary cleanly. It ex
 **The api_key MAY exist in:**
 
 - `core.vault` rows (encrypted at rest via M45's tenant-scoped data key).
-- Server-side process memory — today only `zombied`'s process: the return value of `tenant_provider.resolveActiveProvider`. (Intended, once runner-side provider-key delivery is wired: also the runner's NullClaw session + per-call HTTP client — not reachable today, since the lease carries no provider-key field.)
+- Server-side process memory — `zombied`'s process (the return value of `tenant_provider.resolveActiveProvider`) **and** the runner's NullClaw session + per-call HTTP client. `zombied` resolves the key on the lease path (fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`; the runner injects it into the engine for the inference call and `secureZero`s it after use. The key rides the same trusted-fleet inline envelope as `secrets_map` and is zeroed by `zombied` once the lease serializes.
 - Outbound HTTPS request headers to the LLM provider (e.g. `Authorization: Bearer …`).
 
 **The api_key MUST NEVER appear in:**

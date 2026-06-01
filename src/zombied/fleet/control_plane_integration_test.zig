@@ -162,6 +162,23 @@ fn leaseAs(h: *TestHarness, token: []const u8) !LeaseView {
     return parseLease(ALLOC, resp.body);
 }
 
+/// Lease as `token` and assert the issued lease's policy carries a non-empty
+/// provider and the exact `expect_api_key`. Self-contained (no LeaseView dup) so
+/// it leaves the shared parseLease path untouched.
+fn expectLeasePolicyKey(h: *TestHarness, token: []const u8, expect_api_key: []const u8) !void {
+    const req = try (try h.post(protocol.PATH_RUNNER_LEASES).bearer(token)).json("{}");
+    const resp = try req.send();
+    defer resp.deinit();
+    try resp.expectStatus(.ok);
+    const parsed = try std.json.parseFromSlice(std.json.Value, ALLOC, resp.body, .{});
+    defer parsed.deinit();
+    const lease = parsed.value.object.get("lease").?;
+    try std.testing.expect(lease != .null);
+    const policy = lease.object.get("policy").?.object;
+    try std.testing.expect(policy.get("provider").?.string.len > 0);
+    try std.testing.expectEqualStrings(expect_api_key, policy.get("api_key").?.string);
+}
+
 fn reportLease(h: *TestHarness, token: []const u8, lease_id: []const u8, fencing_token: u64) !harness_mod.Response {
     const body = try std.fmt.allocPrint(ALLOC,
         \\{{"lease_id":"{s}","event_id":"evt-seed-1","fencing_token":{d},"outcome":"processed","response_text":"done","tokens":10,"telemetry":{{"time_to_first_token_ms":5,"wall_ms":100}},"checkpoint":{{"last_event_id":"evt-seed-1","last_response":"done"}}}}
@@ -315,6 +332,50 @@ test "integration: runner control plane — an expired lease is reclaimed and re
     const rep = try reportLease(h, RUNNER_A_TOKEN, LEASE_OLD_ID, 1);
     defer rep.deinit();
     try rep.expectErrorCode("UZ-RUN-005");
+}
+
+test "integration: runner control plane — a fresh lease carries the resolved provider key on the policy" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    const KNOWN_KEY = "fw_lease_path_known_key";
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, KNOWN_KEY);
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN);
+    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
+    try publishFreshEvent(h, ZOMBIE_1_ID);
+
+    // The billed key (resolveActiveProvider) is the key the runner receives.
+    try expectLeasePolicyKey(h, RUNNER_A_TOKEN, KNOWN_KEY);
+}
+
+test "integration: runner control plane — a reclaimed lease re-resolves and carries the provider key" {
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    const conn = try h.acquireConn();
+    defer h.releaseConn(conn);
+    defer cleanupAll(h, conn);
+
+    const KNOWN_KEY = "fw_reclaim_path_known_key";
+    try base.seedTenant(conn);
+    try base.seedWorkspace(conn, WORKSPACE_ID);
+    try base.seedPlatformProviderWithKey(ALLOC, conn, WORKSPACE_ID, KNOWN_KEY);
+    try fundLargeBalance(conn);
+    try seedRunner(conn, RUNNER_A_ID, "runner-cp-a", RUNNER_A_TOKEN); // dead holder
+    try seedRunner(conn, RUNNER_B_ID, "runner-cp-b", RUNNER_B_TOKEN); // reclaimer
+    try seedActiveZombie(conn, ZOMBIE_1_ID, "cp-zombie-1", SESSION_1_ID);
+    // Dead holder A: expired affinity (claimable) + active lease carrying the envelope.
+    try seedAffinity(conn, AFFINITY_1_ID, ZOMBIE_1_ID, RUNNER_A_ID, 1, 0);
+    try seedActiveLease(conn, LEASE_OLD_ID, RUNNER_A_ID, ZOMBIE_1_ID, 1);
+
+    // Reclaim reuses prior billing, but the key was never persisted — issueLease
+    // re-resolves it, so the reclaimed lease still authenticates (the named fix).
+    try expectLeasePolicyKey(h, RUNNER_B_TOKEN, KNOWN_KEY);
 }
 
 test "integration: runner control plane — sticky routing is a hint, not ownership" {

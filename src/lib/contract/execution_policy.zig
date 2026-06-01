@@ -54,5 +54,14 @@ pub const ExecutionPolicy = struct {
     /// parsed JSON bodies from vault. `null` = no secrets. Substitution looks up
     /// `${secrets.NAME.FIELD}` against this at outbound-request time.
     secrets_map: ?std.json.Value = null,
+    /// Resolved LLM provider name for this lease (e.g. "fireworks"); "" = none.
+    /// Authoritative — the engine authenticates against the same provider the
+    /// tenant is billed for. Carried inline on the lease, additive + defaulted
+    /// so old/new leases stay parseable both ways.
+    provider: []const u8 = "",
+    /// Resolved LLM api_key for `provider`; "" = none. Sensitive inline secret:
+    /// never logged, never persisted to the lease row, redacted from activity
+    /// frames (engine keys redaction off `agent_config.api_key`).
+    api_key: []const u8 = "",
     context: ContextBudget = .{},
 };
