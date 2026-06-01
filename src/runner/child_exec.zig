@@ -20,9 +20,11 @@ const types = @import("engine/types.zig");
 const landlock = @import("engine/landlock.zig");
 const context_budget = @import("engine/context_budget.zig");
 const wire = @import("engine/wire.zig");
+const client_errors = @import("engine/client_errors.zig");
 const pipe_proto = @import("pipe_proto.zig");
 
 const log = logging.scoped(.runner_exec);
+const ERR_EXEC_RUNNER_INVALID_CONFIG = client_errors.ERR_EXEC_RUNNER_INVALID_CONFIG;
 const LeasePayload = contract.protocol.LeasePayload;
 
 /// argv subcommand selecting child-execute mode (vs the daemon loop).
@@ -156,8 +158,18 @@ fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
     var agent_obj = std.json.ObjectMap.init(alloc);
     if (payload.policy.context.model.len > 0)
         agent_obj.put(wire.model, .{ .string = payload.policy.context.model }) catch |err| log.warn("agent_model_arg_dropped", .{ .err = @errorName(err) });
-    if (extractApiKey(payload.policy.secrets_map)) |key|
-        agent_obj.put(wire.api_key, .{ .string = key }) catch |err| log.warn("agent_apikey_arg_dropped", .{ .err = @errorName(err) });
+    // Provider + key are the authoritative resolved values delivered on the
+    // lease (the key the tenant is billed for) — atomic: the resolver always
+    // produces both or neither. A half-populated pair is a malformed lease; we
+    // inject nothing so the engine fails to authenticate cleanly rather than
+    // running against the wrong provider. `secrets_map` carries tool credentials
+    // only — a tool secret named "llm" is NOT the provider key.
+    if (payload.policy.provider.len > 0 and payload.policy.api_key.len > 0) {
+        agent_obj.put(wire.provider, .{ .string = payload.policy.provider }) catch |err| log.warn("agent_provider_arg_dropped", .{ .err = @errorName(err) });
+        agent_obj.put(wire.api_key, .{ .string = payload.policy.api_key }) catch |err| log.warn("agent_apikey_arg_dropped", .{ .err = @errorName(err) });
+    } else if (payload.policy.provider.len > 0 or payload.policy.api_key.len > 0) {
+        log.warn("agent_provider_key_incomplete", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .has_provider = payload.policy.provider.len > 0 });
+    }
 
     var tools_arr = std.json.Array.init(alloc);
     for (payload.policy.tools) |name|
@@ -185,14 +197,65 @@ fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
 }
 
 const MESSAGE_KEY = "message";
-const SECRETS_LLM_KEY = "llm";
 
-/// Extract `secrets_map["llm"]["api_key"]`; null when absent or wrong-shaped.
-fn extractApiKey(secrets_map: ?std.json.Value) ?[]const u8 {
-    const sm = secrets_map orelse return null;
-    if (sm != .object) return null;
-    const llm = sm.object.get(SECRETS_LLM_KEY) orelse return null;
-    if (llm != .object) return null;
-    const key = llm.object.get(wire.api_key) orelse return null;
-    return if (key == .string) key.string else null;
+// ── tests ────────────────────────────────────────────────────────────────────
+const testing = std.testing;
+const ExecutionPolicy = contract.execution_policy.ExecutionPolicy;
+
+/// A minimal lease whose only inputs `buildCallArgs` reads are `policy` and
+/// `event.request_json`.
+fn testLease(policy: ExecutionPolicy) LeasePayload {
+    return .{
+        .lease_id = "l1",
+        .fencing_token = 1,
+        .lease_expires_at = 0,
+        .secret_delivery = .@"inline",
+        .event = .{
+            .event_id = "1700000000000-0",
+            .zombie_id = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeeee",
+            .workspace_id = "0190cccc-dddd-7eee-8fff-aaaaaaaaaaaa",
+            .actor = "steer:test",
+            .event_type = .chat,
+            .request_json = "{\"message\":\"hi\"}",
+            .created_at = 1700000000000,
+        },
+        .policy = policy,
+    };
+}
+
+test "buildCallArgs injects the policy provider and api_key into agent_config" {
+    const alloc = testing.allocator;
+    const payload = testLease(.{ .provider = "fireworks", .api_key = "fw_secret_key" });
+    var args = buildCallArgs(alloc, payload);
+    defer args.deinit(alloc);
+    const ac = args.agent_config.?.object;
+    try testing.expectEqualStrings("fireworks", ac.get(wire.provider).?.string);
+    try testing.expectEqualStrings("fw_secret_key", ac.get(wire.api_key).?.string);
+}
+
+test "buildCallArgs treats an llm-named tool secret as a tool secret, not the provider key" {
+    const alloc = testing.allocator;
+    // The retired heuristic used to pull the provider key from secrets_map["llm"].
+    // A tool secret literally named `llm` must now be left alone.
+    var sm = try std.json.parseFromSlice(std.json.Value, alloc, "{\"llm\":{\"api_key\":\"sk-should-not-leak\"}}", .{});
+    defer sm.deinit();
+    const payload = testLease(.{ .secrets_map = sm.value, .context = .{ .model = "claude-x" } });
+    var args = buildCallArgs(alloc, payload);
+    defer args.deinit(alloc);
+    const ac = args.agent_config.?.object;
+    try testing.expectEqualStrings("claude-x", ac.get(wire.model).?.string); // agent_config is populated…
+    try testing.expect(ac.get(wire.api_key) == null); // …but the llm tool secret is NOT promoted to the provider key
+    try testing.expect(ac.get(wire.provider) == null);
+}
+
+test "buildCallArgs injects neither half of an incomplete provider key pair" {
+    const alloc = testing.allocator;
+    // api_key present, provider empty — a malformed lease. Inject nothing so the
+    // engine fails to authenticate cleanly rather than running the wrong provider.
+    const payload = testLease(.{ .api_key = "fw_orphan_key", .context = .{ .model = "claude-x" } });
+    var args = buildCallArgs(alloc, payload);
+    defer args.deinit(alloc);
+    const ac = args.agent_config.?.object;
+    try testing.expect(ac.get(wire.api_key) == null);
+    try testing.expect(ac.get(wire.provider) == null);
 }
