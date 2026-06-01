@@ -319,13 +319,17 @@ test "a failed runner report persists the granular failure_label and increments 
     try std.testing.expect(try leaseStatusIs(conn, lv.lease_id.?, "reported"));
     try std.testing.expect(try failureLabelMatches(conn, lv.event_id.?, "executor_crash"));
 
-    // ... and the per-runner failure counter carries the same reason on /metrics.
-    var buf: [8192]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-    try metrics_runner.renderPrometheus(fbs.writer());
-    const metrics = fbs.getWritten();
-    const needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"executor_crash\"";
-    try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, needle));
+    // ... and the per-runner metrics carry both the granular reason and the
+    // outcome-bucketed execution on /metrics (render via an allocating writer so
+    // the assertion is robust to runners accumulated by sibling tests).
+    var out: std.ArrayList(u8) = .{};
+    defer out.deinit(ALLOC);
+    try metrics_runner.renderPrometheus(out.writer(ALLOC));
+    const metrics = out.items;
+    const failure_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"executor_crash\"";
+    const exec_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",outcome=\"agent_error\"";
+    try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, failure_needle));
+    try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, exec_needle));
 }
 
 test "the reclaim chain enforces monotonic token ordering across runners" {

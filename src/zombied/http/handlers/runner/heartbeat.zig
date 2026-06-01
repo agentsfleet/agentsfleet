@@ -12,6 +12,7 @@ const httpz = @import("httpz");
 const hx_mod = @import("../hx.zig");
 const ec = @import("../../../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
+const metrics_runner = @import("../../../observability/metrics_runner.zig");
 
 const Hx = hx_mod.Hx;
 const log = logging.scoped(.runner_heartbeat);
@@ -24,6 +25,7 @@ pub fn innerRunnerHeartbeat(hx: Hx, req: *httpz.Request) void {
         return;
     };
     bumpLastSeen(hx, runner_id);
+    metrics_runner.touchRunnerSeen(runner_id); // in-memory liveness for /metrics
     hx.ok(.ok, protocol.HeartbeatResponse{ .status = .ok });
 }
 

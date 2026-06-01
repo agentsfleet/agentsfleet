@@ -85,8 +85,11 @@ pub fn report(hx: Hx, req: *httpz.Request) void {
     }
 
     finalize(hx, lease, body);
-    // Per-runner failure telemetry: a failed run is bucketed by its granular
-    // reason (absent → unknown). Best-effort, in-memory — never gates the report.
+    // Per-runner telemetry (best-effort, in-memory — never gates the report).
+    // The lease is now released, so drop the active-leases gauge; bucket the run
+    // by outcome and stamp liveness; on failure, also bucket the granular reason.
+    metrics_runner.observeRunnerExecution(runner_id, body.outcome);
+    metrics_runner.decRunnerActiveLeases(runner_id);
     if (body.outcome == .agent_error) metrics_runner.incRunnerFailure(runner_id, body.failure_reason);
     hx.ok(.ok, protocol.ReportResponse{ .ok = true });
 }
