@@ -4,7 +4,7 @@
 **Milestone:** M80
 **Workstream:** 007
 **Date:** Jun 01, 2026
-**Status:** IN_PROGRESS — §1/§2 shipped via PR #354 (merged); §3 (multi-replica metric correctness) is the active scope on the branch below.
+**Status:** DONE — §1/§2 shipped via PR #354 (merged); §3 (multi-replica metric correctness) delivered on `feat/m80-007-multi-replica-metrics`. All sections complete.
 **Priority:** P1 — operators are blind to *why* a runner-executed run failed, and to per-runner liveness, across the whole fleet (including NAT'd / untrusted hosts).
 **Categories:** API, OBS
 **Batch:** B1 — independent; no sibling workstream shares its files.
@@ -273,6 +273,8 @@ N/A — no files deleted. (Additive field + new module; the `zombie_executor_*` 
   - **§2 implemented + verified on `feat/m80-006-fleet-plane`** (commit `3a691be0`): `executions_total{runner_id,outcome}` + `last_seen_seconds{runner_id}` + `active_leases{runner_id}` (all in-memory), hooked on report/heartbeat/lease-grant. Tests split to `metrics_runner_test.zig` (FLL gate). Green on lint-zig, zombied unit, full `make test-integration`, cross-compile both linux targets, gitleaks. **Both slices shipped via #354 (merged).**
 - **CTO review — multi-replica correctness (Indy + Orly, Jun 01 2026):** §1/§2 shipped, but the in-memory model is only correct under a single `zombied`. Verified prod is single-machine today (`zombied-prod/fly.toml` count 1), so no live bug — but the control plane will scale out. Finding: under N>1, counters (`failures_total`, `executions_total`) are exact via `sum`, `last_seen_seconds` is exact via `min by (runner_id)`, and `active_leases` is only approximate (torn `+1`/`−1` across stateless-LB'd replicas). Decision — **reopen M80_007 with §3** to deliver multi-replica correctness *in-memory* via aggregation semantics (Grafana dashboard + `runner_fleet.md`), zero `zombied` code; the exact/persistent path (lease-table refresher) stays deferred.
   > Indy (2026-06-01): "start as orly CTO M80_007 inmemory and supporting multi zombied first. I would like to figure out persistent approach later since its not wise to do the db save for metrics where its timeseries." — context: §3 added; persistence/refresher deferred; clarified that the eventual refresher *reads* the durable lease table for the gauge and does **not** write timeseries to Postgres, so it does not violate "no DB for metrics."
+  - **§3 delivered on `feat/m80-007-multi-replica-metrics`** (commits `68f1dfbd` CHORE(open), `d3797469` deliverables): `deploy/grafana/runner_fleet.json` (panels bake in `sum`/`min`/best-effort-`sum` aggregations; `active_leases` panel titled + described approximate under N>1) + `runner_fleet.md` Observability section (pull-vs-push split, four families, in-memory DB-free render + ~0.7 MB fixed footprint, N>1 aggregation contract, deferred refresher). **No `src/` surface** — prod is single-replica today; correctness is delivered as PromQL aggregation + docs. Verified: dashboard JSON parses; every `zombie_runner_*` metric + `runner_id`/`reason`/`outcome` label matches `metrics_runner.zig` verbatim; gitleaks clean; HARNESS VERIFY all gates green. `/write-unit-test` N/A (no code surface); `/review` self-pass on the docs+dashboard diff.
+  - **ID-collision flagged, NOT resolved here:** `runner_fleet.md` Roadmap reserves `M80_007 = SCHEDULER` (placement / trust-gated placement / autoscale), while this spec is M80_007 = runner observability. A renumber/reconcile is Indy's call — left untouched. See [[project_m80_007_id_collision_placement]].
 
 ---
 
