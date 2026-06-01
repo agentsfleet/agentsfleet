@@ -97,7 +97,7 @@ pub fn build(b: *std.Build) void {
     const runner_tests = b.addTest(.{
         .name = "zombie-runner-tests",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/runner/main.zig"),
+            .root_source_file = b.path("src/runner/tests.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{

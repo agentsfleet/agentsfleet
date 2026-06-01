@@ -6,6 +6,7 @@ const S_ZBENCH = "zbench";
 const S_BUILD_OPTIONS = "build_options";
 const S_SCHEMA = "schema";
 const S_SRC_MAIN_ZIG = "src/zombied/main.zig";
+const S_ZOMBIED_TESTS_ROOT = "src/zombied/tests.zig";
 const S_NULLCLAW = "nullclaw";
 const S_ZOMBIED_TESTS = "zombied-tests";
 const S_LOG = "log";
@@ -228,7 +229,7 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{
         .name = S_ZOMBIED_TESTS,
         .root_module = b.createModule(.{
-            .root_source_file = b.path(S_SRC_MAIN_ZIG),
+            .root_source_file = b.path(S_ZOMBIED_TESTS_ROOT),
             .target = target,
             .optimize = optimize,
             .imports = &.{

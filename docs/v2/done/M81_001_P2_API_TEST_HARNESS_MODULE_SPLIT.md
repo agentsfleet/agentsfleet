@@ -4,11 +4,11 @@
 **Milestone:** M81
 **Workstream:** 001
 **Date:** May 31, 2026
-**Status:** PENDING
+**Status:** DONE
 **Priority:** P2 — test infrastructure hygiene; the single harness file is ~2× the file-length cap and blocks clean edits to it.
 **Categories:** API
 **Batch:** B1 — standalone; no concurrent dependency.
-**Branch:** {feat/m81-001-test-harness-split — added when work begins}
+**Branch:** feat/m81-001-test-harness-split
 **Depends on:** none.
 **Provenance:** LLM-drafted (Opus 4.8, May 31 2026)
 
@@ -31,7 +31,7 @@
 
 - **PR title (eventual):** Split test_harness.zig into core + server + message + tests modules
 - **Intent (one sentence):** Bring the HTTP test harness under the 350-line cap by extracting cohesive modules, with **zero** import or behaviour change for the 22 test files that consume it.
-- **Handshake (agent fills at PLAN, before EXECUTE):** restate intent + `ASSUMPTIONS I'M MAKING: …`; a mismatch vs Intent → STOP.
+- **Handshake (Orly, PLAN):** Intent restated — relocate the harness into ≤350-line sibling modules behind a frozen `test_harness.zig` facade; no behaviour change, proven by the unmodified consumer suite passing. `ASSUMPTIONS I'M MAKING:` (1) the import path `test_harness.zig` is frozen; consumers are not edited. (2) Pointer-only circular imports (core↔message, core↔server) compile — verified. (3) The "22 consumers" figure is descriptive; the live tree has 28 `*_test.zig` consumers + `server.zig`'s compile-only import — facade makes the count immaterial. (4) `init`/`rawBody`/`MAX_HEADERS` promoted to `pub` (Indy-acked, see Discovery). No mismatch vs Intent.
 
 ---
 
@@ -100,29 +100,29 @@ No external prior art — this mirrors the repo's own `<module>_<concern>.zig` s
 
 Move `Request` + `Response` into `test_http_message.zig`; core re-exports them so consumers that reference `harness_mod.Response` / `harness_mod.Request` compile unchanged.
 
-- **Dimension 1.1** — `Request`/`Response` live in the new file and are re-exported from core; all 22 consumers compile → Test `test_message_types_reexported_from_core`
-- **Dimension 1.2** — `Response` assertions (`expectStatus`/`expectErrorCode`/`bodyContains`) behave identically post-move → covered by the relocated harness unit tests (§3)
+- **Dimension 1.1** — ✅ DONE — `Request`/`Response` live in the new file and are re-exported from core; all consumers compile (proven: `make test-integration` builds + passes the full suite)
+- **Dimension 1.2** — ✅ DONE — `Response` assertions (`expectStatus`/`expectErrorCode`/`bodyContains`) behave identically post-move → covered by the relocated harness unit tests (§3), run green via `zig build test -Dtest-filter="Response."`
 
 ### §2 — Extract the server bring-up plumbing
 
 Move `defaultRegistry`, the lookup stubs, `bringUpServer`, `serverThread`, `waitForServer`, and the bind-attempt constant into `test_harness_server.zig`; core's `start` calls into it.
 
-- **Dimension 2.1** — the harness still starts on a free port with bind-retry and serves requests → Test: any existing `TestHarness.start`-based integration test (e.g. `service_renew_integration_test`) passes
+- **Dimension 2.1** — ✅ DONE — the harness still starts on a free port with bind-retry and serves requests → proven: the full `TestHarness.start`-based integration suite (incl. `service_renew_integration_test`) passes
 
 ### §3 — Relocate the harness's own tests; land core under the cap
 
-Move `fakeHarness`/`makeResponse` and the `test "…"` blocks into `test_harness_test.zig`; register it in `main.zig`.
+Move `fakeHarness`/`makeResponse` and the `test "…"` blocks into `test_harness_test.zig`; register it in the zombied test root (`src/zombied/tests.zig`, created in §4 — the aggregation no longer lives in `main.zig`).
 
-- **Dimension 3.1** — the relocated harness unit tests run under the suite and pass → Test: the moved `test "…"` blocks themselves
-- **Dimension 3.2** — every resulting file is ≤350 lines → Test/AC: line-count check (E7)
+- **Dimension 3.1** — ✅ DONE — the relocated harness unit tests run under the suite and pass → proven: `zig build test -Dtest-filter="Request."` / `"Response."` / `"regression:"` all exit 0
+- **Dimension 3.2** — ✅ DONE — every resulting file is ≤350 lines → E7: core 262, `_server` 123, `_message` 130, zombied root 137, runner root 43 (`_test.zig` is FLL-exempt at 206)
 
 ### §4 — Extract dedicated test roots (`src/zombied/tests.zig`, `src/runner/tests.zig`)
 
 Today both binaries aggregate every `_ = @import("…_test.zig")` inside a `test {}` block in their **production entry point** (`src/zombied/main.zig`, `src/runner/main.zig`). The block is correctly excluded from the release build (test decls are skipped in non-test compilation), but it mixes test wiring into the prod root and grows unboundedly. The repo already uses the cleaner idiom elsewhere (`src/lib/tests.zig`, `src/zombied/auth/tests.zig`): a dedicated test-root file that `@import`s the prod modules + every `*_test.zig`, with `build.zig`'s test target pointed at *it*. Mirror that for both binaries so `main.zig` stays production-pure.
 
-- **Dimension 4.1** — `src/zombied/tests.zig` owns the zombied test aggregation; `build.zig`'s `tests` target roots at it; `main.zig`'s `test {}` block is removed → Test: `make test-integration` runs the same test count as before (no test dropped; depth-gate count unchanged)
-- **Dimension 4.2** — `src/runner/tests.zig` owns the runner test aggregation; `build_runner.zig`'s test target roots at it; runner `main.zig`'s `test {}` block is removed → Test: `zig build --build-file build_runner.zig test` runs the same count
-- **Dimension 4.3** — the release exe/binary is byte-unaffected (test roots never reached in non-test builds) → Test/AC: `zig build -Dtarget=x86_64-linux` clean; no `*_test` symbol in the stripped exe
+- **Dimension 4.1** — ✅ DONE — `src/zombied/tests.zig` owns the zombied test aggregation; `build.zig`'s `tests` target roots at it (`S_ZOMBIED_TESTS_ROOT`); `main.zig`'s `test {}` block removed (kept its own `parseLogLevel` inline test, run via the new root's `_ = @import("main.zig")`) → depth-gate count preserved (unit=1821 integration=154); full integration suite passes
+- **Dimension 4.2** — ✅ DONE — `src/runner/tests.zig` owns the runner test aggregation; `build_runner.zig`'s test target roots at it; runner `main.zig`'s `test {}` block removed (kept its `devNoneForbidden` inline test) → `zig build --build-file build_runner.zig test` exits 0
+- **Dimension 4.3** — ✅ DONE — the release exe/binary is byte-unaffected (test roots never reached in non-test builds) → `zig build -Dtarget=x86_64-linux` + `aarch64-linux` clean for both binaries
 
 ---
 
@@ -134,11 +134,14 @@ Public surface that MUST remain importable from test_harness.zig (unchanged):
     .start(alloc, Config) .deinit() .connectRedis() .tryConnectRedis()
     .acquireConn() .releaseConn() .get/.post/.put/.delete/.request
   Config (struct)
-  Request (struct)  — .header .bearer .json .send         [moved, re-exported]
+  Request (struct)  — .init .header .bearer .json .rawBody .send  [moved, re-exported]
   Response (struct) — .deinit .expectStatus .expectErrorCode .bodyContains   [moved, re-exported]
+  MAX_HEADERS (const)                                      [defined in test_http_message.zig]
 ```
 
 No signature changes. The only delta is which file a symbol is *defined* in; the import path (`test_harness.zig`) is frozen.
+
+**Surface delta (amended at PLAN — see Discovery):** the relocated harness unit tests call `Request.init` and `Request.rawBody`, which were file-private. Once `Request` moves to `test_http_message.zig`, a separate `test_harness_test.zig` cannot reach private members, so `init`, `rawBody`, and `MAX_HEADERS` are promoted to `pub` (additive — no existing consumer broke). Indy chose this over embedding the tests in the counted message file.
 
 ---
 
@@ -226,6 +229,10 @@ N/A — no files deleted.
 > Empty at creation. Append consults, skill-chain outcomes, and Indy-acked deferral quotes as work proceeds.
 
 - Origin: surfaced during M80_006 (PR #354) CTO review of `test_harness.zig`; Indy directed a dedicated spec, filed alongside M80_006 in PR #354.
+- **Private-member fork (PLAN, Indy-acked):** the relocated harness unit tests call `Request.init` + `Request.rawBody`, which were file-private. With `Request` moving to `test_http_message.zig`, a separate (FLL-exempt) `test_harness_test.zig` can't reach private members. Presented two options: (A) tests in the counted message file, zero surface change; (B) separate `_test.zig` + promote `init`/`rawBody`/`MAX_HEADERS` to `pub`. **Indy chose (B).** Surface delta is additive (no consumer broke); Interfaces section amended.
+- **`main.zig` inline tests kept (Orly, routine call):** §4 removes only the unbounded `test {}` *aggregation* block. Each `main.zig` retained its own focused inline test (`parseLogLevel` zombied; `devNoneForbidden` runner) — moving those would force the tested private fns `pub`, a worse smell. They run via the new root's `_ = @import("main.zig")`. Production builds are unaffected (test decls stripped).
+- **Coverage (vs Test Spec):** pure relocation — no test created or deleted. All moved tests run green post-split; depth-gate count unchanged (unit=1821 integration=154). `/write-unit-test` audit: no coverage gap introduced (the diff adds no new behaviour to test).
+- **Changelog:** none — internal test-infrastructure only, not user-visible (pre-PR changelog gate skipped: internal-only).
 
 ---
 
@@ -245,11 +252,13 @@ N/A — no files deleted.
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Integration tests | `make test-integration` | {paste} | |
-| Lint (incl. unused-decls) | `make lint` | {paste} | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux` | {paste} | |
-| Line-count gate | E7 | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
+| Integration tests | `make test-integration` | `✓ [zombied] Full integration suite passed` (exit 0; real docker PG+Redis) | ✅ |
+| Lint (incl. unused-decls) | `make lint-zig` | ZLint 0 errors/0 warnings across 382 files; pg-drain ✓; depth-gate unit=1821 integration=154; FLL ✓; ORP ✓ | ✅ |
+| Cross-compile | `zig build -Dtarget={x86_64,aarch64}-linux` (both binaries) | exit 0 ×4 | ✅ |
+| Line-count gate | E7 | core 262 · `_server` 123 · `_message` 130 · zombied root 137 · runner root 43 (all ≤350) | ✅ |
+| Gitleaks | `gitleaks detect` | `no leaks found` (2270 commits) | ✅ |
+| Relocated unit tests | `zig build test -Dtest-filter="Request.\|Response.\|regression:"` | exit 0 | ✅ |
+| Runner suite | `zig build --build-file build_runner.zig test` | exit 0 | ✅ |
 
 ---
 
