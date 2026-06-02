@@ -27,7 +27,7 @@ pub fn buildShell(ctx: BuildCtx) anyerror!tools_mod.Tool {
         .path_env_vars = tc.path_env_vars,
     };
     // Sandbox setup requires NullClaw-internal createSandbox() which is not
-    // pub-exported. The executor workspace is already isolated (temporary
+    // pub-exported. The runner workspace is already isolated (temporary
     // worktree, deleted after run), so sandbox=null is safe here.
     return ptr.tool();
 }
@@ -179,7 +179,7 @@ pub fn buildHttpRequest(ctx: BuildCtx) anyerror!tools_mod.Tool {
     // When the session carries an ExecutionPolicy, the policy-aware variant
     // owns substitution + per-execution allowlist on the same boundary.
     // Without a policy we fall back to plain NullClaw — relevant for the
-    // executor unit-test path that drives the bridge with no session.
+    // runner unit-test path that drives the bridge with no session.
     if (ctx.policy) |policy_ptr| {
         const ptr = try ctx.alloc.create(PolicyHttpRequestTool);
         // `inner.allowed_domains` mirrors the per-execution allowlist so

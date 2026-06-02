@@ -96,7 +96,7 @@ fn benchActivityChunkEncode(allocator: std.mem.Allocator) void {
     std.mem.doNotOptimizeAway(bench_chunk_scratch.written().ptr);
 }
 
-// The progress_frame_decode bench mirrored the executor→worker transport
+// The progress_frame_decode bench mirrored the pre-cutover in-process transport
 // decode, removed at the M80 cutover when execution moved to the runner.
 
 // ── Entry point ───────────────────────────────────────────────────────────

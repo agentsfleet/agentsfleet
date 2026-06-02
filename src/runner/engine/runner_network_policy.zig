@@ -1,6 +1,6 @@
-//! Static compile-time network allowlist for the executor sidecar (M16_003 §3.2).
+//! Static compile-time network allowlist for the runner's sandboxed child.
 //!
-//! Phase 1: bare-metal hosts set EXECUTOR_NETWORK_POLICY=registry_allowlist to
+//! Phase 1: bare-metal hosts set RUNNER_NETWORK_POLICY=registry_allowlist to
 //! permit agent dependency installs (npm, pip, cargo, go get) against public
 //! package registries. In Phase 1, --share-net is passed to bwrap and the full
 //! host network is accessible; the REGISTRY_ALLOWLIST entries are logged for
@@ -23,7 +23,7 @@ pub const REGISTRY_ALLOWLIST = [_][]const u8{
 
 /// M2_001: Zombie skill-specific domain allowlists.
 /// Keyed by skill name from ZombieConfig.skills[].
-/// The executor merges these with the Zombie's config.network.allow list.
+/// The runner merges these with the Zombie's config.network.allow list.
 
 // ── M3_001: Per-Zombie domain merging ─────────────────────────────────────────
 

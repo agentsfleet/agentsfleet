@@ -5,7 +5,7 @@
 **Status:** Worker era retired — each host now runs the single `zombie-runner` daemon (M80 cutover). `zombie-prod-worker-ant` is provisioned; `zombie-prod-worker-bird` is a placeholder (provision a second server to activate). `PROD_WORKER_READY=false` until a real `zrn_` runner-token is admin-minted via the prod control plane and stored under `op://ZMB_CD_PROD/zombie-prod-worker-ant/runner-token` (see §4.2). The vault entry may hold a `zrn_FAKE_…` placeholder until then.
 **Prerequisite:** Vault items exist (`ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
-Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `zombie-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services, `zombied-worker` + `zombied-executor`; the M80 cutover folded them into the single `zombie-runner` daemon.)
+Bootstrap one or more PROD bare-metal worker nodes so CI can deploy the host-resident `zombie-runner` daemon autonomously. After step 0 (human buys the servers), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 each host ran two services that the M80 cutover folded into the single `zombie-runner` daemon.)
 
 **Fleet config:** PROD worker nodes are defined in the GitHub repository variable `PROD_WORKER_HOSTS` as a JSON array:
 

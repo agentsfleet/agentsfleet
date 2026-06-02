@@ -16,14 +16,14 @@ const context_budget = @import("context_budget.zig");
 const runner_progress = @import("runner_progress.zig");
 const client_errors = @import("client_errors.zig");
 
-const log = logging.scoped(.executor_runner);
+const log = logging.scoped(.runner);
 const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
 
 /// Take ownership of NullClaw's composeFinalReply buffer, redact every
 /// known secret value, and return a freshly-allocated, redacted copy.
 /// The terminal StageResponse content rides the same RPC channel as
 /// progress frames; the redactor must scrub it identically before the
-/// bytes leave the executor process.
+/// bytes leave the runner process.
 pub fn redactedFinalReply(
     alloc: std.mem.Allocator,
     response: []const u8,
@@ -149,7 +149,7 @@ pub fn buildToolsFromSpec(
 
 /// Compose the agent message by appending context fields.
 ///
-/// The executor does NOT interpret context semantics — it concatenates
+/// The runner does NOT interpret context semantics — it concatenates
 /// non-null fields as markdown sections so the agent receives full context.
 pub fn composeMessage(
     alloc: std.mem.Allocator,

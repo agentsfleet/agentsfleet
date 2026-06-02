@@ -102,7 +102,7 @@ pub fn run(
 
     return supervise(alloc, cfg, workspace_path, payload, lease_json, sink, renew_hook) catch |err| {
         log.err("supervise_failed", .{ .lease_id = payload.lease_id, .err = @errorName(err) });
-        return failed(.executor_crash);
+        return failed(.runner_crash);
     };
 }
 
@@ -271,7 +271,7 @@ pub fn classify(
     if (outcome.timed_out) return failed(.timeout_kill);
     if (scope.*) |*s| if (s.wasOomKilled()) return failed(.oom_kill);
     if (!std.posix.W.IFEXITED(status) or std.posix.W.EXITSTATUS(status) != 0)
-        return failed(.executor_crash);
+        return failed(.runner_crash);
     return parseResult(alloc, outcome.bytes);
 }
 

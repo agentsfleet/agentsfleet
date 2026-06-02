@@ -132,7 +132,7 @@ test "should skip bwrap on non-Linux even when tier is required" {
 test "should omit --share-net under the default deny_all network policy on Linux" {
     if (builtin.os.tag != .linux) return error.SkipZigTest;
     const alloc = std.testing.allocator;
-    // buildArgv reads EXECUTOR_NETWORK_POLICY via network.policyFromEnv; absent
+    // buildArgv reads RUNNER_NETWORK_POLICY via network.policyFromEnv; absent
     // or unset it resolves to deny_all, so the bwrap wrapper unshares the net
     // and adds NO --share-net (host network stays isolated). Skip if the test
     // host has explicitly opted into registry_allowlist via the env var, since
@@ -140,7 +140,7 @@ test "should omit --share-net under the default deny_all network policy on Linux
     // covered deterministically in network.zig + engine/sandbox_edge_test.zig
     // against appendBwrapNetworkArgs directly (no env coupling).
     const opted_in = blk: {
-        const raw = std.process.getEnvVarOwned(alloc, "EXECUTOR_NETWORK_POLICY") catch break :blk false;
+        const raw = std.process.getEnvVarOwned(alloc, "RUNNER_NETWORK_POLICY") catch break :blk false;
         defer alloc.free(raw);
         break :blk std.ascii.eqlIgnoreCase(raw, "registry_allowlist");
     };

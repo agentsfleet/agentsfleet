@@ -1,15 +1,15 @@
 //! Per-execution policy parsing. The policy *types* live in the dependency-free
 //! `execution_policy` module (shared with the `/v1/runners` protocol so the
-//! frozen wire surface needn't import executor parsing internals); this file
+//! frozen wire surface needn't import runner parsing internals); this file
 //! re-exports them so existing `context_budget.X` call sites stay stable, and
-//! owns the JSON/wire parsing (`fromJson`) the executor engine needs.
+//! owns the JSON/wire parsing (`fromJson`) the runner engine needs.
 
 const std = @import("std");
 const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const execution_policy = @import("contract").execution_policy;
 
-// Re-export the policy types — existing executor call sites use `context_budget.X`.
+// Re-export the policy types — existing runner call sites use `context_budget.X`.
 pub const NetworkPolicy = execution_policy.NetworkPolicy;
 pub const ContextBudget = execution_policy.ContextBudget;
 pub const ExecutionPolicy = execution_policy.ExecutionPolicy;

@@ -87,7 +87,7 @@ pub fn publishToolCallStarted(
     name: []const u8,
     args_redacted_json: []const u8,
 ) void {
-    // args_redacted is opaque pre-stringified JSON from the executor
+    // args_redacted is opaque pre-stringified JSON from the runner
     // (built sandbox-side after secret substitution). Re-emit it
     // verbatim inside the frame via std.json.Value. The parse is
     // upstream of the encode; tool_call_started fires once per tool

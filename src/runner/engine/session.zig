@@ -14,7 +14,7 @@ const logging = @import("log");
 const types = @import("types.zig");
 const context_budget = @import("context_budget.zig");
 
-const log = logging.scoped(.executor_session);
+const log = logging.scoped(.runner_session);
 
 const Session = @This();
 

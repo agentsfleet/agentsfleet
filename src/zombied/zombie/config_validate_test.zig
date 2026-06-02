@@ -44,11 +44,11 @@ test "validateCredentials: alphanumeric + underscore accepted" {
     try config_validate.validateCredentials(&[_][]const u8{ "api_key_1", "SECRET_123" });
 }
 
-test "parseZombieConfig: unknown tool name accepted (gate moved to executor sandbox)" {
+test "parseZombieConfig: unknown tool name accepted (gate moved to runner sandbox)" {
     const alloc = std.testing.allocator;
     // Runtime keys live under x-usezombie: post-M46. The semantic point
     // of this test — that arbitrary tool names pass through the parser
-    // because the executor sandbox is the binding authority on dispatch —
+    // because the runner sandbox is the binding authority on dispatch —
     // is independent of where the runtime block sits in the JSON tree.
     const json =
         \\{"name":"x","x-usezombie":{"triggers":[{"type":"cron","schedule":"0 0 * * *"}],"tools":["whatever_the_skill_wants"],"budget":{"daily_dollars":1.0}}}

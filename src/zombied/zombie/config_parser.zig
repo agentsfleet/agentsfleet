@@ -256,7 +256,7 @@ fn parseSkillRef(
     return try alloc.dupe(u8, s);
 }
 
-/// Opaque pass-through. Empty string → null (self-managed sentinel; the executor
+/// Opaque pass-through. Empty string → null (self-managed sentinel; the runner
 /// resolves the model from `tenant_providers` at trigger time).
 fn parseModelField(
     alloc: Allocator,
@@ -272,7 +272,7 @@ fn parseModelField(
 }
 
 /// Optional `x-usezombie.context:` block. Every field zero-defaults so the
-/// executor's `ContextBudget.applyDefaults` can substitute auto-sentinel values.
+/// runner's `ContextBudget.applyDefaults` can substitute auto-sentinel values.
 /// Absent block → null; present-but-empty block → all-zero struct (still
 /// gets defaulted downstream — same observable behaviour).
 fn parseContextField(runtime: std.json.ObjectMap) ZombieConfigError!?ZombieContextBudget {

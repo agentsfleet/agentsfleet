@@ -4,7 +4,7 @@
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
 **Prerequisite:** Vault items exist (`ZMB_CD_DEV`, `ZMB_CD_PROD`). Tailscale authkey in `ZMB_CD_PROD/tailscale/authkey`. 1Password service account token available as `OP_SERVICE_ACCOUNT_TOKEN`.
 
-Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `zombie-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services, `zombied-worker` + `zombied-executor`; the M80 cutover folded them into the single `zombie-runner` daemon.)
+Bootstrap the DEV bare-metal worker node so CI can deploy the host-resident `zombie-runner` daemon autonomously. After step 0 (human buys the server), every remaining step is agent-executable — no human interaction required. (Historical note: pre-M80 this host ran two services that the M80 cutover folded into the single `zombie-runner` daemon.)
 
 Environment setup for all commands in this playbook:
 

@@ -11,7 +11,7 @@ const context_budget = @import("contract").execution_policy;
 const config_types = @import("../zombie/config_types.zig");
 
 // Drift guard: every field on the parser-side `ZombieContextBudget` must
-// exist on the executor-side `ContextBudget` at the same name + type, OR
+// exist on the runner-side `ContextBudget` at the same name + type, OR
 // the field-by-field copy below silently drops the operator override at
 // trigger time. Adding `max_tool_calls` to `ContextBudget` without a
 // matching `ZombieContextBudget` field is a separate failure mode (the
@@ -53,7 +53,7 @@ pub fn resolveContextBudget(
         ctx.stage_chunk_threshold = c.stage_chunk_threshold;
     }
     // Borrowed slice — lifetime is `session.config.model`, owned by the
-    // caller. ContextBudget is a value-type with no deinit; the executor
+    // caller. ContextBudget is a value-type with no deinit; the runner
     // must not free this. If ContextBudget ever gains a destructor, this
     // assignment becomes unsafe and needs alloc.dupe.
     if (config_model) |m| ctx.model = m;

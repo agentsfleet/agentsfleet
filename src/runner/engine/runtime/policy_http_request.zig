@@ -125,7 +125,7 @@ pub fn execute(self: *Self, allocator: std.mem.Allocator, args: JsonObjectMap) !
 /// into a single `SubstFailed` so the call site can reject without
 /// leaking the structured cause through the tool result. The agent
 /// retries with a different placeholder; the failure detail lands in
-/// the executor log via the catch site.
+/// the runner log via the catch site.
 fn substOrFail(
     arena: std.mem.Allocator,
     raw: []const u8,

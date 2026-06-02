@@ -1,7 +1,7 @@
 -- Platform default LLM key reference table.
 -- Stores a pointer (provider → admin workspace) — no key material here.
 -- The real key lives in vault.secrets for source_workspace_id.
--- Key resolution order (worker_stage_executor.zig):
+-- Key resolution order (runner engine):
 --   1. workspace vault.secrets {provider}_api_key  → self-managed
 --   2. platform_llm_keys active row → admin workspace vault.secrets  → platform default
 --   3. WorkerError.CredentialDenied — no env fallback in any mode

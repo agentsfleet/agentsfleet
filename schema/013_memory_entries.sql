@@ -8,7 +8,7 @@
 
 -- memory_runtime role is created in schema/004_vault_schema.sql.
 -- This migration scopes it to the memory schema and grants it CREATE
--- so NullClaw can run its own idempotent DDL on first executor connect.
+-- so NullClaw can run its own idempotent DDL on first runner connect.
 GRANT USAGE, CREATE ON SCHEMA memory TO memory_runtime;
 
 -- Allow api_runtime to SET ROLE memory_runtime in HTTP handlers.
