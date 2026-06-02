@@ -58,6 +58,12 @@ test "roleEnvVarName maps redis roles deterministically" {
     try std.testing.expectEqualStrings("REDIS_URL_API", redis.roleEnvVarName(.api));
 }
 
+test "RedisRole carries no worker variant" {
+    inline for (@typeInfo(redis.RedisRole).@"enum".fields) |field| {
+        try std.testing.expect(!std.mem.eql(u8, field.name, "worker"));
+    }
+}
+
 // ── Queue constants regression tests ─────────────────────────────────────
 
 const queue_consts = @import("constants.zig");

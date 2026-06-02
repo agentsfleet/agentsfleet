@@ -95,3 +95,14 @@ test "validateLoaded accepts valid API URLs" {
     defer urls.deinit();
     try validateLoaded(urls);
 }
+
+test "EnvVarsErrors carries no worker variant" {
+    // The role-separation collapse removed every *Worker* error
+    // (Missing/SameDatabaseUrlForApiAndWorker, Missing/SameRedisUrlForApiAndWorker,
+    // RedisWorkerTlsRequired). No worker error may be reachable: nothing downstream
+    // (doctor's role-env switch, serve boot) can emit a worker check id if the set
+    // holds none. This guards the type, not just the current call sites.
+    inline for (@typeInfo(EnvVarsErrors).error_set.?) |err| {
+        try std.testing.expect(std.mem.indexOf(u8, err.name, "Worker") == null);
+    }
+}
