@@ -15,6 +15,7 @@ const hx_mod = @import("hx.zig");
 const ec = @import("../../errors/error_registry.zig");
 const tenant_billing = @import("../../state/tenant_billing.zig");
 const telemetry_store = @import("../../state/zombie_telemetry_store.zig");
+const fleet_metering_store = @import("../../state/fleet_metering_store.zig");
 
 const Hx = hx_mod.Hx;
 
@@ -121,6 +122,30 @@ pub fn innerGetTenantBillingCharges(hx: Hx, req: *httpz.Request) void {
     } else null;
 
     hx.ok(.ok, .{ .items = rows, .next_cursor = next_cursor });
+}
+
+/// GET /v1/tenants/me/billing/charges/{event_id}/metering-periods — the per-
+/// renewal slice breakdown behind one charge, oldest-first. Scoped to the
+/// caller's tenant by the store's EXISTS guard (a foreign/unknown event_id
+/// returns an empty list, never another tenant's slices).
+pub fn innerGetTenantMeteringPeriods(hx: Hx, req: *httpz.Request, event_id: []const u8) void {
+    _ = req;
+    const tenant_id = hx.principal.tenant_id orelse {
+        hx.fail(ec.ERR_FORBIDDEN, S_TENANT_CONTEXT_REQUIRED);
+        return;
+    };
+
+    const conn = hx.ctx.pool.acquire() catch {
+        common.internalDbUnavailable(hx.res, hx.req_id);
+        return;
+    };
+    defer hx.ctx.pool.release(conn);
+
+    const rows = fleet_metering_store.listForEvent(conn, hx.alloc, event_id, tenant_id) catch {
+        common.internalDbError(hx.res, hx.req_id);
+        return;
+    };
+    hx.ok(.ok, .{ .items = rows });
 }
 
 const ParseLimitError = error{ LimitNotNumeric, LimitOutOfRange };

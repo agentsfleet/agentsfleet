@@ -16,8 +16,8 @@ test.describe("Smoke", () => {
     await page.goto("/#pricing");
     await expect(page.getByTestId("pricing-block")).toBeVisible();
     await expect(page.getByTestId("pricing-rate-event")).toHaveText("free");
-    await expect(page.getByTestId("pricing-rate-stage-platform")).toHaveText("$0.001");
-    await expect(page.getByTestId("pricing-rate-stage-self-managed")).toHaveText("$0.0001");
+    await expect(page.getByTestId("pricing-rate-run")).toHaveText("$0.0001/sec");
+    await expect(page.getByTestId("pricing-rate-run-hourly")).toHaveText("≈ $0.36/hr");
   });
 
   test("agents page loads", async ({ page }) => {

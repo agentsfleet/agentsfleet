@@ -22,13 +22,13 @@ playbooks/
 │   └── 001_playbook.md
 ├── 005_deploy_prod/
 │   └── 001_playbook.md
-├── 006_worker_bootstrap_dev/
+├── 006_runner_bootstrap_dev/
 │   ├── 001_playbook.md
 │   ├── 00_gate.sh
 │   ├── 01_ssh_access.sh
 │   ├── 02_host_readiness.sh
 │   └── 03_deploy_readiness.sh
-├── 007_worker_bootstrap_prod/
+├── 007_runner_bootstrap_prod/
 │   └── 001_playbook.md
 ├── 008_credential_rotation_dev/
 │   ├── 001_playbook.md

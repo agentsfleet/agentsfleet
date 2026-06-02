@@ -375,10 +375,8 @@ jobs:
           FLY_API_TOKEN: op://${{ vars.VAULT_PROD }}/fly-api-token/credential
           TUNNEL_TOKEN: op://${{ vars.VAULT_PROD }}/cloudflare-tunnel-prod/credential
           DATABASE_URL_API: op://${{ vars.VAULT_PROD }}/planetscale-prod/api-connection-string
-          DATABASE_URL_WORKER: op://${{ vars.VAULT_PROD }}/planetscale-prod/worker-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_PROD }}/planetscale-prod/migrator-connection-string
           REDIS_URL_API: op://${{ vars.VAULT_PROD }}/upstash-prod/api-url
-          REDIS_URL_WORKER: op://${{ vars.VAULT_PROD }}/upstash-prod/worker-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_PROD }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_PROD }}/auth-session-code-pepper/credential
           AUDIT_LOG_PEPPER: op://${{ vars.VAULT_PROD }}/audit-log-pepper/credential
@@ -400,10 +398,8 @@ jobs:
         run: |
           flyctl secrets set \
             DATABASE_URL_API="$DATABASE_URL_API" \
-            DATABASE_URL_WORKER="$DATABASE_URL_WORKER" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             REDIS_URL_API="$REDIS_URL_API" \
-            REDIS_URL_WORKER="$REDIS_URL_WORKER" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
             AUDIT_LOG_PEPPER="$AUDIT_LOG_PEPPER" \

@@ -77,9 +77,14 @@ test "parseUrl respects sslmode=disable for local dev" {
 test "roleEnvVarName maps db roles deterministically" {
     try std.testing.expectEqualStrings("DATABASE_URL", roleEnvVarName(.default));
     try std.testing.expectEqualStrings("DATABASE_URL_API", roleEnvVarName(.api));
-    try std.testing.expectEqualStrings("DATABASE_URL_WORKER", roleEnvVarName(.worker));
     try std.testing.expectEqualStrings("DATABASE_URL_CALLBACK", roleEnvVarName(.callback));
     try std.testing.expectEqualStrings("DATABASE_URL_MIGRATOR", roleEnvVarName(.migrator));
+}
+
+test "DbRole carries no worker variant" {
+    inline for (@typeInfo(pool_mod.DbRole).@"enum".fields) |field| {
+        try std.testing.expect(!std.mem.eql(u8, field.name, "worker"));
+    }
 }
 
 fn openIntegrationTestConn(alloc: std.mem.Allocator) !?struct { pool: *Pool, conn: *Conn } {
@@ -352,7 +357,6 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
     const role_checks = [_][]const u8{
         "db_migrator",
         "api_runtime",
-        "worker_runtime",
         "ops_readonly_human",
         "ops_readonly_agent",
     };
@@ -365,6 +369,16 @@ test "integration: zero-trust schema segmentation and role matrix are enforced" 
         try std.testing.expect((try role_q.next()) != null);
     }
 
+    // The worker datastore role is retired: a clean migration apply must not
+    // create it. The literal below is the role name we assert is absent.
+    {
+        var absent_q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT 1 FROM pg_roles WHERE rolname = $1",
+            .{"worker_runtime"},
+        ));
+        defer absent_q.deinit();
+        try std.testing.expect((try absent_q.next()) == null);
+    }
 }
 
 test "integration: runMigrations is idempotent when table exists but migration record is absent" {
@@ -586,4 +600,46 @@ test "integration: readonly roles cannot read vault.secrets" {
     const row = (try q.next()) orelse return error.TestUnexpectedResult;
     const can_read_vault = try row.get(bool, 0);
     try std.testing.expect(!can_read_vault);
+}
+
+// Grant-equivalence regression for the worker-substrate retirement: api_runtime
+// is the sole data-plane role, and the lease/report path INSERTs/UPDATEs these
+// tables through the api pool. INSERT+UPDATE on zombie_sessions and zombie_events
+// formerly lived only on the removed worker role; the collapse must move them
+// onto api_runtime. has_table_privilege evaluates the named role directly, so
+// this proves the grant without a superuser bypass (the real statements are
+// exercised by the fleet integration suite).
+test "integration: api_runtime holds the fleet lease/report write grants" {
+    if (!std.process.hasEnvVarConstant("LIVE_DB")) return error.SkipZigTest;
+    const alloc = std.testing.allocator;
+    const db_ctx = (try openIntegrationTestConn(alloc)) orelse return error.SkipZigTest;
+    defer db_ctx.pool.deinit();
+    defer db_ctx.pool.release(db_ctx.conn);
+
+    // The full lease/report write set: the per-event lifecycle tables
+    // (events/sessions/zombies), metering + approval writes, and the billing
+    // ledger the report path debits. zombie_sessions + zombie_events were the
+    // two formerly granted to worker_runtime only — the rest api_runtime always
+    // held; covering all of them keeps the guard faithful to the write path.
+    const write_set = [_][]const u8{
+        "core.zombies",
+        "core.zombie_events",
+        "core.zombie_sessions",
+        "core.zombie_execution_telemetry",
+        "core.zombie_approval_gates",
+        "billing.tenant_billing",
+    };
+    inline for (write_set) |tbl| {
+        var q = PgQuery.from(try db_ctx.conn.query(
+            "SELECT has_table_privilege('api_runtime', $1, 'SELECT'), " ++
+                "has_table_privilege('api_runtime', $1, 'INSERT'), " ++
+                "has_table_privilege('api_runtime', $1, 'UPDATE')",
+            .{tbl},
+        ));
+        defer q.deinit();
+        const row = (try q.next()) orelse return error.TestUnexpectedResult;
+        try std.testing.expect(try row.get(bool, 0)); // SELECT
+        try std.testing.expect(try row.get(bool, 1)); // INSERT
+        try std.testing.expect(try row.get(bool, 2)); // UPDATE
+    }
 }

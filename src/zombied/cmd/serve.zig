@@ -101,13 +101,8 @@ pub fn run(alloc: std.mem.Allocator) !void {
         const env_code = error_codes.ERR_STARTUP_ENV_CHECK;
         switch (err) {
             env_vars.EnvVarsErrors.MissingDatabaseUrlApi => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "DATABASE_URL_API not set" }),
-            env_vars.EnvVarsErrors.MissingDatabaseUrlWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "DATABASE_URL_WORKER not set" }),
             env_vars.EnvVarsErrors.MissingRedisUrlApi => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_API not set" }),
-            env_vars.EnvVarsErrors.MissingRedisUrlWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_WORKER not set" }),
-            env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "DATABASE_URL_API and DATABASE_URL_WORKER must differ" }),
-            env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_API and REDIS_URL_WORKER must differ" }),
             env_vars.EnvVarsErrors.RedisApiTlsRequired => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_API must use rediss://" }),
-            env_vars.EnvVarsErrors.RedisWorkerTlsRequired => log.err(S_STARTUP_ENV_CHECK_FAILED, .{ .error_code = env_code, .err = "REDIS_URL_WORKER must use rediss://" }),
         }
         std.process.exit(1);
     };

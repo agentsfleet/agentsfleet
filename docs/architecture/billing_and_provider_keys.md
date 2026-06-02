@@ -6,9 +6,9 @@ How users pay for what they run, and how the runtime stays neutral between two c
 
 This is a cross-cutting topic. The data model lives in the tenant provider records, the runtime hooks live in the control plane's lease path (`zombied`) and the runner's NullClaw child, and the install-time path lives in the install skill. The end-to-end walkthroughs are in [`scenarios/`](./scenarios/). This file is the canonical concept reference.
 
-The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + stage); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **stage** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
+The billing model is **credit-based, Amp-style**: every tenant has a single credit balance in nanos (1 USD = 1,000,000,000 nanos); events deduct credits at two points (receive + run); when the balance hits zero the gate trips. There are no plan tiers in the cost function and no "included events" tier ladder — credits flow in (one-time starter grant in v2.0; Stripe purchase in v2.1+) and credits flow out per event. Receive is a fixed amount in both postures; **run** is posture-dispatched and is the friction-reducing gradient (platform default subsidises inference; self-managed runs cheaper because the user is paying their own provider for tokens). This file is the **concept reference** — it describes shape and behaviour.
 
-> **Where the live values are.** [`https://usezombie.com/#pricing`](https://usezombie.com/#pricing) is the canonical source of truth for current rates, starter-grant value, and any active promotional window (e.g. a free-trial period). This doc and the scenarios in this directory deliberately do not quote dollar amounts or windows — they go stale the moment a rate moves. For implementers: server-authoritative constants live in `src/state/tenant_billing.zig` (pin-tested), mirrored to `ui/packages/website/src/lib/rates.ts` and `~/Projects/docs/snippets/rates.mdx`. Identifier names match across Zig/TS/JS so a rate bump is a coordinated PR.
+> **Where the live values are.** [`https://agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing) is the canonical source of truth for current rates, starter-grant value, and any active promotional window (e.g. a free-trial period). This doc and the scenarios in this directory deliberately do not quote dollar amounts or windows — they go stale the moment a rate moves. For implementers: server-authoritative constants live in `src/state/tenant_billing.zig` (pin-tested), mirrored to `ui/packages/website/src/lib/rates.ts` and `~/Projects/docs/snippets/rates.mdx`. Identifier names match across Zig/TS/JS so a rate bump is a coordinated PR.
 
 ---
 
@@ -35,7 +35,7 @@ Every tenant has exactly one balance: `core.tenant_billing.balance_nanos` (`BIGI
 
 Each new tenant receives a **one-time starter credit** at tenant-create time, named `STARTER_CREDIT_NANOS` in `src/state/tenant_billing.zig`. The credit is inserted into `tenant_billing.balance_nanos` synchronously when the tenant row is created. There is no replenish; it's a one-time onboarding allowance, not a recurring stipend. Read the source for the current dollar amount; it sits behind a pin test that fails if it drifts from the Mintlify display snippet.
 
-Under M80_010's metering the grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed, and at the run fee plus the three-tier per-token cost under platform — so a quiet long run stretches the grant further than a token-heavy one, and platform spend depends on the model (see §4.2). The grant is sized so a new user comfortably covers a few thousand stages on either posture without thinking about top-ups.
+Under M80_010's metering the grant drains at the run fee (`RUN_NANOS_PER_SEC` × runtime) under self-managed, and at the run fee plus the three-tier per-token cost under platform — so a quiet long run stretches the grant further than a token-heavy one, and platform spend depends on the model (see §4.2). The grant is sized so a new user comfortably covers a few thousand runs on either posture without thinking about top-ups.
 
 ### 2.2 What happens when the starter grant runs out
 
@@ -47,9 +47,9 @@ Promotional windows (e.g. a launch free-trial) are **timestamp-gated, not featur
 
 While the window is active: the starter grant still inserts on tenant create and accumulates (users carry unused balance into the post-window period); telemetry rows still INSERT and still record posture + token counts but with `credit_deducted_nanos = 0` (accurate audit history; zero revenue while we gather traction). **Metering never stops — the window zeroes the money column, not the audit row.** The pure charge functions (`computeStageChargeAt`) inject `now_ms` rather than reading the system clock, so pre-window / mid-window / post-window behaviour is all pin-tested deterministically in `tenant_billing_test.zig`.
 
-**Gate behaviour while the window is open.** Because stage charge is `0` for every posture during the window, the balance gate (`balanceCoversEstimate`) **cannot refuse** any tenant at either money checkpoint — `0 balance ≥ 0 charge` always covers. Both the lease-issue gate and the M80_006 per-lease **renewal** gate are therefore open for all tenants until the cutoff. The instant the clock passes `FREE_TRIAL_END_MS` (no deploy — time-gated), real per-posture charges apply and the gate begins to bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended). The HTTP-path gate integration tests skip while the window is open — the refusal they assert is unreachable until then — while the charge math they rely on is covered now by the injected-`now_ms` unit tests above.
+**Gate behaviour while the window is open.** Because run charge is `0` for every posture during the window, the balance gate (`balanceCoversEstimate`) **cannot refuse** any tenant at either money checkpoint — `0 balance ≥ 0 charge` always covers. Both the lease-issue gate and the M80_006 per-lease **renewal** gate are therefore open for all tenants until the cutoff. The instant the clock passes `FREE_TRIAL_END_MS` (no deploy — time-gated), real per-posture charges apply and the gate begins to bite: lease-issue blocks an exhausted tenant (`balance_exhausted`), and renewal refuses one (`UZ-RUN-012`; the run ends at its current deadline, never extended). The HTTP-path gate integration tests skip while the window is open — the refusal they assert is unreachable until then — while the charge math they rely on is covered now by the injected-`now_ms` unit tests above.
 
-Whether a window is currently active, and how it's presented to users, is canonical on [`usezombie.com/#pricing`](https://usezombie.com/#pricing). Two consumer-visible reads surface the raw state for clients: `zombiectl doctor --json` → `billing.free_trial: { active: bool, ends_at_ms: int }`, and the dashboard billing panel — both let consumers decide how to render.
+Whether a window is currently active, and how it's presented to users, is canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing). Two consumer-visible reads surface the raw state for clients: `zombiectl doctor --json` → `billing.free_trial: { active: bool, ends_at_ms: int }`, and the dashboard billing panel — both let consumers decide how to render.
 
 ### 2.4 Plan tiers
 
@@ -61,7 +61,7 @@ There are no plan tiers in the cost function. The flat-rate `compute_receive_cha
 
 Every event triggers two debits, in this order, from the same `tenant_billing.balance_nanos` column:
 
-> **M80_010 (pending) — the stage debit is metered incrementally, not estimated once.** On every `/renew` the runner reports cumulative token counts; the server charges the slice's delta and records it in **three places**, all inside M80_006's fenced renewal CTE (a `guard` arm gates every write — a lost/capped renewal writes none). §4.2 is the charge function.
+> **The run debit is metered incrementally, not estimated once.** On every `/renew` the runner reports cumulative token counts; the server charges the slice's delta and records it in **three places**, all inside M80_006's fenced renewal CTE (a `guard` arm gates every write — a lost/capped renewal writes none; `FOR UPDATE` on the lease+slot serialises same-lease renewals so a retry-in-flight charges ≈0). §4.2 is the charge function.
 >
 > ```
 >  ONE event → the agent runs in a sandbox, renewing as it works:
@@ -70,9 +70,10 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 >        run_fee    = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000   (both postures, ms-precision)
 >        token_cost = Δin·r_in + Δcached·r_cache + Δout·r_out              (platform only)
 >
+>    charged = LEAST(slice, balance)   the actual debit; == slice unless this slice exhausts the wallet
 >    THREE guard-gated writes per slice (atomic in the renewal CTE):
->      ① WALLET     balance_nanos := GREATEST(0, balance_nanos − slice)       clamp, never negative
->      ② LEDGER     telemetry 'stage' row(event_id) += slice / Δtokens / Δt   per-EVENT total (Usage tab)
+>      ① WALLET     balance_nanos := GREATEST(0, balance_nanos − slice)       clamp, never negative (= −charged)
+>      ② LEDGER     telemetry 'stage' row(event_id) += charged / Δtokens / Δt per-EVENT total (Usage tab)
 >      ③ BREAKDOWN  INSERT fleet.metering_periods(event_id, slice_seq, …)     per-RENEWAL detail (new table)
 >
 >    self_managed: run_fee only (tokens recorded, not charged — tenant paid the provider)
@@ -83,16 +84,16 @@ Every event triggers two debits, in this order, from the same `tenant_billing.ba
 | # | Debit | When | Amount | Posture-dependent? |
 |---|---|---|---|---|
 | 1 | **Receive** | Right after `INSERT zombie_events (status='received')` and the gate passes | `computeReceiveCharge(posture)` = `EVENT_NANOS` | No today — both postures use the same `EVENT_NANOS` constant. Function signature keeps `posture` so a future ratchet can re-introduce asymmetry without touching callers. |
-| 2 | **Stage** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (**M80_010**, pending; was a one-shot estimate at lease issue) | `computeStageCharge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model-caps cache. self-managed: the run fee only (tokens recorded, not charged). |
+| 2 | **Run** | Metered **incrementally** across the run — a delta on every `/renew`, settled at report (M80_010 replaced the one-shot lease-issue estimate) | `computeStageCharge` over the per-slice deltas (run fee + token delta) | Yes — platform: per-second run fee (`RUN_NANOS_PER_SEC`) + per-token cost (input/cached-input/output) from the model-caps cache. self-managed: the run fee only (tokens recorded, not charged). |
 
 Why two debit points and not one:
 
 - **Receive is kept in the path for shape stability, not for revenue today.** The two-debit shape lets the telemetry writer, the gate, and the recovery path stay uniform across rate-table changes — receive can be zero today and non-zero post-GA without re-plumbing.
-- **Stage captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
+- **Run captures the cost of running NullClaw.** Under platform that's our flat overhead plus the token rate × tokens we paid Anthropic / OpenAI / Fireworks for. Under self-managed that's just the flat overhead — the user paid the provider for tokens; we did the lease/report round-trip, the runner's sandbox setup, and the result plumbing.
 
-**Telemetry rows (M80_010).** `core.zombie_execution_telemetry` is keyed `(event_id, charge_type)` — one `receive` row, and **one `stage` row that M80_010 accumulates** across the run's renewals (the `UNIQUE (event_id, charge_type)` constraint means the stage row is updated in place, never multiplied). The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `stage` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single stage debit accrued (slice by slice) is a join on `metering_periods`.
+**Telemetry rows (M80_010).** `core.zombie_execution_telemetry` is keyed `(event_id, charge_type)` — one `receive` row, and **one `run` row that M80_010 accumulates** across the run's renewals (the `UNIQUE (event_id, charge_type)` constraint means the run row is updated in place, never multiplied). The **per-renewal breakdown** lives separately in the new `fleet.metering_periods` table (one row per `/renew`/settle). So one event → 1 `receive` + 1 accumulated `run` telemetry row + N metering-period rows. Auditable two ways: revenue-by-charge-type is a one-line query on telemetry; *how* a single run debit accrued (slice by slice) is a join on `metering_periods`.
 
-**Stage metering (M80_010, pending) — three layers.** The stage debit follows the real run instead of a one-shot estimate. On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts; the server charges the **delta** since the lease's last-metered cursor — `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms-precision) plus (platform only) the per-token cost of the token delta — and applies three guard-gated writes (① debit the **wallet** `balance_nanos`, clamped at 0; ② accumulate the per-event `stage` **ledger** row; ③ INSERT the per-renewal `fleet.metering_periods` **breakdown** row), advancing the cursor, all atomically inside M80_006's fenced renewal CTE. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens. Properties: a fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency); a negative Δ clamps to 0 (never credits); the wallet debit is `GREATEST(0, …)` (never negative) and a balance that can no longer fund the run refuses the **next** renewal (`UZ-RUN-012`, run terminates); a lost/fenced-out renewal writes none of the three. (Until M80_010 lands, the stage debit is the historical one-shot floor estimate at lease issue.)
+**Run metering — three layers.** The run debit follows the real run instead of a one-shot estimate. On every `/renew` the runner reports its **cumulative** `(input, cached_input, output)` token counts; the server charges the **delta** since the lease's last-metered cursor — `run_fee = (now − last_metered_at) × RUN_NANOS_PER_SEC / 1000` (ms-precision) plus (platform only) the per-token cost of the token delta — and applies three guard-gated writes (① debit the **wallet** `balance_nanos`, clamped at 0; ② accumulate the per-event `run` **ledger** row; ③ INSERT the per-renewal `fleet.metering_periods` **breakdown** row), advancing the cursor, all atomically inside M80_006's fenced renewal CTE. The breakdown's `slice_seq` (the per-event slice number) comes from a `meter_slice_seq` counter **on the affinity slot** — `+1`, written back in the same fenced statement — not from a `MAX(slice_seq)` read of `metering_periods`: the slot row is `FOR UPDATE`-locked, so a blocked concurrent renew re-reads the committed counter (EvalPlanQual) and the next slice is monotonic, whereas an unlocked `MAX` subquery reads a stale statement snapshot and two racing renews would collide on the same `slice_seq`. The ledger ② and breakdown ③ record `charged = LEAST(slice, balance)` — the actual debit — so the audit rows equal the wallet drain even on the slice that exhausts the wallet. A final settle at report closes the last partial slice, so the credit drained equals **exactly** runtime × rate + actual tokens; that settle is **fused into the report claim** — the lease's `active→reported` flip and the final-slice charge ride ONE fenced CTE under `FOR UPDATE OF l, a`, so a reclaim racing the report cannot strand the final slice on the `MAX_RUNTIME` cap path. Properties: same-lease renewals are serialised (`FOR UPDATE` on the lease+slot), so a fail-safe retry re-sends the same cumulatives and charges ≈0 (cumulative-diff idempotency); a negative Δ clamps to 0 (never credits); the wallet debit is `GREATEST(0, …)` (never negative) and a balance that can no longer fund the run refuses the **next** renewal (`UZ-RUN-012`, run terminates); a lost/fenced-out renewal writes none of the three.
 
 ---
 
@@ -122,7 +123,7 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
 
 Receive is a single named constant, `EVENT_NANOS`, defined in `src/state/tenant_billing.zig`. Both postures currently resolve to the same value via this function; the `posture` parameter stays on the signature so a future ratchet can re-introduce asymmetry without touching callers. The function shape is what matters: posture-aware, plan-independent, plumbed through the lease path (`leaseNext` / `runBilling`). Live value lives in the source — read it there; pin tests lock it.
 
-### 4.2 Stage charge
+### 4.2 Run charge
 
 Function shape:
 
@@ -130,18 +131,22 @@ Function shape (M80_010) — **deltas** in, run fee + three-tier token cost out;
 
 ```zig
 pub fn computeStageCharge(
+    provider:   []const u8,    // composite-key half — "anthropic", "pioneer", … (§9)
     posture:    Posture,
     model:      []const u8,    // "accounts/fireworks/models/kimi-k2.6", "kimi-k2.6", …
+    elapsed_ms: i64,           // active wall time of the slice
     d_input:    u32,           // per-slice token deltas (CTE-computed max(0, cumulative − metered))
     d_cached:   u32,
     d_output:   u32,
-    elapsed_ms: i64,           // active wall time of the slice
 ) i64 {
-    const run = @divTrunc(elapsed_ms, 1000) * RUN_NANOS_PER_SEC;   // both postures
+    // ms-precision: divide AFTER multiplying, so a 20_500 ms slice bills the full
+    // 20.5 s, not a second-truncated 20 s (the per-slice debits then sum to the
+    // real runtime × rate — never under-bill across N renewals).
+    const run = @divTrunc(elapsed_ms * RUN_NANOS_PER_SEC, 1000);   // both postures
     return switch (posture) {
         .platform => blk: {
-            const rate = model_rate_cache.lookup_model_rate(model) orelse
-                std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
+            const rate = model_rate_cache.lookup_model_rate(provider, model) orelse
+                std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in cached caps catalogue", .{ model, provider });
             const in_n     = @divTrunc(rate.input_nanos_per_mtok        * @as(i64, d_input),  1_000_000);
             const cached_n = @divTrunc(rate.cached_input_nanos_per_mtok * @as(i64, d_cached), 1_000_000);
             const out_n    = @divTrunc(rate.output_nanos_per_mtok       * @as(i64, d_output), 1_000_000);
@@ -152,7 +157,7 @@ pub fn computeStageCharge(
 }
 ```
 
-One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/state/tenant_billing.zig`, applied identically to **both** postures (M80_010 retires the separate `STAGE_SELF_MANAGED_NANOS`; `STAGE_PLATFORM_NANOS` becomes this per-second rate). Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-caps cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the agent.
+One named constant drives the run fee — `RUN_NANOS_PER_SEC`, in `src/state/tenant_billing.zig`, applied identically to **both** postures. Under platform: the run fee plus a three-tier per-token component (input / cached-input / output) from the model-caps cache (§10). Under self-managed: the run fee only — we did not pay for the tokens, only for running the agent.
 
 Posture changes only whether the per-token component is added (platform) or not (self-managed); the run fee is the same. That gradient is the friction-reducing signal: on-ramp on platform without a key, graduate to self-managed once the cost-vs-convenience tradeoff tilts. `RUN_NANOS_PER_SEC` is pinned across the four rate files (`tenant_billing.zig` + `rates.ts` + `app/lib/types.ts` + `zombiectl/.../billing.ts`) by `audit-cross-tier-rates.sh` so a bump surfaces immediately.
 
@@ -162,7 +167,7 @@ Posture changes only whether the per-token component is added (platform) or not 
 
 ### 4.3 What an event costs — by shape, not by number
 
-A worked example with hardcoded dollar amounts goes stale the moment a rate moves. Instead, here is the *cost shape* a caller can reason about without consulting the doc again after a rate ratchet — under M80_010 the stage is summed across the run's `/renew` slices (Σ over slices), each slice metered on its own deltas:
+A worked example with hardcoded dollar amounts goes stale the moment a rate moves. Instead, here is the *cost shape* a caller can reason about without consulting the doc again after a rate ratchet — under M80_010 the run is summed across the run's `/renew` slices (Σ over slices), each slice metered on its own deltas:
 
 **Platform posture, single event (M80_010):**
 
@@ -183,7 +188,7 @@ total_nanos = EVENT_NANOS                              // receive
             + Σ_slices [ (elapsed_ms/1000) × RUN_NANOS_PER_SEC ]         // run fee only, no token math
 ```
 
-`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `EVENT_NANOS`); platform additionally layers the three-tier token cost. To learn the live dollar amounts: read the constants in `src/state/tenant_billing.zig`, the model-caps response for token rates, and `~/Projects/docs/snippets/rates.mdx` for the marketing display strings.
+`RUN_NANOS_PER_SEC` is the one run rate for both postures (receive stays `EVENT_NANOS`); platform additionally layers the three-tier token cost. The live dollar amounts are canonical on [`agentsfleet.net/#pricing`](https://agentsfleet.net/#pricing); implementers read the pin-tested constants in `src/state/tenant_billing.zig` and the model-caps response for the per-token rates.
 
 ---
 
@@ -195,7 +200,7 @@ total_nanos = EVENT_NANOS                              // receive
 flowchart TD
     A([XREADGROUP unblocks]) --> B[INSERT zombie_events status=received]
     B --> C[Resolve posture<br/>tenant_provider.resolveActiveProvider]
-    C --> D[Estimate event cost:<br/>receive + worst-case stage]
+    C --> D[Estimate event cost:<br/>receive + worst-case run]
     D --> E{balance_nanos<br/>≥ estimate?}
     E -->|no| Block[UPDATE zombie_events<br/>SET status=gate_blocked<br/>failure_label=balance_exhausted]
     Block --> X1([XACK — terminal])
@@ -203,19 +208,19 @@ flowchart TD
     F --> G[Approval gate]
     G -->|blocked| Wait[gate_blocked until<br/>user resumes]
     G -->|pass| H[Resolve secrets_map]
-    H --> I[DEDUCT STAGE<br/>UPDATE balance_nanos -=<br/>compute_stage_charge<br/>INSERT telemetry charge_type=stage]
-    I --> J[Issue lease<br/>runner forks NullClaw child]
-    J --> K[Runner reports result]
-    K --> L[UPDATE zombie_events<br/>SET status=processed<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
+    H --> J[Issue lease — gate+receive done, NO run debit at issue<br/>runner forks NullClaw child]
+    J --> Renew[Runner /renew ticks<br/>meter slice Δ → wallet/ledger/breakdown §3]
+    Renew --> K[Runner reports result]
+    K --> L[UPDATE zombie_events SET status=processed<br/>SETTLE final slice + advance cursor §3<br/>release affinity, XACK]
     L --> X2([XACK])
 ```
 
-> **M80_010 (pending) shifts the stage deduct.** The flowchart shows the historical single-deduct flow (whole stage charged at lease issue, node `I`). Under M80_010 the *entry gate* stays a one-shot coverage check, but the **stage DEBIT moves to the runner's `/renew` ticks + a settle at report** (§3): node `I` becomes a per-slice Δ-debit metered across the run, not a single pre-execution charge. The receive deduct and the gate are unchanged.
+> **The run debit is metered across the run, not deducted once at issue.** Lease issue runs the *entry gate* (a one-shot coverage check), the receive deduct, and the approval gate — but **no run debit**. The run is charged as a per-slice Δ-debit on the runner's `/renew` ticks plus a settle at report (§3). The receive deduct and the entry gate are unchanged.
 
 Properties:
 
-- **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the stage portion.
-- **Two deductions, in transaction** (historical single-shot flow; M80_010 changes the stage half). Receive deduct + its telemetry insert is one transaction. The stage half, pre-M80_010, was a single deduct + telemetry insert at lease issue; under M80_010 it becomes the per-`/renew` accumulate (one `receive` row + one *accumulated* `stage` row + N `metering_periods` rows — see §3). If `zombied` crashes between writes, the receive row is the durable record that the receive overhead was charged; each settled metering slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
+- **Single-pass gate.** One `balance_nanos < estimate` check at the start. If the user can't cover one event's worst-case, the event is rejected at the gate. The estimate is conservative — uses the worst-case-tokens estimate from the prompt size for the run portion.
+- **Receive deduct at issue + incremental run metering.** The receive deduct + its telemetry insert is one transaction at lease issue. The run half is metered incrementally — a per-`/renew` accumulate plus a settle at report (one `receive` row + one *accumulated* `run` row + N `metering_periods` rows — see §3). If `zombied` crashes between writes, the receive row is the durable record that the receive overhead was charged; each settled metering slice is likewise durable (committed in the renewal CTE), so reclaim meters forward from the cursor.
 - **Mid-event balance crossing zero is fine.** In-flight events run to completion under the snapshot taken at receive time. The next event hits the gate cleanly.
 - **Concurrent events on near-zero balance.** Two events claim simultaneously, both pass the gate (balance was sufficient for one), both deduct → balance can briefly go negative. We accept the small overshoot rather than serialise all events behind a row lock. Recovery: next event sees `balance_nanos < 0`, gate trips.
 
@@ -240,7 +245,7 @@ The reasoning is that a balance-exhausted event is usually evidence the user was
 
 A user can switch between platform and self-managed at any time. Effects on subsequent billing:
 
-- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=self_managed` immediately. The next event's receive + stage debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
+- **Platform → self-managed** (user runs out of platform credit, brings own Fireworks key): `zombiectl tenant provider set --credential <name>` flips `tenant_providers.mode=self_managed` immediately. The next event's receive + run debits use the self-managed constants and rate path. In-flight events finish under the platform snapshot they were claimed under.
 - **self-managed → platform** (user stops paying their provider): `zombiectl tenant provider reset` flips `mode=platform`. The next event uses platform rates. If the credit balance is now too low for platform pricing, the gate trips on the next event.
 - **Mid-event change.** The snapshot taken at claim time wins. Provider posture is resolved exactly once, at gate time, before the receive deduct.
 
@@ -374,7 +379,7 @@ The billing dashboard mirrors Amp's settings page in shape. Layout and what ship
 
 ### 11.2 Tabs — Usage / Invoices / Payment Method
 
-- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by zombie / time range. Each row shows event_id, zombie, timestamp, posture, model (under platform), tokens (under platform), receive nanos, stage nanos, total nanos (rendered as dollars via the website's `formatDollars` helper). Sortable and exportable to CSV.
+- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by zombie / time range. Each row shows event_id, zombie, timestamp, posture, model (under platform), tokens (under platform), receive nanos, run nanos, total nanos (rendered as dollars via the website's `formatDollars` helper). Sortable and exportable to CSV.
 - **Invoices** (shipped as empty state in v2.0). Renders *"No invoices yet — invoicing arrives with Purchase Credits in v2.1."*
 - **Payment Method** (shipped as empty state in v2.0). Renders *"No payment method on file — coming in v2.1."*
 
@@ -423,7 +428,7 @@ When the gate trips, every event-emitting CLI command (e.g. `zombiectl steer`) p
 - **Stripe Purchase Credits flow.** v2.1. Adds `core.credit_purchases` table, Stripe webhook handler, dashboard button enablement, CLI subcommand if/when warranted.
 - **Auto Top Up.** v2.1, alongside Stripe. Adds threshold + reload-amount config on the tenant.
 - **Plan tiers as recurring grants.** v2.1+ if onboarding metrics suggest it. Encoded as recurring Stripe charges that top up `balance_nanos`, not as branches in `compute_charge`.
-- **Refund-on-actual-tokens.** **Superseded by M80_010** (incremental per-renewal metering, pending). The stage debit follows the real run via per-`/renew` deltas + a settle at report, so the credit drained equals actual runtime × rate + actual tokens — there is nothing to reconcile or refund after the fact.
+- **Refund-on-actual-tokens.** **Superseded by M80_010** (incremental per-renewal metering). The run debit follows the real run via per-`/renew` deltas + a settle at report, so the credit drained equals actual runtime × rate + actual tokens — there is nothing to reconcile or refund after the fact.
 - **Per-workspace soft caps inside a tenant** ("the staging workspace can spend at most $10/day even if the tenant balance is $100"). v3 — needs a new gate at the workspace level.
 - **Volume discounts beyond a threshold.** v3, sales-led.
 - **Metering self-managed spend for cost reporting.** Users check their provider's dashboard today.

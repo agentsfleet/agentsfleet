@@ -33,7 +33,7 @@ fn trialActive(conn: *@import("pg").Conn) !bool {
     return b.free_trial_active;
 }
 
-test "should charge the flat platform stage fee when both token counts are zero post-trial" {
+test "should charge the run fee for platform runtime with zero token counts post-trial" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -45,13 +45,16 @@ test "should charge the flat platform stage fee when both token counts are zero 
     try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_PLATFORM_ZERO);
     defer base.teardownPlatformProvider(db_ctx.conn, WS_PLATFORM_ZERO);
 
-    // Platform posture with zero tokens: the flat STAGE_PLATFORM_NANOS still
-    // applies (no token cost to add). Free-trial window short-circuits to 0,
-    // so the flat-fee assertion is post-trial only.
+    // Platform posture, zero tokens, 10s of runtime: the charge is exactly the
+    // run fee (no token cost to add). Free-trial window short-circuits to 0, so
+    // the run-fee assertion is post-trial only.
     if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
 
-    const charge = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", 0, 0);
-    try std.testing.expectEqual(tenant_billing.STAGE_PLATFORM_NANOS, charge);
+    const elapsed_ms: i64 = 10_000;
+    const charge = tenant_billing.computeStageCharge("anthropic", .platform, "claude-sonnet-4-6", elapsed_ms, 0, 0, 0);
+    // Replicate runFee via the pinned per-second rate (runFee is private).
+    const expected_run_fee = @divTrunc(elapsed_ms * tenant_billing.RUN_NANOS_PER_SEC, 1000);
+    try std.testing.expectEqual(expected_run_fee, charge);
 }
 
 test "should not overflow when platform token counts approach u32 max" {
@@ -66,11 +69,11 @@ test "should not overflow when platform token counts approach u32 max" {
 
     if (try trialActive(db_ctx.conn)) return error.SkipZigTest;
 
-    // Near-u32-max token counts: rate math widens to i64 internally, so the
-    // result must be a finite i64 >= the flat platform fee, no panic/overflow.
+    // Near-u32-max token counts plus an hour of runtime: rate math widens to
+    // i64 internally, so the result must be a finite positive i64, no overflow.
     const big: u32 = std.math.maxInt(u32) - 1;
-    const charge = tenant_billing.computeStageCharge(.platform, "claude-sonnet-4-6", big, big);
-    try std.testing.expect(charge >= tenant_billing.STAGE_PLATFORM_NANOS);
+    const charge = tenant_billing.computeStageCharge("anthropic", .platform, "claude-sonnet-4-6", 3_600_000, big, big, big);
+    try std.testing.expect(charge > 0);
     try std.testing.expect(charge < std.math.maxInt(i64));
 }
 

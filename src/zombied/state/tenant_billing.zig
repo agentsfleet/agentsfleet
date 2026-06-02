@@ -16,23 +16,22 @@ pub const NANOS_PER_USD: i64 = 1_000_000_000;
 pub const STARTER_CREDIT_NANOS: i64 = 5 * NANOS_PER_USD;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 
-// Credit-pool cost model — M66 traction rates expressed in nanos.
-// Events are free both postures; stages cost $0.001 platform / $0.0001
-// self-managed. The 10× gradient between postures is the on-ramp signal:
-// platform mode is convenient, self-managed is cheap to scale.
+// Credit-pool cost model — expressed in nanos. Event receipts are free under
+// both postures. Active agent runtime is metered per second at the single
+// RUN_NANOS_PER_SEC rate (identical for both postures); platform posture adds
+// the per-token model cost on top, self-managed leaves tokens to the user's
+// own provider bill.
 pub const Posture = tenant_provider.Mode;
 
-/// Receive-side per-event drain. M66: zero, both postures.
+/// Receive-side per-event drain. Zero under both postures.
 pub const EVENT_NANOS: i64 = 0;
 
-/// Stage-side platform fee, $0.001 = 1M nanos. Charged once per stage
-/// execution before the executor runs under platform posture; the per-token
-/// model cost (also in nanos) is added on top.
-pub const STAGE_PLATFORM_NANOS: i64 = 1_000_000;
-
-/// Stage-side self-managed fee, $0.0001 = 100K nanos. The user's own provider
-/// account pays the token cost directly; we only charge the flat overhead.
-pub const STAGE_SELF_MANAGED_NANOS: i64 = 100_000;
+/// Run-time rate: $0.0001/sec = 100K nanos per active second (≈ $0.36/hr),
+/// charged identically under both postures. Runtime is metered by the second
+/// as the agent works — not estimated once at lease issue — so a slice's run
+/// fee is `runFee(elapsed_ms)`. The per-token model cost (platform posture
+/// only) is added on top.
+pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 
 /// Promotional free-trial cutoff (UTC). `2026-08-01T00:00:00Z` — first
 /// instant after July 31, 2026. While `now_ms < FREE_TRIAL_END_MS`,
@@ -88,43 +87,94 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
     return EVENT_NANOS;
 }
 
-/// Stage-side per-event charge. Under platform posture this is the flat
-/// platform stage fee plus per-token cost looked up from model_rate_cache
-/// (both in nanos); under self_managed it's the flat self-managed fee
-/// alone (token cost lands on the user's own provider bill). Panics under
-/// platform if `model` is missing from the cache — that condition should
-/// have been rejected upstream by the tenant-provider PUT validator and
-/// the install-skill frontmatter check.
+/// Run-time fee for `elapsed_ms` of active agent runtime, charged identically
+/// under both postures. `RUN_NANOS_PER_SEC` is per-second; the ms→s division
+/// uses the same `@divTrunc` discipline as the per-mtok token math. i64-safe:
+/// `elapsed_ms` is bounded by the lease's MAX_RUNTIME_MS, so `elapsed_ms *
+/// RUN_NANOS_PER_SEC` stays well inside i64. At lease issue `elapsed_ms` is 0,
+/// so the run fee is 0 and only the token estimate (platform) is charged.
+fn runFee(elapsed_ms: i64) i64 {
+    return @divTrunc(elapsed_ms * RUN_NANOS_PER_SEC, 1000);
+}
+
+/// Per-slice stage charge: a run fee for `elapsed_ms` of active runtime plus,
+/// under platform posture, the per-token model cost of the token counts looked
+/// up from model_rate_cache (all in nanos). Under self_managed the run fee is
+/// the whole charge — token cost lands on the user's own provider bill. Panics
+/// under platform if `model` is missing from the cache — that condition should
+/// have been rejected upstream by the tenant-provider PUT validator and the
+/// install-skill frontmatter check.
 pub fn computeStageCharge(
+    provider: []const u8,
     posture: Posture,
     model: []const u8,
+    elapsed_ms: i64,
     input_tokens: u32,
+    cached_input_tokens: u32,
     output_tokens: u32,
 ) i64 {
-    return computeStageChargeAt(posture, model, input_tokens, output_tokens, std.time.milliTimestamp());
+    return computeStageChargeAt(provider, posture, model, elapsed_ms, input_tokens, cached_input_tokens, output_tokens, std.time.milliTimestamp());
+}
+
+/// The four per-unit rates a renewal/settle slice meters at. Resolved once in
+/// Zig and passed to the renewal CTE as params, so the SQL applies the SAME
+/// rates `computeStageCharge` does — SQL==Zig holds by construction, not by
+/// hand-copying the rate table into SQL.
+pub const SliceRates = struct {
+    run_nanos_per_sec: i64,
+    input_nanos_per_mtok: i64,
+    cached_input_nanos_per_mtok: i64,
+    output_nanos_per_mtok: i64,
+};
+
+/// Resolve the slice rates with the SAME branching `computeStageChargeAt` uses:
+/// free-trial (`now_ms < FREE_TRIAL_END_MS`) → all zero (a metered run charges
+/// 0); self_managed → run rate only (token tiers 0, recorded-not-charged);
+/// platform → run rate + the model's three token tiers. A platform model absent
+/// from the rate cache returns `null` — the renew handler meters run-fee-only +
+/// logs (the live path never panics; a lease could not have been issued for an
+/// uncatalogued platform model, so this is a cache-eviction edge). The
+/// (provider, model) pair keys the rate row — same model, two providers, two rates.
+pub fn resolveRenewSliceRates(provider: []const u8, posture: Posture, model: []const u8, now_ms: i64) ?SliceRates {
+    if (isFreeTrialActive(now_ms)) return SliceRates{ .run_nanos_per_sec = 0, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
+    return switch (posture) {
+        .self_managed => SliceRates{ .run_nanos_per_sec = RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 },
+        .platform => blk: {
+            const rate = model_rate_cache.lookup_model_rate(provider, model) orelse break :blk null;
+            break :blk SliceRates{ .run_nanos_per_sec = RUN_NANOS_PER_SEC, .input_nanos_per_mtok = rate.input_nanos_per_mtok, .cached_input_nanos_per_mtok = rate.cached_input_nanos_per_mtok, .output_nanos_per_mtok = rate.output_nanos_per_mtok };
+        },
+    };
+}
+
+/// Apply slice rates to a set of deltas — the exact arithmetic the renewal CTE
+/// reproduces in SQL (per-tier `@divTrunc(rate*Δ, 1e6)` + ms→s `@divTrunc(Δt*run,
+/// 1000)`; Postgres bigint `/` truncates toward zero, matching for Δ≥0). This is
+/// the reference the SQL==Zig pin test asserts against.
+pub fn sliceCharge(rates: SliceRates, elapsed_ms: i64, d_input: i64, d_cached: i64, d_output: i64) i64 {
+    return @divTrunc(elapsed_ms * rates.run_nanos_per_sec, 1000) +
+        @divTrunc(rates.input_nanos_per_mtok * d_input, 1_000_000) +
+        @divTrunc(rates.cached_input_nanos_per_mtok * d_cached, 1_000_000) +
+        @divTrunc(rates.output_nanos_per_mtok * d_output, 1_000_000);
 }
 
 // Time-injected sibling of `computeStageCharge`. Private; inline tests below
 // access it for deterministic pre/mid/post-trial coverage. Production paths
-// call `computeStageCharge` (which reads the real clock).
+// call `computeStageCharge` (which reads the real clock). Delegates rate
+// resolution + arithmetic to the shared slice helpers so the per-stage estimate
+// and the per-renewal Δ-charge can never diverge.
 fn computeStageChargeAt(
+    provider: []const u8,
     posture: Posture,
     model: []const u8,
+    elapsed_ms: i64,
     input_tokens: u32,
+    cached_input_tokens: u32,
     output_tokens: u32,
     now_ms: i64,
 ) i64 {
-    if (isFreeTrialActive(now_ms)) return FREE_TRIAL_STAGE_NANOS;
-    return switch (posture) {
-        .platform => blk: {
-            const rate = model_rate_cache.lookup_model_rate(model) orelse
-                std.debug.panic("compute_stage_charge: model '{s}' not in cached caps catalogue", .{model});
-            const in_nanos = @divTrunc(rate.input_nanos_per_mtok * @as(i64, input_tokens), 1_000_000);
-            const out_nanos = @divTrunc(rate.output_nanos_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk STAGE_PLATFORM_NANOS + in_nanos + out_nanos;
-        },
-        .self_managed => STAGE_SELF_MANAGED_NANOS,
-    };
+    const rates = resolveRenewSliceRates(provider, posture, model, now_ms) orelse
+        std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in cached caps catalogue", .{ model, provider });
+    return sliceCharge(rates, elapsed_ms, @as(i64, input_tokens), @as(i64, cached_input_tokens), @as(i64, output_tokens));
 }
 
 // True while `now_ms < FREE_TRIAL_END_MS`. The trial ends because time
@@ -192,40 +242,57 @@ pub fn resolveTenantFromWorkspace(
 const POST_TRIAL_NOW_MS: i64 = FREE_TRIAL_END_MS + 1_000;
 const PRE_TRIAL_NOW_MS: i64 = FREE_TRIAL_END_MS - 1_000;
 
-test "computeStageChargeAt: self_managed returns flat overhead independent of tokens or model (post-trial)" {
+test "computeStageChargeAt: self_managed charge is the run fee only, tokens and model ignored (post-trial)" {
+    // self_managed bills runFee(elapsed_ms) and nothing for tokens; it never
+    // consults the rate cache, so a missing model must NOT panic.
     try std.testing.expectEqual(
-        STAGE_SELF_MANAGED_NANOS,
-        computeStageChargeAt(.self_managed, "any-model", 0, 0, POST_TRIAL_NOW_MS),
+        runFee(20_000),
+        computeStageChargeAt("anthropic", .self_managed, "model-not-in-catalogue", 20_000, 1_000_000, 1_000_000, 1_000_000, POST_TRIAL_NOW_MS),
     );
+    // 20s of active runtime → 20 × RUN_NANOS_PER_SEC.
     try std.testing.expectEqual(
-        STAGE_SELF_MANAGED_NANOS,
-        computeStageChargeAt(.self_managed, "claude-opus-4-7", 1_000_000, 1_000_000, POST_TRIAL_NOW_MS),
+        @as(i64, 20) * RUN_NANOS_PER_SEC,
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 20_000, 0, 0, 0, POST_TRIAL_NOW_MS),
     );
-    // self_managed never consults the rate cache, so a missing model must
-    // NOT panic — only platform mode requires a cached rate.
+    // At lease issue elapsed_ms is 0 → zero run fee, zero charge.
     try std.testing.expectEqual(
-        @as(i64, 100_000),
-        computeStageChargeAt(.self_managed, "model-not-in-catalogue", 100, 100, POST_TRIAL_NOW_MS),
+        @as(i64, 0),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 0, 0, 0, 0, POST_TRIAL_NOW_MS),
     );
 }
 
-test "computeStageChargeAt: free-trial window returns zero regardless of posture / model / tokens" {
+test "runFee: per-second rate with ms precision, identical for both postures" {
+    // 20_000 ms = 20 s → 20 × RUN_NANOS_PER_SEC = 2_000_000 nanos.
+    try std.testing.expectEqual(@as(i64, 2_000_000), runFee(20_000));
+    // Sub-second precision: 1_500 ms = 1.5 s → floor(1500 × 100_000 / 1000).
+    try std.testing.expectEqual(@as(i64, 150_000), runFee(1_500));
+    // Zero elapsed (lease issue) → zero.
+    try std.testing.expectEqual(@as(i64, 0), runFee(0));
+    // The run fee does not depend on posture: self_managed with no tokens is
+    // exactly the run fee for the same elapsed time.
+    try std.testing.expectEqual(
+        runFee(45_000),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 45_000, 0, 0, 0, POST_TRIAL_NOW_MS),
+    );
+}
+
+test "computeStageChargeAt: free-trial window returns zero regardless of posture / model / tokens / elapsed" {
     // Pre-trial → every combination short-circuits to FREE_TRIAL_STAGE_NANOS.
     // No rate-cache lookup happens; passing a missing model proves the
     // short-circuit fires before the platform-branch lookup.
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt(.platform, "model-not-in-catalogue", 800, 1000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("pioneer", .platform, "model-not-in-catalogue", 60_000, 800, 0, 1000, PRE_TRIAL_NOW_MS),
     );
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt(.self_managed, "any-model", 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 60_000, 1_000_000, 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS),
     );
-    // At the cutoff (now_ms == FREE_TRIAL_END_MS) the trial is over —
-    // strict less-than gate.
+    // At the cutoff (now_ms == FREE_TRIAL_END_MS) the trial is over — strict
+    // less-than gate; self_managed then charges the run fee.
     try std.testing.expectEqual(
-        @as(i64, 100_000),
-        computeStageChargeAt(.self_managed, "any-model", 0, 0, FREE_TRIAL_END_MS),
+        runFee(60_000),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 60_000, 0, 0, 0, FREE_TRIAL_END_MS),
     );
 }
 
@@ -234,6 +301,24 @@ test "isFreeTrialActive: strict-less-than gate on FREE_TRIAL_END_MS" {
     try std.testing.expect(isFreeTrialActive(FREE_TRIAL_END_MS - 1));
     try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS));
     try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS + 1_000_000));
+}
+
+test "resolveRenewSliceRates: posture/trial branches, and platform cache-miss yields null (never panics)" {
+    // self_managed post-trial → run rate only; token tiers stay 0 (the user's
+    // own provider bills the tokens), so a metered slice is run-fee-only.
+    const sm = resolveRenewSliceRates("self-managed-test", .self_managed, "any-model", POST_TRIAL_NOW_MS).?;
+    try std.testing.expectEqual(RUN_NANOS_PER_SEC, sm.run_nanos_per_sec);
+    try std.testing.expectEqual(@as(i64, 0), sm.input_nanos_per_mtok);
+    try std.testing.expectEqual(@as(i64, 0), sm.output_nanos_per_mtok);
+    // Free-trial short-circuits to all-zero before any cache lookup — even
+    // platform with a real model id charges nothing.
+    const ft = resolveRenewSliceRates("anthropic", .platform, "claude-sonnet-4-6", PRE_TRIAL_NOW_MS).?;
+    try std.testing.expectEqual(@as(i64, 0), ft.run_nanos_per_sec);
+    try std.testing.expectEqual(@as(i64, 0), ft.input_nanos_per_mtok);
+    // Platform post-trial, model absent from the process rate cache → null. The
+    // renew/settle caller meters run-fee-only on null and NEVER panics the live
+    // path — unlike computeStageChargeAt, whose issue-time estimate panics.
+    try std.testing.expect(resolveRenewSliceRates("anthropic", .platform, "model-not-in-cache-zzz", POST_TRIAL_NOW_MS) == null);
 }
 
 test {

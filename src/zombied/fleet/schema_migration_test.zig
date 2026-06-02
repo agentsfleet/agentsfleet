@@ -18,11 +18,14 @@ const EXPECTED_COLUMN_COUNT: i64 = 10;
 const EXPECTED_NAMED_CONSTRAINTS: i64 = 2;
 
 // `id runner_id zombie_id workspace_id tenant_id event_id actor event_type
-//  request_json event_created_at posture model fencing_token lease_expires_at
-//  status created_at updated_at` — the frozen `fleet.runner_leases` column set.
-//  The actor/event_type/request_json/event_created_at envelope is stored so a
-//  reclaim can re-lease the event from Postgres alone (no Redis re-read).
-const EXPECTED_LEASE_COLUMN_COUNT: i64 = 17;
+//  request_json event_created_at posture provider model metered_input_tokens
+//  metered_cached_tokens metered_output_tokens last_metered_at_ms fencing_token
+//  lease_expires_at status created_at updated_at` — the `fleet.runner_leases`
+//  column set. The actor/event_type/request_json/event_created_at envelope is
+//  stored so a reclaim can re-lease the event from Postgres alone (no Redis
+//  re-read); `provider` keys the composite rate lookup; the `metered_*` +
+//  `last_metered_at_ms` cursor backs the incremental renewal metering.
+const EXPECTED_LEASE_COLUMN_COUNT: i64 = 22;
 
 fn openConnOrSkip(alloc: std.mem.Allocator) !?struct { pool: *pg.Pool, conn: *pg.Conn } {
     const url = std.process.getEnvVarOwned(alloc, "TEST_DATABASE_URL") catch return null;

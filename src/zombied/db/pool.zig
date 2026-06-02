@@ -50,7 +50,6 @@ const ROLE_ENV_NAME_MAX = 64;
 pub const DbRole = enum {
     default,
     api,
-    worker,
     callback,
     migrator,
 };
@@ -58,7 +57,6 @@ pub const DbRole = enum {
 pub fn roleEnvVarName(role: DbRole) []const u8 {
     return switch (role) {
         .api => "DATABASE_URL_API",
-        .worker => "DATABASE_URL_WORKER",
         .callback => "DATABASE_URL_CALLBACK",
         .migrator => "DATABASE_URL_MIGRATOR",
         .default => "DATABASE_URL",
