@@ -616,11 +616,18 @@ test "integration: api_runtime holds the fleet lease/report write grants" {
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
 
+    // The full lease/report write set: the per-event lifecycle tables
+    // (events/sessions/zombies), metering + approval writes, and the billing
+    // ledger the report path debits. zombie_sessions + zombie_events were the
+    // two formerly granted to worker_runtime only — the rest api_runtime always
+    // held; covering all of them keeps the guard faithful to the write path.
     const write_set = [_][]const u8{
+        "core.zombies",
         "core.zombie_events",
         "core.zombie_sessions",
         "core.zombie_execution_telemetry",
         "core.zombie_approval_gates",
+        "billing.tenant_billing",
     };
     inline for (write_set) |tbl| {
         var q = PgQuery.from(try db_ctx.conn.query(
