@@ -130,19 +130,9 @@ check_prod() {
   check_ref "op://$v/cloudflare-tunnel-prod/credential"
 
   check_distinct \
-    "op://$v/planetscale-prod/api-connection-string" \
-    "prod postgres api vs worker"
-  check_distinct \
     "op://$v/planetscale-prod/migrator-connection-string" \
     "op://$v/planetscale-prod/api-connection-string" \
     "prod postgres migrator vs api"
-  check_distinct \
-    "op://$v/planetscale-prod/migrator-connection-string" \
-    "prod postgres migrator vs worker"
-
-  check_distinct \
-    "op://$v/upstash-prod/api-url" \
-    "prod redis api vs worker"
 }
 
 check_dev() {
@@ -171,19 +161,9 @@ check_dev() {
   check_ref "op://$v/cloudflare-tunnel-dev/credential"
 
   check_distinct \
-    "op://$v/planetscale-dev/api-connection-string" \
-    "dev postgres api vs worker"
-  check_distinct \
     "op://$v/planetscale-dev/migrator-connection-string" \
     "op://$v/planetscale-dev/api-connection-string" \
     "dev postgres migrator vs api"
-  check_distinct \
-    "op://$v/planetscale-dev/migrator-connection-string" \
-    "dev postgres migrator vs worker"
-
-  check_distinct \
-    "op://$v/upstash-dev/api-url" \
-    "dev redis api vs worker"
 }
 
 check_vercel_envs() {

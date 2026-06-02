@@ -141,13 +141,11 @@ After all items are present, run live connectivity checks:
 DB_API=$(op read "op://$VAULT_DEV/planetscale-dev/api-connection-string")
 DB_MIGRATOR=$(op read "op://$VAULT_DEV/planetscale-dev/migrator-connection-string")
 psql "$DB_API" -c "SELECT 1" && echo "✓ postgres dev api"
-psql "$DB_WORKER" -c "SELECT 1" && echo "✓ postgres dev worker"
 psql "$DB_MIGRATOR" -c "SELECT 1" && echo "✓ postgres dev migrator"
 
 # Redis DEV
 REDIS_API=$(op read "op://$VAULT_DEV/upstash-dev/api-url")
 docker run --rm redis:7-alpine redis-cli -u "$REDIS_API" PING && echo "✓ redis dev api"
-docker run --rm redis:7-alpine redis-cli -u "$REDIS_WORKER" PING && echo "✓ redis dev worker"
 
 # Discord webhook
 WEBHOOK=$(op read "op://$VAULT_PROD/discord-ci-webhook/credential")
