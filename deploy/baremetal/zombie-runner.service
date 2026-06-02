@@ -45,7 +45,7 @@ RuntimeDirectory=zombie
 RuntimeDirectoryMode=0755
 
 # Security hardening — the runner forks bwrap user-namespace sandboxes per lease
-# (no suid needed). Mirrors the isolation the executor sidecar carried before
+# (no suid needed). Mirrors the isolation the standalone sandbox sidecar carried before
 # the engine folded into the runner.
 NoNewPrivileges=yes
 ProtectSystem=strict

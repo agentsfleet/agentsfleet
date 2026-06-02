@@ -15,7 +15,7 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What does self-managed mean?",
-    a: "self-managed provider key. Store your own LLM provider credential — Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot — and the executor resolves it at the tool bridge. usezombie marks up zero on inference; you pay your provider directly.",
+    a: "self-managed provider key. Store your own LLM provider credential — Anthropic, OpenAI, Fireworks (Kimi K2), Together, Groq, Moonshot — and the runner resolves it at the tool bridge. usezombie marks up zero on inference; you pay your provider directly.",
   },
   {
     q: "What am I actually paying for?",

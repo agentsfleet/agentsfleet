@@ -50,13 +50,13 @@ pub const ResourceLimits = struct {
     network_egress_allowed: bool = false,
 };
 
-/// Configuration for the executor sidecar.
+/// Configuration for the runner's sandboxed execution.
 
 /// Per-zombie configuration for durable Postgres-backed memory (M14_001).
 ///
-/// When present, the executor overrides NullClaw's default workspace-SQLite
+/// When present, the runner overrides NullClaw's default workspace-SQLite
 /// memory with a persistent Postgres backend scoped to this zombie only.
-/// When absent (null in runner.zig), the executor falls back to the existing
+/// When absent (null in runner.zig), the runner falls back to the existing
 /// ephemeral workspace-SQLite behaviour — no regression for existing zombies.
 ///
 /// Validation: call `validate()` at config-load time. An invalid config is

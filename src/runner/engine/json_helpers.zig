@@ -1,8 +1,8 @@
-//! Shared JSON value helpers for the executor module.
+//! Shared JSON value helpers for the runner module.
 //!
 //! Used by handler.zig, runner.zig, and client.zig to extract typed
 //! fields from std.json.Value objects. Consolidated here to avoid
-//! duplication across the executor module boundary.
+//! duplication across the runner module boundary.
 //!
 //! Tests live in `json_helpers_test.zig`.
 
@@ -96,7 +96,7 @@ pub fn escapeAlloc(alloc: std.mem.Allocator, input: []const u8) ![]u8 {
 /// Decode a JSON array of strings into `[]const []const u8` allocated on
 /// `alloc`. Non-array input collapses to an empty slice; non-string
 /// elements are silently skipped. Strict typing happens via OpenAPI / spec
-/// enforcement upstream — the executor is permissive at the wire to keep
+/// enforcement upstream — the runner is permissive at the wire to keep
 /// failure modes coarse.
 ///
 /// Uses ArrayList + toOwnedSlice so the returned slice's length matches

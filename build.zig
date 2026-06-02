@@ -132,9 +132,9 @@ pub fn build(b: *std.Build) void {
     // ── Logging module ───────────────────────────────────────────────────────
     // Shared `log.scoped` API + pretty-printer + fatalStderr per
     // docs/LOGGING_STANDARD.md. Importable from every binary AND from
-    // src/auth/ + src/executor/ (which would otherwise be portability
+    // src/auth/ + the runner engine (which would otherwise be portability
     // islands forbidden from reaching across `src/`). Module-named import
-    // makes the boundary clean — auth/executor still cannot import
+    // makes the boundary clean — those layers still cannot import
     // arbitrary cross-layer code, just the canonical logging surface.
     //
     // Lives at src/logging/ — a peer of src/observability/ — because it's
@@ -197,8 +197,8 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(exe);
 
-    // Execution left this build graph at the M80 cutover: the sandbox executor
-    // sidecar (`zombied-executor` + its harness/stub fixtures) is gone, replaced
+    // Execution left this build graph at the M80 cutover: the standalone sandbox
+    // sidecar (and its harness/stub fixtures) is gone, replaced
     // by the host-resident `zombie-runner` daemon, which has its own build graph
     // (`build_runner.zig`) and never links zombied's server infrastructure
     // (pg/httpz/redis). It shares only the frozen wire protocol by source.

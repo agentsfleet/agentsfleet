@@ -112,8 +112,8 @@ pub const ZombieNetwork = struct {
 };
 
 /// Frontmatter knobs from `x-usezombie.context`. Zero means "auto" — the
-/// executor's `ContextBudget.applyDefaults` substitutes `DEFAULT_*` constants.
-/// Mirrors the wire-shape of `executor/context_budget.zig:ContextBudget`
+/// runner's `ContextBudget.applyDefaults` substitutes `DEFAULT_*` constants.
+/// Mirrors the wire-shape of `src/runner/engine/context_budget.zig:ContextBudget`
 /// minus the opaque `model` (which lives one level up at `x-usezombie.model`).
 pub const ZombieContextBudget = struct {
     context_cap_tokens: u32 = 0,
@@ -135,7 +135,7 @@ pub const ZombieConfig = struct {
     // Resolution deferred — stored but not fetched.
     skill: ?[]const u8,
     // Opaque model identifier from `x-usezombie.model`. Pass-through: the
-    // executor's ContextBudget.model carries it; nothing in this binary
+    // runner's ContextBudget.model carries it; nothing in this binary
     // interprets it. Empty/null means "fall back to tenant_providers" (self-managed).
     model: ?[]const u8,
     // Frontmatter overrides for the context budget knobs. Null means

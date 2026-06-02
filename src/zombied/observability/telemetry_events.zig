@@ -198,7 +198,7 @@ pub const ZombieCompleted = struct {
     tokens: u64,
     wall_ms: u64,
     exit_status: []const u8,
-    /// M18_001: ms to first token. 0 if executor did not report.
+    /// ms to first token. 0 if the runner did not report.
     time_to_first_token_ms: u64 = 0,
 
     pub const kind: EventKind = .zombie_completed;

@@ -138,13 +138,13 @@ test "T8: composeMessage allowlist is tight — only 5 known keys produce sectio
 
 // ── Re-landed from the deleted runner_test.zig (cutover, RULE ORP) ───────────
 
-test "mapError maps each RunnerError to its FailureClass; unknown → executor_crash" {
+test "mapError maps each RunnerError to its FailureClass; unknown → runner_crash" {
     try std.testing.expectEqual(types.FailureClass.startup_posture, runner.mapError(runner.RunnerError.InvalidConfig));
     try std.testing.expectEqual(types.FailureClass.startup_posture, runner.mapError(runner.RunnerError.AgentInitFailed));
     try std.testing.expectEqual(types.FailureClass.timeout_kill, runner.mapError(runner.RunnerError.Timeout));
     try std.testing.expectEqual(types.FailureClass.oom_kill, runner.mapError(runner.RunnerError.OutOfMemory));
-    try std.testing.expectEqual(types.FailureClass.executor_crash, runner.mapError(runner.RunnerError.AgentRunFailed));
-    try std.testing.expectEqual(types.FailureClass.executor_crash, runner.mapError(error.Unexpected));
+    try std.testing.expectEqual(types.FailureClass.runner_crash, runner.mapError(runner.RunnerError.AgentRunFailed));
+    try std.testing.expectEqual(types.FailureClass.runner_crash, runner.mapError(error.Unexpected));
 }
 
 test "collectSecrets extracts the llm api_key from agent_config" {

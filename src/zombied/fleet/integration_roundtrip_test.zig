@@ -314,13 +314,13 @@ test "a failed runner report persists the granular failure_label and increments 
     defer lv.free();
     try std.testing.expect(lv.present);
 
-    const rep = try reportFailureAs(h, RUNNER_A_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token, "executor_crash");
+    const rep = try reportFailureAs(h, RUNNER_A_TOKEN, lv.lease_id.?, lv.event_id.?, lv.fencing_token, "runner_crash");
     defer rep.deinit();
     try rep.expectStatus(.ok);
 
     // The granular cause reached the durable record (not the coarse outcome) ...
     try std.testing.expect(try leaseStatusIs(conn, lv.lease_id.?, "reported"));
-    try std.testing.expect(try failureLabelMatches(conn, lv.event_id.?, "executor_crash"));
+    try std.testing.expect(try failureLabelMatches(conn, lv.event_id.?, "runner_crash"));
 
     // ... and the per-runner metrics carry both the granular reason and the
     // outcome-bucketed execution on /metrics (render via an allocating writer so
@@ -329,7 +329,7 @@ test "a failed runner report persists the granular failure_label and increments 
     defer out.deinit(ALLOC);
     try metrics_runner.renderPrometheus(out.writer(ALLOC));
     const metrics = out.items;
-    const failure_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"executor_crash\"";
+    const failure_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",reason=\"runner_crash\"";
     const exec_needle = "runner_id=\"" ++ RUNNER_A_ID ++ "\",outcome=\"agent_error\"";
     try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, failure_needle));
     try std.testing.expect(std.mem.containsAtLeast(u8, metrics, 1, exec_needle));

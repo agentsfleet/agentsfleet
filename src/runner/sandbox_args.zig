@@ -3,7 +3,7 @@
 //! `dev_none`: exec the runner's `__execute` mode directly. Sandboxed tiers
 //! wrap it in bubblewrap — `--unshare-all` (user/pid/net/ipc/uts/cgroup ns),
 //! read-only system paths, read-write workspace, `--die-with-parent` (the
-//! sandbox dies if the runner does), and network per `EXECUTOR_NETWORK_POLICY`.
+//! sandbox dies if the runner does), and network per `RUNNER_NETWORK_POLICY`.
 //! Every argv entry is dup'd into the caller's allocator; the caller frees via
 //! `freeArgv` after the fork.
 

@@ -30,7 +30,7 @@ pub const ENTRIES_RUNTIME = [_]Entry{
         "Sandbox kill switch has been triggered. Contact the administrator."),
     e("UZ-SANDBOX-003", .forbidden, "Sandbox command blocked",
         "The command is blocked by sandbox policy."),
-    // ── EXECUTOR ─────────────────────────────────────────────────────────────
+    // ── RUNNER ─────────────────────────────────────────────────────────────
     e("UZ-EXEC-001", .internal_server_error, "Execution session create failed",
         "Execution session creation failed. Check runner availability."),
     e("UZ-EXEC-002", .internal_server_error, "Run start failed",

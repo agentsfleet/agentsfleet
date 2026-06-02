@@ -58,11 +58,9 @@ pub fn build(b: *std.Build) void {
     });
     const nullclaw_mod = nullclaw_dep.module(S_NULLCLAW);
 
-    // Build options shared by both exe and tests; harness/stub flags are
-    // always false here — the runner always runs the real engine in-process.
+    // Build options module, shared by both exe and tests. The runner always
+    // runs the real engine in-process — no build-time execution flags here.
     const build_opts = b.addOptions();
-    build_opts.addOption(bool, "executor_harness", false);
-    build_opts.addOption(bool, "executor_provider_stub", false);
     const build_options_mod = build_opts.createModule();
 
     const runner_exe = b.addExecutable(.{

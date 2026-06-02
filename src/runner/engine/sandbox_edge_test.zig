@@ -3,8 +3,8 @@
 //! Covers (Tiers T1–T5, T7):
 //! - OOM kill detection path via FailureClass mapping
 //! - Disk-full / resource_kill scenario
-//! - Network access denied (policy_deny) — no metric increment, no crash
-//! - Rogue process consuming excess resources (resource_kill metric path)
+//! - Network access denied (policy_deny) — fails closed, no crash
+//! - Rogue process consuming excess resources (resource_kill path)
 //! - All FailureClass variants produce stable labels (T7 regression)
 //! - ResourceLimits edge values (zero memory, max disk, network flag)
 //! - Session lifecycle: recordStageResult accumulation, getUsage aggregation
@@ -12,70 +12,14 @@
 //! - Concurrent lease touch from multiple threads (T5)
 //! - Mixed expired/active sessions — partial reap only clears expired (T3)
 //! - PolicyMode.registry_allowlist adds --share-net bwrap arg
-//! - incFailureMetric covers resource_kill, landlock_deny, lease_expired paths
-//! (cgroup guards + protocol/metric constants live in executor_limits_test.zig)
+//! (cgroup guards + protocol/metric constants are covered in sibling tests)
 
 const std = @import("std");
 const runner = @import("runner.zig");
 const types = @import("types.zig");
-const runner_metrics = @import("runner_metrics.zig");
 const Session = @import("session.zig");
 const SessionStore = @import("runtime/session_store.zig");
 const network = @import("network.zig");
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FailureClass metric coverage — T3 (negative paths)
-// ─────────────────────────────────────────────────────────────────────────────
-
-test "T3: incFailureMetric increments resource_kill counter" {
-    const before = runner_metrics.executorSnapshot().resource_kills_total;
-    runner.incFailureMetric(.resource_kill);
-    const after = runner_metrics.executorSnapshot().resource_kills_total;
-    try std.testing.expect(after > before);
-}
-
-test "T3: incFailureMetric increments landlock_deny counter" {
-    const before = runner_metrics.executorSnapshot().landlock_denials_total;
-    runner.incFailureMetric(.landlock_deny);
-    const after = runner_metrics.executorSnapshot().landlock_denials_total;
-    try std.testing.expect(after > before);
-}
-
-test "T3: incFailureMetric increments lease_expired counter" {
-    const before = runner_metrics.executorSnapshot().lease_expired_total;
-    runner.incFailureMetric(.lease_expired);
-    const after = runner_metrics.executorSnapshot().lease_expired_total;
-    try std.testing.expect(after > before);
-}
-
-// policy_deny / startup_posture / executor_crash / transport_loss fall into
-// else => {} — they must not crash or increment any counter by mistake.
-test "T3: incFailureMetric policy_deny does not crash" {
-    const snap_before = runner_metrics.executorSnapshot();
-    runner.incFailureMetric(.policy_deny);
-    const snap_after = runner_metrics.executorSnapshot();
-    // No counter dedicated to policy_deny — verify nothing unexpected changed.
-    try std.testing.expectEqual(snap_before.resource_kills_total, snap_after.resource_kills_total);
-    try std.testing.expectEqual(snap_before.oom_kills_total, snap_after.oom_kills_total);
-}
-
-test "T3: incFailureMetric startup_posture does not crash" {
-    const snap_before = runner_metrics.executorSnapshot();
-    runner.incFailureMetric(.startup_posture);
-    const snap_after = runner_metrics.executorSnapshot();
-    try std.testing.expectEqual(snap_before.oom_kills_total, snap_after.oom_kills_total);
-    try std.testing.expectEqual(snap_before.timeout_kills_total, snap_after.timeout_kills_total);
-}
-
-test "T3: incFailureMetric executor_crash does not crash" {
-    runner.incFailureMetric(.executor_crash);
-    // No crash — pass.
-}
-
-test "T3: incFailureMetric transport_loss does not crash" {
-    runner.incFailureMetric(.transport_loss);
-    // No crash — pass.
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // mapError — all FailureClass-producing paths (T7 regression safety)
@@ -85,10 +29,10 @@ test "T7: mapError produces correct FailureClass for all RunnerError variants" {
     const cases = [_]struct { err: anyerror, want: types.FailureClass }{
         .{ .err = runner.RunnerError.InvalidConfig, .want = .startup_posture },
         .{ .err = runner.RunnerError.AgentInitFailed, .want = .startup_posture },
-        .{ .err = runner.RunnerError.AgentRunFailed, .want = .executor_crash },
+        .{ .err = runner.RunnerError.AgentRunFailed, .want = .runner_crash },
         .{ .err = runner.RunnerError.Timeout, .want = .timeout_kill },
         .{ .err = runner.RunnerError.OutOfMemory, .want = .oom_kill },
-        .{ .err = error.Unexpected, .want = .executor_crash },
+        .{ .err = error.Unexpected, .want = .runner_crash },
         // In Zig, error.OutOfMemory and RunnerError.OutOfMemory are the same value.
         .{ .err = error.OutOfMemory, .want = .oom_kill },
     };
@@ -109,7 +53,7 @@ test "T7: FailureClass label is stable for all variants" {
         .{ .fc = .timeout_kill, .label = "timeout_kill" },
         .{ .fc = .oom_kill, .label = "oom_kill" },
         .{ .fc = .resource_kill, .label = "resource_kill" },
-        .{ .fc = .executor_crash, .label = "executor_crash" },
+        .{ .fc = .runner_crash, .label = "runner_crash" },
         .{ .fc = .transport_loss, .label = "transport_loss" },
         .{ .fc = .landlock_deny, .label = "landlock_deny" },
         .{ .fc = .lease_expired, .label = "lease_expired" },
@@ -393,4 +337,4 @@ test "T2: NetworkConfig default is deny_all" {
 }
 
 // (cgroup platform guards, errorCodeForFailure, and protocol constants
-//  are in executor_limits_test.zig)
+//  are covered in sibling tests)

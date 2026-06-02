@@ -48,7 +48,7 @@ const FREE_TRIAL_END_MS: i64 = 1_785_542_400_000;
 const FREE_TRIAL_STAGE_NANOS: i64 = 0;
 
 /// Conservative estimate floors used by the gate-time stage-cost projection
-/// (the executor doesn't know real token counts yet). The actual cost is
+/// (the runner doesn't know real token counts yet). The actual cost is
 /// charged at this floor; v3 may add reconciliation against StageResult.
 pub const ESTIMATE_FLOOR_INPUT_TOKENS: u32 = 100;
 pub const ESTIMATE_FLOOR_OUTPUT_TOKENS: u32 = 100;

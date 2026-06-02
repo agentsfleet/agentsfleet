@@ -4,7 +4,7 @@
 //!
 //! Pure data, std-only — no JSON/wire parsing here (that is `context_budget.zig`,
 //! which re-exports these). Kept dependency-free so the frozen `/v1/runners`
-//! protocol can reuse `ExecutionPolicy` on the lease without dragging executor
+//! protocol can reuse `ExecutionPolicy` on the lease without dragging runner
 //! parsing internals onto the public wire surface. Shared as a named module by
 //! both `zombied` and the runner; migrates with the engine to the runner at the
 //! cutover.
@@ -18,7 +18,7 @@ pub const NetworkPolicy = struct {
 };
 
 /// Context-budget knobs from `x-usezombie.context`. `model` + `context_cap_tokens`
-/// are upstream-populated passthrough; the executor does not interpret `model`.
+/// are upstream-populated passthrough; the runner does not interpret `model`.
 pub const ContextBudget = struct {
     tool_window: u32 = 0,
     memory_checkpoint_every: u32 = 5,

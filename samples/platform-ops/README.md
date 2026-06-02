@@ -14,7 +14,7 @@ quick-start.
             ▼
    ┌────────────────────────┐         read-only
    │  zombied worker +      │ ─────▶  fly.io + upstash
-   │  executor (LLM)        │
+   │  runner (LLM)          │
    │                        │ ─────▶  Slack #platform-ops
    │  reads SKILL.md +      │         (one plain-prose post)
    │  TRIGGER.md            │

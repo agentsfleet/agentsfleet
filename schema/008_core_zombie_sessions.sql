@@ -7,7 +7,7 @@
 -- checkpoint_at: millis timestamp of last successful checkpoint.
 -- On crash + restart, worker reads this row to resume from the last event cursor.
 --
--- execution_id + execution_started_at track the active executor session.
+-- execution_id + execution_started_at track the active runner session.
 -- Set by the worker at createExecution, cleared at destroyExecution and on claim (crash recovery).
 -- NULL means the zombie is idle. Non-NULL means it is actively executing an event.
 

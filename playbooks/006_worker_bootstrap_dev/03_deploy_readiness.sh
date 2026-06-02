@@ -3,7 +3,7 @@
 # Verifies playbook step 6.0:
 #   - /opt/zombie/deploy/deploy.sh exists and is executable
 #   - /opt/zombie/deploy/zombie-runner.service exists
-#     (the worker/executor cutover folded both units into the single
+#     (the M80 cutover folded both units into the single
 #      zombie-runner daemon — see runner_fleet.md)
 #   - /opt/zombie/.env exists with correct permissions (600)
 #   - Systemd units installed in /etc/systemd/system/
@@ -15,7 +15,7 @@ echo "== M4_001 Section 3: deploy readiness =="
 vault_dev="${VAULT_DEV:-ZMB_CD_DEV}"
 missing=0
 
-# Single host-resident unit since the cutover folded worker + executor into it.
+# Single host-resident unit since the M80 cutover folded the prior units into it.
 readonly RUNNER_UNIT="zombie-runner.service"
 
 declare -A OP_CACHE_VALUE

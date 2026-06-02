@@ -11,7 +11,7 @@ const ZombieConfigError = config_types.ZombieConfigError;
 const MAX_CREDENTIAL_NAME_LEN: usize = 128;
 
 /// Validate credential name shapes. Tool names are not gated at parse
-/// time — the executor sandbox is the binding authority on tool dispatch,
+/// time — the runner sandbox is the binding authority on tool dispatch,
 /// and a parse-time tool allowlist drifts faster than the binary ships.
 pub fn validateCredentials(
     credentials: []const []const u8,

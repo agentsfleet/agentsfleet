@@ -144,9 +144,9 @@ pub fn renderPrometheus(
         s.agent_duration_seconds,
     );
 
-    // Executor `zombie_executor_*` series were emitted here until the M80
-    // cutover moved execution to the runner. The runner exposes its own engine
-    // metrics; zombied no longer renders an executor block.
+    // Per-execution series were emitted here until the M80 cutover moved
+    // execution to the runner. The runner exposes its own engine metrics;
+    // zombied no longer renders an execution block.
 
     // M15_002: zombie execution counters + wall-time histogram.
     try appendMetric(writer, "zombie_triggered_total", S_COUNTER, "Total zombie webhook triggers accepted.", s.zombie_triggered_total);

@@ -4,7 +4,7 @@
 //! `result` frame → parent), and `zombied`'s `report` verb consumes it to write
 //! the durable `core.zombie_events` row. One canonical type, so the runner's
 //! output and the control plane's write can never drift (it superseded the
-//! executor sidecar's `StageResult` at the M80 cutover).
+//! pre-cutover sidecar's `StageResult` at the M80 cutover).
 
 const std = @import("std");
 
@@ -17,7 +17,7 @@ pub const FailureClass = enum {
     timeout_kill,
     oom_kill,
     resource_kill,
-    executor_crash,
+    runner_crash,
     transport_loss,
     landlock_deny,
     lease_expired,
@@ -49,7 +49,7 @@ pub const ExecutionResult = struct {
 test "FailureClass.label returns the tag name for every variant" {
     const variants = [_]FailureClass{
         .startup_posture, .policy_deny,    .timeout_kill,      .oom_kill,
-        .resource_kill,   .executor_crash, .transport_loss,    .landlock_deny,
+        .resource_kill,   .runner_crash, .transport_loss,    .landlock_deny,
         .lease_expired,   .renewal_terminate,
     };
     for (variants) |fc| try std.testing.expect(fc.label().len > 0);

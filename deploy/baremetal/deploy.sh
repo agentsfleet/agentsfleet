@@ -48,7 +48,7 @@ readonly HOST="${DEPLOY_HOSTNAME:-$(hostname)}"
 
 # The single deployable component. Kept as an explicit argument so the call site
 # names what it deploys; the resolver rejects any other value (catches stale
-# callers still passing the retired 'worker'/'executor' components).
+# callers still passing a retired component name).
 readonly COMPONENT_RUNNER="runner"
 readonly BINARY_NAME="zombie-runner"
 readonly SERVICE_NAME="zombie-runner.service"

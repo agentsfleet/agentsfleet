@@ -14,8 +14,8 @@
 //!     via @tagName), so the enum is the single source for each value (RULE UFS).
 //!
 //! The lease payload reuses the canonical execution types so the wire and the
-//! executor never drift: the event is the normalized `EventEnvelope`, and the
-//! resolved config + inline secrets travel as the executor's own
+//! runner never drift: the event is the normalized `EventEnvelope`, and the
+//! resolved config + inline secrets travel as the runner's own
 //! `ExecutionPolicy`. Leases are fenced — see `LeasePayload.fencing_token`.
 
 const EventEnvelope = @import("event_envelope.zig");

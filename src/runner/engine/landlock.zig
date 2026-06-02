@@ -12,7 +12,7 @@ const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
 
-const log = logging.scoped(.executor_landlock);
+const log = logging.scoped(.runner_landlock);
 
 // Landlock syscall numbers (same on x86_64 and aarch64).
 const SYS_landlock_create_ruleset: usize = 444;

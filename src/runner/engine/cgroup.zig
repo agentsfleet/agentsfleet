@@ -5,7 +5,7 @@
 //! - cpu.max: CPU quota/period throttling
 //! - io.max: disk write rate limiting
 //!
-//! The cgroup is created under /sys/fs/cgroup/zombie.executor/ and
+//! The cgroup is created under /sys/fs/cgroup/zombie.runner/ and
 //! cleaned up when the session is destroyed.
 //! Linux-only; no-ops on other platforms.
 
@@ -13,11 +13,10 @@ const std = @import("std");
 const logging = @import("log");
 const builtin = @import("builtin");
 const types = @import("types.zig");
-const runner_metrics = @import("runner_metrics.zig");
 
-const log = logging.scoped(.executor_cgroup);
+const log = logging.scoped(.runner_cgroup);
 
-const CGROUP_BASE = "/sys/fs/cgroup/zombie.executor";
+const CGROUP_BASE = "/sys/fs/cgroup/zombie.runner";
 
 const S_THROTTLED_USEC = "throttled_usec ";
 const S_D = "{d}";
@@ -179,14 +178,12 @@ pub const CgroupScope = struct {
 
         const peak = self.readMemoryPeak();
         if (peak > 0) {
-            runner_metrics.setExecutorMemoryPeakBytes(peak);
             result.memory_peak_bytes = peak;
         }
 
         const throttled_us = self.readCpuThrottledUs();
         if (throttled_us > 0) {
             const throttled_ms = throttled_us / 1000;
-            runner_metrics.addExecutorCpuThrottledMs(throttled_ms);
             result.cpu_throttled_ms = throttled_ms;
         }
 

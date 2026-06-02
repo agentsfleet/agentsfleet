@@ -1,10 +1,10 @@
-//! Tool bridge — table-driven NullClaw built-in tool resolver for the executor.
+//! Tool bridge — table-driven NullClaw built-in tool resolver for the runner.
 //!
 //! Replaces the hardcoded if/else chain in runner.buildToolsFromSpec().
 //! The bridge owns a static registry of {name, builderFn} entries for
 //! every NullClaw built-in tool.
 //!
-//! To add a new executor-side NullClaw tool:
+//! To add a new runner-side NullClaw tool:
 //!   1. Write a builder function in tool_builders.zig.
 //!   2. Add one ToolEntry to BRIDGE_REGISTRY below.
 //!   Zero other changes required.
@@ -13,7 +13,7 @@
 //! dynamic — the agent uses NullClaw's shell/HTTP tools to interact with
 //! skill APIs using injected credentials. No compiled Zig per skill.
 //!
-//! Binary boundary: the executor imports only `nullclaw`. This file must
+//! Binary boundary: the runner imports only `nullclaw`. This file must
 //! NOT import anything from src/zombie/, src/pipeline/, or src/main.zig.
 
 const std = @import("std");
@@ -201,7 +201,7 @@ pub fn buildTools(
 }
 
 // ── JSON helpers ───────────────────────────────────────────────────────────
-// Duplicated — executor binary boundary prevents import.
+// Duplicated — runner binary boundary prevents import.
 
 fn jsonGetStr(val: std.json.Value, key: []const u8) ?[]const u8 {
     if (val != .object) return null;

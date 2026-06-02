@@ -247,7 +247,7 @@ pub const ENTRIES = [_]Entry{
         "The tenant's balance can no longer cover continued execution; the lease may not be renewed and the run terminates gracefully."),
     e("UZ-RUN-013", .bad_request, "Renew body malformed",
         "The renew request body could not be parsed; cumulative token counts default to zero and the slice meters its run-time fee only (never a negative charge). The lease is still renewed."),
-    // Runtime / execute-path entries (sandbox, executor, relay, credentials,
+    // Runtime / execute-path entries (sandbox, runner, relay, credentials,
     // approval-gate, memory, api-keys, grants, tool/credential, proxy,
     // gate-execute) live in error_entries_runtime.zig and are concatenated
     // into REGISTRY by error_registry.zig.
