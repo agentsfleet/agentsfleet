@@ -234,6 +234,7 @@ No change to: the receive debit, the gate, balance_nanos, the telemetry-row shap
 10. The wallet debit never drives `balance_nanos` below zero — enforced by the `GREATEST(0, balance_nanos − slice)` clamp + the `/renew` credit gate refusing the next renewal (`UZ-RUN-012`) + `test_credit_exhausted_clamps_then_refuses`.
 11. During the free-trial window the metered charge (run fee + tokens) is **zero**, identical to the existing stage short-circuit — enforced by the shared `computeStageChargeAt` `now_ms < FREE_TRIAL_END_MS` branch + metering tests pinned to `POST_TRIAL_NOW_MS` (plus one in-trial assertion that a metered run charges 0).
 12. The report's active→reported claim and the final-slice settle are one atomic fenced outcome — enforced by fusing both into a single writable-CTE under `FOR UPDATE OF l, a` (`renewal_settle.claimAndSettle`) so a concurrent reclaim cannot interleave between the claim and the settle (the cap-path report→reclaim race) + `test_report_claim_settle_atomic`.
+13. Each `metering_periods.slice_seq` is monotonic per event even under concurrent same-lease renews — enforced by deriving it from a `meter_slice_seq` counter on the FOR-UPDATE-locked affinity slot (EvalPlanQual re-reads the committed value for a blocked renew) rather than a `MAX(slice_seq)` read of the unlocked `metering_periods` (which a racing renew sees under a stale snapshot, picking a duplicate seq) + the 100-way renew convergence test / `test_claim_settle_vs_reclaim_race`.
 
 ---
 

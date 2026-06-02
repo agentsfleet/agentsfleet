@@ -107,7 +107,31 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
     _ = conn.exec(sql, args) catch |err| std.log.warn("cleanup ignored: {s}", .{@errorName(err)});
 }
 
+// N_RENEWERS (100) worker threads share a 4-connection pool (POOL_SIZE_DEFAULT),
+// so most workers must wait for a connection. Under full-suite DB load the
+// metered renew holds each connection long enough that a worker's first acquire
+// can exceed the pool's acquire timeout — treat that as "pool busy" and retry,
+// since the invariant under test is convergence + exactly-once charging, not
+// connection-pool capacity. Bounded so a genuinely dead pool still fails (returns
+// null → the worker records an error) rather than hanging.
+fn acquireRetry(h: *TestHarness) ?*pg.Conn {
+    var attempt: usize = 0;
+    while (attempt < 30) : (attempt += 1) {
+        return h.acquireConn() catch {
+            std.Thread.sleep(20 * std.time.ns_per_ms);
+            continue;
+        };
+    }
+    return null;
+}
+
 fn teardown(conn: *pg.Conn) void {
+    // Metering rows are keyed by event_id — the three tests in this file share
+    // one (EVENT_ID), and the renew CTE writes a breakdown + an accumulating
+    // ledger row per renewal. Clear them so a count-based assertion (slices) is
+    // not polluted by a sibling test that ran earlier in the seed-shuffled order.
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
@@ -129,9 +153,11 @@ const RenewSlot = struct {
     renewed_to: i64 = 0,
 };
 
-const Worker = struct {
+// A runner renewing its lease on its own connection. The verdict is recorded
+// into the caller's slot: 1 = renewed to the shared deadline, 2 = lost, 0 = error.
+const Renewer = struct {
     fn run(h: *TestHarness, slot: *RenewSlot) void {
-        const conn = h.acquireConn() catch return;
+        const conn = acquireRetry(h) orelse return;
         defer h.releaseConn(conn);
         const outcome = renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{}) catch return;
         switch (outcome) {
@@ -164,7 +190,7 @@ test "100 concurrent renews on one active lease converge to a single shared dead
     var slots: [N_RENEWERS]RenewSlot = @splat(RenewSlot{});
     var threads: [N_RENEWERS]std.Thread = undefined;
     for (&threads, 0..) |*t, i| {
-        t.* = try std.Thread.spawn(.{}, Worker.run, .{ h, &slots[i] });
+        t.* = try std.Thread.spawn(.{}, Renewer.run, .{ h, &slots[i] });
     }
     for (threads) |t| t.join();
 
@@ -196,9 +222,9 @@ fn seedBalance(conn: *pg.Conn, balance: i64) !void {
     , .{ base.TEST_TENANT_ID, balance });
 }
 
-const MeterWorker = struct {
+const MeteredRenewer = struct {
     fn run(h: *TestHarness, slot: *RenewSlot) void {
-        const conn = h.acquireConn() catch return;
+        const conn = acquireRetry(h) orelse return;
         defer h.releaseConn(conn);
         const outcome = renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, METER) catch return;
         switch (outcome) {
@@ -236,7 +262,7 @@ test "100 concurrent metered renews on one lease charge the slice exactly once (
 
     var slots: [N_RENEWERS]RenewSlot = @splat(RenewSlot{});
     var threads: [N_RENEWERS]std.Thread = undefined;
-    for (&threads, 0..) |*t, i| t.* = try std.Thread.spawn(.{}, MeterWorker.run, .{ h, &slots[i] });
+    for (&threads, 0..) |*t, i| t.* = try std.Thread.spawn(.{}, MeteredRenewer.run, .{ h, &slots[i] });
     for (threads) |t| t.join();
 
     // Exactly ONE slice left the wallet across the 100-way race.
@@ -252,11 +278,11 @@ fn leaseReported(conn: *pg.Conn) !bool {
     return std.mem.eql(u8, try row.get([]const u8, 0), "reported");
 }
 
-const ClaimSlot = struct { ran: bool = false, claimed: bool = false, charged: i64 = 0 };
+const ReportSlot = struct { ran: bool = false, claimed: bool = false, charged: i64 = 0 };
 
-const ClaimWorker = struct {
-    fn run(h: *TestHarness, slot: *ClaimSlot) void {
-        const conn = h.acquireConn() catch return;
+const Reporter = struct {
+    fn run(h: *TestHarness, slot: *ReportSlot) void {
+        const conn = acquireRetry(h) orelse return;
         defer h.releaseConn(conn);
         const out = renewal_settle.claimAndSettle(conn, LEASE_ID, RUNNER_ID, NOW_MS, METER) catch return;
         slot.* = .{ .ran = true, .claimed = out.claimed, .charged = out.charged_nanos };
@@ -266,9 +292,9 @@ const ClaimWorker = struct {
 // Simulates the conflicting write a reclaim makes: bump the affinity fence under
 // the row lock (a plain UPDATE locks the row, contending with claim+settle's
 // `FOR UPDATE OF l, a`). This is precisely the operation the fold must serialise.
-const ReclaimWorker = struct {
+const Reclaimer = struct {
     fn run(h: *TestHarness) void {
-        const conn = h.acquireConn() catch return;
+        const conn = acquireRetry(h) orelse return;
         defer h.releaseConn(conn);
         _ = conn.exec("UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1, updated_at = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, NOW_MS }) catch return;
     }
@@ -295,15 +321,13 @@ test "claim+settle racing a reclaim never reports without charging the final sli
     _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
     const balance: i64 = 1_000_000_000_000;
     try seedBalance(c, balance);
-    defer teardown(c);
-    defer execIgnore(c, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
-    defer execIgnore(c, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+    defer teardown(c); // also clears metering_periods + telemetry for EVENT_ID
 
     // One claim+settle (the report) racing 8 reclaim fence-bumps on the same slot.
-    var slot = ClaimSlot{};
+    var slot = ReportSlot{};
     var threads: [9]std.Thread = undefined;
-    threads[0] = try std.Thread.spawn(.{}, ClaimWorker.run, .{ h, &slot });
-    for (threads[1..]) |*t| t.* = try std.Thread.spawn(.{}, ReclaimWorker.run, .{h});
+    threads[0] = try std.Thread.spawn(.{}, Reporter.run, .{ h, &slot });
+    for (threads[1..]) |*t| t.* = try std.Thread.spawn(.{}, Reclaimer.run, .{h});
     for (threads) |t| t.join();
     try std.testing.expect(slot.ran);
 

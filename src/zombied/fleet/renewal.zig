@@ -115,6 +115,7 @@ const RENEW_METER_SQL =
     \\WITH probe AS (
     \\    SELECT l.id, l.zombie_id, l.workspace_id, l.tenant_id, l.event_id,
     \\           l.created_at, l.fencing_token, l.posture, l.model, a.fencing_seq,
+    \\           a.meter_slice_seq,
     \\           LEAST($3::bigint, l.created_at + $4::bigint) AS capped,
     \\           GREATEST(0, $6::bigint - a.last_metered_at_ms)      AS d_ms,
     \\           GREATEST(0, $7::bigint - a.metered_input_tokens)    AS d_in,
@@ -135,7 +136,8 @@ const RENEW_METER_SQL =
     \\    FROM probe
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
-    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged
+    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged,
+    \\           meter_slice_seq + 1 AS next_seq
     \\    FROM calc
     \\    WHERE fencing_token >= fencing_seq AND capped > $6::bigint
     \\), ext_lease AS (
@@ -149,7 +151,8 @@ const RENEW_METER_SQL =
     \\    UPDATE fleet.runner_affinity a
     \\    SET leased_until = g.capped, updated_at = $6,
     \\        metered_input_tokens = $7, metered_cached_tokens = $8,
-    \\        metered_output_tokens = $9, last_metered_at_ms = $6
+    \\        metered_output_tokens = $9, last_metered_at_ms = $6,
+    \\        meter_slice_seq = g.next_seq
     \\    FROM guard g WHERE a.zombie_id = g.zombie_id
     \\    RETURNING a.zombie_id
     \\), wallet AS (
@@ -183,8 +186,7 @@ const RENEW_METER_SQL =
     \\    INSERT INTO fleet.metering_periods
     \\      (event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
     \\       run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-    \\    SELECT g.event_id,
-    \\           (SELECT COALESCE(MAX(slice_seq), 0) + 1 FROM fleet.metering_periods WHERE event_id = g.event_id),
+    \\    SELECT g.event_id, g.next_seq,
     \\           g.d_in, g.d_cached, g.d_out, g.d_ms, g.run_fee, g.token_cost, g.charged, $6
     \\    FROM guard g
     \\    RETURNING event_id

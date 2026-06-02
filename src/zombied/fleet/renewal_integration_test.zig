@@ -39,6 +39,7 @@ const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7a01";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7f01";
+const EVENT_ID = "evt-renew-1"; // matches seedLease; metering rows keyed by it
 
 // A fixed "now" for deterministic clamping. Lease created_at is set relative to
 // this per-test so the cap is exercised precisely.
@@ -86,6 +87,11 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
+    // Breakdown + ledger rows are keyed by event_id and survive a lease/affinity
+    // delete; clear them so a re-seeded case starts the per-event slice counter
+    // clean (the affinity counter resets, so a leftover slice_seq would collide).
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});

@@ -82,12 +82,14 @@ pub fn claim(
 /// re-leased run meters forward from where it stopped. The renewal CTE reads
 /// this cursor for each slice's Δ, so a stale value here would over-charge the
 /// first renewal — hence the reset is fail-closed (a reset error fails lease
-/// issue rather than risk an over-charge).
+/// issue rather than risk an over-charge). `meter_slice_seq` resets too so the
+/// new event's breakdown numbering restarts at 1.
 pub fn resetCursor(conn: *pg.Conn, zombie_id: []const u8, now_ms: i64) !void {
     _ = conn.exec(
         \\UPDATE fleet.runner_affinity
         \\SET metered_input_tokens = 0, metered_cached_tokens = 0,
-        \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2
+        \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2,
+        \\    meter_slice_seq = 0
         \\WHERE zombie_id = $1::uuid
     , .{ zombie_id, now_ms }) catch return error.AffinityCursorResetFailed;
 }

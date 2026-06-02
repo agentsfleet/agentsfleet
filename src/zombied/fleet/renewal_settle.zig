@@ -49,7 +49,7 @@ pub const SettleOutcome = struct {
 const CLAIM_SETTLE_SQL =
     \\WITH probe AS (
     \\    SELECT l.id, l.zombie_id, l.workspace_id, l.tenant_id, l.event_id,
-    \\           l.posture, l.model, l.fencing_token, a.fencing_seq,
+    \\           l.posture, l.model, l.fencing_token, a.fencing_seq, a.meter_slice_seq,
     \\           GREATEST(0, $3::bigint - a.last_metered_at_ms)      AS d_ms,
     \\           GREATEST(0, $4::bigint - a.metered_input_tokens)    AS d_in,
     \\           GREATEST(0, $5::bigint - a.metered_cached_tokens)   AS d_cached,
@@ -69,7 +69,8 @@ const CLAIM_SETTLE_SQL =
     \\    FROM probe
     \\), guard AS (
     \\    SELECT *, run_fee + token_cost AS slice,
-    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged
+    \\           LEAST(run_fee + token_cost, COALESCE(bal0, run_fee + token_cost)) AS charged,
+    \\           meter_slice_seq + 1 AS next_seq
     \\    FROM calc
     \\    WHERE fencing_token >= fencing_seq
     \\), claim AS (
@@ -81,7 +82,8 @@ const CLAIM_SETTLE_SQL =
     \\), ext_aff AS (
     \\    UPDATE fleet.runner_affinity a
     \\    SET metered_input_tokens = $4, metered_cached_tokens = $5,
-    \\        metered_output_tokens = $6, last_metered_at_ms = $3, updated_at = $3
+    \\        metered_output_tokens = $6, last_metered_at_ms = $3, updated_at = $3,
+    \\        meter_slice_seq = g.next_seq
     \\    FROM guard g WHERE a.zombie_id = g.zombie_id
     \\    RETURNING a.zombie_id
     \\), wallet AS (
@@ -115,8 +117,7 @@ const CLAIM_SETTLE_SQL =
     \\    INSERT INTO fleet.metering_periods
     \\      (event_id, slice_seq, d_input_tokens, d_cached_tokens, d_output_tokens,
     \\       run_ms, run_fee_nanos, token_cost_nanos, charged_nanos, created_at)
-    \\    SELECT g.event_id,
-    \\           (SELECT COALESCE(MAX(slice_seq), 0) + 1 FROM fleet.metering_periods WHERE event_id = g.event_id),
+    \\    SELECT g.event_id, g.next_seq,
     \\           g.d_in, g.d_cached, g.d_out, g.d_ms, g.run_fee, g.token_cost, g.charged, $3
     \\    FROM guard g
     \\    RETURNING event_id
