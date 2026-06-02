@@ -172,8 +172,10 @@ fn applySelfManaged(hx: Hx, conn: *pg.Conn, tenant_id: []const u8, input: PutInp
     defer probed.deinit(hx.alloc);
 
     // Effective model: caller's --model override OR the credential's stored model.
+    // The rate row is keyed by (provider, model) — the credential's provider is
+    // the authority for which provider hosts this model.
     const effective_model: []const u8 = input.model orelse probed.model;
-    const cache_entry = model_rate_cache.lookup_model_rate(effective_model) orelse {
+    const cache_entry = model_rate_cache.lookup_model_rate(probed.provider, effective_model) orelse {
         hx.fail(ec.ERR_PROVIDER_MODEL_NOT_IN_CATALOGUE, "model not in cached caps catalogue");
         return;
     };

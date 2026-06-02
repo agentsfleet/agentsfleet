@@ -39,7 +39,7 @@ These are the tool primitives NullClaw exposes. The zombie's `tools:` allowlist 
 | Tool | Purpose | Visible to the zombie's agent |
 |---|---|---|
 | `http_request` | GET / POST to allow-listed hosts. Placeholders like `${secrets.NAME.FIELD}` are substituted at the tool bridge after sandbox entry. | The agent sees placeholders only; it never sees raw secret bytes. |
-| `memory_store` / `memory_recall` | Durable scratchpad keyed by string. Survives stage boundaries and full restart. The "where I am" snapshot mechanism. | Yes — the agent reads and writes. |
+| `memory_store` / `memory_recall` | Durable scratchpad keyed by string. Survives run boundaries and full restart. The "where I am" snapshot mechanism. | Yes — the agent reads and writes. |
 | `cron_add` / `cron_list` / `cron_remove` | Self-schedule future invocations. Each fire arrives as a synthetic event with `actor=cron:<schedule>`. | Yes. |
 | `shell` (gated) | Read-only commands like `docker ps`, `kubectl get`. Not part of the initial platform-ops surface. | Yes, when explicitly enabled. |
 
@@ -57,7 +57,7 @@ These are the tool primitives NullClaw exposes. The zombie's `tools:` allowlist 
 | Provider config (self-managed) | Per-tenant posture choice between platform-managed inference and self-managed provider key. Tenant-scoped `core.tenant_providers` row carries `mode / provider / model / context_cap_tokens / credential_ref`; the user-named credential pointed to by `credential_ref` carries `{provider, api_key, model}`. The api_key crosses one boundary cleanly (vault → resolver → lease `ExecutionPolicy` → runner's sandboxed child → outbound HTTPS) and never appears in any user-facing surface. See [`billing_and_provider_keys.md`](./billing_and_provider_keys.md) §8.2. | Provider resolution path |
 | Approval gating | Risky actions block until a human clicks Approve in the dashboard or a Slack DM. The state machine survives control-plane and runner restarts (it is durable in Postgres, gated at `lease`). | Approval workflow |
 | Budget caps | Daily and monthly dollar hard caps; further runs are blocked at the first trip. Configured per-zombie in `TRIGGER.md`. | Billing gate |
-| Per-stage context lifecycle | Rolling tool-result window, memory-store nudge, stage chunking, and continuation events. See §4. | Context lifecycle |
+| Per-run context lifecycle | Rolling tool-result window, memory-store nudge, run chunking, and continuation events. See §4. | Context lifecycle |
 
 ---
 
@@ -96,14 +96,14 @@ x-usezombie:
 **Wire-shape parser status.** Both `x-usezombie.model` and the four
 `x-usezombie.context.*` knobs are parsed into `ZombieConfig`, carried in the
 lease `ExecutionPolicy`, and applied by the engine's `ContextBudget` on every
-stage. Operator overrides take effect; absent or zero fields fall through to
+run. Operator overrides take effect; absent or zero fields fall through to
 the runtime defaults below via `applyContextDefaults`.
 
 ### How the three layers compose (defence-in-depth, not override)
 
 ```mermaid
 flowchart TD
-    Start([Stage opens — runner.execute]) --> Tool1[tool call 1<br/>result added to context]
+    Start([Run opens — runner.execute]) --> Tool1[tool call 1<br/>result added to context]
     Tool1 --> Tool2[tool calls 2-4]
     Tool2 --> L1{N tool calls?}
     L1 -->|yes| Checkpoint[L1 fires:<br/>agent calls memory_store<br/>'findings_so_far']
@@ -117,7 +117,7 @@ flowchart TD
     L3 -->|yes| Chunk[L3 fires:<br/>agent writes final snapshot<br/>returns exit_ok=false<br/>zombied enqueues continuation]
     L3 -->|no| Tool4[tool call N+1]
     Tool4 --> L1
-    Chunk --> NextStage([Next stage:<br/>memory_recall<br/>incident:X])
+    Chunk --> NextStage([Next run:<br/>memory_recall<br/>incident:X])
     NextStage --> Tool1
 ```
 
@@ -125,7 +125,7 @@ flowchart TD
 
 - **Layer 1 — `memory_checkpoint_every`.** Runs periodically as the agent works. Forces the agent to write a durable snapshot of "what I've learned so far" via `memory_store` every N tool calls. Cheap and always safe — even if subsequent layers drop context, the snapshot survives.
 - **Layer 2 — `tool_window`.** Runs continuously. Bounds context growth by dropping the oldest tool results once the count exceeds the cap. Old results stay in `core.zombie_events`; they just leave the active language-model context.
-- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `zombied` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh stage and immediately calls `memory_recall` to load the snapshot — possibly on a different runner.
+- **Layer 3 — `stage_chunk_threshold`.** The failsafe. When context fill exceeds the threshold (a percentage of the active model's context cap), the agent writes a final snapshot and reports `{outcome: continue, checkpoint_id: ...}`; `zombied` persists the checkpoint and enqueues a continuation event chained by `resumes_event_id` (`actor=continuation:<original_actor>`). The next lease starts a fresh run and immediately calls `memory_recall` to load the snapshot — possibly on a different runner.
 
 The order is failure-mode escalation: Layer 1 keeps your work safe, Layer 2 keeps your context bounded, Layer 3 saves the chain from collapse. They never conflict.
 

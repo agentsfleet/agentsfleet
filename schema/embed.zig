@@ -18,3 +18,4 @@ pub const tenant_providers_sql = @embedFile("020_tenant_providers.sql");
 pub const fleet_runners_sql = @embedFile("021_fleet_runners.sql");
 pub const fleet_runner_leases_sql = @embedFile("022_fleet_runner_leases.sql");
 pub const fleet_runner_affinity_sql = @embedFile("023_fleet_runner_affinity.sql");
+pub const fleet_metering_periods_sql = @embedFile("024_fleet_metering_periods.sql");

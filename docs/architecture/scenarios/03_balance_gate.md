@@ -2,7 +2,7 @@
 
 **Persona — John Doe.** Same user from Scenarios 01 and 02. He installed his platform-ops zombie cold, ran for a couple of weeks on the default platform-managed posture, then brought his own Fireworks key. This scenario watches his starter grant drain over time across both postures and ends with the gate tripping.
 
-> **Rate snapshot.** The cent-and-token arithmetic below was authored against an earlier rate table (M48 era — $0.01 receive, $0.10 stage, $10 starter). Under M66 stealth-mode rates the grant is $5, receive is $0 in both postures, and stage is posture-dispatched (platform overhead + token cost / flat self-managed fee). The *flow* — gate, two debit points, telemetry rows — is identical to what's shown; only the per-event arithmetic moves. Authoritative current values: see [`billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1 (sources of truth). Treat the numbers in this scenario as illustrative.
+> **Rate snapshot.** The cent-and-token arithmetic below was authored against an earlier rate table (M48 era — $0.01 receive, $0.10 run, $10 starter). Under M66 stealth-mode rates the grant is $5, receive is $0 in both postures, and run is posture-dispatched (platform overhead + token cost / flat self-managed fee). The *flow* — gate, two debit points, telemetry rows — is identical to what's shown; only the per-event arithmetic moves. Authoritative current values: see [`billing_and_provider_keys.md`](../billing_and_provider_keys.md) §1 (sources of truth). Treat the numbers in this scenario as illustrative.
 
 **Outcome under test:** A tenant whose `core.tenant_billing.balance_nanos` reaches zero stops dispatching new events at the gate. Same code path under both postures; only the per-event drain rate differs. The user gets a clear "credits exhausted" UX pointing at the dashboard billing page. There is no Stripe purchase flow in v2.0 — exhausted users contact support for a manual top-up.
 
@@ -10,16 +10,16 @@
 flowchart TD
     Start([XREADGROUP unblocks<br/>with new event]) --> Insert[INSERT zombie_events<br/>status=received]
     Insert --> Resolve[Resolve posture<br/>tenant_provider.resolveActiveProvider]
-    Resolve --> Estimate[Estimate event cost<br/>receive + worst-case stage]
+    Resolve --> Estimate[Estimate event cost<br/>receive + worst-case run]
     Estimate --> Gate{balance_nanos<br/>≥ estimate?}
     Gate -->|no| Block[UPDATE status=gate_blocked<br/>failure_label=balance_exhausted<br/>XACK terminal]
     Gate -->|yes| RDeduct[DEDUCT receive cents<br/>UPDATE balance_nanos<br/>INSERT telemetry charge_type=receive]
     RDeduct --> Approve[Approval gate]
     Approve -->|blocked| Wait[gate_blocked until<br/>user resumes]
     Approve -->|pass| Secrets[Resolve secrets_map]
-    Secrets --> SDeduct[DEDUCT stage cents<br/>UPDATE balance_nanos<br/>INSERT telemetry charge_type=stage]
+    Secrets --> SDeduct[DEDUCT run cents<br/>UPDATE balance_nanos<br/>INSERT telemetry charge_type=stage]
     SDeduct --> Exec[Issue lease<br/>runner forks NullClaw child]
-    Exec --> Result[Runner reports<br/>UPDATE telemetry stage row<br/>SET token_count, wall_ms]
+    Exec --> Result[Runner reports<br/>UPDATE telemetry run row<br/>SET token_count, wall_ms]
     Result --> End([XACK])
     Block --> EndBlocked([XACK])
 ```
@@ -72,7 +72,7 @@ approval gate → pass (no destructive tools in this run)
 
 resolveSecretsMap → {fly, slack, github}
 
-DEDUCT STAGE
+DEDUCT RUN
   UPDATE tenant_billing SET balance_nanos = 999 - 2 = 997
   INSERT zombie_execution_telemetry
     (event_id, posture='platform', model='accounts/fireworks/models/kimi-k2.6',
@@ -82,7 +82,7 @@ issue lease → runner forks NullClaw child
   outbound to api.fireworks.ai/inference/v1
   runner reports: tokens(in=820, out=1040), wall=8.2s
 
-UPDATE zombie_execution_telemetry  (the stage row)
+UPDATE zombie_execution_telemetry  (the run row)
   SET token_count_input=820, token_count_output=1040, wall_ms=8210
 
 reconcile actual cost:
@@ -131,7 +131,7 @@ gate: 150¢ ≥ 1¢ → pass
 DEDUCT RECEIVE → 0¢ deducted (self-managed receive is zero in v2.0)
   INSERT telemetry (charge_type='receive', credit_deducted_cents=0)
 
-DEDUCT STAGE → 1¢ deducted
+DEDUCT RUN → 1¢ deducted
   UPDATE balance_nanos = 150 - 1 = 149
   INSERT telemetry (charge_type='stage', credit_deducted_cents=1)
 
@@ -141,7 +141,7 @@ runner reports: tokens(in=820, out=1320), wall=11.4s
   — tokens recorded on the row, but compute_stage_charge under self-managed
     does NOT consume them (flat 1¢ regardless of token count)
 
-UPDATE telemetry stage row SET token_count_input=820, token_count_output=1320,
+UPDATE telemetry run row SET token_count_input=820, token_count_output=1320,
                               wall_ms=11400
 (credit_deducted_cents stays 1¢; tokens are FYI only under self-managed)
 
@@ -208,12 +208,12 @@ If John had stayed on platform the entire time, his $10 would have lasted roughl
 | `tenant_providers` row | Absent (synth-default) | `mode=self_managed`, `credential_ref=account-fireworks-key` |
 | Resolver returns | `{provider: fireworks, api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: accounts/fireworks/models/kimi-k2.6, …}` | `{provider: fireworks, api_key: fw_LIVE_…, model: …kimi-k2.6, …}` |
 | Receive deduct per event | 1¢ | 0¢ |
-| Stage deduct per event | 1¢ overhead + token cost (~1–4¢ for Kimi K2.6 platform retail) | 1¢ flat |
+| Run deduct per event | 1¢ overhead + token cost (~1–4¢ for Kimi K2.6 platform retail) | 1¢ flat |
 | Typical per-event total | ~3¢ | 1¢ |
 | LLM bill payer | usezombie (passthrough in our token rate) | John's Fireworks account directly |
 | Outbound LLM call | `api.fireworks.ai/inference/v1` | `api.fireworks.ai/inference/v1` |
 | Gate code path | Identical | Identical |
-| Telemetry rows per event | 2 (receive + stage) | 2 (receive=0¢, stage=1¢) |
+| Telemetry rows per event | 2 (receive + run) | 2 (receive=0¢, run=1¢) |
 
 ---
 
@@ -300,7 +300,7 @@ In-flight events finish under the posture they were claimed under (gate snapshot
 
 ### 8.1 Mid-event balance crossing zero
 
-In-flight events finish at the snapshot taken at gate time. Both deductions (receive + stage) committed at lease issue, before the runner ran; the runner's success or failure does not retroactively adjust the deduction. If the user's balance crosses zero during a long stage, the next event hits the gate cleanly and blocks.
+In-flight events finish at the snapshot taken at gate time. Both deductions (receive + run) committed at lease issue, before the runner ran; the runner's success or failure does not retroactively adjust the deduction. If the user's balance crosses zero during a long run, the next event hits the gate cleanly and blocks.
 
 ### 8.2 Concurrent events on near-zero balance
 
@@ -318,7 +318,7 @@ Resolver returns `error.CredentialMissing`. Event dead-letters with `failure_lab
 
 ## 9. What this scenario proves
 
-- **Same code path serves both postures.** The gate, the receive deduct, the stage deduct, and the telemetry rows are identical SQL; only the cents differ.
+- **Same code path serves both postures.** The gate, the receive deduct, the run deduct, and the telemetry rows are identical SQL; only the cents differ.
 - **Drain rate is the self-managed signal.** John's usezombie credits last ~3× longer under self-managed than they would have under continued platform use — a transparent, observable benefit of bringing a key.
 - **Plan tiers are not a code-path concept.** They never appear inside the lease path or `compute_*_charge`. Future plan tiers will manifest only as different starting grants or recurring top-ups, not as branches in the gate.
 - **The api_key boundary holds in production traffic.** A grep across `core.zombie_events`, `core.zombie_execution_telemetry`, `zombied` logs, runner logs, and HTTP responses for either api_key (the admin workspace Fireworks key fetched via `platform_llm_keys`, or the user's own `fw_LIVE_…`) returns zero hits across the entire test run. (M48 acceptance criterion; tested in CI.)
