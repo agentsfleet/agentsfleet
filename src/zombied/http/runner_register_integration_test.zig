@@ -250,7 +250,8 @@ test "operator CLI: register via the binary mints a zrn_ that authenticates" {
     try std.testing.expect(std.mem.startsWith(u8, token, protocol.RUNNER_TOKEN_PREFIX));
 
     // 3) that token authenticates a real runner call through the CLI: `status`
-    //    reads ZOMBIE_RUNNER_TOKEN and heartbeats → exit 0, registered:true.
+    //    reads ZOMBIE_RUNNER_TOKEN and calls GET /v1/runners/me (getSelf, a
+    //    read-only probe — not a heartbeat) → exit 0, registered:true.
     var env = try std.process.getEnvMap(ALLOC);
     defer env.deinit();
     try env.put("ZOMBIE_RUNNER_TOKEN", token);

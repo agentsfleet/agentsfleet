@@ -53,9 +53,7 @@ pub const Route = union(enum) {
     // Clerk / Svix signed webhooks — /v1/webhooks/svix/{zombie_id}.
     receive_svix_webhook: []const u8,
     // Clerk user.created signup event — /v1/auth/identity-events/clerk.
-    // Internal auth-plane endpoint; carries no zombie_id. Separated from
-    // /v1/webhooks/ (customer data plane) pre-v2 so the auth namespace
-    // can grow without polluting M28's PROVIDER_REGISTRY.
+    // Internal auth-plane endpoint (no zombie_id), kept out of /v1/webhooks/.
     auth_identity_event_clerk,
     // Zombie approval gate callback
     approval_webhook: []const u8,

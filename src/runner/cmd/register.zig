@@ -42,7 +42,7 @@ pub fn run(alloc: std.mem.Allocator) u8 {
             defer parsed.deinit();
             const env_file = args.opt(ENV_FILE_FLAG) orelse DEFAULT_ENV_FILE;
             writeEnvFile(alloc, env_file, api, parsed.value.runner_token, host_id) catch
-                return output.fail(a, alloc, ERR_ENV_WRITE);
+                return envWriteFailed(a, alloc, parsed.value.runner_id);
             return emitSuccess(a, alloc, parsed.value.runner_id, env_file);
         },
     }
@@ -87,6 +87,16 @@ fn emitSuccess(a: output.Audience, alloc: std.mem.Allocator, runner_id: []const 
     };
     output.writeOut(line);
     return 0;
+}
+
+/// Env-file write failed AFTER a successful register. Surface the minted
+/// runner_id (minted once, never logged — RULE VLT) so the operator can delete
+/// the orphaned `fleet.runners` row instead of re-registering into a duplicate.
+fn envWriteFailed(a: output.Audience, alloc: std.mem.Allocator, runner_id: []const u8) u8 {
+    const msg = std.fmt.allocPrint(alloc, "registered runner {s}, but writing the env file failed", .{runner_id}) catch
+        return output.fail(a, alloc, ERR_ENV_WRITE);
+    defer alloc.free(msg);
+    return output.fail(a, alloc, .{ .code = ERR_ENV_WRITE.code, .message = msg, .suggestion = ERR_ENV_WRITE.suggestion });
 }
 
 /// Map a server rejection status to a precise, actionable CLI error. Codes are

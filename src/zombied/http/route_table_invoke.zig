@@ -1,12 +1,7 @@
-//! Invoke functions for the route table.
-//!
-//! One `pub fn invokeXxx` per Route variant. Each function:
-//!   1. Checks the HTTP method and writes 405 if wrong.
-//!   2. Extracts path params from `route`.
-//!   3. Calls the inner handler (auth already done by middleware).
-//!
-//! This file is imported by route_table.zig. Do not call these functions
-//! directly from outside the http package.
+//! Invoke functions for the route table — one `pub fn invokeXxx` per Route
+//! variant. Each checks the HTTP method (405 if wrong), extracts path params
+//! from `route`, and calls the inner handler (auth already done by middleware).
+//! Imported by route_table.zig; not called from outside the http package.
 
 const httpz = @import("httpz");
 const router = @import("router.zig");
