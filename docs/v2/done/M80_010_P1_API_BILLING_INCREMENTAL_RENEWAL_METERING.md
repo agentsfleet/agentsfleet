@@ -4,7 +4,7 @@
 **Milestone:** M80
 **Workstream:** 010
 **Date:** May 30, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P1 — billing correctness: a long platform run is currently billed at a frozen one-shot floor estimate taken at lease issue, so a slow agent leaks margin (run-time + actual tokens go uncharged) while a short estimate-heavy one overcharges. The stage debit must follow the real run.
 **Categories:** API
 **Batch:** B1
@@ -118,9 +118,9 @@
 
 The token cost gains a third tier, `cached_input`, alongside input and output (Fireworks-style input / cached-input / output, e.g. retail $1.74 / $0.14 / $3.48 per 1M). `core.model_caps` and `ModelRate` gain `cached_input_nanos_per_mtok`; the model-caps endpoint exposes it; `computeStageCharge` adds the cached term. Why: cached input is materially cheaper and the platform charge must reflect it. **Implementation default:** the cached column is additive with a row-level value from the model-caps catalogue (no synthesized fallback) — a platform model missing the cached rate is a catalogue inconsistency, handled like a missing model today (loud fail at billing, not a silent default).
 
-- **Dimension 1.1** — `computeStageCharge` with nonzero `cached_input_tokens` adds `Δcached × cached_input_nanos_per_mtok / 1e6` → Test `test_cached_tier_in_stage_charge`
-- **Dimension 1.2** — the model-caps endpoint response carries `cached_input_nanos_per_mtok` → Test `test_model_caps_exposes_cached_rate`
-- **Dimension 1.3** — `RUN_NANOS_PER_SEC` pins across the 4 audit-tracked rate files (`tenant_billing.zig`/`rates.ts`/`types.ts`/`billing.ts`) → Test `test_cross_tier_rate_pin_holds`
+- **Dimension 1.1 — DONE** — `computeStageCharge` with nonzero `cached_input_tokens` adds `Δcached × cached_input_nanos_per_mtok / 1e6` → Test `test_cached_tier_in_stage_charge`
+- **Dimension 1.2 — DONE** — the model-caps endpoint response carries `cached_input_nanos_per_mtok` → Test `test_model_caps_exposes_cached_rate`
+- **Dimension 1.3 — DONE** — `RUN_NANOS_PER_SEC` pins across the 4 audit-tracked rate files (`tenant_billing.zig`/`rates.ts`/`types.ts`/`billing.ts`) → Test `test_cross_tier_rate_pin_holds`
 
 ### §2 — Run-fee model: per-second rate replacing the flat stage constants
 
@@ -135,19 +135,20 @@ The token cost gains a third tier, `cached_input`, alongside input and output (F
 
 The `/renew` body carries the runner's **cumulative** `(input, cached_input, output)` token counts (empty today). The server charges, inside M80_006's fenced renewal CTE, the Δ since the lease's `metered_input/cached/output` + `last_metered_at_ms` cursor, then advances the cursor in the same CTE. Why: billing follows the real run, and a fail-safe retry double-bills ≈0. **Implementation default:** the cumulative-diff is the idempotency key — a re-sent renewal a few ms later yields Δtokens≈0 and Δt≈0 → ≈0 charge; there is **no** zero-token waive gate (an active token-free slice still pays its run fee; serverless is structural — a dormant agent is never renewed, so it is never charged beyond its last settled slice).
 
-- **Dimension 3.1** — a re-sent renewal (same cumulatives, ~ms later) charges ≈0 → Test `test_renew_retry_charges_near_zero`
-- **Dimension 3.2** — a dormant agent that stops emitting is not renewed → not charged beyond its last slice (no waive rule needed) → Test `test_dormant_not_renewed_not_charged`
-- **Dimension 3.3** — the `/renew` body parses cumulative token counts; a missing/malformed body defaults safely (no negative charge) → Test `test_renew_body_carries_cumulative_tokens`
-- **Dimension 3.4** — a Δ that would compute negative (clock skew / token-count regression) clamps to 0, never credits → Test `test_negative_delta_never_credits`
-- **Dimension 3.5** — the lease row initializes `metered_*`=0 + `last_metered_at_ms`=lease-issue time **at issue**, so the first `/renew` meters off a sane (never-NULL) cursor (pre-2.0 teardown ⇒ no in-flight rows survive a schema change) → Test `test_lease_initializes_metering_cursor`
+- **Dimension 3.1 — DONE** — a re-sent renewal (same cumulatives, ~ms later) charges ≈0 → Test `test_renew_retry_charges_near_zero`
+- **Dimension 3.2 — DONE** — a dormant agent that stops emitting is not renewed → not charged beyond its last slice (no waive rule needed) → Test `test_dormant_not_renewed_not_charged`
+- **Dimension 3.3 — DONE** — the `/renew` body parses cumulative token counts; a missing/malformed body defaults safely (no negative charge) → Test `test_renew_body_carries_cumulative_tokens`
+- **Dimension 3.4 — DONE** — a Δ that would compute negative (clock skew / token-count regression) clamps to 0, never credits → Test `test_negative_delta_never_credits`
+- **Dimension 3.5 — DONE** — the lease row initializes `metered_*`=0 + `last_metered_at_ms`=lease-issue time **at issue**, so the first `/renew` meters off a sane (never-NULL) cursor (pre-2.0 teardown ⇒ no in-flight rows survive a schema change) → Test `test_lease_initializes_metering_cursor`
 
 ### §4 — Final settle + per-period billing history
 
-`service_report` charges the last partial slice (elapsed since last renew + final token delta) so the per-renewal debits + the settle sum to **exactly** total runtime × rate + total token cost — ms-precision (`floor(Σ elapsed_ms × rate / 1000)`, never per-slice second-truncation). Each renewal/settle does the **three guard-gated writes** (Interfaces): debit the wallet (clamped), accumulate the **per-event** `stage` telemetry row, and INSERT a **per-renewal** `fleet.metering_periods` row. The accumulated stage row is the headline figure the Usage tab already renders; `metering_periods` is the slice-by-slice breakdown (backend + read API this PR; the React drill-down is an M81 spec). Why: this pulls forward the §13 refund-on-actual item to a settle (no over/under after the run ends). **Implementation default:** the headline credit is one number (the accumulated stage row); the per-renewal detail is queryable from `metering_periods`.
+`service_report` charges the last partial slice (elapsed since last renew + final token delta) so the per-renewal debits + the settle sum to **exactly** total runtime × rate + total token cost — ms-precision (`floor(Σ elapsed_ms × rate / 1000)`, never per-slice second-truncation). Each renewal/settle does the **three guard-gated writes** (Interfaces): debit the wallet (clamped), accumulate the **per-event** `stage` telemetry row, and INSERT a **per-renewal** `fleet.metering_periods` row. The accumulated stage row is the headline figure the Usage tab already renders; `metering_periods` is the slice-by-slice breakdown (backend + read API this PR; the React drill-down is an M81 spec). Why: this pulls forward the §13 refund-on-actual item to a settle (no over/under after the run ends). **Implementation default:** the headline credit is one number (the accumulated stage row); the per-renewal detail is queryable from `metering_periods`. The final settle is **fused into the report claim**: `service_report.claimReportAndSettle` flips the lease `active→reported` AND charges the final slice in ONE fenced writable-CTE (`renewal_settle.claimAndSettle`) under `FOR UPDATE OF l, a`, so the fence ownership that authorizes reporting authorizes settlement — a concurrent reclaim cannot bump `fencing_seq` between the claim and the settle, and the cap-path final slice is never lost (the report→reclaim race).
 
-- **Dimension 4.1** — per-renewal debits + final settle == total runtime × rate + total token cost, with **non-second-aligned** slice boundaries (ms-precision; no truncation drift) → Test `test_settle_sums_to_actual`
-- **Dimension 4.2** — each renewal/settle INSERTs a `fleet.metering_periods` row (per-renewal breakdown) and the per-event `stage` telemetry row accumulates the running total → Test `test_metering_periods_breakdown_and_stage_accumulates`
-- **Dimension 4.3** — a credit-exhausted slice charges the **clamped** remainder (`GREATEST(0, balance−slice)` → balance 0) and the **next** `/renew` is refused (`UZ-RUN-012`) → Test `test_credit_exhausted_clamps_then_refuses`
+- **Dimension 4.1 — DONE** — per-renewal debits + final settle == total runtime × rate + total token cost, with **non-second-aligned** slice boundaries (ms-precision; no truncation drift) → Test `test_settle_sums_to_actual`
+- **Dimension 4.2 — DONE** — each renewal/settle INSERTs a `fleet.metering_periods` row (per-renewal breakdown) and the per-event `stage` telemetry row accumulates the running total → Test `test_metering_periods_breakdown_and_stage_accumulates`
+- **Dimension 4.3 — DONE** — a credit-exhausted slice charges the **clamped** remainder (`GREATEST(0, balance−slice)` → balance 0) and the **next** `/renew` is refused (`UZ-RUN-012`) → Test `test_credit_exhausted_clamps_then_refuses`
+- **Dimension 4.4 — DONE** — the report claim (`active→reported`) and the final settle are ONE atomic fenced outcome: a claim+settle racing a reclaim either reports-and-charges or is fenced-and-charges-nothing, never reports-without-charging the final slice → Test `test_report_claim_settle_atomic` (covered by `claim+settle … flips reported + charges`, `claim+settle is fenced …`, and the concurrent `claim+settle racing a reclaim …` race test)
 
 ---
 
@@ -192,7 +193,9 @@ AND now < created_at+MAX_RUNTIME_MS gates EVERY write below — a lost/capped re
   cursor       metered_* := cumulative_*, last_metered_at_ms := now
 Credit refusal: when the balance can no longer cover the run the NEXT /renew's gate refuses
   (UZ-RUN-012, run terminates); the consumed slice was already clamp-charged down to 0.
-At report: a final settle slice (now - last_metered_at_ms, final Δtokens) runs the same three writes.
+At report: `claimReportAndSettle` flips the lease active→reported AND settles the final slice
+  (now - last_metered_at_ms, final Δtokens) in ONE fenced CTE under FOR UPDATE OF l, a — the same
+  three writes; claim + settle are one atomic fence outcome (no lost slice on a report→reclaim race).
 
 No change to: the receive debit, the gate, balance_nanos, the telemetry-row shape (only new charge_type periods).
 ```
@@ -210,6 +213,7 @@ No change to: the receive debit, the gate, balance_nanos, the telemetry-row shap
 | Active token-free slice | long quiet model call, no new tokens | run fee still applies for the wall time held; no zero-token waive → asserted within `test_run_fee_is_elapsed_not_flat` |
 | Credit exhausted mid-run | incremental Δ-debit drains `balance_nanos` across renewals | the slice is **clamp-charged** (`GREATEST(0, balance−slice)` → balance 0, partial); M80_006's `/renew` credit gate refuses the **next** renewal (`UZ-RUN-012`) → lease not renewed → run terminates at expiry → `test_credit_exhausted_clamps_then_refuses` |
 | Fenced-out / lost renewal | reclaimed by another holder between load and extend | the `guard` CTE arm fails → none of the three writes fire (no debit, no ledger, no metering_periods row); 409 `UZ-RUN-011` → `test_lost_renewal_charges_nothing` |
+| Report races a reclaim (cap path) | a reclaim bumps `fencing_seq` as a run reports its terminal slice | claim + settle share ONE fenced statement under `FOR UPDATE OF l, a`: either the report wins (active→reported + final slice charged) or the reclaim wins first (lease stays active, report rejected `UZ-RUN-005`, nothing charged) — never reported-without-charge → `test_report_claim_settle_atomic` |
 | Platform model missing cached rate | catalogue row lacks `cached_input_nanos_per_mtok` | loud fail at billing (as a missing-model today), not a silent default → `test_cached_tier_in_stage_charge` (negative path: absent rate → caught) |
 | Crash mid-run after a renewal | `zombied` dies between renewals | each settled slice is durable (charge + cursor committed in the CTE); on reclaim the next holder meters forward from the cursor → `test_settle_sums_to_actual` (crash-resume variant) |
 | Old runner sends an empty `/renew` body | mixed-version deploy | additive defaulted fields parse to 0 → run-fee-only metering; backward-parseable → `test_renew_body_carries_cumulative_tokens` |
@@ -229,6 +233,7 @@ No change to: the receive debit, the gate, balance_nanos, the telemetry-row shap
 9. The metering cursor is initialized at lease issue and never read NULL — enforced by the lease-issue write setting `metered_*`=0 / `last_metered_at_ms`=issue-time + `test_lease_initializes_metering_cursor` (pre-2.0 teardown ⇒ no cross-schema-change rows to backfill).
 10. The wallet debit never drives `balance_nanos` below zero — enforced by the `GREATEST(0, balance_nanos − slice)` clamp + the `/renew` credit gate refusing the next renewal (`UZ-RUN-012`) + `test_credit_exhausted_clamps_then_refuses`.
 11. During the free-trial window the metered charge (run fee + tokens) is **zero**, identical to the existing stage short-circuit — enforced by the shared `computeStageChargeAt` `now_ms < FREE_TRIAL_END_MS` branch + metering tests pinned to `POST_TRIAL_NOW_MS` (plus one in-trial assertion that a metered run charges 0).
+12. The report's active→reported claim and the final-slice settle are one atomic fenced outcome — enforced by fusing both into a single writable-CTE under `FOR UPDATE OF l, a` (`renewal_settle.claimAndSettle`) so a concurrent reclaim cannot interleave between the claim and the settle (the cap-path report→reclaim race) + `test_report_claim_settle_atomic`.
 
 ---
 
@@ -251,6 +256,8 @@ No change to: the receive debit, the gate, balance_nanos, the telemetry-row shap
 | 4.1 | integration | `test_settle_sums_to_actual` | a run over N renewals + settle with **non-second-aligned** boundaries → Σ debits == `floor(Σms×rate/1000)` + total token cost (incl. a crash-resume variant) |
 | 4.2 | integration | `test_metering_periods_breakdown_and_stage_accumulates` | after a metered run → one `fleet.metering_periods` row per renewal/settle; the per-event `stage` telemetry row == the accumulated total |
 | 4.3 | integration | `test_credit_exhausted_clamps_then_refuses` | balance below the next slice → slice clamp-charged (`GREATEST(0,…)` → 0); the **next** `/renew` refused (`UZ-RUN-012`), run terminates |
+| 4.4 | integration | `test_report_claim_settle_atomic` | claim+settle on an active lease → flips `reported` + charges the whole final slice; a fenced (superseded) holder → claims nothing, charges nothing, lease stays `active` |
+| 4.4 | integration | `test_claim_settle_vs_reclaim_race` | 1 claim+settle racing 8 reclaim fence-bumps → outcome stays consistent: `claimed ⟺ reported ⟺ slice charged ⟺ 1 breakdown row`; never reported-without-charge |
 | FM | integration | `test_lost_renewal_charges_nothing` | a fenced-out/reclaimed renewal → 409 `UZ-RUN-011`; no debit, no ledger accumulate, no `metering_periods` row |
 | FM | unit | `test_free_trial_meters_zero` | a metered run with `now_ms < FREE_TRIAL_END_MS` → charge 0 (run fee + tokens both zeroed); other metering tests pinned to `POST_TRIAL_NOW_MS` |
 

@@ -138,7 +138,7 @@ test "renew at the exact deadline boundary still extends by a full TTL" {
     try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
 
     const want = NOW_MS + constants.LEASE_TTL_MS;
     try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want }, outcome);
@@ -165,7 +165,7 @@ test "renew one millisecond before the hard cap clamps to the exact cap" {
     try seedLease(conn, 5, created, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     const want_cap = created + constants.MAX_RUNTIME_MS; // == NOW_MS + 1
     try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want_cap }, outcome);
     const after = try readDeadlines(conn);

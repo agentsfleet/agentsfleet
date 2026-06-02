@@ -116,10 +116,52 @@ pub fn computeStageCharge(
     return computeStageChargeAt(provider, posture, model, elapsed_ms, input_tokens, cached_input_tokens, output_tokens, std.time.milliTimestamp());
 }
 
+/// The four per-unit rates a renewal/settle slice meters at. Resolved once in
+/// Zig and passed to the renewal CTE as params, so the SQL applies the SAME
+/// rates `computeStageCharge` does — SQL==Zig holds by construction, not by
+/// hand-copying the rate table into SQL.
+pub const SliceRates = struct {
+    run_nanos_per_sec: i64,
+    input_nanos_per_mtok: i64,
+    cached_input_nanos_per_mtok: i64,
+    output_nanos_per_mtok: i64,
+};
+
+/// Resolve the slice rates with the SAME branching `computeStageChargeAt` uses:
+/// free-trial (`now_ms < FREE_TRIAL_END_MS`) → all zero (a metered run charges
+/// 0); self_managed → run rate only (token tiers 0, recorded-not-charged);
+/// platform → run rate + the model's three token tiers. A platform model absent
+/// from the rate cache returns `null` — the renew handler meters run-fee-only +
+/// logs (the live path never panics; a lease could not have been issued for an
+/// uncatalogued platform model, so this is a cache-eviction edge). The
+/// (provider, model) pair keys the rate row — same model, two providers, two rates.
+pub fn resolveRenewSliceRates(provider: []const u8, posture: Posture, model: []const u8, now_ms: i64) ?SliceRates {
+    if (isFreeTrialActive(now_ms)) return SliceRates{ .run_nanos_per_sec = 0, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 };
+    return switch (posture) {
+        .self_managed => SliceRates{ .run_nanos_per_sec = RUN_NANOS_PER_SEC, .input_nanos_per_mtok = 0, .cached_input_nanos_per_mtok = 0, .output_nanos_per_mtok = 0 },
+        .platform => blk: {
+            const rate = model_rate_cache.lookup_model_rate(provider, model) orelse break :blk null;
+            break :blk SliceRates{ .run_nanos_per_sec = RUN_NANOS_PER_SEC, .input_nanos_per_mtok = rate.input_nanos_per_mtok, .cached_input_nanos_per_mtok = rate.cached_input_nanos_per_mtok, .output_nanos_per_mtok = rate.output_nanos_per_mtok };
+        },
+    };
+}
+
+/// Apply slice rates to a set of deltas — the exact arithmetic the renewal CTE
+/// reproduces in SQL (per-tier `@divTrunc(rate*Δ, 1e6)` + ms→s `@divTrunc(Δt*run,
+/// 1000)`; Postgres bigint `/` truncates toward zero, matching for Δ≥0). This is
+/// the reference the SQL==Zig pin test asserts against.
+pub fn sliceCharge(rates: SliceRates, elapsed_ms: i64, d_input: i64, d_cached: i64, d_output: i64) i64 {
+    return @divTrunc(elapsed_ms * rates.run_nanos_per_sec, 1000) +
+        @divTrunc(rates.input_nanos_per_mtok * d_input, 1_000_000) +
+        @divTrunc(rates.cached_input_nanos_per_mtok * d_cached, 1_000_000) +
+        @divTrunc(rates.output_nanos_per_mtok * d_output, 1_000_000);
+}
+
 // Time-injected sibling of `computeStageCharge`. Private; inline tests below
 // access it for deterministic pre/mid/post-trial coverage. Production paths
-// call `computeStageCharge` (which reads the real clock). The (provider, model)
-// pair keys the rate row — the same model under two providers prices apart.
+// call `computeStageCharge` (which reads the real clock). Delegates rate
+// resolution + arithmetic to the shared slice helpers so the per-stage estimate
+// and the per-renewal Δ-charge can never diverge.
 fn computeStageChargeAt(
     provider: []const u8,
     posture: Posture,
@@ -130,19 +172,9 @@ fn computeStageChargeAt(
     output_tokens: u32,
     now_ms: i64,
 ) i64 {
-    if (isFreeTrialActive(now_ms)) return FREE_TRIAL_STAGE_NANOS;
-    const run_fee = runFee(elapsed_ms);
-    return switch (posture) {
-        .platform => blk: {
-            const rate = model_rate_cache.lookup_model_rate(provider, model) orelse
-                std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in cached caps catalogue", .{ model, provider });
-            const in_nanos = @divTrunc(rate.input_nanos_per_mtok * @as(i64, input_tokens), 1_000_000);
-            const cached_nanos = @divTrunc(rate.cached_input_nanos_per_mtok * @as(i64, cached_input_tokens), 1_000_000);
-            const out_nanos = @divTrunc(rate.output_nanos_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk run_fee + in_nanos + cached_nanos + out_nanos;
-        },
-        .self_managed => run_fee,
-    };
+    const rates = resolveRenewSliceRates(provider, posture, model, now_ms) orelse
+        std.debug.panic("compute_stage_charge: model '{s}' (provider '{s}') not in cached caps catalogue", .{ model, provider });
+    return sliceCharge(rates, elapsed_ms, @as(i64, input_tokens), @as(i64, cached_input_tokens), @as(i64, output_tokens));
 }
 
 // True while `now_ms < FREE_TRIAL_END_MS`. The trial ends because time
@@ -269,6 +301,24 @@ test "isFreeTrialActive: strict-less-than gate on FREE_TRIAL_END_MS" {
     try std.testing.expect(isFreeTrialActive(FREE_TRIAL_END_MS - 1));
     try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS));
     try std.testing.expect(!isFreeTrialActive(FREE_TRIAL_END_MS + 1_000_000));
+}
+
+test "resolveRenewSliceRates: posture/trial branches, and platform cache-miss yields null (never panics)" {
+    // self_managed post-trial → run rate only; token tiers stay 0 (the user's
+    // own provider bills the tokens), so a metered slice is run-fee-only.
+    const sm = resolveRenewSliceRates("self-managed-test", .self_managed, "any-model", POST_TRIAL_NOW_MS).?;
+    try std.testing.expectEqual(RUN_NANOS_PER_SEC, sm.run_nanos_per_sec);
+    try std.testing.expectEqual(@as(i64, 0), sm.input_nanos_per_mtok);
+    try std.testing.expectEqual(@as(i64, 0), sm.output_nanos_per_mtok);
+    // Free-trial short-circuits to all-zero before any cache lookup — even
+    // platform with a real model id charges nothing.
+    const ft = resolveRenewSliceRates("anthropic", .platform, "claude-sonnet-4-6", PRE_TRIAL_NOW_MS).?;
+    try std.testing.expectEqual(@as(i64, 0), ft.run_nanos_per_sec);
+    try std.testing.expectEqual(@as(i64, 0), ft.input_nanos_per_mtok);
+    // Platform post-trial, model absent from the process rate cache → null. The
+    // renew/settle caller meters run-fee-only on null and NEVER panics the live
+    // path — unlike computeStageChargeAt, whose issue-time estimate panics.
+    try std.testing.expect(resolveRenewSliceRates("anthropic", .platform, "model-not-in-cache-zzz", POST_TRIAL_NOW_MS) == null);
 }
 
 test {

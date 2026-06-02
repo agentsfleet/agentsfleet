@@ -52,6 +52,10 @@ test "report request and response round-trip (fenced, no runner_id)" {
         .outcome = .processed,
         .response_text = "done",
         .tokens = 1234,
+        // The cumulative split the report-settle meters the final slice off.
+        .input_tokens = 900,
+        .cached_input_tokens = 200,
+        .output_tokens = 134,
         .telemetry = .{ .time_to_first_token_ms = 42, .wall_ms = 1500 },
         .checkpoint = .{ .last_event_id = "1700000000000-0", .last_response = "ok" },
     });
@@ -85,6 +89,11 @@ test "report request without failure_reason parses to null (old runner, backward
     const p = try std.json.parseFromSlice(protocol.ReportRequest, a, json_old, .{});
     defer p.deinit();
     try std.testing.expect(p.value.failure_reason == null);
+    // The cumulative token split is also additive — an old report omits it and
+    // settles run-fee-only off all-zero cumulatives (never a parse failure).
+    try std.testing.expectEqual(@as(u32, 0), p.value.input_tokens);
+    try std.testing.expectEqual(@as(u32, 0), p.value.cached_input_tokens);
+    try std.testing.expectEqual(@as(u32, 0), p.value.output_tokens);
 }
 
 test "renew request round-trips its cumulative token counts" {

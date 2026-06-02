@@ -171,7 +171,7 @@ fn runBilling(hx: Hx, session: *ZombieSession, event: *const redis_zombie.Zombie
             return null;
         },
     }
-    if (metering.debitStage(pool, alloc, tr.tenant_id, ctx, policy) != .deducted) return null;
+    // No issue-time stage debit: run fee + tokens meter on /renew + settle at report.
 
     committed = true; // ownership of tr.resolved transfers to the returned Billed
     return Billed{ .tenant_id = tr.tenant_id, .posture = tr.resolved.mode.label(), .model = tr.resolved.model, .provider = tr.resolved };
@@ -289,6 +289,10 @@ fn insertLeaseRow(hx: Hx, runner_id: []const u8, acq: assign.Acquired, billed: B
     const conn = hx.ctx.pool.acquire() catch return error.DbError;
     defer hx.ctx.pool.release(conn);
     const now_ms = std.time.milliTimestamp();
+    // Fresh event → reset the per-zombie metering cursor (the slot may carry a
+    // prior run's preserved cursor); a reclaim leaves it so the re-leased run
+    // meters forward. Fail-closed: a reset error fails issue, never over-charges.
+    if (acq.kind == .fresh) affinity.resetCursor(conn, acq.zombie_id, now_ms) catch return error.DbError;
     // The provider name resolved at billing — stored alongside posture/model so
     // the renew credit gate + the report settle can key the rate row by
     // (provider, model) without re-resolving. Fresh leases always carry it.

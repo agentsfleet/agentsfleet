@@ -23,8 +23,32 @@ const TestHarness = harness_mod.TestHarness;
 const base = @import("../db/test_fixtures.zig");
 const constants = @import("common");
 const renewal = @import("renewal.zig");
+const renewal_settle = @import("renewal_settle.zig");
+const tenant_billing = @import("../state/tenant_billing.zig");
+
+const EVENT_ID = "evt-conc-renew-1";
 
 const ALLOC = std.testing.allocator;
+
+// A realistic platform rate set + a 20s cursor baseline for the no-double-charge
+// race. METER carries the runner's cumulative token counts (identical across all
+// 100 threads — the cumulative-diff is the idempotency key).
+const RATES = tenant_billing.SliceRates{
+    .run_nanos_per_sec = tenant_billing.RUN_NANOS_PER_SEC,
+    .input_nanos_per_mtok = 3_000_000,
+    .cached_input_nanos_per_mtok = 300_000,
+    .output_nanos_per_mtok = 15_000_000,
+};
+const CURSOR_BASE_MS: i64 = NOW_MS - 20_000;
+const METER = renewal.MeterInputs{
+    .cumulative_input = 1000,
+    .cumulative_cached = 500,
+    .cumulative_output = 800,
+    .run_nanos_per_sec = RATES.run_nanos_per_sec,
+    .input_nanos_per_mtok = RATES.input_nanos_per_mtok,
+    .cached_input_nanos_per_mtok = RATES.cached_input_nanos_per_mtok,
+    .output_nanos_per_mtok = RATES.output_nanos_per_mtok,
+};
 
 const auth_mw = @import("../auth/middleware/mod.zig");
 
@@ -109,7 +133,7 @@ const Worker = struct {
     fn run(h: *TestHarness, slot: *RenewSlot) void {
         const conn = h.acquireConn() catch return;
         defer h.releaseConn(conn);
-        const outcome = renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS) catch return;
+        const outcome = renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{}) catch return;
         switch (outcome) {
             .renewed => |until| slot.* = .{ .code = 1, .renewed_to = until },
             .lost => slot.* = .{ .code = 2 },
@@ -162,4 +186,144 @@ test "100 concurrent renews on one active lease converge to a single shared dead
     const aff_until = try readBigint(c_init, "SELECT leased_until FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", ZOMBIE_ID);
     try std.testing.expectEqual(want, lease_until);
     try std.testing.expectEqual(want, aff_until);
+}
+
+fn seedBalance(conn: *pg.Conn, balance: i64) !void {
+    _ = try conn.exec(
+        \\INSERT INTO billing.tenant_billing (tenant_id, balance_nanos, grant_source, created_at, updated_at)
+        \\VALUES ($1::uuid, $2, 'conc-meter', 0, 0)
+        \\ON CONFLICT (tenant_id) DO UPDATE SET balance_nanos = EXCLUDED.balance_nanos, balance_exhausted_at = NULL
+    , .{ base.TEST_TENANT_ID, balance });
+}
+
+const MeterWorker = struct {
+    fn run(h: *TestHarness, slot: *RenewSlot) void {
+        const conn = h.acquireConn() catch return;
+        defer h.releaseConn(conn);
+        const outcome = renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, METER) catch return;
+        switch (outcome) {
+            .renewed => |until| slot.* = .{ .code = 1, .renewed_to = until },
+            .lost => slot.* = .{ .code = 2 },
+            .max_runtime => slot.* = .{ .code = 3 },
+        }
+    }
+};
+
+test "100 concurrent metered renews on one lease charge the slice exactly once (no double-charge)" {
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const c = try h.acquireConn();
+    defer h.releaseConn(c);
+
+    teardown(c);
+    try base.seedTenant(c);
+    try base.seedWorkspace(c, WORKSPACE_ID);
+    try seedRunner(c);
+    try seedAffinity(c, 5, NOW_MS - 1_000);
+    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - 1_000);
+    // Cursor baseline: 20s of runtime elapsed, no tokens metered yet. The first
+    // renewal to win prices this slice off the cursor; `FOR UPDATE OF l, a` makes
+    // the other 99 block, re-read the advanced cursor (Δ=0), and charge ≈0 —
+    // exactly-once under the race. Without the lock each would re-charge the full
+    // slice off the stale pre-advance cursor (the P0 double-charge).
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    const balance: i64 = 1_000_000_000_000;
+    try seedBalance(c, balance);
+    defer teardown(c);
+
+    var slots: [N_RENEWERS]RenewSlot = @splat(RenewSlot{});
+    var threads: [N_RENEWERS]std.Thread = undefined;
+    for (&threads, 0..) |*t, i| t.* = try std.Thread.spawn(.{}, MeterWorker.run, .{ h, &slots[i] });
+    for (threads) |t| t.join();
+
+    // Exactly ONE slice left the wallet across the 100-way race.
+    const one_slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+    const remaining = try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    try std.testing.expectEqual(one_slice, balance - remaining);
+}
+
+fn leaseReported(conn: *pg.Conn) !bool {
+    var q = PgQuery.from(try conn.query("SELECT status FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID}));
+    defer q.deinit();
+    const row = (try q.next()) orelse return error.RowMissing;
+    return std.mem.eql(u8, try row.get([]const u8, 0), "reported");
+}
+
+const ClaimSlot = struct { ran: bool = false, claimed: bool = false, charged: i64 = 0 };
+
+const ClaimWorker = struct {
+    fn run(h: *TestHarness, slot: *ClaimSlot) void {
+        const conn = h.acquireConn() catch return;
+        defer h.releaseConn(conn);
+        const out = renewal_settle.claimAndSettle(conn, LEASE_ID, RUNNER_ID, NOW_MS, METER) catch return;
+        slot.* = .{ .ran = true, .claimed = out.claimed, .charged = out.charged_nanos };
+    }
+};
+
+// Simulates the conflicting write a reclaim makes: bump the affinity fence under
+// the row lock (a plain UPDATE locks the row, contending with claim+settle's
+// `FOR UPDATE OF l, a`). This is precisely the operation the fold must serialise.
+const ReclaimWorker = struct {
+    fn run(h: *TestHarness) void {
+        const conn = h.acquireConn() catch return;
+        defer h.releaseConn(conn);
+        _ = conn.exec("UPDATE fleet.runner_affinity SET fencing_seq = fencing_seq + 1, updated_at = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, NOW_MS }) catch return;
+    }
+};
+
+test "claim+settle racing a reclaim never reports without charging the final slice" {
+    const h = TestHarness.start(ALLOC, .{ .configureRegistry = noopRegistry }) catch |err| {
+        if (err == error.SkipZigTest) return error.SkipZigTest;
+        return err;
+    };
+    defer h.deinit();
+    const c = try h.acquireConn();
+    defer h.releaseConn(c);
+
+    teardown(c);
+    try base.seedTenant(c);
+    try base.seedWorkspace(c, WORKSPACE_ID);
+    try seedRunner(c);
+    // Fence holds at issue (token == seq == 5) so the claim CAN win; a racing
+    // reclaim bumps the sequence to 6+, which would fence the claim out.
+    try seedAffinity(c, 5, NOW_MS - 1_000);
+    try seedLease(c, 5, NOW_MS - 2_000, NOW_MS - 1_000);
+    // 20s of run elapsed (bounded slice); ample balance so no clamp.
+    _ = try c.exec("UPDATE fleet.runner_affinity SET last_metered_at_ms = $2 WHERE zombie_id = $1::uuid", .{ ZOMBIE_ID, CURSOR_BASE_MS });
+    const balance: i64 = 1_000_000_000_000;
+    try seedBalance(c, balance);
+    defer teardown(c);
+    defer execIgnore(c, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
+    defer execIgnore(c, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
+
+    // One claim+settle (the report) racing 8 reclaim fence-bumps on the same slot.
+    var slot = ClaimSlot{};
+    var threads: [9]std.Thread = undefined;
+    threads[0] = try std.Thread.spawn(.{}, ClaimWorker.run, .{ h, &slot });
+    for (threads[1..]) |*t| t.* = try std.Thread.spawn(.{}, ReclaimWorker.run, .{h});
+    for (threads) |t| t.join();
+    try std.testing.expect(slot.ran);
+
+    const reported = try leaseReported(c);
+    const debited = balance - try readBigint(c, "SELECT balance_nanos FROM billing.tenant_billing WHERE tenant_id = $1::uuid", base.TEST_TENANT_ID);
+    const slices = try readBigint(c, "SELECT count(*)::bigint FROM fleet.metering_periods WHERE event_id = $1", EVENT_ID);
+    const one_slice = tenant_billing.sliceCharge(RATES, NOW_MS - CURSOR_BASE_MS, 1000, 500, 800);
+
+    // The fold's invariant: the active→reported flip and the slice debit are ONE
+    // atomic outcome. Either the claim won the fence (reported + charged + 1 slice)
+    // or a reclaim bumped the sequence first (still active + nothing charged) —
+    // NEVER reported-without-charge (the P1 race) nor charged-without-report.
+    if (slot.claimed) {
+        try std.testing.expect(reported);
+        try std.testing.expectEqual(one_slice, debited);
+        try std.testing.expectEqual(one_slice, slot.charged);
+        try std.testing.expectEqual(@as(i64, 1), slices);
+    } else {
+        try std.testing.expect(!reported);
+        try std.testing.expectEqual(@as(i64, 0), debited);
+        try std.testing.expectEqual(@as(i64, 0), slices);
+    }
 }

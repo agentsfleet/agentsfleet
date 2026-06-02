@@ -183,6 +183,14 @@ pub const ReportRequest = struct {
     response_text: []const u8,
     /// Billing token count → `zombie_execution_telemetry.token_count`.
     tokens: u64,
+    /// The runner's **cumulative** token counts for the whole run (NOT deltas) —
+    /// the same three fields `RenewRequest` carries, so the report-settle can
+    /// charge the final slice (the diff since the lease's last-metered cursor)
+    /// and the per-renewal debits + settle sum to the real total. Additive +
+    /// defaulted to 0: an older runner that omits them settles run-fee-only.
+    input_tokens: u32 = 0,
+    cached_input_tokens: u32 = 0,
+    output_tokens: u32 = 0,
     telemetry: ReportTelemetry,
     checkpoint: ReportCheckpoint,
 };

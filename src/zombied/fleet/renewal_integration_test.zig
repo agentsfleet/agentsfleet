@@ -130,7 +130,7 @@ test "renew extends both the lease row and the affinity slot to the same clamped
     try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
 
     // renewed → both rows advanced to min(now+TTL, created_at+MAX). created_at is
     // recent, so the TTL increment wins and that is the new deadline.
@@ -160,7 +160,7 @@ test "renew on a lease whose fence was bumped by a reclaim returns lost" {
     try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     try std.testing.expectEqual(renewal.RenewOutcome.lost, outcome);
     // Neither row moved.
     const after = try readDeadlines(conn);
@@ -188,7 +188,7 @@ test "renew past the hard max-runtime cap returns max_runtime and does not exten
     try seedLease(conn, 5, created, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     try std.testing.expectEqual(
         renewal.RenewOutcome{ .max_runtime = created + constants.MAX_RUNTIME_MS },
         outcome,
@@ -220,7 +220,7 @@ test "renew clamps the new deadline to the hard cap when TTL would overshoot it"
     try seedLease(conn, 5, created, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     const want_cap = NOW_MS + cap_offset; // == created + MAX_RUNTIME_MS
     try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want_cap }, outcome);
     const after = try readDeadlines(conn);

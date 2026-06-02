@@ -13,8 +13,6 @@ const ALLOC = std.testing.allocator;
 const WS_GATE_PASS = "0195b4ba-8d3a-7f13-8abc-aa0500000001";
 const WS_GATE_BLOCK = "0195b4ba-8d3a-7f13-8abc-aa0500000002";
 const WS_RECEIVE_DEBIT = "0195b4ba-8d3a-7f13-8abc-aa0500000003";
-const WS_STAGE_DEBIT = "0195b4ba-8d3a-7f13-8abc-aa0500000004";
-const WS_RECEIVE_EXHAUST = "0195b4ba-8d3a-7f13-8abc-aa0500000005";
 
 fn makeCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightContext {
     return .{
@@ -24,22 +22,6 @@ fn makeCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightCon
         .posture = .self_managed,
         .provider = "self-managed-test",
         .model = "any-model-self-managed-doesnt-need-cache",
-    };
-}
-
-// Platform-posture context. Under the run-fee model the self_managed issue-time
-// charge is zero (runFee(0)=0, tokens land on the user's own provider), so any
-// boundary that needs a non-zero issue-time charge — block/exhaust paths — runs
-// on platform posture, where the token-floor estimate is non-zero. Requires the
-// platform model in the process-global rate cache (seedPlatformProvider).
-fn platformCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightContext {
-    return .{
-        .workspace_id = workspace_id,
-        .zombie_id = "zombie-test",
-        .event_id = event_id,
-        .posture = .platform,
-        .provider = "anthropic",
-        .model = "claude-sonnet-4-6",
     };
 }
 
@@ -190,163 +172,6 @@ test "debitReceive self-managed: EVENT_NANOS=0 charge writes telemetry row, bala
     try std.testing.expectEqualStrings("receive", try r.get([]const u8, 0));
     try std.testing.expectEqualStrings("self_managed", try r.get([]const u8, 1));
     try std.testing.expectEqual(tenant_billing.EVENT_NANOS, try r.get(i64, 2));
-}
-
-test "debitStage self-managed: zero issue-time charge (run fee metered later), writes stage telemetry" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_STAGE_DEBIT);
-    defer uc1.teardown(db_ctx.conn, WS_STAGE_DEBIT);
-    defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_STAGE_DEBIT}) catch {};
-
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
-
-    // Under the run-fee model the self_managed issue-time charge is zero in both
-    // eras: runFee(0)=0 and tokens land on the user's own provider. The debit
-    // still lands a stage telemetry row (charge 0); the run fee is metered per
-    // renewal, not here.
-    const expected_stage_nanos: i64 = 0;
-
-    const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a02";
-    const result = metering.debitStage(
-        db_ctx.pool,
-        ALLOC,
-        uc1.TENANT_ID,
-        makeCtx(WS_STAGE_DEBIT, event_id),
-        .stop,
-    );
-    switch (result) {
-        .deducted => |c| try std.testing.expectEqual(expected_stage_nanos, c),
-        else => return error.TestExpectedEqual,
-    }
-
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
-    // STARTER_CREDIT_NANOS - expected_stage_nanos (self-managed posture per makeCtx).
-    try std.testing.expectEqual(
-        tenant_billing.STARTER_CREDIT_NANOS - expected_stage_nanos,
-        row.balance_nanos,
-    );
-
-    var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT charge_type, token_count_input, token_count_output, wall_ms
-        \\FROM zombie_execution_telemetry WHERE event_id = $1
-    , .{event_id}));
-    defer q.deinit();
-    const r = (try q.next()) orelse return error.RowNotFound;
-    try std.testing.expectEqualStrings("stage", try r.get([]const u8, 0));
-    try std.testing.expectEqual(@as(?i64, null), try r.get(?i64, 1)); // tokens NULL pre-execution
-    try std.testing.expectEqual(@as(?i64, null), try r.get(?i64, 2));
-    try std.testing.expectEqual(@as(?i64, null), try r.get(?i64, 3));
-}
-
-test "debit on insufficient balance returns .exhausted; no rows written, balance unchanged" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_RECEIVE_EXHAUST);
-    defer uc1.teardown(db_ctx.conn, WS_RECEIVE_EXHAUST);
-    defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_EXHAUST}) catch {};
-    // Platform posture: the issue-time token-floor charge is non-zero, so a
-    // 0-balance row exhausts. self_managed would charge 0 and never exhaust.
-    try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_RECEIVE_EXHAUST);
-    defer base.teardownPlatformProvider(db_ctx.conn, WS_RECEIVE_EXHAUST);
-
-    // Provision at 0 nanos — the platform stage debit (token floor) must exhaust.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_exhaust");
-
-    // Free-trial: stage charge is 0 until FREE_TRIAL_END_MS, so debiting 0 from
-    // a 0-balance row succeeds (.deducted = 0) instead of exhausting. Skip until
-    // post-trial — the exhaust path is real, this fixture just can't reach it
-    // while the gate is closed.
-    const trial_active = blk: {
-        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(b.grant_source));
-        break :blk b.free_trial_active;
-    };
-    if (trial_active) return error.SkipZigTest;
-
-    const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a03";
-    const result = metering.debitStage(
-        db_ctx.pool,
-        ALLOC,
-        uc1.TENANT_ID,
-        platformCtx(WS_RECEIVE_EXHAUST, event_id),
-        .stop,
-    );
-    switch (result) {
-        .exhausted => {},
-        else => return error.TestExpectedEqual,
-    }
-
-    // Balance unchanged at 0 nanos.
-    const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(row.grant_source));
-    try std.testing.expectEqual(@as(i64, 0), row.balance_nanos);
-    // exhausted_at must be stamped on the first failed debit so the stop
-    // gate stays closed for subsequent events until a top-up clears it.
-    try std.testing.expect(row.exhausted_at_ms != null);
-
-    // No telemetry row written — the transaction rolled back.
-    var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT COUNT(*)::BIGINT FROM zombie_execution_telemetry WHERE event_id = $1
-    , .{event_id}));
-    defer q.deinit();
-    const r = (try q.next()).?;
-    try std.testing.expectEqual(@as(i64, 0), try r.get(i64, 0));
-}
-
-test "recordStageActuals: updates stage row tokens and wall_ms, leaves nanos untouched" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    const ws = "0195b4ba-8d3a-7f13-8abc-aa0500000007";
-    try uc1.seed(db_ctx.conn, ws);
-    defer uc1.teardown(db_ctx.conn, ws);
-    defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{ws}) catch {};
-
-    try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
-
-    // Under the run-fee model the self_managed issue-time charge is zero; the
-    // invariant under test ("recordStageActuals doesn't mutate
-    // credit_deducted_nanos") holds — the row keeps its 0 charge while tokens
-    // and wall_ms are updated.
-    const expected_stage_nanos: i64 = 0;
-
-    // Land a stage debit first so we have a row to update.
-    const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a05";
-    const ctx = makeCtx(ws, event_id);
-    switch (metering.debitStage(db_ctx.pool, ALLOC, uc1.TENANT_ID, ctx, .stop)) {
-        .deducted => {},
-        else => return error.TestExpectedEqual,
-    }
-
-    metering.recordStageActuals(
-        db_ctx.pool,
-        ALLOC,
-        uc1.TENANT_ID,
-        ctx,
-        100, // input tokens
-        540, // output tokens
-        12_500, // wall_ms
-        std.time.milliTimestamp(),
-    );
-
-    var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT credit_deducted_nanos, token_count_input, token_count_output, wall_ms
-        \\FROM zombie_execution_telemetry WHERE event_id = $1 AND charge_type = 'stage'
-    , .{event_id}));
-    defer q.deinit();
-    const r = (try q.next()) orelse return error.RowNotFound;
-    // credit_deducted_nanos: pre-execution estimate is the charge of record.
-    try std.testing.expectEqual(expected_stage_nanos, try r.get(i64, 0));
-    try std.testing.expectEqual(@as(?i64, 100), try r.get(?i64, 1));
-    try std.testing.expectEqual(@as(?i64, 540), try r.get(?i64, 2));
-    try std.testing.expectEqual(@as(?i64, 12_500), try r.get(?i64, 3));
 }
 
 test "telemetry insert is idempotent: same event_id+charge_type replayed inserts 1 row" {

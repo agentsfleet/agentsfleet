@@ -75,6 +75,23 @@ pub fn claim(
     return .{ .won = .{ .token = @intCast(try row.get(i64, 0)), .leased_until = leased_until } };
 }
 
+/// Reset the per-zombie metering cursor to 0/now — called at FRESH lease issue
+/// so a new event meters from zero even when the slot was reused from a prior
+/// (completed) run whose cursor the claim's `ON CONFLICT` preserved. A reclaim
+/// does NOT call this: the slot must keep the dead holder's progress so the
+/// re-leased run meters forward from where it stopped. The renewal CTE reads
+/// this cursor for each slice's Δ, so a stale value here would over-charge the
+/// first renewal — hence the reset is fail-closed (a reset error fails lease
+/// issue rather than risk an over-charge).
+pub fn resetCursor(conn: *pg.Conn, zombie_id: []const u8, now_ms: i64) !void {
+    _ = conn.exec(
+        \\UPDATE fleet.runner_affinity
+        \\SET metered_input_tokens = 0, metered_cached_tokens = 0,
+        \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2
+        \\WHERE zombie_id = $1::uuid
+    , .{ zombie_id, now_ms }) catch return error.AffinityCursorResetFailed;
+}
+
 /// Free the slot (report / abandoned no-work claim) so the zombie's next event
 /// is claimable — but only when `token` still equals the live `fencing_seq`, so
 /// a holder superseded by a reclaim cannot free the current holder's slot.
