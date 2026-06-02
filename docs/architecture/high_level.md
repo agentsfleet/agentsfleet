@@ -140,7 +140,7 @@ For the MVP, that means:
 - the zombie gathers the right evidence
 - the zombie reasons over the situation using LLM + constrained tools
 - every step is persisted with actor provenance
-- the zombie context is bounded (rolling window + memory checkpoints + stage chunking)
+- the zombie context is bounded (rolling window + memory checkpoints + run chunking)
 - risky steps are approval-gated
 - the zombie can resume after interruption
 - the operator resumes from state, not memory

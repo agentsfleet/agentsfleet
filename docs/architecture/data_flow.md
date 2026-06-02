@@ -86,7 +86,7 @@ The user's agent is a workstation tool driving `zombiectl`. The zombie's agent i
            ║  2. PUBLISH zombie:{id}:activity   ║
            ║     {kind:"event_received"}        ║   See
            ║  3. balance gate, receive debit,   ║   [`capabilities.md`](./capabilities.md)
-           ║     approval gate, stage debit     ║   for each gate layer.
+           ║     approval gate, run debit       ║   for each gate layer.
            ║  4. resolve secrets_map from vault ║
            ║  5. UPSERT core.zombie_sessions    ║   ← resume cursor:
            ║     SET execution_id (busy)        ║     marks zombie busy
@@ -165,7 +165,7 @@ The flow above writes to three Postgres tables. They are **not** redundant — e
 |---|---|---|---|
 | `core.zombie_sessions` | **One row per zombie** | UPSERT — mutated on every event boundary | "Where is this zombie *right now*? Is it idle or executing? What was its last successful response?" — the resume bookmark + active-execution handle. `execution_id` is set at `lease` (busy) and cleared at `report` (idle). Read at `lease` and by `zombiectl status`. |
 | `core.zombie_events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `agent_error` \| `gate_blocked`) | "What did this zombie do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" — the user's narrative log. The single source of truth for the Events tab and `zombiectl events`. |
-| `zombie_execution_telemetry` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the stage debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the stage row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs stage)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `zombie_events` via `event_id`. |
+| `zombie_execution_telemetry` | **Two rows per event** under the credit-pool model: one `charge_type='receive'` at the receive debit, one `charge_type='stage'` at the run debit (then UPDATEd with token counts after the report). UNIQUE `(event_id, charge_type)`. | INSERT at each debit, immutable for the `credit_deducted_nanos` column; the run row is reconciled once with actual token counts at report. | "How much did event X cost (split by receive vs run)? How fast was it? What posture was charged?" — billing + latency audit. Joinable to `zombie_events` via `event_id`. |
 
 Why two per-delivery tables (`events` + `telemetry`) instead of one? They have different write authorities and retention contracts:
 
@@ -176,7 +176,7 @@ The durable lease bookkeeping (`fleet.runner_leases`, `fleet.runner_affinity`) i
 
 ## Concrete platform-ops example
 
-A GitHub Actions deploy fails on `usezombie/usezombie@c0a151bd`. The webhook lands as `event_id=1729874000000-0`, `actor=webhook:github`. Here is exactly what each row holds at each stage.
+A GitHub Actions deploy fails on `usezombie/usezombie@c0a151bd`. The webhook lands as `event_id=1729874000000-0`, `actor=webhook:github`. Here is exactly what each row holds at each step.
 
 **Before the event** — `zombie_sessions` shows the zombie idle since the previous event:
 
@@ -242,7 +242,7 @@ completed_at   2026-04-25T08:00:08Z
 **Step 9 — INSERT `zombie_execution_telemetry`** (immutable audit row, joinable on `event_id`):
 
 ```
-zombie_execution_telemetry  (stage row reconciled with actuals)
+zombie_execution_telemetry  (run row reconciled with actuals)
 ─────────────────────────────────────────────────
 id                       tel-1729874000000-0
 zombie_id                f4e3c2b1-...
@@ -341,7 +341,7 @@ Before the cutover, the worker held **one dedicated blocking Redis connection pe
 
 `zombied` resolves a zombie's config fresh from `core.zombies` on every `lease`, so a `PATCH /v1/workspaces/{ws}/zombies/{id}` takes effect on the **next lease** with no signaling. There is no in-memory config cache to invalidate and no `zombie_config_changed` consumer to wait on — the worker's watcher-reload path and the `system:config_updated` synthetic-event acknowledgement that depended on it were deleted with the worker.
 
-A config change never alters a language-model turn already in flight (one lease = one stage, and the stage already has its resolved policy); the next stage picks up the new config. The PATCH handler writes `core.zombies` and returns — there is no signal to emit, since the control stream was removed at the cutover. A status change (`paused` / `stopped` / `killed` / back to `active`) is read the same way: the lease assignment scan filters on `core.zombies.status = 'active'`, so a paused zombie drops out of the candidate set on the next scan and a resumed one re-enters — no notification needed.
+A config change never alters a language-model turn already in flight (one lease = one run, and the run already has its resolved policy); the next run picks up the new config. The PATCH handler writes `core.zombies` and returns — there is no signal to emit, since the control stream was removed at the cutover. A status change (`paused` / `stopped` / `killed` / back to `active`) is read the same way: the lease assignment scan filters on `core.zombies.status = 'active'`, so a paused zombie drops out of the candidate set on the next scan and a resumed one re-enters — no notification needed.
 
 ## End-to-end sequence
 
@@ -493,7 +493,7 @@ The deleted worker's single in-process `processEvent` loop is now split across t
           ON CONFLICT (zombie_id, event_id) DO NOTHING   (idempotent on replay)
      2. PUBLISH zombie:{id}:activity { kind:"event_received", event_id, actor }
      3. Gates + billing (mirror of metering.zig):
-          balance gate → receive debit → approval gate → stage debit.
+          balance gate → receive debit → approval gate → run debit.
           Blocked → UPDATE core.zombie_events status='gate_blocked',
                                               failure_label=<gate>
                     → PUBLISH zombie:{id}:activity
@@ -664,7 +664,7 @@ Before the cutover, a single worker thread owned all events for a zombie, and th
 
 - `fleet.runner_affinity` holds one slot per zombie. `assign.select` claims it atomically — a runner wins iff the slot is free or the prior lease has expired — and bumps a monotonic `fencing_seq`. So **at most one lease is active per zombie at any time**, regardless of how many runners poll concurrently.
 - A runner that loses the race for a zombie simply gets no lease for it and tries the next eligible zombie (or backs off).
-- Continuity across stages is the checkpoint in `zombied`, not runner-local state — so any runner can pick up the next stage. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
+- Continuity across runs is the checkpoint in `zombied`, not runner-local state — so any runner can pick up the next run. Sticky routing (prefer `last_runner_id`) is a hint for warm-sandbox reuse, never ownership.
 
 Failure mode: if the runner holding a lease dies, no other runner can claim that zombie until `lease_expires_at`; the reclaim sweep then re-leases it with a higher fencing token. Recovery latency is bounded by the TTL (Time To Live) plus poll density — the S0 lazy-reclaim SLA. Tightening it (heartbeat-driven reassignment, sub-10 s recovery) is M80_006.
 
@@ -717,4 +717,4 @@ A future reconcile job (a control-plane sweep over `core.zombies` for `active` r
 - **Exactly one active lease per zombie.** The atomic affinity claim + monotonic fencing token guarantee a single in-flight lease per zombie no matter how many runners poll.
 - **Reclaim is lease-layer, not Redis-consumer.** A dead runner is reclaimed via `lease_expires_at` + `fencing_token`, never `XAUTOCLAIM` — Redis cannot observe an off-platform processor's death.
 - **Late writers are fenced.** A reclaimed or killed runner's `report` is rejected by the `fencing_token` CAS, so it cannot mutate state. Negative-tested.
-- **Long-running stages don't crash the model.** The three context-lifecycle layers (see [`capabilities.md`](./capabilities.md) §4) keep context bounded. If a single incident exceeds budget, the zombie chunks and continues in a new stage from a `memory_recall` snapshot — possibly on a different runner.
+- **Long-running runs don't crash the model.** The three context-lifecycle layers (see [`capabilities.md`](./capabilities.md) §4) keep context bounded. If a single incident exceeds budget, the zombie chunks and continues in a new run from a `memory_recall` snapshot — possibly on a different runner.

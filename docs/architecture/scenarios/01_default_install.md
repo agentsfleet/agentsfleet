@@ -2,7 +2,7 @@
 
 **Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
-> **Rate snapshot.** Through 2026-07-31 UTC every event and every stage execution is free (`FREE_TRIAL_STAGE_NANOS = 0`); the gate and telemetry rows still run but `credit_deducted_nanos = 0`. After the cutoff, the rates in `src/state/tenant_billing.zig` apply. Cent-and-token arithmetic in steps 4–8 below was authored against an earlier rate table — the *flow* is unchanged, but every deduction is 0 during the trial. **For the live, customer-facing rate table, always consult [`https://usezombie.com/#pricing`](https://usezombie.com/#pricing).** The architecture description here covers shape and behaviour; numbers change. Code-level pin: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.3.
+> **Rate snapshot.** Through 2026-07-31 UTC every event and every run execution is free (`FREE_TRIAL_STAGE_NANOS = 0`); the gate and telemetry rows still run but `credit_deducted_nanos = 0`. After the cutoff, the rates in `src/state/tenant_billing.zig` apply. Cent-and-token arithmetic in steps 4–8 below was authored against an earlier rate table — the *flow* is unchanged, but every deduction is 0 during the trial. **For the live, customer-facing rate table, always consult [`https://usezombie.com/#pricing`](https://usezombie.com/#pricing).** The architecture description here covers shape and behaviour; numbers change. Code-level pin: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.3.
 
 > **Important framing.** There is no separate "Free tier" in v2.0. Every tenant has the same credit-pool billing model and the same cost functions; new tenants just start with a one-time grant. John in this scenario, John in Scenario 02 (after he flips to self-managed), and any future tenant who tops up via support all run through identical code paths and identical billing math. "Free" is a marketing word for "starting credits not yet exhausted," not a code-path concept. See [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.
 
@@ -159,7 +159,7 @@ A `zombie-runner` leases the event within ≤5s. The lease path (in `zombied`) w
 5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
 6. Approval gate (no destructive tools wired in this zombie) → pass.
 7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map`; `resolveActiveProvider`'s resolved provider+key ride the lease on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` (delivered fresh on every lease, including reclaim), separate from `secrets_map`, and the runner injects them into the NullClaw child for the inference call only.
-8. **Stage deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
+8. **Run deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
 9. `zombied` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: <platform key>, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `zombied`, delivered on the lease policy, and injected by the runner's NullClaw child for the inference call only — not carried in `secrets_map`.
 10. The runner forks a sandboxed NullClaw child and runs the event (the webhook payload as the message).
 
@@ -169,7 +169,7 @@ NullClaw runs the SKILL.md prose against the webhook payload. The agent makes it
 
 Worker:
 - UPDATE `core.zombie_events` (`status='processed'`, `response_text`, `completed_at`).
-- UPDATE `zombie_execution_telemetry` stage row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The `credit_deducted_nanos` column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3).
+- UPDATE `zombie_execution_telemetry` run row (the one INSERTed at step 8) SET `token_count_input=820`, `token_count_output=1040`, `wall_ms=8210`. The `credit_deducted_nanos` column does NOT change — the conservative estimate at step 8 is the charge (v3 may add refund-on-actual; see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3).
 - UPSERT `core.zombie_sessions` (advance bookmark, clear execution handle).
 - PUBLISH `event_complete`.
 - XACK.
@@ -197,7 +197,7 @@ $ /usezombie-install-platform-ops
                 context_cap_tokens: 256000 }
               billing: { free_trial: { active: true,
                 ends_at_ms: 1785542400000 } }
-              → Free until 2026-07-31 (UTC); stages charged 0 nanos.
+              → Free until 2026-07-31 (UTC); runs charged 0 nanos.
 
 ▸ Detecting repo … github.com/john-doe/widgetly
   .github/workflows/deploy.yml present

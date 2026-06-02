@@ -116,10 +116,10 @@ NullClaw routes the call through `compatible.zig` to `POST https://api.fireworks
 
 The runner's report arrives. Two telemetry rows exist for this event (per the credit-pool model — see [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §3):
 - The receive row was INSERTed earlier at gate time: `charge_type='receive'`, `posture='self_managed'`, `credit_deducted_nanos=0` (events are free both postures under M66).
-- The stage row was INSERTed at lease issue, before the runner executed: `charge_type='stage'`, `posture='self_managed'`, `credit_deducted_nanos=100000` (flat $0.0001 orchestration overhead under self-managed; no token markup).
+- The run row was INSERTed at lease issue, before the runner executed: `charge_type='stage'`, `posture='self_managed'`, `credit_deducted_nanos=100000` (flat $0.0001 orchestration overhead under self-managed; no token markup).
 - Now UPDATEd post-execution with `token_count_input=820, token_count_output=1320, wall_ms=11400` — recorded for transparency on the Usage tab and for John's separate Fireworks-bill review, but the `credit_deducted_nanos` column does **not** change because self-managed pricing is flat.
 
-L3 stage chunking (M41 §6) sees `context_cap_tokens=256000`, sets the chunk-trigger threshold at `0.75 * 256000 = 192000`. Same code path as Scenario 01; only the number differs.
+L3 run chunking (M41 §6) sees `context_cap_tokens=256000`, sets the chunk-trigger threshold at `0.75 * 256000 = 192000`. Same code path as Scenario 01; only the number differs.
 
 ---
 
