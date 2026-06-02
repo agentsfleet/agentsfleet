@@ -28,6 +28,15 @@
 --     mirror) atomically. The claim UPSERT seeds it 0/issue-time on a brand-new
 --     slot and PRESERVES it on conflict (a reclaim keeps the prior run's value);
 --     a fresh event resets it at lease issue.
+--   * meter_slice_seq — the monotonic per-event breakdown counter. The renew /
+--     settle CTE derives each fleet.metering_periods.slice_seq from THIS row
+--     (+1, written back in the same fenced statement) rather than from a
+--     MAX(slice_seq) read of metering_periods: the slot row is FOR UPDATE-locked,
+--     so a blocked concurrent renew re-reads the committed counter (EvalPlanQual)
+--     and never collides on slice_seq, whereas an unlocked MAX subquery reads a
+--     stale statement snapshot and two racing renews pick the same value. Seeded
+--     0 on a brand-new slot, PRESERVED on reclaim (the run's slices keep
+--     numbering forward), reset to 0 at fresh lease issue.
 
 CREATE TABLE IF NOT EXISTS fleet.runner_affinity (
     id              UUID   PRIMARY KEY,
@@ -40,6 +49,11 @@ CREATE TABLE IF NOT EXISTS fleet.runner_affinity (
     metered_cached_tokens  BIGINT NOT NULL,
     metered_output_tokens  BIGINT NOT NULL,
     last_metered_at_ms     BIGINT NOT NULL,
+    -- The one DEFAULT in this table: a breakdown counter whose only valid initial
+    -- value is 0 (unlike fencing_seq / the cursor, whose seed values are
+    -- app-computed and load-bearing). The default keeps the claim UPSERT and every
+    -- fixture from re-stating it; the renew/settle CTE always writes it explicitly.
+    meter_slice_seq        BIGINT NOT NULL DEFAULT 0,
     created_at      BIGINT NOT NULL,
     updated_at      BIGINT NOT NULL,
     CONSTRAINT uq_runner_affinity_zombie UNIQUE (zombie_id)
