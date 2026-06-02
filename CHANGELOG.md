@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Per-runner Prometheus metrics on `zombied` `/metrics`: `zombie_runner_failures_total{runner_id,reason}`, `zombie_runner_executions_total{runner_id,outcome}`, `zombie_runner_last_seen_seconds{runner_id}`, `zombie_runner_active_leases{runner_id}` — in-memory slot table, scrape-path DB-free, `runner_id="_other"` overflow at capacity
+- Grafana dashboard JSON (`deploy/grafana/runner_fleet.json`) — runner-fleet observability; 6 panels with multi-replica-correct PromQL aggregation (`sum` counters, `min` liveness, best-effort `sum` active-leases), auto-imported by the 009 playbook alongside `agent_run_breakdown.json`
+
 ### Removed
 
 - 22 dead pipeline-tier-2 metrics (`zombie_agent_echo_*`, `zombie_agent_scout_*`, `zombie_agent_warden_*`, `zombie_sandbox_*`, `zombie_side_effect_outbox_*`, `zombie_worker_allocator_leaks_total`, `zombie_rate_limit_wait_ms_total`, and others) — consolidated into `zombie_agent_duration_seconds` histogram and per-workspace counters
