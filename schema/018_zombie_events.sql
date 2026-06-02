@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS core.zombie_events (
     response_text    TEXT    NULL,
     tokens           BIGINT  NULL,
     wall_ms          BIGINT  NULL,
+    -- Normalized failure cause (@tagName of contract.FailureClass); NULL on success.
     failure_label    TEXT    NULL,
     checkpoint_id    TEXT    NULL,
     resumes_event_id TEXT    NULL,

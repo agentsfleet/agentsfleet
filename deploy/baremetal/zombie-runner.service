@@ -34,7 +34,10 @@ KillMode=mixed
 #   RUNNER_HOST_ID       — stable machine identifier (reuse the host's vault
 #                          `hostname` field for consistency)
 #   (optional) RUNNER_SANDBOX_TIER (prod must override the dev_none default),
-#              RUNNER_WORKSPACE_BASE
+#              RUNNER_WORKSPACE_BASE,
+#              RUNNER_NETWORK_POLICY (set to registry_allowlist on bare-metal
+#                                    hosts that need agent dependency installs;
+#                                    default deny_all)
 # Bootstrap order (chicken-and-egg): the updated zombied (with the platform-
 # admin enrollment gate) must be deployed FIRST; only then can an admin mint a
 # `zrn_` for this host. Until that's done, DEV_WORKER_READY stays `false`.

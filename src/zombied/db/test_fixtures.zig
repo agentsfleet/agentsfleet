@@ -198,10 +198,9 @@ pub fn seedPlatformProvider(
 }
 
 /// Variant of seedPlatformProvider that lets the caller pin the api_key
-/// the platform credential resolves to. Used by the redaction-harness
-/// pub/sub test (M42_002) to seed `SYNTHETIC_SECRET` so the worker's
-/// resolveFirstCredential returns the exact bytes the redactor must
-/// scrub from outbound frames.
+/// the platform credential resolves to. Used by the control-plane
+/// integration tests to seed a known key so resolveFirstCredential
+/// returns the exact bytes the assertion expects.
 pub fn seedPlatformProviderWithKey(
     alloc: std.mem.Allocator,
     conn: *pg.Conn,

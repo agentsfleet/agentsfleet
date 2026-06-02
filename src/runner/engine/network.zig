@@ -31,8 +31,16 @@ pub const NetworkConfig = struct {
 };
 
 /// Parse RUNNER_NETWORK_POLICY env var. Returns .deny_all if unset or unknown.
+/// Unset is the documented secure default and stays silent; a value that is set
+/// but unrecognized is logged — that is the misconfiguration signal (a typo
+/// otherwise silently loses egress and every dependency install in the sandbox
+/// fails until it is corrected).
 pub fn policyFromEnv(alloc: std.mem.Allocator) PolicyMode {
-    const raw = std.process.getEnvVarOwned(alloc, "RUNNER_NETWORK_POLICY") catch return .deny_all;
+    const raw = std.process.getEnvVarOwned(alloc, "RUNNER_NETWORK_POLICY") catch |err| {
+        if (err != error.EnvironmentVariableNotFound)
+            log.warn("network_policy_env_unreadable", .{ .fallback = "deny_all" });
+        return .deny_all;
+    };
     defer alloc.free(raw);
     return policyFromSlice(raw);
 }
@@ -40,6 +48,8 @@ pub fn policyFromEnv(alloc: std.mem.Allocator) PolicyMode {
 /// Parse a network policy string. Exported for unit testing.
 fn policyFromSlice(raw: []const u8) PolicyMode {
     if (std.ascii.eqlIgnoreCase(raw, "registry_allowlist")) return .registry_allowlist;
+    if (std.ascii.eqlIgnoreCase(raw, "deny_all")) return .deny_all;
+    log.warn("network_policy_unrecognized", .{ .value = raw, .fallback = "deny_all" });
     return .deny_all;
 }
 
