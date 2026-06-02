@@ -33,8 +33,8 @@ pub const ENTRIES_RUNTIME = [_]Entry{
     // ── EXECUTOR ─────────────────────────────────────────────────────────────
     e("UZ-EXEC-001", .internal_server_error, "Execution session create failed",
         "Execution session creation failed. Check runner availability."),
-    e("UZ-EXEC-002", .internal_server_error, "Stage start failed",
-        "Stage failed to start. Check runner configuration."),
+    e("UZ-EXEC-002", .internal_server_error, "Run start failed",
+        "Run failed to start. Check runner configuration."),
     e("UZ-EXEC-003", .internal_server_error, "Execution timeout kill",
         "Execution exceeded the timeout limit and was killed."),
     e("UZ-EXEC-004", .internal_server_error, "Execution OOM kill",

@@ -3,8 +3,7 @@ import {
   EVENT_NANOS,
   NANOS_PER_USD,
   RATES_DISPLAY,
-  STAGE_PLATFORM_NANOS,
-  STAGE_SELF_MANAGED_NANOS,
+  RUN_NANOS_PER_SEC,
   STARTER_CREDIT_NANOS,
 } from "./rates";
 
@@ -37,14 +36,9 @@ describe("rates pinned (regression — mirror src/state/tenant_billing_test.zig)
     expect(EVENT_NANOS).toBe(0n);
   });
 
-  it("STAGE_PLATFORM_NANOS = 1_000_000 ($0.001)", () => {
+  it("RUN_NANOS_PER_SEC = 100_000 ($0.0001/sec)", () => {
     // pin test: literal is the contract
-    expect(STAGE_PLATFORM_NANOS).toBe(1_000_000n);
-  });
-
-  it("STAGE_SELF_MANAGED_NANOS = 100_000 ($0.0001)", () => {
-    // pin test: literal is the contract
-    expect(STAGE_SELF_MANAGED_NANOS).toBe(100_000n);
+    expect(RUN_NANOS_PER_SEC).toBe(100_000n);
   });
 
   it("NANOS_PER_USD = 1_000_000_000 (canonical billing unit)", () => {
@@ -54,19 +48,20 @@ describe("rates pinned (regression — mirror src/state/tenant_billing_test.zig)
 });
 
 describe("rate ladder invariants", () => {
-  it("starter credit covers thousands of stages on either posture", () => {
-    expect(STARTER_CREDIT_NANOS / STAGE_PLATFORM_NANOS).toBeGreaterThanOrEqual(1_000n);
-    expect(STARTER_CREDIT_NANOS / STAGE_SELF_MANAGED_NANOS).toBeGreaterThanOrEqual(1_000n);
+  it("starter credit covers thousands of seconds of runtime", () => {
+    // $5 / $0.0001/sec = 50_000 seconds (~13.9 hours) of active runtime.
+    expect(STARTER_CREDIT_NANOS / RUN_NANOS_PER_SEC).toBeGreaterThanOrEqual(1_000n);
   });
 
-  it("self-managed stage is 10× cheaper than platform stage (the gradient is the marketing message)", () => {
-    expect(STAGE_PLATFORM_NANOS).toBe(STAGE_SELF_MANAGED_NANOS * 10n);
+  it("the run rate is one value for both postures (no per-posture gradient)", () => {
+    // pin test: literal is the contract — a single run rate, charged the same
+    // whether platform or self-managed; only the model-token cost differs.
+    expect(RUN_NANOS_PER_SEC).toBe(100_000n);
   });
 
-  it("event is free; platform stage is the cheapest non-zero charge surface", () => {
+  it("event is free; the run rate is the cheapest non-zero charge surface", () => {
     expect(EVENT_NANOS).toBe(0n);
-    expect(STAGE_PLATFORM_NANOS).toBeGreaterThan(EVENT_NANOS);
-    expect(STAGE_SELF_MANAGED_NANOS).toBeGreaterThan(EVENT_NANOS);
+    expect(RUN_NANOS_PER_SEC).toBeGreaterThan(EVENT_NANOS);
   });
 });
 
@@ -79,12 +74,12 @@ describe("RATES_DISPLAY format contract (shipped to Mintlify snippet, OpenAPI, s
     expect(RATES_DISPLAY.EVENT_RATE).toBe("free");
   });
 
-  it("STAGE_PLATFORM renders as $0.001", () => {
-    expect(RATES_DISPLAY.STAGE_PLATFORM).toBe("$0.001");
+  it("RUN_RATE_PER_SEC renders as $0.0001/sec (the per-second billing unit)", () => {
+    expect(RATES_DISPLAY.RUN_RATE_PER_SEC).toBe("$0.0001/sec");
   });
 
-  it("STAGE_SELF_MANAGED renders as $0.0001", () => {
-    expect(RATES_DISPLAY.STAGE_SELF_MANAGED).toBe("$0.0001");
+  it("RUN_RATE_PER_HOUR renders as $0.36/hr (the hourly equivalent)", () => {
+    expect(RATES_DISPLAY.RUN_RATE_PER_HOUR).toBe("$0.36/hr");
   });
 });
 

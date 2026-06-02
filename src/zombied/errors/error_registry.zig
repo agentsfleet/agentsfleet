@@ -198,6 +198,7 @@ pub const ERR_RUN_SANDBOX_ESTABLISH_FAILED = "UZ-RUN-007";
 pub const ERR_RUN_LEASE_EXCEEDED_MAX_RUNTIME = "UZ-RUN-010";
 pub const ERR_RUN_LEASE_LOST = "UZ-RUN-011";
 pub const ERR_RUN_LEASE_RENEWAL_NO_CREDITS = "UZ-RUN-012";
+pub const ERR_RUN_RENEW_BODY_INVALID = "UZ-RUN-013";
 
 // ── Error mapping table (bvisor pattern) ─────────────────────────────────────
 // Shared type for modules that map Zig errors to registry codes + messages.

@@ -23,8 +23,10 @@ export const NANOS_PER_USD = 1_000_000_000;
 // Held as Number; every value here fits in 2^53 so no precision loss.
 export const STARTER_CREDIT_NANOS = 5 * NANOS_PER_USD;
 export const EVENT_NANOS = 0;
-export const STAGE_PLATFORM_NANOS = 1_000_000;
-export const STAGE_SELF_MANAGED_NANOS = 100_000;
+// Per-second run rate ($0.0001/sec ≈ $0.36/hr), charged identically under both
+// postures while an agent is actively running. Replaces the former flat
+// per-stage fees.
+export const RUN_NANOS_PER_SEC = 100_000;
 
 // Promotional free-trial window: while `now_ms < FREE_TRIAL_END_MS`,
 // the server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS
@@ -35,7 +37,7 @@ export const FREE_TRIAL_END_MS = 1_785_542_400_000; // 2026-08-01T00:00:00Z
 export const FREE_TRIAL_STAGE_NANOS = 0;
 
 // Two-to-four decimal places — cents granularity, with sub-cent precision
-// when traction rates ($0.001 stage, $0.0001 self-managed) need it.
+// when the per-second run rate ($0.0001/sec) needs it.
 const USD_FORMATTER = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",

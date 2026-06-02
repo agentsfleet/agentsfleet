@@ -86,8 +86,10 @@ fn seedActiveZombie(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn, last_runner_id: []const u8, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0)
+        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
@@ -98,11 +100,12 @@ fn seedActiveLease(conn: *pg.Conn, lease_id: []const u8, runner_id: []const u8, 
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, model,
+        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-seed-1',
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
-        \\        'test-model', $6, $7, 'active', 0, 0)
+        \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ lease_id, runner_id, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, std.time.milliTimestamp() + 60_000 });
 }

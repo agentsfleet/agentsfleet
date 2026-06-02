@@ -24,6 +24,7 @@ fn selfManagedCtx(workspace_id: []const u8, event_id: []const u8) metering.Prefl
         .zombie_id = "zombie-idem-test",
         .event_id = event_id,
         .posture = .self_managed,
+        .provider = "self-managed-test",
         .model = "any-model-self-managed",
     };
 }
