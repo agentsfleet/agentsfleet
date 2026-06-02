@@ -15,7 +15,11 @@ pub const zombie_stream_prefix = "zombie:";
 pub const zombie_stream_suffix = ":events";
 
 /// Consumer group for zombie event processing. One group per zombie stream.
-pub const zombie_consumer_group = "zombie_workers";
+/// Named for the lease path that reads it (zombied consumes on a runner's
+/// behalf), not the retired worker process. Pre-launch rename from
+/// "zombie_workers": old groups carry no pending entries, so no drain is
+/// needed — new streams create this group via ensureZombieConsumerGroup.
+pub const zombie_consumer_group = "zombie_lease";
 
 /// Stream field names for zombie events. Wire shape matches EventEnvelope.encodeForXAdd.
 /// The Redis stream entry id IS the canonical event_id — never carry a separate id.

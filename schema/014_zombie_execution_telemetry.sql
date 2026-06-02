@@ -41,8 +41,6 @@ CREATE INDEX idx_telemetry_tenant_time
     ON core.zombie_execution_telemetry (tenant_id, recorded_at DESC);
 
 -- api_runtime: customer + operator + tenant Usage read endpoints (SELECT),
--- metering INSERT from HTTP path.
+-- metering INSERT from the HTTP path, plus the event-loop metering writes
+-- (receive INSERT pre-stage, stage INSERT pre-execution, stage UPDATE post).
 GRANT SELECT, INSERT, UPDATE ON core.zombie_execution_telemetry TO api_runtime;
--- worker_runtime: event-loop metering writes (receive INSERT pre-stage,
--- stage INSERT pre-execution, stage UPDATE post-execution).
-GRANT INSERT, UPDATE ON core.zombie_execution_telemetry TO worker_runtime;

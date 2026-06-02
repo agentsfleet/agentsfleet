@@ -56,7 +56,12 @@ test "integration: rediss ping via TEST_REDIS_TLS_URL" {
 test "roleEnvVarName maps redis roles deterministically" {
     try std.testing.expectEqualStrings("REDIS_URL", redis.roleEnvVarName(.default));
     try std.testing.expectEqualStrings("REDIS_URL_API", redis.roleEnvVarName(.api));
-    try std.testing.expectEqualStrings("REDIS_URL_WORKER", redis.roleEnvVarName(.worker));
+}
+
+test "RedisRole carries no worker variant" {
+    inline for (@typeInfo(redis.RedisRole).@"enum".fields) |field| {
+        try std.testing.expect(!std.mem.eql(u8, field.name, "worker"));
+    }
 }
 
 // ── Queue constants regression tests ─────────────────────────────────────
@@ -65,6 +70,13 @@ const queue_consts = @import("constants.zig");
 
 test "queue constants: consumer prefix is stable" {
     try std.testing.expectEqualStrings("worker", queue_consts.consumer_prefix);
+}
+
+// pin test: literal is the contract — install/lease/report (redis_zombie.zig)
+// all reference this one constant, so pinning the value pins the group used by
+// every step. Renamed from "zombie_workers" (worker-substrate retirement).
+test "queue constants: zombie consumer group reflects the lease path" {
+    try std.testing.expectEqualStrings("zombie_lease", queue_consts.zombie_consumer_group);
 }
 
 

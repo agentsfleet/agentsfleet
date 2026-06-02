@@ -29,9 +29,6 @@ CREATE TABLE IF NOT EXISTS core.tenant_providers (
 CREATE INDEX IF NOT EXISTS idx_tenant_providers_mode
     ON core.tenant_providers (mode);
 
--- api_runtime: GET/PUT/DELETE /v1/tenants/me/provider.
+-- api_runtime: GET/PUT/DELETE /v1/tenants/me/provider, plus resolveActiveProvider
+-- at lease issue (runs in zombied post-cutover).
 GRANT SELECT, INSERT, UPDATE, DELETE ON core.tenant_providers TO api_runtime;
-
--- worker_runtime: grant predates the cutover; resolveActiveProvider now runs in
--- zombied at lease issue. This grant retires with the worker role.
-GRANT SELECT ON core.tenant_providers TO worker_runtime;
