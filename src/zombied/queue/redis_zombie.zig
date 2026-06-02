@@ -1,7 +1,7 @@
 //! Zombie Redis stream operations.
 //!
 //! Operates on per-zombie streams (zombie:{zombie_id}:events) using
-//! XREADGROUP / XAUTOCLAIM / XACK with the shared `zombie_workers` consumer
+//! XREADGROUP / XAUTOCLAIM / XACK with the shared `zombie_lease` consumer
 //! group. Decoded entries match the EventEnvelope wire shape; field names
 //! must stay in lockstep with `contract/event_envelope.zig::encodeForXAdd`.
 

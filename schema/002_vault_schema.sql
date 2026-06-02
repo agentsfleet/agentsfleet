@@ -8,10 +8,12 @@ DO $$
 DECLARE
     r text;
 BEGIN
+    -- The worker datastore role was removed: the worker process was deleted in
+    -- the runtime split; zombied writes every execution-path row as api_runtime.
+    -- No role is named after the runner — it holds zero datastore credentials.
     FOREACH r IN ARRAY ARRAY[
         'db_migrator',
         'api_runtime',
-        'worker_runtime',
         'memory_runtime',
         'ops_readonly_human',
         'ops_readonly_agent'
@@ -31,7 +33,7 @@ GRANT ALL ON SCHEMA public, core, agent, billing, vault, audit, ops_ro, memory T
 GRANT ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro, memory TO db_migrator;
 
 -- Runtime roles: data access only
-GRANT USAGE ON SCHEMA core, agent, billing, vault, audit TO api_runtime, worker_runtime;
+GRANT USAGE ON SCHEMA core, agent, billing, vault, audit TO api_runtime;
 
 -- Pipeline v1 removed. Grants to dropped tables removed:
 -- core.specs, core.runs, core.run_transitions, core.artifacts,
@@ -41,13 +43,8 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
     core.workspaces
 TO api_runtime;
 
-GRANT SELECT ON
-    core.tenants,
-    core.workspaces
-TO worker_runtime;
-
 -- audit schema: runtime read-only migration state inspection
-GRANT SELECT ON audit.schema_migrations, audit.schema_migration_failures TO api_runtime, worker_runtime;
+GRANT SELECT ON audit.schema_migrations, audit.schema_migration_failures TO api_runtime;
 
 CREATE TABLE IF NOT EXISTS vault.secrets (
     id            UUID PRIMARY KEY,
@@ -69,20 +66,19 @@ CREATE TABLE IF NOT EXISTS vault.secrets (
 CREATE INDEX IF NOT EXISTS idx_vault_secrets_workspace
     ON vault.secrets(workspace_id, key_name);
 
-GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime, worker_runtime;
+GRANT SELECT, INSERT, UPDATE ON vault.secrets TO api_runtime;
 
 -- Read-only principals are strictly routed to ops_ro + audit
 GRANT USAGE ON SCHEMA ops_ro, audit TO ops_readonly_human, ops_readonly_agent;
 
 -- No runtime/read-only DDL in app schemas
 REVOKE CREATE ON SCHEMA public, core, agent, billing, vault, audit, ops_ro, memory
-FROM api_runtime, worker_runtime, memory_runtime, ops_readonly_human, ops_readonly_agent;
+FROM api_runtime, memory_runtime, ops_readonly_human, ops_readonly_agent;
 
 -- Remove default PUBLIC table visibility in authoritative app schemas.
 REVOKE ALL ON ALL TABLES IN SCHEMA core, agent, billing, vault, audit, ops_ro, memory FROM PUBLIC;
 
 ALTER ROLE api_runtime SET search_path = core, agent, billing, vault, audit, public;
-ALTER ROLE worker_runtime SET search_path = core, agent, billing, vault, audit, public;
 ALTER ROLE ops_readonly_human SET search_path = ops_ro, audit, public;
 ALTER ROLE ops_readonly_agent SET search_path = ops_ro, audit, public;
 

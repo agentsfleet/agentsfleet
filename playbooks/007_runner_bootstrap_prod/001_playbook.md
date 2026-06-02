@@ -1,4 +1,4 @@
-# PROD Worker Bootstrap
+# PROD Runner Bootstrap
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)
@@ -376,4 +376,4 @@ No manual steps after bootstrap — the fleet is fully CI-managed. The env file 
 --- CI-automated after this point ---
 ```
 
-**DEV worker** bootstrap follows the same pattern. See `playbooks/006_worker_bootstrap_dev/001_playbook.md`.
+**DEV worker** bootstrap follows the same pattern. See `playbooks/006_runner_bootstrap_dev/001_playbook.md`.

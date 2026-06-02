@@ -1,4 +1,4 @@
-# DEV Worker Bootstrap (`zombie-dev-worker-ant`)
+# DEV Runner Bootstrap (`zombie-dev-worker-ant`)
 
 **Updated:** May 28, 2026
 **Owner:** Agent (steps 1.0–5.0); Human (step 0.0 only)

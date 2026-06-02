@@ -4,8 +4,8 @@ This appendix keeps worker/bootstrap and handoff details separate from `001_play
 
 ## Worker Infrastructure Entry Points
 
-- DEV worker canonical playbook: `playbooks/006_worker_bootstrap_dev/001_playbook.md`
-- PROD worker canonical playbook: `playbooks/007_worker_bootstrap_prod/001_playbook.md`
+- DEV worker canonical playbook: `playbooks/006_runner_bootstrap_dev/001_playbook.md`
+- PROD worker canonical playbook: `playbooks/007_runner_bootstrap_prod/001_playbook.md`
 
 ## Deployment Handoff Entry Points
 
