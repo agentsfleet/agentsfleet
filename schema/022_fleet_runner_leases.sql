@@ -27,6 +27,14 @@
 --   the model resolved at lease. provider + model together key the rate row
 --   (the same model under two providers prices apart), replayed into the renew
 --   credit gate + the report settle.
+-- metered_*_tokens/last_metered_at_ms: the incremental-metering cursor. Each
+--   /renew charges the diff between the runner's cumulative token counts and
+--   these last-metered values (plus the run fee for now - last_metered_at_ms),
+--   then advances the cursor in the SAME fenced CTE, so a re-sent renewal
+--   double-bills ~0. Initialised at lease issue (metered_* = 0, last_metered_at
+--   = issue time) so the first /renew meters off a never-NULL cursor; carried
+--   forward on reclaim so the re-leased holder meters from where the dead one
+--   stopped (no double-charge, no gap).
 
 CREATE TABLE IF NOT EXISTS fleet.runner_leases (
     id                UUID   PRIMARY KEY,
@@ -43,6 +51,10 @@ CREATE TABLE IF NOT EXISTS fleet.runner_leases (
     posture           TEXT   NOT NULL,
     provider          TEXT   NOT NULL,
     model             TEXT   NOT NULL,
+    metered_input_tokens   BIGINT NOT NULL,
+    metered_cached_tokens  BIGINT NOT NULL,
+    metered_output_tokens  BIGINT NOT NULL,
+    last_metered_at_ms     BIGINT NOT NULL,
     fencing_token     BIGINT NOT NULL,
     lease_expires_at  BIGINT NOT NULL,
     status            TEXT   NOT NULL,
