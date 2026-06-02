@@ -27,6 +27,22 @@ fn makeCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightCon
     };
 }
 
+// Platform-posture context. Under the run-fee model the self_managed issue-time
+// charge is zero (runFee(0)=0, tokens land on the user's own provider), so any
+// boundary that needs a non-zero issue-time charge — block/exhaust paths — runs
+// on platform posture, where the token-floor estimate is non-zero. Requires the
+// platform model in the process-global rate cache (seedPlatformProvider).
+fn platformCtx(workspace_id: []const u8, event_id: []const u8) metering.PreflightContext {
+    return .{
+        .workspace_id = workspace_id,
+        .zombie_id = "zombie-test",
+        .event_id = event_id,
+        .posture = .platform,
+        .provider = "anthropic",
+        .model = "claude-sonnet-4-6",
+    };
+}
+
 test "DebitOutcome variants compile and pattern-match" {
     const r1: metering.DebitOutcome = .{ .deducted = 7 };
     const r2: metering.DebitOutcome = .{ .exhausted = {} };
@@ -81,13 +97,17 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
 
     try uc1.seed(db_ctx.conn, WS_GATE_BLOCK);
     defer uc1.teardown(db_ctx.conn, WS_GATE_BLOCK);
+    // Platform posture so est_total (the token floor) is non-zero; self_managed
+    // carries no issue-time charge under the run-fee model.
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_GATE_BLOCK);
+    defer base.teardownPlatformProvider(db_ctx.conn, WS_GATE_BLOCK);
 
-    // self-managed: receive = EVENT_NANOS (0), stage = STAGE_SELF_MANAGED_NANOS.
-    // Balance < est_total → blocked.
+    // platform: receive = EVENT_NANOS (0), stage = token-floor cost (run fee is
+    // 0 at issue). Balance 0 < est_total → blocked.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_block");
 
-    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS,
-    // so est_total = 0 and `balance < est_total` is mathematically unreachable.
+    // Free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS, so
+    // est_total = 0 and `balance < est_total` is mathematically unreachable.
     // Skip until post-trial — the gate still holds, this assertion just can't
     // be exercised through the public charge path while the gate is closed.
     const trial_active = blk: {
@@ -101,9 +121,9 @@ test "balanceCoversEstimate: blocks when stop policy AND balance below est_total
         db_ctx.pool,
         ALLOC,
         uc1.TENANT_ID,
-        .self_managed,
-        "self-managed-test",
-        "any-model",
+        .platform,
+        "anthropic",
+        "claude-sonnet-4-6",
         .stop,
     ));
 }
@@ -118,7 +138,8 @@ test "balanceCoversEstimate: passes when stop policy AND balance covers est_tota
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
-    // STARTER_CREDIT_NANOS covers a self-managed event (EVENT_NANOS + STAGE_SELF_MANAGED_NANOS).
+    // STARTER_CREDIT_NANOS trivially covers a self_managed event — receive is
+    // EVENT_NANOS (0) and the issue-time run fee is 0, so est_total is 0.
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         ALLOC,
@@ -171,7 +192,7 @@ test "debitReceive self-managed: EVENT_NANOS=0 charge writes telemetry row, bala
     try std.testing.expectEqual(tenant_billing.EVENT_NANOS, try r.get(i64, 2));
 }
 
-test "debitStage self-managed: STAGE_SELF_MANAGED_NANOS flat overhead drains balance and writes stage telemetry" {
+test "debitStage self-managed: zero issue-time charge (run fee metered later), writes stage telemetry" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -182,16 +203,11 @@ test "debitStage self-managed: STAGE_SELF_MANAGED_NANOS flat overhead drains bal
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
-    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS.
-    // Branch expected nanos so this test stays honest in both eras — covers
-    // the trial-active deduction-of-zero path AND the post-trial flat-overhead
-    // path through the same end-to-end assertion shape.
-    const trial_active = blk: {
-        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(b.grant_source));
-        break :blk b.free_trial_active;
-    };
-    const expected_stage_nanos: i64 = if (trial_active) 0 else tenant_billing.STAGE_SELF_MANAGED_NANOS;
+    // Under the run-fee model the self_managed issue-time charge is zero in both
+    // eras: runFee(0)=0 and tokens land on the user's own provider. The debit
+    // still lands a stage telemetry row (charge 0); the run fee is metered per
+    // renewal, not here.
+    const expected_stage_nanos: i64 = 0;
 
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a02";
     const result = metering.debitStage(
@@ -234,14 +250,18 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
     try uc1.seed(db_ctx.conn, WS_RECEIVE_EXHAUST);
     defer uc1.teardown(db_ctx.conn, WS_RECEIVE_EXHAUST);
     defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_RECEIVE_EXHAUST}) catch {};
+    // Platform posture: the issue-time token-floor charge is non-zero, so a
+    // 0-balance row exhausts. self_managed would charge 0 and never exhaust.
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_RECEIVE_EXHAUST);
+    defer base.teardownPlatformProvider(db_ctx.conn, WS_RECEIVE_EXHAUST);
 
-    // Provision at 0 nanos — stage debit (STAGE_SELF_MANAGED_NANOS) must exhaust.
+    // Provision at 0 nanos — the platform stage debit (token floor) must exhaust.
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, 0, "test_exhaust");
 
-    // §7 free-trial: stage charge is 0 until FREE_TRIAL_END_MS, so debiting
-    // 0 from a 0-balance row succeeds (.deducted = 0) instead of exhausting.
-    // Skip until post-trial — the exhaust path is real, this fixture just
-    // can't reach it while the gate is closed.
+    // Free-trial: stage charge is 0 until FREE_TRIAL_END_MS, so debiting 0 from
+    // a 0-balance row succeeds (.deducted = 0) instead of exhausting. Skip until
+    // post-trial — the exhaust path is real, this fixture just can't reach it
+    // while the gate is closed.
     const trial_active = blk: {
         const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
         defer ALLOC.free(@constCast(b.grant_source));
@@ -254,7 +274,7 @@ test "debit on insufficient balance returns .exhausted; no rows written, balance
         db_ctx.pool,
         ALLOC,
         uc1.TENANT_ID,
-        makeCtx(WS_RECEIVE_EXHAUST, event_id),
+        platformCtx(WS_RECEIVE_EXHAUST, event_id),
         .stop,
     );
     switch (result) {
@@ -291,17 +311,11 @@ test "recordStageActuals: updates stage row tokens and wall_ms, leaves nanos unt
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
-    // §7 free-trial: stage charge short-circuits to 0 until FREE_TRIAL_END_MS.
-    // Branch the telemetry-row nanos assertion so the test stays honest in
-    // both eras — the invariant under test ("recordStageActuals doesn't
-    // mutate credit_deducted_nanos") holds regardless of which value the
-    // pre-execution estimate landed.
-    const trial_active = blk: {
-        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(b.grant_source));
-        break :blk b.free_trial_active;
-    };
-    const expected_stage_nanos: i64 = if (trial_active) 0 else tenant_billing.STAGE_SELF_MANAGED_NANOS;
+    // Under the run-fee model the self_managed issue-time charge is zero; the
+    // invariant under test ("recordStageActuals doesn't mutate
+    // credit_deducted_nanos") holds — the row keeps its 0 charge while tokens
+    // and wall_ms are updated.
+    const expected_stage_nanos: i64 = 0;
 
     // Land a stage debit first so we have a row to update.
     const event_id = "0195b4ba-8d3a-7f13-8abc-aa1900000a05";

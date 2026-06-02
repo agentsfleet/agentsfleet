@@ -102,6 +102,8 @@ pub fn balanceCoversEstimate(
         provider,
         posture,
         model,
+        0, // elapsed_ms: zero at lease issue — this gate sizes the token-estimate
+        // floor only; the run fee accrues per renewal once the agent is running.
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
@@ -123,10 +125,11 @@ pub fn debitReceive(
     return debitAndInsert(pool, alloc, tenant_id, ctx, .receive, nanos, policy);
 }
 
-/// Charge `computeStageCharge(posture, model, FLOOR_INPUT, FLOOR_OUTPUT)`
-/// and INSERT a `stage` telemetry row with NULL token counts and wall_ms.
-/// The conservative estimate is the charge — `recordStageActuals` later
-/// only updates the token/wall fields, never the debited nanos.
+/// Charge the issue-time stage estimate (`elapsed_ms` = 0 → token floor only,
+/// no run fee) and INSERT a `stage` telemetry row with NULL token counts and
+/// wall_ms. `recordStageActuals` later only updates the token/wall fields,
+/// never the debited nanos. The per-second run fee is metered incrementally at
+/// renewal, not charged here.
 pub fn debitStage(
     pool: *pg.Pool,
     alloc: Allocator,
@@ -138,6 +141,7 @@ pub fn debitStage(
         ctx.provider,
         ctx.posture,
         ctx.model,
+        0, // elapsed_ms: no runtime elapsed at issue
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
         0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,

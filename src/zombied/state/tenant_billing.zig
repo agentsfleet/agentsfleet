@@ -16,23 +16,22 @@ pub const NANOS_PER_USD: i64 = 1_000_000_000;
 pub const STARTER_CREDIT_NANOS: i64 = 5 * NANOS_PER_USD;
 const BOOTSTRAP_GRANT_SOURCE = "bootstrap_starter_grant";
 
-// Credit-pool cost model — M66 traction rates expressed in nanos.
-// Events are free both postures; stages cost $0.001 platform / $0.0001
-// self-managed. The 10× gradient between postures is the on-ramp signal:
-// platform mode is convenient, self-managed is cheap to scale.
+// Credit-pool cost model — expressed in nanos. Event receipts are free under
+// both postures. Active agent runtime is metered per second at the single
+// RUN_NANOS_PER_SEC rate (identical for both postures); platform posture adds
+// the per-token model cost on top, self-managed leaves tokens to the user's
+// own provider bill.
 pub const Posture = tenant_provider.Mode;
 
-/// Receive-side per-event drain. M66: zero, both postures.
+/// Receive-side per-event drain. Zero under both postures.
 pub const EVENT_NANOS: i64 = 0;
 
-/// Stage-side platform fee, $0.001 = 1M nanos. Charged once per stage
-/// execution before the executor runs under platform posture; the per-token
-/// model cost (also in nanos) is added on top.
-pub const STAGE_PLATFORM_NANOS: i64 = 1_000_000;
-
-/// Stage-side self-managed fee, $0.0001 = 100K nanos. The user's own provider
-/// account pays the token cost directly; we only charge the flat overhead.
-pub const STAGE_SELF_MANAGED_NANOS: i64 = 100_000;
+/// Run-time rate: $0.0001/sec = 100K nanos per active second (≈ $0.36/hr),
+/// charged identically under both postures. Runtime is metered by the second
+/// as the agent works — not estimated once at lease issue — so a slice's run
+/// fee is `runFee(elapsed_ms)`. The per-token model cost (platform posture
+/// only) is added on top.
+pub const RUN_NANOS_PER_SEC: i64 = 100_000;
 
 /// Promotional free-trial cutoff (UTC). `2026-08-01T00:00:00Z` — first
 /// instant after July 31, 2026. While `now_ms < FREE_TRIAL_END_MS`,
@@ -88,22 +87,33 @@ pub fn computeReceiveCharge(posture: Posture) i64 {
     return EVENT_NANOS;
 }
 
-/// Stage-side per-event charge. Under platform posture this is the flat
-/// platform stage fee plus per-token cost looked up from model_rate_cache
-/// (both in nanos); under self_managed it's the flat self-managed fee
-/// alone (token cost lands on the user's own provider bill). Panics under
-/// platform if `model` is missing from the cache — that condition should
-/// have been rejected upstream by the tenant-provider PUT validator and
-/// the install-skill frontmatter check.
+/// Run-time fee for `elapsed_ms` of active agent runtime, charged identically
+/// under both postures. `RUN_NANOS_PER_SEC` is per-second; the ms→s division
+/// uses the same `@divTrunc` discipline as the per-mtok token math. i64-safe:
+/// `elapsed_ms` is bounded by the lease's MAX_RUNTIME_MS, so `elapsed_ms *
+/// RUN_NANOS_PER_SEC` stays well inside i64. At lease issue `elapsed_ms` is 0,
+/// so the run fee is 0 and only the token estimate (platform) is charged.
+fn runFee(elapsed_ms: i64) i64 {
+    return @divTrunc(elapsed_ms * RUN_NANOS_PER_SEC, 1000);
+}
+
+/// Per-slice stage charge: a run fee for `elapsed_ms` of active runtime plus,
+/// under platform posture, the per-token model cost of the token counts looked
+/// up from model_rate_cache (all in nanos). Under self_managed the run fee is
+/// the whole charge — token cost lands on the user's own provider bill. Panics
+/// under platform if `model` is missing from the cache — that condition should
+/// have been rejected upstream by the tenant-provider PUT validator and the
+/// install-skill frontmatter check.
 pub fn computeStageCharge(
     provider: []const u8,
     posture: Posture,
     model: []const u8,
+    elapsed_ms: i64,
     input_tokens: u32,
     cached_input_tokens: u32,
     output_tokens: u32,
 ) i64 {
-    return computeStageChargeAt(provider, posture, model, input_tokens, cached_input_tokens, output_tokens, std.time.milliTimestamp());
+    return computeStageChargeAt(provider, posture, model, elapsed_ms, input_tokens, cached_input_tokens, output_tokens, std.time.milliTimestamp());
 }
 
 // Time-injected sibling of `computeStageCharge`. Private; inline tests below
@@ -114,12 +124,14 @@ fn computeStageChargeAt(
     provider: []const u8,
     posture: Posture,
     model: []const u8,
+    elapsed_ms: i64,
     input_tokens: u32,
     cached_input_tokens: u32,
     output_tokens: u32,
     now_ms: i64,
 ) i64 {
     if (isFreeTrialActive(now_ms)) return FREE_TRIAL_STAGE_NANOS;
+    const run_fee = runFee(elapsed_ms);
     return switch (posture) {
         .platform => blk: {
             const rate = model_rate_cache.lookup_model_rate(provider, model) orelse
@@ -127,9 +139,9 @@ fn computeStageChargeAt(
             const in_nanos = @divTrunc(rate.input_nanos_per_mtok * @as(i64, input_tokens), 1_000_000);
             const cached_nanos = @divTrunc(rate.cached_input_nanos_per_mtok * @as(i64, cached_input_tokens), 1_000_000);
             const out_nanos = @divTrunc(rate.output_nanos_per_mtok * @as(i64, output_tokens), 1_000_000);
-            break :blk STAGE_PLATFORM_NANOS + in_nanos + cached_nanos + out_nanos;
+            break :blk run_fee + in_nanos + cached_nanos + out_nanos;
         },
-        .self_managed => STAGE_SELF_MANAGED_NANOS,
+        .self_managed => run_fee,
     };
 }
 
@@ -198,40 +210,57 @@ pub fn resolveTenantFromWorkspace(
 const POST_TRIAL_NOW_MS: i64 = FREE_TRIAL_END_MS + 1_000;
 const PRE_TRIAL_NOW_MS: i64 = FREE_TRIAL_END_MS - 1_000;
 
-test "computeStageChargeAt: self_managed returns flat overhead independent of tokens or model (post-trial)" {
+test "computeStageChargeAt: self_managed charge is the run fee only, tokens and model ignored (post-trial)" {
+    // self_managed bills runFee(elapsed_ms) and nothing for tokens; it never
+    // consults the rate cache, so a missing model must NOT panic.
     try std.testing.expectEqual(
-        STAGE_SELF_MANAGED_NANOS,
-        computeStageChargeAt("anthropic", .self_managed, "any-model", 0, 0, 0, POST_TRIAL_NOW_MS),
+        runFee(20_000),
+        computeStageChargeAt("anthropic", .self_managed, "model-not-in-catalogue", 20_000, 1_000_000, 1_000_000, 1_000_000, POST_TRIAL_NOW_MS),
     );
+    // 20s of active runtime → 20 × RUN_NANOS_PER_SEC.
     try std.testing.expectEqual(
-        STAGE_SELF_MANAGED_NANOS,
-        computeStageChargeAt("anthropic", .self_managed, "claude-opus-4-8", 1_000_000, 1_000_000, 1_000_000, POST_TRIAL_NOW_MS),
+        @as(i64, 20) * RUN_NANOS_PER_SEC,
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 20_000, 0, 0, 0, POST_TRIAL_NOW_MS),
     );
-    // self_managed never consults the rate cache, so a missing model must
-    // NOT panic — only platform mode requires a cached rate.
+    // At lease issue elapsed_ms is 0 → zero run fee, zero charge.
     try std.testing.expectEqual(
-        @as(i64, 100_000),
-        computeStageChargeAt("anthropic", .self_managed, "model-not-in-catalogue", 100, 100, 100, POST_TRIAL_NOW_MS),
+        @as(i64, 0),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 0, 0, 0, 0, POST_TRIAL_NOW_MS),
     );
 }
 
-test "computeStageChargeAt: free-trial window returns zero regardless of posture / model / tokens" {
+test "runFee: per-second rate with ms precision, identical for both postures" {
+    // 20_000 ms = 20 s → 20 × RUN_NANOS_PER_SEC = 2_000_000 nanos.
+    try std.testing.expectEqual(@as(i64, 2_000_000), runFee(20_000));
+    // Sub-second precision: 1_500 ms = 1.5 s → floor(1500 × 100_000 / 1000).
+    try std.testing.expectEqual(@as(i64, 150_000), runFee(1_500));
+    // Zero elapsed (lease issue) → zero.
+    try std.testing.expectEqual(@as(i64, 0), runFee(0));
+    // The run fee does not depend on posture: self_managed with no tokens is
+    // exactly the run fee for the same elapsed time.
+    try std.testing.expectEqual(
+        runFee(45_000),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 45_000, 0, 0, 0, POST_TRIAL_NOW_MS),
+    );
+}
+
+test "computeStageChargeAt: free-trial window returns zero regardless of posture / model / tokens / elapsed" {
     // Pre-trial → every combination short-circuits to FREE_TRIAL_STAGE_NANOS.
     // No rate-cache lookup happens; passing a missing model proves the
     // short-circuit fires before the platform-branch lookup.
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt("pioneer", .platform, "model-not-in-catalogue", 800, 0, 1000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("pioneer", .platform, "model-not-in-catalogue", 60_000, 800, 0, 1000, PRE_TRIAL_NOW_MS),
     );
     try std.testing.expectEqual(
         FREE_TRIAL_STAGE_NANOS,
-        computeStageChargeAt("anthropic", .self_managed, "any-model", 1_000_000, 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 60_000, 1_000_000, 1_000_000, 1_000_000, PRE_TRIAL_NOW_MS),
     );
-    // At the cutoff (now_ms == FREE_TRIAL_END_MS) the trial is over —
-    // strict less-than gate.
+    // At the cutoff (now_ms == FREE_TRIAL_END_MS) the trial is over — strict
+    // less-than gate; self_managed then charges the run fee.
     try std.testing.expectEqual(
-        @as(i64, 100_000),
-        computeStageChargeAt("anthropic", .self_managed, "any-model", 0, 0, 0, FREE_TRIAL_END_MS),
+        runFee(60_000),
+        computeStageChargeAt("anthropic", .self_managed, "any-model", 60_000, 0, 0, 0, FREE_TRIAL_END_MS),
     );
 }
 

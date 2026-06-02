@@ -34,14 +34,18 @@ const Job = struct {
     event_len: usize,
     outcome: metering.DebitOutcome = .{ .db_error = {} },
 
+    // Platform posture: under the run-fee model self_managed carries no
+    // issue-time charge (runFee(0)=0), so the stage-exhaust race needs platform,
+    // where the token-floor estimate is non-zero. Receive is 0 under both
+    // postures and needs no rate-cache lookup, so the receive race is unaffected.
     fn ctx(self: *const Job) metering.PreflightContext {
         return .{
             .workspace_id = self.workspace_id,
             .zombie_id = "zombie-conc-test",
             .event_id = self.event_id[0..self.event_len],
-            .posture = .self_managed,
-            .provider = "self-managed-test",
-            .model = "any-model-self-managed",
+            .posture = .platform,
+            .provider = "anthropic",
+            .model = "claude-sonnet-4-6",
         };
     }
 };
@@ -121,11 +125,23 @@ test "should mark exhaustion exactly once when concurrent stage debits outrun th
     defer uc1.teardown(db_ctx.conn, WS_STAGE_EXHAUST_RACE);
     defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_STAGE_EXHAUST_RACE}) catch {};
 
-    // self-managed stage charge is STAGE_SELF_MANAGED_NANOS post-trial. Fund
-    // exactly one stage debit so the first winner drains it and the rest
-    // exhaust. While the trial is open the charge is 0 (no debit ever
-    // exhausts), so this race can only be exercised post-trial.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, tenant_billing.STAGE_SELF_MANAGED_NANOS, "test_exhaust_race");
+    // Platform posture so the per-debit charge (the token floor; run fee is 0
+    // at issue) is non-zero — self_managed would charge 0 and never exhaust. The
+    // rate cache must hold the platform model. Fund exactly one stage debit so
+    // the first winner drains it and the rest exhaust; while the trial is open
+    // the charge is 0 (no debit ever exhausts), so the race is post-trial only.
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_STAGE_EXHAUST_RACE);
+    defer base.teardownPlatformProvider(db_ctx.conn, WS_STAGE_EXHAUST_RACE);
+    const one_stage_charge = tenant_billing.computeStageCharge(
+        "anthropic",
+        .platform,
+        "claude-sonnet-4-6",
+        0, // elapsed_ms: issue-time estimate, run fee 0
+        tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
+        0,
+        tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
+    );
+    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, one_stage_charge, "test_exhaust_race");
     const trial_active = blk: {
         const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
         defer ALLOC.free(@constCast(b.grant_source));

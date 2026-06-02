@@ -19,11 +19,11 @@ const items: { q: string; a: ReactNode }[] = [
   },
   {
     q: "What am I actually paying for?",
-    a: "Free to try until July 31, 2026 — see the Pricing section above for the current rate table and trial details. Hosted execution is metered against a credit pool; once the trial closes, two rates apply (a platform-default per-stage rate and a 10× cheaper self-managed rate) and event receipt stays free. Stealth-mode testing rate — will rise post-GA.",
+    a: "Free to try until July 31, 2026 — see the Pricing section above for the current rate and trial details. After the trial, hosted execution is metered per second of active runtime ($0.0001/sec, about $0.36/hr) against a credit pool — the same rate whether you run on the platform default or your own provider key. You're only billed while a zombie is actually working; idle time and event receipts are free. On the platform default you also pay model-token costs at your provider's rates (we mark up zero); on your own key those go straight to your provider. Stealth-mode testing rate — will rise post-GA.",
   },
   {
-    q: "Does platform-managed cost more per stage than self-managed?",
-    a: "Yes — that's the deliberate gradient. Once the free-trial window closes, platform default carries a per-stage rate (usezombie is paying your model provider for tokens) and self-managed is ~10× cheaper per stage (you pay your provider directly). The spread is the friction-reducer: on-ramp on platform without bringing a key, graduate to self-managed once volume justifies it. Current rates on the Pricing section above; usezombie marks up zero on inference in either posture.",
+    q: "Does the platform default cost more than bringing my own provider key?",
+    a: "The runtime fee is identical both ways — $0.0001/sec of active runtime, billed only while an agent is working. The only difference is who pays for model tokens: on the platform default usezombie passes your provider's token cost straight through (zero markup); on your own key you pay your provider directly. Bring your own key when you want the billing relationship with your provider — not for a cheaper runtime. Current rates on the Pricing section above.",
   },
   {
     q: "Can I self-host?",

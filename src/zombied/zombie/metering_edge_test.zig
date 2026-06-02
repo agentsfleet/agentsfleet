@@ -49,22 +49,24 @@ test "should drain the platform stage charge and write stage telemetry post-tria
     defer base.teardownPlatformProvider(db_ctx.conn, WS_PLATFORM_STAGE);
     defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_PLATFORM_STAGE}) catch {};
 
-    // expected = STAGE_PLATFORM_NANOS + per-token cost at floor tokens. While
-    // the trial is open the whole charge is 0; branch so the test stays honest.
+    // expected = per-token cost at floor tokens; the run fee is 0 at issue
+    // (elapsed_ms=0). While the trial is open the whole charge is 0; branch so
+    // the test stays honest.
     const expected = blk: {
         if (try trialActive(db_ctx.conn)) break :blk @as(i64, 0);
         break :blk tenant_billing.computeStageCharge(
             "anthropic",
             .platform,
             "claude-sonnet-4-6",
+            0, // elapsed_ms: issue-time estimate carries no run fee
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
     };
-    // Post-trial the flat platform fee must be present in the charge.
+    // Post-trial the issue-time estimate is the (positive) token floor cost.
     if (!(try trialActive(db_ctx.conn))) {
-        try std.testing.expect(expected >= tenant_billing.STAGE_PLATFORM_NANOS);
+        try std.testing.expect(expected > 0);
     }
 
     const before = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
@@ -98,7 +100,7 @@ test "should drain the platform stage charge and write stage telemetry post-tria
     try std.testing.expectEqual(expected, try r.get(i64, 2));
 }
 
-test "should pass the stop gate when balance exactly equals the conservative estimate" {
+test "should pass the stop gate for self_managed at zero balance (no upfront charge)" {
     const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
     defer db_ctx.pool.deinit();
     defer db_ctx.pool.release(db_ctx.conn);
@@ -106,20 +108,25 @@ test "should pass the stop gate when balance exactly equals the conservative est
     try uc1.seed(db_ctx.conn, WS_GATE_EXACT);
     defer uc1.teardown(db_ctx.conn, WS_GATE_EXACT);
 
-    // est_total = receive (EVENT_NANOS=0) + stage at floor tokens. Compute it
-    // through the same public path the gate uses so the boundary is exact.
+    // Under the run-fee model the self_managed issue-time estimate is zero —
+    // receive (EVENT_NANOS=0) plus runFee(0)=0; tokens land on the user's own
+    // provider. So a freshly provisioned zero balance still clears the gate; the
+    // run fee is metered per renewal and refused at the next renewal once credit
+    // runs out.
     const est_total = tenant_billing.computeReceiveCharge(.self_managed) +
         tenant_billing.computeStageCharge(
             "self-managed-test",
             .self_managed,
             "any-model-self-managed",
+            0, // elapsed_ms
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
+    try std.testing.expectEqual(@as(i64, 0), est_total);
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, est_total, "test_gate_exact");
 
-    // balance == est_total → gate passes (>= comparison, not strict).
+    // balance == est_total == 0 → gate passes (>= comparison, not strict).
     try std.testing.expect(metering.balanceCoversEstimate(
         db_ctx.pool,
         ALLOC,
@@ -139,18 +146,25 @@ test "should block the stop gate when balance is one nano below the estimate pos
     try uc1.seed(db_ctx.conn, WS_GATE_UNDER);
     defer uc1.teardown(db_ctx.conn, WS_GATE_UNDER);
 
-    const est_total = tenant_billing.computeReceiveCharge(.self_managed) +
+    // Platform posture so the issue-time estimate (the token floor) is non-zero
+    // and the refuse boundary is reachable; self_managed carries no upfront
+    // charge under the run-fee model. The cache must hold the platform model.
+    try base.seedPlatformProvider(ALLOC, db_ctx.conn, WS_GATE_UNDER);
+    defer base.teardownPlatformProvider(db_ctx.conn, WS_GATE_UNDER);
+
+    const est_total = tenant_billing.computeReceiveCharge(.platform) +
         tenant_billing.computeStageCharge(
-            "self-managed-test",
-            .self_managed,
-            "any-model-self-managed",
+            "anthropic",
+            .platform,
+            "claude-sonnet-4-6",
+            0, // elapsed_ms: issue-time estimate carries no run fee
             tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
             0,
             tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
         );
     // Provision the exact estimate first: the billing row must exist for the
     // trial probe, and est_total is non-negative in both eras (0 while the
-    // trial zeroes the charge, the flat fee after).
+    // trial zeroes the charge, the token floor after).
     try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, est_total, "test_gate_under");
 
     // While the trial window is open est_total == 0, so "one nano below" is a
@@ -167,9 +181,9 @@ test "should block the stop gate when balance is one nano below the estimate pos
         db_ctx.pool,
         ALLOC,
         uc1.TENANT_ID,
-        .self_managed,
-        "self-managed-test",
-        "any-model-self-managed",
+        .platform,
+        "anthropic",
+        "claude-sonnet-4-6",
         .stop,
     ));
 }
