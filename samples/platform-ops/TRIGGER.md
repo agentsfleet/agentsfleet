@@ -44,7 +44,7 @@ x-usezombie:
     # slack    = { host: "slack.com",        bot_token: "<slack bot token>" }
     # github   = { webhook_secret: "<base64>", api_token: "<gh PAT>" }
     # Substituted into http_request at the tool-bridge as ${secrets.NAME.FIELD}
-    # after the executor sandbox closes around the agent. The agent never sees
+    # after the runner sandbox closes around the agent. The agent never sees
     # raw bytes — the worst a prompt-injection can make it print is the
     # placeholder string.
 

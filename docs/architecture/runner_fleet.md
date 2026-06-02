@@ -3,7 +3,7 @@
 > Parent: [`README.md`](./README.md) · Sibling: [`data_flow.md`](./data_flow.md) (how one event flows through this split).
 
 Date: May 24, 2026 · reconciled to the cutover May 27, 2026
-Status: **Implemented (M80_002 cutover).** This is the runtime the codebase runs now: `zombied` is the control plane, the host-resident `zombie-runner` daemon is the execution plane, and the old single-process `zombied worker` + `zombied-executor` sidecar are deleted. [`data_flow.md`](./data_flow.md) traces an event through it; this file is the structural picture.
+Status: **Implemented (M80_002 cutover).** This is the runtime the codebase runs now: `zombied` is the control plane, the host-resident `zombie-runner` daemon is the execution plane, and the old single-process `zombied worker` + standalone sandbox sidecar are deleted. [`data_flow.md`](./data_flow.md) traces an event through it; this file is the structural picture.
 
 Read this when a spec touches the `zombie-runner` binary, the `/v1/runners` control protocol, runner registration, the node fleet, or assignment / fencing / reclaim.
 
@@ -84,7 +84,7 @@ Without this fence the design rediscovers three control planes at once (Nomad-li
 
 ## Why split
 
-The pre-cutover runtime ran one `zombied` binary as `serve` (the HTTP API) or `worker` (the orchestration loop), plus a `zombied-executor` sidecar that owned sandboxing. Two facts made it impossible to run work on hosts the platform does not fully own:
+The pre-cutover runtime ran one `zombied` binary as `serve` (the HTTP API) or `worker` (the orchestration loop), plus a standalone sandbox sidecar that owned sandboxing. Two facts made it impossible to run work on hosts the platform does not fully own:
 
 1. **The worker was welded to the datastores.** Each per-zombie worker thread opened its own Postgres pool and Redis connections, ran ~15 write patterns on the per-event hot path, and discovered its own work by `XREADGROUP` on `zombie:{id}:events`. It could not run anywhere it could not reach Postgres and Redis directly.
 2. **The connection budget grew with the fleet.** Every per-zombie thread held a dedicated blocking Redis connection; the zombie count was capped by the Redis pool ceiling, not by compute.
@@ -94,7 +94,7 @@ The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that
 ## The split — two binaries, no sidecar
 
 - **`zombied`** — the control plane. Owns Postgres, Redis, the Vault API, the HTTP API, and work assignment / fencing / reclaim. It gained the `/v1/runners` endpoints and does the `XREADGROUP` / `XACK` the worker used to do.
-- **`zombie-runner`** — the host-resident execution plane. It is the parent control loop **plus the NullClaw execution engine linked in directly** (the old `zombied-executor` sidecar is gone). It holds zero datastore credentials and talks to `zombied` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
+- **`zombie-runner`** — the host-resident execution plane. It is the parent control loop **plus the NullClaw execution engine linked in directly** (the old standalone sandbox sidecar is gone). It holds zero datastore credentials and talks to `zombied` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
 ```
         BEFORE (deleted)                            NOW (this doc + data_flow.md)
@@ -105,13 +105,13 @@ The cutover moved execution onto arbitrary hosts (bare metal, a Mac, a pod) that
  │ Redis ◀─ XREADGROUP ─ worker     │    │ owns PG +   │ pull │  (boots from pre-minted zrn_)   │
  │                │ Unix-socket RPC │    │ Redis +     │ zrn_ │    │ fork + sandbox per event    │
  │                ▼                 │    │ Vault API + │      │    ▼                            │
- │           zombied-executor       │    │ assignment  │      │  sandboxed child: NullClaw      │
+ │           sandbox sidecar        │    │ assignment  │      │  sandboxed child: NullClaw      │
  └──────────────────────────────────┘   └──────┬──────┘      └─────────────────────────────────┘
                                           PG · Redis · Vault
                                           (never leave the platform)
 ```
 
-**Why the executor folds in but still forks.** NullClaw runs the agent: language-model calls plus tool calls, with tenant secrets substituted at the tool bridge. It needs a sandbox — Landlock (filesystem) + cgroups (memory/CPU) + a network namespace. Landlock is one-way and irreversible for a process, and the `zombie-runner` parent loop needs un-sandboxed network to reach `zombied`. So the runner **forks a sandboxed child per event** and talks to it over a local pipe. One binary, two process roles: an un-sandboxed parent that speaks the control protocol, and a sandboxed child that runs NullClaw. There is no separate daemon to deploy.
+**Why the engine folds in but still forks.** NullClaw runs the agent: language-model calls plus tool calls, with tenant secrets substituted at the tool bridge. It needs a sandbox — Landlock (filesystem) + cgroups (memory/CPU) + a network namespace. Landlock is one-way and irreversible for a process, and the `zombie-runner` parent loop needs un-sandboxed network to reach `zombied`. So the runner **forks a sandboxed child per event** and talks to it over a local pipe. One binary, two process roles: an un-sandboxed parent that speaks the control protocol, and a sandboxed child that runs NullClaw. There is no separate daemon to deploy.
 
 ### Where the code lives
 
@@ -218,7 +218,7 @@ zombie-runner parent (child_supervisor.zig): establish the cgroup, fork, exec se
 report → zombied: persist terminal state + telemetry + checkpoint, then XACK
 ```
 
-The executor's TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `zombied` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
+The pre-cutover TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `zombied` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
 
 ### Multi-run events
 
@@ -365,7 +365,7 @@ The exact and restart-resilient form of the two gauges is a read-only background
  S0  M80_001  KEYSTONE   DONE — froze /v1/runners protocol + fleet schema + auth plane + lease/report handlers
  S1–S4         CUTOVER    DONE — absorbed into M80_002: zombied assignment + fencing + reclaim over PG + Redis;
                                  the zombie-runner binary with NullClaw folded in + fork-sandboxed child;
-                                 thin zombied (direct worker path + executor sidecar deleted); TLS transport;
+                                 thin zombied (direct worker path + sandbox sidecar deleted); TLS transport;
                                  data_flow.md / capabilities.md / scaling.md reconciled here
  ── cutover landed: the runner is the processor; the old direct path is gone ──────────────────
  S5  M80_004  PLATFORM   macOS Seatbelt backend + distribution / CI + runner CLI                  (pending)

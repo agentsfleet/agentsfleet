@@ -7,7 +7,7 @@
 #   2. parallel matching test-unit-* lanes
 #
 # Surfaces:
-#   - test-unit-zombied        (*.zig, schema/*.sql — also runs test-unit-executor)
+#   - test-unit-zombied        (*.zig, schema/*.sql)
 #   - test-unit-zombiectl      (zombiectl/*)
 #   - test-unit-website        (ui/packages/website/*)
 #   - test-unit-app            (ui/packages/app/*, design-system/* triggers both)
@@ -70,9 +70,8 @@ if [ "$any_needed" -eq 0 ]; then
 fi
 
 # --- Parallel test lanes -----------------------------------------------------
-# test-unit-zombied internally runs test-unit-executor too — don't launch it
-# again separately. Output may interleave across lanes; each target prefixes
-# its lines ([zombied]/[app]/[website]/etc.) so the source is identifiable.
+# Output may interleave across lanes; each target prefixes its lines
+# ([zombied]/[app]/[website]/etc.) so the source is identifiable.
 pids=()
 names=()
 

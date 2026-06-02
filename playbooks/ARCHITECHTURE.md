@@ -118,7 +118,7 @@ Result: deterministic, low-latency routing with no re-routing surprises.
 
 ## 6. Service-to-service traffic (no tunnel needed)
 
-Internal traffic (worker → API, executor → API, etc.) stays on the private mesh:
+Internal traffic (runner → API, etc.) stays on the private mesh:
 
 ```
 worker.internal → api.internal:3000  (WireGuard, never exits)

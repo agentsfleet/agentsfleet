@@ -5,7 +5,7 @@
 //!                       Default; dev and macOS use this.
 //!   registry_allowlist — share the host network namespace (bwrap --share-net)
 //!                       so package managers can reach public registries.
-//!                       Bare-metal deploy sets EXECUTOR_NETWORK_POLICY=registry_allowlist.
+//!                       Bare-metal deploy sets RUNNER_NETWORK_POLICY=registry_allowlist.
 //!
 //! Allowlist hostnames are compile-time constants in runner_network_policy.zig.
 //! Full TCP-layer enforcement with nftables is outside this batch.
@@ -16,7 +16,7 @@ const builtin = @import("builtin");
 
 const policy_config = @import("runner_network_policy.zig");
 
-const log = logging.scoped(.executor_network);
+const log = logging.scoped(.runner_network);
 
 pub const PolicyMode = enum {
     /// No network access (default). Uses --unshare-net via bubblewrap.
@@ -30,9 +30,17 @@ pub const NetworkConfig = struct {
     policy: PolicyMode = .deny_all,
 };
 
-/// Parse EXECUTOR_NETWORK_POLICY env var. Returns .deny_all if unset or unknown.
+/// Parse RUNNER_NETWORK_POLICY env var. Returns .deny_all if unset or unknown.
+/// Unset is the documented secure default and stays silent; a value that is set
+/// but unrecognized is logged — that is the misconfiguration signal (a typo
+/// otherwise silently loses egress and every dependency install in the sandbox
+/// fails until it is corrected).
 pub fn policyFromEnv(alloc: std.mem.Allocator) PolicyMode {
-    const raw = std.process.getEnvVarOwned(alloc, "EXECUTOR_NETWORK_POLICY") catch return .deny_all;
+    const raw = std.process.getEnvVarOwned(alloc, "RUNNER_NETWORK_POLICY") catch |err| {
+        if (err != error.EnvironmentVariableNotFound)
+            log.warn("network_policy_env_unreadable", .{ .fallback = "deny_all" });
+        return .deny_all;
+    };
     defer alloc.free(raw);
     return policyFromSlice(raw);
 }
@@ -40,6 +48,8 @@ pub fn policyFromEnv(alloc: std.mem.Allocator) PolicyMode {
 /// Parse a network policy string. Exported for unit testing.
 fn policyFromSlice(raw: []const u8) PolicyMode {
     if (std.ascii.eqlIgnoreCase(raw, "registry_allowlist")) return .registry_allowlist;
+    if (std.ascii.eqlIgnoreCase(raw, "deny_all")) return .deny_all;
+    log.warn("network_policy_unrecognized", .{ .value = raw, .fallback = "deny_all" });
     return .deny_all;
 }
 

@@ -1,4 +1,4 @@
-//! NullClaw runner module — bridges the executor handler to agent execution.
+//! NullClaw runner module — bridges the runner handler to agent execution.
 //!
 //! The runner is agent-agnostic: it receives a NullClaw config, tool spec,
 //! and message from the RPC layer, builds the runtime, executes the agent,
@@ -29,7 +29,6 @@ const observability = nullclaw.observability;
 const json = @import("json_helpers.zig");
 const wire = @import("wire.zig");
 const types = @import("types.zig");
-const runner_metrics = @import("runner_metrics.zig");
 const zombie_memory = @import("zombie_memory.zig");
 const runner_helpers = @import("runner_helpers.zig");
 const runner_progress = @import("runner_progress.zig");
@@ -37,7 +36,7 @@ const runner_observer = @import("runner_observer.zig");
 const context_budget = @import("context_budget.zig");
 const client_errors = @import("client_errors.zig");
 
-const log = logging.scoped(.executor_runner);
+const log = logging.scoped(.runner);
 
 const ERR_EXEC_RUNNER_AGENT_INIT = client_errors.ERR_EXEC_RUNNER_AGENT_INIT;
 const ERR_EXEC_RUNNER_AGENT_RUN = client_errors.ERR_EXEC_RUNNER_AGENT_RUN;
@@ -76,19 +75,14 @@ pub fn execute(
 ) types.ExecutionResult {
     const msg = message orelse {
         log.err("invalid_config", .{ .error_code = ERR_EXEC_RUNNER_INVALID_CONFIG, .reason = "missing_message" });
-        runner_metrics.incStagesFailed();
         return .{ .content = "", .exit_ok = false, .failure = .startup_posture };
     };
 
-    runner_metrics.incStagesStarted();
     const start = std.time.milliTimestamp();
 
     const result = executeInner(alloc, workspace_path, agent_config, tools_spec, msg, context, policy, progress_fd) catch |err| {
         const elapsed = elapsedSeconds(start);
-        runner_metrics.incStagesFailed();
-        runner_metrics.observeAgentDurationSeconds(elapsed);
         const failure = mapError(err);
-        incFailureMetric(failure);
         log.err("failed", .{
             .error_code = errorCodeForFailure(failure),
             .err = @errorName(err),
@@ -98,9 +92,6 @@ pub fn execute(
     };
 
     const elapsed = elapsedSeconds(start);
-    runner_metrics.incStagesCompleted();
-    runner_metrics.addAgentTokens(result.token_count);
-    runner_metrics.observeAgentDurationSeconds(elapsed);
 
     log.info("done", .{ .exit_ok = true, .tokens = result.token_count, .wall_seconds = elapsed });
 
@@ -140,7 +131,7 @@ fn executeInner(
     if (agent_config) |ac| {
         applyAgentConfig(&cfg, ac);
         // Inject api_key from RPC payload into NullClaw Config so the
-        // executor never reads ANTHROPIC_API_KEY (or any other provider
+        // runner never reads ANTHROPIC_API_KEY (or any other provider
         // key) from the process environment.
         if (json.getStr(ac, wire.api_key)) |key| {
             injectProviderApiKey(&cfg, key) catch {
@@ -150,7 +141,7 @@ fn executeInner(
         }
     }
 
-    // 2. Build provider (real LLM bundle, or stub in zombied-executor-stub).
+    // 2. Build provider (real LLM bundle, or a stub in test builds).
     var provider_bundle: runner_helpers.ProviderBundle = .{};
     defer provider_bundle.deinit();
     const provider_i = provider_bundle.acquire(alloc, &cfg) catch return RunnerError.AgentInitFailed;
@@ -287,20 +278,9 @@ pub fn mapError(err: anyerror) types.FailureClass {
         RunnerError.AgentInitFailed => .startup_posture,
         RunnerError.Timeout => .timeout_kill,
         RunnerError.OutOfMemory => .oom_kill,
-        RunnerError.AgentRunFailed => .executor_crash,
-        else => .executor_crash,
+        RunnerError.AgentRunFailed => .runner_crash,
+        else => .runner_crash,
     };
-}
-
-pub fn incFailureMetric(failure: types.FailureClass) void {
-    switch (failure) {
-        .oom_kill => runner_metrics.incExecutorOomKills(),
-        .timeout_kill => runner_metrics.incExecutorTimeoutKills(),
-        .landlock_deny => runner_metrics.incExecutorLandlockDenials(),
-        .resource_kill => runner_metrics.incExecutorResourceKills(),
-        .lease_expired => runner_metrics.incExecutorLeaseExpired(),
-        else => {},
-    }
 }
 
 pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
@@ -308,7 +288,7 @@ pub fn errorCodeForFailure(failure: types.FailureClass) []const u8 {
         .startup_posture => ERR_EXEC_RUNNER_AGENT_INIT,
         .timeout_kill => client_errors.ERR_EXEC_TIMEOUT_KILL,
         .oom_kill => client_errors.ERR_EXEC_OOM_KILL,
-        .executor_crash => ERR_EXEC_RUNNER_AGENT_RUN,
+        .runner_crash => ERR_EXEC_RUNNER_AGENT_RUN,
         else => ERR_EXEC_RUNNER_AGENT_RUN,
     };
 }
@@ -325,4 +305,5 @@ test {
     _ = @import("runner_security_test.zig");
     _ = @import("sandbox_edge_test.zig");
     _ = @import("resource_security_test.zig");
+    _ = @import("runner_progress_redact_test.zig");
 }

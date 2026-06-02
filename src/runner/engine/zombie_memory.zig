@@ -14,10 +14,10 @@
 //! NullClaw postgres engine then scopes every INSERT/SELECT/DELETE by that
 //! instance_id, enforcing row-level isolation at the query layer.
 //!
-//! ## Scope (Step 4 — executor only)
+//! ## Scope (Step 4 — runner only)
 //!
-//! This file lives in `src/executor/` because the executor is a separate Zig
-//! module (`src/executor/main.zig`) that cannot import from `src/memory/`.
+//! This file lives under `src/runner/engine/` because the runner is a separate
+//! Zig module (rooted at `src/runner/main.zig`) that cannot import `src/memory/`.
 //! Steps 5-7 (export/import, HTTP handlers) will create `src/memory/zombie_memory.zig`
 //! for the main binary. The two files will share the adapter pattern.
 //!
@@ -35,7 +35,7 @@ const registry = memory_mod.registry;
 const types = @import("types.zig");
 const MemoryBackendConfig = types.MemoryBackendConfig;
 
-const log = logging.scoped(.executor_zombie_memory);
+const log = logging.scoped(.runner_zombie_memory);
 
 /// Build a NullClaw MemoryRuntime for a zombie with per-zombie row isolation.
 ///

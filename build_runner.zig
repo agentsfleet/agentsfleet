@@ -58,17 +58,15 @@ pub fn build(b: *std.Build) void {
     });
     const nullclaw_mod = nullclaw_dep.module(S_NULLCLAW);
 
-    // Build options shared by both exe and tests. harness/stub flags are always
-    // false (the runner always runs the real engine). `version` (read from the
-    // repo VERSION file, kept in sync by `make sync-version`) + `git_commit`
-    // (-Dgit-commit, passed from CI) back `--version` — the same git-commit knob
-    // zombied's build.zig exposes (RULE UFS).
+    // Build options shared by both exe and tests. The runner always runs the
+    // real engine in-process — no build-time execution flags. `version` (read
+    // from the repo VERSION file, kept in sync by `make sync-version`) +
+    // `git_commit` (-Dgit-commit, passed from CI) back `--version` — the same
+    // git-commit knob zombied's build.zig exposes (RULE UFS).
     const git_commit = b.option([]const u8, "git-commit", "Git commit SHA embedded in the binary (passed from CI via GITHUB_SHA)") orelse "unknown";
     const version_raw = b.build_root.handle.readFileAlloc(b.allocator, "VERSION", 64) catch "0.0.0";
     const version = std.mem.trim(u8, version_raw, " \t\r\n");
     const build_opts = b.addOptions();
-    build_opts.addOption(bool, "executor_harness", false);
-    build_opts.addOption(bool, "executor_provider_stub", false);
     build_opts.addOption([]const u8, "version", version);
     build_opts.addOption([]const u8, "git_commit", git_commit);
     const build_options_mod = build_opts.createModule();

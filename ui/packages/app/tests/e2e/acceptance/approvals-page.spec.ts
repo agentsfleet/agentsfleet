@@ -1,7 +1,7 @@
 /**
  * approvals-page.spec.ts — /approvals renders for an authenticated user.
  *
- * Real approval gates are emitted by the executor when an HITL-typed tool
+ * Real approval gates are emitted by the runner when an HITL-typed tool
  * call requests human review; reproducing that end-to-end requires a
  * worker pool turn the current fixture harness deliberately scopes out
  * (same heavyweight dependency `events.spec.ts` carries today). The

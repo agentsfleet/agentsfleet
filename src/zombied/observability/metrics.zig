@@ -27,8 +27,8 @@ pub const renderPrometheus = mr.renderPrometheus;
 
 // Per-(workspace, zombie) token counter.
 
-// Executor metrics left this process at the M80 cutover (execution moved to the
-// runner). The `zombie_executor_*` series + their re-exports were removed here;
+// Per-execution metrics left this process at the M80 cutover (execution moved
+// to the runner). The old per-execution series + their re-exports were removed here;
 // the runner emits its own engine metrics separately.
 
 // Redis pool registration — Prometheus pull-side wiring.
