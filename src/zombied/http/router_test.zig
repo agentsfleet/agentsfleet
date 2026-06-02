@@ -435,12 +435,13 @@ test "runner control-plane routes resolve (static, identity-from-token paths)" {
     try std.testing.expectEqualDeep(Route.runner_heartbeat, match(runner_protocol.PATH_RUNNER_HEARTBEATS, .POST).?);
     try std.testing.expectEqualDeep(Route.runner_lease, match(runner_protocol.PATH_RUNNER_LEASES, .POST).?);
     try std.testing.expectEqualDeep(Route.runner_report, match(runner_protocol.PATH_RUNNER_REPORTS, .POST).?);
+    // Read-only self status — `GET /v1/runners/me` (the invoke fn enforces GET).
+    try std.testing.expectEqualDeep(Route.runner_self, match(runner_protocol.PATH_RUNNER_SELF, .GET).?);
     // Static exact-match is method-agnostic; the invoke fn enforces POST.
     try std.testing.expectEqualDeep(Route.register_runner, match(runner_protocol.PATH_RUNNERS, .GET).?);
 }
 
 test "runner control-plane rejects malformed sibling paths (404, no runner_id shape)" {
-    try std.testing.expect(match("/v1/runners/me", .POST) == null);
     try std.testing.expect(match("/v1/runners/me/unknown", .POST) == null);
     try std.testing.expect(match("/v1/runners/r_123/leases", .POST) == null);
     try std.testing.expect(match("/v1/runners/", .POST) == null);

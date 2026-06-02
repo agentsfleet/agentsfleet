@@ -19,6 +19,14 @@ test {
     _ = @import("child_supervisor_test.zig");
     _ = @import("child_process.zig");
     _ = @import("child_exec.zig");
+    _ = @import("cmd/version.zig");
+    _ = @import("cmd/args.zig");
+    _ = @import("cmd/output.zig");
+    _ = @import("cmd/registry.zig");
+    _ = @import("cmd/help.zig");
+    _ = @import("cmd/register.zig");
+    _ = @import("cmd/status.zig");
+    _ = @import("cmd/doctor.zig");
     _ = @import("sandbox_args.zig");
     _ = @import("pipe_proto.zig");
     _ = @import("engine/runner.zig");

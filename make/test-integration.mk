@@ -125,9 +125,14 @@ _test-integration-full: _reset-test-db
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
 	DATABASE_URL_MIGRATOR="$$db_url" \
 	zig build run -- migrate; \
+	echo "→ [zombie-runner] Building the runner binary for the operator-CLI integration arm..."; \
+	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
+	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	zig build --build-file build_runner.zig; \
 	echo "→ [zombied] Running full integration suite against real DB + Redis..."; \
 	ZIG_GLOBAL_CACHE_DIR="$(ZIG_GLOBAL_CACHE_DIR)" \
 	ZIG_LOCAL_CACHE_DIR="$(ZIG_LOCAL_CACHE_DIR)" \
+	ZOMBIE_RUNNER_BIN="$$(pwd)/zig-out/bin/zombie-runner" \
 	LIVE_DB=1 \
 	TEST_DATABASE_URL="$$db_url" \
 	TEST_REDIS_TLS_URL="$$redis_tls_test_url" \
