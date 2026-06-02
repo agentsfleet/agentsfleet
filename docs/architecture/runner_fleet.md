@@ -274,6 +274,52 @@ On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack /
 
 The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N zombies and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M80_006/007 concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
 
+## Observability — runner metrics on `zombied` `/metrics`
+
+The fleet is observed **without any inbound reach into runners.** A runner may sit behind NAT, on an untrusted or customer host — the most failure-prone tier and exactly the one a scraper cannot reach. So per-runner signal rides **outbound** on the verbs the runner already calls (`report`, `heartbeat`, `lease` grant/release); `zombied` accumulates it and exposes it on its own `/metrics`. `zombied` is the only scrape target; the per-runner drill-down is a `runner_id` label.
+
+Two telemetry planes, opposite directions — do not conflate them:
+
+```
+   METRICS  (PULL)                              LOGS / TRACES  (PUSH)
+   ──────────────                               ─────────────────────
+   zombied :9091 /metrics   ◄── scraped by      zombied  ──push OTLP──►  Grafana Cloud
+   in-memory render, DB-free     Fly.io's        otel_logs.zig /          Loki (logs)
+   ([[metrics]] in fly.toml)     MANAGED          otel_traces.zig          Tempo (traces)
+                                 PROMETHEUS
+                                 (we run no
+                                  collector)
+```
+
+The scraper is **Fly.io's platform-managed Prometheus** — the four-line `[[metrics]]` block in `deploy/fly/zombied-prod/fly.toml` is the entire scrape config; there is no Grafana Agent / Alloy / Vector / OTel-collector for metrics. Fly pulls `:9091/metrics` off each machine over the private 6PN network; the endpoint is not publicly routable (no `[http_service]`; inbound is Cloudflare-Tunnel-only). Grafana reads Fly's Prometheus as a datasource — it scrapes nothing itself.
+
+### The four per-runner families
+
+```
+zombie_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
+zombie_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, agent_error}
+zombie_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
+zombie_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on release/report
+```
+
+All four live in a process-global, allocator-free, fixed-capacity (4096-slot) hash table keyed on `runner_id` (`src/zombied/observability/metrics_runner.zig`, mirroring `metrics_workspace.zig`). The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore constant (~0.7 MB) regardless of fleet size or uptime; a `zombied` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
+
+### Multi-replica (`zombied` N>1) — correctness is an *aggregation* property
+
+Prod runs a single `zombied` machine today, so the in-memory values are correct as-is. When the control plane scales out, a runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Fly's Prometheus scrapes each replica as a **distinct target** and stamps every series with that machine's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
+
+| Series | Cross-replica query | Exact under N>1? |
+|--------|---------------------|------------------|
+| `failures_total`, `executions_total` | `sum by (runner_id, …)` | ✅ exact — counters are additive; per-replica slices are disjoint |
+| `last_seen_seconds` | `min by (runner_id)` | ✅ exact — the most-recent sighting wins; a replica that never saw the runner exposes no series, so `min` ignores it |
+| `active_leases` | `sum by (runner_id)` | ⚠️ approximate — the `+1` grant and `−1` release can land on different replicas, so the value is meaningful only in aggregate and a single-replica restart can transiently skew it |
+
+`active_leases` is the one series that cannot be made exact purely in-memory: it is a distributed inc/dec with no routing affinity and no shared counter. Its exact source is the durable lease table (`fleet.runner_leases` — `lease_expires_at` + the held set), which is read by the **deferred metrics refresher** below. The dashboard (`deploy/grafana/runner_fleet.json`) encodes these queries and labels the `active_leases` panel best-effort under N>1.
+
+### The deferred refresher — exact gauges without metrics-in-the-DB
+
+The exact and restart-resilient form of the two gauges is a read-only background thread on each replica that, on a timer (~15 s), queries Postgres for `last_seen_at` and the live lease count (`count(*) WHERE lease_expires_at > now()`), overwrites an in-memory snapshot, and lets `/metrics` render that snapshot. This keeps the scrape path DB-free while giving every replica identical, exact values and closing the abandoned-lease over-count. It is **not "metrics in Postgres"**: it *reads* already-durable operational state to derive a gauge — the timeseries still lives only in Prometheus. Deferred (in-memory aggregation is correct enough for the single-replica present); it is the persistent answer for a scaled-out future.
+
 ## What does not change
 
 - NullClaw's agent loop, its tool inventory, and secret substitution at the tool bridge. It moved into the runner as a linked engine and a sandboxed child, but its behaviour is identical.

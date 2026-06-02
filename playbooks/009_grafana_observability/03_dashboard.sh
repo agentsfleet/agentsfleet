@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# M28_001 §3: Import dashboard and verify panels.
+# Import and verify every Grafana dashboard in deploy/grafana/.
 set -euo pipefail
 
 VAULT="${VAULT_DEV:-ZMB_CD_DEV}"
@@ -8,7 +8,7 @@ GRAFANA_TOKEN=$(op read "op://$VAULT/grafana-observability/grafana-sa-token")
 DB_URL=$(op read "op://$VAULT/grafana-observability/db-readonly-url")
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-DASHBOARD_JSON="$REPO_ROOT/deploy/grafana/agent_run_breakdown.json"
+DASHBOARD_DIR="$REPO_ROOT/deploy/grafana"
 
 echo "=== Step 1: Ensure PostgreSQL datasource ==="
 
@@ -41,7 +41,7 @@ else
   echo "  zombie-postgres datasource exists (ID: $PG_EXISTS)"
 fi
 
-echo "=== Step 2: Import dashboard ==="
+echo "=== Step 2: Import + verify every dashboard in deploy/grafana ==="
 
 # Get datasource UIDs
 PROM_UID=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
@@ -54,26 +54,51 @@ if [ -z "$PG_UID" ]; then
   exit 1
 fi
 
-jq --arg prom "$PROM_UID" --arg pg "$PG_UID" \
-  '{ "dashboard": ., "inputs": [
-    {"name":"DS_PROMETHEUS","type":"datasource","pluginId":"prometheus","value":$prom},
-    {"name":"DS_POSTGRES","type":"datasource","pluginId":"postgres","value":$pg}
-  ], "overwrite": true }' \
-  "$DASHBOARD_JSON" | \
-  curl -sf -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
-    -H "Content-Type: application/json" \
-    "$GRAFANA_URL/api/dashboards/import" -d @- >/dev/null
-
-echo "  Dashboard imported."
-
-echo "=== Step 3: Verify panels ==="
-
-PANELS=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
-  "$GRAFANA_URL/api/dashboards/uid/zombie-run-breakdown" | jq '.dashboard.panels | length')
-
-if [ "$PANELS" -ge 7 ]; then
-  echo "PASS: dashboard has $PANELS panels (expected >= 7)"
-else
-  echo "FAIL: dashboard has $PANELS panels (expected >= 7)"
+# Each dashboard declares its own uid + panel set; import then verify against
+# that dashboard's own panel count. Providing both datasource inputs is safe —
+# Grafana ignores an input a dashboard doesn't reference (runner_fleet.json is
+# Prometheus-only; agent_run_breakdown.json uses both).
+shopt -s nullglob
+DASHBOARDS=("$DASHBOARD_DIR"/*.json)
+if [ ${#DASHBOARDS[@]} -eq 0 ]; then
+  echo "FAIL: no dashboards found in $DASHBOARD_DIR"
   exit 1
 fi
+
+for DASHBOARD_JSON in "${DASHBOARDS[@]}"; do
+  NAME=$(basename "$DASHBOARD_JSON")
+  DASH_UID=$(jq -r '.uid' "$DASHBOARD_JSON")
+  EXPECTED=$(jq '.panels | length' "$DASHBOARD_JSON")
+
+  # Build the inputs array from THIS dashboard's own __inputs, mapping each
+  # declared datasource to its resolved uid. A Prometheus-only dashboard
+  # (runner_fleet.json) gets only DS_PROMETHEUS; agent_run_breakdown.json gets
+  # both. Avoids passing an input a dashboard never declared.
+  # --fail-with-body: non-zero on HTTP >=400 but keep Grafana's error JSON on
+  # stdout so a rejected import names the dashboard AND what Grafana refused,
+  # instead of failing silently under set -e.
+  if ! IMPORT_RESP=$(jq --arg prom "$PROM_UID" --arg pg "$PG_UID" \
+    '{ dashboard: ., overwrite: true,
+       inputs: [ .__inputs[] | { name, type, pluginId,
+         value: (if .name == "DS_PROMETHEUS" then $prom
+                 elif .name == "DS_POSTGRES" then $pg
+                 else "" end) } ] }' \
+    "$DASHBOARD_JSON" | \
+    curl -sS --fail-with-body -X POST -H "Authorization: Bearer $GRAFANA_TOKEN" \
+      -H "Content-Type: application/json" \
+      "$GRAFANA_URL/api/dashboards/import" -d @-); then
+    echo "  FAIL: import of $NAME failed: $IMPORT_RESP"
+    exit 1
+  fi
+  echo "  Imported $NAME (uid=$DASH_UID)."
+
+  PANELS=$(curl -sf -H "Authorization: Bearer $GRAFANA_TOKEN" \
+    "$GRAFANA_URL/api/dashboards/uid/$DASH_UID" | jq '.dashboard.panels | length')
+
+  if [ "$PANELS" -ge "$EXPECTED" ]; then
+    echo "  PASS: $NAME has $PANELS panels (expected >= $EXPECTED)"
+  else
+    echo "  FAIL: $NAME has $PANELS panels (expected >= $EXPECTED)"
+    exit 1
+  fi
+done
