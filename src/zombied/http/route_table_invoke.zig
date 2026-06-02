@@ -1,12 +1,7 @@
-//! Invoke functions for the route table.
-//!
-//! One `pub fn invokeXxx` per Route variant. Each function:
-//!   1. Checks the HTTP method and writes 405 if wrong.
-//!   2. Extracts path params from `route`.
-//!   3. Calls the inner handler (auth already done by middleware).
-//!
-//! This file is imported by route_table.zig. Do not call these functions
-//! directly from outside the http package.
+//! Invoke functions for the route table — one `pub fn invokeXxx` per Route
+//! variant. Each checks the HTTP method (405 if wrong), extracts path params
+//! from `route`, and calls the inner handler (auth already done by middleware).
+//! Imported by route_table.zig; not called from outside the http package.
 
 const httpz = @import("httpz");
 const router = @import("router.zig");
@@ -38,6 +33,7 @@ pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const clerk_webhook_h = @import("handlers/auth/identity_events_clerk.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
 const runner_register = @import("handlers/runner/register.zig");
+const runner_self = @import("handlers/runner/self.zig");
 const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
 const runner_lease = @import("handlers/runner/lease.zig");
 const runner_report = @import("handlers/runner/report.zig");
@@ -314,6 +310,12 @@ pub fn invokeRegisterRunner(hx: *Hx, req: *httpz.Request, route: router.Route) v
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     runner_register.innerRegisterRunner(hx.*, req);
+}
+
+pub fn invokeRunnerSelf(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    runner_self.innerRunnerSelf(hx.*, req);
 }
 
 pub fn invokeRunnerHeartbeat(hx: *Hx, req: *httpz.Request, route: router.Route) void {

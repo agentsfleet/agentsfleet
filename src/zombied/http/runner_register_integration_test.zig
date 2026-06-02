@@ -18,6 +18,7 @@ const auth_mw = @import("../auth/middleware/mod.zig");
 const oidc = @import("../auth/oidc.zig");
 const api_key = @import("../auth/api_key.zig");
 const api_key_lookup = @import("../cmd/api_key_lookup.zig");
+const serve_runner_lookup = @import("../cmd/serve_runner_lookup.zig");
 const error_registry = @import("../errors/error_registry.zig");
 const protocol = @import("contract").protocol;
 const harness_mod = @import("test_harness.zig");
@@ -95,10 +96,17 @@ test "fixture tokens verify through the real oidc verifier; platform_admin parse
 // SAFETY: populated by configureRegistry (with the harness pool) before the
 // middleware chain — and thus the lookup — ever reads it.
 var api_key_ctx: api_key_lookup.Ctx = undefined;
+// SAFETY: populated by configureRegistry (with the harness pool) before the
+// runner-bearer middleware — and thus the lookup — ever reads it. Wired so the
+// CLI integration arm's heartbeat resolves the real minted `zrn_` against
+// `fleet.runners` (the harness default uses a null stub).
+var runner_lookup_ctx: serve_runner_lookup.Ctx = undefined;
 
 fn configureRegistry(reg: *auth_mw.MiddlewareRegistry, h: *TestHarness) anyerror!void {
     api_key_ctx = .{ .pool = h.pool };
     reg.tenant_api_key_mw = .{ .host = &api_key_ctx, .lookup = api_key_lookup.lookup };
+    runner_lookup_ctx = .{ .pool = h.pool };
+    reg.runner_bearer_mw = .{ .host = &runner_lookup_ctx, .lookup = serve_runner_lookup.lookup };
 }
 
 fn startHarness(alloc: std.mem.Allocator) !*TestHarness {
@@ -170,4 +178,111 @@ test "register: a zmb_t_ api_key cannot enroll a runner (403)" {
     defer resp.deinit();
     try resp.expectStatus(.forbidden);
     try resp.expectErrorCode(error_registry.ERR_PLATFORM_ADMIN_REQUIRED);
+}
+
+// ── Operator-CLI enrollment over the live surface (binary-spawned) ────────────
+// Drive the COMPILED `zombie-runner` binary against the harness, proving the
+// register → authenticate loop end-to-end through the real CLI (argv parsing,
+// admin-JWT plumbing, env-file write, HTTP client) — not just the handler.
+// Gated on the binary being built: `make test-integration` builds it and exports
+// ZOMBIE_RUNNER_BIN; a bare `zig build test` without it skips.
+
+const ENV_RUNNER_BIN = "ZOMBIE_RUNNER_BIN";
+const DEFAULT_RUNNER_BIN = "zig-out/bin/zombie-runner";
+const HOST_ID = "host-enroll-test";
+
+fn runnerBinPath() ?[]const u8 {
+    const p = std.posix.getenv(ENV_RUNNER_BIN) orelse DEFAULT_RUNNER_BIN;
+    std.fs.cwd().access(p, .{}) catch return null;
+    return p;
+}
+
+fn baseUrl(h: *TestHarness) ![]u8 {
+    return std.fmt.allocPrint(ALLOC, "http://127.0.0.1:{d}", .{h.port});
+}
+
+fn exitCode(term: std.process.Child.Term) ?u8 {
+    return switch (term) {
+        .Exited => |c| c,
+        else => null,
+    };
+}
+
+/// Pull the minted `zrn_` out of the env file the CLI wrote by parsing the
+/// `ZOMBIE_RUNNER_TOKEN=` line (not scanning for `zrn_` anywhere — a URL or other
+/// value could contain it). The key literal is the env-file contract deploy.sh
+/// reads (pin test: literal is the contract).
+fn readMintedToken(path: []const u8) !?[]u8 {
+    const content = std.fs.cwd().readFileAlloc(ALLOC, path, 4096) catch return null;
+    defer ALLOC.free(content);
+    const KEY = "ZOMBIE_RUNNER_TOKEN=";
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, KEY)) return try ALLOC.dupe(u8, line[KEY.len..]);
+    }
+    return null;
+}
+
+test "operator CLI: register via the binary mints a zrn_ that authenticates" {
+    const bin = runnerBinPath() orelse return error.SkipZigTest;
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    try seedTenantAndApiKey(h);
+    defer cleanup(h);
+
+    const url = try baseUrl(h);
+    defer ALLOC.free(url);
+    const env_path = "/tmp/zombie-runner-cli-it.env";
+    std.fs.cwd().deleteFile(env_path) catch {};
+    defer std.fs.cwd().deleteFile(env_path) catch {};
+
+    // 1) register via the binary (platform-admin JWT) → exit 0.
+    const reg = try std.process.Child.run(.{ .allocator = ALLOC, .argv = &.{
+        bin, "register", "--api", url, "--token", PLATFORM_ADMIN_TOKEN, "--host-id", HOST_ID, "--env-file", env_path, "--json",
+    } });
+    defer ALLOC.free(reg.stdout);
+    defer ALLOC.free(reg.stderr);
+    try std.testing.expectEqual(@as(?u8, 0), exitCode(reg.term));
+
+    // 2) the minted zrn_ landed in the env file the daemon will read.
+    const token = (try readMintedToken(env_path)) orelse return error.TestUnexpectedResult;
+    defer ALLOC.free(token);
+    try std.testing.expect(std.mem.startsWith(u8, token, protocol.RUNNER_TOKEN_PREFIX));
+
+    // 3) that token authenticates a real runner call through the CLI: `status`
+    //    reads ZOMBIE_RUNNER_TOKEN and calls GET /v1/runners/me (getSelf, a
+    //    read-only probe — not a heartbeat) → exit 0, registered:true.
+    var env = try std.process.getEnvMap(ALLOC);
+    defer env.deinit();
+    try env.put("ZOMBIE_RUNNER_TOKEN", token);
+    const st = try std.process.Child.run(.{ .allocator = ALLOC, .env_map = &env, .argv = &.{
+        bin, "status", "--api", url, "--json",
+    } });
+    defer ALLOC.free(st.stdout);
+    defer ALLOC.free(st.stderr);
+    try std.testing.expectEqual(@as(?u8, 0), exitCode(st.term));
+    try std.testing.expect(std.mem.indexOf(u8, st.stdout, "\"registered\":true") != null);
+}
+
+test "operator CLI: a tenant zmb_t_ caller cannot register (non-zero exit)" {
+    const bin = runnerBinPath() orelse return error.SkipZigTest;
+    const h = try startHarness(ALLOC);
+    defer h.deinit();
+    try seedTenantAndApiKey(h);
+    defer cleanup(h);
+
+    const url = try baseUrl(h);
+    defer ALLOC.free(url);
+    const env_path = "/tmp/zombie-runner-cli-it-forbidden.env";
+    std.fs.cwd().deleteFile(env_path) catch {};
+    defer std.fs.cwd().deleteFile(env_path) catch {};
+
+    const reg = try std.process.Child.run(.{ .allocator = ALLOC, .argv = &.{
+        bin, "register", "--api", url, "--token", ZMB_T_KEY, "--host-id", HOST_ID, "--env-file", env_path, "--json",
+    } });
+    defer ALLOC.free(reg.stdout);
+    defer ALLOC.free(reg.stderr);
+    // 403 → FORBIDDEN → exit 1; and no token file is written on rejection.
+    try std.testing.expect((exitCode(reg.term) orelse 0) != 0);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(env_path, .{}));
 }

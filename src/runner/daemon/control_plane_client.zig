@@ -39,6 +39,17 @@ pub fn heartbeat(self: LoopbackClient, alloc: Allocator, runner_token: []const u
     return parsed.value;
 }
 
+/// GET /v1/runners/me → the runner's own row, read-only (no liveness bump). The
+/// caller deinits the parsed value. `.alloc_always`: the response strings (id,
+/// status, host_id, sandbox_tier) must outlive `res.body`, which is freed here.
+pub fn getSelf(self: LoopbackClient, alloc: Allocator, runner_token: []const u8) !std.json.Parsed(protocol.SelfResponse) {
+    const res = try self.get(alloc, protocol.PATH_RUNNER_SELF, runner_token);
+    defer alloc.free(res.body);
+    if (res.status < 200 or res.status >= 300) return ClientError.BadStatus;
+    return std.json.parseFromSlice(protocol.SelfResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
+        ClientError.MalformedResponse;
+}
+
 /// POST /v1/runners/me/reports → finalize one execution. Body is `{ok:true}`;
 /// only the 2xx status matters to the caller.
 pub fn report(self: LoopbackClient, alloc: Allocator, runner_token: []const u8, req: protocol.ReportRequest) !void {
@@ -69,6 +80,39 @@ pub fn activity(
     defer alloc.free(payload);
     const res = self.post(alloc, path, runner_token, payload) catch return;
     alloc.free(res.body); // 202 expected; status ignored (best-effort, no ack).
+}
+
+/// Outcome of `register`: a created runner (caller deinits the parsed value) or
+/// a server rejection carrying the HTTP status so the CLI can map it to a
+/// precise message (403 platform-admin, 401 bad JWT, …). A transport failure
+/// surfaces as `ClientError.RequestFailed` instead.
+pub const RegisterResult = union(enum) {
+    created: std.json.Parsed(protocol.RegisterResponse),
+    rejected: u16,
+};
+
+/// POST /v1/runners with a platform-admin Clerk JWT (NOT a `zrn_`) — the
+/// operator-run register path (Option B; the daemon never calls this). Mints a
+/// `zrn_` server-side and returns it once. See docs/AUTH.md (Runner token →
+/// Provisioning).
+pub fn register(
+    self: LoopbackClient,
+    alloc: Allocator,
+    admin_jwt: []const u8,
+    req: protocol.RegisterRequest,
+) !RegisterResult {
+    const payload = std.json.Stringify.valueAlloc(alloc, req, .{}) catch return ClientError.RequestFailed;
+    defer alloc.free(payload);
+    const res = try self.post(alloc, protocol.PATH_RUNNERS, admin_jwt, payload);
+    defer alloc.free(res.body);
+    if (res.status < 200 or res.status >= 300) return .{ .rejected = res.status };
+    // `.alloc_always`: the parsed value must own its strings (runner_id +
+    // runner_token) — `res.body` is freed above on return, and the caller reads
+    // `parsed.value` after that. Without this the strings dangle into freed
+    // memory (use-after-free), since the minted token needs no unescaping.
+    const parsed = std.json.parseFromSlice(protocol.RegisterResponse, alloc, res.body, .{ .allocate = .alloc_always }) catch
+        return ClientError.MalformedResponse;
+    return .{ .created = parsed };
 }
 
 /// Outcome of a renewal attempt the caller can act on without re-parsing.
@@ -153,6 +197,32 @@ fn post(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []cons
         .location = .{ .url = url },
         .method = .POST,
         .payload = payload,
+        .extra_headers = &headers,
+        .response_writer = &aw.writer,
+    }) catch return ClientError.RequestFailed;
+
+    return .{ .status = @intFromEnum(result.status), .body = aw.toOwnedSlice() catch return ClientError.RequestFailed };
+}
+
+/// One bearer-authed GET (no body). Returns the status + response body (owned by
+/// `alloc`). Used by the read-only `getSelf` verb.
+fn get(self: LoopbackClient, alloc: Allocator, path: []const u8, bearer: []const u8) !PostResult {
+    var client: std.http.Client = .{ .allocator = alloc };
+    defer client.deinit();
+
+    const url = try std.fmt.allocPrint(alloc, "{s}{s}", .{ self.base_url, path });
+    defer alloc.free(url);
+    const auth = try std.fmt.allocPrint(alloc, "Bearer {s}", .{bearer});
+    defer alloc.free(auth);
+
+    // BUFFER GATE: ArrayList for response body — fetch appends as it streams.
+    var body: std.ArrayList(u8) = .{};
+    var aw: std.Io.Writer.Allocating = .fromArrayList(alloc, &body);
+
+    const headers: [1]std.http.Header = .{.{ .name = "authorization", .value = auth }};
+    const result = client.fetch(.{
+        .location = .{ .url = url },
+        .method = .GET,
         .extra_headers = &headers,
         .response_writer = &aw.writer,
     }) catch return ClientError.RequestFailed;
