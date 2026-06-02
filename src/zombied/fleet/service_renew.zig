@@ -44,13 +44,14 @@ const log = logging.scoped(.runner_renew);
 const Lease = struct {
     tenant_id: []const u8,
     posture: []const u8,
+    provider: []const u8,
     model: []const u8,
     status: []const u8,
 };
 
-/// POST /v1/runners/me/leases/{lease_id}/renew — extend a live lease's deadline.
+/// POST /v1/runners/me/leases/{lease_id}/renew — extend a live lease's deadline
+/// and meter the slice (run fee + token delta) consumed since the last renewal.
 pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
-    _ = req; // empty body — the lease_id path param + Bearer identity are the input.
     const runner_id = hx.principal.runner_id orelse {
         hx.fail(ec.ERR_RUN_INVALID_RUNNER_TOKEN, "runner identity required");
         return;
@@ -83,13 +84,44 @@ pub fn renew(hx: Hx, req: *httpz.Request, lease_id: []const u8) void {
         return;
     }
 
-    completeRenew(hx, runner_id, lease_id);
+    completeRenew(hx, runner_id, lease_id, lease, parseMeterBody(hx, req));
 }
 
-/// Run the atomic extend and map its verdict to the wire. Split out to keep
+/// Parse the runner's cumulative token counts off the /renew body. Default-safe:
+/// an empty body (today's runner, before token accounting wires in) or a garbled
+/// one parses to all-zero → run-fee-only metering, never a parse failure.
+fn parseMeterBody(hx: Hx, req: *httpz.Request) protocol.RenewRequest {
+    const body = req.body() orelse return .{};
+    if (body.len == 0) return .{};
+    const parsed = std.json.parseFromSlice(protocol.RenewRequest, hx.alloc, body, .{ .ignore_unknown_fields = true }) catch {
+        log.warn("renew_body_parse_failed", .{ .error_code = ec.ERR_RUN_RENEW_BODY_INVALID });
+        return .{};
+    };
+    defer parsed.deinit();
+    return parsed.value;
+}
+
+/// Assemble the meter inputs for this renewal — the four slice rates (resolved
+/// with the same branching `computeStageCharge` uses) paired with the body's
+/// cumulative token counts. Delegates to `renewal.buildMeterInputs`, the shared
+/// source `service_report`'s settle uses too, so renew and settle meter at the
+/// identical rates.
+fn buildMeter(lease: Lease, body: protocol.RenewRequest, now_ms: i64) renewal.MeterInputs {
+    return renewal.buildMeterInputs(
+        lease.provider,
+        parsePosture(lease.posture),
+        lease.model,
+        now_ms,
+        body.input_tokens,
+        body.cached_input_tokens,
+        body.output_tokens,
+    );
+}
+
+/// Run the atomic extend+meter and map its verdict to the wire. Split out to keep
 /// `renew` within the method-length budget.
-fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8) void {
-    const outcome = runRenew(hx, lease_id, runner_id) catch {
+fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8, lease: Lease, body: protocol.RenewRequest) void {
+    const outcome = runRenew(hx, lease_id, runner_id, lease, body) catch {
         common.internalDbError(hx.res, hx.req_id);
         return;
     };
@@ -110,17 +142,19 @@ fn completeRenew(hx: Hx, runner_id: []const u8, lease_id: []const u8) void {
     }
 }
 
-fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8) !renewal.RenewOutcome {
+fn runRenew(hx: Hx, lease_id: []const u8, runner_id: []const u8, lease: Lease, body: protocol.RenewRequest) !renewal.RenewOutcome {
+    const now_ms = std.time.milliTimestamp();
+    const meter = buildMeter(lease, body, now_ms);
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
-    return renewal.renew(conn, lease_id, runner_id, std.time.milliTimestamp());
+    return renewal.renew(conn, lease_id, runner_id, now_ms, meter);
 }
 
 /// The tenant balance gate — reuse the exact check the lease path applies, so
 /// renewal and issue share one credit policy. Policy is resolved once at
 /// startup and carried on the request context (not re-read from the env here).
 fn creditsCover(hx: Hx, lease: Lease) bool {
-    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.model, hx.ctx.balance_policy);
+    return metering.balanceCoversEstimate(hx.ctx.pool, hx.alloc, lease.tenant_id, parsePosture(lease.posture), lease.provider, lease.model, hx.ctx.balance_policy);
 }
 
 /// Returns the lease, `null` when no row matches (terminal 404), or an error on
@@ -136,7 +170,7 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     const conn = try hx.ctx.pool.acquire();
     defer hx.ctx.pool.release(conn);
     var q = PgQuery.from(try conn.query(
-        \\SELECT tenant_id::text, posture, model, status
+        \\SELECT tenant_id::text, posture, provider, model, status
         \\FROM fleet.runner_leases WHERE id = $1::uuid AND runner_id = $2::uuid
     , .{ lease_id, runner_id }));
     defer q.deinit();
@@ -144,8 +178,9 @@ fn loadLeaseInner(hx: Hx, runner_id: []const u8, lease_id: []const u8) !?Lease {
     return Lease{
         .tenant_id = try hx.alloc.dupe(u8, try row.get([]const u8, 0)),
         .posture = try hx.alloc.dupe(u8, try row.get([]const u8, 1)),
-        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
-        .status = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
+        .provider = try hx.alloc.dupe(u8, try row.get([]const u8, 2)),
+        .model = try hx.alloc.dupe(u8, try row.get([]const u8, 3)),
+        .status = try hx.alloc.dupe(u8, try row.get([]const u8, 4)),
     };
 }
 

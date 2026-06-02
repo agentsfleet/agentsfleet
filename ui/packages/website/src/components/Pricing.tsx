@@ -6,13 +6,13 @@ import { SUPPORT_EMAIL } from "../lib/contact";
 import { RATES_DISPLAY } from "../lib/rates";
 
 /*
- * Pricing — one simple story: free during the trial, then one honest
- * forward rate per reasoning stage (10× cheaper on your own provider key),
- * and the model bill is always yours. No struck-through gradient, no
- * per-stage billing grid, no tier-extras list — those buried the "it's
- * free right now" headline. Rate VALUES come from RATES_DISPLAY
- * (lib/rates.ts), the changelog-pinned single source; this component only
- * arranges them.
+ * Pricing — one simple story: free during the trial, then a single
+ * usage-based run rate billed by the second only while an agent is actually
+ * working (same rate on the platform or your own provider key), and the model
+ * bill is always yours. No struck-through gradient, no per-stage billing grid,
+ * no tier-extras list — those buried the "it's free right now" headline. Rate
+ * VALUES come from RATES_DISPLAY (lib/rates.ts), the changelog-pinned single
+ * source; this component only arranges them.
  */
 export default function Pricing() {
   return (
@@ -31,8 +31,9 @@ export default function Pricing() {
           <RateTable />
 
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-narrow">
-            A <span className="text-text">stage</span> is one reasoning step. Most diagnoses
-            resolve in 1–5 stages.
+            You&apos;re billed <span className="text-text">by the second</span>, only while a
+            zombie is actively working — not a flat monthly seat, not idle time. A quiet agent
+            waiting on nothing costs nothing.
           </p>
 
           <p
@@ -79,18 +80,17 @@ function RateTable() {
         </span>
         <span className="text-text-muted">— always</span>
       </RateRow>
-      <RateRow label="Reasoning stage">
-        <span data-testid="pricing-rate-stage-platform" className="text-text tabular-nums">
-          {RATES_DISPLAY.STAGE_PLATFORM}
+      <RateRow label="Active runtime">
+        <span data-testid="pricing-rate-run" className="text-text tabular-nums">
+          {RATES_DISPLAY.RUN_RATE_PER_SEC}
         </span>
-        <span className="text-text-muted">platform</span>
+        <span data-testid="pricing-rate-run-hourly" className="text-text-muted tabular-nums">
+          ≈ {RATES_DISPLAY.RUN_RATE_PER_HOUR}
+        </span>
         <span className="text-text-subtle" aria-hidden="true">
           ·
         </span>
-        <span data-testid="pricing-rate-stage-self-managed" className="text-text tabular-nums">
-          {RATES_DISPLAY.STAGE_SELF_MANAGED}
-        </span>
-        <span className="text-text-muted">on your own key</span>
+        <span className="text-text-muted">only while a zombie is running, platform or your own key</span>
       </RateRow>
       <RateRow label="Model tokens">
         <span className="text-text">your provider</span>

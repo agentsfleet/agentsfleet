@@ -187,7 +187,7 @@ A runner that dies holds no datastore connection to leak and no Redis consumer t
 
 ### Runner host add
 
-A new runner registers and starts polling `lease`. No rebalance of in-flight work, no Redis connection migration, no coordination. Sticky routing prefers the runner that ran the previous stage but never blocks on it.
+A new runner registers and starts polling `lease`. No rebalance of in-flight work, no Redis connection migration, no coordination. Sticky routing prefers the runner that ran the previous run but never blocks on it.
 
 ### Upstash failover (provider-side primary swap)
 

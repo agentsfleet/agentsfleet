@@ -62,8 +62,10 @@ export const NANOS_PER_USD = 1_000_000_000;
 // zombiectl tests + tenant_billing_test.zig.
 export const STARTER_CREDIT_NANOS = 5 * NANOS_PER_USD;
 export const EVENT_NANOS = 0;
-export const STAGE_PLATFORM_NANOS = 1_000_000;
-export const STAGE_SELF_MANAGED_NANOS = 100_000;
+// Per-second run rate ($0.0001/sec ≈ $0.36/hr), charged identically under both
+// postures while an agent is actively running. Replaces the former flat
+// per-stage fees.
+export const RUN_NANOS_PER_SEC = 100_000;
 
 // Promotional free-trial window. While `now_ms < FREE_TRIAL_END_MS`, the
 // server's `compute_stage_charge` returns FREE_TRIAL_STAGE_NANOS regardless

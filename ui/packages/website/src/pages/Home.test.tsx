@@ -85,11 +85,11 @@ describe("Home", () => {
     renderHome();
     expect(screen.getByTestId("pricing-block")).toBeInTheDocument();
     expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent(RATES_DISPLAY.EVENT_RATE);
-    expect(screen.getByTestId("pricing-rate-stage-platform")).toHaveTextContent(
-      RATES_DISPLAY.STAGE_PLATFORM,
+    expect(screen.getByTestId("pricing-rate-run")).toHaveTextContent(
+      RATES_DISPLAY.RUN_RATE_PER_SEC,
     );
-    expect(screen.getByTestId("pricing-rate-stage-self-managed")).toHaveTextContent(
-      RATES_DISPLAY.STAGE_SELF_MANAGED,
+    expect(screen.getByTestId("pricing-rate-run-hourly")).toHaveTextContent(
+      RATES_DISPLAY.RUN_RATE_PER_HOUR,
     );
   });
 

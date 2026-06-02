@@ -42,8 +42,10 @@ pub const MODEL_CAPS_PATH = "/_um/" ++ MODEL_CAPS_PATH_KEY ++ "/model-caps.json"
 
 const ModelCap = struct {
     id: []const u8,
+    provider: []const u8,
     context_cap_tokens: i32,
     input_nanos_per_mtok: i64,
+    cached_input_nanos_per_mtok: i64,
     output_nanos_per_mtok: i64,
 };
 
@@ -54,16 +56,16 @@ const ResponseBody = struct {
 
 /// SELECT clause shared by both list-all and filter-by-model paths.
 const SELECT_ALL =
-    \\SELECT model_id, context_cap_tokens,
-    \\       input_nanos_per_mtok, output_nanos_per_mtok,
+    \\SELECT model_id, provider, context_cap_tokens,
+    \\       input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
     \\       updated_at_ms
     \\  FROM core.model_caps
     \\ ORDER BY model_id
 ;
 
 const SELECT_ONE =
-    \\SELECT model_id, context_cap_tokens,
-    \\       input_nanos_per_mtok, output_nanos_per_mtok,
+    \\SELECT model_id, provider, context_cap_tokens,
+    \\       input_nanos_per_mtok, cached_input_nanos_per_mtok, output_nanos_per_mtok,
     \\       updated_at_ms
     \\  FROM core.model_caps
     \\ WHERE model_id = $1
@@ -137,14 +139,18 @@ fn appendRow(
     row: anytype,
 ) !void {
     const id = try alloc.dupe(u8, try row.get([]const u8, 0));
-    const cap = try row.get(i32, 1);
-    const in_rate = try row.get(i64, 2);
-    const out_rate = try row.get(i64, 3);
-    const updated = try row.get(i64, 4);
+    const provider = try alloc.dupe(u8, try row.get([]const u8, 1));
+    const cap = try row.get(i32, 2);
+    const in_rate = try row.get(i64, 3);
+    const cached_rate = try row.get(i64, 4);
+    const out_rate = try row.get(i64, 5);
+    const updated = try row.get(i64, 6);
     try models.append(alloc, .{
         .id = id,
+        .provider = provider,
         .context_cap_tokens = cap,
         .input_nanos_per_mtok = in_rate,
+        .cached_input_nanos_per_mtok = cached_rate,
         .output_nanos_per_mtok = out_rate,
     });
     if (updated > max_updated_ms.*) max_updated_ms.* = updated;

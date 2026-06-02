@@ -119,41 +119,4 @@ test "insert_receive_has_null_tokens_and_wall_ms" {
     try std.testing.expectEqual(@as(?i64, null), try row.get(?i64, 2));
 }
 
-// ── Update: stage tokens set post-execution ─────────────────────────────────
-
-test "update_stage_tokens_writes_only_stage_row" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_A);
-    defer uc1.teardown(db_ctx.conn, WS_A);
-    defer teardownTelemetry(db_ctx.conn, WS_A);
-
-    const evt = "evt-upd-aa19-0001";
-    try seedReceiveRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, 1000);
-    try seedStageRow(db_ctx.conn, WS_A, ZOMBIE_A, evt, 2000);
-
-    try store.updateStageTokens(db_ctx.conn, evt, 800, 1040, 4200);
-
-    var q = PgQuery.from(try db_ctx.conn.query(
-        \\SELECT charge_type, token_count_input, token_count_output, wall_ms
-        \\FROM zombie_execution_telemetry
-        \\WHERE event_id = $1
-        \\ORDER BY charge_type
-    , .{evt}));
-    defer q.deinit();
-
-    const receive = (try q.next()).?;
-    try std.testing.expectEqualStrings("receive", try receive.get([]const u8, 0));
-    try std.testing.expectEqual(@as(?i64, null), try receive.get(?i64, 1));
-    try std.testing.expectEqual(@as(?i64, null), try receive.get(?i64, 2));
-    try std.testing.expectEqual(@as(?i64, null), try receive.get(?i64, 3));
-
-    const stage = (try q.next()).?;
-    try std.testing.expectEqualStrings("stage", try stage.get([]const u8, 0));
-    try std.testing.expectEqual(@as(?i64, 800), try stage.get(?i64, 1));
-    try std.testing.expectEqual(@as(?i64, 1040), try stage.get(?i64, 2));
-    try std.testing.expectEqual(@as(?i64, 4200), try stage.get(?i64, 3));
-}
 

@@ -23,4 +23,3 @@ CREATE INDEX IF NOT EXISTS idx_integration_grants_zombie_id
     ON core.integration_grants (zombie_id);
 
 GRANT SELECT, INSERT, UPDATE ON core.integration_grants TO api_runtime;
-GRANT SELECT ON core.integration_grants TO worker_runtime;

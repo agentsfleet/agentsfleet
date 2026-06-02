@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS zombie_events_resumes_idx
     ON core.zombie_events (zombie_id, resumes_event_id)
     WHERE resumes_event_id IS NOT NULL;
 
--- worker_runtime writes the lifecycle (INSERT received, UPDATE terminal).
-GRANT SELECT, INSERT, UPDATE ON core.zombie_events TO worker_runtime;
--- api_runtime serves the read endpoints (per-zombie + workspace-aggregate + SSE backfill).
-GRANT SELECT ON core.zombie_events TO api_runtime;
+-- api_runtime writes the lifecycle (INSERT received, UPDATE terminal) in the
+-- lease/report path and serves the read endpoints (per-zombie +
+-- workspace-aggregate + SSE backfill).
+GRANT SELECT, INSERT, UPDATE ON core.zombie_events TO api_runtime;

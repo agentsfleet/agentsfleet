@@ -39,6 +39,7 @@ const RUNNER_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7a01";
 const ZOMBIE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7c01";
 const AFFINITY_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7e01";
 const LEASE_ID = "0195b4ba-8d3a-7f13-8abc-2b3e1e0d7f01";
+const EVENT_ID = "evt-renew-1"; // matches seedLease; metering rows keyed by it
 
 // A fixed "now" for deterministic clamping. Lease created_at is set relative to
 // this per-test so the cap is exercised precisely.
@@ -57,8 +58,10 @@ fn seedRunner(conn: *pg.Conn) !void {
 fn seedAffinity(conn: *pg.Conn, fencing_seq: i64, leased_until: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0)
+        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, 0, 0, 0, 0, 0, 0)
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET fencing_seq = EXCLUDED.fencing_seq, leased_until = EXCLUDED.leased_until
     , .{ AFFINITY_ID, ZOMBIE_ID, RUNNER_ID, fencing_seq, leased_until });
@@ -69,11 +72,12 @@ fn seedLease(conn: *pg.Conn, fencing_token: i64, created_at: i64, lease_expires_
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, model,
+        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-renew-1',
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
-        \\        'test-model', $6, $7, 'active', $8, $8)
+        \\        'test-provider', 'test-model', 0, 0, 0, 0, $6, $7, 'active', $8, $8)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, fencing_token, lease_expires_at, created_at });
 }
@@ -83,6 +87,11 @@ fn execIgnore(conn: *pg.Conn, sql: []const u8, args: anytype) void {
 }
 
 fn teardown(conn: *pg.Conn) void {
+    // Breakdown + ledger rows are keyed by event_id and survive a lease/affinity
+    // delete; clear them so a re-seeded case starts the per-event slice counter
+    // clean (the affinity counter resets, so a leftover slice_seq would collide).
+    execIgnore(conn, "DELETE FROM fleet.metering_periods WHERE event_id = $1", .{EVENT_ID});
+    execIgnore(conn, "DELETE FROM core.zombie_execution_telemetry WHERE event_id = $1", .{EVENT_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_leases WHERE id = $1::uuid", .{LEASE_ID});
     execIgnore(conn, "DELETE FROM fleet.runner_affinity WHERE zombie_id = $1::uuid", .{ZOMBIE_ID});
     execIgnore(conn, "DELETE FROM fleet.runners WHERE id = $1::uuid", .{RUNNER_ID});
@@ -127,7 +136,7 @@ test "renew extends both the lease row and the affinity slot to the same clamped
     try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
 
     // renewed → both rows advanced to min(now+TTL, created_at+MAX). created_at is
     // recent, so the TTL increment wins and that is the new deadline.
@@ -157,7 +166,7 @@ test "renew on a lease whose fence was bumped by a reclaim returns lost" {
     try seedLease(conn, 5, NOW_MS - 2_000, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     try std.testing.expectEqual(renewal.RenewOutcome.lost, outcome);
     // Neither row moved.
     const after = try readDeadlines(conn);
@@ -185,7 +194,7 @@ test "renew past the hard max-runtime cap returns max_runtime and does not exten
     try seedLease(conn, 5, created, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     try std.testing.expectEqual(
         renewal.RenewOutcome{ .max_runtime = created + constants.MAX_RUNTIME_MS },
         outcome,
@@ -217,7 +226,7 @@ test "renew clamps the new deadline to the hard cap when TTL would overshoot it"
     try seedLease(conn, 5, created, NOW_MS - 1_000);
     defer teardown(conn);
 
-    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS);
+    const outcome = try renewal.renew(conn, LEASE_ID, RUNNER_ID, NOW_MS, .{});
     const want_cap = NOW_MS + cap_offset; // == created + MAX_RUNTIME_MS
     try std.testing.expectEqual(renewal.RenewOutcome{ .renewed = want_cap }, outcome);
     const after = try readDeadlines(conn);

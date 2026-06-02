@@ -52,6 +52,10 @@ test "report request and response round-trip (fenced, no runner_id)" {
         .outcome = .processed,
         .response_text = "done",
         .tokens = 1234,
+        // The cumulative split the report-settle meters the final slice off.
+        .input_tokens = 900,
+        .cached_input_tokens = 200,
+        .output_tokens = 134,
         .telemetry = .{ .time_to_first_token_ms = 42, .wall_ms = 1500 },
         .checkpoint = .{ .last_event_id = "1700000000000-0", .last_response = "ok" },
     });
@@ -85,6 +89,33 @@ test "report request without failure_reason parses to null (old runner, backward
     const p = try std.json.parseFromSlice(protocol.ReportRequest, a, json_old, .{});
     defer p.deinit();
     try std.testing.expect(p.value.failure_reason == null);
+    // The cumulative token split is also additive — an old report omits it and
+    // settles run-fee-only off all-zero cumulatives (never a parse failure).
+    try std.testing.expectEqual(@as(u32, 0), p.value.input_tokens);
+    try std.testing.expectEqual(@as(u32, 0), p.value.cached_input_tokens);
+    try std.testing.expectEqual(@as(u32, 0), p.value.output_tokens);
+}
+
+test "renew request round-trips its cumulative token counts" {
+    try expectStable(protocol.RenewRequest, .{
+        .input_tokens = 12_000,
+        .cached_input_tokens = 3_400,
+        .output_tokens = 5_600,
+    });
+}
+
+test "renew request from an empty body parses to all-zero cumulatives (old runner / pre-accounting /renew)" {
+    const a = std.testing.allocator;
+    // A /renew before token accounting wires into the runner — or an older
+    // runner — sends an empty body. The control plane must parse it to all-zero
+    // cumulatives → run-fee-only metering, never a parse failure (and so never a
+    // negative Δ once the cursor subtraction runs in the renewal CTE).
+    const json_empty = "{}";
+    const p = try std.json.parseFromSlice(protocol.RenewRequest, a, json_empty, .{});
+    defer p.deinit();
+    try std.testing.expectEqual(@as(u32, 0), p.value.input_tokens);
+    try std.testing.expectEqual(@as(u32, 0), p.value.cached_input_tokens);
+    try std.testing.expectEqual(@as(u32, 0), p.value.output_tokens);
 }
 
 test "lease response — work payload round-trips (fencing + event + policy)" {

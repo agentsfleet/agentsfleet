@@ -107,10 +107,8 @@ fly apps create cloudflared-prod     --org <org>
 for APP in zombied-dev zombied-dev-worker; do
   fly secrets set \
     DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
-    DATABASE_URL_WORKER="$(op read 'op://$VAULT_DEV/planetscale-dev/worker-connection-string')" \
     DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
     REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
-    REDIS_URL_WORKER="$(op read 'op://$VAULT_DEV/upstash-dev/worker-url')" \
     ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
     GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
     GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \
@@ -318,7 +316,7 @@ fly logs   --app zombied-dev
 
 ### 3.1 Postgres — Roles in Migrations
 
-Roles (`db_migrator`, `api_runtime`, `worker_runtime`, `ops_readonly_human`, `ops_readonly_agent`) are defined in `schema/002_vault_schema.sql` with `IF NOT EXISTS` guards — idempotent. All grants across tables are in subsequent migration files. Run all migrations in order:
+Roles (`db_migrator`, `api_runtime`, `memory_runtime`, `ops_readonly_human`, `ops_readonly_agent`) are defined in `schema/002_vault_schema.sql` with `IF NOT EXISTS` guards — idempotent. All grants across tables are in subsequent migration files. Run all migrations in order:
 
 ```bash
 DATABASE_URL=$(op read "op://$VAULT_DEV/planetscale-dev/migrator-connection-string")
@@ -331,7 +329,7 @@ done
 Role contract (`schema/002_vault_schema.sql`):
 - `db_migrator` — DDL authority for `core/agent/billing/vault/audit/ops_ro`
 - `api_runtime` — runtime DML on API-owned tables only
-- `worker_runtime` — runtime DML for worker execution paths
+- `memory_runtime` — runtime DML on the agent-memory schema
 - `ops_readonly_human`, `ops_readonly_agent` — read-only access via `ops_ro` views only
 
 ### 3.2 Redis — Stream Bootstrap (Upstash)
@@ -415,8 +413,8 @@ Clerk dashboard → **Sessions → Customize session token** → **Reset to defa
 Worker bootstrap, CI deployment handoff, and startup reuse guidance moved to:
 
 - `playbooks/003_priming_infra/002_workers_and_handoff.md`
-- `playbooks/006_worker_bootstrap_dev/001_playbook.md`
-- `playbooks/007_worker_bootstrap_prod/001_playbook.md`
+- `playbooks/006_runner_bootstrap_dev/001_playbook.md`
+- `playbooks/007_runner_bootstrap_prod/001_playbook.md`
 - `playbooks/004_deploy_dev/001_playbook.md`
 - `playbooks/005_deploy_prod/001_playbook.md`
 

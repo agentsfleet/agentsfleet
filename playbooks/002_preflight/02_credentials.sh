@@ -115,10 +115,8 @@ check_prod() {
   check_ref "op://$v/github-app/private-key"
   check_ref "op://$v/encryption-master-key/credential"
   check_ref "op://$v/planetscale-prod/api-connection-string"
-  check_ref "op://$v/planetscale-prod/worker-connection-string"
   check_ref "op://$v/planetscale-prod/migrator-connection-string"
   check_ref "op://$v/upstash-prod/api-url"
-  check_ref "op://$v/upstash-prod/worker-url"
   check_ref "op://$v/tailscale/authkey"
   check_ref "op://$v/zombie-prod-worker-ant/ssh-private-key"
   check_ref "op://$v/zombie-prod-worker-ant/runner-token"
@@ -132,22 +130,9 @@ check_prod() {
   check_ref "op://$v/cloudflare-tunnel-prod/credential"
 
   check_distinct \
-    "op://$v/planetscale-prod/api-connection-string" \
-    "op://$v/planetscale-prod/worker-connection-string" \
-    "prod postgres api vs worker"
-  check_distinct \
     "op://$v/planetscale-prod/migrator-connection-string" \
     "op://$v/planetscale-prod/api-connection-string" \
     "prod postgres migrator vs api"
-  check_distinct \
-    "op://$v/planetscale-prod/migrator-connection-string" \
-    "op://$v/planetscale-prod/worker-connection-string" \
-    "prod postgres migrator vs worker"
-
-  check_distinct \
-    "op://$v/upstash-prod/api-url" \
-    "op://$v/upstash-prod/worker-url" \
-    "prod redis api vs worker"
 }
 
 check_dev() {
@@ -165,10 +150,8 @@ check_dev() {
   check_ref "op://$v/vercel-api-token/credential"
   check_ref "op://$v/posthog-dev/credential"
   check_ref "op://$v/planetscale-dev/api-connection-string"
-  check_ref "op://$v/planetscale-dev/worker-connection-string"
   check_ref "op://$v/planetscale-dev/migrator-connection-string"
   check_ref "op://$v/upstash-dev/api-url"
-  check_ref "op://$v/upstash-dev/worker-url"
   check_ref "op://$v/zombie-dev-worker-ant/runner-token"
   check_ref "op://$v/fly-api-token/credential"
   check_ref "op://$v/posthog-dev/credential"
@@ -178,22 +161,9 @@ check_dev() {
   check_ref "op://$v/cloudflare-tunnel-dev/credential"
 
   check_distinct \
-    "op://$v/planetscale-dev/api-connection-string" \
-    "op://$v/planetscale-dev/worker-connection-string" \
-    "dev postgres api vs worker"
-  check_distinct \
     "op://$v/planetscale-dev/migrator-connection-string" \
     "op://$v/planetscale-dev/api-connection-string" \
     "dev postgres migrator vs api"
-  check_distinct \
-    "op://$v/planetscale-dev/migrator-connection-string" \
-    "op://$v/planetscale-dev/worker-connection-string" \
-    "dev postgres migrator vs worker"
-
-  check_distinct \
-    "op://$v/upstash-dev/api-url" \
-    "op://$v/upstash-dev/worker-url" \
-    "dev redis api vs worker"
 }
 
 check_vercel_envs() {

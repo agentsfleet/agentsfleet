@@ -1,14 +1,13 @@
 // Concurrency tests for src/zombied/zombie/metering.zig — proves the
-// credit-pool debit path holds under contention: no lost writes when many
-// events drain the same tenant, and atomic exhaustion (exactly one debit
-// marks the gate, the rest see .exhausted).
+// credit-pool receive debit holds under contention: no lost writes when many
+// events drain the same tenant (exactly one telemetry row per event_id). The
+// concurrent-exhaustion invariant moved with the stage charge to the renewal/
+// settle clamp; markExhausted atomicity under parallel callers is proven in
+// tenant_billing_integration_test.zig.
 //
 // Each worker thread calls the public metering entrypoint, which acquires
 // its own pooled connection; the pg.Pool (size 4) serializes acquisition so
-// 100 threads contend through a handful of real connections. The debit SQL
-// is a conditional UPDATE (balance >= nanos) inside a transaction, so the
-// DB enforces the no-lost-update invariant — these tests assert the outcome
-// distribution, not the locking mechanism.
+// 100 threads contend through a handful of real connections.
 
 const std = @import("std");
 const PgQuery = @import("../db/pg_query.zig").PgQuery;
@@ -21,7 +20,6 @@ const uc1 = @import("../db/test_fixtures_uc1.zig");
 const ALLOC = std.testing.allocator;
 
 const WS_RECEIVE_RACE = "0195b4ba-8d3a-7f13-8abc-aa0800000001";
-const WS_STAGE_EXHAUST_RACE = "0195b4ba-8d3a-7f13-8abc-aa0800000002";
 
 const N_WORKERS = 100;
 
@@ -34,23 +32,22 @@ const Job = struct {
     event_len: usize,
     outcome: metering.DebitOutcome = .{ .db_error = {} },
 
+    // Receive charges EVENT_NANOS (0) under both postures and needs no
+    // rate-cache lookup, so posture/model are immaterial to the receive race.
     fn ctx(self: *const Job) metering.PreflightContext {
         return .{
             .workspace_id = self.workspace_id,
             .zombie_id = "zombie-conc-test",
             .event_id = self.event_id[0..self.event_len],
             .posture = .self_managed,
-            .model = "any-model-self-managed",
+            .provider = "self-managed-test",
+            .model = "any-model",
         };
     }
 };
 
 fn runReceive(job: *Job) void {
     job.outcome = metering.debitReceive(job.pool, ALLOC, uc1.TENANT_ID, job.ctx(), .stop);
-}
-
-fn runStage(job: *Job) void {
-    job.outcome = metering.debitStage(job.pool, ALLOC, uc1.TENANT_ID, job.ctx(), .stop);
 }
 
 // event_id pattern: aa19 segment + a per-index suffix, zero-padded, unique.
@@ -109,55 +106,4 @@ test "should drain every concurrent receive debit without lost writes" {
     defer q.deinit();
     const r = (try q.next()).?;
     try std.testing.expectEqual(@as(i64, N_WORKERS), try r.get(i64, 0));
-}
-
-test "should mark exhaustion exactly once when concurrent stage debits outrun the balance" {
-    const db_ctx = (try base.openTestConn(ALLOC)) orelse return error.SkipZigTest;
-    defer db_ctx.pool.deinit();
-    defer db_ctx.pool.release(db_ctx.conn);
-
-    try uc1.seed(db_ctx.conn, WS_STAGE_EXHAUST_RACE);
-    defer uc1.teardown(db_ctx.conn, WS_STAGE_EXHAUST_RACE);
-    defer _ = db_ctx.conn.exec("DELETE FROM zombie_execution_telemetry WHERE workspace_id = $1", .{WS_STAGE_EXHAUST_RACE}) catch {};
-
-    // self-managed stage charge is STAGE_SELF_MANAGED_NANOS post-trial. Fund
-    // exactly one stage debit so the first winner drains it and the rest
-    // exhaust. While the trial is open the charge is 0 (no debit ever
-    // exhausts), so this race can only be exercised post-trial.
-    try tenant_billing.provision(db_ctx.conn, uc1.TENANT_ID, tenant_billing.STAGE_SELF_MANAGED_NANOS, "test_exhaust_race");
-    const trial_active = blk: {
-        const b = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-        defer ALLOC.free(@constCast(b.grant_source));
-        break :blk b.free_trial_active;
-    };
-    if (trial_active) return error.SkipZigTest;
-
-    var jobs: [N_WORKERS]Job = undefined;
-    var threads: [N_WORKERS]std.Thread = undefined;
-    for (&jobs, 0..) |*j, i| {
-        j.* = .{ .pool = db_ctx.pool, .workspace_id = WS_STAGE_EXHAUST_RACE, .event_id = undefined, .event_len = 0 };
-        fillEventId(j, 0xC1, i);
-    }
-    for (&threads, &jobs) |*t, *j| t.* = try std.Thread.spawn(.{}, runStage, .{j});
-    for (&threads) |t| t.join();
-
-    // Exactly one .deducted (the winner), the rest .exhausted. db_error is a
-    // fail (would mean a transaction fault, not a contention outcome).
-    var deducted: usize = 0;
-    var exhausted: usize = 0;
-    for (&jobs) |*j| {
-        switch (j.outcome) {
-            .deducted => deducted += 1,
-            .exhausted => exhausted += 1,
-            else => return error.TestExpectedEqual,
-        }
-    }
-    try std.testing.expectEqual(@as(usize, 1), deducted);
-    try std.testing.expectEqual(@as(usize, N_WORKERS - 1), exhausted);
-
-    // Balance fully drained and exhausted gate stamped exactly once.
-    const final = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;
-    defer ALLOC.free(@constCast(final.grant_source));
-    try std.testing.expectEqual(@as(i64, 0), final.balance_nanos);
-    try std.testing.expect(final.exhausted_at_ms != null);
 }

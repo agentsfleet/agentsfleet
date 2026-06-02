@@ -15,7 +15,6 @@ const S_DOCTOR_DB_CONNECT_OK = "doctor.db_connect_ok";
 const S_OIDC_PROVIDER = "oidc_provider";
 const S_FORMAT = "--format=";
 const S_API = "api";
-const S_WORKER = "worker";
 const S_ENCRYPTION_MASTER_KEY = "encryption_master_key";
 const S_AUTH_SESSION_CODE_PEPPER = "auth_session_code_pepper";
 const S_AUDIT_LOG_PEPPER = "audit_log_pepper";
@@ -27,7 +26,6 @@ const S_OIDC_JWKS_REACHABILITY = "oidc_jwks_reachability";
 const S_T_R_N = " \t\r\n";
 const S_DOCTOR_REDIS_CONNECT_OK = "doctor.redis_connect_ok";
 const S_DOCTOR_DB_CONNECT_FAILED = "doctor.db_connect_failed";
-const S_DB_WORKER_CONFIG = "db_worker_config";
 
 const OutputFormat = enum {
     text,
@@ -204,25 +202,17 @@ pub fn run(alloc: std.mem.Allocator) !void {
     var role_urls = env_vars.loadFromEnv(alloc);
     defer role_urls.deinit();
     const redis_api_url = role_urls.redis_api;
-    const redis_worker_url = role_urls.redis_worker;
 
     role_env_check: {
         env_vars.validateLoaded(role_urls) catch |err| {
             switch (err) {
-                env_vars.EnvVarsErrors.MissingDatabaseUrlApi,
-                env_vars.EnvVarsErrors.MissingDatabaseUrlWorker,
-                => try appendCheck(alloc, &results, "role_env_required", false, "DATABASE_URL_API and DATABASE_URL_WORKER required (no shared fallback)", &ok),
-                env_vars.EnvVarsErrors.SameDatabaseUrlForApiAndWorker => try appendCheck(alloc, &results, "role_env_db_separation", false, "DATABASE_URL_API and DATABASE_URL_WORKER must differ", &ok),
-                env_vars.EnvVarsErrors.MissingRedisUrlApi,
-                env_vars.EnvVarsErrors.MissingRedisUrlWorker,
-                => try appendCheck(alloc, &results, "role_env_redis_required", false, "REDIS_URL_API and REDIS_URL_WORKER required (no shared fallback)", &ok),
-                env_vars.EnvVarsErrors.SameRedisUrlForApiAndWorker => try appendCheck(alloc, &results, "role_env_redis_separation", false, "REDIS_URL_API and REDIS_URL_WORKER must differ", &ok),
+                env_vars.EnvVarsErrors.MissingDatabaseUrlApi => try appendCheck(alloc, &results, "role_env_required", false, "DATABASE_URL_API required", &ok),
+                env_vars.EnvVarsErrors.MissingRedisUrlApi => try appendCheck(alloc, &results, "role_env_redis_required", false, "REDIS_URL_API required", &ok),
                 env_vars.EnvVarsErrors.RedisApiTlsRequired => try appendCheck(alloc, &results, "redis_api_tls", false, "REDIS_URL_API must use rediss://", &ok),
-                env_vars.EnvVarsErrors.RedisWorkerTlsRequired => try appendCheck(alloc, &results, "redis_worker_tls", false, "REDIS_URL_WORKER must use rediss://", &ok),
             }
             break :role_env_check;
         };
-        try appendCheck(alloc, &results, "env_vars_contract", true, "Role-separated DB/Redis URLs configured with Redis TLS", &ok);
+        try appendCheck(alloc, &results, "env_vars_contract", true, "API DB/Redis URLs configured with Redis TLS", &ok);
     }
 
     db_check: {
@@ -235,18 +225,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         pool.deinit();
         log.info(S_DOCTOR_DB_CONNECT_OK, .{ .role = S_API });
         try appendCheck(alloc, &results, S_DB_API_CONFIG, true, "API database config", &ok);
-    }
-
-    worker_db_check: {
-        log.info(S_DOCTOR_DB_CONNECT_START, .{ .role = S_WORKER });
-        const pool = db.initFromEnvForRole(alloc, .worker) catch |err| {
-            log.err(S_DOCTOR_DB_CONNECT_FAILED, .{ .role = S_WORKER, .err = @errorName(err) });
-            try appendCheck(alloc, &results, S_DB_WORKER_CONFIG, false, "DATABASE_URL_WORKER not set/invalid", &ok);
-            break :worker_db_check;
-        };
-        pool.deinit();
-        log.info(S_DOCTOR_DB_CONNECT_OK, .{ .role = S_WORKER });
-        try appendCheck(alloc, &results, S_DB_WORKER_CONFIG, true, "Worker database config", &ok);
     }
 
     if (options.schema_gate) schema_gate_check: {
@@ -317,34 +295,6 @@ pub fn run(alloc: std.mem.Allocator) !void {
         }
         log.info(S_DOCTOR_REDIS_CONNECT_OK, .{ .role = S_API });
         try appendCheck(alloc, &results, "redis_api_ready_acl", true, "Redis API readiness + ACL identity", &ok);
-    }
-
-    redis_worker_check: {
-        log.info(S_DOCTOR_REDIS_CONNECT_START, .{ .role = S_WORKER });
-        var client = queue_redis.Client.connectFromEnv(alloc, .worker) catch |err| {
-            log.err(S_DOCTOR_REDIS_CONNECT_FAILED, .{ .role = S_WORKER, .err = @errorName(err) });
-            try appendCheck(alloc, &results, "redis_worker_config", false, "REDIS_URL_WORKER not set/invalid", &ok);
-            break :redis_worker_check;
-        };
-        defer client.deinit();
-        client.readyCheck() catch {
-            try appendCheck(alloc, &results, "redis_worker_ready", false, "Redis worker readiness (PING + XGROUP)", &ok);
-            break :redis_worker_check;
-        };
-        const expected = if (redis_worker_url) |u| redisUsernameFromUrl(u) else null;
-        if (expected) |user| {
-            const actual = client.aclWhoAmI() catch {
-                try appendCheck(alloc, &results, "redis_worker_acl_probe", false, "Redis worker ACL identity probe failed (ACL WHOAMI)", &ok);
-                break :redis_worker_check;
-            };
-            defer alloc.free(actual);
-            if (!std.mem.eql(u8, actual, user)) {
-                try appendCheck(alloc, &results, "redis_worker_acl_mismatch", false, "Redis worker ACL user mismatch expected URL user", &ok);
-                break :redis_worker_check;
-            }
-        }
-        log.info(S_DOCTOR_REDIS_CONNECT_OK, .{ .role = S_WORKER });
-        try appendCheck(alloc, &results, "redis_worker_ready_acl", true, "Redis worker readiness + ACL identity", &ok);
     }
 
     {

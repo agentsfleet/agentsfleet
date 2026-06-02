@@ -72,9 +72,7 @@ services:
       GITHUB_APP_PRIVATE_KEY: local-dev-private-key
       # Override DB/Redis to use compose service names instead of localhost.
       DATABASE_URL_API: postgresql://usezombie:usezombie@postgres:5432/usezombiedb?application_name=api&sslmode=disable
-      DATABASE_URL_WORKER: postgresql://usezombie:usezombie@postgres:5432/usezombiedb?application_name=worker&sslmode=disable
       REDIS_URL_API: rediss://:usezombie@redis:6379/api
-      REDIS_URL_WORKER: rediss://:usezombie@redis:6379/worker
       REDIS_TLS_CA_CERT_FILE: /tls/server.crt
       MIGRATE_ON_START: "1"
     depends_on:

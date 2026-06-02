@@ -1,12 +1,13 @@
-//! Two-debit metering for the credit-pool billing model.
+//! Issue-time metering for the credit-pool billing model.
 //!
-//! Each event drains credits twice: a small `receive` charge after the
-//! balance gate passes (work-already-done semantics), and a `stage` charge
-//! before the executor starts. Each debit pairs with a telemetry-row INSERT
-//! inside one transaction. After execution, the stage telemetry row is
-//! updated with the executor's reported token counts and wall_ms — the
-//! debit nanos stay at the conservative pre-execution estimate; later
-//! reconciliation can adjust it if the product needs that.
+//! A `receive` charge drains credits once, after the balance gate passes
+//! (work-already-done semantics), paired with a telemetry-row INSERT inside one
+//! transaction. The `stage` cost is no longer a one-shot estimate taken here:
+//! it is metered incrementally as the run proceeds — the run fee + per-token
+//! delta is charged on every `/renew` and the final slice is settled at report
+//! (see `fleet/renewal.zig` and `fleet/service_report.zig`). So this module
+//! gates + charges receive at issue; the per-event `stage` telemetry row is
+//! created and accumulated by the renewal/settle CTE, not here.
 //!
 //! Replay safety. The telemetry table has UNIQUE (event_id, charge_type) +
 //! ON CONFLICT DO NOTHING; same event id replayed produces zero extra rows.
@@ -16,9 +17,6 @@
 //!
 //! All DB failures are non-fatal: callers receive `.db_error` and the
 //! event loop XACKs the event so it isn't redelivered into the same fault.
-//! Nanos already drained on a partial transaction (receive succeeds, stage
-//! fails) are NOT refunded — receive is "we did the work to evaluate it"
-//! and stays charged on a stage-side exhaust.
 
 const std = @import("std");
 const logging = @import("log");
@@ -44,6 +42,7 @@ pub const PreflightContext = struct {
     zombie_id: []const u8,
     event_id: []const u8,
     posture: tenant_provider.Mode,
+    provider: []const u8,
     model: []const u8,
 };
 
@@ -78,6 +77,7 @@ pub fn balanceCoversEstimate(
     alloc: Allocator,
     tenant_id: []const u8,
     posture: tenant_provider.Mode,
+    provider: []const u8,
     model: []const u8,
     policy: balance_policy.Policy,
 ) bool {
@@ -97,9 +97,13 @@ pub fn balanceCoversEstimate(
 
     const receive = tenant_billing.computeReceiveCharge(posture);
     const stage = tenant_billing.computeStageCharge(
+        provider,
         posture,
         model,
+        0, // elapsed_ms: zero at lease issue — this gate sizes the token-estimate
+        // floor only; the run fee accrues per renewal once the agent is running.
         tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
+        0,
         tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
     );
     return billing.balance_nanos >= (receive + stage);
@@ -119,34 +123,12 @@ pub fn debitReceive(
     return debitAndInsert(pool, alloc, tenant_id, ctx, .receive, nanos, policy);
 }
 
-/// Charge `computeStageCharge(posture, model, FLOOR_INPUT, FLOOR_OUTPUT)`
-/// and INSERT a `stage` telemetry row with NULL token counts and wall_ms.
-/// The conservative estimate is the charge — `recordStageActuals` later
-/// only updates the token/wall fields, never the debited nanos.
-pub fn debitStage(
-    pool: *pg.Pool,
-    alloc: Allocator,
-    tenant_id: []const u8,
-    ctx: PreflightContext,
-    policy: balance_policy.Policy,
-) DebitOutcome {
-    const nanos = tenant_billing.computeStageCharge(
-        ctx.posture,
-        ctx.model,
-        tenant_billing.ESTIMATE_FLOOR_INPUT_TOKENS,
-        tenant_billing.ESTIMATE_FLOOR_OUTPUT_TOKENS,
-    );
-    return debitAndInsert(pool, alloc, tenant_id, ctx, .stage, nanos, policy);
-}
-
-/// Post-execution: UPDATE the stage telemetry row's token counts and
-/// wall_ms with the executor's actual reported values. Build the OTel
-/// span here from the same (zombie_id, workspace_id, tenant_id, event_id,
-/// token_count) tuple recorded into the telemetry rows. Fire-and-forget;
-/// any DB failure logs and continues so the event loop reaches XACK.
-pub fn recordStageActuals(
-    pool: *pg.Pool,
-    alloc: Allocator,
+/// Emit the `zombie.delivery` OTel span for a finished run, from the same
+/// (zombie_id, workspace_id, tenant_id, event_id, token_count) tuple the
+/// telemetry rows carry. The stage row's nanos + token counts are owned by the
+/// renewal/settle CTE now (accumulated per slice), so this records no DB row —
+/// it is observability only. Fire-and-forget; a non-positive epoch is skipped.
+pub fn emitDeliverySpan(
     tenant_id: []const u8,
     ctx: PreflightContext,
     token_count_input: u64,
@@ -154,23 +136,10 @@ pub fn recordStageActuals(
     wall_ms: u64,
     epoch_wall_time_ms: i64,
 ) void {
-    _ = alloc;
     if (epoch_wall_time_ms <= 0) {
-        log.warn("skip_actuals", .{ .reason = "non_positive_epoch", .zombie_id = ctx.zombie_id });
+        log.warn("skip_delivery_span", .{ .reason = "non_positive_epoch", .zombie_id = ctx.zombie_id });
         return;
     }
-    const conn = pool.acquire() catch |err| {
-        log.warn("actuals_acquire_fail", .{ .zombie_id = ctx.zombie_id, .err = @errorName(err) });
-        return;
-    };
-    defer pool.release(conn);
-
-    const in_capped: i64 = @intCast(@min(token_count_input, @as(u64, @intCast(std.math.maxInt(i64)))));
-    const out_capped: i64 = @intCast(@min(token_count_output, @as(u64, @intCast(std.math.maxInt(i64)))));
-    const wall_capped: i64 = @intCast(@min(wall_ms, @as(u64, @intCast(std.math.maxInt(i64)))));
-    zombie_telemetry_store.updateStageTokens(conn, ctx.event_id, in_capped, out_capped, wall_capped) catch |err| {
-        log.warn("stage_update_fail", .{ .zombie_id = ctx.zombie_id, .event_id = ctx.event_id, .err = @errorName(err) });
-    };
 
     const total_tokens: u64 = token_count_input + token_count_output;
     const start_ns: u64 = @as(u64, @intCast(epoch_wall_time_ms)) * 1_000_000;

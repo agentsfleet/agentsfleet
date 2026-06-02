@@ -39,6 +39,9 @@ pub const Route = union(enum) {
     get_tenant_billing,
     // Tenant-scoped credit-pool charges (Usage tab) — GET /v1/tenants/me/billing/charges
     get_tenant_billing_charges,
+    // Per-renewal slice breakdown behind one charge — carries {event_id}.
+    // GET /v1/tenants/me/billing/charges/{event_id}/metering-periods
+    get_tenant_metering_periods: []const u8,
     // Tenant-scoped workspace list — GET /v1/tenants/me/workspaces
     list_tenant_workspaces,
     // Tenant-scoped LLM provider config — GET/PUT/DELETE /v1/tenants/me/provider
@@ -151,6 +154,9 @@ fn matchV1(p: matchers.Path, method: httpz.Method) ?Route {
     if (matchers.matchRunnerLeaseActivity(p)) |lease_id| return .{ .runner_activity = lease_id };
     if (matchers.matchRunnerLeaseRenew(p)) |lease_id| return .{ .runner_renew = lease_id };
 
+    // ── Tenant billing: per-charge metering-period drill-down ─────────────
+    if (matchers.matchTenantMeteringPeriods(p)) |event_id| return .{ .get_tenant_metering_periods = event_id };
+
     // ── Auth sessions (deepest shape first) ───────────────────────────────
     // Approve / verify carry the {action} suffix; check before the bare
     // {id} matcher.
@@ -218,6 +224,18 @@ test "match resolves tenant billing route" {
 
 test "match resolves tenant billing charges route" {
     try std.testing.expectEqualDeep(Route.get_tenant_billing_charges, match("/v1/tenants/me/billing/charges", .GET).?);
+}
+
+test "match resolves per-charge metering-periods route (carries event_id)" {
+    try std.testing.expectEqualStrings(
+        "evt_42",
+        switch (match("/v1/tenants/me/billing/charges/evt_42/metering-periods", .GET).?) {
+            .get_tenant_metering_periods => |event_id| event_id,
+            else => return error.TestExpectedEqual,
+        },
+    );
+    // The bare charges collection must NOT match the periods route.
+    try std.testing.expect(match("/v1/tenants/me/billing/charges/evt_42", .GET) == null);
 }
 
 test "match rejects removed workspace billing routes (pre-v2.0 404s)" {

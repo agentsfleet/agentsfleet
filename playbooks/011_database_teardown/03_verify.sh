@@ -69,7 +69,7 @@ ORDER BY table_name;
 \echo '--- 4. APP ROLES (these persist, not schema objects) ---'
 SELECT rolname
 FROM pg_roles
-WHERE rolname IN ('api_runtime', 'worker_runtime', 'db_migrator', 
+WHERE rolname IN ('api_runtime', 'db_migrator',
                   'memory_runtime', 'ops_readonly_human', 'ops_readonly_agent')
 ORDER BY rolname;
 
@@ -109,7 +109,7 @@ WHERE table_schema NOT IN ('pg_catalog', 'information_schema', 'pg_toast', 'publ
 UNION ALL
 SELECT 'App roles: ' || COUNT(*)::text
 FROM pg_roles
-WHERE rolname IN ('api_runtime', 'worker_runtime', 'db_migrator', 
+WHERE rolname IN ('api_runtime', 'db_migrator',
                   'memory_runtime', 'ops_readonly_human', 'ops_readonly_agent')
 UNION ALL
 SELECT 'User functions: ' || COUNT(*)::text

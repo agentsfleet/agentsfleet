@@ -105,10 +105,8 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           FLY_API_TOKEN: op://${{ vars.VAULT_DEV }}/fly-api-token/credential
           DATABASE_URL_API: op://${{ vars.VAULT_DEV }}/planetscale-dev/api-connection-string
-          DATABASE_URL_WORKER: op://${{ vars.VAULT_DEV }}/planetscale-dev/worker-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_DEV }}/planetscale-dev/migrator-connection-string
           REDIS_URL_API: op://${{ vars.VAULT_DEV }}/upstash-dev/api-url
-          REDIS_URL_WORKER: op://${{ vars.VAULT_DEV }}/upstash-dev/worker-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           AUDIT_LOG_PEPPER: op://${{ vars.VAULT_DEV }}/audit-log-pepper/credential
@@ -131,10 +129,8 @@ jobs:
           flyctl secrets set \
             LOG_LEVEL="debug" \
             DATABASE_URL_API="$DATABASE_URL_API" \
-            DATABASE_URL_WORKER="$DATABASE_URL_WORKER" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             REDIS_URL_API="$REDIS_URL_API" \
-            REDIS_URL_WORKER="$REDIS_URL_WORKER" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
             AUDIT_LOG_PEPPER="$AUDIT_LOG_PEPPER" \
@@ -212,7 +208,7 @@ jobs:
           tags: tag:ci
 
       - name: Verify worker host readiness
-        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/006_worker_bootstrap_dev/03_deploy_readiness.sh
+        run: VAULT_DEV="${{ vars.VAULT_DEV }}" ./playbooks/006_runner_bootstrap_dev/03_deploy_readiness.sh
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
 
@@ -254,7 +250,7 @@ jobs:
           # NOTE: the runner needs three vars in /etc/default/zombie-runner:
           #   ZOMBIE_API_URL, ZOMBIE_RUNNER_TOKEN (a pre-minted zrn_; Option B),
           #   RUNNER_HOST_ID
-          # — provisioned per host by playbooks/006_worker_bootstrap_dev/
+          # — provisioned per host by playbooks/006_runner_bootstrap_dev/
           # 04_provision_runner_env.sh; this job stays gated off
           # (DEV_WORKER_READY) until the placeholder zrn_ in vault has been
           # swapped for a real admin-minted token and the runner is verified

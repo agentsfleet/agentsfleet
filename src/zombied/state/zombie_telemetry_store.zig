@@ -76,11 +76,10 @@ pub const InsertTelemetryParams = struct {
     posture: tenant_provider.Mode,
     model: []const u8,
     credit_deducted_nanos: i64,
-    /// NULL on receive rows; set on stage rows post-execution via updateStageTokens.
+    /// NULL on receive rows; accumulated on the stage row per slice by the
+    /// renewal/settle CTE's upsert (`+= Δ` per renewal, ms-precision).
     token_count_input: ?i64 = null,
-    /// NULL on receive rows; set on stage rows post-execution via updateStageTokens.
     token_count_output: ?i64 = null,
-    /// NULL on receive rows; set on stage rows post-execution via updateStageTokens.
     wall_ms: ?i64 = null,
     recorded_at: i64,
 };
@@ -119,25 +118,6 @@ pub fn insertTelemetry(
         params.wall_ms,
         params.recorded_at,
     });
-}
-
-/// Update the stage row for an event with the executor's reported token counts
-/// and wall_ms once startStage returns. Idempotent on (event_id, charge_type=stage).
-pub fn updateStageTokens(
-    conn: *pg.Conn,
-    event_id: []const u8,
-    token_count_input: i64,
-    token_count_output: i64,
-    wall_ms: i64,
-) !void {
-    _ = try conn.exec(
-        \\UPDATE zombie_execution_telemetry
-        \\   SET token_count_input  = $2,
-        \\       token_count_output = $3,
-        \\       wall_ms            = $4
-        \\ WHERE event_id    = $1
-        \\   AND charge_type = 'stage'
-    , .{ event_id, token_count_input, token_count_output, wall_ms });
 }
 
 /// Build an opaque base64url cursor token from the last row of a page.

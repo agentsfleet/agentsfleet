@@ -209,10 +209,8 @@ fly apps create zombied-dev-worker --org <org>
 # Set secrets from vault
 fly secrets set \
   DATABASE_URL_API="$(op read 'op://$VAULT_DEV/planetscale-dev/api-connection-string')" \
-  DATABASE_URL_WORKER="$(op read 'op://$VAULT_DEV/planetscale-dev/worker-connection-string')" \
   DATABASE_URL_MIGRATOR="$(op read 'op://$VAULT_DEV/planetscale-dev/migrator-connection-string')" \
   REDIS_URL_API="$(op read 'op://$VAULT_DEV/upstash-dev/api-url')" \
-  REDIS_URL_WORKER="$(op read 'op://$VAULT_DEV/upstash-dev/worker-url')" \
   ENCRYPTION_MASTER_KEY="$(op read 'op://$VAULT_DEV/encryption-master-key/credential')" \
   GITHUB_APP_ID="$(op read 'op://$VAULT_DEV/github-app/app-id')" \
   GITHUB_APP_PRIVATE_KEY="$(op read 'op://$VAULT_DEV/github-app/private-key')" \

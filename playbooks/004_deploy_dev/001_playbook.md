@@ -62,40 +62,6 @@ Expected DEV pipeline order:
 5. `qa-dev` — Playwright smoke suite against `https://usezombie-app.vercel.app`
 6. `notify` — Discord
 
-### 2.1 Immediate Fix — Fly Crash Loop on Role-Separated DB URL Guard
-
-Symptom in Fly logs:
-
-```text
-fatal: DATABASE_URL_API and DATABASE_URL_WORKER must differ (role separation required)
-or migration release command fails with missing/invalid `DATABASE_URL_MIGRATOR`
-```
-
-Fix:
-
-1. Set different Fly secrets for API vs worker DB URLs on `zombied-dev`:
-
-```bash
-fly secrets set \
-  DATABASE_URL_API='...' \
-  DATABASE_URL_WORKER='...' \
-  DATABASE_URL_MIGRATOR='...' \
-  --app zombied-dev
-```
-
-2. Redeploy:
-
-```bash
-gh workflow run deploy-dev.yml
-```
-
-3. Verify:
-
-```bash
-curl -sf https://api-dev.usezombie.com/healthz
-curl -sf https://api-dev.usezombie.com/readyz | jq -e '.ready == true'
-```
-
 ---
 
 ## 3.0 Runtime Verification
