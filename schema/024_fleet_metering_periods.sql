@@ -33,8 +33,11 @@ CREATE TABLE IF NOT EXISTS fleet.metering_periods (
     CONSTRAINT pk_metering_periods PRIMARY KEY (event_id, slice_seq)
 );
 
--- Per-event drill-down read: GET /v1/.../metering-periods, ordered by slice_seq.
-CREATE INDEX idx_metering_periods_event ON fleet.metering_periods (event_id, slice_seq);
+-- No separate index: pk_metering_periods is a unique B-tree on (event_id,
+-- slice_seq), so it already serves the INSERT conflict check AND the per-event
+-- drill-down read (GET /v1/.../metering-periods, WHERE event_id = $1 ORDER BY
+-- slice_seq). A second index on the same columns would only waste storage and
+-- slow every INSERT.
 
 -- api_runtime: the renew/report path INSERTs a slice; the read endpoint SELECTs.
 GRANT SELECT, INSERT ON fleet.metering_periods TO api_runtime;
