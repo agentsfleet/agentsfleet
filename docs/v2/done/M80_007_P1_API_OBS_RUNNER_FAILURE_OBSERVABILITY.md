@@ -4,11 +4,11 @@
 **Milestone:** M80
 **Workstream:** 007
 **Date:** Jun 01, 2026
-**Status:** PENDING
+**Status:** DONE — §1/§2 shipped via PR #354 (merged); §3 (multi-replica metric correctness) delivered on `feat/m80-007-multi-replica-metrics`. All sections complete.
 **Priority:** P1 — operators are blind to *why* a runner-executed run failed, and to per-runner liveness, across the whole fleet (including NAT'd / untrusted hosts).
 **Categories:** API, OBS
 **Batch:** B1 — independent; no sibling workstream shares its files.
-**Branch:** {feat/m80-007-runner-failure-observability — added at CHORE(open)}
+**Branch:** feat/m80-007-multi-replica-metrics
 **Depends on:** M80_006 (M80_006_P1_API_RUNNER_FLEET_PLANE — adds the `renewal_terminate` `FailureClass` variant + the fleet lease/heartbeat semantics this reads; the wiring works for all variants regardless, but the `renewal_terminate` end-to-end claim only becomes true once M80_006 lands).
 **Provenance:** LLM-drafted (Opus 4.8, Jun 01, 2026) from an eng-reviewed handoff (`HANDOFF_runner_failure_observability.md`); scope decisions are Indy's (Jun 01, 2026).
 
@@ -92,7 +92,10 @@
 | `src/zombied/http/handlers/runner/lease.zig` (lease grant + the report/release path) | EDIT | inc/dec in-memory `active_leases` for the runner slot (Slice 2). |
 | `src/zombied/observability/metrics_runner.zig` | CREATE | per-`runner_id` slot table: failures, executions, last_seen, active_leases (mirror `metrics_workspace.zig`). |
 | `src/zombied/observability/metrics_render.zig` | EDIT | render the four new families (in-memory). |
-| `docs/architecture/runner_fleet.md` | EDIT | add the metrics-exposition note (Architecture Consult & Update Gate). |
+| `docs/architecture/runner_fleet.md` | EDIT | add the metrics-exposition note + the §3 multi-replica aggregation contract (Architecture Consult & Update Gate). |
+| `deploy/grafana/runner_fleet.json` | CREATE | §3 — runner-fleet dashboard; panels aggregate across replicas (`sum` counters, `min` last_seen, best-effort-labelled `sum` active_leases). No `zombied` code. |
+| `playbooks/009_grafana_observability/03_dashboard.sh` | EDIT | §3 — generalize the import step to loop **every** `deploy/grafana/*.json` (import + verify each against its own uid + panel count) so `runner_fleet.json` is auto-deployed alongside `agent_run_breakdown.json`, not manual-import (Dimension 3.4). |
+| `CHANGELOG.md` | EDIT | §3 — `[Unreleased] → Added`: the four `zombie_runner_*` families + the runner-fleet dashboard (consistent with the existing `agent_run_breakdown.json` entry). |
 
 > Exact handler filenames for heartbeat/lease are confirmed at PLAN by grepping `src/zombied/http/handlers/runner/`; the slot-table key shape is the agent's call against the `metrics_workspace.zig` reference.
 
@@ -134,6 +137,28 @@ Three series derived from zombied's own write paths; no runner or wire change. *
 - **Dimension 2.3** — `zombie_runner_active_leases{runner_id}` inc on lease grant, dec on release/report; a held lease reads 1. **Best-effort** (in-memory): an abandoned lease that expires without a report is not decremented — accepted v1 limitation, see Out of Scope. → Test `test_active_leases_tracks_grant_and_release`
 - **Dimension 2.4** — slot-table overflow past capacity routes to `runner_id="_other"`, never drops or crashes. → Test `test_runner_slot_overflow_routes_to_other`
 
+### §3 — Multi-replica (`zombied` N>1) metric correctness — in-memory, no shared store
+
+> **Reopens M80_007** after §1/§2 shipped via PR #354. Forward-looking: prod runs a **single** `zombied` machine today (`deploy/fly/zombied-prod/fly.toml` — machine count 1, enforced by the release pipeline), so all four series are correct as-is. This slice makes them correct *when the control plane scales out*, keeping everything in-memory — **no shared store, no persistence.** The exact/persistent path (refresher) stays deferred (Out of Scope). Decision: Indy, Jun 01 2026 (Discovery).
+
+**Why N>1 breaks the in-memory model:** a runner's verbs (report / heartbeat / lease grant / release) load-balance across replicas, so each replica holds only the slice of a runner's event stream it happened to serve. Prometheus scrapes each replica as a distinct target and auto-labels every series with `instance`. Correctness is therefore an **aggregation property, not a storage one** — and counters/gauges differ:
+
+| Series | Type | Correct cross-replica query | Exact under N>1 in-memory? |
+|--------|------|------------------------------|----------------------------|
+| `failures_total` | counter | `sum by (runner_id,reason) (zombie_runner_failures_total)` | ✅ exact — additive |
+| `executions_total` | counter | `sum by (runner_id,outcome) (…)` | ✅ exact — additive |
+| `last_seen_seconds` | gauge | `min by (runner_id) (zombie_runner_last_seen_seconds)` | ✅ exact — most-recent sighting wins; a replica that never saw the runner exposes no series, so `min` ignores it |
+| `active_leases` | gauge | `sum by (runner_id) (zombie_runner_active_leases)` | ⚠️ approximate — `+1` grant and `−1` release can land on different replicas, so the value is meaningful only in aggregate and a single-replica restart can transiently over-count |
+
+**Chosen shape:** deliver multi-replica correctness as **aggregation semantics + visualization**, not new `zombied` code. The write paths and in-memory tables are unchanged from §1/§2; the Prometheus-added `instance` label already separates replicas. No code touches `src/`.
+
+- **Dimension 3.1** — ✅ **DONE** — runner-fleet Grafana dashboard `deploy/grafana/runner_fleet.json` whose panels use the aggregations above (`sum` for counters, `min` for `last_seen`, `sum` for `active_leases`). Verified: JSON parses; every `zombie_runner_*` metric + `runner_id`/`reason`/`outcome` label in the dashboard matches `metrics_runner.zig` verbatim. Live import against a 2-replica stack is an operator acceptance check (no Zig surface to unit-test).
+- **Dimension 3.2** — ✅ **DONE** — `docs/architecture/runner_fleet.md` gains an **Observability** section: the pull (Fly-managed Prometheus scrapes `:9091/metrics`) vs push (OTel logs/traces) split, the four families + in-memory DB-free render, and the N>1 aggregation contract (exact vs approximate, `instance` as the per-replica axis).
+- **Dimension 3.3** — ✅ **DONE** — `active_leases` carries an explicit N>1 caveat: the dashboard panel is titled + described best-effort, the spec Failure Modes has a multi-replica torn inc/dec row, and `runner_fleet.md` names the deferred lease-table refresher as the exact fix.
+- **Dimension 3.4** — ✅ **DONE** — the 009 grafana-observability playbook auto-deploys the dashboard: `03_dashboard.sh` now loops every `deploy/grafana/*.json` (import + verify each against its own `uid` + declared panel count) instead of the single hardcoded `agent_run_breakdown.json`, so `runner_fleet.json` is provisioned at priming rather than imported by hand. → Verify: `bash -n` clean; both dashboards' uids (`zombie-run-breakdown`, `zombie-runner-fleet`) covered by the glob. *(Added during CHORE(close) per Indy's "fix both now" review decision — closes the review's playbook-wiring warning.)*
+
+**Why `active_leases` cannot be exact in-memory:** the `+1`/`−1` is a distributed inc/dec with no routing affinity (stateless LB) and no shared counter, so no per-replica view is individually meaningful and `sum` is fragile across restarts. The only exact source is the durable lease table (`fleet.runner_leases`, from M80_006), read by the deferred refresher. **Reading that table to derive a gauge is not "metrics in Postgres"** — the timeseries still lives only in Prometheus; the refresher reads current operational truth off the scrape path. Indy's "no DB for metrics" principle and the eventual exact fix are the *same design, staged* (Discovery, Jun 01 2026).
+
 ---
 
 ## Interfaces
@@ -169,6 +194,7 @@ Backward-compat contract: the field is optional; old runner ⇒ omitted ⇒ `rea
 | `zombied` restart | process bounce | counters reset (Prometheus-counter semantics handle it); `last_seen` absent until next heartbeat; `active_leases` rebuilds from lease events — self-heal within one cycle. |
 | **Abandoned lease (runner dies/goes dark)** | lease expires by the clock (`lease_expires_at`) with no report — there is no release event | **known limitation of the in-memory approach:** in-memory `active_leases` is only decremented on an explicit report/release, so an abandoned lease leaves the gauge stuck high for that `runner_id`. `active_leases` is therefore **best-effort** until the refresher improvement lands (see Out of Scope). The other three series are unaffected. |
 | Report persists label but counter inc races | ordering | persistence is the source of truth; the counter is best-effort telemetry — never block the report on a counter update. |
+| **Multi-replica `zombied` (N>1)** | a runner's verbs load-balance across replicas; each replica holds only its slice of the event stream | counters + `last_seen` are exact under the §3 aggregation (`sum` / `min by (runner_id)`); `active_leases` is **approximate** because the `+1` grant and `−1` release can land on different replicas (`sum`-correct in aggregate, fragile across a single-replica restart). Exact `active_leases` awaits the deferred refresher (Out of Scope). Prometheus' per-target `instance` label is the per-replica axis. |
 
 ---
 
@@ -247,7 +273,11 @@ N/A — no files deleted. (Additive field + new module; the `zombie_executor_*` 
   - **§1 implemented + verified on `feat/m80-006-fleet-plane`** (commits `529142fb`, `688fd3b7`): contract field + runner threading + `failure_label` persistence + `metrics_runner` counter + tests. Green on lint-zig, all Zig unit lanes, `make test-integration` (DB+Redis), cross-compile both linux targets, gitleaks. `/review` run pre-push — one finding (failure_label/outcome trust-boundary consistency) fixed in `688fd3b7`.
 - **§2 folded in too (Indy, Jun 01 2026):** completed Slice 2 now rather than as a later M80_007 PR, so M80_007 leaves the v2-prod critical path entirely.
   > Indy (2026-06-01): "I want the slice 2 to be completed so i could lower priority on m80_007 for v2 prod move" — context: both slices delivered via #354; M80_007 has no separate PR.
-  - **§2 implemented + verified on `feat/m80-006-fleet-plane`** (commit `3a691be0`): `executions_total{runner_id,outcome}` + `last_seen_seconds{runner_id}` + `active_leases{runner_id}` (all in-memory), hooked on report/heartbeat/lease-grant. Tests split to `metrics_runner_test.zig` (FLL gate). Green on lint-zig, zombied unit, full `make test-integration`, cross-compile both linux targets, gitleaks. **Both slices now ship via #354 → M80_007 implementation complete; spec moves `pending/`→`done/` once #354 merges.**
+  - **§2 implemented + verified on `feat/m80-006-fleet-plane`** (commit `3a691be0`): `executions_total{runner_id,outcome}` + `last_seen_seconds{runner_id}` + `active_leases{runner_id}` (all in-memory), hooked on report/heartbeat/lease-grant. Tests split to `metrics_runner_test.zig` (FLL gate). Green on lint-zig, zombied unit, full `make test-integration`, cross-compile both linux targets, gitleaks. **Both slices shipped via #354 (merged).**
+- **CTO review — multi-replica correctness (Indy + Orly, Jun 01 2026):** §1/§2 shipped, but the in-memory model is only correct under a single `zombied`. Verified prod is single-machine today (`zombied-prod/fly.toml` count 1), so no live bug — but the control plane will scale out. Finding: under N>1, counters (`failures_total`, `executions_total`) are exact via `sum`, `last_seen_seconds` is exact via `min by (runner_id)`, and `active_leases` is only approximate (torn `+1`/`−1` across stateless-LB'd replicas). Decision — **reopen M80_007 with §3** to deliver multi-replica correctness *in-memory* via aggregation semantics (Grafana dashboard + `runner_fleet.md`), zero `zombied` code; the exact/persistent path (lease-table refresher) stays deferred.
+  > Indy (2026-06-01): "start as orly CTO M80_007 inmemory and supporting multi zombied first. I would like to figure out persistent approach later since its not wise to do the db save for metrics where its timeseries." — context: §3 added; persistence/refresher deferred; clarified that the eventual refresher *reads* the durable lease table for the gauge and does **not** write timeseries to Postgres, so it does not violate "no DB for metrics."
+  - **§3 delivered on `feat/m80-007-multi-replica-metrics`** (commits `68f1dfbd` CHORE(open), `d3797469` deliverables): `deploy/grafana/runner_fleet.json` (panels bake in `sum`/`min`/best-effort-`sum` aggregations; `active_leases` panel titled + described approximate under N>1) + `runner_fleet.md` Observability section (pull-vs-push split, four families, in-memory DB-free render + ~0.7 MB fixed footprint, N>1 aggregation contract, deferred refresher). **No `src/` surface** — prod is single-replica today; correctness is delivered as PromQL aggregation + docs. Verified: dashboard JSON parses; every `zombie_runner_*` metric + `runner_id`/`reason`/`outcome` label matches `metrics_runner.zig` verbatim; gitleaks clean; HARNESS VERIFY all gates green. `/write-unit-test` N/A (no code surface); `/review` self-pass on the docs+dashboard diff.
+  - **ID-collision flagged, NOT resolved here:** `runner_fleet.md` Roadmap reserves `M80_007 = SCHEDULER` (placement / trust-gated placement / autoscale), while this spec is M80_007 = runner observability. A renumber/reconcile is Indy's call — left untouched. See [[project_m80_007_id_collision_placement]].
 
 ---
 
@@ -278,7 +308,7 @@ Indy additionally requested an **independent Orly CTO review** of the branch + P
 
 ## Out of Scope
 
-- **Gauge refresher (the correctness improvement for §2 gauges)** — replace in-memory write-path maintenance of `last_seen_seconds` / `active_leases` with a background thread (read-only; reuse the `approval_gate_sweeper.zig` *thread scaffolding* — interval loop + `sleepInterruptible` + shutdown join — but a refresher is read-into-cache, **not** a sweeper, so name it e.g. `runner_metrics_refresher`). It polls Postgres every ~15s for `last_seen_at` and `count(active leases WHERE lease_expires_at > now())`, overwrites an in-memory snapshot, and `/metrics` renders that snapshot — keeping the scrape path DB-free while making `active_leases` correct (no abandoned-lease over-count) and restart-resilient. Deferred per Indy's "in-memory now, improve later" decision (see Discovery).
+- **Gauge refresher — THE DEFERRED PERSISTENT APPROACH (exact `active_leases`, restart-resilient, multi-replica truth).** Replace in-memory write-path maintenance of `last_seen_seconds` / `active_leases` with a background thread (read-only; reuse the `approval_gate_sweeper.zig` *thread scaffolding* — interval loop + `sleepInterruptible` + shutdown join — but a refresher is read-into-cache, **not** a sweeper, so name it e.g. `runner_metrics_refresher`). It polls Postgres every ~15s for `last_seen_at` and `count(active leases WHERE lease_expires_at > now())`, overwrites an in-memory snapshot, and `/metrics` renders that snapshot — keeping the scrape path DB-free while making `active_leases` exact (no abandoned-lease over-count, no torn cross-replica inc/dec) and restart-resilient. **This is not "metrics in Postgres":** it *reads* the already-durable lease table (`fleet.runner_leases`, M80_006) to derive a gauge; the timeseries still lives only in Prometheus — so it satisfies "no DB for metrics timeseries." Deferred per Indy's "figure out persistent approach later" decision (Discovery, Jun 01 2026); §3 makes counters + `last_seen` multi-replica-correct in-memory now, this slice closes `active_leases`.
 - **Slice 2b** — cpu/mem/disk per-runner telemetry + the `HeartbeatRequest` body that carries it (the heartbeat-wire change lands there, not here; premature while there is no runner-only data to carry — NLG).
 - **Slice 3** — cordon/drain + operator admin API → its own operator-plane spec.
 - **Runner `/metrics` endpoint** — trusted-fleet deep telemetry; far future.

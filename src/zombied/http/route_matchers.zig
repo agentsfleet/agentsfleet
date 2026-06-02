@@ -12,6 +12,7 @@
 const std = @import("std");
 const runner_protocol = @import("contract").protocol;
 const webhook = @import("route_matchers_webhook.zig");
+const billing = @import("route_matchers_billing.zig");
 
 const S_APPROVALS = "approvals";
 const S_WORKSPACES = "workspaces";
@@ -121,21 +122,12 @@ pub fn matchAuthSessionVerify(p: Path) ?[]const u8 {
     return matchAuthSessionAction(p, S_VERIFY);
 }
 
-// ── /admin/platform-keys/{provider} ────────────────────────────────────────
-
-pub fn matchAdminPlatformKey(p: Path) ?[]const u8 {
-    if (p.segs.len != 3) return null;
-    if (!p.eq(0, "admin") or !p.eq(1, "platform-keys")) return null;
-    return p.param(2);
-}
-
-// ── /api-keys/{id} ─────────────────────────────────────────────────────────
-
-pub fn matchTenantApiKeyById(p: Path) ?[]const u8 {
-    if (p.segs.len != 2) return null;
-    if (!p.eq(0, "api-keys")) return null;
-    return p.param(1);
-}
+// Tenant + admin billing matchers (/admin/platform-keys, /api-keys,
+// /tenants/me/billing/charges/.../metering-periods) live in
+// route_matchers_billing.zig (RULE FLL). Re-exported so call sites stay unchanged.
+pub const matchAdminPlatformKey = billing.matchAdminPlatformKey;
+pub const matchTenantApiKeyById = billing.matchTenantApiKeyById;
+pub const matchTenantMeteringPeriods = billing.matchTenantMeteringPeriods;
 
 // ── /workspaces/{workspace_id}/{suffix} ────────────────────────────────────
 // suffix ∈ {"zombies", "credentials", "agent-keys", "events", "approvals"}.

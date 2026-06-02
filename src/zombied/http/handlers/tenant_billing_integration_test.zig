@@ -97,6 +97,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         alloc,
         TEST_TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model",
         .stop,
     ));
@@ -119,6 +120,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
             alloc,
             TEST_TENANT_ID,
             .self_managed,
+            "self-managed-test",
             "any-model",
             .stop,
         ));
@@ -130,6 +132,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         alloc,
         TEST_TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model",
         .warn,
     ));
@@ -138,6 +141,7 @@ test "integration: balanceCoversEstimate honours policy and tenant balance" {
         alloc,
         TEST_TENANT_ID,
         .self_managed,
+        "self-managed-test",
         "any-model",
         .@"continue",
     ));

@@ -60,11 +60,12 @@ fn seedActiveLease(conn: *pg.Conn, lease_expires_at: i64) !void {
     _ = try conn.exec(
         \\INSERT INTO fleet.runner_leases
         \\  (id, runner_id, zombie_id, workspace_id, tenant_id, event_id, actor,
-        \\   event_type, request_json, event_created_at, posture, model,
+        \\   event_type, request_json, event_created_at, posture, provider, model,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
         \\   fencing_token, lease_expires_at, status, created_at, updated_at)
         \\VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5::uuid, 'evt-renew-credit-1',
         \\        'steer:test', 'chat', '{"message":"hi"}', 0, 'platform',
-        \\        'test-model', 1, $6, 'active', 0, 0)
+        \\        'test-provider', 'test-model', 0, 0, 0, 0, 1, $6, 'active', 0, 0)
         \\ON CONFLICT (id) DO NOTHING
     , .{ LEASE_ID, RUNNER_ID, ZOMBIE_ID, WORKSPACE_ID, base.TEST_TENANT_ID, lease_expires_at });
 }

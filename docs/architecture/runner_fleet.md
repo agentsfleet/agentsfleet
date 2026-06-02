@@ -76,7 +76,7 @@ The fleet borrows Kubernetes / Nomad / Temporal **semantics** — leases, fencin
 - **Not a general scheduler.** Placement is capped at *sticky + any-eligible*. Label / capacity / sandbox-tier placement is M80_007, full stop.
 - **No autoscale.** Runners scale by operators adding hosts, not by the platform reacting to queue depth.
 - **No fairness engine.** No per-tenant weighting, no priority lanes, no preemption.
-- **No arbitrary workload types.** One workload: a NullClaw stage from a leased `ExecutionPolicy`.
+- **No arbitrary workload types.** One workload: a NullClaw run from a leased `ExecutionPolicy`.
 
 Without this fence the design rediscovers three control planes at once (Nomad-lite + Temporal-lite + Kubernetes-lite), each demanding its own observability, reconciliation, and high-availability story. The distributed-systems core here is sound; the risk is scope, not correctness. If the platform ever needs a true control plane, that is a larger upfront conversation (inventory / reconciliation / high-availability / placement fairness) — surface it, don't drift into it.
 
@@ -218,21 +218,21 @@ zombie-runner parent (child_supervisor.zig): establish the cgroup, fork, exec se
 report → zombied: persist terminal state + telemetry + checkpoint, then XACK
 ```
 
-The executor's TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a stage, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `zombied` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
+The executor's TOCTOU (Time-Of-Check-To-Time-Of-Use) guards — lease re-check before a run, orphan reaping, idempotent destroy — moved inside the runner as parent↔child supervision: the parent reaps orphan-safe, kills the cgroup tree on a deadline overrun, and `destroy()`s idempotently. The durable lease guard lives in `zombied` via `lease_expires_at` + `fencing_token` (see **Reclaim** below). The fork model is **fork-then-exec-self under bwrap**: bwrap owns the unprivileged user/network-namespace dance (raw `unshare` needs privilege) and gives the child a clean address space.
 
-### Multi-stage events
+### Multi-run events
 
-A *stage* is one NullClaw run inside one language-model context window. When a single event needs more reasoning than one window holds, NullClaw stops at `stage_chunk_threshold` (0.75 of the context cap), checkpoints, and signals "resume me." `zombied` enqueues a **continuation event** chained by `resumes_event_id`, and the next lease resumes from the checkpoint in a fresh window. One lease = one stage.
+A *run* is one NullClaw execution inside one language-model context window. When a single event needs more reasoning than one window holds, NullClaw stops at `stage_chunk_threshold` (0.75 of the context cap), checkpoints, and signals "resume me." `zombied` enqueues a **continuation event** chained by `resumes_event_id`, and the next lease resumes from the checkpoint in a fresh window. One lease = one run.
 
 ```
-trigger event E0 ─► STAGE 1 (lease, checkpoint=∅) ─► NullClaw hits 0.75 cap ─► report{continue, C1}
-                                                            │ zombied persists checkpoint C1,
-                                                            │ enqueues continuation (resumes_event_id=E0)
-                ─► STAGE 2 (lease, checkpoint=C1) ─► … ─► report{continue, C2}
-                ─► STAGE 3 (lease, checkpoint=C2) ─► NullClaw finishes ─► report{processed}
+trigger event E0 ─► RUN 1 (lease, checkpoint=∅) ─► NullClaw hits 0.75 cap ─► report{continue, C1}
+                                                          │ zombied persists checkpoint C1,
+                                                          │ enqueues continuation (resumes_event_id=E0)
+                ─► RUN 2 (lease, checkpoint=C1) ─► … ─► report{continue, C2}
+                ─► RUN 3 (lease, checkpoint=C2) ─► NullClaw finishes ─► report{processed}
 ```
 
-Durable state across stages is the checkpoint in `zombied`, never runner-local — which is why a different runner can pick up stage 2. A chain hard-stops at 10 continuations (escalates to a human). Sticky routing (below) prefers the runner that ran the previous stage, but correctness never depends on it.
+Durable state across runs is the checkpoint in `zombied`, never runner-local — which is why a different runner can pick up run 2. A chain hard-stops at 10 continuations (escalates to a human). Sticky routing (below) prefers the runner that ran the previous run, but correctness never depends on it.
 
 ## Live activity (the SSE tail)
 
@@ -248,7 +248,7 @@ Two planes, kept apart on purpose: **activity** is ephemeral and best-effort (a 
 
 All three are decided by `zombied`, which owns both `core.zombies.status` and lease issuance. A runner learns of an in-flight change on its next `heartbeat`, so cancel latency is bounded by the heartbeat interval.
 
-- **Steer** — a human message. `zombied` enqueues a `steer` event; it is leased like any other. The current stage finishes first; the steer runs next. Not an interrupt.
+- **Steer** — a human message. `zombied` enqueues a `steer` event; it is leased like any other. The current run finishes first; the steer runs next. Not an interrupt.
 - **Pause** — `zombied` sets `status=paused` and stops issuing leases for the zombie. Any in-flight lease runs to completion.
 - **Kill** — `zombied` sets `status=killed` and marks the in-flight lease revoked. The runner sees the revocation in its next heartbeat reply, kills the sandboxed child, and reports `cancelled`. A late report from a killed runner is rejected by the fencing token.
 
@@ -264,17 +264,17 @@ A later, opt-in **warm** mode keeps the sandbox shell alive across leases for th
 
 A zombie's config (model, tool allowlist, network policy, context budget, gate rules, trigger settings, secret references) is parsed from `TRIGGER.md` frontmatter into `core.zombies.config_json`. A `PATCH /v1/workspaces/{ws}/zombies/{id}` updates it — including reparsing `trigger_markdown` to add a tool.
 
-`zombied` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling. There is no in-memory config cache and no `zombie_config_changed` consumer to wait on — the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight; the next stage picks it up.
+`zombied` resolves config fresh from Postgres on every `lease`, so config changes take effect on the **next command** (the next lease) with no signaling. There is no in-memory config cache and no `zombie_config_changed` consumer to wait on — the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight; the next run picks it up.
 
 ## Money gates
 
 The credit-pool billing model debits twice per event, and both debits live on `zombied`'s lease path — the runner never touches billing.
 
-- At **lease issue**, before handing work to a runner: the balance gate (does the tenant cover the receive + stage estimate?), then the `receive` debit (flat, posture-based), then the approval gate, then the `stage` debit (a conservative estimate at floor tokens). Any gate failure means no lease is issued.
-- At **report**: reconcile the stage telemetry row to the actual token counts. The charged amount stays at the pre-execution estimate — report updates telemetry, it does not re-charge.
-- At **renewal** (M80_006 `/renew`): the same balance gate re-runs as a **coverage check only** — no debit, no telemetry row. A live child's renewal is refused with `UZ-RUN-012` when the tenant can no longer cover the run; the child is killed and the lease ends at its current deadline, never extended. In M80_006 a renewed lease is **not** re-billed — the stage charge at lease issue covers the whole run however many renewals extend it (M80_010 later moves the stage debit onto these ticks as a per-slice Δ-debit). The gate's exhaustion policy is resolved **once at startup** and carried on the request `Context` (`ctx.balance_policy`), shared by the lease and renewal paths — not re-read from the environment per request.
+- At **lease issue**, before handing work to a runner: the balance gate (does the tenant cover the receive + run estimate?), then the `receive` debit (flat, posture-based), then the approval gate, then the `run` debit (a conservative estimate at floor tokens). Any gate failure means no lease is issued.
+- At **report**: reconcile the run's telemetry row to the actual token counts. The charged amount stays at the pre-execution estimate — report updates telemetry, it does not re-charge.
+- At **renewal** (M80_006 `/renew`): the same balance gate re-runs as a **coverage check only** — no debit, no telemetry row. A live child's renewal is refused with `UZ-RUN-012` when the tenant can no longer cover the run; the child is killed and the lease ends at its current deadline, never extended. In M80_006 a renewed lease is **not** re-billed — the run charge at lease issue covers the whole run however many renewals extend it (M80_010 later moves the run debit onto these ticks as a per-slice Δ-debit). The gate's exhaustion policy is resolved **once at startup** and carried on the request `Context` (`ctx.balance_policy`), shared by the lease and renewal paths — not re-read from the environment per request.
 
-Receive credits are not refunded if the stage later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `zombied`'s lease/report path. **Metering never stops, but the gate only bites post-trial:** while the free-trial window is open the stage charge is `0`, so neither the lease gate nor the renewal gate can refuse any tenant — the `UZ-RUN-012` path is unreachable until `FREE_TRIAL_END_MS` passes (mechanism + the metering-vs-revenue split in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-promotional-windows-free-trial-mechanism)).
+Receive credits are not refunded if the run later exhausts. This mirrors the deleted `metering.zig` exactly; only the caller moved from the worker to `zombied`'s lease/report path. **Metering never stops, but the gate only bites post-trial:** while the free-trial window is open the run charge is `0`, so neither the lease gate nor the renewal gate can refuse any tenant — the `UZ-RUN-012` path is unreachable until `FREE_TRIAL_END_MS` passes (mechanism + the metering-vs-revenue split in [`billing_and_provider_keys.md` §2.3](./billing_and_provider_keys.md#23-promotional-windows-free-trial-mechanism)).
 
 ## Redis topology — what changed
 
@@ -305,6 +305,52 @@ On a Mac, running `zombie-runner` inside a Linux VM (Docker Desktop / OrbStack /
 ## Scaling
 
 The split inverts the binding constraint. The pre-cutover runtime needed N Redis connections for N zombies and the pool ceiling was the wall. After the split, runners hold zero datastore connections; the bottleneck becomes `zombied` API replicas + Postgres writes, both of which scale horizontally. Runners scale out with no coordination — the operator enrolls a host with a pre-minted `zrn_`, and it pulls. The one piece needing care at multi-replica scale is placement (assignment / scheduler), which is the M80_006/007 concern; the hot path (lease / report) is shardable. See [`scaling.md`](./scaling.md) for the re-derived connection math.
+
+## Observability — runner metrics on `zombied` `/metrics`
+
+The fleet is observed **without any inbound reach into runners.** A runner may sit behind NAT, on an untrusted or customer host — the most failure-prone tier and exactly the one a scraper cannot reach. So per-runner signal rides **outbound** on the verbs the runner already calls (`report`, `heartbeat`, `lease` grant/release); `zombied` accumulates it and exposes it on its own `/metrics`. `zombied` is the only scrape target; the per-runner drill-down is a `runner_id` label.
+
+Two telemetry planes, opposite directions — do not conflate them:
+
+```
+   METRICS  (PULL)                              LOGS / TRACES  (PUSH)
+   ──────────────                               ─────────────────────
+   zombied :9091 /metrics   ◄── scraped by      zombied  ──push OTLP──►  Grafana Cloud
+   in-memory render, DB-free     Fly.io's        otel_logs.zig /          Loki (logs)
+   ([[metrics]] in fly.toml)     MANAGED          otel_traces.zig          Tempo (traces)
+                                 PROMETHEUS
+                                 (we run no
+                                  collector)
+```
+
+The scraper is **Fly.io's platform-managed Prometheus** — the four-line `[[metrics]]` block in `deploy/fly/zombied-prod/fly.toml` is the entire scrape config; there is no Grafana Agent / Alloy / Vector / OTel-collector for metrics. Fly pulls `:9091/metrics` off each machine over the private 6PN network; the endpoint is not publicly routable (no `[http_service]`; inbound is Cloudflare-Tunnel-only). Grafana reads Fly's Prometheus as a datasource — it scrapes nothing itself.
+
+### The four per-runner families
+
+```
+zombie_runner_failures_total{runner_id,reason}     counter   reason ∈ FailureClass ∪ {unknown}
+zombie_runner_executions_total{runner_id,outcome}  counter   outcome ∈ {processed, agent_error}
+zombie_runner_last_seen_seconds{runner_id}         gauge     render-time delta from last report/heartbeat
+zombie_runner_active_leases{runner_id}             gauge     +1 on grant, −1 on release/report
+```
+
+All four live in a process-global, allocator-free, fixed-capacity (4096-slot) hash table keyed on `runner_id` (`src/zombied/observability/metrics_runner.zig`, mirroring `metrics_workspace.zig`). The render path reads only that in-memory snapshot — **zero Postgres on the scrape path**, so `/metrics` stays healthy exactly when the database is not. Cardinality is capped: the 4097th distinct `runner_id` routes to `runner_id="_other"` (counters preserved). Footprint is therefore constant (~0.7 MB) regardless of fleet size or uptime; a `zombied` restart zeroes the table (Prometheus counter-reset semantics absorb it; gauges self-heal within one heartbeat/lease cycle).
+
+### Multi-replica (`zombied` N>1) — correctness is an *aggregation* property
+
+Prod runs a single `zombied` machine today, so the in-memory values are correct as-is. When the control plane scales out, a runner's verbs load-balance across replicas, so each replica holds only the slice of that runner's event stream it served. Fly's Prometheus scrapes each replica as a **distinct target** and stamps every series with that machine's `instance` label — so fleet-wide truth is reconstructed by the query, not by shared state:
+
+| Series | Cross-replica query | Exact under N>1? |
+|--------|---------------------|------------------|
+| `failures_total`, `executions_total` | `sum by (runner_id, …)` | ✅ exact — counters are additive; per-replica slices are disjoint |
+| `last_seen_seconds` | `min by (runner_id)` | ✅ exact — the most-recent sighting wins; a replica that never saw the runner exposes no series, so `min` ignores it |
+| `active_leases` | `sum by (runner_id)` | ⚠️ approximate — the `+1` grant and `−1` release can land on different replicas, so the value is meaningful only in aggregate and a single-replica restart can transiently skew it |
+
+`active_leases` is the one series that cannot be made exact purely in-memory: it is a distributed inc/dec with no routing affinity and no shared counter. Its exact source is the durable lease table (`fleet.runner_leases` — `lease_expires_at` + the held set), which is read by the **deferred metrics refresher** below. The dashboard (`deploy/grafana/runner_fleet.json`) encodes these queries and labels the `active_leases` panel best-effort under N>1.
+
+### The deferred refresher — exact gauges without metrics-in-the-DB
+
+The exact and restart-resilient form of the two gauges is a read-only background thread on each replica that, on a timer (~15 s), queries Postgres for `last_seen_at` and the live lease count (`count(*) WHERE lease_expires_at > now()`), overwrites an in-memory snapshot, and lets `/metrics` render that snapshot. This keeps the scrape path DB-free while giving every replica identical, exact values and closing the abandoned-lease over-count. It is **not "metrics in Postgres"**: it *reads* already-durable operational state to derive a gauge — the timeseries still lives only in Prometheus. Deferred (in-memory aggregation is correct enough for the single-replica present); it is the persistent answer for a scaled-out future.
 
 ## What does not change
 

@@ -184,7 +184,7 @@ Later, other entrypoints exist (the dashboard chat widget, direct API calls). Bu
 
 ## §8.7 Model and context-cap origin (platform vs. self-managed)
 
-Two things travel together: the **model** the runner's agent invokes, and the **`context_cap_tokens`** L3 stage chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
+Two things travel together: the **model** the runner's agent invokes, and the **`context_cap_tokens`** L3 run chunking uses. They originate from different places under platform-managed and self-managed postures, and the control plane's overlay logic is what reconciles them at lease time.
 
 The install-skill's job in both postures is the same shape: **call `zombiectl doctor --json` (auth-gated), read the `tenant_provider` block from doctor's response, branch on `mode`, write resolved-or-sentinel into frontmatter.** Doctor is the only sanctioned readiness check — it verifies the auth token is present, the CLI is bound to a tenant + workspace, and (extended in M48) returns the active provider posture. If `auth_token_present=false` the skill prints the `zombiectl auth login` hint and stops; the `tenant_provider` block is only meaningful once auth passes. The skill never calls the model-caps endpoint directly — doctor's block always carries resolved values (synth-default for tenants with no row, real values for tenants with an explicit row).
 
@@ -225,7 +225,7 @@ createExecution → context_cap_tokens=256000               → context_cap_toke
                   model=accounts/fireworks/models/kimi-k2.6                   model=accounts/.../kimi-k2.6
                   api_key=<from admin workspace vault>                   api_key=<fw_LIVE_…>
 
-L3 stage chunking
+L3 run chunking
                 → threshold = 0.75 × 200000               → threshold = 0.75 × 256000
 ```
 

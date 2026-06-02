@@ -12,14 +12,13 @@ const ALLOC = std.testing.allocator;
 // Mirror this with ui/packages/website/src/lib/rates.test.ts. Bumping a
 // rate fails both suites and forces a conscious cross-stack update.
 //
-// Cross-tier role names (RULE CTM): STARTER_CREDIT_NANOS, EVENT_NANOS,
-// STAGE_PLATFORM_NANOS, STAGE_SELF_MANAGED_NANOS — identical across Zig + TS.
+// Cross-tier role names: STARTER_CREDIT_NANOS, EVENT_NANOS, RUN_NANOS_PER_SEC
+// — identical across Zig + TS, pinned by scripts/audit-cross-tier-rates.sh.
 
-test "rates pinned: $5 starter · events free · stages $0.001 platform / $0.0001 self_managed (in nanos)" {
+test "rates pinned: $5 starter · events free · runtime $0.0001/sec (in nanos)" {
     try std.testing.expectEqual(@as(i64, 5_000_000_000), tenant_billing.STARTER_CREDIT_NANOS);
     try std.testing.expectEqual(@as(i64, 0), tenant_billing.EVENT_NANOS);
-    try std.testing.expectEqual(@as(i64, 1_000_000), tenant_billing.STAGE_PLATFORM_NANOS);
-    try std.testing.expectEqual(@as(i64, 100_000), tenant_billing.STAGE_SELF_MANAGED_NANOS);
+    try std.testing.expectEqual(@as(i64, 100_000), tenant_billing.RUN_NANOS_PER_SEC);
 }
 
 // ── Credit-pool cost functions ──────────────────────────────────────────────
@@ -65,8 +64,8 @@ test "debit decrements atomically; 0-row UPDATE returns CreditExhausted" {
 
     try tenant_billing.insertStarterGrant(db_ctx.conn, uc1.TENANT_ID);
 
-    // Debit 1 platform stage charge ($0.001 = 1M nanos).
-    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, tenant_billing.STAGE_PLATFORM_NANOS);
+    // Debit a sample charge of 1M nanos ($0.001) and check the balance lands.
+    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 1_000_000);
     try std.testing.expectEqual(@as(i64, 5_000_000_000 - 1_000_000), after.balance_nanos);
 
     // Exhaust: try to debit more than remaining (well above current balance).
@@ -136,7 +135,7 @@ test "debit on an exhausted row auto-clears balance_exhausted_at on success" {
 
     // Simulate a top-up path: the next successful debit must clear the
     // exhausted flag so the `stop` gate re-opens atomically.
-    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, tenant_billing.STAGE_PLATFORM_NANOS);
+    const after = try tenant_billing.debit(db_ctx.conn, uc1.TENANT_ID, 1_000_000);
     try std.testing.expectEqual(@as(i64, 5_000_000_000 - 1_000_000), after.balance_nanos);
 
     const row = (try tenant_billing.getBilling(db_ctx.conn, ALLOC, uc1.TENANT_ID)).?;

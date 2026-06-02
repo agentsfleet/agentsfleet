@@ -40,21 +40,22 @@ describe("Pricing component", () => {
     expect(banner).toHaveTextContent(/Free until July 31, 2026/);
   });
 
-  it("renders a simple three-row rate table (event, stage, model tokens)", () => {
+  it("renders a simple three-row rate table (event, runtime, model tokens)", () => {
     renderPricing();
     const table = screen.getByTestId("pricing-rate-table");
     expect(table.tagName).toBe("DL");
     expect(table).toHaveTextContent(/Event receipt/i);
-    expect(table).toHaveTextContent(/Reasoning stage/i);
+    expect(table).toHaveTextContent(/Active runtime/i);
     expect(table).toHaveTextContent(/Model tokens/i);
   });
 
-  it("keeps the platform-vs-own-key gradient framing, without struck-through rates", () => {
+  it("frames runtime as usage-based per-second, same rate both postures, no struck-through rates", () => {
     const { container } = renderPricing();
     const table = screen.getByTestId("pricing-rate-table");
-    expect(table).toHaveTextContent(/platform/i);
-    expect(table).toHaveTextContent(/on your own key/i);
-    // Option B drops the struck-through dual-rate presentation entirely.
+    expect(table).toHaveTextContent(/active runtime/i);
+    expect(table).toHaveTextContent(/only while a zombie is running/i);
+    expect(table).toHaveTextContent(/platform or your own key/i);
+    // No struck-through dual-rate presentation.
     expect(container.querySelector("s")).toBeNull();
   });
 
@@ -63,11 +64,11 @@ describe("Pricing component", () => {
     expect(screen.getByTestId("pricing-rate-event")).toHaveTextContent(
       RATES_DISPLAY.EVENT_RATE,
     );
-    expect(screen.getByTestId("pricing-rate-stage-platform")).toHaveTextContent(
-      RATES_DISPLAY.STAGE_PLATFORM,
+    expect(screen.getByTestId("pricing-rate-run")).toHaveTextContent(
+      RATES_DISPLAY.RUN_RATE_PER_SEC,
     );
-    expect(screen.getByTestId("pricing-rate-stage-self-managed")).toHaveTextContent(
-      RATES_DISPLAY.STAGE_SELF_MANAGED,
+    expect(screen.getByTestId("pricing-rate-run-hourly")).toHaveTextContent(
+      RATES_DISPLAY.RUN_RATE_PER_HOUR,
     );
   });
 
@@ -86,11 +87,12 @@ describe("Pricing component", () => {
     expect(screen.queryByText(/provisioned per workspace/i)).not.toBeInTheDocument();
   });
 
-  it("explains what a stage is in plain language", () => {
+  it("explains the usage-based per-second billing in plain language", () => {
     renderPricing();
     const card = screen.getByTestId("pricing-rate-card");
-    expect(card.textContent).toMatch(/stage is one reasoning step/i);
-    expect(card.textContent).toMatch(/most diagnoses resolve in 1.{0,3}5 stages/i);
+    expect(card.textContent).toMatch(/billed by the second/i);
+    expect(card.textContent).toMatch(/only while a zombie is actively working/i);
+    expect(card.textContent).toMatch(/idle time/i);
   });
 
   it("renders the design-partner contact note", () => {

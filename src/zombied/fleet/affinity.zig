@@ -40,6 +40,11 @@ pub const Claim = union(enum) {
 /// `ttl_ms`. Wins iff the slot is unclaimed or its prior claim has expired;
 /// bumps the monotonic fencing token and records the sticky hint. Returns
 /// `.taken` when a live runner still holds it.
+///
+/// The durable metering cursor is seeded `0`/now on a brand-new slot and is
+/// deliberately ABSENT from the `ON CONFLICT` SET — so it is preserved across a
+/// reclaim (the re-leased run meters forward from the dead holder's progress).
+/// A fresh event resets it at lease issue; the renewal CTE advances it.
 pub fn claim(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -53,8 +58,10 @@ pub fn claim(
     const leased_until = now_ms + ttl_ms;
     var q = PgQuery.from(try conn.query(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, $5, $5)
+        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $5, $5, $5)
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq    = fleet.runner_affinity.fencing_seq + 1,
@@ -66,6 +73,25 @@ pub fn claim(
     defer q.deinit();
     const row = try q.next() orelse return .taken;
     return .{ .won = .{ .token = @intCast(try row.get(i64, 0)), .leased_until = leased_until } };
+}
+
+/// Reset the per-zombie metering cursor to 0/now — called at FRESH lease issue
+/// so a new event meters from zero even when the slot was reused from a prior
+/// (completed) run whose cursor the claim's `ON CONFLICT` preserved. A reclaim
+/// does NOT call this: the slot must keep the dead holder's progress so the
+/// re-leased run meters forward from where it stopped. The renewal CTE reads
+/// this cursor for each slice's Δ, so a stale value here would over-charge the
+/// first renewal — hence the reset is fail-closed (a reset error fails lease
+/// issue rather than risk an over-charge). `meter_slice_seq` resets too so the
+/// new event's breakdown numbering restarts at 1.
+pub fn resetCursor(conn: *pg.Conn, zombie_id: []const u8, now_ms: i64) !void {
+    _ = conn.exec(
+        \\UPDATE fleet.runner_affinity
+        \\SET metered_input_tokens = 0, metered_cached_tokens = 0,
+        \\    metered_output_tokens = 0, last_metered_at_ms = $2, updated_at = $2,
+        \\    meter_slice_seq = 0
+        \\WHERE zombie_id = $1::uuid
+    , .{ zombie_id, now_ms }) catch return error.AffinityCursorResetFailed;
 }
 
 /// Free the slot (report / abandoned no-work claim) so the zombie's next event
