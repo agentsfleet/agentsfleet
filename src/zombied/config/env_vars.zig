@@ -78,6 +78,12 @@ test "validateLoaded rejects missing API Redis URL" {
     try std.testing.expectError(EnvVarsErrors.MissingRedisUrlApi, validateLoaded(urls));
 }
 
+test "validateLoaded rejects whitespace-only API Redis URL" {
+    var urls = testEnvVars("postgres://api:pw@db.local:5432/api", "  \t\n");
+    defer urls.deinit();
+    try std.testing.expectError(EnvVarsErrors.MissingRedisUrlApi, validateLoaded(urls));
+}
+
 test "validateLoaded rejects non-TLS API Redis" {
     var urls = testEnvVars("postgres://api:pw@db.local:5432/api", "redis://api:pw@cache.local:6379");
     defer urls.deinit();
