@@ -13,6 +13,8 @@ const contract = @import("contract");
 const Config = @import("daemon/config.zig");
 const loop = @import("daemon/loop.zig");
 const child_exec = @import("child_exec.zig");
+const version_cmd = @import("cmd/version.zig");
+const registry = @import("cmd/registry.zig");
 
 const protocol = contract.protocol;
 
@@ -41,11 +43,10 @@ pub fn main() void {
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
 
-    // Child-execute mode: a forked child re-execs us with `__execute` — run one
-    // lease from stdin and exit (no daemon loop, no env config).
-    if (std.os.argv.len > 1 and std.mem.eql(u8, std.mem.span(std.os.argv[1]), child_exec.SUBCOMMAND)) {
-        std.process.exit(child_exec.run(alloc));
-    }
+    // A CLI subcommand/flag (child-execute mode, --version, …) short-circuits
+    // the daemon; a bare invocation (how the systemd unit starts us) returns
+    // null and falls through to the loop.
+    if (dispatchCli(alloc)) |code| std.process.exit(code);
 
     const cfg = Config.load(alloc) catch |err| {
         log.err("config_load_failed", .{ .err = @errorName(err) });
@@ -80,6 +81,22 @@ pub fn main() void {
     loop.installDrainHandlers();
     loop.runLoop(alloc, cfg);
     log.info("runner_exit", .{});
+}
+
+/// Handle a CLI subcommand/flag if argv carries one, returning the process exit
+/// code to use; returns null to fall through to the daemon loop (a bare
+/// invocation — how the `zombie-runner.service` unit starts the runner). The
+/// single dispatch seam: operator subcommands (register/status/doctor) and
+/// `--help` attach here alongside `__execute` and `--version`.
+fn dispatchCli(alloc: std.mem.Allocator) ?u8 {
+    if (std.os.argv.len <= 1) return null;
+    const a1 = std.mem.span(std.os.argv[1]);
+    // The forked child re-execs us with `__execute` — run one lease from stdin
+    // and exit (no daemon loop, no env config). Hot path, checked first.
+    if (std.mem.eql(u8, a1, child_exec.SUBCOMMAND)) return child_exec.run(alloc);
+    if (std.mem.eql(u8, a1, "--version") or std.mem.eql(u8, a1, "-V")) return version_cmd.run();
+    // register / status / doctor / --help, and unknown → help + non-zero.
+    return registry.dispatch(alloc, a1);
 }
 
 /// Parse sandbox tier from env string; defaults to `.dev_none` for unknown
