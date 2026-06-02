@@ -126,7 +126,7 @@ Delivers an integration test that proves the whole loop end-to-end against the l
 - **Dimension 2.1** — against the live `zombied`, a platform-admin `register` mints a `zrn_`, the env file is written, and that `zrn_` then authenticates a real runner call (a heartbeat `POST /v1/runners/me/heartbeats` — the lightest authenticated runner endpoint — returns success), proving the token is live → Test `test_runner_register_mints_and_authenticates`
 - **Dimension 2.2** — the same flow with a tenant `zmb_t_` caller is rejected `403` at `register` and no token is minted → Test `test_runner_register_tenant_admin_forbidden`
 
-> **Read-only call note.** Today's runner routes are all POST (heartbeat/lease/report). Heartbeat is the minimal idempotent authenticated probe and is sufficient to prove the minted `zrn_` authenticates. If `status` later needs a true read (`GET` runner state), that endpoint is added under M80_006 (fleet inventory), not here — flag it in Discovery if the implementing agent hits the need.
+> **Read-only call note (updated post-`/review`).** The draft had `status` reuse the heartbeat POST. Greptile flagged that this is a *write* (it bumps `last_seen_at`), so an operator's `status` check could mask a dead runner's liveness. At Indy's direction this was fixed properly rather than deferred: a read-only `GET /v1/runners/me` (`runner_self`, pure SELECT, no bump) was pulled forward from M80_006 — contract `PATH_RUNNER_SELF`/`SelfResponse`, the runner's 5th self-scoped verb (docs/AUTH.md). `status` reads it; the live integration arm authenticates through it.
 
 ---
 
@@ -272,5 +272,5 @@ N/A — no files deleted. The command register is added in front of the existing
 - **macOS Seatbelt sandbox backend — DEFERRED** (Indy, Jun 01, 2026). The `sandbox-exec`/Seatbelt facility is deprecated; macOS is a developer workstation, Linux the authoritative runtime. The `macos_seatbelt` tier stays fail-closed (`establishSandbox` → `error.SandboxUnavailable` on non-Linux); dev uses `dev_none`. Revisit only if a sandboxed macOS runtime target ever materializes (likely via a Linux VM reusing the Landlock path, not a hand-rolled Seatbelt backend).
 - **Distribution & CI pipeline — DONE in M80_002** (`63670d09`): cross-arch builds of both binaries, idempotent arch-aware `deploy.sh`, `zombie-runner.service`, `/etc/default/zombie-runner` provisioning. Only the `--version` idempotency fix is pulled forward (§1.5); live host bring-up is gated on `DEV_WORKER_READY` provisioning, not this workstream.
 - Operator-assigned trust + workspace authz — M80_005.
-- Fleet inventory / heartbeat reassignment / lease renewal / a read-only runner `GET` — M80_006.
+- Fleet inventory / heartbeat reassignment / lease renewal — M80_006. (The read-only runner `GET /v1/runners/me` was pulled forward into this workstream — see the Read-only call note.)
 - Placement scheduler / autoscale — M80_007.
