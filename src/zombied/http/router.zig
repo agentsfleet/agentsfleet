@@ -99,6 +99,7 @@ pub const Route = union(enum) {
     // gated by runnerBearer. `activity` is the only one with a path param
     // ({lease_id}); the rest resolve `me` from the token (no runner_id in path).
     register_runner, // POST /v1/runners
+    runner_self, // GET /v1/runners/me (read-only — no last_seen bump)
     runner_heartbeat, // POST /v1/runners/me/heartbeats
     runner_lease, // POST /v1/runners/me/leases
     runner_report, // POST /v1/runners/me/reports
@@ -125,6 +126,7 @@ pub fn match(path: []const u8, method: httpz.Method) ?Route {
     // Runner control plane — static exact-match paths (method-agnostic here;
     // the invoke fn enforces POST). `me` resolves from the Bearer token.
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNERS)) return .register_runner;
+    if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_SELF)) return .runner_self;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_HEARTBEATS)) return .runner_heartbeat;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_LEASES)) return .runner_lease;
     if (std.mem.eql(u8, path, runner_protocol.PATH_RUNNER_REPORTS)) return .runner_report;

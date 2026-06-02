@@ -55,6 +55,7 @@ const JsonError = struct { ok: bool, @"error": CliError };
 /// renders the same code/message/suggestion everywhere (RULE UFS).
 pub const ERR_API_URL_UNSET = CliError{ .code = "API_URL_UNSET", .message = "control-plane URL not set", .suggestion = "pass --api <url> or set ZOMBIE_API_URL" };
 pub const ERR_UNREACHABLE = CliError{ .code = "CONTROL_PLANE_UNREACHABLE", .message = "could not reach the control plane", .suggestion = "verify --api/ZOMBIE_API_URL and that zombied is up" };
+pub const ERR_OOM = CliError{ .code = "OUT_OF_MEMORY", .message = "out of memory reading configuration", .suggestion = "retry" };
 
 pub fn writeOut(s: []const u8) void {
     std.fs.File.stdout().writeAll(s) catch {};

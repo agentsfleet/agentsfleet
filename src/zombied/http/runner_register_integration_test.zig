@@ -208,15 +208,19 @@ fn exitCode(term: std.process.Child.Term) ?u8 {
     };
 }
 
-/// Pull the minted `zrn_` out of the env file the CLI wrote — located by its
-/// prefix (RULE UFS: protocol.RUNNER_TOKEN_PREFIX, not a re-spelled key).
+/// Pull the minted `zrn_` out of the env file the CLI wrote by parsing the
+/// `ZOMBIE_RUNNER_TOKEN=` line (not scanning for `zrn_` anywhere — a URL or other
+/// value could contain it). The key literal is the env-file contract deploy.sh
+/// reads (pin test: literal is the contract).
 fn readMintedToken(path: []const u8) !?[]u8 {
     const content = std.fs.cwd().readFileAlloc(ALLOC, path, 4096) catch return null;
     defer ALLOC.free(content);
-    const idx = std.mem.indexOf(u8, content, protocol.RUNNER_TOKEN_PREFIX) orelse return null;
-    const rest = content[idx..];
-    const end = std.mem.indexOfScalar(u8, rest, '\n') orelse rest.len;
-    return try ALLOC.dupe(u8, rest[0..end]);
+    const KEY = "ZOMBIE_RUNNER_TOKEN=";
+    var lines = std.mem.splitScalar(u8, content, '\n');
+    while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, KEY)) return try ALLOC.dupe(u8, line[KEY.len..]);
+    }
+    return null;
 }
 
 test "operator CLI: register via the binary mints a zrn_ that authenticates" {

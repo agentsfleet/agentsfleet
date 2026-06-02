@@ -26,6 +26,7 @@ const FLAGS =
     \\Flags:
     \\  --api <url>      control-plane base URL (else ZOMBIE_API_URL)
     \\  --token <jwt>    admin Clerk JWT for register (else ZOMBIE_TOKEN)
+    \\  --host-id <id>   host identifier for register (else RUNNER_HOST_ID)
     \\  --json           machine-readable output (auto when piped)
     \\  --version, -V    print version
     \\  --help, -h       show this help

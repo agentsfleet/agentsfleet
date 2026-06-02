@@ -20,13 +20,13 @@ const DEFAULT_TIER = @tagName(protocol.SandboxTier.dev_none);
 
 pub fn run(alloc: std.mem.Allocator) u8 {
     const a = output.audience(args.has(output.FLAG_JSON));
-    const api = args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL) orelse return output.fail(a, alloc, output.ERR_API_URL_UNSET);
+    const api = (args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, output.ERR_API_URL_UNSET);
     defer alloc.free(api);
-    const jwt = args.flagOrEnv(alloc, "--token", Config.ENV_ZOMBIE_TOKEN) orelse return output.fail(a, alloc, ERR_NO_JWT);
+    const jwt = (args.flagOrEnv(alloc, "--token", Config.ENV_ZOMBIE_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, ERR_NO_JWT);
     defer alloc.free(jwt);
-    const host_id = args.flagOrEnv(alloc, "--host-id", Config.ENV_RUNNER_HOST_ID) orelse return output.fail(a, alloc, ERR_NO_HOST);
+    const host_id = (args.flagOrEnv(alloc, "--host-id", Config.ENV_RUNNER_HOST_ID) catch return output.fail(a, alloc, output.ERR_OOM)) orelse return output.fail(a, alloc, ERR_NO_HOST);
     defer alloc.free(host_id);
-    const tier = envOrDefault(alloc, Config.ENV_RUNNER_SANDBOX_TIER, DEFAULT_TIER) orelse return output.fail(a, alloc, ERR_OOM);
+    const tier = envOrDefault(alloc, Config.ENV_RUNNER_SANDBOX_TIER, DEFAULT_TIER) orelse return output.fail(a, alloc, output.ERR_OOM);
     defer alloc.free(tier);
 
     const req = protocol.RegisterRequest{
@@ -102,7 +102,6 @@ fn rejectionError(status: u16) output.CliError {
 const ERR_NO_JWT = output.CliError{ .code = "ADMIN_TOKEN_UNSET", .message = "platform-admin token not set", .suggestion = "set ZOMBIE_TOKEN (or pass --token) to a platform-admin Clerk JWT" };
 const ERR_NO_HOST = output.CliError{ .code = "HOST_ID_UNSET", .message = "host id not set", .suggestion = "pass --host-id <id> or set RUNNER_HOST_ID" };
 const ERR_ENV_WRITE = output.CliError{ .code = "ENV_WRITE_FAILED", .message = "registered, but writing the env file failed", .suggestion = "re-run with --env-file <path> you can write, or run as the install user" };
-const ERR_OOM = output.CliError{ .code = "OUT_OF_MEMORY", .message = "out of memory", .suggestion = "retry" };
 
 test "rejectionError maps 403 to a platform-admin hint, 401 to a token hint" {
     try std.testing.expectEqualStrings("FORBIDDEN", rejectionError(403).code);

@@ -25,14 +25,18 @@ pub fn has(name: []const u8) bool {
 }
 
 /// Resolve a value from `--flag` (preferred) else env var `env`, returning owned
-/// memory (the flag value is duped) so callers `defer free` uniformly; null when
-/// neither is set.
-pub fn flagOrEnv(alloc: std.mem.Allocator, flag: []const u8, env: []const u8) ?[]const u8 {
-    if (opt(flag)) |v| return alloc.dupe(u8, v) catch null;
-    return std.process.getEnvVarOwned(alloc, env) catch null;
+/// memory (the flag value is duped) so callers `defer free` uniformly. `null` =
+/// neither is set; an error (`OutOfMemory`/`InvalidWtf8`) is propagated, NOT
+/// masked as "unset" — so OOM surfaces as OOM, not a misleading "not set".
+pub fn flagOrEnv(alloc: std.mem.Allocator, flag: []const u8, env: []const u8) !?[]const u8 {
+    if (opt(flag)) |v| return try alloc.dupe(u8, v);
+    return envOwned(alloc, env);
 }
 
-/// Owned env-var value, or null if unset.
-pub fn envOwned(alloc: std.mem.Allocator, env: []const u8) ?[]const u8 {
-    return std.process.getEnvVarOwned(alloc, env) catch null;
+/// Owned env-var value, or `null` if unset; OOM/invalid encoding propagate.
+pub fn envOwned(alloc: std.mem.Allocator, env: []const u8) !?[]const u8 {
+    return std.process.getEnvVarOwned(alloc, env) catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => |e| e,
+    };
 }

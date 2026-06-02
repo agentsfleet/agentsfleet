@@ -38,6 +38,7 @@ pub const invokeTenantApiKeyById = api_keys_invokes.invokeTenantApiKeyById;
 const clerk_webhook_h = @import("handlers/auth/identity_events_clerk.zig");
 const zombie_messages = @import("handlers/zombies/messages.zig");
 const runner_register = @import("handlers/runner/register.zig");
+const runner_self = @import("handlers/runner/self.zig");
 const runner_heartbeat = @import("handlers/runner/heartbeat.zig");
 const runner_lease = @import("handlers/runner/lease.zig");
 const runner_report = @import("handlers/runner/report.zig");
@@ -309,6 +310,12 @@ pub fn invokeRegisterRunner(hx: *Hx, req: *httpz.Request, route: router.Route) v
     _ = route;
     if (req.method != .POST) { common.respondMethodNotAllowed(hx.res); return; }
     runner_register.innerRegisterRunner(hx.*, req);
+}
+
+pub fn invokeRunnerSelf(hx: *Hx, req: *httpz.Request, route: router.Route) void {
+    _ = route;
+    if (req.method != .GET) { common.respondMethodNotAllowed(hx.res); return; }
+    runner_self.innerRunnerSelf(hx.*, req);
 }
 
 pub fn invokeRunnerHeartbeat(hx: *Hx, req: *httpz.Request, route: router.Route) void {

@@ -38,6 +38,10 @@ pub const RUNNER_TOKEN_PREFIX = "zrn_";
 pub const PATH_RUNNER_HEARTBEATS = PATH_RUNNERS ++ "/me/heartbeats";
 pub const PATH_RUNNER_LEASES = PATH_RUNNERS ++ "/me/leases";
 pub const PATH_RUNNER_REPORTS = PATH_RUNNERS ++ "/me/reports";
+/// GET /v1/runners/me — read-only self status (`me` resolves from the token).
+/// Distinct from the heartbeat: a pure read, it does NOT bump `last_seen_at`, so
+/// an operator's `status` check can never mask a dead runner's liveness.
+pub const PATH_RUNNER_SELF = PATH_RUNNERS ++ "/me";
 
 /// Trailing segment of the per-lease activity sub-resource. `lease_id` is a path
 /// param — `POST /v1/runners/me/leases/{lease_id}/activity` — so this can't be a
@@ -116,6 +120,17 @@ pub const RegisterResponse = struct {
 /// later fleet/heartbeat workstream.
 pub const HeartbeatResponse = struct {
     status: HeartbeatStatus,
+};
+
+/// GET /v1/runners/me reply (Bearer runner_token). The runner's own registration
+/// row, read-only — `status` reads this instead of heartbeating so inspecting a
+/// host never writes liveness. `last_seen_at` is epoch ms (0 if never seen).
+pub const SelfResponse = struct {
+    id: []const u8,
+    status: []const u8,
+    host_id: []const u8,
+    sandbox_tier: []const u8,
+    last_seen_at: i64,
 };
 
 /// The work half of a lease. `fencing_token` is a monotonic guard: report must

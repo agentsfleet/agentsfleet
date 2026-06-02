@@ -15,9 +15,9 @@ const Check = struct { name: []const u8, ok: bool, detail: []const u8 };
 
 pub fn run(alloc: std.mem.Allocator) u8 {
     const a = output.audience(args.has(output.FLAG_JSON));
-    const api = args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL);
+    const api = args.flagOrEnv(alloc, "--api", Config.ENV_ZOMBIE_API_URL) catch return output.fail(a, alloc, output.ERR_OOM);
     defer if (api) |v| alloc.free(v);
-    const token = args.envOwned(alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN);
+    const token = args.envOwned(alloc, Config.ENV_ZOMBIE_RUNNER_TOKEN) catch return output.fail(a, alloc, output.ERR_OOM);
     defer if (token) |v| alloc.free(v);
 
     const env = envChecks(api, token);
