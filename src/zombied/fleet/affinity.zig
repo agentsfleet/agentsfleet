@@ -40,6 +40,11 @@ pub const Claim = union(enum) {
 /// `ttl_ms`. Wins iff the slot is unclaimed or its prior claim has expired;
 /// bumps the monotonic fencing token and records the sticky hint. Returns
 /// `.taken` when a live runner still holds it.
+///
+/// The durable metering cursor is seeded `0`/now on a brand-new slot and is
+/// deliberately ABSENT from the `ON CONFLICT` SET — so it is preserved across a
+/// reclaim (the re-leased run meters forward from the dead holder's progress).
+/// A fresh event resets it at lease issue; the renewal CTE advances it.
 pub fn claim(
     conn: *pg.Conn,
     alloc: std.mem.Allocator,
@@ -53,8 +58,10 @@ pub fn claim(
     const leased_until = now_ms + ttl_ms;
     var q = PgQuery.from(try conn.query(
         \\INSERT INTO fleet.runner_affinity
-        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until, created_at, updated_at)
-        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, $5, $5)
+        \\  (id, zombie_id, last_runner_id, fencing_seq, leased_until,
+        \\   metered_input_tokens, metered_cached_tokens, metered_output_tokens, last_metered_at_ms,
+        \\   created_at, updated_at)
+        \\VALUES ($1::uuid, $2::uuid, $3::uuid, 1, $4, 0, 0, 0, $5, $5, $5)
         \\ON CONFLICT (zombie_id) DO UPDATE
         \\  SET last_runner_id = EXCLUDED.last_runner_id,
         \\      fencing_seq    = fleet.runner_affinity.fencing_seq + 1,
