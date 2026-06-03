@@ -137,8 +137,8 @@ test "should omit --share-net under the default deny_all network policy on Linux
     // and adds NO --share-net (host network stays isolated). Skip if the test
     // host has explicitly opted into registry_allowlist via the env var, since
     // then --share-net is the correct output. The positive --share-net arm is
-    // covered deterministically in network.zig + engine/sandbox_edge_test.zig
-    // against appendBwrapNetworkArgs directly (no env coupling).
+    // covered deterministically in network.zig against appendBwrapNetworkArgs
+    // directly (no env coupling).
     const opted_in = blk: {
         const raw = std.process.getEnvVarOwned(alloc, "RUNNER_NETWORK_POLICY") catch break :blk false;
         defer alloc.free(raw);

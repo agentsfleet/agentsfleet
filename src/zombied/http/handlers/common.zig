@@ -64,8 +64,8 @@ fn traceIdFromContext(tctx: *const TraceContext) []const u8 {
     return tctx.traceIdSlice();
 }
 
-// M18_002: AuthPrincipal + AuthMode now live in src/auth/principal.zig.
-// Re-exported here for backward compatibility during the middleware migration.
+// AuthPrincipal + AuthMode live in src/zombied/auth/principal.zig; the handler
+// layer reaches them through these re-exports.
 pub const AuthMode = principal_mod.AuthMode;
 pub const AuthRole = rbac.AuthRole;
 pub const AuthPrincipal = principal_mod.AuthPrincipal;

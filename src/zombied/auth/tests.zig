@@ -26,9 +26,7 @@ test {
     _ = @import("middleware/auth_ctx.zig");
     _ = @import("middleware/bearer.zig");
     _ = @import("middleware/errors.zig");
-    _ = @import("middleware/bearer_oidc.zig");
     _ = @import("middleware/bearer_or_api_key.zig");
-    _ = @import("middleware/security_headers.zig");
     _ = @import("middleware/tenant_api_key.zig");
     _ = @import("middleware/trusted_client_ip.zig");
     _ = @import("middleware/require_role.zig");
