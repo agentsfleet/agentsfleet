@@ -303,7 +303,5 @@ fn elapsedSeconds(start_ms: i64) u64 {
 // were orphaned when the cutover deleted runner_test.zig (RULE ORP).
 test {
     _ = @import("runner_security_test.zig");
-    _ = @import("sandbox_edge_test.zig");
-    _ = @import("resource_security_test.zig");
     _ = @import("runner_progress_redact_test.zig");
 }

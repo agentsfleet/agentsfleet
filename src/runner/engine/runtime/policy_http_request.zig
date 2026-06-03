@@ -149,5 +149,8 @@ fn hostInAllowlist(host: []const u8, allow: []const []const u8) bool {
     return false;
 }
 
-// Tests live in `policy_http_request_test.zig` (sibling) to keep this file
-// under the 350-line cap; the file-as-struct boundary stays here.
+// The suite lives in `policy_http_request_test.zig` (sibling, keeps this
+// file under the 350-line cap); pull it into the test build here.
+test {
+    _ = @import("policy_http_request_test.zig");
+}

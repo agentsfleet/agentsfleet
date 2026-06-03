@@ -19,8 +19,7 @@ pub const DEFAULT_STAGE_CHUNK_THRESHOLD = execution_policy.DEFAULT_STAGE_CHUNK_T
 
 /// Parse the per-execution policy fields off CreateExecution params into a
 /// borrowed `ExecutionPolicy`. Allocates string slices on `alloc` (the request
-/// frame allocator); `Session.create` deep-dupes into its own arena before the
-/// frame ends.
+/// frame allocator); they must not be retained past the execution frame.
 pub fn fromJson(alloc: std.mem.Allocator, p: std.json.Value) !ExecutionPolicy {
     if (p != .object) return error.NotAnObject;
     var policy: ExecutionPolicy = .{};
