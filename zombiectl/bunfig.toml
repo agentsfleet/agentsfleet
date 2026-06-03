@@ -33,6 +33,10 @@
 # automatically; the explicit ignore catches the non-test files under
 # test/ that bun's heuristic doesn't.
 [test]
+# Preload forces telemetry-off so the suite is network-free (see
+# test/setup.ts). Without it, in-process runCli tests hang on the
+# PostHog flush and time out at 5s when the runner is offline.
+preload = ["./test/setup.ts"]
 coverage = true
 coverageThreshold = { line = 0.97, function = 0.96 }
 coverageReporter = ["text", "lcov"]
