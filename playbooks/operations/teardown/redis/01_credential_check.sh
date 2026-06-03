@@ -8,7 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/../lib/common.sh"
 
 echo ""
-echo "== 015_redis_teardown Section 1: credential and approval check =="
+echo "== redis-teardown Section 1: credential and approval check =="
 echo ""
 
 # Check required tools

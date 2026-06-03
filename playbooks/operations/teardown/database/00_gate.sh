@@ -1,5 +1,5 @@
 #!/bin/bash
-# 011_database_teardown - Database Teardown Playbook
+# database-teardown - Database Teardown Playbook
 #
 # WARNING: DESTRUCTIVE OPERATION
 # This playbook permanently deletes all data from PlanetScale databases.
@@ -36,4 +36,4 @@ for script in "$SCRIPT_DIR"/0[1-9]_*.sh "$SCRIPT_DIR"/[1-9][0-9]_*.sh; do
 	"$script"
 done
 
-echo "✅ 011_database_teardown complete (env: $ENV)"
+echo "✅ database-teardown complete (env: $ENV)"
