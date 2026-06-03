@@ -24,7 +24,6 @@ pub const run = chain.run;
 pub const AuthCtx = auth_ctx.AuthCtx;
 pub const WriteErrorFn = auth_ctx.WriteErrorFn;
 
-pub const bearer_oidc = @import("bearer_oidc.zig");
 pub const bearer_or_api_key = @import("bearer_or_api_key.zig");
 pub const tenant_api_key = @import("tenant_api_key.zig");
 pub const runner_bearer = @import("runner_bearer.zig");
@@ -33,10 +32,8 @@ pub const platform_admin = @import("platform_admin.zig");
 pub const webhook_hmac = @import("webhook_hmac.zig");
 pub const webhook_sig_mod = @import("webhook_sig.zig");
 pub const svix_signature_mod = @import("svix_signature.zig");
-pub const security_headers = @import("security_headers.zig");
 pub const trusted_client_ip = @import("trusted_client_ip.zig");
 
-pub const BearerOidc = bearer_oidc.BearerOidc;
 pub const BearerOrApiKey = bearer_or_api_key.BearerOrApiKey;
 pub const TenantApiKey = tenant_api_key.TenantApiKey;
 pub const RunnerBearer = runner_bearer.RunnerBearer;

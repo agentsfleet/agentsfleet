@@ -306,4 +306,5 @@ test {
     _ = @import("sandbox_edge_test.zig");
     _ = @import("resource_security_test.zig");
     _ = @import("runner_progress_redact_test.zig");
+    _ = @import("session_test.zig");
 }

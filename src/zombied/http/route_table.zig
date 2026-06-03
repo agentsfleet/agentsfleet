@@ -5,8 +5,8 @@
 //! returns non-null, the middleware chain runs and the invoke function
 //! handles the request.
 //!
-//! Batch D: all 42 Route variants are registered here. The legacy switch in
-//! server.zig is now dead code — Batch E removes it.
+//! All Route variants are registered here; `specFor` is the single dispatch
+//! source the router calls.
 //!
 //! Invoke functions live in route_table_invoke.zig (split for RULE FLL).
 

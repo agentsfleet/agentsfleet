@@ -181,7 +181,7 @@ fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
     const message: ?[]const u8 = blk: {
         const pv = if (req_parsed) |p| p.value else break :blk payload.event.request_json;
         if (pv != .object) break :blk payload.event.request_json;
-        const mv = pv.object.get(MESSAGE_KEY) orelse break :blk payload.event.request_json;
+        const mv = pv.object.get(wire.message) orelse break :blk payload.event.request_json;
         if (mv != .string) break :blk payload.event.request_json;
         break :blk mv.string;
     };
@@ -195,8 +195,6 @@ fn buildCallArgs(alloc: std.mem.Allocator, payload: LeasePayload) CallArgs {
         .req_parsed = req_parsed,
     };
 }
-
-const MESSAGE_KEY = "message";
 
 // ── tests ────────────────────────────────────────────────────────────────────
 const testing = std.testing;

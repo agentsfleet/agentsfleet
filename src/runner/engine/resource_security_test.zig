@@ -16,9 +16,7 @@
 const std = @import("std");
 const types = @import("types.zig");
 const Session = @import("session.zig");
-const SessionStore = @import("runtime/session_store.zig");
 const runner = @import("runner.zig");
-
 
 fn testCorrelation() types.CorrelationContext {
     return .{
@@ -71,42 +69,6 @@ test "T8: two sessions with different executions do not contaminate resource met
     const ctx2 = s2.getResourceContext();
     try std.testing.expectEqual(@as(u64, 256 * 1024 * 1024), ctx1.memory_limit_bytes);
     try std.testing.expectEqual(@as(u64, 512 * 1024 * 1024), ctx2.memory_limit_bytes);
-}
-
-test "T8: destroying one session in store does not affect neighbor's metrics" {
-    const alloc = std.testing.allocator;
-    var store = SessionStore.init(alloc);
-    defer store.deinit();
-
-    const s1 = try alloc.create(Session);
-    s1.* = try Session.create(alloc, "/tmp/ws1", testCorrelation(), .{}, 30_000, .{});
-    s1.recordStageResult(.{
-        .exit_ok = true,
-        .memory_peak_bytes = 300 * 1024 * 1024,
-        .cpu_throttled_ms = 2000,
-    });
-    try store.put(s1);
-
-    const s2 = try alloc.create(Session);
-    s2.* = try Session.create(alloc, "/tmp/ws2", testCorrelation(), .{}, 30_000, .{});
-    s2.recordStageResult(.{
-        .exit_ok = true,
-        .memory_peak_bytes = 50 * 1024 * 1024,
-        .cpu_throttled_ms = 100,
-    });
-    try store.put(s2);
-
-    // Destroy s1, verify s2 is intact.
-    const removed = store.remove(s1.execution_id).?;
-    const s1_usage = removed.getUsage();
-    try std.testing.expectEqual(@as(u64, 300 * 1024 * 1024), s1_usage.memory_peak_bytes);
-    removed.destroy();
-    alloc.destroy(removed);
-
-    const s2_alive = store.get(s2.execution_id).?;
-    const s2_usage = s2_alive.getUsage();
-    try std.testing.expectEqual(@as(u64, 50 * 1024 * 1024), s2_usage.memory_peak_bytes);
-    try std.testing.expectEqual(@as(u64, 100), s2_usage.cpu_throttled_ms);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -260,53 +222,6 @@ test "T8: agent exceeding memory limit is detectable in session metrics" {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// T5+T8: Concurrent session creation and metric isolation
-// ─────────────────────────────────────────────────────────────────────────────
-
-test "T5+T8: concurrent sessions in store maintain independent resource metrics" {
-    const page = std.heap.page_allocator;
-    var store = SessionStore.init(page);
-    defer store.deinit();
-
-    const Worker = struct {
-        fn run(s: *SessionStore, a: std.mem.Allocator, thread_id: usize) void {
-            for (0..5) |i| {
-                const sess = a.create(Session) catch return;
-                sess.* = Session.create(a, "/tmp/ws", testCorrelation(), .{
-                    .memory_limit_mb = @as(u64, @intCast(thread_id + 1)) * 128,
-                }, 30_000, .{}) catch return;
-                sess.recordStageResult(.{
-                    .exit_ok = true,
-                    .memory_peak_bytes = (thread_id + 1 + i) * 1024 * 1024,
-                    .cpu_throttled_ms = (thread_id + 1) * 100,
-                });
-                s.put(sess) catch return;
-            }
-        }
-    };
-
-    var threads: [8]std.Thread = undefined;
-    for (&threads, 0..) |*t, i| {
-        t.* = std.Thread.spawn(.{}, Worker.run, .{ &store, page, i }) catch unreachable;
-    }
-    for (&threads) |*t| t.join();
-
-    // 8 threads * 5 sessions = 40 sessions.
-    try std.testing.expectEqual(@as(usize, 40), store.activeCount());
-
-    // Verify no session has corrupted metrics (peak > 0 for all).
-    var it = store.sessions.iterator();
-    while (it.next()) |entry| {
-        const sess = entry.value_ptr.*;
-        const usage = sess.getUsage();
-        // Every session had at least one recordStageResult with memory > 0.
-        try std.testing.expect(usage.memory_peak_bytes > 0);
-        try std.testing.expect(usage.cpu_throttled_ms > 0);
-        try std.testing.expectEqual(@as(u32, 1), sess.stages_executed);
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // T7: FailureClass → error code mapping stability for resource-related failures
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -406,24 +321,4 @@ test "T11: rapid session create/record/destroy with high metric values has no le
         session.destroy();
     }
     // std.testing.allocator detects leaks automatically.
-}
-
-test "T11: SessionStore with mixed failure sessions has no leaks" {
-    const alloc = std.testing.allocator;
-    var store = SessionStore.init(alloc);
-
-    for (0..20) |i| {
-        const sess = try alloc.create(Session);
-        sess.* = try Session.create(alloc, "/tmp/ws", testCorrelation(), .{}, 30_000, .{});
-        sess.recordStageResult(.{
-            .exit_ok = i % 2 == 0,
-            .failure = if (i % 2 != 0) .resource_kill else null,
-            .memory_peak_bytes = (i + 1) * 1024 * 1024,
-            .cpu_throttled_ms = (i + 1) * 50,
-        });
-        try store.put(sess);
-    }
-
-    // deinit destroys all sessions — allocator catches any leak.
-    store.deinit();
 }

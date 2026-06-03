@@ -1,20 +1,4 @@
-//! Engine error set + error-code string constants.
-//! Kept from the former client.zig split; the RPC-error-code mapping
-//! functions were removed with the socket layer (no protocol.zig caller).
-
-pub const ClientError = error{
-    ConnectionFailed,
-    TransportLoss,
-    ExecutionFailed,
-    InvalidResponse,
-    SessionNotFound,
-    LeaseExpired,
-    PolicyDenied,
-    TimeoutKilled,
-    OomKilled,
-    ResourceKilled,
-    LandlockDenied,
-};
+//! Engine error-code string constants.
 
 // Error-code mirrors of src/zombied/errors/error_registry.zig — the runner
 // binary tree forbids imports into src/zombied/ (build_runner.zig keeps the

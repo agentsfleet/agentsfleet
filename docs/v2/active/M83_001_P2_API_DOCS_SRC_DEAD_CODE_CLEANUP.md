@@ -119,14 +119,14 @@
 
 ## Sections (implementation slices)
 
-### §1 — Restore the two orphan test suites (RULE ORP)
+### §1 — Restore the two orphan test suites (RULE ORP) — **DONE**
 
 The only two genuinely-dead tests. Both cover live production files (`session.zig`, `policy_http_request.zig`) and were written May 27 but never compiled against current sources. Re-aggregate via the existing test-block pattern, then fix any drift so they compile and pass. **Implementation default:** wire `session_test.zig` into `runner.zig`'s engine test block; add a `test {}` to `policy_http_request.zig` pulling its sibling — because that is the reachable parent (RULE ORP), not a new aggregator.
 
 - **Dimension 1.1** — `session_test.zig` compiles and runs under the runner test build → Test `session lifecycle suite`.
 - **Dimension 1.2** — `policy_http_request_test.zig` compiles and runs under the runner test build; the false coverage comment is gone → Test `policy http request suite`.
 
-### §2 — Trivial dead-code deletes (no behavioural risk)
+### §2 — Trivial dead-code deletes (no behavioural risk) — **DONE**
 
 Three removals nothing reaches: `reliability/backoff.zig` (+ its `tests.zig` import), the `ClientError` error set in `client_errors.zig` (the file and its live `ERR_*` codes stay), and `config/contact.zig` + `contact_test.zig` (+ both `tests.zig` imports). **Invariant to protect:** the `ERR_*` string codes in `client_errors.zig` remain referenced by `runner.zig`/`child_exec.zig`/`tool_bridge.zig` — remove only the `error{…}` set.
 
@@ -134,21 +134,21 @@ Three removals nothing reaches: `reliability/backoff.zig` (+ its `tests.zig` imp
 - **Dimension 2.2** — `ClientError` error set gone; `ERR_*` codes intact and both build graphs green → Test `dead-code sweep: ClientError` + build.
 - **Dimension 2.3** — `contact.zig` + `contact_test.zig` gone; `SUPPORT_EMAIL` unreferenced in `src/` → Test `dead-code sweep: contact`.
 
-### §3 — Remove superseded auth surface
+### §3 — Remove superseded auth surface — **DONE**
 
 Delete `bearer_oidc.zig` (superseded by `bearer_or_api_key`, which lifts `platform_admin` identically) and `security_headers.zig` (unwired HSTS skeleton). Drop their `mod.zig` re-exports + `auth/tests.zig` isolation imports; reword the stale "mirrors bearer_oidc" comment in `bearer_or_api_key.zig`. **Invariant to protect:** `platform_admin` gating of `POST /v1/runners` is unchanged — the existing `platform_admin.zig` middleware tests must stay green (they read the principal claim set by `bearer_or_api_key`, not `bearer_oidc`).
 
 - **Dimension 3.1** — `bearer_oidc.zig` gone; `BearerOidc`/`bearer_oidc` unreferenced; `test-auth` portability target + `platform_admin` tests green → Test `auth suite post-bearer_oidc`.
 - **Dimension 3.2** — `security_headers.zig` gone; `applyHsts`/`HSTS_*` unreferenced; no production response changes → Test `dead-code sweep: security_headers`.
 
-### §4 — Remove runner `SessionStore`, de-couple its security suites
+### §4 — Remove runner `SessionStore`, de-couple its security suites — **DONE**
 
 Delete `runtime/session_store.zig` (production-dead). Its only users are two *running* security suites that exercise it as a fixture — surgically remove the `SessionStore` import + the cases that test it (`resource_security_test`: the no-leaks + concurrency cases; `sandbox_edge_test`: the `reapExpired` case), and KEEP every other case in both suites plus `runner.zig:306-307` (which aggregate the surviving suites). **Invariant to protect:** both suites still compile and their non-SessionStore assertions still run.
 
 - **Dimension 4.1** — `session_store.zig` gone; `SessionStore` unreferenced repo-wide → Test `dead-code sweep: session_store`.
 - **Dimension 4.2** — `resource_security_test` + `sandbox_edge_test` compile and pass with their remaining cases under the runner test build → Test `runner security suites survive`.
 
-### §5 — `wire.zig` UFS triage + comment/doc hygiene
+### §5 — `wire.zig` UFS triage + comment/doc hygiene — **DONE**
 
 `wire.zig` defines 34 `pub` field-name constants as a single-source-of-truth but only ~17 are referenced as `wire.X`; callers hardcode the rest. Per RULE UFS, for each unused constant either wire the caller to use it or remove it — leave none defined-but-unused — and fix the header's "single source of truth" claim to match reality. Then fix the stale comments in `json_helpers.zig`, `zombie_events_store_test.zig`, `route_table.zig`, `handlers/common.zig`, and the `src/auth/`→`src/zombied/auth/` paths in `docs/AUTH.md` + `docs/architecture/roadmap.md`.
 
@@ -273,6 +273,8 @@ grep -rn "src/auth/" docs/AUTH.md docs/architecture/roadmap.md
 > **Empty at creation.** Append as work surfaces consults/decisions.
 
 - **Scope consult (Jun 03 2026)** — Indy adjudicated the keep-vs-delete calls: delete `bearer_oidc`, `security_headers` (skeleton, not wire), `session_store` (+ de-couple tests), `contact`; wire-in the two orphan tests (live equivalents exist). Two deletion-safety gates verified green before authoring (platform_admin covered by `bearer_or_api_key`; HSTS is load-balancer-only).
+- **Runner-CLI token scope decision (Jun 03 2026)** — Mid-work, Indy questioned the `zombie-runner register` token model (`--token`/`ZOMBIE_TOKEN`). Investigated M80_004 (DONE), the runner bootstrap playbooks, and `docs/architecture/runner_fleet.md`: `register` deliberately authenticates with the operator's platform-admin Clerk JWT via `ZOMBIE_TOKEN`/`--token` (verbatim `zombiectl` precedence); under Option B the host holds only `ZOMBIE_RUNNER_TOKEN` (the operator-minted `zrn_`), never an admin credential. **Decision: leave the runner CLI as-is** — the shared `ZOMBIE_TOKEN` is the agreed, integration-tested M80_004 design; a rename would supersede M80_004 and belongs in its own spec, NOT this dead-code cleanup. M83 stays dead-code-only. Recorded in agent memory `project_runner_register_admin_token_intentional`.
+- **§4 SessionStore test-case count (Jun 03 2026)** — Adversarial re-confirmation found `resource_security_test.zig` references `SessionStore` in **three** cases (T8 "destroying one session in store" @76, T5+T8 concurrency @266, T11 no-leaks @411), not the two the §4 prose names ("no-leaks + concurrency"). All three must go for the import removal to compile (Invariant: both suites still compile); the neighbour-isolation intent survives via the bare-`Session` T8 @36. `sandbox_edge_test.zig` is as specified (one case, T3 reapExpired @268).
 - **Skill chain outcomes** — populate during VERIFY/CHORE(close).
 - **Deferrals** — none.
 
