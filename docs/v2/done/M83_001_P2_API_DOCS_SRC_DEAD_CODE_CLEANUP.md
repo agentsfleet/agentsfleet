@@ -4,7 +4,7 @@
 **Milestone:** M83
 **Workstream:** 001
 **Date:** Jun 03, 2026
-**Status:** IN_PROGRESS
+**Status:** DONE
 **Priority:** P2 — pre-2.0 hygiene (RULE NDC/NLG); no customer-facing behaviour change.
 **Categories:** API, DOCS
 **Batch:** B1 — standalone; no concurrent workstream.
@@ -208,14 +208,14 @@ No public HTTP, CLI, or cross-module *contract* changes. Removed internal symbol
 
 ## Acceptance Criteria
 
-- [ ] `session_test` + `policy_http_request_test` run & pass — verify: `zig build --build-file build_runner.zig test 2>&1 | tail -5`
-- [ ] zombied unit suite green — verify: `make test`
-- [ ] Both graphs build; cross-compile clean — verify: `zig build && zig build --build-file build_runner.zig && zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux`
-- [ ] `test-auth` portability gate green — verify: `zig build test-auth`
-- [ ] Lint clean (zlint unused-decls) — verify: `make lint`
-- [ ] Dead-code sweep all-zero — verify: `grep -rn "expBackoffJitter\|BearerOidc\|applyHsts\|SessionStore\|SUPPORT_EMAIL" src/ | head`
-- [ ] No `src/auth/` path left in live docs — verify: `grep -rn "src/auth/" docs/AUTH.md docs/architecture/roadmap.md`
-- [ ] `gitleaks detect` clean · no file over 350 lines added
+- [x] `session_test` + `policy_http_request_test` run & pass — runner `268/272` (4 skips); proved the in-source block runs (count 281→270 when removed, Δ11 = 10 policy tests + the aggregator `test{}`).
+- [x] zombied unit suite green — `zig build test` → `1189/1470` (281 integration skips). *(repo target is `zig build test`, not `make test`.)*
+- [x] Both graphs build; cross-compile clean — `zig build` + `zig build --build-file build_runner.zig` + both graphs × `x86_64-linux` + `aarch64-linux` all exit 0.
+- [x] `test-auth` portability gate green — `zig build test-auth` → `227/227` (platform_admin invariant holds).
+- [x] Lint clean (zlint unused-decls) — `make lint-zig` → ZLint `0 errors / 0 warnings` across 387 files.
+- [x] Dead-code sweep all-zero — removed symbols `0` in their graphs; remaining hits are the documented live collisions (`daemon ClientError`, `session_store_redis SessionStore`), correctly retained.
+- [x] No `src/auth/` path left in live docs — `grep -rn "src/auth/" docs/AUTH.md docs/architecture/roadmap.md` → `0`.
+- [x] `gitleaks detect` clean (2344 commits) · no file over 350 lines (FLL gate green).
 
 ---
 
@@ -275,7 +275,7 @@ grep -rn "src/auth/" docs/AUTH.md docs/architecture/roadmap.md
 - **Scope consult (Jun 03 2026)** — Indy adjudicated the keep-vs-delete calls: delete `bearer_oidc`, `security_headers` (skeleton, not wire), `session_store` (+ de-couple tests), `contact`; wire-in the two orphan tests (live equivalents exist). Two deletion-safety gates verified green before authoring (platform_admin covered by `bearer_or_api_key`; HSTS is load-balancer-only).
 - **Runner-CLI token scope decision (Jun 03 2026)** — Mid-work, Indy questioned the `zombie-runner register` token model (`--token`/`ZOMBIE_TOKEN`). Investigated M80_004 (DONE), the runner bootstrap playbooks, and `docs/architecture/runner_fleet.md`: `register` deliberately authenticates with the operator's platform-admin Clerk JWT via `ZOMBIE_TOKEN`/`--token` (verbatim `zombiectl` precedence); under Option B the host holds only `ZOMBIE_RUNNER_TOKEN` (the operator-minted `zrn_`), never an admin credential. **Decision: leave the runner CLI as-is** — the shared `ZOMBIE_TOKEN` is the agreed, integration-tested M80_004 design; a rename would supersede M80_004 and belongs in its own spec, NOT this dead-code cleanup. M83 stays dead-code-only. Recorded in agent memory `project_runner_register_admin_token_intentional`.
 - **§4 SessionStore test-case count (Jun 03 2026)** — Adversarial re-confirmation found `resource_security_test.zig` references `SessionStore` in **three** cases (T8 "destroying one session in store" @76, T5+T8 concurrency @266, T11 no-leaks @411), not the two the §4 prose names ("no-leaks + concurrency"). All three must go for the import removal to compile (Invariant: both suites still compile); the neighbour-isolation intent survives via the bare-`Session` T8 @36. `sandbox_edge_test.zig` is as specified (one case, T3 reapExpired @268).
-- **Skill chain outcomes** — populate during VERIFY/CHORE(close).
+- **Skill chain outcomes** — `/write-unit-test`: ledger 100% resolved (5 tested / 3 won't-test dead-code removal); no new tests warranted (removal + restoration PR; restored §1 suites add 18 real behavioural/invariant/security tests). `/review`: ship-as-is — all 5 priority areas clean @9/10 (no dropped consumer, wire triage sound, §4 well-formed, §3 platform_admin intact, docs not over-replaced); one finding (pre-existing `///` mis-attachment in `bearer_or_api_key.zig` that §3 had touched) fixed under RULE NLR (commit 7243894e). `/review-pr` + `kishore-babysit-prs` run post-PR.
 - **Deferrals** — none.
 
 ---
@@ -292,17 +292,19 @@ grep -rn "src/auth/" docs/AUTH.md docs/architecture/roadmap.md
 
 ## Verification Evidence
 
-> Filled during VERIFY.
+> Filled during VERIFY (Jun 03 2026, commit 7243894e).
 
 | Check | Command | Result | Pass? |
 |-------|---------|--------|-------|
-| Orphan tests run | `zig build --build-file build_runner.zig test` | {paste} | |
-| Unit tests | `make test` | {paste} | |
-| Auth portability | `zig build test-auth` | {paste} | |
-| Lint (unused-decls) | `make lint` | {paste} | |
-| Cross-compile | `zig build -Dtarget=x86_64-linux && zig build -Dtarget=aarch64-linux` | {paste} | |
-| Gitleaks | `gitleaks detect` | {paste} | |
-| Dead-code sweep | `grep -rn "BearerOidc\|applyHsts\|SessionStore\|SUPPORT_EMAIL\|expBackoffJitter" src/` | {paste} | |
+| Orphan tests run | `zig build --build-file build_runner.zig test` | 268/272 pass, 4 skip; both restored suites execute (proved via Δ11 count delta) | ✅ |
+| Unit tests | `zig build test` (repo target, not `make test`) | 1189/1470 pass, 281 integration skips | ✅ |
+| Auth portability | `zig build test-auth` | 227/227 pass (platform_admin invariant) | ✅ |
+| Lint (unused-decls) | `make lint-zig` | ZLint 0 errors / 0 warnings across 387 files; fmt + pg-drain + FLL + ORP guards green | ✅ |
+| Cross-compile | both graphs × `-Dtarget=x86_64-linux` + `aarch64-linux` | all exit 0 | ✅ |
+| Gitleaks | `gitleaks detect` | no leaks found (2344 commits, 138 MB) | ✅ |
+| Dead-code sweep | `rg` per removed symbol in its graph | 0 hits; live `daemon ClientError` + `session_store_redis SessionStore` correctly retained | ✅ |
+| Harness verify | pre-commit `make harness-verify` | ALL GATES GREEN (UFS, DESIGN TOKEN, SPEC TEMPLATE, ERROR REGISTRY, LOGGING, LIFECYCLE, CROSS-TIER RATES, MS-ID+UI) | ✅ |
+| Skill chain | `/write-unit-test` · `/review` | write-unit-test: coverage adequate (ledger 100%); /review: ship-as-is, all 5 areas clean @9/10, one NLR doc-comment fix applied (7243894e) | ✅ |
 
 ---
 
