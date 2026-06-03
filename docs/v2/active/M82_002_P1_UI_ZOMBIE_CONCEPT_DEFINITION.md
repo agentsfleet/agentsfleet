@@ -4,11 +4,11 @@
 **Milestone:** M82
 **Workstream:** 002
 **Date:** Jun 03, 2026
-**Status:** PENDING
+**Status:** IN_PROGRESS
 **Priority:** P1 — customer-facing; the product's core noun is undefined for users at every entry point, so newcomers must infer the central concept.
 **Categories:** UI
 **Batch:** B1 — standalone; no concurrent workstream.
-**Branch:** {feat/mNN-name — added when work begins}
+**Branch:** feat/m82-002-zombie-concept-definition
 **Depends on:** none.
 **Provenance:** agent-generated (pre-spec, in-session user-facing "zombie" terminology audit, Jun 03, 2026 — 3-surface grep + classification).
 
