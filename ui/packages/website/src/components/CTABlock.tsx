@@ -14,7 +14,7 @@ export default function CTABlock() {
         <DisplayLG>Stop chasing failed deploys.</DisplayLG>
         <div className="flex flex-col gap-6 max-w-measure">
           <p className="font-sans text-body-lg leading-body text-text-muted m-0">
-            Install one zombie, wire one webhook — it wakes on the failure, reads
+            Install one agent, wire one webhook — it wakes on the failure, reads
             the logs, and posts the diagnosis with evidence. You read the answer,
             not another dashboard.
           </p>

@@ -31,8 +31,8 @@ export default function Pricing() {
           <RateTable />
 
           <p className="font-sans text-body leading-body text-text-muted m-0 max-w-narrow">
-            You&apos;re billed <span className="text-text">by the second</span>, only while a
-            zombie is actively working — not a flat monthly seat, not idle time. A quiet agent
+            You&apos;re billed <span className="text-text">by the second</span>, only while an
+            agent is actively working — not a flat monthly seat, not idle time. A quiet agent
             waiting on nothing costs nothing.
           </p>
 
@@ -40,7 +40,7 @@ export default function Pricing() {
             data-testid="pricing-design-partner-note"
             className="font-sans text-body-sm leading-body-sm text-pulse m-0 max-w-narrow"
           >
-            Want a hand calibrating a zombie or to join as a design partner? Email{" "}
+            Want a hand calibrating an agent or to join as a design partner? Email{" "}
             <a
               href={`mailto:${SUPPORT_EMAIL}?subject=Design%20partner`}
               className="underline hover:text-text"
@@ -90,7 +90,7 @@ function RateTable() {
         <span className="text-text-subtle" aria-hidden="true">
           ·
         </span>
-        <span className="text-text-muted">only while a zombie is running, platform or your own key</span>
+        <span className="text-text-muted">only while an agent is running, platform or your own key</span>
       </RateRow>
       <RateRow label="Model tokens">
         <span className="text-text">your provider</span>

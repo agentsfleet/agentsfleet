@@ -15,7 +15,7 @@ describe("FAQ", () => {
     expect(screen.getByText("What does self-managed mean?")).toBeInTheDocument();
     expect(screen.getByText("What am I actually paying for?")).toBeInTheDocument();
     expect(screen.getByText("Can I self-host?")).toBeInTheDocument();
-    expect(screen.getByText("Which agent hosts work for the install skill?")).toBeInTheDocument();
+    expect(screen.getByText("Which coding agents work for the install skill?")).toBeInTheDocument();
     expect(screen.getByText("What if my agent hits the model's context window?")).toBeInTheDocument();
   });
 
@@ -68,6 +68,16 @@ describe("FAQ", () => {
     const measure = container.querySelector(".max-w-measure");
     expect(measure).not.toBeNull();
     expect(measure!.querySelector('[data-testid="faq-item-0"]')).not.toBeNull();
+  });
+
+  it("defines the agent at first touch: 'What is usezombie?' opens to the explicit definition", async () => {
+    const user = userEvent.setup();
+    render(<FAQ />);
+    await user.click(screen.getByText("What is usezombie?"));
+    expect(
+      screen.getByText(/An agent is a long-lived runtime you install once/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not a one-shot prompt/i)).toBeInTheDocument();
   });
 
   it("does not render the operational-extras FAQ entry (extras were removed from pricing)", () => {

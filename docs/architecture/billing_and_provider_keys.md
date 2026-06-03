@@ -14,9 +14,9 @@ The billing model is **credit-based, Amp-style**: every tenant has a single cred
 
 ## 1. The two postures
 
-One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs a zombie on the default platform-managed posture, runs for a while, then activates self-managed with his own Fireworks key so he stops paying usezombie for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
+One persona carries the worked examples through this doc and the scenarios: **John Doe** — first-time user who installs an agent on the default platform-managed posture, runs for a while, then activates self-managed with his own Fireworks key so he stops paying usezombie for tokens. He's the same user across every scenario; only his posture changes over time. Both postures share the same code path; the only thing that differs is the per-event drain rate, so a single persona is enough to demonstrate the full surface.
 
-A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per zombie):
+A tenant is in exactly one of two postures at any moment. The posture is tenant-scoped (single value per tenant; not per workspace, not per agent):
 
 - **Platform-managed (v2.0 default = Fireworks Kimi K2.6).** usezombie routes platform-managed inference through the **admin tenant's self-managed credential**. The `usezombie-admin` user (one global account per environment, bootstrapped via [`playbooks/operations/admin_bootstrap/001_playbook.md`](../../playbooks/operations/admin_bootstrap/001_playbook.md)) signs up like a normal user, gets promoted to `role=admin` in Clerk, stores a Fireworks credential in their own workspace's `vault.secrets` (same M45 crypto_store path any user's self-managed uses), then registers it as the active platform default via `PUT /v1/admin/platform-keys`. The `core.platform_llm_keys` table records only a pointer `(provider, source_workspace_id)` — no key material lives there. At lease time the control plane (`zombied`) follows the pointer into the admin workspace's vault to fetch the api_key on-demand. There is no `PLATFORM_FIREWORKS_KEY` constant, no separate platform vault, no env-var fallback. The user pays usezombie a per-event fee that bundles inference (token-based, retail-rate-driven through the model-caps endpoint) plus orchestration, storage, and egress.
 - **Self-managed provider keys.** The user stores their own provider credential — Fireworks, Anthropic, OpenAI, Together, Groq, Moonshot, OpenRouter, etc. — in the vault under a name they choose (`account-fireworks-key`, `anthropic-prod`, etc.). The tenant's `core.tenant_providers` row points at that name through `credential_ref`. The runner's NullClaw child uses that key to call the provider's API. The user pays their provider directly for inference; usezombie charges a smaller flat orchestration fee per event with no token markup.
@@ -331,7 +331,7 @@ The single source of truth for model context caps **and per-model token rates**.
 
 For billing specifically: the API server reads the endpoint at boot and on a periodic refresh; `computeStageCharge` consults the cached per-model token rates — never makes a network call on the hot path.
 
-Endpoint shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-zombie reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
+Endpoint shape. **Live values are the source of truth** — the snippet below shows the response *shape*, not canonical values. Specific nanos-per-million figures change as upstream provider pricing moves and the admin-agent reconciles. Always consult the URL for current rates; do not hardcode them in code or paraphrase them in docs.
 
 ```
 GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.json
@@ -352,7 +352,7 @@ GET https://api.usezombie.com/_um/da5b6b3810543fe108d816ee972e4ff8/model-caps.js
 }
 ```
 
-The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-zombie keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider set` validates membership, the API server caches all rates at boot, and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
+The full live catalogue includes Anthropic Claude (Opus / Sonnet / Haiku), OpenAI GPT-class, Fireworks Kimi K2.6 + DeepSeek + Llama, Moonshot Kimi, Zhipu GLM, OpenRouter passthrough rows, and so on. Adding a model is a row append; the admin-agent keeps it fresh against upstream provider pages. Operators don't need to know the row contents — `tenant provider set` validates membership, the API server caches all rates at boot, and this doc deliberately quotes shape, not numbers, so a rate ratchet doesn't make it stale.
 
 The provider hosting a given model is encoded in the `model_id` itself (`accounts/fireworks/...` is Fireworks; bare `kimi-k2.6` is Moonshot; `claude-*` is Anthropic; `gpt-*` is OpenAI; `glm-*` is Zhipu). Users pick their provider via their self-managed credential body, not via this catalogue — so the catalogue does not carry a `default_provider` field.
 
@@ -362,7 +362,7 @@ Properties:
 - **Pricing visibility caveat.** The token-rate columns are in the same public-but-unguessable response. Anyone who finds the URL can read our platform margins. Acknowledged-controversial — the alternative (auth-required pricing endpoint) breaks the "hot, unauthenticated, cacheable" property that lets `tenant provider set` resolve at low latency. We accept the trade-off for now and revisit if a competitor uses our pricing strategically.
 - **Hard-coded in clients.** `zombiectl` and the install-skill embed the URL at build time. Rotation is a coordinated CLI + skill release, on a quarterly cadence or sooner if abuse is detected. Old keys serve `410 Gone` for ~30 days, then `404`.
 - **Cloudflare in front.** `Cache-Control: public, max-age=86400, s-maxage=604800, immutable` per release URL. Per-IP rate limit (one request per second sustained, burst of ten) at the edge.
-- **Implementation roadmap.** v2.0 ships a static JSON file checked into the API repository and served by a route handler. Later, an admin-only zombie owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a pull request with deltas. Humans review and merge. The endpoint stays the same; the data gets fresher.
+- **Implementation roadmap.** v2.0 ships a static JSON file checked into the API repository and served by a route handler. Later, an admin-only agent owned by `nkishore@megam.io` wakes hourly, queries each provider's models endpoint where one exists (Anthropic, OpenAI, Moonshot, OpenRouter), reconciles against the table, and opens a pull request with deltas. Humans review and merge. The endpoint stays the same; the data gets fresher.
 - **Resolved at install or provider-set time, never at trigger time.** The context cap is pinned in either `tenant_providers` (self-managed) or the synth-default constant (platform). The token-rate cache is refreshed on API boot and on a slow background timer; the hot path never makes a network call.
 
 ---
@@ -374,12 +374,12 @@ The billing dashboard mirrors Amp's settings page in shape. Layout and what ship
 ### 11.1 Balance card
 
 - Large display: `$X.XX USD` (the balance_nanos value formatted as dollars).
-- Subtitle: `Covers all your zombie events.`
+- Subtitle: `Covers all your agent events.`
 - **Purchase Credits** button — present, **disabled in v2.0** with a tooltip *"Coming in v2.1 — contact support for a top-up."* The button moves to enabled in v2.1 once the Stripe integration ships.
 
 ### 11.2 Tabs — Usage / Invoices / Payment Method
 
-- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by zombie / time range. Each row shows event_id, zombie, timestamp, posture, model (under platform), tokens (under platform), receive nanos, run nanos, total nanos (rendered as dollars via the website's `formatDollars` helper). Sortable and exportable to CSV.
+- **Usage** (default tab, shipped in v2.0). Per-event credit drain history filterable by agent / time range. Each row shows event_id, agent, timestamp, posture, model (under platform), tokens (under platform), receive nanos, run nanos, total nanos (rendered as dollars via the website's `formatDollars` helper). Sortable and exportable to CSV.
 - **Invoices** (shipped as empty state in v2.0). Renders *"No invoices yet — invoicing arrives with Purchase Credits in v2.1."*
 - **Payment Method** (shipped as empty state in v2.0). Renders *"No payment method on file — coming in v2.1."*
 

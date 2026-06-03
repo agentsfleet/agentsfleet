@@ -30,7 +30,7 @@ export default function ZombieConfig({
         presentErrorString({
           errorCode: result.errorCode,
           message: result.error,
-          action: "delete this zombie",
+          action: "delete this agent",
         }),
       );
     }
@@ -56,14 +56,14 @@ export default function ZombieConfig({
         variant="destructive"
         size="sm"
       >
-        <Trash2Icon size={14} /> Delete zombie
+        <Trash2Icon size={14} /> Delete agent
       </Button>
 
       <ConfirmDialog
         open={open}
         onOpenChange={setOpen}
         title={`Delete ${zombieName}?`}
-        description="This removes the zombie. In-flight runs should be stopped first."
+        description="This removes the agent. In-flight runs should be stopped first."
         confirmLabel="Yes, delete"
         intent="destructive"
         onConfirm={onConfirm}

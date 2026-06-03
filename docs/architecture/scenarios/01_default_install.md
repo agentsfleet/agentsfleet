@@ -1,6 +1,6 @@
 # Scenario 01 — Default install, platform-managed key
 
-**Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants a zombie that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
+**Persona — John Doe.** First-time user. Has a GitHub repo with a CD pipeline. Wants an agent that wakes on deploy failures and posts diagnoses to Slack. No own LLM key. Brand-new tenant — running on the one-time starter credit grant. Tenant carries no `core.tenant_providers` row — the resolver synthesises the platform default for him.
 
 > **Rate snapshot.** Through 2026-07-31 UTC every event and every run execution is free (`FREE_TRIAL_STAGE_NANOS = 0`); the gate and telemetry rows still run but `credit_deducted_nanos = 0`. After the cutoff, the rates in `src/state/tenant_billing.zig` apply. Cent-and-token arithmetic in steps 4–8 below was authored against an earlier rate table — the *flow* is unchanged, but every deduction is 0 during the trial. **For the live, customer-facing rate table, always consult [`https://usezombie.com/#pricing`](https://usezombie.com/#pricing).** The architecture description here covers shape and behaviour; numbers change. Code-level pin: [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §2.3.
 
@@ -123,7 +123,7 @@ The skill's first action is host-neutral: it reads its own `variables:` frontmat
    ```
    The user's `gh auth` does the work — the platform never holds the user's PAT for this step. Failure modes: `403`/`401` → skill prints `gh auth refresh -s admin:repo_hook` and stops; `404` → repo or token wrong, prints response verbatim and stops; `422 Hook already exists` → idempotent (skill `gh api repos/.../hooks`, matches on `config.url`, advances).
 10. **Self-verify the webhook end-to-end.** The skill computes HMAC-SHA256 over a synthetic payload using the stored `webhook_secret`, curls the receiver with the signed payload + `X-GitHub-Event: workflow_run` + `X-Hub-Signature-256` headers. Expects 202. Anything else → prints response verbatim and stops *before* declaring success. The user never finds out hours later that HMAC is wrong.
-11. **Post-install summary.** Prints zombie id, registered hook id per source, HMAC-verified status, and the credentials stored — no manual paste prose. No GitHub web UI step.
+11. **Post-install summary.** Prints agent id, registered hook id per source, HMAC-verified status, and the credentials stored — no manual paste prose. No GitHub web UI step.
 12. **First steer (smoke test).** The skill runs `zombiectl steer {id} "morning health check"` in batch mode and streams the response inline.
 
 ### 1.2 What the first steer actually returns
@@ -157,7 +157,7 @@ A `zombie-runner` leases the event within ≤5s. The lease path (in `zombied`) w
 3. **Resolve provider posture.** `tenant_provider.resolveActiveProvider(tenant_id)` returns the synth-default for John (no row): `{mode: "platform", provider: "fireworks", api_key: <fetched from admin workspace vault via platform_llm_keys pointer>, model: "accounts/fireworks/models/kimi-k2.6", context_cap_tokens: 256000}`.
 4. **Balance gate.** Estimate = `compute_receive_charge(.platform)` (1¢) + worst-case `compute_stage_charge(.platform, accounts/fireworks/models/kimi-k2.6, ESTIMATE_FLOOR, ESTIMATE_FLOOR)` (~2¢) = ~3¢. John has $10 starter (`balance_nanos=1000`); 1000 ≥ 3 → pass. (See [`./03_balance_gate.md`](./03_balance_gate.md) for the gate-trip case.)
 5. **Receive deduct.** UPDATE `tenant_billing` SET `balance_nanos = 1000 - 1 = 999`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='receive'`, `credit_deducted_cents=1`). One transaction.
-6. Approval gate (no destructive tools wired in this zombie) → pass.
+6. Approval gate (no destructive tools wired in this agent) → pass.
 7. Resolve `secrets_map` from vault for `fly`, `slack`, `github`, `upstash`. The platform api_key is **not** in `secrets_map`; `resolveActiveProvider`'s resolved provider+key ride the lease on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key` (delivered fresh on every lease, including reclaim), separate from `secrets_map`, and the runner injects them into the NullClaw child for the inference call only.
 8. **Run deduct (conservative estimate).** UPDATE `tenant_billing` SET `balance_nanos = 999 - 2 = 997`. INSERT `zombie_execution_telemetry` (`event_id`, `posture='platform'`, `model='accounts/fireworks/models/kimi-k2.6'`, `charge_type='stage'`, `credit_deducted_cents=2`, `token_count_input=NULL`, `token_count_output=NULL`). Same transaction shape.
 9. `zombied` issues the lease with `policy = ExecutionPolicy{network_policy, tools, secrets_map, provider: "fireworks", api_key: <platform key>, context: {context_cap_tokens: 256000, tool_window: auto, memory_checkpoint_every: 5, stage_chunk_threshold: 0.75, model: "accounts/fireworks/models/kimi-k2.6"}}`. The platform provider key (fetched from the admin workspace vault via the `platform_llm_keys` pointer) is resolved by `zombied`, delivered on the lease policy, and injected by the runner's NullClaw child for the inference call only — not carried in `secrets_map`.
@@ -242,7 +242,7 @@ $ /usezombie-install-platform-ops
 
 ✓ Setup complete. To steer manually:  zombiectl steer zmb_01HX9N3K… "<msg>"
   Webhook ready. Next failed workflow_run on john-doe/widgetly will
-  wake the zombie automatically.
+  wake the agent automatically.
 ```
 
 ### 3.2 First production webhook fires (a few hours later)

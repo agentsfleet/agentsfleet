@@ -21,7 +21,7 @@ describe("BillingBalanceCard", () => {
   it("renders formatted balance + subtitle for a healthy tenant", () => {
     render(React.createElement(BillingBalanceCard, { billing: HEALTHY }));
     expect(screen.getByText(/\$4\.71/)).toBeTruthy();
-    expect(screen.getByText("Covers all your zombie events.")).toBeTruthy();
+    expect(screen.getByText("Covers all your agent events.")).toBeTruthy();
   });
 
   it("renders a disabled Purchase Credits button (Stripe deferred to v2.1)", () => {

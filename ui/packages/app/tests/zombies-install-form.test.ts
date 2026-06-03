@@ -44,7 +44,7 @@ describe("InstallZombieForm interactions", () => {
   it("empty TRIGGER.md blocks submit and shows the required-field error", async () => {
     const user = userEvent.setup({ delay: null });
     await renderForm();
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await user.click(screen.getByRole("button", { name: /install agent/i }));
     await waitFor(() =>
       expect(screen.getByText(/TRIGGER\.md body is required/i)).toBeTruthy(),
     );
@@ -55,7 +55,7 @@ describe("InstallZombieForm interactions", () => {
     const user = userEvent.setup({ delay: null });
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await user.click(screen.getByRole("button", { name: /install agent/i }));
     await waitFor(() =>
       expect(screen.getByText(/SKILL\.md body is required/i)).toBeTruthy(),
     );
@@ -72,7 +72,7 @@ describe("InstallZombieForm interactions", () => {
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill body");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await user.click(screen.getByRole("button", { name: /install agent/i }));
 
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
@@ -108,7 +108,7 @@ describe("InstallZombieForm interactions", () => {
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await user.click(screen.getByRole("button", { name: /install agent/i }));
     await waitFor(() =>
       expect(screen.getByText(/already exists in this workspace/i)).toBeTruthy(),
     );
@@ -126,7 +126,7 @@ describe("InstallZombieForm interactions", () => {
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await user.click(screen.getByRole("button", { name: /install agent/i }));
     await waitFor(() =>
       expect(screen.getByText(/boom/)).toBeTruthy(),
     );
@@ -140,7 +140,7 @@ describe("InstallZombieForm interactions", () => {
     await renderForm();
     await user.type(screen.getByLabelText(/TRIGGER\.md body/i), FIXTURE_TRIGGER);
     await user.type(screen.getByLabelText(/SKILL\.md body/i), "# skill");
-    await user.click(screen.getByRole("button", { name: /install zombie/i }));
+    await user.click(screen.getByRole("button", { name: /install agent/i }));
     // Same UZ-AUTH-401 mapping — "Your session expired" copy in the alert.
     await waitFor(() =>
       expect(screen.getByText(/Your session expired/i)).toBeTruthy(),

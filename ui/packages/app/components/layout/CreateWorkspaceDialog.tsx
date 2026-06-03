@@ -72,7 +72,7 @@ export default function CreateWorkspaceDialog({ open, onOpenChange }: Props) {
         <DialogHeader>
           <DialogTitle>New workspace</DialogTitle>
           <DialogDescription>
-            A workspace isolates zombies and credentials; billing rolls up to
+            A workspace isolates agents and credentials; billing rolls up to
             your tenant. Leave the name blank to have one generated.
           </DialogDescription>
         </DialogHeader>

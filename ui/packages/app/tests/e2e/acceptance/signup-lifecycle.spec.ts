@@ -85,9 +85,9 @@ test.describe("signup → install → lifecycle", () => {
     // First-deploy regression surface lives here (route-guard chain on a
     // brand-new tenant, WorkspaceSwitcher with the auto-provisioned default).
     await page.goto("/zombies");
-    await expect(page.getByRole("heading", { name: /zombies/i }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    await expect(page.getByText(/no zombies yet/i)).toBeVisible();
+    await expect(page.getByText(/no agents yet/i)).toBeVisible();
 
     // Install via dashboard form. Browser-driven; no API short-cut.
     const name = uniqueName();

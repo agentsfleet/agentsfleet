@@ -76,7 +76,7 @@ export default function ZombiesList({
           presentErrorString({
             errorCode: result.errorCode,
             message: result.error,
-            action: "load more zombies",
+            action: "load more agents",
           }),
         );
         return;
@@ -91,10 +91,10 @@ export default function ZombiesList({
       <div className="mb-4 flex items-center gap-3">
         <Input
           type="search"
-          placeholder="Search loaded zombies by name, status, or id…"
+          placeholder="Search loaded agents by name, status, or id…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
-          aria-label="Search zombies"
+          aria-label="Search agents"
           className="flex-1"
         />
         {liveTotal > 0 ? (
@@ -114,7 +114,7 @@ export default function ZombiesList({
 
       {filtered.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No zombies match &ldquo;{deferredQuery}&rdquo; in the loaded set.
+          No agents match &ldquo;{deferredQuery}&rdquo; in the loaded set.
         </p>
       ) : (
         <List variant="plain" className="divide-y divide-border rounded-md border border-border space-y-0">

@@ -17,7 +17,7 @@ Until v2.1, runner registration is gated by `RequireRole{.admin}` (see [`../AUTH
 
 ### Agent keys → first-class principal
 
-Today agent keys (`zmb_`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateZombie`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.agent_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.agent_key` + a `zombie_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` zombie-identity path that the same handler accepts today.
+Today agent keys (`zmb_`) authenticate via a bespoke handler-local lookup (`integration_grants/handler.zig::authenticateZombie`), not the shared middleware, and never become an `AuthPrincipal` (there is no `AuthMode.agent_key`). v2.1 revamps them into a first-class principal — a dedicated middleware branch + `AuthMode.agent_key` + a `zombie_id`-scoped principal — aligning with the reference auth design at `~/Projects/oss/auth.md`. The revamp must also fold in the `Session {uuid}` agent-identity path that the same handler accepts today.
 
 ## v2.1+ — other deferred items
 
@@ -44,13 +44,13 @@ These need study before code. The `/v1/fleet/runners` surface, `RUNNER_STATUS_{c
 
 Where the v2 wedge points after launch. Not part of v2; documented so spec authors don't foreclose it.
 
-The MVP ships an internal-only diagnosis posted to the operator's Slack. The longer-term play is the **bastion** — one durable surface where internal triage continues as today (Slack post, evidence trail, follow-up steers) and external customer communication is derived from the *same* incident state (status-page updates, broadcast email/SMS, embedded widgets). The same zombie owns both; the diagnosis and the customer-facing narrative come from one event log, not two. This is the structural competitor to manual status-page tools.
+The MVP ships an internal-only diagnosis posted to the operator's Slack. The longer-term play is the **bastion** — one durable surface where internal triage continues as today (Slack post, evidence trail, follow-up steers) and external customer communication is derived from the *same* incident state (status-page updates, broadcast email/SMS, embedded widgets). The same agent owns both; the diagnosis and the customer-facing narrative come from one event log, not two. This is the structural competitor to manual status-page tools.
 
 Structural changes from MVP to bastion:
 
-1. **Per-zombie audience routing** — `TRIGGER.md` / `x-usezombie:` gains `audiences: [internal_slack, customer_status, customer_email]`; `SKILL.md` prose drafts per-audience summaries from the same evidence.
+1. **Per-agent audience routing** — `TRIGGER.md` / `x-usezombie:` gains `audiences: [internal_slack, customer_status, customer_email]`; `SKILL.md` prose drafts per-audience summaries from the same evidence.
 2. **Status-page rendering surface** — a hosted page at `status.<customer-domain>` renders the latest `processed` event's customer-facing summary.
-3. **Broadcast channels** — the zombie's `tools:` grows `email_send`, `sms_send` (approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
+3. **Broadcast channels** — the agent's `tools:` grows `email_send`, `sms_send` (approval-gated for a first incident), `webhook_post` (Statuspage / PagerDuty downstream).
 4. **Approval gating per audience** — `SKILL.md` can require human approval for customer-facing audiences while internal Slack flows automatically (the M47 approval inbox handles the mechanic).
 5. **Per-actor retention** — customer-facing communications carry stricter retention (Sarbanes-Oxley Act (SOX), General Data Protection Regulation (GDPR)); `core.zombie_events` retention becomes per-actor configurable.
 

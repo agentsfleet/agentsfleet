@@ -31,7 +31,7 @@ import { renderZombieMessage } from "./zombieMessageRenderers";
 
 const PANEL_TITLE = "Live activity";
 const EMPTY_HINT =
-  "Waiting for activity. Tool calls, chunks, and completions appear here as the zombie runs.";
+  "Waiting for activity. Tool calls, chunks, and completions appear here as the agent runs.";
 
 const STATUS_LABEL: Record<ConnectionStatus, string> = {
   [CONNECTION_STATUS.CONNECTING]: "Connecting…",

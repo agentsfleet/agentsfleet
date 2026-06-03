@@ -37,7 +37,7 @@ const STEPS: readonly Step[] = [
   {
     id: "steer",
     number: "04",
-    title: "Steer your zombie",
+    title: "Steer your agent",
     command: 'zombiectl steer <zombie_id> "morning health check"',
     caption:
       "Or type into the Dashboard chat composer on /zombies/{id}. Every wake lands on the durable event log.",
