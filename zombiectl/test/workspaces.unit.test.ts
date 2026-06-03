@@ -110,66 +110,31 @@ describe("workspacesLayer — load (disk)", () => {
   });
 });
 
-describe("workspacesLayer — load error path (lines 30-35)", () => {
-  test("UnexpectedError when workspaces.json is unreadable (permission denied)", async () => {
+describe("workspacesLayer — load error path", () => {
+  test("non-ENOENT IO error surfaces as UnexpectedError with the cause embedded", async () => {
+    // A directory where the state file is expected makes readFile throw
+    // EISDIR — a non-ENOENT, non-SyntaxError error that propagates through
+    // readJson to the load catch. Deterministic for every uid, unlike chmod
+    // 000 (which the file owner / root can still read).
     const exit = await withFreshStateDir(async (dir) => {
-      // Write a valid file first, then lock it down to trigger EACCES.
-      const wsPath = path.join(dir, "workspaces.json");
-      await fs.writeFile(wsPath, '{"current_workspace_id":null,"items":[]}', {
-        mode: 0o600,
-      });
-      await fs.chmod(wsPath, 0o000);
-      try {
-        return await Effect.runPromiseExit(
-          Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
-            Effect.provide(workspacesLayer),
-          ),
-        );
-      } finally {
-        // Restore so withFreshStateDir can rm the dir.
-        await fs.chmod(wsPath, 0o600);
-      }
-    });
-
-    // bun runs as the file owner; chmod 000 should deny reads.
-    // If the runner is root (unlikely in CI) the test would show success.
-    if (Exit.isFailure(exit)) {
-      const err = Option.getOrNull(
-        Cause.findErrorOption(exit.cause),
+      await fs.mkdir(path.join(dir, "workspaces.json"));
+      return Effect.runPromiseExit(
+        Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
+          Effect.provide(workspacesLayer),
+        ),
       );
-      expect(err).toBeInstanceOf(UnexpectedError);
-      const ue = err as UnexpectedError;
-      expect(ue.detail).toMatch(/workspaces load failed/);
-      expect(ue.suggestion).toMatch(/permissions/);
-    } else {
-      // Running as root — the error path is structurally tested; skip assertion.
-      expect(Exit.isSuccess(exit)).toBe(true);
-    }
-  });
-
-  test("unexpected helper message contains the Error.message text", async () => {
-    // Drive the catch branch via a non-ENOENT, non-SyntaxError throw.
-    // Achieved by writing a file with mode 000 so readFile throws EACCES.
-    const exit = await withFreshStateDir(async (dir) => {
-      const wsPath = path.join(dir, "workspaces.json");
-      await fs.writeFile(wsPath, "{}", { mode: 0o600 });
-      await fs.chmod(wsPath, 0o000);
-      try {
-        return await Effect.runPromiseExit(
-          Effect.flatMap(Workspaces, (svc) => svc.load).pipe(
-            Effect.provide(workspacesLayer),
-          ),
-        );
-      } finally {
-        await fs.chmod(wsPath, 0o600);
-      }
     });
 
-    if (Exit.isFailure(exit)) {
-      const err = Option.getOrNull(Cause.findErrorOption(exit.cause)) as UnexpectedError | null;
-      // The detail embeds the Error.message (EACCES / permission denied).
-      expect(err?.detail).toMatch(/workspaces load failed/);
-    }
+    expect(Exit.isFailure(exit)).toBe(true);
+    const err = Exit.isFailure(exit)
+      ? Option.getOrNull(Cause.findErrorOption(exit.cause))
+      : null;
+    expect(err).toBeInstanceOf(UnexpectedError);
+    const ue = err as UnexpectedError;
+    expect(ue.detail).toMatch(/workspaces load failed/);
+    // The catch embeds the underlying Error.message (the EISDIR text).
+    expect(ue.detail).toMatch(/EISDIR|illegal operation on a directory/i);
+    expect(ue.suggestion).toMatch(/permissions/);
   });
 });
 

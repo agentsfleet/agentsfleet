@@ -155,7 +155,9 @@ describe("install — webhook URL output", () => {
               { stdout: out.stream, stderr: bufferStream().stream, env: { ZOMBIE_API_URL: apiUrl } },
             );
             expect(code).toBe(0);
-            expect(out.read()).toContain("fallback-name");
+            // Assert the EXACT directory basename, not the "fallback-name"
+            // substring (which leaks through the mkdtemp prefix regardless).
+            expect(out.read()).toContain(path.basename(dir));
           },
         );
       } finally {

@@ -6,10 +6,11 @@
 // that need pollEventTerminal to return "timeout" quickly.
 
 import { describe, expect, test, setSystemTime } from "bun:test";
-import { Effect, Exit, Layer, Option, Redacted } from "effect";
+import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { Readable, Writable } from "node:stream";
 
 import { steerEffectFromArgs } from "../src/commands/zombie_steer.ts";
+import { UnexpectedError } from "../src/errors/index.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
@@ -125,6 +126,9 @@ describe("steer — SSE error path (lines 139-141)", () => {
       }).pipe(Effect.provide(makeLayer(rec, httpReply))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
+    // Discriminator: a non-POST request (the recovery poll GET) proves the
+    // sse_error branch ran, not a stream that completed on its own.
+    expect(rec.requests.some((r) => r.method !== POST)).toBe(true);
   });
 
   test("streamGet throwing non-Error is caught and stringified (line 141)", async () => {
@@ -142,6 +146,9 @@ describe("steer — SSE error path (lines 139-141)", () => {
       }).pipe(Effect.provide(makeLayer(rec, httpReply))),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
+    // Discriminator: the recovery poll GET ran after the stringified error,
+    // so the sse_error catch executed rather than a clean stream completion.
+    expect(rec.requests.some((r) => r.method !== POST)).toBe(true);
   });
 });
 
@@ -267,5 +274,11 @@ describe("steer — REPL tryPromise catch (lines 319-324)", () => {
       }).pipe(Effect.provide(makeLayer(rec, httpReply, false, { error: errorOverride }))),
     );
     expect(Exit.isFailure(exit)).toBe(true);
+    // The catch must classify the non-CliError rejection as UnexpectedError,
+    // not merely fail — that is the branch this test name claims to cover.
+    const err = Exit.isFailure(exit)
+      ? Option.getOrNull(Cause.findErrorOption(exit.cause))
+      : null;
+    expect(err).toBeInstanceOf(UnexpectedError);
   });
 });
