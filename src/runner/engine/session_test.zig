@@ -1,5 +1,4 @@
-//! Unit tests for `Session` (file-as-struct in session.zig). SessionStore
-//! tests live in runtime/session_store.zig (alongside the type).
+//! Unit tests for `Session` (file-as-struct in session.zig).
 
 const std = @import("std");
 const Session = @import("session.zig");

@@ -18,7 +18,6 @@ const std = @import("std");
 const runner = @import("runner.zig");
 const types = @import("types.zig");
 const Session = @import("session.zig");
-const SessionStore = @import("runtime/session_store.zig");
 const network = @import("network.zig");
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -259,52 +258,6 @@ test "T2: LeaseState with very large timeout never expires" {
     try std.testing.expect(!lease.isExpired());
     lease.touch();
     try std.testing.expect(!lease.isExpired());
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Mixed expired/active sessions — partial reap (T3)
-// ─────────────────────────────────────────────────────────────────────────────
-
-test "T3: SessionStore.reapExpired only removes expired sessions, leaves active ones" {
-    const page = std.heap.page_allocator;
-    var store = SessionStore.init(page);
-    defer store.deinit();
-
-    // Create 3 sessions that will expire (1ms lease).
-    // Use string literals — stack-buffer session_id would outlive the loop
-    // iteration and produce dangling pointers since Session stores the slice
-    // header without copying the bytes.
-    for (0..3) |_| {
-        const s = try page.create(Session);
-        s.* = try Session.create(page, "/tmp/ws", .{
-            .trace_id = "t",
-            .zombie_id = "r",
-            .workspace_id = "w",
-            .session_id = "exp",
-        }, .{}, 1, .{}); // 1ms — will expire
-        try store.put(s);
-    }
-
-    // Create 2 sessions with long lease (30s).
-    for (0..2) |_| {
-        const s = try page.create(Session);
-        s.* = try Session.create(page, "/tmp/ws", .{
-            .trace_id = "t",
-            .zombie_id = "r",
-            .workspace_id = "w",
-            .session_id = "act",
-        }, .{}, 30_000, .{}); // 30s — will NOT expire
-        try store.put(s);
-    }
-
-    try std.testing.expectEqual(@as(usize, 5), store.activeCount());
-
-    // Wait for the short leases to expire.
-    std.Thread.sleep(10 * std.time.ns_per_ms);
-
-    const reaped = store.reapExpired();
-    try std.testing.expectEqual(@as(u32, 3), reaped);
-    try std.testing.expectEqual(@as(usize, 2), store.activeCount());
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

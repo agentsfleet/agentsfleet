@@ -26,9 +26,9 @@ const tenant_api_key_mod = @import("tenant_api_key.zig");
 pub const AuthCtx = auth_ctx.AuthCtx;
 pub const TenantApiKey = tenant_api_key_mod.TenantApiKey;
 
-/// Free fields of `oidc.Principal` that `AuthPrincipal` does not adopt
-/// (mirrors bearer_oidc — duplicated to avoid a shared helper module just
-/// for five frees).
+/// Free fields of `oidc.Principal` that `AuthPrincipal` does not adopt —
+/// keeps subject/tenant_id/workspace_id; issuer/org_id/role/audience/scopes
+/// would otherwise leak.
 const S_INVALID_OR_MISSING_TOKEN = "Invalid or missing token";
 
 fn freeUnusedPrincipalFields(alloc: std.mem.Allocator, p: oidc.Principal) void {
