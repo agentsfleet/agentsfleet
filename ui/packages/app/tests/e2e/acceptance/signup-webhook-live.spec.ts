@@ -60,8 +60,8 @@ test.describe("signup webhook live", () => {
 
     await page.goto("/zombies");
     await expect(page).toHaveURL((url) => url.pathname === "/zombies");
-    await expect(page.getByRole("heading", { name: /zombies/i }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /agents/i }).first()).toBeVisible();
     await expect(page.getByTestId("workspace-switcher")).toBeVisible();
-    await expect(page.getByText(/no zombies yet/i)).toBeVisible();
+    await expect(page.getByText(/no agents yet/i)).toBeVisible();
   });
 });
